@@ -1,0 +1,20 @@
+[
+  {
+    "title": "Snake Game",
+    "desc": "Canvas-based classic with wrap-around edges. Built in React + TypeScript.",
+    "link": "#snake",
+    "linkText": "Play now"
+  },
+  {
+    "title": "This Portfolio",
+    "desc": "Vite, modern CSS, GitHub Actions for Pages. Clean, fast, and accessible.",
+    "link": "https://github.com/justanothertree/yaya",
+    "linkText": "View repo"
+  },
+  {
+    "title": "Coming Soon",
+    "desc": "More projects and write-ups will appear here as they ship.",
+    "link": "#projects",
+    "linkText": "Stay tuned"
+  }
+]
