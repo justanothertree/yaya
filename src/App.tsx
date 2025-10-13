@@ -43,9 +43,10 @@ export default function App() {
       <main className="container">
         {active === 'home' && (
           <section id="home" className="card">
-            <h1 style={{marginTop:0}}>Welcome!</h1>
-            <p className="muted">This is a portfolio site with a built-in Snake game and a simple contact form.</p>
-            <p>Use the navigation to explore each section. Customize content in <code>src/sections</code>.</p>
+            <h1 style={{marginTop:0}}>Hi, I’m {site.name}.</h1>
+            <p className="muted">Frontend-focused developer exploring clean interfaces, playful interactions, and fast builds.</p>
+            <p>Check out a few small demos and the resume, or say hello via the contact form. Projects are easy to expand—this repo is set up for smooth updates.</p>
+            <p><a className="btn" href="#projects">Explore Projects</a></p>
           </section>
         )}
         {active === 'projects' && <section id="projects"><Projects /></section>}
@@ -54,7 +55,7 @@ export default function App() {
         {active === 'contact' && <section id="contact"><ContactForm /></section>}
       </main>
       <footer className="container" style={{opacity:.9, paddingTop:'1rem', paddingBottom:'2rem'}}>
-        <div className="muted">© {new Date().getFullYear()} {site.name} • <a href={site.socials.github} target="_blank" rel="noreferrer">GitHub</a></div>
+        <div className="muted">© {new Date().getFullYear()} {site.name} • <a href={site.socials.github} target="_blank" rel="noreferrer">GitHub</a> • <a href={site.socials.linkedin} target="_blank" rel="noreferrer">LinkedIn</a></div>
       </footer>
     </div>
   )
