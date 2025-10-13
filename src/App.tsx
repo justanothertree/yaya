@@ -3,6 +3,7 @@ import { Resume } from './sections/Resume'
 import { SnakeGame } from './sections/SnakeGame'
 import { ContactForm } from './sections/ContactForm'
 import { Projects } from './sections/Projects'
+import { site } from './config/site'
 
 export default function App() {
   type Section = 'home' | 'projects' | 'resume' | 'snake' | 'contact'
@@ -28,7 +29,7 @@ export default function App() {
     <div>
       <nav className="nav">
         <div className="container nav-inner">
-          <a className="brand" href="#home" aria-label="Home">Evan Cook</a>
+          <a className="brand" href="#home" aria-label="Home">{site.name}</a>
           <div>
             <a href="#home" onClick={() => setActive('home')} aria-current={active==='home' ? 'page' : undefined}>Home</a>
             <a href="#projects" onClick={() => setActive('projects')} aria-current={active==='projects' ? 'page' : undefined}>Projects</a>
@@ -53,7 +54,7 @@ export default function App() {
         {active === 'contact' && <section id="contact"><ContactForm /></section>}
       </main>
       <footer className="container" style={{opacity:.9, paddingTop:'1rem', paddingBottom:'2rem'}}>
-        <div className="muted">© {new Date().getFullYear()} Evan Cook • <a href="https://github.com/justanothertree" target="_blank" rel="noreferrer">GitHub</a></div>
+        <div className="muted">© {new Date().getFullYear()} {site.name} • <a href={site.socials.github} target="_blank" rel="noreferrer">GitHub</a></div>
       </footer>
     </div>
   )

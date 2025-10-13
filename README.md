@@ -74,8 +74,6 @@ npm run lint
 - Edit resume content in `src/sections/Resume.tsx`.
 - Tweak styling in `src/index.css`.
 
-See `docs/EXPAND.md` for a concise checklist of where to edit content and how to add features.
-
 ## Repository hygiene
 
 - MIT License included (`LICENSE`).

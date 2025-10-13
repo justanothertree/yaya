@@ -1,48 +1,51 @@
-# Expand this portfolio
+# Expand Guide
 
-Use this checklist to customize and grow your site.
+Use this checklist to grow the portfolio safely. Each item links to the exact file to edit.
 
-## Branding and content
-- Update brand text in `src/App.tsx` (top-left brand link).
-- Edit Resume content in `src/sections/Resume.tsx`.
-- Update footer links in `src/App.tsx`.
+## Content updates
 
-## Projects
-- Edit `src/sections/projects.json` to add or remove items.
-  - Fields: `title`, `desc`, `link`, `linkText`.
-  - External links should start with `http` and will open in a new tab.
-  - Internal links can use hashes like `#snake`, `#projects`.
-
-## Contact form
-- Using Formspree: `src/sections/ContactForm.tsx`.
-  - Replace `https://formspree.io/f/xeorpelp` with your own ID if needed.
-  - Add any additional fields you want; Formspree will capture them.
+- [ ] Brand text in nav: `src/App.tsx` (the brand link text)
+- [ ] Resume content: `src/sections/Resume.tsx`
+- [ ] Projects list: `src/sections/projects.json`
+- [ ] Contact endpoint: `src/sections/ContactForm.tsx` (Formspree ID)
 
 ## Styling
-- Global styles in `src/index.css`.
-- Add utility classes or tweak variables at the top (`:root`).
 
-## Navigation & sections
-- The nav is hash-based. Valid sections: `home`, `projects`, `resume`, `snake`, `contact`.
-- To add a new section:
-  1) Create a component in `src/sections/`.
-  2) Import it in `src/App.tsx` and extend the `Section` type.
-  3) Add a nav link and render condition.
+- [ ] Global theme: `src/index.css` (colors, spacing, components)
+- [ ] Section layout: `.grid-*` utilities in `src/index.css`
 
-## Deployment
-- GitHub Pages project URL: https://justanothertree.github.io/yaya/
-- Vite base is set to `/yaya/` in `vite.config.ts`.
-- When moving to a custom domain (e.g., `evancook.dev`):
-  - Keep `public/CNAME` with `evancook.dev`.
-  - Change `base` in `vite.config.ts` to `'/'` and remove `VITE_BASE` override in CI.
+## Pages deployment
 
-## CI and quality
-- Lint on PRs: `.github/workflows/lint.yml`.
-- Build on PRs: `.github/workflows/build.yml`.
-- Add tests if needed; recommend `vitest` for unit tests.
+- Live URL: https://justanothertree.github.io/yaya/
+- Base path: set to `/yaya/` in `vite.config.ts`
+- CI: `.github/workflows/deploy.yml` (deploys on push to main)
 
-## Ideas to add later
-- Analytics (e.g., Plausible, umami) via a small script in `index.html`.
-- Blog posts (static markdown rendered via a simple loader).
-- Dark mode toggle (expand CSS variables and a stateful toggle).
-- Project tags/filters in Projects section.
+## Custom domain (optional)
+
+Currently prepared for `evancook.dev` with `public/CNAME`.
+
+Steps:
+1) DNS: point evancook.dev to GitHub Pages (CNAME to `<user>.github.io` or set A/ALIAS records). See GitHub Pages docs.
+2) GitHub repo → Settings → Pages → Custom domain = `evancook.dev`.
+3) For a root domain deployment, update `vite.config.ts` base to `'/'` and remove `VITE_BASE` override in workflows.
+
+## Developer workflow
+
+1) Local dev
+	- `npm run dev` for hot reload.
+	- `npm run lint` for static checks.
+	- `npm run build && npm run preview` to test production bundle.
+
+2) Commit & push
+	- Push to `main` to auto-deploy.
+	- Open PRs for larger changes; CI runs lint and build.
+
+## Ideas to add next
+
+- [ ] Analytics (privacy-friendly, e.g., Plausible/Umami)
+- [ ] Accessibility pass (aria labels/roles, focus styles)
+- [ ] Dark/light toggle (persisted in localStorage)
+- [ ] Project detail pages (routes with hash or a router)
+- [ ] Blog section (markdown -> simple renderer)
+- [ ] Unit tests for components (Vitest + Testing Library)
+
