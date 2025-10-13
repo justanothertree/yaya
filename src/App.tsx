@@ -5,11 +5,13 @@ import { ContactForm } from './sections/ContactForm'
 import { Projects } from './sections/Projects'
 import { site } from './config/site'
 import { IconGitHub, IconLinkedIn } from './components/Icons'
+import { useReveal } from './hooks/useReveal'
 
 export default function App() {
   type Section = 'home' | 'projects' | 'resume' | 'snake' | 'contact'
   const [active, setActive] = useState<Section>('home')
   const topRef = useRef<HTMLDivElement>(null)
+  const liveRef = useRef<HTMLDivElement>(null)
   // Scroll to top when changing sections
   useEffect(() => {
     topRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -29,6 +31,42 @@ export default function App() {
     window.addEventListener('hashchange', onHash)
     return () => window.removeEventListener('hashchange', onHash)
   }, [])
+
+  // Announce section and sync hash when active changes
+  useEffect(() => {
+    const label = active.charAt(0).toUpperCase() + active.slice(1)
+    if (liveRef.current) liveRef.current.textContent = `Section: ${label}`
+    if (window.location.hash.replace('#', '') !== active) {
+      window.location.hash = active
+    }
+  }, [active])
+
+  // Keyboard shortcuts: 1–5 jump to sections
+  useEffect(() => {
+    const map: Record<string, Section> = {
+      '1': 'home',
+      '2': 'projects',
+      '3': 'resume',
+      '4': 'snake',
+      '5': 'contact',
+    }
+    const onKey = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null
+      const tag = target?.tagName?.toLowerCase()
+      const isTyping =
+        tag === 'input' || tag === 'textarea' || (target as HTMLElement)?.isContentEditable
+      if (isTyping || e.altKey || e.ctrlKey || e.metaKey) return
+      const key = e.key
+      if (map[key]) {
+        setActive(map[key])
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+
+  // Apply reveal-on-scroll to tagged elements
+  useReveal('.reveal')
 
   return (
     <div>
@@ -82,7 +120,7 @@ export default function App() {
       <div ref={topRef} />
       <main id="content" className="container" tabIndex={-1}>
         {active === 'home' && (
-          <section id="home" className="card">
+          <section id="home" className="card reveal">
             <h1 style={{ marginTop: 0 }}>Hi, I’m {site.name}.</h1>
             <p className="muted">
               Frontend-focused developer exploring clean interfaces, playful interactions, and fast
@@ -100,26 +138,38 @@ export default function App() {
           </section>
         )}
         {active === 'projects' && (
-          <section id="projects">
+          <section id="projects" className="reveal">
             <Projects />
           </section>
         )}
         {active === 'resume' && (
-          <section id="resume">
+          <section id="resume" className="reveal">
             <Resume />
           </section>
         )}
         {active === 'snake' && (
-          <section id="snake">
+          <section id="snake" className="reveal">
             <SnakeGame />
           </section>
         )}
         {active === 'contact' && (
-          <section id="contact">
+          <section id="contact" className="reveal">
             <ContactForm />
           </section>
         )}
       </main>
+      <div
+        ref={liveRef}
+        aria-live="polite"
+        role="status"
+        style={{
+          position: 'absolute',
+          width: 1,
+          height: 1,
+          overflow: 'hidden',
+          clip: 'rect(1px,1px,1px,1px)',
+        }}
+      />
       <footer
         className="container"
         style={{ opacity: 0.9, paddingTop: '1rem', paddingBottom: '2rem' }}
