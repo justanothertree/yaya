@@ -65,8 +65,8 @@ npm run lint
 1. Push this repo to GitHub with default branch `main`.
 2. In GitHub: Settings → Pages → Source = GitHub Actions.
 3. The workflow `.github/workflows/deploy.yml` builds and deploys `dist/` on push to `main`.
-4. Project URL (Pages): https://justanothertree.github.io/yaya/
-5. Base path is set to `/yaya/` in `vite.config.ts` (overridable via `VITE_BASE`).
+4. Project URL (custom domain): https://evancook.dev/
+5. Base path is `/` in `vite.config.ts` for root domain deploys.
 
 ## Customize
 
