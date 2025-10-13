@@ -27,7 +27,8 @@ export default function App() {
 
   return (
     <div>
-      <nav className="nav">
+      <a href="#content" className="skip-link">Skip to content</a>
+      <nav className="nav" aria-label="Primary">
         <div className="container nav-inner">
           <a className="brand" href="#home" aria-label="Home">{site.name}</a>
           <div>
@@ -40,7 +41,7 @@ export default function App() {
         </div>
       </nav>
       <div ref={topRef} />
-      <main className="container">
+  <main id="content" className="container" tabIndex={-1}>
         {active === 'home' && (
           <section id="home" className="card">
             <h1 style={{marginTop:0}}>Hi, I’m {site.name}.</h1>
