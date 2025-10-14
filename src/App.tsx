@@ -90,12 +90,11 @@ export default function App() {
   // Apply reveal-on-scroll to tagged elements
   useReveal('.reveal', active)
 
-  // Edge-swipe navigation on touch devices
+  // Swipe navigation on touch devices (anywhere, excluding interactive elements/canvas)
   useEffect(() => {
     let startX = 0
     let startY = 0
     let startTarget: EventTarget | null = null
-    const EDGE = 24 // px from left/right to qualify as edge gesture
     const THRESH = 60 // min horizontal movement
     const onTouchStart = (e: TouchEvent) => {
       const t = e.touches[0]
@@ -111,17 +110,12 @@ export default function App() {
       const t = e.changedTouches[0]
       const dx = t.clientX - startX
       const dy = t.clientY - startY
-      const atLeft = startX <= EDGE
-      const atRight = startX >= window.innerWidth - EDGE
       const mostlyHorizontal = Math.abs(dx) > Math.abs(dy)
       if (!mostlyHorizontal) return
-      if ((atLeft && dx > THRESH) || (atRight && dx < -THRESH)) {
-        // determine next/prev section
-        const order: Section[] = ['home', 'projects', 'resume', 'snake', 'contact']
-        const idx = order.indexOf(active)
-        if (atLeft && dx > THRESH && idx > 0) setActive(order[idx - 1])
-        if (atRight && dx < -THRESH && idx < order.length - 1) setActive(order[idx + 1])
-      }
+      const order: Section[] = ['home', 'projects', 'resume', 'snake', 'contact']
+      const idx = order.indexOf(active)
+      if (dx > THRESH && idx > 0) setActive(order[idx - 1]) // swipe right -> previous
+      if (dx < -THRESH && idx < order.length - 1) setActive(order[idx + 1]) // swipe left -> next
     }
     window.addEventListener('touchstart', onTouchStart, { passive: true })
     window.addEventListener('touchend', onTouchEnd)
@@ -131,17 +125,14 @@ export default function App() {
     }
   }, [active])
 
-  // Mouse drag navigation (desktop) - click and drag from edges to navigate
+  // Mouse drag navigation (desktop) - click and drag anywhere to navigate (excludes interactive/canvas)
   useEffect(() => {
     let downX = 0
     let downY = 0
     let isDown = false
     let startTarget: EventTarget | null = null
-    const EDGE = 24
     const THRESH = 80
     const onDown = (e: MouseEvent) => {
-      // left or right edge only
-      if (e.clientX > EDGE && e.clientX < window.innerWidth - EDGE) return
       startTarget = e.target
       const node = startTarget as HTMLElement
       if (node.closest('canvas, input, textarea, button, a, select')) return
@@ -155,14 +146,10 @@ export default function App() {
       const dx = e.clientX - downX
       const dy = e.clientY - downY
       if (Math.abs(dx) <= Math.abs(dy)) return
-      const atLeft = downX <= EDGE
-      const atRight = downX >= window.innerWidth - EDGE
-      if ((atLeft && dx > THRESH) || (atRight && dx < -THRESH)) {
-        const order: Section[] = ['home', 'projects', 'resume', 'snake', 'contact']
-        const idx = order.indexOf(active)
-        if (atLeft && dx > THRESH && idx > 0) setActive(order[idx - 1])
-        if (atRight && dx < -THRESH && idx < order.length - 1) setActive(order[idx + 1])
-      }
+      const order: Section[] = ['home', 'projects', 'resume', 'snake', 'contact']
+      const idx = order.indexOf(active)
+      if (dx > THRESH && idx > 0) setActive(order[idx - 1])
+      if (dx < -THRESH && idx < order.length - 1) setActive(order[idx + 1])
     }
     window.addEventListener('mousedown', onDown)
     window.addEventListener('mouseup', onUp)
@@ -264,7 +251,7 @@ export default function App() {
           </section>
         )}
         {active === 'snake' && (
-          <section id="snake" className="card reveal">
+          <section id="snake" className="card reveal show-dpad">
             <SnakeGame />
           </section>
         )}
@@ -325,35 +312,31 @@ export default function App() {
           </span>
         </div>
       </footer>
-      {/* Edge arrow buttons for desktop/touch, hidden on Snake to avoid conflicts */}
-      {active !== 'snake' && (
-        <>
-          <button
-            className="edge-btn edge-left"
-            aria-label="Previous section"
-            onClick={() => {
-              const order: Section[] = ['home', 'projects', 'resume', 'snake', 'contact']
-              const idx = order.indexOf(active)
-              if (idx > 0) setActive(order[idx - 1])
-            }}
-            disabled={active === 'home'}
-          >
-            ◀
-          </button>
-          <button
-            className="edge-btn edge-right"
-            aria-label="Next section"
-            onClick={() => {
-              const order: Section[] = ['home', 'projects', 'resume', 'snake', 'contact']
-              const idx = order.indexOf(active)
-              if (idx < order.length - 1) setActive(order[idx + 1])
-            }}
-            disabled={active === 'contact'}
-          >
-            ▶
-          </button>
-        </>
-      )}
+      {/* Edge arrow buttons for desktop/touch */}
+      <button
+        className="edge-btn edge-left"
+        aria-label="Previous section"
+        onClick={() => {
+          const order: Section[] = ['home', 'projects', 'resume', 'snake', 'contact']
+          const idx = order.indexOf(active)
+          if (idx > 0) setActive(order[idx - 1])
+        }}
+        disabled={active === 'home'}
+      >
+        ◀
+      </button>
+      <button
+        className="edge-btn edge-right"
+        aria-label="Next section"
+        onClick={() => {
+          const order: Section[] = ['home', 'projects', 'resume', 'snake', 'contact']
+          const idx = order.indexOf(active)
+          if (idx < order.length - 1) setActive(order[idx + 1])
+        }}
+        disabled={active === 'contact'}
+      >
+        ▶
+      </button>
     </div>
   )
 }
