@@ -182,12 +182,23 @@ li {
   align-items: center;
   justify-content: space-between;
 }
+.nav-links {
+  display: flex;
+  gap: 0.25rem;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+}
+.nav-links::-webkit-scrollbar {
+  display: none;
+}
 .nav a {
   color: var(--text);
   opacity: 0.9;
-  margin-left: 1rem;
+  margin-left: 0.75rem;
   padding: 0.25rem 0.35rem;
   border-radius: 6px;
+  white-space: nowrap;
 }
 .nav a[aria-current='page'] {
   background: var(--nav-current-bg);
@@ -292,4 +303,36 @@ li {
     opacity: 1;
     transform: none;
   }
+}
+
+/* Edge arrow buttons */
+.edge-btn {
+  position: fixed;
+  top: 50%;
+  transform: translateY(-50%);
+  background: var(--icon-bg);
+  color: var(--text);
+  border: 1px solid var(--icon-border);
+  border-radius: 10px;
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  opacity: 0.85;
+  z-index: 20;
+}
+.edge-btn:hover {
+  background: var(--icon-bg-hover);
+  border-color: var(--icon-border-hover);
+}
+.edge-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.edge-left {
+  left: 10px;
+}
+.edge-right {
+  right: 10px;
 }

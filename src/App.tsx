@@ -131,6 +131,47 @@ export default function App() {
     }
   }, [active])
 
+  // Mouse drag navigation (desktop) - click and drag from edges to navigate
+  useEffect(() => {
+    let downX = 0
+    let downY = 0
+    let isDown = false
+    let startTarget: EventTarget | null = null
+    const EDGE = 24
+    const THRESH = 80
+    const onDown = (e: MouseEvent) => {
+      // left or right edge only
+      if (e.clientX > EDGE && e.clientX < window.innerWidth - EDGE) return
+      startTarget = e.target
+      const node = startTarget as HTMLElement
+      if (node.closest('canvas, input, textarea, button, a, select')) return
+      isDown = true
+      downX = e.clientX
+      downY = e.clientY
+    }
+    const onUp = (e: MouseEvent) => {
+      if (!isDown) return
+      isDown = false
+      const dx = e.clientX - downX
+      const dy = e.clientY - downY
+      if (Math.abs(dx) <= Math.abs(dy)) return
+      const atLeft = downX <= EDGE
+      const atRight = downX >= window.innerWidth - EDGE
+      if ((atLeft && dx > THRESH) || (atRight && dx < -THRESH)) {
+        const order: Section[] = ['home', 'projects', 'resume', 'snake', 'contact']
+        const idx = order.indexOf(active)
+        if (atLeft && dx > THRESH && idx > 0) setActive(order[idx - 1])
+        if (atRight && dx < -THRESH && idx < order.length - 1) setActive(order[idx + 1])
+      }
+    }
+    window.addEventListener('mousedown', onDown)
+    window.addEventListener('mouseup', onUp)
+    return () => {
+      window.removeEventListener('mousedown', onDown)
+      window.removeEventListener('mouseup', onUp)
+    }
+  }, [active])
+
   return (
     <div data-theme={theme}>
       <a href="#content" className="skip-link">
@@ -141,7 +182,7 @@ export default function App() {
           <a className="brand" href="#home" aria-label="Home">
             {site.name}
           </a>
-          <div>
+          <div className="nav-links">
             <a
               href="#home"
               onClick={() => setActive('home')}
@@ -284,6 +325,35 @@ export default function App() {
           </span>
         </div>
       </footer>
+      {/* Edge arrow buttons for desktop/touch, hidden on Snake to avoid conflicts */}
+      {active !== 'snake' && (
+        <>
+          <button
+            className="edge-btn edge-left"
+            aria-label="Previous section"
+            onClick={() => {
+              const order: Section[] = ['home', 'projects', 'resume', 'snake', 'contact']
+              const idx = order.indexOf(active)
+              if (idx > 0) setActive(order[idx - 1])
+            }}
+            disabled={active === 'home'}
+          >
+            ◀
+          </button>
+          <button
+            className="edge-btn edge-right"
+            aria-label="Next section"
+            onClick={() => {
+              const order: Section[] = ['home', 'projects', 'resume', 'snake', 'contact']
+              const idx = order.indexOf(active)
+              if (idx < order.length - 1) setActive(order[idx + 1])
+            }}
+            disabled={active === 'contact'}
+          >
+            ▶
+          </button>
+        </>
+      )}
     </div>
   )
 }
