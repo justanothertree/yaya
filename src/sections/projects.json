@@ -3,18 +3,29 @@
     "title": "Snake Game",
     "desc": "Canvas-based classic with wrap-around edges. Built in React + TypeScript.",
     "link": "#snake",
-    "linkText": "Play now"
+    "linkText": "Play now",
+    "details": [
+      "Responsive canvas with devicePixelRatio scaling",
+      "Swipe gestures and on-screen D-pad for touch",
+      "Keyboard controls on desktop; wraps at edges"
+    ]
   },
   {
     "title": "This Portfolio",
     "desc": "Vite, modern CSS, GitHub Actions for Pages. Clean, fast, and accessible.",
     "link": "https://github.com/justanothertree/yaya",
-    "linkText": "View repo"
+    "linkText": "View repo",
+    "details": [
+      "Hash-based navigation with keyboard shortcuts (1–5)",
+      "Scroll-reveal animations respecting reduced motion",
+      "CI/CD with lint and build workflows; Pages deploy"
+    ]
   },
   {
     "title": "Coming Soon",
     "desc": "More projects and write-ups will appear here as they ship.",
     "link": "#projects",
-    "linkText": "Stay tuned"
+    "linkText": "Stay tuned",
+    "details": ["Write-ups and interactive demos planned."]
   }
 ]

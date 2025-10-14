@@ -68,6 +68,47 @@ export default function App() {
   // Apply reveal-on-scroll to tagged elements
   useReveal('.reveal', active)
 
+  // Edge-swipe navigation on touch devices
+  useEffect(() => {
+    let startX = 0
+    let startY = 0
+    let startTarget: EventTarget | null = null
+    const EDGE = 24 // px from left/right to qualify as edge gesture
+    const THRESH = 60 // min horizontal movement
+    const onTouchStart = (e: TouchEvent) => {
+      const t = e.touches[0]
+      startX = t.clientX
+      startY = t.clientY
+      startTarget = e.target
+    }
+    const onTouchEnd = (e: TouchEvent) => {
+      if (!startTarget) return
+      // ignore if gesture started on interactive or canvas (e.g., snake)
+      const node = startTarget as HTMLElement
+      if (node.closest('canvas, input, textarea, button, a, select')) return
+      const t = e.changedTouches[0]
+      const dx = t.clientX - startX
+      const dy = t.clientY - startY
+      const atLeft = startX <= EDGE
+      const atRight = startX >= window.innerWidth - EDGE
+      const mostlyHorizontal = Math.abs(dx) > Math.abs(dy)
+      if (!mostlyHorizontal) return
+      if ((atLeft && dx > THRESH) || (atRight && dx < -THRESH)) {
+        // determine next/prev section
+        const order: Section[] = ['home', 'projects', 'resume', 'snake', 'contact']
+        const idx = order.indexOf(active)
+        if (atLeft && dx > THRESH && idx > 0) setActive(order[idx - 1])
+        if (atRight && dx < -THRESH && idx < order.length - 1) setActive(order[idx + 1])
+      }
+    }
+    window.addEventListener('touchstart', onTouchStart, { passive: true })
+    window.addEventListener('touchend', onTouchEnd)
+    return () => {
+      window.removeEventListener('touchstart', onTouchStart)
+      window.removeEventListener('touchend', onTouchEnd)
+    }
+  }, [active])
+
   return (
     <div>
       <a href="#content" className="skip-link">

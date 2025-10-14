@@ -74,6 +74,12 @@ export function SnakeGame() {
       if (head.x === food.x && head.y === food.y) {
         setScore((s: number) => s + 1)
         food = randomFood()
+        // haptic feedback where supported
+        try {
+          if ('vibrate' in navigator) navigator.vibrate?.(15)
+        } catch {
+          // ignore haptics errors
+        }
       } else {
         snake.pop()
       }
@@ -107,6 +113,7 @@ export function SnakeGame() {
     }
 
     window.addEventListener('keydown', onKey)
+    canvas.style.touchAction = 'none'
     canvas.addEventListener('touchstart', onTouchStart, { passive: true })
     canvas.addEventListener('touchend', onTouchEnd)
     window.addEventListener('resize', resizeCanvas)

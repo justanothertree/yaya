@@ -24,10 +24,22 @@ body {
     Arial;
   background: radial-gradient(1200px 600px at 20% -10%, #0f1629 0%, var(--bg) 60%);
   color: var(--text);
+  overscroll-behavior-x: contain;
 }
 a {
   color: var(--accent);
   text-decoration: none;
+}
+/* Fluid type scale */
+h1 {
+  font-size: clamp(1.6rem, 1.2rem + 2vw, 2.4rem);
+}
+h2 {
+  font-size: clamp(1.2rem, 1rem + 1vw, 1.6rem);
+}
+p,
+li {
+  font-size: clamp(0.95rem, 0.9rem + 0.3vw, 1.05rem);
 }
 .skip-link {
   position: absolute;
@@ -53,9 +65,9 @@ a {
   outline-offset: 2px;
 }
 .container {
-  max-width: 1100px;
+  max-width: min(1100px, 100vw);
   margin: 0 auto;
-  padding: 1.25rem;
+  padding: clamp(0.9rem, 1.5vw, 1.25rem);
 }
 .grid {
   display: grid;
@@ -148,9 +160,26 @@ a {
   place-items: center;
 }
 .dpad {
-  display: grid;
+  display: none;
   gap: 8px;
   margin-top: 0.75rem;
+}
+.dpad-btn {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  padding: 0.4rem 0.8rem;
+  font-size: 1.1rem;
+}
+.dpad-btn:active {
+  transform: translateY(1px);
+}
+/* Show D-pad only on coarse pointers (most touch devices) */
+@media (hover: none) and (pointer: coarse) {
+  .dpad {
+    display: grid;
+  }
 }
 .dpad-btn {
   background: rgba(255, 255, 255, 0.06);
