@@ -37,7 +37,10 @@ export function SnakeGame({ onControlChange }: { onControlChange?: (v: boolean) 
       // Available height from wrapper top to bottom of the viewport minus small padding
       const availH = Math.max(240, Math.floor(window.innerHeight - wrapRect.top - 24))
       const availW = Math.floor(wrapper.clientWidth)
-      const square = Math.max(200, Math.min(availW, availH))
+      // On desktop, allow a larger cap so it doesn't feel too small
+      const isDesktop = window.matchMedia('(min-width: 900px)').matches
+      const maxCap = isDesktop ? 640 : 520
+      const square = Math.max(240, Math.min(availW, availH, maxCap))
       const cell = Math.max(10, Math.floor(square / GRID))
       cellRef.current = cell
       const logical = GRID * cell

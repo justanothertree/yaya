@@ -340,6 +340,10 @@ section[id] {
 .snake-active {
   border-color: var(--accent) !important;
 }
+/* Avoid double outline on focus; border indicates focus/active */
+.snake-wrap canvas:focus-visible {
+  outline: none;
+}
 
 .icon-link {
   display: inline-flex;
@@ -423,6 +427,25 @@ section[id] {
 }
 .edge-right {
   right: 10px;
+}
+
+/* Align bottom-right back-to-top with edge-right to avoid overlap */
+.back-to-top {
+  right: 12px;
+}
+@media (max-width: 700px) {
+  .back-to-top {
+    bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+  }
+}
+
+/* Slightly larger on mobile for easier taps */
+@media (max-width: 700px) {
+  .edge-btn,
+  .back-to-top {
+    width: 48px;
+    height: 48px;
+  }
 }
 
 /* Mobile-friendly input defaults */

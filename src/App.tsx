@@ -238,7 +238,7 @@ export default function App() {
   }, [])
 
   return (
-    <div data-theme={theme}>
+    <div data-theme={theme} data-page={active}>
       <a href="#content" className="skip-link">
         Skip to content
       </a>
