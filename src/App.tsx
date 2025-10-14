@@ -10,8 +10,8 @@ import { useReveal } from './hooks/useReveal'
 export default function App() {
   type Section = 'home' | 'projects' | 'resume' | 'snake' | 'contact'
   const [active, setActive] = useState<Section>('home')
-  const [theme, setTheme] = useState<'light' | 'dark'>(() => {
-    const saved = localStorage.getItem('theme') as 'light' | 'dark' | null
+  const [theme, setTheme] = useState<'light' | 'dark' | 'alt'>(() => {
+    const saved = localStorage.getItem('theme') as 'light' | 'dark' | 'alt' | null
     if (saved) return saved
     return window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches
       ? 'light'
@@ -167,12 +167,12 @@ export default function App() {
               style={{ marginLeft: '0.75rem' }}
               aria-label="Toggle theme"
               onClick={() => {
-                const next = theme === 'dark' ? 'light' : 'dark'
+                const next = theme === 'dark' ? 'light' : theme === 'light' ? 'alt' : 'dark'
                 setTheme(next)
                 localStorage.setItem('theme', next)
               }}
             >
-              {theme === 'dark' ? 'Light' : 'Dark'}
+              {theme === 'dark' ? 'Light' : theme === 'light' ? 'Alt' : 'Dark'}
             </button>
           </div>
         </div>

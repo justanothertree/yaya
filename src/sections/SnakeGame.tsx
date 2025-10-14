@@ -44,13 +44,17 @@ export function SnakeGame() {
     function draw() {
       const cell = cellRef.current
       const size = GRID * cell
-      ctx.fillStyle = '#0b0f19'
+      const styles = getComputedStyle(document.documentElement)
+      const bg = styles.getPropertyValue('--bg').trim() || '#0b0f19'
+      const snakeCol = styles.getPropertyValue('--accent').trim() || '#22c55e'
+      const foodCol = styles.getPropertyValue('--accent-2').trim() || '#ef4444'
+      ctx.fillStyle = bg
       ctx.fillRect(0, 0, size, size)
       // food
-      ctx.fillStyle = '#ef4444'
+      ctx.fillStyle = foodCol
       ctx.fillRect(food.x * cell, food.y * cell, cell, cell)
       // snake
-      ctx.fillStyle = '#22c55e'
+      ctx.fillStyle = snakeCol
       snake.forEach((p) => ctx.fillRect(p.x * cell, p.y * cell, cell, cell))
     }
 

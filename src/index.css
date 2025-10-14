@@ -4,6 +4,9 @@
   --text: #e5e7eb;
   --muted: #94a3b8;
   --accent: #22c55e;
+  --accent-2: #ef4444;
+  --btn-text: #052e16;
+  --border: color-mix(in oklab, var(--text) 14%, var(--bg) 86%);
 }
 /* Light theme overrides */
 [data-theme='light'] {
@@ -12,6 +15,20 @@
   --text: #0f172a;
   --muted: #475569;
   --accent: #16a34a;
+  --accent-2: #dc2626;
+  --btn-text: #052e16;
+  --border: color-mix(in oklab, var(--text) 12%, var(--bg) 88%);
+}
+/* Alternate playful theme */
+[data-theme='alt'] {
+  --bg: #0a0a12;
+  --panel: #12121e;
+  --text: #e6e9ff;
+  --muted: #a3a9c7;
+  --accent: #7c3aed; /* violet */
+  --accent-2: #22d3ee; /* cyan */
+  --btn-text: #0b0f19;
+  --border: color-mix(in oklab, var(--text) 16%, var(--bg) 84%);
 }
 * {
   box-sizing: border-box;
@@ -95,8 +112,12 @@ li {
   }
 }
 .card {
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.02), rgba(255, 255, 255, 0));
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: linear-gradient(
+    180deg,
+    color-mix(in oklab, var(--text) 2%, transparent),
+    transparent
+  );
+  border: 1px solid var(--border);
   border-radius: 14px;
   padding: 1rem;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
@@ -110,14 +131,14 @@ li {
 .card:hover {
   transform: translateY(-2px);
   box-shadow: 0 14px 34px rgba(0, 0, 0, 0.32);
-  border-color: rgba(255, 255, 255, 0.12);
+  border-color: color-mix(in oklab, var(--text) 18%, var(--bg) 82%);
 }
 .nav {
   position: sticky;
   top: 0;
   backdrop-filter: blur(8px);
-  background: rgba(11, 15, 25, 0.7);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  background: color-mix(in oklab, var(--bg) 88%, var(--text) 12%);
+  border-bottom: 1px solid var(--border);
   z-index: 10;
 }
 .nav-inner {
@@ -133,7 +154,7 @@ li {
   border-radius: 6px;
 }
 .nav a[aria-current='page'] {
-  background: rgba(255, 255, 255, 0.08);
+  background: color-mix(in oklab, var(--text) 12%, var(--bg) 88%);
 }
 .brand {
   font-weight: 700;
@@ -148,7 +169,7 @@ li {
 }
 .btn {
   background: var(--accent);
-  color: #052e16;
+  color: var(--btn-text);
   border: none;
   padding: 0.6rem 1rem;
   border-radius: 8px;
@@ -177,9 +198,9 @@ li {
   margin-top: 0.75rem;
 }
 .dpad-btn {
-  background: rgba(255, 255, 255, 0.06);
+  background: color-mix(in oklab, var(--text) 6%, var(--bg) 94%);
   color: var(--text);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: 1px solid var(--border);
   border-radius: 8px;
   padding: 0.4rem 0.8rem;
   font-size: 1.1rem;
@@ -212,8 +233,8 @@ li {
   height: 36px;
   border-radius: 8px;
   color: var(--text);
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: color-mix(in oklab, var(--text) 6%, var(--bg) 94%);
+  border: 1px solid var(--border);
   transition:
     transform 0.12s ease,
     background 0.12s ease,
@@ -239,6 +260,6 @@ li {
 }
 .icon-link:hover {
   transform: translateY(-1px);
-  background: rgba(255, 255, 255, 0.1);
-  border-color: rgba(255, 255, 255, 0.16);
+  background: color-mix(in oklab, var(--text) 10%, var(--bg) 90%);
+  border-color: color-mix(in oklab, var(--text) 20%, var(--bg) 80%);
 }
