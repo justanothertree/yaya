@@ -188,6 +188,21 @@ li {
   overflow-x: auto;
   overscroll-behavior-x: contain;
   scrollbar-width: none;
+  scroll-snap-type: x proximity;
+  -webkit-mask-image: linear-gradient(
+    to right,
+    transparent 0,
+    black 16px,
+    black calc(100% - 16px),
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    to right,
+    transparent 0,
+    black 16px,
+    black calc(100% - 16px),
+    transparent 100%
+  );
 }
 .nav-links::-webkit-scrollbar {
   display: none;
@@ -199,6 +214,7 @@ li {
   padding: 0.25rem 0.35rem;
   border-radius: 6px;
   white-space: nowrap;
+  scroll-snap-align: center;
 }
 .nav a[aria-current='page'] {
   background: var(--nav-current-bg);
@@ -339,4 +355,18 @@ li {
 }
 .edge-right {
   right: 10px;
+}
+
+/* Mobile-friendly input defaults */
+input,
+textarea,
+select {
+  font-size: 16px;
+}
+
+/* Give contact form card some height so fields remain visible when keyboard shows */
+@supports (height: 100dvh) {
+  #contact.card {
+    min-height: 60dvh;
+  }
 }

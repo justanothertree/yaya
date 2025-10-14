@@ -19,6 +19,7 @@ export default function App() {
   })
   const topRef = useRef<HTMLDivElement>(null)
   const liveRef = useRef<HTMLDivElement>(null)
+  const [hasInputFocus, setHasInputFocus] = useState(false)
   // Scroll to top when changing sections
   useEffect(() => {
     topRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -95,8 +96,9 @@ export default function App() {
     let startX = 0
     let startY = 0
     let startTarget: EventTarget | null = null
-    const THRESH = 60 // min horizontal movement
+    const THRESH = 80 // slightly higher threshold so it's subtle and not annoying
     const onTouchStart = (e: TouchEvent) => {
+      if (e.touches.length !== 1) return // ignore multi-touch
       const t = e.touches[0]
       startX = t.clientX
       startY = t.clientY
@@ -110,7 +112,8 @@ export default function App() {
       const t = e.changedTouches[0]
       const dx = t.clientX - startX
       const dy = t.clientY - startY
-      const mostlyHorizontal = Math.abs(dx) > Math.abs(dy)
+      // Require a clearer horizontal intent
+      const mostlyHorizontal = Math.abs(dx) > Math.abs(dy) * 1.5
       if (!mostlyHorizontal) return
       const order: Section[] = ['home', 'projects', 'resume', 'snake', 'contact']
       const idx = order.indexOf(active)
@@ -125,39 +128,30 @@ export default function App() {
     }
   }, [active])
 
-  // Mouse drag navigation (desktop) - click and drag anywhere to navigate (excludes interactive/canvas)
+  // Keep active nav link visible in the top bar on section change
   useEffect(() => {
-    let downX = 0
-    let downY = 0
-    let isDown = false
-    let startTarget: EventTarget | null = null
-    const THRESH = 80
-    const onDown = (e: MouseEvent) => {
-      startTarget = e.target
-      const node = startTarget as HTMLElement
-      if (node.closest('canvas, input, textarea, button, a, select')) return
-      isDown = true
-      downX = e.clientX
-      downY = e.clientY
-    }
-    const onUp = (e: MouseEvent) => {
-      if (!isDown) return
-      isDown = false
-      const dx = e.clientX - downX
-      const dy = e.clientY - downY
-      if (Math.abs(dx) <= Math.abs(dy)) return
-      const order: Section[] = ['home', 'projects', 'resume', 'snake', 'contact']
-      const idx = order.indexOf(active)
-      if (dx > THRESH && idx > 0) setActive(order[idx - 1])
-      if (dx < -THRESH && idx < order.length - 1) setActive(order[idx + 1])
-    }
-    window.addEventListener('mousedown', onDown)
-    window.addEventListener('mouseup', onUp)
-    return () => {
-      window.removeEventListener('mousedown', onDown)
-      window.removeEventListener('mouseup', onUp)
-    }
+    const el = document.querySelector('.nav-links a[aria-current="page"]') as HTMLElement | null
+    el?.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' })
   }, [active])
+
+  // Track if an input/textarea/select has focus to adjust UI (hide edge arrows)
+  useEffect(() => {
+    const onFocusIn = (e: FocusEvent) => {
+      const node = e.target as HTMLElement
+      if (node.closest('input, textarea, select, [contenteditable="true"]')) setHasInputFocus(true)
+    }
+    const onFocusOut = () => {
+      const a = document.activeElement as HTMLElement | null
+      const stillIn = a?.closest?.('input, textarea, select, [contenteditable="true"]')
+      if (!stillIn) setHasInputFocus(false)
+    }
+    window.addEventListener('focusin', onFocusIn)
+    window.addEventListener('focusout', onFocusOut)
+    return () => {
+      window.removeEventListener('focusin', onFocusIn)
+      window.removeEventListener('focusout', onFocusOut)
+    }
+  }, [])
 
   return (
     <div data-theme={theme}>
@@ -221,7 +215,12 @@ export default function App() {
         </div>
       </nav>
       <div ref={topRef} />
-      <main id="content" className="container" tabIndex={-1}>
+      <main
+        id="content"
+        className="container"
+        tabIndex={-1}
+        style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+      >
         {active === 'home' && (
           <section id="home" className="card">
             <h1 style={{ marginTop: 0 }}>Hi, I’m {site.name}.</h1>
@@ -312,31 +311,35 @@ export default function App() {
           </span>
         </div>
       </footer>
-      {/* Edge arrow buttons for desktop/touch */}
-      <button
-        className="edge-btn edge-left"
-        aria-label="Previous section"
-        onClick={() => {
-          const order: Section[] = ['home', 'projects', 'resume', 'snake', 'contact']
-          const idx = order.indexOf(active)
-          if (idx > 0) setActive(order[idx - 1])
-        }}
-        disabled={active === 'home'}
-      >
-        ◀
-      </button>
-      <button
-        className="edge-btn edge-right"
-        aria-label="Next section"
-        onClick={() => {
-          const order: Section[] = ['home', 'projects', 'resume', 'snake', 'contact']
-          const idx = order.indexOf(active)
-          if (idx < order.length - 1) setActive(order[idx + 1])
-        }}
-        disabled={active === 'contact'}
-      >
-        ▶
-      </button>
+      {/* Edge arrow buttons for desktop/touch (hidden while typing or on contact form) */}
+      {active !== 'contact' && !hasInputFocus && (
+        <button
+          className="edge-btn edge-left"
+          aria-label="Previous section"
+          onClick={() => {
+            const order: Section[] = ['home', 'projects', 'resume', 'snake', 'contact']
+            const idx = order.indexOf(active)
+            if (idx > 0) setActive(order[idx - 1])
+          }}
+          disabled={active === 'home'}
+        >
+          ◀
+        </button>
+      )}
+      {active !== 'contact' && !hasInputFocus && (
+        <button
+          className="edge-btn edge-right"
+          aria-label="Next section"
+          onClick={() => {
+            const order: Section[] = ['home', 'projects', 'resume', 'snake', 'contact']
+            const idx = order.indexOf(active)
+            if (idx < order.length - 1) setActive(order[idx + 1])
+          }}
+          disabled={false}
+        >
+          ▶
+        </button>
+      )}
     </div>
   )
 }
