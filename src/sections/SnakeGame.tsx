@@ -8,6 +8,7 @@ export function SnakeGame({ onControlChange }: { onControlChange?: (v: boolean) 
   const wrapRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const cellRef = useRef<number>(16)
+  const dirRef = useRef<Point>({ x: 1, y: 0 })
   const [score, setScore] = useState(0)
   const [running, setRunning] = useState(false)
 
@@ -21,7 +22,6 @@ export function SnakeGame({ onControlChange }: { onControlChange?: (v: boolean) 
 
     // game state
     let snake: Point[] = [{ x: 5, y: 5 }]
-    let dir: Point = { x: 1, y: 0 }
     let food: Point = randomFood()
     let timer: number | undefined
     let touchStart: { x: number; y: number } | null = null
@@ -65,7 +65,8 @@ export function SnakeGame({ onControlChange }: { onControlChange?: (v: boolean) 
     }
 
     function step() {
-      const head = { x: snake[0].x + dir.x, y: snake[0].y + dir.y }
+      const d = dirRef.current
+      const head = { x: snake[0].x + d.x, y: snake[0].y + d.y }
       // wrap
       head.x = (head.x + GRID) % GRID
       head.y = (head.y + GRID) % GRID
@@ -74,7 +75,7 @@ export function SnakeGame({ onControlChange }: { onControlChange?: (v: boolean) 
       if (snake.some((s) => s.x === head.x && s.y === head.y)) {
         setScore(0)
         snake = [{ x: 5, y: 5 }]
-        dir = { x: 1, y: 0 }
+        dirRef.current = { x: 1, y: 0 }
         food = randomFood()
         draw()
         return
@@ -104,10 +105,11 @@ export function SnakeGame({ onControlChange }: { onControlChange?: (v: boolean) 
       if (!isTyping && ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', ' '].includes(e.key)) {
         e.preventDefault()
       }
-      if (e.key === 'ArrowUp' && dir.y !== 1) dir = { x: 0, y: -1 }
-      if (e.key === 'ArrowDown' && dir.y !== -1) dir = { x: 0, y: 1 }
-      if (e.key === 'ArrowLeft' && dir.x !== 1) dir = { x: -1, y: 0 }
-      if (e.key === 'ArrowRight' && dir.x !== -1) dir = { x: 1, y: 0 }
+      const d = dirRef.current
+      if (e.key === 'ArrowUp' && d.y !== 1) dirRef.current = { x: 0, y: -1 }
+      if (e.key === 'ArrowDown' && d.y !== -1) dirRef.current = { x: 0, y: 1 }
+      if (e.key === 'ArrowLeft' && d.x !== 1) dirRef.current = { x: -1, y: 0 }
+      if (e.key === 'ArrowRight' && d.x !== -1) dirRef.current = { x: 1, y: 0 }
     }
     const onTouchStart = (e: TouchEvent) => {
       const t = e.touches[0]
@@ -118,12 +120,13 @@ export function SnakeGame({ onControlChange }: { onControlChange?: (v: boolean) 
       const t = e.changedTouches[0]
       const dx = t.clientX - touchStart.x
       const dy = t.clientY - touchStart.y
+      const d = dirRef.current
       if (Math.abs(dx) > Math.abs(dy)) {
-        if (dx < 0 && dir.x !== 1) dir = { x: -1, y: 0 }
-        if (dx > 0 && dir.x !== -1) dir = { x: 1, y: 0 }
+        if (dx < 0 && d.x !== 1) dirRef.current = { x: -1, y: 0 }
+        if (dx > 0 && d.x !== -1) dirRef.current = { x: 1, y: 0 }
       } else {
-        if (dy < 0 && dir.y !== 1) dir = { x: 0, y: -1 }
-        if (dy > 0 && dir.y !== -1) dir = { x: 0, y: 1 }
+        if (dy < 0 && d.y !== 1) dirRef.current = { x: 0, y: -1 }
+        if (dy > 0 && d.y !== -1) dirRef.current = { x: 0, y: 1 }
       }
       touchStart = null
     }
@@ -153,14 +156,16 @@ export function SnakeGame({ onControlChange }: { onControlChange?: (v: boolean) 
     }
   }, [running])
 
-  // On-screen D-pad for touch
+  // On-screen D-pad for touch/mouse
   const setDir = (nx: number, ny: number) => {
-    // fire a fake key event by directly updating direction via a temporary interval tick
-    // The actual dir is captured inside effect closure; emulate by toggling running briefly
-    // Simpler: toggle a hidden state to retrigger effect isn't ideal. Instead, dispatch a key event.
-    const key =
-      nx === -1 ? 'ArrowLeft' : nx === 1 ? 'ArrowRight' : ny === -1 ? 'ArrowUp' : 'ArrowDown'
-    window.dispatchEvent(new KeyboardEvent('keydown', { key }))
+    const d = dirRef.current
+    if (nx === -1 && d.x !== 1) dirRef.current = { x: -1, y: 0 }
+    if (nx === 1 && d.x !== -1) dirRef.current = { x: 1, y: 0 }
+    if (ny === -1 && d.y !== 1) dirRef.current = { x: 0, y: -1 }
+    if (ny === 1 && d.y !== -1) dirRef.current = { x: 0, y: 1 }
+    // Bring focus to canvas so keyboard arrows control the game
+    canvasRef.current?.focus()
+    onControlChange?.(true)
   }
 
   return (

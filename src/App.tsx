@@ -22,6 +22,7 @@ export default function App() {
   const navLinksRef = useRef<HTMLDivElement>(null)
   const [hasInputFocus, setHasInputFocus] = useState(false)
   const [snakeHasControl, setSnakeHasControl] = useState(false)
+  const [hideNav, setHideNav] = useState(false)
   // Scroll to top when changing sections
   useEffect(() => {
     topRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -157,6 +158,26 @@ export default function App() {
     }
   }, [])
 
+  // Mobile: hide nav on scroll down, show on scroll up
+  useEffect(() => {
+    let lastY = window.scrollY
+    const onScroll = () => {
+      const dy = window.scrollY - lastY
+      lastY = window.scrollY
+      // Only consider on narrow screens
+      const isMobile = window.matchMedia('(max-width: 700px)').matches
+      if (!isMobile) {
+        setHideNav(false)
+        return
+      }
+      // Hide when scrolling down, show when scrolling up or near top
+      if (window.scrollY < 10 || dy < -2) setHideNav(false)
+      else if (dy > 2) setHideNav(true)
+    }
+    window.addEventListener('scroll', onScroll, { passive: true })
+    return () => window.removeEventListener('scroll', onScroll)
+  }, [])
+
   // Track if an input/textarea/select has focus to adjust UI (hide edge arrows)
   useEffect(() => {
     const onFocusIn = (e: FocusEvent) => {
@@ -181,7 +202,7 @@ export default function App() {
       <a href="#content" className="skip-link">
         Skip to content
       </a>
-      <nav className="nav" aria-label="Primary">
+      <nav className={`nav ${hideNav ? 'nav-hidden' : ''}`} aria-label="Primary">
         <div className="container nav-inner">
           <a className="brand" href="#home" aria-label="Home">
             {site.name}

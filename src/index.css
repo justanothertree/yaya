@@ -135,6 +135,20 @@ li {
   margin: 0 auto;
   padding: clamp(0.9rem, 1.5vw, 1.25rem);
 }
+
+/* Avoid bottom glitches between sections by ensuring content fills viewport */
+:root {
+  --nav-h: 56px;
+}
+@supports (height: 100dvh) {
+  main.container {
+    min-height: calc(100dvh - var(--nav-h));
+  }
+}
+/* Offset in-page anchors by sticky nav height */
+section[id] {
+  scroll-margin-top: var(--nav-h);
+}
 .grid {
   display: grid;
   grid-template-columns: 1fr;
