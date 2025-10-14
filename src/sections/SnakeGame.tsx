@@ -33,11 +33,12 @@ export function SnakeGame({ onControlChange }: { onControlChange?: (v: boolean) 
 
     function resizeCanvas() {
       const dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1))
-      // Fit square canvas by constraining to smallest of width and available height
-      const headerFooterSpace = 220 // approximate nav+controls height in px
-      const availH = Math.max(240, window.innerHeight - headerFooterSpace)
-      const maxWidth = Math.min(wrapper.clientWidth, 520, availH)
-      const cell = Math.max(10, Math.floor(maxWidth / GRID))
+      const wrapRect = wrapper.getBoundingClientRect()
+      // Available height from wrapper top to bottom of the viewport minus small padding
+      const availH = Math.max(240, Math.floor(window.innerHeight - wrapRect.top - 24))
+      const availW = Math.floor(wrapper.clientWidth)
+      const square = Math.max(200, Math.min(availW, availH))
+      const cell = Math.max(10, Math.floor(square / GRID))
       cellRef.current = cell
       const logical = GRID * cell
       canvas.style.width = logical + 'px'

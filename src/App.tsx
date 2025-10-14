@@ -136,7 +136,7 @@ export default function App() {
     let startX = 0
     let startY = 0
     let startTarget: EventTarget | null = null
-    const THRESH = 80 // slightly higher threshold so it's subtle and not annoying
+    const THRESH = 50 // a bit lower threshold so it triggers more reliably on mobile
     const onTouchStart = (e: TouchEvent) => {
       if (e.touches.length !== 1) return // ignore multi-touch
       const t = e.touches[0]
@@ -152,8 +152,8 @@ export default function App() {
       const t = e.changedTouches[0]
       const dx = t.clientX - startX
       const dy = t.clientY - startY
-      // Require a clearer horizontal intent
-      const mostlyHorizontal = Math.abs(dx) > Math.abs(dy) * 1.5
+      // Allow more forgiving horizontal intent
+      const mostlyHorizontal = Math.abs(dx) > Math.abs(dy) * 1.2
       if (!mostlyHorizontal) return
       const order: Section[] = ['home', 'projects', 'resume', 'snake', 'contact']
       const idx = order.indexOf(active)

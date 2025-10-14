@@ -336,14 +336,9 @@ section[id] {
   display: grid;
 }
 
-/* Snake canvas gets theme-colored focus ring */
-.snake-wrap canvas:focus {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-}
+/* Snake: single accent border when active */
 .snake-active {
   border-color: var(--accent) !important;
-  box-shadow: 0 0 0 2px color-mix(in oklab, var(--accent) 35%, transparent);
 }
 
 .icon-link {
@@ -413,12 +408,7 @@ section[id] {
   opacity: 0;
   pointer-events: none;
 }
-@media (max-width: 700px) {
-  .edge-btn {
-    top: calc((var(--nav-h) / 2) + env(safe-area-inset-top, 0px));
-    transform: translateY(-50%);
-  }
-}
+/* Mobile arrows remain mid-screen for visibility */
 /* Nav reveal hit target removed (banner is always visible) */
 .edge-btn:hover {
   background: var(--icon-bg-hover);
