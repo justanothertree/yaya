@@ -189,6 +189,8 @@ li {
   overscroll-behavior-x: contain;
   scrollbar-width: none;
   scroll-snap-type: x proximity;
+}
+.nav-links.has-overflow {
   -webkit-mask-image: linear-gradient(
     to right,
     transparent 0,

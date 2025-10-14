@@ -4,12 +4,15 @@ type Point = { x: number; y: number }
 const GRID = 30
 const SPEED_MS = 90
 
-export function SnakeGame() {
+export function SnakeGame({ onControlChange }: { onControlChange?: (v: boolean) => void }) {
   const wrapRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const cellRef = useRef<number>(16)
   const [score, setScore] = useState(0)
   const [running, setRunning] = useState(false)
+
+  const controlCbRef = useRef(onControlChange)
+  controlCbRef.current = onControlChange
 
   useEffect(() => {
     const wrapper = wrapRef.current!
@@ -128,6 +131,10 @@ export function SnakeGame() {
     window.addEventListener('keydown', onKey)
     canvas.style.touchAction = 'none'
     canvas.setAttribute('tabindex', '0')
+    const onFocus = () => controlCbRef.current?.(true)
+    const onBlur = () => controlCbRef.current?.(false)
+    canvas.addEventListener('focus', onFocus)
+    canvas.addEventListener('blur', onBlur)
     canvas.addEventListener('touchstart', onTouchStart, { passive: true })
     canvas.addEventListener('touchend', onTouchEnd)
     window.addEventListener('resize', resizeCanvas)
@@ -137,6 +144,8 @@ export function SnakeGame() {
 
     return () => {
       window.removeEventListener('keydown', onKey)
+      canvas.removeEventListener('focus', onFocus)
+      canvas.removeEventListener('blur', onBlur)
       canvas.removeEventListener('touchstart', onTouchStart)
       canvas.removeEventListener('touchend', onTouchEnd)
       window.removeEventListener('resize', resizeCanvas)
@@ -157,7 +166,20 @@ export function SnakeGame() {
   return (
     <section className="card snake-wrap">
       <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
-        <button className="btn" onClick={() => setRunning((r: boolean) => !r)}>
+        <button
+          className="btn"
+          onClick={() => {
+            const next = !running
+            setRunning(next)
+            // If starting, ensure canvas has focus so controls work; if pausing, release control
+            if (next) {
+              canvasRef.current?.focus()
+              onControlChange?.(true)
+            } else {
+              onControlChange?.(false)
+            }
+          }}
+        >
           {running ? 'Pause' : 'Play'}
         </button>
         <div className="muted">Score: {score}</div>

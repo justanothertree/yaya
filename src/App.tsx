@@ -19,7 +19,9 @@ export default function App() {
   })
   const topRef = useRef<HTMLDivElement>(null)
   const liveRef = useRef<HTMLDivElement>(null)
+  const navLinksRef = useRef<HTMLDivElement>(null)
   const [hasInputFocus, setHasInputFocus] = useState(false)
+  const [snakeHasControl, setSnakeHasControl] = useState(false)
   // Scroll to top when changing sections
   useEffect(() => {
     topRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -70,8 +72,11 @@ export default function App() {
         e.preventDefault()
         return
       }
-      // Arrow navigation across sections (except when on Snake)
-      if (active !== 'snake') {
+      // Arrow navigation across sections
+      // On Snake page, Arrow keys control page nav unless the game has control (focused/playing)
+      const onSnake = active === 'snake'
+      const allowPageNav = !onSnake || (onSnake && !snakeHasControl)
+      if (allowPageNav) {
         const order: Section[] = ['home', 'projects', 'resume', 'snake', 'contact']
         const idx = order.indexOf(active)
         if (key === 'ArrowLeft' && idx > 0) {
@@ -86,7 +91,7 @@ export default function App() {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [active])
+  }, [active, snakeHasControl])
 
   // Apply reveal-on-scroll to tagged elements
   useReveal('.reveal', active)
@@ -134,6 +139,24 @@ export default function App() {
     el?.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' })
   }, [active])
 
+  // Add fade only when nav links actually overflow
+  useEffect(() => {
+    const el = navLinksRef.current
+    if (!el) return
+    const check = () => {
+      const hasOverflow = el.scrollWidth > el.clientWidth + 2
+      el.classList.toggle('has-overflow', hasOverflow)
+    }
+    check()
+    const ro = new ResizeObserver(check)
+    ro.observe(el)
+    window.addEventListener('resize', check)
+    return () => {
+      ro.disconnect()
+      window.removeEventListener('resize', check)
+    }
+  }, [])
+
   // Track if an input/textarea/select has focus to adjust UI (hide edge arrows)
   useEffect(() => {
     const onFocusIn = (e: FocusEvent) => {
@@ -163,7 +186,7 @@ export default function App() {
           <a className="brand" href="#home" aria-label="Home">
             {site.name}
           </a>
-          <div className="nav-links">
+          <div className="nav-links" ref={navLinksRef}>
             <a
               href="#home"
               onClick={() => setActive('home')}
@@ -251,7 +274,7 @@ export default function App() {
         )}
         {active === 'snake' && (
           <section id="snake" className="card reveal show-dpad">
-            <SnakeGame />
+            <SnakeGame onControlChange={setSnakeHasControl} />
           </section>
         )}
         {active === 'contact' && (

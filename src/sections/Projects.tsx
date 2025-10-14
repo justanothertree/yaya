@@ -1,4 +1,3 @@
-import { useState } from 'react'
 import projects from './projects.json'
 
 type Project = {
@@ -10,11 +9,9 @@ type Project = {
 }
 
 export function Projects() {
-  const [openIdx, setOpenIdx] = useState<number | null>(null)
   return (
     <section className="grid grid-3" style={{ gap: '1rem' }}>
       {projects.map((p: Project, i: number) => {
-        const open = openIdx === i
         return (
           <article className="card" key={i}>
             <h2
@@ -22,17 +19,6 @@ export function Projects() {
               style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
             >
               <span>{p.title}</span>
-              {p.details && (
-                <button
-                  className="btn"
-                  style={{ padding: '0.3rem 0.6rem' }}
-                  onClick={() => setOpenIdx(open ? null : i)}
-                  aria-expanded={open}
-                  aria-controls={`proj-${i}`}
-                >
-                  {open ? 'Hide' : 'Details'}
-                </button>
-              )}
             </h2>
             <p className="muted">{p.desc}</p>
             {p.link.startsWith('http') ? (
@@ -44,12 +30,8 @@ export function Projects() {
                 {p.linkText}
               </a>
             )}
-            {p.details && (
-              <div
-                id={`proj-${i}`}
-                className={`reveal ${open ? 'reveal-in' : ''}`}
-                style={{ marginTop: '0.75rem' }}
-              >
+            {p.details && p.details.length > 0 && (
+              <div id={`proj-${i}`} className="reveal reveal-in" style={{ marginTop: '0.75rem' }}>
                 <ul style={{ marginTop: 0 }}>
                   {p.details.map((d: string, idx: number) => (
                     <li key={idx} className="muted">
