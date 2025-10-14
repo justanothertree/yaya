@@ -85,7 +85,7 @@ body {
     Helvetica,
     Arial;
   background: radial-gradient(1200px 600px at 20% -10%, var(--bg-grad1) 0%, var(--bg) 60%);
-  color: var(--text);
+  overflow-x: hidden; /* Prevent horizontal overflow */
   overscroll-behavior-x: contain;
 }
 
@@ -190,6 +190,11 @@ section[id] {
   background: var(--nav-bg);
   border-bottom: 1px solid var(--border);
   z-index: 10;
+}
+@media (max-width: 700px) {
+  .nav {
+    background: var(--bg);
+  }
 }
 .nav-inner {
   display: flex;
@@ -358,6 +363,16 @@ section[id] {
   opacity: 0.85;
   z-index: 20;
 }
+.edge-hide {
+  opacity: 0;
+  pointer-events: none;
+}
+@media (max-width: 700px) {
+  .edge-btn {
+    top: calc(var(--nav-h) / 2);
+    transform: translateY(-50%);
+  }
+}
 .edge-btn:hover {
   background: var(--icon-bg-hover);
   border-color: var(--icon-border-hover);
@@ -385,4 +400,16 @@ select {
   #contact.card {
     min-height: 60dvh;
   }
+}
+
+/* Prevent mobile scrollbar track drawing under the banner by giving it a top inset */
+@supports (height: 100dvh) {
+  body {
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+}
+
+/* Avoid double scrollbars: only the page scrolls */
+#root {
+  overflow: hidden;
 }

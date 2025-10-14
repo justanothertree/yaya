@@ -158,24 +158,33 @@ export default function App() {
     }
   }, [])
 
-  // Mobile: hide nav on scroll down, show on scroll up
+  // Mobile: hide nav on scroll down, show on scroll up (debounced and thresholded to reduce jitter)
   useEffect(() => {
     let lastY = window.scrollY
+    let raf = 0
     const onScroll = () => {
-      const dy = window.scrollY - lastY
-      lastY = window.scrollY
-      // Only consider on narrow screens
-      const isMobile = window.matchMedia('(max-width: 700px)').matches
-      if (!isMobile) {
-        setHideNav(false)
-        return
-      }
-      // Hide when scrolling down, show when scrolling up or near top
-      if (window.scrollY < 10 || dy < -2) setHideNav(false)
-      else if (dy > 2) setHideNav(true)
+      if (raf) return
+      raf = window.requestAnimationFrame(() => {
+        raf = 0
+        const y = window.scrollY
+        const dy = y - lastY
+        lastY = y
+        const isMobile = window.matchMedia('(max-width: 700px)').matches
+        if (!isMobile) {
+          setHideNav(false)
+          return
+        }
+        const downThresh = 8
+        const upThresh = -8
+        if (y < 10 || dy <= upThresh) setHideNav(false)
+        else if (dy >= downThresh) setHideNav(true)
+      })
     }
     window.addEventListener('scroll', onScroll, { passive: true })
-    return () => window.removeEventListener('scroll', onScroll)
+    return () => {
+      window.removeEventListener('scroll', onScroll)
+      if (raf) cancelAnimationFrame(raf)
+    }
   }, [])
 
   // Track if an input/textarea/select has focus to adjust UI (hide edge arrows)
@@ -355,10 +364,10 @@ export default function App() {
           </span>
         </div>
       </footer>
-      {/* Edge arrow buttons for desktop/touch (hidden while typing or on contact form) */}
-      {active !== 'contact' && !hasInputFocus && (
+      {/* Edge arrow buttons for desktop/touch (hidden while typing; on mobile they hide with banner) */}
+      {!hasInputFocus && (
         <button
-          className="edge-btn edge-left"
+          className={`edge-btn edge-left ${hideNav ? 'edge-hide' : ''}`}
           aria-label="Previous section"
           onClick={() => {
             const order: Section[] = ['home', 'projects', 'resume', 'snake', 'contact']
@@ -370,9 +379,9 @@ export default function App() {
           ◀
         </button>
       )}
-      {active !== 'contact' && !hasInputFocus && (
+      {!hasInputFocus && (
         <button
-          className="edge-btn edge-right"
+          className={`edge-btn edge-right ${hideNav ? 'edge-hide' : ''}`}
           aria-label="Next section"
           onClick={() => {
             const order: Section[] = ['home', 'projects', 'resume', 'snake', 'contact']
