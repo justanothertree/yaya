@@ -91,13 +91,20 @@ body {
 }
 
 a {
-  color: var(--accent);
-  text-decoration: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
 }
 
 /* Fluid type scale */
 h1 {
-  font-size: clamp(1.6rem, 1.2rem + 2vw, 2.4rem);
+  z-index: 100;
+  transition: transform 0.2s ease;
+  will-change: transform;
+}
+.nav.nav-hidden {
+  transform: translateY(-100%);
 }
 h2 {
   font-size: clamp(1.2rem, 1rem + 1vw, 1.6rem);
@@ -145,6 +152,10 @@ li {
   main.container {
     min-height: calc(100dvh - var(--nav-h));
   }
+}
+/* Keep content below fixed nav */
+body {
+  padding-top: var(--nav-h);
 }
 /* Offset in-page anchors by sticky nav height */
 section[id] {
@@ -386,6 +397,21 @@ body {
   .edge-btn {
     top: calc((var(--nav-h) / 2) + env(safe-area-inset-top, 0px));
     transform: translateY(-50%);
+  }
+}
+/* Tap target near top to reveal nav on mobile */
+.nav-reveal-hit {
+  display: none;
+}
+@media (max-width: 700px) {
+  .nav-reveal-hit {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 10px;
+    opacity: 0;
+    z-index: 90;
   }
 }
 .edge-btn:hover {

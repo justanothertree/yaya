@@ -20,9 +20,27 @@ export default function App() {
   const topRef = useRef<HTMLDivElement>(null)
   const liveRef = useRef<HTMLDivElement>(null)
   const navLinksRef = useRef<HTMLDivElement>(null)
+  const navRef = useRef<HTMLElement>(null)
   const [hasInputFocus, setHasInputFocus] = useState(false)
   const [snakeHasControl, setSnakeHasControl] = useState(false)
   const [hideNav, setHideNav] = useState(false)
+  // Keep CSS var --nav-h in sync with actual nav height (for padding/offset calculations)
+  useEffect(() => {
+    const el = navRef.current
+    if (!el) return
+    const apply = () => {
+      const h = el.offsetHeight || 56
+      document.documentElement.style.setProperty('--nav-h', h + 'px')
+    }
+    apply()
+    const ro = new ResizeObserver(apply)
+    ro.observe(el)
+    window.addEventListener('resize', apply)
+    return () => {
+      ro.disconnect()
+      window.removeEventListener('resize', apply)
+    }
+  }, [])
   // Ensure theme applies at the root so body/background use the same tokens
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme)
@@ -215,7 +233,7 @@ export default function App() {
       <a href="#content" className="skip-link">
         Skip to content
       </a>
-      <nav className={`nav ${hideNav ? 'nav-hidden' : ''}`} aria-label="Primary">
+      <nav className={`nav ${hideNav ? 'nav-hidden' : ''}`} aria-label="Primary" ref={navRef}>
         <div className="container nav-inner">
           <a className="brand" href="#home" aria-label="Home">
             {site.name}
@@ -271,6 +289,12 @@ export default function App() {
           </div>
         </div>
       </nav>
+      {/* Mobile: top-edge hit area to reveal nav by tap when hidden */}
+      <button
+        className="nav-reveal-hit"
+        aria-label="Show navigation"
+        onClick={() => setHideNav(false)}
+      />
       <div ref={topRef} />
       <main
         id="content"
