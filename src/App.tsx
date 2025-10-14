@@ -23,6 +23,10 @@ export default function App() {
   const [hasInputFocus, setHasInputFocus] = useState(false)
   const [snakeHasControl, setSnakeHasControl] = useState(false)
   const [hideNav, setHideNav] = useState(false)
+  // Ensure theme applies at the root so body/background use the same tokens
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme)
+  }, [theme])
   // Scroll to top when changing sections
   useEffect(() => {
     topRef.current?.scrollIntoView({ behavior: 'smooth' })
