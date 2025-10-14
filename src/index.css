@@ -1,3 +1,4 @@
+/* Cross-browser theme tokens and base styles */
 :root {
   --bg: #0b0f19;
   --panel: #141a2a;
@@ -6,9 +7,19 @@
   --accent: #22c55e;
   --accent-2: #ef4444;
   --btn-text: #052e16;
-  --border: color-mix(in oklab, var(--text) 14%, var(--bg) 86%);
+  --bg-grad1: #0f1629;
+  --surface: linear-gradient(180deg, rgba(255, 255, 255, 0.02), rgba(255, 255, 255, 0));
+  --border: rgba(255, 255, 255, 0.08);
+  --border-strong: rgba(255, 255, 255, 0.12);
+  --nav-bg: rgba(11, 15, 25, 0.7);
+  --nav-current-bg: rgba(255, 255, 255, 0.08);
+  --control-bg: rgba(255, 255, 255, 0.06);
+  --icon-bg: rgba(255, 255, 255, 0.06);
+  --icon-bg-hover: rgba(255, 255, 255, 0.1);
+  --icon-border: rgba(255, 255, 255, 0.08);
+  --icon-border-hover: rgba(255, 255, 255, 0.16);
 }
-/* Light theme overrides */
+
 [data-theme='light'] {
   --bg: #ffffff;
   --panel: #f7fafc;
@@ -17,19 +28,40 @@
   --accent: #16a34a;
   --accent-2: #dc2626;
   --btn-text: #052e16;
-  --border: color-mix(in oklab, var(--text) 12%, var(--bg) 88%);
+  --bg-grad1: #f2f7ff;
+  --surface: linear-gradient(180deg, rgba(15, 23, 42, 0.02), rgba(15, 23, 42, 0));
+  --border: rgba(15, 23, 42, 0.12);
+  --border-strong: rgba(15, 23, 42, 0.2);
+  --nav-bg: rgba(255, 255, 255, 0.8);
+  --nav-current-bg: rgba(15, 23, 42, 0.08);
+  --control-bg: rgba(15, 23, 42, 0.06);
+  --icon-bg: rgba(15, 23, 42, 0.06);
+  --icon-bg-hover: rgba(15, 23, 42, 0.1);
+  --icon-border: rgba(15, 23, 42, 0.12);
+  --icon-border-hover: rgba(15, 23, 42, 0.2);
 }
-/* Alternate playful theme */
+
 [data-theme='alt'] {
   --bg: #0a0a12;
   --panel: #12121e;
   --text: #e6e9ff;
   --muted: #a3a9c7;
-  --accent: #7c3aed; /* violet */
-  --accent-2: #22d3ee; /* cyan */
+  --accent: #7c3aed;
+  --accent-2: #22d3ee;
   --btn-text: #0b0f19;
-  --border: color-mix(in oklab, var(--text) 16%, var(--bg) 84%);
+  --bg-grad1: #15152a;
+  --surface: linear-gradient(180deg, rgba(230, 233, 255, 0.06), rgba(230, 233, 255, 0));
+  --border: rgba(230, 233, 255, 0.16);
+  --border-strong: rgba(230, 233, 255, 0.24);
+  --nav-bg: rgba(10, 10, 18, 0.76);
+  --nav-current-bg: rgba(230, 233, 255, 0.1);
+  --control-bg: rgba(230, 233, 255, 0.08);
+  --icon-bg: rgba(230, 233, 255, 0.08);
+  --icon-bg-hover: rgba(230, 233, 255, 0.14);
+  --icon-border: rgba(230, 233, 255, 0.16);
+  --icon-border-hover: rgba(230, 233, 255, 0.24);
 }
+
 * {
   box-sizing: border-box;
 }
@@ -38,6 +70,7 @@ body,
 #root {
   height: 100%;
 }
+
 body {
   margin: 0;
   font-family:
@@ -47,18 +80,16 @@ body {
     Roboto,
     Helvetica,
     Arial;
-  background: radial-gradient(
-    1200px 600px at 20% -10%,
-    color-mix(in oklab, var(--bg) 85%, #0f1629) 0%,
-    var(--bg) 60%
-  );
+  background: radial-gradient(1200px 600px at 20% -10%, var(--bg-grad1) 0%, var(--bg) 60%);
   color: var(--text);
   overscroll-behavior-x: contain;
 }
+
 a {
   color: var(--accent);
   text-decoration: none;
 }
+
 /* Fluid type scale */
 h1 {
   font-size: clamp(1.6rem, 1.2rem + 2vw, 2.4rem);
@@ -70,6 +101,7 @@ p,
 li {
   font-size: clamp(0.95rem, 0.9rem + 0.3vw, 1.05rem);
 }
+
 .skip-link {
   position: absolute;
   left: -9999px;
@@ -93,6 +125,7 @@ li {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
+
 .container {
   max-width: min(1100px, 100vw);
   margin: 0 auto;
@@ -111,12 +144,9 @@ li {
     grid-template-columns: repeat(3, 1fr);
   }
 }
+
 .card {
-  background: linear-gradient(
-    180deg,
-    color-mix(in oklab, var(--text) 2%, transparent),
-    transparent
-  );
+  background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 14px;
   padding: 1rem;
@@ -131,13 +161,15 @@ li {
 .card:hover {
   transform: translateY(-2px);
   box-shadow: 0 14px 34px rgba(0, 0, 0, 0.32);
-  border-color: color-mix(in oklab, var(--text) 18%, var(--bg) 82%);
+  border-color: var(--border-strong);
 }
+
 .nav {
   position: sticky;
   top: 0;
+  -webkit-backdrop-filter: blur(8px);
   backdrop-filter: blur(8px);
-  background: color-mix(in oklab, var(--bg) 88%, var(--text) 12%);
+  background: var(--nav-bg);
   border-bottom: 1px solid var(--border);
   z-index: 10;
 }
@@ -154,12 +186,13 @@ li {
   border-radius: 6px;
 }
 .nav a[aria-current='page'] {
-  background: color-mix(in oklab, var(--text) 12%, var(--bg) 88%);
+  background: var(--nav-current-bg);
 }
 .brand {
   font-weight: 700;
   letter-spacing: 0.2px;
 }
+
 .section-title {
   margin: 0 0 0.5rem 0;
   font-size: 1.25rem;
@@ -167,6 +200,7 @@ li {
 .muted {
   color: var(--muted);
 }
+
 .btn {
   background: var(--accent);
   color: var(--btn-text);
@@ -188,6 +222,7 @@ li {
   opacity: 0.6;
   cursor: not-allowed;
 }
+
 .snake-wrap {
   display: grid;
   place-items: center;
@@ -198,7 +233,7 @@ li {
   margin-top: 0.75rem;
 }
 .dpad-btn {
-  background: color-mix(in oklab, var(--text) 6%, var(--bg) 94%);
+  background: var(--control-bg);
   color: var(--text);
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -208,23 +243,12 @@ li {
 .dpad-btn:active {
   transform: translateY(1px);
 }
-/* Show D-pad only on coarse pointers (most touch devices) */
 @media (hover: none) and (pointer: coarse) {
   .dpad {
     display: grid;
   }
 }
-.dpad-btn {
-  background: rgba(255, 255, 255, 0.06);
-  color: var(--text);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 8px;
-  padding: 0.4rem 0.8rem;
-  font-size: 1.1rem;
-}
-.dpad-btn:active {
-  transform: translateY(1px);
-}
+
 .icon-link {
   display: inline-flex;
   align-items: center;
@@ -233,13 +257,19 @@ li {
   height: 36px;
   border-radius: 8px;
   color: var(--text);
-  background: color-mix(in oklab, var(--text) 6%, var(--bg) 94%);
-  border: 1px solid var(--border);
+  background: var(--icon-bg);
+  border: 1px solid var(--icon-border);
   transition:
     transform 0.12s ease,
     background 0.12s ease,
     border-color 0.12s ease;
 }
+.icon-link:hover {
+  transform: translateY(-1px);
+  background: var(--icon-bg-hover);
+  border-color: var(--icon-border-hover);
+}
+
 /* Reveal animations */
 .reveal {
   opacity: 0;
@@ -257,9 +287,4 @@ li {
     opacity: 1;
     transform: none;
   }
-}
-.icon-link:hover {
-  transform: translateY(-1px);
-  background: color-mix(in oklab, var(--text) 10%, var(--bg) 90%);
-  border-color: color-mix(in oklab, var(--text) 20%, var(--bg) 80%);
 }
