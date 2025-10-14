@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, lazy, Suspense } from 'react'
 import { ContactForm } from './sections/ContactForm'
 import { Projects } from './sections/Projects'
+import { SnakeGame } from './sections/SnakeGame'
 import { site } from './config/site'
 import { IconGitHub, IconLinkedIn } from './components/Icons'
 import { useReveal } from './hooks/useReveal'
@@ -27,9 +28,6 @@ export default function App() {
 
   // Lazy-load heavier sections
   const Resume = lazy(() => import('./sections/Resume').then((m) => ({ default: m.Resume })))
-  const SnakeGame = lazy(() =>
-    import('./sections/SnakeGame').then((m) => ({ default: m.SnakeGame })),
-  )
   // Keep CSS var --nav-h in sync with actual nav height (for padding/offset calculations)
   useEffect(() => {
     const el = navRef.current
@@ -346,15 +344,7 @@ export default function App() {
         )}
         {active === 'snake' && (
           <section id="snake" className="card reveal show-dpad">
-            <Suspense
-              fallback={
-                <div className="card" aria-busy>
-                  Loading game…
-                </div>
-              }
-            >
-              <SnakeGame onControlChange={setSnakeHasControl} />
-            </Suspense>
+            <SnakeGame onControlChange={setSnakeHasControl} />
           </section>
         )}
         {active === 'contact' && (
