@@ -5,6 +5,14 @@
   --muted: #94a3b8;
   --accent: #22c55e;
 }
+/* Light theme overrides */
+[data-theme='light'] {
+  --bg: #ffffff;
+  --panel: #f7fafc;
+  --text: #0f172a;
+  --muted: #475569;
+  --accent: #16a34a;
+}
 * {
   box-sizing: border-box;
 }
@@ -22,7 +30,11 @@ body {
     Roboto,
     Helvetica,
     Arial;
-  background: radial-gradient(1200px 600px at 20% -10%, #0f1629 0%, var(--bg) 60%);
+  background: radial-gradient(
+    1200px 600px at 20% -10%,
+    color-mix(in oklab, var(--bg) 85%, #0f1629) 0%,
+    var(--bg) 60%
+  );
   color: var(--text);
   overscroll-behavior-x: contain;
 }

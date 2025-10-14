@@ -10,6 +10,13 @@ import { useReveal } from './hooks/useReveal'
 export default function App() {
   type Section = 'home' | 'projects' | 'resume' | 'snake' | 'contact'
   const [active, setActive] = useState<Section>('home')
+  const [theme, setTheme] = useState<'light' | 'dark'>(() => {
+    const saved = localStorage.getItem('theme') as 'light' | 'dark' | null
+    if (saved) return saved
+    return window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches
+      ? 'light'
+      : 'dark'
+  })
   const topRef = useRef<HTMLDivElement>(null)
   const liveRef = useRef<HTMLDivElement>(null)
   // Scroll to top when changing sections
@@ -110,7 +117,7 @@ export default function App() {
   }, [active])
 
   return (
-    <div>
+    <div data-theme={theme}>
       <a href="#content" className="skip-link">
         Skip to content
       </a>
@@ -155,6 +162,18 @@ export default function App() {
             >
               Contact
             </a>
+            <button
+              className="btn"
+              style={{ marginLeft: '0.75rem' }}
+              aria-label="Toggle theme"
+              onClick={() => {
+                const next = theme === 'dark' ? 'light' : 'dark'
+                setTheme(next)
+                localStorage.setItem('theme', next)
+              }}
+            >
+              {theme === 'dark' ? 'Light' : 'Dark'}
+            </button>
           </div>
         </div>
       </nav>
