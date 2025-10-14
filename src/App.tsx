@@ -66,11 +66,26 @@ export default function App() {
       const key = e.key
       if (map[key]) {
         setActive(map[key])
+        e.preventDefault()
+        return
+      }
+      // Arrow navigation across sections (except when on Snake)
+      if (active !== 'snake') {
+        const order: Section[] = ['home', 'projects', 'resume', 'snake', 'contact']
+        const idx = order.indexOf(active)
+        if (key === 'ArrowLeft' && idx > 0) {
+          setActive(order[idx - 1])
+          e.preventDefault()
+        }
+        if (key === 'ArrowRight' && idx < order.length - 1) {
+          setActive(order[idx + 1])
+          e.preventDefault()
+        }
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [])
+  }, [active])
 
   // Apply reveal-on-scroll to tagged elements
   useReveal('.reveal', active)

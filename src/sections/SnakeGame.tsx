@@ -29,7 +29,10 @@ export function SnakeGame() {
 
     function resizeCanvas() {
       const dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1))
-      const maxWidth = Math.min(wrapper.clientWidth, 520)
+      // Fit square canvas by constraining to smallest of width and available height
+      const headerFooterSpace = 220 // approximate nav+controls height in px
+      const availH = Math.max(240, window.innerHeight - headerFooterSpace)
+      const maxWidth = Math.min(wrapper.clientWidth, 520, availH)
       const cell = Math.max(10, Math.floor(maxWidth / GRID))
       cellRef.current = cell
       const logical = GRID * cell
@@ -92,6 +95,12 @@ export function SnakeGame() {
 
     // controls
     const onKey = (e: KeyboardEvent) => {
+      // Prevent page scroll while using arrow keys over the game
+      const activeEl = document.activeElement as HTMLElement | null
+      const isTyping = ['input', 'textarea'].includes(activeEl?.tagName.toLowerCase() || '')
+      if (!isTyping && ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', ' '].includes(e.key)) {
+        e.preventDefault()
+      }
       if (e.key === 'ArrowUp' && dir.y !== 1) dir = { x: 0, y: -1 }
       if (e.key === 'ArrowDown' && dir.y !== -1) dir = { x: 0, y: 1 }
       if (e.key === 'ArrowLeft' && dir.x !== 1) dir = { x: -1, y: 0 }
@@ -118,6 +127,7 @@ export function SnakeGame() {
 
     window.addEventListener('keydown', onKey)
     canvas.style.touchAction = 'none'
+    canvas.setAttribute('tabindex', '0')
     canvas.addEventListener('touchstart', onTouchStart, { passive: true })
     canvas.addEventListener('touchend', onTouchEnd)
     window.addEventListener('resize', resizeCanvas)

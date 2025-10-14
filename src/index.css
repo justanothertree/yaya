@@ -71,6 +71,10 @@ body,
   height: 100%;
 }
 
+html,
+body {
+  overflow-x: hidden;
+}
 body {
   margin: 0;
   font-family:
@@ -239,6 +243,7 @@ li {
   border-radius: 8px;
   padding: 0.4rem 0.8rem;
   font-size: 1.1rem;
+  touch-action: manipulation;
 }
 .dpad-btn:active {
   transform: translateY(1px);
