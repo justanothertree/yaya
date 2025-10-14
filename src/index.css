@@ -91,20 +91,13 @@ body {
 }
 
 a {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
+  color: var(--accent);
+  text-decoration: none;
 }
 
 /* Fluid type scale */
 h1 {
-  z-index: 100;
-  transition: transform 0.2s ease;
-  will-change: transform;
-}
-.nav.nav-hidden {
-  transform: translateY(-100%);
+  font-size: clamp(1.6rem, 1.2rem + 2vw, 2.4rem);
 }
 h2 {
   font-size: clamp(1.2rem, 1rem + 1vw, 1.6rem);
@@ -153,7 +146,7 @@ li {
     min-height: calc(100dvh - var(--nav-h));
   }
 }
-/* Keep content below fixed nav */
+/* Keep content below fixed nav (fallback; see enhanced version near end) */
 body {
   padding-top: var(--nav-h);
 }
@@ -161,10 +154,7 @@ body {
 section[id] {
   scroll-margin-top: var(--nav-h);
 }
-/* Push content below fixed nav */
-body {
-  padding-top: var(--nav-h);
-}
+/* (removed duplicate body padding) */
 .grid {
   display: grid;
   grid-template-columns: 1fr;
@@ -206,7 +196,7 @@ body {
   right: 0;
   -webkit-backdrop-filter: blur(8px);
   backdrop-filter: blur(8px);
-  background: var(--nav-bg);
+  background: var(--bg); /* opaque so nothing shows behind the banner */
   border-bottom: 1px solid var(--border);
   z-index: 100;
   transition: transform 0.2s ease;
@@ -443,10 +433,10 @@ select {
   }
 }
 
-/* Prevent mobile scrollbar track drawing under the banner by giving it a top inset */
+/* Prevent mobile scrollbar track drawing and include banner height in top padding */
 @supports (height: 100dvh) {
   body {
-    padding-top: env(safe-area-inset-top, 0px);
+    padding-top: calc(var(--nav-h) + env(safe-area-inset-top, 0px));
   }
 }
 
