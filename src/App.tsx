@@ -66,7 +66,7 @@ export default function App() {
   }, [])
 
   // Apply reveal-on-scroll to tagged elements
-  useReveal('.reveal')
+  useReveal('.reveal', active)
 
   return (
     <div>
@@ -120,7 +120,7 @@ export default function App() {
       <div ref={topRef} />
       <main id="content" className="container" tabIndex={-1}>
         {active === 'home' && (
-          <section id="home" className="card reveal">
+          <section id="home" className="card">
             <h1 style={{ marginTop: 0 }}>Hi, I’m {site.name}.</h1>
             <p className="muted">
               Frontend-focused developer exploring clean interfaces, playful interactions, and fast
@@ -138,22 +138,22 @@ export default function App() {
           </section>
         )}
         {active === 'projects' && (
-          <section id="projects" className="reveal">
+          <section id="projects" className="card reveal">
             <Projects />
           </section>
         )}
         {active === 'resume' && (
-          <section id="resume" className="reveal">
+          <section id="resume" className="card reveal">
             <Resume />
           </section>
         )}
         {active === 'snake' && (
-          <section id="snake" className="reveal">
+          <section id="snake" className="card reveal">
             <SnakeGame />
           </section>
         )}
         {active === 'contact' && (
-          <section id="contact" className="reveal">
+          <section id="contact" className="card reveal">
             <ContactForm />
           </section>
         )}

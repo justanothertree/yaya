@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 
-export function useReveal(selector = '.reveal') {
+export function useReveal(selector = '.reveal', rerunToken?: unknown) {
   useEffect(() => {
     const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches
     if (prefersReduced) return
@@ -17,7 +17,9 @@ export function useReveal(selector = '.reveal') {
       },
       { rootMargin: '0px 0px -10% 0px', threshold: 0.1 },
     )
+    // If no elements found, nothing to do
+    if (els.length === 0) return () => observer.disconnect()
     els.forEach((el) => observer.observe(el))
     return () => observer.disconnect()
-  }, [selector])
+  }, [selector, rerunToken])
 }
