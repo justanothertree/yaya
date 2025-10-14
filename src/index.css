@@ -149,6 +149,10 @@ li {
 section[id] {
   scroll-margin-top: var(--nav-h);
 }
+/* Push content below fixed nav */
+body {
+  padding-top: var(--nav-h);
+}
 .grid {
   display: grid;
   grid-template-columns: 1fr;
@@ -183,13 +187,21 @@ section[id] {
 }
 
 .nav {
-  position: sticky;
+  position: fixed;
   top: 0;
+  left: 0;
+  right: 0;
   -webkit-backdrop-filter: blur(8px);
   backdrop-filter: blur(8px);
   background: var(--nav-bg);
   border-bottom: 1px solid var(--border);
-  z-index: 10;
+  z-index: 100;
+  transition: transform 0.2s ease;
+  will-change: transform;
+}
+/* Hidden state for auto-hide */
+.nav.nav-hidden {
+  transform: translateY(-100%);
 }
 @media (max-width: 700px) {
   .nav {
@@ -369,7 +381,7 @@ section[id] {
 }
 @media (max-width: 700px) {
   .edge-btn {
-    top: calc(var(--nav-h) / 2);
+    top: calc((var(--nav-h) / 2) + env(safe-area-inset-top, 0px));
     transform: translateY(-50%);
   }
 }
