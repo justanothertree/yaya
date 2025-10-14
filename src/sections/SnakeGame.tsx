@@ -2,7 +2,9 @@ import { useEffect, useRef, useState } from 'react'
 
 type Point = { x: number; y: number }
 const GRID = 30
-const SPEED_MS = 90
+const BASE_SPEED = 110 // ms; slower initial speed for clarity
+const MIN_SPEED = 50 // ms floor
+const SPEED_STEP = 4 // ms faster per food
 
 export function SnakeGame({ onControlChange }: { onControlChange?: (v: boolean) => void }) {
   const wrapRef = useRef<HTMLDivElement>(null)
@@ -12,6 +14,10 @@ export function SnakeGame({ onControlChange }: { onControlChange?: (v: boolean) 
   const [score, setScore] = useState(0)
   const [running, setRunning] = useState(false)
   const [active, setActive] = useState(false)
+  const scoreRef = useRef(0)
+  const runningRef = useRef(false)
+  const loopTimer = useRef<number | null>(null)
+  const lastToggleRef = useRef(0)
 
   const controlCbRef = useRef(onControlChange)
   controlCbRef.current = onControlChange
@@ -69,6 +75,20 @@ export function SnakeGame({ onControlChange }: { onControlChange?: (v: boolean) 
       snake.forEach((p) => ctx.fillRect(p.x * cell, p.y * cell, cell, cell))
     }
 
+    function getSpeed() {
+      // Speed up with score, capped at MIN_SPEED
+      const target = BASE_SPEED - SPEED_STEP * scoreRef.current
+      return Math.max(MIN_SPEED, target)
+    }
+
+    function loop() {
+      if (!runningRef.current) return
+      step()
+      const delay = getSpeed()
+      timer = window.setTimeout(loop, delay)
+      loopTimer.current = timer
+    }
+
     function step() {
       const d = dirRef.current
       const head = { x: snake[0].x + d.x, y: snake[0].y + d.y }
@@ -79,6 +99,7 @@ export function SnakeGame({ onControlChange }: { onControlChange?: (v: boolean) 
       // self hit
       if (snake.some((s) => s.x === head.x && s.y === head.y)) {
         setScore(0)
+        scoreRef.current = 0
         snake = [{ x: 5, y: 5 }]
         dirRef.current = { x: 1, y: 0 }
         food = randomFood()
@@ -88,7 +109,11 @@ export function SnakeGame({ onControlChange }: { onControlChange?: (v: boolean) 
 
       snake.unshift(head)
       if (head.x === food.x && head.y === food.y) {
-        setScore((s: number) => s + 1)
+        setScore((s: number) => {
+          const next = s + 1
+          scoreRef.current = next
+          return next
+        })
         food = randomFood()
         // haptic feedback where supported
         try {
@@ -155,7 +180,14 @@ export function SnakeGame({ onControlChange }: { onControlChange?: (v: boolean) 
     window.addEventListener('resize', resizeCanvas)
 
     resizeCanvas()
-    if (running) timer = window.setInterval(step, SPEED_MS)
+    // Start/stop loop
+    runningRef.current = running
+    if (running) {
+      // Kick off immediately for responsiveness
+      const delay = 0
+      timer = window.setTimeout(loop, delay)
+      loopTimer.current = timer
+    }
 
     return () => {
       window.removeEventListener('keydown', onKey)
@@ -164,7 +196,7 @@ export function SnakeGame({ onControlChange }: { onControlChange?: (v: boolean) 
       canvas.removeEventListener('touchstart', onTouchStart)
       canvas.removeEventListener('touchend', onTouchEnd)
       window.removeEventListener('resize', resizeCanvas)
-      if (timer) window.clearInterval(timer)
+      if (timer) window.clearTimeout(timer)
     }
   }, [running])
 
@@ -186,6 +218,9 @@ export function SnakeGame({ onControlChange }: { onControlChange?: (v: boolean) 
         <button
           className="btn"
           onClick={() => {
+            const now = performance.now()
+            if (now - lastToggleRef.current < 200) return // debounce pause spam
+            lastToggleRef.current = now
             const next = !running
             setRunning(next)
             // If starting, ensure canvas has focus so controls work; if pausing, release control
