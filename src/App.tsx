@@ -1,6 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
-import { Resume } from './sections/Resume'
-import { SnakeGame } from './sections/SnakeGame'
+import { useEffect, useRef, useState, lazy, Suspense } from 'react'
 import { ContactForm } from './sections/ContactForm'
 import { Projects } from './sections/Projects'
 import { site } from './config/site'
@@ -23,7 +21,15 @@ export default function App() {
   const navRef = useRef<HTMLElement>(null)
   const [hasInputFocus, setHasInputFocus] = useState(false)
   const [snakeHasControl, setSnakeHasControl] = useState(false)
-  const [hideNav, setHideNav] = useState(false)
+  // Keep banner persistent; auto-hide disabled for reliability
+  const [showTop, setShowTop] = useState(false)
+  const [helpOpen, setHelpOpen] = useState(false)
+
+  // Lazy-load heavier sections
+  const Resume = lazy(() => import('./sections/Resume').then((m) => ({ default: m.Resume })))
+  const SnakeGame = lazy(() =>
+    import('./sections/SnakeGame').then((m) => ({ default: m.SnakeGame })),
+  )
   // Keep CSS var --nav-h in sync with actual nav height (for padding/offset calculations)
   useEffect(() => {
     const el = navRef.current
@@ -44,6 +50,14 @@ export default function App() {
   // Ensure theme applies at the root so body/background use the same tokens
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme)
+    // Update theme-color meta to match current theme background
+    const meta = document.querySelector('meta[name="theme-color"]') as HTMLMetaElement | null
+    if (meta) {
+      const styles = getComputedStyle(document.documentElement)
+      const bg =
+        styles.getPropertyValue('--bg').trim() || (theme === 'light' ? '#ffffff' : '#0b0f19')
+      meta.setAttribute('content', bg)
+    }
   }, [theme])
   // Scroll to top when changing sections
   useEffect(() => {
@@ -180,34 +194,31 @@ export default function App() {
     }
   }, [])
 
-  // Mobile: hide nav on scroll down, show on scroll up (debounced and thresholded to reduce jitter)
+  // Back-to-top visibility on scroll
   useEffect(() => {
-    let lastY = window.scrollY
-    let raf = 0
     const onScroll = () => {
-      if (raf) return
-      raf = window.requestAnimationFrame(() => {
-        raf = 0
-        const y = window.scrollY
-        const dy = y - lastY
-        lastY = y
-        const isMobile = window.matchMedia('(max-width: 700px)').matches
-        if (!isMobile) {
-          setHideNav(false)
-          return
-        }
-        const downThresh = 8
-        const upThresh = -8
-        if (y < 10 || dy <= upThresh) setHideNav(false)
-        else if (dy >= downThresh) setHideNav(true)
-      })
+      setShowTop(window.scrollY > 200)
     }
+    onScroll()
     window.addEventListener('scroll', onScroll, { passive: true })
-    return () => {
-      window.removeEventListener('scroll', onScroll)
-      if (raf) cancelAnimationFrame(raf)
-    }
+    return () => window.removeEventListener('scroll', onScroll)
   }, [])
+
+  // Keyboard help overlay: open with '?' or Shift+/, close with Escape
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.key === '?' || (e.key === '/' && e.shiftKey)) && !helpOpen) {
+        setHelpOpen(true)
+        e.preventDefault()
+      } else if (e.key === 'Escape' && helpOpen) {
+        setHelpOpen(false)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [helpOpen])
+
+  // (Auto-hide removed)
 
   // Track if an input/textarea/select has focus to adjust UI (hide edge arrows)
   useEffect(() => {
@@ -233,7 +244,7 @@ export default function App() {
       <a href="#content" className="skip-link">
         Skip to content
       </a>
-      <nav className={`nav ${hideNav ? 'nav-hidden' : ''}`} aria-label="Primary" ref={navRef}>
+      <nav className={'nav'} aria-label="Primary" ref={navRef}>
         <div className="container nav-inner">
           <a className="brand" href="#home" aria-label="Home">
             {site.name}
@@ -289,12 +300,7 @@ export default function App() {
           </div>
         </div>
       </nav>
-      {/* Mobile: top-edge hit area to reveal nav by tap when hidden */}
-      <button
-        className="nav-reveal-hit"
-        aria-label="Show navigation"
-        onClick={() => setHideNav(false)}
-      />
+      {/* Mobile: reveal hit area removed; banner stays visible */}
       <div ref={topRef} />
       <main
         id="content"
@@ -327,12 +333,28 @@ export default function App() {
         )}
         {active === 'resume' && (
           <section id="resume" className="card reveal">
-            <Resume />
+            <Suspense
+              fallback={
+                <div className="card" aria-busy>
+                  Loading resume…
+                </div>
+              }
+            >
+              <Resume />
+            </Suspense>
           </section>
         )}
         {active === 'snake' && (
           <section id="snake" className="card reveal show-dpad">
-            <SnakeGame onControlChange={setSnakeHasControl} />
+            <Suspense
+              fallback={
+                <div className="card" aria-busy>
+                  Loading game…
+                </div>
+              }
+            >
+              <SnakeGame onControlChange={setSnakeHasControl} />
+            </Suspense>
           </section>
         )}
         {active === 'contact' && (
@@ -392,10 +414,10 @@ export default function App() {
           </span>
         </div>
       </footer>
-      {/* Edge arrow buttons for desktop/touch (hidden while typing; on mobile they hide with banner) */}
+      {/* Edge arrow buttons for desktop/touch (hidden while typing) */}
       {!hasInputFocus && (
         <button
-          className={`edge-btn edge-left ${hideNav ? 'edge-hide' : ''}`}
+          className={`edge-btn edge-left`}
           aria-label="Previous section"
           onClick={() => {
             const order: Section[] = ['home', 'projects', 'resume', 'snake', 'contact']
@@ -409,7 +431,7 @@ export default function App() {
       )}
       {!hasInputFocus && (
         <button
-          className={`edge-btn edge-right ${hideNav ? 'edge-hide' : ''}`}
+          className={`edge-btn edge-right`}
           aria-label="Next section"
           onClick={() => {
             const order: Section[] = ['home', 'projects', 'resume', 'snake', 'contact']
@@ -420,6 +442,54 @@ export default function App() {
         >
           ▶
         </button>
+      )}
+      {showTop && (
+        <button
+          className="back-to-top"
+          aria-label="Back to top"
+          onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+        >
+          ↑
+        </button>
+      )}
+
+      {/* Keyboard help overlay */}
+      {helpOpen && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Keyboard shortcuts"
+          onClick={() => setHelpOpen(false)}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.5)',
+            display: 'grid',
+            placeItems: 'center',
+            zIndex: 200,
+          }}
+        >
+          <div
+            className="card"
+            style={{ maxWidth: 480, width: '90%', cursor: 'auto' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 className="section-title" style={{ marginTop: 0 }}>
+              Keyboard shortcuts
+            </h2>
+            <ul style={{ margin: 0, paddingLeft: '1rem' }}>
+              <li>1–5: Jump to sections</li>
+              <li>Arrow Left/Right: Previous/Next section</li>
+              <li>Snake: Arrow keys, swipe, or on-screen controls</li>
+              <li>?: Open this help, Esc: Close</li>
+            </ul>
+            <div style={{ marginTop: '0.75rem', textAlign: 'right' }}>
+              <button className="btn" onClick={() => setHelpOpen(false)}>
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )

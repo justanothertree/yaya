@@ -11,6 +11,7 @@ export function SnakeGame({ onControlChange }: { onControlChange?: (v: boolean) 
   const dirRef = useRef<Point>({ x: 1, y: 0 })
   const [score, setScore] = useState(0)
   const [running, setRunning] = useState(false)
+  const [active, setActive] = useState(false)
 
   const controlCbRef = useRef(onControlChange)
   controlCbRef.current = onControlChange
@@ -134,8 +135,15 @@ export function SnakeGame({ onControlChange }: { onControlChange?: (v: boolean) 
     window.addEventListener('keydown', onKey)
     canvas.style.touchAction = 'none'
     canvas.setAttribute('tabindex', '0')
-    const onFocus = () => controlCbRef.current?.(true)
-    const onBlur = () => controlCbRef.current?.(false)
+    const onFocus = () => {
+      setActive(true)
+      controlCbRef.current?.(true)
+    }
+    const onBlur = () => {
+      // Keep active border if the game is still running; otherwise remove
+      setActive(running)
+      controlCbRef.current?.(false)
+    }
     canvas.addEventListener('focus', onFocus)
     canvas.addEventListener('blur', onBlur)
     canvas.addEventListener('touchstart', onTouchStart, { passive: true })
@@ -180,8 +188,10 @@ export function SnakeGame({ onControlChange }: { onControlChange?: (v: boolean) 
             if (next) {
               canvasRef.current?.focus()
               onControlChange?.(true)
+              setActive(true)
             } else {
               onControlChange?.(false)
+              setActive(false)
             }
           }}
         >
@@ -192,7 +202,8 @@ export function SnakeGame({ onControlChange }: { onControlChange?: (v: boolean) 
       <div ref={wrapRef} style={{ width: '100%', display: 'grid', placeItems: 'center' }}>
         <canvas
           ref={canvasRef}
-          style={{ marginTop: '1rem', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8 }}
+          className={active ? 'snake-active' : ''}
+          style={{ marginTop: '1rem', border: '2px solid var(--border)', borderRadius: 8 }}
         />
       </div>
       <div className="dpad" aria-label="Snake controls">

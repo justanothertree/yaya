@@ -44,6 +44,11 @@ export function ContactForm() {
         This form posts to Formspree. Replace the endpoint in <code>ContactForm.tsx</code>.
       </p>
       <form ref={formRef} onSubmit={onSubmit} style={formStyle}>
+        {/* Honeypot field for spam bots; hidden from users */}
+        <label style={{ position: 'absolute', left: '-10000px', height: 0, overflow: 'hidden' }}>
+          <span>Leave this field empty</span>
+          <input name="_gotcha" tabIndex={-1} autoComplete="off" />
+        </label>
         <label style={labelStyle}>
           <span>Name</span>
           <input name="name" placeholder="Your name" required style={fieldStyle} inputMode="text" />

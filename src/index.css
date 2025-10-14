@@ -66,9 +66,11 @@
   box-sizing: border-box;
 }
 html,
-body,
+body {
+  min-height: 100%;
+}
 #root {
-  height: 100%;
+  min-height: 100%;
 }
 
 html,
@@ -131,6 +133,27 @@ li {
   outline-offset: 2px;
 }
 
+/* Back to top button */
+.back-to-top {
+  position: fixed;
+  right: 14px;
+  bottom: calc(14px + env(safe-area-inset-bottom, 0px));
+  background: var(--icon-bg);
+  color: var(--text);
+  border: 1px solid var(--icon-border);
+  border-radius: 10px;
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  z-index: 30;
+}
+.back-to-top:hover {
+  background: var(--icon-bg-hover);
+  border-color: var(--icon-border-hover);
+}
+
 .container {
   max-width: min(1100px, 100vw);
   margin: 0 auto;
@@ -141,11 +164,7 @@ li {
 :root {
   --nav-h: 56px;
 }
-@supports (height: 100dvh) {
-  main.container {
-    min-height: calc(100dvh - var(--nav-h));
-  }
-}
+/* Removed 100dvh-based min-height on main to prevent snap/jitter at high zoom */
 /* Keep content below fixed nav (fallback; see enhanced version near end) */
 body {
   padding-top: var(--nav-h);
@@ -199,12 +218,7 @@ section[id] {
   background: var(--bg); /* opaque so nothing shows behind the banner */
   border-bottom: 1px solid var(--border);
   z-index: 100;
-  transition: transform 0.2s ease;
-  will-change: transform;
-}
-/* Hidden state for auto-hide */
-.nav.nav-hidden {
-  transform: translateY(-100%);
+  /* No auto-hide transform to keep banner persistent */
 }
 @media (max-width: 700px) {
   .nav {
@@ -322,6 +336,16 @@ section[id] {
   display: grid;
 }
 
+/* Snake canvas gets theme-colored focus ring */
+.snake-wrap canvas:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.snake-active {
+  border-color: var(--accent) !important;
+  box-shadow: 0 0 0 2px color-mix(in oklab, var(--accent) 35%, transparent);
+}
+
 .icon-link {
   display: inline-flex;
   align-items: center;
@@ -360,6 +384,12 @@ section[id] {
     opacity: 1;
     transform: none;
   }
+  .card,
+  .btn,
+  .icon-link {
+    transition: none !important;
+    transform: none !important;
+  }
 }
 
 /* Edge arrow buttons */
@@ -389,21 +419,7 @@ section[id] {
     transform: translateY(-50%);
   }
 }
-/* Tap target near top to reveal nav on mobile */
-.nav-reveal-hit {
-  display: none;
-}
-@media (max-width: 700px) {
-  .nav-reveal-hit {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    height: 10px;
-    opacity: 0;
-    z-index: 90;
-  }
-}
+/* Nav reveal hit target removed (banner is always visible) */
 .edge-btn:hover {
   background: var(--icon-bg-hover);
   border-color: var(--icon-border-hover);
@@ -440,7 +456,5 @@ select {
   }
 }
 
-/* Avoid double scrollbars: only the page scrolls */
-#root {
-  overflow: hidden;
-}
+/* Avoid double scrollbars: let the page scroll normally */
+/* Removed forced overflow hidden on #root to improve zoom/scroll behavior */
