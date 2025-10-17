@@ -1,0 +1,1 @@
+Place your Open Graph image here as og-image.png (1200x630 recommended). Example command to export from design tool: export 1200x630 PNG with minimal compression. Keep background contrast high for both light and dark themes.

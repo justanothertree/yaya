@@ -6,7 +6,16 @@ const BASE_SPEED = 110 // ms; slower initial speed for clarity
 const MIN_SPEED = 50 // ms floor
 const SPEED_STEP = 4 // ms faster per food
 
-export function SnakeGame({ onControlChange }: { onControlChange?: (v: boolean) => void }) {
+type Leader = { name: string; score: number; date: string }
+type Mode = 'easy' | 'normal' | 'hard'
+
+export function SnakeGame({
+  onControlChange,
+  autoFocus,
+}: {
+  onControlChange?: (v: boolean) => void
+  autoFocus?: boolean
+}) {
   const wrapRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const cellRef = useRef<number>(16)
@@ -14,6 +23,12 @@ export function SnakeGame({ onControlChange }: { onControlChange?: (v: boolean) 
   const [score, setScore] = useState(0)
   const [running, setRunning] = useState(false)
   const [active, setActive] = useState(false)
+  const [isFullscreen, setIsFullscreen] = useState(false)
+  const [leaders, setLeaders] = useState<Leader[]>([])
+  const [askNameOpen, setAskNameOpen] = useState(false)
+  const [playerName, setPlayerName] = useState('')
+  const [mode, setMode] = useState<Mode>('easy')
+  const lastScoreRef = useRef(0)
   const scoreRef = useRef(0)
   const runningRef = useRef(false)
   const loopTimer = useRef<number | null>(null)
@@ -21,6 +36,31 @@ export function SnakeGame({ onControlChange }: { onControlChange?: (v: boolean) 
 
   const controlCbRef = useRef(onControlChange)
   controlCbRef.current = onControlChange
+
+  // Load leaderboard and player name
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem('snake.leaderboard')
+      if (raw) setLeaders(JSON.parse(raw))
+    } catch {
+      // ignore parse errors
+    }
+    try {
+      const pn = localStorage.getItem('snake.player')
+      if (pn) setPlayerName(pn)
+    } catch {
+      // ignore storage errors
+    }
+  }, [])
+
+  const saveLeaders = (arr: Leader[]) => {
+    setLeaders(arr)
+    try {
+      localStorage.setItem('snake.leaderboard', JSON.stringify(arr))
+    } catch {
+      // ignore storage errors
+    }
+  }
 
   useEffect(() => {
     const wrapper = wrapRef.current!
@@ -30,6 +70,7 @@ export function SnakeGame({ onControlChange }: { onControlChange?: (v: boolean) 
     // game state
     let snake: Point[] = [{ x: 5, y: 5 }]
     let food: Point = randomFood()
+    let obstacles: Point[] = []
     let timer: number | undefined
     let touchStart: { x: number; y: number } | null = null
 
@@ -77,7 +118,9 @@ export function SnakeGame({ onControlChange }: { onControlChange?: (v: boolean) 
 
     function getSpeed() {
       // Speed up with score, capped at MIN_SPEED
-      const target = BASE_SPEED - SPEED_STEP * scoreRef.current
+      const base = mode === 'hard' ? 90 : mode === 'normal' ? 100 : BASE_SPEED
+      const step = mode === 'hard' ? 6 : mode === 'normal' ? 5 : SPEED_STEP
+      const target = base - step * scoreRef.current
       return Math.max(MIN_SPEED, target)
     }
 
@@ -91,19 +134,29 @@ export function SnakeGame({ onControlChange }: { onControlChange?: (v: boolean) 
 
     function step() {
       const d = dirRef.current
-      const head = { x: snake[0].x + d.x, y: snake[0].y + d.y }
-      // wrap
-      head.x = (head.x + GRID) % GRID
-      head.y = (head.y + GRID) % GRID
+      let nx = snake[0].x + d.x
+      let ny = snake[0].y + d.y
+      // wrap or wall collision based on mode
+      if (mode === 'easy') {
+        nx = (nx + GRID) % GRID
+        ny = (ny + GRID) % GRID
+      } else {
+        if (nx < 0 || nx >= GRID || ny < 0 || ny >= GRID) {
+          // hit wall => game over
+          handleGameOver()
+          return
+        }
+      }
+      const head = { x: nx, y: ny }
 
-      // self hit
+      // self hit => game over
       if (snake.some((s) => s.x === head.x && s.y === head.y)) {
-        setScore(0)
-        scoreRef.current = 0
-        snake = [{ x: 5, y: 5 }]
-        dirRef.current = { x: 1, y: 0 }
-        food = randomFood()
-        draw()
+        handleGameOver()
+        return
+      }
+      // obstacle hit
+      if (obstacles.some((o) => o.x === head.x && o.y === head.y)) {
+        handleGameOver()
         return
       }
 
@@ -115,6 +168,9 @@ export function SnakeGame({ onControlChange }: { onControlChange?: (v: boolean) 
           return next
         })
         food = randomFood()
+        // spawn obstacles after eating based on mode
+        if (mode === 'normal') maybeAddObstacle(0.5)
+        if (mode === 'hard') maybeAddObstacle(1)
         // haptic feedback where supported
         try {
           if ('vibrate' in navigator) navigator.vibrate?.(15)
@@ -127,6 +183,41 @@ export function SnakeGame({ onControlChange }: { onControlChange?: (v: boolean) 
       draw()
     }
 
+    function maybeAddObstacle(intensity: number) {
+      // intensity 0..1 chance per food; place randomly not overlapping snake or food
+      if (Math.random() > intensity) return
+      for (let i = 0; i < 50; i++) {
+        const p = randomFood()
+        if (
+          !snake.some((s) => s.x === p.x && s.y === p.y) &&
+          !(food.x === p.x && food.y === p.y) &&
+          !obstacles.some((o) => o.x === p.x && o.y === p.y)
+        ) {
+          obstacles.push(p)
+          break
+        }
+      }
+    }
+
+    function handleGameOver() {
+      const finalScore = scoreRef.current
+      lastScoreRef.current = finalScore
+      setRunning(false)
+      runningRef.current = false
+      setActive(false)
+      // Reset state for next game
+      setTimeout(() => {
+        setScore(0)
+        scoreRef.current = 0
+        snake = [{ x: 5, y: 5 }]
+        dirRef.current = { x: 1, y: 0 }
+        food = randomFood()
+        obstacles = []
+        draw()
+      }, 0)
+      if (finalScore > 0) setAskNameOpen(true)
+    }
+
     // controls
     const onKey = (e: KeyboardEvent) => {
       // Prevent page scroll while using arrow keys over the game
@@ -134,6 +225,26 @@ export function SnakeGame({ onControlChange }: { onControlChange?: (v: boolean) 
       const isTyping = ['input', 'textarea'].includes(activeEl?.tagName.toLowerCase() || '')
       if (!isTyping && ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', ' '].includes(e.key)) {
         e.preventDefault()
+      }
+      if (askNameOpen) return
+      // Start on first arrow press if focused and not running
+      if (
+        !runningRef.current &&
+        ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)
+      ) {
+        setRunning(true)
+        runningRef.current = true
+      }
+      // Space toggles pause
+      if (e.key === ' ') {
+        const now = performance.now()
+        if (now - lastToggleRef.current >= 200) {
+          lastToggleRef.current = now
+          const next = !runningRef.current
+          setRunning(next)
+          runningRef.current = next
+          if (next) setActive(true)
+        }
       }
       const d = dirRef.current
       if (e.key === 'ArrowUp' && d.y !== 1) dirRef.current = { x: 0, y: -1 }
@@ -169,8 +280,8 @@ export function SnakeGame({ onControlChange }: { onControlChange?: (v: boolean) 
       controlCbRef.current?.(true)
     }
     const onBlur = () => {
-      // Keep active border if the game is still running; otherwise remove
-      setActive(running)
+      // Border indicates keyboard control: if blurred, remove active
+      setActive(false)
       controlCbRef.current?.(false)
     }
     canvas.addEventListener('focus', onFocus)
@@ -178,6 +289,16 @@ export function SnakeGame({ onControlChange }: { onControlChange?: (v: boolean) 
     canvas.addEventListener('touchstart', onTouchStart, { passive: true })
     canvas.addEventListener('touchend', onTouchEnd)
     window.addEventListener('resize', resizeCanvas)
+    const onFsChange = () => {
+      const docFS = document as Document & { webkitFullscreenElement?: Element | null }
+      const fsEl = docFS.fullscreenElement ?? docFS.webkitFullscreenElement ?? null
+      const now = fsEl === wrapper
+      setIsFullscreen(!!now)
+      if (now) canvas.focus()
+      resizeCanvas()
+    }
+    document.addEventListener('fullscreenchange', onFsChange)
+    document.addEventListener('webkitfullscreenchange', onFsChange)
 
     resizeCanvas()
     // Start/stop loop
@@ -188,6 +309,10 @@ export function SnakeGame({ onControlChange }: { onControlChange?: (v: boolean) 
       timer = window.setTimeout(loop, delay)
       loopTimer.current = timer
     }
+    // If asked, focus the canvas when mounted/active
+    if (autoFocus) {
+      setTimeout(() => canvas.focus(), 0)
+    }
 
     return () => {
       window.removeEventListener('keydown', onKey)
@@ -197,8 +322,13 @@ export function SnakeGame({ onControlChange }: { onControlChange?: (v: boolean) 
       canvas.removeEventListener('touchend', onTouchEnd)
       window.removeEventListener('resize', resizeCanvas)
       if (timer) window.clearTimeout(timer)
+      document.removeEventListener('fullscreenchange', onFsChange)
+      document.removeEventListener(
+        'webkitfullscreenchange' as unknown as keyof DocumentEventMap,
+        onFsChange as EventListener,
+      )
     }
-  }, [running])
+  }, [running, autoFocus, mode, askNameOpen])
 
   // On-screen D-pad for touch/mouse
   const setDir = (nx: number, ny: number) => {
@@ -212,9 +342,49 @@ export function SnakeGame({ onControlChange }: { onControlChange?: (v: boolean) 
     onControlChange?.(true)
   }
 
+  const toggleFullscreen = async () => {
+    const wrapper = wrapRef.current
+    if (!wrapper) return
+    const docFS = document as Document & {
+      webkitFullscreenElement?: Element | null
+      webkitExitFullscreen?: () => Promise<void>
+    }
+    const isFs = docFS.fullscreenElement || docFS.webkitFullscreenElement
+    try {
+      if (!isFs) {
+        const wfs = wrapper as HTMLElement & { webkitRequestFullscreen?: () => Promise<void> }
+        const req = wfs.requestFullscreen || wfs.webkitRequestFullscreen
+        if (req) await req.call(wfs)
+      } else {
+        const exit = docFS.exitFullscreen || docFS.webkitExitFullscreen
+        if (exit) await exit.call(docFS)
+      }
+    } catch {
+      // ignore FS errors
+    }
+  }
+
+  const onSubmitScore = () => {
+    const n = playerName.trim() || 'Player'
+    try {
+      localStorage.setItem('snake.player', n)
+    } catch {
+      // ignore storage errors
+    }
+    const entry: Leader = { name: n, score: lastScoreRef.current, date: new Date().toISOString() }
+    const next = [...leaders, entry].sort((a, b) => b.score - a.score).slice(0, 10)
+    saveLeaders(next)
+    setAskNameOpen(false)
+  }
+
+  const clearLeaders = () => {
+    saveLeaders([])
+  }
+
   return (
-    <section className="card snake-wrap">
-      <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
+    <div className="snake-wrap">
+      {/* Toolbar */}
+      <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
         <button
           className="btn"
           onClick={() => {
@@ -223,7 +393,6 @@ export function SnakeGame({ onControlChange }: { onControlChange?: (v: boolean) 
             lastToggleRef.current = now
             const next = !running
             setRunning(next)
-            // If starting, ensure canvas has focus so controls work; if pausing, release control
             if (next) {
               canvasRef.current?.focus()
               onControlChange?.(true)
@@ -236,15 +405,144 @@ export function SnakeGame({ onControlChange }: { onControlChange?: (v: boolean) 
         >
           {running ? 'Pause' : 'Play'}
         </button>
+        <button className="btn" onClick={toggleFullscreen}>
+          {isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}
+        </button>
         <div className="muted">Score: {score}</div>
+        <div aria-label="Mode" style={{ display: 'inline-flex', gap: 6, marginLeft: 8 }}>
+          {(['easy', 'normal', 'hard'] as Mode[]).map((m) => (
+            <button
+              key={m}
+              className="btn"
+              aria-pressed={mode === m}
+              onClick={() => {
+                setMode(m)
+                // reset immediately when changing mode
+                setRunning(false)
+                runningRef.current = false
+                setActive(false)
+                try {
+                  localStorage.setItem('snake.mode', m)
+                } catch {
+                  /* ignore */
+                }
+              }}
+              style={{
+                opacity: mode === m ? 1 : 0.7,
+                background: mode === m ? 'var(--accent)' : 'var(--control-bg)',
+                color: mode === m ? 'var(--btn-text)' : 'var(--text)',
+                border: '1px solid var(--border)',
+              }}
+            >
+              {m}
+            </button>
+          ))}
+        </div>
       </div>
-      <div ref={wrapRef} style={{ width: '100%', display: 'grid', placeItems: 'center' }}>
+
+      {/* Game wrapper (fullscreen target) */}
+      <div
+        ref={wrapRef}
+        style={{ width: '100%', display: 'grid', placeItems: 'center', position: 'relative' }}
+      >
+        {isFullscreen && !askNameOpen && (
+          <div
+            style={{ position: 'absolute', top: 8, right: 8, display: 'flex', gap: 8, zIndex: 5 }}
+          >
+            <button
+              className="btn"
+              onClick={() => {
+                const now = performance.now()
+                if (now - lastToggleRef.current < 200) return
+                lastToggleRef.current = now
+                const next = !running
+                setRunning(next)
+                runningRef.current = next
+                if (next) setActive(true)
+              }}
+            >
+              {running ? 'Pause' : 'Play'}
+            </button>
+            <button className="btn" onClick={toggleFullscreen}>
+              Exit
+            </button>
+          </div>
+        )}
         <canvas
           ref={canvasRef}
           className={active ? 'snake-active' : ''}
           style={{ marginTop: '1rem', border: '2px solid var(--border)', borderRadius: 8 }}
         />
+
+        {/* In fullscreen, render the modal overlay inside the wrapper so it's visible */}
+        {isFullscreen && askNameOpen && (
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Save your score"
+            onClick={() => setAskNameOpen(false)}
+            style={{
+              position: 'absolute',
+              inset: 0,
+              background: 'rgba(0,0,0,0.6)',
+              display: 'grid',
+              placeItems: 'center',
+              zIndex: 10,
+            }}
+          >
+            <div
+              className="card"
+              style={{
+                maxWidth: 420,
+                width: '90%',
+                cursor: 'auto',
+                background: 'var(--bg)',
+                borderColor: 'var(--border-strong)',
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <h2 className="section-title" style={{ marginTop: 0 }}>
+                Nice run! Save your score
+              </h2>
+              <p className="muted">Score: {lastScoreRef.current}</p>
+              <label className="muted" htmlFor="player-name">
+                Name
+              </label>
+              <input
+                id="player-name"
+                value={playerName}
+                onChange={(e) => setPlayerName(e.target.value)}
+                autoFocus
+                style={{
+                  width: '100%',
+                  padding: '0.5rem',
+                  borderRadius: 8,
+                  border: '1px solid var(--border)',
+                  background: 'transparent',
+                  color: 'var(--text)',
+                }}
+              />
+              <div
+                style={{
+                  marginTop: '0.75rem',
+                  display: 'flex',
+                  gap: 8,
+                  justifyContent: 'flex-end',
+                }}
+              >
+                <button className="btn" onClick={() => setAskNameOpen(false)}>
+                  Cancel
+                </button>
+                <button className="btn" onClick={onSubmitScore}>
+                  Save
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
+
+      {/* D-pad */}
       <div className="dpad" aria-label="Snake controls">
         <button className="dpad-btn" onClick={() => setDir(0, -1)} aria-label="Up">
           ▲
@@ -269,9 +567,94 @@ export function SnakeGame({ onControlChange }: { onControlChange?: (v: boolean) 
           ▼
         </button>
       </div>
+
       <p className="muted">
-        Use arrow keys, swipe, or the on-screen controls. The snake wraps around edges.
+        Use arrow keys to start and steer, space to pause, swipe or D‑pad on touch. Easy wraps at
+        edges; Normal/Hard use walls and add obstacles.
       </p>
-    </section>
+
+      {/* Leaderboard */}
+      {leaders.length > 0 && (
+        <div style={{ marginTop: '0.75rem' }}>
+          <h3 className="section-title" style={{ marginTop: 0 }}>
+            Top scores
+          </h3>
+          <ol style={{ margin: 0, paddingLeft: '1.25rem' }}>
+            {leaders.map((l, i) => (
+              <li key={i} className="muted">
+                <strong style={{ color: 'var(--text)' }}>{l.name}</strong> — {l.score}
+              </li>
+            ))}
+          </ol>
+          <div style={{ marginTop: '0.5rem' }}>
+            <button className="btn" onClick={clearLeaders}>
+              Clear leaderboard
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Name prompt modal (non-fullscreen case) */}
+      {!isFullscreen && askNameOpen && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Save your score"
+          onClick={() => setAskNameOpen(false)}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.6)',
+            display: 'grid',
+            placeItems: 'center',
+            zIndex: 300,
+          }}
+        >
+          <div
+            className="card"
+            style={{
+              maxWidth: 420,
+              width: '90%',
+              cursor: 'auto',
+              background: 'var(--bg)',
+              borderColor: 'var(--border-strong)',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 className="section-title" style={{ marginTop: 0 }}>
+              Nice run! Save your score
+            </h2>
+            <p className="muted">Score: {lastScoreRef.current}</p>
+            <label className="muted" htmlFor="player-name">
+              Name
+            </label>
+            <input
+              id="player-name"
+              value={playerName}
+              onChange={(e) => setPlayerName(e.target.value)}
+              autoFocus
+              style={{
+                width: '100%',
+                padding: '0.5rem',
+                borderRadius: 8,
+                border: '1px solid var(--border)',
+                background: 'transparent',
+                color: 'var(--text)',
+              }}
+            />
+            <div
+              style={{ marginTop: '0.75rem', display: 'flex', gap: 8, justifyContent: 'flex-end' }}
+            >
+              <button className="btn" onClick={() => setAskNameOpen(false)}>
+                Cancel
+              </button>
+              <button className="btn" onClick={onSubmitScore}>
+                Save
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
   )
 }

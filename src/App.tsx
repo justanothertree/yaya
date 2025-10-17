@@ -25,6 +25,11 @@ export default function App() {
   // Keep banner persistent; auto-hide disabled for reliability
   const [showTop, setShowTop] = useState(false)
   const [helpOpen, setHelpOpen] = useState(false)
+  const [buildInfo] = useState(() => {
+    const env = (import.meta as unknown as { env?: Record<string, string> }).env
+    const ver = env?.VITE_APP_VERSION || ''
+    return ver ? `build ${ver}` : ''
+  })
 
   // Lazy-load heavier sections
   const Resume = lazy(() => import('./sections/Resume').then((m) => ({ default: m.Resume })))
@@ -57,6 +62,10 @@ export default function App() {
       meta.setAttribute('content', bg)
     }
   }, [theme])
+  // Log build info for quick verification
+  useEffect(() => {
+    if (buildInfo) console.log(`%c${buildInfo}`, 'color:#22c55e')
+  }, [buildInfo])
   // Scroll to top when changing sections
   useEffect(() => {
     topRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -242,6 +251,9 @@ export default function App() {
       <a href="#content" className="skip-link">
         Skip to content
       </a>
+      <a href="#snake" className="skip-link">
+        Skip to Snake game
+      </a>
       <nav className={'nav'} aria-label="Primary" ref={navRef}>
         <div className="container nav-inner">
           <a className="brand" href="#home" aria-label="Home">
@@ -344,7 +356,7 @@ export default function App() {
         )}
         {active === 'snake' && (
           <section id="snake" className="card reveal show-dpad">
-            <SnakeGame onControlChange={setSnakeHasControl} />
+            <SnakeGame onControlChange={setSnakeHasControl} autoFocus />
           </section>
         )}
         {active === 'contact' && (
@@ -381,6 +393,7 @@ export default function App() {
         >
           <span>
             © {new Date().getFullYear()} {site.name}
+            {buildInfo && <span style={{ marginLeft: 8 }}>· {buildInfo}</span>}
           </span>
           <span style={{ display: 'inline-flex', gap: 12, alignItems: 'center' }}>
             <a

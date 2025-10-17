@@ -15,7 +15,7 @@ The React Compiler is not enabled on this template because of its impact on dev 
 
 If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
 
-```js
+````js
 ## Portfolio Features (added)
 
 This project has been customized into a personal portfolio with:
@@ -45,7 +45,7 @@ A minimal personal site with a Resume section, a playable Snake game, and a simp
 ```powershell
 npm ci
 npm run dev
-```
+````
 
 Open the printed Local URL. For a production-like server:
 
@@ -74,9 +74,22 @@ npm run lint
 - Edit resume content in `src/sections/Resume.tsx`.
 - Tweak styling in `src/index.css`.
 
+## Snake extras
+
+- Fullscreen toggle for more reliable controls (Escape exits fullscreen).
+- Local leaderboard (top 10). On game over, enter a name to save; clears via “Clear leaderboard”.
+- D‑pad on touch, swipe gestures, and keyboard arrows. Focus the canvas to take control.
+
+## Social preview
+
+- Provide `public/og-image.png` (1200×630 PNG) to enable rich previews via Open Graph meta tags.
+
 ## Repository hygiene
 
 - MIT License included (`LICENSE`).
 - EditorConfig for consistent formatting (`.editorconfig`).
 - CI: Lint workflow (`.github/workflows/lint.yml`).
+
+```
+
 ```
