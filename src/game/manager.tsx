@@ -62,8 +62,8 @@ export function GameManager({
   const [room, setRoom] = useState('room-1')
   const [opponentScore, setOpponentScore] = useState(0)
   const wsUrl = (import.meta as unknown as { env?: Record<string, string> }).env?.VITE_WS_URL
-  const [showTouch, setShowTouch] = useState(false)
   const [showJoystick, setShowJoystick] = useState(false)
+  const capturedRef = useRef(false)
 
   // Canvas refs and renderers
   const wrapRef = useRef<HTMLDivElement>(null)
@@ -104,8 +104,12 @@ export function GameManager({
   useEffect(() => {
     if (autoFocus) {
       canvasRef.current?.focus?.()
+      capturedRef.current = true
       onControlChange?.(true)
-      return () => onControlChange?.(false)
+      return () => {
+        capturedRef.current = false
+        onControlChange?.(false)
+      }
     }
     return
   }, [autoFocus, onControlChange])
@@ -153,6 +157,17 @@ export function GameManager({
       if (timer) window.clearTimeout(timer)
     }
   }, [settings, applesEaten, paused])
+
+  // Redraw when theme attributes change (so paused frames still update colors)
+  useEffect(() => {
+    const el = document.documentElement
+    const obs = new MutationObserver(() => {
+      const snap = engineRef.current?.snapshot()
+      if (snap) rendererRef.current?.draw(snap)
+    })
+    obs.observe(el, { attributes: true, attributeFilter: ['data-theme', 'class'] })
+    return () => obs.disconnect()
+  }, [])
 
   // Controls
   useEffect(() => {
@@ -205,27 +220,47 @@ export function GameManager({
       canvas.removeEventListener('pointerup', onUp)
     }
     const onKey = (e: KeyboardEvent) => {
-      if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', ' '].includes(e.key)) return
+      const key = e.key
+      const isArrow =
+        key === 'ArrowUp' || key === 'ArrowDown' || key === 'ArrowLeft' || key === 'ArrowRight'
+      const isWASD =
+        key === 'w' ||
+        key === 'W' ||
+        key === 'a' ||
+        key === 'A' ||
+        key === 's' ||
+        key === 'S' ||
+        key === 'd' ||
+        key === 'D'
+      const isSpace = key === ' '
+      if (!(isArrow || isWASD || isSpace)) return
+      // Allow Space to toggle pause even if not captured; arrows/WASD require capture
+      if (!capturedRef.current && !isSpace) return
       e.preventDefault()
       const eng = engineRef.current!
-      if (e.key === ' ') {
-        // restart if dead, else toggle pause
+      if (isSpace) {
         if (!alive) doRestart()
         else setPaused((p) => !p)
         return
       }
       if (paused) return
       if (acceptedTurnRef.current) return
-      if (e.key === 'ArrowUp') eng.setDirection({ x: 0, y: -1 })
-      if (e.key === 'ArrowDown') eng.setDirection({ x: 0, y: 1 })
-      if (e.key === 'ArrowLeft') eng.setDirection({ x: -1, y: 0 })
-      if (e.key === 'ArrowRight') eng.setDirection({ x: 1, y: 0 })
+      if (key === 'ArrowUp' || key === 'w' || key === 'W') eng.setDirection({ x: 0, y: -1 })
+      if (key === 'ArrowDown' || key === 's' || key === 'S') eng.setDirection({ x: 0, y: 1 })
+      if (key === 'ArrowLeft' || key === 'a' || key === 'A') eng.setDirection({ x: -1, y: 0 })
+      if (key === 'ArrowRight' || key === 'd' || key === 'D') eng.setDirection({ x: 1, y: 0 })
       acceptedTurnRef.current = true
       if (mode === 'versus' && netRef.current) {
-        netRef.current.send({
-          type: 'input',
-          key: e.key as 'ArrowUp' | 'ArrowDown' | 'ArrowLeft' | 'ArrowRight',
-        })
+        const k = key
+        const norm: 'ArrowUp' | 'ArrowDown' | 'ArrowLeft' | 'ArrowRight' =
+          k === 'ArrowUp' || k === 'w' || k === 'W'
+            ? 'ArrowUp'
+            : k === 'ArrowDown' || k === 's' || k === 'S'
+              ? 'ArrowDown'
+              : k === 'ArrowLeft' || k === 'a' || k === 'A'
+                ? 'ArrowLeft'
+                : 'ArrowRight'
+        netRef.current.send({ type: 'input', key: norm })
       }
     }
     window.addEventListener('keydown', onKey)
@@ -292,18 +327,7 @@ export function GameManager({
           </button>
         ))}
 
-        <div className="muted group-label">Canvas</div>
-        {(['small', 'medium', 'large'] as const).map((c) => (
-          <button
-            key={c}
-            className="btn"
-            aria-pressed={settings.canvasSize === c}
-            onClick={() => setSettings({ ...settings, canvasSize: c })}
-            data-active={settings.canvasSize === c || undefined}
-          >
-            {c}
-          </button>
-        ))}
+        {/* Canvas size fixed to medium for now */}
 
         <div className="muted group-label">Apples</div>
         {[1, 2, 3, 4].map((n) => (
@@ -344,9 +368,7 @@ export function GameManager({
           Restart
         </button>
 
-        <button className="btn" onClick={() => setShowTouch((v) => !v)} aria-pressed={showTouch}>
-          D-pad
-        </button>
+        {/* D-pad removed in favor of joystick */}
         <button
           className="btn"
           onClick={() => setShowJoystick((v) => !v)}
@@ -379,53 +401,23 @@ export function GameManager({
       {/* Canvases */}
       <div ref={wrapRef} className="snake-grid" data-versus={mode === 'versus' || undefined}>
         <div className="snake-canvas-wrap">
-          <canvas ref={canvasRef} tabIndex={0} className="snake-canvas" />
-          {showTouch && (
-            <div className="snake-touch">
-              <button
-                aria-label="Up"
-                onClick={() => {
-                  if (paused || acceptedTurnRef.current) return
-                  engineRef.current?.setDirection({ x: 0, y: -1 })
-                  acceptedTurnRef.current = true
-                }}
-              >
-                ▲
-              </button>
-              <div className="row">
-                <button
-                  aria-label="Left"
-                  onClick={() => {
-                    if (paused || acceptedTurnRef.current) return
-                    engineRef.current?.setDirection({ x: -1, y: 0 })
-                    acceptedTurnRef.current = true
-                  }}
-                >
-                  ◀
-                </button>
-                <button
-                  aria-label="Down"
-                  onClick={() => {
-                    if (paused || acceptedTurnRef.current) return
-                    engineRef.current?.setDirection({ x: 0, y: 1 })
-                    acceptedTurnRef.current = true
-                  }}
-                >
-                  ▼
-                </button>
-                <button
-                  aria-label="Right"
-                  onClick={() => {
-                    if (paused || acceptedTurnRef.current) return
-                    engineRef.current?.setDirection({ x: 1, y: 0 })
-                    acceptedTurnRef.current = true
-                  }}
-                >
-                  ▶
-                </button>
-              </div>
-            </div>
-          )}
+          <canvas
+            ref={canvasRef}
+            tabIndex={0}
+            className="snake-canvas"
+            onFocus={() => {
+              capturedRef.current = true
+              onControlChange?.(true)
+            }}
+            onBlur={() => {
+              capturedRef.current = false
+              onControlChange?.(false)
+            }}
+            onPointerDown={() => {
+              // focus on first interaction, capture controls
+              canvasRef.current?.focus()
+            }}
+          />
           {showJoystick && (
             <Joystick
               paused={paused}

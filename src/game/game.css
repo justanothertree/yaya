@@ -46,6 +46,7 @@
   border: 2px solid var(--border);
   border-radius: 8px;
   outline: none;
+  touch-action: none;
 }
 .snake-canvas:focus-visible {
   border-color: var(--accent);
@@ -66,6 +67,7 @@
 /* Touch controls overlay */
 .snake-canvas-wrap {
   position: relative;
+  overscroll-behavior: contain;
 }
 .snake-joystick {
   position: absolute;
@@ -76,6 +78,7 @@
   border-radius: 50%;
   border: 1px solid var(--border);
   background: color-mix(in oklab, var(--bg), transparent 15%);
+  touch-action: none;
 }
 .snake-joystick .ring {
   position: absolute;
