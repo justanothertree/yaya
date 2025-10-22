@@ -210,7 +210,6 @@ export function GameManager({
     const onDown = (e: PointerEvent) => {
       // prevent site-level swipe/scroll gestures while interacting with the game
       e.preventDefault()
-      e.stopPropagation()
       tracking = true
       ox = e.clientX
       oy = e.clientY
@@ -224,7 +223,6 @@ export function GameManager({
     const onMove = (e: PointerEvent) => {
       // prevent site-level swipe/scroll gestures while interacting with the game
       e.preventDefault()
-      e.stopPropagation()
       if (!tracking || paused || acceptedTurnRef.current) return
       const dx = e.clientX - ox
       const dy = e.clientY - oy
@@ -520,8 +518,14 @@ export function GameManager({
 
       <div className="snake-hud">
         <div className="muted">Score: {score}</div>
-        {paused && <div className="muted">Paused</div>}
-        {!alive && <div className="muted">Press Space to restart</div>}
+        <div className="muted hud-paused" aria-live="polite">
+          {paused ? 'Paused' : ''}
+        </div>
+        {!alive && (
+          <div className="muted" aria-live="polite">
+            Press Space to restart
+          </div>
+        )}
       </div>
 
       {/* Leaderboard */}
