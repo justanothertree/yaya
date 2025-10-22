@@ -3,9 +3,11 @@ import { useRef } from 'react'
 export function Joystick({
   paused,
   onDirection,
+  onActivate,
 }: {
   paused: boolean
   onDirection: (x: -1 | 0 | 1, y: -1 | 0 | 1) => void
+  onActivate?: () => void
 }) {
   const originRef = useRef<{ x: number; y: number } | null>(null)
   const activeRef = useRef(false)
@@ -14,6 +16,7 @@ export function Joystick({
     <div
       className="snake-joystick"
       onPointerDown={(e) => {
+        onActivate?.()
         const el = e.currentTarget
         el.setPointerCapture(e.pointerId)
         originRef.current = { x: e.clientX, y: e.clientY }

@@ -48,6 +48,7 @@
   outline: none;
   touch-action: none;
 }
+.snake-canvas:focus,
 .snake-canvas:focus-visible {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent), transparent 70%);
@@ -69,6 +70,14 @@
   position: relative;
   overscroll-behavior: contain;
 }
+.snake-fab {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 2;
+  padding: 4px 10px;
+  opacity: 0.9;
+}
 .snake-joystick {
   position: absolute;
   left: 8px;
@@ -79,6 +88,7 @@
   border: 1px solid var(--border);
   background: color-mix(in oklab, var(--bg), transparent 15%);
   touch-action: none;
+  z-index: 2;
 }
 .snake-joystick .ring {
   position: absolute;
@@ -97,6 +107,26 @@
   border-radius: 50%;
   background: var(--control-bg);
   border: 1px solid var(--border);
+}
+.snake-hint {
+  position: absolute;
+  left: 50%;
+  bottom: 8px;
+  transform: translateX(-50%);
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  line-height: 1;
+  background: color-mix(in oklab, var(--bg), transparent 10%);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  opacity: 0;
+  transition: opacity 250ms ease;
+  pointer-events: none;
+  z-index: 3;
+}
+.snake-hint[data-show] {
+  opacity: 1;
 }
 .snake-touch {
   position: absolute;

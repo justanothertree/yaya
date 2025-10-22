@@ -24,8 +24,9 @@ function speedFor(score: number) {
   return Math.max(MIN_SPEED, target)
 }
 
-function scoreFormula(apples: number, ms: number, settings: Settings) {
-  const base = apples * 10 + Math.floor(ms / 1000) // +1 / sec
+function scoreFormula(apples: number, _ms: number, settings: Settings) {
+  // Prevent AFK scoring: score only from apples eaten (with slight modifiers)
+  const base = apples * 10
   const applesBonus = settings.apples >= 3 ? 1.2 : 1
   const edgePenalty = settings.passThroughEdges ? 0.9 : 1
   return Math.round(base * applesBonus * edgePenalty)
@@ -64,6 +65,8 @@ export function GameManager({
   const wsUrl = (import.meta as unknown as { env?: Record<string, string> }).env?.VITE_WS_URL
   const [showJoystick, setShowJoystick] = useState(false)
   const capturedRef = useRef(false)
+  const [hintVisible, setHintVisible] = useState(false)
+  const hintTimerRef = useRef<number | null>(null)
 
   // Canvas refs and renderers
   const wrapRef = useRef<HTMLDivElement>(null)
@@ -113,6 +116,17 @@ export function GameManager({
     }
     return
   }, [autoFocus, onControlChange])
+
+  // Default to showing joystick on coarse pointers (mobile/tablet)
+  useEffect(() => {
+    try {
+      if (window.matchMedia && window.matchMedia('(pointer: coarse)').matches) {
+        setShowJoystick(true)
+      }
+    } catch {
+      /* noop */
+    }
+  }, [])
 
   // Persist settings
   useEffect(() => {
@@ -211,16 +225,19 @@ export function GameManager({
         /* noop */
       }
     }
-    canvas.addEventListener('pointerdown', onDown)
-    canvas.addEventListener('pointermove', onMove)
-    canvas.addEventListener('pointerup', onUp)
-    return () => {
-      canvas.removeEventListener('pointerdown', onDown)
-      canvas.removeEventListener('pointermove', onMove)
-      canvas.removeEventListener('pointerup', onUp)
-    }
+
     const onKey = (e: KeyboardEvent) => {
       const key = e.key
+      // Esc releases capture (blur canvas) so site navigation keys work again
+      if (key === 'Escape') {
+        if (capturedRef.current) {
+          e.preventDefault()
+          canvasRef.current?.blur()
+          capturedRef.current = false
+          onControlChange?.(false)
+        }
+        return
+      }
       const isArrow =
         key === 'ArrowUp' || key === 'ArrowDown' || key === 'ArrowLeft' || key === 'ArrowRight'
       const isWASD =
@@ -234,8 +251,8 @@ export function GameManager({
         key === 'D'
       const isSpace = key === ' '
       if (!(isArrow || isWASD || isSpace)) return
-      // Allow Space to toggle pause even if not captured; arrows/WASD require capture
-      if (!capturedRef.current && !isSpace) return
+      // Only handle keys when game has focus/captured
+      if (!capturedRef.current) return
       e.preventDefault()
       const eng = engineRef.current!
       if (isSpace) {
@@ -263,9 +280,17 @@ export function GameManager({
         netRef.current.send({ type: 'input', key: norm })
       }
     }
+    canvas.addEventListener('pointerdown', onDown)
+    canvas.addEventListener('pointermove', onMove)
+    canvas.addEventListener('pointerup', onUp)
     window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [alive, mode, paused])
+    return () => {
+      canvas.removeEventListener('pointerdown', onDown)
+      canvas.removeEventListener('pointermove', onMove)
+      canvas.removeEventListener('pointerup', onUp)
+      window.removeEventListener('keydown', onKey)
+    }
+  }, [alive, mode, paused, onControlChange])
 
   // Leaderboard
   useEffect(() => {
@@ -401,6 +426,22 @@ export function GameManager({
       {/* Canvases */}
       <div ref={wrapRef} className="snake-grid" data-versus={mode === 'versus' || undefined}>
         <div className="snake-canvas-wrap">
+          <button
+            className="btn snake-fab"
+            onClick={() => {
+              setPaused((p) => !p)
+              // bring focus to canvas when resuming and capture controls
+              if (paused) {
+                canvasRef.current?.focus()
+                capturedRef.current = true
+                onControlChange?.(true)
+              }
+            }}
+            aria-pressed={!paused}
+            title={paused ? 'Resume' : 'Pause'}
+          >
+            {paused ? 'Resume' : 'Pause'}
+          </button>
           <canvas
             ref={canvasRef}
             tabIndex={0}
@@ -408,6 +449,10 @@ export function GameManager({
             onFocus={() => {
               capturedRef.current = true
               onControlChange?.(true)
+              // show hint chip briefly
+              if (hintTimerRef.current) window.clearTimeout(hintTimerRef.current)
+              setHintVisible(true)
+              hintTimerRef.current = window.setTimeout(() => setHintVisible(false), 2000)
             }}
             onBlur={() => {
               capturedRef.current = false
@@ -418,6 +463,9 @@ export function GameManager({
               canvasRef.current?.focus()
             }}
           />
+          <div className="snake-hint" aria-live="polite" data-show={hintVisible || undefined}>
+            Game controls active — Esc to release
+          </div>
           {showJoystick && (
             <Joystick
               paused={paused}
@@ -425,6 +473,14 @@ export function GameManager({
                 if (acceptedTurnRef.current) return
                 engineRef.current?.setDirection({ x, y })
                 acceptedTurnRef.current = true
+              }}
+              onActivate={() => {
+                canvasRef.current?.focus()
+                capturedRef.current = true
+                onControlChange?.(true)
+                if (hintTimerRef.current) window.clearTimeout(hintTimerRef.current)
+                setHintVisible(true)
+                hintTimerRef.current = window.setTimeout(() => setHintVisible(false), 2000)
               }}
             />
           )}
