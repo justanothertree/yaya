@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import './game.css'
 import { GameEngine } from './engine'
 import { GameRenderer } from './renderer'
 import { NetClient } from './net'
@@ -29,6 +30,8 @@ function scoreFormula(apples: number, ms: number, settings: Settings) {
   return Math.round(base * applesBonus * edgePenalty)
 }
 
+const LS_SETTINGS_KEY = 'snake.settings.v1'
+
 export function GameManager({
   autoFocus,
   onControlChange,
@@ -37,9 +40,18 @@ export function GameManager({
   onControlChange?: (v: boolean) => void
 }) {
   const [mode, setMode] = useState<Mode>('solo')
-  const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS)
+  const [settings, setSettings] = useState<Settings>(() => {
+    try {
+      const raw = localStorage.getItem(LS_SETTINGS_KEY)
+      if (raw) return { ...DEFAULT_SETTINGS, ...(JSON.parse(raw) as Partial<Settings>) }
+    } catch {
+      // ignore
+    }
+    return DEFAULT_SETTINGS
+  })
   const [engineSeed, setEngineSeed] = useState<number>(() => Math.floor(Math.random() * 1e9))
   const [alive, setAlive] = useState(true)
+  const [paused, setPaused] = useState(false)
   const [score, setScore] = useState(0)
   const [applesEaten, setApplesEaten] = useState(0)
   const startRef = useRef<number | null>(null)
@@ -49,6 +61,7 @@ export function GameManager({
   const [room, setRoom] = useState('room-1')
   const [opponentScore, setOpponentScore] = useState(0)
   const wsUrl = (import.meta as unknown as { env?: Record<string, string> }).env?.VITE_WS_URL
+  const [showTouch, setShowTouch] = useState(false)
 
   // Canvas refs and renderers
   const wrapRef = useRef<HTMLDivElement>(null)
@@ -94,6 +107,15 @@ export function GameManager({
     return
   }, [autoFocus, onControlChange])
 
+  // Persist settings
+  useEffect(() => {
+    try {
+      localStorage.setItem(LS_SETTINGS_KEY, JSON.stringify(settings))
+    } catch {
+      // ignore
+    }
+  }, [settings])
+
   // Game loop
   useEffect(() => {
     let timer: number | null = null
@@ -108,7 +130,7 @@ export function GameManager({
           setAlive(false)
         }
       }
-      if (state.alive) {
+      if (state.alive && !paused) {
         const since = startRef.current ? performance.now() - startRef.current : 0
         setScore(
           scoreFormula(
@@ -127,11 +149,11 @@ export function GameManager({
       }
     }
     // kick off
-    timer = window.setTimeout(loop, 0)
+    if (!paused) timer = window.setTimeout(loop, 0)
     return () => {
       if (timer) window.clearTimeout(timer)
     }
-  }, [settings, applesEaten])
+  }, [settings, applesEaten, paused])
 
   // Controls
   useEffect(() => {
@@ -185,6 +207,7 @@ export function GameManager({
 
   const doRestart = () => {
     setEngineSeed(Math.floor(Math.random() * 1e9))
+    setPaused(false)
   }
 
   const onSaveScore = async () => {
@@ -204,7 +227,7 @@ export function GameManager({
   return (
     <div>
       {/* Settings & Mode */}
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+      <div className="snake-toolbar">
         <div className="muted">Mode:</div>
         {(['solo', 'versus'] as Mode[]).map((m) => (
           <button
@@ -212,85 +235,66 @@ export function GameManager({
             className="btn"
             aria-pressed={mode === m}
             onClick={() => setMode(m)}
-            style={{
-              opacity: mode === m ? 1 : 0.7,
-              background: mode === m ? 'var(--accent)' : 'var(--control-bg)',
-              color: mode === m ? 'var(--btn-text)' : 'var(--text)',
-              border: '1px solid var(--border)',
-            }}
+            data-active={mode === m || undefined}
           >
             {m}
           </button>
         ))}
 
-        <div className="muted" style={{ marginLeft: 8 }}>
-          Canvas
-        </div>
+        <div className="muted group-label">Canvas</div>
         {(['small', 'medium', 'large'] as const).map((c) => (
           <button
             key={c}
             className="btn"
             aria-pressed={settings.canvasSize === c}
             onClick={() => setSettings({ ...settings, canvasSize: c })}
-            style={{
-              opacity: settings.canvasSize === c ? 1 : 0.7,
-              background: settings.canvasSize === c ? 'var(--accent)' : 'var(--control-bg)',
-              color: settings.canvasSize === c ? 'var(--btn-text)' : 'var(--text)',
-              border: '1px solid var(--border)',
-            }}
+            data-active={settings.canvasSize === c || undefined}
           >
             {c}
           </button>
         ))}
 
-        <div className="muted" style={{ marginLeft: 8 }}>
-          Apples
-        </div>
+        <div className="muted group-label">Apples</div>
         {[1, 2, 3, 4].map((n) => (
           <button
             key={n}
             className="btn"
             aria-pressed={settings.apples === n}
             onClick={() => setSettings({ ...settings, apples: n })}
-            style={{
-              opacity: settings.apples === n ? 1 : 0.7,
-              background: settings.apples === n ? 'var(--accent)' : 'var(--control-bg)',
-              color: settings.apples === n ? 'var(--btn-text)' : 'var(--text)',
-              border: '1px solid var(--border)',
-            }}
+            data-active={settings.apples === n || undefined}
           >
             {n}
           </button>
         ))}
 
-        <div className="muted" style={{ marginLeft: 8 }}>
-          Edges
-        </div>
+        <div className="muted group-label">Edges</div>
         {['wrap', 'walls'].map((lab) => (
           <button
             key={lab}
             className="btn"
             aria-pressed={(settings.passThroughEdges ? 'wrap' : 'walls') === lab}
             onClick={() => setSettings({ ...settings, passThroughEdges: lab === 'wrap' })}
-            style={{
-              opacity: (settings.passThroughEdges ? 'wrap' : 'walls') === lab ? 1 : 0.7,
-              background:
-                (settings.passThroughEdges ? 'wrap' : 'walls') === lab
-                  ? 'var(--accent)'
-                  : 'var(--control-bg)',
-              color:
-                (settings.passThroughEdges ? 'wrap' : 'walls') === lab
-                  ? 'var(--btn-text)'
-                  : 'var(--text)',
-              border: '1px solid var(--border)',
-            }}
+            data-active={(settings.passThroughEdges ? 'wrap' : 'walls') === lab || undefined}
           >
             {lab}
           </button>
         ))}
 
-        <button className="btn" onClick={doRestart} style={{ marginLeft: 8 }}>
+        <button
+          className="btn"
+          onClick={() => setPaused((p) => !p)}
+          aria-pressed={paused}
+          title={paused ? 'Resume' : 'Pause'}
+        >
+          {paused ? 'Resume' : 'Pause'}
+        </button>
+
+        <button className="btn" onClick={doRestart}>
           Restart
+        </button>
+
+        <button className="btn" onClick={() => setShowTouch((v) => !v)} aria-pressed={showTouch}>
+          Touch controls
         </button>
 
         {mode === 'versus' && wsUrl && (
@@ -315,35 +319,48 @@ export function GameManager({
       </div>
 
       {/* Canvases */}
-      <div
-        ref={wrapRef}
-        style={{
-          display: 'grid',
-          gridTemplateColumns: mode === 'versus' ? '2fr 1fr' : '1fr',
-          gap: 12,
-          alignItems: 'start',
-        }}
-      >
-        <canvas
-          ref={canvasRef}
-          tabIndex={0}
-          style={{ marginTop: '1rem', border: '2px solid var(--border)', borderRadius: 8 }}
-        />
+      <div ref={wrapRef} className="snake-grid" data-versus={mode === 'versus' || undefined}>
+        <div className="snake-canvas-wrap">
+          <canvas ref={canvasRef} tabIndex={0} className="snake-canvas" />
+          {showTouch && (
+            <div className="snake-touch">
+              <button
+                aria-label="Up"
+                onClick={() => engineRef.current?.setDirection({ x: 0, y: -1 })}
+              >
+                ▲
+              </button>
+              <div className="row">
+                <button
+                  aria-label="Left"
+                  onClick={() => engineRef.current?.setDirection({ x: -1, y: 0 })}
+                >
+                  ◀
+                </button>
+                <button
+                  aria-label="Down"
+                  onClick={() => engineRef.current?.setDirection({ x: 0, y: 1 })}
+                >
+                  ▼
+                </button>
+                <button
+                  aria-label="Right"
+                  onClick={() => engineRef.current?.setDirection({ x: 1, y: 0 })}
+                >
+                  ▶
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
         {mode === 'versus' && (
-          <canvas
-            ref={oppCanvasRef}
-            style={{
-              marginTop: '1rem',
-              border: '1px dashed var(--border)',
-              borderRadius: 8,
-              opacity: 0.8,
-            }}
-          />
+          <canvas ref={oppCanvasRef} className="snake-canvas snake-canvas--opp" />
         )}
       </div>
 
-      <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginTop: 8 }}>
+      <div className="snake-hud">
         <div className="muted">Score: {score}</div>
+        {paused && <div className="muted">Paused</div>}
         {!alive && <div className="muted">Press Space to restart</div>}
       </div>
 

@@ -1,0 +1,86 @@
+.snake-toolbar {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.snake-toolbar .group-label {
+  margin-left: 8px;
+}
+.snake-toolbar .btn[data-active] {
+  opacity: 1;
+  background: var(--accent);
+  color: var(--btn-text);
+  border: 1px solid var(--border);
+}
+.snake-toolbar .btn:not([data-active]) {
+  opacity: 0.7;
+  background: var(--control-bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+
+.snake-grid {
+  display: grid;
+  gap: 12px;
+  align-items: start;
+}
+.snake-grid[data-versus] {
+  grid-template-columns: 2fr 1fr;
+}
+.snake-grid:not([data-versus]) {
+  grid-template-columns: 1fr;
+}
+
+.snake-canvas {
+  margin-top: 1rem;
+  border: 2px solid var(--border);
+  border-radius: 8px;
+  outline: none;
+}
+.snake-canvas--opp {
+  border-style: dashed;
+  opacity: 0.8;
+}
+
+.snake-hud {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  margin-top: 8px;
+}
+
+/* Touch controls overlay */
+.snake-canvas-wrap {
+  position: relative;
+}
+.snake-touch {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  display: grid;
+  gap: 4px;
+  padding: 6px;
+  background: color-mix(in oklab, var(--bg), transparent 20%);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.snake-touch .row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+}
+.snake-touch button {
+  width: 36px;
+  height: 36px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--control-bg);
+  color: var(--text);
+}
+
+@media (max-width: 640px) {
+  .snake-grid[data-versus] {
+    grid-template-columns: 1fr;
+  }
+}
