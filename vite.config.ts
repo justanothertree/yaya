@@ -6,4 +6,9 @@ export default defineConfig({
   plugins: [react()],
   // Custom domain deploy uses root path
   base: '/',
+  define: {
+    'import.meta.env.VITE_APP_VERSION': JSON.stringify(
+      process.env.GITHUB_SHA?.slice(0, 7) || process.env.npm_package_version || '',
+    ),
+  },
 })

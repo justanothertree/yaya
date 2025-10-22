@@ -29,9 +29,30 @@ export function ContactForm() {
         body: data,
         headers: { Accept: 'application/json' },
       })
-      if (res.ok) setStatus('sent')
-      else setStatus('error')
-      e.currentTarget.reset()
+      const ct = res.headers.get('content-type') || ''
+      let ok = res.ok
+      // Formspree returns JSON like { ok: true } when Accept: application/json
+      if (!ok && ct.includes('application/json')) {
+        try {
+          const json = await res.json()
+          ok = Boolean(json && (json.ok === true || json.success === true))
+        } catch {
+          // ignore JSON parse errors and fall back to status
+        }
+      }
+      // Treat common success statuses as success
+      if (
+        !ok &&
+        (res.status === 200 || res.status === 201 || res.status === 202 || res.status === 204)
+      ) {
+        ok = true
+      }
+      if (ok) {
+        setStatus('sent')
+        e.currentTarget.reset()
+      } else {
+        setStatus('error')
+      }
     } catch {
       setStatus('error')
     }

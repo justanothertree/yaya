@@ -35,61 +35,63 @@ A minimal personal site with a Resume section, a playable Snake game, and a simp
 
 ## Features
 
+# Portfolio: React + TypeScript + Vite
+
+[![Deploy](https://github.com/justanothertree/yaya/actions/workflows/deploy.yml/badge.svg)](https://github.com/justanothertree/yaya/actions/workflows/deploy.yml)
+[![Lint](https://github.com/justanothertree/yaya/actions/workflows/lint.yml/badge.svg)](https://github.com/justanothertree/yaya/actions/workflows/lint.yml)
+
+A minimal personal site with a Resume section, a playable Snake game, and a Contact form.
+
+## Features
+
+- Hash-based navigation with keyboard shortcuts (1–5) and swipe
 - Resume (`src/sections/Resume.tsx`)
-- Snake game (`src/sections/SnakeGame.tsx`)
-- Contact form (`src/sections/ContactForm.tsx`) — replace the Formspree endpoint with your own ID
-- Sticky top navigation with hash-based deep links (supports back/forward)
+- Projects (`src/sections/Projects.tsx` with `projects.json`)
+- Snake game (`src/sections/SnakeGame.tsx`) with touch D‑pad, swipe, keyboard, fullscreen, and a local leaderboard
+- Contact form (`src/sections/ContactForm.tsx`) wired to Formspree
+- Accessible: skip links, live region announcements, reduced‑motion support
 
 ## Run locally (Windows PowerShell)
 
 ```powershell
 npm ci
 npm run dev
-````
+```
 
-Open the printed Local URL. For a production-like server:
+Production preview:
 
 ```powershell
 npm run build
 npm run preview
 ```
 
-## Lint
+Lint and typecheck:
 
 ```powershell
 npm run lint
+npm run typecheck
 ```
 
-## Deploy to GitHub Pages
+## Deploy
 
-1. Push this repo to GitHub with default branch `main`.
-2. In GitHub: Settings → Pages → Source = GitHub Actions.
-3. The workflow `.github/workflows/deploy.yml` builds and deploys `dist/` on push to `main`.
-4. Project URL (custom domain): https://evancook.dev/
-5. Base path is `/` in `vite.config.ts` for root domain deploys.
+- CI deploys to GitHub Pages on push to `main` via `.github/workflows/deploy.yml`.
+- Custom domain is configured with `public/CNAME` and `vite.config.ts` has `base: '/'`.
+- If deploying to a project page (e.g., `/yaya/`), set `base: '/yaya/'` and adjust links.
 
 ## Customize
 
-- Change the brand text in the top nav inside `src/App.tsx`.
-- Edit resume content in `src/sections/Resume.tsx`.
-- Tweak styling in `src/index.css`.
+- Brand text: `src/App.tsx`
+- Resume content: `src/sections/Resume.tsx`
+- Projects list: `src/sections/projects.json`
+- Contact endpoint: `src/sections/ContactForm.tsx` (Formspree ID)
+- Styling and themes: `src/index.css`
 
-## Snake extras
+## Notes
 
-- Fullscreen toggle for more reliable controls (Escape exits fullscreen).
-- Local leaderboard (top 10). On game over, enter a name to save; clears via “Clear leaderboard”.
-- D‑pad on touch, swipe gestures, and keyboard arrows. Focus the canvas to take control.
+- Open Graph image lives in `public/` and is referenced from `index.html`.
+- The footer can show a build label; it’s injected via `VITE_APP_VERSION` from the CI SHA or `package.json` version.
 
-## Social preview
+## License
 
-- Provide `public/og-image.png` (1200×630 PNG) to enable rich previews via Open Graph meta tags.
-
-## Repository hygiene
-
-- MIT License included (`LICENSE`).
-- EditorConfig for consistent formatting (`.editorconfig`).
-- CI: Lint workflow (`.github/workflows/lint.yml`).
-
-```
-
-```
+MIT
+````

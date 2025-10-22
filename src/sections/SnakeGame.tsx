@@ -148,9 +148,11 @@ export function SnakeGame({
         }
       }
       const head = { x: nx, y: ny }
+      const willGrow = head.x === food.x && head.y === food.y
 
-      // self hit => game over
-      if (snake.some((s) => s.x === head.x && s.y === head.y)) {
+      // self hit => game over (exclude tail when not growing, since it moves away this tick)
+      const bodyToCheck = willGrow ? snake : snake.slice(0, -1)
+      if (bodyToCheck.some((s) => s.x === head.x && s.y === head.y)) {
         handleGameOver()
         return
       }
@@ -161,7 +163,7 @@ export function SnakeGame({
       }
 
       snake.unshift(head)
-      if (head.x === food.x && head.y === food.y) {
+      if (willGrow) {
         setScore((s: number) => {
           const next = s + 1
           scoreRef.current = next

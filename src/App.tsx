@@ -441,7 +441,7 @@ export default function App() {
             const idx = order.indexOf(active)
             if (idx < order.length - 1) setActive(order[idx + 1])
           }}
-          disabled={false}
+          disabled={active === 'contact'}
         >
           ▶
         </button>
