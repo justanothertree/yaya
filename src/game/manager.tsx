@@ -33,6 +33,7 @@ function scoreFormula(apples: number, _ms: number, settings: Settings) {
 }
 
 const LS_SETTINGS_KEY = 'snake.settings.v1'
+const LS_PERSIST_KEY = 'snake.persist.v1'
 
 export function GameManager({
   autoFocus,
@@ -69,6 +70,7 @@ export function GameManager({
   const hintTimerRef = useRef<number | null>(null)
   const userInitiatedFocusRef = useRef(false)
   const isCoarseRef = useRef(false)
+  const [immersive, setImmersive] = useState(false)
 
   // Canvas refs and renderers
   const wrapRef = useRef<HTMLDivElement>(null)
@@ -95,6 +97,30 @@ export function GameManager({
     rendererRef.current = renderer
     renderer.resize(wrap, settings.canvasSize)
     renderer.draw(engine.snapshot())
+    // Attempt to restore a persisted paused state
+    try {
+      const raw = localStorage.getItem(LS_PERSIST_KEY)
+      if (raw) {
+        const saved = JSON.parse(raw) as {
+          settings: Settings
+          snapshot: ReturnType<GameEngine['snapshot']>
+          applesEaten: number
+          score: number
+        }
+        // Only restore if grid matches current settings to avoid scale mismatch
+        if (saved.settings?.grid === settings.grid) {
+          engineRef.current.loadSnapshot(saved.snapshot)
+          const snap = engineRef.current.snapshot()
+          rendererRef.current.draw(snap)
+          setAlive(snap.alive)
+          setApplesEaten(Math.max(0, saved.applesEaten || 0))
+          setScore(Math.max(0, saved.score || 0))
+          setPaused(true)
+        }
+      }
+    } catch {
+      /* ignore */
+    }
     const rect = wrap.getBoundingClientRect()
     lastWrapSizeRef.current = { w: Math.round(rect.width), h: Math.round(rect.height) }
     startRef.current = null
@@ -113,10 +139,57 @@ export function GameManager({
         lastWrapSizeRef.current = { w, h }
       }
     }
+    const onFsChange = () => {
+      const fs = Boolean(document.fullscreenElement)
+      setImmersive(fs)
+    }
     window.addEventListener('resize', onResize)
+    document.addEventListener('fullscreenchange', onFsChange)
     return () => window.removeEventListener('resize', onResize)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settings.grid, settings.apples, settings.passThroughEdges, settings.canvasSize, engineSeed])
+  // Persist paused state when navigating away or unmounting
+  useEffect(() => {
+    const saveIfPaused = () => {
+      if (!paused) return
+      const snap = engineRef.current?.snapshot()
+      if (!snap) return
+      try {
+        localStorage.setItem(
+          LS_PERSIST_KEY,
+          JSON.stringify({ settings, snapshot: snap, applesEaten, score }),
+        )
+      } catch {
+        /* ignore */
+      }
+    }
+    const onVis = () => {
+      if (document.visibilityState === 'hidden') saveIfPaused()
+    }
+    window.addEventListener('pagehide', saveIfPaused)
+    document.addEventListener('visibilitychange', onVis)
+    return () => {
+      saveIfPaused()
+      window.removeEventListener('pagehide', saveIfPaused)
+      document.removeEventListener('visibilitychange', onVis)
+    }
+  }, [paused, settings, applesEaten, score])
+
+  const enterFullscreen = () => {
+    const el = wrapRef.current
+    if (!el) return
+    if (document.fullscreenEnabled && el.requestFullscreen) {
+      el.requestFullscreen().catch(() => setImmersive(true))
+    } else {
+      setImmersive(true)
+    }
+  }
+  const exitFullscreen = () => {
+    if (document.fullscreenElement) {
+      document.exitFullscreen().catch(() => setImmersive(false))
+    }
+    setImmersive(false)
+  }
 
   // Focus canvas on mount when requested; inform parent that controls are captured
   useEffect(() => {
@@ -444,7 +517,12 @@ export function GameManager({
       </div>
 
       {/* Canvases */}
-      <div ref={wrapRef} className="snake-grid" data-versus={mode === 'versus' || undefined}>
+      <div
+        ref={wrapRef}
+        className="snake-grid"
+        data-versus={mode === 'versus' || undefined}
+        data-immersive={immersive || undefined}
+      >
         <div className="snake-canvas-wrap">
           <button
             className="btn snake-fab"
@@ -462,6 +540,24 @@ export function GameManager({
           >
             {paused ? 'Resume' : 'Pause'}
           </button>
+          {isCoarseRef.current && !immersive && (
+            <button
+              className="btn snake-fab snake-fab--left btn--stable"
+              onClick={enterFullscreen}
+              title="Fullscreen"
+            >
+              Fullscreen
+            </button>
+          )}
+          {immersive && (
+            <button
+              className="btn snake-fab snake-fab--left btn--stable"
+              onClick={exitFullscreen}
+              title="Exit fullscreen"
+            >
+              Exit
+            </button>
+          )}
           <canvas
             ref={canvasRef}
             tabIndex={0}

@@ -32,6 +32,22 @@ export class GameEngine {
     }
   }
 
+  loadSnapshot(s: GameState) {
+    // Basic validation and deep copy to protect internal state
+    const clamp = (n: number) => Math.max(0, Math.min(this.grid - 1, n))
+    const snake = s.snake.map((p) => ({ x: clamp(p.x), y: clamp(p.y) }))
+    const dir = { x: Math.sign(s.dir.x) as -1 | 0 | 1, y: Math.sign(s.dir.y) as -1 | 0 | 1 }
+    const apples = s.apples.map((a) => ({ x: clamp(a.x), y: clamp(a.y) }))
+    this.state = {
+      snake,
+      dir,
+      apples,
+      alive: !!s.alive,
+      ticks: Math.max(0, Math.floor(s.ticks || 0)),
+    }
+    return this.snapshot()
+  }
+
   setDirection(next: Point) {
     const d = this.state.dir
     // Prevent immediate reversal

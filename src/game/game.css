@@ -37,6 +37,14 @@
   align-items: start;
   justify-items: center;
 }
+.snake-grid[data-immersive] {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  background: var(--bg);
+  padding: 8px;
+  overscroll-behavior: none;
+}
 .snake-grid[data-versus] {
   grid-template-columns: 2fr 1fr;
 }
@@ -83,6 +91,10 @@
   z-index: 2;
   padding: 4px 10px;
   opacity: 0.9;
+}
+.snake-fab--left {
+  left: 8px;
+  right: auto;
 }
 .snake-joystick {
   position: absolute;
