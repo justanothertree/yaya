@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import './game.css'
 import { GameEngine } from './engine'
 import { GameRenderer } from './renderer'
+import { Joystick } from './ui/Joystick'
 import { NetClient } from './net'
 import { fetchLeaderboard, submitScore } from './leaderboard'
 import type { LeaderboardEntry, Mode, Settings } from './types'
@@ -62,6 +63,7 @@ export function GameManager({
   const [opponentScore, setOpponentScore] = useState(0)
   const wsUrl = (import.meta as unknown as { env?: Record<string, string> }).env?.VITE_WS_URL
   const [showTouch, setShowTouch] = useState(false)
+  const [showJoystick, setShowJoystick] = useState(false)
 
   // Canvas refs and renderers
   const wrapRef = useRef<HTMLDivElement>(null)
@@ -154,6 +156,54 @@ export function GameManager({
 
   // Controls
   useEffect(() => {
+    // Basic swipe: track pointer movement on the focused canvas and choose cardinal based on angle
+    const canvas = canvasRef.current
+    if (!canvas) return
+    let tracking = false
+    let ox = 0
+    let oy = 0
+    const onDown = (e: PointerEvent) => {
+      tracking = true
+      ox = e.clientX
+      oy = e.clientY
+      try {
+        ;(e.target as Element).setPointerCapture(e.pointerId)
+      } catch {
+        /* noop */
+      }
+    }
+    const onMove = (e: PointerEvent) => {
+      if (!tracking || paused || acceptedTurnRef.current) return
+      const dx = e.clientX - ox
+      const dy = e.clientY - oy
+      const dead = 16
+      if (Math.hypot(dx, dy) < dead) return
+      const angle = Math.atan2(dy, dx)
+      const pi = Math.PI
+      const eng = engineRef.current!
+      if (angle > -pi * 0.25 && angle <= pi * 0.25) eng.setDirection({ x: 1, y: 0 })
+      else if (angle > pi * 0.25 && angle <= pi * 0.75) eng.setDirection({ x: 0, y: 1 })
+      else if (angle > -pi * 0.75 && angle <= -pi * 0.25) eng.setDirection({ x: 0, y: -1 })
+      else eng.setDirection({ x: -1, y: 0 })
+      acceptedTurnRef.current = true
+      tracking = false
+    }
+    const onUp = (e: PointerEvent) => {
+      tracking = false
+      try {
+        ;(e.target as Element).releasePointerCapture(e.pointerId)
+      } catch {
+        /* noop */
+      }
+    }
+    canvas.addEventListener('pointerdown', onDown)
+    canvas.addEventListener('pointermove', onMove)
+    canvas.addEventListener('pointerup', onUp)
+    return () => {
+      canvas.removeEventListener('pointerdown', onDown)
+      canvas.removeEventListener('pointermove', onMove)
+      canvas.removeEventListener('pointerup', onUp)
+    }
     const onKey = (e: KeyboardEvent) => {
       if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', ' '].includes(e.key)) return
       e.preventDefault()
@@ -295,7 +345,14 @@ export function GameManager({
         </button>
 
         <button className="btn" onClick={() => setShowTouch((v) => !v)} aria-pressed={showTouch}>
-          Touch controls
+          D-pad
+        </button>
+        <button
+          className="btn"
+          onClick={() => setShowJoystick((v) => !v)}
+          aria-pressed={showJoystick}
+        >
+          Joystick
         </button>
 
         {mode === 'versus' && wsUrl && (
@@ -368,6 +425,16 @@ export function GameManager({
                 </button>
               </div>
             </div>
+          )}
+          {showJoystick && (
+            <Joystick
+              paused={paused}
+              onDirection={(x, y) => {
+                if (acceptedTurnRef.current) return
+                engineRef.current?.setDirection({ x, y })
+                acceptedTurnRef.current = true
+              }}
+            />
           )}
         </div>
         {mode === 'versus' && (

@@ -3,6 +3,14 @@
   gap: 8px;
   flex-wrap: wrap;
   align-items: center;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  padding: 6px 8px;
+  margin-bottom: 6px;
+  background: color-mix(in oklab, var(--bg), transparent 10%);
+  backdrop-filter: blur(4px);
+  border-bottom: 1px solid var(--border);
 }
 .snake-toolbar .group-label {
   margin-left: 8px;
@@ -58,6 +66,34 @@
 /* Touch controls overlay */
 .snake-canvas-wrap {
   position: relative;
+}
+.snake-joystick {
+  position: absolute;
+  left: 8px;
+  bottom: 8px;
+  width: 96px;
+  height: 96px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: color-mix(in oklab, var(--bg), transparent 15%);
+}
+.snake-joystick .ring {
+  position: absolute;
+  inset: 12px;
+  border-radius: 50%;
+  border: 1px dashed var(--border);
+}
+.snake-joystick .knob {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 28px;
+  height: 28px;
+  margin-left: -14px;
+  margin-top: -14px;
+  border-radius: 50%;
+  background: var(--control-bg);
+  border: 1px solid var(--border);
 }
 .snake-touch {
   position: absolute;
