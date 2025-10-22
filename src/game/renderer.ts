@@ -39,6 +39,8 @@ export class GameRenderer {
 
   draw(state: GameState) {
     const { ctx, cell } = this
+    // Refresh theme each frame to reflect runtime theme toggles
+    this.colors = this.readTheme()
     const size = this.grid * cell
     ctx.fillStyle = this.colors.bg
     ctx.fillRect(0, 0, size, size)

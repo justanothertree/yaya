@@ -51,7 +51,7 @@ export function GameManager({
   })
   const [engineSeed, setEngineSeed] = useState<number>(() => Math.floor(Math.random() * 1e9))
   const [alive, setAlive] = useState(true)
-  const [paused, setPaused] = useState(false)
+  const [paused, setPaused] = useState(true)
   const [score, setScore] = useState(0)
   const [applesEaten, setApplesEaten] = useState(0)
   const startRef = useRef<number | null>(null)
@@ -72,6 +72,7 @@ export function GameManager({
 
   // Engine
   const engineRef = useRef<GameEngine | null>(null)
+  const acceptedTurnRef = useRef(false)
 
   // Net client (only used in versus)
   const netRef = useRef<NetClient | null>(null)
@@ -86,7 +87,7 @@ export function GameManager({
     rendererRef.current = renderer
     renderer.resize(wrap, settings.canvasSize)
     renderer.draw(engine.snapshot())
-    startRef.current = performance.now()
+    startRef.current = null
     setAlive(true)
     setScore(0)
     setApplesEaten(0)
@@ -120,18 +121,17 @@ export function GameManager({
   useEffect(() => {
     let timer: number | null = null
     const loop = () => {
+      acceptedTurnRef.current = false
       const engine = engineRef.current!
       const { state, events } = engine.tick()
       rendererRef.current!.draw(state)
       for (const ev of events) {
-        if (ev.type === 'eat') {
-          setApplesEaten((n) => n + 1)
-        } else if (ev.type === 'die') {
-          setAlive(false)
-        }
+        if (ev.type === 'eat') setApplesEaten((n) => n + 1)
+        else if (ev.type === 'die') setAlive(false)
       }
-      if (state.alive && !paused) {
-        const since = startRef.current ? performance.now() - startRef.current : 0
+      if (state.alive) {
+        if (startRef.current == null) startRef.current = performance.now()
+        const since = performance.now() - startRef.current
         setScore(
           scoreFormula(
             applesEaten + (events.some((e) => e.type === 'eat') ? 1 : 0),
@@ -142,10 +142,7 @@ export function GameManager({
         const sp = speedFor(applesEaten)
         timer = window.setTimeout(loop, sp)
       } else {
-        // death anim
-        rendererRef.current!.animateDeath(state).then(() => {
-          setAskNameOpen(true)
-        })
+        rendererRef.current!.animateDeath(state).then(() => setAskNameOpen(true))
       }
     }
     // kick off
@@ -162,14 +159,18 @@ export function GameManager({
       e.preventDefault()
       const eng = engineRef.current!
       if (e.key === ' ') {
-        // restart if dead
+        // restart if dead, else toggle pause
         if (!alive) doRestart()
+        else setPaused((p) => !p)
         return
       }
+      if (paused) return
+      if (acceptedTurnRef.current) return
       if (e.key === 'ArrowUp') eng.setDirection({ x: 0, y: -1 })
       if (e.key === 'ArrowDown') eng.setDirection({ x: 0, y: 1 })
       if (e.key === 'ArrowLeft') eng.setDirection({ x: -1, y: 0 })
       if (e.key === 'ArrowRight') eng.setDirection({ x: 1, y: 0 })
+      acceptedTurnRef.current = true
       if (mode === 'versus' && netRef.current) {
         netRef.current.send({
           type: 'input',
@@ -179,7 +180,7 @@ export function GameManager({
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [alive, mode])
+  }, [alive, mode, paused])
 
   // Leaderboard
   useEffect(() => {
@@ -207,7 +208,7 @@ export function GameManager({
 
   const doRestart = () => {
     setEngineSeed(Math.floor(Math.random() * 1e9))
-    setPaused(false)
+    setPaused(true)
   }
 
   const onSaveScore = async () => {
@@ -326,26 +327,42 @@ export function GameManager({
             <div className="snake-touch">
               <button
                 aria-label="Up"
-                onClick={() => engineRef.current?.setDirection({ x: 0, y: -1 })}
+                onClick={() => {
+                  if (paused || acceptedTurnRef.current) return
+                  engineRef.current?.setDirection({ x: 0, y: -1 })
+                  acceptedTurnRef.current = true
+                }}
               >
                 ▲
               </button>
               <div className="row">
                 <button
                   aria-label="Left"
-                  onClick={() => engineRef.current?.setDirection({ x: -1, y: 0 })}
+                  onClick={() => {
+                    if (paused || acceptedTurnRef.current) return
+                    engineRef.current?.setDirection({ x: -1, y: 0 })
+                    acceptedTurnRef.current = true
+                  }}
                 >
                   ◀
                 </button>
                 <button
                   aria-label="Down"
-                  onClick={() => engineRef.current?.setDirection({ x: 0, y: 1 })}
+                  onClick={() => {
+                    if (paused || acceptedTurnRef.current) return
+                    engineRef.current?.setDirection({ x: 0, y: 1 })
+                    acceptedTurnRef.current = true
+                  }}
                 >
                   ▼
                 </button>
                 <button
                   aria-label="Right"
-                  onClick={() => engineRef.current?.setDirection({ x: 1, y: 0 })}
+                  onClick={() => {
+                    if (paused || acceptedTurnRef.current) return
+                    engineRef.current?.setDirection({ x: 1, y: 0 })
+                    acceptedTurnRef.current = true
+                  }}
                 >
                   ▶
                 </button>

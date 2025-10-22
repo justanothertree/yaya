@@ -24,6 +24,7 @@
   display: grid;
   gap: 12px;
   align-items: start;
+  justify-items: center;
 }
 .snake-grid[data-versus] {
   grid-template-columns: 2fr 1fr;
@@ -37,6 +38,10 @@
   border: 2px solid var(--border);
   border-radius: 8px;
   outline: none;
+}
+.snake-canvas:focus-visible {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent), transparent 70%);
 }
 .snake-canvas--opp {
   border-style: dashed;
