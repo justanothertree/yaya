@@ -67,12 +67,15 @@ export function GameManager({
   const capturedRef = useRef(false)
   const [hintVisible, setHintVisible] = useState(false)
   const hintTimerRef = useRef<number | null>(null)
+  const userInitiatedFocusRef = useRef(false)
+  const isCoarseRef = useRef(false)
 
   // Canvas refs and renderers
   const wrapRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const oppCanvasRef = useRef<HTMLCanvasElement>(null)
   const rendererRef = useRef<GameRenderer | null>(null)
+  const lastWrapSizeRef = useRef<{ w: number; h: number } | null>(null)
   // Opponent renderer can be wired later when server mirrors full state
 
   // Engine
@@ -92,12 +95,24 @@ export function GameManager({
     rendererRef.current = renderer
     renderer.resize(wrap, settings.canvasSize)
     renderer.draw(engine.snapshot())
+    const rect = wrap.getBoundingClientRect()
+    lastWrapSizeRef.current = { w: Math.round(rect.width), h: Math.round(rect.height) }
     startRef.current = null
     setAlive(true)
     setScore(0)
     setApplesEaten(0)
 
-    const onResize = () => renderer.resize(wrap, settings.canvasSize)
+    const onResize = () => {
+      // Avoid tiny mobile UI chrome show/hide jitter causing canvas resize
+      const r = wrap.getBoundingClientRect()
+      const w = Math.round(r.width)
+      const h = Math.round(r.height)
+      const last = lastWrapSizeRef.current
+      if (!last || Math.abs(w - last.w) > 12 || Math.abs(h - last.h) > 12) {
+        renderer.resize(wrap, settings.canvasSize)
+        lastWrapSizeRef.current = { w, h }
+      }
+    }
     window.addEventListener('resize', onResize)
     return () => window.removeEventListener('resize', onResize)
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -122,6 +137,7 @@ export function GameManager({
     try {
       if (window.matchMedia && window.matchMedia('(pointer: coarse)').matches) {
         setShowJoystick(true)
+        isCoarseRef.current = true
       }
     } catch {
       /* noop */
@@ -192,9 +208,13 @@ export function GameManager({
     let ox = 0
     let oy = 0
     const onDown = (e: PointerEvent) => {
+      // prevent site-level swipe/scroll gestures while interacting with the game
+      e.preventDefault()
+      e.stopPropagation()
       tracking = true
       ox = e.clientX
       oy = e.clientY
+      userInitiatedFocusRef.current = true
       try {
         ;(e.target as Element).setPointerCapture(e.pointerId)
       } catch {
@@ -202,6 +222,9 @@ export function GameManager({
       }
     }
     const onMove = (e: PointerEvent) => {
+      // prevent site-level swipe/scroll gestures while interacting with the game
+      e.preventDefault()
+      e.stopPropagation()
       if (!tracking || paused || acceptedTurnRef.current) return
       const dx = e.clientX - ox
       const dy = e.clientY - oy
@@ -225,7 +248,6 @@ export function GameManager({
         /* noop */
       }
     }
-
     const onKey = (e: KeyboardEvent) => {
       const key = e.key
       // Esc releases capture (blur canvas) so site navigation keys work again
@@ -381,7 +403,7 @@ export function GameManager({
         ))}
 
         <button
-          className="btn"
+          className="btn btn--stable"
           onClick={() => setPaused((p) => !p)}
           aria-pressed={paused}
           title={paused ? 'Resume' : 'Pause'}
@@ -449,10 +471,13 @@ export function GameManager({
             onFocus={() => {
               capturedRef.current = true
               onControlChange?.(true)
-              // show hint chip briefly
-              if (hintTimerRef.current) window.clearTimeout(hintTimerRef.current)
-              setHintVisible(true)
-              hintTimerRef.current = window.setTimeout(() => setHintVisible(false), 2000)
+              // show hint chip briefly only for fine pointers and only on user-initiated focus
+              if (!isCoarseRef.current && userInitiatedFocusRef.current) {
+                if (hintTimerRef.current) window.clearTimeout(hintTimerRef.current)
+                setHintVisible(true)
+                hintTimerRef.current = window.setTimeout(() => setHintVisible(false), 2000)
+              }
+              userInitiatedFocusRef.current = false
             }}
             onBlur={() => {
               capturedRef.current = false
@@ -460,12 +485,15 @@ export function GameManager({
             }}
             onPointerDown={() => {
               // focus on first interaction, capture controls
+              userInitiatedFocusRef.current = true
               canvasRef.current?.focus()
             }}
           />
-          <div className="snake-hint" aria-live="polite" data-show={hintVisible || undefined}>
-            Game controls active — Esc to release
-          </div>
+          {!isCoarseRef.current && (
+            <div className="snake-hint" aria-live="polite" data-show={hintVisible || undefined}>
+              Game controls active — Esc to release
+            </div>
+          )}
           {showJoystick && (
             <Joystick
               paused={paused}

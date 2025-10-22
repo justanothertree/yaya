@@ -27,6 +27,9 @@
   color: var(--text);
   border: 1px solid var(--border);
 }
+.snake-toolbar .btn--stable {
+  min-width: 84px;
+}
 
 .snake-grid {
   display: grid;
