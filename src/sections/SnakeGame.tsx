@@ -17,8 +17,8 @@ export function SnakeGame(props: { onControlChange?: (v: boolean) => void; autoF
       <GameManager autoFocus={props.autoFocus} onControlChange={onControlChange} />
       <p className="muted" style={{ marginTop: '0.75rem' }}>
         Click or tap the canvas to capture controls. Use Arrow keys or WASD to move; Space to
-        pause/resume; swipe or use the joystick on touch devices. Adjust apples and edge behavior in
-        the toolbar.
+        pause/play; swipe on the canvas to control on touch devices. Adjust apples and edge behavior
+        in the toolbar.
       </p>
     </section>
   )

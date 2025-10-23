@@ -36,14 +36,9 @@
   gap: 12px;
   align-items: start;
   justify-items: center;
+  touch-action: none; /* block swipe gestures bubbling to page */
 }
 .snake-grid[data-immersive] {
-  position: fixed;
-  inset: 0;
-  z-index: 200;
-  background: var(--bg);
-  padding: 8px;
-  overscroll-behavior: none;
 }
 .snake-grid[data-versus] {
   grid-template-columns: 2fr 1fr;
@@ -101,38 +96,16 @@
   opacity: 0.9;
 }
 .snake-fab--left {
-  left: 8px;
-  right: auto;
+  display: none;
 }
 .snake-joystick {
-  position: absolute;
-  left: 8px;
-  bottom: 8px;
-  width: 96px;
-  height: 96px;
-  border-radius: 50%;
-  border: 1px solid var(--border);
-  background: color-mix(in oklab, var(--bg), transparent 15%);
-  touch-action: none;
-  z-index: 2;
+  display: none;
 }
 .snake-joystick .ring {
-  position: absolute;
-  inset: 12px;
-  border-radius: 50%;
-  border: 1px dashed var(--border);
+  display: none;
 }
 .snake-joystick .knob {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 28px;
-  height: 28px;
-  margin-left: -14px;
-  margin-top: -14px;
-  border-radius: 50%;
-  background: var(--control-bg);
-  border: 1px solid var(--border);
+  display: none;
 }
 .snake-hint {
   position: absolute;
@@ -155,28 +128,13 @@
   opacity: 1;
 }
 .snake-touch {
-  position: absolute;
-  right: 8px;
-  bottom: 8px;
-  display: grid;
-  gap: 4px;
-  padding: 6px;
-  background: color-mix(in oklab, var(--bg), transparent 20%);
-  border: 1px solid var(--border);
-  border-radius: 8px;
+  display: none;
 }
 .snake-touch .row {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 4px;
+  display: none;
 }
 .snake-touch button {
-  width: 36px;
-  height: 36px;
-  border-radius: 6px;
-  border: 1px solid var(--border);
-  background: var(--control-bg);
-  color: var(--text);
+  display: none;
 }
 
 @media (max-width: 640px) {

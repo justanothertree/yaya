@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from 'react'
 import './game.css'
 import { GameEngine } from './engine'
 import { GameRenderer } from './renderer'
-import { Joystick } from './ui/Joystick'
 import { NetClient } from './net'
 import { fetchLeaderboard, submitScore } from './leaderboard'
 import type { LeaderboardEntry, Mode, Settings } from './types'
@@ -64,7 +63,6 @@ export function GameManager({
   const [room, setRoom] = useState('room-1')
   const [opponentScore, setOpponentScore] = useState(0)
   const wsUrl = (import.meta as unknown as { env?: Record<string, string> }).env?.VITE_WS_URL
-  const [showJoystick, setShowJoystick] = useState(false)
   const capturedRef = useRef(false)
   const [captured, setCaptured] = useState(false)
   const [hintVisible, setHintVisible] = useState(false)
@@ -197,11 +195,10 @@ export function GameManager({
     return
   }, [autoFocus, onControlChange])
 
-  // Default to showing joystick on coarse pointers (mobile/tablet)
+  // Detect coarse pointer (mobile/tablet); no joystick overlay
   useEffect(() => {
     try {
       if (window.matchMedia && window.matchMedia('(pointer: coarse)').matches) {
-        setShowJoystick(true)
         isCoarseRef.current = true
       }
     } catch {
@@ -472,25 +469,39 @@ export function GameManager({
 
         <button
           className="btn btn--stable"
-          onClick={() => setPaused((p) => !p)}
-          aria-pressed={paused}
-          title={paused ? 'Resume' : 'Pause'}
+          onClick={() => {
+            if (!alive) {
+              doRestart()
+              setPaused(false)
+              // capture focus on play
+              canvasRef.current?.focus()
+              capturedRef.current = true
+              setCaptured(true)
+              onControlChange?.(true)
+              return
+            }
+            setPaused((p) => {
+              const next = !p
+              if (next) {
+                canvasRef.current?.focus()
+                capturedRef.current = true
+                setCaptured(true)
+                onControlChange?.(true)
+              }
+              return next
+            })
+          }}
+          aria-pressed={!paused}
+          title={paused ? 'Play' : 'Pause'}
         >
-          {paused ? 'Resume' : 'Pause'}
+          {paused ? 'Play' : 'Pause'}
         </button>
 
         <button className="btn" onClick={doRestart}>
           Restart
         </button>
 
-        {/* D-pad removed in favor of joystick */}
-        <button
-          className="btn"
-          onClick={() => setShowJoystick((v) => !v)}
-          aria-pressed={showJoystick}
-        >
-          Joystick
-        </button>
+        {/* Joystick removed */}
 
         {mode === 'versus' && wsUrl && (
           <div style={{ display: 'inline-flex', gap: 8, alignItems: 'center' }}>
@@ -519,18 +530,30 @@ export function GameManager({
           <button
             className="btn snake-fab"
             onClick={() => {
-              setPaused((p) => !p)
-              // bring focus to canvas when resuming and capture controls
-              if (paused) {
+              if (!alive) {
+                doRestart()
+                setPaused(false)
                 canvasRef.current?.focus()
                 capturedRef.current = true
+                setCaptured(true)
                 onControlChange?.(true)
+                return
               }
+              setPaused((p) => {
+                const next = !p
+                if (next) {
+                  canvasRef.current?.focus()
+                  capturedRef.current = true
+                  setCaptured(true)
+                  onControlChange?.(true)
+                }
+                return next
+              })
             }}
             aria-pressed={!paused}
-            title={paused ? 'Resume' : 'Pause'}
+            title={paused ? 'Play' : 'Pause'}
           >
-            {paused ? 'Resume' : 'Pause'}
+            {paused ? 'Play' : 'Pause'}
           </button>
           {/* Fullscreen buttons temporarily removed */}
           <canvas
@@ -553,6 +576,8 @@ export function GameManager({
               capturedRef.current = false
               setCaptured(false)
               onControlChange?.(false)
+              // auto-pause when leaving the game
+              setPaused(true)
             }}
             onPointerDown={() => {
               // focus on first interaction, capture controls
@@ -565,25 +590,7 @@ export function GameManager({
               Game controls active — Esc to release
             </div>
           )}
-          {showJoystick && (
-            <Joystick
-              paused={paused}
-              onDirection={(x, y) => {
-                if (acceptedTurnRef.current) return
-                engineRef.current?.setDirection({ x, y })
-                acceptedTurnRef.current = true
-              }}
-              onActivate={() => {
-                setCaptured(true)
-                canvasRef.current?.focus()
-                capturedRef.current = true
-                onControlChange?.(true)
-                if (hintTimerRef.current) window.clearTimeout(hintTimerRef.current)
-                setHintVisible(true)
-                hintTimerRef.current = window.setTimeout(() => setHintVisible(false), 2000)
-              }}
-            />
-          )}
+          {/* Joystick removed; swipe and keys remain */}
         </div>
         {mode === 'versus' && (
           <canvas ref={oppCanvasRef} className="snake-canvas snake-canvas--opp" />
