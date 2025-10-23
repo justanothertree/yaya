@@ -66,11 +66,13 @@ export function GameManager({
   const wsUrl = (import.meta as unknown as { env?: Record<string, string> }).env?.VITE_WS_URL
   const [showJoystick, setShowJoystick] = useState(false)
   const capturedRef = useRef(false)
+  const [captured, setCaptured] = useState(false)
   const [hintVisible, setHintVisible] = useState(false)
   const hintTimerRef = useRef<number | null>(null)
   const userInitiatedFocusRef = useRef(false)
   const isCoarseRef = useRef(false)
-  const [immersive, setImmersive] = useState(false)
+  // immersive/fullscreen disabled for now
+  const restoredRef = useRef(false)
 
   // Canvas refs and renderers
   const wrapRef = useRef<HTMLDivElement>(null)
@@ -98,28 +100,37 @@ export function GameManager({
     renderer.resize(wrap, settings.canvasSize)
     renderer.draw(engine.snapshot())
     // Attempt to restore a persisted paused state
-    try {
-      const raw = localStorage.getItem(LS_PERSIST_KEY)
-      if (raw) {
-        const saved = JSON.parse(raw) as {
-          settings: Settings
-          snapshot: ReturnType<GameEngine['snapshot']>
-          applesEaten: number
-          score: number
+    if (!restoredRef.current) {
+      try {
+        const raw = localStorage.getItem(LS_PERSIST_KEY)
+        if (raw) {
+          const saved = JSON.parse(raw) as {
+            settings: Settings
+            snapshot: ReturnType<GameEngine['snapshot']>
+            applesEaten: number
+            score: number
+          }
+          // Only restore if grid matches current settings and snapshot is alive
+          if (saved.settings?.grid === settings.grid && saved.snapshot?.alive) {
+            engineRef.current.loadSnapshot(saved.snapshot)
+            const snap = engineRef.current.snapshot()
+            rendererRef.current.draw(snap)
+            setAlive(snap.alive)
+            setApplesEaten(Math.max(0, saved.applesEaten || 0))
+            setScore(Math.max(0, saved.score || 0))
+            setPaused(true)
+          }
         }
-        // Only restore if grid matches current settings to avoid scale mismatch
-        if (saved.settings?.grid === settings.grid) {
-          engineRef.current.loadSnapshot(saved.snapshot)
-          const snap = engineRef.current.snapshot()
-          rendererRef.current.draw(snap)
-          setAlive(snap.alive)
-          setApplesEaten(Math.max(0, saved.applesEaten || 0))
-          setScore(Math.max(0, saved.score || 0))
-          setPaused(true)
+      } catch {
+        /* ignore */
+      } finally {
+        restoredRef.current = true
+        try {
+          localStorage.removeItem(LS_PERSIST_KEY)
+        } catch {
+          /* ignore */
         }
       }
-    } catch {
-      /* ignore */
     }
     const rect = wrap.getBoundingClientRect()
     lastWrapSizeRef.current = { w: Math.round(rect.width), h: Math.round(rect.height) }
@@ -139,12 +150,7 @@ export function GameManager({
         lastWrapSizeRef.current = { w, h }
       }
     }
-    const onFsChange = () => {
-      const fs = Boolean(document.fullscreenElement)
-      setImmersive(fs)
-    }
     window.addEventListener('resize', onResize)
-    document.addEventListener('fullscreenchange', onFsChange)
     return () => window.removeEventListener('resize', onResize)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settings.grid, settings.apples, settings.passThroughEdges, settings.canvasSize, engineSeed])
@@ -175,21 +181,7 @@ export function GameManager({
     }
   }, [paused, settings, applesEaten, score])
 
-  const enterFullscreen = () => {
-    const el = wrapRef.current
-    if (!el) return
-    if (document.fullscreenEnabled && el.requestFullscreen) {
-      el.requestFullscreen().catch(() => setImmersive(true))
-    } else {
-      setImmersive(true)
-    }
-  }
-  const exitFullscreen = () => {
-    if (document.fullscreenElement) {
-      document.exitFullscreen().catch(() => setImmersive(false))
-    }
-    setImmersive(false)
-  }
+  // Fullscreen controls removed for now per feedback
 
   // Focus canvas on mount when requested; inform parent that controls are captured
   useEffect(() => {
@@ -412,6 +404,11 @@ export function GameManager({
   const doRestart = () => {
     setEngineSeed(Math.floor(Math.random() * 1e9))
     setPaused(true)
+    try {
+      localStorage.removeItem(LS_PERSIST_KEY)
+    } catch {
+      /* ignore */
+    }
   }
 
   const onSaveScore = async () => {
@@ -517,13 +514,8 @@ export function GameManager({
       </div>
 
       {/* Canvases */}
-      <div
-        ref={wrapRef}
-        className="snake-grid"
-        data-versus={mode === 'versus' || undefined}
-        data-immersive={immersive || undefined}
-      >
-        <div className="snake-canvas-wrap">
+      <div ref={wrapRef} className="snake-grid" data-versus={mode === 'versus' || undefined}>
+        <div className="snake-canvas-wrap" data-captured={captured || undefined}>
           <button
             className="btn snake-fab"
             onClick={() => {
@@ -540,30 +532,14 @@ export function GameManager({
           >
             {paused ? 'Resume' : 'Pause'}
           </button>
-          {isCoarseRef.current && !immersive && (
-            <button
-              className="btn snake-fab snake-fab--left btn--stable"
-              onClick={enterFullscreen}
-              title="Fullscreen"
-            >
-              Fullscreen
-            </button>
-          )}
-          {immersive && (
-            <button
-              className="btn snake-fab snake-fab--left btn--stable"
-              onClick={exitFullscreen}
-              title="Exit fullscreen"
-            >
-              Exit
-            </button>
-          )}
+          {/* Fullscreen buttons temporarily removed */}
           <canvas
             ref={canvasRef}
             tabIndex={0}
             className="snake-canvas"
             onFocus={() => {
               capturedRef.current = true
+              setCaptured(true)
               onControlChange?.(true)
               // show hint chip briefly only for fine pointers and only on user-initiated focus
               if (!isCoarseRef.current && userInitiatedFocusRef.current) {
@@ -575,6 +551,7 @@ export function GameManager({
             }}
             onBlur={() => {
               capturedRef.current = false
+              setCaptured(false)
               onControlChange?.(false)
             }}
             onPointerDown={() => {
@@ -597,6 +574,7 @@ export function GameManager({
                 acceptedTurnRef.current = true
               }}
               onActivate={() => {
+                setCaptured(true)
                 canvasRef.current?.focus()
                 capturedRef.current = true
                 onControlChange?.(true)

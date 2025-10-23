@@ -84,6 +84,14 @@
   position: relative;
   overscroll-behavior: contain;
 }
+.snake-canvas-wrap[data-captured]::after {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  border-radius: 12px;
+  pointer-events: none;
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent), transparent 70%);
+}
 .snake-fab {
   position: absolute;
   top: 8px;
