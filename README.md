@@ -47,7 +47,7 @@ A minimal personal site with a Resume section, a playable Snake game, and a Cont
 - Hash-based navigation with keyboard shortcuts (1–5) and swipe
 - Resume (`src/sections/Resume.tsx`)
 - Projects (`src/sections/Projects.tsx` with `projects.json`)
-- Snake game (`src/sections/SnakeGame.tsx`) with touch D‑pad, swipe, keyboard, fullscreen, and a local leaderboard
+- Snake game (`src/sections/SnakeGame.tsx`) with keyboard and swipe controls, pause/resume, and online/local leaderboard
 - Contact form (`src/sections/ContactForm.tsx`) wired to Formspree
 - Accessible: skip links, live region announcements, reduced‑motion support
 
@@ -90,6 +90,38 @@ npm run typecheck
 
 - Open Graph image lives in `public/` and is referenced from `index.html`.
 - The footer can show a build label; it’s injected via `VITE_APP_VERSION` from the CI SHA or `package.json` version.
+
+### Snake leaderboard (Supabase)
+
+The Snake game can use a hosted leaderboard via Supabase REST. Configure these environment variables (e.g., in a `.env` file at the project root):
+
+- `VITE_SUPABASE_URL` — your Supabase project URL (https://xxxxx.supabase.co)
+- `VITE_SUPABASE_ANON_KEY` — your Supabase anon public API key
+- `VITE_LEADERBOARD_TABLE` — optional, defaults to `scores`
+- `VITE_LEADERBOARD_NAME_COLUMN` — optional, defaults to `username` (set to `player_name` if your column is named that)
+
+Recommended table schema (SQL):
+
+```sql
+create table if not exists public.scores (
+	id uuid primary key default gen_random_uuid(),
+	username text not null,
+	score int not null check (score >= 0),
+	created_at timestamptz not null default now()
+);
+
+alter table public.scores enable row level security;
+
+-- Allow public read (top scores)
+create policy "Public read leaderboard" on public.scores
+	for select using (true);
+
+-- Allow anonymous inserts (optional for public write)
+create policy "Public submit score" on public.scores
+	for insert with check (true);
+```
+
+The app writes with the anon key via the Supabase REST endpoint and reads the top 15 scores ordered by `score desc, created_at asc`. If the env vars aren’t set or the request fails, it falls back to a local (browser) leaderboard.
 
 ## License
 

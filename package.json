@@ -12,10 +12,13 @@
     "prepare": "husky"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.76.1",
     "react": "^19.1.1",
     "react-dom": "^19.1.1"
   },
   "devDependencies": {
+    "@commitlint/cli": "^19.5.0",
+    "@commitlint/config-conventional": "^19.5.0",
     "@eslint/js": "^9.36.0",
     "@types/node": "^24.6.0",
     "@types/react": "^19.1.16",
@@ -27,8 +30,6 @@
     "globals": "^16.4.0",
     "husky": "^9.1.7",
     "lint-staged": "^15.5.2",
-    "@commitlint/cli": "^19.5.0",
-    "@commitlint/config-conventional": "^19.5.0",
     "prettier": "^3.3.3",
     "typescript": "~5.9.3",
     "typescript-eslint": "^8.45.0",

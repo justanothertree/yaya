@@ -38,8 +38,6 @@
   justify-items: center;
   touch-action: none; /* block swipe gestures bubbling to page */
 }
-.snake-grid[data-immersive] {
-}
 .snake-grid[data-versus] {
   grid-template-columns: 2fr 1fr;
 }

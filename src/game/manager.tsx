@@ -3,7 +3,7 @@ import './game.css'
 import { GameEngine } from './engine'
 import { GameRenderer } from './renderer'
 import { NetClient } from './net'
-import { fetchLeaderboard, submitScore } from './leaderboard'
+import { fetchLeaderboard, submitScore, fetchRankForScore } from './leaderboard'
 import type { LeaderboardEntry, Mode, Settings } from './types'
 
 const GRID = 30
@@ -58,6 +58,7 @@ export function GameManager({
   const [applesEaten, setApplesEaten] = useState(0)
   const startRef = useRef<number | null>(null)
   const [leaders, setLeaders] = useState<LeaderboardEntry[]>([])
+  const [myRank, setMyRank] = useState<number | null>(null)
   const [askNameOpen, setAskNameOpen] = useState(false)
   const [playerName, setPlayerName] = useState('Player')
   const [room, setRoom] = useState('room-1')
@@ -376,7 +377,7 @@ export function GameManager({
 
   // Leaderboard
   useEffect(() => {
-    fetchLeaderboard()
+    fetchLeaderboard(15)
       .then(setLeaders)
       .catch(() => setLeaders([]))
   }, [])
@@ -416,7 +417,10 @@ export function GameManager({
     }
     try {
       await submitScore(entry)
-      setLeaders((prev) => [...prev, entry].sort((a, b) => b.score - a.score).slice(0, 10))
+      // refresh from server (or fallback) and compute rank
+      const [top, rank] = await Promise.all([fetchLeaderboard(15), fetchRankForScore(entry.score)])
+      setLeaders(top)
+      setMyRank(rank)
     } finally {
       setAskNameOpen(false)
     }
@@ -615,6 +619,11 @@ export function GameManager({
           <h3 className="section-title" style={{ marginTop: 0 }}>
             Top scores
           </h3>
+          {myRank != null && (
+            <div className="muted" style={{ marginBottom: 6 }}>
+              Your rank: <strong style={{ color: 'var(--text)' }}>{myRank}</strong>
+            </div>
+          )}
           <ol style={{ margin: 0, paddingLeft: '1.25rem' }}>
             {leaders.map((l, i) => (
               <li key={i} className="muted">
