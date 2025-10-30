@@ -217,15 +217,6 @@ export function GameManager({
     }
   }, [])
 
-  // Persist settings
-  useEffect(() => {
-    try {
-      localStorage.setItem(LS_SETTINGS_KEY, JSON.stringify(settings))
-    } catch {
-      // ignore
-    }
-  }, [settings])
-
   // Game loop
   useEffect(() => {
     let timer: number | null = null

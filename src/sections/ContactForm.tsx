@@ -33,6 +33,9 @@ export function ContactForm() {
       let ok = res.ok
       // Treat 2xx and 3xx as success (Formspree can redirect on success)
       if (!ok && res.status >= 200 && res.status < 400) ok = true
+      // Some cross-origin responses may appear as opaque redirects
+      if (!ok && (res.redirected || res.type === 'opaqueredirect' || res.type === 'opaque'))
+        ok = true
       // If JSON present, prefer the explicit ok/success flags
       if (ct.includes('application/json')) {
         try {

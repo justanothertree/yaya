@@ -17,8 +17,8 @@ function envs() {
   return {
     url: env.VITE_SUPABASE_URL,
     anon: env.VITE_SUPABASE_ANON_KEY,
-    table: env.VITE_LEADERBOARD_TABLE || 'scores',
-    nameCol: env.VITE_LEADERBOARD_NAME_COLUMN || 'username',
+    table: env.VITE_LEADERBOARD_TABLE || 'leaderboard',
+    nameCol: env.VITE_LEADERBOARD_NAME_COLUMN || 'player_name',
   }
 }
 
