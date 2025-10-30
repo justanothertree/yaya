@@ -123,6 +123,23 @@ create policy "Public submit score" on public.scores
 
 The app writes with the anon key via the Supabase REST endpoint and reads the top 15 scores ordered by `score desc, created_at asc`. If the env vars aren’t set or the request fails, it falls back to a local (browser) leaderboard.
 
+Realtime updates and best-by-name:
+
+- Enable Realtime for the `scores` table (Database → Replication → Supabase Realtime → Add table).
+- Allow `update` in RLS if you want client-side “replace best score by name”. Example (public update):
+
+```sql
+create policy "Public update leaderboard" on public.scores
+	for update using (true) with check (true);
+```
+
+Optional: enforce best-by-name on the server (recommended) by adding a unique index and using an upsert RPC or a trigger to keep the greater score:
+
+```sql
+create unique index if not exists scores_player_name_unique on public.scores (player_name);
+-- or write a trigger to set score = greatest(NEW.score, OLD.score) on conflict.
+```
+
 ## License
 
 MIT

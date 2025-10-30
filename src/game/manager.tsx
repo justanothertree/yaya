@@ -3,7 +3,13 @@ import './game.css'
 import { GameEngine } from './engine'
 import { GameRenderer } from './renderer'
 import { NetClient } from './net'
-import { fetchLeaderboard, submitScore, fetchRankForScore } from './leaderboard'
+import {
+  fetchLeaderboard,
+  submitScore,
+  fetchRankForScore,
+  subscribeToLeaderboard,
+  type LeaderboardPeriod,
+} from './leaderboard'
 import type { LeaderboardEntry, Mode, Settings } from './types'
 
 const GRID = 30
@@ -59,6 +65,7 @@ export function GameManager({
   const startRef = useRef<number | null>(null)
   const [leaders, setLeaders] = useState<LeaderboardEntry[]>([])
   const [myRank, setMyRank] = useState<number | null>(null)
+  const [period, setPeriod] = useState<LeaderboardPeriod>('all')
   const [askNameOpen, setAskNameOpen] = useState(false)
   const [playerName, setPlayerName] = useState('Player')
   const [room, setRoom] = useState('room-1')
@@ -99,6 +106,7 @@ export function GameManager({
     renderer.resize(wrap, settings.canvasSize)
     renderer.draw(engine.snapshot())
     // Attempt to restore a persisted paused state
+    let restoredOk = false
     if (!restoredRef.current) {
       try {
         const raw = localStorage.getItem(LS_PERSIST_KEY)
@@ -118,6 +126,7 @@ export function GameManager({
             setApplesEaten(Math.max(0, saved.applesEaten || 0))
             setScore(Math.max(0, saved.score || 0))
             setPaused(true)
+            restoredOk = true
           }
         }
       } catch {
@@ -134,9 +143,11 @@ export function GameManager({
     const rect = wrap.getBoundingClientRect()
     lastWrapSizeRef.current = { w: Math.round(rect.width), h: Math.round(rect.height) }
     startRef.current = null
-    setAlive(true)
-    setScore(0)
-    setApplesEaten(0)
+    if (!restoredOk) {
+      setAlive(true)
+      setScore(0)
+      setApplesEaten(0)
+    }
 
     const onResize = () => {
       // Avoid tiny mobile UI chrome show/hide jitter causing canvas resize
@@ -155,10 +166,9 @@ export function GameManager({
   }, [settings.grid, settings.apples, settings.passThroughEdges, settings.canvasSize, engineSeed])
   // Persist paused state when navigating away or unmounting
   useEffect(() => {
-    const saveIfPaused = () => {
-      if (!paused) return
+    const saveState = () => {
       const snap = engineRef.current?.snapshot()
-      if (!snap) return
+      if (!snap || !snap.alive) return
       try {
         localStorage.setItem(
           LS_PERSIST_KEY,
@@ -169,16 +179,16 @@ export function GameManager({
       }
     }
     const onVis = () => {
-      if (document.visibilityState === 'hidden') saveIfPaused()
+      if (document.visibilityState === 'hidden') saveState()
     }
-    window.addEventListener('pagehide', saveIfPaused)
+    window.addEventListener('pagehide', saveState)
     document.addEventListener('visibilitychange', onVis)
     return () => {
-      saveIfPaused()
-      window.removeEventListener('pagehide', saveIfPaused)
+      saveState()
+      window.removeEventListener('pagehide', saveState)
       document.removeEventListener('visibilitychange', onVis)
     }
-  }, [paused, settings, applesEaten, score])
+  }, [settings, applesEaten, score])
 
   // Fullscreen controls removed for now per feedback
 
@@ -375,12 +385,27 @@ export function GameManager({
     }
   }, [alive, mode, paused, onControlChange])
 
-  // Leaderboard
+  // Leaderboard: fetch on period change and subscribe to realtime updates
   useEffect(() => {
-    fetchLeaderboard(15)
-      .then(setLeaders)
-      .catch(() => setLeaders([]))
-  }, [])
+    let disposed = false
+    const refresh = () =>
+      fetchLeaderboard(period, 15)
+        .then((d) => {
+          if (!disposed) setLeaders(d)
+        })
+        .catch(() => {
+          if (!disposed) setLeaders([])
+        })
+    refresh()
+    const unsub = subscribeToLeaderboard(refresh)
+    let poll: number | null = null
+    if (!unsub) poll = window.setInterval(refresh, 15000)
+    return () => {
+      disposed = true
+      if (unsub) unsub()
+      if (poll) window.clearInterval(poll)
+    }
+  }, [period])
 
   // Versus wiring
   const connectVs = () => {
@@ -418,7 +443,10 @@ export function GameManager({
     try {
       await submitScore(entry)
       // refresh from server (or fallback) and compute rank
-      const [top, rank] = await Promise.all([fetchLeaderboard(15), fetchRankForScore(entry.score)])
+      const [top, rank] = await Promise.all([
+        fetchLeaderboard(period, 15),
+        fetchRankForScore(entry.score, period),
+      ])
       setLeaders(top)
       setMyRank(rank)
     } finally {
@@ -616,9 +644,28 @@ export function GameManager({
       {/* Leaderboard */}
       {leaders.length > 0 && (
         <div style={{ marginTop: '0.75rem' }}>
-          <h3 className="section-title" style={{ marginTop: 0 }}>
-            Top scores
-          </h3>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <h3 className="section-title" style={{ marginTop: 0, marginBottom: 0 }}>
+              Top 15 —
+            </h3>
+            {(
+              [
+                { k: 'all', label: 'All time' },
+                { k: 'month', label: 'This month' },
+                { k: 'today', label: 'Today' },
+              ] as Array<{ k: LeaderboardPeriod; label: string }>
+            ).map((p) => (
+              <button
+                key={p.k}
+                className="btn"
+                aria-pressed={period === p.k}
+                data-active={period === p.k || undefined}
+                onClick={() => setPeriod(p.k)}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
           {myRank != null && (
             <div className="muted" style={{ marginBottom: 6 }}>
               Your rank: <strong style={{ color: 'var(--text)' }}>{myRank}</strong>
@@ -664,6 +711,9 @@ export function GameManager({
             <h2 className="section-title" style={{ marginTop: 0 }}>
               Save your score
             </h2>
+            <div className="muted" style={{ marginBottom: 6 }}>
+              Your score: {score}
+            </div>
             <label className="muted" htmlFor="player-name">
               Name
             </label>

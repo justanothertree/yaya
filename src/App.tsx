@@ -8,7 +8,13 @@ import { useReveal } from './hooks/useReveal'
 
 export default function App() {
   type Section = 'home' | 'projects' | 'resume' | 'snake' | 'contact'
-  const [active, setActive] = useState<Section>('home')
+  const initialSection: Section = (() => {
+    const h = (window.location.hash || '#home').replace('#', '') as Section
+    return (['home', 'projects', 'resume', 'snake', 'contact'] as Section[]).includes(h)
+      ? h
+      : 'home'
+  })()
+  const [active, setActive] = useState<Section>(initialSection)
   const [theme, setTheme] = useState<'light' | 'dark' | 'alt'>(() => {
     const saved = localStorage.getItem('theme') as 'light' | 'dark' | 'alt' | null
     if (saved) return saved
@@ -71,7 +77,7 @@ export default function App() {
     topRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [active])
 
-  // Read hash on load and when it changes (deep links + back/forward)
+  // Read hash when it changes (deep links + back/forward)
   useEffect(() => {
     const parseHash = (): Section => {
       const h = (window.location.hash || '#home').replace('#', '') as Section
@@ -79,8 +85,6 @@ export default function App() {
         ? h
         : 'home'
     }
-    // set initial
-    setActive(parseHash())
     const onHash = () => setActive(parseHash())
     window.addEventListener('hashchange', onHash)
     return () => window.removeEventListener('hashchange', onHash)

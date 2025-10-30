@@ -31,21 +31,16 @@ export function ContactForm() {
       })
       const ct = res.headers.get('content-type') || ''
       let ok = res.ok
-      // Formspree returns JSON like { ok: true } when Accept: application/json
-      if (!ok && ct.includes('application/json')) {
+      // Treat 2xx and 3xx as success (Formspree can redirect on success)
+      if (!ok && res.status >= 200 && res.status < 400) ok = true
+      // If JSON present, prefer the explicit ok/success flags
+      if (ct.includes('application/json')) {
         try {
           const json = await res.json()
-          ok = Boolean(json && (json.ok === true || json.success === true))
+          if (json && (json.ok === true || json.success === true)) ok = true
         } catch {
-          // ignore JSON parse errors and fall back to status
+          // ignore JSON parse errors and fall back
         }
-      }
-      // Treat common success statuses as success
-      if (
-        !ok &&
-        (res.status === 200 || res.status === 201 || res.status === 202 || res.status === 204)
-      ) {
-        ok = true
       }
       if (ok) {
         setStatus('sent')
