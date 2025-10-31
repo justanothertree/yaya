@@ -33,13 +33,39 @@ export function ContactForm() {
       // Treat any completed request as success; Formspree is sending emails successfully.
       setStatus('sent')
       e.currentTarget.reset()
+      // Blur to close mobile keyboard after sending
+      if (document.activeElement && 'blur' in document.activeElement) {
+        try {
+          ;(document.activeElement as HTMLElement).blur()
+        } catch {
+          /* noop */
+        }
+      }
     } catch (err) {
       // Even if the network layer complains (opaque redirects/CORS), we've observed emails still arriving.
       console.warn('Form submit encountered a non-fatal issue but will be treated as success:', err)
       setStatus('sent')
       e.currentTarget.reset()
+      if (document.activeElement && 'blur' in document.activeElement) {
+        try {
+          ;(document.activeElement as HTMLElement).blur()
+        } catch {
+          /* noop */
+        }
+      }
     }
   }
+
+  // Re-enable the form after the user edits any field post-send to prevent spamming identical content
+  useEffect(() => {
+    const node = formRef.current
+    if (!node) return
+    const onAnyInput = () => {
+      if (status === 'sent') setStatus('idle')
+    }
+    node.addEventListener('input', onAnyInput)
+    return () => node.removeEventListener('input', onAnyInput)
+  }, [status])
 
   return (
     <section className="card">
@@ -78,11 +104,13 @@ export function ContactForm() {
             style={fieldStyle}
           />
         </label>
-        <button className="btn" disabled={status === 'sending'} style={{ minHeight: 44 }}>
-          {status === 'sending' ? 'Sending…' : 'Send'}
+        <button className="btn" disabled={status !== 'idle'} style={{ minHeight: 44 }}>
+          {status === 'sending' ? 'Sending…' : status === 'sent' ? 'Sent' : 'Send'}
         </button>
         {status === 'sent' && (
-          <div style={{ color: '#22c55e' }}>Thanks! I will get back to you.</div>
+          <div style={{ color: '#22c55e' }} aria-live="polite">
+            Thanks! I will get back to you.
+          </div>
         )}
         {/* No generic error message to avoid false negatives. */}
       </form>

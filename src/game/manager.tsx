@@ -29,12 +29,9 @@ function speedFor(score: number) {
   return Math.max(MIN_SPEED, target)
 }
 
-function scoreFormula(apples: number, _ms: number, settings: Settings) {
-  // Prevent AFK scoring: score only from apples eaten (with slight modifiers)
-  const base = apples * 10
-  const applesBonus = settings.apples >= 3 ? 1.2 : 1
-  const edgePenalty = settings.passThroughEdges ? 0.9 : 1
-  return Math.round(base * applesBonus * edgePenalty)
+function scoreFormula(apples: number) {
+  // 1:1 score with apples eaten
+  return apples
 }
 
 const LS_SETTINGS_KEY = 'snake.settings.v1'
@@ -227,18 +224,20 @@ export function GameManager({
       rendererRef.current!.draw(state)
       for (const ev of events) {
         if (ev.type === 'eat') setApplesEaten((n) => n + 1)
-        else if (ev.type === 'die') setAlive(false)
+        else if (ev.type === 'die') {
+          setAlive(false)
+          // On death, clear any persisted soft save to prevent continuing a finished game
+          try {
+            localStorage.removeItem(LS_PERSIST_KEY)
+          } catch {
+            /* ignore */
+          }
+        }
       }
       if (state.alive) {
         if (startRef.current == null) startRef.current = performance.now()
-        const since = performance.now() - startRef.current
-        setScore(
-          scoreFormula(
-            applesEaten + (events.some((e) => e.type === 'eat') ? 1 : 0),
-            since,
-            settings,
-          ),
-        )
+        // Keep monotonic startRef for potential future use, but scoring is 1:1 with apples
+        setScore(scoreFormula(applesEaten + (events.some((e) => e.type === 'eat') ? 1 : 0)))
         const sp = speedFor(applesEaten)
         timer = window.setTimeout(loop, sp)
       } else {
@@ -633,35 +632,40 @@ export function GameManager({
       </div>
 
       {/* Leaderboard */}
-      {leaders.length > 0 && (
-        <div style={{ marginTop: '0.75rem' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <h3 className="section-title" style={{ marginTop: 0, marginBottom: 0 }}>
-              Top 15 —
-            </h3>
-            {(
-              [
-                { k: 'all', label: 'All time' },
-                { k: 'month', label: 'This month' },
-                { k: 'today', label: 'Today' },
-              ] as Array<{ k: LeaderboardPeriod; label: string }>
-            ).map((p) => (
-              <button
-                key={p.k}
-                className="btn"
-                aria-pressed={period === p.k}
-                data-active={period === p.k || undefined}
-                onClick={() => setPeriod(p.k)}
-              >
-                {p.label}
-              </button>
-            ))}
+      <div style={{ marginTop: '0.75rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <h3 className="section-title" style={{ marginTop: 0, marginBottom: 0 }}>
+            Top 15 —
+          </h3>
+          {(
+            [
+              { k: 'all', label: 'All time' },
+              { k: 'month', label: 'This month' },
+              { k: 'today', label: 'Today' },
+            ] as Array<{ k: LeaderboardPeriod; label: string }>
+          ).map((p) => (
+            <button
+              key={p.k}
+              className="btn"
+              aria-pressed={period === p.k}
+              data-active={period === p.k || undefined}
+              onClick={() => setPeriod(p.k)}
+            >
+              {p.label}
+            </button>
+          ))}
+        </div>
+        {myRank != null && (
+          <div className="muted" style={{ marginBottom: 6 }}>
+            Your rank: <strong style={{ color: 'var(--text)' }}>{myRank}</strong>
           </div>
-          {myRank != null && (
-            <div className="muted" style={{ marginBottom: 6 }}>
-              Your rank: <strong style={{ color: 'var(--text)' }}>{myRank}</strong>
-            </div>
-          )}
+        )}
+        {leaders.length === 0 ? (
+          <div className="muted" style={{ marginTop: 6 }}>
+            No scores yet{period === 'today' ? ' today' : period === 'month' ? ' this month' : ''}—
+            be the first!
+          </div>
+        ) : (
           <ol style={{ margin: 0, paddingLeft: '1.25rem' }}>
             {leaders.map((l, i) => (
               <li key={i} className="muted">
@@ -669,8 +673,8 @@ export function GameManager({
               </li>
             ))}
           </ol>
-        </div>
-      )}
+        )}
+      </div>
 
       {/* Save score modal */}
       {askNameOpen && (
