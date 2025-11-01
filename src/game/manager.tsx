@@ -82,6 +82,11 @@ export function GameManager({
   })
   const [room, setRoom] = useState('room-1')
   const [opponentScore, setOpponentScore] = useState(0)
+  const [presence, setPresence] = useState(1)
+  const [conn, setConn] = useState<'disconnected' | 'connecting' | 'connected'>('disconnected')
+  const [ready, setReady] = useState(false)
+  const [peerReady, setPeerReady] = useState(false)
+  const [countdown, setCountdown] = useState<number | null>(null)
   const wsUrl = (import.meta as unknown as { env?: Record<string, string> }).env?.VITE_WS_URL
   const capturedRef = useRef(false)
   const [captured, setCaptured] = useState(false)
@@ -436,22 +441,38 @@ export function GameManager({
   const connectVs = () => {
     if (!wsUrl) return
     const net = new NetClient(wsUrl, {
+      onOpen: () => setConn('connected'),
+      onClose: () => {
+        setConn('disconnected')
+        setPeerReady(false)
+      },
+      onError: () => setConn('disconnected'),
       onMessage: (msg) => {
         if (msg.type === 'seed') {
           setEngineSeed(msg.seed)
           setSettings(msg.settings)
+          setReady(false)
+          setPeerReady(false)
         } else if (msg.type === 'tick') {
           setOpponentScore(msg.score)
+        } else if (msg.type === 'presence') {
+          setPresence(Math.max(1, Math.min(2, msg.count || 1)))
+        } else if (msg.type === 'ready') {
+          setPeerReady(true)
+        } else if (msg.type === 'over') {
+          setPeerReady(false)
         }
       },
     })
     netRef.current = net
+    setConn('connecting')
     net.connect(room)
   }
 
   const doRestart = () => {
     setEngineSeed(Math.floor(Math.random() * 1e9))
     setPaused(true)
+    setAskNameOpen(false)
     try {
       localStorage.removeItem(LS_PERSIST_KEY)
     } catch {
@@ -476,6 +497,51 @@ export function GameManager({
       setMyRank(rank)
     } finally {
       setAskNameOpen(false)
+    }
+  }
+
+  // Parse room from hash (e.g., #snake?room=abc123) on mount
+  useEffect(() => {
+    try {
+      const h = window.location.hash || ''
+      const m = h.match(/room=([A-Za-z0-9_-]+)/)
+      if (m && m[1]) setRoom(m[1])
+    } catch {
+      /* ignore */
+    }
+  }, [])
+
+  // Countdown effect once both are ready
+  useEffect(() => {
+    if (!(mode === 'versus' && conn === 'connected' && ready && peerReady && countdown == null))
+      return
+    let n = 3
+    setCountdown(n)
+    const id = window.setInterval(() => {
+      n -= 1
+      if (n <= 0) {
+        window.clearInterval(id)
+        setCountdown(null)
+        setPaused(false)
+        // capture focus on start
+        canvasRef.current?.focus()
+        capturedRef.current = true
+        setCaptured(true)
+        onControlChange?.(true)
+      } else setCountdown(n)
+    }, 900)
+    return () => window.clearInterval(id)
+  }, [mode, conn, ready, peerReady, countdown, onControlChange])
+
+  const shareRoomLink = async () => {
+    const id = room || `room-${Math.random().toString(36).slice(2, 8)}`
+    setRoom(id)
+    const url = `${location.origin}${location.pathname}#snake?room=${encodeURIComponent(id)}`
+    try {
+      await navigator.clipboard.writeText(url)
+      alert('Room link copied to clipboard')
+    } catch {
+      prompt('Copy room link:', url)
     }
   }
 
@@ -573,9 +639,22 @@ export function GameManager({
                 color: 'var(--text)',
               }}
             />
+            <button className="btn" onClick={shareRoomLink} title="Create/Copy room link">
+              Share link
+            </button>
             <button className="btn" onClick={connectVs}>
               Connect
             </button>
+            <div className="muted" title="Players in room">
+              In room: {presence}/2
+            </div>
+            <div className="muted" title="Connection status">
+              {conn === 'connected'
+                ? 'Connected'
+                : conn === 'connecting'
+                  ? 'Connecting…'
+                  : 'Offline'}
+            </div>
             <div className="muted">Opponent score: {opponentScore}</div>
           </div>
         )}
@@ -587,6 +666,17 @@ export function GameManager({
           <button
             className="btn snake-fab"
             onClick={() => {
+              if (mode === 'versus') {
+                // In versus, use Ready flow to coordinate start
+                if (conn !== 'connected') return
+                setReady(true)
+                try {
+                  netRef.current?.send({ type: 'ready' })
+                } catch {
+                  /* noop */
+                }
+                return
+              }
               if (!alive) {
                 doRestart()
                 setPaused(false)
@@ -610,7 +700,7 @@ export function GameManager({
             aria-pressed={!paused}
             title={paused ? 'Play' : 'Pause'}
           >
-            {paused ? 'Play' : 'Pause'}
+            {mode === 'versus' ? (ready ? 'Ready ✓' : 'Ready') : paused ? 'Play' : 'Pause'}
           </button>
           {/* Fullscreen buttons temporarily removed */}
           <canvas
@@ -659,6 +749,11 @@ export function GameManager({
         <div className="muted hud-paused" aria-live="polite">
           {paused ? 'Paused' : ''}
         </div>
+        {mode === 'versus' && countdown != null && (
+          <div className="muted" aria-live="assertive" style={{ fontSize: 18 }}>
+            Starting in… {countdown}
+          </div>
+        )}
         {!alive && (
           <div className="muted" aria-live="polite">
             Press Space to restart

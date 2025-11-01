@@ -36,6 +36,9 @@ export type NetMessage =
   | { type: 'tick'; n: number; score: number }
   | { type: 'over'; reason: 'die' | 'quit' }
   | { type: 'input'; key: 'ArrowUp' | 'ArrowDown' | 'ArrowLeft' | 'ArrowRight' }
+  | { type: 'presence'; count: number }
+  | { type: 'ready' }
+  | { type: 'name'; name: string }
 
 export type ThemeColors = {
   bg: string

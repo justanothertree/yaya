@@ -40,6 +40,8 @@ function joinRoom(ws, room) {
     const seed = Math.floor(Math.random() * 1e9)
     broadcast(room, { type: 'seed', seed, settings: DEFAULT_SETTINGS })
   }
+  // Broadcast presence count to room
+  broadcast(room, { type: 'presence', count: set.size })
 }
 
 function leaveRoom(ws) {
@@ -49,6 +51,7 @@ function leaveRoom(ws) {
   if (!set) return
   set.delete(ws)
   if (set.size === 0) rooms.delete(room)
+  else broadcast(room, { type: 'presence', count: set.size })
 }
 
 function broadcast(room, msg, except = null) {
@@ -81,7 +84,13 @@ wss.on('connection', (ws) => {
     const room = ws._room
     if (!room) return
     // Relay gameplay messages to peers in the same room
-    if (msg.type === 'input' || msg.type === 'tick' || msg.type === 'over') {
+    if (
+      msg.type === 'input' ||
+      msg.type === 'tick' ||
+      msg.type === 'over' ||
+      msg.type === 'ready' ||
+      msg.type === 'name'
+    ) {
       broadcast(room, msg, ws)
       return
     }
