@@ -218,6 +218,12 @@ export default function App() {
   // Keyboard help overlay: open with '?' or Shift+/, close with Escape
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      // Ignore while typing in inputs/textareas/contenteditable to avoid annoyance
+      const target = e.target as HTMLElement | null
+      const tag = target?.tagName?.toLowerCase()
+      const isTyping =
+        tag === 'input' || tag === 'textarea' || target?.isContentEditable || tag === 'select'
+      if (isTyping) return
       if ((e.key === '?' || (e.key === '/' && e.shiftKey)) && !helpOpen) {
         setHelpOpen(true)
         e.preventDefault()

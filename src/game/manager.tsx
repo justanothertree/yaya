@@ -36,6 +36,8 @@ function scoreFormula(apples: number) {
 
 const LS_SETTINGS_KEY = 'snake.settings.v1'
 const LS_PERSIST_KEY = 'snake.persist.v1'
+const LS_PLAYER_NAME_KEY = 'snake.playerName'
+const LS_PLAYER_COUNT_KEY = 'snake.playerCount'
 
 export function GameManager({
   autoFocus,
@@ -64,7 +66,20 @@ export function GameManager({
   const [myRank, setMyRank] = useState<number | null>(null)
   const [period, setPeriod] = useState<LeaderboardPeriod>('all')
   const [askNameOpen, setAskNameOpen] = useState(false)
-  const [playerName, setPlayerName] = useState('Player')
+  const [playerName, setPlayerName] = useState<string>(() => {
+    try {
+      const stored = localStorage.getItem(LS_PLAYER_NAME_KEY)
+      if (stored && stored.trim()) return stored
+      const count = parseInt(localStorage.getItem(LS_PLAYER_COUNT_KEY) || '0', 10) || 0
+      const next = count + 1
+      const name = `Player${next}`
+      localStorage.setItem(LS_PLAYER_COUNT_KEY, String(next))
+      localStorage.setItem(LS_PLAYER_NAME_KEY, name)
+      return name
+    } catch {
+      return 'Player'
+    }
+  })
   const [room, setRoom] = useState('room-1')
   const [opponentScore, setOpponentScore] = useState(0)
   const wsUrl = (import.meta as unknown as { env?: Record<string, string> }).env?.VITE_WS_URL
@@ -187,6 +202,17 @@ export function GameManager({
     }
   }, [settings, applesEaten, score])
 
+  // Persist player name when changed (user edits)
+  useEffect(() => {
+    try {
+      if (playerName && playerName.trim()) {
+        localStorage.setItem(LS_PLAYER_NAME_KEY, playerName.trim())
+      }
+    } catch {
+      /* ignore */
+    }
+  }, [playerName])
+
   // Fullscreen controls removed for now per feedback
 
   // Focus canvas on mount when requested; inform parent that controls are captured
@@ -237,7 +263,16 @@ export function GameManager({
       if (state.alive) {
         if (startRef.current == null) startRef.current = performance.now()
         // Keep monotonic startRef for potential future use, but scoring is 1:1 with apples
-        setScore(scoreFormula(applesEaten + (events.some((e) => e.type === 'eat') ? 1 : 0)))
+        const nextScore = scoreFormula(applesEaten + (events.some((e) => e.type === 'eat') ? 1 : 0))
+        setScore(nextScore)
+        // In versus mode, send lightweight tick updates with current score to the room
+        if (mode === 'versus' && netRef.current) {
+          try {
+            netRef.current.send({ type: 'tick', n: state.ticks, score: nextScore })
+          } catch {
+            /* noop */
+          }
+        }
         const sp = speedFor(applesEaten)
         timer = window.setTimeout(loop, sp)
       } else {
@@ -249,7 +284,7 @@ export function GameManager({
     return () => {
       if (timer) window.clearTimeout(timer)
     }
-  }, [settings, applesEaten, paused])
+  }, [settings, applesEaten, paused, mode])
 
   // Redraw when theme attributes change (so paused frames still update colors)
   useEffect(() => {
