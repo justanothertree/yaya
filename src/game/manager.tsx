@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import './game.css'
 import { GameEngine } from './engine'
 import { GameRenderer } from './renderer'
@@ -91,10 +91,11 @@ export function GameManager({
     }
   })()
   const nameSourceRef = useRef<'auto' | 'custom'>(initialNameSource)
-  const [room, setRoom] = useState('room-1')
+  const [room, setRoom] = useState('')
   // Opponent score removed in multiplayer; track via previews instead
   const [presence, setPresence] = useState(1)
   const [conn, setConn] = useState<'disconnected' | 'connecting' | 'connected'>('disconnected')
+  const [joining, setJoining] = useState(false)
   const [ready, setReady] = useState(false)
   // peerReady removed; using players map + own ready state
   const [countdown, setCountdown] = useState<number | null>(null)
@@ -127,6 +128,7 @@ export function GameManager({
   const isCoarseRef = useRef(false)
   // immersive/fullscreen disabled for now
   const restoredRef = useRef(false)
+  const deepLinkConnectRef = useRef(false)
 
   // Canvas refs and renderers
   const wrapRef = useRef<HTMLDivElement>(null)
@@ -248,8 +250,7 @@ export function GameManager({
     }
     window.addEventListener('resize', onResize)
     return () => window.removeEventListener('resize', onResize)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [settings.grid, settings.apples, settings.passThroughEdges, settings.canvasSize, engineSeed])
+  }, [settings, engineSeed])
   // Persist paused state when navigating away or unmounting
   useEffect(() => {
     const saveState = () => {
@@ -516,127 +517,139 @@ export function GameManager({
   }, [period])
 
   // Versus wiring
-  const connectVs = () => {
-    if (!wsUrl) return
-    const net = new NetClient(wsUrl, {
-      onOpen: () => {
-        setConn('connected')
-        // reset local state for new session
-        setPlayers({})
-        setPreviews({})
-        // broadcast current meta on connect
-        try {
-          net.send({ type: 'roommeta', public: roomPublic, name: roomName || undefined })
-        } catch {
-          /* noop */
-        }
-        try {
-          if (playerName?.trim()) net.send({ type: 'name', name: playerName.trim() })
-        } catch {
-          /* noop */
-        }
-      },
-      onClose: () => {
-        setConn('disconnected')
-        setReady(false)
-        setPlayers({})
-        setPreviews({})
-      },
-      onError: () => setConn('disconnected'),
-      onMessage: (msg) => {
-        if (msg.type === 'welcome') {
-          setMyId(msg.id)
-          let selfName = playerName?.trim() || 'Player'
-          if (msg.visitor != null && nameSourceRef.current !== 'custom') {
-            selfName = `Player${msg.visitor}`
-            setPlayerName(selfName)
-            try {
-              localStorage.setItem(LS_PLAYER_NAME_KEY, selfName)
-              localStorage.setItem(LS_PLAYER_NAME_SOURCE_KEY, 'auto')
-            } catch {
-              /* ignore */
-            }
-            try {
-              netRef.current?.send({ type: 'name', name: selfName })
-            } catch {
-              /* noop */
-            }
+  const connectVs = useCallback(
+    (roomOverride?: string) => {
+      if (!wsUrl) return
+      setJoining(true)
+      const net = new NetClient(wsUrl, {
+        onOpen: () => {
+          setConn('connected')
+          setJoining(false)
+          // reset local state for new session
+          setPlayers({})
+          setPreviews({})
+          // broadcast current meta on connect
+          try {
+            net.send({ type: 'roommeta', public: roomPublic, name: roomName || undefined })
+          } catch {
+            /* noop */
           }
-          // add self to players map with current or updated name
-          const finalName = selfName
-          setPlayers((map) => ({
-            ...map,
-            [msg.id]: { name: finalName, ready: false },
-          }))
-          return
-        }
-        if (msg.type === 'seed') {
-          setEngineSeed(msg.seed)
-          setSettings(msg.settings)
+          try {
+            if (playerName?.trim()) net.send({ type: 'name', name: playerName.trim() })
+          } catch {
+            /* noop */
+          }
+        },
+        onClose: () => {
+          setConn('disconnected')
+          setJoining(false)
           setReady(false)
-          // reset ready flags for all players (new round)
-          setPlayers((map) => {
-            const next: typeof map = {}
-            for (const [id, p] of Object.entries(map)) next[id] = { ...p, ready: false }
-            return next
-          })
-        } else if (msg.type === 'presence') {
-          setPresence(Math.max(1, msg.count || 1))
-        } else if (msg.type === 'ready') {
-          // Mark peer ready in players map (server doesn't echo to sender)
-          if (msg.from && (!myId || msg.from !== myId)) {
-            const fromId = msg.from
-            setPlayers((map) => ({ ...map, [fromId]: { ...(map[fromId] || {}), ready: true } }))
-          }
-        } else if (msg.type === 'over') {
-          if (msg.from) {
-            const fromId = msg.from as string
-            setPreviews((map) => {
-              const next = { ...map }
-              if (fromId in next) delete next[fromId]
-              return next
-            })
-            // remove player on quit, else just clear ready
-            setPlayers((map) => {
-              const next = { ...map }
-              if (msg.reason === 'quit') delete next[fromId]
-              else if (next[fromId]) next[fromId] = { ...next[fromId], ready: false }
-              return next
-            })
-          }
-        } else if (msg.type === 'preview') {
-          // Ignore our own preview
-          if (msg.from && myId && msg.from === myId) return
-          const from = msg.from || 'peer'
-          setPreviews((map) => ({
-            ...map,
-            [from]: { state: msg.state, score: msg.score, name: msg.name },
-          }))
-          if (msg.from) {
+          setPlayers({})
+          setPreviews({})
+        },
+        onError: () => {
+          setConn('disconnected')
+          setJoining(false)
+        },
+        onMessage: (msg) => {
+          if (msg.type === 'welcome') {
+            setMyId(msg.id)
+            let selfName = playerName?.trim() || 'Player'
+            if (msg.visitor != null && nameSourceRef.current !== 'custom') {
+              selfName = `Player${msg.visitor}`
+              setPlayerName(selfName)
+              try {
+                localStorage.setItem(LS_PLAYER_NAME_KEY, selfName)
+                localStorage.setItem(LS_PLAYER_NAME_SOURCE_KEY, 'auto')
+              } catch {
+                /* ignore */
+              }
+              try {
+                netRef.current?.send({ type: 'name', name: selfName })
+              } catch {
+                /* noop */
+              }
+            }
+            // add self to players map with current or updated name
+            const finalName = selfName
             setPlayers((map) => ({
               ...map,
-              [msg.from!]: { ...(map[msg.from!] || {}), name: msg.name || map[msg.from!]?.name },
+              [msg.id]: { name: finalName, ready: false },
             }))
+            return
           }
-        } else if (msg.type === 'name') {
-          if (msg.from) {
-            const fromId = msg.from
-            setPlayers((map) => ({ ...map, [fromId]: { ...(map[fromId] || {}), name: msg.name } }))
-            // reflect in preview tiles too (only if a preview exists already)
-            setPreviews((map) => {
-              if (!map[fromId]) return map
-              return { ...map, [fromId]: { ...map[fromId], name: msg.name } }
+          if (msg.type === 'seed') {
+            setEngineSeed(msg.seed)
+            setSettings(msg.settings)
+            setReady(false)
+            // reset ready flags for all players (new round)
+            setPlayers((map) => {
+              const next: typeof map = {}
+              for (const [id, p] of Object.entries(map)) next[id] = { ...p, ready: false }
+              return next
             })
+          } else if (msg.type === 'presence') {
+            setPresence(Math.max(1, msg.count || 1))
+          } else if (msg.type === 'ready') {
+            // Mark peer ready in players map (server doesn't echo to sender)
+            if (msg.from && (!myId || msg.from !== myId)) {
+              const fromId = msg.from
+              setPlayers((map) => ({ ...map, [fromId]: { ...(map[fromId] || {}), ready: true } }))
+            }
+          } else if (msg.type === 'over') {
+            if (msg.from) {
+              const fromId = msg.from as string
+              setPreviews((map) => {
+                const next = { ...map }
+                if (fromId in next) delete next[fromId]
+                return next
+              })
+              // remove player on quit, else just clear ready
+              setPlayers((map) => {
+                const next = { ...map }
+                if (msg.reason === 'quit') delete next[fromId]
+                else if (next[fromId]) next[fromId] = { ...next[fromId], ready: false }
+                return next
+              })
+            }
+          } else if (msg.type === 'preview') {
+            // Ignore our own preview
+            if (msg.from && myId && msg.from === myId) return
+            const from = msg.from || 'peer'
+            setPreviews((map) => ({
+              ...map,
+              [from]: { state: msg.state, score: msg.score, name: msg.name },
+            }))
+            if (msg.from) {
+              setPlayers((map) => ({
+                ...map,
+                [msg.from!]: { ...(map[msg.from!] || {}), name: msg.name || map[msg.from!]?.name },
+              }))
+            }
+          } else if (msg.type === 'name') {
+            if (msg.from) {
+              const fromId = msg.from
+              setPlayers((map) => ({
+                ...map,
+                [fromId]: { ...(map[fromId] || {}), name: msg.name },
+              }))
+              // reflect in preview tiles too (only if a preview exists already)
+              setPreviews((map) => {
+                if (!map[fromId]) return map
+                return { ...map, [fromId]: { ...map[fromId], name: msg.name } }
+              })
+            }
+          } else if (msg.type === 'rooms') {
+            setRooms(msg.items || [])
           }
-        } else if (msg.type === 'rooms') {
-          setRooms(msg.items || [])
-        }
-      },
-    })
-    netRef.current = net
-    setConn('connecting')
-    net.connect(room)
-  }
+        },
+      })
+      netRef.current = net
+      setConn('connecting')
+      net.connect(roomOverride ?? room)
+    },
+    [wsUrl, room, roomPublic, roomName, playerName, myId],
+  )
 
   const doRestart = () => {
     setEngineSeed(Math.floor(Math.random() * 1e9))
@@ -675,13 +688,23 @@ export function GameManager({
       const h = window.location.hash || ''
       const m = h.match(/room=([A-Za-z0-9_-]+)/)
       if (m && m[1]) {
-        setRoom(m[1])
+        const rid = m[1]
+        setRoom(rid)
         setMode('versus')
+        deepLinkConnectRef.current = true
       }
     } catch {
       /* ignore */
     }
   }, [])
+
+  // Perform deep-link connect once, after state is set
+  useEffect(() => {
+    if (deepLinkConnectRef.current && conn === 'disconnected' && room) {
+      deepLinkConnectRef.current = false
+      connectVs(room)
+    }
+  }, [conn, room, connectVs])
 
   // Countdown effect once both are ready
   useEffect(() => {
@@ -775,14 +798,7 @@ export function GameManager({
     }
   }
 
-  // Auto-connect when switching to versus for smoother UX
-  useEffect(() => {
-    if (mode === 'versus' && wsUrl && conn === 'disconnected') {
-      // intentionally not adding connectVs to deps; it's a stable inline function in this component
-      connectVs()
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode, wsUrl, conn])
+  // No implicit auto-connect on switching to versus; user triggers Join or Create game
 
   return (
     <div>
@@ -936,14 +952,31 @@ export function GameManager({
                 }}
               />
             </label>
+            <button
+              className="btn"
+              title="Copy the current room code"
+              onClick={async () => {
+                const code = room.trim()
+                if (!code) return
+                try {
+                  await navigator.clipboard.writeText(code)
+                } catch {
+                  /* ignore */
+                }
+              }}
+              disabled={!room.trim()}
+            >
+              Copy code
+            </button>
             <button className="btn" onClick={shareRoomLink} title="Copy current room link">
               Share link
             </button>
             <button
               className="btn"
-              title="Create a new room and copy its link"
+              title="Create a new room (or use typed code) and copy its link"
               onClick={async () => {
-                const id = `room-${Math.random().toString(36).slice(2, 8)}`
+                const typed = room.trim()
+                const id = typed || `room-${Math.random().toString(36).slice(2, 8)}`
                 setMode('versus')
                 setRoom(id)
                 const url = `${location.origin}${location.pathname}#snake?room=${encodeURIComponent(id)}`
@@ -956,9 +989,9 @@ export function GameManager({
                 if (conn === 'connected') {
                   netRef.current?.disconnect()
                   setConn('disconnected')
-                  setTimeout(() => connectVs(), 50)
+                  setTimeout(() => connectVs(id), 50)
                 } else if (conn === 'disconnected') {
-                  connectVs()
+                  connectVs(id)
                 }
               }}
             >
@@ -967,9 +1000,11 @@ export function GameManager({
             <button
               className="btn"
               onClick={() => {
-                if (conn === 'disconnected') connectVs()
+                if (joining) return
+                const rc = room.trim()
+                if (conn === 'disconnected' && rc) connectVs(rc)
               }}
-              disabled={conn !== 'disconnected'}
+              disabled={conn !== 'disconnected' || joining || !room.trim()}
             >
               Join
             </button>
@@ -982,6 +1017,9 @@ export function GameManager({
                 : conn === 'connecting'
                   ? 'Connecting…'
                   : 'Offline'}
+            </div>
+            <div className="muted vs-metric" title="Current room code">
+              Room: {room || '—'}
             </div>
           </div>
         )}
@@ -1061,15 +1099,19 @@ export function GameManager({
                         <button
                           className="btn"
                           onClick={() => {
-                            if (room !== r.id) setRoom(r.id)
+                            if (joining) return
+                            const rid = r.id
+                            if (room !== rid) setRoom(rid)
                             if (conn === 'connected') {
-                              // reconnect to join selected room
                               netRef.current?.disconnect()
                               setConn('disconnected')
-                              setTimeout(() => connectVs(), 50)
+                              setJoining(true)
+                              setTimeout(() => connectVs(rid), 50)
+                            } else if (conn === 'disconnected') {
+                              connectVs(rid)
                             }
                           }}
-                          disabled={conn === 'connecting'}
+                          disabled={joining || conn === 'connecting'}
                         >
                           Join
                         </button>
