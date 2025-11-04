@@ -28,6 +28,9 @@ const wss = new WebSocketServer({ server })
 const rooms = new Map()
 // roomId -> metadata
 const roomsMeta = new Map() // { name, public, createdAt }
+// clientId -> visitor number; assigns one global sequential number per unique clientId
+const clientVisitors = new Map()
+let nextVisitor = 1
 
 function joinRoom(ws, room) {
   let set = rooms.get(room)
@@ -86,6 +89,20 @@ wss.on('connection', (ws) => {
     }
     if (!msg || typeof msg !== 'object') return
     if (msg.type === 'hello' && typeof msg.room === 'string') {
+      // assign visitor number using a stable clientId, if provided
+      let visitor
+      if (typeof msg.clientId === 'string' && msg.clientId) {
+        if (clientVisitors.has(msg.clientId)) visitor = clientVisitors.get(msg.clientId)
+        else {
+          visitor = nextVisitor++
+          clientVisitors.set(msg.clientId, visitor)
+        }
+      } else {
+        visitor = nextVisitor++
+      }
+      try {
+        ws.send(JSON.stringify({ type: 'welcome', id: ws._id, visitor }))
+      } catch {}
       joinRoom(ws, msg.room)
       return
     }

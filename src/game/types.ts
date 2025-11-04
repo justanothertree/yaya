@@ -31,8 +31,8 @@ export type LeaderboardEntry = { username: string; score: number; date: string }
 export type Mode = 'solo' | 'versus'
 
 export type NetMessage =
-  | { type: 'hello'; room: string }
-  | { type: 'welcome'; id: string }
+  | { type: 'hello'; room: string; clientId?: string }
+  | { type: 'welcome'; id: string; visitor?: number }
   | { type: 'seed'; seed: number; settings: Settings }
   | { type: 'tick'; n: number; score: number }
   | { type: 'over'; reason: 'die' | 'quit'; from?: string }

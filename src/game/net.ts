@@ -28,7 +28,18 @@ export class NetClient {
       ws.onopen = () => {
         this.connecting = false
         this.handlers.onOpen?.()
-        this.send({ type: 'hello', room })
+        // include a stable clientId (from localStorage) so the server can assign a single visitor number
+        let cid = ''
+        try {
+          cid = localStorage.getItem('snake.clientId') || ''
+          if (!cid) {
+            cid = Math.random().toString(36).slice(2) + Date.now().toString(36)
+            localStorage.setItem('snake.clientId', cid)
+          }
+        } catch {
+          // ignore
+        }
+        this.send({ type: 'hello', room, clientId: cid })
       }
       ws.onmessage = (ev) => {
         try {

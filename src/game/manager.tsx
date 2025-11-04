@@ -37,7 +37,7 @@ function scoreFormula(apples: number) {
 const LS_SETTINGS_KEY = 'snake.settings.v1'
 const LS_PERSIST_KEY = 'snake.persist.v1'
 const LS_PLAYER_NAME_KEY = 'snake.playerName'
-const LS_PLAYER_COUNT_KEY = 'snake.playerCount'
+const LS_PLAYER_NAME_SOURCE_KEY = 'snake.playerName.source' // 'auto' | 'custom'
 
 export function GameManager({
   autoFocus,
@@ -70,16 +70,27 @@ export function GameManager({
     try {
       const stored = localStorage.getItem(LS_PLAYER_NAME_KEY)
       if (stored && stored.trim()) return stored
-      const count = parseInt(localStorage.getItem(LS_PLAYER_COUNT_KEY) || '0', 10) || 0
-      const next = count + 1
-      const name = `Player${next}`
-      localStorage.setItem(LS_PLAYER_COUNT_KEY, String(next))
+      // provisional default; server may assign a visitor-based number
+      const name = 'Player'
       localStorage.setItem(LS_PLAYER_NAME_KEY, name)
+      try {
+        localStorage.setItem(LS_PLAYER_NAME_SOURCE_KEY, 'auto')
+      } catch {
+        /* ignore */
+      }
       return name
     } catch {
       return 'Player'
     }
   })
+  const initialNameSource: 'auto' | 'custom' = (() => {
+    try {
+      return (localStorage.getItem(LS_PLAYER_NAME_SOURCE_KEY) as 'auto' | 'custom') || 'auto'
+    } catch {
+      return 'auto'
+    }
+  })()
+  const nameSourceRef = useRef<'auto' | 'custom'>(initialNameSource)
   const [room, setRoom] = useState('room-1')
   // Opponent score removed in multiplayer; track via previews instead
   const [presence, setPresence] = useState(1)
@@ -535,10 +546,27 @@ export function GameManager({
       onMessage: (msg) => {
         if (msg.type === 'welcome') {
           setMyId(msg.id)
-          // add self to players map with current name
+          let selfName = playerName?.trim() || 'Player'
+          if (msg.visitor != null && nameSourceRef.current !== 'custom') {
+            selfName = `Player${msg.visitor}`
+            setPlayerName(selfName)
+            try {
+              localStorage.setItem(LS_PLAYER_NAME_KEY, selfName)
+              localStorage.setItem(LS_PLAYER_NAME_SOURCE_KEY, 'auto')
+            } catch {
+              /* ignore */
+            }
+            try {
+              netRef.current?.send({ type: 'name', name: selfName })
+            } catch {
+              /* noop */
+            }
+          }
+          // add self to players map with current or updated name
+          const finalName = selfName
           setPlayers((map) => ({
             ...map,
-            [msg.id]: { name: playerName?.trim() || 'Player', ready: false },
+            [msg.id]: { name: finalName, ready: false },
           }))
           return
         }
@@ -869,7 +897,16 @@ export function GameManager({
               Name
               <input
                 value={playerName}
-                onChange={(e) => setPlayerName(e.target.value)}
+                onChange={(e) => {
+                  setPlayerName(e.target.value)
+                  try {
+                    localStorage.setItem(LS_PLAYER_NAME_SOURCE_KEY, 'custom')
+                    // keep a ref so we don't auto-override on future welcomes
+                    nameSourceRef.current = 'custom'
+                  } catch {
+                    /* ignore */
+                  }
+                }}
                 placeholder="Your name"
                 style={{
                   padding: '0.5rem',
@@ -885,7 +922,7 @@ export function GameManager({
               className="muted"
               style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
             >
-              Room ID
+              Room code
               <input
                 value={room}
                 onChange={(e) => setRoom(e.target.value)}
@@ -950,7 +987,7 @@ export function GameManager({
                   Public room
                 </label>
                 <input
-                  placeholder="Public display name (for lobby)"
+                  placeholder="Public display name"
                   value={roomName}
                   onChange={(e) => {
                     setRoomName(e.target.value)
@@ -967,12 +1004,12 @@ export function GameManager({
                     border: '1px solid var(--border)',
                     background: 'transparent',
                     color: 'var(--text)',
-                    minWidth: 180,
+                    minWidth: 220,
                   }}
                 />
                 <span className="muted" style={{ fontSize: 12 }}>
-                  Note: This only affects how your room appears in the public list. Join via Room ID
-                  or link above.
+                  Note: This only affects how your room appears in the public list. Join via Room
+                  code or link above.
                 </span>
                 <button className="btn" onClick={refreshRooms}>
                   Browse public rooms
@@ -990,6 +1027,9 @@ export function GameManager({
                     <div key={r.id} className="card" style={{ padding: 8 }}>
                       <div className="muted" style={{ fontWeight: 600 }}>
                         {r.name || r.id}
+                      </div>
+                      <div className="muted" style={{ fontSize: 12 }}>
+                        ID: {r.id}
                       </div>
                       <div className="muted">Players: {r.count}</div>
                       <div style={{ marginTop: 6 }}>
