@@ -622,11 +622,11 @@ export function GameManager({
           if (msg.from) {
             const fromId = msg.from
             setPlayers((map) => ({ ...map, [fromId]: { ...(map[fromId] || {}), name: msg.name } }))
-            // reflect in preview tiles too
-            setPreviews((map) => ({
-              ...map,
-              [fromId]: map[fromId] ? { ...map[fromId], name: msg.name } : map[fromId],
-            }))
+            // reflect in preview tiles too (only if a preview exists already)
+            setPreviews((map) => {
+              if (!map[fromId]) return map
+              return { ...map, [fromId]: { ...map[fromId], name: msg.name } }
+            })
           }
         } else if (msg.type === 'rooms') {
           setRooms(msg.items || [])
@@ -936,8 +936,33 @@ export function GameManager({
                 }}
               />
             </label>
-            <button className="btn" onClick={shareRoomLink} title="Create/Copy room link">
+            <button className="btn" onClick={shareRoomLink} title="Copy current room link">
               Share link
+            </button>
+            <button
+              className="btn"
+              title="Create a new room and copy its link"
+              onClick={async () => {
+                const id = `room-${Math.random().toString(36).slice(2, 8)}`
+                setMode('versus')
+                setRoom(id)
+                const url = `${location.origin}${location.pathname}#snake?room=${encodeURIComponent(id)}`
+                try {
+                  await navigator.clipboard.writeText(url)
+                  alert('New room created — link copied')
+                } catch {
+                  prompt('Copy room link:', url)
+                }
+                if (conn === 'connected') {
+                  netRef.current?.disconnect()
+                  setConn('disconnected')
+                  setTimeout(() => connectVs(), 50)
+                } else if (conn === 'disconnected') {
+                  connectVs()
+                }
+              }}
+            >
+              Create game
             </button>
             <button
               className="btn"
