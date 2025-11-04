@@ -38,7 +38,7 @@ export type NetMessage =
   | { type: 'over'; reason: 'die' | 'quit' }
   | { type: 'input'; key: 'ArrowUp' | 'ArrowDown' | 'ArrowLeft' | 'ArrowRight' }
   | { type: 'presence'; count: number }
-  | { type: 'ready' }
+  | { type: 'ready'; from?: string }
   | { type: 'name'; name: string }
   | { type: 'preview'; state: GameState; score: number; from?: string; name?: string }
   | { type: 'roommeta'; name?: string; public?: boolean }

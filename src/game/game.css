@@ -31,6 +31,11 @@
   min-width: 96px;
 }
 
+/* Versus inline controls container (desktop/tablet) */
+.snake-toolbar .vs-inline {
+  flex-wrap: wrap;
+}
+
 .snake-grid {
   display: grid;
   gap: 12px;
@@ -147,6 +152,24 @@
   }
   .snake-toolbar .btn--stable {
     min-width: 80px;
+  }
+  /* Stack versus controls into two columns, let input span full width */
+  .snake-toolbar .vs-inline {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+    width: 100%;
+  }
+  .snake-toolbar .vs-inline input {
+    grid-column: 1 / -1;
+    min-width: 0;
+    width: 100%;
+  }
+  .snake-toolbar .vs-inline .btn {
+    min-width: auto;
+  }
+  .snake-toolbar .vs-inline .vs-metric {
+    display: none; /* hide verbose metrics on phones */
   }
   .snake-grid[data-versus] {
     grid-template-columns: 1fr; /* stack canvases */

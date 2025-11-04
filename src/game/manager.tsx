@@ -119,7 +119,7 @@ export function GameManager({
   // Canvas refs and renderers
   const wrapRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  const oppCanvasRef = useRef<HTMLCanvasElement>(null)
+  // Opponent canvas removed; using previews instead
   const rendererRef = useRef<GameRenderer | null>(null)
   const lastWrapSizeRef = useRef<{ w: number; h: number } | null>(null)
   // Opponent renderer can be wired later when server mirrors full state
@@ -529,7 +529,8 @@ export function GameManager({
         } else if (msg.type === 'presence') {
           setPresence(Math.max(1, Math.min(2, msg.count || 1)))
         } else if (msg.type === 'ready') {
-          setPeerReady(true)
+          // Only mark peer ready if it's not from us
+          if (!msg.from || (myId && msg.from !== myId)) setPeerReady(true)
         } else if (msg.type === 'over') {
           setPeerReady(false)
         } else if (msg.type === 'preview') {
@@ -594,7 +595,16 @@ export function GameManager({
 
   // Countdown effect once both are ready
   useEffect(() => {
-    if (!(mode === 'versus' && conn === 'connected' && ready && peerReady && countdown == null))
+    if (
+      !(
+        mode === 'versus' &&
+        conn === 'connected' &&
+        presence >= 2 &&
+        ready &&
+        peerReady &&
+        countdown == null
+      )
+    )
       return
     let n = 3
     setCountdown(n)
@@ -612,7 +622,7 @@ export function GameManager({
       } else setCountdown(n)
     }, 900)
     return () => window.clearInterval(id)
-  }, [mode, conn, ready, peerReady, countdown, onControlChange])
+  }, [mode, conn, presence, ready, peerReady, countdown, onControlChange])
 
   // Send lightweight preview of our current state periodically while running in versus
   useEffect(() => {
@@ -773,7 +783,10 @@ export function GameManager({
         {/* Joystick removed */}
 
         {mode === 'versus' && wsUrl && (
-          <div style={{ display: 'inline-flex', gap: 8, alignItems: 'center' }}>
+          <div
+            className="vs-inline"
+            style={{ display: 'inline-flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}
+          >
             <input
               value={room}
               onChange={(e) => setRoom(e.target.value)}
@@ -791,17 +804,17 @@ export function GameManager({
             <button className="btn" onClick={connectVs}>
               Connect
             </button>
-            <div className="muted" title="Players in room">
+            <div className="muted vs-metric" title="Players in room">
               In room: {presence}/2
             </div>
-            <div className="muted" title="Connection status">
+            <div className="muted vs-metric" title="Connection status">
               {conn === 'connected'
                 ? 'Connected'
                 : conn === 'connecting'
                   ? 'Connecting…'
                   : 'Offline'}
             </div>
-            <div className="muted">Opponent score: {opponentScore}</div>
+            <div className="muted vs-metric">Opponent score: {opponentScore}</div>
           </div>
         )}
 
@@ -975,9 +988,7 @@ export function GameManager({
           )}
           {/* Joystick removed; swipe and keys remain */}
         </div>
-        {mode === 'versus' && (
-          <canvas ref={oppCanvasRef} className="snake-canvas snake-canvas--opp" />
-        )}
+        {/* Opponent canvas removed for now; previews serve as spectator UI */}
       </div>
 
       {/* Peer previews (versus): show small boards for other players in the room */}
