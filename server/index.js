@@ -26,12 +26,16 @@ const wss = new WebSocketServer({ server })
 
 // roomId -> Set of clients
 const rooms = new Map()
+// roomId -> metadata
+const roomsMeta = new Map() // { name, public, createdAt }
 
 function joinRoom(ws, room) {
   let set = rooms.get(room)
   if (!set) {
     set = new Set()
     rooms.set(room, set)
+    if (!roomsMeta.has(room))
+      roomsMeta.set(room, { name: room, public: false, createdAt: Date.now() })
   }
   set.add(ws)
   ws._room = room
@@ -69,6 +73,10 @@ function broadcast(room, msg, except = null) {
 
 wss.on('connection', (ws) => {
   ws._room = null
+  ws._id = Math.random().toString(36).slice(2, 10)
+  try {
+    ws.send(JSON.stringify({ type: 'welcome', id: ws._id }))
+  } catch {}
   ws.on('message', (data) => {
     let msg
     try {
@@ -81,6 +89,26 @@ wss.on('connection', (ws) => {
       joinRoom(ws, msg.room)
       return
     }
+    if (msg.type === 'roommeta') {
+      const r = ws._room
+      if (!r) return
+      const meta = roomsMeta.get(r) || { name: r, public: false, createdAt: Date.now() }
+      if (typeof msg.name === 'string' && msg.name.trim()) meta.name = msg.name.trim()
+      if (typeof msg.public === 'boolean') meta.public = msg.public
+      roomsMeta.set(r, meta)
+      return
+    }
+    if (msg.type === 'list') {
+      const items = []
+      for (const [id, set] of rooms.entries()) {
+        const m = roomsMeta.get(id) || { name: id, public: false, createdAt: Date.now() }
+        if (m.public) items.push({ id, name: m.name, count: set.size })
+      }
+      try {
+        ws.send(JSON.stringify({ type: 'rooms', items }))
+      } catch {}
+      return
+    }
     const room = ws._room
     if (!room) return
     // Relay gameplay messages to peers in the same room
@@ -89,9 +117,10 @@ wss.on('connection', (ws) => {
       msg.type === 'tick' ||
       msg.type === 'over' ||
       msg.type === 'ready' ||
-      msg.type === 'name'
+      msg.type === 'name' ||
+      msg.type === 'preview'
     ) {
-      broadcast(room, msg, ws)
+      broadcast(room, { ...msg, from: ws._id }, ws)
       return
     }
   })

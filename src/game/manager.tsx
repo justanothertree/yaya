@@ -87,6 +87,25 @@ export function GameManager({
   const [ready, setReady] = useState(false)
   const [peerReady, setPeerReady] = useState(false)
   const [countdown, setCountdown] = useState<number | null>(null)
+  const [myId, setMyId] = useState<string | null>(null)
+  const [previews, setPreviews] = useState<
+    Record<string, { state: ReturnType<GameEngine['snapshot']>; score: number; name?: string }>
+  >({})
+  const [rooms, setRooms] = useState<Array<{ id: string; name?: string; count: number }>>([])
+  const [roomPublic, setRoomPublic] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('snake.room.public') === '1'
+    } catch {
+      return false
+    }
+  })
+  const [roomName, setRoomName] = useState<string>(() => {
+    try {
+      return localStorage.getItem('snake.room.name') || ''
+    } catch {
+      return ''
+    }
+  })
   const wsUrl = (import.meta as unknown as { env?: Record<string, string> }).env?.VITE_WS_URL
   const capturedRef = useRef(false)
   const [captured, setCaptured] = useState(false)
@@ -111,6 +130,44 @@ export function GameManager({
 
   // Net client (only used in versus)
   const netRef = useRef<NetClient | null>(null)
+
+  // Mini preview canvas component for peer snapshots
+  function Preview({ state, title }: { state: ReturnType<GameEngine['snapshot']>; title: string }) {
+    const cRef = useRef<HTMLCanvasElement>(null)
+    useEffect(() => {
+      const canvas = cRef.current
+      if (!canvas) return
+      const ctx = canvas.getContext('2d')
+      if (!ctx) return
+      const grid = settings.grid
+      const cell = Math.max(3, Math.floor(128 / grid))
+      const size = grid * cell
+      canvas.width = size
+      canvas.height = size
+      // Theme
+      const styles = getComputedStyle(document.documentElement)
+      const bg = styles.getPropertyValue('--bg').trim() || '#0b0f19'
+      const snake = styles.getPropertyValue('--accent').trim() || '#22c55e'
+      const apple = styles.getPropertyValue('--accent-2').trim() || '#ef4444'
+      ctx.fillStyle = bg
+      ctx.fillRect(0, 0, size, size)
+      ctx.fillStyle = apple
+      for (const a of state.apples) ctx.fillRect(a.x * cell, a.y * cell, cell, cell)
+      ctx.fillStyle = snake
+      for (const p of state.snake) ctx.fillRect(p.x * cell, p.y * cell, cell, cell)
+    }, [state])
+    return (
+      <div style={{ display: 'grid', gap: 4 }}>
+        <canvas
+          ref={cRef}
+          style={{ width: 128, height: 128, borderRadius: 8, border: '1px solid var(--border)' }}
+        />
+        <div className="muted" style={{ fontSize: 12, textAlign: 'center' }}>
+          {title}
+        </div>
+      </div>
+    )
+  }
 
   // Initialize engine and renderer on mount or when settings/seed changes
   useEffect(() => {
@@ -379,6 +436,8 @@ export function GameManager({
       e.preventDefault()
       const eng = engineRef.current!
       if (isSpace) {
+        // No manual pause/play in versus mode
+        if (mode === 'versus') return
         if (!alive) doRestart()
         else setPaused((p) => !p)
         return
@@ -441,13 +500,25 @@ export function GameManager({
   const connectVs = () => {
     if (!wsUrl) return
     const net = new NetClient(wsUrl, {
-      onOpen: () => setConn('connected'),
+      onOpen: () => {
+        setConn('connected')
+        // broadcast current meta on connect
+        try {
+          net.send({ type: 'roommeta', public: roomPublic, name: roomName || undefined })
+        } catch {
+          /* noop */
+        }
+      },
       onClose: () => {
         setConn('disconnected')
         setPeerReady(false)
       },
       onError: () => setConn('disconnected'),
       onMessage: (msg) => {
+        if (msg.type === 'welcome') {
+          setMyId(msg.id)
+          return
+        }
         if (msg.type === 'seed') {
           setEngineSeed(msg.seed)
           setSettings(msg.settings)
@@ -461,6 +532,16 @@ export function GameManager({
           setPeerReady(true)
         } else if (msg.type === 'over') {
           setPeerReady(false)
+        } else if (msg.type === 'preview') {
+          // Ignore our own preview
+          if (msg.from && myId && msg.from === myId) return
+          const from = msg.from || 'peer'
+          setPreviews((map) => ({
+            ...map,
+            [from]: { state: msg.state, score: msg.score, name: msg.name },
+          }))
+        } else if (msg.type === 'rooms') {
+          setRooms(msg.items || [])
         }
       },
     })
@@ -533,6 +614,27 @@ export function GameManager({
     return () => window.clearInterval(id)
   }, [mode, conn, ready, peerReady, countdown, onControlChange])
 
+  // Send lightweight preview of our current state periodically while running in versus
+  useEffect(() => {
+    if (!(mode === 'versus' && conn === 'connected')) return
+    let raf: number | null = null
+    const send = () => {
+      try {
+        const snap = engineRef.current?.snapshot()
+        if (snap) {
+          netRef.current?.send({ type: 'preview', state: snap, score, name: playerName })
+        }
+      } catch {
+        /* noop */
+      }
+      raf = window.setTimeout(send, 250) as unknown as number
+    }
+    raf = window.setTimeout(send, 250) as unknown as number
+    return () => {
+      if (raf) window.clearTimeout(raf)
+    }
+  }, [mode, conn, score, playerName])
+
   const shareRoomLink = async () => {
     const id = room || `room-${Math.random().toString(36).slice(2, 8)}`
     setRoom(id)
@@ -542,6 +644,24 @@ export function GameManager({
       alert('Room link copied to clipboard')
     } catch {
       prompt('Copy room link:', url)
+    }
+  }
+
+  // Request list of public rooms
+  const refreshRooms = () => {
+    try {
+      netRef.current?.send({ type: 'list' })
+    } catch {
+      /* noop */
+    }
+  }
+
+  // Update current room metadata
+  const sendRoomMeta = (meta: { public?: boolean; name?: string }) => {
+    try {
+      netRef.current?.send({ type: 'roommeta', ...meta })
+    } catch {
+      /* noop */
     }
   }
 
@@ -593,6 +713,17 @@ export function GameManager({
         <button
           className="btn btn--stable"
           onClick={() => {
+            if (mode === 'versus') {
+              // Use Ready flow in versus
+              if (conn !== 'connected') return
+              setReady(true)
+              try {
+                netRef.current?.send({ type: 'ready' })
+              } catch {
+                /* noop */
+              }
+              return
+            }
             if (!alive) {
               doRestart()
               setPaused(false)
@@ -617,7 +748,7 @@ export function GameManager({
           aria-pressed={!paused}
           title={paused ? 'Play' : 'Pause'}
         >
-          {paused ? 'Play' : 'Pause'}
+          {mode === 'versus' ? (ready ? 'Ready ✓' : 'Ready') : paused ? 'Play' : 'Pause'}
         </button>
 
         <button className="btn" onClick={doRestart}>
@@ -657,6 +788,96 @@ export function GameManager({
             </div>
             <div className="muted">Opponent score: {opponentScore}</div>
           </div>
+        )}
+
+        {mode === 'versus' && (
+          <details className="card" style={{ marginTop: 8 }}>
+            <summary style={{ cursor: 'pointer' }}>Lobby</summary>
+            <div style={{ display: 'grid', gap: 8, marginTop: 8 }}>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                <label
+                  className="muted"
+                  style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={roomPublic}
+                    onChange={(e) => {
+                      const v = e.target.checked
+                      setRoomPublic(v)
+                      try {
+                        localStorage.setItem('snake.room.public', v ? '1' : '0')
+                      } catch {
+                        /* noop */
+                      }
+                      if (conn === 'connected') sendRoomMeta({ public: v })
+                    }}
+                  />
+                  Public room
+                </label>
+                <input
+                  placeholder="Room name (optional)"
+                  value={roomName}
+                  onChange={(e) => {
+                    setRoomName(e.target.value)
+                    try {
+                      localStorage.setItem('snake.room.name', e.target.value)
+                    } catch {
+                      /* noop */
+                    }
+                    if (conn === 'connected') sendRoomMeta({ name: e.target.value || undefined })
+                  }}
+                  style={{
+                    padding: '0.4rem 0.5rem',
+                    borderRadius: 8,
+                    border: '1px solid var(--border)',
+                    background: 'transparent',
+                    color: 'var(--text)',
+                    minWidth: 180,
+                  }}
+                />
+                <button className="btn" onClick={refreshRooms}>
+                  Browse public rooms
+                </button>
+              </div>
+              {rooms.length > 0 ? (
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fill, minmax(180px,1fr))',
+                    gap: 8,
+                  }}
+                >
+                  {rooms.map((r) => (
+                    <div key={r.id} className="card" style={{ padding: 8 }}>
+                      <div className="muted" style={{ fontWeight: 600 }}>
+                        {r.name || r.id}
+                      </div>
+                      <div className="muted">Players: {r.count}</div>
+                      <div style={{ marginTop: 6 }}>
+                        <button
+                          className="btn"
+                          onClick={() => {
+                            if (room !== r.id) setRoom(r.id)
+                            if (conn === 'connected') {
+                              // reconnect to join selected room
+                              netRef.current?.disconnect()
+                              setConn('disconnected')
+                              setTimeout(() => connectVs(), 50)
+                            }
+                          }}
+                        >
+                          Join
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="muted">No public rooms yet — click Browse to refresh.</div>
+              )}
+            </div>
+          </details>
         )}
       </div>
 
@@ -723,8 +944,8 @@ export function GameManager({
               capturedRef.current = false
               setCaptured(false)
               onControlChange?.(false)
-              // auto-pause when leaving the game
-              setPaused(true)
+              // No auto-pause in versus mode
+              if (mode !== 'versus') setPaused(true)
             }}
             onPointerDown={() => {
               // focus on first interaction, capture controls
@@ -743,6 +964,26 @@ export function GameManager({
           <canvas ref={oppCanvasRef} className="snake-canvas snake-canvas--opp" />
         )}
       </div>
+
+      {/* Peer previews (versus): show small boards for other players in the room */}
+      {mode === 'versus' && Object.keys(previews).length > 0 && (
+        <div className="card previews-section" style={{ marginTop: '0.75rem' }}>
+          <div className="muted" style={{ marginBottom: 6 }}>
+            Players in room: {presence}
+          </div>
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))',
+              gap: 12,
+            }}
+          >
+            {Object.entries(previews).map(([id, p]) => (
+              <Preview key={id} state={p.state} title={`${p.name || 'Player'} — ${p.score}`} />
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="snake-hud">
         <div className="muted">Score: {score}</div>

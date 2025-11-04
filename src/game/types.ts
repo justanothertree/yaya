@@ -32,6 +32,7 @@ export type Mode = 'solo' | 'versus'
 
 export type NetMessage =
   | { type: 'hello'; room: string }
+  | { type: 'welcome'; id: string }
   | { type: 'seed'; seed: number; settings: Settings }
   | { type: 'tick'; n: number; score: number }
   | { type: 'over'; reason: 'die' | 'quit' }
@@ -39,6 +40,10 @@ export type NetMessage =
   | { type: 'presence'; count: number }
   | { type: 'ready' }
   | { type: 'name'; name: string }
+  | { type: 'preview'; state: GameState; score: number; from?: string; name?: string }
+  | { type: 'roommeta'; name?: string; public?: boolean }
+  | { type: 'list' }
+  | { type: 'rooms'; items: Array<{ id: string; name: string; count: number }> }
 
 export type ThemeColors = {
   bg: string

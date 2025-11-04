@@ -136,7 +136,29 @@
 }
 
 @media (max-width: 640px) {
+  .snake-toolbar {
+    position: static; /* free up vertical space */
+    gap: 6px;
+    padding: 6px 6px;
+    margin-bottom: 4px;
+  }
+  .snake-toolbar .group-label {
+    display: none; /* less chrome on small screens */
+  }
+  .snake-toolbar .btn--stable {
+    min-width: 80px;
+  }
   .snake-grid[data-versus] {
-    grid-template-columns: 1fr;
+    grid-template-columns: 1fr; /* stack canvases */
+    gap: 8px;
+  }
+  .snake-canvas {
+    margin-top: 0.5rem;
+  }
+  .snake-canvas--opp {
+    display: none; /* hide opponent canvas placeholder on phones */
+  }
+  .previews-section {
+    display: none; /* hide previews on phones to reduce clutter */
   }
 }
