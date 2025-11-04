@@ -35,7 +35,7 @@ export type NetMessage =
   | { type: 'welcome'; id: string }
   | { type: 'seed'; seed: number; settings: Settings }
   | { type: 'tick'; n: number; score: number }
-  | { type: 'over'; reason: 'die' | 'quit' }
+  | { type: 'over'; reason: 'die' | 'quit'; from?: string }
   | { type: 'input'; key: 'ArrowUp' | 'ArrowDown' | 'ArrowLeft' | 'ArrowRight' }
   | { type: 'presence'; count: number }
   | { type: 'ready'; from?: string }

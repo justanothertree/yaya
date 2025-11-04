@@ -81,7 +81,7 @@ export function GameManager({
     }
   })
   const [room, setRoom] = useState('room-1')
-  const [opponentScore, setOpponentScore] = useState(0)
+  // Opponent score removed in multiplayer; track via previews instead
   const [presence, setPresence] = useState(1)
   const [conn, setConn] = useState<'disconnected' | 'connecting' | 'connected'>('disconnected')
   const [ready, setReady] = useState(false)
@@ -264,16 +264,17 @@ export function GameManager({
     }
   }, [settings, applesEaten, score])
 
-  // Persist player name when changed (user edits)
+  // Persist player name when changed (user edits); announce to room if connected
   useEffect(() => {
     try {
       if (playerName && playerName.trim()) {
         localStorage.setItem(LS_PLAYER_NAME_KEY, playerName.trim())
+        if (conn === 'connected') netRef.current?.send({ type: 'name', name: playerName.trim() })
       }
     } catch {
       /* ignore */
     }
-  }, [playerName])
+  }, [playerName, conn])
 
   // Fullscreen controls removed for now per feedback
 
@@ -508,6 +509,11 @@ export function GameManager({
         } catch {
           /* noop */
         }
+        try {
+          if (playerName?.trim()) net.send({ type: 'name', name: playerName.trim() })
+        } catch {
+          /* noop */
+        }
       },
       onClose: () => {
         setConn('disconnected')
@@ -524,15 +530,21 @@ export function GameManager({
           setSettings(msg.settings)
           setReady(false)
           setPeerReady(false)
-        } else if (msg.type === 'tick') {
-          setOpponentScore(msg.score)
         } else if (msg.type === 'presence') {
-          setPresence(Math.max(1, Math.min(2, msg.count || 1)))
+          setPresence(Math.max(1, msg.count || 1))
         } else if (msg.type === 'ready') {
           // Only mark peer ready if it's not from us
           if (!msg.from || (myId && msg.from !== myId)) setPeerReady(true)
         } else if (msg.type === 'over') {
           setPeerReady(false)
+          if (msg.from) {
+            const fromId = msg.from as string
+            setPreviews((map) => {
+              const next = { ...map }
+              if (fromId in next) delete next[fromId]
+              return next
+            })
+          }
         } else if (msg.type === 'preview') {
           // Ignore our own preview
           if (msg.from && myId && msg.from === myId) return
@@ -587,7 +599,10 @@ export function GameManager({
     try {
       const h = window.location.hash || ''
       const m = h.match(/room=([A-Za-z0-9_-]+)/)
-      if (m && m[1]) setRoom(m[1])
+      if (m && m[1]) {
+        setRoom(m[1])
+        setMode('versus')
+      }
     } catch {
       /* ignore */
     }
@@ -702,7 +717,7 @@ export function GameManager({
             onClick={() => setMode(m)}
             data-active={mode === m || undefined}
           >
-            {m}
+            {m === 'versus' ? 'multiplayer' : m}
           </button>
         ))}
 
@@ -788,6 +803,19 @@ export function GameManager({
             style={{ display: 'inline-flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}
           >
             <input
+              value={playerName}
+              onChange={(e) => setPlayerName(e.target.value)}
+              placeholder="Your name"
+              style={{
+                padding: '0.5rem',
+                borderRadius: 8,
+                border: '1px solid var(--border)',
+                background: 'transparent',
+                color: 'var(--text)',
+                minWidth: 140,
+              }}
+            />
+            <input
               value={room}
               onChange={(e) => setRoom(e.target.value)}
               style={{
@@ -801,11 +829,17 @@ export function GameManager({
             <button className="btn" onClick={shareRoomLink} title="Create/Copy room link">
               Share link
             </button>
-            <button className="btn" onClick={connectVs}>
-              Connect
+            <button
+              className="btn"
+              onClick={() => {
+                if (conn === 'disconnected') connectVs()
+              }}
+              disabled={conn !== 'disconnected'}
+            >
+              Join
             </button>
             <div className="muted vs-metric" title="Players in room">
-              In room: {presence}/2
+              In room: {presence}
             </div>
             <div className="muted vs-metric" title="Connection status">
               {conn === 'connected'
@@ -814,7 +848,6 @@ export function GameManager({
                   ? 'Connecting…'
                   : 'Offline'}
             </div>
-            <div className="muted vs-metric">Opponent score: {opponentScore}</div>
           </div>
         )}
 

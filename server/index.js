@@ -129,7 +129,7 @@ wss.on('connection', (ws) => {
     leaveRoom(ws)
     if (room) {
       // Notify peers that someone left
-      broadcast(room, { type: 'over', reason: 'quit' }, null)
+      broadcast(room, { type: 'over', reason: 'quit', from: ws._id }, null)
     }
   })
 })
