@@ -39,7 +39,7 @@ export type NetMessage =
   | { type: 'input'; key: 'ArrowUp' | 'ArrowDown' | 'ArrowLeft' | 'ArrowRight' }
   | { type: 'presence'; count: number }
   | { type: 'ready'; from?: string }
-  | { type: 'name'; name: string }
+  | { type: 'name'; name: string; from?: string }
   | { type: 'preview'; state: GameState; score: number; from?: string; name?: string }
   | { type: 'roommeta'; name?: string; public?: boolean }
   | { type: 'list' }

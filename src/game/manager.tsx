@@ -85,9 +85,10 @@ export function GameManager({
   const [presence, setPresence] = useState(1)
   const [conn, setConn] = useState<'disconnected' | 'connecting' | 'connected'>('disconnected')
   const [ready, setReady] = useState(false)
-  const [peerReady, setPeerReady] = useState(false)
+  // peerReady removed; using players map + own ready state
   const [countdown, setCountdown] = useState<number | null>(null)
   const [myId, setMyId] = useState<string | null>(null)
+  const [players, setPlayers] = useState<Record<string, { name?: string; ready?: boolean }>>({})
   const [previews, setPreviews] = useState<
     Record<string, { state: ReturnType<GameEngine['snapshot']>; score: number; name?: string }>
   >({})
@@ -270,11 +271,17 @@ export function GameManager({
       if (playerName && playerName.trim()) {
         localStorage.setItem(LS_PLAYER_NAME_KEY, playerName.trim())
         if (conn === 'connected') netRef.current?.send({ type: 'name', name: playerName.trim() })
+        // reflect in local players map for self
+        setPlayers((map) => {
+          if (!myId) return map
+          const cur = map[myId] || {}
+          return { ...map, [myId]: { ...cur, name: playerName.trim() } }
+        })
       }
     } catch {
       /* ignore */
     }
-  }, [playerName, conn])
+  }, [playerName, conn, myId])
 
   // Fullscreen controls removed for now per feedback
 
@@ -503,6 +510,9 @@ export function GameManager({
     const net = new NetClient(wsUrl, {
       onOpen: () => {
         setConn('connected')
+        // reset local state for new session
+        setPlayers({})
+        setPreviews({})
         // broadcast current meta on connect
         try {
           net.send({ type: 'roommeta', public: roomPublic, name: roomName || undefined })
@@ -517,31 +527,52 @@ export function GameManager({
       },
       onClose: () => {
         setConn('disconnected')
-        setPeerReady(false)
+        setReady(false)
+        setPlayers({})
+        setPreviews({})
       },
       onError: () => setConn('disconnected'),
       onMessage: (msg) => {
         if (msg.type === 'welcome') {
           setMyId(msg.id)
+          // add self to players map with current name
+          setPlayers((map) => ({
+            ...map,
+            [msg.id]: { name: playerName?.trim() || 'Player', ready: false },
+          }))
           return
         }
         if (msg.type === 'seed') {
           setEngineSeed(msg.seed)
           setSettings(msg.settings)
           setReady(false)
-          setPeerReady(false)
+          // reset ready flags for all players (new round)
+          setPlayers((map) => {
+            const next: typeof map = {}
+            for (const [id, p] of Object.entries(map)) next[id] = { ...p, ready: false }
+            return next
+          })
         } else if (msg.type === 'presence') {
           setPresence(Math.max(1, msg.count || 1))
         } else if (msg.type === 'ready') {
-          // Only mark peer ready if it's not from us
-          if (!msg.from || (myId && msg.from !== myId)) setPeerReady(true)
+          // Mark peer ready in players map (server doesn't echo to sender)
+          if (msg.from && (!myId || msg.from !== myId)) {
+            const fromId = msg.from
+            setPlayers((map) => ({ ...map, [fromId]: { ...(map[fromId] || {}), ready: true } }))
+          }
         } else if (msg.type === 'over') {
-          setPeerReady(false)
           if (msg.from) {
             const fromId = msg.from as string
             setPreviews((map) => {
               const next = { ...map }
               if (fromId in next) delete next[fromId]
+              return next
+            })
+            // remove player on quit, else just clear ready
+            setPlayers((map) => {
+              const next = { ...map }
+              if (msg.reason === 'quit') delete next[fromId]
+              else if (next[fromId]) next[fromId] = { ...next[fromId], ready: false }
               return next
             })
           }
@@ -553,6 +584,22 @@ export function GameManager({
             ...map,
             [from]: { state: msg.state, score: msg.score, name: msg.name },
           }))
+          if (msg.from) {
+            setPlayers((map) => ({
+              ...map,
+              [msg.from!]: { ...(map[msg.from!] || {}), name: msg.name || map[msg.from!]?.name },
+            }))
+          }
+        } else if (msg.type === 'name') {
+          if (msg.from) {
+            const fromId = msg.from
+            setPlayers((map) => ({ ...map, [fromId]: { ...(map[fromId] || {}), name: msg.name } }))
+            // reflect in preview tiles too
+            setPreviews((map) => ({
+              ...map,
+              [fromId]: map[fromId] ? { ...map[fromId], name: msg.name } : map[fromId],
+            }))
+          }
         } else if (msg.type === 'rooms') {
           setRooms(msg.items || [])
         }
@@ -610,13 +657,18 @@ export function GameManager({
 
   // Countdown effect once both are ready
   useEffect(() => {
+    // compute number of ready players (include self via `ready` flag)
+    const othersReady = Object.entries(players).reduce((acc, [id, p]) => {
+      if (id !== myId && p.ready) acc += 1
+      return acc
+    }, 0)
+    const totalReady = othersReady + (ready ? 1 : 0)
     if (
       !(
         mode === 'versus' &&
         conn === 'connected' &&
         presence >= 2 &&
-        ready &&
-        peerReady &&
+        totalReady >= 2 &&
         countdown == null
       )
     )
@@ -637,7 +689,7 @@ export function GameManager({
       } else setCountdown(n)
     }, 900)
     return () => window.clearInterval(id)
-  }, [mode, conn, presence, ready, peerReady, countdown, onControlChange])
+  }, [mode, conn, presence, ready, players, myId, countdown, onControlChange])
 
   // Send lightweight preview of our current state periodically while running in versus
   useEffect(() => {
@@ -755,7 +807,14 @@ export function GameManager({
             if (mode === 'versus') {
               // Use Ready flow in versus
               if (conn !== 'connected') return
+              if (!playerName.trim()) return
               setReady(true)
+              // reflect in local players map
+              setPlayers((map) => {
+                if (!myId) return map
+                const cur = map[myId] || {}
+                return { ...map, [myId]: { ...cur, ready: true, name: cur.name || playerName } }
+              })
               try {
                 netRef.current?.send({ type: 'ready' })
               } catch {
@@ -787,6 +846,7 @@ export function GameManager({
           }}
           aria-pressed={!paused}
           title={paused ? 'Play' : 'Pause'}
+          disabled={mode === 'versus' && (!playerName.trim() || conn !== 'connected' || ready)}
         >
           {mode === 'versus' ? (ready ? 'Ready ✓' : 'Ready') : paused ? 'Play' : 'Pause'}
         </button>
@@ -802,30 +862,43 @@ export function GameManager({
             className="vs-inline"
             style={{ display: 'inline-flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}
           >
-            <input
-              value={playerName}
-              onChange={(e) => setPlayerName(e.target.value)}
-              placeholder="Your name"
-              style={{
-                padding: '0.5rem',
-                borderRadius: 8,
-                border: '1px solid var(--border)',
-                background: 'transparent',
-                color: 'var(--text)',
-                minWidth: 140,
-              }}
-            />
-            <input
-              value={room}
-              onChange={(e) => setRoom(e.target.value)}
-              style={{
-                padding: '0.5rem',
-                borderRadius: 8,
-                border: '1px solid var(--border)',
-                background: 'transparent',
-                color: 'var(--text)',
-              }}
-            />
+            <label
+              className="muted"
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+            >
+              Name
+              <input
+                value={playerName}
+                onChange={(e) => setPlayerName(e.target.value)}
+                placeholder="Your name"
+                style={{
+                  padding: '0.5rem',
+                  borderRadius: 8,
+                  border: '1px solid var(--border)',
+                  background: 'transparent',
+                  color: 'var(--text)',
+                  minWidth: 140,
+                }}
+              />
+            </label>
+            <label
+              className="muted"
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+            >
+              Room ID
+              <input
+                value={room}
+                onChange={(e) => setRoom(e.target.value)}
+                placeholder="e.g. room-abc123"
+                style={{
+                  padding: '0.5rem',
+                  borderRadius: 8,
+                  border: '1px solid var(--border)',
+                  background: 'transparent',
+                  color: 'var(--text)',
+                }}
+              />
+            </label>
             <button className="btn" onClick={shareRoomLink} title="Create/Copy room link">
               Share link
             </button>
@@ -877,7 +950,7 @@ export function GameManager({
                   Public room
                 </label>
                 <input
-                  placeholder="Room name (optional)"
+                  placeholder="Public display name (for lobby)"
                   value={roomName}
                   onChange={(e) => {
                     setRoomName(e.target.value)
@@ -897,6 +970,10 @@ export function GameManager({
                     minWidth: 180,
                   }}
                 />
+                <span className="muted" style={{ fontSize: 12 }}>
+                  Note: This only affects how your room appears in the public list. Join via Room ID
+                  or link above.
+                </span>
                 <button className="btn" onClick={refreshRooms}>
                   Browse public rooms
                 </button>
@@ -927,6 +1004,7 @@ export function GameManager({
                               setTimeout(() => connectVs(), 50)
                             }
                           }}
+                          disabled={conn === 'connecting'}
                         >
                           Join
                         </button>
@@ -937,6 +1015,35 @@ export function GameManager({
               ) : (
                 <div className="muted">No public rooms yet — click Browse to refresh.</div>
               )}
+              {/* Players in current room */}
+              <div className="card" style={{ padding: 8 }}>
+                <div className="muted" style={{ fontWeight: 600, marginBottom: 6 }}>
+                  Players ({presence})
+                </div>
+                <div style={{ display: 'grid', gap: 4 }}>
+                  {/* Self */}
+                  <div
+                    className="muted"
+                    style={{ display: 'flex', justifyContent: 'space-between' }}
+                  >
+                    <span>{playerName?.trim() || 'You'}</span>
+                    <span>{ready ? 'Ready ✓' : 'Not ready'}</span>
+                  </div>
+                  {/* Peers */}
+                  {Object.entries(players)
+                    .filter(([id]) => id !== myId)
+                    .map(([id, p]) => (
+                      <div
+                        key={id}
+                        className="muted"
+                        style={{ display: 'flex', justifyContent: 'space-between' }}
+                      >
+                        <span>{p.name || 'Player'}</span>
+                        <span>{p.ready ? 'Ready ✓' : 'Not ready'}</span>
+                      </div>
+                    ))}
+                </div>
+              </div>
             </div>
           </details>
         )}
@@ -951,7 +1058,13 @@ export function GameManager({
               if (mode === 'versus') {
                 // In versus, use Ready flow to coordinate start
                 if (conn !== 'connected') return
+                if (!playerName.trim()) return
                 setReady(true)
+                setPlayers((map) => {
+                  if (!myId) return map
+                  const cur = map[myId] || {}
+                  return { ...map, [myId]: { ...cur, ready: true, name: cur.name || playerName } }
+                })
                 try {
                   netRef.current?.send({ type: 'ready' })
                 } catch {
@@ -981,6 +1094,7 @@ export function GameManager({
             }}
             aria-pressed={!paused}
             title={paused ? 'Play' : 'Pause'}
+            disabled={mode === 'versus' && (!playerName.trim() || conn !== 'connected' || ready)}
           >
             {mode === 'versus' ? (ready ? 'Ready ✓' : 'Ready') : paused ? 'Play' : 'Pause'}
           </button>

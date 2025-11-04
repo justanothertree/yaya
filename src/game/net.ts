@@ -11,6 +11,7 @@ export class NetClient {
   private ws: WebSocket | null = null
   private url: string
   private handlers: Handlers
+  private connecting = false
 
   constructor(url: string, handlers: Handlers = {}) {
     this.url = url
@@ -18,11 +19,14 @@ export class NetClient {
   }
 
   connect(room: string) {
+    if (this.connecting) return
+    this.connecting = true
     this.disconnect()
     try {
       const ws = new WebSocket(this.url)
       this.ws = ws
       ws.onopen = () => {
+        this.connecting = false
         this.handlers.onOpen?.()
         this.send({ type: 'hello', room })
       }
@@ -34,10 +38,17 @@ export class NetClient {
           // ignore
         }
       }
-      ws.onclose = (ev) => this.handlers.onClose?.(ev)
-      ws.onerror = (ev) => this.handlers.onError?.(ev)
+      ws.onclose = (ev) => {
+        this.connecting = false
+        this.handlers.onClose?.(ev)
+      }
+      ws.onerror = (ev) => {
+        this.connecting = false
+        this.handlers.onError?.(ev)
+      }
     } catch {
       // fail silently
+      this.connecting = false
     }
   }
 
@@ -56,6 +67,7 @@ export class NetClient {
       // ignore
     } finally {
       this.ws = null
+      this.connecting = false
     }
   }
 }
