@@ -9,9 +9,10 @@ import { useReveal } from './hooks/useReveal'
 export default function App() {
   type Section = 'home' | 'projects' | 'resume' | 'snake' | 'contact'
   const initialSection: Section = (() => {
-    const h = (window.location.hash || '#home').replace('#', '') as Section
-    return (['home', 'projects', 'resume', 'snake', 'contact'] as Section[]).includes(h)
-      ? h
+    const raw = (window.location.hash || '#home').replace('#', '')
+    const base = (raw.split('?')[0] || 'home') as Section
+    return (['home', 'projects', 'resume', 'snake', 'contact'] as Section[]).includes(base)
+      ? base
       : 'home'
   })()
   const [active, setActive] = useState<Section>(initialSection)
@@ -80,9 +81,10 @@ export default function App() {
   // Read hash when it changes (deep links + back/forward)
   useEffect(() => {
     const parseHash = (): Section => {
-      const h = (window.location.hash || '#home').replace('#', '') as Section
-      return (['home', 'projects', 'resume', 'snake', 'contact'] as Section[]).includes(h)
-        ? h
+      const raw = (window.location.hash || '#home').replace('#', '')
+      const base = (raw.split('?')[0] || 'home') as Section
+      return (['home', 'projects', 'resume', 'snake', 'contact'] as Section[]).includes(base)
+        ? base
         : 'home'
     }
     const onHash = () => setActive(parseHash())
@@ -94,8 +96,12 @@ export default function App() {
   useEffect(() => {
     const label = active.charAt(0).toUpperCase() + active.slice(1)
     if (liveRef.current) liveRef.current.textContent = `Section: ${label}`
-    if (window.location.hash.replace('#', '') !== active) {
-      window.location.hash = active
+    const raw = (window.location.hash || '#').replace('#', '')
+    const [base, query] = raw.split('?')
+    if (base !== active) {
+      // Preserve query for snake deep-links (e.g., room=...)
+      const suffix = active === 'snake' && base === 'snake' && query ? `?${query}` : ''
+      window.location.hash = active + suffix
     }
   }, [active])
 

@@ -650,7 +650,12 @@ export function GameManager({
   // Request list of public rooms
   const refreshRooms = () => {
     try {
-      netRef.current?.send({ type: 'list' })
+      if (conn !== 'connected') {
+        connectVs()
+        setTimeout(() => netRef.current?.send({ type: 'list' }), 250)
+      } else {
+        netRef.current?.send({ type: 'list' })
+      }
     } catch {
       /* noop */
     }
@@ -664,6 +669,15 @@ export function GameManager({
       /* noop */
     }
   }
+
+  // Auto-connect when switching to versus for smoother UX
+  useEffect(() => {
+    if (mode === 'versus' && wsUrl && conn === 'disconnected') {
+      // intentionally not adding connectVs to deps; it's a stable inline function in this component
+      connectVs()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, wsUrl, conn])
 
   return (
     <div>
@@ -736,7 +750,8 @@ export function GameManager({
             }
             setPaused((p) => {
               const next = !p
-              if (next) {
+              // We just transitioned to unpaused -> capture controls
+              if (!next) {
                 canvasRef.current?.focus()
                 capturedRef.current = true
                 setCaptured(true)
@@ -909,7 +924,7 @@ export function GameManager({
               }
               setPaused((p) => {
                 const next = !p
-                if (next) {
+                if (!next) {
                   canvasRef.current?.focus()
                   capturedRef.current = true
                   setCaptured(true)
