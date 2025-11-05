@@ -105,20 +105,14 @@ export function GameManager({
     Record<string, { state: ReturnType<GameEngine['snapshot']>; score: number; name?: string }>
   >({})
   const [rooms, setRooms] = useState<Array<{ id: string; name?: string; count: number }>>([])
-  const [roomPublic, setRoomPublic] = useState<boolean>(() => {
-    try {
-      return localStorage.getItem('snake.room.public') === '1'
-    } catch {
-      return false
-    }
-  })
-  const [roomName, setRoomName] = useState<string>(() => {
+  const [roomName] = useState<string>(() => {
     try {
       return localStorage.getItem('snake.room.name') || ''
     } catch {
       return ''
     }
   })
+  const [multiStep, setMultiStep] = useState<'landing' | 'create' | 'join' | 'lobby'>('landing')
   const wsUrl = (import.meta as unknown as { env?: Record<string, string> }).env?.VITE_WS_URL
   const capturedRef = useRef(false)
   const [captured, setCaptured] = useState(false)
@@ -530,7 +524,7 @@ export function GameManager({
           setPreviews({})
           // broadcast current meta on connect
           try {
-            net.send({ type: 'roommeta', public: roomPublic, name: roomName || undefined })
+            net.send({ type: 'roommeta', name: roomName || undefined })
           } catch {
             /* noop */
           }
@@ -648,7 +642,7 @@ export function GameManager({
       setConn('connecting')
       net.connect(roomOverride ?? room)
     },
-    [wsUrl, room, roomPublic, roomName, playerName, myId],
+    [wsUrl, room, roomName, playerName, myId],
   )
 
   const doRestart = () => {
@@ -691,6 +685,7 @@ export function GameManager({
         const rid = m[1]
         setRoom(rid)
         setMode('versus')
+        setMultiStep('lobby')
         deepLinkConnectRef.current = true
       }
     } catch {
@@ -763,40 +758,13 @@ export function GameManager({
     }
   }, [mode, conn, score, playerName])
 
-  const shareRoomLink = async () => {
-    const id = room || `room-${Math.random().toString(36).slice(2, 8)}`
-    setRoom(id)
-    const url = `${location.origin}${location.pathname}#snake?room=${encodeURIComponent(id)}`
-    try {
-      await navigator.clipboard.writeText(url)
-      alert('Room link copied to clipboard')
-    } catch {
-      prompt('Copy room link:', url)
-    }
-  }
+  // shareRoomLink removed (inlined where needed)
 
   // Request list of public rooms
-  const refreshRooms = () => {
-    try {
-      if (conn !== 'connected') {
-        connectVs()
-        setTimeout(() => netRef.current?.send({ type: 'list' }), 250)
-      } else {
-        netRef.current?.send({ type: 'list' })
-      }
-    } catch {
-      /* noop */
-    }
-  }
+  // refreshRooms removed (browse/list inlined in Join step)
 
   // Update current room metadata
-  const sendRoomMeta = (meta: { public?: boolean; name?: string }) => {
-    try {
-      netRef.current?.send({ type: 'roommeta', ...meta })
-    } catch {
-      /* noop */
-    }
-  }
+  // sendRoomMeta removed (meta sent directly on connect)
 
   // No implicit auto-connect on switching to versus; user triggers Join or Create game
 
@@ -934,223 +902,283 @@ export function GameManager({
                 }}
               />
             </label>
-            <label
-              className="muted"
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
-            >
-              Room code
-              <input
-                value={room}
-                onChange={(e) => setRoom(e.target.value)}
-                placeholder="e.g. room-abc123"
-                style={{
-                  padding: '0.5rem',
-                  borderRadius: 8,
-                  border: '1px solid var(--border)',
-                  background: 'transparent',
-                  color: 'var(--text)',
-                }}
-              />
-            </label>
-            <button
-              className="btn"
-              title="Copy the current room code"
-              onClick={async () => {
-                const code = room.trim()
-                if (!code) return
-                try {
-                  await navigator.clipboard.writeText(code)
-                } catch {
-                  /* ignore */
-                }
-              }}
-              disabled={!room.trim()}
-            >
-              Copy code
-            </button>
-            <button className="btn" onClick={shareRoomLink} title="Copy current room link">
-              Share link
-            </button>
-            <button
-              className="btn"
-              title="Create a new room (or use typed code) and copy its link"
-              onClick={async () => {
-                const typed = room.trim()
-                const id = typed || `room-${Math.random().toString(36).slice(2, 8)}`
-                setMode('versus')
-                setRoom(id)
-                const url = `${location.origin}${location.pathname}#snake?room=${encodeURIComponent(id)}`
-                try {
-                  await navigator.clipboard.writeText(url)
-                  alert('New room created — link copied')
-                } catch {
-                  prompt('Copy room link:', url)
-                }
-                if (conn === 'connected') {
-                  netRef.current?.disconnect()
-                  setConn('disconnected')
-                  setTimeout(() => connectVs(id), 50)
-                } else if (conn === 'disconnected') {
-                  connectVs(id)
-                }
-              }}
-            >
-              Create game
-            </button>
-            <button
-              className="btn"
-              onClick={() => {
-                if (joining) return
-                const rc = room.trim()
-                if (conn === 'disconnected' && rc) connectVs(rc)
-              }}
-              disabled={conn !== 'disconnected' || joining || !room.trim()}
-            >
-              Join
-            </button>
-            <div className="muted vs-metric" title="Players in room">
-              In room: {presence}
-            </div>
-            <div className="muted vs-metric" title="Connection status">
-              {conn === 'connected'
-                ? 'Connected'
-                : conn === 'connecting'
-                  ? 'Connecting…'
-                  : 'Offline'}
-            </div>
-            <div className="muted vs-metric" title="Current room code">
-              Room: {room || '—'}
-            </div>
-          </div>
-        )}
-
-        {mode === 'versus' && (
-          <details className="card" style={{ marginTop: 8 }}>
-            <summary style={{ cursor: 'pointer' }}>Lobby</summary>
-            <div style={{ display: 'grid', gap: 8, marginTop: 8 }}>
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            {/* Multiplayer stepper */}
+            {multiStep === 'landing' && (
+              <div
+                style={{ display: 'inline-flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}
+              >
+                <button className="btn" onClick={() => setMultiStep('create')}>
+                  Create lobby
+                </button>
+                <button className="btn" onClick={() => setMultiStep('join')}>
+                  Join lobby
+                </button>
+              </div>
+            )}
+            {multiStep === 'create' && (
+              <div
+                style={{ display: 'inline-flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}
+              >
                 <label
                   className="muted"
-                  style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
                 >
+                  Room code
                   <input
-                    type="checkbox"
-                    checked={roomPublic}
-                    onChange={(e) => {
-                      const v = e.target.checked
-                      setRoomPublic(v)
-                      try {
-                        localStorage.setItem('snake.room.public', v ? '1' : '0')
-                      } catch {
-                        /* noop */
-                      }
-                      if (conn === 'connected') sendRoomMeta({ public: v })
+                    value={room}
+                    onChange={(e) => setRoom(e.target.value)}
+                    placeholder="e.g. room-abc123"
+                    style={{
+                      padding: '0.5rem',
+                      borderRadius: 8,
+                      border: '1px solid var(--border)',
+                      background: 'transparent',
+                      color: 'var(--text)',
                     }}
                   />
-                  Public room
                 </label>
-                <input
-                  placeholder="Public display name"
-                  value={roomName}
-                  onChange={(e) => {
-                    setRoomName(e.target.value)
+                <button
+                  className="btn"
+                  onClick={async () => {
+                    const id = room.trim() || `room-${Math.random().toString(36).slice(2, 8)}`
+                    setRoom(id)
+                    setMode('versus')
+                    setMultiStep('lobby')
+                    const url = `${location.origin}${location.pathname}#snake?room=${encodeURIComponent(id)}`
                     try {
-                      localStorage.setItem('snake.room.name', e.target.value)
+                      await navigator.clipboard.writeText(url)
                     } catch {
                       /* noop */
                     }
-                    if (conn === 'connected') sendRoomMeta({ name: e.target.value || undefined })
+                    if (conn === 'connected') {
+                      netRef.current?.disconnect()
+                      setConn('disconnected')
+                      setTimeout(() => connectVs(id), 50)
+                    } else if (conn === 'disconnected') connectVs(id)
                   }}
-                  style={{
-                    padding: '0.4rem 0.5rem',
-                    borderRadius: 8,
-                    border: '1px solid var(--border)',
-                    background: 'transparent',
-                    color: 'var(--text)',
-                    minWidth: 220,
-                  }}
-                />
-                <span className="muted" style={{ fontSize: 12 }}>
-                  Note: This only affects how your room appears in the public list. Join via Room
-                  code or link above.
-                </span>
-                <button className="btn" onClick={refreshRooms}>
-                  Browse public rooms
+                  disabled={joining}
+                >
+                  Host
+                </button>
+                <button className="btn" onClick={() => setMultiStep('landing')}>
+                  Back
                 </button>
               </div>
-              {rooms.length > 0 ? (
-                <div
-                  style={{
-                    display: 'grid',
-                    gridTemplateColumns: 'repeat(auto-fill, minmax(180px,1fr))',
-                    gap: 8,
+            )}
+            {multiStep === 'join' && (
+              <div
+                style={{ display: 'inline-flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}
+              >
+                <label
+                  className="muted"
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                >
+                  Room code
+                  <input
+                    value={room}
+                    onChange={(e) => setRoom(e.target.value)}
+                    placeholder="e.g. room-abc123"
+                    style={{
+                      padding: '0.5rem',
+                      borderRadius: 8,
+                      border: '1px solid var(--border)',
+                      background: 'transparent',
+                      color: 'var(--text)',
+                    }}
+                  />
+                </label>
+                <button
+                  className="btn"
+                  onClick={() => {
+                    if (joining) return
+                    const rc = room.trim()
+                    if (conn === 'disconnected' && rc) {
+                      setMultiStep('lobby')
+                      connectVs(rc)
+                    }
+                  }}
+                  disabled={conn !== 'disconnected' || joining || !room.trim()}
+                >
+                  Join
+                </button>
+                <button
+                  className="btn"
+                  onClick={() => {
+                    // Use a temporary WS connection to fetch the room list without joining a room
+                    try {
+                      if (!wsUrl) return
+                      const ws = new WebSocket(wsUrl)
+                      ws.onopen = () => {
+                        try {
+                          ws.send(JSON.stringify({ type: 'list' }))
+                        } catch {
+                          /* noop */
+                        }
+                      }
+                      ws.onmessage = (ev) => {
+                        try {
+                          const msg = JSON.parse(ev.data as string)
+                          if (msg && msg.type === 'rooms' && Array.isArray(msg.items))
+                            setRooms(msg.items)
+                        } catch {
+                          /* noop */
+                        } finally {
+                          try {
+                            ws.close()
+                          } catch {
+                            /* noop */
+                          }
+                        }
+                      }
+                      ws.onerror = () => {
+                        try {
+                          ws.close()
+                        } catch {
+                          /* noop */
+                        }
+                      }
+                    } catch {
+                      /* noop */
+                    }
                   }}
                 >
-                  {rooms.map((r) => (
-                    <div key={r.id} className="card" style={{ padding: 8 }}>
-                      <div className="muted" style={{ fontWeight: 600 }}>
-                        {r.name || r.id}
-                      </div>
-                      <div className="muted" style={{ fontSize: 12 }}>
-                        ID: {r.id}
-                      </div>
-                      <div className="muted">Players: {r.count}</div>
-                      <div style={{ marginTop: 6 }}>
-                        <button
-                          className="btn"
-                          onClick={() => {
-                            if (joining) return
-                            const rid = r.id
-                            if (room !== rid) setRoom(rid)
-                            if (conn === 'connected') {
-                              netRef.current?.disconnect()
-                              setConn('disconnected')
-                              setJoining(true)
-                              setTimeout(() => connectVs(rid), 50)
-                            } else if (conn === 'disconnected') {
-                              connectVs(rid)
-                            }
-                          }}
-                          disabled={joining || conn === 'connecting'}
-                        >
-                          Join
-                        </button>
-                      </div>
-                    </div>
-                  ))}
+                  Browse lobbies
+                </button>
+                <button className="btn" onClick={() => setMultiStep('landing')}>
+                  Back
+                </button>
+              </div>
+            )}
+            {multiStep === 'lobby' && (
+              <div
+                style={{ display: 'inline-flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}
+              >
+                <div className="muted">Room: {room || '—'}</div>
+                <div className="muted">Players: {presence}</div>
+                <div className="muted">
+                  {conn === 'connected'
+                    ? 'Connected'
+                    : conn === 'connecting'
+                      ? 'Connecting…'
+                      : 'Offline'}
                 </div>
-              ) : (
-                <div className="muted">No public rooms yet — click Browse to refresh.</div>
-              )}
-              {/* Players in current room */}
-              <div className="card" style={{ padding: 8 }}>
-                <div className="muted" style={{ fontWeight: 600, marginBottom: 6 }}>
-                  Players ({presence})
-                </div>
-                <div style={{ display: 'grid', gap: 4 }}>
-                  {/* Self */}
+                <button
+                  className="btn"
+                  onClick={async () => {
+                    const code = room.trim()
+                    if (!code) return
+                    try {
+                      await navigator.clipboard.writeText(
+                        `${location.origin}${location.pathname}#snake?room=${encodeURIComponent(code)}`,
+                      )
+                    } catch {
+                      /* noop */
+                    }
+                  }}
+                >
+                  Copy link
+                </button>
+                <button
+                  className="btn"
+                  onClick={() => {
+                    try {
+                      netRef.current?.disconnect()
+                    } catch {
+                      /* noop */
+                    }
+                    setConn('disconnected')
+                    setJoining(false)
+                    setPresence(1)
+                    setPlayers({})
+                    setPreviews({})
+                    setReady(false)
+                    setCountdown(null)
+                    setMultiStep('landing')
+                  }}
+                >
+                  Leave lobby
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+        {mode === 'versus' && multiStep !== 'landing' && (
+          <details className="card" style={{ marginTop: 8 }} open>
+            <summary style={{ cursor: 'pointer' }}>Lobby</summary>
+            <div style={{ display: 'grid', gap: 8, marginTop: 8 }}>
+              {multiStep === 'join' &&
+                (rooms.length > 0 ? (
                   <div
-                    className="muted"
-                    style={{ display: 'flex', justifyContent: 'space-between' }}
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(auto-fill, minmax(180px,1fr))',
+                      gap: 8,
+                    }}
                   >
-                    <span>{playerName?.trim() || 'You'}</span>
-                    <span>{ready ? 'Ready ✓' : 'Not ready'}</span>
-                  </div>
-                  {/* Peers */}
-                  {Object.entries(players)
-                    .filter(([id]) => id !== myId)
-                    .map(([id, p]) => (
-                      <div
-                        key={id}
-                        className="muted"
-                        style={{ display: 'flex', justifyContent: 'space-between' }}
-                      >
-                        <span>{p.name || 'Player'}</span>
-                        <span>{p.ready ? 'Ready ✓' : 'Not ready'}</span>
+                    {rooms.map((r) => (
+                      <div key={r.id} className="card" style={{ padding: 8 }}>
+                        <div className="muted" style={{ fontWeight: 600 }}>
+                          {r.name || r.id}
+                        </div>
+                        <div className="muted" style={{ fontSize: 12 }}>
+                          ID: {r.id}
+                        </div>
+                        <div className="muted">Players: {r.count}</div>
+                        <div style={{ marginTop: 6 }}>
+                          <button
+                            className="btn"
+                            disabled={joining || conn === 'connecting'}
+                            onClick={() => {
+                              if (joining) return
+                              const rid = r.id
+                              if (room !== rid) setRoom(rid)
+                              setMultiStep('lobby')
+                              if (conn === 'connected') {
+                                netRef.current?.disconnect()
+                                setConn('disconnected')
+                                setJoining(true)
+                                setTimeout(() => connectVs(rid), 50)
+                              } else if (conn === 'disconnected') connectVs(rid)
+                            }}
+                          >
+                            Join
+                          </button>
+                        </div>
                       </div>
                     ))}
+                  </div>
+                ) : (
+                  <div className="muted">No lobbies yet — click Browse in Join to refresh.</div>
+                ))}
+              {/* Players in current room */}
+              {multiStep === 'lobby' && (
+                <div className="card" style={{ padding: 8 }}>
+                  <div className="muted" style={{ fontWeight: 600, marginBottom: 6 }}>
+                    Players ({presence})
+                  </div>
+                  <div style={{ display: 'grid', gap: 4 }}>
+                    <div
+                      className="muted"
+                      style={{ display: 'flex', justifyContent: 'space-between' }}
+                    >
+                      <span>{playerName?.trim() || 'You'}</span>
+                      <span>{ready ? 'Ready ✓' : 'Not ready'}</span>
+                    </div>
+                    {Object.entries(players)
+                      .filter(([id]) => id !== myId)
+                      .map(([id, p]) => (
+                        <div
+                          key={id}
+                          className="muted"
+                          style={{ display: 'flex', justifyContent: 'space-between' }}
+                        >
+                          <span>{p.name || 'Player'}</span>
+                          <span>{p.ready ? 'Ready ✓' : 'Not ready'}</span>
+                        </div>
+                      ))}
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
           </details>
         )}

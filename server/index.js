@@ -111,15 +111,16 @@ wss.on('connection', (ws) => {
       if (!r) return
       const meta = roomsMeta.get(r) || { name: r, public: false, createdAt: Date.now() }
       if (typeof msg.name === 'string' && msg.name.trim()) meta.name = msg.name.trim()
-      if (typeof msg.public === 'boolean') meta.public = msg.public
+      // All rooms public now; ignore msg.public and mark as public
+      meta.public = true
       roomsMeta.set(r, meta)
       return
     }
     if (msg.type === 'list') {
       const items = []
       for (const [id, set] of rooms.entries()) {
-        const m = roomsMeta.get(id) || { name: id, public: false, createdAt: Date.now() }
-        if (m.public) items.push({ id, name: m.name, count: set.size })
+        const m = roomsMeta.get(id) || { name: id, public: true, createdAt: Date.now() }
+        items.push({ id, name: m.name, count: set.size })
       }
       try {
         ws.send(JSON.stringify({ type: 'rooms', items }))
