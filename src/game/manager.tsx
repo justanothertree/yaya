@@ -717,6 +717,18 @@ export function GameManager({
     }
   }
 
+  // Broadcast name changes immediately when connected
+  useEffect(() => {
+    if (conn !== 'connected') return
+    const nm = playerName.trim()
+    if (!nm) return
+    try {
+      netRef.current?.send({ type: 'name', name: nm })
+    } catch {
+      /* noop */
+    }
+  }, [playerName, conn])
+
   // Parse room from hash (e.g., #snake?room=abc123) on mount
   useEffect(() => {
     try {
@@ -1044,6 +1056,18 @@ export function GameManager({
                     try {
                       if (!wsUrl) return
                       const ws = new WebSocket(wsUrl)
+                      let closed = false
+                      // Safety timeout: close the socket if we don't get a list in time
+                      const t = window.setTimeout(() => {
+                        if (!closed) {
+                          closed = true
+                          try {
+                            ws.close()
+                          } catch {
+                            /* noop */
+                          }
+                        }
+                      }, 2000)
                       ws.onopen = () => {
                         try {
                           ws.send(JSON.stringify({ type: 'list' }))
@@ -1054,11 +1078,27 @@ export function GameManager({
                       ws.onmessage = (ev) => {
                         try {
                           const msg = JSON.parse(ev.data as string)
-                          if (msg && msg.type === 'rooms' && Array.isArray(msg.items))
+                          // Server sends a 'welcome' first; ignore it and wait for 'rooms'
+                          if (msg && msg.type === 'rooms' && Array.isArray(msg.items)) {
                             setRooms(msg.items)
+                            if (!closed) {
+                              closed = true
+                              window.clearTimeout(t)
+                              try {
+                                ws.close()
+                              } catch {
+                                /* noop */
+                              }
+                            }
+                          }
                         } catch {
                           /* noop */
-                        } finally {
+                        }
+                      }
+                      ws.onerror = () => {
+                        if (!closed) {
+                          closed = true
+                          window.clearTimeout(t)
                           try {
                             ws.close()
                           } catch {
@@ -1066,11 +1106,10 @@ export function GameManager({
                           }
                         }
                       }
-                      ws.onerror = () => {
-                        try {
-                          ws.close()
-                        } catch {
-                          /* noop */
+                      ws.onclose = () => {
+                        if (!closed) {
+                          closed = true
+                          window.clearTimeout(t)
                         }
                       }
                     } catch {
