@@ -177,7 +177,9 @@ wss.on('connection', (ws) => {
         if (allReady && !state.allReady) {
           const seed = Math.floor(Math.random() * 1e9)
           broadcast(room, { type: 'seed', seed, settings: DEFAULT_SETTINGS })
-          roomsState.set(room, { allReady: true })
+          // reset readiness for a new round so subsequent rounds require Ready again
+          for (const c of set) c._ready = false
+          roomsState.set(room, { allReady: false })
         } else if (!allReady && state.allReady) {
           roomsState.set(room, { allReady: false })
         }

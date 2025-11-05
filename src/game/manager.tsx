@@ -742,26 +742,21 @@ export function GameManager({
     }
   }, [conn, room, connectVs])
 
-  // Countdown effect once both are ready
+  // Countdown effect: either triggered by server seed (countdown already set) or by local 'all ready'
   useEffect(() => {
-    // compute number of ready players (include self via `ready` flag)
-    const othersReady = Object.entries(players).reduce((acc, [id, p]) => {
-      if (id !== myId && p.ready) acc += 1
-      return acc
-    }, 0)
-    const totalReady = othersReady + (ready ? 1 : 0)
-    if (
-      !(
-        mode === 'versus' &&
-        conn === 'connected' &&
-        presence >= 2 &&
-        totalReady >= 2 &&
-        countdown == null
-      )
-    )
+    if (!(mode === 'versus' && conn === 'connected')) return
+    // If no countdown is active yet, check local readiness to trigger one
+    if (countdown == null) {
+      const othersReady = Object.entries(players).reduce((acc, [id, p]) => {
+        if (id !== myId && p.ready) acc += 1
+        return acc
+      }, 0)
+      const totalReady = othersReady + (ready ? 1 : 0)
+      if (presence >= 2 && totalReady >= 2) setCountdown(3)
       return
-    let n = 3
-    setCountdown(n)
+    }
+    // countdown is active -> run the timer
+    let n = countdown
     const id = window.setInterval(() => {
       n -= 1
       if (n <= 0) {
