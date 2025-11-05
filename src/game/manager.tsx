@@ -548,6 +548,8 @@ export function GameManager({
         onMessage: (msg) => {
           if (msg.type === 'welcome') {
             setMyId(msg.id)
+            // Move into lobby on successful welcome (covers Join flow)
+            setMultiStep('lobby')
             let selfName = playerName?.trim() || 'Player'
             if (msg.visitor != null && nameSourceRef.current !== 'custom') {
               selfName = `Player${msg.visitor}`
@@ -589,12 +591,32 @@ export function GameManager({
               /* noop */
             }
             setConn('disconnected')
+            // If deep-linking to a room, retry briefly in case host is still connecting
+            try {
+              const h = window.location.hash || ''
+              if (/room=/.test(h)) {
+                let attempts = 0
+                const target = room
+                const timer = window.setInterval(() => {
+                  attempts += 1
+                  if (attempts > 10) {
+                    window.clearInterval(timer)
+                    return
+                  }
+                  if (conn === 'disconnected' && target) connectVs(target)
+                }, 1200)
+              }
+            } catch {
+              /* noop */
+            }
             return
           }
           if (msg.type === 'seed') {
             setEngineSeed(msg.seed)
             setSettings(msg.settings)
             setReady(false)
+            // Kick off round start countdown when a new seed arrives
+            if (countdown == null) setCountdown(3)
             // reset ready flags for all players (new round)
             setPlayers((map) => {
               const next: typeof map = {}
@@ -661,7 +683,7 @@ export function GameManager({
       setConn('connecting')
       net.connect(roomOverride ?? room, { create })
     },
-    [wsUrl, room, roomName, playerName, myId],
+    [wsUrl, room, roomName, playerName, myId, conn, countdown],
   )
 
   const doRestart = () => {
