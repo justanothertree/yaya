@@ -28,6 +28,8 @@ const wss = new WebSocketServer({ server })
 const rooms = new Map()
 // roomId -> metadata
 const roomsMeta = new Map() // { name, public, createdAt }
+// roomId -> state flags
+const roomsState = new Map() // { allReady: boolean }
 // clientId -> visitor number; assigns one global sequential number per unique clientId
 const clientVisitors = new Map()
 let nextVisitor = 1
@@ -39,14 +41,12 @@ function joinRoom(ws, room) {
     rooms.set(room, set)
     if (!roomsMeta.has(room))
       roomsMeta.set(room, { name: room, public: false, createdAt: Date.now() })
+    if (!roomsState.has(room)) roomsState.set(room, { allReady: false })
   }
   set.add(ws)
   ws._room = room
+  ws._ready = false
   // Start a match when 2 clients are present: send shared seed/settings
-  if (set.size === 2) {
-    const seed = Math.floor(Math.random() * 1e9)
-    broadcast(room, { type: 'seed', seed, settings: DEFAULT_SETTINGS })
-  }
   // Broadcast presence count to room
   broadcast(room, { type: 'presence', count: set.size })
 }
@@ -77,6 +77,7 @@ function broadcast(room, msg, except = null) {
 wss.on('connection', (ws) => {
   ws._room = null
   ws._id = Math.random().toString(36).slice(2, 10)
+  ws._ready = false
   try {
     ws.send(JSON.stringify({ type: 'welcome', id: ws._id }))
   } catch {}
@@ -100,10 +101,35 @@ wss.on('connection', (ws) => {
       } else {
         visitor = nextVisitor++
       }
+      // room existence rules: allow creation only if explicitly requested
+      const exists = rooms.has(msg.room)
+      if (!exists && !msg.create) {
+        try {
+          ws.send(
+            JSON.stringify({
+              type: 'error',
+              code: 'room-not-found',
+              message: 'Room does not exist',
+            }),
+          )
+        } catch {}
+        return
+      }
       try {
         ws.send(JSON.stringify({ type: 'welcome', id: ws._id, visitor }))
       } catch {}
       joinRoom(ws, msg.room)
+      // Tell newcomer who is already ready
+      const set = rooms.get(msg.room)
+      if (set) {
+        for (const peer of set) {
+          if (peer !== ws && peer._ready) {
+            try {
+              ws.send(JSON.stringify({ type: 'ready', from: peer._id }))
+            } catch {}
+          }
+        }
+      }
       return
     }
     if (msg.type === 'roommeta') {
@@ -134,20 +160,41 @@ wss.on('connection', (ws) => {
       msg.type === 'input' ||
       msg.type === 'tick' ||
       msg.type === 'over' ||
-      msg.type === 'ready' ||
       msg.type === 'name' ||
       msg.type === 'preview'
     ) {
       broadcast(room, { ...msg, from: ws._id }, ws)
       return
     }
+    if (msg.type === 'ready') {
+      ws._ready = true
+      broadcast(room, { type: 'ready', from: ws._id }, ws)
+      // if all clients in the room are ready (and at least 2), broadcast seed once per transition
+      const set = rooms.get(room)
+      if (set) {
+        const allReady = set.size >= 2 && Array.from(set).every((c) => c._ready)
+        const state = roomsState.get(room) || { allReady: false }
+        if (allReady && !state.allReady) {
+          const seed = Math.floor(Math.random() * 1e9)
+          broadcast(room, { type: 'seed', seed, settings: DEFAULT_SETTINGS })
+          roomsState.set(room, { allReady: true })
+        } else if (!allReady && state.allReady) {
+          roomsState.set(room, { allReady: false })
+        }
+      }
+      return
+    }
   })
   ws.on('close', () => {
     const room = ws._room
+    ws._ready = false
     leaveRoom(ws)
     if (room) {
       // Notify peers that someone left
       broadcast(room, { type: 'over', reason: 'quit', from: ws._id }, null)
+      // reset allReady flag when composition changes
+      const state = roomsState.get(room)
+      if (state) roomsState.set(room, { allReady: false })
     }
   })
 })

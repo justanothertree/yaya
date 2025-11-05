@@ -512,7 +512,7 @@ export function GameManager({
 
   // Versus wiring
   const connectVs = useCallback(
-    (roomOverride?: string) => {
+    (roomOverride?: string, create?: boolean) => {
       if (!wsUrl) return
       setJoining(true)
       const net = new NetClient(wsUrl, {
@@ -570,6 +570,25 @@ export function GameManager({
               ...map,
               [msg.id]: { name: finalName, ready: false },
             }))
+            return
+          }
+          if (msg.type === 'error') {
+            // Room not found or other server-side error
+            setJoining(false)
+            // if we were trying to join, return to Join step
+            setMultiStep('join')
+            try {
+              alert(msg.message || msg.code || 'Unable to join room')
+            } catch {
+              /* noop */
+            }
+            // ensure we disconnect this temp session
+            try {
+              netRef.current?.disconnect()
+            } catch {
+              /* noop */
+            }
+            setConn('disconnected')
             return
           }
           if (msg.type === 'seed') {
@@ -640,7 +659,7 @@ export function GameManager({
       })
       netRef.current = net
       setConn('connecting')
-      net.connect(roomOverride ?? room)
+      net.connect(roomOverride ?? room, { create })
     },
     [wsUrl, room, roomName, playerName, myId],
   )
@@ -953,8 +972,8 @@ export function GameManager({
                     if (conn === 'connected') {
                       netRef.current?.disconnect()
                       setConn('disconnected')
-                      setTimeout(() => connectVs(id), 50)
-                    } else if (conn === 'disconnected') connectVs(id)
+                      setTimeout(() => connectVs(id, true), 50)
+                    } else if (conn === 'disconnected') connectVs(id, true)
                   }}
                   disabled={joining}
                 >
@@ -993,8 +1012,8 @@ export function GameManager({
                     if (joining) return
                     const rc = room.trim()
                     if (conn === 'disconnected' && rc) {
-                      setMultiStep('lobby')
-                      connectVs(rc)
+                      // Wait for successful welcome before switching steps; try connect, step will update on welcome
+                      connectVs(rc, false)
                     }
                   }}
                   disabled={conn !== 'disconnected' || joining || !room.trim()}

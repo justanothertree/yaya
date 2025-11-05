@@ -31,7 +31,7 @@ export type LeaderboardEntry = { username: string; score: number; date: string }
 export type Mode = 'solo' | 'versus'
 
 export type NetMessage =
-  | { type: 'hello'; room: string; clientId?: string }
+  | { type: 'hello'; room: string; clientId?: string; create?: boolean }
   | { type: 'welcome'; id: string; visitor?: number }
   | { type: 'seed'; seed: number; settings: Settings }
   | { type: 'tick'; n: number; score: number }
@@ -44,6 +44,7 @@ export type NetMessage =
   | { type: 'roommeta'; name?: string; public?: boolean }
   | { type: 'list' }
   | { type: 'rooms'; items: Array<{ id: string; name: string; count: number }> }
+  | { type: 'error'; code: 'room-not-found' | 'bad-request' | string; message?: string }
 
 export type ThemeColors = {
   bg: string

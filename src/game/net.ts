@@ -18,7 +18,7 @@ export class NetClient {
     this.handlers = handlers
   }
 
-  connect(room: string) {
+  connect(room: string, opts?: { create?: boolean }) {
     if (this.connecting) return
     this.connecting = true
     this.disconnect()
@@ -39,7 +39,7 @@ export class NetClient {
         } catch {
           // ignore
         }
-        this.send({ type: 'hello', room, clientId: cid })
+        this.send({ type: 'hello', room, clientId: cid, create: opts?.create })
       }
       ws.onmessage = (ev) => {
         try {
