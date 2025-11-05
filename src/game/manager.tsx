@@ -1193,13 +1193,15 @@ export function GameManager({
                     Players ({presence})
                   </div>
                   <div style={{ display: 'grid', gap: 4 }}>
-                    <div
-                      className="muted"
-                      style={{ display: 'flex', justifyContent: 'space-between' }}
-                    >
-                      <span>{playerName?.trim() || 'You'}</span>
-                      <span>{ready ? 'Ready ✓' : 'Not ready'}</span>
-                    </div>
+                    {myId && (
+                      <div
+                        className="muted"
+                        style={{ display: 'flex', justifyContent: 'space-between' }}
+                      >
+                        <span>{playerName?.trim() || 'You'}</span>
+                        <span>{ready ? 'Ready ✓' : 'Not ready'}</span>
+                      </div>
+                    )}
                     {Object.entries(players)
                       .filter(([id]) => id !== myId)
                       .map(([id, p]) => (
