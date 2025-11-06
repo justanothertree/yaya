@@ -867,6 +867,8 @@ export function GameManager({
             className="btn"
             aria-pressed={settings.apples === n}
             onClick={() => setSettings({ ...settings, apples: n })}
+            disabled={mode === 'versus' && conn === 'connected'}
+            title={mode === 'versus' && conn === 'connected' ? 'Locked in multiplayer' : undefined}
             data-active={settings.apples === n || undefined}
           >
             {n}
@@ -880,6 +882,8 @@ export function GameManager({
             className="btn"
             aria-pressed={(settings.passThroughEdges ? 'wrap' : 'walls') === lab}
             onClick={() => setSettings({ ...settings, passThroughEdges: lab === 'wrap' })}
+            disabled={mode === 'versus' && conn === 'connected'}
+            title={mode === 'versus' && conn === 'connected' ? 'Locked in multiplayer' : undefined}
             data-active={(settings.passThroughEdges ? 'wrap' : 'walls') === lab || undefined}
           >
             {lab}
@@ -1217,9 +1221,11 @@ export function GameManager({
           </div>
         )}
         {mode === 'versus' && multiStep !== 'landing' && (
-          <details className="card" style={{ marginTop: 8 }} open>
-            <summary style={{ cursor: 'pointer' }}>Lobby</summary>
-            <div style={{ display: 'grid', gap: 8, marginTop: 8 }}>
+          <div className="card" style={{ marginTop: 8, padding: 8 }}>
+            <div className="muted" style={{ fontWeight: 600, marginBottom: 6 }}>
+              Lobby
+            </div>
+            <div style={{ display: 'grid', gap: 8 }}>
               {multiStep === 'join' &&
                 (rooms.length > 0 ? (
                   <div
@@ -1296,7 +1302,7 @@ export function GameManager({
                 </div>
               )}
             </div>
-          </details>
+          </div>
         )}
       </div>
 
@@ -1370,8 +1376,7 @@ export function GameManager({
               capturedRef.current = false
               setCaptured(false)
               onControlChange?.(false)
-              // No auto-pause in versus mode
-              if (mode !== 'versus') setPaused(true)
+              // Do not auto-pause on blur; let the user control pause via the button/keyboard
             }}
             onPointerDown={() => {
               // focus on first interaction, capture controls
