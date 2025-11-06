@@ -940,11 +940,33 @@ export function GameManager({
           {mode === 'versus' ? (ready ? 'Ready ✓' : 'Ready') : paused ? 'Play' : 'Pause'}
         </button>
 
-        <button className="btn" onClick={doRestart}>
+        <button
+          className="btn"
+          onClick={doRestart}
+          disabled={mode === 'versus'}
+          title={mode === 'versus' ? 'Restart disabled in multiplayer' : undefined}
+        >
           Restart
         </button>
 
         {/* Joystick removed */}
+
+        {/* Inline status indicators for better visibility */}
+        <div className="vs-inline" style={{ display: 'inline-flex', gap: 8, alignItems: 'center' }}>
+          <div className="muted" style={{ fontWeight: 600 }}>
+            Score: <span style={{ color: 'var(--text)' }}>{score}</span>
+          </div>
+          {paused && (
+            <div className="muted" style={{ fontWeight: 600 }}>
+              Paused
+            </div>
+          )}
+          {mode === 'versus' && countdown != null && (
+            <div className="muted" aria-live="assertive" style={{ fontWeight: 700 }}>
+              Starting in… {countdown}
+            </div>
+          )}
+        </div>
 
         {mode === 'versus' && wsUrl && (
           <div
@@ -1223,7 +1245,10 @@ export function GameManager({
         {mode === 'versus' && multiStep !== 'landing' && (
           <div className="card" style={{ marginTop: 8, padding: 8 }}>
             <div className="muted" style={{ fontWeight: 600, marginBottom: 6 }}>
-              Lobby
+              Lobby — <span style={{ color: 'var(--text)' }}>{room || '—'}</span>{' '}
+              <span className="muted" style={{ fontWeight: 400 }}>
+                (connected players: {presence})
+              </span>
             </div>
             <div style={{ display: 'grid', gap: 8 }}>
               {multiStep === 'join' &&
@@ -1274,16 +1299,16 @@ export function GameManager({
               {multiStep === 'lobby' && (
                 <div className="card" style={{ padding: 8 }}>
                   <div className="muted" style={{ fontWeight: 600, marginBottom: 6 }}>
-                    Players ({presence})
+                    Connected players
                   </div>
-                  <div style={{ display: 'grid', gap: 4 }}>
+                  <div style={{ display: 'grid', gap: 6 }}>
                     {myId && (
                       <div
                         className="muted"
-                        style={{ display: 'flex', justifyContent: 'space-between' }}
+                        style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}
                       >
                         <span>{playerName?.trim() || 'You'}</span>
-                        <span>{ready ? 'Ready ✓' : 'Not ready'}</span>
+                        <span style={{ marginLeft: 12 }}>{ready ? 'Ready ✓' : 'Not ready'}</span>
                       </div>
                     )}
                     {Object.entries(players)
@@ -1292,10 +1317,12 @@ export function GameManager({
                         <div
                           key={id}
                           className="muted"
-                          style={{ display: 'flex', justifyContent: 'space-between' }}
+                          style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}
                         >
                           <span>{p.name || 'Player'}</span>
-                          <span>{p.ready ? 'Ready ✓' : 'Not ready'}</span>
+                          <span style={{ marginLeft: 12 }}>
+                            {p.ready ? 'Ready ✓' : 'Not ready'}
+                          </span>
                         </div>
                       ))}
                   </div>
@@ -1376,7 +1403,8 @@ export function GameManager({
               capturedRef.current = false
               setCaptured(false)
               onControlChange?.(false)
-              // Do not auto-pause on blur; let the user control pause via the button/keyboard
+              // Solo mode: auto-pause when canvas loses focus for convenience
+              if (mode === 'solo') setPaused(true)
             }}
             onPointerDown={() => {
               // focus on first interaction, capture controls
@@ -1414,22 +1442,7 @@ export function GameManager({
         </div>
       )}
 
-      <div className="snake-hud">
-        <div className="muted">Score: {score}</div>
-        <div className="muted hud-paused" aria-live="polite">
-          {paused ? 'Paused' : ''}
-        </div>
-        {mode === 'versus' && countdown != null && (
-          <div className="muted" aria-live="assertive" style={{ fontSize: 18 }}>
-            Starting in… {countdown}
-          </div>
-        )}
-        {!alive && (
-          <div className="muted" aria-live="polite">
-            Press Space to restart
-          </div>
-        )}
-      </div>
+      {/* Bottom HUD removed; status shown inline in the toolbar above for better visibility */}
 
       {/* Leaderboard */}
       <div style={{ marginTop: '0.75rem' }}>
