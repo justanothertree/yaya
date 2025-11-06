@@ -123,6 +123,11 @@ export function GameManager({
   // immersive/fullscreen disabled for now
   const restoredRef = useRef(false)
   const deepLinkConnectRef = useRef(false)
+  // Silent deep-link retry controller (avoid alert spam)
+  const deepRetryTimerRef = useRef<number | null>(null)
+  const deepRetryAttemptsRef = useRef(0)
+  // Join error message (UI-only, non-blocking)
+  const [joinError, setJoinError] = useState<string | null>(null)
 
   // Canvas refs and renderers
   const wrapRef = useRef<HTMLDivElement>(null)
@@ -515,6 +520,8 @@ export function GameManager({
     (roomOverride?: string, create?: boolean) => {
       if (!wsUrl) return
       setJoining(true)
+      let gotWelcome = false
+      let createAttempts = 0
       const net = new NetClient(wsUrl, {
         onOpen: () => {
           setConn('connected')
@@ -535,6 +542,16 @@ export function GameManager({
           }
         },
         onClose: () => {
+          // If hosting and the socket closed before welcome, try a few quick silent retries
+          if (create && !gotWelcome && createAttempts < 3) {
+            createAttempts += 1
+            const delay = 400 * createAttempts
+            window.setTimeout(() => {
+              setConn('connecting')
+              net.connect(roomOverride ?? room, { create })
+            }, delay)
+            return
+          }
           setConn('disconnected')
           setJoining(false)
           setReady(false)
@@ -547,9 +564,17 @@ export function GameManager({
         },
         onMessage: (msg) => {
           if (msg.type === 'welcome') {
+            gotWelcome = true
             setMyId(msg.id)
             // Move into lobby on successful welcome (covers Join flow)
             setMultiStep('lobby')
+            setJoinError(null)
+            // Clear any pending deep-link retries on success
+            if (deepRetryTimerRef.current) {
+              window.clearTimeout(deepRetryTimerRef.current)
+              deepRetryTimerRef.current = null
+            }
+            deepRetryAttemptsRef.current = 0
             let selfName = playerName?.trim() || 'Player'
             if (msg.visitor != null && nameSourceRef.current !== 'custom') {
               selfName = `Player${msg.visitor}`
@@ -579,11 +604,7 @@ export function GameManager({
             setJoining(false)
             // if we were trying to join, return to Join step
             setMultiStep('join')
-            try {
-              alert(msg.message || msg.code || 'Unable to join room')
-            } catch {
-              /* noop */
-            }
+            setJoinError(msg.message || msg.code || 'Unable to join room')
             // ensure we disconnect this temp session
             try {
               netRef.current?.disconnect()
@@ -591,20 +612,24 @@ export function GameManager({
               /* noop */
             }
             setConn('disconnected')
-            // If deep-linking to a room, retry briefly in case host is still connecting
+            // If deep-linking to a room, do a few silent retries in case host is still connecting
             try {
               const h = window.location.hash || ''
               if (/room=/.test(h)) {
-                let attempts = 0
                 const target = room
-                const timer = window.setInterval(() => {
-                  attempts += 1
-                  if (attempts > 10) {
-                    window.clearInterval(timer)
-                    return
-                  }
-                  if (conn === 'disconnected' && target) connectVs(target)
-                }, 1200)
+                if (deepRetryTimerRef.current) {
+                  window.clearTimeout(deepRetryTimerRef.current)
+                  deepRetryTimerRef.current = null
+                }
+                if (deepRetryAttemptsRef.current < 3 && conn === 'disconnected' && target) {
+                  const attempt = deepRetryAttemptsRef.current + 1
+                  deepRetryAttemptsRef.current = attempt
+                  const delay = 1000 * attempt
+                  deepRetryTimerRef.current = window.setTimeout(() => {
+                    // ensure we're still aiming for the same room and still disconnected
+                    if (conn === 'disconnected' && room === target) connectVs(target)
+                  }, delay) as unknown as number
+                }
               }
             } catch {
               /* noop */
@@ -974,7 +999,10 @@ export function GameManager({
                   Room code
                   <input
                     value={room}
-                    onChange={(e) => setRoom(e.target.value)}
+                    onChange={(e) => {
+                      setRoom(e.target.value)
+                      if (joinError) setJoinError(null)
+                    }}
                     placeholder="e.g. room-abc123"
                     style={{
                       padding: '0.5rem',
@@ -985,6 +1013,11 @@ export function GameManager({
                     }}
                   />
                 </label>
+                {joinError && (
+                  <div className="muted" style={{ color: 'var(--danger)', fontSize: 12 }}>
+                    {joinError}
+                  </div>
+                )}
                 <button
                   className="btn"
                   onClick={async () => {
@@ -1008,7 +1041,13 @@ export function GameManager({
                 >
                   Host
                 </button>
-                <button className="btn" onClick={() => setMultiStep('landing')}>
+                <button
+                  className="btn"
+                  onClick={() => {
+                    setJoinError(null)
+                    setMultiStep('landing')
+                  }}
+                >
                   Back
                 </button>
               </div>
