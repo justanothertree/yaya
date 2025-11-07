@@ -126,6 +126,9 @@ export function GameManager({
   const deepLinkConnectRef = useRef(false)
   const countdownLockRef = useRef<number>(0)
   const [isHost, setIsHost] = useState(false)
+  const [hostId, setHostId] = useState<string | null>(null)
+  const [toast, setToast] = useState<string | null>(null)
+  const toastTimerRef = useRef<number | null>(null)
   // Silent deep-link retry controller (avoid alert spam)
   const deepRetryTimerRef = useRef<number | null>(null)
   const deepRetryAttemptsRef = useRef(0)
@@ -708,7 +711,20 @@ export function GameManager({
           } else if (msg.type === 'settings') {
             if (msg.settings) setSettings(msg.settings)
           } else if (msg.type === 'host') {
-            if (msg.hostId && myId) setIsHost(msg.hostId === myId)
+            if (msg.hostId) {
+              const prev = hostId
+              setHostId(msg.hostId)
+              if (myId) setIsHost(msg.hostId === myId)
+              if (prev !== msg.hostId) {
+                if (myId && msg.hostId === myId) setToast('You are now the host')
+                else setToast('Host changed')
+                if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current)
+                toastTimerRef.current = window.setTimeout(
+                  () => setToast(null),
+                  2000,
+                ) as unknown as number
+              }
+            }
           }
         },
       })
@@ -716,7 +732,7 @@ export function GameManager({
       setConn('connecting')
       net.connect(roomOverride ?? room, { create })
     },
-    [wsUrl, room, roomName, playerName, myId, conn, countdown],
+    [wsUrl, room, roomName, playerName, myId, conn, countdown, hostId],
   )
 
   const doRestart = () => {
@@ -931,6 +947,23 @@ export function GameManager({
 
   return (
     <div>
+      {/* Toast notification */}
+      {toast && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 12,
+            right: 12,
+            zIndex: 400,
+          }}
+        >
+          <div className="card" style={{ padding: '6px 10px' }}>
+            <div className="muted" style={{ fontWeight: 600 }}>
+              {toast}
+            </div>
+          </div>
+        </div>
+      )}
       {/* Settings & Mode */}
       <div className="snake-toolbar">
         <div className="muted">Mode:</div>
@@ -1070,9 +1103,20 @@ export function GameManager({
         {!(mode === 'versus' && !isHost) && (
           <button
             className="btn"
-            onClick={doRestart}
-            disabled={mode === 'versus'}
-            title={mode === 'versus' ? 'Restart disabled in multiplayer' : undefined}
+            onClick={() => {
+              if (mode === 'versus') {
+                if (conn !== 'connected' || !isHost) return
+                try {
+                  netRef.current?.send({ type: 'restart' })
+                } catch {
+                  /* noop */
+                }
+                return
+              }
+              doRestart()
+            }}
+            disabled={false}
+            title={undefined}
           >
             Restart
           </button>
@@ -1357,7 +1401,7 @@ export function GameManager({
             )}
           </div>
         )}
-        {mode === 'versus' && multiStep !== 'landing' && (
+        {mode === 'versus' && (multiStep === 'join' || multiStep === 'lobby') && (
           <div className="card" style={{ marginTop: 8, padding: 8 }}>
             <div className="muted" style={{ fontWeight: 600, marginBottom: 6 }}>
               {multiStep === 'lobby' ? (
@@ -1428,7 +1472,9 @@ export function GameManager({
                         className="muted"
                         style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}
                       >
-                        <span>{playerName?.trim() || 'You'}</span>
+                        <span>
+                          {playerName?.trim() || 'You'} {isHost ? <em>(Host)</em> : null}
+                        </span>
                         <span style={{ marginLeft: 12 }}>{ready ? 'Ready ✓' : 'Not ready'}</span>
                       </div>
                     )}
@@ -1440,7 +1486,9 @@ export function GameManager({
                           className="muted"
                           style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}
                         >
-                          <span>{p.name || 'Player'}</span>
+                          <span>
+                            {p.name || 'Player'} {hostId === id ? <em>(Host)</em> : null}
+                          </span>
                           <span style={{ marginLeft: 12 }}>
                             {p.ready ? 'Ready ✓' : 'Not ready'}
                           </span>

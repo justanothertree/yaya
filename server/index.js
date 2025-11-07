@@ -197,6 +197,23 @@ wss.on('connection', (ws) => {
       broadcast(room, { ...msg, from: ws._id }, ws)
       return
     }
+    if (msg.type === 'restart') {
+      // Host-initiated immediate restart: broadcast fresh seed with current settings
+      const r = ws._room
+      if (!r) return
+      const hostId = roomsHost.get(r)
+      if (hostId && hostId === ws._id) {
+        const set = rooms.get(r)
+        const seed = Math.floor(Math.random() * 1e9)
+        const s = roomsSettings.get(r) || { ...DEFAULT_SETTINGS }
+        broadcast(r, { type: 'seed', seed, settings: s })
+        if (set) {
+          for (const c of set) c._ready = false
+        }
+        roomsState.set(r, { allReady: false })
+      }
+      return
+    }
     if (msg.type === 'settings') {
       // Only host can change settings
       const r = ws._room

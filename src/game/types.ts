@@ -36,6 +36,7 @@ export type NetMessage =
   | { type: 'seed'; seed: number; settings: Settings }
   | { type: 'settings'; settings: Settings }
   | { type: 'host'; hostId: string }
+  | { type: 'restart' }
   | { type: 'tick'; n: number; score: number }
   | { type: 'over'; reason: 'die' | 'quit'; from?: string }
   | { type: 'input'; key: 'ArrowUp' | 'ArrowDown' | 'ArrowLeft' | 'ArrowRight' }
