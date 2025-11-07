@@ -1100,27 +1100,25 @@ export function GameManager({
           {mode === 'versus' ? (ready ? 'Ready ✓' : 'Ready') : paused ? 'Play' : 'Pause'}
         </button>
 
-        {!(mode === 'versus' && !isHost) && (
-          <button
-            className="btn"
-            onClick={() => {
-              if (mode === 'versus') {
-                if (conn !== 'connected' || !isHost) return
-                try {
-                  netRef.current?.send({ type: 'restart' })
-                } catch {
-                  /* noop */
-                }
-                return
+        <button
+          className="btn"
+          onClick={() => {
+            if (mode === 'versus') {
+              if (conn !== 'connected' || !isHost) return
+              try {
+                netRef.current?.send({ type: 'restart' })
+              } catch {
+                /* noop */
               }
-              doRestart()
-            }}
-            disabled={false}
-            title={undefined}
-          >
-            Restart
-          </button>
-        )}
+              return
+            }
+            doRestart()
+          }}
+          disabled={mode === 'versus' && !isHost}
+          title={mode === 'versus' && !isHost ? 'Host only' : undefined}
+        >
+          Restart
+        </button>
 
         {/* Joystick removed */}
 
@@ -1612,7 +1610,7 @@ export function GameManager({
 
       {/* Leaderboard */}
       <div style={{ marginTop: '0.75rem' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'center' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <h3 className="section-title" style={{ marginTop: 0, marginBottom: 0 }}>
             Top 15 —
           </h3>
