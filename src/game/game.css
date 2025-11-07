@@ -13,6 +13,17 @@
   background: color-mix(in oklab, var(--bg), transparent 10%);
   backdrop-filter: blur(4px);
   border-bottom: 1px solid var(--border);
+  flex-direction: column; /* stack into logical rows */
+}
+.snake-toolbar .toolbar-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+.snake-toolbar .toolbar-row + .toolbar-row {
+  margin-top: 6px;
 }
 .snake-toolbar .group-label {
   margin-left: 8px;
