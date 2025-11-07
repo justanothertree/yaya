@@ -185,6 +185,32 @@
   display: none;
 }
 
+/* Simple desktop tab bar for panels */
+.snake-tabs {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  border-bottom: 1px solid var(--border);
+  margin-top: 8px;
+}
+.snake-tabs .tab {
+  appearance: none;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  padding: 8px 10px;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  font-weight: 500;
+}
+.snake-tabs .tab:hover {
+  color: var(--text);
+}
+.snake-tabs .tab[data-active] {
+  color: var(--text);
+  border-bottom-color: var(--accent);
+}
+
 @media (max-width: 640px) {
   .snake-toolbar {
     position: static; /* free up vertical space */

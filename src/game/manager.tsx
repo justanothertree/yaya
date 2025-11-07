@@ -134,6 +134,8 @@ export function GameManager({
   const deepRetryAttemptsRef = useRef(0)
   // Join error message (UI-only, non-blocking)
   const [joinError, setJoinError] = useState<string | null>(null)
+  // Desktop panels: tabs for Leaderboard / Multiplayer
+  const [panelTab, setPanelTab] = useState<'leaderboard' | 'multiplayer'>('leaderboard')
 
   // Canvas refs and renderers
   const wrapRef = useRef<HTMLDivElement>(null)
@@ -1387,105 +1389,6 @@ export function GameManager({
             </div>
           )}
         </div>
-        {mode === 'versus' && multiStep !== 'landing' && (
-          <div className="card" style={{ marginTop: 8, padding: 8 }}>
-            <div className="muted" style={{ fontWeight: 600, marginBottom: 6 }}>
-              {multiStep === 'lobby' ? (
-                <>
-                  Lobby — <span style={{ color: 'var(--text)' }}>{room || '—'}</span>{' '}
-                  <span className="muted" style={{ fontWeight: 400 }}>
-                    (connected players: {presence})
-                  </span>
-                </>
-              ) : (
-                <>Available lobbies</>
-              )}
-            </div>
-            <div style={{ display: 'grid', gap: 8 }}>
-              {(multiStep === 'join' || multiStep === 'create') &&
-                (rooms.length > 0 ? (
-                  <div
-                    style={{
-                      display: 'grid',
-                      gridTemplateColumns: 'repeat(auto-fill, minmax(180px,1fr))',
-                      gap: 8,
-                    }}
-                  >
-                    {rooms.map((r) => (
-                      <div key={r.id} className="card" style={{ padding: 8 }}>
-                        <div className="muted" style={{ fontWeight: 600 }}>
-                          {r.name || r.id}
-                        </div>
-                        <div className="muted" style={{ fontSize: 12 }}>
-                          ID: {r.id}
-                        </div>
-                        <div className="muted">Players: {r.count}</div>
-                        <div style={{ marginTop: 6 }}>
-                          <button
-                            className="btn"
-                            disabled={joining || conn === 'connecting'}
-                            onClick={() => {
-                              if (joining) return
-                              const rid = r.id
-                              if (room !== rid) setRoom(rid)
-                              setMultiStep('lobby')
-                              if (conn === 'connected') {
-                                netRef.current?.disconnect()
-                                setConn('disconnected')
-                                setJoining(true)
-                                setTimeout(() => connectVs(rid), 50)
-                              } else if (conn === 'disconnected') connectVs(rid)
-                            }}
-                          >
-                            Join
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="muted">No lobbies yet — click Browse to refresh.</div>
-                ))}
-              {/* Players in current room */}
-              {multiStep === 'lobby' && (
-                <div className="card" style={{ padding: 8 }}>
-                  <div className="muted" style={{ fontWeight: 600, marginBottom: 6 }}>
-                    Connected players
-                  </div>
-                  <div style={{ display: 'grid', gap: 6 }}>
-                    {myId && (
-                      <div
-                        className="muted"
-                        style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}
-                      >
-                        <span>
-                          {playerName?.trim() || 'You'} {isHost ? <em>(Host)</em> : null}
-                        </span>
-                        <span style={{ marginLeft: 12 }}>{ready ? 'Ready ✓' : 'Not ready'}</span>
-                      </div>
-                    )}
-                    {Object.entries(players)
-                      .filter(([id]) => id !== myId)
-                      .map(([id, p]) => (
-                        <div
-                          key={id}
-                          className="muted"
-                          style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}
-                        >
-                          <span>
-                            {p.name || 'Player'} {hostId === id ? <em>(Host)</em> : null}
-                          </span>
-                          <span style={{ marginLeft: 12 }}>
-                            {p.ready ? 'Ready ✓' : 'Not ready'}
-                          </span>
-                        </div>
-                      ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
       </div>
 
       {/* Status bar (stable layout, separate from toolbar) */}
@@ -1574,81 +1477,208 @@ export function GameManager({
         {/* Opponent canvas removed for now; previews serve as spectator UI */}
       </div>
 
-      {/* Peer previews (versus): show small boards for other players in the room */}
-      {mode === 'versus' && Object.keys(previews).length > 0 && (
-        <div className="card previews-section" style={{ marginTop: '0.75rem' }}>
-          <div className="muted" style={{ marginBottom: 6 }}>
-            Players in room: {presence}
-          </div>
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))',
-              gap: 12,
+      {/* Panels: Tabs under canvas for a cleaner desktop flow */}
+      <div className="snake-tabs">
+        <button
+          className="tab"
+          data-active={panelTab === 'leaderboard' || undefined}
+          onClick={() => setPanelTab('leaderboard')}
+        >
+          Leaderboard
+        </button>
+        {wsUrl && (
+          <button
+            className="tab"
+            data-active={panelTab === 'multiplayer' || undefined}
+            onClick={() => {
+              setPanelTab('multiplayer')
+              // Jump to Versus mode when opening Multiplayer panel
+              if (mode !== 'versus') setMode('versus')
             }}
           >
-            {Object.entries(previews).map(([id, p]) => (
-              <Preview key={id} state={p.state} title={`${p.name || 'Player'} — ${p.score}`} />
+            Multiplayer
+          </button>
+        )}
+      </div>
+
+      {/* Leaderboard Panel */}
+      {panelTab === 'leaderboard' && (
+        <div className="card" style={{ marginTop: 8, padding: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <h3 className="section-title" style={{ margin: 0 }}>
+              Top 15
+            </h3>
+            {(
+              [
+                { k: 'all', label: 'All time' },
+                { k: 'month', label: 'This month' },
+                { k: 'today', label: 'Today' },
+              ] as Array<{ k: LeaderboardPeriod; label: string }>
+            ).map((p) => (
+              <button
+                key={p.k}
+                className="btn"
+                aria-pressed={period === p.k}
+                data-active={period === p.k || undefined}
+                onClick={() => setPeriod(p.k)}
+              >
+                {p.label}
+              </button>
             ))}
           </div>
+          {myRank != null && (
+            <div className="muted" style={{ marginTop: 6 }}>
+              Your rank: <strong style={{ color: 'var(--text)' }}>{myRank}</strong>
+            </div>
+          )}
+          {leaders.length === 0 ? (
+            <div className="muted" style={{ marginTop: 6 }}>
+              No scores yet{period === 'today' ? ' today' : period === 'month' ? ' this month' : ''}
+              — be the first!
+            </div>
+          ) : (
+            <div style={{ textAlign: 'center', marginTop: 6 }}>
+              <ol
+                style={{
+                  margin: 0,
+                  paddingLeft: '1.25rem',
+                  display: 'inline-block',
+                  textAlign: 'left',
+                }}
+              >
+                {leaders.map((l, i) => (
+                  <li key={i} className="muted">
+                    <strong style={{ color: 'var(--text)' }}>{l.username}</strong> — {l.score}
+                  </li>
+                ))}
+              </ol>
+            </div>
+          )}
         </div>
       )}
 
-      {/* Bottom HUD removed; status shown inline in the toolbar above for better visibility */}
-
-      {/* Leaderboard */}
-      <div style={{ marginTop: '0.75rem' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <h3 className="section-title" style={{ marginTop: 0, marginBottom: 0 }}>
-            Top 15 —
-          </h3>
-          {(
-            [
-              { k: 'all', label: 'All time' },
-              { k: 'month', label: 'This month' },
-              { k: 'today', label: 'Today' },
-            ] as Array<{ k: LeaderboardPeriod; label: string }>
-          ).map((p) => (
-            <button
-              key={p.k}
-              className="btn"
-              aria-pressed={period === p.k}
-              data-active={period === p.k || undefined}
-              onClick={() => setPeriod(p.k)}
-            >
-              {p.label}
-            </button>
-          ))}
-        </div>
-        {myRank != null && (
-          <div className="muted" style={{ marginBottom: 6 }}>
-            Your rank: <strong style={{ color: 'var(--text)' }}>{myRank}</strong>
+      {/* Multiplayer Panel */}
+      {panelTab === 'multiplayer' && mode === 'versus' && (
+        <div className="card" style={{ marginTop: 8, padding: 10 }}>
+          <div className="muted" style={{ fontWeight: 600, marginBottom: 6 }}>
+            {multiStep === 'lobby' ? (
+              <>
+                Lobby — <span style={{ color: 'var(--text)' }}>{room || '—'}</span>{' '}
+                <span className="muted" style={{ fontWeight: 400 }}>
+                  (connected players: {presence})
+                </span>
+              </>
+            ) : (
+              <>Available lobbies</>
+            )}
           </div>
-        )}
-        {leaders.length === 0 ? (
-          <div className="muted" style={{ marginTop: 6 }}>
-            No scores yet{period === 'today' ? ' today' : period === 'month' ? ' this month' : ''}—
-            be the first!
-          </div>
-        ) : (
-          <div style={{ textAlign: 'center' }}>
-            <ol
-              style={{
-                margin: 0,
-                paddingLeft: '1.25rem',
-                display: 'inline-block',
-                textAlign: 'left',
-              }}
-            >
-              {leaders.map((l, i) => (
-                <li key={i} className="muted">
-                  <strong style={{ color: 'var(--text)' }}>{l.username}</strong> — {l.score}
-                </li>
+          <div style={{ display: 'grid', gap: 8 }}>
+            {(multiStep === 'join' || multiStep === 'create') &&
+              (rooms.length > 0 ? (
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fill, minmax(180px,1fr))',
+                    gap: 8,
+                  }}
+                >
+                  {rooms.map((r) => (
+                    <div key={r.id} className="card" style={{ padding: 8 }}>
+                      <div className="muted" style={{ fontWeight: 600 }}>
+                        {r.name || r.id}
+                      </div>
+                      <div className="muted" style={{ fontSize: 12 }}>
+                        ID: {r.id}
+                      </div>
+                      <div className="muted">Players: {r.count}</div>
+                      <div style={{ marginTop: 6 }}>
+                        <button
+                          className="btn"
+                          disabled={joining || conn === 'connecting'}
+                          onClick={() => {
+                            if (joining) return
+                            const rid = r.id
+                            if (room !== rid) setRoom(rid)
+                            setMultiStep('lobby')
+                            if (conn === 'connected') {
+                              netRef.current?.disconnect()
+                              setConn('disconnected')
+                              setJoining(true)
+                              setTimeout(() => connectVs(rid), 50)
+                            } else if (conn === 'disconnected') connectVs(rid)
+                          }}
+                        >
+                          Join
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="muted">No lobbies yet — click Browse to refresh.</div>
               ))}
-            </ol>
+            {/* Players in current room */}
+            {multiStep === 'lobby' && (
+              <div className="card" style={{ padding: 8 }}>
+                <div className="muted" style={{ fontWeight: 600, marginBottom: 6 }}>
+                  Connected players
+                </div>
+                <div style={{ display: 'grid', gap: 6 }}>
+                  {myId && (
+                    <div
+                      className="muted"
+                      style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}
+                    >
+                      <span>
+                        {playerName?.trim() || 'You'} {isHost ? <em>(Host)</em> : null}
+                      </span>
+                      <span style={{ marginLeft: 12 }}>{ready ? 'Ready ✓' : 'Not ready'}</span>
+                    </div>
+                  )}
+                  {Object.entries(players)
+                    .filter(([id]) => id !== myId)
+                    .map(([id, p]) => (
+                      <div
+                        key={id}
+                        className="muted"
+                        style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}
+                      >
+                        <span>
+                          {p.name || 'Player'} {hostId === id ? <em>(Host)</em> : null}
+                        </span>
+                        <span style={{ marginLeft: 12 }}>{p.ready ? 'Ready ✓' : 'Not ready'}</span>
+                      </div>
+                    ))}
+                </div>
+              </div>
+            )}
+
+            {/* Peer previews in multiplayer */}
+            {Object.keys(previews).length > 0 && (
+              <div className="card previews-section" style={{ marginTop: '0.25rem' }}>
+                <div className="muted" style={{ marginBottom: 6 }}>
+                  Players in room: {presence}
+                </div>
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))',
+                    gap: 12,
+                  }}
+                >
+                  {Object.entries(previews).map(([id, p]) => (
+                    <Preview
+                      key={id}
+                      state={p.state}
+                      title={`${p.name || 'Player'} — ${p.score}`}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* Save score modal */}
       {askNameOpen && (
