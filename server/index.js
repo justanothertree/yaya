@@ -97,9 +97,8 @@ wss.on('connection', (ws) => {
   ws._room = null
   ws._id = Math.random().toString(36).slice(2, 10)
   ws._ready = false
-  try {
-    ws.send(JSON.stringify({ type: 'welcome', id: ws._id }))
-  } catch {}
+  // Initial bare welcome removed to avoid double 'welcome' messages; a single enriched
+  // welcome (with visitor number) is sent after the client sends 'hello'.
   ws.on('message', (data) => {
     let msg
     try {

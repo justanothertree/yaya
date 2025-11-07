@@ -561,6 +561,11 @@ export function GameManager({
           // reset local state for new session
           setPlayers({})
           setPreviews({})
+          try {
+            seenPlayerIdsRef.current.clear()
+          } catch {
+            /* noop */
+          }
           // broadcast current meta on connect
           try {
             net.send({ type: 'roommeta', name: roomName || undefined })
@@ -589,6 +594,11 @@ export function GameManager({
           setReady(false)
           setPlayers({})
           setPreviews({})
+          try {
+            seenPlayerIdsRef.current.clear()
+          } catch {
+            /* noop */
+          }
         },
         onError: () => {
           setConn('disconnected')
@@ -885,7 +895,7 @@ export function GameManager({
 
   // Send lightweight preview of our current state periodically while running in versus
   useEffect(() => {
-    if (!(mode === 'versus' && conn === 'connected')) return
+    if (!(mode === 'versus' && conn === 'connected' && myId)) return
     let raf: number | null = null
     const send = () => {
       try {
@@ -902,7 +912,7 @@ export function GameManager({
     return () => {
       if (raf) window.clearTimeout(raf)
     }
-  }, [mode, conn, score, playerName])
+  }, [mode, conn, score, playerName, myId])
 
   // shareRoomLink removed (inlined where needed)
 
