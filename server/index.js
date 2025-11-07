@@ -251,10 +251,13 @@ wss.on('connection', (ws) => {
           const seed = Math.floor(Math.random() * 1e9)
           const s = roomsSettings.get(room) || { ...DEFAULT_SETTINGS }
           broadcast(room, { type: 'seed', seed, settings: s })
-          // reset readiness for a new round so subsequent rounds require Ready again
-          for (const c of set) c._ready = false
-          roomsState.set(room, { allReady: false })
+          // Mark transition so duplicate seed bursts are prevented until flags are reset.
+          // IMPORTANT: We DO NOT clear _ready immediately; keeping Ready indicators visible
+          // avoids UX confusion (looked like a failure). Ready flags will be cleared on an
+          // explicit host restart OR when clients send an 'over' (end of round) message.
+          roomsState.set(room, { allReady: true })
         } else if (!allReady && state.allReady) {
+          // Composition changed or someone ended a round; allow future ready cycle.
           roomsState.set(room, { allReady: false })
         }
       }

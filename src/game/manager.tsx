@@ -648,15 +648,8 @@ export function GameManager({
           if (msg.type === 'seed') {
             setEngineSeed(msg.seed)
             setSettings(msg.settings)
-            setReady(false)
             // Kick off round start countdown when a new seed arrives
             if (countdown == null) setCountdown(3)
-            // reset ready flags for all players (new round)
-            setPlayers((map) => {
-              const next: typeof map = {}
-              for (const [id, p] of Object.entries(map)) next[id] = { ...p, ready: false }
-              return next
-            })
           } else if (msg.type === 'presence') {
             setPresence(Math.max(1, msg.count || 1))
           } else if (msg.type === 'ready') {
@@ -828,6 +821,13 @@ export function GameManager({
         window.clearInterval(id)
         setCountdown(null)
         setPaused(false)
+        // Round is starting: clear ready flags now so next round requires Ready again
+        setReady(false)
+        setPlayers((map) => {
+          const next: typeof map = {}
+          for (const [pid, info] of Object.entries(map)) next[pid] = { ...info, ready: false }
+          return next
+        })
         // capture focus on start
         canvasRef.current?.focus()
         capturedRef.current = true
