@@ -883,7 +883,7 @@ export function GameManager({
 
   // Auto-refresh available lobbies when entering Join step
   useEffect(() => {
-    if (!(mode === 'versus' && wsUrl && multiStep === 'join')) return
+    if (!(mode === 'versus' && wsUrl && (multiStep === 'join' || multiStep === 'create'))) return
     try {
       const ws = new WebSocket(wsUrl)
       let closed = false
@@ -1401,7 +1401,7 @@ export function GameManager({
             )}
           </div>
         )}
-        {mode === 'versus' && (multiStep === 'join' || multiStep === 'lobby') && (
+        {mode === 'versus' && multiStep !== 'landing' && (
           <div className="card" style={{ marginTop: 8, padding: 8 }}>
             <div className="muted" style={{ fontWeight: 600, marginBottom: 6 }}>
               {multiStep === 'lobby' ? (
@@ -1416,7 +1416,7 @@ export function GameManager({
               )}
             </div>
             <div style={{ display: 'grid', gap: 8 }}>
-              {multiStep === 'join' &&
+              {(multiStep === 'join' || multiStep === 'create') &&
                 (rooms.length > 0 ? (
                   <div
                     style={{
@@ -1612,7 +1612,7 @@ export function GameManager({
 
       {/* Leaderboard */}
       <div style={{ marginTop: '0.75rem' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'center' }}>
           <h3 className="section-title" style={{ marginTop: 0, marginBottom: 0 }}>
             Top 15 —
           </h3>
