@@ -1487,20 +1487,31 @@ export function GameManager({
                   <span style={{ marginLeft: 12 }}>{ready ? 'Ready ✓' : 'Not ready'}</span>
                 </div>
               )}
-              {Object.entries(players)
-                .filter(([id]) => id !== myId)
-                .map(([id, p]) => (
+              {(() => {
+                // Dedupe by display name to avoid transient duplicate rows (e.g., a placeholder 'Player')
+                const seen = new Set<string>()
+                const items: Array<{ id: string; name: string; ready?: boolean }> = []
+                for (const [id, p] of Object.entries(players)) {
+                  if (id === myId) continue
+                  const nameRaw = (p.name || 'Player').trim()
+                  const key = nameRaw.toLowerCase()
+                  if (seen.has(key)) continue
+                  seen.add(key)
+                  items.push({ id, name: nameRaw, ready: p.ready })
+                }
+                return items.map(({ id, name, ready }) => (
                   <div
                     key={id}
                     className="muted"
                     style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}
                   >
                     <span>
-                      {p.name || 'Player'} {hostId === id ? <em>(Host)</em> : null}
+                      {name} {hostId === id ? <em>(Host)</em> : null}
                     </span>
-                    <span style={{ marginLeft: 12 }}>{p.ready ? 'Ready ✓' : 'Not ready'}</span>
+                    <span style={{ marginLeft: 12 }}>{ready ? 'Ready ✓' : 'Not ready'}</span>
                   </div>
-                ))}
+                ))
+              })()}
             </div>
           )}
         </div>
