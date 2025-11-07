@@ -30,6 +30,10 @@ const rooms = new Map()
 const roomsMeta = new Map() // { name, public, createdAt }
 // roomId -> state flags
 const roomsState = new Map() // { allReady: boolean }
+// roomId -> settings
+const roomsSettings = new Map() // { apples, passThroughEdges, grid, canvasSize }
+// roomId -> host client id
+const roomsHost = new Map()
 // clientId -> visitor number; assigns one global sequential number per unique clientId
 const clientVisitors = new Map()
 let nextVisitor = 1
@@ -42,6 +46,7 @@ function joinRoom(ws, room) {
     if (!roomsMeta.has(room))
       roomsMeta.set(room, { name: room, public: false, createdAt: Date.now() })
     if (!roomsState.has(room)) roomsState.set(room, { allReady: false })
+    if (!roomsSettings.has(room)) roomsSettings.set(room, { ...DEFAULT_SETTINGS })
   }
   set.add(ws)
   ws._room = room
@@ -72,6 +77,20 @@ function broadcast(room, msg, except = null) {
       } catch {}
     }
   }
+}
+
+function ensureHost(room) {
+  // If no host is assigned but room has clients, pick the first as host
+  if (!roomsHost.has(room)) {
+    const set = rooms.get(room)
+    if (set && set.size > 0) {
+      const first = Array.from(set)[0]
+      roomsHost.set(room, first._id)
+      broadcast(room, { type: 'host', hostId: first._id })
+      return first._id
+    }
+  }
+  return roomsHost.get(room)
 }
 
 wss.on('connection', (ws) => {
@@ -119,6 +138,18 @@ wss.on('connection', (ws) => {
         ws.send(JSON.stringify({ type: 'welcome', id: ws._id, visitor }))
       } catch {}
       joinRoom(ws, msg.room)
+      // Assign or confirm host
+      if (msg.create || !roomsHost.has(msg.room)) {
+        roomsHost.set(msg.room, ws._id)
+      }
+      const hostId = ensureHost(msg.room)
+      // Inform all clients who the host is
+      if (hostId) broadcast(msg.room, { type: 'host', hostId })
+      // Send current settings snapshot to the newcomer
+      const curSettings = roomsSettings.get(msg.room) || { ...DEFAULT_SETTINGS }
+      try {
+        ws.send(JSON.stringify({ type: 'settings', settings: curSettings }))
+      } catch {}
       // Tell newcomer who is already ready
       const set = rooms.get(msg.room)
       if (set) {
@@ -166,6 +197,31 @@ wss.on('connection', (ws) => {
       broadcast(room, { ...msg, from: ws._id }, ws)
       return
     }
+    if (msg.type === 'settings') {
+      // Only host can change settings
+      const r = ws._room
+      if (!r) return
+      const hostId = roomsHost.get(r)
+      if (hostId && hostId === ws._id) {
+        const prev = roomsSettings.get(r) || { ...DEFAULT_SETTINGS }
+        let next = { ...prev }
+        if (msg.settings && typeof msg.settings === 'object') {
+          const s = msg.settings
+          if (typeof s.apples === 'number' && s.apples >= 1 && s.apples <= 4) next.apples = s.apples
+          if (typeof s.passThroughEdges === 'boolean') next.passThroughEdges = s.passThroughEdges
+        } else {
+          if (typeof msg.apples === 'number' && msg.apples >= 1 && msg.apples <= 4) {
+            next.apples = msg.apples
+          }
+          if (typeof msg.passThroughEdges === 'boolean') {
+            next.passThroughEdges = msg.passThroughEdges
+          }
+        }
+        roomsSettings.set(r, next)
+        broadcast(r, { type: 'settings', settings: next })
+      }
+      return
+    }
     if (msg.type === 'ready') {
       ws._ready = true
       broadcast(room, { type: 'ready', from: ws._id }, ws)
@@ -176,7 +232,8 @@ wss.on('connection', (ws) => {
         const state = roomsState.get(room) || { allReady: false }
         if (allReady && !state.allReady) {
           const seed = Math.floor(Math.random() * 1e9)
-          broadcast(room, { type: 'seed', seed, settings: DEFAULT_SETTINGS })
+          const s = roomsSettings.get(room) || { ...DEFAULT_SETTINGS }
+          broadcast(room, { type: 'seed', seed, settings: s })
           // reset readiness for a new round so subsequent rounds require Ready again
           for (const c of set) c._ready = false
           roomsState.set(room, { allReady: false })
@@ -197,6 +254,17 @@ wss.on('connection', (ws) => {
       // reset allReady flag when composition changes
       const state = roomsState.get(room)
       if (state) roomsState.set(room, { allReady: false })
+      // If host left, promote a new host
+      const currentHost = roomsHost.get(room)
+      if (currentHost && currentHost === ws._id) {
+        roomsHost.delete(room)
+        const set = rooms.get(room)
+        if (set && set.size > 0) {
+          const newHost = Array.from(set)[0]
+          roomsHost.set(room, newHost._id)
+          broadcast(room, { type: 'host', hostId: newHost._id })
+        }
+      }
     }
   })
 })

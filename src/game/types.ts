@@ -34,6 +34,8 @@ export type NetMessage =
   | { type: 'hello'; room: string; clientId?: string; create?: boolean }
   | { type: 'welcome'; id: string; visitor?: number }
   | { type: 'seed'; seed: number; settings: Settings }
+  | { type: 'settings'; settings: Settings }
+  | { type: 'host'; hostId: string }
   | { type: 'tick'; n: number; score: number }
   | { type: 'over'; reason: 'die' | 'quit'; from?: string }
   | { type: 'input'; key: 'ArrowUp' | 'ArrowDown' | 'ArrowLeft' | 'ArrowRight' }

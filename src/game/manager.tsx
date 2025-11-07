@@ -120,6 +120,7 @@ export function GameManager({
   const hintTimerRef = useRef<number | null>(null)
   const userInitiatedFocusRef = useRef(false)
   const isCoarseRef = useRef(false)
+  const suppressBlurPauseRef = useRef(false)
   // immersive/fullscreen disabled for now
   const restoredRef = useRef(false)
   const deepLinkConnectRef = useRef(false)
@@ -704,6 +705,10 @@ export function GameManager({
             }
           } else if (msg.type === 'rooms') {
             setRooms(msg.items || [])
+          } else if (msg.type === 'settings') {
+            if (msg.settings) setSettings(msg.settings)
+          } else if (msg.type === 'host') {
+            if (msg.hostId && myId) setIsHost(msg.hostId === myId)
           }
         },
       })
@@ -848,6 +853,18 @@ export function GameManager({
 
   // No implicit auto-connect on switching to versus; user triggers Join or Create game
 
+  // Disconnect from WS on unmount to avoid ghost connections inflating presence
+  useEffect(() => {
+    return () => {
+      try {
+        netRef.current?.disconnect()
+      } catch {
+        /* noop */
+      }
+      setConn('disconnected')
+    }
+  }, [])
+
   // Auto-refresh available lobbies when entering Join step
   useEffect(() => {
     if (!(mode === 'versus' && wsUrl && multiStep === 'join')) return
@@ -937,7 +954,17 @@ export function GameManager({
             key={n}
             className="btn"
             aria-pressed={settings.apples === n}
-            onClick={() => setSettings({ ...settings, apples: n })}
+            onClick={() => {
+              const next = { ...settings, apples: n }
+              setSettings(next)
+              if (mode === 'versus' && conn === 'connected' && isHost) {
+                try {
+                  netRef.current?.send({ type: 'settings', settings: next })
+                } catch {
+                  /* noop */
+                }
+              }
+            }}
             disabled={mode === 'versus' && conn === 'connected' && !isHost}
             title={
               mode === 'versus' && conn === 'connected' && !isHost
@@ -956,7 +983,18 @@ export function GameManager({
             key={lab}
             className="btn"
             aria-pressed={(settings.passThroughEdges ? 'wrap' : 'walls') === lab}
-            onClick={() => setSettings({ ...settings, passThroughEdges: lab === 'wrap' })}
+            onClick={() => {
+              const nextVal = lab === 'wrap'
+              const next = { ...settings, passThroughEdges: nextVal }
+              setSettings(next)
+              if (mode === 'versus' && conn === 'connected' && isHost) {
+                try {
+                  netRef.current?.send({ type: 'settings', settings: next })
+                } catch {
+                  /* noop */
+                }
+              }
+            }}
             disabled={mode === 'versus' && conn === 'connected' && !isHost}
             title={
               mode === 'versus' && conn === 'connected' && !isHost
@@ -971,6 +1009,11 @@ export function GameManager({
 
         <button
           className="btn btn--stable"
+          onPointerDownCapture={() => {
+            // Prevent immediate blur auto-pause from fighting our click toggle.
+            // Use capture so this runs before canvas onBlur.
+            suppressBlurPauseRef.current = true
+          }}
           onClick={() => {
             if (mode === 'versus') {
               // Use Ready flow in versus
@@ -1011,6 +1054,11 @@ export function GameManager({
               }
               return next
             })
+            // Done with suppression; allow future blur auto-pause.
+            // Defer reset to the next tick to ensure any pending blur has fired.
+            setTimeout(() => {
+              suppressBlurPauseRef.current = false
+            }, 0)
           }}
           aria-pressed={!paused}
           title={paused ? 'Play' : 'Pause'}
@@ -1472,8 +1520,9 @@ export function GameManager({
               capturedRef.current = false
               setCaptured(false)
               onControlChange?.(false)
-              // Solo mode: auto-pause when canvas loses focus for convenience
-              if (mode === 'solo') setPaused(true)
+              // Solo mode: auto-pause when canvas loses focus (unless we're mid-click suppressing blur)
+              if (mode === 'solo' && !suppressBlurPauseRef.current) setPaused(true)
+              suppressBlurPauseRef.current = false
             }}
             onPointerDown={() => {
               // focus on first interaction, capture controls
