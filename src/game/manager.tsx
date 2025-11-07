@@ -966,176 +966,165 @@ export function GameManager({
       )}
       {/* Settings & Mode */}
       <div className="snake-toolbar">
-        <div className="toolbar-row">
-          <div className="muted">Mode:</div>
-          {(['solo', 'versus'] as Mode[]).map((m) => (
-            <button
-              key={m}
-              className="btn"
-              aria-pressed={mode === m}
-              onClick={() => setMode(m)}
-              data-active={mode === m || undefined}
-            >
-              {m === 'versus' ? 'multiplayer' : m}
-            </button>
-          ))}
-        </div>
+        <div className="snake-layout">
+          {/* LEFT: Controls & Settings */}
+          <div className="controls-group">
+            <div className="controls-row">
+              <div className="muted">Mode:</div>
+              {(['solo', 'versus'] as Mode[]).map((m) => (
+                <button
+                  key={m}
+                  className="btn"
+                  aria-pressed={mode === m}
+                  onClick={() => setMode(m)}
+                  data-active={mode === m || undefined}
+                >
+                  {m === 'versus' ? 'multiplayer' : m}
+                </button>
+              ))}
 
-        {/* Canvas size fixed to medium for now */}
-
-        <div className="toolbar-row">
-          <div className="muted group-label">Apples</div>
-          {[1, 2, 3, 4].map((n) => (
-            <button
-              key={n}
-              className="btn"
-              aria-pressed={settings.apples === n}
-              onClick={() => {
-                const next = { ...settings, apples: n }
-                setSettings(next)
-                if (mode === 'versus' && conn === 'connected' && isHost) {
-                  try {
-                    netRef.current?.send({ type: 'settings', settings: next })
-                  } catch {
-                    /* noop */
+              <button
+                className="btn btn--stable"
+                onPointerDownCapture={() => {
+                  suppressBlurPauseRef.current = true
+                }}
+                onClick={() => {
+                  if (mode === 'versus') {
+                    if (conn !== 'connected') return
+                    if (!playerName.trim()) return
+                    setReady(true)
+                    setPlayers((map) => {
+                      if (!myId) return map
+                      const cur = map[myId] || {}
+                      return {
+                        ...map,
+                        [myId]: { ...cur, ready: true, name: cur.name || playerName },
+                      }
+                    })
+                    try {
+                      netRef.current?.send({ type: 'ready' })
+                    } catch {
+                      /* noop */
+                    }
+                    return
                   }
-                }
-              }}
-              disabled={mode === 'versus' && conn === 'connected' && !isHost}
-              title={
-                mode === 'versus' && conn === 'connected' && !isHost
-                  ? 'Locked in multiplayer'
-                  : undefined
-              }
-              data-active={settings.apples === n || undefined}
-            >
-              {n}
-            </button>
-          ))}
-
-          <div className="muted group-label">Edges</div>
-          {['wrap', 'walls'].map((lab) => (
-            <button
-              key={lab}
-              className="btn"
-              aria-pressed={(settings.passThroughEdges ? 'wrap' : 'walls') === lab}
-              onClick={() => {
-                const nextVal = lab === 'wrap'
-                const next = { ...settings, passThroughEdges: nextVal }
-                setSettings(next)
-                if (mode === 'versus' && conn === 'connected' && isHost) {
-                  try {
-                    netRef.current?.send({ type: 'settings', settings: next })
-                  } catch {
-                    /* noop */
+                  if (!alive) {
+                    doRestart()
+                    setPaused(false)
+                    canvasRef.current?.focus()
+                    capturedRef.current = true
+                    setCaptured(true)
+                    onControlChange?.(true)
+                    return
                   }
+                  setPaused((p) => {
+                    const next = !p
+                    if (!next) {
+                      canvasRef.current?.focus()
+                      capturedRef.current = true
+                      setCaptured(true)
+                      onControlChange?.(true)
+                    }
+                    return next
+                  })
+                  setTimeout(() => {
+                    suppressBlurPauseRef.current = false
+                  }, 0)
+                }}
+                aria-pressed={!paused}
+                title={paused ? 'Play' : 'Pause'}
+                disabled={
+                  mode === 'versus' && (!playerName.trim() || conn !== 'connected' || ready)
                 }
-              }}
-              disabled={mode === 'versus' && conn === 'connected' && !isHost}
-              title={
-                mode === 'versus' && conn === 'connected' && !isHost
-                  ? 'Locked in multiplayer'
-                  : undefined
-              }
-              data-active={(settings.passThroughEdges ? 'wrap' : 'walls') === lab || undefined}
-            >
-              {lab}
-            </button>
-          ))}
-        </div>
+              >
+                {mode === 'versus' ? (ready ? 'Ready ✓' : 'Ready') : paused ? 'Play' : 'Pause'}
+              </button>
 
-        <div className="toolbar-row">
-          <button
-            className="btn btn--stable"
-            onPointerDownCapture={() => {
-              // Prevent immediate blur auto-pause from fighting our click toggle.
-              // Use capture so this runs before canvas onBlur.
-              suppressBlurPauseRef.current = true
-            }}
-            onClick={() => {
-              if (mode === 'versus') {
-                // Use Ready flow in versus
-                if (conn !== 'connected') return
-                if (!playerName.trim()) return
-                setReady(true)
-                // reflect in local players map
-                setPlayers((map) => {
-                  if (!myId) return map
-                  const cur = map[myId] || {}
-                  return { ...map, [myId]: { ...cur, ready: true, name: cur.name || playerName } }
-                })
-                try {
-                  netRef.current?.send({ type: 'ready' })
-                } catch {
-                  /* noop */
-                }
-                return
-              }
-              if (!alive) {
-                doRestart()
-                setPaused(false)
-                // capture focus on play
-                canvasRef.current?.focus()
-                capturedRef.current = true
-                setCaptured(true)
-                onControlChange?.(true)
-                return
-              }
-              setPaused((p) => {
-                const next = !p
-                // We just transitioned to unpaused -> capture controls
-                if (!next) {
-                  canvasRef.current?.focus()
-                  capturedRef.current = true
-                  setCaptured(true)
-                  onControlChange?.(true)
-                }
-                return next
-              })
-              // Done with suppression; allow future blur auto-pause.
-              // Defer reset to the next tick to ensure any pending blur has fired.
-              setTimeout(() => {
-                suppressBlurPauseRef.current = false
-              }, 0)
-            }}
-            aria-pressed={!paused}
-            title={paused ? 'Play' : 'Pause'}
-            disabled={mode === 'versus' && (!playerName.trim() || conn !== 'connected' || ready)}
-          >
-            {mode === 'versus' ? (ready ? 'Ready ✓' : 'Ready') : paused ? 'Play' : 'Pause'}
-          </button>
+              <button
+                className="btn"
+                onClick={() => {
+                  if (mode === 'versus') {
+                    if (conn !== 'connected' || !isHost) return
+                    try {
+                      netRef.current?.send({ type: 'restart' })
+                    } catch {
+                      /* noop */
+                    }
+                    return
+                  }
+                  doRestart()
+                }}
+                disabled={mode === 'versus' && !isHost}
+                title={mode === 'versus' && !isHost ? 'Host only' : undefined}
+              >
+                Restart
+              </button>
+            </div>
 
-          <button
-            className="btn"
-            onClick={() => {
-              if (mode === 'versus') {
-                if (conn !== 'connected' || !isHost) return
-                try {
-                  netRef.current?.send({ type: 'restart' })
-                } catch {
-                  /* noop */
-                }
-                return
-              }
-              doRestart()
-            }}
-            disabled={mode === 'versus' && !isHost}
-            title={mode === 'versus' && !isHost ? 'Host only' : undefined}
-          >
-            Restart
-          </button>
-        </div>
+            <div className="controls-row">
+              <div className="muted group-label">Apples</div>
+              {[1, 2, 3, 4].map((n) => (
+                <button
+                  key={n}
+                  className="btn"
+                  aria-pressed={settings.apples === n}
+                  onClick={() => {
+                    const next = { ...settings, apples: n }
+                    setSettings(next)
+                    if (mode === 'versus' && conn === 'connected' && isHost) {
+                      try {
+                        netRef.current?.send({ type: 'settings', settings: next })
+                      } catch {
+                        /* noop */
+                      }
+                    }
+                  }}
+                  disabled={mode === 'versus' && conn === 'connected' && !isHost}
+                  title={
+                    mode === 'versus' && conn === 'connected' && !isHost
+                      ? 'Locked in multiplayer'
+                      : undefined
+                  }
+                  data-active={settings.apples === n || undefined}
+                >
+                  {n}
+                </button>
+              ))}
+              <div className="muted group-label">Edges</div>
+              {['wrap', 'walls'].map((lab) => (
+                <button
+                  key={lab}
+                  className="btn"
+                  aria-pressed={(settings.passThroughEdges ? 'wrap' : 'walls') === lab}
+                  onClick={() => {
+                    const nextVal = lab === 'wrap'
+                    const next = { ...settings, passThroughEdges: nextVal }
+                    setSettings(next)
+                    if (mode === 'versus' && conn === 'connected' && isHost) {
+                      try {
+                        netRef.current?.send({ type: 'settings', settings: next })
+                      } catch {
+                        /* noop */
+                      }
+                    }
+                  }}
+                  disabled={mode === 'versus' && conn === 'connected' && !isHost}
+                  title={
+                    mode === 'versus' && conn === 'connected' && !isHost
+                      ? 'Locked in multiplayer'
+                      : undefined
+                  }
+                  data-active={(settings.passThroughEdges ? 'wrap' : 'walls') === lab || undefined}
+                >
+                  {lab}
+                </button>
+              ))}
+            </div>
+          </div>
 
-        {/* Joystick removed */}
-
-        {/* Status indicators moved to a dedicated bar below toolbar to avoid layout shifts */}
-
-        {mode === 'versus' && wsUrl && (
-          <div className="toolbar-row">
-            <div
-              className="vs-inline"
-              style={{ display: 'inline-flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}
-            >
+          {/* RIGHT: Multiplayer controls */}
+          {mode === 'versus' && wsUrl && (
+            <div className="mp-group">
               <label
                 className="muted"
                 style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
@@ -1147,7 +1136,6 @@ export function GameManager({
                     setPlayerName(e.target.value)
                     try {
                       localStorage.setItem(LS_PLAYER_NAME_SOURCE_KEY, 'custom')
-                      // keep a ref so we don't auto-override on future welcomes
                       nameSourceRef.current = 'custom'
                     } catch {
                       /* ignore */
@@ -1160,27 +1148,25 @@ export function GameManager({
                     border: '1px solid var(--border)',
                     background: 'transparent',
                     color: 'var(--text)',
-                    minWidth: 140,
+                    minWidth: 160,
+                    width: '100%',
                   }}
                 />
               </label>
+
               {/* Multiplayer stepper */}
               {multiStep === 'landing' && (
-                <div
-                  style={{ display: 'inline-flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}
-                >
-                  <button className="btn" onClick={() => setMultiStep('create')}>
+                <div className="controls-row">
+                  <button className="btn btn--wide" onClick={() => setMultiStep('create')}>
                     Create lobby
                   </button>
-                  <button className="btn" onClick={() => setMultiStep('join')}>
+                  <button className="btn btn--wide" onClick={() => setMultiStep('join')}>
                     Join lobby
                   </button>
                 </div>
               )}
               {multiStep === 'create' && (
-                <div
-                  style={{ display: 'inline-flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}
-                >
+                <div className="controls-row" style={{ alignItems: 'center' }}>
                   <label
                     className="muted"
                     style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
@@ -1199,6 +1185,7 @@ export function GameManager({
                         border: '1px solid var(--border)',
                         background: 'transparent',
                         color: 'var(--text)',
+                        minWidth: 160,
                       }}
                     />
                   </label>
@@ -1242,9 +1229,7 @@ export function GameManager({
                 </div>
               )}
               {multiStep === 'join' && (
-                <div
-                  style={{ display: 'inline-flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}
-                >
+                <div className="controls-row" style={{ alignItems: 'center' }}>
                   <label
                     className="muted"
                     style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
@@ -1260,6 +1245,7 @@ export function GameManager({
                         border: '1px solid var(--border)',
                         background: 'transparent',
                         color: 'var(--text)',
+                        minWidth: 160,
                       }}
                     />
                   </label>
@@ -1269,7 +1255,6 @@ export function GameManager({
                       if (joining) return
                       const rc = room.trim()
                       if (conn === 'disconnected' && rc) {
-                        // Wait for successful welcome before switching steps; try connect, step will update on welcome
                         connectVs(rc, false)
                       }
                     }}
@@ -1280,12 +1265,10 @@ export function GameManager({
                   <button
                     className="btn"
                     onClick={() => {
-                      // Use a temporary WS connection to fetch the room list without joining a room
                       try {
                         if (!wsUrl) return
                         const ws = new WebSocket(wsUrl)
                         let closed = false
-                        // Safety timeout: close the socket if we don't get a list in time
                         const t = window.setTimeout(() => {
                           if (!closed) {
                             closed = true
@@ -1306,7 +1289,6 @@ export function GameManager({
                         ws.onmessage = (ev) => {
                           try {
                             const msg = JSON.parse(ev.data as string)
-                            // Server sends a 'welcome' first; ignore it and wait for 'rooms'
                             if (msg && msg.type === 'rooms' && Array.isArray(msg.items)) {
                               setRooms(msg.items)
                               if (!closed) {
@@ -1353,9 +1335,7 @@ export function GameManager({
                 </div>
               )}
               {multiStep === 'lobby' && (
-                <div
-                  style={{ display: 'inline-flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}
-                >
+                <div className="controls-row" style={{ alignItems: 'center' }}>
                   <div className="muted">Room: {room || '—'}</div>
                   <div className="muted">Players: {presence}</div>
                   <div className="muted">
@@ -1405,8 +1385,8 @@ export function GameManager({
                 </div>
               )}
             </div>
-          </div>
-        )}
+          )}
+        </div>
         {mode === 'versus' && multiStep !== 'landing' && (
           <div className="card" style={{ marginTop: 8, padding: 8 }}>
             <div className="muted" style={{ fontWeight: 600, marginBottom: 6 }}>
