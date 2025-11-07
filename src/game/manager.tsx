@@ -1453,7 +1453,35 @@ export function GameManager({
               )}
             </div>
           )}
-          {multiStep === 'lobby' && null}
+          {multiStep === 'lobby' && (
+            <div style={{ display: 'grid', gap: 6 }}>
+              {myId && (
+                <div
+                  className="muted"
+                  style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}
+                >
+                  <span>
+                    {playerName?.trim() || 'You'} {isHost ? <em>(Host)</em> : null}
+                  </span>
+                  <span style={{ marginLeft: 12 }}>{ready ? 'Ready ✓' : 'Not ready'}</span>
+                </div>
+              )}
+              {Object.entries(players)
+                .filter(([id]) => id !== myId)
+                .map(([id, p]) => (
+                  <div
+                    key={id}
+                    className="muted"
+                    style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}
+                  >
+                    <span>
+                      {p.name || 'Player'} {hostId === id ? <em>(Host)</em> : null}
+                    </span>
+                    <span style={{ marginLeft: 12 }}>{p.ready ? 'Ready ✓' : 'Not ready'}</span>
+                  </div>
+                ))}
+            </div>
+          )}
         </div>
       )}
 
@@ -1543,61 +1571,27 @@ export function GameManager({
         {/* Opponent canvas removed for now; previews serve as spectator UI */}
       </div>
 
-      {/* Players and previews directly under the game */}
-      {mode === 'versus' && multiStep === 'lobby' && (
+      {/* Live previews directly under the game */}
+      {mode === 'versus' && multiStep === 'lobby' && Object.keys(previews).length > 0 && (
         <div className="card" style={{ marginTop: '0.75rem', padding: 10 }}>
           <div className="muted" style={{ fontWeight: 600, marginBottom: 6 }}>
-            Players in room: {presence}
+            Live previews
           </div>
-          <div style={{ display: 'grid', gap: 6 }}>
-            {myId && (
-              <div
-                className="muted"
-                style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}
-              >
-                <span>
-                  {playerName?.trim() || 'You'} {isHost ? <em>(Host)</em> : null}
-                </span>
-                <span style={{ marginLeft: 12 }}>{ready ? 'Ready ✓' : 'Not ready'}</span>
-              </div>
-            )}
-            {Object.entries(players)
-              .filter(([id]) => id !== myId)
-              .map(([id, p]) => (
-                <div
-                  key={id}
-                  className="muted"
-                  style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}
-                >
-                  <span>
-                    {p.name || 'Player'} {hostId === id ? <em>(Host)</em> : null}
-                  </span>
-                  <span style={{ marginLeft: 12 }}>{p.ready ? 'Ready ✓' : 'Not ready'}</span>
-                </div>
-              ))}
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))',
+              gap: 12,
+            }}
+          >
+            {Object.entries(previews).map(([id, p]) => (
+              <Preview
+                key={id}
+                state={p.state}
+                title={`${p.name || 'Player'} — ${p.score}${players[id]?.ready ? ' ✓' : ''}`}
+              />
+            ))}
           </div>
-          {Object.keys(previews).length > 0 && (
-            <div style={{ marginTop: 8 }}>
-              <div className="muted" style={{ marginBottom: 6 }}>
-                Live previews
-              </div>
-              <div
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))',
-                  gap: 12,
-                }}
-              >
-                {Object.entries(previews).map(([id, p]) => (
-                  <Preview
-                    key={id}
-                    state={p.state}
-                    title={`${p.name || 'Player'} — ${p.score}${players[id]?.ready ? ' ✓' : ''}`}
-                  />
-                ))}
-              </div>
-            </div>
-          )}
         </div>
       )}
 
