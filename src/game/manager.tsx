@@ -128,8 +128,10 @@ export function GameManager({
   const restoredRef = useRef(false)
   const deepLinkConnectRef = useRef(false)
   const countdownLockRef = useRef<number>(0)
-  const [isHost, setIsHost] = useState(false)
+  // Derive host status directly from hostId === myId to avoid stale state on host transfer
   const [hostId, setHostId] = useState<string | null>(null)
+  const isHost = myId != null && hostId === myId
+  // hostId state declared earlier; removed duplicate
   const [toast, setToast] = useState<string | null>(null)
   const toastTimerRef = useRef<number | null>(null)
   // Silent deep-link retry controller (avoid alert spam)
@@ -529,7 +531,8 @@ export function GameManager({
   const connectVs = useCallback(
     (roomOverride?: string, create?: boolean) => {
       if (!wsUrl) return
-      setIsHost(!!create)
+      // Initial assumption of host if creating; real host assignment comes via 'host' message
+      // (isHost derived from hostId === myId)
       setJoining(true)
       let gotWelcome = false
       let createAttempts = 0
@@ -712,7 +715,7 @@ export function GameManager({
             if (msg.hostId) {
               const prev = hostId
               setHostId(msg.hostId)
-              if (myId) setIsHost(msg.hostId === myId)
+              // isHost derived from hostId === myId; no setIsHost needed
               if (prev !== msg.hostId) {
                 if (myId && msg.hostId === myId) setToast('You are now the host')
                 else setToast('Host changed')
@@ -1390,7 +1393,8 @@ export function GameManager({
                       }
                       setConn('disconnected')
                       setJoining(false)
-                      setIsHost(false)
+                      // isHost derives from hostId; reset hostId
+                      setHostId(null)
                       setPresence(1)
                       setPlayers({})
                       setPreviews({})
