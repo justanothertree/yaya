@@ -177,7 +177,7 @@
   display: flex;
   gap: 16px;
   align-items: center;
-  justify-content: flex-start; /* align with toolbar to avoid horizontal shift */
+  justify-content: center; /* center score/paused/countdown */
   margin: 8px 0;
   flex-wrap: wrap;
 }
