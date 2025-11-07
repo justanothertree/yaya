@@ -1391,6 +1391,112 @@ export function GameManager({
         </div>
       </div>
 
+      {/* Lobby box under settings, above the game */}
+      {mode === 'versus' && multiStep !== 'landing' && (
+        <div className="card" style={{ marginTop: 8, padding: 10 }}>
+          <div className="muted" style={{ fontWeight: 600, marginBottom: 6 }}>
+            {multiStep === 'lobby' ? (
+              <>
+                Lobby — <span style={{ color: 'var(--text)' }}>{room || '—'}</span>{' '}
+                <span className="muted" style={{ fontWeight: 400 }}>
+                  (connected players: {presence})
+                </span>
+              </>
+            ) : (
+              <>Available lobbies</>
+            )}
+          </div>
+          {(multiStep === 'join' || multiStep === 'create') && (
+            <div style={{ display: 'grid', gap: 8 }}>
+              {rooms.length > 0 ? (
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fill, minmax(180px,1fr))',
+                    gap: 8,
+                  }}
+                >
+                  {rooms.map((r) => (
+                    <div key={r.id} className="card" style={{ padding: 8 }}>
+                      <div className="muted" style={{ fontWeight: 600 }}>
+                        {r.name || r.id}
+                      </div>
+                      <div className="muted" style={{ fontSize: 12 }}>
+                        ID: {r.id}
+                      </div>
+                      <div className="muted">Players: {r.count}</div>
+                      <div style={{ marginTop: 6 }}>
+                        <button
+                          className="btn"
+                          disabled={joining || conn === 'connecting'}
+                          onClick={() => {
+                            if (joining) return
+                            const rid = r.id
+                            if (room !== rid) setRoom(rid)
+                            setMultiStep('lobby')
+                            if (conn === 'connected') {
+                              netRef.current?.disconnect()
+                              setConn('disconnected')
+                              setJoining(true)
+                              setTimeout(() => connectVs(rid), 50)
+                            } else if (conn === 'disconnected') connectVs(rid)
+                          }}
+                        >
+                          Join
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="muted">No lobbies yet — click Browse to refresh.</div>
+              )}
+            </div>
+          )}
+          {multiStep === 'lobby' && (
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <button
+                className="btn"
+                onClick={async () => {
+                  const code = room.trim()
+                  if (!code) return
+                  try {
+                    await navigator.clipboard.writeText(
+                      `${location.origin}${location.pathname}#snake?room=${encodeURIComponent(code)}`,
+                    )
+                  } catch {
+                    /* noop */
+                  }
+                }}
+              >
+                Copy link
+              </button>
+              <button
+                className="btn"
+                onClick={() => {
+                  try {
+                    netRef.current?.disconnect()
+                  } catch {
+                    /* noop */
+                  }
+                  setConn('disconnected')
+                  setJoining(false)
+                  setIsHost(false)
+                  setPresence(1)
+                  setPlayers({})
+                  setPreviews({})
+                  setReady(false)
+                  setCountdown(null)
+                  setMultiStep('landing')
+                }}
+              >
+                Leave lobby
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Status bar (stable layout, separate from toolbar) */}
       <div className="snake-status" aria-live="polite">
         <div className="muted">
@@ -1476,6 +1582,64 @@ export function GameManager({
         </div>
         {/* Opponent canvas removed for now; previews serve as spectator UI */}
       </div>
+
+      {/* Players and previews directly under the game */}
+      {mode === 'versus' && multiStep === 'lobby' && (
+        <div className="card" style={{ marginTop: '0.75rem', padding: 10 }}>
+          <div className="muted" style={{ fontWeight: 600, marginBottom: 6 }}>
+            Players in room: {presence}
+          </div>
+          <div style={{ display: 'grid', gap: 6 }}>
+            {myId && (
+              <div
+                className="muted"
+                style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}
+              >
+                <span>
+                  {playerName?.trim() || 'You'} {isHost ? <em>(Host)</em> : null}
+                </span>
+                <span style={{ marginLeft: 12 }}>{ready ? 'Ready ✓' : 'Not ready'}</span>
+              </div>
+            )}
+            {Object.entries(players)
+              .filter(([id]) => id !== myId)
+              .map(([id, p]) => (
+                <div
+                  key={id}
+                  className="muted"
+                  style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}
+                >
+                  <span>
+                    {p.name || 'Player'} {hostId === id ? <em>(Host)</em> : null}
+                  </span>
+                  <span style={{ marginLeft: 12 }}>{p.ready ? 'Ready ✓' : 'Not ready'}</span>
+                </div>
+              ))}
+          </div>
+          {Object.keys(previews).length > 0 && (
+            <div style={{ marginTop: 8 }}>
+              <div className="muted" style={{ marginBottom: 6 }}>
+                Live previews
+              </div>
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))',
+                  gap: 12,
+                }}
+              >
+                {Object.entries(previews).map(([id, p]) => (
+                  <Preview
+                    key={id}
+                    state={p.state}
+                    title={`${p.name || 'Player'} — ${p.score}${players[id]?.ready ? ' ✓' : ''}`}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Leaderboard */}
       <div className="card" style={{ marginTop: 8, padding: 10 }}>
