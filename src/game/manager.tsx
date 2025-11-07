@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import './game.css'
 import { GameEngine } from './engine'
 import { GameRenderer } from './renderer'
@@ -104,6 +104,8 @@ export function GameManager({
   const [countdownEndAt, setCountdownEndAt] = useState<number | null>(null)
   const [myId, setMyId] = useState<string | null>(null)
   const [players, setPlayers] = useState<Record<string, { name?: string; ready?: boolean }>>({})
+  // Keep a Set of ids we've already inserted to avoid transient duplicate name entries on lobby join
+  const seenPlayerIdsRef = useRef<Set<string>>(new Set())
   const [previews, setPreviews] = useState<
     Record<string, { state: ReturnType<GameEngine['snapshot']>; score: number; name?: string }>
   >({})
@@ -116,7 +118,23 @@ export function GameManager({
     }
   })
   const [multiStep, setMultiStep] = useState<'landing' | 'create' | 'join' | 'lobby'>('landing')
-  const wsUrl = (import.meta as unknown as { env?: Record<string, string> }).env?.VITE_WS_URL
+  const wsUrl = useMemo(() => {
+    try {
+      const raw = (import.meta as unknown as { env?: Record<string, string> }).env?.VITE_WS_URL
+      if (raw) {
+        // Auto-upgrade to wss on HTTPS pages to avoid mixed-content blocks (Safari/iOS)
+        if (window.location.protocol === 'https:' && raw.startsWith('ws://')) {
+          return 'wss://' + raw.slice('ws://'.length)
+        }
+        return raw
+      }
+      // Fallback: assume same-origin WS
+      const scheme = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+      return `${scheme}//${window.location.host}`
+    } catch {
+      return undefined
+    }
+  }, [])
   const capturedRef = useRef(false)
   const [captured, setCaptured] = useState(false)
   const [hintVisible, setHintVisible] = useState(false)
@@ -606,11 +624,12 @@ export function GameManager({
               }
             }
             // add self to players map with current or updated name
-            const finalName = selfName
-            setPlayers((map) => ({
-              ...map,
-              [msg.id]: { name: finalName, ready: false },
-            }))
+            // add self; guard against duplicate insert if welcome issued twice
+            setPlayers((map) => {
+              if (seenPlayerIdsRef.current.has(msg.id)) return map
+              seenPlayerIdsRef.current.add(msg.id)
+              return { ...map, [msg.id]: { name: selfName, ready: false } }
+            })
             return
           }
           if (msg.type === 'error') {
@@ -689,9 +708,13 @@ export function GameManager({
               [from]: { state: msg.state, score: msg.score, name: msg.name },
             }))
             if (msg.from) {
+              const fromId = msg.from
               setPlayers((map) => ({
                 ...map,
-                [msg.from!]: { ...(map[msg.from!] || {}), name: msg.name || map[msg.from!]?.name },
+                [fromId]: {
+                  ...(map[fromId] || {}),
+                  name: msg.name || map[fromId]?.name,
+                },
               }))
             }
           } else if (msg.type === 'name') {
