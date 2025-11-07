@@ -100,6 +100,8 @@ export function GameManager({
   const [ready, setReady] = useState(false)
   // peerReady removed; using players map + own ready state
   const [countdown, setCountdown] = useState<number | null>(null)
+  // Deadline-based countdown end time (epoch ms) to resist timer throttling or tab visibility quirks
+  const [countdownEndAt, setCountdownEndAt] = useState<number | null>(null)
   const [myId, setMyId] = useState<string | null>(null)
   const [players, setPlayers] = useState<Record<string, { name?: string; ready?: boolean }>>({})
   const [previews, setPreviews] = useState<
@@ -649,7 +651,8 @@ export function GameManager({
             setEngineSeed(msg.seed)
             setSettings(msg.settings)
             // Kick off round start countdown when a new seed arrives
-            if (countdown == null) setCountdown(3)
+            setCountdown(3)
+            setCountdownEndAt(Date.now() + 3000)
           } else if (msg.type === 'presence') {
             setPresence(Math.max(1, msg.count || 1))
           } else if (msg.type === 'ready') {
@@ -727,7 +730,8 @@ export function GameManager({
       setConn('connecting')
       net.connect(roomOverride ?? room, { create })
     },
-    [wsUrl, room, roomName, playerName, myId, conn, countdown, hostId],
+    // 'countdown' removed from deps (not referenced inside connectVs) to satisfy lint
+    [wsUrl, room, roomName, playerName, myId, conn, hostId],
   )
 
   const doRestart = () => {
@@ -798,11 +802,11 @@ export function GameManager({
     }
   }, [conn, room, connectVs])
 
-  // Countdown effect: either triggered by server seed (countdown already set) or by local 'all ready'
+  // Countdown effect: robust to background tab throttling by using a fixed deadline
   useEffect(() => {
     if (!(mode === 'versus' && conn === 'connected')) return
     // If no countdown is active yet, check local readiness to trigger one
-    if (countdown == null) {
+    if (countdownEndAt == null && countdown == null) {
       // Avoid re-triggering countdown immediately after a round starts
       if (countdownLockRef.current && Date.now() < countdownLockRef.current) return
       const othersReady = Object.entries(players).reduce((acc, [id, p]) => {
@@ -810,16 +814,20 @@ export function GameManager({
         return acc
       }, 0)
       const totalReady = othersReady + (ready ? 1 : 0)
-      if (presence >= 2 && totalReady >= 2) setCountdown(3)
+      if (presence >= 2 && totalReady >= 2) {
+        setCountdown(3)
+        setCountdownEndAt(Date.now() + 3000)
+      }
       return
     }
-    // countdown is active -> run the timer
-    let n = countdown
-    const id = window.setInterval(() => {
-      n -= 1
-      if (n <= 0) {
-        window.clearInterval(id)
+    if (countdownEndAt == null) return
+    const tick = () => {
+      const leftMs = countdownEndAt - Date.now()
+      const left = Math.ceil(leftMs / 1000)
+      if (left <= 0) {
+        // Start now
         setCountdown(null)
+        setCountdownEndAt(null)
         setPaused(false)
         // Round is starting: clear ready flags now so next round requires Ready again
         setReady(false)
@@ -835,10 +843,19 @@ export function GameManager({
         onControlChange?.(true)
         // lock local countdown trigger briefly to prevent loops
         countdownLockRef.current = Date.now() + 4000
-      } else setCountdown(n)
-    }, 900)
+        return true
+      } else {
+        setCountdown(left)
+        return false
+      }
+    }
+    // Run an immediate tick, then poll at a modest rate to handle throttling
+    if (tick()) return
+    const id = window.setInterval(() => {
+      if (tick()) window.clearInterval(id)
+    }, 250)
     return () => window.clearInterval(id)
-  }, [mode, conn, presence, ready, players, myId, countdown, onControlChange])
+  }, [mode, conn, presence, ready, players, myId, countdown, countdownEndAt, onControlChange])
 
   // Send lightweight preview of our current state periodically while running in versus
   useEffect(() => {
