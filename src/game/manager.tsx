@@ -47,6 +47,7 @@ export function GameManager({
   onControlChange?: (v: boolean) => void
 }) {
   const [mode, setMode] = useState<Mode>('solo')
+  const [engineSeed, setEngineSeed] = useState<number>(() => Math.floor(Math.random() * 1e9))
   const [settings, setSettings] = useState<Settings>(() => {
     try {
       const raw = localStorage.getItem(LS_SETTINGS_KEY)
@@ -56,7 +57,7 @@ export function GameManager({
     }
     return DEFAULT_SETTINGS
   })
-  const [engineSeed, setEngineSeed] = useState<number>(() => Math.floor(Math.random() * 1e9))
+  // Simplified flow: no tabs; sections always visible based on mode
   const [alive, setAlive] = useState(true)
   const [paused, setPaused] = useState(true)
   const [score, setScore] = useState(0)
@@ -134,8 +135,7 @@ export function GameManager({
   const deepRetryAttemptsRef = useRef(0)
   // Join error message (UI-only, non-blocking)
   const [joinError, setJoinError] = useState<string | null>(null)
-  // Desktop panels: tabs for Leaderboard / Multiplayer
-  const [panelTab, setPanelTab] = useState<'leaderboard' | 'multiplayer'>('leaderboard')
+  // No tabs; sections always visible by mode
 
   // Canvas refs and renderers
   const wrapRef = useRef<HTMLDivElement>(null)
@@ -1477,88 +1477,62 @@ export function GameManager({
         {/* Opponent canvas removed for now; previews serve as spectator UI */}
       </div>
 
-      {/* Panels: Tabs under canvas for a cleaner desktop flow */}
-      <div className="snake-tabs">
-        <button
-          className="tab"
-          data-active={panelTab === 'leaderboard' || undefined}
-          onClick={() => setPanelTab('leaderboard')}
-        >
-          Leaderboard
-        </button>
-        {wsUrl && (
-          <button
-            className="tab"
-            data-active={panelTab === 'multiplayer' || undefined}
-            onClick={() => {
-              setPanelTab('multiplayer')
-              // Jump to Versus mode when opening Multiplayer panel
-              if (mode !== 'versus') setMode('versus')
-            }}
-          >
-            Multiplayer
-          </button>
+      {/* Leaderboard */}
+      <div className="card" style={{ marginTop: 8, padding: 10 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <h3 className="section-title" style={{ margin: 0 }}>
+            Top 15
+          </h3>
+          {(
+            [
+              { k: 'all', label: 'All time' },
+              { k: 'month', label: 'This month' },
+              { k: 'today', label: 'Today' },
+            ] as Array<{ k: LeaderboardPeriod; label: string }>
+          ).map((p) => (
+            <button
+              key={p.k}
+              className="btn"
+              aria-pressed={period === p.k}
+              data-active={period === p.k || undefined}
+              onClick={() => setPeriod(p.k)}
+            >
+              {p.label}
+            </button>
+          ))}
+        </div>
+        {myRank != null && (
+          <div className="muted" style={{ marginTop: 6 }}>
+            Your rank: <strong style={{ color: 'var(--text)' }}>{myRank}</strong>
+          </div>
+        )}
+        {leaders.length === 0 ? (
+          <div className="muted" style={{ marginTop: 6 }}>
+            No scores yet{period === 'today' ? ' today' : period === 'month' ? ' this month' : ''}—
+            be the first!
+          </div>
+        ) : (
+          <div style={{ textAlign: 'center', marginTop: 6 }}>
+            <ol
+              style={{
+                margin: 0,
+                paddingLeft: '1.25rem',
+                display: 'inline-block',
+                textAlign: 'left',
+              }}
+            >
+              {leaders.map((l, i) => (
+                <li key={i} className="muted">
+                  <strong style={{ color: 'var(--text)' }}>{l.username}</strong> — {l.score}
+                </li>
+              ))}
+            </ol>
+          </div>
         )}
       </div>
 
-      {/* Leaderboard Panel */}
-      {panelTab === 'leaderboard' && (
-        <div className="card" style={{ marginTop: 8, padding: 10 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-            <h3 className="section-title" style={{ margin: 0 }}>
-              Top 15
-            </h3>
-            {(
-              [
-                { k: 'all', label: 'All time' },
-                { k: 'month', label: 'This month' },
-                { k: 'today', label: 'Today' },
-              ] as Array<{ k: LeaderboardPeriod; label: string }>
-            ).map((p) => (
-              <button
-                key={p.k}
-                className="btn"
-                aria-pressed={period === p.k}
-                data-active={period === p.k || undefined}
-                onClick={() => setPeriod(p.k)}
-              >
-                {p.label}
-              </button>
-            ))}
-          </div>
-          {myRank != null && (
-            <div className="muted" style={{ marginTop: 6 }}>
-              Your rank: <strong style={{ color: 'var(--text)' }}>{myRank}</strong>
-            </div>
-          )}
-          {leaders.length === 0 ? (
-            <div className="muted" style={{ marginTop: 6 }}>
-              No scores yet{period === 'today' ? ' today' : period === 'month' ? ' this month' : ''}
-              — be the first!
-            </div>
-          ) : (
-            <div style={{ textAlign: 'center', marginTop: 6 }}>
-              <ol
-                style={{
-                  margin: 0,
-                  paddingLeft: '1.25rem',
-                  display: 'inline-block',
-                  textAlign: 'left',
-                }}
-              >
-                {leaders.map((l, i) => (
-                  <li key={i} className="muted">
-                    <strong style={{ color: 'var(--text)' }}>{l.username}</strong> — {l.score}
-                  </li>
-                ))}
-              </ol>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Multiplayer Panel */}
-      {panelTab === 'multiplayer' && mode === 'versus' && (
+      {/* Multiplayer */}
+      {mode === 'versus' && (
         <div className="card" style={{ marginTop: 8, padding: 10 }}>
           <div className="muted" style={{ fontWeight: 600, marginBottom: 6 }}>
             {multiStep === 'lobby' ? (
