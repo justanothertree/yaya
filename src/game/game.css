@@ -44,7 +44,7 @@
   touch-action: none; /* block swipe gestures bubbling to page */
 }
 .snake-grid[data-versus] {
-  grid-template-columns: 2fr 1fr;
+  grid-template-columns: 1fr; /* keep canvas centered; previews stack separately */
 }
 .snake-grid:not([data-versus]) {
   grid-template-columns: 1fr;
@@ -129,6 +129,15 @@
 }
 .snake-touch .row {
   display: none;
+}
+
+/* Stable status row to avoid toolbar reflow */
+.snake-status {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  margin: 8px 0;
+  flex-wrap: wrap;
 }
 .snake-touch button {
   display: none;

@@ -123,6 +123,8 @@ export function GameManager({
   // immersive/fullscreen disabled for now
   const restoredRef = useRef(false)
   const deepLinkConnectRef = useRef(false)
+  const countdownLockRef = useRef<number>(0)
+  const [isHost, setIsHost] = useState(false)
   // Silent deep-link retry controller (avoid alert spam)
   const deepRetryTimerRef = useRef<number | null>(null)
   const deepRetryAttemptsRef = useRef(0)
@@ -519,6 +521,7 @@ export function GameManager({
   const connectVs = useCallback(
     (roomOverride?: string, create?: boolean) => {
       if (!wsUrl) return
+      setIsHost(!!create)
       setJoining(true)
       let gotWelcome = false
       let createAttempts = 0
@@ -784,6 +787,8 @@ export function GameManager({
     if (!(mode === 'versus' && conn === 'connected')) return
     // If no countdown is active yet, check local readiness to trigger one
     if (countdown == null) {
+      // Avoid re-triggering countdown immediately after a round starts
+      if (countdownLockRef.current && Date.now() < countdownLockRef.current) return
       const othersReady = Object.entries(players).reduce((acc, [id, p]) => {
         if (id !== myId && p.ready) acc += 1
         return acc
@@ -805,6 +810,8 @@ export function GameManager({
         capturedRef.current = true
         setCaptured(true)
         onControlChange?.(true)
+        // lock local countdown trigger briefly to prevent loops
+        countdownLockRef.current = Date.now() + 4000
       } else setCountdown(n)
     }, 900)
     return () => window.clearInterval(id)
@@ -940,33 +947,20 @@ export function GameManager({
           {mode === 'versus' ? (ready ? 'Ready ✓' : 'Ready') : paused ? 'Play' : 'Pause'}
         </button>
 
-        <button
-          className="btn"
-          onClick={doRestart}
-          disabled={mode === 'versus'}
-          title={mode === 'versus' ? 'Restart disabled in multiplayer' : undefined}
-        >
-          Restart
-        </button>
+        {!(mode === 'versus' && !isHost) && (
+          <button
+            className="btn"
+            onClick={doRestart}
+            disabled={mode === 'versus'}
+            title={mode === 'versus' ? 'Restart disabled in multiplayer' : undefined}
+          >
+            Restart
+          </button>
+        )}
 
         {/* Joystick removed */}
 
-        {/* Inline status indicators for better visibility */}
-        <div className="vs-inline" style={{ display: 'inline-flex', gap: 8, alignItems: 'center' }}>
-          <div className="muted" style={{ fontWeight: 600 }}>
-            Score: <span style={{ color: 'var(--text)' }}>{score}</span>
-          </div>
-          {paused && (
-            <div className="muted" style={{ fontWeight: 600 }}>
-              Paused
-            </div>
-          )}
-          {mode === 'versus' && countdown != null && (
-            <div className="muted" aria-live="assertive" style={{ fontWeight: 700 }}>
-              Starting in… {countdown}
-            </div>
-          )}
-        </div>
+        {/* Status indicators moved to a dedicated bar below toolbar to avoid layout shifts */}
 
         {mode === 'versus' && wsUrl && (
           <div
@@ -1228,6 +1222,7 @@ export function GameManager({
                     }
                     setConn('disconnected')
                     setJoining(false)
+                    setIsHost(false)
                     setPresence(1)
                     setPlayers({})
                     setPreviews({})
@@ -1245,10 +1240,16 @@ export function GameManager({
         {mode === 'versus' && multiStep !== 'landing' && (
           <div className="card" style={{ marginTop: 8, padding: 8 }}>
             <div className="muted" style={{ fontWeight: 600, marginBottom: 6 }}>
-              Lobby — <span style={{ color: 'var(--text)' }}>{room || '—'}</span>{' '}
-              <span className="muted" style={{ fontWeight: 400 }}>
-                (connected players: {presence})
-              </span>
+              {multiStep === 'lobby' ? (
+                <>
+                  Lobby — <span style={{ color: 'var(--text)' }}>{room || '—'}</span>{' '}
+                  <span className="muted" style={{ fontWeight: 400 }}>
+                    (connected players: {presence})
+                  </span>
+                </>
+              ) : (
+                <>Available lobbies</>
+              )}
             </div>
             <div style={{ display: 'grid', gap: 8 }}>
               {multiStep === 'join' &&
@@ -1293,7 +1294,7 @@ export function GameManager({
                     ))}
                   </div>
                 ) : (
-                  <div className="muted">No lobbies yet — click Browse in Join to refresh.</div>
+                  <div className="muted">No lobbies yet — click Browse to refresh.</div>
                 ))}
               {/* Players in current room */}
               {multiStep === 'lobby' && (
@@ -1329,6 +1330,19 @@ export function GameManager({
                 </div>
               )}
             </div>
+          </div>
+        )}
+      </div>
+
+      {/* Status bar (stable layout, separate from toolbar) */}
+      <div className="snake-status" aria-live="polite">
+        <div className="muted">
+          Score: <span style={{ color: 'var(--text)' }}>{score}</span>
+        </div>
+        {paused && <div className="muted">Paused</div>}
+        {mode === 'versus' && countdown != null && (
+          <div className="muted" aria-live="assertive">
+            Starting in… {countdown}
           </div>
         )}
       </div>
