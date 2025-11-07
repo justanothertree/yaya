@@ -73,6 +73,11 @@ body {
   min-height: 100%;
 }
 
+/* Reserve vertical scrollbar to prevent horizontal shifts between pages */
+html {
+  overflow-y: scroll;
+}
+
 html,
 body {
   overflow-x: hidden;

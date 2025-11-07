@@ -848,6 +848,70 @@ export function GameManager({
 
   // No implicit auto-connect on switching to versus; user triggers Join or Create game
 
+  // Auto-refresh available lobbies when entering Join step
+  useEffect(() => {
+    if (!(mode === 'versus' && wsUrl && multiStep === 'join')) return
+    try {
+      const ws = new WebSocket(wsUrl)
+      let closed = false
+      const t = window.setTimeout(() => {
+        if (!closed) {
+          closed = true
+          try {
+            ws.close()
+          } catch {
+            /* noop */
+          }
+        }
+      }, 2000)
+      ws.onopen = () => {
+        try {
+          ws.send(JSON.stringify({ type: 'list' }))
+        } catch {
+          /* noop */
+        }
+      }
+      ws.onmessage = (ev) => {
+        try {
+          const msg = JSON.parse(ev.data as string)
+          if (msg && msg.type === 'rooms' && Array.isArray(msg.items)) {
+            setRooms(msg.items)
+            if (!closed) {
+              closed = true
+              window.clearTimeout(t)
+              try {
+                ws.close()
+              } catch {
+                /* noop */
+              }
+            }
+          }
+        } catch {
+          /* noop */
+        }
+      }
+      ws.onerror = () => {
+        if (!closed) {
+          closed = true
+          window.clearTimeout(t)
+          try {
+            ws.close()
+          } catch {
+            /* noop */
+          }
+        }
+      }
+      ws.onclose = () => {
+        if (!closed) {
+          closed = true
+          window.clearTimeout(t)
+        }
+      }
+    } catch {
+      /* noop */
+    }
+  }, [mode, wsUrl, multiStep])
+
   return (
     <div>
       {/* Settings & Mode */}
@@ -874,8 +938,12 @@ export function GameManager({
             className="btn"
             aria-pressed={settings.apples === n}
             onClick={() => setSettings({ ...settings, apples: n })}
-            disabled={mode === 'versus' && conn === 'connected'}
-            title={mode === 'versus' && conn === 'connected' ? 'Locked in multiplayer' : undefined}
+            disabled={mode === 'versus' && conn === 'connected' && !isHost}
+            title={
+              mode === 'versus' && conn === 'connected' && !isHost
+                ? 'Locked in multiplayer'
+                : undefined
+            }
             data-active={settings.apples === n || undefined}
           >
             {n}
@@ -889,8 +957,12 @@ export function GameManager({
             className="btn"
             aria-pressed={(settings.passThroughEdges ? 'wrap' : 'walls') === lab}
             onClick={() => setSettings({ ...settings, passThroughEdges: lab === 'wrap' })}
-            disabled={mode === 'versus' && conn === 'connected'}
-            title={mode === 'versus' && conn === 'connected' ? 'Locked in multiplayer' : undefined}
+            disabled={mode === 'versus' && conn === 'connected' && !isHost}
+            title={
+              mode === 'versus' && conn === 'connected' && !isHost
+                ? 'Locked in multiplayer'
+                : undefined
+            }
             data-active={(settings.passThroughEdges ? 'wrap' : 'walls') === lab || undefined}
           >
             {lab}
@@ -1350,52 +1422,35 @@ export function GameManager({
       {/* Canvases */}
       <div ref={wrapRef} className="snake-grid" data-versus={mode === 'versus' || undefined}>
         <div className="snake-canvas-wrap" data-captured={captured || undefined}>
-          <button
-            className="btn snake-fab"
-            onClick={() => {
-              if (mode === 'versus') {
-                // In versus, use Ready flow to coordinate start
-                if (conn !== 'connected') return
-                if (!playerName.trim()) return
-                setReady(true)
-                setPlayers((map) => {
-                  if (!myId) return map
-                  const cur = map[myId] || {}
-                  return { ...map, [myId]: { ...cur, ready: true, name: cur.name || playerName } }
-                })
-                try {
-                  netRef.current?.send({ type: 'ready' })
-                } catch {
-                  /* noop */
+          {mode === 'versus' && (
+            <button
+              className="btn snake-fab"
+              onClick={() => {
+                if (mode === 'versus') {
+                  // In versus, use Ready flow to coordinate start
+                  if (conn !== 'connected') return
+                  if (!playerName.trim()) return
+                  setReady(true)
+                  setPlayers((map) => {
+                    if (!myId) return map
+                    const cur = map[myId] || {}
+                    return { ...map, [myId]: { ...cur, ready: true, name: cur.name || playerName } }
+                  })
+                  try {
+                    netRef.current?.send({ type: 'ready' })
+                  } catch {
+                    /* noop */
+                  }
+                  return
                 }
-                return
-              }
-              if (!alive) {
-                doRestart()
-                setPaused(false)
-                canvasRef.current?.focus()
-                capturedRef.current = true
-                setCaptured(true)
-                onControlChange?.(true)
-                return
-              }
-              setPaused((p) => {
-                const next = !p
-                if (!next) {
-                  canvasRef.current?.focus()
-                  capturedRef.current = true
-                  setCaptured(true)
-                  onControlChange?.(true)
-                }
-                return next
-              })
-            }}
-            aria-pressed={!paused}
-            title={paused ? 'Play' : 'Pause'}
-            disabled={mode === 'versus' && (!playerName.trim() || conn !== 'connected' || ready)}
-          >
-            {mode === 'versus' ? (ready ? 'Ready ✓' : 'Ready') : paused ? 'Play' : 'Pause'}
-          </button>
+              }}
+              aria-pressed={!paused}
+              title={paused ? 'Play' : 'Pause'}
+              disabled={mode === 'versus' && (!playerName.trim() || conn !== 'connected' || ready)}
+            >
+              {mode === 'versus' ? (ready ? 'Ready ✓' : 'Ready') : paused ? 'Play' : 'Pause'}
+            </button>
+          )}
           {/* Fullscreen buttons temporarily removed */}
           <canvas
             ref={canvasRef}
