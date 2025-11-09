@@ -147,6 +147,8 @@ export function GameManager({
   const restoredRef = useRef(false)
   const deepLinkConnectRef = useRef(false)
   const countdownLockRef = useRef<number>(0)
+  // Death prompt cancellation token: increment to invalidate pending animations
+  const deathTokenRef = useRef(0)
   // Derive host status directly from hostId === myId to avoid stale state on host transfer
   const [hostId, setHostId] = useState<string | null>(null)
   const isHost = myId != null && hostId === myId
@@ -392,11 +394,13 @@ export function GameManager({
         timer = window.setTimeout(loop, sp)
       } else {
         // Only prompt to save score if the death occurred in solo mode and score > 0.
-        // Capture the mode and score at time of death to avoid reopening after switching modes
-        // and to suppress zero-score prompts.
+        // Capture mode & score at time of death. Use a token so switching modes cancels a pending prompt.
         const deathMode = mode
         const deathScore = score
+        const token = ++deathTokenRef.current
         rendererRef.current!.animateDeath(state).then(() => {
+          // If token changed (e.g. mode switch), suppress.
+          if (token !== deathTokenRef.current) return
           if (deathMode === 'solo' && deathScore > 0) setAskNameOpen(true)
         })
       }
@@ -842,6 +846,8 @@ export function GameManager({
     setPlayers({})
     setPresence(1)
     setAskNameOpen(false)
+    // Invalidate any pending death prompt from multiplayer
+    deathTokenRef.current++
     setAlive(true)
     setPaused(true)
     setEngineSeed(Math.floor(Math.random() * 1e9))
