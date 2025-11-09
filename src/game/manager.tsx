@@ -173,6 +173,8 @@ export function GameManager({
   const acceptedTurnRef = useRef(false)
   // Token to cancel/guard death animation completion handlers across mode switches
   const deathAnimTokenRef = useRef(0)
+  // Session epoch: increment to invalidate any in-flight game loop or death animation from previous session
+  const sessionEpochRef = useRef(0)
 
   // Net client (only used in versus)
   const netRef = useRef<NetClient | null>(null)
@@ -357,10 +359,12 @@ export function GameManager({
     }
   }, [])
 
-  // Game loop
+  // Game loop with session-epoch guard
   useEffect(() => {
     let timer: number | null = null
+    const epoch = sessionEpochRef.current
     const loop = () => {
+      if (epoch !== sessionEpochRef.current) return
       acceptedTurnRef.current = false
       const engine = engineRef.current!
       const { state, events } = engine.tick()
@@ -369,7 +373,6 @@ export function GameManager({
         if (ev.type === 'eat') setApplesEaten((n) => n + 1)
         else if (ev.type === 'die') {
           setAlive(false)
-          // On death, clear any persisted soft save to prevent continuing a finished game
           try {
             localStorage.removeItem(LS_PERSIST_KEY)
           } catch {
@@ -379,10 +382,8 @@ export function GameManager({
       }
       if (state.alive) {
         if (startRef.current == null) startRef.current = performance.now()
-        // Keep monotonic startRef for potential future use, but scoring is 1:1 with apples
         const nextScore = scoreFormula(applesEaten + (events.some((e) => e.type === 'eat') ? 1 : 0))
         setScore(nextScore)
-        // In versus mode, send lightweight tick updates with current score to the room
         if (mode === 'versus' && netRef.current) {
           try {
             netRef.current.send({ type: 'tick', n: state.ticks, score: nextScore })
@@ -391,24 +392,30 @@ export function GameManager({
           }
         }
         const sp = speedFor(applesEaten)
-        timer = window.setTimeout(loop, sp)
+        timer = window.setTimeout(() => {
+          if (epoch === sessionEpochRef.current) loop()
+        }, sp)
       } else {
-        // Guard animateDeath completion to avoid reopening the save modal after mode switches
         const token = ++deathAnimTokenRef.current
         const modeAtDeath = mode
-        rendererRef
-          .current!.animateDeath(state)
-          .then(() => {
-            if (deathAnimTokenRef.current === token && mode === modeAtDeath) {
-              setAskNameOpen(true)
-            }
-          })
-          .catch(() => {
-            /* ignore */
-          })
+        if (epoch === sessionEpochRef.current) {
+          rendererRef
+            .current!.animateDeath(state)
+            .then(() => {
+              if (
+                deathAnimTokenRef.current === token &&
+                mode === modeAtDeath &&
+                epoch === sessionEpochRef.current
+              ) {
+                setAskNameOpen(true)
+              }
+            })
+            .catch(() => {
+              /* ignore */
+            })
+        }
       }
     }
-    // kick off
     if (!paused) timer = window.setTimeout(loop, 0)
     return () => {
       if (timer) window.clearTimeout(timer)
@@ -851,6 +858,8 @@ export function GameManager({
     setAskNameOpen(false)
     // Cancel any pending death animation completions from previous session
     deathAnimTokenRef.current += 1
+    // Invalidate any in-flight game loop ticks
+    sessionEpochRef.current += 1
     setAlive(true)
     setPaused(true)
     setScore(0)
