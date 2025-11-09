@@ -396,7 +396,9 @@ export function GameManager({
         timer = window.setTimeout(loop, sp)
       } else {
         // Prompt to save score on death in any mode ONLY once, and only if score > 0.
-        // Capture score at time of death; token cancels on mode switch; deathHandledRef prevents re-prompt.
+        // If this death was already handled (e.g., user cancelled modal in multiplayer), skip entirely
+        // to avoid retriggering animation or modal when switching modes.
+        if (deathHandledRef.current) return
         const deathScore = score
         const token = ++deathTokenRef.current
         rendererRef.current!.animateDeath(state).then(() => {
@@ -790,11 +792,15 @@ export function GameManager({
   )
 
   const doRestart = () => {
+    // Fully reset game state for a fresh run (solo or versus). Allow prompting again.
     setEngineSeed(Math.floor(Math.random() * 1e9))
     setPaused(false)
     setAskNameOpen(false)
-    // New game: allow future death prompt again
     deathHandledRef.current = false
+    // Also clear score & apples so there's no stale zero-score death state hanging around.
+    setScore(0)
+    setApplesEaten(0)
+    setAlive(true)
     try {
       localStorage.removeItem(LS_PERSIST_KEY)
     } catch {
