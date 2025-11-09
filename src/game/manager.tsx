@@ -862,6 +862,10 @@ export function GameManager({
     setAskNameOpen(false)
     // Invalidate any pending death prompt from multiplayer
     deathTokenRef.current++
+    // Prepare a fresh solo game: clear handled-death state and reset counters
+    deathHandledRef.current = false
+    setScore(0)
+    setApplesEaten(0)
     setAlive(true)
     setPaused(true)
     setEngineSeed(Math.floor(Math.random() * 1e9))
