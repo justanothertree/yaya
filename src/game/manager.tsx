@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Filter } from 'bad-words'
 import './game.css'
 import { GameEngine } from './engine'
 import { GameRenderer } from './renderer'
@@ -174,29 +175,8 @@ export function GameManager({
   // Net client (only used in versus)
   const netRef = useRef<NetClient | null>(null)
 
-  // Heuristic profanity filter for leaderboard display (view-only)
-  const maskProfanity = useCallback((name: string) => {
-    const raw = name || ''
-    const lowered = raw.toLowerCase()
-    // Basic list (view-only). Extend as needed.
-    const badWords = [
-      'fuck',
-      'shit',
-      'bitch',
-      'asshole',
-      'dick',
-      'pussy',
-      'cunt',
-      'bastard',
-      'slut',
-      'whore',
-    ]
-    const normalized = lowered.replace(/[0!1@3$5]+/g, '')
-    if (!badWords.some((w) => normalized.includes(w))) return raw
-    return raw.replace(/\S/g, '*')
-  }, [])
-
-  // removed third-party profanity filter; using lightweight maskProfanity helper only
+  // Professional profanity filter (view-only)
+  const profanityFilter = useMemo(() => new Filter({ placeHolder: '*' }), [])
 
   // Mini preview canvas component for peer snapshots
   function Preview({ state, title }: { state: ReturnType<GameEngine['snapshot']>; title: string }) {
@@ -1758,8 +1738,10 @@ export function GameManager({
             >
               {leaders.map((l, i) => (
                 <li key={i} className="muted">
-                  <strong style={{ color: 'var(--text)' }}>{maskProfanity(l.username)}</strong> —{' '}
-                  {l.score}
+                  <strong style={{ color: 'var(--text)' }}>
+                    {profanityFilter.clean(l.username)}
+                  </strong>{' '}
+                  — {l.score}
                 </li>
               ))}
             </ol>
