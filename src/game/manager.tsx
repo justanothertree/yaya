@@ -791,7 +791,7 @@ export function GameManager({
 
   const doRestart = () => {
     setEngineSeed(Math.floor(Math.random() * 1e9))
-    setPaused(true)
+    setPaused(false)
     setAskNameOpen(false)
     // New game: allow future death prompt again
     deathHandledRef.current = false
@@ -856,8 +856,6 @@ export function GameManager({
     setAskNameOpen(false)
     // Invalidate any pending death prompt from multiplayer
     deathTokenRef.current++
-    // Reset death handled so solo game can trigger its own modal later
-    deathHandledRef.current = false
     setAlive(true)
     setPaused(true)
     setEngineSeed(Math.floor(Math.random() * 1e9))
