@@ -147,10 +147,6 @@ export function GameManager({
   const restoredRef = useRef(false)
   const deepLinkConnectRef = useRef(false)
   const countdownLockRef = useRef<number>(0)
-  // Death prompt cancellation token: increment to invalidate pending animations
-  const deathTokenRef = useRef(0)
-  // Track whether current game's death has already been handled (modal shown or dismissed)
-  const deathHandledRef = useRef(false)
   // Derive host status directly from hostId === myId to avoid stale state on host transfer
   const [hostId, setHostId] = useState<string | null>(null)
   const isHost = myId != null && hostId === myId
@@ -175,6 +171,8 @@ export function GameManager({
   // Engine
   const engineRef = useRef<GameEngine | null>(null)
   const acceptedTurnRef = useRef(false)
+  // Token to cancel/guard death animation completion handlers across mode switches
+  const deathAnimTokenRef = useRef(0)
 
   // Net client (only used in versus)
   const netRef = useRef<NetClient | null>(null)
@@ -395,20 +393,19 @@ export function GameManager({
         const sp = speedFor(applesEaten)
         timer = window.setTimeout(loop, sp)
       } else {
-        // Prompt to save score on death in any mode ONLY once, and only if score > 0.
-        // If this death was already handled (e.g., user cancelled modal in multiplayer), skip entirely
-        // to avoid retriggering animation or modal when switching modes.
-        if (deathHandledRef.current) return
-        const deathScore = score
-        const token = ++deathTokenRef.current
-        rendererRef.current!.animateDeath(state).then(() => {
-          if (token !== deathTokenRef.current) return // cancelled
-          if (deathHandledRef.current) return // already handled
-          if (deathScore > 0) {
-            setAskNameOpen(true)
-            deathHandledRef.current = true
-          }
-        })
+        // Guard animateDeath completion to avoid reopening the save modal after mode switches
+        const token = ++deathAnimTokenRef.current
+        const modeAtDeath = mode
+        rendererRef
+          .current!.animateDeath(state)
+          .then(() => {
+            if (deathAnimTokenRef.current === token && mode === modeAtDeath) {
+              setAskNameOpen(true)
+            }
+          })
+          .catch(() => {
+            /* ignore */
+          })
       }
     }
     // kick off
@@ -416,7 +413,7 @@ export function GameManager({
     return () => {
       if (timer) window.clearTimeout(timer)
     }
-  }, [settings, applesEaten, paused, mode, score])
+  }, [settings, applesEaten, paused, mode])
 
   // Redraw when theme attributes change (so paused frames still update colors)
   useEffect(() => {
@@ -792,15 +789,9 @@ export function GameManager({
   )
 
   const doRestart = () => {
-    // Fully reset game state for a fresh run (solo or versus). Allow prompting again.
     setEngineSeed(Math.floor(Math.random() * 1e9))
-    setPaused(false)
+    setPaused(true)
     setAskNameOpen(false)
-    deathHandledRef.current = false
-    // Also clear score & apples so there's no stale zero-score death state hanging around.
-    setScore(0)
-    setApplesEaten(0)
-    setAlive(true)
     try {
       localStorage.removeItem(LS_PERSIST_KEY)
     } catch {
@@ -825,8 +816,6 @@ export function GameManager({
       setMyRank(rank)
     } finally {
       setAskNameOpen(false)
-      // Mark death handled after user decision
-      deathHandledRef.current = true
     }
   }
 
@@ -860,14 +849,13 @@ export function GameManager({
     setPlayers({})
     setPresence(1)
     setAskNameOpen(false)
-    // Invalidate any pending death prompt from multiplayer
-    deathTokenRef.current++
-    // Prepare a fresh solo game: clear handled-death state and reset counters
-    deathHandledRef.current = false
-    setScore(0)
-    setApplesEaten(0)
+    // Cancel any pending death animation completions from previous session
+    deathAnimTokenRef.current += 1
     setAlive(true)
     setPaused(true)
+    setScore(0)
+    setApplesEaten(0)
+    startRef.current = null
     setEngineSeed(Math.floor(Math.random() * 1e9))
     try {
       localStorage.removeItem(LS_PERSIST_KEY)
@@ -1788,11 +1776,7 @@ export function GameManager({
           role="dialog"
           aria-modal="true"
           aria-label="Save your score"
-          onClick={() => {
-            // Treat cancel as handling this death so it won't re-prompt on mode switch
-            deathHandledRef.current = true
-            setAskNameOpen(false)
-          }}
+          onClick={() => setAskNameOpen(false)}
           style={{
             position: 'fixed',
             inset: 0,
@@ -1839,14 +1823,7 @@ export function GameManager({
             <div
               style={{ marginTop: '0.75rem', display: 'flex', gap: 8, justifyContent: 'flex-end' }}
             >
-              <button
-                className="btn"
-                onClick={() => {
-                  // Treat cancel as handling this death so it won't re-prompt on mode switch
-                  deathHandledRef.current = true
-                  setAskNameOpen(false)
-                }}
-              >
+              <button className="btn" onClick={() => setAskNameOpen(false)}>
                 Cancel
               </button>
               <button className="btn" onClick={onSaveScore}>
