@@ -391,7 +391,12 @@ export function GameManager({
         const sp = speedFor(applesEaten)
         timer = window.setTimeout(loop, sp)
       } else {
-        rendererRef.current!.animateDeath(state).then(() => setAskNameOpen(true))
+        // Only prompt to save score if the death occurred in solo mode.
+        // Capture the mode at time of death to avoid reopening after switching modes.
+        const deathMode = mode
+        rendererRef.current!.animateDeath(state).then(() => {
+          if (deathMode === 'solo') setAskNameOpen(true)
+        })
       }
     }
     // kick off
