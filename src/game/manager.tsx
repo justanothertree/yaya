@@ -391,11 +391,13 @@ export function GameManager({
         const sp = speedFor(applesEaten)
         timer = window.setTimeout(loop, sp)
       } else {
-        // Only prompt to save score if the death occurred in solo mode.
-        // Capture the mode at time of death to avoid reopening after switching modes.
+        // Only prompt to save score if the death occurred in solo mode and score > 0.
+        // Capture the mode and score at time of death to avoid reopening after switching modes
+        // and to suppress zero-score prompts.
         const deathMode = mode
+        const deathScore = score
         rendererRef.current!.animateDeath(state).then(() => {
-          if (deathMode === 'solo') setAskNameOpen(true)
+          if (deathMode === 'solo' && deathScore > 0) setAskNameOpen(true)
         })
       }
     }
@@ -404,7 +406,7 @@ export function GameManager({
     return () => {
       if (timer) window.clearTimeout(timer)
     }
-  }, [settings, applesEaten, paused, mode])
+  }, [settings, applesEaten, paused, mode, score])
 
   // Redraw when theme attributes change (so paused frames still update colors)
   useEffect(() => {
