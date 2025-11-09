@@ -393,15 +393,14 @@ export function GameManager({
         const sp = speedFor(applesEaten)
         timer = window.setTimeout(loop, sp)
       } else {
-        // Only prompt to save score if the death occurred in solo mode and score > 0.
-        // Capture mode & score at time of death. Use a token so switching modes cancels a pending prompt.
-        const deathMode = mode
+        // Prompt to save score on death in any mode, but only if score > 0.
+        // Capture score at time of death. Use a token so switching modes cancels a pending prompt.
         const deathScore = score
         const token = ++deathTokenRef.current
         rendererRef.current!.animateDeath(state).then(() => {
           // If token changed (e.g. mode switch), suppress.
           if (token !== deathTokenRef.current) return
-          if (deathMode === 'solo' && deathScore > 0) setAskNameOpen(true)
+          if (deathScore > 0) setAskNameOpen(true)
         })
       }
     }
