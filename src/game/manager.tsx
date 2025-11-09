@@ -174,6 +174,30 @@ export function GameManager({
   // Net client (only used in versus)
   const netRef = useRef<NetClient | null>(null)
 
+  // Heuristic profanity filter for leaderboard display (view-only)
+  const maskProfanity = useCallback((name: string) => {
+    const raw = name || ''
+    const lowered = raw.toLowerCase()
+    // Basic list (view-only). Extend as needed.
+    const badWords = [
+      'fuck',
+      'shit',
+      'bitch',
+      'asshole',
+      'dick',
+      'pussy',
+      'cunt',
+      'bastard',
+      'slut',
+      'whore',
+    ]
+    const normalized = lowered.replace(/[0!1@3$5]+/g, '')
+    if (!badWords.some((w) => normalized.includes(w))) return raw
+    return raw.replace(/\S/g, '*')
+  }, [])
+
+  // removed third-party profanity filter; using lightweight maskProfanity helper only
+
   // Mini preview canvas component for peer snapshots
   function Preview({ state, title }: { state: ReturnType<GameEngine['snapshot']>; title: string }) {
     const cRef = useRef<HTMLCanvasElement>(null)
@@ -812,6 +836,34 @@ export function GameManager({
       /* noop */
     }
   }, [playerName, conn])
+
+  // When switching to solo after a multiplayer session (including game over),
+  // fully reset local game state and disconnect from WS to avoid re-triggering an over state.
+  useEffect(() => {
+    if (mode !== 'solo') return
+    try {
+      netRef.current?.disconnect()
+    } catch {
+      /* noop */
+    }
+    setConn('disconnected')
+    setJoining(false)
+    setReady(false)
+    setCountdown(null)
+    setCountdownEndAt(null)
+    setPreviews({})
+    setPlayers({})
+    setPresence(1)
+    setAskNameOpen(false)
+    setAlive(true)
+    setPaused(true)
+    setEngineSeed(Math.floor(Math.random() * 1e9))
+    try {
+      localStorage.removeItem(LS_PERSIST_KEY)
+    } catch {
+      /* ignore */
+    }
+  }, [mode])
 
   // Parse room from hash (e.g., #snake?room=abc123) on mount
   useEffect(() => {
@@ -1706,7 +1758,8 @@ export function GameManager({
             >
               {leaders.map((l, i) => (
                 <li key={i} className="muted">
-                  <strong style={{ color: 'var(--text)' }}>{l.username}</strong> — {l.score}
+                  <strong style={{ color: 'var(--text)' }}>{maskProfanity(l.username)}</strong> —{' '}
+                  {l.score}
                 </li>
               ))}
             </ol>
