@@ -26,7 +26,10 @@ export type TickResult = {
   events: EngineEvent[]
 }
 
-export type LeaderboardEntry = { username: string; score: number; date: string }
+export type LeaderboardEntry = { id?: number; username: string; score: number; date: string }
+
+// Trophy counts associated with a player name (multiplayer round achievements)
+export type TrophyCounts = { gold: number; silver: number; bronze: number }
 
 export type Mode = 'solo' | 'versus'
 

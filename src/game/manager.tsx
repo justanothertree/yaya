@@ -10,8 +10,11 @@ import {
   fetchRankForScore,
   subscribeToLeaderboard,
   type LeaderboardPeriod,
+  fetchTrophiesFor,
+  awardTrophy,
+  getLeaderboardIdFor,
 } from './leaderboard'
-import type { LeaderboardEntry, Mode, Settings } from './types'
+import type { LeaderboardEntry, Mode, Settings, TrophyCounts } from './types'
 
 const GRID = 30
 const BASE_SPEED = 110
@@ -65,6 +68,7 @@ export function GameManager({
   const [applesEaten, setApplesEaten] = useState(0)
   const startRef = useRef<number | null>(null)
   const [leaders, setLeaders] = useState<LeaderboardEntry[]>([])
+  const [trophyMap, setTrophyMap] = useState<Record<number, TrophyCounts>>({})
   const [myRank, setMyRank] = useState<number | null>(null)
   const [period, setPeriod] = useState<LeaderboardPeriod>('all')
   const [askNameOpen, setAskNameOpen] = useState(false)
@@ -181,6 +185,67 @@ export function GameManager({
 
   // Professional profanity filter (view-only)
   const profanityFilter = useMemo(() => new Filter({ placeHolder: '*' }), [])
+
+  // Round tracking (versus)
+  const roundActiveRef = useRef(false)
+  const roundIdRef = useRef(0)
+  const roundParticipantsRef = useRef<Set<string>>(new Set())
+  const roundFinishedRef = useRef<string[]>([])
+  const roundNamesRef = useRef<Record<string, string>>({})
+  const roundAwardedRef = useRef<number | null>(null)
+
+  // Register a player finishing the round; when all done, host awards trophies
+  const tryFinalizeRound = useCallback(() => {
+    if (!roundActiveRef.current) return
+    const total = roundParticipantsRef.current.size
+    if (total === 0) return
+    const done = roundFinishedRef.current.length
+    if (done < total) return
+    const thisRound = roundIdRef.current
+    roundActiveRef.current = false
+    if (!(isHost && roundAwardedRef.current !== thisRound)) return
+    roundAwardedRef.current = thisRound
+    // Compute placements: last to finish is first place
+    const order = [...roundFinishedRef.current]
+    const ranked = order.slice().reverse()
+    // Determine top 3 based on participant count
+    const n = total
+    const winners: Array<{ id: string; medal: 'gold' | 'silver' | 'bronze' }> = []
+    if (ranked[0]) winners.push({ id: ranked[0], medal: 'gold' })
+    if (n >= 2 && ranked[1]) winners.push({ id: ranked[1], medal: 'silver' })
+    if (n >= 3 && ranked[2]) winners.push({ id: ranked[2], medal: 'bronze' })
+    ;(async () => {
+      try {
+        for (const w of winners) {
+          const name = roundNamesRef.current[w.id]?.trim() || 'Player'
+          const lid = await getLeaderboardIdFor(name, 'versus')
+          if (lid != null) await awardTrophy(lid, w.medal)
+        }
+      } catch {
+        /* ignore */
+      } finally {
+        // Refresh leaderboard and trophies display after awards
+        try {
+          const top = await fetchLeaderboard(period, 15)
+          setLeaders(top)
+        } catch {
+          /* ignore */
+        }
+      }
+    })()
+  }, [isHost, period])
+
+  const registerFinish = useCallback(
+    (id: string) => {
+      if (!roundActiveRef.current) return
+      if (!roundParticipantsRef.current.has(id)) return
+      const arr = roundFinishedRef.current
+      if (arr.includes(id)) return
+      arr.push(id)
+      tryFinalizeRound()
+    },
+    [tryFinalizeRound],
+  )
 
   // Mini preview canvas component for peer snapshots
   function Preview({ state, title }: { state: ReturnType<GameEngine['snapshot']>; title: string }) {
@@ -378,6 +443,15 @@ export function GameManager({
           } catch {
             /* ignore */
           }
+          // Versus: mark local finish and notify peers
+          if (mode === 'versus' && myId) {
+            registerFinish(myId)
+            try {
+              netRef.current?.send({ type: 'over', reason: 'die' })
+            } catch {
+              /* noop */
+            }
+          }
         }
       }
       if (state.alive) {
@@ -420,7 +494,7 @@ export function GameManager({
     return () => {
       if (timer) window.clearTimeout(timer)
     }
-  }, [settings, applesEaten, paused, mode])
+  }, [settings, applesEaten, paused, mode, myId, registerFinish])
 
   // Redraw when theme attributes change (so paused frames still update colors)
   useEffect(() => {
@@ -733,6 +807,8 @@ export function GameManager({
                 else if (next[fromId]) next[fromId] = { ...next[fromId], ready: false }
                 return next
               })
+              // Track finishing order for round placements
+              registerFinish(fromId)
             }
           } else if (msg.type === 'preview') {
             // Ignore our own preview
@@ -792,7 +868,7 @@ export function GameManager({
       net.connect(roomOverride ?? room, { create })
     },
     // 'countdown' removed from deps (not referenced inside connectVs) to satisfy lint
-    [wsUrl, room, roomName, playerName, myId, conn, hostId],
+    [wsUrl, room, roomName, playerName, myId, conn, hostId, registerFinish],
   )
 
   const doRestart = () => {
@@ -925,6 +1001,35 @@ export function GameManager({
         setCountdown(null)
         setCountdownEndAt(null)
         setPaused(false)
+        // Initialize round tracking with participants (ready players + self)
+        try {
+          const pset = new Set<string>()
+          const names: Record<string, string> = {}
+          if (myId && ready) {
+            pset.add(myId)
+            names[myId] = playerName?.trim() || 'Player'
+          }
+          for (const [pid, info] of Object.entries(players)) {
+            if (info.ready) {
+              pset.add(pid)
+              names[pid] = (info.name || 'Player').trim()
+            }
+          }
+          if (pset.size >= 2) {
+            roundParticipantsRef.current = pset
+            roundFinishedRef.current = []
+            roundNamesRef.current = names
+            roundActiveRef.current = true
+            roundIdRef.current += 1
+          } else {
+            roundActiveRef.current = false
+            roundParticipantsRef.current = new Set()
+            roundFinishedRef.current = []
+            roundNamesRef.current = {}
+          }
+        } catch {
+          /* noop */
+        }
         // Round is starting: clear ready flags now so next round requires Ready again
         setReady(false)
         setPlayers((map) => {
@@ -951,7 +1056,18 @@ export function GameManager({
       if (tick()) window.clearInterval(id)
     }, 250)
     return () => window.clearInterval(id)
-  }, [mode, conn, presence, ready, players, myId, countdown, countdownEndAt, onControlChange])
+  }, [
+    mode,
+    conn,
+    presence,
+    ready,
+    players,
+    myId,
+    playerName,
+    countdown,
+    countdownEndAt,
+    onControlChange,
+  ])
 
   // Send lightweight preview of our current state periodically while running in versus
   useEffect(() => {
@@ -995,6 +1111,26 @@ export function GameManager({
       setConn('disconnected')
     }
   }, [])
+
+  // Refresh trophy counts whenever leaderboard entries change
+  useEffect(() => {
+    const ids = leaders.map((l) => l.id).filter((v): v is number => typeof v === 'number')
+    if (!ids.length) {
+      setTrophyMap({})
+      return
+    }
+    let disposed = false
+    fetchTrophiesFor(ids)
+      .then((m) => {
+        if (!disposed) setTrophyMap(m)
+      })
+      .catch(() => {
+        if (!disposed) setTrophyMap({})
+      })
+    return () => {
+      disposed = true
+    }
+  }, [leaders])
 
   // Auto-refresh available lobbies when entering Join step
   useEffect(() => {
@@ -1770,6 +1906,13 @@ export function GameManager({
                     {profanityFilter.clean(l.username)}
                   </strong>{' '}
                   — {l.score}
+                  {typeof l.id === 'number' && trophyMap[l.id] && (
+                    <span className="muted" style={{ marginLeft: 8, fontSize: 12 }}>
+                      {trophyMap[l.id].gold > 0 ? ` 🥇×${trophyMap[l.id].gold}` : ''}
+                      {trophyMap[l.id].silver > 0 ? ` 🥈×${trophyMap[l.id].silver}` : ''}
+                      {trophyMap[l.id].bronze > 0 ? ` 🥉×${trophyMap[l.id].bronze}` : ''}
+                    </span>
+                  )}
                 </li>
               ))}
             </ol>
