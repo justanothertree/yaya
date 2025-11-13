@@ -97,6 +97,10 @@ export function GameManager({
     }
   })()
   const nameSourceRef = useRef<'auto' | 'custom'>(initialNameSource)
+  // Refs to avoid effect dependency churn
+  const playerNameRef = useRef<string>(playerName)
+  const scoreRef = useRef<number>(score)
+  const periodRef = useRef<LeaderboardPeriod>(period)
   const [room, setRoom] = useState('')
   // Opponent score removed in multiplayer; track via previews instead
   const [presence, setPresence] = useState(1)
@@ -177,6 +181,8 @@ export function GameManager({
   const acceptedTurnRef = useRef(false)
   // Token to cancel/guard death animation completion handlers across mode switches
   const deathAnimTokenRef = useRef(0)
+  // Prevent repeated death animation triggers (e.g., after UI interactions)
+  const deathAnimatedRef = useRef(false)
   // Session epoch: increment to invalidate any in-flight game loop or death animation from previous session
   const sessionEpochRef = useRef(0)
 
@@ -232,9 +238,10 @@ export function GameManager({
       roundAwardedRef.current = thisRound
       const n = total
       const winners: Array<{ id: string; medal: 'gold' | 'silver' | 'bronze' }> = []
+      // Award only gold in 1v1; silver requires >=3 players; bronze requires >=4 players
       if (ranked[0]) winners.push({ id: ranked[0], medal: 'gold' })
-      if (n >= 2 && ranked[1]) winners.push({ id: ranked[1], medal: 'silver' })
-      if (n >= 3 && ranked[2]) winners.push({ id: ranked[2], medal: 'bronze' })
+      if (n >= 3 && ranked[1]) winners.push({ id: ranked[1], medal: 'silver' })
+      if (n >= 4 && ranked[2]) winners.push({ id: ranked[2], medal: 'bronze' })
       ;(async () => {
         try {
           for (const w of winners) {
@@ -317,6 +324,7 @@ export function GameManager({
     rendererRef.current = renderer
     renderer.resize(wrap, settings.canvasSize)
     renderer.draw(engine.snapshot())
+    deathAnimatedRef.current = false
     // Attempt to restore a persisted paused state
     let restoredOk = false
     if (!restoredRef.current) {
@@ -446,6 +454,17 @@ export function GameManager({
     }
   }, [])
 
+  // Keep refs in sync with latest values
+  useEffect(() => {
+    playerNameRef.current = playerName
+  }, [playerName])
+  useEffect(() => {
+    scoreRef.current = score
+  }, [score])
+  useEffect(() => {
+    periodRef.current = period
+  }, [period])
+
   // Game loop with session-epoch guard
   useEffect(() => {
     let timer: number | null = null
@@ -499,6 +518,9 @@ export function GameManager({
         const token = ++deathAnimTokenRef.current
         const modeAtDeath = mode
         if (epoch === sessionEpochRef.current) {
+          if (!deathAnimatedRef.current) {
+            deathAnimatedRef.current = true
+          }
           rendererRef
             .current!.animateDeath(state)
             .then(() => {
@@ -507,7 +529,38 @@ export function GameManager({
                 mode === modeAtDeath &&
                 epoch === sessionEpochRef.current
               ) {
-                if (modeAtDeath === 'solo') setAskNameOpen(true)
+                if (modeAtDeath === 'solo') {
+                  // Auto-submit solo score to leaderboard if possible
+                  const nm = (playerNameRef.current || '').trim() || 'Player'
+                  const sc = scoreRef.current
+                  if (sc > 0 && nm) {
+                    ;(async () => {
+                      try {
+                        await submitScore({
+                          username: nm,
+                          score: sc,
+                          date: new Date().toISOString(),
+                        })
+                        const [top, rank] = await Promise.all([
+                          fetchLeaderboard(periodRef.current, 15),
+                          fetchRankForScore(sc, periodRef.current),
+                        ])
+                        setLeaders(top)
+                        setMyRank(rank)
+                        setToast('Score saved!')
+                        if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current)
+                        toastTimerRef.current = window.setTimeout(
+                          () => setToast(null),
+                          2000,
+                        ) as unknown as number
+                      } catch {
+                        /* ignore */
+                      }
+                    })()
+                  }
+                  // Do not show the save modal in solo anymore (auto-saved)
+                  setAskNameOpen(false)
+                }
               }
             })
             .catch(() => {
@@ -910,6 +963,7 @@ export function GameManager({
     setEngineSeed(Math.floor(Math.random() * 1e9))
     setPaused(true)
     setAskNameOpen(false)
+    deathAnimatedRef.current = false
     try {
       localStorage.removeItem(LS_PERSIST_KEY)
     } catch {
@@ -1066,6 +1120,8 @@ export function GameManager({
           // lock local countdown trigger briefly to prevent loops
           countdownLockRef.current = Date.now() + 4000
           seedCountdownRef.current = false
+          // Fresh round, allow death animation when it happens
+          deathAnimatedRef.current = false
           // Reset results and per-round score cache when new round actually starts
           setShowResults(false)
           setRoundResults(null)
@@ -1139,15 +1195,16 @@ export function GameManager({
     }
   }, [])
 
-  // Host: automatically request a new seed when 2+ players are ready after a round
+  // Host: automatically request a new seed when all players are ready after a round
   useEffect(() => {
     if (!(mode === 'versus' && conn === 'connected' && isHost)) return
     // Don't spam if a countdown is already running or round is active
     if (countdown != null || seedCountdownRef.current || roundActiveRef.current) return
     const now = Date.now()
     if (now - lastAutoSeedTsRef.current < 1000) return
-    const readyCount = (ready ? 1 : 0) + Object.values(players).filter((p) => p.ready).length
-    if (readyCount >= 2) {
+    const others = Object.entries(players).filter(([pid]) => pid !== myId)
+    const allOthersReady = others.length > 0 && others.every(([, p]) => p.ready)
+    if (ready && allOthersReady) {
       lastAutoSeedTsRef.current = now
       try {
         netRef.current?.send({ type: 'restart' })
@@ -1155,7 +1212,7 @@ export function GameManager({
         /* noop */
       }
     }
-  }, [mode, conn, isHost, countdown, ready, players])
+  }, [mode, conn, isHost, countdown, ready, players, myId])
 
   // Refresh trophy counts whenever leaderboard entries change
   useEffect(() => {
