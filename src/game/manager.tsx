@@ -246,7 +246,8 @@ export function GameManager({
         try {
           for (const w of winners) {
             const name = roundNamesRef.current[w.id]?.trim() || 'Player'
-            const lid = await getLeaderboardIdFor(name, 'versus')
+            // Tie trophies to the Survival leaderboard row so Top 15 shows medals
+            const lid = await getLeaderboardIdFor(name, 'survival')
             if (lid != null) await awardTrophy(lid, w.medal)
           }
         } catch {
@@ -868,6 +869,8 @@ export function GameManager({
             setShowResults(false)
             setRoundResults(null)
             roundScoresRef.current = {}
+            // Clear previews to avoid stale tiles at start of a new round
+            setPreviews({})
           } else if (msg.type === 'presence') {
             setPresence(Math.max(1, msg.count || 1))
           } else if (msg.type === 'ready') {
@@ -1410,7 +1413,7 @@ export function GameManager({
                 disabled={mode === 'versus' && !isHost}
                 title={mode === 'versus' && !isHost ? 'Host only' : undefined}
               >
-                Restart
+                {mode === 'versus' ? 'Force start' : 'Restart'}
               </button>
             </div>
 
@@ -1423,6 +1426,15 @@ export function GameManager({
                   aria-pressed={settings.apples === n}
                   onClick={() => {
                     const next = { ...settings, apples: n }
+                    if (mode === 'versus' && conn === 'connected' && roundActiveRef.current) {
+                      setToast('Settings locked during active round')
+                      if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current)
+                      toastTimerRef.current = window.setTimeout(
+                        () => setToast(null),
+                        1500,
+                      ) as unknown as number
+                      return
+                    }
                     setSettings(next)
                     if (mode === 'versus' && conn === 'connected' && isHost) {
                       try {
@@ -1452,6 +1464,15 @@ export function GameManager({
                   onClick={() => {
                     const nextVal = lab === 'wrap'
                     const next = { ...settings, passThroughEdges: nextVal }
+                    if (mode === 'versus' && conn === 'connected' && roundActiveRef.current) {
+                      setToast('Settings locked during active round')
+                      if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current)
+                      toastTimerRef.current = window.setTimeout(
+                        () => setToast(null),
+                        1500,
+                      ) as unknown as number
+                      return
+                    }
                     setSettings(next)
                     if (mode === 'versus' && conn === 'connected' && isHost) {
                       try {
@@ -1965,17 +1986,27 @@ export function GameManager({
             Round results
           </div>
           <ol style={{ margin: 0, paddingLeft: '1.25rem' }}>
-            {roundResults.items.map((it) => (
-              <li key={it.id} className="muted">
-                <strong style={{ color: 'var(--text)' }}>{profanityFilter.clean(it.name)}</strong> —{' '}
-                {it.score}{' '}
-                {it.place === 1 ? '🥇' : it.place === 2 ? '🥈' : it.place === 3 ? '🥉' : ''}
-              </li>
-            ))}
+            {roundResults.items.map((it) => {
+              const n = roundResults.total
+              const medal =
+                it.place === 1
+                  ? '🥇'
+                  : it.place === 2 && n >= 3
+                    ? '🥈'
+                    : it.place === 3 && n >= 4
+                      ? '🥉'
+                      : ''
+              return (
+                <li key={it.id} className="muted">
+                  <strong style={{ color: 'var(--text)' }}>{profanityFilter.clean(it.name)}</strong>{' '}
+                  — {it.score} {medal}
+                </li>
+              )
+            })}
           </ol>
           <div className="muted" style={{ marginTop: 6, fontSize: 12 }}>
             {isHost
-              ? 'Waiting for 2+ players to Ready… a new round will start automatically.'
+              ? 'Waiting for all players to Ready… or use Force start to begin now.'
               : 'Waiting for the host to start the next round…'}
           </div>
         </div>
@@ -2031,6 +2062,9 @@ export function GameManager({
                     {profanityFilter.clean(l.username)}
                   </strong>{' '}
                   — {l.score}
+                  <span className="muted" style={{ marginLeft: 6, fontSize: 12 }}>
+                    • Survival • {l.date ? new Date(l.date).toLocaleString() : ''}
+                  </span>
                   {typeof l.id === 'number' && trophyMap[l.id] && (
                     <span className="muted" style={{ marginLeft: 8, fontSize: 12 }}>
                       {trophyMap[l.id].gold > 0 ? ` 🥇×${trophyMap[l.id].gold}` : ''}
