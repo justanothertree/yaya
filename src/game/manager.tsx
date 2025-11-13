@@ -71,15 +71,24 @@ export function GameManager({
   const [trophyMap, setTrophyMap] = useState<Record<number, TrophyCounts>>({})
   const [myRank, setMyRank] = useState<number | null>(null)
   const [period, setPeriod] = useState<LeaderboardPeriod>('all')
-  const [askNameOpen, setAskNameOpen] = useState(false)
   const [playerName, setPlayerName] = useState<string>(() => {
     try {
       const stored = localStorage.getItem(LS_PLAYER_NAME_KEY)
       if (stored && stored.trim()) return stored
-      // provisional default; server may assign a visitor-based number
-      const name = 'Player'
-      localStorage.setItem(LS_PLAYER_NAME_KEY, name)
+      // Default to a stable, unique id-based name for solo users
+      let cid = localStorage.getItem('snake.clientId') || ''
+      if (!cid) {
+        cid = Math.random().toString(36).slice(2) + Date.now().toString(36)
+        try {
+          localStorage.setItem('snake.clientId', cid)
+        } catch {
+          /* ignore */
+        }
+      }
+      const suffix = cid.slice(-4)
+      const name = `Player${suffix}`
       try {
+        localStorage.setItem(LS_PLAYER_NAME_KEY, name)
         localStorage.setItem(LS_PLAYER_NAME_SOURCE_KEY, 'auto')
       } catch {
         /* ignore */
@@ -559,8 +568,7 @@ export function GameManager({
                       }
                     })()
                   }
-                  // Do not show the save modal in solo anymore (auto-saved)
-                  setAskNameOpen(false)
+                  // Solo auto-saves; no modal needed
                 }
               }
             })
@@ -882,11 +890,7 @@ export function GameManager({
           } else if (msg.type === 'over') {
             if (msg.from) {
               const fromId = msg.from as string
-              setPreviews((map) => {
-                const next = { ...map }
-                if (fromId in next) delete next[fromId]
-                return next
-              })
+              // Keep previews visible to avoid flicker; they'll be cleared on next round seed
               // remove player on quit, else just clear ready
               setPlayers((map) => {
                 const next = { ...map }
@@ -965,7 +969,6 @@ export function GameManager({
   const doRestart = () => {
     setEngineSeed(Math.floor(Math.random() * 1e9))
     setPaused(true)
-    setAskNameOpen(false)
     deathAnimatedRef.current = false
     try {
       localStorage.removeItem(LS_PERSIST_KEY)
@@ -974,25 +977,25 @@ export function GameManager({
     }
   }
 
-  const onSaveScore = async () => {
-    const entry: LeaderboardEntry = {
-      username: playerName.trim() || 'Player',
-      score,
-      date: new Date().toISOString(),
-    }
+  // Helper: mark self Ready in multiplayer
+  const setSelfReady = useCallback(() => {
+    if (mode !== 'versus') return
+    if (conn !== 'connected') return
+    if (!playerName.trim()) return
+    setReady(true)
+    setPlayers((map) => {
+      if (!myId) return map
+      const cur = map[myId] || {}
+      return { ...map, [myId]: { ...cur, ready: true, name: cur.name || playerName } }
+    })
     try {
-      await submitScore(entry)
-      // refresh from server (or fallback) and compute rank
-      const [top, rank] = await Promise.all([
-        fetchLeaderboard(period, 15),
-        fetchRankForScore(entry.score, period),
-      ])
-      setLeaders(top)
-      setMyRank(rank)
-    } finally {
-      setAskNameOpen(false)
+      netRef.current?.send({ type: 'ready' })
+    } catch {
+      /* noop */
     }
-  }
+  }, [mode, conn, playerName, myId])
+
+  // Solo scores auto-save; manual save handler removed
 
   // Broadcast name changes immediately when connected
   useEffect(() => {
@@ -1023,7 +1026,6 @@ export function GameManager({
     setPreviews({})
     setPlayers({})
     setPresence(1)
-    setAskNameOpen(false)
     // Cancel any pending death animation completions from previous session
     deathAnimTokenRef.current += 1
     // Invalidate any in-flight game loop ticks
@@ -1335,7 +1337,7 @@ export function GameManager({
                   onClick={() => setMode(m)}
                   data-active={mode === m || undefined}
                 >
-                  {m === 'versus' ? 'multiplayer' : m}
+                  {m === 'versus' ? 'Multiplayer' : 'Solo'}
                 </button>
               ))}
 
@@ -1346,22 +1348,7 @@ export function GameManager({
                 }}
                 onClick={() => {
                   if (mode === 'versus') {
-                    if (conn !== 'connected') return
-                    if (!playerName.trim()) return
-                    setReady(true)
-                    setPlayers((map) => {
-                      if (!myId) return map
-                      const cur = map[myId] || {}
-                      return {
-                        ...map,
-                        [myId]: { ...cur, ready: true, name: cur.name || playerName },
-                      }
-                    })
-                    try {
-                      netRef.current?.send({ type: 'ready' })
-                    } catch {
-                      /* noop */
-                    }
+                    setSelfReady()
                     return
                   }
                   if (!alive) {
@@ -1494,6 +1481,38 @@ export function GameManager({
                 </button>
               ))}
             </div>
+            {mode === 'solo' && (
+              <div className="controls-row">
+                <label
+                  className="muted"
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                >
+                  Name
+                  <input
+                    value={playerName}
+                    onChange={(e) => {
+                      setPlayerName(e.target.value)
+                      try {
+                        localStorage.setItem(LS_PLAYER_NAME_SOURCE_KEY, 'custom')
+                        nameSourceRef.current = 'custom'
+                      } catch {
+                        /* ignore */
+                      }
+                    }}
+                    placeholder="Your name"
+                    style={{
+                      padding: '0.5rem',
+                      borderRadius: 8,
+                      border: '1px solid var(--border)',
+                      background: 'transparent',
+                      color: 'var(--text)',
+                      minWidth: 160,
+                      width: '100%',
+                    }}
+                  />
+                </label>
+              </div>
+            )}
           </div>
 
           {/* RIGHT: Multiplayer controls */}
@@ -1890,20 +1909,7 @@ export function GameManager({
               className="btn snake-fab"
               onClick={() => {
                 if (mode === 'versus') {
-                  // In versus, use Ready flow to coordinate start
-                  if (conn !== 'connected') return
-                  if (!playerName.trim()) return
-                  setReady(true)
-                  setPlayers((map) => {
-                    if (!myId) return map
-                    const cur = map[myId] || {}
-                    return { ...map, [myId]: { ...cur, ready: true, name: cur.name || playerName } }
-                  })
-                  try {
-                    netRef.current?.send({ type: 'ready' })
-                  } catch {
-                    /* noop */
-                  }
+                  setSelfReady()
                   return
                 }
               }}
@@ -2057,7 +2063,7 @@ export function GameManager({
               }}
             >
               {leaders.map((l, i) => (
-                <li key={i} className="muted">
+                <li key={typeof l.id === 'number' ? l.id : i} className="muted">
                   <strong style={{ color: 'var(--text)' }}>
                     {profanityFilter.clean(l.username)}
                   </strong>{' '}
@@ -2080,70 +2086,6 @@ export function GameManager({
       </div>
 
       {/* Multiplayer section removed here to avoid duplication (moved near toolbar/canvas) */}
-
-      {/* Save score modal */}
-      {askNameOpen && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-label="Save your score"
-          onClick={() => setAskNameOpen(false)}
-          style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'rgba(0,0,0,0.6)',
-            display: 'grid',
-            placeItems: 'center',
-            zIndex: 300,
-          }}
-        >
-          <div
-            className="card"
-            style={{
-              maxWidth: 420,
-              width: '90%',
-              cursor: 'auto',
-              background: 'var(--bg)',
-              borderColor: 'var(--border-strong)',
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h2 className="section-title" style={{ marginTop: 0 }}>
-              Save your score
-            </h2>
-            <div className="muted" style={{ marginBottom: 6 }}>
-              Your score: {score}
-            </div>
-            <label className="muted" htmlFor="player-name">
-              Name
-            </label>
-            <input
-              id="player-name"
-              value={playerName}
-              onChange={(e) => setPlayerName(e.target.value)}
-              autoFocus
-              style={{
-                width: '100%',
-                padding: '0.5rem',
-                borderRadius: 8,
-                border: '1px solid var(--border)',
-                background: 'transparent',
-                color: 'var(--text)',
-              }}
-            />
-            <div
-              style={{ marginTop: '0.75rem', display: 'flex', gap: 8, justifyContent: 'flex-end' }}
-            >
-              <button className="btn" onClick={() => setAskNameOpen(false)}>
-                Cancel
-              </button>
-              <button className="btn" onClick={onSaveScore}>
-                Save
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   )
 }
