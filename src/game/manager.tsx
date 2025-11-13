@@ -214,12 +214,10 @@ export function GameManager({
     if (done < total) return
     const thisRound = roundIdRef.current
     roundActiveRef.current = false
-    if (!(isHost && roundAwardedRef.current !== thisRound)) return
-    roundAwardedRef.current = thisRound
     // Compute placements: last to finish is first place
     const order = [...roundFinishedRef.current]
     const ranked = order.slice().reverse()
-    // Build results list for UI with final scores snapshot
+    // Build results list for UI with final scores snapshot (shown to all players)
     const resultsItems: Array<{ id: string; name: string; score: number; place: number }> = []
     for (let i = 0; i < ranked.length; i++) {
       const pid = ranked[i]
@@ -229,31 +227,34 @@ export function GameManager({
     }
     setRoundResults({ items: resultsItems, total: order.length })
     setShowResults(true)
-    // Determine top 3 based on participant count
-    const n = total
-    const winners: Array<{ id: string; medal: 'gold' | 'silver' | 'bronze' }> = []
-    if (ranked[0]) winners.push({ id: ranked[0], medal: 'gold' })
-    if (n >= 2 && ranked[1]) winners.push({ id: ranked[1], medal: 'silver' })
-    if (n >= 3 && ranked[2]) winners.push({ id: ranked[2], medal: 'bronze' })
-    ;(async () => {
-      try {
-        for (const w of winners) {
-          const name = roundNamesRef.current[w.id]?.trim() || 'Player'
-          const lid = await getLeaderboardIdFor(name, 'versus')
-          if (lid != null) await awardTrophy(lid, w.medal)
-        }
-      } catch {
-        /* ignore */
-      } finally {
-        // Refresh leaderboard and trophies display after awards
+    // Host-only: award trophies (once per round) and refresh leaderboard
+    if (isHost && roundAwardedRef.current !== thisRound) {
+      roundAwardedRef.current = thisRound
+      const n = total
+      const winners: Array<{ id: string; medal: 'gold' | 'silver' | 'bronze' }> = []
+      if (ranked[0]) winners.push({ id: ranked[0], medal: 'gold' })
+      if (n >= 2 && ranked[1]) winners.push({ id: ranked[1], medal: 'silver' })
+      if (n >= 3 && ranked[2]) winners.push({ id: ranked[2], medal: 'bronze' })
+      ;(async () => {
         try {
-          const top = await fetchLeaderboard(period, 15)
-          setLeaders(top)
+          for (const w of winners) {
+            const name = roundNamesRef.current[w.id]?.trim() || 'Player'
+            const lid = await getLeaderboardIdFor(name, 'versus')
+            if (lid != null) await awardTrophy(lid, w.medal)
+          }
         } catch {
           /* ignore */
+        } finally {
+          // Refresh leaderboard and trophies display after awards
+          try {
+            const top = await fetchLeaderboard(period, 15)
+            setLeaders(top)
+          } catch {
+            /* ignore */
+          }
         }
-      }
-    })()
+      })()
+    }
   }, [isHost, period])
 
   const registerFinish = useCallback(
