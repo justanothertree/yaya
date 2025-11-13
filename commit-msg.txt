@@ -1,7 +1,5 @@
-feat: multiplayer trophies; leaderboard ids; schema docs
+fix: multiplayer score modal suppressed; seed-gated countdown; leaderboard dedupe and filters
 
-- Award gold/silver/bronze trophies at multiplayer round end (host-side logic)
-- Fetch and display trophy counts in leaderboard UI
-- Extend LeaderboardEntry with id and add helper getLeaderboardIdFor
-- Align client persistence with Supabase schema (score_history + leaderboard upsert)
-- Add unique index (player_id, game_mode) to schema summary docs
+- Do not show save score modal in multiplayer
+- Only start countdown/round on server seed
+- Leaderboard: filter to survival mode and score>0, over-fetch and dedupe by username

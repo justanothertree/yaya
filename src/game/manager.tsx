@@ -194,6 +194,16 @@ export function GameManager({
   const roundNamesRef = useRef<Record<string, string>>({})
   const roundAwardedRef = useRef<number | null>(null)
   const seedCountdownRef = useRef(false)
+  // Track last known scores per player during a round (for results UI)
+  const roundScoresRef = useRef<Record<string, number>>({})
+  // Results UI state for the last completed round
+  const [roundResults, setRoundResults] = useState<null | {
+    items: Array<{ id: string; name: string; score: number; place: number }>
+    total: number
+  }>(null)
+  const [showResults, setShowResults] = useState(false)
+  // Throttle auto-seed requests to avoid duplicates
+  const lastAutoSeedTsRef = useRef(0)
 
   // Register a player finishing the round; when all done, host awards trophies
   const tryFinalizeRound = useCallback(() => {
@@ -209,6 +219,16 @@ export function GameManager({
     // Compute placements: last to finish is first place
     const order = [...roundFinishedRef.current]
     const ranked = order.slice().reverse()
+    // Build results list for UI with final scores snapshot
+    const resultsItems: Array<{ id: string; name: string; score: number; place: number }> = []
+    for (let i = 0; i < ranked.length; i++) {
+      const pid = ranked[i]
+      const name = (roundNamesRef.current[pid] || 'Player').trim()
+      const score = roundScoresRef.current[pid] ?? 0
+      resultsItems.push({ id: pid, name, score, place: i + 1 })
+    }
+    setRoundResults({ items: resultsItems, total: order.length })
+    setShowResults(true)
     // Determine top 3 based on participant count
     const n = total
     const winners: Array<{ id: string; medal: 'gold' | 'silver' | 'bronze' }> = []
@@ -459,6 +479,10 @@ export function GameManager({
         if (startRef.current == null) startRef.current = performance.now()
         const nextScore = scoreFormula(applesEaten + (events.some((e) => e.type === 'eat') ? 1 : 0))
         setScore(nextScore)
+        // Track our own score for results
+        if (mode === 'versus' && myId) {
+          roundScoresRef.current[myId] = nextScore
+        }
         if (mode === 'versus' && netRef.current) {
           try {
             netRef.current.send({ type: 'tick', n: state.ticks, score: nextScore })
@@ -786,6 +810,10 @@ export function GameManager({
             setCountdown(3)
             setCountdownEndAt(Date.now() + 3000)
             seedCountdownRef.current = true
+            // Clear previous round UI state
+            setShowResults(false)
+            setRoundResults(null)
+            roundScoresRef.current = {}
           } else if (msg.type === 'presence') {
             setPresence(Math.max(1, msg.count || 1))
           } else if (msg.type === 'ready') {
@@ -820,6 +848,10 @@ export function GameManager({
               ...map,
               [from]: { state: msg.state, score: msg.score, name: msg.name },
             }))
+            // Track latest scores for round results
+            if (msg.from) {
+              roundScoresRef.current[msg.from] = msg.score ?? roundScoresRef.current[msg.from] ?? 0
+            }
             if (msg.from) {
               const fromId = msg.from
               setPlayers((map) => ({
@@ -1033,6 +1065,10 @@ export function GameManager({
           // lock local countdown trigger briefly to prevent loops
           countdownLockRef.current = Date.now() + 4000
           seedCountdownRef.current = false
+          // Reset results and per-round score cache when new round actually starts
+          setShowResults(false)
+          setRoundResults(null)
+          roundScoresRef.current = {}
         }
         return true
       } else {
@@ -1101,6 +1137,24 @@ export function GameManager({
       setConn('disconnected')
     }
   }, [])
+
+  // Host: automatically request a new seed when 2+ players are ready after a round
+  useEffect(() => {
+    if (!(mode === 'versus' && conn === 'connected' && isHost)) return
+    // Don't spam if a countdown is already running or round is active
+    if (countdown != null || seedCountdownRef.current || roundActiveRef.current) return
+    const now = Date.now()
+    if (now - lastAutoSeedTsRef.current < 1000) return
+    const readyCount = (ready ? 1 : 0) + Object.values(players).filter((p) => p.ready).length
+    if (readyCount >= 2) {
+      lastAutoSeedTsRef.current = now
+      try {
+        netRef.current?.send({ type: 'restart' })
+      } catch {
+        /* noop */
+      }
+    }
+  }, [mode, conn, isHost, countdown, ready, players])
 
   // Refresh trophy counts whenever leaderboard entries change
   useEffect(() => {
@@ -1842,6 +1896,29 @@ export function GameManager({
                 title={`${p.name || 'Player'} — ${p.score}${players[id]?.ready ? ' ✓' : ''}`}
               />
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* Round results UI */}
+      {mode === 'versus' && showResults && roundResults && roundResults.items.length > 0 && (
+        <div className="card" style={{ marginTop: 8, padding: 10 }}>
+          <div className="muted" style={{ fontWeight: 600, marginBottom: 6 }}>
+            Round results
+          </div>
+          <ol style={{ margin: 0, paddingLeft: '1.25rem' }}>
+            {roundResults.items.map((it) => (
+              <li key={it.id} className="muted">
+                <strong style={{ color: 'var(--text)' }}>{profanityFilter.clean(it.name)}</strong> —{' '}
+                {it.score}{' '}
+                {it.place === 1 ? '🥇' : it.place === 2 ? '🥈' : it.place === 3 ? '🥉' : ''}
+              </li>
+            ))}
+          </ol>
+          <div className="muted" style={{ marginTop: 6, fontSize: 12 }}>
+            {isHost
+              ? 'Waiting for 2+ players to Ready… a new round will start automatically.'
+              : 'Waiting for the host to start the next round…'}
           </div>
         </div>
       )}
