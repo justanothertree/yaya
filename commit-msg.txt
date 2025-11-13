@@ -1,0 +1,7 @@
+feat: multiplayer trophies; leaderboard ids; schema docs
+
+- Award gold/silver/bronze trophies at multiplayer round end (host-side logic)
+- Fetch and display trophy counts in leaderboard UI
+- Extend LeaderboardEntry with id and add helper getLeaderboardIdFor
+- Align client persistence with Supabase schema (score_history + leaderboard upsert)
+- Add unique index (player_id, game_mode) to schema summary docs

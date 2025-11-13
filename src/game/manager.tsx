@@ -193,6 +193,7 @@ export function GameManager({
   const roundFinishedRef = useRef<string[]>([])
   const roundNamesRef = useRef<Record<string, string>>({})
   const roundAwardedRef = useRef<number | null>(null)
+  const seedCountdownRef = useRef(false)
 
   // Register a player finishing the round; when all done, host awards trophies
   const tryFinalizeRound = useCallback(() => {
@@ -481,7 +482,7 @@ export function GameManager({
                 mode === modeAtDeath &&
                 epoch === sessionEpochRef.current
               ) {
-                setAskNameOpen(true)
+                if (modeAtDeath === 'solo') setAskNameOpen(true)
               }
             })
             .catch(() => {
@@ -784,6 +785,7 @@ export function GameManager({
             // Kick off round start countdown when a new seed arrives
             setCountdown(3)
             setCountdownEndAt(Date.now() + 3000)
+            seedCountdownRef.current = true
           } else if (msg.type === 'presence') {
             setPresence(Math.max(1, msg.count || 1))
           } else if (msg.type === 'ready') {
@@ -977,21 +979,6 @@ export function GameManager({
   // Countdown effect: robust to background tab throttling by using a fixed deadline
   useEffect(() => {
     if (!(mode === 'versus' && conn === 'connected')) return
-    // If no countdown is active yet, check local readiness to trigger one
-    if (countdownEndAt == null && countdown == null) {
-      // Avoid re-triggering countdown immediately after a round starts
-      if (countdownLockRef.current && Date.now() < countdownLockRef.current) return
-      const othersReady = Object.entries(players).reduce((acc, [id, p]) => {
-        if (id !== myId && p.ready) acc += 1
-        return acc
-      }, 0)
-      const totalReady = othersReady + (ready ? 1 : 0)
-      if (presence >= 2 && totalReady >= 2) {
-        setCountdown(3)
-        setCountdownEndAt(Date.now() + 3000)
-      }
-      return
-    }
     if (countdownEndAt == null) return
     const tick = () => {
       const leftMs = countdownEndAt - Date.now()
@@ -1000,50 +987,53 @@ export function GameManager({
         // Start now
         setCountdown(null)
         setCountdownEndAt(null)
-        setPaused(false)
-        // Initialize round tracking with participants (ready players + self)
-        try {
-          const pset = new Set<string>()
-          const names: Record<string, string> = {}
-          if (myId && ready) {
-            pset.add(myId)
-            names[myId] = playerName?.trim() || 'Player'
-          }
-          for (const [pid, info] of Object.entries(players)) {
-            if (info.ready) {
-              pset.add(pid)
-              names[pid] = (info.name || 'Player').trim()
+        if (seedCountdownRef.current) {
+          setPaused(false)
+          // Initialize round tracking with participants (ready players + self)
+          try {
+            const pset = new Set<string>()
+            const names: Record<string, string> = {}
+            if (myId && ready) {
+              pset.add(myId)
+              names[myId] = playerName?.trim() || 'Player'
             }
+            for (const [pid, info] of Object.entries(players)) {
+              if (info.ready) {
+                pset.add(pid)
+                names[pid] = (info.name || 'Player').trim()
+              }
+            }
+            if (pset.size >= 2) {
+              roundParticipantsRef.current = pset
+              roundFinishedRef.current = []
+              roundNamesRef.current = names
+              roundActiveRef.current = true
+              roundIdRef.current += 1
+            } else {
+              roundActiveRef.current = false
+              roundParticipantsRef.current = new Set()
+              roundFinishedRef.current = []
+              roundNamesRef.current = {}
+            }
+          } catch {
+            /* noop */
           }
-          if (pset.size >= 2) {
-            roundParticipantsRef.current = pset
-            roundFinishedRef.current = []
-            roundNamesRef.current = names
-            roundActiveRef.current = true
-            roundIdRef.current += 1
-          } else {
-            roundActiveRef.current = false
-            roundParticipantsRef.current = new Set()
-            roundFinishedRef.current = []
-            roundNamesRef.current = {}
-          }
-        } catch {
-          /* noop */
+          // Round is starting: clear ready flags now so next round requires Ready again
+          setReady(false)
+          setPlayers((map) => {
+            const next: typeof map = {}
+            for (const [pid, info] of Object.entries(map)) next[pid] = { ...info, ready: false }
+            return next
+          })
+          // capture focus on start
+          canvasRef.current?.focus()
+          capturedRef.current = true
+          setCaptured(true)
+          onControlChange?.(true)
+          // lock local countdown trigger briefly to prevent loops
+          countdownLockRef.current = Date.now() + 4000
+          seedCountdownRef.current = false
         }
-        // Round is starting: clear ready flags now so next round requires Ready again
-        setReady(false)
-        setPlayers((map) => {
-          const next: typeof map = {}
-          for (const [pid, info] of Object.entries(map)) next[pid] = { ...info, ready: false }
-          return next
-        })
-        // capture focus on start
-        canvasRef.current?.focus()
-        capturedRef.current = true
-        setCaptured(true)
-        onControlChange?.(true)
-        // lock local countdown trigger briefly to prevent loops
-        countdownLockRef.current = Date.now() + 4000
         return true
       } else {
         setCountdown(left)

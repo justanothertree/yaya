@@ -222,13 +222,17 @@ export async function fetchLeaderboard(
 ): Promise<LeaderboardEntry[]> {
   const { url, anon, leaderboardTable, nameCol } = envs()
   const since = startIsoFor(period)
+  const MODE = 'survival'
   if (url && anon) {
     try {
       const select = `id,username:${nameCol},score,created_at`
       const parts = [
         `${url}/rest/v1/${leaderboardTable}?select=${encodeURIComponent(select)}`,
         `order=score.desc,created_at.asc`,
-        `limit=${limit}`,
+        // over-fetch to allow client-side dedupe by username
+        `limit=${Math.max(limit * 5, limit)}`,
+        `game_mode=eq.${encodeURIComponent(MODE)}`,
+        `score=gt.0`,
       ]
       if (since) parts.push(`created_at=gte.${encodeURIComponent(since)}`)
       const endpoint = parts[0] + '&' + parts.slice(1).join('&')
@@ -240,12 +244,17 @@ export async function fetchLeaderboard(
           score: number
           created_at: string
         }>
-        return rows.map((r) => ({
-          id: r.id,
-          username: r.username,
-          score: r.score,
-          date: r.created_at,
-        }))
+        // Dedupe by username (case-insensitive), keep highest score first due to ordering
+        const seen = new Set<string>()
+        const out: LeaderboardEntry[] = []
+        for (const r of rows) {
+          const key = String(r.username || '').toLowerCase()
+          if (seen.has(key)) continue
+          seen.add(key)
+          out.push({ id: r.id, username: r.username, score: r.score, date: r.created_at })
+          if (out.length >= limit) break
+        }
+        return out
       }
     } catch {
       /* fall through */
@@ -254,8 +263,17 @@ export async function fetchLeaderboard(
   try {
     const raw = localStorage.getItem(LS_KEY)
     const all = raw ? (JSON.parse(raw) as LeaderboardEntry[]) : []
-    const filtered = since ? all.filter((e) => e.date >= since) : all
-    return filtered.sort((a, b) => b.score - a.score).slice(0, limit)
+    const filtered = (since ? all.filter((e) => e.date >= since) : all).filter((e) => e.score > 0)
+    const seen = new Set<string>()
+    const out: LeaderboardEntry[] = []
+    for (const r of filtered.sort((a, b) => b.score - a.score)) {
+      const key = r.username.toLowerCase()
+      if (seen.has(key)) continue
+      seen.add(key)
+      out.push(r)
+      if (out.length >= limit) break
+    }
+    return out
   } catch {
     return []
   }
@@ -272,6 +290,8 @@ export async function fetchRankForScore(
       const parts = [
         `${url}/rest/v1/${leaderboardTable}?select=score`,
         `score=gt.${encodeURIComponent(String(score))}`,
+        `game_mode=eq.survival`,
+        `score=gt.0`,
       ]
       if (since) parts.push(`created_at=gte.${encodeURIComponent(since)}`)
       const endpoint = parts[0] + '&' + parts.slice(1).join('&')
