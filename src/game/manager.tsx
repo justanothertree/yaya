@@ -278,7 +278,7 @@ export function GameManager({
       const current = window.pageYOffset
       const desiredTop = previewsTopAbs - (window.innerHeight - 160)
       const target = Math.min(Math.max(current, desiredTop), statusTopAbs)
-      const OFFSET = 22 // slightly lower clamp to keep Score visible
+      const OFFSET = 8 // keep just above status text
       window.scrollTo({ top: Math.max(0, target - OFFSET), behavior: 'smooth' })
     } catch {
       /* ignore */
@@ -996,6 +996,8 @@ export function GameManager({
             // Kick off round start countdown when a new seed arrives
             setCountdown(3)
             setCountdownEndAt(Date.now() + 3000)
+            // Ensure gameplay is paused until countdown completes
+            setPaused(true)
             seedCountdownRef.current = true
             // Clear previous round UI state
             setShowResults(false)
@@ -1086,6 +1088,22 @@ export function GameManager({
                 setShowResults(true)
                 // Round is finished from the UI perspective
                 roundActiveRef.current = false
+                // Ensure everyone refreshes leaderboard and trophies promptly
+                ;(async () => {
+                  try {
+                    const top = await fetchLeaderboard(periodRef.current, 15)
+                    setLeaders(top)
+                    const ids = top
+                      .map((l) => l.id)
+                      .filter((v): v is number => typeof v === 'number')
+                    if (ids.length) {
+                      const t = await fetchTrophiesFor(ids)
+                      setTrophyMap(t)
+                    }
+                  } catch {
+                    /* ignore */
+                  }
+                })()
               } catch {
                 /* ignore */
               }

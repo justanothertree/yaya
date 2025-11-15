@@ -85,6 +85,8 @@ export class GameRenderer {
       }
       requestAnimationFrame(step)
     })
+    // After animation completes, redraw final state so the snake remains visible
+    this.draw(state)
   }
 
   private readTheme(): ThemeColors {
