@@ -170,6 +170,7 @@ export function GameManager({
   const userInitiatedFocusRef = useRef(false)
   const isCoarseRef = useRef(false)
   const suppressBlurPauseRef = useRef(false)
+  const statusRef = useRef<HTMLDivElement>(null)
   // immersive/fullscreen disabled for now
   const restoredRef = useRef(false)
   const deepLinkConnectRef = useRef(false)
@@ -230,6 +231,32 @@ export function GameManager({
   // Throttle auto-seed requests to avoid duplicates
   const lastAutoSeedTsRef = useRef(0)
   const previewsRef = useRef<HTMLDivElement>(null)
+  const ROOM_WORDS = useMemo(
+    () => [
+      'chill',
+      'flow',
+      'loop',
+      'vibe',
+      'fun',
+      'fast',
+      'flex',
+      'cozy',
+      'boss',
+      'arena',
+      'apex',
+      'wow',
+      'yaya',
+    ],
+    [],
+  )
+  const generateRoomCode = useCallback(() => {
+    const pick = () => ROOM_WORDS[Math.floor(Math.random() * ROOM_WORDS.length)]
+    const a = pick()
+    let b = pick()
+    if (b === a) b = pick()
+    const n = Math.floor(Math.random() * 90) + 10 // 2-digit suffix 10-99
+    return `${a}-${b}-${n}`
+  }, [ROOM_WORDS])
 
   // Focus game and scroll so canvas + previews are visible
   const focusCanvasAndScrollPreviews = useCallback(() => {
@@ -244,12 +271,17 @@ export function GameManager({
     try {
       const wrap = wrapRef.current
       const prev = previewsRef.current
+      const statusEl =
+        statusRef.current || (document.querySelector('.snake-status') as HTMLElement | null)
       if (!wrap || !prev) return
       const rectCanvas = wrap.getBoundingClientRect()
       const rectPrev = prev.getBoundingClientRect()
+      const rectStatus = statusEl ? statusEl.getBoundingClientRect() : null
       const topAbs = window.pageYOffset + rectCanvas.top
       const bottomAbs = window.pageYOffset + rectPrev.bottom
-      const target = Math.max(topAbs, bottomAbs - window.innerHeight + 12)
+      const needForPreviews = bottomAbs - window.innerHeight + 12
+      const maxToKeepStatus = rectStatus ? window.pageYOffset + rectStatus.top : topAbs
+      const target = Math.min(Math.max(topAbs, needForPreviews), maxToKeepStatus)
       window.scrollTo({ top: Math.max(0, target), behavior: 'smooth' })
     } catch {
       /* ignore */
@@ -1632,7 +1664,13 @@ export function GameManager({
                 {/* Multiplayer stepper */}
                 {multiStep === 'landing' && (
                   <div className="controls-row">
-                    <button className="btn btn--wide" onClick={() => setMultiStep('create')}>
+                    <button
+                      className="btn btn--wide"
+                      onClick={() => {
+                        setRoom('')
+                        setMultiStep('create')
+                      }}
+                    >
                       Create lobby
                     </button>
                     <button className="btn btn--wide" onClick={() => setMultiStep('join')}>
@@ -1672,7 +1710,7 @@ export function GameManager({
                     <button
                       className="btn"
                       onClick={async () => {
-                        const id = room.trim() || `room-${Math.random().toString(36).slice(2, 8)}`
+                        const id = room.trim() || generateRoomCode()
                         setRoom(id)
                         setMode('versus')
                         setMultiStep('lobby')
@@ -1803,6 +1841,23 @@ export function GameManager({
                       }}
                     >
                       Browse lobbies
+                    </button>
+                    <button
+                      className="btn"
+                      onClick={async () => {
+                        const id = generateRoomCode()
+                        setRoom(id)
+                        setMode('versus')
+                        setMultiStep('lobby')
+                        if (conn === 'connected') {
+                          netRef.current?.disconnect()
+                          setConn('disconnected')
+                          setJoining(true)
+                          setTimeout(() => connectVs(id, true), 50)
+                        } else if (conn === 'disconnected') connectVs(id, true)
+                      }}
+                    >
+                      Host new lobby
                     </button>
                     <button className="btn" onClick={() => setMultiStep('landing')}>
                       Back
