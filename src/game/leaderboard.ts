@@ -47,6 +47,12 @@ function startIsoFor(period: LeaderboardPeriod): string | null {
   return start.toISOString()
 }
 
+// Lightweight env status for debug panel
+export function supabaseEnvStatus() {
+  const { url, anon } = envs()
+  return { hasUrl: !!url, hasAnon: !!anon }
+}
+
 // Get next sequential player id number (max(id)+1) from player_registry
 export async function getNextPlayerIdNumber(): Promise<number | null> {
   const { url, anon, playerTable } = envs()

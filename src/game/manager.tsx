@@ -14,6 +14,7 @@ import {
   awardTrophy,
   getLeaderboardIdFor,
   getNextPlayerIdNumber,
+  supabaseEnvStatus,
 } from './leaderboard'
 import type { LeaderboardEntry, Mode, Settings, TrophyCounts } from './types'
 
@@ -72,6 +73,14 @@ export function GameManager({
   const [trophyMap, setTrophyMap] = useState<Record<number, TrophyCounts>>({})
   const [myRank, setMyRank] = useState<number | null>(null)
   const [period, setPeriod] = useState<LeaderboardPeriod>('all')
+  const [medalsOnly, setMedalsOnly] = useState(false)
+  const [sortMode, setSortMode] = useState<'score' | 'date'>('score')
+  const [showDebug, setShowDebug] = useState(false)
+  const [debugInfo, setDebugInfo] = useState<{
+    nextPlayerId?: number | null
+    lastSaveCount?: number
+    lastAwards?: Array<{ name: string; medal: 'gold' | 'silver' | 'bronze' }>
+  }>({})
   const [playerName, setPlayerName] = useState<string>(() => {
     try {
       const stored = localStorage.getItem(LS_PLAYER_NAME_KEY)
@@ -222,6 +231,28 @@ export function GameManager({
   // Throttle auto-seed requests to avoid duplicates
   const lastAutoSeedTsRef = useRef(0)
 
+  // Derived leaderboard view with filters/sorting
+  const leadersView = useMemo(() => {
+    let arr = [...leaders]
+    if (medalsOnly) {
+      arr = arr.filter((l) => {
+        if (typeof l.id !== 'number') return false
+        const t = trophyMap[l.id]
+        if (!t) return false
+        return (t.gold || 0) + (t.silver || 0) + (t.bronze || 0) > 0
+      })
+    }
+    if (sortMode === 'date') {
+      arr.sort((a, b) => {
+        const da = a.date ? new Date(a.date).getTime() : 0
+        const db = b.date ? new Date(b.date).getTime() : 0
+        return db - da
+      })
+    }
+    // sortMode 'score' preserves server ordering (score desc)
+    return arr
+  }, [leaders, medalsOnly, sortMode, trophyMap])
+
   // Register a player finishing the round; when all done, host awards trophies
   const tryFinalizeRound = useCallback(() => {
     if (!roundActiveRef.current) return
@@ -231,65 +262,55 @@ export function GameManager({
     if (done < total) return
     const thisRound = roundIdRef.current
     roundActiveRef.current = false
-    // Compute placements: last to finish is first place
-    const order = [...roundFinishedRef.current]
-    const ranked = order.slice().reverse()
-    // Build results list for UI with final scores snapshot (shown to all players)
-    const resultsItems: Array<{ id: string; name: string; score: number; place: number }> = []
-    for (let i = 0; i < ranked.length; i++) {
-      const pid = ranked[i]
+    // Compute placements by score descending, using finish order as a tie-breaker
+    const finishOrder = [...roundFinishedRef.current]
+    const participants = Array.from(roundParticipantsRef.current)
+    const base = participants.map((pid) => {
       const name = (roundNamesRef.current[pid] || 'Player').trim()
       const score = roundScoresRef.current[pid] ?? 0
-      resultsItems.push({ id: pid, name, score, place: i + 1 })
-    }
-    setRoundResults({ items: resultsItems, total: order.length })
+      const finishIdx = finishOrder.indexOf(pid)
+      return { id: pid, name, score, finishIdx: finishIdx >= 0 ? finishIdx : 9999 }
+    })
+    base.sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score
+      return a.finishIdx - b.finishIdx
+    })
+    const resultsItems: Array<{ id: string; name: string; score: number; place: number }> =
+      base.map((r, i) => ({ id: r.id, name: r.name, score: r.score, place: i + 1 }))
+    setRoundResults({ items: resultsItems, total: participants.length })
     setShowResults(true)
-    // Host-only: submit all participants' scores to leaderboard/history
-    if (isHost) {
-      const nowIso = new Date().toISOString()
+    // Host-only: save scores, then award trophies, then refresh leaderboard (once per round)
+    if (isHost && roundAwardedRef.current !== thisRound) {
       ;(async () => {
+        roundAwardedRef.current = thisRound
         try {
+          const nowIso = new Date().toISOString()
           for (const it of resultsItems) {
             const nm = (it.name || 'Player').trim()
             const sc = Number(it.score || 0)
             if (!nm || sc <= 0) continue
             await submitScore({ username: nm, score: sc, date: nowIso, gameMode: 'survival' })
           }
-          // Refresh leaderboard after saves
-          try {
-            const top = await fetchLeaderboard(period, 15)
-            setLeaders(top)
-          } catch {
-            /* ignore */
-          }
-        } catch {
-          /* ignore */
-        }
-      })()
-    }
-    // Host-only: award trophies (once per round) and refresh leaderboard
-    if (isHost && roundAwardedRef.current !== thisRound) {
-      roundAwardedRef.current = thisRound
-      const n = total
-      const winners: Array<{ id: string; medal: 'gold' | 'silver' | 'bronze' }> = []
-      // Award only gold in 1v1; silver requires >=3 players; bronze requires >=4 players
-      if (ranked[0]) winners.push({ id: ranked[0], medal: 'gold' })
-      if (n >= 3 && ranked[1]) winners.push({ id: ranked[1], medal: 'silver' })
-      if (n >= 4 && ranked[2]) winners.push({ id: ranked[2], medal: 'bronze' })
-      ;(async () => {
-        try {
+          const n = total
+          const winners: Array<{ id: string; medal: 'gold' | 'silver' | 'bronze' }> = []
+          if (resultsItems[0]) winners.push({ id: resultsItems[0].id, medal: 'gold' })
+          if (n >= 3 && resultsItems[1]) winners.push({ id: resultsItems[1].id, medal: 'silver' })
+          if (n >= 4 && resultsItems[2]) winners.push({ id: resultsItems[2].id, medal: 'bronze' })
+          const awardsList: Array<{ name: string; medal: 'gold' | 'silver' | 'bronze' }> = []
           for (const w of winners) {
             const name = roundNamesRef.current[w.id]?.trim() || 'Player'
-            // Tie trophies to the Survival leaderboard row so Top 15 shows medals
-            // Resolve existing leaderboard row id for this player; if not found,
-            // skip to avoid awarding to a placeholder row that may not appear in Top 15 yet.
             const lid = await getLeaderboardIdFor(name, 'survival')
             if (lid != null) await awardTrophy(lid, w.medal)
+            awardsList.push({ name, medal: w.medal })
           }
+          setDebugInfo((d) => ({
+            ...d,
+            lastSaveCount: resultsItems.length,
+            lastAwards: awardsList,
+          }))
         } catch {
           /* ignore */
         } finally {
-          // Refresh leaderboard and trophies display after awards
           try {
             const top = await fetchLeaderboard(period, 15)
             setLeaders(top)
@@ -978,6 +999,14 @@ export function GameManager({
                 },
               }))
             }
+          } else if (msg.type === 'tick') {
+            // Track peer scores even if a preview hasn't arrived yet
+            if (msg.from && myId && msg.from !== myId) {
+              const sc = Number(msg.score ?? 0)
+              if (Number.isFinite(sc)) {
+                roundScoresRef.current[msg.from] = sc
+              }
+            }
           } else if (msg.type === 'name') {
             if (msg.from) {
               const fromId = msg.from
@@ -1355,6 +1384,19 @@ export function GameManager({
       /* noop */
     }
   }, [mode, wsUrl, multiStep])
+
+  // When debug panel opens, fetch next sequential player id for display
+  useEffect(() => {
+    if (!showDebug) return
+    ;(async () => {
+      try {
+        const nextNum = await getNextPlayerIdNumber()
+        setDebugInfo((d) => ({ ...d, nextPlayerId: nextNum }))
+      } catch {
+        /* ignore */
+      }
+    })()
+  }, [showDebug])
 
   return (
     <div>
@@ -1808,7 +1850,10 @@ export function GameManager({
 
       {/* Lobby box under settings, above the game */}
       {mode === 'versus' && multiStep !== 'landing' && (
-        <div className="card" style={{ marginTop: 8, padding: 10 }}>
+        <div
+          className="card"
+          style={{ marginTop: 8, padding: 10, maxHeight: 150, overflowY: 'auto', minHeight: 90 }}
+        >
           <div className="muted" style={{ fontWeight: 600, marginBottom: 6 }}>
             {multiStep === 'lobby' ? (
               <>
@@ -2064,13 +2109,46 @@ export function GameManager({
               {p.label}
             </button>
           ))}
+          <span className="muted" style={{ marginLeft: 8 }}>
+            Sort:
+          </span>
+          {(['score', 'date'] as const).map((m) => (
+            <button
+              key={m}
+              className="btn"
+              aria-pressed={sortMode === m}
+              data-active={sortMode === m || undefined}
+              onClick={() => setSortMode(m)}
+            >
+              {m === 'score' ? 'Score' : 'Date'}
+            </button>
+          ))}
+          <button
+            className="btn"
+            aria-pressed={medalsOnly}
+            data-active={medalsOnly || undefined}
+            onClick={() => setMedalsOnly((v) => !v)}
+            title="Show only players with medals"
+          >
+            Medals only
+          </button>
+          <div style={{ marginLeft: 'auto' }} />
+          <button
+            className="btn"
+            aria-pressed={showDebug}
+            data-active={showDebug || undefined}
+            onClick={() => setShowDebug((v) => !v)}
+            title="Show debug info"
+          >
+            Debug
+          </button>
         </div>
         {myRank != null && (
           <div className="muted" style={{ marginTop: 6 }}>
             Your rank: <strong style={{ color: 'var(--text)' }}>{myRank}</strong>
           </div>
         )}
-        {leaders.length === 0 ? (
+        {leadersView.length === 0 ? (
           <div className="muted" style={{ marginTop: 6 }}>
             No scores yet{period === 'today' ? ' today' : period === 'month' ? ' this month' : ''}—
             be the first!
@@ -2085,7 +2163,7 @@ export function GameManager({
                 textAlign: 'left',
               }}
             >
-              {leaders.map((l, i) => (
+              {leadersView.map((l, i) => (
                 <li key={typeof l.id === 'number' ? l.id : i} className="muted">
                   <strong style={{ color: 'var(--text)' }}>
                     {profanityFilter.clean(l.username)}
@@ -2107,6 +2185,34 @@ export function GameManager({
           </div>
         )}
       </div>
+
+      {showDebug && (
+        <div className="card" style={{ marginTop: 8, padding: 10 }}>
+          <div className="muted" style={{ fontWeight: 600, marginBottom: 6 }}>
+            Debug Info
+          </div>
+          {(() => {
+            const env = supabaseEnvStatus()
+            return (
+              <div style={{ display: 'grid', gap: 4, fontSize: 13 }}>
+                <div className="muted">
+                  Supabase env: URL {env.hasUrl ? '✓' : '×'}, Key {env.hasAnon ? '✓' : '×'}
+                </div>
+                <div className="muted">Next Player id: {String(debugInfo.nextPlayerId ?? '—')}</div>
+                <div className="muted">
+                  Last save count: {String(debugInfo.lastSaveCount ?? '—')}
+                </div>
+                <div className="muted">
+                  Last awards:{' '}
+                  {debugInfo.lastAwards && debugInfo.lastAwards.length > 0
+                    ? debugInfo.lastAwards.map((a) => `${a.name} (${a.medal})`).join(', ')
+                    : '—'}
+                </div>
+              </div>
+            )
+          })()}
+        </div>
+      )}
 
       {/* Multiplayer section removed here to avoid duplication (moved near toolbar/canvas) */}
     </div>
