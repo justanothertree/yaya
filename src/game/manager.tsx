@@ -311,6 +311,7 @@ export function GameManager({
       base.map((r, i) => ({ id: r.id, name: r.name, score: r.score, place: i + 1 }))
     setRoundResults({ items: resultsItems, total: participants.length })
     setShowResults(true)
+    setDebugInfo((d) => ({ ...d, lastFinalizeReason: 'normal' }))
     // Broadcast results so all clients render identical data
     try {
       netRef.current?.send({
@@ -1088,6 +1089,7 @@ export function GameManager({
                 setShowResults(true)
                 // Round is finished from the UI perspective
                 roundActiveRef.current = false
+                setDebugInfo((d) => ({ ...d, lastFinalizeReason: 'normal' }))
                 // Ensure everyone refreshes leaderboard and trophies promptly
                 ;(async () => {
                   try {
@@ -1541,13 +1543,22 @@ export function GameManager({
     }
   }, [mode, wsUrl, multiStep])
 
-  // When debug panel opens, fetch next sequential player id for display
+  // When debug panel opens, refresh debug info and supporting data for any client
   useEffect(() => {
     if (!showDebug) return
     ;(async () => {
       try {
-        const nextNum = await getNextPlayerIdNumber()
+        const [nextNum, top] = await Promise.all([
+          getNextPlayerIdNumber(),
+          fetchLeaderboard(periodRef.current, 15),
+        ])
         setDebugInfo((d) => ({ ...d, nextPlayerId: nextNum }))
+        setLeaders(top)
+        const ids = top.map((l) => l.id).filter((v): v is number => typeof v === 'number')
+        if (ids.length) {
+          const t = await fetchTrophiesFor(ids)
+          setTrophyMap(t)
+        }
       } catch {
         /* ignore */
       }
