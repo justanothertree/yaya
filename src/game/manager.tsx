@@ -73,13 +73,12 @@ export function GameManager({
   const [trophyMap, setTrophyMap] = useState<Record<number, TrophyCounts>>({})
   const [myRank, setMyRank] = useState<number | null>(null)
   const [period, setPeriod] = useState<LeaderboardPeriod>('all')
-  const [medalsOnly, setMedalsOnly] = useState(false)
-  const [sortMode, setSortMode] = useState<'score' | 'date'>('score')
   const [showDebug, setShowDebug] = useState(false)
   const [debugInfo, setDebugInfo] = useState<{
     nextPlayerId?: number | null
     lastSaveCount?: number
     lastAwards?: Array<{ name: string; medal: 'gold' | 'silver' | 'bronze' }>
+    lastFinalizeReason?: 'normal' | 'timeout'
   }>({})
   const [playerName, setPlayerName] = useState<string>(() => {
     try {
@@ -230,28 +229,32 @@ export function GameManager({
   const [showResults, setShowResults] = useState(false)
   // Throttle auto-seed requests to avoid duplicates
   const lastAutoSeedTsRef = useRef(0)
+  const previewsRef = useRef<HTMLDivElement>(null)
 
-  // Derived leaderboard view with filters/sorting
-  const leadersView = useMemo(() => {
-    let arr = [...leaders]
-    if (medalsOnly) {
-      arr = arr.filter((l) => {
-        if (typeof l.id !== 'number') return false
-        const t = trophyMap[l.id]
-        if (!t) return false
-        return (t.gold || 0) + (t.silver || 0) + (t.bronze || 0) > 0
-      })
+  // Focus game and scroll so canvas + previews are visible
+  const focusCanvasAndScrollPreviews = useCallback(() => {
+    try {
+      canvasRef.current?.focus()
+      capturedRef.current = true
+      setCaptured(true)
+      onControlChange?.(true)
+    } catch {
+      /* noop */
     }
-    if (sortMode === 'date') {
-      arr.sort((a, b) => {
-        const da = a.date ? new Date(a.date).getTime() : 0
-        const db = b.date ? new Date(b.date).getTime() : 0
-        return db - da
-      })
+    try {
+      const wrap = wrapRef.current
+      const prev = previewsRef.current
+      if (!wrap || !prev) return
+      const rectCanvas = wrap.getBoundingClientRect()
+      const rectPrev = prev.getBoundingClientRect()
+      const topAbs = window.pageYOffset + rectCanvas.top
+      const bottomAbs = window.pageYOffset + rectPrev.bottom
+      const target = Math.max(topAbs, bottomAbs - window.innerHeight + 12)
+      window.scrollTo({ top: Math.max(0, target), behavior: 'smooth' })
+    } catch {
+      /* ignore */
     }
-    // sortMode 'score' preserves server ordering (score desc)
-    return arr
-  }, [leaders, medalsOnly, sortMode, trophyMap])
+  }, [onControlChange])
 
   // Register a player finishing the round; when all done, host awards trophies
   const tryFinalizeRound = useCallback(() => {
@@ -1183,6 +1186,24 @@ export function GameManager({
               roundNamesRef.current = names
               roundActiveRef.current = true
               roundIdRef.current += 1
+              // Auto-focus and bring previews into view at round start
+              focusCanvasAndScrollPreviews()
+              // Fallback: force finalize after 75s if some participants never signal finish
+              const thisRound = roundIdRef.current
+              window.setTimeout(() => {
+                if (!roundActiveRef.current) return
+                if (roundIdRef.current !== thisRound) return
+                // Mark any missing participants as finished to unblock finalize
+                const total = roundParticipantsRef.current.size
+                if (total > 0 && roundFinishedRef.current.length < total) {
+                  const done = new Set(roundFinishedRef.current)
+                  for (const pid of roundParticipantsRef.current) {
+                    if (!done.has(pid)) roundFinishedRef.current.push(pid)
+                  }
+                  setDebugInfo((d) => ({ ...d, lastFinalizeReason: 'timeout' }))
+                  tryFinalizeRound()
+                }
+              }, 75000)
             } else {
               roundActiveRef.current = false
               roundParticipantsRef.current = new Set()
@@ -1237,6 +1258,8 @@ export function GameManager({
     countdown,
     countdownEndAt,
     onControlChange,
+    focusCanvasAndScrollPreviews,
+    tryFinalizeRound,
   ])
 
   // Send lightweight preview of our current state periodically while running in versus
@@ -1444,24 +1467,19 @@ export function GameManager({
                 onClick={() => {
                   if (mode === 'versus') {
                     setSelfReady()
+                    focusCanvasAndScrollPreviews()
                     return
                   }
                   if (!alive) {
                     doRestart()
                     setPaused(false)
-                    canvasRef.current?.focus()
-                    capturedRef.current = true
-                    setCaptured(true)
-                    onControlChange?.(true)
+                    focusCanvasAndScrollPreviews()
                     return
                   }
                   setPaused((p) => {
                     const next = !p
                     if (!next) {
-                      canvasRef.current?.focus()
-                      capturedRef.current = true
-                      setCaptured(true)
-                      onControlChange?.(true)
+                      focusCanvasAndScrollPreviews()
                     }
                     return next
                   })
@@ -1978,6 +1996,7 @@ export function GameManager({
               onClick={() => {
                 if (mode === 'versus') {
                   setSelfReady()
+                  focusCanvasAndScrollPreviews()
                   return
                 }
               }}
@@ -2029,27 +2048,37 @@ export function GameManager({
         {/* Opponent canvas removed for now; previews serve as spectator UI */}
       </div>
 
-      {/* Live previews directly under the game */}
-      {mode === 'versus' && multiStep === 'lobby' && Object.keys(previews).length > 0 && (
-        <div className="card" style={{ marginTop: '0.75rem', padding: 10 }}>
+      {/* Live previews directly under the game (kept visible to avoid layout shift) */}
+      {mode === 'versus' && multiStep === 'lobby' && (
+        <div
+          ref={previewsRef}
+          className="card"
+          style={{ marginTop: '0.75rem', padding: 10, minHeight: 190 }}
+        >
           <div className="muted" style={{ fontWeight: 600, marginBottom: 6 }}>
             Live previews
           </div>
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))',
-              gap: 12,
-            }}
-          >
-            {Object.entries(previews).map(([id, p]) => (
-              <Preview
-                key={id}
-                state={p.state}
-                title={`${p.name || 'Player'} — ${p.score}${players[id]?.ready ? ' ✓' : ''}`}
-              />
-            ))}
-          </div>
+          {Object.keys(previews).length === 0 ? (
+            <div className="muted" style={{ fontSize: 12 }}>
+              Waiting for previews… players will appear here when they start.
+            </div>
+          ) : (
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))',
+                gap: 12,
+              }}
+            >
+              {Object.entries(previews).map(([id, p]) => (
+                <Preview
+                  key={id}
+                  state={p.state}
+                  title={`${p.name || 'Player'} — ${p.score}${players[id]?.ready ? ' ✓' : ''}`}
+                />
+              ))}
+            </div>
+          )}
         </div>
       )}
 
@@ -2109,29 +2138,7 @@ export function GameManager({
               {p.label}
             </button>
           ))}
-          <span className="muted" style={{ marginLeft: 8 }}>
-            Sort:
-          </span>
-          {(['score', 'date'] as const).map((m) => (
-            <button
-              key={m}
-              className="btn"
-              aria-pressed={sortMode === m}
-              data-active={sortMode === m || undefined}
-              onClick={() => setSortMode(m)}
-            >
-              {m === 'score' ? 'Score' : 'Date'}
-            </button>
-          ))}
-          <button
-            className="btn"
-            aria-pressed={medalsOnly}
-            data-active={medalsOnly || undefined}
-            onClick={() => setMedalsOnly((v) => !v)}
-            title="Show only players with medals"
-          >
-            Medals only
-          </button>
+          {/* Filters removed per request */}
           <div style={{ marginLeft: 'auto' }} />
           <button
             className="btn"
@@ -2148,7 +2155,7 @@ export function GameManager({
             Your rank: <strong style={{ color: 'var(--text)' }}>{myRank}</strong>
           </div>
         )}
-        {leadersView.length === 0 ? (
+        {leaders.length === 0 ? (
           <div className="muted" style={{ marginTop: 6 }}>
             No scores yet{period === 'today' ? ' today' : period === 'month' ? ' this month' : ''}—
             be the first!
@@ -2163,7 +2170,7 @@ export function GameManager({
                 textAlign: 'left',
               }}
             >
-              {leadersView.map((l, i) => (
+              {leaders.map((l, i) => (
                 <li key={typeof l.id === 'number' ? l.id : i} className="muted">
                   <strong style={{ color: 'var(--text)' }}>
                     {profanityFilter.clean(l.username)}
@@ -2207,6 +2214,14 @@ export function GameManager({
                   {debugInfo.lastAwards && debugInfo.lastAwards.length > 0
                     ? debugInfo.lastAwards.map((a) => `${a.name} (${a.medal})`).join(', ')
                     : '—'}
+                </div>
+                <div className="muted">Host: {isHost ? 'yes' : 'no'}</div>
+                <div className="muted">
+                  Round active: {roundActiveRef.current ? 'yes' : 'no'}; participants:{' '}
+                  {roundParticipantsRef.current.size}; finished: {roundFinishedRef.current.length}
+                </div>
+                <div className="muted">
+                  Last finalize: {debugInfo.lastFinalizeReason ? debugInfo.lastFinalizeReason : '—'}
                 </div>
               </div>
             )
