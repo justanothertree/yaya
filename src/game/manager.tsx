@@ -281,6 +281,8 @@ export function GameManager({
           for (const w of winners) {
             const name = roundNamesRef.current[w.id]?.trim() || 'Player'
             // Tie trophies to the Survival leaderboard row so Top 15 shows medals
+            // Resolve existing leaderboard row id for this player; if not found,
+            // skip to avoid awarding to a placeholder row that may not appear in Top 15 yet.
             const lid = await getLeaderboardIdFor(name, 'survival')
             if (lid != null) await awardTrophy(lid, w.medal)
           }

@@ -88,22 +88,39 @@ export async function getNextPlayerIdNumber(): Promise<number | null> {
 }
 
 // Ensure player exists in player_registry; return id
+// Trims name and performs a case-insensitive lookup to avoid duplicates
 async function ensurePlayerId(name: string): Promise<number | null> {
+  const rawName = (name || '').trim()
+  if (!rawName) return null
   const { url, anon, playerTable, nameCol } = envs()
   const client = getClient()
   if (client && url && anon) {
     try {
-      const { data: existing } = await client
-        .from(playerTable)
-        .select('id, ' + nameCol)
-        .eq(nameCol, name)
-        .maybeSingle()
-      if (existing && (existing as unknown as { id?: number }).id != null) {
-        return Number((existing as unknown as { id: number }).id)
+      // exact match first
+      {
+        const { data: existing } = await client
+          .from(playerTable)
+          .select('id, ' + nameCol)
+          .eq(nameCol, rawName)
+          .maybeSingle()
+        if (existing && (existing as unknown as { id?: number }).id != null) {
+          return Number((existing as unknown as { id: number }).id)
+        }
+      }
+      // case-insensitive match
+      {
+        const { data: candidates } = await client
+          .from(playerTable)
+          .select('id, ' + nameCol)
+          .ilike(nameCol, rawName)
+        if (Array.isArray(candidates) && candidates.length > 0) {
+          const id = (candidates[0] as unknown as { id?: number }).id
+          if (id != null) return Number(id)
+        }
       }
       const { data: inserted, error } = await client
         .from(playerTable)
-        .insert({ [nameCol]: name })
+        .insert({ [nameCol]: rawName })
         .select('id')
         .single()
       if (!error && inserted && (inserted as { id?: number }).id != null) {
@@ -117,22 +134,30 @@ async function ensurePlayerId(name: string): Promise<number | null> {
   if (url && anon) {
     try {
       const base = `${url}/rest/v1/${playerTable}`
-      const sel = `${base}?select=id,${nameCol}&${nameCol}=eq.${encodeURIComponent(name)}`
+      // exact
+      const sel = `${base}?select=id,${nameCol}&${nameCol}=eq.${encodeURIComponent(rawName)}`
       const r = await fetch(sel, { headers: sbHeaders(anon) })
       if (r.ok) {
         const rows = (await r.json()) as Array<{ id: number }>
         if (rows.length) return Number(rows[0].id)
       }
+      // case-insensitive
+      const selIlike = `${base}?select=id,${nameCol}&${nameCol}=ilike.${encodeURIComponent(rawName)}`
+      const r2 = await fetch(selIlike, { headers: sbHeaders(anon) })
+      if (r2.ok) {
+        const rows = (await r2.json()) as Array<{ id: number }>
+        if (rows.length) return Number(rows[0].id)
+      }
       const ins = await fetch(base, {
         method: 'POST',
         headers: sbHeaders(anon),
-        body: JSON.stringify({ [nameCol]: name }),
+        body: JSON.stringify({ [nameCol]: rawName }),
       })
       if (ins.ok) {
         // Fetch back id
-        const r2 = await fetch(sel, { headers: sbHeaders(anon) })
-        if (r2.ok) {
-          const rows = (await r2.json()) as Array<{ id: number }>
+        const r3 = await fetch(sel, { headers: sbHeaders(anon) })
+        if (r3.ok) {
+          const rows = (await r3.json()) as Array<{ id: number }>
           if (rows.length) return Number(rows[0].id)
         }
       }
@@ -156,7 +181,7 @@ export async function submitScore(
   const playerId = await ensurePlayerId(entry.username)
   const payload = {
     player_id: playerId,
-    [nameCol]: entry.username,
+    [nameCol]: (entry.username || '').trim(),
     score: entry.score,
     game_mode: entry.gameMode || 'survival',
     apples_eaten: entry.applesEaten ?? null,
@@ -187,6 +212,8 @@ export async function submitScore(
             created_at: entry.date,
             apples_eaten: payload.apples_eaten,
             time_elapsed: payload.time_elapsed,
+            // keep display name in sync (trimmed)
+            [nameCol]: payload[nameCol as keyof typeof payload],
           })
           .eq('id', cur.id)
       }
@@ -288,7 +315,9 @@ export async function fetchLeaderboard(
         const seen = new Set<string>()
         const out: LeaderboardEntry[] = []
         for (const r of rows) {
-          const key = String(r.username || '').toLowerCase()
+          const key = String(r.username || '')
+            .trim()
+            .toLowerCase()
           if (seen.has(key)) continue
           seen.add(key)
           out.push({ id: r.id, username: r.username, score: r.score, date: r.created_at })
@@ -505,20 +534,8 @@ export async function getLeaderboardIdFor(
       if (existing && (existing as { id?: number }).id != null) {
         return Number((existing as { id: number }).id)
       }
-      // Insert a placeholder row with score 0 to obtain an id
-      const payload = {
-        player_id: playerId,
-        player_name: name,
-        score: 0,
-        game_mode: gameMode,
-      }
-      const { data: inserted } = await client
-        .from(leaderboardTable)
-        .insert(payload)
-        .select('id')
-        .single()
-      if (inserted && (inserted as { id?: number }).id != null)
-        return Number((inserted as { id: number }).id)
+      // Avoid inserting placeholder rows here; the row should exist after submitScore
+      return null
     } catch {
       /* ignore */
     }
@@ -533,23 +550,7 @@ export async function getLeaderboardIdFor(
         const rows = (await r.json()) as Array<{ id: number }>
         if (rows.length) return Number(rows[0].id)
       }
-      const ins = await fetch(`${url}/rest/v1/${leaderboardTable}`, {
-        method: 'POST',
-        headers: sbHeaders(anon),
-        body: JSON.stringify({
-          player_id: playerId,
-          player_name: name,
-          score: 0,
-          game_mode: gameMode,
-        }),
-      })
-      if (ins.ok) {
-        const r2 = await fetch(sel, { headers: sbHeaders(anon) })
-        if (r2.ok) {
-          const rows = (await r2.json()) as Array<{ id: number }>
-          if (rows.length) return Number(rows[0].id)
-        }
-      }
+      // Don't create placeholder via REST either
     } catch {
       /* ignore */
     }
