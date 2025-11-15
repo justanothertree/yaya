@@ -250,12 +250,7 @@ export function GameManager({
     [],
   )
   const generateRoomCode = useCallback(() => {
-    const pick = () => ROOM_WORDS[Math.floor(Math.random() * ROOM_WORDS.length)]
-    const a = pick()
-    let b = pick()
-    if (b === a) b = pick()
-    const n = Math.floor(Math.random() * 90) + 10 // 2-digit suffix 10-99
-    return `${a}-${b}-${n}`
+    return ROOM_WORDS[Math.floor(Math.random() * ROOM_WORDS.length)]
   }, [ROOM_WORDS])
 
   // Focus game and scroll so canvas + previews are visible
@@ -277,11 +272,12 @@ export function GameManager({
       const rectCanvas = wrap.getBoundingClientRect()
       const rectPrev = prev.getBoundingClientRect()
       const rectStatus = statusEl ? statusEl.getBoundingClientRect() : null
-      const topAbs = window.pageYOffset + rectCanvas.top
-      const bottomAbs = window.pageYOffset + rectPrev.bottom
-      const needForPreviews = bottomAbs - window.innerHeight + 12
-      const maxToKeepStatus = rectStatus ? window.pageYOffset + rectStatus.top : topAbs
-      const target = Math.min(Math.max(topAbs, needForPreviews), maxToKeepStatus)
+      const canvasTopAbs = window.pageYOffset + rectCanvas.top
+      const previewsTopAbs = window.pageYOffset + rectPrev.top
+      const statusTopAbs = rectStatus ? window.pageYOffset + rectStatus.top : canvasTopAbs
+      const current = window.pageYOffset
+      const desiredTop = previewsTopAbs - (window.innerHeight - 160)
+      const target = Math.min(Math.max(current, desiredTop), statusTopAbs)
       window.scrollTo({ top: Math.max(0, target), behavior: 'smooth' })
     } catch {
       /* ignore */
@@ -2030,7 +2026,7 @@ export function GameManager({
       )}
 
       {/* Status bar (stable layout, separate from toolbar) */}
-      <div className="snake-status" aria-live="polite">
+      <div ref={statusRef} className="snake-status" aria-live="polite">
         <div className="muted">
           Score: <span style={{ color: 'var(--text)' }}>{score}</span>
         </div>
