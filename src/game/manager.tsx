@@ -278,7 +278,7 @@ export function GameManager({
       const current = window.pageYOffset
       const desiredTop = previewsTopAbs - (window.innerHeight - 160)
       const target = Math.min(Math.max(current, desiredTop), statusTopAbs)
-      const OFFSET = 12 // reduce scroll so score line sits slightly below top
+      const OFFSET = 22 // slightly lower clamp to keep Score visible
       window.scrollTo({ top: Math.max(0, target - OFFSET), behavior: 'smooth' })
     } catch {
       /* ignore */
@@ -1125,6 +1125,54 @@ export function GameManager({
     }
   }, [playerName, conn])
 
+  // Ensure auto-generated player names are unique within the lobby by incrementing if needed
+  useEffect(() => {
+    if (!(mode === 'versus' && conn === 'connected')) return
+    if (nameSourceRef.current !== 'auto') return
+    const my = (playerNameRef.current || playerName || '').trim()
+    if (!my) return
+    const lower = my.toLowerCase()
+    const peers = new Set<string>()
+    for (const [pid, info] of Object.entries(players)) {
+      if (pid === myId) continue
+      const nm = (info.name || '').trim().toLowerCase()
+      if (nm) peers.add(nm)
+    }
+    if (!peers.has(lower)) return
+    // Bump Player number until unique
+    let next = my
+    const m = /^player(\d+)$/i.exec(my)
+    if (m) {
+      let n = Number(m[1])
+      let candidate = ''
+      do {
+        n += 1
+        candidate = `Player${n}`
+      } while (peers.has(candidate.toLowerCase()))
+      next = candidate
+    } else {
+      let n = 2
+      let candidate = ''
+      do {
+        candidate = `${my}${n}`
+        n += 1
+      } while (peers.has(candidate.toLowerCase()))
+      next = candidate
+    }
+    setPlayerName(next)
+    try {
+      localStorage.setItem(LS_PLAYER_NAME_KEY, next)
+      localStorage.setItem(LS_PLAYER_NAME_SOURCE_KEY, 'auto')
+    } catch {
+      /* ignore */
+    }
+    try {
+      netRef.current?.send({ type: 'name', name: next })
+    } catch {
+      /* noop */
+    }
+  }, [mode, conn, players, myId, playerName])
+
   // When switching to solo after a multiplayer session (including game over),
   // fully reset local game state and disconnect from WS to avoid re-triggering an over state.
   // Do this only on transitions from 'versus' -> 'solo' to preserve solo mid-round persistence.
@@ -1168,6 +1216,10 @@ export function GameManager({
         setMode('versus')
         setMultiStep('lobby')
         deepLinkConnectRef.current = true
+      }
+      // Default snake page should start scrolled to top
+      if (!m) {
+        window.scrollTo({ top: 0, behavior: 'auto' })
       }
     } catch {
       /* ignore */
