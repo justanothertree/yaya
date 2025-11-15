@@ -618,29 +618,42 @@ export function GameManager({
       const engine = engineRef.current!
       const { state, events } = engine.tick()
       rendererRef.current!.draw(state)
+      let ateThisTick = 0
+      let diedThisTick = false
       for (const ev of events) {
-        if (ev.type === 'eat') setApplesEaten((n) => n + 1)
-        else if (ev.type === 'die') {
-          setAlive(false)
+        if (ev.type === 'eat') {
+          ateThisTick += 1
+          setApplesEaten((n) => n + 1)
+        } else if (ev.type === 'die') {
+          diedThisTick = true
+        }
+      }
+      if (diedThisTick) {
+        setAlive(false)
+        try {
+          localStorage.removeItem(LS_PERSIST_KEY)
+        } catch {
+          /* ignore */
+        }
+        // Compute final score even if the snake died in the same tick as an eat
+        const finalScore = scoreFormula(applesEaten + ateThisTick)
+        setScore(finalScore)
+        if (mode === 'versus' && myId) {
+          roundScoresRef.current[myId] = finalScore
+        }
+        // Versus: notify peers with final score, then mark local finish
+        if (mode === 'versus' && myId) {
           try {
-            localStorage.removeItem(LS_PERSIST_KEY)
+            netRef.current?.send({ type: 'over', reason: 'die', score: finalScore })
           } catch {
-            /* ignore */
+            /* noop */
           }
-          // Versus: mark local finish and notify peers
-          if (mode === 'versus' && myId) {
-            registerFinish(myId)
-            try {
-              netRef.current?.send({ type: 'over', reason: 'die' })
-            } catch {
-              /* noop */
-            }
-          }
+          registerFinish(myId)
         }
       }
       if (state.alive) {
         if (startRef.current == null) startRef.current = performance.now()
-        const nextScore = scoreFormula(applesEaten + (events.some((e) => e.type === 'eat') ? 1 : 0))
+        const nextScore = scoreFormula(applesEaten + ateThisTick)
         setScore(nextScore)
         // Track our own score for results
         if (mode === 'versus' && myId) {
@@ -1030,6 +1043,11 @@ export function GameManager({
               const fromId = msg.from as string
               // Keep previews visible to avoid flicker; they'll be cleared on next round seed
               // remove player on quit, else just clear ready
+              // If the final score was provided, record it
+              if (typeof msg.score === 'number') {
+                const sc = Number(msg.score)
+                if (Number.isFinite(sc)) roundScoresRef.current[fromId] = sc
+              }
               setPlayers((map) => {
                 const next = { ...map }
                 if (msg.reason === 'quit') delete next[fromId]

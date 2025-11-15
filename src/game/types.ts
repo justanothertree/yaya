@@ -41,7 +41,7 @@ export type NetMessage =
   | { type: 'host'; hostId: string }
   | { type: 'restart' }
   | { type: 'tick'; n: number; score: number; from?: string }
-  | { type: 'over'; reason: 'die' | 'quit'; from?: string }
+  | { type: 'over'; reason: 'die' | 'quit'; from?: string; score?: number }
   | { type: 'input'; key: 'ArrowUp' | 'ArrowDown' | 'ArrowLeft' | 'ArrowRight' }
   | { type: 'presence'; count: number }
   | { type: 'ready'; from?: string }
