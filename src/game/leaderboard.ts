@@ -47,6 +47,46 @@ function startIsoFor(period: LeaderboardPeriod): string | null {
   return start.toISOString()
 }
 
+// Get next sequential player id number (max(id)+1) from player_registry
+export async function getNextPlayerIdNumber(): Promise<number | null> {
+  const { url, anon, playerTable } = envs()
+  const client = getClient()
+  if (client && url && anon) {
+    try {
+      const { data } = await client
+        .from(playerTable)
+        .select('id')
+        .order('id', { ascending: false })
+        .limit(1)
+      if (Array.isArray(data) && data.length > 0) {
+        const maxId = Number((data[0] as { id: number }).id)
+        if (Number.isFinite(maxId)) return maxId + 1
+      }
+      return 1
+    } catch {
+      /* fallthrough */
+    }
+  }
+  if (url && anon) {
+    try {
+      const endpoint = `${url}/rest/v1/${playerTable}?select=id&order=id.desc&limit=1`
+      const res = await fetch(endpoint, { headers: sbHeaders(anon) })
+      if (res.ok) {
+        const rows = (await res.json()) as Array<{ id: number }>
+        if (rows.length > 0) {
+          const maxId = Number(rows[0].id)
+          if (Number.isFinite(maxId)) return maxId + 1
+        } else {
+          return 1
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+  return null
+}
+
 // Ensure player exists in player_registry; return id
 async function ensurePlayerId(name: string): Promise<number | null> {
   const { url, anon, playerTable, nameCol } = envs()

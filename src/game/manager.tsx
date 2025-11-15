@@ -13,6 +13,7 @@ import {
   fetchTrophiesFor,
   awardTrophy,
   getLeaderboardIdFor,
+  getNextPlayerIdNumber,
 } from './leaderboard'
 import type { LeaderboardEntry, Mode, Settings, TrophyCounts } from './types'
 
@@ -122,6 +123,7 @@ export function GameManager({
   const [countdownEndAt, setCountdownEndAt] = useState<number | null>(null)
   const [myId, setMyId] = useState<string | null>(null)
   const [players, setPlayers] = useState<Record<string, { name?: string; ready?: boolean }>>({})
+  const prevModeRef = useRef<Mode>('solo')
   // Keep a Set of ids we've already inserted to avoid transient duplicate name entries on lobby join
   const seenPlayerIdsRef = useRef<Set<string>>(new Set())
   const [previews, setPreviews] = useState<
@@ -242,6 +244,29 @@ export function GameManager({
     }
     setRoundResults({ items: resultsItems, total: order.length })
     setShowResults(true)
+    // Host-only: submit all participants' scores to leaderboard/history
+    if (isHost) {
+      const nowIso = new Date().toISOString()
+      ;(async () => {
+        try {
+          for (const it of resultsItems) {
+            const nm = (it.name || 'Player').trim()
+            const sc = Number(it.score || 0)
+            if (!nm || sc <= 0) continue
+            await submitScore({ username: nm, score: sc, date: nowIso, gameMode: 'survival' })
+          }
+          // Refresh leaderboard after saves
+          try {
+            const top = await fetchLeaderboard(period, 15)
+            setLeaders(top)
+          } catch {
+            /* ignore */
+          }
+        } catch {
+          /* ignore */
+        }
+      })()
+    }
     // Host-only: award trophies (once per round) and refresh leaderboard
     if (isHost && roundAwardedRef.current !== thisRound) {
       roundAwardedRef.current = thisRound
@@ -474,6 +499,32 @@ export function GameManager({
   useEffect(() => {
     periodRef.current = period
   }, [period])
+
+  // If still using auto-generated name and Supabase is available,
+  // update default to a sequential Player{maxId+1}
+  useEffect(() => {
+    ;(async () => {
+      try {
+        if (nameSourceRef.current === 'custom') return
+        const nextNum = await getNextPlayerIdNumber()
+        if (!nextNum) return
+        const proposed = `Player${nextNum}`
+        const cur = (playerNameRef.current || '').trim()
+        // Only update if current name is empty or still an auto placeholder
+        if (!cur || /^Player[0-9A-Za-z]+$/.test(cur)) {
+          setPlayerName(proposed)
+          try {
+            localStorage.setItem(LS_PLAYER_NAME_KEY, proposed)
+            localStorage.setItem(LS_PLAYER_NAME_SOURCE_KEY, 'auto')
+          } catch {
+            /* ignore */
+          }
+        }
+      } catch {
+        /* ignore */
+      }
+    })()
+  }, [])
 
   // Game loop with session-epoch guard
   useEffect(() => {
@@ -805,7 +856,9 @@ export function GameManager({
             }
             deepRetryAttemptsRef.current = 0
             let selfName = playerName?.trim() || 'Player'
-            if (msg.visitor != null && nameSourceRef.current !== 'custom') {
+            // Do not override an existing auto/custom name with visitor numbering.
+            // Only apply visitor numbering if no name is set at all.
+            if ((selfName || '').trim() === '' && msg.visitor != null) {
               selfName = `Player${msg.visitor}`
               setPlayerName(selfName)
               try {
@@ -1011,8 +1064,11 @@ export function GameManager({
 
   // When switching to solo after a multiplayer session (including game over),
   // fully reset local game state and disconnect from WS to avoid re-triggering an over state.
+  // Do this only on transitions from 'versus' -> 'solo' to preserve solo mid-round persistence.
   useEffect(() => {
-    if (mode !== 'solo') return
+    const prev = prevModeRef.current
+    prevModeRef.current = mode
+    if (!(mode === 'solo' && prev === 'versus')) return
     try {
       netRef.current?.disconnect()
     } catch {
@@ -1036,11 +1092,6 @@ export function GameManager({
     setApplesEaten(0)
     startRef.current = null
     setEngineSeed(Math.floor(Math.random() * 1e9))
-    try {
-      localStorage.removeItem(LS_PERSIST_KEY)
-    } catch {
-      /* ignore */
-    }
   }, [mode])
 
   // Parse room from hash (e.g., #snake?room=abc123) on mount
@@ -1481,305 +1532,275 @@ export function GameManager({
                 </button>
               ))}
             </div>
-            {mode === 'solo' && (
-              <div className="controls-row">
-                <label
-                  className="muted"
-                  style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
-                >
-                  Name
-                  <input
-                    value={playerName}
-                    onChange={(e) => {
-                      setPlayerName(e.target.value)
-                      try {
-                        localStorage.setItem(LS_PLAYER_NAME_SOURCE_KEY, 'custom')
-                        nameSourceRef.current = 'custom'
-                      } catch {
-                        /* ignore */
-                      }
-                    }}
-                    placeholder="Your name"
-                    style={{
-                      padding: '0.5rem',
-                      borderRadius: 8,
-                      border: '1px solid var(--border)',
-                      background: 'transparent',
-                      color: 'var(--text)',
-                      minWidth: 160,
-                      width: '100%',
-                    }}
-                  />
-                </label>
-              </div>
-            )}
           </div>
 
-          {/* RIGHT: Multiplayer controls */}
-          {mode === 'versus' && wsUrl && (
-            <div className="mp-group">
-              <label
-                className="muted"
-                style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
-              >
-                Name
-                <input
-                  value={playerName}
-                  onChange={(e) => {
-                    setPlayerName(e.target.value)
-                    try {
-                      localStorage.setItem(LS_PLAYER_NAME_SOURCE_KEY, 'custom')
-                      nameSourceRef.current = 'custom'
-                    } catch {
-                      /* ignore */
-                    }
-                  }}
-                  placeholder="Your name"
-                  style={{
-                    padding: '0.5rem',
-                    borderRadius: 8,
-                    border: '1px solid var(--border)',
-                    background: 'transparent',
-                    color: 'var(--text)',
-                    minWidth: 160,
-                    width: '100%',
-                  }}
-                />
-              </label>
+          {/* RIGHT: Name input (always shown) + Multiplayer controls */}
+          <div className="mp-group">
+            <label
+              className="muted"
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+            >
+              Name
+              <input
+                value={playerName}
+                onChange={(e) => {
+                  setPlayerName(e.target.value)
+                  try {
+                    localStorage.setItem(LS_PLAYER_NAME_SOURCE_KEY, 'custom')
+                    nameSourceRef.current = 'custom'
+                  } catch {
+                    /* ignore */
+                  }
+                }}
+                placeholder="Your name"
+                style={{
+                  padding: '0.5rem',
+                  borderRadius: 8,
+                  border: '1px solid var(--border)',
+                  background: 'transparent',
+                  color: 'var(--text)',
+                  minWidth: 160,
+                  width: '100%',
+                }}
+              />
+            </label>
 
-              {/* Multiplayer stepper */}
-              {multiStep === 'landing' && (
-                <div className="controls-row">
-                  <button className="btn btn--wide" onClick={() => setMultiStep('create')}>
-                    Create lobby
-                  </button>
-                  <button className="btn btn--wide" onClick={() => setMultiStep('join')}>
-                    Join lobby
-                  </button>
-                </div>
-              )}
-              {multiStep === 'create' && (
-                <div className="controls-row" style={{ alignItems: 'center' }}>
-                  <label
-                    className="muted"
-                    style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
-                  >
-                    Room code
-                    <input
-                      value={room}
-                      onChange={(e) => {
-                        setRoom(e.target.value)
-                        if (joinError) setJoinError(null)
-                      }}
-                      placeholder="e.g. room-abc123"
-                      style={{
-                        padding: '0.5rem',
-                        borderRadius: 8,
-                        border: '1px solid var(--border)',
-                        background: 'transparent',
-                        color: 'var(--text)',
-                        minWidth: 160,
-                      }}
-                    />
-                  </label>
-                  {joinError && (
-                    <div className="muted" style={{ color: 'var(--danger)', fontSize: 12 }}>
-                      {joinError}
-                    </div>
-                  )}
-                  <button
-                    className="btn"
-                    onClick={async () => {
-                      const id = room.trim() || `room-${Math.random().toString(36).slice(2, 8)}`
-                      setRoom(id)
-                      setMode('versus')
-                      setMultiStep('lobby')
-                      const url = `${location.origin}${location.pathname}#snake?room=${encodeURIComponent(id)}`
-                      try {
-                        await navigator.clipboard.writeText(url)
-                      } catch {
-                        /* noop */
-                      }
-                      if (conn === 'connected') {
-                        netRef.current?.disconnect()
-                        setConn('disconnected')
-                        setTimeout(() => connectVs(id, true), 50)
-                      } else if (conn === 'disconnected') connectVs(id, true)
-                    }}
-                    disabled={joining}
-                  >
-                    Host
-                  </button>
-                  <button
-                    className="btn"
-                    onClick={() => {
-                      setJoinError(null)
-                      setMultiStep('landing')
-                    }}
-                  >
-                    Back
-                  </button>
-                </div>
-              )}
-              {multiStep === 'join' && (
-                <div className="controls-row" style={{ alignItems: 'center' }}>
-                  <label
-                    className="muted"
-                    style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
-                  >
-                    Room code
-                    <input
-                      value={room}
-                      onChange={(e) => setRoom(e.target.value)}
-                      placeholder="e.g. room-abc123"
-                      style={{
-                        padding: '0.5rem',
-                        borderRadius: 8,
-                        border: '1px solid var(--border)',
-                        background: 'transparent',
-                        color: 'var(--text)',
-                        minWidth: 160,
-                      }}
-                    />
-                  </label>
-                  <button
-                    className="btn"
-                    onClick={() => {
-                      if (joining) return
-                      const rc = room.trim()
-                      if (conn === 'disconnected' && rc) {
-                        connectVs(rc, false)
-                      }
-                    }}
-                    disabled={conn !== 'disconnected' || joining || !room.trim()}
-                  >
-                    Join
-                  </button>
-                  <button
-                    className="btn"
-                    onClick={() => {
-                      try {
-                        if (!wsUrl) return
-                        const ws = new WebSocket(wsUrl)
-                        let closed = false
-                        const t = window.setTimeout(() => {
-                          if (!closed) {
-                            closed = true
-                            try {
-                              ws.close()
-                            } catch {
-                              /* noop */
-                            }
-                          }
-                        }, 2000)
-                        ws.onopen = () => {
-                          try {
-                            ws.send(JSON.stringify({ type: 'list' }))
-                          } catch {
-                            /* noop */
-                          }
+            {mode === 'versus' && wsUrl && (
+              <>
+                {/* Multiplayer stepper */}
+                {multiStep === 'landing' && (
+                  <div className="controls-row">
+                    <button className="btn btn--wide" onClick={() => setMultiStep('create')}>
+                      Create lobby
+                    </button>
+                    <button className="btn btn--wide" onClick={() => setMultiStep('join')}>
+                      Join lobby
+                    </button>
+                  </div>
+                )}
+                {multiStep === 'create' && (
+                  <div className="controls-row" style={{ alignItems: 'center' }}>
+                    <label
+                      className="muted"
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                    >
+                      Room code
+                      <input
+                        value={room}
+                        onChange={(e) => {
+                          setRoom(e.target.value)
+                          if (joinError) setJoinError(null)
+                        }}
+                        placeholder="e.g. room-abc123"
+                        style={{
+                          padding: '0.5rem',
+                          borderRadius: 8,
+                          border: '1px solid var(--border)',
+                          background: 'transparent',
+                          color: 'var(--text)',
+                          minWidth: 160,
+                        }}
+                      />
+                    </label>
+                    {joinError && (
+                      <div className="muted" style={{ color: 'var(--danger)', fontSize: 12 }}>
+                        {joinError}
+                      </div>
+                    )}
+                    <button
+                      className="btn"
+                      onClick={async () => {
+                        const id = room.trim() || `room-${Math.random().toString(36).slice(2, 8)}`
+                        setRoom(id)
+                        setMode('versus')
+                        setMultiStep('lobby')
+                        const url = `${location.origin}${location.pathname}#snake?room=${encodeURIComponent(id)}`
+                        try {
+                          await navigator.clipboard.writeText(url)
+                        } catch {
+                          /* noop */
                         }
-                        ws.onmessage = (ev) => {
-                          try {
-                            const msg = JSON.parse(ev.data as string)
-                            if (msg && msg.type === 'rooms' && Array.isArray(msg.items)) {
-                              setRooms(msg.items)
-                              if (!closed) {
-                                closed = true
-                                window.clearTimeout(t)
-                                try {
-                                  ws.close()
-                                } catch {
-                                  /* noop */
-                                }
+                        if (conn === 'connected') {
+                          netRef.current?.disconnect()
+                          setConn('disconnected')
+                          setTimeout(() => connectVs(id, true), 50)
+                        } else if (conn === 'disconnected') connectVs(id, true)
+                      }}
+                      disabled={joining}
+                    >
+                      Host
+                    </button>
+                    <button
+                      className="btn"
+                      onClick={() => {
+                        setJoinError(null)
+                        setMultiStep('landing')
+                      }}
+                    >
+                      Back
+                    </button>
+                  </div>
+                )}
+                {multiStep === 'join' && (
+                  <div className="controls-row" style={{ alignItems: 'center' }}>
+                    <label
+                      className="muted"
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                    >
+                      Room code
+                      <input
+                        value={room}
+                        onChange={(e) => setRoom(e.target.value)}
+                        placeholder="e.g. room-abc123"
+                        style={{
+                          padding: '0.5rem',
+                          borderRadius: 8,
+                          border: '1px solid var(--border)',
+                          background: 'transparent',
+                          color: 'var(--text)',
+                          minWidth: 160,
+                        }}
+                      />
+                    </label>
+                    <button
+                      className="btn"
+                      onClick={() => {
+                        if (joining) return
+                        const rc = room.trim()
+                        if (conn === 'disconnected' && rc) {
+                          connectVs(rc, false)
+                        }
+                      }}
+                      disabled={conn !== 'disconnected' || joining || !room.trim()}
+                    >
+                      Join
+                    </button>
+                    <button
+                      className="btn"
+                      onClick={() => {
+                        try {
+                          if (!wsUrl) return
+                          const ws = new WebSocket(wsUrl)
+                          let closed = false
+                          const t = window.setTimeout(() => {
+                            if (!closed) {
+                              closed = true
+                              try {
+                                ws.close()
+                              } catch {
+                                /* noop */
                               }
                             }
-                          } catch {
-                            /* noop */
-                          }
-                        }
-                        ws.onerror = () => {
-                          if (!closed) {
-                            closed = true
-                            window.clearTimeout(t)
+                          }, 2000)
+                          ws.onopen = () => {
                             try {
-                              ws.close()
+                              ws.send(JSON.stringify({ type: 'list' }))
                             } catch {
                               /* noop */
                             }
                           }
-                        }
-                        ws.onclose = () => {
-                          if (!closed) {
-                            closed = true
-                            window.clearTimeout(t)
+                          ws.onmessage = (ev) => {
+                            try {
+                              const msg = JSON.parse(ev.data as string)
+                              if (msg && msg.type === 'rooms' && Array.isArray(msg.items)) {
+                                setRooms(msg.items)
+                                if (!closed) {
+                                  closed = true
+                                  window.clearTimeout(t)
+                                  try {
+                                    ws.close()
+                                  } catch {
+                                    /* noop */
+                                  }
+                                }
+                              }
+                            } catch {
+                              /* noop */
+                            }
                           }
+                          ws.onerror = () => {
+                            if (!closed) {
+                              closed = true
+                              window.clearTimeout(t)
+                              try {
+                                ws.close()
+                              } catch {
+                                /* noop */
+                              }
+                            }
+                          }
+                          ws.onclose = () => {
+                            if (!closed) {
+                              closed = true
+                              window.clearTimeout(t)
+                            }
+                          }
+                        } catch {
+                          /* noop */
                         }
-                      } catch {
-                        /* noop */
-                      }
-                    }}
-                  >
-                    Browse lobbies
-                  </button>
-                  <button className="btn" onClick={() => setMultiStep('landing')}>
-                    Back
-                  </button>
-                </div>
-              )}
-              {multiStep === 'lobby' && (
-                <div className="controls-row" style={{ alignItems: 'center' }}>
-                  <div className="muted">Room: {room || '—'}</div>
-                  <div className="muted">Players: {presence}</div>
-                  <div className="muted">
-                    {conn === 'connected'
-                      ? 'Connected'
-                      : conn === 'connecting'
-                        ? 'Connecting…'
-                        : 'Offline'}
+                      }}
+                    >
+                      Browse lobbies
+                    </button>
+                    <button className="btn" onClick={() => setMultiStep('landing')}>
+                      Back
+                    </button>
                   </div>
-                  <button
-                    className="btn"
-                    onClick={async () => {
-                      const code = room.trim()
-                      if (!code) return
-                      try {
-                        await navigator.clipboard.writeText(
-                          `${location.origin}${location.pathname}#snake?room=${encodeURIComponent(code)}`,
-                        )
-                      } catch {
-                        /* noop */
-                      }
-                    }}
-                  >
-                    Copy link
-                  </button>
-                  <button
-                    className="btn"
-                    onClick={() => {
-                      try {
-                        netRef.current?.disconnect()
-                      } catch {
-                        /* noop */
-                      }
-                      setConn('disconnected')
-                      setJoining(false)
-                      // isHost derives from hostId; reset hostId
-                      setHostId(null)
-                      setPresence(1)
-                      setPlayers({})
-                      setPreviews({})
-                      setReady(false)
-                      setCountdown(null)
-                      setMultiStep('landing')
-                    }}
-                  >
-                    Leave lobby
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
+                )}
+                {multiStep === 'lobby' && (
+                  <div className="controls-row" style={{ alignItems: 'center' }}>
+                    <div className="muted">Room: {room || '—'}</div>
+                    <div className="muted">Players: {presence}</div>
+                    <div className="muted">
+                      {conn === 'connected'
+                        ? 'Connected'
+                        : conn === 'connecting'
+                          ? 'Connecting…'
+                          : 'Offline'}
+                    </div>
+                    <button
+                      className="btn"
+                      onClick={async () => {
+                        const code = room.trim()
+                        if (!code) return
+                        try {
+                          await navigator.clipboard.writeText(
+                            `${location.origin}${location.pathname}#snake?room=${encodeURIComponent(code)}`,
+                          )
+                        } catch {
+                          /* noop */
+                        }
+                      }}
+                    >
+                      Copy link
+                    </button>
+                    <button
+                      className="btn"
+                      onClick={() => {
+                        try {
+                          netRef.current?.disconnect()
+                        } catch {
+                          /* noop */
+                        }
+                        setConn('disconnected')
+                        setJoining(false)
+                        // isHost derives from hostId; reset hostId
+                        setHostId(null)
+                        setPresence(1)
+                        setPlayers({})
+                        setPreviews({})
+                        setReady(false)
+                        setCountdown(null)
+                        setMultiStep('landing')
+                      }}
+                    >
+                      Leave lobby
+                    </button>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
         </div>
       </div>
 
