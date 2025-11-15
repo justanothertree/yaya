@@ -51,6 +51,13 @@ export type NetMessage =
   | { type: 'list' }
   | { type: 'rooms'; items: Array<{ id: string; name: string; count: number }> }
   | { type: 'error'; code: 'room-not-found' | 'bad-request' | string; message?: string }
+  | {
+      type: 'results'
+      roundId?: number
+      total: number
+      items: Array<{ id: string; name: string; score: number; place: number }>
+      from?: string
+    }
 
 export type ThemeColors = {
   bg: string

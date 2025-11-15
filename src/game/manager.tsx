@@ -311,6 +311,22 @@ export function GameManager({
       base.map((r, i) => ({ id: r.id, name: r.name, score: r.score, place: i + 1 }))
     setRoundResults({ items: resultsItems, total: participants.length })
     setShowResults(true)
+    // Broadcast results so all clients render identical data
+    try {
+      netRef.current?.send({
+        type: 'results',
+        roundId: thisRound,
+        total: participants.length,
+        items: resultsItems.map((r) => ({
+          id: r.id,
+          name: r.name,
+          score: r.score,
+          place: r.place,
+        })),
+      })
+    } catch {
+      /* noop */
+    }
     // Host-only: save scores, then award trophies, then refresh leaderboard (once per round)
     if (isHost && roundAwardedRef.current !== thisRound) {
       ;(async () => {
@@ -1056,6 +1072,24 @@ export function GameManager({
             setRooms(msg.items || [])
           } else if (msg.type === 'settings') {
             if (msg.settings) setSettings(msg.settings)
+          } else if (msg.type === 'results') {
+            // Host broadcast of final round results
+            if (msg && Array.isArray(msg.items) && typeof msg.total === 'number') {
+              try {
+                const items = msg.items as Array<{
+                  id: string
+                  name: string
+                  score: number
+                  place: number
+                }>
+                setRoundResults({ items, total: msg.total as number })
+                setShowResults(true)
+                // Round is finished from the UI perspective
+                roundActiveRef.current = false
+              } catch {
+                /* ignore */
+              }
+            }
           } else if (msg.type === 'host') {
             if (msg.hostId) {
               const prev = hostId
@@ -2345,6 +2379,41 @@ export function GameManager({
                 </div>
                 <div className="muted">
                   Last finalize: {debugInfo.lastFinalizeReason ? debugInfo.lastFinalizeReason : '—'}
+                </div>
+                <div style={{ marginTop: 6 }}>
+                  <button
+                    className="btn"
+                    onClick={async () => {
+                      try {
+                        const top = await fetchLeaderboard(period, 15)
+                        setLeaders(top)
+                        const ids = top
+                          .map((l) => l.id)
+                          .filter((v): v is number => typeof v === 'number')
+                        if (ids.length) {
+                          const t = await fetchTrophiesFor(ids)
+                          setTrophyMap(t)
+                        }
+                        const next = await getNextPlayerIdNumber()
+                        setDebugInfo((d) => ({ ...d, nextPlayerId: next }))
+                        setToast('Debug refreshed')
+                        if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current)
+                        toastTimerRef.current = window.setTimeout(
+                          () => setToast(null),
+                          1500,
+                        ) as unknown as number
+                      } catch {
+                        setToast('Refresh failed')
+                        if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current)
+                        toastTimerRef.current = window.setTimeout(
+                          () => setToast(null),
+                          1500,
+                        ) as unknown as number
+                      }
+                    }}
+                  >
+                    Refresh
+                  </button>
                 </div>
               </div>
             )
