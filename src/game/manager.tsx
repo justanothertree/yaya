@@ -134,6 +134,8 @@ export function GameManager({
   const prevModeRef = useRef<Mode>('solo')
   // Keep a Set of ids we've already inserted to avoid transient duplicate name entries on lobby join
   const seenPlayerIdsRef = useRef<Set<string>>(new Set())
+  // Track when we joined a lobby (to decide who should bump duplicate auto names)
+  const joinedAtRef = useRef<number | null>(null)
   const [previews, setPreviews] = useState<
     Record<string, { state: ReturnType<GameEngine['snapshot']>; score: number; name?: string }>
   >({})
@@ -275,11 +277,17 @@ export function GameManager({
       const canvasTopAbs = window.pageYOffset + rectCanvas.top
       const previewsTopAbs = window.pageYOffset + rectPrev.top
       const statusTopAbs = rectStatus ? window.pageYOffset + rectStatus.top : canvasTopAbs
-      const current = window.pageYOffset
-      const desiredTop = previewsTopAbs - (window.innerHeight - 160)
-      const target = Math.min(Math.max(current, desiredTop), statusTopAbs)
-      const OFFSET = 8 // keep just above status text
-      window.scrollTo({ top: Math.max(0, target - OFFSET), behavior: 'smooth' })
+      // current scroll position not needed with centered targeting
+      // Center the canvas vertically, so status sits above and previews fit below
+      const canvasCenterDesiredTop = canvasTopAbs - (window.innerHeight / 2 - rectCanvas.height / 2)
+      // Keep previews visible near the bottom edge, and status just above the top edge
+      const previewsLowerBound = previewsTopAbs - (window.innerHeight - 150)
+      const statusUpperBound = statusTopAbs - 8
+      const target = Math.min(
+        Math.max(canvasCenterDesiredTop, previewsLowerBound),
+        statusUpperBound,
+      )
+      window.scrollTo({ top: Math.max(0, target), behavior: 'smooth' })
     } catch {
       /* ignore */
     }
@@ -297,7 +305,9 @@ export function GameManager({
     // Compute placements by score descending, using finish order as a tie-breaker
     const finishOrder = [...roundFinishedRef.current]
     const participants = Array.from(roundParticipantsRef.current)
-    const base = participants.map((pid) => {
+    // Exclude participants who never sent any score update to avoid zero-score artifacts
+    const filtered = participants.filter((pid) => roundScoresRef.current[pid] != null)
+    const base = filtered.map((pid) => {
       const name = (roundNamesRef.current[pid] || 'Player').trim()
       const score = roundScoresRef.current[pid] ?? 0
       const finishIdx = finishOrder.indexOf(pid)
@@ -309,7 +319,7 @@ export function GameManager({
     })
     const resultsItems: Array<{ id: string; name: string; score: number; place: number }> =
       base.map((r, i) => ({ id: r.id, name: r.name, score: r.score, place: i + 1 }))
-    setRoundResults({ items: resultsItems, total: participants.length })
+    setRoundResults({ items: resultsItems, total: filtered.length })
     setShowResults(true)
     setDebugInfo((d) => ({ ...d, lastFinalizeReason: 'normal' }))
     // Broadcast results so all clients render identical data
@@ -918,6 +928,7 @@ export function GameManager({
           if (msg.type === 'welcome') {
             gotWelcome = true
             setMyId(msg.id)
+            joinedAtRef.current = Date.now()
             // Move into lobby on successful welcome (covers Join flow)
             setMultiStep('lobby')
             setJoinError(null)
@@ -1152,6 +1163,12 @@ export function GameManager({
     if (mode !== 'versus') return
     if (conn !== 'connected') return
     if (!playerName.trim()) return
+    if (roundActiveRef.current && alive) {
+      setToast('Round in progress — wait for next round')
+      if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current)
+      toastTimerRef.current = window.setTimeout(() => setToast(null), 1500) as unknown as number
+      return
+    }
     setReady(true)
     setPlayers((map) => {
       if (!myId) return map
@@ -1163,7 +1180,7 @@ export function GameManager({
     } catch {
       /* noop */
     }
-  }, [mode, conn, playerName, myId])
+  }, [mode, conn, playerName, myId, alive])
 
   // Solo scores auto-save; manual save handler removed
 
@@ -1183,6 +1200,8 @@ export function GameManager({
   useEffect(() => {
     if (!(mode === 'versus' && conn === 'connected')) return
     if (nameSourceRef.current !== 'auto') return
+    // Only adjust name shortly after we join to prefer older occupants keeping their name
+    if (!joinedAtRef.current || Date.now() - joinedAtRef.current > 8000) return
     const my = (playerNameRef.current || playerName || '').trim()
     if (!my) return
     const lower = my.toLowerCase()
@@ -1634,7 +1653,8 @@ export function GameManager({
                 aria-pressed={!paused}
                 title={paused ? 'Play' : 'Pause'}
                 disabled={
-                  mode === 'versus' && (!playerName.trim() || conn !== 'connected' || ready)
+                  mode === 'versus' &&
+                  (!playerName.trim() || conn !== 'connected' || ready || roundActiveRef.current)
                 }
               >
                 {mode === 'versus' ? (ready ? 'Ready ✓' : 'Ready') : paused ? 'Play' : 'Pause'}
@@ -1785,7 +1805,13 @@ export function GameManager({
                     >
                       Create lobby
                     </button>
-                    <button className="btn btn--wide" onClick={() => setMultiStep('join')}>
+                    <button
+                      className="btn btn--wide"
+                      onClick={() => {
+                        setRoom('')
+                        setMultiStep('join')
+                      }}
+                    >
                       Join lobby
                     </button>
                   </div>
@@ -2188,7 +2214,10 @@ export function GameManager({
               }}
               aria-pressed={!paused}
               title={paused ? 'Play' : 'Pause'}
-              disabled={mode === 'versus' && (!playerName.trim() || conn !== 'connected' || ready)}
+              disabled={
+                mode === 'versus' &&
+                (!playerName.trim() || conn !== 'connected' || ready || roundActiveRef.current)
+              }
             >
               {mode === 'versus' ? (ready ? 'Ready ✓' : 'Ready') : paused ? 'Play' : 'Pause'}
             </button>
