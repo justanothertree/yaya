@@ -278,7 +278,8 @@ export function GameManager({
       const current = window.pageYOffset
       const desiredTop = previewsTopAbs - (window.innerHeight - 160)
       const target = Math.min(Math.max(current, desiredTop), statusTopAbs)
-      window.scrollTo({ top: Math.max(0, target), behavior: 'smooth' })
+      const OFFSET = 12 // reduce scroll so score line sits slightly below top
+      window.scrollTo({ top: Math.max(0, target - OFFSET), behavior: 'smooth' })
     } catch {
       /* ignore */
     }
@@ -1719,6 +1720,13 @@ export function GameManager({
                         if (conn === 'connected') {
                           netRef.current?.disconnect()
                           setConn('disconnected')
+                          setPlayers({})
+                          setPreviews({})
+                          try {
+                            seenPlayerIdsRef.current.clear()
+                          } catch {
+                            /* noop */
+                          }
                           setTimeout(() => connectVs(id, true), 50)
                         } else if (conn === 'disconnected') connectVs(id, true)
                       }}
@@ -1849,6 +1857,13 @@ export function GameManager({
                           netRef.current?.disconnect()
                           setConn('disconnected')
                           setJoining(true)
+                          setPlayers({})
+                          setPreviews({})
+                          try {
+                            seenPlayerIdsRef.current.clear()
+                          } catch {
+                            /* noop */
+                          }
                           setTimeout(() => connectVs(id, true), 50)
                         } else if (conn === 'disconnected') connectVs(id, true)
                       }}
@@ -1999,10 +2014,15 @@ export function GameManager({
                 // Dedupe by display name to avoid transient duplicate rows (e.g., a placeholder 'Player')
                 const seen = new Set<string>()
                 const items: Array<{ id: string; name: string; ready?: boolean }> = []
+                const selfName = (playerNameRef.current || playerName || 'Player')
+                  .trim()
+                  .toLowerCase()
                 for (const [id, p] of Object.entries(players)) {
                   if (id === myId) continue
                   const nameRaw = (p.name || 'Player').trim()
                   const key = nameRaw.toLowerCase()
+                  // Skip any entry whose name matches our own (guards against stale duplicate self id)
+                  if (key === selfName) continue
                   if (seen.has(key)) continue
                   seen.add(key)
                   items.push({ id, name: nameRaw, ready: p.ready })
