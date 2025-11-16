@@ -1141,19 +1141,23 @@ export function GameManager({
               lastSeenRef.current[fromId] = Date.now()
               setPlayers((map) => {
                 const cur = map[fromId] || {}
-                // If currently spectating, keep them unready
-                const nextReady = cur.spectate ? false : true
-                return { ...map, [fromId]: { ...cur, ready: nextReady } }
+                // Trust explicit ready intent; do not gate on stale spectate flag
+                return { ...map, [fromId]: { ...cur, ready: true } }
               })
             }
           } else if (msg.type === 'spectate') {
             if (msg.from) {
               const fromId = msg.from
               lastSeenRef.current[fromId] = Date.now()
-              setPlayers((map) => ({
-                ...map,
-                [fromId]: { ...(map[fromId] || {}), spectate: !!msg.on, ready: false },
-              }))
+              setPlayers((map) => {
+                const cur = map[fromId] || {}
+                const turningOn = !!msg.on
+                // Only force ready=false when entering spectate; preserve ready when exiting
+                return {
+                  ...map,
+                  [fromId]: { ...cur, spectate: turningOn, ready: turningOn ? false : cur.ready },
+                }
+              })
             }
           } else if (msg.type === 'over') {
             if (msg.from) {
