@@ -376,9 +376,18 @@ export function GameManager({
           const g3 = placesSorted.length > 2 ? byPlace.get(placesSorted[2]) || [] : []
           const winners: Array<{ id: string; medal: 'gold' | 'silver' | 'bronze' }> = []
           for (const p of g1) if (p.score > 0) winners.push({ id: p.id, medal: 'gold' })
-          for (const p of g2) if (p.score > 0) winners.push({ id: p.id, medal: 'silver' })
-          if (g1.length === 1) {
-            for (const p of g3) if (p.score > 0) winners.push({ id: p.id, medal: 'bronze' })
+          if (g1.length > 1) {
+            // Tie at first: award silver only if at least two non-gold scorers exist; never bronze
+            const aliveNonGold = resultsItems.filter((x) => x.place !== 1 && x.score > 0)
+            if (aliveNonGold.length >= 2) {
+              for (const p of g2) if (p.score > 0) winners.push({ id: p.id, medal: 'silver' })
+            }
+          } else {
+            // Unique gold: silver to next occupied place; bronze only if silver is unique
+            for (const p of g2) if (p.score > 0) winners.push({ id: p.id, medal: 'silver' })
+            if (g2.length === 1) {
+              for (const p of g3) if (p.score > 0) winners.push({ id: p.id, medal: 'bronze' })
+            }
           }
           const awardsList: Array<{ name: string; medal: 'gold' | 'silver' | 'bronze' }> = []
           for (const w of winners) {
@@ -2386,8 +2395,14 @@ export function GameManager({
             const g3 = placesSorted.length > 2 ? byPlace.get(placesSorted[2]) || [] : []
             const medals = new Map<string, string>()
             for (const it of g1) medals.set(it.id, '🥇')
-            for (const it of g2) medals.set(it.id, '🥈')
-            if (g1.length === 1) for (const it of g3) medals.set(it.id, '🥉')
+            if (g1.length > 1) {
+              // Tie at first: silver only if at least two non-gold scorers exist; never bronze
+              const aliveNonGold = items.filter((x) => x.place !== 1 && x.score > 0)
+              if (aliveNonGold.length >= 2) for (const it of g2) medals.set(it.id, '🥈')
+            } else {
+              for (const it of g2) medals.set(it.id, '🥈')
+              if (g2.length === 1) for (const it of g3) medals.set(it.id, '🥉')
+            }
             return (
               <ol style={{ margin: 0, paddingLeft: '1.25rem' }}>
                 {items.map((it) => (
