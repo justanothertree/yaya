@@ -222,6 +222,7 @@ export function GameManager({
   const roundNamesRef = useRef<Record<string, string>>({})
   const roundAwardedRef = useRef<number | null>(null)
   const seedCountdownRef = useRef(false)
+  const roundCanceledRef = useRef(false)
   // Track last known scores per player during a round (for results UI)
   const roundScoresRef = useRef<Record<string, number>>({})
   // Results UI state for the last completed round
@@ -295,6 +296,7 @@ export function GameManager({
 
   // Register a player finishing the round; when all done, host awards trophies
   const tryFinalizeRound = useCallback(() => {
+    if (roundCanceledRef.current) return
     if (!roundActiveRef.current) return
     const total = roundParticipantsRef.current.size
     if (total === 0) return
@@ -957,6 +959,20 @@ export function GameManager({
           }
           setConn('disconnected')
           setJoining(false)
+          // Cancel any active round due to connection loss to avoid bogus finalization
+          if (roundActiveRef.current) {
+            roundCanceledRef.current = true
+            roundActiveRef.current = false
+            setShowResults(false)
+            setRoundResults(null)
+            setDebugInfo((d) => ({ ...d, lastFinalizeReason: 'timeout' }))
+            setToast('Round canceled: disconnected')
+            if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current)
+            toastTimerRef.current = window.setTimeout(
+              () => setToast(null),
+              2000,
+            ) as unknown as number
+          }
           setReady(false)
           setPlayers({})
           setPreviews({})
@@ -969,6 +985,19 @@ export function GameManager({
         onError: () => {
           setConn('disconnected')
           setJoining(false)
+          if (roundActiveRef.current) {
+            roundCanceledRef.current = true
+            roundActiveRef.current = false
+            setShowResults(false)
+            setRoundResults(null)
+            setDebugInfo((d) => ({ ...d, lastFinalizeReason: 'timeout' }))
+            setToast('Round canceled: connection error')
+            if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current)
+            toastTimerRef.current = window.setTimeout(
+              () => setToast(null),
+              2000,
+            ) as unknown as number
+          }
         },
         onMessage: (msg) => {
           if (msg.type === 'welcome') {
@@ -1398,15 +1427,20 @@ export function GameManager({
               window.setTimeout(() => {
                 if (!roundActiveRef.current) return
                 if (roundIdRef.current !== thisRound) return
-                // Mark any missing participants as finished to unblock finalize
+                // If not all players finished by timeout, cancel the round to avoid bogus awards
                 const total = roundParticipantsRef.current.size
                 if (total > 0 && roundFinishedRef.current.length < total) {
-                  const done = new Set(roundFinishedRef.current)
-                  for (const pid of roundParticipantsRef.current) {
-                    if (!done.has(pid)) roundFinishedRef.current.push(pid)
-                  }
+                  roundCanceledRef.current = true
+                  roundActiveRef.current = false
+                  setShowResults(false)
+                  setRoundResults(null)
                   setDebugInfo((d) => ({ ...d, lastFinalizeReason: 'timeout' }))
-                  tryFinalizeRound()
+                  setToast('Round canceled due to timeout')
+                  if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current)
+                  toastTimerRef.current = window.setTimeout(
+                    () => setToast(null),
+                    2000,
+                  ) as unknown as number
                 }
               }, 75000)
             } else {
