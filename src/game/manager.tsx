@@ -152,6 +152,7 @@ export function GameManager({
   })
   const [multiStep, setMultiStep] = useState<'landing' | 'create' | 'join' | 'lobby'>('landing')
   const [spectate, setSpectate] = useState(false)
+  const lastSpectateAnnounceRef = useRef<number>(0)
   const wsUrl = useMemo(() => {
     try {
       const raw = (import.meta as unknown as { env?: Record<string, string> }).env?.VITE_WS_URL
@@ -956,6 +957,12 @@ export function GameManager({
           } catch {
             /* noop */
           }
+          // Announce current spectate state on connect
+          try {
+            if (spectate) net.send({ type: 'spectate', on: true })
+          } catch {
+            /* noop */
+          }
         },
         onClose: () => {
           // If a round was active or gameplay was underway, salvage by switching to solo without reset
@@ -1044,6 +1051,12 @@ export function GameManager({
               seenPlayerIdsRef.current.add(msg.id)
               return { ...map, [msg.id]: { name: selfName, ready: false } }
             })
+            // Re-announce spectate state to ensure room sync
+            try {
+              if (spectate) netRef.current?.send({ type: 'spectate', on: true })
+            } catch {
+              /* noop */
+            }
             return
           }
           if (msg.type === 'error') {
@@ -1280,6 +1293,7 @@ export function GameManager({
       paused,
       alive,
       tryFinalizeRound,
+      spectate,
     ],
   )
 
@@ -1299,10 +1313,24 @@ export function GameManager({
     if (mode !== 'versus') return
     if (conn !== 'connected') return
     if (!playerName.trim()) return
+    // If spectating, exit spectate and ready up in one click
     if (spectate) {
-      setToast("You're spectating — click Join next round to play")
-      if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current)
-      toastTimerRef.current = window.setTimeout(() => setToast(null), 1500) as unknown as number
+      setSpectate(false)
+      setReady(true)
+      setPlayers((map) => {
+        if (!myId) return map
+        const cur = map[myId] || {}
+        return {
+          ...map,
+          [myId]: { ...cur, spectate: false, ready: true, name: cur.name || playerName },
+        }
+      })
+      try {
+        netRef.current?.send({ type: 'spectate', on: false })
+        netRef.current?.send({ type: 'ready' })
+      } catch {
+        /* noop */
+      }
       return
     }
     if (roundActiveRef.current && alive) {
@@ -1465,7 +1493,8 @@ export function GameManager({
         setCountdown(null)
         setCountdownEndAt(null)
         if (seedCountdownRef.current) {
-          setPaused(false)
+          // Spectators do not start local gameplay on new rounds
+          setPaused(!spectate)
           // Initialize round tracking with participants (ready players + self)
           try {
             const pset = new Set<string>()
@@ -1573,6 +1602,14 @@ export function GameManager({
         if (snap) {
           netRef.current?.send({ type: 'preview', state: snap, score, name: playerName })
         }
+        // Re-announce spectate state occasionally to ensure peers see it
+        if (spectate) {
+          const now = Date.now()
+          if (now - lastSpectateAnnounceRef.current > 1500) {
+            lastSpectateAnnounceRef.current = now
+            netRef.current?.send({ type: 'spectate', on: true })
+          }
+        }
       } catch {
         /* noop */
       }
@@ -1582,7 +1619,7 @@ export function GameManager({
     return () => {
       if (raf) window.clearTimeout(raf)
     }
-  }, [mode, conn, score, playerName, myId])
+  }, [mode, conn, score, playerName, myId, spectate])
 
   // shareRoomLink removed (inlined where needed)
 
@@ -1802,53 +1839,33 @@ export function GameManager({
                 title={paused ? 'Play' : 'Pause'}
                 disabled={
                   mode === 'versus' &&
-                  (!playerName.trim() ||
-                    conn !== 'connected' ||
-                    ready ||
-                    roundActiveRef.current ||
-                    spectate)
+                  (!playerName.trim() || conn !== 'connected' || ready || roundActiveRef.current)
                 }
               >
                 {mode === 'versus' ? (ready ? 'Ready ✓' : 'Ready') : paused ? 'Play' : 'Pause'}
               </button>
 
-              {mode === 'versus' &&
-                conn === 'connected' &&
-                (spectate ? (
-                  <button
-                    className="btn"
-                    onClick={() => {
-                      setSpectate(false)
-                      try {
-                        netRef.current?.send({ type: 'spectate', on: false })
-                      } catch {
-                        /* noop */
-                      }
-                    }}
-                  >
-                    Join next round
-                  </button>
-                ) : (
-                  <button
-                    className="btn"
-                    onClick={() => {
-                      setSpectate(true)
-                      setReady(false)
-                      setPlayers((map) => {
-                        if (!myId) return map
-                        const cur = map[myId] || {}
-                        return { ...map, [myId]: { ...cur, spectate: true, ready: false } }
-                      })
-                      try {
-                        netRef.current?.send({ type: 'spectate', on: true })
-                      } catch {
-                        /* noop */
-                      }
-                    }}
-                  >
-                    Spectate
-                  </button>
-                ))}
+              {mode === 'versus' && conn === 'connected' && !spectate && (
+                <button
+                  className="btn"
+                  onClick={() => {
+                    setSpectate(true)
+                    setReady(false)
+                    setPlayers((map) => {
+                      if (!myId) return map
+                      const cur = map[myId] || {}
+                      return { ...map, [myId]: { ...cur, spectate: true, ready: false } }
+                    })
+                    try {
+                      netRef.current?.send({ type: 'spectate', on: true })
+                    } catch {
+                      /* noop */
+                    }
+                  }}
+                >
+                  Spectate
+                </button>
+              )}
 
               <button
                 className="btn"
