@@ -130,7 +130,9 @@ export function GameManager({
   // Deadline-based countdown end time (epoch ms) to resist timer throttling or tab visibility quirks
   const [countdownEndAt, setCountdownEndAt] = useState<number | null>(null)
   const [myId, setMyId] = useState<string | null>(null)
-  const [players, setPlayers] = useState<Record<string, { name?: string; ready?: boolean }>>({})
+  const [players, setPlayers] = useState<
+    Record<string, { name?: string; ready?: boolean; spectate?: boolean }>
+  >({})
   const prevModeRef = useRef<Mode>('solo')
   // Keep a Set of ids we've already inserted to avoid transient duplicate name entries on lobby join
   const seenPlayerIdsRef = useRef<Set<string>>(new Set())
@@ -148,6 +150,7 @@ export function GameManager({
     }
   })
   const [multiStep, setMultiStep] = useState<'landing' | 'create' | 'join' | 'lobby'>('landing')
+  const [spectate, setSpectate] = useState(false)
   const wsUrl = useMemo(() => {
     try {
       const raw = (import.meta as unknown as { env?: Record<string, string> }).env?.VITE_WS_URL
@@ -1094,6 +1097,14 @@ export function GameManager({
               const fromId = msg.from
               setPlayers((map) => ({ ...map, [fromId]: { ...(map[fromId] || {}), ready: true } }))
             }
+          } else if (msg.type === 'spectate') {
+            if (msg.from) {
+              const fromId = msg.from
+              setPlayers((map) => ({
+                ...map,
+                [fromId]: { ...(map[fromId] || {}), spectate: !!msg.on, ready: false },
+              }))
+            }
           } else if (msg.type === 'over') {
             if (msg.from) {
               const fromId = msg.from as string
@@ -1237,6 +1248,12 @@ export function GameManager({
     if (mode !== 'versus') return
     if (conn !== 'connected') return
     if (!playerName.trim()) return
+    if (spectate) {
+      setToast("You're spectating — click Join next round to play")
+      if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current)
+      toastTimerRef.current = window.setTimeout(() => setToast(null), 1500) as unknown as number
+      return
+    }
     if (roundActiveRef.current && alive) {
       setToast('Round in progress — wait for next round')
       if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current)
@@ -1254,7 +1271,7 @@ export function GameManager({
     } catch {
       /* noop */
     }
-  }, [mode, conn, playerName, myId, alive])
+  }, [mode, conn, playerName, myId, alive, spectate])
 
   // Solo scores auto-save; manual save handler removed
 
@@ -1402,12 +1419,12 @@ export function GameManager({
           try {
             const pset = new Set<string>()
             const names: Record<string, string> = {}
-            if (myId && ready) {
+            if (myId && ready && !spectate) {
               pset.add(myId)
               names[myId] = playerName?.trim() || 'Player'
             }
             for (const [pid, info] of Object.entries(players)) {
-              if (info.ready) {
+              if (info.ready && !info.spectate) {
                 pset.add(pid)
                 names[pid] = (info.name || 'Player').trim()
               }
@@ -1492,6 +1509,7 @@ export function GameManager({
     onControlChange,
     focusCanvasAndScrollPreviews,
     tryFinalizeRound,
+    spectate,
   ])
 
   // Send lightweight preview of our current state periodically while running in versus
@@ -1544,8 +1562,9 @@ export function GameManager({
     if (countdown != null || seedCountdownRef.current || roundActiveRef.current) return
     const now = Date.now()
     if (now - lastAutoSeedTsRef.current < 1000) return
-    const others = Object.entries(players).filter(([pid]) => pid !== myId)
-    const allOthersReady = others.length > 0 && others.every(([, p]) => p.ready)
+    const others = Object.entries(players).filter(([pid, p]) => pid !== myId && !p.spectate)
+    const allOthersReady =
+      (others.length > 0 && others.every(([, p]) => p.ready)) || others.length === 0
     if (ready && allOthersReady) {
       lastAutoSeedTsRef.current = now
       try {
@@ -1732,11 +1751,53 @@ export function GameManager({
                 title={paused ? 'Play' : 'Pause'}
                 disabled={
                   mode === 'versus' &&
-                  (!playerName.trim() || conn !== 'connected' || ready || roundActiveRef.current)
+                  (!playerName.trim() ||
+                    conn !== 'connected' ||
+                    ready ||
+                    roundActiveRef.current ||
+                    spectate)
                 }
               >
                 {mode === 'versus' ? (ready ? 'Ready ✓' : 'Ready') : paused ? 'Play' : 'Pause'}
               </button>
+
+              {mode === 'versus' &&
+                conn === 'connected' &&
+                (spectate ? (
+                  <button
+                    className="btn"
+                    onClick={() => {
+                      setSpectate(false)
+                      try {
+                        netRef.current?.send({ type: 'spectate', on: false })
+                      } catch {
+                        /* noop */
+                      }
+                    }}
+                  >
+                    Join next round
+                  </button>
+                ) : (
+                  <button
+                    className="btn"
+                    onClick={() => {
+                      setSpectate(true)
+                      setReady(false)
+                      setPlayers((map) => {
+                        if (!myId) return map
+                        const cur = map[myId] || {}
+                        return { ...map, [myId]: { ...cur, spectate: true, ready: false } }
+                      })
+                      try {
+                        netRef.current?.send({ type: 'spectate', on: true })
+                      } catch {
+                        /* noop */
+                      }
+                    }}
+                  >
+                    Spectate
+                  </button>
+                ))}
 
               <button
                 className="btn"
@@ -2226,7 +2287,9 @@ export function GameManager({
                   <span>
                     {playerName?.trim() || 'You'} {isHost ? <em>(Host)</em> : null}
                   </span>
-                  <span style={{ marginLeft: 12 }}>{ready ? 'Ready ✓' : 'Not ready'}</span>
+                  <span style={{ marginLeft: 12 }}>
+                    {spectate ? 'Spectator' : ready ? 'Ready ✓' : 'Not ready'}
+                  </span>
                 </div>
               )}
               {(() => {
@@ -2255,7 +2318,9 @@ export function GameManager({
                     <span>
                       {name} {hostId === id ? <em>(Host)</em> : null}
                     </span>
-                    <span style={{ marginLeft: 12 }}>{ready ? 'Ready ✓' : 'Not ready'}</span>
+                    <span style={{ marginLeft: 12 }}>
+                      {players[id]?.spectate ? 'Spectator' : ready ? 'Ready ✓' : 'Not ready'}
+                    </span>
                   </div>
                 ))
               })()}
