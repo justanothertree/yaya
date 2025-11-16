@@ -122,6 +122,7 @@ export function GameManager({
   const [room, setRoom] = useState('')
   // Opponent score removed in multiplayer; track via previews instead
   const [presence, setPresence] = useState(1)
+  const prevPresenceRef = useRef<number>(1)
   const [conn, setConn] = useState<'disconnected' | 'connecting' | 'connected'>('disconnected')
   const [joining, setJoining] = useState(false)
   const [ready, setReady] = useState(false)
@@ -229,6 +230,8 @@ export function GameManager({
   const seedCountdownRef = useRef(false)
   // Track last known scores per player during a round (for results UI)
   const roundScoresRef = useRef<Record<string, number>>({})
+  // Track last time a peer was seen (any message with from) to detect silent disconnects
+  const lastSeenRef = useRef<Record<string, number>>({})
   // Results UI state for the last completed round
   const [roundResults, setRoundResults] = useState<null | {
     items: Array<{ id: string; name: string; score: number; place: number }>
@@ -378,18 +381,24 @@ export function GameManager({
           const g2 = placesSorted.length > 1 ? byPlace.get(placesSorted[1]) || [] : []
           const g3 = placesSorted.length > 2 ? byPlace.get(placesSorted[2]) || [] : []
           const winners: Array<{ id: string; medal: 'gold' | 'silver' | 'bronze' }> = []
+          const participantCount = resultsItems.length
+          // Always award gold group (score>0)
           for (const p of g1) if (p.score > 0) winners.push({ id: p.id, medal: 'gold' })
-          if (g1.length > 1) {
-            // Tie at first: award silver only if at least two non-gold scorers exist; never bronze
-            const aliveNonGold = resultsItems.filter((x) => x.place !== 1 && x.score > 0)
-            if (aliveNonGold.length >= 2) {
+          if (participantCount >= 3) {
+            // Consider silver only if at least 3 participants existed
+            if (g1.length > 1) {
+              // Tie at first: silver only if at least two non-gold scorers exist (still requires >=3 participants)
+              const aliveNonGold = resultsItems.filter((x) => x.place !== 1 && x.score > 0)
+              if (aliveNonGold.length >= 2) {
+                for (const p of g2) if (p.score > 0) winners.push({ id: p.id, medal: 'silver' })
+              }
+            } else {
+              // Unique gold: always award silver group (score>0)
               for (const p of g2) if (p.score > 0) winners.push({ id: p.id, medal: 'silver' })
-            }
-          } else {
-            // Unique gold: silver to next occupied place; bronze only if silver is unique
-            for (const p of g2) if (p.score > 0) winners.push({ id: p.id, medal: 'silver' })
-            if (g2.length === 1) {
-              for (const p of g3) if (p.score > 0) winners.push({ id: p.id, medal: 'bronze' })
+              // Bronze only if >=4 participants AND silver unique AND gold unique
+              if (participantCount >= 4 && g2.length === 1) {
+                for (const p of g3) if (p.score > 0) winners.push({ id: p.id, medal: 'bronze' })
+              }
             }
           }
           const awardsList: Array<{ name: string; medal: 'gold' | 'silver' | 'bronze' }> = []
@@ -1090,16 +1099,41 @@ export function GameManager({
             // Clear previews to avoid stale tiles at start of a new round
             setPreviews({})
           } else if (msg.type === 'presence') {
-            setPresence(Math.max(1, msg.count || 1))
+            const newCount = Math.max(1, msg.count || 1)
+            const prevCount = prevPresenceRef.current || 1
+            prevPresenceRef.current = newCount
+            setPresence(newCount)
+            // Only consider pruning silent peers if total presence actually dropped
+            if (roundActiveRef.current && newCount < prevCount) {
+              const nowTs = Date.now()
+              const doneSet = new Set(roundFinishedRef.current)
+              let touched = false
+              for (const pid of Array.from(roundParticipantsRef.current)) {
+                if (pid === myId) continue
+                const last = lastSeenRef.current[pid] || 0
+                if (nowTs - last > 5000 && !doneSet.has(pid)) {
+                  roundParticipantsRef.current.delete(pid)
+                  touched = true
+                }
+              }
+              if (touched) tryFinalizeRound()
+            }
           } else if (msg.type === 'ready') {
             // Mark peer ready in players map (server doesn't echo to sender)
             if (msg.from && (!myId || msg.from !== myId)) {
               const fromId = msg.from
-              setPlayers((map) => ({ ...map, [fromId]: { ...(map[fromId] || {}), ready: true } }))
+              lastSeenRef.current[fromId] = Date.now()
+              setPlayers((map) => {
+                const cur = map[fromId] || {}
+                // If currently spectating, keep them unready
+                const nextReady = cur.spectate ? false : true
+                return { ...map, [fromId]: { ...cur, ready: nextReady } }
+              })
             }
           } else if (msg.type === 'spectate') {
             if (msg.from) {
               const fromId = msg.from
+              lastSeenRef.current[fromId] = Date.now()
               setPlayers((map) => ({
                 ...map,
                 [fromId]: { ...(map[fromId] || {}), spectate: !!msg.on, ready: false },
@@ -1108,6 +1142,7 @@ export function GameManager({
           } else if (msg.type === 'over') {
             if (msg.from) {
               const fromId = msg.from as string
+              lastSeenRef.current[fromId] = Date.now()
               // Keep previews visible to avoid flicker; they'll be cleared on next round seed
               // remove player on quit, else just clear ready
               // If the final score was provided, record it
@@ -1128,6 +1163,7 @@ export function GameManager({
             // Ignore our own preview
             if (msg.from && myId && msg.from === myId) return
             const from = msg.from || 'peer'
+            if (msg.from) lastSeenRef.current[msg.from] = Date.now()
             setPreviews((map) => ({
               ...map,
               [from]: { state: msg.state, score: msg.score, name: msg.name },
@@ -1149,6 +1185,7 @@ export function GameManager({
           } else if (msg.type === 'tick') {
             // Track peer scores even if a preview hasn't arrived yet
             if (msg.from && myId && msg.from !== myId) {
+              lastSeenRef.current[msg.from] = Date.now()
               const sc = Number(msg.score ?? 0)
               if (Number.isFinite(sc)) {
                 roundScoresRef.current[msg.from] = sc
@@ -1156,6 +1193,7 @@ export function GameManager({
             }
           } else if (msg.type === 'name') {
             if (msg.from) {
+              lastSeenRef.current[msg.from] = Date.now()
               const fromId = msg.from
               setPlayers((map) => ({
                 ...map,
@@ -1229,7 +1267,20 @@ export function GameManager({
       net.connect(roomOverride ?? room, { create })
     },
     // 'countdown' removed from deps (not referenced inside connectVs) to satisfy lint
-    [wsUrl, room, roomName, playerName, myId, conn, hostId, registerFinish, mode, paused, alive],
+    [
+      wsUrl,
+      room,
+      roomName,
+      playerName,
+      myId,
+      conn,
+      hostId,
+      registerFinish,
+      mode,
+      paused,
+      alive,
+      tryFinalizeRound,
+    ],
   )
 
   const doRestart = () => {
@@ -2335,6 +2386,7 @@ export function GameManager({
           Score: <span style={{ color: 'var(--text)' }}>{score}</span>
         </div>
         {paused && <div className="muted">Paused</div>}
+        {mode === 'versus' && spectate && <div className="muted">Spectating</div>}
         {mode === 'versus' && countdown != null && (
           <div className="muted" aria-live="assertive">
             Starting in… {countdown}
@@ -2359,7 +2411,11 @@ export function GameManager({
               title={paused ? 'Play' : 'Pause'}
               disabled={
                 mode === 'versus' &&
-                (!playerName.trim() || conn !== 'connected' || ready || roundActiveRef.current)
+                (!playerName.trim() ||
+                  conn !== 'connected' ||
+                  ready ||
+                  roundActiveRef.current ||
+                  spectate)
               }
             >
               {mode === 'versus' ? (ready ? 'Ready ✓' : 'Ready') : paused ? 'Play' : 'Pause'}
@@ -2459,14 +2515,17 @@ export function GameManager({
             const g2 = placesSorted.length > 1 ? byPlace.get(placesSorted[1]) || [] : []
             const g3 = placesSorted.length > 2 ? byPlace.get(placesSorted[2]) || [] : []
             const medals = new Map<string, string>()
+            const participantCount = items.length
             for (const it of g1) medals.set(it.id, '🥇')
-            if (g1.length > 1) {
-              // Tie at first: silver only if at least two non-gold scorers exist; never bronze
-              const aliveNonGold = items.filter((x) => x.place !== 1 && x.score > 0)
-              if (aliveNonGold.length >= 2) for (const it of g2) medals.set(it.id, '🥈')
-            } else {
-              for (const it of g2) medals.set(it.id, '🥈')
-              if (g2.length === 1) for (const it of g3) medals.set(it.id, '🥉')
+            if (participantCount >= 3) {
+              if (g1.length > 1) {
+                const aliveNonGold = items.filter((x) => x.place !== 1 && x.score > 0)
+                if (aliveNonGold.length >= 2) for (const it of g2) medals.set(it.id, '🥈')
+              } else {
+                for (const it of g2) medals.set(it.id, '🥈')
+                if (participantCount >= 4 && g2.length === 1)
+                  for (const it of g3) medals.set(it.id, '🥉')
+              }
             }
             return (
               <ol style={{ margin: 0, paddingLeft: '1.25rem' }}>
