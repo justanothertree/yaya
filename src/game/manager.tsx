@@ -173,6 +173,8 @@ export function GameManager({
   const isCoarseRef = useRef(false)
   const suppressBlurPauseRef = useRef(false)
   const statusRef = useRef<HTMLDivElement>(null)
+  // If true, switching to solo should not reset the current game state
+  const preserveSoloSwitchRef = useRef(false)
   // immersive/fullscreen disabled for now
   const restoredRef = useRef(false)
   const deepLinkConnectRef = useRef(false)
@@ -222,7 +224,6 @@ export function GameManager({
   const roundNamesRef = useRef<Record<string, string>>({})
   const roundAwardedRef = useRef<number | null>(null)
   const seedCountdownRef = useRef(false)
-  const roundCanceledRef = useRef(false)
   // Track last known scores per player during a round (for results UI)
   const roundScoresRef = useRef<Record<string, number>>({})
   // Results UI state for the last completed round
@@ -296,7 +297,6 @@ export function GameManager({
 
   // Register a player finishing the round; when all done, host awards trophies
   const tryFinalizeRound = useCallback(() => {
-    if (roundCanceledRef.current) return
     if (!roundActiveRef.current) return
     const total = roundParticipantsRef.current.size
     if (total === 0) return
@@ -947,6 +947,17 @@ export function GameManager({
           }
         },
         onClose: () => {
+          // If a round was active or gameplay was underway, salvage by switching to solo without reset
+          if (mode === 'versus' && (roundActiveRef.current || (!paused && alive))) {
+            preserveSoloSwitchRef.current = true
+            setMode('solo')
+            setToast('Lobby offline — continuing solo')
+            if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current)
+            toastTimerRef.current = window.setTimeout(
+              () => setToast(null),
+              2000,
+            ) as unknown as number
+          }
           // If hosting and the socket closed before welcome, try a few quick silent retries
           if (create && !gotWelcome && createAttempts < 3) {
             createAttempts += 1
@@ -959,20 +970,6 @@ export function GameManager({
           }
           setConn('disconnected')
           setJoining(false)
-          // Cancel any active round due to connection loss to avoid bogus finalization
-          if (roundActiveRef.current) {
-            roundCanceledRef.current = true
-            roundActiveRef.current = false
-            setShowResults(false)
-            setRoundResults(null)
-            setDebugInfo((d) => ({ ...d, lastFinalizeReason: 'timeout' }))
-            setToast('Round canceled: disconnected')
-            if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current)
-            toastTimerRef.current = window.setTimeout(
-              () => setToast(null),
-              2000,
-            ) as unknown as number
-          }
           setReady(false)
           setPlayers({})
           setPreviews({})
@@ -983,21 +980,19 @@ export function GameManager({
           }
         },
         onError: () => {
-          setConn('disconnected')
-          setJoining(false)
-          if (roundActiveRef.current) {
-            roundCanceledRef.current = true
-            roundActiveRef.current = false
-            setShowResults(false)
-            setRoundResults(null)
-            setDebugInfo((d) => ({ ...d, lastFinalizeReason: 'timeout' }))
-            setToast('Round canceled: connection error')
+          // Similar salvage on error
+          if (mode === 'versus' && (roundActiveRef.current || (!paused && alive))) {
+            preserveSoloSwitchRef.current = true
+            setMode('solo')
+            setToast('Connection lost — continuing solo')
             if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current)
             toastTimerRef.current = window.setTimeout(
               () => setToast(null),
               2000,
             ) as unknown as number
           }
+          setConn('disconnected')
+          setJoining(false)
         },
         onMessage: (msg) => {
           if (msg.type === 'welcome') {
@@ -1224,7 +1219,7 @@ export function GameManager({
       net.connect(roomOverride ?? room, { create })
     },
     // 'countdown' removed from deps (not referenced inside connectVs) to satisfy lint
-    [wsUrl, room, roomName, playerName, myId, conn, hostId, registerFinish],
+    [wsUrl, room, roomName, playerName, myId, conn, hostId, registerFinish, mode, paused, alive],
   )
 
   const doRestart = () => {
@@ -1346,16 +1341,20 @@ export function GameManager({
     setPreviews({})
     setPlayers({})
     setPresence(1)
-    // Cancel any pending death animation completions from previous session
-    deathAnimTokenRef.current += 1
-    // Invalidate any in-flight game loop ticks
-    sessionEpochRef.current += 1
-    setAlive(true)
-    setPaused(true)
-    setScore(0)
-    setApplesEaten(0)
-    startRef.current = null
-    setEngineSeed(Math.floor(Math.random() * 1e9))
+    if (!preserveSoloSwitchRef.current) {
+      // Full reset when manually switching to solo
+      deathAnimTokenRef.current += 1
+      sessionEpochRef.current += 1
+      setAlive(true)
+      setPaused(true)
+      setScore(0)
+      setApplesEaten(0)
+      startRef.current = null
+      setEngineSeed(Math.floor(Math.random() * 1e9))
+    } else {
+      // Preserve current run; just clear the flag for future switches
+      preserveSoloSwitchRef.current = false
+    }
   }, [mode])
 
   // Parse room from hash (e.g., #snake?room=abc123) on mount
@@ -1427,20 +1426,15 @@ export function GameManager({
               window.setTimeout(() => {
                 if (!roundActiveRef.current) return
                 if (roundIdRef.current !== thisRound) return
-                // If not all players finished by timeout, cancel the round to avoid bogus awards
+                // Mark any missing participants as finished to unblock finalize
                 const total = roundParticipantsRef.current.size
                 if (total > 0 && roundFinishedRef.current.length < total) {
-                  roundCanceledRef.current = true
-                  roundActiveRef.current = false
-                  setShowResults(false)
-                  setRoundResults(null)
+                  const done = new Set(roundFinishedRef.current)
+                  for (const pid of roundParticipantsRef.current) {
+                    if (!done.has(pid)) roundFinishedRef.current.push(pid)
+                  }
                   setDebugInfo((d) => ({ ...d, lastFinalizeReason: 'timeout' }))
-                  setToast('Round canceled due to timeout')
-                  if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current)
-                  toastTimerRef.current = window.setTimeout(
-                    () => setToast(null),
-                    2000,
-                  ) as unknown as number
+                  tryFinalizeRound()
                 }
               }, 75000)
             } else {
