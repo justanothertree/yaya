@@ -361,34 +361,24 @@ export function GameManager({
             if (!nm || sc <= 0) continue
             await submitScore({ username: nm, score: sc, date: nowIso, gameMode: 'survival' })
           }
-          // Determine medals using standard competition ranking, with tie-aware rules:
-          // - If there is a tie for 1st (multiple place=1), award gold to all of them; no silver/bronze.
-          // - Else (unique gold):
-          //   - If there is a tie for 2nd (multiple place=2), award silver to all; no bronze.
-          //   - Else (unique silver): if there is a place=3 group, award bronze to all in place=3.
-          const groups = new Map<number, Array<{ id: string; name: string; score: number }>>()
+          // Determine medals using standard competition ranking, tie-aware per examples:
+          // - Always award gold to all in the top score group (place=1).
+          // - Silver goes to the next occupied place after gold (even if place number is 3 due to a tie at 1).
+          // - Bronze goes to the next occupied place after silver ONLY if gold was unique.
+          const byPlace = new Map<number, Array<{ id: string; name: string; score: number }>>()
           for (const it of resultsItems) {
-            if (!groups.has(it.place)) groups.set(it.place, [])
-            groups.get(it.place)!.push({ id: it.id, name: it.name, score: it.score })
+            if (!byPlace.has(it.place)) byPlace.set(it.place, [])
+            byPlace.get(it.place)!.push({ id: it.id, name: it.name, score: it.score })
           }
-          const g1 = groups.get(1) || []
-          const g2 = groups.get(2) || []
-          const g3 = groups.get(3) || []
+          const placesSorted = Array.from(byPlace.keys()).sort((a, b) => a - b)
+          const g1 = placesSorted.length > 0 ? byPlace.get(placesSorted[0]) || [] : []
+          const g2 = placesSorted.length > 1 ? byPlace.get(placesSorted[1]) || [] : []
+          const g3 = placesSorted.length > 2 ? byPlace.get(placesSorted[2]) || [] : []
           const winners: Array<{ id: string; medal: 'gold' | 'silver' | 'bronze' }> = []
-          if (g1.length >= 1) {
-            // Always award gold to place 1, but only award other medals if no tie at 1
-            for (const p of g1) if (p.score > 0) winners.push({ id: p.id, medal: 'gold' })
-            if (g1.length === 1) {
-              if (g2.length >= 1) {
-                // If tie for silver, award silver to tied group and stop
-                if (g2.length > 1) {
-                  for (const p of g2) if (p.score > 0) winners.push({ id: p.id, medal: 'silver' })
-                } else if (g3.length >= 1) {
-                  // Unique silver; award bronze to place 3 group
-                  for (const p of g3) if (p.score > 0) winners.push({ id: p.id, medal: 'bronze' })
-                }
-              }
-            }
+          for (const p of g1) if (p.score > 0) winners.push({ id: p.id, medal: 'gold' })
+          for (const p of g2) if (p.score > 0) winners.push({ id: p.id, medal: 'silver' })
+          if (g1.length === 1) {
+            for (const p of g3) if (p.score > 0) winners.push({ id: p.id, medal: 'bronze' })
           }
           const awardsList: Array<{ name: string; medal: 'gold' | 'silver' | 'bronze' }> = []
           for (const w of winners) {
@@ -2384,18 +2374,20 @@ export function GameManager({
           </div>
           {(() => {
             const items = roundResults.items
-            const total = roundResults.total
-            const countPlace = (p: number) => items.filter((x) => x.place === p).length
-            const c1 = countPlace(1)
-            const c2 = countPlace(2)
-            const medalFor = (it: { place: number; score: number }) => {
-              if (it.place === 1) return '🥇'
-              if (c1 > 1) return '' // tie for 1st => no silver/bronze
-              if (it.place === 2) return total >= 3 ? '🥈' : ''
-              if (c2 > 1) return '' // tie for 2nd => no bronze
-              if (it.place === 3) return total >= 4 ? '🥉' : ''
-              return ''
+            // Group by place ascending (1, then next occupied place, etc.)
+            const byPlace = new Map<number, typeof items>()
+            for (const it of items) {
+              if (!byPlace.has(it.place)) byPlace.set(it.place, [])
+              byPlace.get(it.place)!.push(it)
             }
+            const placesSorted = Array.from(byPlace.keys()).sort((a, b) => a - b)
+            const g1 = placesSorted.length > 0 ? byPlace.get(placesSorted[0]) || [] : []
+            const g2 = placesSorted.length > 1 ? byPlace.get(placesSorted[1]) || [] : []
+            const g3 = placesSorted.length > 2 ? byPlace.get(placesSorted[2]) || [] : []
+            const medals = new Map<string, string>()
+            for (const it of g1) medals.set(it.id, '🥇')
+            for (const it of g2) medals.set(it.id, '🥈')
+            if (g1.length === 1) for (const it of g3) medals.set(it.id, '🥉')
             return (
               <ol style={{ margin: 0, paddingLeft: '1.25rem' }}>
                 {items.map((it) => (
@@ -2403,7 +2395,7 @@ export function GameManager({
                     <strong style={{ color: 'var(--text)' }}>
                       {profanityFilter.clean(it.name)}
                     </strong>{' '}
-                    — {it.score} {medalFor(it)}
+                    — {it.score} {medals.get(it.id) || ''}
                   </li>
                 ))}
               </ol>
