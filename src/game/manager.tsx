@@ -2302,7 +2302,7 @@ export function GameManager({
       {mode === 'versus' && multiStep !== 'landing' && (
         <div
           className="card"
-          style={{ marginTop: 8, padding: 10, maxHeight: 150, overflowY: 'auto', minHeight: 90 }}
+          style={{ marginTop: 8, padding: 10, maxHeight: 190, overflowY: 'auto', minHeight: 90 }}
         >
           <div className="muted" style={{ fontWeight: 600, marginBottom: 6 }}>
             {multiStep === 'lobby' ? (
@@ -2523,7 +2523,11 @@ export function GameManager({
                 <Preview
                   key={id}
                   state={p.state}
-                  title={`${p.name || 'Player'} — ${p.score}${players[id]?.ready ? ' ✓' : ''}`}
+                  title={`${p.name || 'Player'} — ${
+                    players[id]?.spectate
+                      ? 'Spectating'
+                      : `${p.score}${players[id]?.ready ? ' ✓' : ''}`
+                  }`}
                 />
               ))}
             </div>
