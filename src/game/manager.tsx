@@ -317,8 +317,17 @@ export function GameManager({
       if (b.score !== a.score) return b.score - a.score
       return a.finishIdx - b.finishIdx
     })
-    const resultsItems: Array<{ id: string; name: string; score: number; place: number }> =
-      base.map((r, i) => ({ id: r.id, name: r.name, score: r.score, place: i + 1 }))
+    // Compute standard-competition places (1,1,3) based on equal scores sharing the same place
+    const resultsItems: Array<{ id: string; name: string; score: number; place: number }> = []
+    let prevScore: number | null = null
+    let prevPlace = 0
+    for (let i = 0; i < base.length; i++) {
+      const r = base[i]
+      const place = prevScore != null && r.score === prevScore ? prevPlace : i + 1
+      resultsItems.push({ id: r.id, name: r.name, score: r.score, place })
+      prevScore = r.score
+      prevPlace = place
+    }
     setRoundResults({ items: resultsItems, total: filtered.length })
     setShowResults(true)
     setDebugInfo((d) => ({ ...d, lastFinalizeReason: 'normal' }))
@@ -350,11 +359,35 @@ export function GameManager({
             if (!nm || sc <= 0) continue
             await submitScore({ username: nm, score: sc, date: nowIso, gameMode: 'survival' })
           }
-          const n = total
+          // Determine medals using standard competition ranking, with tie-aware rules:
+          // - If there is a tie for 1st (multiple place=1), award gold to all of them; no silver/bronze.
+          // - Else (unique gold):
+          //   - If there is a tie for 2nd (multiple place=2), award silver to all; no bronze.
+          //   - Else (unique silver): if there is a place=3 group, award bronze to all in place=3.
+          const groups = new Map<number, Array<{ id: string; name: string; score: number }>>()
+          for (const it of resultsItems) {
+            if (!groups.has(it.place)) groups.set(it.place, [])
+            groups.get(it.place)!.push({ id: it.id, name: it.name, score: it.score })
+          }
+          const g1 = groups.get(1) || []
+          const g2 = groups.get(2) || []
+          const g3 = groups.get(3) || []
           const winners: Array<{ id: string; medal: 'gold' | 'silver' | 'bronze' }> = []
-          if (resultsItems[0]) winners.push({ id: resultsItems[0].id, medal: 'gold' })
-          if (n >= 3 && resultsItems[1]) winners.push({ id: resultsItems[1].id, medal: 'silver' })
-          if (n >= 4 && resultsItems[2]) winners.push({ id: resultsItems[2].id, medal: 'bronze' })
+          if (g1.length >= 1) {
+            // Always award gold to place 1, but only award other medals if no tie at 1
+            for (const p of g1) if (p.score > 0) winners.push({ id: p.id, medal: 'gold' })
+            if (g1.length === 1) {
+              if (g2.length >= 1) {
+                // If tie for silver, award silver to tied group and stop
+                if (g2.length > 1) {
+                  for (const p of g2) if (p.score > 0) winners.push({ id: p.id, medal: 'silver' })
+                } else if (g3.length >= 1) {
+                  // Unique silver; award bronze to place 3 group
+                  for (const p of g3) if (p.score > 0) winners.push({ id: p.id, medal: 'bronze' })
+                }
+              }
+            }
+          }
           const awardsList: Array<{ name: string; medal: 'gold' | 'silver' | 'bronze' }> = []
           for (const w of winners) {
             const name = roundNamesRef.current[w.id]?.trim() || 'Player'
@@ -2321,25 +2354,33 @@ export function GameManager({
           <div className="muted" style={{ fontWeight: 600, marginBottom: 6 }}>
             Round results
           </div>
-          <ol style={{ margin: 0, paddingLeft: '1.25rem' }}>
-            {roundResults.items.map((it) => {
-              const n = roundResults.total
-              const medal =
-                it.place === 1
-                  ? '🥇'
-                  : it.place === 2 && n >= 3
-                    ? '🥈'
-                    : it.place === 3 && n >= 4
-                      ? '🥉'
-                      : ''
-              return (
-                <li key={it.id} className="muted">
-                  <strong style={{ color: 'var(--text)' }}>{profanityFilter.clean(it.name)}</strong>{' '}
-                  — {it.score} {medal}
-                </li>
-              )
-            })}
-          </ol>
+          {(() => {
+            const items = roundResults.items
+            const total = roundResults.total
+            const countPlace = (p: number) => items.filter((x) => x.place === p).length
+            const c1 = countPlace(1)
+            const c2 = countPlace(2)
+            const medalFor = (it: { place: number; score: number }) => {
+              if (it.place === 1) return '🥇'
+              if (c1 > 1) return '' // tie for 1st => no silver/bronze
+              if (it.place === 2) return total >= 3 ? '🥈' : ''
+              if (c2 > 1) return '' // tie for 2nd => no bronze
+              if (it.place === 3) return total >= 4 ? '🥉' : ''
+              return ''
+            }
+            return (
+              <ol style={{ margin: 0, paddingLeft: '1.25rem' }}>
+                {items.map((it) => (
+                  <li key={it.id} className="muted">
+                    <strong style={{ color: 'var(--text)' }}>
+                      {profanityFilter.clean(it.name)}
+                    </strong>{' '}
+                    — {it.score} {medalFor(it)}
+                  </li>
+                ))}
+              </ol>
+            )
+          })()}
           <div className="muted" style={{ marginTop: 6, fontSize: 12 }}>
             {isHost
               ? 'Waiting for all players to Ready… or use Force start to begin now.'
