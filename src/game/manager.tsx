@@ -1188,16 +1188,18 @@ export function GameManager({
             if (msg.from) {
               const fromId = msg.from
               const msgAny = msg as unknown as { spectate?: boolean }
-              setPlayers((map) => ({
-                ...map,
-                [fromId]: {
-                  ...(map[fromId] || {}),
-                  name: msg.name || map[fromId]?.name,
-                  ...(typeof msgAny.spectate !== 'undefined'
-                    ? { spectate: !!msgAny.spectate, ready: false }
-                    : {}),
-                },
-              }))
+              setPlayers((map) => {
+                const cur = map[fromId] || {}
+                const next: typeof cur = {
+                  ...cur,
+                  name: msg.name || cur.name,
+                }
+                if (typeof msgAny.spectate !== 'undefined') {
+                  next.spectate = !!msgAny.spectate
+                  if (next.spectate) next.ready = false
+                }
+                return { ...map, [fromId]: next }
+              })
             }
           } else if (msg.type === 'tick') {
             // Track peer scores even if a preview hasn't arrived yet
@@ -1513,7 +1515,7 @@ export function GameManager({
                 names[pid] = (info.name || 'Player').trim()
               }
             }
-            if (pset.size >= 2) {
+            if (pset.size >= 1) {
               roundParticipantsRef.current = pset
               roundFinishedRef.current = []
               roundNamesRef.current = names
