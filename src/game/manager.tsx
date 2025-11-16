@@ -383,8 +383,11 @@ export function GameManager({
           const g3 = placesSorted.length > 2 ? byPlace.get(placesSorted[2]) || [] : []
           const winners: Array<{ id: string; medal: 'gold' | 'silver' | 'bronze' }> = []
           const participantCount = resultsItems.length
-          // Always award gold group (score>0)
-          for (const p of g1) if (p.score > 0) winners.push({ id: p.id, medal: 'gold' })
+          // Require at least 2 participants to award any medals
+          if (participantCount >= 2) {
+            // Always award gold group (score>0)
+            for (const p of g1) if (p.score > 0) winners.push({ id: p.id, medal: 'gold' })
+          }
           if (participantCount >= 3) {
             // Consider silver only if at least 3 participants existed
             if (g1.length > 1) {
@@ -1500,7 +1503,8 @@ export function GameManager({
         setCountdownEndAt(null)
         if (seedCountdownRef.current) {
           // Spectators do not start local gameplay on new rounds
-          setPaused(!spectate)
+          // Only unpause if participating; spectators remain paused
+          setPaused(spectate ? true : false)
           // Initialize round tracking with participants (ready players + self)
           try {
             const pset = new Set<string>()
@@ -2545,7 +2549,9 @@ export function GameManager({
             const g3 = placesSorted.length > 2 ? byPlace.get(placesSorted[2]) || [] : []
             const medals = new Map<string, string>()
             const participantCount = items.length
-            for (const it of g1) medals.set(it.id, '🥇')
+            if (participantCount >= 2) {
+              for (const it of g1) medals.set(it.id, '🥇')
+            }
             if (participantCount >= 3) {
               if (g1.length > 1) {
                 const aliveNonGold = items.filter((x) => x.place !== 1 && x.score > 0)
