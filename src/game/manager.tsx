@@ -1667,9 +1667,11 @@ export function GameManager({
     const now = Date.now()
     if (now - lastAutoSeedTsRef.current < 1000) return
     const others = Object.entries(players).filter(([pid, p]) => pid !== myId && !p.spectate)
-    const allOthersReady =
-      (others.length > 0 && others.every(([, p]) => p.ready)) || others.length === 0
-    if (ready && allOthersReady) {
+    const othersAllReady = others.length > 0 && others.every(([, p]) => p.ready)
+    // Start if:
+    // - Host is playing (not spectating) and everyone else is ready (or no others), OR
+    // - Host is spectating and all non-spectators are ready (must have at least 1 other)
+    if ((ready && (othersAllReady || others.length === 0)) || (spectate && othersAllReady)) {
       lastAutoSeedTsRef.current = now
       try {
         netRef.current?.send({ type: 'restart' })
@@ -1677,7 +1679,7 @@ export function GameManager({
         /* noop */
       }
     }
-  }, [mode, conn, isHost, countdown, ready, players, myId])
+  }, [mode, conn, isHost, countdown, ready, players, myId, spectate])
 
   // Refresh trophy counts whenever leaderboard entries change
   useEffect(() => {
