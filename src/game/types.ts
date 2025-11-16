@@ -47,7 +47,14 @@ export type NetMessage =
   | { type: 'ready'; from?: string }
   | { type: 'spectate'; on: boolean; from?: string }
   | { type: 'name'; name: string; from?: string }
-  | { type: 'preview'; state: GameState; score: number; from?: string; name?: string }
+  | {
+      type: 'preview'
+      state: GameState
+      score: number
+      from?: string
+      name?: string
+      spectate?: boolean
+    }
   | { type: 'roommeta'; name?: string; public?: boolean }
   | { type: 'list' }
   | { type: 'rooms'; items: Array<{ id: string; name: string; count: number }> }

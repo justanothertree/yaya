@@ -1187,11 +1187,15 @@ export function GameManager({
             }
             if (msg.from) {
               const fromId = msg.from
+              const msgAny = msg as unknown as { spectate?: boolean }
               setPlayers((map) => ({
                 ...map,
                 [fromId]: {
                   ...(map[fromId] || {}),
                   name: msg.name || map[fromId]?.name,
+                  ...(typeof msgAny.spectate !== 'undefined'
+                    ? { spectate: !!msgAny.spectate, ready: false }
+                    : {}),
                 },
               }))
             }
@@ -1600,7 +1604,13 @@ export function GameManager({
       try {
         const snap = engineRef.current?.snapshot()
         if (snap) {
-          netRef.current?.send({ type: 'preview', state: snap, score, name: playerName })
+          netRef.current?.send({
+            type: 'preview',
+            state: snap,
+            score,
+            name: playerName,
+            spectate,
+          })
         }
         // Re-announce spectate state occasionally to ensure peers see it
         if (spectate) {
