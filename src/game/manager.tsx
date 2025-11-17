@@ -1322,6 +1322,33 @@ export function GameManager({
                     /* ignore */
                   }
                 })()
+                // If the host is spectating, have each client submit their own score as a fallback
+                ;(async () => {
+                  try {
+                    const hostIsSpectating = hostId && players[hostId]?.spectate
+                    if (
+                      hostIsSpectating &&
+                      myId &&
+                      items.some((it) => it.id === myId && it.score > 0)
+                    ) {
+                      const self = items.find((it) => it.id === myId)!
+                      await submitScore({
+                        username: (playerNameRef.current || playerName || 'Player').trim(),
+                        score: self.score,
+                        date: new Date().toISOString(),
+                        gameMode: 'survival',
+                      })
+                      const top = await fetchLeaderboard(periodRef.current, 15)
+                      setLeaders(top)
+                      const ids = top
+                        .map((l) => l.id)
+                        .filter((v): v is number => typeof v === 'number')
+                      if (ids.length) setTrophyMap(await fetchTrophiesFor(ids))
+                    }
+                  } catch {
+                    /* ignore */
+                  }
+                })()
                 // Redundant safety: in 1-player rounds, submit own score client-side in case host cannot award
                 ;(async () => {
                   try {
@@ -1385,6 +1412,7 @@ export function GameManager({
       myId,
       conn,
       hostId,
+      players,
       isHost,
       registerFinish,
       mode,
