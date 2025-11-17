@@ -65,6 +65,7 @@ export type NetMessage =
       total: number
       items: Array<{ id: string; name: string; score: number; place: number }>
       from?: string
+      awarded?: boolean
     }
 
 export type ThemeColors = {

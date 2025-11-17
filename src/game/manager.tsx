@@ -357,6 +357,7 @@ export function GameManager({
         type: 'results',
         roundId: thisRound,
         total: filtered.length,
+        awarded: false,
         items: resultsItems.map((r) => ({
           id: r.id,
           name: r.name,
@@ -450,6 +451,7 @@ export function GameManager({
               type: 'results',
               roundId: thisRound,
               total: resultsItems.length,
+              awarded: true,
               items: resultsItems.map((r) => ({
                 id: r.id,
                 name: r.name,
@@ -1345,24 +1347,21 @@ export function GameManager({
                     /* ignore */
                   }
                 })()
-                // Spectating-host persistence + awarding fallback (single run). Handles case where host spectates and never submits.
+                // Spectating-host score persistence fallback (no medal awarding to avoid duplication)
                 ;(async () => {
                   try {
+                    if (msg.awarded) return // host already awarded
                     const roundIdNum = typeof msg.roundId === 'number' ? msg.roundId : -1
                     const hid = hostIdRef.current
                     const hostIsSpectating = !!(hid && playersRef.current[hid]?.spectate)
                     if (
                       hostIsSpectating &&
-                      !(myIdRef.current && hostIdRef.current === myIdRef.current) &&
                       myIdRef.current &&
                       roundIdNum >= 0 &&
-                      !submittedRoundIdsRef.current.has(roundIdNum) &&
-                      roundAwardedRef.current !== roundIdNum
+                      !submittedRoundIdsRef.current.has(roundIdNum)
                     ) {
                       submittedRoundIdsRef.current.add(roundIdNum)
-                      roundAwardedRef.current = roundIdNum
                       const nowIso = new Date().toISOString()
-                      // Persist all positive scores
                       for (const it of items) {
                         if (it.score > 0) {
                           const uname = (it.name || 'Player').trim() || 'Player'
@@ -1376,54 +1375,6 @@ export function GameManager({
                           } catch {
                             console.warn('[spectate-persist] submit failed', uname, it.score)
                           }
-                        }
-                      }
-                      // Replicate hosting medal logic locally (avoid duplicate increments by setting roundAwardedRef above)
-                      const byPlace = new Map<
-                        number,
-                        Array<{ id: string; name: string; score: number }>
-                      >()
-                      for (const it of items) {
-                        if (!byPlace.has(it.place)) byPlace.set(it.place, [])
-                        byPlace.get(it.place)!.push({ id: it.id, name: it.name, score: it.score })
-                      }
-                      const placesSorted = Array.from(byPlace.keys()).sort((a, b) => a - b)
-                      const g1 = placesSorted.length > 0 ? byPlace.get(placesSorted[0]) || [] : []
-                      const g2 = placesSorted.length > 1 ? byPlace.get(placesSorted[1]) || [] : []
-                      const g3 = placesSorted.length > 2 ? byPlace.get(placesSorted[2]) || [] : []
-                      const winners: Array<{ id: string; medal: 'gold' | 'silver' | 'bronze' }> = []
-                      const participantCount = items.length
-                      if (participantCount >= 2) {
-                        for (const p of g1)
-                          if (p.score > 0) winners.push({ id: p.id, medal: 'gold' })
-                      }
-                      if (participantCount >= 3) {
-                        if (g1.length > 1) {
-                          const aliveNonGold = items.filter((x) => x.place !== 1 && x.score > 0)
-                          if (aliveNonGold.length >= 2) {
-                            for (const p of g2)
-                              if (p.score > 0) winners.push({ id: p.id, medal: 'silver' })
-                          }
-                        } else {
-                          for (const p of g2)
-                            if (p.score > 0) winners.push({ id: p.id, medal: 'silver' })
-                          if (participantCount >= 4 && g2.length === 1) {
-                            for (const p of g3)
-                              if (p.score > 0) winners.push({ id: p.id, medal: 'bronze' })
-                          }
-                        }
-                      }
-                      for (const w of winners) {
-                        const nm = (
-                          roundNamesRef.current[w.id] ||
-                          items.find((i) => i.id === w.id)?.name ||
-                          'Player'
-                        ).trim()
-                        try {
-                          const lid = await getLeaderboardIdFor(nm, 'survival')
-                          if (lid != null) await awardTrophy(lid, w.medal)
-                        } catch {
-                          console.warn('[spectate-persist] award failed', nm, w.medal)
                         }
                       }
                       try {
@@ -1453,6 +1404,7 @@ export function GameManager({
                 // Multi-submit fallback: ensure persistence once per round by a single designated client
                 ;(async () => {
                   try {
+                    if (msg.awarded) return
                     const roundIdNum = typeof msg.roundId === 'number' ? msg.roundId : -1
                     // Choose a single client deterministically (lowest id) to avoid duplicates
                     const leaderId = items.map((it) => it.id).sort()[0]
@@ -1516,6 +1468,7 @@ export function GameManager({
                       myIdRef.current &&
                       items.some((it) => it.id === myIdRef.current && it.score > 0)
                     ) {
+                      if (msg.awarded) return
                       const self = items.find((it) => it.id === myIdRef.current)!
                       try {
                         await submitScore({
@@ -1538,127 +1491,7 @@ export function GameManager({
                     /* ignore */
                   }
                 })()
-                // Watchdog: if host spectating and no persistence occurred after initial fallbacks
-                ;(async () => {
-                  try {
-                    const roundIdNum = typeof msg.roundId === 'number' ? msg.roundId : -1
-                    if (roundIdNum < 0) return
-                    // Schedule delayed check so host awarding / other fallbacks can run first
-                    setTimeout(async () => {
-                      try {
-                        if (
-                          roundAwardedRef.current === roundIdNum ||
-                          submittedRoundIdsRef.current.has(roundIdNum)
-                        )
-                          return
-                        const hid = hostIdRef.current
-                        const hostIsSpectating = !!(hid && playersRef.current[hid]?.spectate)
-                        if (!hostIsSpectating) return
-                        const items = (msg.items || []) as Array<{
-                          id: string
-                          name: string
-                          score: number
-                          place: number
-                        }>
-                        if (!items.length) return
-                        // Elect lowest non-host id for persistence
-                        const elect = items
-                          .map((i) => i.id)
-                          .filter((id) => id !== hid)
-                          .sort()[0]
-                        if (!elect || myIdRef.current !== elect) return
-                        submittedRoundIdsRef.current.add(roundIdNum)
-                        roundAwardedRef.current = roundIdNum
-                        const nowIso = new Date().toISOString()
-                        for (const it of items) {
-                          if (it.score > 0) {
-                            const uname = (it.name || 'Player').trim() || 'Player'
-                            try {
-                              await submitScore({
-                                username: uname,
-                                score: it.score,
-                                date: nowIso,
-                                gameMode: 'survival',
-                              })
-                            } catch {
-                              console.warn('[watchdog] submit failed', uname, it.score)
-                            }
-                          }
-                        }
-                        // Medal awarding replicate
-                        const byPlace = new Map<
-                          number,
-                          Array<{ id: string; name: string; score: number }>
-                        >()
-                        for (const it of items) {
-                          if (!byPlace.has(it.place)) byPlace.set(it.place, [])
-                          byPlace.get(it.place)!.push({ id: it.id, name: it.name, score: it.score })
-                        }
-                        const placesSorted = Array.from(byPlace.keys()).sort((a, b) => a - b)
-                        const g1 = placesSorted.length > 0 ? byPlace.get(placesSorted[0]) || [] : []
-                        const g2 = placesSorted.length > 1 ? byPlace.get(placesSorted[1]) || [] : []
-                        const g3 = placesSorted.length > 2 ? byPlace.get(placesSorted[2]) || [] : []
-                        const winners: Array<{ id: string; medal: 'gold' | 'silver' | 'bronze' }> =
-                          []
-                        const participantCount = items.length
-                        if (participantCount >= 2) {
-                          for (const p of g1)
-                            if (p.score > 0) winners.push({ id: p.id, medal: 'gold' })
-                        }
-                        if (participantCount >= 3) {
-                          if (g1.length > 1) {
-                            const aliveNonGold = items.filter((x) => x.place !== 1 && x.score > 0)
-                            if (aliveNonGold.length >= 2) {
-                              for (const p of g2)
-                                if (p.score > 0) winners.push({ id: p.id, medal: 'silver' })
-                            }
-                          } else {
-                            for (const p of g2)
-                              if (p.score > 0) winners.push({ id: p.id, medal: 'silver' })
-                            if (participantCount >= 4 && g2.length === 1) {
-                              for (const p of g3)
-                                if (p.score > 0) winners.push({ id: p.id, medal: 'bronze' })
-                            }
-                          }
-                        }
-                        for (const w of winners) {
-                          const nm = (
-                            roundNamesRef.current[w.id] ||
-                            items.find((i) => i.id === w.id)?.name ||
-                            'Player'
-                          ).trim()
-                          try {
-                            const lid = await getLeaderboardIdFor(nm, 'survival')
-                            if (lid != null) await awardTrophy(lid, w.medal)
-                          } catch {
-                            console.warn('[watchdog] award failed', nm, w.medal)
-                          }
-                        }
-                        try {
-                          const top3 = await fetchLeaderboard(periodRef.current, 15)
-                          setLeaders(top3)
-                          const ids3 = top3
-                            .map((l) => l.id)
-                            .filter((v): v is number => typeof v === 'number')
-                          if (ids3.length) setTrophyMap(await fetchTrophiesFor(ids3))
-                        } catch {
-                          console.warn('[watchdog] refresh failed')
-                        }
-                        setToast(`Watchdog saved ${items.filter((i) => i.score > 0).length} scores`)
-                        if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current)
-                        toastTimerRef.current = window.setTimeout(
-                          () => setToast(null),
-                          2200,
-                        ) as unknown as number
-                        console.log('[watchdog] executed for round', roundIdNum)
-                      } catch (err) {
-                        console.warn('[watchdog] error', err)
-                      }
-                    }, 1800)
-                  } catch {
-                    /* ignore watchdog scheduling */
-                  }
-                })()
+                // Removed watchdog awarding to prevent duplicate medals; relying on host or simple persistence fallbacks only.
                 // Redundant safety: in 1-player rounds, submit own score client-side in case host cannot award
                 ;(async () => {
                   try {
