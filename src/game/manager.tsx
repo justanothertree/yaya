@@ -247,7 +247,8 @@ export function GameManager({
   // Fallback: track if we self-submitted in a solo-with-spectators round to avoid duplicates
   const soloFallbackRoundRef = useRef<number | null>(null)
   // Track rounds we've client-side submitted (host spectating fallback) to avoid duplicates
-  const submittedRoundIdsRef = useRef<Set<number>>(new Set())
+  // Deterministic client-side leader persistence (when host spectates): track rounds persisted
+  const persistedRoundIdsRef = useRef<Set<number>>(new Set())
   const ROOM_WORDS = useMemo(
     () => [
       'chill',
@@ -846,6 +847,23 @@ export function GameManager({
     return () => obs.disconnect()
   }, [])
 
+  // Restart current solo game
+  const doRestart = useCallback(() => {
+    deathAnimTokenRef.current += 1
+    sessionEpochRef.current += 1
+    try {
+      localStorage.removeItem(LS_PERSIST_KEY)
+    } catch {
+      /* ignore */
+    }
+    setAlive(true)
+    setPaused(false)
+    setScore(0)
+    setApplesEaten(0)
+    startRef.current = null
+    setEngineSeed(Math.floor(Math.random() * 1e9))
+  }, [])
+
   // Controls
   useEffect(() => {
     // Basic swipe: track pointer movement on the focused canvas and choose cardinal based on angle
@@ -959,7 +977,7 @@ export function GameManager({
       canvas.removeEventListener('pointerup', onUp)
       window.removeEventListener('keydown', onKey)
     }
-  }, [alive, mode, paused, onControlChange])
+  }, [alive, mode, paused, onControlChange, doRestart])
 
   // Leaderboard: fetch on period change and subscribe to realtime updates
   useEffect(() => {
@@ -1324,72 +1342,86 @@ export function GameManager({
                     /* ignore */
                   }
                 })()
-                // Multi-submit fallback: if host is spectating and did not award yet, each client attempts to persist all scores once
+                // Client-side leader persistence when host spectates: one participant persists all scores and medals
                 ;(async () => {
                   try {
                     const roundIdNum = typeof msg.roundId === 'number' ? msg.roundId : -1
                     const hostIsSpectating = hostId && players[hostId]?.spectate
-                    if (
-                      hostIsSpectating &&
-                      roundIdNum >= 0 &&
-                      !submittedRoundIdsRef.current.has(roundIdNum)
-                    ) {
-                      submittedRoundIdsRef.current.add(roundIdNum)
-                      for (const it of items) {
-                        if (it.score > 0) {
-                          const uname = (it.name || 'Player').trim() || 'Player'
-                          try {
-                            await submitScore({
-                              username: uname,
-                              score: it.score,
-                              date: new Date().toISOString(),
-                              gameMode: 'survival',
-                            })
-                          } catch {
-                            /* ignore individual submit errors */
-                          }
-                        }
-                      }
+                    if (!hostIsSpectating || roundIdNum < 0 || !myId) return
+                    const idsSorted = items.map((i) => i.id).sort()
+                    const leaderId = idsSorted[0]
+                    if (myId !== leaderId) return
+                    if (persistedRoundIdsRef.current.has(roundIdNum)) return
+                    persistedRoundIdsRef.current.add(roundIdNum)
+                    const nowIso = new Date().toISOString()
+                    for (const it of items) {
+                      const nm = (it.name || 'Player').trim()
+                      const sc = Number(it.score || 0)
+                      if (!nm || sc <= 0) continue
                       try {
-                        const top = await fetchLeaderboard(periodRef.current, 15)
-                        setLeaders(top)
-                        const ids = top
-                          .map((l) => l.id)
-                          .filter((v): v is number => typeof v === 'number')
-                        if (ids.length) setTrophyMap(await fetchTrophiesFor(ids))
+                        await submitScore({
+                          username: nm,
+                          score: sc,
+                          date: nowIso,
+                          gameMode: 'survival',
+                        })
                       } catch {
-                        /* ignore refresh errors */
+                        /* ignore individual submit errors */
                       }
                     }
-                  } catch {
-                    /* outer fallback ignore */
-                  }
-                })()
-                // If the host is spectating, have each client submit their own score as a fallback
-                ;(async () => {
-                  try {
-                    const hostIsSpectating = hostId && players[hostId]?.spectate
-                    if (
-                      hostIsSpectating &&
-                      myId &&
-                      items.some((it) => it.id === myId && it.score > 0)
-                    ) {
-                      const self = items.find((it) => it.id === myId)!
-                      await submitScore({
-                        username: (playerNameRef.current || playerName || 'Player').trim(),
-                        score: self.score,
-                        date: new Date().toISOString(),
-                        gameMode: 'survival',
-                      })
+                    const byPlace = new Map<
+                      number,
+                      Array<{ id: string; name: string; score: number }>
+                    >()
+                    for (const it of items) {
+                      if (!byPlace.has(it.place)) byPlace.set(it.place, [])
+                      byPlace.get(it.place)!.push({ id: it.id, name: it.name, score: it.score })
+                    }
+                    const placesSorted = Array.from(byPlace.keys()).sort((a, b) => a - b)
+                    const g1 = placesSorted.length > 0 ? byPlace.get(placesSorted[0]) || [] : []
+                    const g2 = placesSorted.length > 1 ? byPlace.get(placesSorted[1]) || [] : []
+                    const g3 = placesSorted.length > 2 ? byPlace.get(placesSorted[2]) || [] : []
+                    const winners: Array<{ id: string; medal: 'gold' | 'silver' | 'bronze' }> = []
+                    const participantCount = items.length
+                    if (participantCount >= 2) {
+                      for (const p of g1) if (p.score > 0) winners.push({ id: p.id, medal: 'gold' })
+                    }
+                    if (participantCount >= 3) {
+                      if (g1.length > 1) {
+                        const aliveNonGold = items.filter((x) => x.place !== 1 && x.score > 0)
+                        if (aliveNonGold.length >= 2)
+                          for (const p of g2)
+                            if (p.score > 0) winners.push({ id: p.id, medal: 'silver' })
+                      } else {
+                        for (const p of g2)
+                          if (p.score > 0) winners.push({ id: p.id, medal: 'silver' })
+                        if (participantCount >= 4 && g2.length === 1)
+                          for (const p of g3)
+                            if (p.score > 0) winners.push({ id: p.id, medal: 'bronze' })
+                      }
+                    }
+                    for (const w of winners) {
+                      try {
+                        const name =
+                          (items.find((i) => i.id === w.id)?.name || 'Player').trim() || 'Player'
+                        const lid = await getLeaderboardIdFor(name, 'survival')
+                        if (lid != null) await awardTrophy(lid, w.medal)
+                      } catch {
+                        /* ignore award errors */
+                      }
+                    }
+                    try {
                       const top = await fetchLeaderboard(periodRef.current, 15)
                       setLeaders(top)
-                      const ids = top
+                      const lids = top
                         .map((l) => l.id)
                         .filter((v): v is number => typeof v === 'number')
-                      if (ids.length) setTrophyMap(await fetchTrophiesFor(ids))
+                      if (lids.length) setTrophyMap(await fetchTrophiesFor(lids))
+                    } catch {
+                      /* ignore */
                     }
                   } catch {
-                    /* ignore */
+                    /* ignore leader persistence */
                   }
                 })()
                 // Redundant safety: in 1-player rounds, submit own score client-side in case host cannot award
@@ -1420,62 +1452,42 @@ export function GameManager({
                     /* ignore */
                   }
                 })()
+
+                // Close results handling try/catch and if-guard
               } catch {
-                /* ignore */
-              }
-            }
-          } else if (msg.type === 'host') {
-            if (msg.hostId) {
-              const prev = hostId
-              setHostId(msg.hostId)
-              // isHost derived from hostId === myId; no setIsHost needed
-              if (prev !== msg.hostId) {
-                if (myId && msg.hostId === myId) setToast('You are now the host')
-                else setToast('Host changed')
-                if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current)
-                toastTimerRef.current = window.setTimeout(
-                  () => setToast(null),
-                  2000,
-                ) as unknown as number
+                /* ignore malformed results */
               }
             }
           }
+          // End of onMessage handler branches
         },
       })
-      netRef.current = net
-      setConn('connecting')
-      net.connect(roomOverride ?? room, { create })
+      try {
+        netRef.current = net
+        setConn('connecting')
+        net.connect(roomOverride ?? room, { create })
+      } catch {
+        /* noop */
+      }
     },
-    // 'countdown' removed from deps (not referenced inside connectVs) to satisfy lint
     [
       wsUrl,
       room,
       roomName,
+      spectate,
       playerName,
-      myId,
-      conn,
-      hostId,
-      players,
-      isHost,
-      registerFinish,
       mode,
       paused,
       alive,
+      conn,
+      hostId,
+      isHost,
+      myId,
+      players,
+      registerFinish,
       tryFinalizeRound,
-      spectate,
     ],
   )
-
-  const doRestart = () => {
-    setEngineSeed(Math.floor(Math.random() * 1e9))
-    setPaused(true)
-    deathAnimatedRef.current = false
-    try {
-      localStorage.removeItem(LS_PERSIST_KEY)
-    } catch {
-      /* ignore */
-    }
-  }
 
   // Helper: mark self Ready in multiplayer
   const setSelfReady = useCallback(() => {
@@ -1522,6 +1534,8 @@ export function GameManager({
   }, [mode, conn, playerName, myId, alive, spectate])
 
   // Solo scores auto-save; manual save handler removed
+
+  // Restart current solo game (defined above)
 
   // Broadcast name changes immediately when connected
   useEffect(() => {
