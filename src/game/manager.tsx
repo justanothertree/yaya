@@ -374,6 +374,10 @@ export function GameManager({
             if (!nm || sc <= 0) continue
             await submitScore({ username: nm, score: sc, date: nowIso, gameMode: 'survival' })
           }
+          // Instrumentation: host saved scores
+          setToast(`Host saved ${resultsItems.filter((r) => r.score > 0).length} scores`)
+          if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current)
+          toastTimerRef.current = window.setTimeout(() => setToast(null), 2000) as unknown as number
           // Determine medals using standard competition ranking, tie-aware per examples:
           // - Always award gold to all in the top score group (place=1).
           // - Silver goes to the next occupied place after gold (even if place number is 3 due to a tie at 1).
@@ -425,6 +429,9 @@ export function GameManager({
           }))
         } catch {
           /* ignore */
+          setToast('Host save failed')
+          if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current)
+          toastTimerRef.current = window.setTimeout(() => setToast(null), 2000) as unknown as number
         } finally {
           try {
             const top = await fetchLeaderboard(period, 15)
@@ -1349,6 +1356,7 @@ export function GameManager({
                             })
                           } catch {
                             /* ignore individual submit errors */
+                            console.warn('[fallback-submit] failed', uname, it.score)
                           }
                         }
                       }
@@ -1359,8 +1367,20 @@ export function GameManager({
                           .map((l) => l.id)
                           .filter((v): v is number => typeof v === 'number')
                         if (ids.length) setTrophyMap(await fetchTrophiesFor(ids))
+                        setToast(`Fallback saved ${items.filter((i) => i.score > 0).length} scores`)
+                        if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current)
+                        toastTimerRef.current = window.setTimeout(
+                          () => setToast(null),
+                          2000,
+                        ) as unknown as number
                       } catch {
                         /* ignore refresh errors */
+                        setToast('Fallback refresh failed')
+                        if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current)
+                        toastTimerRef.current = window.setTimeout(
+                          () => setToast(null),
+                          2000,
+                        ) as unknown as number
                       }
                     }
                   } catch {
@@ -1377,12 +1397,16 @@ export function GameManager({
                       items.some((it) => it.id === myId && it.score > 0)
                     ) {
                       const self = items.find((it) => it.id === myId)!
-                      await submitScore({
-                        username: (playerNameRef.current || playerName || 'Player').trim(),
-                        score: self.score,
-                        date: new Date().toISOString(),
-                        gameMode: 'survival',
-                      })
+                      try {
+                        await submitScore({
+                          username: (playerNameRef.current || playerName || 'Player').trim(),
+                          score: self.score,
+                          date: new Date().toISOString(),
+                          gameMode: 'survival',
+                        })
+                      } catch {
+                        console.warn('[self-submit] failed', self)
+                      }
                       const top = await fetchLeaderboard(periodRef.current, 15)
                       setLeaders(top)
                       const ids = top
