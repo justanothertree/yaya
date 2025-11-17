@@ -345,7 +345,7 @@ export function GameManager({
       netRef.current?.send({
         type: 'results',
         roundId: thisRound,
-        total: participants.length,
+        total: filtered.length,
         items: resultsItems.map((r) => ({
           id: r.id,
           name: r.name,
