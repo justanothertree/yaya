@@ -244,6 +244,8 @@ export function GameManager({
   // Throttle auto-seed requests to avoid duplicates
   const lastAutoSeedTsRef = useRef(0)
   const previewsRef = useRef<HTMLDivElement>(null)
+  // Fallback: track if we self-submitted in a solo-with-spectators round to avoid duplicates
+  const soloFallbackRoundRef = useRef<number | null>(null)
   const ROOM_WORDS = useMemo(
     () => [
       'chill',
@@ -719,6 +721,37 @@ export function GameManager({
             /* noop */
           }
           registerFinish(myId)
+          // Fallback: if non-host and it was a solo-with-spectators round, submit locally
+          try {
+            if (
+              !isHost &&
+              roundActiveRef.current &&
+              roundParticipantsRef.current.size === 1 &&
+              roundParticipantsRef.current.has(myId) &&
+              soloFallbackRoundRef.current !== roundIdRef.current &&
+              finalScore > 0
+            ) {
+              soloFallbackRoundRef.current = roundIdRef.current
+              ;(async () => {
+                try {
+                  await submitScore({
+                    username: (playerNameRef.current || playerName || 'Player').trim(),
+                    score: finalScore,
+                    date: new Date().toISOString(),
+                    gameMode: 'survival',
+                  })
+                  const top = await fetchLeaderboard(periodRef.current, 15)
+                  setLeaders(top)
+                  const ids = top.map((l) => l.id).filter((v): v is number => typeof v === 'number')
+                  if (ids.length) setTrophyMap(await fetchTrophiesFor(ids))
+                } catch {
+                  /* ignore */
+                }
+              })()
+            }
+          } catch {
+            /* ignore */
+          }
         }
       }
       if (state.alive) {
@@ -798,7 +831,7 @@ export function GameManager({
     return () => {
       if (timer) window.clearTimeout(timer)
     }
-  }, [settings, applesEaten, paused, mode, myId, registerFinish])
+  }, [settings, applesEaten, paused, mode, myId, registerFinish, isHost, playerName])
 
   // Redraw when theme attributes change (so paused frames still update colors)
   useEffect(() => {
