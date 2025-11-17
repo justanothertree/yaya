@@ -134,6 +134,9 @@ export function GameManager({
   const [players, setPlayers] = useState<
     Record<string, { name?: string; ready?: boolean; spectate?: boolean }>
   >({})
+  const playersRef = useRef<Record<string, { name?: string; ready?: boolean; spectate?: boolean }>>(
+    {},
+  )
   const prevModeRef = useRef<Mode>('solo')
   // Keep a Set of ids we've already inserted to avoid transient duplicate name entries on lobby join
   const seenPlayerIdsRef = useRef<Set<string>>(new Set())
@@ -188,7 +191,9 @@ export function GameManager({
   const lastSettingsChangeRef = useRef<number>(0)
   // Derive host status directly from hostId === myId to avoid stale state on host transfer
   const [hostId, setHostId] = useState<string | null>(null)
+  const hostIdRef = useRef<string | null>(null)
   const isHost = myId != null && hostId === myId
+  const myIdRef = useRef<string | null>(null)
   // hostId state declared earlier; removed duplicate
   const [toast, setToast] = useState<string | null>(null)
   const toastTimerRef = useRef<number | null>(null)
@@ -662,6 +667,15 @@ export function GameManager({
   useEffect(() => {
     periodRef.current = period
   }, [period])
+  useEffect(() => {
+    playersRef.current = players
+  }, [players])
+  useEffect(() => {
+    hostIdRef.current = hostId
+  }, [hostId])
+  useEffect(() => {
+    myIdRef.current = myId
+  }, [myId])
 
   // If still using auto-generated name and Supabase is available,
   // update default to a sequential Player{maxId+1}
@@ -1335,11 +1349,12 @@ export function GameManager({
                 ;(async () => {
                   try {
                     const roundIdNum = typeof msg.roundId === 'number' ? msg.roundId : -1
-                    const hostIsSpectating = hostId && players[hostId]?.spectate
+                    const hid = hostIdRef.current
+                    const hostIsSpectating = !!(hid && playersRef.current[hid]?.spectate)
                     if (
                       hostIsSpectating &&
-                      !isHost &&
-                      myId &&
+                      !(myIdRef.current && hostIdRef.current === myIdRef.current) &&
+                      myIdRef.current &&
                       roundIdNum >= 0 &&
                       !submittedRoundIdsRef.current.has(roundIdNum) &&
                       roundAwardedRef.current !== roundIdNum
@@ -1443,8 +1458,8 @@ export function GameManager({
                     const leaderId = items.map((it) => it.id).sort()[0]
                     if (
                       roundIdNum >= 0 &&
-                      myId &&
-                      myId === leaderId &&
+                      myIdRef.current &&
+                      myIdRef.current === leaderId &&
                       !submittedRoundIdsRef.current.has(roundIdNum)
                     ) {
                       submittedRoundIdsRef.current.add(roundIdNum)
@@ -1494,13 +1509,14 @@ export function GameManager({
                 // If the host is spectating, have each client submit their own score as a fallback
                 ;(async () => {
                   try {
-                    const hostIsSpectating = hostId && players[hostId]?.spectate
+                    const hid = hostIdRef.current
+                    const hostIsSpectating = !!(hid && playersRef.current[hid]?.spectate)
                     if (
                       hostIsSpectating &&
-                      myId &&
-                      items.some((it) => it.id === myId && it.score > 0)
+                      myIdRef.current &&
+                      items.some((it) => it.id === myIdRef.current && it.score > 0)
                     ) {
-                      const self = items.find((it) => it.id === myId)!
+                      const self = items.find((it) => it.id === myIdRef.current)!
                       try {
                         await submitScore({
                           username: (playerNameRef.current || playerName || 'Player').trim(),
@@ -1585,7 +1601,6 @@ export function GameManager({
       myId,
       conn,
       hostId,
-      players,
       isHost,
       registerFinish,
       mode,
