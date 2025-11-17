@@ -1324,14 +1324,16 @@ export function GameManager({
                     /* ignore */
                   }
                 })()
-                // Multi-submit fallback: if host is spectating and did not award yet, each client attempts to persist all scores once
+                // Multi-submit fallback: ensure persistence once per round by a single designated client
                 ;(async () => {
                   try {
                     const roundIdNum = typeof msg.roundId === 'number' ? msg.roundId : -1
-                    const hostIsSpectating = hostId && players[hostId]?.spectate
+                    // Choose a single client deterministically (lowest id) to avoid duplicates
+                    const leaderId = items.map((it) => it.id).sort()[0]
                     if (
-                      hostIsSpectating &&
                       roundIdNum >= 0 &&
+                      myId &&
+                      myId === leaderId &&
                       !submittedRoundIdsRef.current.has(roundIdNum)
                     ) {
                       submittedRoundIdsRef.current.add(roundIdNum)
