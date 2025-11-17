@@ -493,6 +493,8 @@ export function GameManager({
     rendererRef.current = renderer
     renderer.resize(wrap, settings.canvasSize)
     renderer.draw(engine.snapshot())
+    // In multiplayer, keep gameplay paused on settings changes until a countdown starts
+    if (mode === 'versus') setPaused(true)
     deathAnimatedRef.current = false
     // Attempt to restore a persisted paused state
     let restoredOk = false
@@ -551,7 +553,7 @@ export function GameManager({
     }
     window.addEventListener('resize', onResize)
     return () => window.removeEventListener('resize', onResize)
-  }, [settings, engineSeed])
+  }, [settings, engineSeed, mode])
   // Persist paused state when navigating away or unmounting
   useEffect(() => {
     const saveState = () => {
