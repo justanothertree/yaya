@@ -246,6 +246,8 @@ export function GameManager({
   const previewsRef = useRef<HTMLDivElement>(null)
   // Fallback: track if we self-submitted in a solo-with-spectators round to avoid duplicates
   const soloFallbackRoundRef = useRef<number | null>(null)
+  // Track rounds we've client-side submitted (host spectating fallback) to avoid duplicates
+  const submittedRoundIdsRef = useRef<Set<number>>(new Set())
   const ROOM_WORDS = useMemo(
     () => [
       'chill',
@@ -1320,6 +1322,47 @@ export function GameManager({
                     }
                   } catch {
                     /* ignore */
+                  }
+                })()
+                // Multi-submit fallback: if host is spectating and did not award yet, each client attempts to persist all scores once
+                ;(async () => {
+                  try {
+                    const roundIdNum = typeof msg.roundId === 'number' ? msg.roundId : -1
+                    const hostIsSpectating = hostId && players[hostId]?.spectate
+                    if (
+                      hostIsSpectating &&
+                      roundIdNum >= 0 &&
+                      !submittedRoundIdsRef.current.has(roundIdNum)
+                    ) {
+                      submittedRoundIdsRef.current.add(roundIdNum)
+                      for (const it of items) {
+                        if (it.score > 0) {
+                          const uname = (it.name || 'Player').trim() || 'Player'
+                          try {
+                            await submitScore({
+                              username: uname,
+                              score: it.score,
+                              date: new Date().toISOString(),
+                              gameMode: 'survival',
+                            })
+                          } catch {
+                            /* ignore individual submit errors */
+                          }
+                        }
+                      }
+                      try {
+                        const top = await fetchLeaderboard(periodRef.current, 15)
+                        setLeaders(top)
+                        const ids = top
+                          .map((l) => l.id)
+                          .filter((v): v is number => typeof v === 'number')
+                        if (ids.length) setTrophyMap(await fetchTrophiesFor(ids))
+                      } catch {
+                        /* ignore refresh errors */
+                      }
+                    }
+                  } catch {
+                    /* outer fallback ignore */
                   }
                 })()
                 // If the host is spectating, have each client submit their own score as a fallback
