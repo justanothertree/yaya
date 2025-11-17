@@ -428,6 +428,22 @@ export function GameManager({
           } catch {
             /* ignore */
           }
+          // After awards are applied, prompt all clients to refresh leaderboard+trophies again
+          try {
+            netRef.current?.send({
+              type: 'results',
+              roundId: thisRound,
+              total: resultsItems.length,
+              items: resultsItems.map((r) => ({
+                id: r.id,
+                name: r.name,
+                score: r.score,
+                place: r.place,
+              })),
+            })
+          } catch {
+            /* ignore */
+          }
         }
       })()
     }
@@ -1273,6 +1289,34 @@ export function GameManager({
                     /* ignore */
                   }
                 })()
+                // Redundant safety: in 1-player rounds, submit own score client-side in case host cannot award
+                ;(async () => {
+                  try {
+                    if (
+                      !isHost &&
+                      myId &&
+                      items.length === 1 &&
+                      (msg.total as number) === 1 &&
+                      items[0].id === myId &&
+                      items[0].score > 0
+                    ) {
+                      await submitScore({
+                        username: (playerNameRef.current || playerName || 'Player').trim(),
+                        score: items[0].score,
+                        date: new Date().toISOString(),
+                        gameMode: 'survival',
+                      })
+                      const top = await fetchLeaderboard(periodRef.current, 15)
+                      setLeaders(top)
+                      const ids = top
+                        .map((l) => l.id)
+                        .filter((v): v is number => typeof v === 'number')
+                      if (ids.length) setTrophyMap(await fetchTrophiesFor(ids))
+                    }
+                  } catch {
+                    /* ignore */
+                  }
+                })()
               } catch {
                 /* ignore */
               }
@@ -1308,6 +1352,7 @@ export function GameManager({
       myId,
       conn,
       hostId,
+      isHost,
       registerFinish,
       mode,
       paused,
