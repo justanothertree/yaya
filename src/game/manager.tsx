@@ -184,6 +184,8 @@ export function GameManager({
   const restoredRef = useRef(false)
   const deepLinkConnectRef = useRef(false)
   const countdownLockRef = useRef<number>(0)
+  // Cooldown to prevent auto-start immediately after settings tweaks
+  const lastSettingsChangeRef = useRef<number>(0)
   // Derive host status directly from hostId === myId to avoid stale state on host transfer
   const [hostId, setHostId] = useState<string | null>(null)
   const isHost = myId != null && hostId === myId
@@ -1234,7 +1236,10 @@ export function GameManager({
           } else if (msg.type === 'rooms') {
             setRooms(msg.items || [])
           } else if (msg.type === 'settings') {
-            if (msg.settings) setSettings(msg.settings)
+            if (msg.settings) {
+              setSettings(msg.settings)
+              lastSettingsChangeRef.current = Date.now()
+            }
           } else if (msg.type === 'results') {
             // Host broadcast of final round results
             if (msg && Array.isArray(msg.items) && typeof msg.total === 'number') {
@@ -1669,6 +1674,8 @@ export function GameManager({
     // Don't spam if a countdown is already running or round is active
     if (countdown != null || seedCountdownRef.current || roundActiveRef.current) return
     const now = Date.now()
+    // Debounce briefly after any settings change to avoid accidental auto-start
+    if (now - lastSettingsChangeRef.current < 1500) return
     if (now - lastAutoSeedTsRef.current < 1000) return
     const others = Object.entries(players).filter(([pid, p]) => pid !== myId && !p.spectate)
     const othersAllReady = others.length > 0 && others.every(([, p]) => p.ready)
@@ -1929,6 +1936,7 @@ export function GameManager({
                       return
                     }
                     setSettings(next)
+                    lastSettingsChangeRef.current = Date.now()
                     if (mode === 'versus' && conn === 'connected' && isHost) {
                       try {
                         netRef.current?.send({ type: 'settings', settings: next })
@@ -1967,6 +1975,7 @@ export function GameManager({
                       return
                     }
                     setSettings(next)
+                    lastSettingsChangeRef.current = Date.now()
                     if (mode === 'versus' && conn === 'connected' && isHost) {
                       try {
                         netRef.current?.send({ type: 'settings', settings: next })
