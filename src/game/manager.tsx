@@ -2311,8 +2311,31 @@ export function GameManager({
                     } catch {
                       /* noop */
                     }
+                    // If current user is host and entering spectate, hand off hosting by reconnecting
+                    try {
+                      if (next && isHost) {
+                        // Only handoff if there's at least one other player present
+                        const others = Object.entries(players).filter(
+                          ([pid, p]) => pid !== myId && !p.spectate,
+                        )
+                        if (others.length > 0 && netRef.current) {
+                          const currentRoom = room
+                          // Soft reconnect to trigger server-side host reassignment
+                          netRef.current.disconnect()
+                          setConn('disconnected')
+                          setJoining(true)
+                          window.setTimeout(() => {
+                            connectVs(currentRoom)
+                          }, 120)
+                        }
+                      }
+                    } catch {
+                      /* noop */
+                    }
                   }}
                   title={spectate ? 'Stop spectating' : 'Start spectating'}
+                  data-active={spectate || undefined}
+                  style={{ minWidth: 108 }}
                 >
                   {spectate ? 'Spectating' : 'Spectate'}
                 </button>
