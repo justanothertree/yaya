@@ -24,7 +24,16 @@ const DEFAULT_SETTINGS = {
 
 /** Room state structure */
 const rooms = new Map()
-// rooms.set(roomId, { clients: Map<id, ws>, hostId, settings, seed, roundId, visitorCounter })
+// rooms.set(roomId, {
+//   clients: Map<id, ws>,
+//   hostId,
+//   settings,
+//   seed,
+//   roundId,
+//   visitorCounter,
+//   state: Map<id, { name?: string, ready?: boolean, spectate?: boolean, lastScore?: number, finished?: boolean }>,
+//   round: { active: boolean, id: string|null, participants: Set<string>, finishOrder: string[] }
+// })
 
 function uuid() {
   if (crypto.randomUUID) return crypto.randomUUID()
@@ -69,6 +78,47 @@ function makeSeed(room) {
   return { type: 'seed', roundId, seedData: { seed: room.seed, settings } }
 }
 
+function tryFinalize(room) {
+  const r = room.round
+  if (!r || !r.active || !r.id) return
+  const parts = Array.from(r.participants)
+  if (parts.length === 0) return
+  // Ensure all participants have finished
+  for (const pid of parts) {
+    if (!room.state.get(pid)?.finished) return
+  }
+  // Build base results {id,name,score,finishIdx}
+  const base = parts.map((pid) => {
+    const st = room.state.get(pid) || {}
+    const name = (st.name || 'Player').trim()
+    const score = Number(st.lastScore || 0)
+    const idx = r.finishOrder.indexOf(pid)
+    return { id: pid, name, score, finishIdx: idx >= 0 ? idx : 9999 }
+  })
+  base.sort((a, b) => (b.score !== a.score ? b.score - a.score : a.finishIdx - b.finishIdx))
+  const items = []
+  let prevScore = null
+  let prevPlace = 0
+  for (let i = 0; i < base.length; i++) {
+    const row = base[i]
+    const place = prevScore !== null && row.score === prevScore ? prevPlace : i + 1
+    items.push({ id: row.id, name: row.name, score: row.score, place })
+    prevScore = row.score
+    prevPlace = place
+  }
+  const payload = {
+    type: 'results',
+    roundId: r.id,
+    total: parts.length,
+    awarded: false,
+    items,
+  }
+  // Broadcast unified results to all clients
+  broadcast(room, payload)
+  // Mark round inactive until next restart
+  r.active = false
+}
+
 const server = createServer()
 const wss = new WebSocketServer({ server })
 
@@ -95,10 +145,13 @@ wss.on('connection', (ws) => {
           seed: 0,
           roundId: null,
           visitorCounter: 0,
+          state: new Map(),
+          round: { active: false, id: null, participants: new Set(), finishOrder: [] },
         }
         rooms.set(roomId, room)
       }
       room.clients.set(id, ws)
+      room.state.set(id, { ready: false, spectate: false, lastScore: 0, finished: false })
       joinedRoomId = roomId
       // Visitor numbering only if client did not supply id
       const visitor = room.visitorCounter++
@@ -124,12 +177,40 @@ wss.on('connection', (ws) => {
 
     // Maintain last seen host; re-validate if host disconnects later
     switch (msg.type) {
-      case 'name':
-      case 'ready':
-      case 'spectate':
+      case 'name': {
+        const st = room.state.get(id) || {}
+        st.name = msg.name
+        room.state.set(id, st)
+      }
+      case 'ready': {
+        const st = room.state.get(id) || {}
+        st.ready = true
+        room.state.set(id, st)
+      }
+      case 'spectate': {
+        const st = room.state.get(id) || {}
+        st.spectate = !!msg.on
+        if (st.spectate) st.ready = false
+        room.state.set(id, st)
+      }
       case 'preview':
-      case 'tick':
-      case 'over':
+      case 'tick': {
+        const st = room.state.get(id) || {}
+        if (typeof msg.score === 'number') st.lastScore = Number(msg.score)
+        room.state.set(id, st)
+      }
+      case 'over': {
+        const st = room.state.get(id) || {}
+        if (typeof msg.score === 'number') st.lastScore = Number(msg.score)
+        st.finished = true
+        room.state.set(id, st)
+        // Maintain finish order for tie-breaks
+        const r = room.round
+        if (r && r.active && r.participants.has(id)) {
+          if (!r.finishOrder.includes(id)) r.finishOrder.push(id)
+          tryFinalize(room)
+        }
+      }
       case 'error':
         broadcast(room, { ...msg, from: id })
         break
@@ -146,6 +227,24 @@ wss.on('connection', (ws) => {
         try {
           console.log(`[ws] restart room=${joinedRoomId} roundId=${room.roundId}`)
         } catch {}
+        // Capture participants snapshot: ready && not spectating
+        room.round = {
+          active: true,
+          id: room.roundId,
+          participants: new Set(
+            Array.from(room.state.entries())
+              .filter(([, st]) => st.ready && !st.spectate)
+              .map(([pid]) => pid),
+          ),
+          finishOrder: [],
+        }
+        // Reset per-round flags for participants
+        for (const pid of room.round.participants) {
+          const st = room.state.get(pid) || {}
+          st.finished = false
+          st.lastScore = 0
+          room.state.set(pid, st)
+        }
         // Broadcast restart WITH roundId for clients that want early display
         broadcast(room, { type: 'restart', roundId: room.roundId })
         // Follow with seed broadcast containing same roundId
@@ -155,6 +254,10 @@ wss.on('connection', (ws) => {
         } catch {}
         broadcast(room, seedPayload)
         // Also send to host (since broadcast excludes none, host already gets it)
+        break
+      case 'results':
+        // Forward client-emitted results (e.g., to signal awarded:true) to all
+        broadcast(room, { ...msg, from: id })
         break
       case 'list':
         // Provide summary; treat all rooms as public
