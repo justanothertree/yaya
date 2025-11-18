@@ -143,10 +143,16 @@ wss.on('connection', (ws) => {
         if (id !== room.hostId) return // only host can start
         // Generate new roundId server-side
         room.roundId = uuid()
+        try {
+          console.log(`[ws] restart room=${joinedRoomId} roundId=${room.roundId}`)
+        } catch {}
         // Broadcast restart WITH roundId for clients that want early display
         broadcast(room, { type: 'restart', roundId: room.roundId })
         // Follow with seed broadcast containing same roundId
         const seedPayload = makeSeed(room)
+        try {
+          console.log(`[ws] seed room=${joinedRoomId} roundId=${room.roundId} seed=${room.seed}`)
+        } catch {}
         broadcast(room, seedPayload)
         // Also send to host (since broadcast excludes none, host already gets it)
         break

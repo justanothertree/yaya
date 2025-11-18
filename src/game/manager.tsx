@@ -1132,6 +1132,20 @@ export function GameManager({
             setEngineSeed(msg.seedData.seed)
             setSettings(msg.seedData.settings)
             seedRoundIdRef.current = msg.roundId
+            try {
+              const env = (import.meta as unknown as { env?: Record<string, string> }).env || {}
+              if (env && (env.DEV || env.VITE_DEV)) {
+                // Dev-only visibility into round/seed
+                 
+                console.info('[vs] SEED RECEIVED', {
+                  roundId: msg.roundId,
+                  seed: msg.seedData.seed,
+                  settings: msg.seedData.settings,
+                })
+              }
+            } catch {
+              /* ignore */
+            }
             // Kick off round start countdown when a new seed arrives
             setCountdown(3)
             setCountdownEndAt(Date.now() + 3000)
