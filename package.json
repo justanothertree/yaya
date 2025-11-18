@@ -9,11 +9,13 @@
     "lint": "eslint .",
     "typecheck": "tsc -b --pretty false --noEmit",
     "preview": "vite preview",
-    "prepare": "husky"
+    "prepare": "husky",
+    "ws-server": "node --enable-source-maps server/ws-server.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.76.1",
     "bad-words": "^4.0.0",
+    "ws": "^8.18.0",
     "react": "^19.1.1",
     "react-dom": "^19.1.1"
   },

@@ -47,6 +47,80 @@ function startIsoFor(period: LeaderboardPeriod): string | null {
   return start.toISOString()
 }
 
+// Server-authoritative round finalization RPC
+export async function finalizeRound(params: {
+  roomId: string
+  roundId: string
+  gameMode?: string
+  items: Array<{ id: string; name: string; score: number; finishIdx: number }>
+  participants: Array<{ id: string; name: string }>
+}): Promise<{
+  type: 'results'
+  roomId: string
+  roundId: string
+  total: number
+  awarded: true
+  items: Array<{ id: string; name: string; score: number; place: number }>
+} | null> {
+  const { url, anon } = envs()
+  const client = getClient()
+  const payload = {
+    p_room_id: params.roomId,
+    p_round_id: params.roundId,
+    p_game_mode: params.gameMode || 'survival',
+    p_items: params.items,
+    p_participants: params.participants,
+  }
+  if (client && url && anon) {
+    try {
+      const { data, error } = await client.rpc(
+        'finalize_round_rpc',
+        payload as unknown as {
+          p_room_id: string
+          p_round_id: string
+          p_game_mode: string
+          p_items: Array<{ id: string; name: string; score: number; finishIdx: number }>
+          p_participants: Array<{ id: string; name: string }>
+        },
+      )
+      if (error) throw error
+      return data as unknown as {
+        type: 'results'
+        roomId: string
+        roundId: string
+        total: number
+        awarded: true
+        items: Array<{ id: string; name: string; score: number; place: number }>
+      }
+    } catch {
+      // fall through to REST
+    }
+  }
+  if (url && anon) {
+    try {
+      const res = await fetch(`${url}/rest/v1/rpc/finalize_round_rpc`, {
+        method: 'POST',
+        headers: sbHeaders(anon),
+        body: JSON.stringify(payload),
+      })
+      if (res.ok) {
+        const out = (await res.json()) as {
+          type: 'results'
+          roomId: string
+          roundId: string
+          total: number
+          awarded: true
+          items: Array<{ id: string; name: string; score: number; place: number }>
+        }
+        return out
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+  return null
+}
+
 // Lightweight env status for debug panel
 export function supabaseEnvStatus() {
   const { url, anon } = envs()
@@ -563,3 +637,62 @@ export async function getLeaderboardIdFor(
   }
   return null
 }
+
+// ---------------------------------------------------------------------------
+// Dev-only manual RPC test hook (temporary)
+// Attaches window.testFinalizeRound() for manual console invocation.
+// Does NOT run automatically or integrate with gameplay.
+// Usage (in browser console): await testFinalizeRound()
+// Remove after end-to-end verification.
+// ---------------------------------------------------------------------------
+declare global {
+  interface Window {
+    testFinalizeRound?: () => Promise<{ data: unknown; error: unknown }>
+  }
+}
+
+export function registerFinalizeRoundDevTest() {
+  try {
+    const env = (import.meta as unknown as { env?: Record<string, string> }).env || {}
+    const isDev =
+      !!env.DEV ||
+      !!env.VITE_DEV ||
+      (typeof location !== 'undefined' && /localhost|127\.0\.0\.1/.test(location.hostname))
+    if (!isDev) return
+    if (typeof window === 'undefined') return
+    if (window.testFinalizeRound) return // already attached
+    const client = getClient()
+    window.testFinalizeRound = async () => {
+      if (!client) {
+        console.warn('[testFinalizeRound] Supabase client unavailable (missing env?)')
+      }
+      const payload = {
+        p_room_id: 'room123',
+        p_round_id: 'round1',
+        p_game_mode: 'survival',
+        p_items: [
+          { id: 'p1', name: 'Alice', score: 10, finishIdx: 0 },
+          { id: 'p2', name: 'Bob', score: 8, finishIdx: 1 },
+        ],
+        p_participants: [
+          { id: 'p1', name: 'Alice' },
+          { id: 'p2', name: 'Bob' },
+        ],
+      }
+      try {
+        const { data, error } = await (client || getClient())!.rpc('finalize_round_rpc', payload)
+        console.log('RPC TEST RESULT →', { data, error })
+        return { data, error }
+      } catch (e) {
+        console.error('[testFinalizeRound] exception', e)
+        return { data: null, error: e }
+      }
+    }
+    console.info('[dev] window.testFinalizeRound attached')
+  } catch {
+    /* ignore */
+  }
+}
+
+// Auto-register in dev builds (safe: only defines function)
+registerFinalizeRoundDevTest()

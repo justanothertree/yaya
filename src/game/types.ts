@@ -36,10 +36,10 @@ export type Mode = 'solo' | 'versus'
 export type NetMessage =
   | { type: 'hello'; room: string; clientId?: string; create?: boolean }
   | { type: 'welcome'; id: string; visitor?: number }
-  | { type: 'seed'; seed: number; settings: Settings }
+  | { type: 'seed'; roundId: string; seedData: { seed: number; settings: Settings } }
   | { type: 'settings'; settings: Settings }
   | { type: 'host'; hostId: string }
-  | { type: 'restart' }
+  | { type: 'restart'; roundId?: string }
   | { type: 'tick'; n: number; score: number; from?: string }
   | { type: 'over'; reason: 'die' | 'quit'; from?: string; score?: number }
   | { type: 'input'; key: 'ArrowUp' | 'ArrowDown' | 'ArrowLeft' | 'ArrowRight' }
@@ -61,7 +61,7 @@ export type NetMessage =
   | { type: 'error'; code: 'room-not-found' | 'bad-request' | string; message?: string }
   | {
       type: 'results'
-      roundId?: number
+      roundId?: string
       total: number
       items: Array<{ id: string; name: string; score: number; place: number }>
       from?: string

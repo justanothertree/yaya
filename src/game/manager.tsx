@@ -11,10 +11,9 @@ import {
   subscribeToLeaderboard,
   type LeaderboardPeriod,
   fetchTrophiesFor,
-  awardTrophy,
-  getLeaderboardIdFor,
   getNextPlayerIdNumber,
   supabaseEnvStatus,
+  finalizeRound,
 } from './leaderboard'
 import type { LeaderboardEntry, Mode, Settings, TrophyCounts } from './types'
 
@@ -234,7 +233,8 @@ export function GameManager({
   const roundParticipantsRef = useRef<Set<string>>(new Set())
   const roundFinishedRef = useRef<string[]>([])
   const roundNamesRef = useRef<Record<string, string>>({})
-  const roundAwardedRef = useRef<number | null>(null)
+  // Server-authoritative round id from seed and pending outbound round id
+  const seedRoundIdRef = useRef<string | null>(null)
   const seedCountdownRef = useRef(false)
   // Track last known scores per player during a round (for results UI)
   const roundScoresRef = useRef<Record<string, number>>({})
@@ -251,8 +251,6 @@ export function GameManager({
   const previewsRef = useRef<HTMLDivElement>(null)
   // Fallback: track if we self-submitted in a solo-with-spectators round to avoid duplicates
   const soloFallbackRoundRef = useRef<number | null>(null)
-  // Track rounds we've client-side submitted (host spectating fallback) to avoid duplicates
-  const submittedRoundIdsRef = useRef<Set<number>>(new Set())
   const ROOM_WORDS = useMemo(
     () => [
       'chill',
@@ -320,7 +318,6 @@ export function GameManager({
     if (total === 0) return
     const done = roundFinishedRef.current.length
     if (done < total) return
-    const thisRound = roundIdRef.current
     roundActiveRef.current = false
     // Compute placements by score descending, using finish order as a tie-breaker
     const finishOrder = [...roundFinishedRef.current]
@@ -348,124 +345,77 @@ export function GameManager({
       prevScore = r.score
       prevPlace = place
     }
-    setRoundResults({ items: resultsItems, total: filtered.length })
-    setShowResults(true)
-    setDebugInfo((d) => ({ ...d, lastFinalizeReason: 'normal' }))
-    // Broadcast results so all clients render identical data
-    try {
-      netRef.current?.send({
-        type: 'results',
-        roundId: thisRound,
-        total: filtered.length,
-        awarded: false,
-        items: resultsItems.map((r) => ({
-          id: r.id,
-          name: r.name,
-          score: r.score,
-          place: r.place,
-        })),
-      })
-    } catch {
-      /* noop */
-    }
-    // Host-only: save scores, then award trophies, then refresh leaderboard (once per round)
-    if (isHost && roundAwardedRef.current !== thisRound) {
-      ;(async () => {
-        roundAwardedRef.current = thisRound
-        try {
-          const nowIso = new Date().toISOString()
-          for (const it of resultsItems) {
-            const nm = (it.name || 'Player').trim()
-            const sc = Number(it.score || 0)
-            if (!nm || sc <= 0) continue
-            await submitScore({ username: nm, score: sc, date: nowIso, gameMode: 'survival' })
-          }
-          // Instrumentation: host saved scores
-          setToast(`Host saved ${resultsItems.filter((r) => r.score > 0).length} scores`)
-          if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current)
-          toastTimerRef.current = window.setTimeout(() => setToast(null), 2000) as unknown as number
-          // Determine medals using standard competition ranking, tie-aware per examples:
-          // - Always award gold to all in the top score group (place=1).
-          // - Silver goes to the next occupied place after gold (even if place number is 3 due to a tie at 1).
-          // - Bronze goes to the next occupied place after silver ONLY if gold was unique.
-          const byPlace = new Map<number, Array<{ id: string; name: string; score: number }>>()
-          for (const it of resultsItems) {
-            if (!byPlace.has(it.place)) byPlace.set(it.place, [])
-            byPlace.get(it.place)!.push({ id: it.id, name: it.name, score: it.score })
-          }
-          const placesSorted = Array.from(byPlace.keys()).sort((a, b) => a - b)
-          const g1 = placesSorted.length > 0 ? byPlace.get(placesSorted[0]) || [] : []
-          const g2 = placesSorted.length > 1 ? byPlace.get(placesSorted[1]) || [] : []
-          const g3 = placesSorted.length > 2 ? byPlace.get(placesSorted[2]) || [] : []
-          const winners: Array<{ id: string; medal: 'gold' | 'silver' | 'bronze' }> = []
-          const participantCount = resultsItems.length
-          // Require at least 2 participants to award any medals
-          if (participantCount >= 2) {
-            // Always award gold group (score>0)
-            for (const p of g1) if (p.score > 0) winners.push({ id: p.id, medal: 'gold' })
-          }
-          if (participantCount >= 3) {
-            // Consider silver only if at least 3 participants existed
-            if (g1.length > 1) {
-              // Tie at first: silver only if at least two non-gold scorers exist (still requires >=3 participants)
-              const aliveNonGold = resultsItems.filter((x) => x.place !== 1 && x.score > 0)
-              if (aliveNonGold.length >= 2) {
-                for (const p of g2) if (p.score > 0) winners.push({ id: p.id, medal: 'silver' })
-              }
-            } else {
-              // Unique gold: always award silver group (score>0)
-              for (const p of g2) if (p.score > 0) winners.push({ id: p.id, medal: 'silver' })
-              // Bronze only if >=4 participants AND silver unique AND gold unique
-              if (participantCount >= 4 && g2.length === 1) {
-                for (const p of g3) if (p.score > 0) winners.push({ id: p.id, medal: 'bronze' })
-              }
+    // Elect a single client to call the server RPC and broadcast authoritative results
+    ;(async () => {
+      try {
+        const allParticipants = Array.from(roundParticipantsRef.current)
+        const leaderId = allParticipants.slice().sort()[0] as string | undefined
+        const roundIdStr = seedRoundIdRef.current
+        if (myIdRef.current && leaderId && myIdRef.current === leaderId && roundIdStr) {
+          const rpc = await finalizeRound({
+            roomId: room || 'default',
+            roundId: roundIdStr,
+            items: base.map((r) => ({
+              id: r.id,
+              name: r.name,
+              score: r.score,
+              finishIdx: r.finishIdx,
+            })),
+            participants: allParticipants.map((pid) => ({
+              id: pid,
+              name: (roundNamesRef.current[pid] || 'Player').trim(),
+            })),
+          })
+          if (rpc && rpc.type === 'results') {
+            setRoundResults({ items: rpc.items, total: rpc.total })
+            setShowResults(true)
+            setDebugInfo((d) => ({ ...d, lastFinalizeReason: 'normal' }))
+            try {
+              netRef.current?.send({
+                type: 'results',
+                roundId: rpc.roundId,
+                total: rpc.total,
+                awarded: rpc.awarded,
+                items: rpc.items,
+              })
+            } catch {
+              /* noop */
+            }
+          } else {
+            // If RPC failed, still show local results UI (no awards persisted)
+            setRoundResults({ items: resultsItems, total: filtered.length })
+            setShowResults(true)
+            try {
+              netRef.current?.send({
+                type: 'results',
+                roundId: roundIdStr,
+                total: filtered.length,
+                awarded: false,
+                items: resultsItems.map((r) => ({
+                  id: r.id,
+                  name: r.name,
+                  score: r.score,
+                  place: r.place,
+                })),
+              })
+            } catch {
+              /* noop */
             }
           }
-          const awardsList: Array<{ name: string; medal: 'gold' | 'silver' | 'bronze' }> = []
-          for (const w of winners) {
-            const name = roundNamesRef.current[w.id]?.trim() || 'Player'
-            const lid = await getLeaderboardIdFor(name, 'survival')
-            if (lid != null) await awardTrophy(lid, w.medal)
-            awardsList.push({ name, medal: w.medal })
-          }
-          setDebugInfo((d) => ({
-            ...d,
-            lastSaveCount: resultsItems.length,
-            lastAwards: awardsList,
-          }))
-        } catch {
-          /* ignore */
-          setToast('Host save failed')
-          if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current)
-          toastTimerRef.current = window.setTimeout(() => setToast(null), 2000) as unknown as number
-        } finally {
           try {
-            const top = await fetchLeaderboard(period, 15)
+            const top = await fetchLeaderboard(periodRef.current, 15)
             setLeaders(top)
-          } catch {
-            /* ignore */
-          }
-          // After awards are applied, prompt all clients to refresh leaderboard+trophies again
-          try {
-            netRef.current?.send({
-              type: 'results',
-              roundId: thisRound,
-              total: resultsItems.length,
-              awarded: true,
-              items: resultsItems.map((r) => ({
-                id: r.id,
-                name: r.name,
-                score: r.score,
-                place: r.place,
-              })),
-            })
+            const ids = top.map((l) => l.id).filter((v): v is number => typeof v === 'number')
+            if (ids.length) setTrophyMap(await fetchTrophiesFor(ids))
           } catch {
             /* ignore */
           }
         }
-      })()
-    }
-  }, [isHost, period])
+      } catch {
+        // ignore RPC errors; UI already updated optimistically
+      }
+    })()
+  }, [room])
 
   const registerFinish = useCallback(
     (id: string) => {
@@ -1178,8 +1128,10 @@ export function GameManager({
             return
           }
           if (msg.type === 'seed') {
-            setEngineSeed(msg.seed)
-            setSettings(msg.settings)
+            // New seed format: { type:'seed', roundId, seedData:{ seed, settings } }
+            setEngineSeed(msg.seedData.seed)
+            setSettings(msg.seedData.settings)
+            seedRoundIdRef.current = msg.roundId
             // Kick off round start countdown when a new seed arrives
             setCountdown(3)
             setCountdownEndAt(Date.now() + 3000)
@@ -1347,179 +1299,7 @@ export function GameManager({
                     /* ignore */
                   }
                 })()
-                // Spectating-host score persistence fallback (no medal awarding to avoid duplication)
-                ;(async () => {
-                  try {
-                    if (msg.awarded) return // host already awarded
-                    const roundIdNum = typeof msg.roundId === 'number' ? msg.roundId : -1
-                    const hid = hostIdRef.current
-                    const hostIsSpectating = !!(hid && playersRef.current[hid]?.spectate)
-                    if (
-                      hostIsSpectating &&
-                      myIdRef.current &&
-                      roundIdNum >= 0 &&
-                      !submittedRoundIdsRef.current.has(roundIdNum)
-                    ) {
-                      submittedRoundIdsRef.current.add(roundIdNum)
-                      const nowIso = new Date().toISOString()
-                      for (const it of items) {
-                        if (it.score > 0) {
-                          const uname = (it.name || 'Player').trim() || 'Player'
-                          try {
-                            await submitScore({
-                              username: uname,
-                              score: it.score,
-                              date: nowIso,
-                              gameMode: 'survival',
-                            })
-                          } catch {
-                            console.warn('[spectate-persist] submit failed', uname, it.score)
-                          }
-                        }
-                      }
-                      try {
-                        const top2 = await fetchLeaderboard(periodRef.current, 15)
-                        setLeaders(top2)
-                        const ids2 = top2
-                          .map((l) => l.id)
-                          .filter((v): v is number => typeof v === 'number')
-                        if (ids2.length) setTrophyMap(await fetchTrophiesFor(ids2))
-                      } catch {
-                        console.warn('[spectate-persist] refresh failed')
-                      }
-                      setToast(
-                        `Spectate persist saved ${items.filter((i) => i.score > 0).length} scores`,
-                      )
-                      if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current)
-                      toastTimerRef.current = window.setTimeout(
-                        () => setToast(null),
-                        2200,
-                      ) as unknown as number
-                      console.log('[spectate-persist] executed for round', roundIdNum)
-                    }
-                  } catch (e) {
-                    console.warn('[spectate-persist] failed', e)
-                  }
-                })()
-                // Multi-submit fallback: ensure persistence once per round by a single designated client
-                ;(async () => {
-                  try {
-                    if (msg.awarded) return
-                    const roundIdNum = typeof msg.roundId === 'number' ? msg.roundId : -1
-                    // Choose a single client deterministically (lowest id) to avoid duplicates
-                    const leaderId = items.map((it) => it.id).sort()[0]
-                    if (
-                      roundIdNum >= 0 &&
-                      myIdRef.current &&
-                      myIdRef.current === leaderId &&
-                      !submittedRoundIdsRef.current.has(roundIdNum)
-                    ) {
-                      submittedRoundIdsRef.current.add(roundIdNum)
-                      for (const it of items) {
-                        if (it.score > 0) {
-                          const uname = (it.name || 'Player').trim() || 'Player'
-                          try {
-                            await submitScore({
-                              username: uname,
-                              score: it.score,
-                              date: new Date().toISOString(),
-                              gameMode: 'survival',
-                            })
-                          } catch {
-                            /* ignore individual submit errors */
-                            console.warn('[fallback-submit] failed', uname, it.score)
-                          }
-                        }
-                      }
-                      try {
-                        const top = await fetchLeaderboard(periodRef.current, 15)
-                        setLeaders(top)
-                        const ids = top
-                          .map((l) => l.id)
-                          .filter((v): v is number => typeof v === 'number')
-                        if (ids.length) setTrophyMap(await fetchTrophiesFor(ids))
-                        setToast(`Fallback saved ${items.filter((i) => i.score > 0).length} scores`)
-                        if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current)
-                        toastTimerRef.current = window.setTimeout(
-                          () => setToast(null),
-                          2000,
-                        ) as unknown as number
-                      } catch {
-                        /* ignore refresh errors */
-                        setToast('Fallback refresh failed')
-                        if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current)
-                        toastTimerRef.current = window.setTimeout(
-                          () => setToast(null),
-                          2000,
-                        ) as unknown as number
-                      }
-                    }
-                  } catch {
-                    /* outer fallback ignore */
-                  }
-                })()
-                // If the host is spectating, have each client submit their own score as a fallback
-                ;(async () => {
-                  try {
-                    const hid = hostIdRef.current
-                    const hostIsSpectating = !!(hid && playersRef.current[hid]?.spectate)
-                    if (
-                      hostIsSpectating &&
-                      myIdRef.current &&
-                      items.some((it) => it.id === myIdRef.current && it.score > 0)
-                    ) {
-                      if (msg.awarded) return
-                      const self = items.find((it) => it.id === myIdRef.current)!
-                      try {
-                        await submitScore({
-                          username: (playerNameRef.current || playerName || 'Player').trim(),
-                          score: self.score,
-                          date: new Date().toISOString(),
-                          gameMode: 'survival',
-                        })
-                      } catch {
-                        console.warn('[self-submit] failed', self)
-                      }
-                      const top = await fetchLeaderboard(periodRef.current, 15)
-                      setLeaders(top)
-                      const ids = top
-                        .map((l) => l.id)
-                        .filter((v): v is number => typeof v === 'number')
-                      if (ids.length) setTrophyMap(await fetchTrophiesFor(ids))
-                    }
-                  } catch {
-                    /* ignore */
-                  }
-                })()
-                // Removed watchdog awarding to prevent duplicate medals; relying on host or simple persistence fallbacks only.
-                // Redundant safety: in 1-player rounds, submit own score client-side in case host cannot award
-                ;(async () => {
-                  try {
-                    if (
-                      !isHost &&
-                      myId &&
-                      items.length === 1 &&
-                      (msg.total as number) === 1 &&
-                      items[0].id === myId &&
-                      items[0].score > 0
-                    ) {
-                      await submitScore({
-                        username: (playerNameRef.current || playerName || 'Player').trim(),
-                        score: items[0].score,
-                        date: new Date().toISOString(),
-                        gameMode: 'survival',
-                      })
-                      const top = await fetchLeaderboard(periodRef.current, 15)
-                      setLeaders(top)
-                      const ids = top
-                        .map((l) => l.id)
-                        .filter((v): v is number => typeof v === 'number')
-                      if (ids.length) setTrophyMap(await fetchTrophiesFor(ids))
-                    }
-                  } catch {
-                    /* ignore */
-                  }
-                })()
+                // Client-side persistence fallbacks removed; server RPC finalizes and awards.
               } catch {
                 /* ignore */
               }
@@ -1555,7 +1335,6 @@ export function GameManager({
       myId,
       conn,
       hostId,
-      isHost,
       registerFinish,
       mode,
       paused,
