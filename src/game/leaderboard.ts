@@ -69,7 +69,7 @@ export async function finalizeRound(params: {
     p_round_id: params.roundId,
     p_game_mode: params.gameMode || 'survival',
     p_items: params.items,
-    p_participants: params.participants,
+    p_players: params.participants,
   }
   if (client && url && anon) {
     try {
@@ -80,7 +80,7 @@ export async function finalizeRound(params: {
           p_round_id: string
           p_game_mode: string
           p_items: Array<{ id: string; name: string; score: number; finishIdx: number }>
-          p_participants: Array<{ id: string; name: string }>
+          p_players: Array<{ id: string; name: string }>
         },
       )
       if (error) throw error
@@ -674,7 +674,7 @@ export function registerFinalizeRoundDevTest() {
           { id: 'p1', name: 'Alice', score: 10, finishIdx: 0 },
           { id: 'p2', name: 'Bob', score: 8, finishIdx: 1 },
         ],
-        p_participants: [
+        p_players: [
           { id: 'p1', name: 'Alice' },
           { id: 'p2', name: 'Bob' },
         ],
