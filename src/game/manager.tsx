@@ -1136,7 +1136,7 @@ export function GameManager({
               const env = (import.meta as unknown as { env?: Record<string, string> }).env || {}
               if (env && (env.DEV || env.VITE_DEV)) {
                 // Dev-only visibility into round/seed
-                 
+
                 console.info('[vs] SEED RECEIVED', {
                   roundId: msg.roundId,
                   seed: msg.seedData.seed,
@@ -1284,6 +1284,19 @@ export function GameManager({
             }
           } else if (msg.type === 'results') {
             // Host broadcast of final round results
+            try {
+              const env = (import.meta as unknown as { env?: Record<string, string> }).env || {}
+              if (env && (env.DEV || env.VITE_DEV)) {
+                console.info('[vs] RESULTS RECEIVED', {
+                  roundId: msg.roundId,
+                  awarded: msg.awarded,
+                  total: msg.total,
+                  items: msg.items,
+                })
+              }
+            } catch {
+              /* ignore */
+            }
             if (msg && Array.isArray(msg.items) && typeof msg.total === 'number') {
               try {
                 const items = msg.items as Array<{

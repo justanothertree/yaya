@@ -137,6 +137,11 @@ wss.on('connection', (ws) => {
     if (msg.type === 'hello') {
       const roomId = String(msg.room || '').trim() || 'default'
       let room = rooms.get(roomId)
+      // If room doesn't exist and client is not creating, return an error
+      if (!room && !msg.create) {
+        send(ws, { type: 'error', code: 'room-not-found', message: 'Room does not exist' })
+        return
+      }
       if (!room) {
         room = {
           clients: new Map(),
@@ -283,6 +288,17 @@ wss.on('connection', (ws) => {
     const room = rooms.get(joinedRoomId)
     if (!room) return
     room.clients.delete(id)
+    // Prune participant from active round, if present
+    try {
+      const r = room.round
+      if (r && r.active && r.participants && r.participants.has(id)) {
+        r.participants.delete(id)
+        // If this disconnect unblocks finalization, try finalize now
+        tryFinalize(room)
+      }
+    } catch {
+      /* ignore */
+    }
     const wasHost = room.hostId === id
     if (wasHost) {
       room.hostId = null
