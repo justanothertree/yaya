@@ -179,7 +179,11 @@ async function tryFinalize(room, roomId) {
   r.finalizing = false
 }
 
-const server = createServer()
+const server = createServer((req, res) => {
+  res.writeHead(200, { 'Content-Type': 'text/plain' })
+  res.end('ok')
+})
+
 const wss = new WebSocketServer({ server })
 
 wss.on('connection', (ws) => {
@@ -253,23 +257,27 @@ wss.on('connection', (ws) => {
         const st = room.state.get(id) || {}
         st.name = msg.name
         room.state.set(id, st)
+        break
       }
       case 'ready': {
         const st = room.state.get(id) || {}
         st.ready = true
         room.state.set(id, st)
+        break
       }
       case 'spectate': {
         const st = room.state.get(id) || {}
         st.spectate = !!msg.on
         if (st.spectate) st.ready = false
         room.state.set(id, st)
+        break
       }
       case 'preview':
       case 'tick': {
         const st = room.state.get(id) || {}
         if (typeof msg.score === 'number') st.lastScore = Number(msg.score)
         room.state.set(id, st)
+        break
       }
       case 'over': {
         const st = room.state.get(id) || {}
@@ -282,6 +290,7 @@ wss.on('connection', (ws) => {
           if (!r.finishOrder.includes(id)) r.finishOrder.push(id)
           void tryFinalize(room, joinedRoomId)
         }
+        break
       }
       case 'error':
         broadcast(room, { ...msg, from: id })
@@ -389,6 +398,6 @@ wss.on('connection', (ws) => {
   })
 })
 
-server.listen(PORT, () => {
+server.listen(PORT, '0.0.0.0', () => {
   console.log(`[ws-server] listening on :${PORT}`)
 })
