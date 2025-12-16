@@ -13,7 +13,6 @@ import {
   fetchTrophiesFor,
   getNextPlayerIdNumber,
   supabaseEnvStatus,
-  finalizeRound,
 } from './leaderboard'
 import type { LeaderboardEntry, Mode, Settings, TrophyCounts } from './types'
 
@@ -235,6 +234,7 @@ export function GameManager({
   const roundNamesRef = useRef<Record<string, string>>({})
   // Server-authoritative round id from seed and pending outbound round id
   const seedRoundIdRef = useRef<string | null>(null)
+  const lastResultsRoundIdRef = useRef<string | null>(null)
   const seedCountdownRef = useRef(false)
   // Track last known scores per player during a round (for results UI)
   const roundScoresRef = useRef<Record<string, number>>({})
@@ -334,7 +334,7 @@ export function GameManager({
       if (b.score !== a.score) return b.score - a.score
       return a.finishIdx - b.finishIdx
     })
-    // Compute standard-competition places (1,1,3) based on equal scores sharing the same place
+    // Compute local results purely for UI; server remains canonical source
     const resultsItems: Array<{ id: string; name: string; score: number; place: number }> = []
     let prevScore: number | null = null
     let prevPlace = 0
@@ -345,77 +345,9 @@ export function GameManager({
       prevScore = r.score
       prevPlace = place
     }
-    // Elect a single client to call the server RPC and broadcast authoritative results
-    ;(async () => {
-      try {
-        const allParticipants = Array.from(roundParticipantsRef.current)
-        const leaderId = allParticipants.slice().sort()[0] as string | undefined
-        const roundIdStr = seedRoundIdRef.current
-        if (myIdRef.current && leaderId && myIdRef.current === leaderId && roundIdStr) {
-          const rpc = await finalizeRound({
-            roomId: room || 'default',
-            roundId: roundIdStr,
-            items: base.map((r) => ({
-              id: r.id,
-              name: r.name,
-              score: r.score,
-              finishIdx: r.finishIdx,
-            })),
-            participants: allParticipants.map((pid) => ({
-              id: pid,
-              name: (roundNamesRef.current[pid] || 'Player').trim(),
-            })),
-          })
-          if (rpc && rpc.type === 'results') {
-            setRoundResults({ items: rpc.items, total: rpc.total })
-            setShowResults(true)
-            setDebugInfo((d) => ({ ...d, lastFinalizeReason: 'normal' }))
-            try {
-              netRef.current?.send({
-                type: 'results',
-                roundId: rpc.roundId,
-                total: rpc.total,
-                awarded: rpc.awarded,
-                items: rpc.items,
-              })
-            } catch {
-              /* noop */
-            }
-          } else {
-            // If RPC failed, still show local results UI (no awards persisted)
-            setRoundResults({ items: resultsItems, total: filtered.length })
-            setShowResults(true)
-            try {
-              netRef.current?.send({
-                type: 'results',
-                roundId: roundIdStr,
-                total: filtered.length,
-                awarded: false,
-                items: resultsItems.map((r) => ({
-                  id: r.id,
-                  name: r.name,
-                  score: r.score,
-                  place: r.place,
-                })),
-              })
-            } catch {
-              /* noop */
-            }
-          }
-          try {
-            const top = await fetchLeaderboard(periodRef.current, 15)
-            setLeaders(top)
-            const ids = top.map((l) => l.id).filter((v): v is number => typeof v === 'number')
-            if (ids.length) setTrophyMap(await fetchTrophiesFor(ids))
-          } catch {
-            /* ignore */
-          }
-        }
-      } catch {
-        // ignore RPC errors; UI already updated optimistically
-      }
-    })()
-  }, [room])
+    setRoundResults({ items: resultsItems, total: filtered.length })
+    setShowResults(true)
+  }, [])
 
   const registerFinish = useCallback(
     (id: string) => {
@@ -696,37 +628,6 @@ export function GameManager({
             /* noop */
           }
           registerFinish(myId)
-          // Fallback: if non-host and it was a solo-with-spectators round, submit locally
-          try {
-            if (
-              !isHost &&
-              roundActiveRef.current &&
-              roundParticipantsRef.current.size === 1 &&
-              roundParticipantsRef.current.has(myId) &&
-              soloFallbackRoundRef.current !== roundIdRef.current &&
-              finalScore > 0
-            ) {
-              soloFallbackRoundRef.current = roundIdRef.current
-              ;(async () => {
-                try {
-                  await submitScore({
-                    username: (playerNameRef.current || playerName || 'Player').trim(),
-                    score: finalScore,
-                    date: new Date().toISOString(),
-                    gameMode: 'survival',
-                  })
-                  const top = await fetchLeaderboard(periodRef.current, 15)
-                  setLeaders(top)
-                  const ids = top.map((l) => l.id).filter((v): v is number => typeof v === 'number')
-                  if (ids.length) setTrophyMap(await fetchTrophiesFor(ids))
-                } catch {
-                  /* ignore */
-                }
-              })()
-            }
-          } catch {
-            /* ignore */
-          }
         }
       }
       if (state.alive) {
@@ -1298,6 +1199,12 @@ export function GameManager({
               /* ignore */
             }
             if (msg && Array.isArray(msg.items) && typeof msg.total === 'number') {
+              // Only accept the first results payload for the current round
+              if (!msg.roundId) return
+              const curRoundId = seedRoundIdRef.current
+              if (curRoundId && msg.roundId !== curRoundId) return
+              if (lastResultsRoundIdRef.current === msg.roundId) return
+              lastResultsRoundIdRef.current = msg.roundId
               try {
                 const items = msg.items as Array<{
                   id: string

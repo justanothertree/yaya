@@ -6,6 +6,10 @@ import { site } from './config/site'
 import { IconGitHub, IconLinkedIn } from './components/Icons'
 import { useReveal } from './hooks/useReveal'
 
+if (import.meta.env.DEV) {
+  import('./dev/supabaseDebug')
+}
+
 export default function App() {
   type Section = 'home' | 'projects' | 'resume' | 'snake' | 'contact'
   const initialSection: Section = (() => {

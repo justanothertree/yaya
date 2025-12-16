@@ -1,6 +1,26 @@
+Archived: legacy portfolio expansion notes.
+Kept for reference only.
+
 # Expand Guide
 
 Use this checklist to grow the portfolio safely. Each item links to the exact file to edit.
+
+# Portfolio Expand Guide (Frontend Only)
+
+⚠️ This document applies ONLY to the static portfolio sections
+(UI, styling, deployment, content).
+
+It does NOT describe:
+- Supabase schema or RPCs
+- Multiplayer game logic
+- WebSocket server behavior
+- Leaderboards, trophies, or backend invariants
+
+Authoritative backend documentation lives in:
+- supabase-contract.md
+- db-schema-summary.sql
+- supabase-rpcs.sql
+- supabase-triggers.sql
 
 ## Content updates
 

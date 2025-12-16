@@ -5,7 +5,7 @@
  *  - Immediately (or after tiny delay) broadcast seed { type:'seed', roundId, seedData:{ seed, settings } }
  *  - Echo player messages needed by client (name, ready, spectate, preview, tick, over, settings)
  *  - Reassign host on host disconnect
- *  - NEVER writes to Supabase; only forwards roundId and gameplay messages.
+ *  - Finalize multiplayer rounds via Supabase finalize_round_rpc (server-owned finalize).
  */
 
 import { createServer } from 'http'
@@ -22,6 +22,11 @@ const DEFAULT_SETTINGS = {
   canvasSize: 'medium',
 }
 
+// Supabase env (server-side). These should be configured in Render:
+// SUPABASE_URL, SUPABASE_ANON_KEY
+const SUPABASE_URL = process.env.SUPABASE_URL || ''
+const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || ''
+
 /** Room state structure */
 const rooms = new Map()
 // rooms.set(roomId, {
@@ -32,7 +37,7 @@ const rooms = new Map()
 //   roundId,
 //   visitorCounter,
 //   state: Map<id, { name?: string, ready?: boolean, spectate?: boolean, lastScore?: number, finished?: boolean }>,
-//   round: { active: boolean, id: string|null, participants: Set<string>, finishOrder: string[] }
+//   round: { active: boolean, id: string|null, participants: Set<string>, finishOrder: string[], finalizing?: boolean, finalized?: boolean }
 // })
 
 function uuid() {
@@ -78,15 +83,55 @@ function makeSeed(room) {
   return { type: 'seed', roundId, seedData: { seed: room.seed, settings } }
 }
 
-function tryFinalize(room) {
+async function finalizeRoundOnSupabase(roomId, roundId, gameMode, baseItems) {
+  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) return null
+  const payload = {
+    p_room_id: roomId,
+    p_round_id: roundId,
+    p_game_mode: gameMode || 'survival',
+    p_items: baseItems.map((row) => ({
+      id: String(row.id),
+      name: row.name,
+      score: Number(row.score || 0),
+      finishIdx: Number(row.finishIdx ?? 9999),
+    })),
+    p_players: baseItems.map((row) => ({ id: String(row.id), name: row.name })),
+  }
+  try {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/finalize_round_rpc`, {
+      method: 'POST',
+      headers: {
+        apikey: SUPABASE_ANON_KEY,
+        Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    })
+    if (!res.ok) {
+      console.error('[ws] finalize_round_rpc HTTP error', res.status, await res.text())
+      return null
+    }
+    const data = await res.json()
+    if (!Array.isArray(data)) return null
+    return data
+  } catch (err) {
+    console.error('[ws] finalize_round_rpc exception', err)
+    return null
+  }
+}
+
+async function tryFinalize(room, roomId) {
   const r = room.round
   if (!r || !r.active || !r.id) return
+  // Guard against duplicate finalization for the same (room, round)
+  if (r.finalizing || r.finalized) return
   const parts = Array.from(r.participants)
   if (parts.length === 0) return
   // Ensure all participants have finished
   for (const pid of parts) {
     if (!room.state.get(pid)?.finished) return
   }
+  r.finalizing = true
   // Build base results {id,name,score,finishIdx}
   const base = parts.map((pid) => {
     const st = room.state.get(pid) || {}
@@ -96,7 +141,8 @@ function tryFinalize(room) {
     return { id: pid, name, score, finishIdx: idx >= 0 ? idx : 9999 }
   })
   base.sort((a, b) => (b.score !== a.score ? b.score - a.score : a.finishIdx - b.finishIdx))
-  const items = []
+  // Default local placement (used if Supabase is unavailable)
+  let items = []
   let prevScore = null
   let prevPlace = 0
   for (let i = 0; i < base.length; i++) {
@@ -106,17 +152,31 @@ function tryFinalize(room) {
     prevScore = row.score
     prevPlace = place
   }
+  let awarded = false
+  // Attempt server-owned Supabase finalize_round_rpc; idempotent in DB
+  const rpcResults = await finalizeRoundOnSupabase(roomId, r.id, 'survival', base)
+  if (Array.isArray(rpcResults) && rpcResults.length) {
+    items = rpcResults.map((row) => ({
+      id: String(row.id),
+      name: String(row.name || 'Player'),
+      score: Number(row.score || 0),
+      place: Number(row.place || 0) || 0,
+    }))
+    awarded = true
+  }
   const payload = {
     type: 'results',
     roundId: r.id,
-    total: parts.length,
-    awarded: false,
+    total: items.length,
+    awarded,
     items,
   }
   // Broadcast unified results to all clients
   broadcast(room, payload)
-  // Mark round inactive until next restart
+  // Mark round inactive until next restart; exactly-once guard
   r.active = false
+  r.finalized = true
+  r.finalizing = false
 }
 
 const server = createServer()
@@ -151,7 +211,14 @@ wss.on('connection', (ws) => {
           roundId: null,
           visitorCounter: 0,
           state: new Map(),
-          round: { active: false, id: null, participants: new Set(), finishOrder: [] },
+          round: {
+            active: false,
+            id: null,
+            participants: new Set(),
+            finishOrder: [],
+            finalizing: false,
+            finalized: false,
+          },
         }
         rooms.set(roomId, room)
       }
@@ -213,7 +280,7 @@ wss.on('connection', (ws) => {
         const r = room.round
         if (r && r.active && r.participants.has(id)) {
           if (!r.finishOrder.includes(id)) r.finishOrder.push(id)
-          tryFinalize(room)
+          void tryFinalize(room, joinedRoomId)
         }
       }
       case 'error':
@@ -242,6 +309,8 @@ wss.on('connection', (ws) => {
               .map(([pid]) => pid),
           ),
           finishOrder: [],
+          finalizing: false,
+          finalized: false,
         }
         // Reset per-round flags for participants
         for (const pid of room.round.participants) {
@@ -261,8 +330,7 @@ wss.on('connection', (ws) => {
         // Also send to host (since broadcast excludes none, host already gets it)
         break
       case 'results':
-        // Forward client-emitted results (e.g., to signal awarded:true) to all
-        broadcast(room, { ...msg, from: id })
+        // Client-emitted results are ignored; server is the sole source of canonical results
         break
       case 'list':
         // Provide summary; treat all rooms as public
@@ -294,7 +362,7 @@ wss.on('connection', (ws) => {
       if (r && r.active && r.participants && r.participants.has(id)) {
         r.participants.delete(id)
         // If this disconnect unblocks finalization, try finalize now
-        tryFinalize(room)
+        void tryFinalize(room, joinedRoomId)
       }
     } catch {
       /* ignore */
