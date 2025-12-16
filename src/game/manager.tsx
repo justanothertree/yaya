@@ -249,8 +249,6 @@ export function GameManager({
   // Throttle auto-seed requests to avoid duplicates
   const lastAutoSeedTsRef = useRef(0)
   const previewsRef = useRef<HTMLDivElement>(null)
-  // Fallback: track if we self-submitted in a solo-with-spectators round to avoid duplicates
-  const soloFallbackRoundRef = useRef<number | null>(null)
   const ROOM_WORDS = useMemo(
     () => [
       'chill',
@@ -1648,6 +1646,30 @@ export function GameManager({
     if ((ready && (othersAllReady || others.length === 0)) || (spectate && othersAllReady)) {
       lastAutoSeedTsRef.current = now
       try {
+        // TEMP DEBUG: log guard state before auto restart emit
+         
+        console.log('[MP DEBUG] auto-restart about to send', {
+          isHost,
+          ready,
+          spectate,
+          countdown,
+          roundActive: roundActiveRef.current,
+          seedCountdown: seedCountdownRef.current,
+          players: Object.fromEntries(
+            Object.entries(players).map(([pid, info]) => [
+              pid,
+              {
+                ready: !!info.ready,
+                spectate: !!info.spectate,
+              },
+            ]),
+          ),
+          now,
+          lastSettingsChange: lastSettingsChangeRef.current,
+          lastAutoSeedTs: lastAutoSeedTsRef.current,
+          sinceLastSettingsChange: now - lastSettingsChangeRef.current,
+          sinceLastAutoSeed: now - lastAutoSeedTsRef.current,
+        })
         netRef.current?.send({ type: 'restart' })
       } catch {
         /* noop */
@@ -1890,9 +1912,37 @@ export function GameManager({
               <button
                 className="btn"
                 onClick={() => {
+                  // TEMP DEBUG: log whenever Force start is clicked
+                   
+                  console.log('[MP DEBUG] force-start click', {
+                    mode,
+                    conn,
+                    isHost,
+                  })
                   if (mode === 'versus') {
                     if (conn !== 'connected' || !isHost) return
                     try {
+                      // TEMP DEBUG: log guard state before manual restart emit
+                       
+                      console.log('[MP DEBUG] manual restart about to send', {
+                        isHost,
+                        ready,
+                        spectate,
+                        countdown,
+                        roundActive: roundActiveRef.current,
+                        seedCountdown: seedCountdownRef.current,
+                        players: Object.fromEntries(
+                          Object.entries(players).map(([pid, info]) => [
+                            pid,
+                            {
+                              ready: !!info.ready,
+                              spectate: !!info.spectate,
+                            },
+                          ]),
+                        ),
+                        lastSettingsChange: lastSettingsChangeRef.current,
+                        lastAutoSeedTs: lastAutoSeedTsRef.current,
+                      })
                       netRef.current?.send({ type: 'restart' })
                     } catch {
                       /* noop */
