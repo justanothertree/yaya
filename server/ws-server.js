@@ -257,27 +257,27 @@ wss.on('connection', (ws) => {
         const st = room.state.get(id) || {}
         st.name = msg.name
         room.state.set(id, st)
-        break
+        return
       }
       case 'ready': {
         const st = room.state.get(id) || {}
         st.ready = true
         room.state.set(id, st)
-        break
+        return
       }
       case 'spectate': {
         const st = room.state.get(id) || {}
         st.spectate = !!msg.on
         if (st.spectate) st.ready = false
         room.state.set(id, st)
-        break
+        return
       }
       case 'preview':
       case 'tick': {
         const st = room.state.get(id) || {}
         if (typeof msg.score === 'number') st.lastScore = Number(msg.score)
         room.state.set(id, st)
-        break
+        return
       }
       case 'over': {
         const st = room.state.get(id) || {}
@@ -290,23 +290,50 @@ wss.on('connection', (ws) => {
           if (!r.finishOrder.includes(id)) r.finishOrder.push(id)
           void tryFinalize(room, joinedRoomId)
         }
-        break
+        return
       }
-      case 'error':
+      case 'error': {
         broadcast(room, { ...msg, from: id })
-        break
-      case 'settings':
+        return
+      }
+      case 'settings': {
         if (id === room.hostId && msg.settings) {
           room.settings = { ...room.settings, ...msg.settings }
           broadcast(room, { type: 'settings', settings: room.settings })
         }
-        break
-      case 'restart':
-        if (id !== room.hostId) return // only host can start
+        return
+      }
+      case 'restart': {
+        // TEMP DEBUG: log all incoming restart attempts with host + state snapshot
+        try {
+          console.log('[ws] restart received', {
+            room: joinedRoomId,
+            from: id,
+            hostId: room.hostId,
+            isHost: id === room.hostId,
+            state: Array.from(room.state.entries()).map(([pid, st]) => ({
+              pid,
+              ready: !!st.ready,
+              spectate: !!st.spectate,
+            })),
+          })
+        } catch {}
+
+        if (id !== room.hostId) {
+          try {
+            console.warn('[ws] restart ignored: not host', {
+              room: joinedRoomId,
+              from: id,
+              hostId: room.hostId,
+            })
+          } catch {}
+          return
+        }
+
         // Generate new roundId server-side
         room.roundId = uuid()
         try {
-          console.log(`[ws] restart room=${joinedRoomId} roundId=${room.roundId}`)
+          console.log(`[ws] restart accepted room=${joinedRoomId} roundId=${room.roundId}`)
         } catch {}
         // Capture participants snapshot: ready && not spectating
         room.round = {
@@ -336,12 +363,15 @@ wss.on('connection', (ws) => {
           console.log(`[ws] seed room=${joinedRoomId} roundId=${room.roundId} seed=${room.seed}`)
         } catch {}
         broadcast(room, seedPayload)
-        // Also send to host (since broadcast excludes none, host already gets it)
-        break
-      case 'results':
+        // Explicit ack back to the sender so client can verify path
+        send(ws, { type: 'restart-ack', roundId: room.roundId })
+        return
+      }
+      case 'results': {
         // Client-emitted results are ignored; server is the sole source of canonical results
-        break
-      case 'list':
+        return
+      }
+      case 'list': {
         // Provide summary; treat all rooms as public
         const items = Array.from(rooms.entries()).map(([rid, r]) => ({
           id: rid,
@@ -349,14 +379,17 @@ wss.on('connection', (ws) => {
           count: r.clients.size,
         }))
         send(ws, { type: 'rooms', items })
-        break
-      case 'roommeta':
+        return
+      }
+      case 'roommeta': {
         // Optionally forward (not persisted)
         broadcast(room, { type: 'roommeta', name: msg.name, public: msg.public })
-        break
-      default:
+        return
+      }
+      default: {
         // Unknown message; ignore or send error
-        break
+        return
+      }
     }
   })
 

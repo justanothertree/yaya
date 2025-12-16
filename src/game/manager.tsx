@@ -1057,6 +1057,19 @@ export function GameManager({
             roundScoresRef.current = {}
             // Clear previews to avoid stale tiles at start of a new round
             setPreviews({})
+          } else if (msg.type === 'restart-ack') {
+            try {
+              const env = (import.meta as unknown as { env?: Record<string, string> }).env || {}
+              if (env && (env.DEV || env.VITE_DEV)) {
+                // TEMP DEBUG: log restart acknowledgements from server
+                 
+                console.log('[vs] RESTART-ACK RECEIVED', {
+                  roundId: msg.roundId,
+                })
+              }
+            } catch {
+              /* ignore */
+            }
           } else if (msg.type === 'presence') {
             const newCount = Math.max(1, msg.count || 1)
             const prevCount = prevPresenceRef.current || 1
@@ -1647,7 +1660,7 @@ export function GameManager({
       lastAutoSeedTsRef.current = now
       try {
         // TEMP DEBUG: log guard state before auto restart emit
-         
+
         console.log('[MP DEBUG] auto-restart about to send', {
           isHost,
           ready,
@@ -1913,7 +1926,7 @@ export function GameManager({
                 className="btn"
                 onClick={() => {
                   // TEMP DEBUG: log whenever Force start is clicked
-                   
+
                   console.log('[MP DEBUG] force-start click', {
                     mode,
                     conn,
@@ -1923,7 +1936,7 @@ export function GameManager({
                     if (conn !== 'connected' || !isHost) return
                     try {
                       // TEMP DEBUG: log guard state before manual restart emit
-                       
+
                       console.log('[MP DEBUG] manual restart about to send', {
                         isHost,
                         ready,
