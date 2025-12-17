@@ -251,33 +251,42 @@ wss.on('connection', (ws) => {
     const room = rooms.get(joinedRoomId)
     if (!room) return
 
+    // TEMP DEBUG: log every message that reaches the room switch
+    try {
+      console.log('[ws] message received', {
+        type: msg.type,
+        joinedRoomId,
+        from: id,
+      })
+    } catch {}
+
     // Maintain last seen host; re-validate if host disconnects later
     switch (msg.type) {
       case 'name': {
         const st = room.state.get(id) || {}
         st.name = msg.name
         room.state.set(id, st)
-        return
+        break
       }
       case 'ready': {
         const st = room.state.get(id) || {}
         st.ready = true
         room.state.set(id, st)
-        return
+        break
       }
       case 'spectate': {
         const st = room.state.get(id) || {}
         st.spectate = !!msg.on
         if (st.spectate) st.ready = false
         room.state.set(id, st)
-        return
+        break
       }
       case 'preview':
       case 'tick': {
         const st = room.state.get(id) || {}
         if (typeof msg.score === 'number') st.lastScore = Number(msg.score)
         room.state.set(id, st)
-        return
+        break
       }
       case 'over': {
         const st = room.state.get(id) || {}
@@ -290,18 +299,18 @@ wss.on('connection', (ws) => {
           if (!r.finishOrder.includes(id)) r.finishOrder.push(id)
           void tryFinalize(room, joinedRoomId)
         }
-        return
+        break
       }
       case 'error': {
         broadcast(room, { ...msg, from: id })
-        return
+        break
       }
       case 'settings': {
         if (id === room.hostId && msg.settings) {
           room.settings = { ...room.settings, ...msg.settings }
           broadcast(room, { type: 'settings', settings: room.settings })
         }
-        return
+        break
       }
       case 'restart': {
         // TEMP DEBUG: log all incoming restart attempts with host + state snapshot
@@ -327,7 +336,7 @@ wss.on('connection', (ws) => {
               hostId: room.hostId,
             })
           } catch {}
-          return
+          break
         }
 
         // Generate new roundId server-side
@@ -365,11 +374,11 @@ wss.on('connection', (ws) => {
         broadcast(room, seedPayload)
         // Explicit ack back to the sender so client can verify path
         send(ws, { type: 'restart-ack', roundId: room.roundId })
-        return
+        break
       }
       case 'results': {
         // Client-emitted results are ignored; server is the sole source of canonical results
-        return
+        break
       }
       case 'list': {
         // Provide summary; treat all rooms as public
@@ -379,16 +388,16 @@ wss.on('connection', (ws) => {
           count: r.clients.size,
         }))
         send(ws, { type: 'rooms', items })
-        return
+        break
       }
       case 'roommeta': {
         // Optionally forward (not persisted)
         broadcast(room, { type: 'roommeta', name: msg.name, public: msg.public })
-        return
+        break
       }
       default: {
         // Unknown message; ignore or send error
-        return
+        break
       }
     }
   })
