@@ -58,6 +58,7 @@ export type NetMessage =
   | { type: 'roommeta'; name?: string; public?: boolean }
   | { type: 'list' }
   | { type: 'rooms'; items: Array<{ id: string; name: string; count: number }> }
+  | { type: 'restart-ack'; roundId?: string }
   | { type: 'error'; code: 'room-not-found' | 'bad-request' | string; message?: string }
   | {
       type: 'results'
