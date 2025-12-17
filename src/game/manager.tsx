@@ -2491,7 +2491,8 @@ export function GameManager({
                   style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}
                 >
                   <span>
-                    {playerName?.trim() || 'You'} {isHost ? <em>(Host)</em> : null}
+                    {(players[myId]?.name || playerName || 'You').trim()}{' '}
+                    {isHost ? <em>(Host)</em> : null}
                   </span>
                   <span style={{ marginLeft: 12 }}>
                     {spectate ? 'Spectator' : ready ? 'Ready ✓' : 'Not ready'}

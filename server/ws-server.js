@@ -13,6 +13,7 @@ import { WebSocketServer } from 'ws'
 import crypto from 'crypto'
 
 const PORT = process.env.PORT ? Number(process.env.PORT) : 8080
+const WS_DEBUG = process.env.WS_DEBUG === '1' || process.env.WS_DEBUG === 'true'
 
 // Default settings mirrored from client DEFAULT_SETTINGS
 const DEFAULT_SETTINGS = {
@@ -271,14 +272,16 @@ wss.on('connection', (ws) => {
     const room = rooms.get(joinedRoomId)
     if (!room) return
 
-    // TEMP DEBUG: log every message that reaches the room switch
-    try {
-      console.log('[ws] message received', {
-        type: msg.type,
-        joinedRoomId,
-        from: id,
-      })
-    } catch {}
+    // Optional debug logging for message routing
+    if (WS_DEBUG && msg.type !== 'preview' && msg.type !== 'tick' && msg.type !== 'input') {
+      try {
+        console.log('[ws] message received', {
+          type: msg.type,
+          joinedRoomId,
+          from: id,
+        })
+      } catch {}
+    }
 
     // Maintain last seen host; re-validate if host disconnects later
     switch (msg.type) {
@@ -348,20 +351,21 @@ wss.on('connection', (ws) => {
         break
       }
       case 'restart': {
-        // TEMP DEBUG: log all incoming restart attempts with host + state snapshot
-        try {
-          console.log('[ws] restart received', {
-            room: joinedRoomId,
-            from: id,
-            hostId: room.hostId,
-            isHost: id === room.hostId,
-            state: Array.from(room.state.entries()).map(([pid, st]) => ({
-              pid,
-              ready: !!st.ready,
-              spectate: !!st.spectate,
-            })),
-          })
-        } catch {}
+        if (WS_DEBUG) {
+          try {
+            console.log('[ws] restart received', {
+              room: joinedRoomId,
+              from: id,
+              hostId: room.hostId,
+              isHost: id === room.hostId,
+              state: Array.from(room.state.entries()).map(([pid, st]) => ({
+                pid,
+                ready: !!st.ready,
+                spectate: !!st.spectate,
+              })),
+            })
+          } catch {}
+        }
 
         if (id !== room.hostId) {
           try {
@@ -376,9 +380,11 @@ wss.on('connection', (ws) => {
 
         // Generate new roundId server-side
         room.roundId = uuid()
-        try {
-          console.log(`[ws] restart accepted room=${joinedRoomId} roundId=${room.roundId}`)
-        } catch {}
+        if (WS_DEBUG) {
+          try {
+            console.log(`[ws] restart accepted room=${joinedRoomId} roundId=${room.roundId}`)
+          } catch {}
+        }
         // Capture participants snapshot: ready && not spectating
         room.round = {
           active: true,
@@ -403,9 +409,11 @@ wss.on('connection', (ws) => {
         broadcast(room, { type: 'restart', roundId: room.roundId })
         // Follow with seed broadcast containing same roundId
         const seedPayload = makeSeed(room)
-        try {
-          console.log(`[ws] seed room=${joinedRoomId} roundId=${room.roundId} seed=${room.seed}`)
-        } catch {}
+        if (WS_DEBUG) {
+          try {
+            console.log(`[ws] seed room=${joinedRoomId} roundId=${room.roundId} seed=${room.seed}`)
+          } catch {}
+        }
         broadcast(room, seedPayload)
         // Explicit ack back to the sender so client can verify path
         send(ws, { type: 'restart-ack', roundId: room.roundId })
