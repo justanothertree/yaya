@@ -46,13 +46,21 @@ In the client, set `VITE_WS_URL=ws://localhost:10000` (e.g., in `.env.local`).
 
 1. Push this `server/` folder as its own repository (recommended), or select the subfolder when creating a new Render Web Service.
 2. Render settings:
-   - Runtime: Node
-   - Build command: `npm install`
-   - Start command: `npm start`
-   - Root directory: `server` (if using a monorepo)
-3. After deploy, set `VITE_WS_URL` in your site’s environment (build-time) to the `wss://` URL Render provides (e.g., `wss://your-app.onrender.com`).
+
+- Runtime: Node
+- Build command: `npm install`
+- Start command: `npm start`
+- Root directory: `server` (if using a monorepo)
+
+3. Environment variables (multiplayer leaderboard):
+
+- `SUPABASE_URL`
+- `SUPABASE_ANON_KEY`
+  These **must** be set on the WebSocket Render service for the server to call the `finalize_round_rpc` Supabase function and persist round results and trophies. If either is missing, rounds are still finalized locally in memory, but no scores are written to Supabase.
+
+4. After deploy, set `VITE_WS_URL` in your site’s environment (build-time) to the `wss://` URL Render provides (e.g., `wss://your-app.onrender.com`).
 
 ## Notes
 
-- This is a simple relay; it doesn’t validate inputs or persist matches.
+- This server now handles room metadata, restart, seeding, and server-owned Supabase finalization for multiplayer rounds.
 - If you prefer Socket.IO, we can swap the client to `socket.io-client` and the server to `socket.io`. The current client uses native WebSockets, so `ws` keeps changes minimal.

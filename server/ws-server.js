@@ -37,7 +37,8 @@ const rooms = new Map()
 //   roundId,
 //   visitorCounter,
 //   state: Map<id, { name?: string, ready?: boolean, spectate?: boolean, lastScore?: number, finished?: boolean }>,
-//   round: { active: boolean, id: string|null, participants: Set<string>, finishOrder: string[], finalizing?: boolean, finalized?: boolean }
+//   round: { active: boolean, id: string|null, participants: Set<string>, finishOrder: string[], finalizing?: boolean, finalized?: boolean },
+//   meta: { name: string, public: boolean, createdAt: number }
 // })
 
 function uuid() {
@@ -223,6 +224,11 @@ wss.on('connection', (ws) => {
             finalizing: false,
             finalized: false,
           },
+          meta: {
+            name: roomId,
+            public: true,
+            createdAt: Date.now(),
+          },
         }
         rooms.set(roomId, room)
       }
@@ -281,7 +287,14 @@ wss.on('connection', (ws) => {
         room.state.set(id, st)
         break
       }
-      case 'preview':
+      case 'preview': {
+        const st = room.state.get(id) || {}
+        if (typeof msg.score === 'number') st.lastScore = Number(msg.score)
+        room.state.set(id, st)
+        // Relay preview snapshots to peers (except sender), matching legacy server
+        broadcast(room, { ...msg, from: id }, id)
+        break
+      }
       case 'tick': {
         const st = room.state.get(id) || {}
         if (typeof msg.score === 'number') st.lastScore = Number(msg.score)
@@ -381,18 +394,25 @@ wss.on('connection', (ws) => {
         break
       }
       case 'list': {
-        // Provide summary; treat all rooms as public
-        const items = Array.from(rooms.entries()).map(([rid, r]) => ({
-          id: rid,
-          name: rid,
-          count: r.clients.size,
-        }))
+        // Provide summary of public rooms using stored metadata
+        const items = Array.from(rooms.entries()).map(([rid, r]) => {
+          const meta = r.meta || { name: rid, public: true }
+          return {
+            id: rid,
+            name: typeof meta.name === 'string' ? meta.name : rid,
+            count: r.clients.size,
+          }
+        })
         send(ws, { type: 'rooms', items })
         break
       }
       case 'roommeta': {
-        // Optionally forward (not persisted)
-        broadcast(room, { type: 'roommeta', name: msg.name, public: msg.public })
+        // Persist basic metadata and forward to peers; all rooms are treated as public
+        const meta = room.meta || { name: joinedRoomId, public: true, createdAt: Date.now() }
+        if (typeof msg.name === 'string' && msg.name.trim()) meta.name = msg.name.trim()
+        meta.public = true
+        room.meta = meta
+        broadcast(room, { type: 'roommeta', name: meta.name, public: true })
         break
       }
       default: {
