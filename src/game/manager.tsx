@@ -237,6 +237,7 @@ export function GameManager({
   const lastResultsRoundIdRef = useRef<string | null>(null)
   const seedCountdownRef = useRef(false)
   const restartInFlightRef = useRef(false)
+  const joinedRef = useRef(false)
   // Track last known scores per player during a round (for results UI)
   const roundScoresRef = useRef<Record<string, number>>({})
   // Track last time a peer was seen (any message with from) to detect silent disconnects
@@ -924,6 +925,7 @@ export function GameManager({
           }
           setConn('disconnected')
           setJoining(false)
+          joinedRef.current = false
           setReady(false)
           setPlayers({})
           setPreviews({})
@@ -947,10 +949,12 @@ export function GameManager({
           }
           setConn('disconnected')
           setJoining(false)
+          joinedRef.current = false
         },
         onMessage: (msg) => {
           if (msg.type === 'welcome') {
             gotWelcome = true
+            joinedRef.current = true
             setMyId(msg.id)
             joinedAtRef.current = Date.now()
             // Move into lobby on successful welcome (covers Join flow)
@@ -1654,7 +1658,7 @@ export function GameManager({
 
   // Host: automatically request a new seed when all players are ready after a round
   useEffect(() => {
-    if (!(mode === 'versus' && conn === 'connected' && isHost)) return
+    if (!(mode === 'versus' && conn === 'connected' && isHost && joinedRef.current)) return
     if (restartInFlightRef.current) return
     // Don't spam if a countdown is already running or round is active
     if (countdown != null || seedCountdownRef.current || roundActiveRef.current) return
@@ -1951,7 +1955,7 @@ export function GameManager({
                     isHost,
                   })
                   if (mode === 'versus') {
-                    if (conn !== 'connected' || !isHost) return
+                    if (conn !== 'connected' || !isHost || !joinedRef.current) return
                     try {
                       // TEMP DEBUG: log guard state before manual restart emit
 
