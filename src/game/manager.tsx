@@ -1062,7 +1062,7 @@ export function GameManager({
               const env = (import.meta as unknown as { env?: Record<string, string> }).env || {}
               if (env && (env.DEV || env.VITE_DEV)) {
                 // TEMP DEBUG: log restart acknowledgements from server
-                 
+
                 console.log('[vs] RESTART-ACK RECEIVED', {
                   roundId: msg.roundId,
                 })
@@ -1660,7 +1660,7 @@ export function GameManager({
       lastAutoSeedTsRef.current = now
       try {
         // TEMP DEBUG: log guard state before auto restart emit
-
+         
         console.log('[MP DEBUG] auto-restart about to send', {
           isHost,
           ready,
@@ -1682,6 +1682,12 @@ export function GameManager({
           lastAutoSeedTs: lastAutoSeedTsRef.current,
           sinceLastSettingsChange: now - lastSettingsChangeRef.current,
           sinceLastAutoSeed: now - lastAutoSeedTsRef.current,
+        })
+        // TEMP DEBUG: log right before sending restart over the socket
+         
+        console.log('[MP DEBUG] sending restart over socket', {
+          wsReadyState: (netRef.current as unknown as { ws?: WebSocket | null })?.ws?.readyState,
+          wsUrl: (netRef.current as unknown as { ws?: WebSocket | null })?.ws?.url,
         })
         netRef.current?.send({ type: 'restart' })
       } catch {
@@ -1926,7 +1932,7 @@ export function GameManager({
                 className="btn"
                 onClick={() => {
                   // TEMP DEBUG: log whenever Force start is clicked
-
+                   
                   console.log('[MP DEBUG] force-start click', {
                     mode,
                     conn,
@@ -1936,7 +1942,7 @@ export function GameManager({
                     if (conn !== 'connected' || !isHost) return
                     try {
                       // TEMP DEBUG: log guard state before manual restart emit
-
+                       
                       console.log('[MP DEBUG] manual restart about to send', {
                         isHost,
                         ready,
@@ -1955,6 +1961,13 @@ export function GameManager({
                         ),
                         lastSettingsChange: lastSettingsChangeRef.current,
                         lastAutoSeedTs: lastAutoSeedTsRef.current,
+                      })
+                      // TEMP DEBUG: log right before sending restart over the socket
+                       
+                      console.log('[MP DEBUG] sending restart over socket', {
+                        wsReadyState: (netRef.current as unknown as { ws?: WebSocket | null })?.ws
+                          ?.readyState,
+                        wsUrl: (netRef.current as unknown as { ws?: WebSocket | null })?.ws?.url,
                       })
                       netRef.current?.send({ type: 'restart' })
                     } catch {

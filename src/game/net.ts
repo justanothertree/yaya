@@ -65,6 +65,18 @@ export class NetClient {
 
   send(msg: NetMessage) {
     try {
+      // TEMP DEBUG: log all outgoing WS messages to verify restart is written to the socket
+      try {
+         
+        console.log('[MP DEBUG] WS send', {
+          type: msg.type,
+          msg,
+          wsReadyState: this.ws?.readyState,
+          wsUrl: this.ws?.url,
+        })
+      } catch {
+        // ignore
+      }
       this.ws?.send(JSON.stringify(msg))
     } catch {
       // ignore
