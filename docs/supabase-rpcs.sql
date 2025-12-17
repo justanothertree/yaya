@@ -50,6 +50,7 @@ DECLARE
   rec record;
   results_items jsonb := '[]'::jsonb;
   i record;
+  v_leaderboard_id bigint;
 BEGIN
   SET search_path = public;
 
@@ -127,6 +128,28 @@ BEGIN
       score = GREATEST(leaderboard.score, EXCLUDED.score),
       player_name = EXCLUDED.player_name,
       created_at = leaderboard.created_at;
+
+    -- Resolve leaderboard row id for trophy linkage
+    SELECT id
+    INTO v_leaderboard_id
+    FROM leaderboard
+    WHERE player_id = rec.id
+      AND game_mode = COALESCE(p_game_mode, 'survival')
+    ORDER BY score DESC, created_at ASC
+    LIMIT 1;
+
+    -- Award trophies for top 3 placements in this finalized round
+    IF v_leaderboard_id IS NOT NULL AND i.place IS NOT NULL AND i.place <= 3 THEN
+      INSERT INTO trophies(leaderboard_id, trophy_name)
+      VALUES (
+        v_leaderboard_id,
+        CASE
+          WHEN i.place = 1 THEN 'gold'
+          WHEN i.place = 2 THEN 'silver'
+          ELSE 'bronze'
+        END
+      );
+    END IF;
 
   END LOOP;
 

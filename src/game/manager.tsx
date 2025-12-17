@@ -75,7 +75,6 @@ export function GameManager({
   const [debugInfo, setDebugInfo] = useState<{
     nextPlayerId?: number | null
     lastSaveCount?: number
-    lastAwards?: Array<{ name: string; medal: 'gold' | 'silver' | 'bronze' }>
     lastFinalizeReason?: 'normal' | 'timeout'
   }>({})
   const [playerName, setPlayerName] = useState<string>(() => {
@@ -1239,20 +1238,7 @@ export function GameManager({
                 setShowResults(true)
                 // Round is finished from the UI perspective
                 roundActiveRef.current = false
-                setDebugInfo((d) => {
-                  const next = { ...d, lastFinalizeReason: 'normal' as const }
-                  if (msg.awarded) {
-                    const awards: Array<{
-                      name: string
-                      medal: 'gold' | 'silver' | 'bronze'
-                    }> = []
-                    if (items[0]) awards.push({ name: items[0].name, medal: 'gold' })
-                    if (items[1]) awards.push({ name: items[1].name, medal: 'silver' })
-                    if (items[2]) awards.push({ name: items[2].name, medal: 'bronze' })
-                    next.lastAwards = awards
-                  }
-                  return next
-                })
+                setDebugInfo((d) => ({ ...d, lastFinalizeReason: 'normal' as const }))
                 // Ensure everyone refreshes leaderboard and trophies promptly
                 ;(async () => {
                   try {
@@ -2768,38 +2754,24 @@ export function GameManager({
                 textAlign: 'left',
               }}
             >
-              {leaders.map((l, i) => {
-                const username = String(l.username || '')
-                  .trim()
-                  .toLowerCase()
-                const recentAward =
-                  debugInfo.lastAwards &&
-                  debugInfo.lastAwards.find((a) => a.name.trim().toLowerCase() === username)
-                const recentMedal = recentAward?.medal
-                return (
-                  <li key={typeof l.id === 'number' ? l.id : i} className="muted">
-                    <strong style={{ color: 'var(--text)' }}>
-                      {profanityFilter.clean(l.username)}
-                    </strong>{' '}
-                    — {l.score}
-                    <span className="muted" style={{ marginLeft: 6, fontSize: 12 }}>
-                      • Survival • {l.date ? new Date(l.date).toLocaleString() : ''}
+              {leaders.map((l, i) => (
+                <li key={typeof l.id === 'number' ? l.id : i} className="muted">
+                  <strong style={{ color: 'var(--text)' }}>
+                    {profanityFilter.clean(l.username)}
+                  </strong>{' '}
+                  — {l.score}
+                  <span className="muted" style={{ marginLeft: 6, fontSize: 12 }}>
+                    • Survival • {l.date ? new Date(l.date).toLocaleString() : ''}
+                  </span>
+                  {typeof l.id === 'number' && trophyMap[l.id] && (
+                    <span className="muted" style={{ marginLeft: 8, fontSize: 12 }}>
+                      {trophyMap[l.id].gold > 0 ? ` 🥇×${trophyMap[l.id].gold}` : ''}
+                      {trophyMap[l.id].silver > 0 ? ` 🥈×${trophyMap[l.id].silver}` : ''}
+                      {trophyMap[l.id].bronze > 0 ? ` 🥉×${trophyMap[l.id].bronze}` : ''}
                     </span>
-                    {recentMedal && (
-                      <span className="muted" style={{ marginLeft: 6, fontSize: 12 }}>
-                        {recentMedal === 'gold' ? ' 🥇' : recentMedal === 'silver' ? ' 🥈' : ' 🥉'}
-                      </span>
-                    )}
-                    {typeof l.id === 'number' && trophyMap[l.id] && (
-                      <span className="muted" style={{ marginLeft: 8, fontSize: 12 }}>
-                        {trophyMap[l.id].gold > 0 ? ` 🥇×${trophyMap[l.id].gold}` : ''}
-                        {trophyMap[l.id].silver > 0 ? ` 🥈×${trophyMap[l.id].silver}` : ''}
-                        {trophyMap[l.id].bronze > 0 ? ` 🥉×${trophyMap[l.id].bronze}` : ''}
-                      </span>
-                    )}
-                  </li>
-                )
-              })}
+                  )}
+                </li>
+              ))}
             </ol>
           </div>
         )}
@@ -2820,12 +2792,6 @@ export function GameManager({
                 <div className="muted">Next Player id: {String(debugInfo.nextPlayerId ?? '—')}</div>
                 <div className="muted">
                   Last save count: {String(debugInfo.lastSaveCount ?? '—')}
-                </div>
-                <div className="muted">
-                  Last awards:{' '}
-                  {debugInfo.lastAwards && debugInfo.lastAwards.length > 0
-                    ? debugInfo.lastAwards.map((a) => `${a.name} (${a.medal})`).join(', ')
-                    : '—'}
                 </div>
                 <div className="muted">Host: {isHost ? 'yes' : 'no'}</div>
                 <div className="muted">
