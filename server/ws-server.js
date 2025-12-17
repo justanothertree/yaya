@@ -270,8 +270,12 @@ wss.on('connection', (ws) => {
     switch (msg.type) {
       case 'name': {
         const st = room.state.get(id) || {}
-        st.name = msg.name
-        room.state.set(id, st)
+        if (typeof msg.name === 'string' && msg.name.trim()) {
+          st.name = msg.name
+          room.state.set(id, st)
+          // Broadcast name updates to peers, matching legacy behavior
+          broadcast(room, { type: 'name', name: msg.name, from: id }, id)
+        }
         break
       }
       case 'ready': {

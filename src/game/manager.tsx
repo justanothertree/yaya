@@ -1602,8 +1602,8 @@ export function GameManager({
     if (!(mode === 'versus' && conn === 'connected' && myId)) return
     let raf: number | null = null
     const send = () => {
-      // Only send previews during an active round and when no restart is in flight
-      if (!roundActiveRef.current || restartInFlightRef.current) return
+      // Do not send previews while a restart is in flight
+      if (restartInFlightRef.current) return
       try {
         const snap = engineRef.current?.snapshot()
         if (snap) {
@@ -1668,10 +1668,9 @@ export function GameManager({
     if (now - lastAutoSeedTsRef.current < 1000) return
     const others = Object.entries(players).filter(([pid, p]) => pid !== myId && !p.spectate)
     const othersAllReady = others.length > 0 && others.every(([, p]) => p.ready)
-    // Start if:
-    // - Host is playing (not spectating) and everyone else is ready (or no others), OR
-    // - Host is spectating and all non-spectators are ready (must have at least 1 other)
-    if ((ready && (othersAllReady || others.length === 0)) || (spectate && othersAllReady)) {
+    // Start only when there is at least one other non-spectating player
+    // and all such players are ready.
+    if (others.length >= 1 && othersAllReady && ((ready && !spectate) || spectate)) {
       lastAutoSeedTsRef.current = now
       try {
         // TEMP DEBUG: log guard state before auto restart emit
@@ -2479,15 +2478,10 @@ export function GameManager({
                 // Dedupe by display name to avoid transient duplicate rows (e.g., a placeholder 'Player')
                 const seen = new Set<string>()
                 const items: Array<{ id: string; name: string; ready?: boolean }> = []
-                const selfName = (playerNameRef.current || playerName || 'Player')
-                  .trim()
-                  .toLowerCase()
                 for (const [id, p] of Object.entries(players)) {
                   if (id === myId) continue
                   const nameRaw = (p.name || 'Player').trim()
                   const key = nameRaw.toLowerCase()
-                  // Skip any entry whose name matches our own (guards against stale duplicate self id)
-                  if (key === selfName) continue
                   if (seen.has(key)) continue
                   seen.add(key)
                   items.push({ id, name: nameRaw, ready: p.ready })
