@@ -199,6 +199,20 @@ wss.on('connection', (ws) => {
     }
     if (!msg || typeof msg !== 'object') return
 
+    // Allow lobby list discovery without joining a room
+    if (msg.type === 'list') {
+      const items = Array.from(rooms.entries()).map(([rid, r]) => {
+        const meta = r.meta || { name: rid, public: true }
+        return {
+          id: rid,
+          name: typeof meta.name === 'string' ? meta.name : rid,
+          count: r.clients.size,
+        }
+      })
+      send(ws, { type: 'rooms', items })
+      return
+    }
+
     if (msg.type === 'hello') {
       const roomId = String(msg.room || '').trim() || 'default'
       let room = rooms.get(roomId)
@@ -282,6 +296,8 @@ wss.on('connection', (ws) => {
         const st = room.state.get(id) || {}
         st.ready = true
         room.state.set(id, st)
+        // Inform peers of ready state (server does not echo to sender)
+        broadcast(room, { type: 'ready', from: id }, id)
         break
       }
       case 'spectate': {
@@ -289,6 +305,8 @@ wss.on('connection', (ws) => {
         st.spectate = !!msg.on
         if (st.spectate) st.ready = false
         room.state.set(id, st)
+        // Broadcast spectate toggles so lobby lists stay in sync
+        broadcast(room, { type: 'spectate', from: id, on: !!msg.on }, id)
         break
       }
       case 'preview': {
@@ -395,19 +413,6 @@ wss.on('connection', (ws) => {
       }
       case 'results': {
         // Client-emitted results are ignored; server is the sole source of canonical results
-        break
-      }
-      case 'list': {
-        // Provide summary of public rooms using stored metadata
-        const items = Array.from(rooms.entries()).map(([rid, r]) => {
-          const meta = r.meta || { name: rid, public: true }
-          return {
-            id: rid,
-            name: typeof meta.name === 'string' ? meta.name : rid,
-            count: r.clients.size,
-          }
-        })
-        send(ws, { type: 'rooms', items })
         break
       }
       case 'roommeta': {

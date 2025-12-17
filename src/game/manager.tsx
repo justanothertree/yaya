@@ -1666,11 +1666,17 @@ export function GameManager({
     // Debounce briefly after any settings change to avoid accidental auto-start
     if (now - lastSettingsChangeRef.current < 1500) return
     if (now - lastAutoSeedTsRef.current < 1000) return
-    const others = Object.entries(players).filter(([pid, p]) => pid !== myId && !p.spectate)
-    const othersAllReady = others.length > 0 && others.every(([, p]) => p.ready)
-    // Start only when there is at least one other non-spectating player
-    // and all such players are ready.
-    if (others.length >= 1 && othersAllReady && ((ready && !spectate) || spectate)) {
+    const entries = Object.entries(players)
+    const others = entries.filter(([pid]) => pid !== myId)
+    const activeOthers = others.filter(([, p]) => !p.spectate)
+    const activeAllReady = activeOthers.length > 0 && activeOthers.every(([, p]) => p.ready)
+    const selfReady = (ready && !spectate) || spectate
+    // Auto-start rules:
+    // - Never auto-start if completely alone in the room (no others at all)
+    // - If there are only spectators (no other active players), allow auto-start when self is ready
+    // - If there are other active players, require all of them to be ready
+    const canStart = selfReady && others.length > 0 && (activeOthers.length === 0 || activeAllReady)
+    if (canStart) {
       lastAutoSeedTsRef.current = now
       try {
         // TEMP DEBUG: log guard state before auto restart emit
@@ -1984,6 +1990,14 @@ export function GameManager({
                           ?.readyState,
                         wsUrl: (netRef.current as unknown as { ws?: WebSocket | null })?.ws?.url,
                       })
+                      // Ensure latest settings are flushed to the server just before restart
+                      if (mode === 'versus' && conn === 'connected' && isHost) {
+                        try {
+                          netRef.current?.send({ type: 'settings', settings })
+                        } catch {
+                          /* noop */
+                        }
+                      }
                       restartInFlightRef.current = true
                       netRef.current?.send({ type: 'restart' })
                     } catch {
@@ -2009,8 +2023,12 @@ export function GameManager({
                   aria-pressed={settings.apples === n}
                   onClick={() => {
                     const next = { ...settings, apples: n }
-                    if (mode === 'versus' && conn === 'connected' && roundActiveRef.current) {
-                      setToast('Settings locked during active round')
+                    if (
+                      mode === 'versus' &&
+                      conn === 'connected' &&
+                      (roundActiveRef.current || countdown != null || seedCountdownRef.current)
+                    ) {
+                      setToast('Settings locked during countdown/round')
                       if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current)
                       toastTimerRef.current = window.setTimeout(
                         () => setToast(null),
@@ -2048,8 +2066,12 @@ export function GameManager({
                   onClick={() => {
                     const nextVal = lab === 'wrap'
                     const next = { ...settings, passThroughEdges: nextVal }
-                    if (mode === 'versus' && conn === 'connected' && roundActiveRef.current) {
-                      setToast('Settings locked during active round')
+                    if (
+                      mode === 'versus' &&
+                      conn === 'connected' &&
+                      (roundActiveRef.current || countdown != null || seedCountdownRef.current)
+                    ) {
+                      setToast('Settings locked during countdown/round')
                       if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current)
                       toastTimerRef.current = window.setTimeout(
                         () => setToast(null),
