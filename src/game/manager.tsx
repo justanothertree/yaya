@@ -236,6 +236,7 @@ export function GameManager({
   const seedRoundIdRef = useRef<string | null>(null)
   const lastResultsRoundIdRef = useRef<string | null>(null)
   const seedCountdownRef = useRef(false)
+  const restartInFlightRef = useRef(false)
   // Track last known scores per player during a round (for results UI)
   const roundScoresRef = useRef<Record<string, number>>({})
   // Track last time a peer was seen (any message with from) to detect silent disconnects
@@ -636,7 +637,12 @@ export function GameManager({
         if (mode === 'versus' && myId) {
           roundScoresRef.current[myId] = nextScore
         }
-        if (mode === 'versus' && netRef.current) {
+        if (
+          mode === 'versus' &&
+          netRef.current &&
+          roundActiveRef.current &&
+          !restartInFlightRef.current
+        ) {
           try {
             netRef.current.send({ type: 'tick', n: state.ticks, score: nextScore })
           } catch {
@@ -1057,6 +1063,8 @@ export function GameManager({
             roundScoresRef.current = {}
             // Clear previews to avoid stale tiles at start of a new round
             setPreviews({})
+            // New round seed received; clear any pending restart latch
+            restartInFlightRef.current = false
           } else if (msg.type === 'restart-ack') {
             try {
               const env = (import.meta as unknown as { env?: Record<string, string> }).env || {}
@@ -1590,6 +1598,8 @@ export function GameManager({
     if (!(mode === 'versus' && conn === 'connected' && myId)) return
     let raf: number | null = null
     const send = () => {
+      // Only send previews during an active round and when no restart is in flight
+      if (!roundActiveRef.current || restartInFlightRef.current) return
       try {
         const snap = engineRef.current?.snapshot()
         if (snap) {
@@ -1645,6 +1655,7 @@ export function GameManager({
   // Host: automatically request a new seed when all players are ready after a round
   useEffect(() => {
     if (!(mode === 'versus' && conn === 'connected' && isHost)) return
+    if (restartInFlightRef.current) return
     // Don't spam if a countdown is already running or round is active
     if (countdown != null || seedCountdownRef.current || roundActiveRef.current) return
     const now = Date.now()
@@ -1660,7 +1671,7 @@ export function GameManager({
       lastAutoSeedTsRef.current = now
       try {
         // TEMP DEBUG: log guard state before auto restart emit
-         
+
         console.log('[MP DEBUG] auto-restart about to send', {
           isHost,
           ready,
@@ -1684,11 +1695,12 @@ export function GameManager({
           sinceLastAutoSeed: now - lastAutoSeedTsRef.current,
         })
         // TEMP DEBUG: log right before sending restart over the socket
-         
+
         console.log('[MP DEBUG] sending restart over socket', {
           wsReadyState: (netRef.current as unknown as { ws?: WebSocket | null })?.ws?.readyState,
           wsUrl: (netRef.current as unknown as { ws?: WebSocket | null })?.ws?.url,
         })
+        restartInFlightRef.current = true
         netRef.current?.send({ type: 'restart' })
       } catch {
         /* noop */
@@ -1932,7 +1944,7 @@ export function GameManager({
                 className="btn"
                 onClick={() => {
                   // TEMP DEBUG: log whenever Force start is clicked
-                   
+
                   console.log('[MP DEBUG] force-start click', {
                     mode,
                     conn,
@@ -1942,7 +1954,7 @@ export function GameManager({
                     if (conn !== 'connected' || !isHost) return
                     try {
                       // TEMP DEBUG: log guard state before manual restart emit
-                       
+
                       console.log('[MP DEBUG] manual restart about to send', {
                         isHost,
                         ready,
@@ -1963,12 +1975,13 @@ export function GameManager({
                         lastAutoSeedTs: lastAutoSeedTsRef.current,
                       })
                       // TEMP DEBUG: log right before sending restart over the socket
-                       
+
                       console.log('[MP DEBUG] sending restart over socket', {
                         wsReadyState: (netRef.current as unknown as { ws?: WebSocket | null })?.ws
                           ?.readyState,
                         wsUrl: (netRef.current as unknown as { ws?: WebSocket | null })?.ws?.url,
                       })
+                      restartInFlightRef.current = true
                       netRef.current?.send({ type: 'restart' })
                     } catch {
                       /* noop */
