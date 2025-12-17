@@ -1239,7 +1239,20 @@ export function GameManager({
                 setShowResults(true)
                 // Round is finished from the UI perspective
                 roundActiveRef.current = false
-                setDebugInfo((d) => ({ ...d, lastFinalizeReason: 'normal' }))
+                setDebugInfo((d) => {
+                  const next = { ...d, lastFinalizeReason: 'normal' as const }
+                  if (msg.awarded) {
+                    const awards: Array<{
+                      name: string
+                      medal: 'gold' | 'silver' | 'bronze'
+                    }> = []
+                    if (items[0]) awards.push({ name: items[0].name, medal: 'gold' })
+                    if (items[1]) awards.push({ name: items[1].name, medal: 'silver' })
+                    if (items[2]) awards.push({ name: items[2].name, medal: 'bronze' })
+                    next.lastAwards = awards
+                  }
+                  return next
+                })
                 // Ensure everyone refreshes leaderboard and trophies promptly
                 ;(async () => {
                   try {
@@ -1669,13 +1682,16 @@ export function GameManager({
     const entries = Object.entries(players)
     const others = entries.filter(([pid]) => pid !== myId)
     const activeOthers = others.filter(([, p]) => !p.spectate)
+    // If absolutely everyone is spectating (including the host), never auto-start
+    const anyActivePlayer = !spectate || entries.some(([pid, p]) => pid !== myId && !p.spectate)
+    if (!anyActivePlayer) return
     const activeAllReady = activeOthers.length > 0 && activeOthers.every(([, p]) => p.ready)
     const selfReady = (ready && !spectate) || spectate
     // Auto-start rules:
     // - Never auto-start if completely alone in the room (no others at all)
-    // - If there are only spectators (no other active players), allow auto-start when self is ready
+    // - Never auto-start if *all* connected players are spectating
     // - If there are other active players, require all of them to be ready
-    const canStart = selfReady && others.length > 0 && (activeOthers.length === 0 || activeAllReady)
+    const canStart = selfReady && others.length > 0 && activeAllReady
     if (canStart) {
       lastAutoSeedTsRef.current = now
       try {
@@ -2497,15 +2513,10 @@ export function GameManager({
                 </div>
               )}
               {(() => {
-                // Dedupe by display name to avoid transient duplicate rows (e.g., a placeholder 'Player')
-                const seen = new Set<string>()
                 const items: Array<{ id: string; name: string; ready?: boolean }> = []
                 for (const [id, p] of Object.entries(players)) {
                   if (id === myId) continue
                   const nameRaw = (p.name || 'Player').trim()
-                  const key = nameRaw.toLowerCase()
-                  if (seen.has(key)) continue
-                  seen.add(key)
                   items.push({ id, name: nameRaw, ready: p.ready })
                 }
                 return items.map(({ id, name, ready }) => (
@@ -2757,24 +2768,38 @@ export function GameManager({
                 textAlign: 'left',
               }}
             >
-              {leaders.map((l, i) => (
-                <li key={typeof l.id === 'number' ? l.id : i} className="muted">
-                  <strong style={{ color: 'var(--text)' }}>
-                    {profanityFilter.clean(l.username)}
-                  </strong>{' '}
-                  — {l.score}
-                  <span className="muted" style={{ marginLeft: 6, fontSize: 12 }}>
-                    • Survival • {l.date ? new Date(l.date).toLocaleString() : ''}
-                  </span>
-                  {typeof l.id === 'number' && trophyMap[l.id] && (
-                    <span className="muted" style={{ marginLeft: 8, fontSize: 12 }}>
-                      {trophyMap[l.id].gold > 0 ? ` 🥇×${trophyMap[l.id].gold}` : ''}
-                      {trophyMap[l.id].silver > 0 ? ` 🥈×${trophyMap[l.id].silver}` : ''}
-                      {trophyMap[l.id].bronze > 0 ? ` 🥉×${trophyMap[l.id].bronze}` : ''}
+              {leaders.map((l, i) => {
+                const username = String(l.username || '')
+                  .trim()
+                  .toLowerCase()
+                const recentAward =
+                  debugInfo.lastAwards &&
+                  debugInfo.lastAwards.find((a) => a.name.trim().toLowerCase() === username)
+                const recentMedal = recentAward?.medal
+                return (
+                  <li key={typeof l.id === 'number' ? l.id : i} className="muted">
+                    <strong style={{ color: 'var(--text)' }}>
+                      {profanityFilter.clean(l.username)}
+                    </strong>{' '}
+                    — {l.score}
+                    <span className="muted" style={{ marginLeft: 6, fontSize: 12 }}>
+                      • Survival • {l.date ? new Date(l.date).toLocaleString() : ''}
                     </span>
-                  )}
-                </li>
-              ))}
+                    {recentMedal && (
+                      <span className="muted" style={{ marginLeft: 6, fontSize: 12 }}>
+                        {recentMedal === 'gold' ? ' 🥇' : recentMedal === 'silver' ? ' 🥈' : ' 🥉'}
+                      </span>
+                    )}
+                    {typeof l.id === 'number' && trophyMap[l.id] && (
+                      <span className="muted" style={{ marginLeft: 8, fontSize: 12 }}>
+                        {trophyMap[l.id].gold > 0 ? ` 🥇×${trophyMap[l.id].gold}` : ''}
+                        {trophyMap[l.id].silver > 0 ? ` 🥈×${trophyMap[l.id].silver}` : ''}
+                        {trophyMap[l.id].bronze > 0 ? ` 🥉×${trophyMap[l.id].bronze}` : ''}
+                      </span>
+                    )}
+                  </li>
+                )
+              })}
             </ol>
           </div>
         )}
