@@ -464,6 +464,13 @@ wss.on('connection', (ws) => {
     if (room.clients.size === 0) {
       rooms.delete(joinedRoomId)
     } else {
+      // Notify remaining peers that this player has left so they can
+      // clear lobby rows and any per-player state.
+      try {
+        broadcast(room, { type: 'over', from: id, reason: 'quit' })
+      } catch {
+        /* ignore */
+      }
       broadcast(room, { type: 'presence', count: room.clients.size })
     }
   })

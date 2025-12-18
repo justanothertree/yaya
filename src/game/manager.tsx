@@ -952,6 +952,40 @@ export function GameManager({
         },
         onMessage: (msg) => {
           if (msg.type === 'welcome') {
+            // Room-entry boundary: hard reset all room-scoped state so each lobby
+            // join starts from a clean slate, avoiding stale players/previews
+            // and cross-room leakage.
+            roundActiveRef.current = false
+            roundParticipantsRef.current = new Set()
+            roundFinishedRef.current = []
+            roundNamesRef.current = {}
+            roundScoresRef.current = {}
+            lastSeenRef.current = {}
+            seedRoundIdRef.current = null
+            lastResultsRoundIdRef.current = null
+            seedCountdownRef.current = false
+            restartInFlightRef.current = false
+            joinedRef.current = false
+            countdownLockRef.current = 0
+            // Clear lobby-facing React state
+            setPlayers({})
+            setPreviews({})
+            setReady(false)
+            setCountdown(null)
+            setCountdownEndAt(null)
+            setShowResults(false)
+            setRoundResults(null)
+            setPresence(1)
+            setHostId(null)
+            // Reset identity tracking before applying the new id
+            myIdRef.current = null
+            setMyId(null)
+            try {
+              seenPlayerIdsRef.current.clear()
+            } catch {
+              /* noop */
+            }
+            joinedAtRef.current = null
             gotWelcome = true
             joinedRef.current = true
             setMyId(msg.id)
