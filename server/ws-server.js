@@ -38,7 +38,15 @@ const rooms = new Map()
 //   roundId,
 //   visitorCounter,
 //   state: Map<id, { name?: string, ready?: boolean, spectate?: boolean, lastScore?: number, finished?: boolean }>,
-//   round: { active: boolean, id: string|null, participants: Set<string>, finishOrder: string[], finalizing?: boolean, finalized?: boolean },
+//   round: {
+//     active: boolean,
+//     id: string | null,
+//     participants: Set<string>, // frozen for the duration of the round (except disconnects)
+//     finished: Set<string>, // participants that have sent a terminal "over" (or been dropped)
+//     finishOrder: string[],
+//     finalizing?: boolean,
+//     finalized?: boolean,
+//   },
 //   meta: { name: string, public: boolean, createdAt: number }
 // })
 
@@ -127,11 +135,13 @@ async function tryFinalize(room, roomId) {
   if (!r || !r.active || !r.id) return
   // Guard against duplicate finalization for the same (room, round)
   if (r.finalizing || r.finalized) return
-  const parts = Array.from(r.participants)
+  const parts = Array.from(r.participants || [])
   if (parts.length === 0) return
-  // Ensure all participants have finished
+  // Ensure all participants have finished using the round-local finished set.
+  // Spectators and non-participants are never considered here.
+  if (!r.finished) r.finished = new Set()
   for (const pid of parts) {
-    if (!room.state.get(pid)?.finished) return
+    if (!r.finished.has(pid)) return
   }
   r.finalizing = true
   // Build base results {id,name,score,finishIdx}
@@ -235,6 +245,7 @@ wss.on('connection', (ws) => {
             active: false,
             id: null,
             participants: new Set(),
+            finished: new Set(),
             finishOrder: [],
             finalizing: false,
             finalized: false,
@@ -327,16 +338,22 @@ wss.on('connection', (ws) => {
         break
       }
       case 'over': {
+        const r = room.round
+        // Ignore over messages if there is no active round
+        if (!r || !r.active) break
+        // Ignore spectators and non-participants for lifecycle purposes
+        if (!r.participants.has(id)) break
         const st = room.state.get(id) || {}
         if (typeof msg.score === 'number') st.lastScore = Number(msg.score)
         st.finished = true
         room.state.set(id, st)
-        // Maintain finish order for tie-breaks
-        const r = room.round
-        if (r && r.active && r.participants.has(id)) {
+        // Maintain per-round finished set and finish order for tie-breaks
+        if (!r.finished) r.finished = new Set()
+        if (!r.finished.has(id)) {
+          r.finished.add(id)
           if (!r.finishOrder.includes(id)) r.finishOrder.push(id)
-          void tryFinalize(room, joinedRoomId)
         }
+        void tryFinalize(room, joinedRoomId)
         break
       }
       case 'error': {
@@ -385,7 +402,8 @@ wss.on('connection', (ws) => {
             console.log(`[ws] restart accepted room=${joinedRoomId} roundId=${room.roundId}`)
           } catch {}
         }
-        // Capture fresh participants snapshot: ready && not spectating at restart time
+        // Capture fresh participants snapshot: ready && not spectating at restart time.
+        // This Set is frozen for the duration of the round (except disconnects).
         const participants = new Set(
           Array.from(room.state.entries())
             .filter(([, st]) => st.ready && !st.spectate)
@@ -396,6 +414,7 @@ wss.on('connection', (ws) => {
           active: true,
           id: room.roundId,
           participants,
+          finished: new Set(),
           finishOrder: [],
           finalizing: false,
           finalized: false,
@@ -448,11 +467,15 @@ wss.on('connection', (ws) => {
     const room = rooms.get(joinedRoomId)
     if (!room) return
     room.clients.delete(id)
-    // Prune participant from active round, if present
+    // Prune participant from active round, if present.
+    // Policy: disconnecting participants are removed from the round and
+    // no longer required (or counted) for finalization.
     try {
       const r = room.round
       if (r && r.active && r.participants && r.participants.has(id)) {
+        if (!r.finished) r.finished = new Set()
         r.participants.delete(id)
+        r.finished.delete(id)
         // If this disconnect unblocks finalization, try finalize now
         void tryFinalize(room, joinedRoomId)
       }
