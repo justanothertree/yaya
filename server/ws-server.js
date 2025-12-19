@@ -385,24 +385,28 @@ wss.on('connection', (ws) => {
             console.log(`[ws] restart accepted room=${joinedRoomId} roundId=${room.roundId}`)
           } catch {}
         }
-        // Capture participants snapshot: ready && not spectating
+        // Capture fresh participants snapshot: ready && not spectating at restart time
+        const participants = new Set(
+          Array.from(room.state.entries())
+            .filter(([, st]) => st.ready && !st.spectate)
+            .map(([pid]) => pid),
+        )
+        // Initialize a brand new round object; discard any previous per-round flags
         room.round = {
           active: true,
           id: room.roundId,
-          participants: new Set(
-            Array.from(room.state.entries())
-              .filter(([, st]) => st.ready && !st.spectate)
-              .map(([pid]) => pid),
-          ),
+          participants,
           finishOrder: [],
           finalizing: false,
           finalized: false,
         }
-        // Reset per-round flags for participants
-        for (const pid of room.round.participants) {
-          const st = room.state.get(pid) || {}
+        // Reset per-round flags for all known players; participants will rebuild scores
+        for (const [pid, stRaw] of room.state.entries()) {
+          const st = stRaw || {}
           st.finished = false
-          st.lastScore = 0
+          if (participants.has(pid)) {
+            st.lastScore = 0
+          }
           room.state.set(pid, st)
         }
         // Broadcast restart WITH roundId for clients that want early display

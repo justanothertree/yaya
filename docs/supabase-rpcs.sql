@@ -51,6 +51,8 @@ DECLARE
   results_items jsonb := '[]'::jsonb;
   i record;
   v_leaderboard_id bigint;
+  v_total_players int;
+  v_max_trophy_place int;
 BEGIN
   SET search_path = public;
 
@@ -95,6 +97,24 @@ BEGIN
   )
   SELECT * FROM ranked;
 
+  -- Total number of distinct participants in this finalized round
+  SELECT COUNT(*) INTO v_total_players FROM tmp_rank;
+
+  -- Trophy thresholds by lobby size:
+  -- 1 player   -> no trophies      (place <= 0)
+  -- 2 players  -> gold only        (place <= 1)
+  -- 3 players  -> gold + silver    (place <= 2)
+  -- 4+ players -> gold + silver + bronze (place <= 3)
+  IF v_total_players <= 1 THEN
+    v_max_trophy_place := 0;
+  ELSIF v_total_players = 2 THEN
+    v_max_trophy_place := 1;
+  ELSIF v_total_players = 3 THEN
+    v_max_trophy_place := 2;
+  ELSE
+    v_max_trophy_place := 3;
+  END IF;
+
   FOR i IN (SELECT * FROM tmp_rank) LOOP
 
     INSERT INTO player_registry(player_name)
@@ -130,8 +150,10 @@ BEGIN
       created_at = leaderboard.created_at
     RETURNING id INTO v_leaderboard_id;
 
-    -- Award trophies for top 3 placements in this finalized round
-    IF v_leaderboard_id IS NOT NULL AND i.place IS NOT NULL AND i.place <= 3 THEN
+    -- Award trophies based on placement and lobby size
+    IF v_leaderboard_id IS NOT NULL
+       AND i.place IS NOT NULL
+       AND i.place <= v_max_trophy_place THEN
       INSERT INTO trophies(leaderboard_id, trophy_name)
       VALUES (
         v_leaderboard_id,
