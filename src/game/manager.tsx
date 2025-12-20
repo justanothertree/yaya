@@ -14,12 +14,13 @@ import {
   getNextPlayerIdNumber,
   supabaseEnvStatus,
 } from './leaderboard'
-import type { LeaderboardEntry, Mode, Settings, TrophyCounts } from './types'
+import type { LeaderboardEntry, Mode, Point, Settings, TrophyCounts } from './types'
 
 const GRID = 30
 const BASE_SPEED = 110
 const MIN_SPEED = 50
 const SPEED_STEP = 4
+const MAX_DIR_BUFFER = 2
 
 const DEFAULT_SETTINGS: Settings = {
   grid: GRID,
@@ -211,7 +212,8 @@ export function GameManager({
 
   // Engine
   const engineRef = useRef<GameEngine | null>(null)
-  const acceptedTurnRef = useRef(false)
+  const dirBufferRef = useRef<Point[]>([])
+  const currentDirRef = useRef<Point | null>(null)
   // Token to cancel/guard death animation completion handlers across mode switches
   const deathAnimTokenRef = useRef(0)
   // Prevent repeated death animation triggers (e.g., after UI interactions)
@@ -404,6 +406,14 @@ export function GameManager({
     const wrap = wrapRef.current!
     const engine = new GameEngine(settings, engineSeed)
     engineRef.current = engine
+    // Fresh engine: clear any queued turns and sync current direction
+    dirBufferRef.current = []
+    try {
+      const snap = engine.snapshot()
+      currentDirRef.current = { ...snap.dir }
+    } catch {
+      currentDirRef.current = null
+    }
     const renderer = new GameRenderer(canvas, settings.grid)
     rendererRef.current = renderer
     renderer.resize(wrap, settings.canvasSize)
@@ -592,9 +602,24 @@ export function GameManager({
     const epoch = sessionEpochRef.current
     const loop = () => {
       if (epoch !== sessionEpochRef.current) return
-      acceptedTurnRef.current = false
       const engine = engineRef.current!
+      // Apply at most one buffered direction per tick for smoother, queued turns.
+      const buf = dirBufferRef.current
+      if (buf.length > 0) {
+        const nextDir = buf.shift()!
+        try {
+          engine.setDirection(nextDir)
+        } catch {
+          /* ignore */
+        }
+      }
       const { state, events } = engine.tick()
+      // Track the effective direction after this tick for future buffering decisions
+      try {
+        currentDirRef.current = { ...state.dir }
+      } catch {
+        currentDirRef.current = null
+      }
       rendererRef.current!.draw(state)
       let ateThisTick = 0
       let diedThisTick = false
@@ -607,6 +632,9 @@ export function GameManager({
         }
       }
       if (diedThisTick) {
+        // Clear any queued turns when the player dies
+        dirBufferRef.current = []
+        currentDirRef.current = null
         setAlive(false)
         try {
           localStorage.removeItem(LS_PERSIST_KEY)
@@ -748,19 +776,31 @@ export function GameManager({
     const onMove = (e: PointerEvent) => {
       // prevent site-level swipe/scroll gestures while interacting with the game
       e.preventDefault()
-      if (!tracking || paused || acceptedTurnRef.current) return
+      if (!tracking || paused) return
       const dx = e.clientX - ox
       const dy = e.clientY - oy
       const dead = 16
       if (Math.hypot(dx, dy) < dead) return
       const angle = Math.atan2(dy, dx)
       const pi = Math.PI
-      const eng = engineRef.current!
-      if (angle > -pi * 0.25 && angle <= pi * 0.25) eng.setDirection({ x: 1, y: 0 })
-      else if (angle > pi * 0.25 && angle <= pi * 0.75) eng.setDirection({ x: 0, y: 1 })
-      else if (angle > -pi * 0.75 && angle <= -pi * 0.25) eng.setDirection({ x: 0, y: -1 })
-      else eng.setDirection({ x: -1, y: 0 })
-      acceptedTurnRef.current = true
+      const eng = engineRef.current
+      if (!eng) return
+      const next: Point =
+        angle > -pi * 0.25 && angle <= pi * 0.25
+          ? { x: 1, y: 0 }
+          : angle > pi * 0.25 && angle <= pi * 0.75
+            ? { x: 0, y: 1 }
+            : angle > -pi * 0.75 && angle <= -pi * 0.25
+              ? { x: 0, y: -1 }
+              : { x: -1, y: 0 }
+      const buf = dirBufferRef.current
+      const baseDir = currentDirRef.current || eng.snapshot().dir
+      const last = buf.length > 0 ? buf[buf.length - 1] : baseDir
+      // Ignore duplicate or immediate reverse directions relative to last enqueued/current
+      if (next.x === last.x && next.y === last.y) return
+      if (next.x === -last.x && next.y === -last.y) return
+      if (buf.length >= MAX_DIR_BUFFER) return
+      buf.push(next)
       tracking = false
     }
     const onUp = (e: PointerEvent) => {
@@ -799,7 +839,6 @@ export function GameManager({
       // Only handle keys when game has focus/captured
       if (!capturedRef.current) return
       e.preventDefault()
-      const eng = engineRef.current!
       if (isSpace) {
         // No manual pause/play in versus mode
         if (mode === 'versus') return
@@ -808,12 +847,21 @@ export function GameManager({
         return
       }
       if (paused) return
-      if (acceptedTurnRef.current) return
-      if (key === 'ArrowUp' || key === 'w' || key === 'W') eng.setDirection({ x: 0, y: -1 })
-      if (key === 'ArrowDown' || key === 's' || key === 'S') eng.setDirection({ x: 0, y: 1 })
-      if (key === 'ArrowLeft' || key === 'a' || key === 'A') eng.setDirection({ x: -1, y: 0 })
-      if (key === 'ArrowRight' || key === 'd' || key === 'D') eng.setDirection({ x: 1, y: 0 })
-      acceptedTurnRef.current = true
+      const eng = engineRef.current
+      if (!eng) return
+      let next: Point | null = null
+      if (key === 'ArrowUp' || key === 'w' || key === 'W') next = { x: 0, y: -1 }
+      if (key === 'ArrowDown' || key === 's' || key === 'S') next = { x: 0, y: 1 }
+      if (key === 'ArrowLeft' || key === 'a' || key === 'A') next = { x: -1, y: 0 }
+      if (key === 'ArrowRight' || key === 'd' || key === 'D') next = { x: 1, y: 0 }
+      if (!next) return
+      const buf = dirBufferRef.current
+      const baseDir = currentDirRef.current || eng.snapshot().dir
+      const last = buf.length > 0 ? buf[buf.length - 1] : baseDir
+      if (next.x === last.x && next.y === last.y) return
+      if (next.x === -last.x && next.y === -last.y) return
+      if (buf.length >= MAX_DIR_BUFFER) return
+      buf.push(next)
       if (mode === 'versus' && netRef.current) {
         const k = key
         const norm: 'ArrowUp' | 'ArrowDown' | 'ArrowLeft' | 'ArrowRight' =
@@ -1074,6 +1122,9 @@ export function GameManager({
             setEngineSeed(msg.seedData.seed)
             setSettings(msg.seedData.settings)
             seedRoundIdRef.current = msg.roundId
+            // New round seed: clear any buffered turns so the next round starts clean
+            dirBufferRef.current = []
+            currentDirRef.current = null
             try {
               const env = (import.meta as unknown as { env?: Record<string, string> }).env || {}
               if (env && (env.DEV || env.VITE_DEV)) {
@@ -1530,6 +1581,9 @@ export function GameManager({
         setCountdown(null)
         setCountdownEndAt(null)
         if (seedCountdownRef.current) {
+          // Round is starting: clear any buffered turns
+          dirBufferRef.current = []
+          currentDirRef.current = null
           // Spectators do not start local gameplay on new rounds
           // Only unpause if participating; spectators remain paused
           setPaused(spectate ? true : false)
@@ -1955,6 +2009,9 @@ export function GameManager({
                     } catch {
                       /* noop */
                     }
+                    // Clear buffered input when entering or exiting spectate
+                    dirBufferRef.current = []
+                    currentDirRef.current = null
                     // If current user is host and entering spectate, hand off hosting by reconnecting
                     try {
                       if (next && isHost) {
