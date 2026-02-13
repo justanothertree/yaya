@@ -93,6 +93,19 @@ function makeSeed(room) {
   return { type: 'seed', roundId, seedData: { seed: room.seed, settings } }
 }
 
+function sanitizeSettings(input, prev) {
+  const next = { ...(prev || DEFAULT_SETTINGS) }
+  if (!input || typeof input !== 'object') return next
+  const s = input
+  if (typeof s.apples === 'number' && s.apples >= 1 && s.apples <= 4) next.apples = s.apples
+  if (typeof s.passThroughEdges === 'boolean') next.passThroughEdges = s.passThroughEdges
+  if (typeof s.grid === 'number' && s.grid >= 10 && s.grid <= 60) next.grid = s.grid
+  if (typeof s.canvasSize === 'string' && ['small', 'medium', 'large'].includes(s.canvasSize)) {
+    next.canvasSize = s.canvasSize
+  }
+  return next
+}
+
 async function finalizeRoundOnSupabase(roomId, roundId, gameMode, baseItems) {
   if (!SUPABASE_URL || !SUPABASE_ANON_KEY) return null
   const payload = {
@@ -362,7 +375,7 @@ wss.on('connection', (ws) => {
       }
       case 'settings': {
         if (id === room.hostId && msg.settings) {
-          room.settings = { ...room.settings, ...msg.settings }
+          room.settings = sanitizeSettings(msg.settings, room.settings)
           broadcast(room, { type: 'settings', settings: room.settings })
         }
         break
@@ -385,13 +398,15 @@ wss.on('connection', (ws) => {
         }
 
         if (id !== room.hostId) {
-          try {
-            console.warn('[ws] restart ignored: not host', {
-              room: joinedRoomId,
-              from: id,
-              hostId: room.hostId,
-            })
-          } catch {}
+          if (WS_DEBUG) {
+            try {
+              console.warn('[ws] restart ignored: not host', {
+                room: joinedRoomId,
+                from: id,
+                hostId: room.hostId,
+              })
+            } catch {}
+          }
           break
         }
 

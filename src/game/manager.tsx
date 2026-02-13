@@ -1769,36 +1769,34 @@ export function GameManager({
     if (canStart) {
       lastAutoSeedTsRef.current = now
       try {
-        // TEMP DEBUG: log guard state before auto restart emit
-
-        console.log('[MP DEBUG] auto-restart about to send', {
-          isHost,
-          ready,
-          spectate,
-          countdown,
-          roundActive: roundActiveRef.current,
-          seedCountdown: seedCountdownRef.current,
-          players: Object.fromEntries(
-            Object.entries(players).map(([pid, info]) => [
-              pid,
-              {
-                ready: !!info.ready,
-                spectate: !!info.spectate,
-              },
-            ]),
-          ),
-          now,
-          lastSettingsChange: lastSettingsChangeRef.current,
-          lastAutoSeedTs: lastAutoSeedTsRef.current,
-          sinceLastSettingsChange: now - lastSettingsChangeRef.current,
-          sinceLastAutoSeed: now - lastAutoSeedTsRef.current,
-        })
-        // TEMP DEBUG: log right before sending restart over the socket
-
-        console.log('[MP DEBUG] sending restart over socket', {
-          wsReadyState: (netRef.current as unknown as { ws?: WebSocket | null })?.ws?.readyState,
-          wsUrl: (netRef.current as unknown as { ws?: WebSocket | null })?.ws?.url,
-        })
+        if (import.meta.env.DEV) {
+          console.log('[MP DEBUG] auto-restart about to send', {
+            isHost,
+            ready,
+            spectate,
+            countdown,
+            roundActive: roundActiveRef.current,
+            seedCountdown: seedCountdownRef.current,
+            players: Object.fromEntries(
+              Object.entries(players).map(([pid, info]) => [
+                pid,
+                {
+                  ready: !!info.ready,
+                  spectate: !!info.spectate,
+                },
+              ]),
+            ),
+            now,
+            lastSettingsChange: lastSettingsChangeRef.current,
+            lastAutoSeedTs: lastAutoSeedTsRef.current,
+            sinceLastSettingsChange: now - lastSettingsChangeRef.current,
+            sinceLastAutoSeed: now - lastAutoSeedTsRef.current,
+          })
+          console.log('[MP DEBUG] sending restart over socket', {
+            wsReadyState: (netRef.current as unknown as { ws?: WebSocket | null })?.ws?.readyState,
+            wsUrl: (netRef.current as unknown as { ws?: WebSocket | null })?.ws?.url,
+          })
+        }
         restartInFlightRef.current = true
         netRef.current?.send({ type: 'restart' })
       } catch {
@@ -2045,44 +2043,42 @@ export function GameManager({
               <button
                 className="btn"
                 onClick={() => {
-                  // TEMP DEBUG: log whenever Force start is clicked
-
-                  console.log('[MP DEBUG] force-start click', {
-                    mode,
-                    conn,
-                    isHost,
-                  })
+                  if (import.meta.env.DEV) {
+                    console.log('[MP DEBUG] force-start click', {
+                      mode,
+                      conn,
+                      isHost,
+                    })
+                  }
                   if (mode === 'versus') {
                     if (conn !== 'connected' || !isHost || !joinedRef.current) return
                     try {
-                      // TEMP DEBUG: log guard state before manual restart emit
-
-                      console.log('[MP DEBUG] manual restart about to send', {
-                        isHost,
-                        ready,
-                        spectate,
-                        countdown,
-                        roundActive: roundActiveRef.current,
-                        seedCountdown: seedCountdownRef.current,
-                        players: Object.fromEntries(
-                          Object.entries(players).map(([pid, info]) => [
-                            pid,
-                            {
-                              ready: !!info.ready,
-                              spectate: !!info.spectate,
-                            },
-                          ]),
-                        ),
-                        lastSettingsChange: lastSettingsChangeRef.current,
-                        lastAutoSeedTs: lastAutoSeedTsRef.current,
-                      })
-                      // TEMP DEBUG: log right before sending restart over the socket
-
-                      console.log('[MP DEBUG] sending restart over socket', {
-                        wsReadyState: (netRef.current as unknown as { ws?: WebSocket | null })?.ws
-                          ?.readyState,
-                        wsUrl: (netRef.current as unknown as { ws?: WebSocket | null })?.ws?.url,
-                      })
+                      if (import.meta.env.DEV) {
+                        console.log('[MP DEBUG] manual restart about to send', {
+                          isHost,
+                          ready,
+                          spectate,
+                          countdown,
+                          roundActive: roundActiveRef.current,
+                          seedCountdown: seedCountdownRef.current,
+                          players: Object.fromEntries(
+                            Object.entries(players).map(([pid, info]) => [
+                              pid,
+                              {
+                                ready: !!info.ready,
+                                spectate: !!info.spectate,
+                              },
+                            ]),
+                          ),
+                          lastSettingsChange: lastSettingsChangeRef.current,
+                          lastAutoSeedTs: lastAutoSeedTsRef.current,
+                        })
+                        console.log('[MP DEBUG] sending restart over socket', {
+                          wsReadyState: (netRef.current as unknown as { ws?: WebSocket | null })?.ws
+                            ?.readyState,
+                          wsUrl: (netRef.current as unknown as { ws?: WebSocket | null })?.ws?.url,
+                        })
+                      }
                       // Ensure latest settings are flushed to the server just before restart
                       if (mode === 'versus' && conn === 'connected' && isHost) {
                         try {

@@ -695,4 +695,6 @@ export function registerFinalizeRoundDevTest() {
 }
 
 // Auto-register in dev builds (safe: only defines function)
-registerFinalizeRoundDevTest()
+if (import.meta.env.DEV) {
+  registerFinalizeRoundDevTest()
+}

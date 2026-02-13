@@ -20,8 +20,8 @@ export class NetClient {
 
   connect(room: string, opts?: { create?: boolean }) {
     if (this.connecting) return
-    this.connecting = true
     this.disconnect()
+    this.connecting = true
     try {
       const ws = new WebSocket(this.url)
       this.ws = ws
@@ -65,17 +65,17 @@ export class NetClient {
 
   send(msg: NetMessage) {
     try {
-      // TEMP DEBUG: log all outgoing WS messages to verify restart is written to the socket
-      try {
-         
-        console.log('[MP DEBUG] WS send', {
-          type: msg.type,
-          msg,
-          wsReadyState: this.ws?.readyState,
-          wsUrl: this.ws?.url,
-        })
-      } catch {
-        // ignore
+      if (import.meta.env.DEV) {
+        try {
+          console.log('[MP DEBUG] WS send', {
+            type: msg.type,
+            msg,
+            wsReadyState: this.ws?.readyState,
+            wsUrl: this.ws?.url,
+          })
+        } catch {
+          // ignore
+        }
       }
       this.ws?.send(JSON.stringify(msg))
     } catch {

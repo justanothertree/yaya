@@ -75,7 +75,7 @@ export default function App() {
   }, [theme])
   // Log build info for quick verification
   useEffect(() => {
-    if (buildInfo) console.log(`%c${buildInfo}`, 'color:#22c55e')
+    if (import.meta.env.DEV && buildInfo) console.log(`%c${buildInfo}`, 'color:#22c55e')
   }, [buildInfo])
   // Scroll to top when changing sections
   useEffect(() => {
