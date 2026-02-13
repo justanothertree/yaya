@@ -1614,15 +1614,27 @@ export function GameManager({
               window.setTimeout(() => {
                 if (!roundActiveRef.current) return
                 if (roundIdRef.current !== thisRound) return
-                // Mark any missing participants as finished to unblock finalize
+                // Mark only *silent* participants as finished to unblock finalize.
+                // Do not force-finish active players; that can show the results UI mid-round.
                 const total = roundParticipantsRef.current.size
                 if (total > 0 && roundFinishedRef.current.length < total) {
+                  const nowTs = Date.now()
                   const done = new Set(roundFinishedRef.current)
+                  let changed = false
                   for (const pid of roundParticipantsRef.current) {
-                    if (!done.has(pid)) roundFinishedRef.current.push(pid)
+                    if (done.has(pid)) continue
+                    if (myId && pid === myId) continue
+                    const last = lastSeenRef.current[pid] || 0
+                    // Alive peers should be sending tick/preview traffic frequently.
+                    if (last === 0 || nowTs - last > 12000) {
+                      roundFinishedRef.current.push(pid)
+                      changed = true
+                    }
                   }
-                  setDebugInfo((d) => ({ ...d, lastFinalizeReason: 'timeout' }))
-                  tryFinalizeRound()
+                  if (changed) {
+                    setDebugInfo((d) => ({ ...d, lastFinalizeReason: 'timeout' }))
+                    tryFinalizeRound()
+                  }
                 }
               }, 75000)
             } else {
