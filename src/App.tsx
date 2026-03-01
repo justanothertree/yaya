@@ -8,6 +8,16 @@ import { useReveal } from './hooks/useReveal'
 import { hasFinanceSupabaseEnv } from './finance/env'
 import { getUser, onAuthStateChange, signOut } from './finance/auth'
 
+// Lazy-load heavier sections (declared at module scope so they don't remount on each App render)
+const Resume = lazy(() => import('./sections/Resume').then((m) => ({ default: m.Resume })))
+const SignIn = lazy(() => import('./sections/SignIn').then((m) => ({ default: m.SignIn })))
+const Investments = lazy(() =>
+  import('./sections/Investments').then((m) => ({ default: m.Investments })),
+)
+const AccountSettings = lazy(() =>
+  import('./sections/AccountSettings').then((m) => ({ default: m.AccountSettings })),
+)
+
 if (import.meta.env.DEV) {
   import('./dev/supabaseDebug')
 }
@@ -63,16 +73,6 @@ export default function App() {
     const ver = env?.VITE_APP_VERSION || ''
     return ver ? `build ${ver}` : ''
   })
-
-  // Lazy-load heavier sections
-  const Resume = lazy(() => import('./sections/Resume').then((m) => ({ default: m.Resume })))
-  const SignIn = lazy(() => import('./sections/SignIn').then((m) => ({ default: m.SignIn })))
-  const Investments = lazy(() =>
-    import('./sections/Investments').then((m) => ({ default: m.Investments })),
-  )
-  const AccountSettings = lazy(() =>
-    import('./sections/AccountSettings').then((m) => ({ default: m.AccountSettings })),
-  )
 
   // Finance nav gating: show Investments only when Supabase is configured AND a user is signed in.
   useEffect(() => {
