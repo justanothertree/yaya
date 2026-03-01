@@ -5,6 +5,8 @@ const FINANCE_SCHEMA = 'finance' as const
 
 let _supabase: SupabaseClient | null = null
 
+export type FinanceDbClient = ReturnType<SupabaseClient['schema']>
+
 /**
  * Returns a singleton Supabase client.
  *
@@ -16,14 +18,22 @@ export function getSupabaseClient(): SupabaseClient {
 
   const { supabaseUrl, supabaseAnonKey } = getFinanceEnv()
 
-  _supabase = createClient(supabaseUrl, supabaseAnonKey, {
+  // Ensure all PostgREST queries default to the `finance` schema.
+  // Type definitions can be strict about schema names without generated DB types,
+  // so we cast the options shape instead of widening generics.
+  const options = {
     auth: {
       // For an app/dashboard, keep sessions across refresh so the JWT is present.
       persistSession: true,
       autoRefreshToken: true,
       detectSessionInUrl: true,
     },
-  })
+    db: {
+      schema: FINANCE_SCHEMA,
+    },
+  } as unknown as Parameters<typeof createClient>[2]
+
+  _supabase = createClient(supabaseUrl, supabaseAnonKey, options)
 
   return _supabase
 }
@@ -32,11 +42,8 @@ export function getSupabaseClient(): SupabaseClient {
  * Returns a schema-scoped client for the `finance` schema.
  * Using `.schema('finance')` avoids accidentally querying `public.*`.
  */
-export function getFinanceClient(): SupabaseClient {
-  const sb = getSupabaseClient()
-  // supabase-js returns a schema-scoped client.
-  const withSchema = sb as unknown as { schema: (schema: string) => SupabaseClient }
-  return withSchema.schema(FINANCE_SCHEMA)
+export function getFinanceClient(): FinanceDbClient {
+  return getSupabaseClient().schema(FINANCE_SCHEMA)
 }
 
 export { FINANCE_SCHEMA }

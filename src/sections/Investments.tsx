@@ -1,13 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
-import { fetchFamilyAccountsOverview } from '../finance/queries'
-import {
-  allocations,
-  executedTrades,
-  type AllocationRow,
-  type ExecutedTradeRow,
-  type FamilyAccountRow,
-} from '../finance/tables'
-import { getUser, onAuthStateChange } from '../finance/auth'
+import type { AllocationRow, ExecutedTradeRow, FamilyAccountRow } from '../finance/tables'
+import { getSession, onAuthStateChange } from '../finance/auth'
+import { getSupabaseClient } from '../finance/client'
 
 function fmtMoney(n: number) {
   try {
@@ -67,13 +61,14 @@ export function Investments() {
 
   useEffect(() => {
     let alive = true
-    void getUser()
-      .then((u) => {
+    void getSession()
+      .then((s) => {
         if (!alive) return
-        setUserId(u?.id ?? null)
+        setUserId(s?.user?.id ?? null)
       })
       .catch((e) => {
         if (!alive) return
+        console.error('[investments] getSession failed', e)
         setError(String(e?.message || e))
       })
 
@@ -96,15 +91,51 @@ export function Investments() {
     setLoadingAllocs(true)
 
     try {
-      const [a, t, al] = await Promise.all([
-        fetchFamilyAccountsOverview({ limit: 100 }),
-        executedTrades.list({ limit: 250, orderBy: 'executed_at', ascending: false }),
-        allocations.list({ limit: 500, orderBy: 'allocation_type', ascending: true }),
+      const session = await getSession()
+      const uid = session?.user?.id
+      if (!uid) throw new Error('Not authenticated. Sign in required.')
+
+      const sb = getSupabaseClient().schema('finance')
+
+      const [accountsRes, tradesRes, allocsRes] = await Promise.all([
+        sb
+          .from('family_accounts')
+          .select('*')
+          .eq('user_id', uid)
+          .order('updated_at', { ascending: false })
+          .limit(100),
+        sb
+          .from('executed_trades')
+          .select('*')
+          .eq('user_id', uid)
+          .order('executed_at', { ascending: false })
+          .limit(250),
+        sb
+          .from('allocations')
+          .select('*')
+          .eq('user_id', uid)
+          .order('allocation_type', { ascending: true })
+          .limit(500),
       ])
-      setAccounts(a)
-      setTrades(t)
-      setAllocs(al)
+
+      if (accountsRes.error) {
+        console.error('[investments] family_accounts query error', accountsRes.error)
+        throw accountsRes.error
+      }
+      if (tradesRes.error) {
+        console.error('[investments] executed_trades query error', tradesRes.error)
+        throw tradesRes.error
+      }
+      if (allocsRes.error) {
+        console.error('[investments] allocations query error', allocsRes.error)
+        throw allocsRes.error
+      }
+
+      setAccounts((accountsRes.data ?? []) as unknown as FamilyAccountRow[])
+      setTrades((tradesRes.data ?? []) as unknown as ExecutedTradeRow[])
+      setAllocs((allocsRes.data ?? []) as unknown as AllocationRow[])
     } catch (e) {
+      console.error('[investments] loadAll failed', e)
       setError(String((e as { message?: string } | null)?.message || e))
     } finally {
       setLoadingAccounts(false)
