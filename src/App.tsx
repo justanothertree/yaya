@@ -5,21 +5,43 @@ import { SnakeGame } from './sections/SnakeGame'
 import { site } from './config/site'
 import { IconGitHub, IconLinkedIn } from './components/Icons'
 import { useReveal } from './hooks/useReveal'
+import { hasFinanceSupabaseEnv } from './finance/env'
+import { getUser, onAuthStateChange, signOut } from './finance/auth'
 
 if (import.meta.env.DEV) {
   import('./dev/supabaseDebug')
 }
 
 export default function App() {
-  type Section = 'home' | 'projects' | 'resume' | 'snake' | 'contact'
+  type Section =
+    | 'home'
+    | 'projects'
+    | 'resume'
+    | 'signin'
+    | 'investments'
+    | 'account-settings'
+    | 'snake'
+    | 'contact'
   const initialSection: Section = (() => {
     const raw = (window.location.hash || '#home').replace('#', '')
     const base = (raw.split('?')[0] || 'home') as Section
-    return (['home', 'projects', 'resume', 'snake', 'contact'] as Section[]).includes(base)
+    return (
+      [
+        'home',
+        'projects',
+        'resume',
+        'signin',
+        'investments',
+        'account-settings',
+        'snake',
+        'contact',
+      ] as Section[]
+    ).includes(base)
       ? base
       : 'home'
   })()
   const [active, setActive] = useState<Section>(initialSection)
+  const [isFinanceAuthed, setIsFinanceAuthed] = useState(false)
   const [theme, setTheme] = useState<'light' | 'dark' | 'alt'>(() => {
     const saved = localStorage.getItem('theme') as 'light' | 'dark' | 'alt' | null
     if (saved) return saved
@@ -44,6 +66,39 @@ export default function App() {
 
   // Lazy-load heavier sections
   const Resume = lazy(() => import('./sections/Resume').then((m) => ({ default: m.Resume })))
+  const SignIn = lazy(() => import('./sections/SignIn').then((m) => ({ default: m.SignIn })))
+  const Investments = lazy(() =>
+    import('./sections/Investments').then((m) => ({ default: m.Investments })),
+  )
+  const AccountSettings = lazy(() =>
+    import('./sections/AccountSettings').then((m) => ({ default: m.AccountSettings })),
+  )
+
+  // Finance nav gating: show Investments only when Supabase is configured AND a user is signed in.
+  useEffect(() => {
+    if (!hasFinanceSupabaseEnv()) {
+      setIsFinanceAuthed(false)
+      return
+    }
+    let alive = true
+    void getUser()
+      .then((u) => {
+        if (!alive) return
+        setIsFinanceAuthed(!!u)
+      })
+      .catch(() => {
+        if (!alive) return
+        setIsFinanceAuthed(false)
+      })
+
+    const { data } = onAuthStateChange((_event, session) => {
+      setIsFinanceAuthed(!!session?.user)
+    })
+    return () => {
+      alive = false
+      data.subscription.unsubscribe()
+    }
+  }, [])
   // Keep CSS var --nav-h in sync with actual nav height (for padding/offset calculations)
   useEffect(() => {
     const el = navRef.current
@@ -87,7 +142,18 @@ export default function App() {
     const parseHash = (): Section => {
       const raw = (window.location.hash || '#home').replace('#', '')
       const base = (raw.split('?')[0] || 'home') as Section
-      return (['home', 'projects', 'resume', 'snake', 'contact'] as Section[]).includes(base)
+      return (
+        [
+          'home',
+          'projects',
+          'resume',
+          'signin',
+          'investments',
+          'account-settings',
+          'snake',
+          'contact',
+        ] as Section[]
+      ).includes(base)
         ? base
         : 'home'
     }
@@ -109,14 +175,17 @@ export default function App() {
     }
   }, [active])
 
-  // Keyboard shortcuts: 1–5 jump to sections
+  // Keyboard shortcuts: numeric keys jump to sections
   useEffect(() => {
     const map: Record<string, Section> = {
       '1': 'home',
       '2': 'projects',
       '3': 'resume',
-      '4': 'snake',
-      '5': 'contact',
+      ...(hasFinanceSupabaseEnv()
+        ? isFinanceAuthed
+          ? { '4': 'investments', '5': 'snake', '6': 'contact' }
+          : { '4': 'signin', '5': 'snake', '6': 'contact' }
+        : { '4': 'snake', '5': 'contact' }),
     }
     const onKey = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null
@@ -135,7 +204,11 @@ export default function App() {
       const onSnake = active === 'snake'
       const allowPageNav = !onSnake || (onSnake && !snakeHasControl)
       if (allowPageNav) {
-        const order: Section[] = ['home', 'projects', 'resume', 'snake', 'contact']
+        const order: Section[] = hasFinanceSupabaseEnv()
+          ? isFinanceAuthed
+            ? ['home', 'projects', 'resume', 'investments', 'account-settings', 'snake', 'contact']
+            : ['home', 'projects', 'resume', 'signin', 'snake', 'contact']
+          : ['home', 'projects', 'resume', 'snake', 'contact']
         const idx = order.indexOf(active)
         if (key === 'ArrowLeft' && idx > 0) {
           setActive(order[idx - 1])
@@ -149,7 +222,7 @@ export default function App() {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [active, snakeHasControl])
+  }, [active, snakeHasControl, isFinanceAuthed])
 
   // Apply reveal-on-scroll to tagged elements
   useReveal('.reveal', active)
@@ -178,7 +251,11 @@ export default function App() {
       // Allow more forgiving horizontal intent
       const mostlyHorizontal = Math.abs(dx) > Math.abs(dy) * 1.2
       if (!mostlyHorizontal) return
-      const order: Section[] = ['home', 'projects', 'resume', 'snake', 'contact']
+      const order: Section[] = hasFinanceSupabaseEnv()
+        ? isFinanceAuthed
+          ? ['home', 'projects', 'resume', 'investments', 'account-settings', 'snake', 'contact']
+          : ['home', 'projects', 'resume', 'signin', 'snake', 'contact']
+        : ['home', 'projects', 'resume', 'snake', 'contact']
       const idx = order.indexOf(active)
       if (dx > THRESH && idx > 0) setActive(order[idx - 1]) // swipe right -> previous
       if (dx < -THRESH && idx < order.length - 1) setActive(order[idx + 1]) // swipe left -> next
@@ -189,7 +266,7 @@ export default function App() {
       window.removeEventListener('touchstart', onTouchStart)
       window.removeEventListener('touchend', onTouchEnd)
     }
-  }, [active])
+  }, [active, isFinanceAuthed])
 
   // Keep active nav link visible in the top bar on section change
   useEffect(() => {
@@ -301,6 +378,33 @@ export default function App() {
             >
               Resume
             </a>
+            {hasFinanceSupabaseEnv() && !isFinanceAuthed && (
+              <a
+                href="#signin"
+                onClick={() => setActive('signin')}
+                aria-current={active === 'signin' ? 'page' : undefined}
+              >
+                Sign in
+              </a>
+            )}
+            {isFinanceAuthed && (
+              <a
+                href="#investments"
+                onClick={() => setActive('investments')}
+                aria-current={active === 'investments' ? 'page' : undefined}
+              >
+                Investments
+              </a>
+            )}
+            {isFinanceAuthed && (
+              <a
+                href="#account-settings"
+                onClick={() => setActive('account-settings')}
+                aria-current={active === 'account-settings' ? 'page' : undefined}
+              >
+                Account
+              </a>
+            )}
             <a
               href="#snake"
               onClick={() => setActive('snake')}
@@ -327,6 +431,20 @@ export default function App() {
             >
               {theme === 'dark' ? 'Light' : theme === 'light' ? 'Alt' : 'Dark'}
             </button>
+            {hasFinanceSupabaseEnv() && isFinanceAuthed && (
+              <button
+                className="btn"
+                style={{ marginLeft: '0.5rem' }}
+                onClick={() => {
+                  void signOut().catch(() => {
+                    /* ignore */
+                  })
+                }}
+                aria-label="Sign out"
+              >
+                Sign out
+              </button>
+            )}
           </div>
         </div>
       </nav>
@@ -372,6 +490,67 @@ export default function App() {
             >
               <Resume />
             </Suspense>
+          </section>
+        )}
+        {active === 'signin' && (
+          <section id="signin" className="card reveal">
+            <Suspense
+              fallback={
+                <div className="card" aria-busy>
+                  Loading sign-in…
+                </div>
+              }
+            >
+              <SignIn />
+            </Suspense>
+          </section>
+        )}
+        {active === 'investments' && (
+          <section id="investments" className="card reveal">
+            {isFinanceAuthed ? (
+              <Suspense
+                fallback={
+                  <div className="card" aria-busy>
+                    Loading investments…
+                  </div>
+                }
+              >
+                <Investments />
+              </Suspense>
+            ) : (
+              <div className="card">
+                <h2 className="section-title" style={{ marginTop: 0 }}>
+                  Investments
+                </h2>
+                <p className="muted" style={{ marginBottom: 0 }}>
+                  Sign in to view your investments.
+                </p>
+              </div>
+            )}
+          </section>
+        )}
+        {active === 'account-settings' && (
+          <section id="account-settings" className="card reveal">
+            {isFinanceAuthed ? (
+              <Suspense
+                fallback={
+                  <div className="card" aria-busy>
+                    Loading account settings…
+                  </div>
+                }
+              >
+                <AccountSettings />
+              </Suspense>
+            ) : (
+              <div className="card">
+                <h2 className="section-title" style={{ marginTop: 0 }}>
+                  Account settings
+                </h2>
+                <p className="muted" style={{ marginBottom: 0 }}>
+                  Sign in to manage your account.
+                </p>
+              </div>
+            )}
           </section>
         )}
         {active === 'snake' && (
@@ -443,7 +622,19 @@ export default function App() {
           className={`edge-btn edge-left`}
           aria-label="Previous section"
           onClick={() => {
-            const order: Section[] = ['home', 'projects', 'resume', 'snake', 'contact']
+            const order: Section[] = hasFinanceSupabaseEnv()
+              ? isFinanceAuthed
+                ? [
+                    'home',
+                    'projects',
+                    'resume',
+                    'investments',
+                    'account-settings',
+                    'snake',
+                    'contact',
+                  ]
+                : ['home', 'projects', 'resume', 'signin', 'snake', 'contact']
+              : ['home', 'projects', 'resume', 'snake', 'contact']
             const idx = order.indexOf(active)
             if (idx > 0) setActive(order[idx - 1])
           }}
@@ -457,7 +648,19 @@ export default function App() {
           className={`edge-btn edge-right`}
           aria-label="Next section"
           onClick={() => {
-            const order: Section[] = ['home', 'projects', 'resume', 'snake', 'contact']
+            const order: Section[] = hasFinanceSupabaseEnv()
+              ? isFinanceAuthed
+                ? [
+                    'home',
+                    'projects',
+                    'resume',
+                    'investments',
+                    'account-settings',
+                    'snake',
+                    'contact',
+                  ]
+                : ['home', 'projects', 'resume', 'signin', 'snake', 'contact']
+              : ['home', 'projects', 'resume', 'snake', 'contact']
             const idx = order.indexOf(active)
             if (idx < order.length - 1) setActive(order[idx + 1])
           }}
