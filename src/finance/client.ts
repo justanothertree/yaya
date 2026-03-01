@@ -3,13 +3,7 @@ import { getFinanceEnv } from './env'
 
 const FINANCE_SCHEMA = 'finance' as const
 
-// SupabaseClient's type parameters default to schema "public".
-// When we set a non-public schema, the inferred return type no longer matches
-// the default `SupabaseClient` alias. We intentionally keep this loosely typed
-// until this repo adopts generated Database types.
-type AnySupabaseClient = SupabaseClient<unknown, unknown, unknown, unknown, unknown>
-
-let _supabase: AnySupabaseClient | null = null
+let _supabase: SupabaseClient | null = null
 
 /**
  * Returns a singleton Supabase client.
@@ -17,7 +11,7 @@ let _supabase: AnySupabaseClient | null = null
  * - Uses the anon key (safe to ship to browsers).
  * - Never bypasses RLS; all access is mediated by Auth JWT + RLS policies.
  */
-export function getSupabaseClient(): AnySupabaseClient {
+export function getSupabaseClient(): SupabaseClient {
   if (_supabase) return _supabase
 
   const { supabaseUrl, supabaseAnonKey } = getFinanceEnv()
@@ -29,13 +23,9 @@ export function getSupabaseClient(): AnySupabaseClient {
       autoRefreshToken: true,
       detectSessionInUrl: true,
     },
-    db: {
-      // Default schema; we still explicitly call .schema(FINANCE_SCHEMA) below.
-      schema: FINANCE_SCHEMA,
-    },
   })
 
-  return _supabase as AnySupabaseClient
+  return _supabase
 }
 
 /**
