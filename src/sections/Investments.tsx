@@ -47,6 +47,8 @@ function coerceBalance(balances: unknown): { value: number | null; label: string
 }
 
 export function Investments() {
+  const devEnabled = import.meta.env.DEV
+
   const [userId, setUserId] = useState<string | null>(null)
 
   const [accounts, setAccounts] = useState<FamilyAccountRow[]>([])
@@ -58,6 +60,152 @@ export function Investments() {
   const [loadingAllocs, setLoadingAllocs] = useState(false)
 
   const [error, setError] = useState<string | null>(null)
+
+  // DEV-only test controls
+  const [devBusy, setDevBusy] = useState(false)
+  const [devAccountName, setDevAccountName] = useState('[DEV] Test Account')
+  const [devAccountBalance, setDevAccountBalance] = useState('1000')
+  const [devTradeSymbol, setDevTradeSymbol] = useState('DEVTEST')
+  const [devTradeType, setDevTradeType] = useState<'buy' | 'sell'>('buy')
+  const [devTradeQty, setDevTradeQty] = useState('1')
+  const [devTradePrice, setDevTradePrice] = useState('100')
+  const [devAllocType, setDevAllocType] = useState('[DEV] stocks')
+  const [devAllocTarget, setDevAllocTarget] = useState('60')
+  const [showRaw, setShowRaw] = useState(false)
+
+  async function devCtx() {
+    const session = await getSession()
+    const uid = session?.user?.id
+    if (!uid) throw new Error('Not authenticated. Sign in required.')
+    const sb = getSupabaseClient().schema('finance')
+    return { sb, uid }
+  }
+
+  async function devCreateFamilyAccount() {
+    setError(null)
+    setDevBusy(true)
+    try {
+      const { sb, uid } = await devCtx()
+      const name = devAccountName.trim() || `[DEV] Test Account ${new Date().toISOString()}`
+      const bal = Number(devAccountBalance)
+      const balances = Number.isFinite(bal) ? bal : devAccountBalance
+
+      const res = await sb
+        .from('family_accounts')
+        .insert({ user_id: uid, account_name: name, balances })
+        .select('*')
+        .single()
+      if (res.error) {
+        console.error('[investments][dev] create family_accounts error', res.error)
+        throw res.error
+      }
+      await loadAll()
+    } catch (e) {
+      console.error('[investments][dev] create family account failed', e)
+      setError(String((e as { message?: string } | null)?.message || e))
+    } finally {
+      setDevBusy(false)
+    }
+  }
+
+  async function devCreateExecutedTrade() {
+    setError(null)
+    setDevBusy(true)
+    try {
+      const { sb, uid } = await devCtx()
+      const symbol = devTradeSymbol.trim() || 'DEVTEST'
+      const quantity = Number(devTradeQty)
+      const price = Number(devTradePrice)
+      if (!Number.isFinite(quantity) || quantity <= 0) throw new Error('Trade quantity must be > 0')
+      if (!Number.isFinite(price) || price <= 0) throw new Error('Trade price must be > 0')
+
+      const res = await sb
+        .from('executed_trades')
+        .insert({
+          user_id: uid,
+          executed_at: new Date().toISOString(),
+          symbol,
+          quantity,
+          price,
+          type: devTradeType,
+        })
+        .select('*')
+        .single()
+      if (res.error) {
+        console.error('[investments][dev] create executed_trades error', res.error)
+        throw res.error
+      }
+      await loadAll()
+    } catch (e) {
+      console.error('[investments][dev] create executed trade failed', e)
+      setError(String((e as { message?: string } | null)?.message || e))
+    } finally {
+      setDevBusy(false)
+    }
+  }
+
+  async function devCreateAllocation() {
+    setError(null)
+    setDevBusy(true)
+    try {
+      const { sb, uid } = await devCtx()
+      const allocation_type = devAllocType.trim() || '[DEV] allocation'
+      const target_percent = Number(devAllocTarget)
+      if (!Number.isFinite(target_percent) || target_percent < 0 || target_percent > 100) {
+        throw new Error('Allocation target % must be between 0 and 100')
+      }
+
+      const res = await sb
+        .from('allocations')
+        .insert({ user_id: uid, allocation_type, target_percent })
+        .select('*')
+        .single()
+      if (res.error) {
+        console.error('[investments][dev] create allocations error', res.error)
+        throw res.error
+      }
+      await loadAll()
+    } catch (e) {
+      console.error('[investments][dev] create allocation failed', e)
+      setError(String((e as { message?: string } | null)?.message || e))
+    } finally {
+      setDevBusy(false)
+    }
+  }
+
+  async function devDeleteTestRows() {
+    setError(null)
+    setDevBusy(true)
+    try {
+      const { sb, uid } = await devCtx()
+
+      const [accDel, tradeDel, allocDel] = await Promise.all([
+        sb.from('family_accounts').delete().eq('user_id', uid).ilike('account_name', '[DEV]%'),
+        sb.from('executed_trades').delete().eq('user_id', uid).ilike('symbol', 'DEV%'),
+        sb.from('allocations').delete().eq('user_id', uid).ilike('allocation_type', '[DEV]%'),
+      ])
+
+      if (accDel.error) {
+        console.error('[investments][dev] delete family_accounts error', accDel.error)
+        throw accDel.error
+      }
+      if (tradeDel.error) {
+        console.error('[investments][dev] delete executed_trades error', tradeDel.error)
+        throw tradeDel.error
+      }
+      if (allocDel.error) {
+        console.error('[investments][dev] delete allocations error', allocDel.error)
+        throw allocDel.error
+      }
+
+      await loadAll()
+    } catch (e) {
+      console.error('[investments][dev] delete test rows failed', e)
+      setError(String((e as { message?: string } | null)?.message || e))
+    } finally {
+      setDevBusy(false)
+    }
+  }
 
   useEffect(() => {
     let alive = true
@@ -361,6 +509,156 @@ export function Investments() {
           </>
         )}
       </article>
+
+      {devEnabled && userId && (
+        <article className="card" style={{ display: 'grid', gap: 12 }}>
+          <h3 className="section-title" style={{ marginTop: 0 }}>
+            Internal test controls (DEV)
+          </h3>
+          <p className="muted" style={{ margin: 0 }}>
+            Uses <code>schema('finance')</code> and scopes to your <code>user_id</code>. Intended
+            for local development only.
+          </p>
+
+          <div style={{ display: 'grid', gap: 10 }}>
+            <div style={{ display: 'grid', gap: 8 }}>
+              <strong>Create family account</strong>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <input
+                  value={devAccountName}
+                  onChange={(e) => setDevAccountName(e.target.value)}
+                  placeholder="[DEV] Test Account"
+                  style={{ minWidth: 220 }}
+                  disabled={devBusy}
+                />
+                <input
+                  value={devAccountBalance}
+                  onChange={(e) => setDevAccountBalance(e.target.value)}
+                  placeholder="Balance"
+                  style={{ width: 140 }}
+                  disabled={devBusy}
+                />
+                <button
+                  className="btn"
+                  onClick={() => void devCreateFamilyAccount()}
+                  disabled={devBusy}
+                >
+                  {devBusy ? 'Working…' : 'Create'}
+                </button>
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gap: 8 }}>
+              <strong>Create executed trade</strong>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <input
+                  value={devTradeSymbol}
+                  onChange={(e) => setDevTradeSymbol(e.target.value)}
+                  placeholder="DEVTEST"
+                  style={{ width: 140 }}
+                  disabled={devBusy}
+                />
+                <select
+                  value={devTradeType}
+                  onChange={(e) => setDevTradeType(e.target.value as 'buy' | 'sell')}
+                  disabled={devBusy}
+                >
+                  <option value="buy">buy</option>
+                  <option value="sell">sell</option>
+                </select>
+                <input
+                  value={devTradeQty}
+                  onChange={(e) => setDevTradeQty(e.target.value)}
+                  placeholder="Qty"
+                  style={{ width: 90 }}
+                  disabled={devBusy}
+                />
+                <input
+                  value={devTradePrice}
+                  onChange={(e) => setDevTradePrice(e.target.value)}
+                  placeholder="Price"
+                  style={{ width: 90 }}
+                  disabled={devBusy}
+                />
+                <button
+                  className="btn"
+                  onClick={() => void devCreateExecutedTrade()}
+                  disabled={devBusy}
+                >
+                  {devBusy ? 'Working…' : 'Create'}
+                </button>
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gap: 8 }}>
+              <strong>Create allocation</strong>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <input
+                  value={devAllocType}
+                  onChange={(e) => setDevAllocType(e.target.value)}
+                  placeholder="[DEV] stocks"
+                  style={{ minWidth: 220 }}
+                  disabled={devBusy}
+                />
+                <input
+                  value={devAllocTarget}
+                  onChange={(e) => setDevAllocTarget(e.target.value)}
+                  placeholder="Target %"
+                  style={{ width: 120 }}
+                  disabled={devBusy}
+                />
+                <button
+                  className="btn"
+                  onClick={() => void devCreateAllocation()}
+                  disabled={devBusy}
+                >
+                  {devBusy ? 'Working…' : 'Create'}
+                </button>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+              <button className="btn" onClick={() => void loadAll()} disabled={devBusy}>
+                Refresh lists
+              </button>
+              <button className="btn" onClick={() => setShowRaw((v) => !v)} disabled={devBusy}>
+                {showRaw ? 'Hide raw rows' : 'Show raw rows'}
+              </button>
+              <button
+                className="btn"
+                onClick={() => void devDeleteTestRows()}
+                disabled={devBusy}
+                aria-label="Delete DEV test rows"
+              >
+                {devBusy ? 'Working…' : 'Delete DEV test rows'}
+              </button>
+            </div>
+
+            {showRaw && (
+              <pre
+                style={{
+                  margin: 0,
+                  padding: 12,
+                  border: '1px solid var(--border)',
+                  borderRadius: 12,
+                  overflowX: 'auto',
+                  maxHeight: 340,
+                }}
+              >
+                {JSON.stringify(
+                  {
+                    accounts,
+                    trades,
+                    allocations: allocs,
+                  },
+                  null,
+                  2,
+                )}
+              </pre>
+            )}
+          </div>
+        </article>
+      )}
     </section>
   )
 }
