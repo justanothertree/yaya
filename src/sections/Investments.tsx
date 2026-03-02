@@ -3,6 +3,33 @@ import type { AllocationRow, ExecutedTradeRow, FamilyAccountRow } from '../finan
 import { getSession, onAuthStateChange } from '../finance/auth'
 import { getSupabaseClient } from '../finance/client'
 
+type MaybeError = { message?: string } | null | undefined
+
+function safeMsg(err: unknown) {
+  const msg = (err as MaybeError)?.message
+  return typeof msg === 'string' && msg ? msg : String(err)
+}
+
+type PostgrestResult<T> = { data: T | null; error: unknown | null }
+
+function logCallStart(meta: Record<string, unknown>) {
+  console.info('[investments][supabase] start', meta)
+}
+
+function logCallOk(meta: Record<string, unknown>) {
+  console.info('[investments][supabase] ok', meta)
+}
+
+function logCallError(meta: Record<string, unknown>, error: unknown) {
+  console.error('[investments][supabase] error', meta, error)
+}
+
+function rowCount(data: unknown): number {
+  if (!data) return 0
+  if (Array.isArray(data)) return data.length
+  return 1
+}
+
 function fmtMoney(n: number) {
   try {
     return new Intl.NumberFormat(undefined, {
@@ -73,8 +100,20 @@ export function Investments() {
   const [devAllocTarget, setDevAllocTarget] = useState('60')
   const [showRaw, setShowRaw] = useState(false)
 
+  async function getSessionLogged(context: string) {
+    logCallStart({ op: 'auth.getSession', context })
+    try {
+      const session = await getSession()
+      logCallOk({ op: 'auth.getSession', context, user_id: session?.user?.id ?? null })
+      return session
+    } catch (e) {
+      logCallError({ op: 'auth.getSession', context }, e)
+      throw e
+    }
+  }
+
   async function devCtx() {
-    const session = await getSession()
+    const session = await getSessionLogged('devCtx')
     const uid = session?.user?.id
     if (!uid) throw new Error('Not authenticated. Sign in required.')
     const sb = getSupabaseClient().schema('finance')
@@ -90,19 +129,38 @@ export function Investments() {
       const bal = Number(devAccountBalance)
       const balances = Number.isFinite(bal) ? bal : devAccountBalance
 
+      logCallStart({
+        op: 'insert',
+        schema: 'finance',
+        table: 'family_accounts',
+        user_id: uid,
+        values: { user_id: uid, account_name: name },
+      })
+
       const res = await sb
         .from('family_accounts')
         .insert({ user_id: uid, account_name: name, balances })
         .select('*')
         .single()
       if (res.error) {
-        console.error('[investments][dev] create family_accounts error', res.error)
+        logCallError(
+          { op: 'insert', schema: 'finance', table: 'family_accounts', user_id: uid },
+          res.error,
+        )
         throw res.error
       }
+
+      logCallOk({
+        op: 'insert',
+        schema: 'finance',
+        table: 'family_accounts',
+        user_id: uid,
+        rows: rowCount(res.data),
+      })
       await loadAll()
     } catch (e) {
       console.error('[investments][dev] create family account failed', e)
-      setError(String((e as { message?: string } | null)?.message || e))
+      setError(safeMsg(e))
     } finally {
       setDevBusy(false)
     }
@@ -119,26 +177,43 @@ export function Investments() {
       if (!Number.isFinite(quantity) || quantity <= 0) throw new Error('Trade quantity must be > 0')
       if (!Number.isFinite(price) || price <= 0) throw new Error('Trade price must be > 0')
 
-      const res = await sb
-        .from('executed_trades')
-        .insert({
-          user_id: uid,
-          executed_at: new Date().toISOString(),
-          symbol,
-          quantity,
-          price,
-          type: devTradeType,
-        })
-        .select('*')
-        .single()
+      const payload = {
+        user_id: uid,
+        executed_at: new Date().toISOString(),
+        symbol,
+        quantity,
+        price,
+        type: devTradeType,
+      }
+
+      logCallStart({
+        op: 'insert',
+        schema: 'finance',
+        table: 'executed_trades',
+        user_id: uid,
+        values: payload,
+      })
+
+      const res = await sb.from('executed_trades').insert(payload).select('*').single()
       if (res.error) {
-        console.error('[investments][dev] create executed_trades error', res.error)
+        logCallError(
+          { op: 'insert', schema: 'finance', table: 'executed_trades', user_id: uid },
+          res.error,
+        )
         throw res.error
       }
+
+      logCallOk({
+        op: 'insert',
+        schema: 'finance',
+        table: 'executed_trades',
+        user_id: uid,
+        rows: rowCount(res.data),
+      })
       await loadAll()
     } catch (e) {
       console.error('[investments][dev] create executed trade failed', e)
-      setError(String((e as { message?: string } | null)?.message || e))
+      setError(safeMsg(e))
     } finally {
       setDevBusy(false)
     }
@@ -155,19 +230,35 @@ export function Investments() {
         throw new Error('Allocation target % must be between 0 and 100')
       }
 
-      const res = await sb
-        .from('allocations')
-        .insert({ user_id: uid, allocation_type, target_percent })
-        .select('*')
-        .single()
+      const payload = { user_id: uid, allocation_type, target_percent }
+      logCallStart({
+        op: 'insert',
+        schema: 'finance',
+        table: 'allocations',
+        user_id: uid,
+        values: payload,
+      })
+
+      const res = await sb.from('allocations').insert(payload).select('*').single()
       if (res.error) {
-        console.error('[investments][dev] create allocations error', res.error)
+        logCallError(
+          { op: 'insert', schema: 'finance', table: 'allocations', user_id: uid },
+          res.error,
+        )
         throw res.error
       }
+
+      logCallOk({
+        op: 'insert',
+        schema: 'finance',
+        table: 'allocations',
+        user_id: uid,
+        rows: rowCount(res.data),
+      })
       await loadAll()
     } catch (e) {
       console.error('[investments][dev] create allocation failed', e)
-      setError(String((e as { message?: string } | null)?.message || e))
+      setError(safeMsg(e))
     } finally {
       setDevBusy(false)
     }
@@ -179,6 +270,28 @@ export function Investments() {
     try {
       const { sb, uid } = await devCtx()
 
+      logCallStart({
+        op: 'delete',
+        schema: 'finance',
+        table: 'family_accounts',
+        user_id: uid,
+        filter: "user_id=... AND account_name ILIKE '[DEV]%",
+      })
+      logCallStart({
+        op: 'delete',
+        schema: 'finance',
+        table: 'executed_trades',
+        user_id: uid,
+        filter: "user_id=... AND symbol ILIKE 'DEV%'",
+      })
+      logCallStart({
+        op: 'delete',
+        schema: 'finance',
+        table: 'allocations',
+        user_id: uid,
+        filter: "user_id=... AND allocation_type ILIKE '[DEV]%",
+      })
+
       const [accDel, tradeDel, allocDel] = await Promise.all([
         sb.from('family_accounts').delete().eq('user_id', uid).ilike('account_name', '[DEV]%'),
         sb.from('executed_trades').delete().eq('user_id', uid).ilike('symbol', 'DEV%'),
@@ -186,22 +299,35 @@ export function Investments() {
       ])
 
       if (accDel.error) {
-        console.error('[investments][dev] delete family_accounts error', accDel.error)
+        logCallError(
+          { op: 'delete', schema: 'finance', table: 'family_accounts', user_id: uid },
+          accDel.error,
+        )
         throw accDel.error
       }
       if (tradeDel.error) {
-        console.error('[investments][dev] delete executed_trades error', tradeDel.error)
+        logCallError(
+          { op: 'delete', schema: 'finance', table: 'executed_trades', user_id: uid },
+          tradeDel.error,
+        )
         throw tradeDel.error
       }
       if (allocDel.error) {
-        console.error('[investments][dev] delete allocations error', allocDel.error)
+        logCallError(
+          { op: 'delete', schema: 'finance', table: 'allocations', user_id: uid },
+          allocDel.error,
+        )
         throw allocDel.error
       }
+
+      logCallOk({ op: 'delete', schema: 'finance', table: 'family_accounts', user_id: uid })
+      logCallOk({ op: 'delete', schema: 'finance', table: 'executed_trades', user_id: uid })
+      logCallOk({ op: 'delete', schema: 'finance', table: 'allocations', user_id: uid })
 
       await loadAll()
     } catch (e) {
       console.error('[investments][dev] delete test rows failed', e)
-      setError(String((e as { message?: string } | null)?.message || e))
+      setError(safeMsg(e))
     } finally {
       setDevBusy(false)
     }
@@ -209,7 +335,7 @@ export function Investments() {
 
   useEffect(() => {
     let alive = true
-    void getSession()
+    void getSessionLogged('mount')
       .then((s) => {
         if (!alive) return
         setUserId(s?.user?.id ?? null)
@@ -217,7 +343,7 @@ export function Investments() {
       .catch((e) => {
         if (!alive) return
         console.error('[investments] getSession failed', e)
-        setError(String(e?.message || e))
+        setError(safeMsg(e))
       })
 
     const { data } = onAuthStateChange((_event, session) => {
@@ -239,11 +365,15 @@ export function Investments() {
     setLoadingAllocs(true)
 
     try {
-      const session = await getSession()
+      const session = await getSessionLogged('loadAll')
       const uid = session?.user?.id
       if (!uid) throw new Error('Not authenticated. Sign in required.')
 
       const sb = getSupabaseClient().schema('finance')
+
+      logCallStart({ op: 'select', schema: 'finance', table: 'family_accounts', user_id: uid })
+      logCallStart({ op: 'select', schema: 'finance', table: 'executed_trades', user_id: uid })
+      logCallStart({ op: 'select', schema: 'finance', table: 'allocations', user_id: uid })
 
       const [accountsRes, tradesRes, allocsRes] = await Promise.all([
         sb
@@ -267,24 +397,55 @@ export function Investments() {
       ])
 
       if (accountsRes.error) {
-        console.error('[investments] family_accounts query error', accountsRes.error)
+        logCallError(
+          { op: 'select', schema: 'finance', table: 'family_accounts', user_id: uid },
+          accountsRes.error,
+        )
         throw accountsRes.error
       }
       if (tradesRes.error) {
-        console.error('[investments] executed_trades query error', tradesRes.error)
+        logCallError(
+          { op: 'select', schema: 'finance', table: 'executed_trades', user_id: uid },
+          tradesRes.error,
+        )
         throw tradesRes.error
       }
       if (allocsRes.error) {
-        console.error('[investments] allocations query error', allocsRes.error)
+        logCallError(
+          { op: 'select', schema: 'finance', table: 'allocations', user_id: uid },
+          allocsRes.error,
+        )
         throw allocsRes.error
       }
+
+      logCallOk({
+        op: 'select',
+        schema: 'finance',
+        table: 'family_accounts',
+        user_id: uid,
+        rows: rowCount((accountsRes as PostgrestResult<unknown>).data),
+      })
+      logCallOk({
+        op: 'select',
+        schema: 'finance',
+        table: 'executed_trades',
+        user_id: uid,
+        rows: rowCount((tradesRes as PostgrestResult<unknown>).data),
+      })
+      logCallOk({
+        op: 'select',
+        schema: 'finance',
+        table: 'allocations',
+        user_id: uid,
+        rows: rowCount((allocsRes as PostgrestResult<unknown>).data),
+      })
 
       setAccounts((accountsRes.data ?? []) as unknown as FamilyAccountRow[])
       setTrades((tradesRes.data ?? []) as unknown as ExecutedTradeRow[])
       setAllocs((allocsRes.data ?? []) as unknown as AllocationRow[])
     } catch (e) {
       console.error('[investments] loadAll failed', e)
-      setError(String((e as { message?: string } | null)?.message || e))
+      setError(safeMsg(e))
     } finally {
       setLoadingAccounts(false)
       setLoadingTrades(false)
@@ -352,6 +513,27 @@ export function Investments() {
           </div>
         )}
       </header>
+
+      {devEnabled && userId && (
+        <article
+          className="card"
+          style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}
+        >
+          <strong style={{ fontSize: 13 }}>Debug</strong>
+          <span className="muted" style={{ fontSize: 12 }}>
+            user_id: {userId}
+          </span>
+          <span className="muted" style={{ fontSize: 12 }}>
+            family_accounts: {accounts.length}
+          </span>
+          <span className="muted" style={{ fontSize: 12 }}>
+            executed_trades: {trades.length}
+          </span>
+          <span className="muted" style={{ fontSize: 12 }}>
+            allocations: {allocs.length}
+          </span>
+        </article>
+      )}
 
       <article className="card" style={{ overflowX: 'auto' }}>
         <h3 className="section-title" style={{ marginTop: 0 }}>
