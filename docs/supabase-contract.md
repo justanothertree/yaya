@@ -188,9 +188,38 @@ Important invariants:
 
 ## Security / RLS notes (current)
 
-- No auth yet; public anon key used.
-- RLS status must match what the client is doing.
-- If direct table writes are removed in favor of RPC-only writes, tighten RLS accordingly.
+- Auth is enforced: all finance operations require a valid Supabase JWT (`auth.uid()`).
+- The anon key is used browser-side (safe to ship); no service-role key in the frontend.
+- RLS policies on all finance tables gate rows to `user_id = auth.uid()`.
+- All finance writes go through public._ RPC proxies (never direct `finance._` table access).
+- Do not expose the service-role key in the browser — it bypasses RLS entirely.
+
+## Finance schema
+
+### Tables
+
+See `db-schema-summary.sql` for full column/constraint details.
+
+- **finance.family_accounts** — one row per family member investment account (display_name)
+- **finance.executed_trades** — immutable trade log (asset_symbol, price, units_acquired, dollar_amount, fee, execution_time)
+- **finance.allocations** — per-account fractional unit allocation for each trade (family_account_id, executed_trade_id, units_allocated)
+- **finance.scheduled_trades** — future trade queue processed by cron/server (payload, schedule_at, status)
+
+### Finance RPCs (all in `public` schema)
+
+See `supabase-rpcs.sql` for full SQL definitions.
+
+| RPC                                      | Purpose                                                         |
+| ---------------------------------------- | --------------------------------------------------------------- |
+| `get_family_accounts(uid)`               | Fetch all family accounts for the signed-in user                |
+| `insert_family_account(payload)`         | Create a new family account; `display_name` required            |
+| `delete_family_account(uid, account_id)` | Delete a family account by id                                   |
+| `get_executed_trades(uid)`               | Fetch all trades for the signed-in user                         |
+| `insert_executed_trade(payload)`         | Insert a single trade without allocating                        |
+| `insert_trade_even_split(payload)`       | Insert trade + auto-create even allocations across all accounts |
+| `schedule_trade_even_split(payload)`     | Queue a future even-split trade (`schedule_at` required)        |
+| `run_due_scheduled_trades(limit_count)`  | Process pending scheduled trades (called by cron/server)        |
+| `get_allocations(uid)`                   | Fetch all allocations for the signed-in user                    |
 
 ## Client expectations (must stay true)
 

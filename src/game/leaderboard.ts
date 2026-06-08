@@ -200,7 +200,7 @@ async function ensurePlayerId(name: string): Promise<number | null> {
       }
       const { data: inserted, error } = await client
         .from(playerTable)
-        .insert({ [nameCol]: rawName })
+        .insert({ [nameCol]: rawName } as never)
         .select('id')
         .single()
       if (!error && inserted && (inserted as { id?: number }).id != null) {

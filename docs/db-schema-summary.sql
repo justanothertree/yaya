@@ -7,8 +7,8 @@
 -- ❗ DO NOT EXECUTE THIS FILE
 -- ❗ DO NOT EDIT DATABASE BY HAND BASED ON THIS FILE
 --
--- Last verified: 2025-03-XX
--- Schema: public
+-- Last verified: 2026-06-07
+-- Schemas: public, finance
 -- =====================================================
 
 
@@ -176,3 +176,115 @@
 -- Notes:
 -- - Joins leaderboard and trophies
 -- - Not written to directly
+
+
+-- =====================================================
+-- FINANCE SCHEMA
+-- =====================================================
+-- All tables live in the `finance` schema.
+-- PostgREST only exposes `public`, so all access is
+-- via public.* RPC proxies defined in supabase-rpcs.sql.
+-- RLS: every table has user_id = auth.uid() policies.
+-- =====================================================
+
+
+-- =====================================================
+-- TABLE: finance.family_accounts
+-- =====================================================
+-- Purpose:
+--   One row per family investment account (e.g. "Alice", "Bob").
+--   Owned per-user; 32+ accounts expected.
+
+-- Columns:
+-- id            UUID PRIMARY KEY DEFAULT gen_random_uuid()
+-- user_id       UUID NOT NULL REFERENCES auth.users(id)
+-- display_name  TEXT NOT NULL
+-- created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+-- updated_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+
+-- Constraints:
+-- family_accounts_pkey            PRIMARY KEY (id)
+-- family_accounts_user_id_fkey    FOREIGN KEY (user_id) REFERENCES auth.users(id)
+
+-- Notes:
+-- - RLS: SELECT/INSERT/UPDATE/DELETE all require user_id = auth.uid()
+-- - Written via public.insert_family_account(payload) RPC
+-- - Read via public.get_family_accounts(uid) RPC
+
+
+-- =====================================================
+-- TABLE: finance.executed_trades
+-- =====================================================
+-- Purpose:
+--   Immutable record of every buy/sell trade executed.
+--   ~200 historical trades + ongoing daily dollar-a-day trades.
+
+-- Columns:
+-- id             UUID PRIMARY KEY DEFAULT gen_random_uuid()
+-- user_id        UUID NOT NULL REFERENCES auth.users(id)
+-- asset_symbol   TEXT NOT NULL
+-- asset_type     TEXT
+-- platform       TEXT
+-- execution_time TIMESTAMPTZ NOT NULL DEFAULT now()
+-- dollar_amount  NUMERIC NOT NULL CHECK (dollar_amount > 0)
+-- price          NUMERIC NOT NULL CHECK (price > 0)
+-- units_acquired NUMERIC NOT NULL CHECK (units_acquired > 0)
+-- fee            NUMERIC NOT NULL DEFAULT 0 CHECK (fee >= 0)
+-- created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+
+-- Notes:
+-- - RLS: user_id = auth.uid()
+-- - Written via public.insert_executed_trade(payload) or
+--   public.insert_trade_even_split(payload)
+-- - Read via public.get_executed_trades(uid) RPC
+
+
+-- =====================================================
+-- TABLE: finance.allocations
+-- =====================================================
+-- Purpose:
+--   Maps fractional units from an executed trade to each family account.
+--   Sum of units_allocated across all rows for a trade equals trade.units_acquired.
+
+-- Columns:
+-- id                  UUID PRIMARY KEY DEFAULT gen_random_uuid()
+-- user_id             UUID NOT NULL REFERENCES auth.users(id)
+-- family_account_id   UUID NOT NULL REFERENCES finance.family_accounts(id)
+-- executed_trade_id   UUID NOT NULL REFERENCES finance.executed_trades(id)
+-- units_allocated     NUMERIC NOT NULL CHECK (units_allocated > 0)
+-- created_at          TIMESTAMPTZ NOT NULL DEFAULT now()
+
+-- Notes:
+-- - RLS: user_id = auth.uid()
+-- - Written by public.insert_trade_even_split(payload) — even split across all accounts
+-- - Read via public.get_allocations(uid) RPC
+
+
+-- =====================================================
+-- TABLE: finance.scheduled_trades
+-- =====================================================
+-- Purpose:
+--   Queue of future trades to be executed automatically.
+--   Processed by public.run_due_scheduled_trades(limit_count) RPC.
+
+-- Columns:
+-- id                  UUID PRIMARY KEY DEFAULT gen_random_uuid()
+-- user_id             UUID NOT NULL
+-- payload             JSONB NOT NULL
+-- schedule_at         TIMESTAMPTZ NOT NULL
+-- status              TEXT NOT NULL DEFAULT 'pending'
+--                       CHECK (status IN ('pending','processing','done','failed'))
+-- attempts            INT NOT NULL DEFAULT 0
+-- last_error          TEXT
+-- executed_trade_id   UUID
+-- created_at          TIMESTAMPTZ NOT NULL DEFAULT now()
+-- updated_at          TIMESTAMPTZ NOT NULL DEFAULT now()
+-- executed_at         TIMESTAMPTZ
+
+-- Indexes:
+-- idx_scheduled_trades_user            (user_id)
+-- idx_scheduled_trades_pending_time    (status, schedule_at)
+
+-- Notes:
+-- - Written via public.schedule_trade_even_split(payload) RPC
+-- - Processed by public.run_due_scheduled_trades(limit_count) (cron/server)
