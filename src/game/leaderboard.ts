@@ -31,7 +31,7 @@ function getClient(): SupabaseClient | null {
   const { url, anon } = envs()
   if (!url || !anon) return null
   if (_client) return _client
-  _client = createClient(url, anon, { auth: { persistSession: false } })
+  _client = createClient(url, anon, { auth: { persistSession: false, storageKey: 'sb-snake' } })
   return _client
 }
 

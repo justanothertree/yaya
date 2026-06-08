@@ -6,7 +6,8 @@ import { createClient } from '@supabase/supabase-js'
 
 const supabase = createClient(
   import.meta.env.VITE_SUPABASE_URL!,
-  import.meta.env.VITE_SUPABASE_ANON_KEY!
+  import.meta.env.VITE_SUPABASE_ANON_KEY!,
+  { auth: { persistSession: false, storageKey: 'sb-debug' } },
 )
 
 declare global {
@@ -21,10 +22,7 @@ declare global {
    Table sanity check
 -------------------------------- */
 async function testTable(tableName: string) {
-  const { data, error } = await supabase
-    .from(tableName)
-    .select('*')
-    .limit(5)
+  const { data, error } = await supabase.from(tableName).select('*').limit(5)
 
   if (error) {
     console.error(`❌ ${tableName}`, error)
@@ -46,9 +44,9 @@ async function testFinalizeRoundRPC() {
     p_game_mode: 'survival',
     p_items: [
       { id: 'p1', name: 'Alice', score: 10, finishIdx: 1 },
-      { id: 'p2', name: 'Bob', score: 8, finishIdx: 2 }
+      { id: 'p2', name: 'Bob', score: 8, finishIdx: 2 },
     ],
-    p_players: []
+    p_players: [],
   })
 
   if (error) {
@@ -69,7 +67,7 @@ async function testEnforceBestScore() {
 
   const { data, error } = await supabase.rpc('enforce_best_score', {
     p_player_id: 45,
-    p_game_mode: 'survival'
+    p_game_mode: 'survival',
   })
 
   if (error) {
@@ -114,9 +112,8 @@ export async function runSupabaseDebug() {
   console.log('🧪 Supabase debug completed.')
 }
 
-
 if (import.meta.env.DEV) {
   window.supabaseDebug = {
-    run: runSupabaseDebug
+    run: runSupabaseDebug,
   }
 }
