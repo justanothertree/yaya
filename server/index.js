@@ -1,7 +1,42 @@
 import http from 'http'
 import { WebSocketServer } from 'ws'
+import { createClient } from '@supabase/supabase-js'
 
 const PORT = process.env.PORT || 10000
+
+const SCHED_INTERVAL_MS = Number(process.env.SCHEDULE_TICK_MS || 30000)
+const SCHEDULE_BATCH_SIZE = Number(process.env.SCHEDULE_BATCH_SIZE || 50)
+
+function createSupabaseServiceClient() {
+  const url = process.env.SUPABASE_URL
+  const serviceRole = process.env.SUPABASE_SERVICE_ROLE_KEY
+  if (!url || !serviceRole) return null
+  return createClient(url, serviceRole, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  })
+}
+
+async function runDueScheduledTradesTick(sb) {
+  if (!sb) return
+  try {
+    const { data, error } = await sb.rpc('run_due_scheduled_trades', {
+      limit_count: SCHEDULE_BATCH_SIZE,
+    })
+    if (error) {
+      console.error('[scheduler] run_due_scheduled_trades failed:', error.message || error)
+      return
+    }
+
+    const processed = Number(data?.processed ?? 0)
+    const done = Number(data?.done ?? 0)
+    const failed = Number(data?.failed ?? 0)
+    if (processed > 0 || done > 0 || failed > 0) {
+      console.log(`[scheduler] processed=${processed} done=${done} failed=${failed}`)
+    }
+  } catch (err) {
+    console.error('[scheduler] unexpected error:', err)
+  }
+}
 
 // Default settings aligned with client
 const DEFAULT_SETTINGS = {
@@ -21,6 +56,17 @@ const server = http.createServer((req, res) => {
   res.writeHead(200, { 'Content-Type': 'text/plain' })
   res.end('Snake WS server')
 })
+
+const supabaseService = createSupabaseServiceClient()
+if (supabaseService) {
+  setInterval(() => {
+    void runDueScheduledTradesTick(supabaseService)
+  }, Math.max(5000, SCHED_INTERVAL_MS))
+  // Run once on boot so deployments process due jobs quickly.
+  void runDueScheduledTradesTick(supabaseService)
+} else {
+  console.warn('[scheduler] disabled: missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY')
+}
 
 const wss = new WebSocketServer({ server })
 

@@ -16,11 +16,11 @@
     "ws-server": "node --enable-source-maps server/ws-server.js"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.76.1",
+    "@supabase/supabase-js": "^2.107.0",
     "bad-words": "^4.0.0",
-    "ws": "^8.18.0",
     "react": "^19.1.1",
-    "react-dom": "^19.1.1"
+    "react-dom": "^19.1.1",
+    "ws": "^8.18.0"
   },
   "devDependencies": {
     "@commitlint/cli": "^19.5.0",

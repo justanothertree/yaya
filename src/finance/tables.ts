@@ -26,20 +26,23 @@ export type IsoDateTime = string
 export type FamilyAccountRow = {
   id: string
   user_id: string
-  account_name: string
+  /** Newer schema uses `display_name`; older uses `account_name`. */
+  display_name?: string
+  account_name?: string
   /**
    * “balances” can be a single number or a structured object depending on your schema.
    * Keep it flexible until DB types are generated.
    */
-  balances: unknown
-  created_at: IsoDateTime
-  updated_at: IsoDateTime
+  balances?: unknown
+  created_at?: IsoDateTime
+  updated_at?: IsoDateTime
 }
 
 export type FamilyAccountInsert = {
   user_id?: string
-  account_name: string
-  balances: unknown
+  account_name?: string
+  display_name?: string
+  balances?: unknown
 }
 
 export type FamilyAccountUpdate = Partial<Pick<FamilyAccountRow, 'account_name' | 'balances'>>
@@ -52,22 +55,42 @@ export type TradeType = 'buy' | 'sell'
 export type ExecutedTradeRow = {
   id: string
   user_id: string
-  executed_at: IsoDateTime
-  symbol: string
-  quantity: number
-  price: number
-  type: TradeType
-  created_at: IsoDateTime
-  updated_at: IsoDateTime
+  /** Older schema fields */
+  executed_at?: IsoDateTime
+  symbol?: string
+  quantity?: number
+  type?: TradeType
+
+  /** Newer schema fields */
+  asset_symbol?: string
+  asset_type?: string
+  platform?: string
+  execution_time?: IsoDateTime
+  dollar_amount?: number
+  units_acquired?: number
+  fee?: number
+
+  price?: number
+  created_at?: IsoDateTime
+  updated_at?: IsoDateTime
 }
 
 export type ExecutedTradeInsert = {
   user_id?: string
-  executed_at: IsoDateTime
-  symbol: string
-  quantity: number
-  price: number
-  type: TradeType
+  executed_at?: IsoDateTime
+  symbol?: string
+  quantity?: number
+  type?: TradeType
+
+  asset_symbol?: string
+  asset_type?: string
+  platform?: string
+  execution_time?: IsoDateTime
+  dollar_amount?: number
+  units_acquired?: number
+  fee?: number
+
+  price?: number
 }
 
 export type ExecutedTradeUpdate = Partial<
@@ -80,18 +103,28 @@ export type ExecutedTradeUpdate = Partial<
 export type AllocationRow = {
   id: string
   user_id: string
-  allocation_type: string
-  target_percent: number
-  created_at: IsoDateTime
-  updated_at: IsoDateTime
+  /** Older schema fields */
+  allocation_type?: string
+  target_percent?: number
+
+  /** Newer schema fields */
+  family_account_id?: string
+  executed_trade_id?: string
+  units_allocated?: number
+
+  created_at?: IsoDateTime
+  updated_at?: IsoDateTime
   // Allow additional allocation dimensions without breaking the type.
   [k: string]: unknown
 }
 
 export type AllocationInsert = {
   user_id?: string
-  allocation_type: string
-  target_percent: number
+  allocation_type?: string
+  target_percent?: number
+  family_account_id?: string
+  executed_trade_id?: string
+  units_allocated?: number
   [k: string]: unknown
 }
 

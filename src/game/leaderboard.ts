@@ -31,7 +31,7 @@ function getClient(): SupabaseClient | null {
   const { url, anon } = envs()
   if (!url || !anon) return null
   if (_client) return _client
-  _client = createClient(url, anon, { auth: { persistSession: false } })
+  _client = createClient(url, anon, { auth: { persistSession: false, storageKey: 'sb-snake' } })
   return _client
 }
 
@@ -200,7 +200,7 @@ async function ensurePlayerId(name: string): Promise<number | null> {
       }
       const { data: inserted, error } = await client
         .from(playerTable)
-        .insert({ [nameCol]: rawName })
+        .insert({ [nameCol]: rawName } as never)
         .select('id')
         .single()
       if (!error && inserted && (inserted as { id?: number }).id != null) {

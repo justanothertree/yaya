@@ -138,6 +138,20 @@ Set these in your frontend build environment (for example, `.env` at the project
 - `VITE_SUPABASE_ANON_KEY` – Optional. Supabase anon public key used from the browser.
 - `VITE_WS_URL` – Optional. WebSocket endpoint for multiplayer, e.g. `ws://localhost:8080` in development or `wss://your-app.example.com` in production.
 
+DEV-only investor tools (optional):
+
+- `VITE_INVESTOR_UIDS` – Optional. Comma-separated allowlist to show internal DEV controls on the Investments page.
+  - Use the full UUID (recommended) or a prefix (8+ chars) for local convenience.
+  - This is a UI visibility gate only; it is not an authorization mechanism.
+- `VITE_INVESTOR_EMAILS` – Optional. Email allowlist alternative for local convenience.
+  - Avoid setting this in production builds because it is PII and `VITE_*` values are not secret.
+
+Recommended local workflow:
+
+- Copy `.env.example` → `.env.local` and edit `.env.local`.
+- Do not commit `.env.local`.
+- Do not rely on these gates for security; enforce access with Supabase Auth + RLS + RPC checks.
+
 If Supabase variables are not set or calls fail, the game continues to work using a local browser leaderboard stored in localStorage.
 
 ### WebSocket server

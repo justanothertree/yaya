@@ -175,6 +175,22 @@ export default function App() {
     }
   }, [active])
 
+  // Hard-gate finance sections: if a user deep-links to them while signed out,
+  // redirect to Sign in (when finance is configured).
+  useEffect(() => {
+    const financeConfigured = hasFinanceSupabaseEnv()
+    const isFinanceSection = active === 'investments' || active === 'account-settings'
+
+    if (financeConfigured && isFinanceSection && !isFinanceAuthed) {
+      setActive('signin')
+      return
+    }
+
+    if (financeConfigured && active === 'signin' && isFinanceAuthed) {
+      setActive('investments')
+    }
+  }, [active, isFinanceAuthed])
+
   // Keyboard shortcuts: numeric keys jump to sections
   useEffect(() => {
     const map: Record<string, Section> = {

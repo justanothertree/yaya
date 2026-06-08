@@ -11,9 +11,16 @@
 import { createServer } from 'http'
 import { WebSocketServer } from 'ws'
 import crypto from 'crypto'
+import { createClient } from '@supabase/supabase-js'
 
 const PORT = process.env.PORT ? Number(process.env.PORT) : 8080
 const WS_DEBUG = process.env.WS_DEBUG === '1' || process.env.WS_DEBUG === 'true'
+
+// Max incoming message size (32 KB) – prevents DoS via huge payloads.
+const MAX_MSG_BYTES = 32768
+// Max length for user-supplied strings before they are truncated.
+const MAX_NAME_LEN = 64
+const MAX_ROOM_ID_LEN = 64
 
 // Default settings mirrored from client DEFAULT_SETTINGS
 const DEFAULT_SETTINGS = {
@@ -27,6 +34,37 @@ const DEFAULT_SETTINGS = {
 // SUPABASE_URL, SUPABASE_ANON_KEY
 const SUPABASE_URL = process.env.SUPABASE_URL || ''
 const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || ''
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || ''
+const SCHED_INTERVAL_MS = Number(process.env.SCHEDULE_TICK_MS || 30000)
+const SCHEDULE_BATCH_SIZE = Number(process.env.SCHEDULE_BATCH_SIZE || 50)
+
+function createSupabaseServiceClient() {
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) return null
+  return createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  })
+}
+
+async function runDueScheduledTradesTick(sb) {
+  if (!sb) return
+  try {
+    const { data, error } = await sb.rpc('run_due_scheduled_trades', {
+      limit_count: SCHEDULE_BATCH_SIZE,
+    })
+    if (error) {
+      console.error('[ws][scheduler] run_due_scheduled_trades failed', error.message || error)
+      return
+    }
+    const processed = Number(data?.processed ?? 0)
+    const done = Number(data?.done ?? 0)
+    const failed = Number(data?.failed ?? 0)
+    if (processed > 0 || done > 0 || failed > 0) {
+      console.log(`[ws][scheduler] processed=${processed} done=${done} failed=${failed}`)
+    }
+  } catch (err) {
+    console.error('[ws][scheduler] unexpected error', err)
+  }
+}
 
 /** Room state structure */
 const rooms = new Map()
@@ -209,12 +247,27 @@ const server = createServer((req, res) => {
   res.end('ok')
 })
 
+const schedulerClient = createSupabaseServiceClient()
+if (schedulerClient) {
+  setInterval(() => {
+    void runDueScheduledTradesTick(schedulerClient)
+  }, Math.max(5000, SCHED_INTERVAL_MS))
+  void runDueScheduledTradesTick(schedulerClient)
+} else {
+  console.warn('[ws][scheduler] disabled: missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY')
+}
+
 const wss = new WebSocketServer({ server })
 
 wss.on('connection', (ws) => {
   const id = uuid().slice(0, 12)
   let joinedRoomId = null
   ws.on('message', (data) => {
+    // Reject oversized messages before parsing to prevent DoS.
+    if (data.length > MAX_MSG_BYTES) {
+      send(ws, { type: 'error', code: 'msg-too-large', message: 'Message exceeds size limit' })
+      return
+    }
     let msg
     try {
       msg = JSON.parse(data.toString())
@@ -238,7 +291,7 @@ wss.on('connection', (ws) => {
     }
 
     if (msg.type === 'hello') {
-      const roomId = String(msg.room || '').trim() || 'default'
+      const roomId = String(msg.room || '').trim().slice(0, MAX_ROOM_ID_LEN) || 'default'
       let room = rooms.get(roomId)
       // If room doesn't exist and client is not creating, return an error
       if (!room && !msg.create) {
@@ -312,10 +365,11 @@ wss.on('connection', (ws) => {
       case 'name': {
         const st = room.state.get(id) || {}
         if (typeof msg.name === 'string' && msg.name.trim()) {
-          st.name = msg.name
+          // Truncate to prevent oversized payloads being relayed to peers.
+          st.name = msg.name.trim().slice(0, MAX_NAME_LEN)
           room.state.set(id, st)
           // Broadcast name updates to peers, matching legacy behavior
-          broadcast(room, { type: 'name', name: msg.name, from: id }, id)
+          broadcast(room, { type: 'name', name: st.name, from: id }, id)
         }
         break
       }
@@ -340,8 +394,21 @@ wss.on('connection', (ws) => {
         const st = room.state.get(id) || {}
         if (typeof msg.score === 'number') st.lastScore = Number(msg.score)
         room.state.set(id, st)
-        // Relay preview snapshots to peers (except sender), matching legacy server
-        broadcast(room, { ...msg, from: id }, id)
+        // Only relay known fields – never spread the full client message to prevent
+        // arbitrary field injection from being forwarded to other clients.
+        broadcast(
+          room,
+          {
+            type: 'preview',
+            from: id,
+            state: msg.state ?? null,
+            score: typeof msg.score === 'number' ? Number(msg.score) : 0,
+            name:
+              typeof msg.name === 'string' ? msg.name.slice(0, MAX_NAME_LEN) : undefined,
+            spectate: msg.spectate === true ? true : undefined,
+          },
+          id,
+        )
         break
       }
       case 'tick': {
@@ -370,7 +437,18 @@ wss.on('connection', (ws) => {
         break
       }
       case 'error': {
-        broadcast(room, { ...msg, from: id })
+        // Only relay a sanitized subset – never spread the full client message
+        // to avoid forwarding arbitrary attacker-controlled fields to peers.
+        const relayCode =
+          typeof msg.code === 'string' ? msg.code.slice(0, 64) : undefined
+        const relayMessage =
+          typeof msg.message === 'string' ? msg.message.slice(0, 256) : undefined
+        broadcast(room, {
+          type: 'error',
+          from: id,
+          ...(relayCode !== undefined ? { code: relayCode } : {}),
+          ...(relayMessage !== undefined ? { message: relayMessage } : {}),
+        })
         break
       }
       case 'settings': {
@@ -464,7 +542,8 @@ wss.on('connection', (ws) => {
       case 'roommeta': {
         // Persist basic metadata and forward to peers; all rooms are treated as public
         const meta = room.meta || { name: joinedRoomId, public: true, createdAt: Date.now() }
-        if (typeof msg.name === 'string' && msg.name.trim()) meta.name = msg.name.trim()
+        if (typeof msg.name === 'string' && msg.name.trim())
+          meta.name = msg.name.trim().slice(0, MAX_ROOM_ID_LEN)
         meta.public = true
         room.meta = meta
         broadcast(room, { type: 'roommeta', name: meta.name, public: true })

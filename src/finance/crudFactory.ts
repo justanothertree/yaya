@@ -1,4 +1,5 @@
-import { type FinanceDbClient, getFinanceClient } from './client'
+import type { SupabaseClient } from '@supabase/supabase-js'
+import { getFinanceClient } from './client'
 import { requireUser } from './auth'
 
 export type CrudOptions = {
@@ -51,7 +52,7 @@ export function createFinanceTableCrud<TRow extends Record<string, unknown>, TIn
   const scopeToUser = options.scopeToUser ?? !!ownerColumn
   const setOwnerOnInsert = options.setOwnerOnInsert ?? !!ownerColumn
 
-  function client(): FinanceDbClient {
+  function client(): SupabaseClient {
     return getFinanceClient()
   }
 
