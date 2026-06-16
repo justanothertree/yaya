@@ -17,21 +17,41 @@ const Investments = lazy(() =>
 const AccountSettings = lazy(() =>
   import('./sections/AccountSettings').then((m) => ({ default: m.AccountSettings })),
 )
+const Circuit = lazy(() => import('./sections/Circuit').then((m) => ({ default: m.Circuit })))
 
 if (import.meta.env.DEV) {
   import('./dev/supabaseDebug')
 }
 
+type Section =
+  | 'home'
+  | 'projects'
+  | 'circuit'
+  | 'resume'
+  | 'signin'
+  | 'investments'
+  | 'account-settings'
+  | 'snake'
+  | 'contact'
+
+// Single source of truth for left/right section order (keyboard, swipe, edge buttons).
+const navOrder = (financeOn: boolean, authed: boolean): Section[] =>
+  financeOn
+    ? authed
+      ? [
+          'home',
+          'projects',
+          'circuit',
+          'resume',
+          'investments',
+          'account-settings',
+          'snake',
+          'contact',
+        ]
+      : ['home', 'projects', 'circuit', 'resume', 'signin', 'snake', 'contact']
+    : ['home', 'projects', 'circuit', 'resume', 'snake', 'contact']
+
 export default function App() {
-  type Section =
-    | 'home'
-    | 'projects'
-    | 'resume'
-    | 'signin'
-    | 'investments'
-    | 'account-settings'
-    | 'snake'
-    | 'contact'
   const initialSection: Section = (() => {
     const raw = (window.location.hash || '#home').replace('#', '')
     const base = (raw.split('?')[0] || 'home') as Section
@@ -39,6 +59,7 @@ export default function App() {
       [
         'home',
         'projects',
+        'circuit',
         'resume',
         'signin',
         'investments',
@@ -146,6 +167,7 @@ export default function App() {
         [
           'home',
           'projects',
+          'circuit',
           'resume',
           'signin',
           'investments',
@@ -220,11 +242,7 @@ export default function App() {
       const onSnake = active === 'snake'
       const allowPageNav = !onSnake || (onSnake && !snakeHasControl)
       if (allowPageNav) {
-        const order: Section[] = hasFinanceSupabaseEnv()
-          ? isFinanceAuthed
-            ? ['home', 'projects', 'resume', 'investments', 'account-settings', 'snake', 'contact']
-            : ['home', 'projects', 'resume', 'signin', 'snake', 'contact']
-          : ['home', 'projects', 'resume', 'snake', 'contact']
+        const order = navOrder(hasFinanceSupabaseEnv(), isFinanceAuthed)
         const idx = order.indexOf(active)
         if (key === 'ArrowLeft' && idx > 0) {
           setActive(order[idx - 1])
@@ -267,11 +285,7 @@ export default function App() {
       // Allow more forgiving horizontal intent
       const mostlyHorizontal = Math.abs(dx) > Math.abs(dy) * 1.2
       if (!mostlyHorizontal) return
-      const order: Section[] = hasFinanceSupabaseEnv()
-        ? isFinanceAuthed
-          ? ['home', 'projects', 'resume', 'investments', 'account-settings', 'snake', 'contact']
-          : ['home', 'projects', 'resume', 'signin', 'snake', 'contact']
-        : ['home', 'projects', 'resume', 'snake', 'contact']
+      const order = navOrder(hasFinanceSupabaseEnv(), isFinanceAuthed)
       const idx = order.indexOf(active)
       if (dx > THRESH && idx > 0) setActive(order[idx - 1]) // swipe right -> previous
       if (dx < -THRESH && idx < order.length - 1) setActive(order[idx + 1]) // swipe left -> next
@@ -388,6 +402,13 @@ export default function App() {
               Projects
             </a>
             <a
+              href="#circuit"
+              onClick={() => setActive('circuit')}
+              aria-current={active === 'circuit' ? 'page' : undefined}
+            >
+              Circuit
+            </a>
+            <a
               href="#resume"
               onClick={() => setActive('resume')}
               aria-current={active === 'resume' ? 'page' : undefined}
@@ -493,6 +514,19 @@ export default function App() {
         {active === 'projects' && (
           <section id="projects" className="card reveal">
             <Projects />
+          </section>
+        )}
+        {active === 'circuit' && (
+          <section id="circuit" className="card reveal">
+            <Suspense
+              fallback={
+                <div className="card" aria-busy>
+                  Loading Circuit…
+                </div>
+              }
+            >
+              <Circuit />
+            </Suspense>
           </section>
         )}
         {active === 'resume' && (
@@ -638,19 +672,7 @@ export default function App() {
           className={`edge-btn edge-left`}
           aria-label="Previous section"
           onClick={() => {
-            const order: Section[] = hasFinanceSupabaseEnv()
-              ? isFinanceAuthed
-                ? [
-                    'home',
-                    'projects',
-                    'resume',
-                    'investments',
-                    'account-settings',
-                    'snake',
-                    'contact',
-                  ]
-                : ['home', 'projects', 'resume', 'signin', 'snake', 'contact']
-              : ['home', 'projects', 'resume', 'snake', 'contact']
+            const order = navOrder(hasFinanceSupabaseEnv(), isFinanceAuthed)
             const idx = order.indexOf(active)
             if (idx > 0) setActive(order[idx - 1])
           }}
@@ -664,19 +686,7 @@ export default function App() {
           className={`edge-btn edge-right`}
           aria-label="Next section"
           onClick={() => {
-            const order: Section[] = hasFinanceSupabaseEnv()
-              ? isFinanceAuthed
-                ? [
-                    'home',
-                    'projects',
-                    'resume',
-                    'investments',
-                    'account-settings',
-                    'snake',
-                    'contact',
-                  ]
-                : ['home', 'projects', 'resume', 'signin', 'snake', 'contact']
-              : ['home', 'projects', 'resume', 'snake', 'contact']
+            const order = navOrder(hasFinanceSupabaseEnv(), isFinanceAuthed)
             const idx = order.indexOf(active)
             if (idx < order.length - 1) setActive(order[idx + 1])
           }}
