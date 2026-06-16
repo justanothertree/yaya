@@ -3,6 +3,8 @@
 import { useMemo, useState } from 'react'
 import { useCircuit } from '../store'
 import type { Movie, Person } from '../types'
+import { MovieRate } from './MovieRate'
+import { AddMovie } from './AddMovie'
 
 const MV_PIDS = ['1', '2', '3', '5', '6'] // standalone movie raters: Josh, Evan, Cam, Mills, Tin
 type SortKey = 'avg' | 'alpha' | 'rt' | 'date'
@@ -18,8 +20,18 @@ function scoreColor(v: number | null): string {
   return `hsl(${Math.round(v * 1.2)} 60% 42%)` // 0=red → 100=green
 }
 
+const stickyTh: React.CSSProperties = {
+  padding: '6px 8px',
+  position: 'sticky',
+  top: 0,
+  background: 'var(--panel, #141a2a)',
+  zIndex: 1,
+}
+
 export function Movies() {
   const state = useCircuit()
+  const [rate, setRate] = useState<{ movie: Movie; person: Person } | null>(null)
+  const [adding, setAdding] = useState(false)
 
   const raters = useMemo<Person[]>(() => {
     const present = new Set<string>()
@@ -71,7 +83,18 @@ export function Movies() {
     </span>
   )
 
-  if (state.movies.length === 0) return <p className="muted">No movies yet.</p>
+  if (state.movies.length === 0)
+    return (
+      <div>
+        <button className="btn" onClick={() => setAdding(true)}>
+          ＋ Add movie
+        </button>
+        <p className="muted" style={{ marginTop: '0.75rem' }}>
+          No movies yet.
+        </p>
+        {adding && <AddMovie onClose={() => setAdding(false)} />}
+      </div>
+    )
 
   return (
     <div>
@@ -80,6 +103,9 @@ export function Movies() {
         <span className="muted" style={{ fontSize: '0.85rem' }}>
           {state.movies.length} rated
         </span>
+        <button className="btn" onClick={() => setAdding(true)}>
+          ＋ Add
+        </button>
         <span
           style={{ display: 'inline-flex', gap: '0.35rem', marginLeft: 'auto', flexWrap: 'wrap' }}
         >
@@ -117,15 +143,15 @@ export function Movies() {
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
           <thead>
             <tr style={{ textAlign: 'left' }}>
-              <th style={{ padding: '6px 8px', opacity: 0.6, width: 28 }}>#</th>
-              <th style={{ padding: '6px 8px' }}>Movie</th>
+              <th style={{ ...stickyTh, opacity: 0.6, width: 28 }}>#</th>
+              <th style={stickyTh}>Movie</th>
               {raters.map((p) => (
-                <th key={p.id} style={{ padding: '6px 8px', textAlign: 'center', color: p.color }}>
+                <th key={p.id} style={{ ...stickyTh, textAlign: 'center', color: p.color }}>
                   {p.name}
                 </th>
               ))}
-              <th style={{ padding: '6px 8px', textAlign: 'center' }}>Avg</th>
-              <th style={{ padding: '6px 8px', textAlign: 'center', color: '#fa4242' }}>RT%</th>
+              <th style={{ ...stickyTh, textAlign: 'center' }}>Avg</th>
+              <th style={{ ...stickyTh, textAlign: 'center', color: '#fa4242' }}>RT%</th>
             </tr>
           </thead>
           <tbody>
@@ -145,7 +171,12 @@ export function Movies() {
                   )}
                 </td>
                 {raters.map((p) => (
-                  <td key={p.id} style={{ padding: '6px 8px', textAlign: 'center' }}>
+                  <td
+                    key={p.id}
+                    onClick={() => setRate({ movie: m, person: p })}
+                    title={`Rate as ${p.name}`}
+                    style={{ padding: '6px 8px', textAlign: 'center', cursor: 'pointer' }}
+                  >
                     {chip(m.ratings[p.id]?.score ?? null)}
                   </td>
                 ))}
@@ -167,6 +198,17 @@ export function Movies() {
           </tbody>
         </table>
       </div>
+
+      {rate && (
+        <MovieRate
+          movie={rate.movie}
+          personId={rate.person.id}
+          personName={rate.person.name}
+          color={rate.person.color}
+          onClose={() => setRate(null)}
+        />
+      )}
+      {adding && <AddMovie onClose={() => setAdding(false)} />}
     </div>
   )
 }
