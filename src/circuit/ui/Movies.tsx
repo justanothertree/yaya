@@ -5,6 +5,7 @@ import { useCircuit } from '../store'
 import type { Movie, Person } from '../types'
 import { MovieRate } from './MovieRate'
 import { AddMovie } from './AddMovie'
+import { MoviePersonProfile } from './MoviePersonProfile'
 
 const MV_PIDS = ['1', '2', '3', '5', '6'] // standalone movie raters: Josh, Evan, Cam, Mills, Tin
 type SortKey = 'avg' | 'alpha' | 'rt' | 'date'
@@ -32,6 +33,7 @@ export function Movies() {
   const state = useCircuit()
   const [rate, setRate] = useState<{ movie: Movie; person: Person } | null>(null)
   const [adding, setAdding] = useState(false)
+  const [profile, setProfile] = useState<Person | null>(null)
 
   const raters = useMemo<Person[]>(() => {
     const present = new Set<string>()
@@ -42,9 +44,9 @@ export function Movies() {
       .filter((p): p is Person => !!p)
   }, [state.movies, state.people])
 
-  const [sort, setSort] = useState<SortKey>('avg')
+  const [sort, setSort] = useState<string>('avg') // 'avg'|'alpha'|'rt'|'date'|'p:<personId>'
   const [dir, setDir] = useState(-1)
-  const setSortKey = (k: SortKey) => {
+  const setSortKey = (k: string) => {
     if (sort === k) setDir((d) => -d)
     else {
       setSort(k)
@@ -54,16 +56,31 @@ export function Movies() {
 
   const rows = useMemo(() => {
     const list = state.movies.map((m) => ({ m, avg: avgOf(m) }))
-    const cmp: Record<SortKey, (a: (typeof list)[0], b: (typeof list)[0]) => number> = {
-      avg: (a, b) => ((a.avg ?? -1) - (b.avg ?? -1)) * dir,
-      alpha: (a, b) => a.m.title.localeCompare(b.m.title) * dir,
-      rt: (a, b) => ((parseInt(a.m.rt || '') || 0) - (parseInt(b.m.rt || '') || 0)) * dir,
-      date: (a, b) => (a.m.date || '').localeCompare(b.m.date || '') * dir,
-    }
-    return [...list].sort(cmp[sort])
+    type Row = (typeof list)[0]
+    // sort by a per-row number; unrated always sinks to the bottom regardless of direction
+    const byScore =
+      (get: (m: Movie) => number | null) =>
+      (a: Row, b: Row): number => {
+        const av = get(a.m),
+          bv = get(b.m)
+        if (av == null && bv == null) return 0
+        if (av == null) return 1
+        if (bv == null) return -1
+        return (av - bv) * dir
+      }
+    let cmp: (a: Row, b: Row) => number
+    if (sort.startsWith('p:')) {
+      const pid = sort.slice(2)
+      cmp = byScore((m) => m.ratings[pid]?.score ?? null)
+    } else if (sort === 'alpha') cmp = (a, b) => a.m.title.localeCompare(b.m.title) * dir
+    else if (sort === 'rt')
+      cmp = (a, b) => ((parseInt(a.m.rt || '') || 0) - (parseInt(b.m.rt || '') || 0)) * dir
+    else if (sort === 'date') cmp = (a, b) => (a.m.date || '').localeCompare(b.m.date || '') * dir
+    else cmp = (a, b) => ((a.avg ?? -1) - (b.avg ?? -1)) * dir
+    return [...list].sort(cmp)
   }, [state.movies, sort, dir])
 
-  const arrow = (k: SortKey) => (sort === k ? (dir > 0 ? ' ↑' : ' ↓') : '')
+  const arrow = (k: string) => (sort === k ? (dir > 0 ? ' ↑' : ' ↓') : '')
   const chip = (v: number | null) => (
     <span
       style={{
@@ -147,7 +164,29 @@ export function Movies() {
               <th style={stickyTh}>Movie</th>
               {raters.map((p) => (
                 <th key={p.id} style={{ ...stickyTh, textAlign: 'center', color: p.color }}>
-                  {p.name}
+                  <span
+                    onClick={() => setSortKey('p:' + p.id)}
+                    style={{ cursor: 'pointer' }}
+                    title={`Sort by ${p.name}'s ratings`}
+                  >
+                    {p.name}
+                    {arrow('p:' + p.id)}
+                  </span>
+                  <button
+                    onClick={() => setProfile(p)}
+                    title={`${p.name}'s movie stats`}
+                    style={{
+                      display: 'block',
+                      margin: '1px auto 0',
+                      background: 'none',
+                      border: 'none',
+                      cursor: 'pointer',
+                      fontSize: '0.7rem',
+                      opacity: 0.75,
+                    }}
+                  >
+                    📊
+                  </button>
                 </th>
               ))}
               <th style={{ ...stickyTh, textAlign: 'center' }}>Avg</th>
@@ -209,6 +248,14 @@ export function Movies() {
         />
       )}
       {adding && <AddMovie onClose={() => setAdding(false)} />}
+      {profile && (
+        <MoviePersonProfile
+          personId={profile.id}
+          personName={profile.name}
+          color={profile.color}
+          onClose={() => setProfile(null)}
+        />
+      )}
     </div>
   )
 }

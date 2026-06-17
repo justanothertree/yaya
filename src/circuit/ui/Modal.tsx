@@ -31,7 +31,12 @@ export function Modal({
     >
       <div
         className="card"
-        style={{ width: 'min(460px, 96vw)', maxHeight: '92vh', overflowY: 'auto' }}
+        style={{
+          width: 'min(460px, 96vw)',
+          maxHeight: '92vh',
+          overflowY: 'auto',
+          background: 'var(--panel, #141a2a)', // opaque so the page doesn't bleed through
+        }}
       >
         <div
           style={{
