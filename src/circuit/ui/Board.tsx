@@ -3,9 +3,12 @@
 import { useMemo, useState } from 'react'
 import { useCircuit } from '../store'
 import { currentStreak, monthDaily, monthLabel, monthTotal } from '../scoring'
+import { CircuitPersonProfile } from './CircuitPersonProfile'
+import type { Person } from '../types'
 
 export function Board() {
   const state = useCircuit()
+  const [profile, setProfile] = useState<Person | null>(null)
   const curMonth = new Date().toISOString().slice(0, 7)
   const months = useMemo(
     () => [...new Set(state.logs.map((l) => l.date.slice(0, 7)))].sort(),
@@ -72,7 +75,13 @@ export function Board() {
             <div key={r.p.id}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                 <span style={{ width: '1.5rem', textAlign: 'right', opacity: 0.6 }}>{i + 1}</span>
-                <span style={{ width: '6rem', fontWeight: 700, color: r.p.color }}>{r.p.name}</span>
+                <span
+                  onClick={() => setProfile(r.p)}
+                  title={`${r.p.name}'s stats`}
+                  style={{ width: '6rem', fontWeight: 700, color: r.p.color, cursor: 'pointer' }}
+                >
+                  {r.p.name}
+                </span>
                 <span
                   style={{
                     flex: 1,
@@ -149,6 +158,9 @@ export function Board() {
             </div>
           )}
         </div>
+      )}
+      {profile && (
+        <CircuitPersonProfile person={profile} ym={ym} onClose={() => setProfile(null)} />
       )}
     </div>
   )
