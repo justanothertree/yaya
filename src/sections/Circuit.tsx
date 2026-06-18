@@ -16,7 +16,7 @@ type Tab = 'board' | 'log' | 'feed' | 'charts' | 'movies' | 'watchlist'
 const todayISO = () => new Date().toISOString().slice(0, 10)
 const isDesktop = () => typeof window !== 'undefined' && window.innerWidth >= 820
 
-export function Circuit() {
+export function Circuit({ authed = false }: { authed?: boolean } = {}) {
   const [tab, setTab] = useState<Tab>('board')
   const [logTarget, setLogTarget] = useState<{ personId: string; date: string } | null>(null)
   const [canvas, setCanvas] = useState(false)
@@ -70,10 +70,56 @@ export function Circuit() {
     },
     { id: 'log', title: '✏️ Log', node: logNode },
     { id: 'feed', title: '📋 Feed', node: <Feed /> },
-    { id: 'charts', title: '📊 Charts', node: <Charts /> },
+    { id: 'charts', title: '📊 Charts', node: <Charts onDayClick={handleLog} /> },
     { id: 'movies', title: '🎬 Movies', node: <Movies /> },
     { id: 'watchlist', title: '🍿 Watchlist', node: <Watchlist /> },
   ]
+
+  // Non-member preview: board is visible read-only; no other tabs
+  if (!authed) {
+    return (
+      <div>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.75rem', flexWrap: 'wrap' }}>
+          <h2 className="section-title" style={{ margin: 0 }}>
+            The Circuit
+          </h2>
+          <span className="muted" style={{ fontSize: '0.85rem' }}>
+            fitness + movies tracker
+          </span>
+        </div>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.75rem',
+            flexWrap: 'wrap',
+            padding: '0.6rem 0.9rem',
+            margin: '0.9rem 0',
+            background: 'rgba(124,106,247,0.08)',
+            borderRadius: 10,
+            border: '1px solid rgba(124,106,247,0.25)',
+          }}
+        >
+          <span style={{ fontSize: '1.1rem' }}>🔒</span>
+          <span style={{ flex: 1, fontSize: '0.9rem' }}>
+            <strong>Members-only app.</strong>{' '}
+            <span className="muted">
+              Sign in to log workouts, rate movies, and track progress with the group.
+            </span>
+          </span>
+          <a
+            href="#signin"
+            className="btn"
+            style={{ background: 'var(--accent, #7c6af7)', color: '#fff', fontSize: '0.85rem' }}
+          >
+            Sign in
+          </a>
+        </div>
+        <Board />
+        <Toast />
+      </div>
+    )
+  }
 
   return (
     <div>
@@ -139,7 +185,7 @@ export function Circuit() {
           {tab === 'board' && <Board onLogToday={handleLogToday} onLogDate={handleLog} />}
           {tab === 'log' && logNode}
           {tab === 'feed' && <Feed />}
-          {tab === 'charts' && <Charts />}
+          {tab === 'charts' && <Charts onDayClick={handleLog} />}
           {tab === 'movies' && <Movies />}
           {tab === 'watchlist' && <Watchlist />}
         </>

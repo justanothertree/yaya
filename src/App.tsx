@@ -564,7 +564,7 @@ export default function App() {
                 </div>
               }
             >
-              <Circuit />
+              <Circuit authed={isFinanceAuthed || !hasFinanceSupabaseEnv()} />
             </Suspense>
           </section>
         )}

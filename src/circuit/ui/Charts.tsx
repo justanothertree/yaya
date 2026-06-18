@@ -5,6 +5,8 @@ import { useCircuit } from '../store'
 import { dayTotal, monthLabel, monthTotal } from '../scoring'
 import type { Person } from '../types'
 
+type HoverDay = { day: number } | null
+
 const CAT_COLORS: Record<string, string> = {
   arms: '#f46b6b',
   core: '#a78bfa',
@@ -17,7 +19,9 @@ const CAT_COLORS: Record<string, string> = {
 }
 const catColor = (c: string) => CAT_COLORS[c] || '#9aa0aa'
 
-export function Charts() {
+export function Charts({
+  onDayClick,
+}: { onDayClick?: (personId: string, date: string) => void } = {}) {
   const state = useCircuit()
   const curMonth = new Date().toISOString().slice(0, 7)
   const months = useMemo(
@@ -36,6 +40,16 @@ export function Charts() {
   const [y, m] = ym.split('-').map(Number)
   const days = new Date(y, m, 0).getDate()
   const [mode, setMode] = useState<'cumulative' | 'daily' | 'rolling'>('cumulative')
+  const [hover, setHover] = useState<HoverDay>(null)
+
+  const handleSvgMove = (e: React.MouseEvent<SVGSVGElement>) => {
+    if (!series.length) return
+    const rect = e.currentTarget.getBoundingClientRect()
+    const svgX = ((e.clientX - rect.left) / rect.width) * VW
+    const rawDay = ((svgX - PL) / (VW - PL - PR)) * (days - 1)
+    const day = Math.max(1, Math.min(days, Math.round(rawDay) + 1))
+    setHover({ day })
+  }
 
   // people with any points this month, with their per-day + derived series
   const series = useMemo(() => {
@@ -139,64 +153,221 @@ export function Charts() {
         <>
           {/* race / daily / rolling */}
           <div style={{ fontWeight: 700, opacity: 0.75, margin: '1rem 0 0.4rem' }}>{modeLabel}</div>
-          <svg
-            viewBox={`0 0 ${VW} ${VH}`}
-            style={{
-              width: '100%',
-              height: 'auto',
-              background: 'var(--b1, rgba(127,127,127,0.06))',
-              borderRadius: 8,
-            }}
-          >
-            {/* baseline */}
-            <line
-              x1={PL}
-              y1={VH - PB}
-              x2={VW - PR}
-              y2={VH - PB}
-              stroke="currentColor"
-              opacity={0.2}
-            />
-            {/* goal reference: diagonal pace for cumulative, flat 100/day line otherwise */}
-            {mode === 'cumulative'
-              ? (() => {
-                  const goalEnd = 100 * days
-                  const gy = yy(Math.min(goalEnd, maxY))
-                  return (
+          <div style={{ position: 'relative' }}>
+            <svg
+              viewBox={`0 0 ${VW} ${VH}`}
+              onMouseMove={handleSvgMove}
+              onMouseLeave={() => setHover(null)}
+              style={{
+                width: '100%',
+                height: 'auto',
+                background: 'var(--b1, rgba(127,127,127,0.06))',
+                borderRadius: 8,
+                cursor: hover ? 'crosshair' : 'default',
+                display: 'block',
+              }}
+            >
+              {/* y-axis grid + labels */}
+              {[0, 0.25, 0.5, 0.75, 1].map((frac) => {
+                const v = Math.round(maxY * frac)
+                return (
+                  <g key={frac}>
                     <line
                       x1={PL}
-                      y1={VH - PB}
+                      y1={yy(v)}
+                      x2={VW - PR}
+                      y2={yy(v)}
+                      stroke="currentColor"
+                      opacity={frac === 0 ? 0.2 : 0.06}
+                    />
+                    <text
+                      x={PL - 4}
+                      y={yy(v)}
+                      textAnchor="end"
+                      dominantBaseline="middle"
+                      fontSize={9}
+                      fill="currentColor"
+                      opacity={0.45}
+                    >
+                      {v}
+                    </text>
+                  </g>
+                )
+              })}
+              {/* x-axis day labels */}
+              {Array.from({ length: days }, (_, i) => i + 1)
+                .filter((d) => d === 1 || d % 7 === 0 || d === days)
+                .map((d) => (
+                  <text
+                    key={d}
+                    x={x(d)}
+                    y={VH - 5}
+                    textAnchor="middle"
+                    fontSize={9}
+                    fill="currentColor"
+                    opacity={0.38}
+                  >
+                    {d}
+                  </text>
+                ))}
+              {/* goal reference: diagonal pace for cumulative, flat 100/day line otherwise */}
+              {mode === 'cumulative'
+                ? (() => {
+                    const goalEnd = 100 * days
+                    const gy = yy(Math.min(goalEnd, maxY))
+                    return (
+                      <line
+                        x1={PL}
+                        y1={VH - PB}
+                        x2={x(days)}
+                        y2={gy}
+                        stroke="currentColor"
+                        opacity={0.18}
+                        strokeDasharray="4 4"
+                      />
+                    )
+                  })()
+                : 100 <= maxY && (
+                    <line
+                      x1={PL}
+                      y1={yy(100)}
                       x2={x(days)}
-                      y2={gy}
+                      y2={yy(100)}
                       stroke="currentColor"
                       opacity={0.18}
                       strokeDasharray="4 4"
                     />
-                  )
-                })()
-              : 100 <= maxY && (
+                  )}
+              {series.map((s) => (
+                <polyline
+                  key={s.p.id}
+                  fill="none"
+                  stroke={s.p.color}
+                  strokeWidth={2.2}
+                  strokeLinejoin="round"
+                  strokeLinecap="round"
+                  points={s.pts.map((v, i) => `${x(i + 1)},${yy(v)}`).join(' ')}
+                />
+              ))}
+              {/* hover crosshair + dots */}
+              {hover && (
+                <>
                   <line
-                    x1={PL}
-                    y1={yy(100)}
-                    x2={x(days)}
-                    y2={yy(100)}
+                    x1={x(hover.day)}
+                    y1={PT}
+                    x2={x(hover.day)}
+                    y2={VH - PB}
                     stroke="currentColor"
-                    opacity={0.18}
-                    strokeDasharray="4 4"
+                    opacity={0.25}
+                    strokeWidth={1}
                   />
-                )}
-            {series.map((s) => (
-              <polyline
-                key={s.p.id}
-                fill="none"
-                stroke={s.p.color}
-                strokeWidth={2.2}
-                strokeLinejoin="round"
-                strokeLinecap="round"
-                points={s.pts.map((v, i) => `${x(i + 1)},${yy(v)}`).join(' ')}
-              />
-            ))}
-          </svg>
+                  {series.map((s) => {
+                    const val = s.pts[hover.day - 1]
+                    if (val == null) return null
+                    return (
+                      <circle
+                        key={s.p.id}
+                        cx={x(hover.day)}
+                        cy={yy(val)}
+                        r={4}
+                        fill={s.p.color}
+                        stroke="var(--panel, #141a2a)"
+                        strokeWidth={2}
+                      />
+                    )
+                  })}
+                </>
+              )}
+            </svg>
+
+            {/* hover tooltip */}
+            {hover &&
+              (() => {
+                const pct = (x(hover.day) / VW) * 100
+                const onRight = pct > 62
+                const dateStr = `${ym}-${String(hover.day).padStart(2, '0')}`
+                return (
+                  <div
+                    style={{
+                      position: 'absolute',
+                      top: 6,
+                      ...(onRight ? { right: `${100 - pct}%` } : { left: `${pct}%` }),
+                      transform: onRight
+                        ? 'translateX(50%)'
+                        : pct < 14
+                          ? 'translateX(4px)'
+                          : 'translateX(-50%)',
+                      background: 'var(--panel, #141a2a)',
+                      border: '1px solid var(--border, rgba(255,255,255,0.12))',
+                      borderRadius: 8,
+                      padding: '0.35rem 0.55rem',
+                      fontSize: '0.78rem',
+                      pointerEvents: onDayClick ? 'auto' : 'none',
+                      zIndex: 10,
+                      whiteSpace: 'nowrap',
+                      boxShadow: '0 4px 16px rgba(0,0,0,0.45)',
+                    }}
+                  >
+                    <div className="muted" style={{ fontSize: '0.68rem', marginBottom: 4 }}>
+                      {new Date(dateStr + 'T00:00:00').toLocaleDateString('en-US', {
+                        weekday: 'short',
+                        month: 'short',
+                        day: 'numeric',
+                      })}
+                    </div>
+                    {series.map((s) => {
+                      const val = s.pts[hover.day - 1] ?? 0
+                      return (
+                        <div
+                          key={s.p.id}
+                          onClick={onDayClick ? () => onDayClick(s.p.id, dateStr) : undefined}
+                          title={onDayClick ? `Open ${s.p.name}'s log for this day` : undefined}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.4rem',
+                            padding: '1px 2px',
+                            borderRadius: 4,
+                            cursor: onDayClick ? 'pointer' : 'default',
+                          }}
+                          onMouseEnter={
+                            onDayClick
+                              ? (e) => {
+                                  ;(e.currentTarget as HTMLElement).style.background =
+                                    'rgba(127,127,127,0.12)'
+                                }
+                              : undefined
+                          }
+                          onMouseLeave={
+                            onDayClick
+                              ? (e) => {
+                                  ;(e.currentTarget as HTMLElement).style.background = ''
+                                }
+                              : undefined
+                          }
+                        >
+                          <span
+                            style={{
+                              width: 8,
+                              height: 8,
+                              borderRadius: '50%',
+                              background: s.p.color,
+                              flexShrink: 0,
+                            }}
+                          />
+                          <span style={{ color: s.p.color, fontWeight: 700, minWidth: '2.5rem' }}>
+                            {s.p.name}
+                          </span>
+                          <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>
+                            {Math.round(val)}
+                          </span>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )
+              })()}
+          </div>
           {/* legend */}
           <div
             style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem 1rem', marginTop: '0.5rem' }}
