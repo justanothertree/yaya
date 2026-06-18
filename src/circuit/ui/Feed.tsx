@@ -189,6 +189,23 @@ export function Feed() {
   const [filter, setFilter] = useState('') // '' = everyone
   const [lightbox, setLightbox] = useState<string | null>(null)
   const [cursor, setCursor] = useState<string | null>(null)
+  const [filterOpen, setFilterOpen] = useState(() => {
+    try {
+      return localStorage.getItem('circuit_feed_filter_open') !== '0'
+    } catch {
+      return true
+    }
+  })
+  const toggleFilterOpen = () =>
+    setFilterOpen((o) => {
+      const next = !o
+      try {
+        localStorage.setItem('circuit_feed_filter_open', next ? '1' : '0')
+      } catch {
+        /* ignore */
+      }
+      return next
+    })
 
   const peopleById = useMemo(
     () => Object.fromEntries(state.people.map((p) => [p.id, p])) as Record<string, Person>,
@@ -281,38 +298,68 @@ export function Feed() {
         </span>
       </div>
 
-      {/* person filter */}
-      <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', margin: '0.8rem 0 1rem' }}>
+      {/* person filter (collapsible) */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '0.4rem',
+          flexWrap: 'wrap',
+          margin: '0.8rem 0 1rem',
+        }}
+      >
         <button
-          className="btn"
-          onClick={() => setFilter('')}
-          aria-pressed={filter === ''}
-          style={
-            filter === ''
-              ? { background: 'var(--accent, #7c6af7)', color: '#fff', borderColor: 'transparent' }
-              : undefined
-          }
+          className="btn btn-ghost"
+          onClick={toggleFilterOpen}
+          aria-expanded={filterOpen}
+          title={filterOpen ? 'Hide the person filter' : 'Show the person filter'}
+          style={{ fontSize: '0.82rem' }}
         >
-          All
+          {filterOpen ? '▾' : '▸'} Filter
+          {!filterOpen && (
+            <span style={{ marginLeft: 4, color: filter ? peopleById[filter]?.color : undefined }}>
+              : {filter ? (peopleById[filter]?.name ?? '—') : 'All'}
+            </span>
+          )}
         </button>
-        {state.people.map((p) => {
-          const on = filter === p.id
-          return (
+        {filterOpen && (
+          <>
             <button
-              key={p.id}
               className="btn"
-              onClick={() => setFilter(p.id)}
-              style={{
-                borderColor: p.color,
-                color: on ? '#fff' : p.color,
-                background: on ? p.color : 'transparent',
-                fontWeight: 700,
-              }}
+              onClick={() => setFilter('')}
+              aria-pressed={filter === ''}
+              style={
+                filter === ''
+                  ? {
+                      background: 'var(--accent, #7c6af7)',
+                      color: '#fff',
+                      borderColor: 'transparent',
+                    }
+                  : undefined
+              }
             >
-              {p.name}
+              All
             </button>
-          )
-        })}
+            {state.people.map((p) => {
+              const on = filter === p.id
+              return (
+                <button
+                  key={p.id}
+                  className="btn"
+                  onClick={() => setFilter(p.id)}
+                  style={{
+                    borderColor: p.color,
+                    color: on ? '#fff' : p.color,
+                    background: on ? p.color : 'transparent',
+                    fontWeight: 700,
+                  }}
+                >
+                  {p.name}
+                </button>
+              )
+            })}
+          </>
+        )}
       </div>
 
       {/* date nav (month/week/day only) */}
