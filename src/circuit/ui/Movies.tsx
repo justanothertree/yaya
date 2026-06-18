@@ -7,6 +7,7 @@ import { MovieRate } from './MovieRate'
 import { AddMovie } from './AddMovie'
 import { MoviePersonProfile } from './MoviePersonProfile'
 import { MovieDetail } from './MovieDetail'
+import { MovieStats } from './MovieStats'
 import { MV_ICONS, MV_PIDS, scoreColor } from './movieMeta'
 
 type SortKey = 'avg' | 'alpha' | 'rt' | 'date'
@@ -32,6 +33,7 @@ export function Movies() {
   const [adding, setAdding] = useState(false)
   const [profile, setProfile] = useState<Person | null>(null)
   const [detail, setDetail] = useState<Movie | null>(null)
+  const [view, setView] = useState<'board' | 'stats'>('board')
 
   const raters = useMemo<Person[]>(() => {
     const present = new Set<string>()
@@ -121,8 +123,49 @@ export function Movies() {
         <button className="btn" onClick={() => setAdding(true)}>
           ＋ Add
         </button>
+        <span style={{ display: 'inline-flex', gap: '0.35rem', marginLeft: 'auto' }}>
+          {(
+            [
+              ['board', '🎬 Board'],
+              ['stats', '📊 Stats'],
+            ] as ['board' | 'stats', string][]
+          ).map(([k, label]) => (
+            <button
+              key={k}
+              className="btn"
+              onClick={() => setView(k)}
+              aria-pressed={view === k}
+              style={
+                view === k
+                  ? {
+                      background: 'var(--accent, #7c6af7)',
+                      color: '#fff',
+                      borderColor: 'transparent',
+                    }
+                  : undefined
+              }
+            >
+              {label}
+            </button>
+          ))}
+        </span>
+      </div>
+
+      {view === 'stats' && (
+        <div style={{ marginTop: '0.9rem' }}>
+          <MovieStats />
+        </div>
+      )}
+
+      {view === 'board' && (
         <span
-          style={{ display: 'inline-flex', gap: '0.35rem', marginLeft: 'auto', flexWrap: 'wrap' }}
+          style={{
+            display: 'flex',
+            gap: '0.35rem',
+            flexWrap: 'wrap',
+            justifyContent: 'flex-end',
+            marginTop: '0.7rem',
+          }}
         >
           {(
             [
@@ -152,107 +195,109 @@ export function Movies() {
             </button>
           ))}
         </span>
-      </div>
+      )}
 
-      <div style={{ overflow: 'auto', maxHeight: '70vh', marginTop: '0.9rem' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
-          <thead>
-            <tr style={{ textAlign: 'left' }}>
-              <th style={{ ...stickyTh, opacity: 0.6, width: 28 }}>#</th>
-              <th style={stickyTh}>Movie</th>
-              {raters.map((p) => (
-                <th key={p.id} style={{ ...stickyTh, textAlign: 'center', color: p.color }}>
-                  <span
-                    onClick={() => setSortKey('p:' + p.id)}
-                    style={{ cursor: 'pointer' }}
-                    title={`Sort by ${p.name}'s ratings`}
+      {view === 'board' && (
+        <div style={{ overflow: 'auto', maxHeight: '70vh', marginTop: '0.9rem' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+            <thead>
+              <tr style={{ textAlign: 'left' }}>
+                <th style={{ ...stickyTh, opacity: 0.6, width: 28 }}>#</th>
+                <th style={stickyTh}>Movie</th>
+                {raters.map((p) => (
+                  <th key={p.id} style={{ ...stickyTh, textAlign: 'center', color: p.color }}>
+                    <span
+                      onClick={() => setSortKey('p:' + p.id)}
+                      style={{ cursor: 'pointer' }}
+                      title={`Sort by ${p.name}'s ratings`}
+                    >
+                      {p.name}
+                      {arrow('p:' + p.id)}
+                    </span>
+                    <button
+                      onClick={() => setProfile(p)}
+                      title={`${p.name}'s movie stats`}
+                      style={{
+                        display: 'block',
+                        margin: '1px auto 0',
+                        background: 'none',
+                        border: 'none',
+                        cursor: 'pointer',
+                        fontSize: '0.7rem',
+                        opacity: 0.75,
+                      }}
+                    >
+                      📊
+                    </button>
+                  </th>
+                ))}
+                <th style={{ ...stickyTh, textAlign: 'center' }}>Avg</th>
+                <th style={{ ...stickyTh, textAlign: 'center', color: '#fa4242' }}>RT%</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map(({ m, avg }, i) => (
+                <tr key={m.id} style={{ borderTop: '1px solid var(--b1, rgba(127,127,127,0.15))' }}>
+                  <td
+                    style={{ padding: '6px 8px', opacity: 0.5, fontVariantNumeric: 'tabular-nums' }}
                   >
-                    {p.name}
-                    {arrow('p:' + p.id)}
-                  </span>
-                  <button
-                    onClick={() => setProfile(p)}
-                    title={`${p.name}'s movie stats`}
+                    {i + 1}
+                  </td>
+                  <td style={{ padding: '6px 8px', fontWeight: 600 }}>
+                    <span
+                      onClick={() => setDetail(m)}
+                      style={{ cursor: 'pointer' }}
+                      title="See all ratings"
+                    >
+                      {m.title}
+                    </span>
+                    {m.date && (
+                      <span className="muted" style={{ marginLeft: 6, fontSize: '0.72rem' }}>
+                        {m.date.slice(0, 7)}
+                      </span>
+                    )}
+                  </td>
+                  {raters.map((p) => {
+                    const r = m.ratings[p.id]
+                    const vibes = (r?.icons ?? [])
+                      .slice(0, 2)
+                      .map((id) => MV_ICONS.find((x) => x.id === id)?.emoji)
+                      .filter(Boolean)
+                    return (
+                      <td
+                        key={p.id}
+                        onClick={() => setRate({ movie: m, person: p })}
+                        title={`Rate as ${p.name}`}
+                        style={{ padding: '4px 8px', textAlign: 'center', cursor: 'pointer' }}
+                      >
+                        {chip(r?.score ?? null)}
+                        {vibes.length > 0 && (
+                          <div style={{ fontSize: '0.7rem', lineHeight: 1, marginTop: 2 }}>
+                            {vibes.join('')}
+                          </div>
+                        )}
+                      </td>
+                    )
+                  })}
+                  <td style={{ padding: '6px 8px', textAlign: 'center' }}>
+                    {chip(avg == null ? null : Math.round(avg * 10) / 10)}
+                  </td>
+                  <td
                     style={{
-                      display: 'block',
-                      margin: '1px auto 0',
-                      background: 'none',
-                      border: 'none',
-                      cursor: 'pointer',
-                      fontSize: '0.7rem',
-                      opacity: 0.75,
+                      padding: '6px 8px',
+                      textAlign: 'center',
+                      color: '#fa4242',
+                      fontWeight: 700,
                     }}
                   >
-                    📊
-                  </button>
-                </th>
+                    {m.rt || '—'}
+                  </td>
+                </tr>
               ))}
-              <th style={{ ...stickyTh, textAlign: 'center' }}>Avg</th>
-              <th style={{ ...stickyTh, textAlign: 'center', color: '#fa4242' }}>RT%</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map(({ m, avg }, i) => (
-              <tr key={m.id} style={{ borderTop: '1px solid var(--b1, rgba(127,127,127,0.15))' }}>
-                <td
-                  style={{ padding: '6px 8px', opacity: 0.5, fontVariantNumeric: 'tabular-nums' }}
-                >
-                  {i + 1}
-                </td>
-                <td style={{ padding: '6px 8px', fontWeight: 600 }}>
-                  <span
-                    onClick={() => setDetail(m)}
-                    style={{ cursor: 'pointer' }}
-                    title="See all ratings"
-                  >
-                    {m.title}
-                  </span>
-                  {m.date && (
-                    <span className="muted" style={{ marginLeft: 6, fontSize: '0.72rem' }}>
-                      {m.date.slice(0, 7)}
-                    </span>
-                  )}
-                </td>
-                {raters.map((p) => {
-                  const r = m.ratings[p.id]
-                  const vibes = (r?.icons ?? [])
-                    .slice(0, 2)
-                    .map((id) => MV_ICONS.find((x) => x.id === id)?.emoji)
-                    .filter(Boolean)
-                  return (
-                    <td
-                      key={p.id}
-                      onClick={() => setRate({ movie: m, person: p })}
-                      title={`Rate as ${p.name}`}
-                      style={{ padding: '4px 8px', textAlign: 'center', cursor: 'pointer' }}
-                    >
-                      {chip(r?.score ?? null)}
-                      {vibes.length > 0 && (
-                        <div style={{ fontSize: '0.7rem', lineHeight: 1, marginTop: 2 }}>
-                          {vibes.join('')}
-                        </div>
-                      )}
-                    </td>
-                  )
-                })}
-                <td style={{ padding: '6px 8px', textAlign: 'center' }}>
-                  {chip(avg == null ? null : Math.round(avg * 10) / 10)}
-                </td>
-                <td
-                  style={{
-                    padding: '6px 8px',
-                    textAlign: 'center',
-                    color: '#fa4242',
-                    fontWeight: 700,
-                  }}
-                >
-                  {m.rt || '—'}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+            </tbody>
+          </table>
+        </div>
+      )}
 
       {rate && (
         <MovieRate

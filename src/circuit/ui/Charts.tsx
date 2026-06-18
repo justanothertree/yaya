@@ -35,26 +35,42 @@ export function Charts() {
 
   const [y, m] = ym.split('-').map(Number)
   const days = new Date(y, m, 0).getDate()
+  const [mode, setMode] = useState<'cumulative' | 'daily' | 'rolling'>('cumulative')
 
-  // people with any points this month, with their cumulative-by-day series
+  // people with any points this month, with their per-day + derived series
   const series = useMemo(() => {
     return state.people
       .map((p) => {
         const total = monthTotal(p, state.logs, ym)
         if (total <= 0) return null
-        let cum = 0
-        const pts: number[] = []
+        const daily: number[] = []
         for (let d = 1; d <= days; d++) {
-          cum += dayTotal(p, state.logs, `${ym}-${String(d).padStart(2, '0')}`)
-          pts.push(cum)
+          daily.push(dayTotal(p, state.logs, `${ym}-${String(d).padStart(2, '0')}`))
         }
+        const cumulative: number[] = []
+        let cum = 0
+        daily.forEach((v) => {
+          cum += v
+          cumulative.push(cum)
+        })
+        const rolling = daily.map((_, i) => {
+          const win = daily.slice(Math.max(0, i - 6), i + 1)
+          return win.reduce((s, v) => s + v, 0) / win.length
+        })
+        const pts = mode === 'cumulative' ? cumulative : mode === 'daily' ? daily : rolling
         return { p, total, pts }
       })
       .filter((x): x is { p: Person; total: number; pts: number[] } => !!x)
       .sort((a, b) => b.total - a.total)
-  }, [state.people, state.logs, ym, days])
+  }, [state.people, state.logs, ym, days, mode])
 
-  const maxY = Math.max(1, ...series.map((s) => s.total))
+  const maxY = Math.max(1, ...series.flatMap((s) => s.pts))
+  const modeLabel =
+    mode === 'cumulative'
+      ? 'Cumulative points'
+      : mode === 'daily'
+        ? 'Points per day'
+        : '7-day rolling average'
 
   // race chart geometry
   const VW = 720,
@@ -84,6 +100,35 @@ export function Charts() {
             ▶
           </button>
         </span>
+        <span
+          style={{ display: 'inline-flex', gap: '0.35rem', marginLeft: 'auto', flexWrap: 'wrap' }}
+        >
+          {(
+            [
+              ['cumulative', 'Cumulative'],
+              ['daily', 'Daily'],
+              ['rolling', 'Rolling'],
+            ] as ['cumulative' | 'daily' | 'rolling', string][]
+          ).map(([k, label]) => (
+            <button
+              key={k}
+              className="btn"
+              onClick={() => setMode(k)}
+              aria-pressed={mode === k}
+              style={
+                mode === k
+                  ? {
+                      background: 'var(--accent, #7c6af7)',
+                      color: '#fff',
+                      borderColor: 'transparent',
+                    }
+                  : undefined
+              }
+            >
+              {label}
+            </button>
+          ))}
+        </span>
       </div>
 
       {series.length === 0 ? (
@@ -92,10 +137,8 @@ export function Charts() {
         </p>
       ) : (
         <>
-          {/* cumulative race */}
-          <div style={{ fontWeight: 700, opacity: 0.75, margin: '1rem 0 0.4rem' }}>
-            Cumulative points
-          </div>
+          {/* race / daily / rolling */}
+          <div style={{ fontWeight: 700, opacity: 0.75, margin: '1rem 0 0.4rem' }}>{modeLabel}</div>
           <svg
             viewBox={`0 0 ${VW} ${VH}`}
             style={{
@@ -114,22 +157,34 @@ export function Charts() {
               stroke="currentColor"
               opacity={0.2}
             />
-            {/* goal pace reference (100/day) */}
-            {(() => {
-              const goalEnd = 100 * days
-              const gy = yy(Math.min(goalEnd, maxY))
-              return (
-                <line
-                  x1={PL}
-                  y1={VH - PB}
-                  x2={x(days)}
-                  y2={gy}
-                  stroke="currentColor"
-                  opacity={0.18}
-                  strokeDasharray="4 4"
-                />
-              )
-            })()}
+            {/* goal reference: diagonal pace for cumulative, flat 100/day line otherwise */}
+            {mode === 'cumulative'
+              ? (() => {
+                  const goalEnd = 100 * days
+                  const gy = yy(Math.min(goalEnd, maxY))
+                  return (
+                    <line
+                      x1={PL}
+                      y1={VH - PB}
+                      x2={x(days)}
+                      y2={gy}
+                      stroke="currentColor"
+                      opacity={0.18}
+                      strokeDasharray="4 4"
+                    />
+                  )
+                })()
+              : 100 <= maxY && (
+                  <line
+                    x1={PL}
+                    y1={yy(100)}
+                    x2={x(days)}
+                    y2={yy(100)}
+                    stroke="currentColor"
+                    opacity={0.18}
+                    strokeDasharray="4 4"
+                  />
+                )}
             {series.map((s) => (
               <polyline
                 key={s.p.id}
@@ -182,7 +237,77 @@ export function Charts() {
           </div>
         </>
       )}
+
+      {/* monthly totals across all months with data */}
+      {months.length > 1 && <MonthlyTotals />}
     </div>
+  )
+}
+
+function MonthlyTotals() {
+  const state = useCircuit()
+  const months = useMemo(
+    () => [...new Set(state.logs.map((l) => l.date.slice(0, 7)))].sort(),
+    [state.logs],
+  )
+  const data = useMemo(
+    () =>
+      months.map((ym) => ({
+        ym,
+        people: state.people
+          .map((p) => ({ p, total: monthTotal(p, state.logs, ym) }))
+          .filter((x) => x.total > 0),
+      })),
+    [months, state.people, state.logs],
+  )
+  const maxT = Math.max(1, ...data.flatMap((d) => d.people.map((x) => x.total)))
+
+  return (
+    <>
+      <div style={{ fontWeight: 700, opacity: 0.75, margin: '1.6rem 0 0.6rem' }}>
+        Monthly totals
+      </div>
+      <div
+        style={{
+          display: 'flex',
+          gap: '0.9rem',
+          alignItems: 'flex-end',
+          overflowX: 'auto',
+          paddingBottom: '0.4rem',
+        }}
+      >
+        {data.map((mo) => (
+          <div key={mo.ym} style={{ textAlign: 'center', flexShrink: 0 }}>
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'flex-end',
+                gap: 3,
+                height: 120,
+                justifyContent: 'center',
+              }}
+            >
+              {mo.people.map(({ p, total }) => (
+                <span
+                  key={p.id}
+                  title={`${p.name}: ${Math.round(total)}`}
+                  style={{
+                    width: 12,
+                    height: `${(total / maxT) * 100}%`,
+                    minHeight: 2,
+                    background: p.color,
+                    borderRadius: '2px 2px 0 0',
+                  }}
+                />
+              ))}
+            </div>
+            <div className="muted" style={{ fontSize: '0.7rem', marginTop: 4 }}>
+              {monthLabel(mo.ym).replace(/ \d{4}$/, '')}
+            </div>
+          </div>
+        ))}
+      </div>
+    </>
   )
 }
 
