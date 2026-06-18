@@ -6,8 +6,9 @@ import type { Movie, Person } from '../types'
 import { MovieRate } from './MovieRate'
 import { AddMovie } from './AddMovie'
 import { MoviePersonProfile } from './MoviePersonProfile'
+import { MovieDetail } from './MovieDetail'
+import { MV_ICONS, MV_PIDS, scoreColor } from './movieMeta'
 
-const MV_PIDS = ['1', '2', '3', '5', '6'] // standalone movie raters: Josh, Evan, Cam, Mills, Tin
 type SortKey = 'avg' | 'alpha' | 'rt' | 'date'
 
 function avgOf(m: Movie): number | null {
@@ -15,10 +16,6 @@ function avgOf(m: Movie): number | null {
     .map((r) => r.score)
     .filter((s): s is number => s != null)
   return xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null
-}
-function scoreColor(v: number | null): string {
-  if (v == null) return 'var(--b1, rgba(127,127,127,0.2))'
-  return `hsl(${Math.round(v * 1.2)} 60% 42%)` // 0=red → 100=green
 }
 
 const stickyTh: React.CSSProperties = {
@@ -34,6 +31,7 @@ export function Movies() {
   const [rate, setRate] = useState<{ movie: Movie; person: Person } | null>(null)
   const [adding, setAdding] = useState(false)
   const [profile, setProfile] = useState<Person | null>(null)
+  const [detail, setDetail] = useState<Movie | null>(null)
 
   const raters = useMemo<Person[]>(() => {
     const present = new Set<string>()
@@ -202,23 +200,41 @@ export function Movies() {
                   {i + 1}
                 </td>
                 <td style={{ padding: '6px 8px', fontWeight: 600 }}>
-                  {m.title}
+                  <span
+                    onClick={() => setDetail(m)}
+                    style={{ cursor: 'pointer' }}
+                    title="See all ratings"
+                  >
+                    {m.title}
+                  </span>
                   {m.date && (
                     <span className="muted" style={{ marginLeft: 6, fontSize: '0.72rem' }}>
                       {m.date.slice(0, 7)}
                     </span>
                   )}
                 </td>
-                {raters.map((p) => (
-                  <td
-                    key={p.id}
-                    onClick={() => setRate({ movie: m, person: p })}
-                    title={`Rate as ${p.name}`}
-                    style={{ padding: '6px 8px', textAlign: 'center', cursor: 'pointer' }}
-                  >
-                    {chip(m.ratings[p.id]?.score ?? null)}
-                  </td>
-                ))}
+                {raters.map((p) => {
+                  const r = m.ratings[p.id]
+                  const vibes = (r?.icons ?? [])
+                    .slice(0, 2)
+                    .map((id) => MV_ICONS.find((x) => x.id === id)?.emoji)
+                    .filter(Boolean)
+                  return (
+                    <td
+                      key={p.id}
+                      onClick={() => setRate({ movie: m, person: p })}
+                      title={`Rate as ${p.name}`}
+                      style={{ padding: '4px 8px', textAlign: 'center', cursor: 'pointer' }}
+                    >
+                      {chip(r?.score ?? null)}
+                      {vibes.length > 0 && (
+                        <div style={{ fontSize: '0.7rem', lineHeight: 1, marginTop: 2 }}>
+                          {vibes.join('')}
+                        </div>
+                      )}
+                    </td>
+                  )
+                })}
                 <td style={{ padding: '6px 8px', textAlign: 'center' }}>
                   {chip(avg == null ? null : Math.round(avg * 10) / 10)}
                 </td>
@@ -256,6 +272,7 @@ export function Movies() {
           onClose={() => setProfile(null)}
         />
       )}
+      {detail && <MovieDetail movie={detail} onClose={() => setDetail(null)} />}
     </div>
   )
 }

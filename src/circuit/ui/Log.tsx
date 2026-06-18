@@ -3,13 +3,20 @@
 import { useEffect, useMemo, useState } from 'react'
 import { circuitStore, useCircuit } from '../store'
 import { isImportedTotal, logPoints } from '../scoring'
+import { showToast } from '../toast'
 
 const todayISO = () => new Date().toISOString().slice(0, 10)
 
-export function Log() {
+export function Log({
+  defaultPersonId,
+  defaultDate,
+}: {
+  defaultPersonId?: string
+  defaultDate?: string
+} = {}) {
   const state = useCircuit()
-  const [selPid, setSelPid] = useState('')
-  const [date, setDate] = useState(todayISO())
+  const [selPid, setSelPid] = useState(defaultPersonId ?? '')
+  const [date, setDate] = useState(defaultDate ?? todayISO())
   const [vals, setVals] = useState<Record<string, string>>({})
 
   const pid = selPid || state.people[0]?.id || ''
@@ -60,6 +67,7 @@ export function Log() {
     }
     const id = existing?.id ?? crypto.randomUUID?.() ?? 'l' + Date.now()
     void circuitStore.saveLog({ id, personId: pid, date, entries })
+    showToast('Saved!')
   }
   const clear = () => setVals({})
   const copyLast = () => {

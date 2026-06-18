@@ -1,4 +1,5 @@
 // Minimal modal overlay used by the movie add/rate sheets.
+import { useEffect } from 'react'
 import type { ReactNode } from 'react'
 
 export function Modal({
@@ -12,6 +13,14 @@ export function Modal({
   children: ReactNode
   footer?: ReactNode
 }) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
+
   return (
     <div
       onClick={(e) => {
