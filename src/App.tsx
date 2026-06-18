@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, lazy, Suspense } from 'react'
 import { ContactForm } from './sections/ContactForm'
-import { Projects } from './sections/Projects'
+import { EvanCook } from './sections/EvanCook'
 import { SnakeGame } from './sections/SnakeGame'
 import { site } from './config/site'
 import { IconGitHub, IconLinkedIn } from './components/Icons'
@@ -10,7 +10,6 @@ import { getUser, onAuthStateChange, signOut } from './finance/auth'
 import { getSupabaseClient } from './finance/client'
 
 // Lazy-load heavier sections (declared at module scope so they don't remount on each App render)
-const Resume = lazy(() => import('./sections/Resume').then((m) => ({ default: m.Resume })))
 const SignIn = lazy(() => import('./sections/SignIn').then((m) => ({ default: m.SignIn })))
 const Investments = lazy(() =>
   import('./sections/Investments').then((m) => ({ default: m.Investments })),
@@ -32,9 +31,7 @@ if (import.meta.env.DEV) {
 
 type Section =
   | 'home'
-  | 'projects'
   | 'circuit'
-  | 'resume'
   | 'signin'
   | 'investments'
   | 'account-settings'
@@ -44,23 +41,23 @@ type Section =
   | 'invite'
 
 // Single source of truth for left/right section order (keyboard, swipe, edge buttons).
+// Home is the unified Evan Cook page (portfolio + about + projects). Circuit is featured
+// as a project on Home and appears in nav only for signed-in members.
 // 'invite' and 'admin' are not in the arrow/swipe order — accessed via direct link or nav only.
 const navOrder = (financeOn: boolean, authed: boolean, isAdmin: boolean): Section[] =>
   financeOn
     ? authed
       ? [
           'home',
-          'projects',
           'circuit',
-          'resume',
           'investments',
           'account-settings',
           ...(isAdmin ? (['admin'] as Section[]) : []),
           'snake',
           'contact',
         ]
-      : ['home', 'projects', 'circuit', 'resume', 'signin', 'snake', 'contact']
-    : ['home', 'projects', 'circuit', 'resume', 'snake', 'contact']
+      : ['home', 'signin', 'snake', 'contact']
+    : ['home', 'snake', 'contact']
 
 export default function App() {
   const initialSection: Section = (() => {
@@ -69,9 +66,7 @@ export default function App() {
     return (
       [
         'home',
-        'projects',
         'circuit',
-        'resume',
         'signin',
         'investments',
         'account-settings',
@@ -195,14 +190,14 @@ export default function App() {
       return (
         [
           'home',
-          'projects',
           'circuit',
-          'resume',
           'signin',
           'investments',
           'account-settings',
           'snake',
           'contact',
+          'admin',
+          'invite',
         ] as Section[]
       ).includes(base)
         ? base
@@ -247,13 +242,11 @@ export default function App() {
   useEffect(() => {
     const map: Record<string, Section> = {
       '1': 'home',
-      '2': 'projects',
-      '3': 'resume',
       ...(hasFinanceSupabaseEnv()
         ? isFinanceAuthed
-          ? { '4': 'investments', '5': 'snake', '6': 'contact' }
-          : { '4': 'signin', '5': 'snake', '6': 'contact' }
-        : { '4': 'snake', '5': 'contact' }),
+          ? { '2': 'circuit', '3': 'investments', '4': 'snake', '5': 'contact' }
+          : { '2': 'signin', '3': 'snake', '4': 'contact' }
+        : { '2': 'snake', '3': 'contact' }),
     }
     const onKey = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null
@@ -424,27 +417,15 @@ export default function App() {
             >
               Home
             </a>
-            <a
-              href="#projects"
-              onClick={() => setActive('projects')}
-              aria-current={active === 'projects' ? 'page' : undefined}
-            >
-              Projects
-            </a>
-            <a
-              href="#circuit"
-              onClick={() => setActive('circuit')}
-              aria-current={active === 'circuit' ? 'page' : undefined}
-            >
-              Circuit
-            </a>
-            <a
-              href="#resume"
-              onClick={() => setActive('resume')}
-              aria-current={active === 'resume' ? 'page' : undefined}
-            >
-              Resume
-            </a>
+            {isFinanceAuthed && (
+              <a
+                href="#circuit"
+                onClick={() => setActive('circuit')}
+                aria-current={active === 'circuit' ? 'page' : undefined}
+              >
+                Circuit
+              </a>
+            )}
             {hasFinanceSupabaseEnv() && !isFinanceAuthed && (
               <a
                 href="#signin"
@@ -533,26 +514,8 @@ export default function App() {
         style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
       >
         {active === 'home' && (
-          <section id="home" className="card">
-            <h1 style={{ marginTop: 0 }}>Hi, I’m {site.name}.</h1>
-            <p className="muted">
-              Frontend-focused developer exploring clean interfaces, playful interactions, and fast
-              builds.
-            </p>
-            <p>
-              Check out a few small demos and the resume, or say hello via the contact form.
-              Projects are easy to expand—this repo is set up for smooth updates.
-            </p>
-            <p>
-              <a className="btn" href="#projects">
-                Explore Projects
-              </a>
-            </p>
-          </section>
-        )}
-        {active === 'projects' && (
-          <section id="projects" className="card reveal">
-            <Projects />
+          <section id="home">
+            <EvanCook />
           </section>
         )}
         {active === 'circuit' && (
@@ -565,19 +528,6 @@ export default function App() {
               }
             >
               <Circuit authed={isFinanceAuthed || !hasFinanceSupabaseEnv()} />
-            </Suspense>
-          </section>
-        )}
-        {active === 'resume' && (
-          <section id="resume" className="card reveal">
-            <Suspense
-              fallback={
-                <div className="card" aria-busy>
-                  Loading resume…
-                </div>
-              }
-            >
-              <Resume />
             </Suspense>
           </section>
         )}
