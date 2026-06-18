@@ -38,11 +38,12 @@ export function Circuit() {
     if (!desktop && canvas) setCanvas(false)
   }, [desktop, canvas])
 
-  function handleLogToday(personId: string) {
-    setLogTarget({ personId, date: todayISO() })
+  function handleLog(personId: string, date: string) {
+    setLogTarget({ personId, date })
     if (canvas) setFocusPane({ id: 'log', nonce: Date.now() })
     else setTab('log')
   }
+  const handleLogToday = (personId: string) => handleLog(personId, todayISO())
 
   const logNode = (
     <Log
@@ -62,7 +63,11 @@ export function Circuit() {
   ]
 
   const canvasPanes: CanvasPane[] = [
-    { id: 'board', title: '🏆 Board', node: <Board onLogToday={handleLogToday} /> },
+    {
+      id: 'board',
+      title: '🏆 Board',
+      node: <Board onLogToday={handleLogToday} onLogDate={handleLog} />,
+    },
     { id: 'log', title: '✏️ Log', node: logNode },
     { id: 'feed', title: '📋 Feed', node: <Feed /> },
     { id: 'charts', title: '📊 Charts', node: <Charts /> },
@@ -131,7 +136,7 @@ export function Circuit() {
             )}
           </div>
 
-          {tab === 'board' && <Board onLogToday={handleLogToday} />}
+          {tab === 'board' && <Board onLogToday={handleLogToday} onLogDate={handleLog} />}
           {tab === 'log' && logNode}
           {tab === 'feed' && <Feed />}
           {tab === 'charts' && <Charts />}
