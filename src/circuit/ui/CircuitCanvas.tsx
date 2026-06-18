@@ -246,8 +246,12 @@ export function CircuitCanvas({
       if (!d) return
       const el = winRefs.current[d.id]
       if (!el) return
-      const nx = Math.max(0, d.ox + (e.clientX - d.sx))
-      const ny = Math.max(0, d.oy + (e.clientY - d.sy))
+      // keep the window fully inside the canvas (don't let it slide past any edge)
+      const b = hostBox()
+      const maxX = Math.max(0, b.w - el.offsetWidth)
+      const maxY = Math.max(0, b.h - el.offsetHeight)
+      const nx = Math.min(maxX, Math.max(0, d.ox + (e.clientX - d.sx)))
+      const ny = Math.min(maxY, Math.max(0, d.oy + (e.clientY - d.sy)))
       // move via direct DOM for smoothness; commit to state on drop
       el.style.left = nx + 'px'
       el.style.top = ny + 'px'
@@ -256,7 +260,7 @@ export function CircuitCanvas({
       d.zone = zone
       setSnap(zone ? snapGeom(zone) : null)
     },
-    [snapGeom, zoneFor],
+    [hostBox, snapGeom, zoneFor],
   )
 
   const onDragUp = useCallback(() => {
@@ -284,41 +288,48 @@ export function CircuitCanvas({
   }, [onDragMove, snapGeom])
 
   // ── resize from any edge / corner ──
-  const onResizeMove = useCallback((e: PointerEvent) => {
-    const r = resz.current
-    if (!r) return
-    const el = winRefs.current[r.id]
-    if (!el) return
-    const dx = e.clientX - r.sx
-    const dy = e.clientY - r.sy
-    let x = r.ox
-    let y = r.oy
-    let w = r.ow
-    let h = r.oh
-    if (r.dir.includes('e')) w = Math.max(MIN_W, r.ow + dx)
-    if (r.dir.includes('s')) h = Math.max(MIN_H, r.oh + dy)
-    if (r.dir.includes('w')) {
-      w = Math.max(MIN_W, r.ow - dx)
-      x = r.ox + (r.ow - w)
-    }
-    if (r.dir.includes('n')) {
-      h = Math.max(MIN_H, r.oh - dy)
-      y = r.oy + (r.oh - h)
-    }
-    if (x < 0) {
-      w += x
-      x = 0
-    }
-    if (y < 0) {
-      h += y
-      y = 0
-    }
-    // direct DOM for smoothness; commit on release
-    el.style.left = x + 'px'
-    el.style.top = y + 'px'
-    el.style.width = w + 'px'
-    el.style.height = h + 'px'
-  }, [])
+  const onResizeMove = useCallback(
+    (e: PointerEvent) => {
+      const r = resz.current
+      if (!r) return
+      const el = winRefs.current[r.id]
+      if (!el) return
+      const b = hostBox()
+      const dx = e.clientX - r.sx
+      const dy = e.clientY - r.sy
+      let x = r.ox
+      let y = r.oy
+      let w = r.ow
+      let h = r.oh
+      if (r.dir.includes('e')) w = Math.max(MIN_W, r.ow + dx)
+      if (r.dir.includes('s')) h = Math.max(MIN_H, r.oh + dy)
+      if (r.dir.includes('w')) {
+        w = Math.max(MIN_W, r.ow - dx)
+        x = r.ox + (r.ow - w)
+      }
+      if (r.dir.includes('n')) {
+        h = Math.max(MIN_H, r.oh - dy)
+        y = r.oy + (r.oh - h)
+      }
+      if (x < 0) {
+        w += x
+        x = 0
+      }
+      if (y < 0) {
+        h += y
+        y = 0
+      }
+      // don't let the right / bottom edge spill past the canvas
+      if (x + w > b.w) w = Math.max(MIN_W, b.w - x)
+      if (y + h > b.h) h = Math.max(MIN_H, b.h - y)
+      // direct DOM for smoothness; commit on release
+      el.style.left = x + 'px'
+      el.style.top = y + 'px'
+      el.style.width = w + 'px'
+      el.style.height = h + 'px'
+    },
+    [hostBox],
+  )
 
   const onResizeUp = useCallback(() => {
     const r = resz.current
@@ -529,7 +540,8 @@ export function CircuitCanvas({
       >
         {panes.map((p) => {
           const w = wins[p.id]
-          if (!w) return null
+          // minimized windows vanish from the canvas — they live only as a taskbar tab
+          if (!w || w.min) return null
           return (
             <div
               key={p.id}
