@@ -5,7 +5,7 @@
 import type { CircuitAdapter } from './adapter'
 import type { CircuitState, DayLog, Movie, Person, WatchlistItem, ID } from './types'
 import { emptyCircuitState } from './types'
-import { circuitSeed } from './seed'
+import { publicSeed } from './publicSeed'
 
 const KEY = 'circuit_state_v1'
 
@@ -14,8 +14,8 @@ const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v))
 function read(): CircuitState {
   try {
     const raw = localStorage.getItem(KEY)
-    // first run (nothing saved yet): start from the real imported history
-    if (!raw) return { ...emptyCircuitState(), ...clone(circuitSeed) }
+    // first run (nothing saved yet): start from Evan's public demo slice only
+    if (!raw) return { ...emptyCircuitState(), ...clone(publicSeed) }
     return { ...emptyCircuitState(), ...JSON.parse(raw) }
   } catch {
     return emptyCircuitState()
