@@ -19,7 +19,7 @@ type WinBox = {
 }
 type Layout = Record<string, WinBox>
 
-const STORE_KEY = 'circuit_canvas_v2'
+const STORE_KEY = 'circuit_canvas_v3' // v3: full-width canvas surface (re-tile from old layouts)
 const GAP = 12
 
 function loadLayout(): Layout | null {
@@ -137,6 +137,15 @@ export function CircuitCanvas({
   useEffect(() => {
     if (Object.keys(wins).length) saveLayout(wins)
   }, [wins])
+
+  // lock background scroll while the full-width canvas overlay is open
+  useEffect(() => {
+    const prev = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = prev
+    }
+  }, [])
 
   // ── external focus request (e.g. Board's "log today" summons the Log window) ──
   useEffect(() => {
@@ -288,15 +297,33 @@ export function CircuitCanvas({
   const host = hostRef.current?.getBoundingClientRect()
 
   return (
-    <div>
+    // Full-width canvas surface: a fixed panel spanning the viewport below the nav,
+    // so the "operating system" isn't capped by the page container. Desktop-only
+    // (the launcher button is hidden on phones), so mobile keeps the clean tab layout.
+    <div
+      style={{
+        position: 'fixed',
+        top: 'var(--nav-h, 56px)',
+        left: 0,
+        right: 0,
+        bottom: 0,
+        zIndex: 50,
+        display: 'flex',
+        flexDirection: 'column',
+        background: 'var(--bg)',
+        padding: '0.5rem clamp(0.6rem, 1.6vw, 1.1rem) 0.6rem',
+        boxSizing: 'border-box',
+      }}
+    >
       {/* control bar */}
       <div
         style={{
           display: 'flex',
           alignItems: 'center',
           gap: '0.6rem',
-          marginBottom: '0.6rem',
+          marginBottom: '0.5rem',
           flexWrap: 'wrap',
+          flexShrink: 0,
         }}
       >
         <strong style={{ fontSize: '0.9rem' }}>⛶ Canvas</strong>
@@ -326,7 +353,8 @@ export function CircuitCanvas({
         ref={hostRef}
         style={{
           position: 'relative',
-          minHeight: 'calc(100vh - 220px)',
+          flex: 1,
+          minHeight: 0,
           padding: 4,
           overflow: 'auto',
           background:
