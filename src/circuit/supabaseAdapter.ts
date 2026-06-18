@@ -4,7 +4,7 @@
 import type { CircuitAdapter } from './adapter'
 import type { CircuitState, DayLog, Movie, MovieRating, Person, WatchlistItem, ID } from './types'
 import { getSupabaseClient } from '../finance/client'
-import { circuitSeed } from './seed'
+import { publicSeed } from './publicSeed'
 
 const TABLES = ['circuit_people', 'circuit_logs', 'circuit_movies', 'circuit_watchlist'] as const
 
@@ -107,15 +107,17 @@ export function createSupabaseAdapter(): CircuitAdapter {
     }
   }
 
-  // first member to open seeds the imported history into the cloud (idempotent: stable ids)
+  // If the cloud is empty, seed a fresh group with just the signed-in starter slice.
+  // (The original full-group history was seeded long ago and lives in the cloud; the
+  // full seed is intentionally no longer bundled — see publicSeed.ts.) Idempotent: stable ids.
   async function seedIfEmpty(): Promise<void> {
     const { count } = await sb.from('circuit_people').select('id', { count: 'exact', head: true })
     if (count && count > 0) return
     await Promise.all([
-      sb.from('circuit_people').upsert(circuitSeed.people.map(personToRow)),
-      sb.from('circuit_logs').upsert(circuitSeed.logs.map(logToRow)),
-      sb.from('circuit_movies').upsert(circuitSeed.movies.map(movieToRow)),
-      sb.from('circuit_watchlist').upsert(circuitSeed.watchlist.map(wlToRow)),
+      sb.from('circuit_people').upsert(publicSeed.people.map(personToRow)),
+      sb.from('circuit_logs').upsert(publicSeed.logs.map(logToRow)),
+      sb.from('circuit_movies').upsert(publicSeed.movies.map(movieToRow)),
+      sb.from('circuit_watchlist').upsert(publicSeed.watchlist.map(wlToRow)),
     ])
   }
 

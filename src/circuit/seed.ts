@@ -1,5 +1,7 @@
 // AUTO-GENERATED from the standalone app's DEF_P + Downloads/circuit_import.json (real history).
-// Loaded by the local adapter on first run when no Circuit data exists yet.
+// NOTE: this full-group history is NOT imported by the app and so is NOT shipped in the
+// client bundle — the live group data lives in Supabase. It's kept here as the source
+// snapshot for scripts/gen-public-seed.mjs, which derives the Evan-only publicSeed.ts.
 import type { CircuitState } from './types'
 
 export const circuitSeed: CircuitState = {
