@@ -8,6 +8,104 @@ import {
   updateUserProfile,
 } from '../finance/auth'
 import { hasFinanceSupabaseEnv } from '../finance/env'
+import { getSupabaseClient } from '../finance/client'
+
+type MyProfile = {
+  username: string | null
+  first_name: string | null
+  last_name: string | null
+  email: string | null
+  role: string | null
+}
+
+function MemberProfileCard() {
+  const sb = getSupabaseClient()
+  const [profile, setProfile] = useState<MyProfile | null>(null)
+  const [displayName, setDisplayName] = useState('')
+  const [contactEmail, setContactEmail] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [notice, setNotice] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const { data } = await sb.rpc('get_my_profile')
+        const row = Array.isArray(data) ? data[0] : data
+        if (!row) return
+        const p = row as MyProfile
+        setProfile(p)
+        setDisplayName(p.first_name ?? '')
+        setContactEmail(p.email ?? '')
+      } catch {
+        // no profile = not a member yet, hide the card
+      }
+    })()
+  }, [])
+
+  if (!profile) return null
+
+  async function save(e: React.FormEvent) {
+    e.preventDefault()
+    setSaving(true)
+    setError(null)
+    setNotice(null)
+    try {
+      const { error } = await sb.rpc('update_my_profile', {
+        p_display_name: displayName.trim() || null,
+        p_contact_email: contactEmail.trim() || null,
+      })
+      if (error) throw error
+      setNotice('Profile saved.')
+    } catch (e: unknown) {
+      setError(String((e as { message?: string })?.message ?? e))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <form className="card" onSubmit={(e) => void save(e)} style={{ display: 'grid', gap: 10 }}>
+      <h3 style={{ margin: 0 }}>Member profile</h3>
+      {profile.username && (
+        <p className="muted" style={{ margin: 0, fontSize: '0.85rem' }}>
+          Username: <strong>@{profile.username}</strong>
+          {profile.role && <span style={{ marginLeft: 8, opacity: 0.6 }}>· {profile.role}</span>}
+        </p>
+      )}
+      <label style={{ display: 'grid', gap: 6 }}>
+        <span className="muted">Display name</span>
+        <input
+          value={displayName}
+          onChange={(e) => setDisplayName(e.target.value)}
+          placeholder="What should we call you?"
+          autoComplete="given-name"
+          disabled={saving}
+        />
+      </label>
+      <label style={{ display: 'grid', gap: 6 }}>
+        <span className="muted">Contact email (optional, private)</span>
+        <input
+          value={contactEmail}
+          onChange={(e) => setContactEmail(e.target.value)}
+          type="email"
+          placeholder="kept private, not shared"
+          autoComplete="email"
+          disabled={saving}
+        />
+      </label>
+      {notice && (
+        <p className="muted" style={{ margin: 0 }}>
+          {notice}
+        </p>
+      )}
+      {error && <p style={{ margin: 0, color: 'var(--accent-2)', fontSize: '0.85rem' }}>{error}</p>}
+      <button className="btn" type="submit" disabled={saving}>
+        {saving ? 'Saving…' : 'Save profile'}
+      </button>
+    </form>
+  )
+}
 
 function normalizeError(err: unknown): string {
   if (!err) return 'Unknown error'
@@ -341,6 +439,8 @@ export function AccountSettings() {
               )}
             </article>
           )}
+
+          <MemberProfileCard />
         </>
       )}
     </section>
