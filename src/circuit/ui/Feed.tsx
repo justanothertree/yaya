@@ -3,19 +3,8 @@
 import { useMemo, useState } from 'react'
 import { useCircuit } from '../store'
 import { isImportedTotal, logPoints } from '../scoring'
+import { catColor } from '../catColors'
 import type { DayLog, Person } from '../types'
-
-const CAT_COLORS: Record<string, string> = {
-  arms: '#f46b6b',
-  core: '#a78bfa',
-  legs: '#5b9cf6',
-  bike: '#2ec4b6',
-  skate: '#fb923c',
-  run: '#22cc78',
-  walk: '#f5c060',
-  other: '#9aa0aa',
-}
-const catColor = (c?: string) => CAT_COLORS[c || 'other'] || '#9aa0aa'
 
 type View = 'list' | 'month' | 'week' | 'day' | 'table'
 

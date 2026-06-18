@@ -4,19 +4,8 @@ import { useMemo } from 'react'
 import { useCircuit } from '../store'
 import { Modal } from './Modal'
 import { currentStreak, dayTotal, logPoints, monthLabel } from '../scoring'
+import { catColor } from '../catColors'
 import type { Person } from '../types'
-
-const CAT_COLORS: Record<string, string> = {
-  arms: '#f46b6b',
-  core: '#a78bfa',
-  legs: '#5b9cf6',
-  bike: '#2ec4b6',
-  skate: '#fb923c',
-  run: '#22cc78',
-  walk: '#f5c060',
-  other: '#9aa0aa',
-}
-const catColor = (c: string) => CAT_COLORS[c] || '#9aa0aa'
 
 function Tile({ label, value, color }: { label: string; value: string; color?: string }) {
   return (
