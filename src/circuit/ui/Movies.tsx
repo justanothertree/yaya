@@ -325,19 +325,41 @@ export function Movies() {
                       .slice(0, 2)
                       .map((id) => MV_ICONS.find((x) => x.id === id)?.emoji)
                       .filter(Boolean)
+                    // Reserve a fixed emoji row for the whole movie row, so the number
+                    // chips stay aligned whether or not a given rater added vibes.
+                    const rowHasVibes = raters.some(
+                      (q) => (m.ratings[q.id]?.icons?.length ?? 0) > 0,
+                    )
                     return (
                       <td
                         key={p.id}
                         onClick={() => setRate({ movie: m, person: p })}
                         title={`Rate as ${p.name}`}
-                        style={{ padding: '4px 8px', textAlign: 'center', cursor: 'pointer' }}
+                        style={{
+                          padding: '4px 8px',
+                          textAlign: 'center',
+                          cursor: 'pointer',
+                          verticalAlign: 'top',
+                        }}
                       >
-                        {chip(r?.score ?? null)}
-                        {vibes.length > 0 && (
-                          <div style={{ fontSize: '0.7rem', lineHeight: 1, marginTop: 2 }}>
-                            {vibes.join('')}
-                          </div>
-                        )}
+                        <div
+                          style={{
+                            display: 'flex',
+                            flexDirection: 'column',
+                            alignItems: 'center',
+                            gap: 3,
+                          }}
+                        >
+                          {chip(r?.score ?? null)}
+                          {rowHasVibes && (
+                            <div
+                              style={{ fontSize: '0.74rem', lineHeight: 1, height: '0.9rem' }}
+                              aria-hidden={vibes.length === 0}
+                            >
+                              {vibes.join('')}
+                            </div>
+                          )}
+                        </div>
                       </td>
                     )
                   })}
