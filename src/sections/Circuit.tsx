@@ -2,6 +2,8 @@
 // Backed by the shared store (localStorage now → Supabase realtime later, no UI change).
 import { useEffect, useState } from 'react'
 import { connectCircuit } from '../circuit/connect'
+import { circuitStore, useCircuitHistory } from '../circuit/store'
+import { showToast } from '../circuit/toast'
 import { Board } from '../circuit/ui/Board'
 import { Log } from '../circuit/ui/Log'
 import { Feed } from '../circuit/ui/Feed'
@@ -22,10 +24,38 @@ export function Circuit({ authed = false }: { authed?: boolean } = {}) {
   const [canvas, setCanvas] = useState(false)
   const [focusPane, setFocusPane] = useState<{ id: string; nonce: number } | null>(null)
   const [desktop, setDesktop] = useState(isDesktop())
+  const { canUndo, canRedo } = useCircuitHistory()
+
+  const doUndo = () => {
+    if (!circuitStore.getHistoryState().canUndo) return
+    void circuitStore.undo()
+    showToast('Undone')
+  }
+  const doRedo = () => {
+    if (!circuitStore.getHistoryState().canRedo) return
+    void circuitStore.redo()
+    showToast('Redone')
+  }
 
   useEffect(() => {
     void connectCircuit()
   }, [])
+
+  // Undo/redo keyboard shortcuts (skip while typing in a field)
+  useEffect(() => {
+    if (!authed) return
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== 'z') return
+      const t = e.target as HTMLElement | null
+      const tag = t?.tagName?.toLowerCase()
+      if (tag === 'input' || tag === 'textarea' || t?.isContentEditable) return
+      e.preventDefault()
+      if (e.shiftKey) doRedo()
+      else doUndo()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [authed])
 
   useEffect(() => {
     const onResize = () => setDesktop(isDesktop())
@@ -170,16 +200,35 @@ export function Circuit({ authed = false }: { authed?: boolean } = {}) {
                 {t.label}
               </button>
             ))}
-            {desktop && (
+            <span style={{ display: 'inline-flex', gap: '0.4rem', marginLeft: 'auto' }}>
               <button
-                className="btn"
-                onClick={() => setCanvas(true)}
-                title="Free canvas — drag & resize windows"
-                style={{ marginLeft: 'auto' }}
+                className="btn btn-ghost"
+                onClick={doUndo}
+                disabled={!canUndo}
+                title="Undo (Ctrl+Z)"
+                aria-label="Undo"
               >
-                ⛶ Canvas
+                ↶
               </button>
-            )}
+              <button
+                className="btn btn-ghost"
+                onClick={doRedo}
+                disabled={!canRedo}
+                title="Redo (Ctrl+Shift+Z)"
+                aria-label="Redo"
+              >
+                ↷
+              </button>
+              {desktop && (
+                <button
+                  className="btn"
+                  onClick={() => setCanvas(true)}
+                  title="Free canvas — drag & resize windows"
+                >
+                  ⛶ Canvas
+                </button>
+              )}
+            </span>
           </div>
 
           {tab === 'board' && <Board onLogToday={handleLogToday} onLogDate={handleLog} />}

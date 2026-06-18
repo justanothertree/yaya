@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { circuitStore, useCircuit } from '../store'
 import { isImportedTotal, logPoints } from '../scoring'
 import { showToast } from '../toast'
+import { ScrubInput } from './ScrubInput'
 
 const todayISO = () => new Date().toISOString().slice(0, 10)
 
@@ -208,13 +209,9 @@ export function Log({
                 return (
                   <div key={ex.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                     <span style={{ flex: 1, minWidth: 0 }}>{ex.name}</span>
-                    <input
-                      type="number"
-                      inputMode="decimal"
-                      min={0}
+                    <ScrubInput
                       value={vals[ex.id] ?? ''}
-                      placeholder="0"
-                      onChange={(e) => setVal(ex.id, e.target.value)}
+                      onChange={(v) => setVal(ex.id, v)}
                       style={{ width: 80, textAlign: 'right', padding: '0.35rem 0.5rem' }}
                     />
                     <span className="muted" style={{ width: 44, fontSize: '0.8rem' }}>
