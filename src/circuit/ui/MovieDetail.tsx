@@ -68,7 +68,7 @@ export function MovieDetail({ movie, onClose }: { movie: Movie; onClose: () => v
 
   return (
     <>
-      <Modal title={headerLabel} onClose={onClose}>
+      <Modal title={headerLabel} onClose={onClose} width={680}>
         {/* Meta row */}
         <div
           style={{

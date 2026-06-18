@@ -1,4 +1,6 @@
-// Minimal modal overlay used by the movie add/rate sheets.
+// Modal overlay used by the movie/person sheets. The header (✕) and footer stay
+// pinned while only the body scrolls, so tall content wraps cleanly and the close
+// button is always reachable. Caps at 92vh / 96vw so it always fits the screen.
 import { useEffect } from 'react'
 import type { ReactNode } from 'react'
 
@@ -7,11 +9,14 @@ export function Modal({
   onClose,
   children,
   footer,
+  width = 460,
 }: {
   title: ReactNode
   onClose: () => void
   children: ReactNode
   footer?: ReactNode
+  /** Max content width in px (clamped to 96vw). */
+  width?: number
 }) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -20,6 +25,8 @@ export function Modal({
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose])
+
+  const divider = '1px solid var(--border, rgba(127,127,127,0.18))'
 
   return (
     <div
@@ -39,36 +46,55 @@ export function Modal({
       }}
     >
       <div
-        className="card"
         style={{
-          width: 'min(460px, 96vw)',
+          width: `min(${width}px, 96vw)`,
           maxHeight: '92vh',
-          overflowY: 'auto',
+          display: 'flex',
+          flexDirection: 'column',
           background: 'var(--panel, #141a2a)', // opaque so the page doesn't bleed through
+          color: 'var(--text)',
+          border: '1px solid var(--border, rgba(127,127,127,0.25))',
+          borderRadius: 14,
+          boxShadow: '0 20px 60px rgba(0,0,0,0.5)',
+          overflow: 'hidden',
         }}
       >
+        {/* pinned header */}
         <div
           style={{
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
             gap: '0.5rem',
-            marginBottom: '0.75rem',
+            padding: '0.85rem 1rem',
+            flexShrink: 0,
+            borderBottom: divider,
           }}
         >
-          <h3 style={{ margin: 0 }}>{title}</h3>
-          <button className="btn" onClick={onClose} aria-label="Close">
+          <h3 style={{ margin: 0, fontSize: '1.1rem', minWidth: 0 }}>{title}</h3>
+          <button
+            className="btn btn-ghost"
+            onClick={onClose}
+            aria-label="Close"
+            style={{ padding: '0.25rem 0.6rem', flexShrink: 0 }}
+          >
             ✕
           </button>
         </div>
-        {children}
+
+        {/* scrolling body */}
+        <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '1rem' }}>{children}</div>
+
+        {/* pinned footer */}
         {footer && (
           <div
             style={{
               display: 'flex',
               justifyContent: 'flex-end',
               gap: '0.5rem',
-              marginTop: '1.1rem',
+              padding: '0.75rem 1rem',
+              flexShrink: 0,
+              borderTop: divider,
             }}
           >
             {footer}
