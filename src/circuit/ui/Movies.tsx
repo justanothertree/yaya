@@ -35,7 +35,7 @@ export function Movies() {
   const [detail, setDetail] = useState<Movie | null>(null)
   const [view, setView] = useState<'board' | 'stats'>('board')
 
-  const raters = useMemo<Person[]>(() => {
+  const allRaters = useMemo<Person[]>(() => {
     const present = new Set<string>()
     state.movies.forEach((m) => Object.keys(m.ratings).forEach((id) => present.add(id)))
     const ids = MV_PIDS.filter((id) => present.has(id))
@@ -43,6 +43,28 @@ export function Movies() {
       .map((id) => state.people.find((p) => p.id === id))
       .filter((p): p is Person => !!p)
   }, [state.movies, state.people])
+
+  const [hidden, setHidden] = useState<Set<string>>(() => {
+    try {
+      return new Set<string>(JSON.parse(localStorage.getItem('circuit_movies_hidecols') || '[]'))
+    } catch {
+      return new Set<string>()
+    }
+  })
+  const [showCols, setShowCols] = useState(false)
+  const toggleCol = (id: string) =>
+    setHidden((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      try {
+        localStorage.setItem('circuit_movies_hidecols', JSON.stringify([...next]))
+      } catch {
+        /* ignore */
+      }
+      return next
+    })
+  const raters = allRaters.filter((p) => !hidden.has(p.id))
 
   const [sort, setSort] = useState<string>('avg') // 'avg'|'alpha'|'rt'|'date'|'p:<personId>'
   const [dir, setDir] = useState(-1)
@@ -150,6 +172,46 @@ export function Movies() {
           ))}
         </span>
       </div>
+
+      {view === 'board' && (
+        <div style={{ marginTop: '0.6rem' }}>
+          <button
+            className="btn btn-ghost"
+            onClick={() => setShowCols((v) => !v)}
+            style={{ fontSize: '0.82rem' }}
+            aria-expanded={showCols}
+          >
+            👁 Columns
+            {hidden.size ? ` (${allRaters.length - hidden.size}/${allRaters.length})` : ''}
+          </button>
+          {showCols && (
+            <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap', marginTop: '0.5rem' }}>
+              {allRaters.map((p) => {
+                const on = !hidden.has(p.id)
+                return (
+                  <button
+                    key={p.id}
+                    className="btn"
+                    onClick={() => toggleCol(p.id)}
+                    title={on ? `Hide ${p.name}` : `Show ${p.name}`}
+                    style={{
+                      borderColor: p.color,
+                      color: on ? '#fff' : p.color,
+                      background: on ? p.color : 'transparent',
+                      fontWeight: 700,
+                      opacity: on ? 1 : 0.55,
+                      fontSize: '0.8rem',
+                    }}
+                  >
+                    {on ? '✓ ' : ''}
+                    {p.name}
+                  </button>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      )}
 
       {view === 'stats' && (
         <div style={{ marginTop: '0.9rem' }}>
