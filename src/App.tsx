@@ -7,6 +7,7 @@ import { IconGitHub, IconLinkedIn } from './components/Icons'
 import { useReveal } from './hooks/useReveal'
 import { hasFinanceSupabaseEnv } from './finance/env'
 import { getUser, onAuthStateChange, signOut } from './finance/auth'
+import { getSupabaseClient } from './finance/client'
 
 // Lazy-load heavier sections (declared at module scope so they don't remount on each App render)
 const Resume = lazy(() => import('./sections/Resume').then((m) => ({ default: m.Resume })))
@@ -18,6 +19,12 @@ const AccountSettings = lazy(() =>
   import('./sections/AccountSettings').then((m) => ({ default: m.AccountSettings })),
 )
 const Circuit = lazy(() => import('./sections/Circuit').then((m) => ({ default: m.Circuit })))
+const AdminPanel = lazy(() =>
+  import('./sections/AdminPanel').then((m) => ({ default: m.AdminPanel })),
+)
+const AcceptInvite = lazy(() =>
+  import('./sections/AcceptInvite').then((m) => ({ default: m.AcceptInvite })),
+)
 
 if (import.meta.env.DEV) {
   import('./dev/supabaseDebug')
@@ -33,9 +40,12 @@ type Section =
   | 'account-settings'
   | 'snake'
   | 'contact'
+  | 'admin'
+  | 'invite'
 
 // Single source of truth for left/right section order (keyboard, swipe, edge buttons).
-const navOrder = (financeOn: boolean, authed: boolean): Section[] =>
+// 'invite' and 'admin' are not in the arrow/swipe order — accessed via direct link or nav only.
+const navOrder = (financeOn: boolean, authed: boolean, isAdmin: boolean): Section[] =>
   financeOn
     ? authed
       ? [
@@ -45,6 +55,7 @@ const navOrder = (financeOn: boolean, authed: boolean): Section[] =>
           'resume',
           'investments',
           'account-settings',
+          ...(isAdmin ? (['admin'] as Section[]) : []),
           'snake',
           'contact',
         ]
@@ -66,6 +77,8 @@ export default function App() {
         'account-settings',
         'snake',
         'contact',
+        'admin',
+        'invite',
       ] as Section[]
     ).includes(base)
       ? base
@@ -73,6 +86,7 @@ export default function App() {
   })()
   const [active, setActive] = useState<Section>(initialSection)
   const [isFinanceAuthed, setIsFinanceAuthed] = useState(false)
+  const [isAdmin, setIsAdmin] = useState(false)
   const [theme, setTheme] = useState<'light' | 'dark' | 'alt'>(() => {
     const saved = localStorage.getItem('theme') as 'light' | 'dark' | 'alt' | null
     if (saved) return saved
@@ -102,18 +116,33 @@ export default function App() {
       return
     }
     let alive = true
+
+    async function checkAdmin(userId: string) {
+      const { data } = await getSupabaseClient()
+        .from('user_roles')
+        .select('role')
+        .eq('user_id', userId)
+        .maybeSingle()
+      if (alive) setIsAdmin((data as { role?: string } | null)?.role === 'admin')
+    }
+
     void getUser()
       .then((u) => {
         if (!alive) return
         setIsFinanceAuthed(!!u)
+        if (u) void checkAdmin(u.id)
+        else setIsAdmin(false)
       })
       .catch(() => {
         if (!alive) return
         setIsFinanceAuthed(false)
+        setIsAdmin(false)
       })
 
     const { data } = onAuthStateChange((_event, session) => {
       setIsFinanceAuthed(!!session?.user)
+      if (session?.user) void checkAdmin(session.user.id)
+      else setIsAdmin(false)
     })
     return () => {
       alive = false
@@ -201,7 +230,8 @@ export default function App() {
   // redirect to Sign in (when finance is configured).
   useEffect(() => {
     const financeConfigured = hasFinanceSupabaseEnv()
-    const isFinanceSection = active === 'investments' || active === 'account-settings'
+    const isFinanceSection =
+      active === 'investments' || active === 'account-settings' || active === 'admin'
 
     if (financeConfigured && isFinanceSection && !isFinanceAuthed) {
       setActive('signin')
@@ -242,7 +272,7 @@ export default function App() {
       const onSnake = active === 'snake'
       const allowPageNav = !onSnake || (onSnake && !snakeHasControl)
       if (allowPageNav) {
-        const order = navOrder(hasFinanceSupabaseEnv(), isFinanceAuthed)
+        const order = navOrder(hasFinanceSupabaseEnv(), isFinanceAuthed, isAdmin)
         const idx = order.indexOf(active)
         if (key === 'ArrowLeft' && idx > 0) {
           setActive(order[idx - 1])
@@ -285,7 +315,7 @@ export default function App() {
       // Allow more forgiving horizontal intent
       const mostlyHorizontal = Math.abs(dx) > Math.abs(dy) * 1.2
       if (!mostlyHorizontal) return
-      const order = navOrder(hasFinanceSupabaseEnv(), isFinanceAuthed)
+      const order = navOrder(hasFinanceSupabaseEnv(), isFinanceAuthed, isAdmin)
       const idx = order.indexOf(active)
       if (dx > THRESH && idx > 0) setActive(order[idx - 1]) // swipe right -> previous
       if (dx < -THRESH && idx < order.length - 1) setActive(order[idx + 1]) // swipe left -> next
@@ -440,6 +470,15 @@ export default function App() {
                 aria-current={active === 'account-settings' ? 'page' : undefined}
               >
                 Account
+              </a>
+            )}
+            {isAdmin && (
+              <a
+                href="#admin"
+                onClick={() => setActive('admin')}
+                aria-current={active === 'admin' ? 'page' : undefined}
+              >
+                Admin
               </a>
             )}
             <a
@@ -603,6 +642,36 @@ export default function App() {
             )}
           </section>
         )}
+        {active === 'admin' && (
+          <section id="admin" className="card reveal">
+            {isAdmin ? (
+              <Suspense
+                fallback={
+                  <div className="card" aria-busy>
+                    Loading…
+                  </div>
+                }
+              >
+                <AdminPanel />
+              </Suspense>
+            ) : (
+              <p className="muted">Admin access required.</p>
+            )}
+          </section>
+        )}
+        {active === 'invite' && (
+          <section id="invite" className="card reveal">
+            <Suspense
+              fallback={
+                <div className="card" aria-busy>
+                  Loading…
+                </div>
+              }
+            >
+              <AcceptInvite />
+            </Suspense>
+          </section>
+        )}
         {active === 'snake' && (
           <section id="snake" className="card reveal show-dpad">
             <SnakeGame onControlChange={setSnakeHasControl} autoFocus />
@@ -672,7 +741,7 @@ export default function App() {
           className={`edge-btn edge-left`}
           aria-label="Previous section"
           onClick={() => {
-            const order = navOrder(hasFinanceSupabaseEnv(), isFinanceAuthed)
+            const order = navOrder(hasFinanceSupabaseEnv(), isFinanceAuthed, isAdmin)
             const idx = order.indexOf(active)
             if (idx > 0) setActive(order[idx - 1])
           }}
@@ -686,7 +755,7 @@ export default function App() {
           className={`edge-btn edge-right`}
           aria-label="Next section"
           onClick={() => {
-            const order = navOrder(hasFinanceSupabaseEnv(), isFinanceAuthed)
+            const order = navOrder(hasFinanceSupabaseEnv(), isFinanceAuthed, isAdmin)
             const idx = order.indexOf(active)
             if (idx < order.length - 1) setActive(order[idx + 1])
           }}
