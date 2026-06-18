@@ -6,10 +6,11 @@ import { currentStreak, monthDaily, monthLabel, monthTotal } from '../scoring'
 import { CircuitPersonProfile } from './CircuitPersonProfile'
 import type { Person } from '../types'
 
-export function Board() {
+export function Board({ onLogToday }: { onLogToday?: (personId: string) => void } = {}) {
   const state = useCircuit()
   const [profile, setProfile] = useState<Person | null>(null)
   const curMonth = new Date().toISOString().slice(0, 7)
+  const todayStr = new Date().toISOString().slice(0, 10)
   const months = useMemo(
     () => [...new Set(state.logs.map((l) => l.date.slice(0, 7)))].sort(),
     [state.logs],
@@ -120,6 +121,31 @@ export function Board() {
                 >
                   {Math.round(r.total)}
                 </span>
+                {onLogToday && (
+                  <button
+                    onClick={() => onLogToday(r.p.id)}
+                    title={
+                      state.logs.some((l) => l.personId === r.p.id && l.date === todayStr)
+                        ? 'Logged today'
+                        : 'Log today'
+                    }
+                    style={{
+                      flexShrink: 0,
+                      background: 'none',
+                      border: 'none',
+                      cursor: 'pointer',
+                      fontSize: '0.82rem',
+                      opacity: state.logs.some((l) => l.personId === r.p.id && l.date === todayStr)
+                        ? 1
+                        : 0.4,
+                      padding: '0 2px',
+                    }}
+                  >
+                    {state.logs.some((l) => l.personId === r.p.id && l.date === todayStr)
+                      ? '✓'
+                      : '＋'}
+                  </button>
+                )}
               </div>
               {/* day-squares: one per day of the month */}
               <div
