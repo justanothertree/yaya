@@ -39,6 +39,34 @@ function saveLayout(l: Layout) {
 }
 
 type Zone = 'max' | 'left' | 'right' | 'tl' | 'tr' | 'bl' | 'br'
+type Dir = 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw'
+const RESIZE_DIRS: Dir[] = ['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw']
+const MIN_W = 240
+const MIN_H = 120
+
+function handleStyle(dir: Dir): React.CSSProperties {
+  const base: React.CSSProperties = { position: 'absolute', zIndex: 6, touchAction: 'none' }
+  const edge = 8 // grab thickness
+  const corner = 15
+  switch (dir) {
+    case 'n':
+      return { ...base, top: 0, left: corner, right: corner, height: edge, cursor: 'ns-resize' }
+    case 's':
+      return { ...base, bottom: 0, left: corner, right: corner, height: edge, cursor: 'ns-resize' }
+    case 'e':
+      return { ...base, right: 0, top: corner, bottom: corner, width: edge, cursor: 'ew-resize' }
+    case 'w':
+      return { ...base, left: 0, top: corner, bottom: corner, width: edge, cursor: 'ew-resize' }
+    case 'ne':
+      return { ...base, top: 0, right: 0, width: corner, height: corner, cursor: 'nesw-resize' }
+    case 'nw':
+      return { ...base, top: 0, left: 0, width: corner, height: corner, cursor: 'nwse-resize' }
+    case 'se':
+      return { ...base, bottom: 0, right: 0, width: corner, height: corner, cursor: 'nwse-resize' }
+    case 'sw':
+      return { ...base, bottom: 0, left: 0, width: corner, height: corner, cursor: 'nesw-resize' }
+  }
+}
 
 export function CircuitCanvas({
   panes,
@@ -61,6 +89,16 @@ export function CircuitCanvas({
     ox: number
     oy: number
     zone: Zone | null
+  } | null>(null)
+  const resz = useRef<{
+    id: string
+    dir: Dir
+    sx: number
+    sy: number
+    ox: number
+    oy: number
+    ow: number
+    oh: number
   } | null>(null)
 
   // ── geometry helpers (host-relative coordinate space) ──
@@ -100,14 +138,19 @@ export function CircuitCanvas({
     [hostBox],
   )
 
+  // Tile to fill the whole canvas: pick a column count for the width, then size
+  // rows/cols so the grid uses all the available space (no dead gaps).
   const defaultTile = useCallback((): Layout => {
     const b = hostBox()
-    const colW = Math.floor((b.w - GAP) / 2)
-    const rowH = 340
+    const n = panes.length
+    const cols = b.w >= 1180 ? 3 : b.w >= 680 ? 2 : 1
+    const rows = Math.ceil(n / cols)
+    const colW = Math.floor((b.w - (cols - 1) * GAP) / cols)
+    const rowH = Math.floor((b.h - (rows - 1) * GAP) / rows)
     const next: Layout = {}
     panes.forEach((p, i) => {
-      const col = i % 2
-      const row = Math.floor(i / 2)
+      const col = i % cols
+      const row = Math.floor(i / cols)
       next[p.id] = {
         x: col * (colW + GAP),
         y: row * (rowH + GAP),
@@ -240,26 +283,77 @@ export function CircuitCanvas({
     drag.current = null
   }, [onDragMove, snapGeom])
 
-  // ── resize via native CSS resize + ResizeObserver → persist ──
-  useEffect(() => {
-    const ro = new ResizeObserver((ents) => {
-      if (drag.current) return
-      ents.forEach((en) => {
-        const id = (en.target as HTMLElement).dataset.czid
-        if (!id) return
-        setWins((prev) => {
-          const w = prev[id]
-          if (!w || w.min) return prev
-          const nw = (en.target as HTMLElement).offsetWidth
-          const nh = (en.target as HTMLElement).offsetHeight
-          if (Math.abs(nw - w.w) < 1 && Math.abs(nh - w.h) < 1) return prev
-          return { ...prev, [id]: { ...w, w: nw, h: nh } }
-        })
-      })
+  // ── resize from any edge / corner ──
+  const onResizeMove = useCallback((e: PointerEvent) => {
+    const r = resz.current
+    if (!r) return
+    const el = winRefs.current[r.id]
+    if (!el) return
+    const dx = e.clientX - r.sx
+    const dy = e.clientY - r.sy
+    let x = r.ox
+    let y = r.oy
+    let w = r.ow
+    let h = r.oh
+    if (r.dir.includes('e')) w = Math.max(MIN_W, r.ow + dx)
+    if (r.dir.includes('s')) h = Math.max(MIN_H, r.oh + dy)
+    if (r.dir.includes('w')) {
+      w = Math.max(MIN_W, r.ow - dx)
+      x = r.ox + (r.ow - w)
+    }
+    if (r.dir.includes('n')) {
+      h = Math.max(MIN_H, r.oh - dy)
+      y = r.oy + (r.oh - h)
+    }
+    if (x < 0) {
+      w += x
+      x = 0
+    }
+    if (y < 0) {
+      h += y
+      y = 0
+    }
+    // direct DOM for smoothness; commit on release
+    el.style.left = x + 'px'
+    el.style.top = y + 'px'
+    el.style.width = w + 'px'
+    el.style.height = h + 'px'
+  }, [])
+
+  const onResizeUp = useCallback(() => {
+    const r = resz.current
+    window.removeEventListener('pointermove', onResizeMove)
+    window.removeEventListener('pointerup', onResizeUp)
+    if (!r) return
+    const el = winRefs.current[r.id]
+    setWins((prev) => {
+      const w = prev[r.id]
+      if (!w || !el) return prev
+      return {
+        ...prev,
+        [r.id]: {
+          ...w,
+          x: parseFloat(el.style.left) || w.x,
+          y: parseFloat(el.style.top) || w.y,
+          w: parseFloat(el.style.width) || w.w,
+          h: parseFloat(el.style.height) || w.h,
+          max: false,
+        },
+      }
     })
-    Object.values(winRefs.current).forEach((el) => el && ro.observe(el))
-    return () => ro.disconnect()
-  }, [wins])
+    resz.current = null
+  }, [onResizeMove])
+
+  function onResizeStart(e: React.PointerEvent, id: string, dir: Dir) {
+    e.stopPropagation()
+    e.preventDefault()
+    focus(id)
+    const w = wins[id]
+    if (!w) return
+    resz.current = { id, dir, sx: e.clientX, sy: e.clientY, ox: w.x, oy: w.y, ow: w.w, oh: w.h }
+    window.addEventListener('pointermove', onResizeMove)
+    window.addEventListener('pointerup', onResizeUp)
+  }
 
   // ── window controls ──
   function toggleMin(id: string) {
@@ -293,6 +387,32 @@ export function CircuitCanvas({
     setWins(defaultTile())
     showToast('⊞ Windows tiled')
   }
+
+  // taskbar tab toggle: restore+focus a minimized pane, focus a back one, or
+  // minimize the one that's already on top.
+  function onTab(id: string) {
+    const w = wins[id]
+    if (!w) return
+    if (w.min) {
+      setWins((prev) => ({ ...prev, [id]: { ...prev[id], min: false } }))
+      focus(id)
+    } else if (id !== topId) {
+      focus(id)
+    } else {
+      setWins((prev) => ({ ...prev, [id]: { ...prev[id], min: true } }))
+    }
+  }
+
+  // the currently-focused (front-most, non-minimized) pane
+  let topId = ''
+  let topZ = -1
+  panes.forEach((p) => {
+    const w = wins[p.id]
+    if (w && !w.min && w.z > topZ) {
+      topZ = w.z
+      topId = p.id
+    }
+  })
 
   const host = hostRef.current?.getBoundingClientRect()
 
@@ -328,7 +448,8 @@ export function CircuitCanvas({
       >
         <strong style={{ fontSize: '0.9rem' }}>⛶ Canvas</strong>
         <span className="muted" style={{ fontSize: '0.74rem' }}>
-          drag title bars (snap at edges) · drag a corner to resize · ⤢ fit · ▢ max · － min
+          drag the title bar (snaps at edges) · drag any edge or corner to resize · ⤢ fit · ▢ max ·
+          － min
         </span>
         <span style={{ marginLeft: 'auto', display: 'flex', gap: '0.4rem' }}>
           <button className="btn" onClick={tile}>
@@ -346,6 +467,50 @@ export function CircuitCanvas({
             Done
           </button>
         </span>
+      </div>
+
+      {/* window-switcher taskbar: highlights the focused window, dims minimized ones */}
+      <div
+        style={{
+          display: 'flex',
+          gap: '0.35rem',
+          flexWrap: 'wrap',
+          marginBottom: '0.5rem',
+          flexShrink: 0,
+        }}
+      >
+        {panes.map((p) => {
+          const w = wins[p.id]
+          const min = !!w?.min
+          const active = p.id === topId
+          return (
+            <button
+              key={p.id}
+              onClick={() => onTab(p.id)}
+              title={
+                min
+                  ? `Restore ${p.title}`
+                  : active
+                    ? `Minimize ${p.title}`
+                    : `Bring ${p.title} to front`
+              }
+              style={{
+                ...taskTab,
+                background: active
+                  ? 'var(--accent, #7c6af7)'
+                  : min
+                    ? 'transparent'
+                    : 'var(--b1, rgba(127,127,127,0.12))',
+                color: active ? '#fff' : 'inherit',
+                opacity: min ? 0.5 : 1,
+                borderColor: active ? 'transparent' : 'var(--border, rgba(127,127,127,0.25))',
+              }}
+            >
+              <span style={{ fontSize: '0.7rem' }}>{min ? '▫' : '▪'}</span>
+              {p.title}
+            </button>
+          )
+        })}
       </div>
 
       {/* canvas surface */}
@@ -383,13 +548,16 @@ export function CircuitCanvas({
                 display: 'flex',
                 flexDirection: 'column',
                 background: 'var(--panel, #141a2a)',
-                border: '1px solid var(--b2, rgba(127,127,127,0.3))',
+                border:
+                  p.id === topId
+                    ? '1px solid var(--accent, #7c6af7)'
+                    : '1px solid var(--b2, rgba(127,127,127,0.3))',
                 borderRadius: 12,
-                boxShadow: '0 8px 28px rgba(0,0,0,0.45)',
+                boxShadow:
+                  p.id === topId ? '0 10px 34px rgba(0,0,0,0.55)' : '0 8px 28px rgba(0,0,0,0.45)',
                 overflow: 'hidden',
-                resize: w.min || w.max ? 'none' : 'both',
-                minWidth: 240,
-                minHeight: w.min ? 0 : 120,
+                minWidth: MIN_W,
+                minHeight: w.min ? 0 : MIN_H,
               }}
             >
               {/* title bar */}
@@ -453,6 +621,16 @@ export function CircuitCanvas({
                   {p.node}
                 </div>
               )}
+              {/* resize handles on every edge + corner */}
+              {!w.min &&
+                !w.max &&
+                RESIZE_DIRS.map((dir) => (
+                  <div
+                    key={dir}
+                    onPointerDown={(e) => onResizeStart(e, p.id, dir)}
+                    style={handleStyle(dir)}
+                  />
+                ))}
             </div>
           )
         })}
@@ -481,8 +659,27 @@ export function CircuitCanvas({
 }
 
 const czBtn: React.CSSProperties = {
-  padding: '0 6px',
-  fontSize: '0.78rem',
-  lineHeight: 1.5,
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  width: 30,
+  height: 28,
+  padding: 0,
+  fontSize: '1rem',
+  lineHeight: 1,
   minWidth: 'auto',
+  flexShrink: 0,
+}
+
+const taskTab: React.CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: '0.3rem',
+  padding: '0.28rem 0.6rem',
+  borderRadius: 8,
+  border: '1px solid var(--border, rgba(127,127,127,0.25))',
+  fontSize: '0.8rem',
+  fontWeight: 600,
+  cursor: 'pointer',
+  whiteSpace: 'nowrap',
 }
