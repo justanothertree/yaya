@@ -127,6 +127,38 @@ export function Log({
         <button className="btn" aria-label="Next day" onClick={() => shiftDay(1)}>
           ›
         </button>
+        {existing && !imported && (
+          <span
+            style={{
+              fontSize: '0.74rem',
+              fontWeight: 700,
+              color: '#22cc78',
+              background: 'rgba(34,204,120,0.12)',
+              border: '1px solid rgba(34,204,120,0.4)',
+              borderRadius: 12,
+              padding: '2px 9px',
+            }}
+            title="A workout is saved for this day"
+          >
+            Saved ✓
+          </span>
+        )}
+        {imported && (
+          <span
+            style={{
+              fontSize: '0.74rem',
+              fontWeight: 700,
+              color: '#f5c060',
+              background: 'rgba(245,192,96,0.12)',
+              border: '1px solid rgba(245,192,96,0.4)',
+              borderRadius: 12,
+              padding: '2px 9px',
+            }}
+            title="Imported historical total"
+          >
+            Imported
+          </span>
+        )}
       </div>
 
       {imported && (

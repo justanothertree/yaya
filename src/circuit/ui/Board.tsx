@@ -6,7 +6,13 @@ import { currentStreak, monthDaily, monthLabel, monthTotal } from '../scoring'
 import { CircuitPersonProfile } from './CircuitPersonProfile'
 import type { Person } from '../types'
 
-export function Board({ onLogToday }: { onLogToday?: (personId: string) => void } = {}) {
+export function Board({
+  onLogToday,
+  onLogDate,
+}: {
+  onLogToday?: (personId: string) => void
+  onLogDate?: (personId: string, date: string) => void
+} = {}) {
   const state = useCircuit()
   const [profile, setProfile] = useState<Person | null>(null)
   const curMonth = new Date().toISOString().slice(0, 7)
@@ -28,13 +34,20 @@ export function Board({ onLogToday }: { onLogToday?: (personId: string) => void 
   const rows = useMemo(
     () =>
       state.people
-        .map((p) => ({
-          p,
-          total: monthTotal(p, state.logs, ym),
-          goal: p.goal ?? 100,
-          daily: monthDaily(p, state.logs, ym, days),
-          streak: currentStreak(p, state.logs),
-        }))
+        .map((p) => {
+          const daily = monthDaily(p, state.logs, ym, days)
+          const daysLogged = daily.filter((d) => d > 0).length
+          const total = monthTotal(p, state.logs, ym)
+          return {
+            p,
+            total,
+            goal: p.goal ?? 100,
+            daily,
+            daysLogged,
+            avgDay: daysLogged ? total / daysLogged : 0,
+            streak: currentStreak(p, state.logs),
+          }
+        })
         .sort((a, b) => b.total - a.total),
     [state.people, state.logs, ym, days],
   )
@@ -110,6 +123,27 @@ export function Board({ onLogToday }: { onLogToday?: (personId: string) => void 
                     🔥{r.streak}
                   </span>
                 )}
+                {r.avgDay > 0 && (
+                  <span
+                    style={{
+                      flexShrink: 0,
+                      width: '3rem',
+                      textAlign: 'right',
+                      fontVariantNumeric: 'tabular-nums',
+                      fontSize: '0.74rem',
+                      fontWeight: 700,
+                      color:
+                        r.avgDay >= r.goal
+                          ? '#22cc78'
+                          : r.avgDay >= r.goal * 0.6
+                            ? '#f5c060'
+                            : '#f46b6b',
+                    }}
+                    title={`${Math.round(r.avgDay)} pts/day across ${r.daysLogged} logged days`}
+                  >
+                    {Math.round(r.avgDay)}/d
+                  </span>
+                )}
                 <span
                   style={{
                     width: '3.5rem',
@@ -159,10 +193,12 @@ export function Board({ onLogToday }: { onLogToday?: (personId: string) => void 
                 {r.daily.map((pts, di) => {
                   const hit = pts >= r.goal
                   const some = pts > 0 && !hit
+                  const dStr = `${ym}-${String(di + 1).padStart(2, '0')}`
                   return (
                     <span
                       key={di}
-                      title={`${ym}-${String(di + 1).padStart(2, '0')}: ${Math.round(pts)} pts`}
+                      onClick={onLogDate ? () => onLogDate(r.p.id, dStr) : undefined}
+                      title={`${dStr}: ${Math.round(pts)} pts${onLogDate ? ' · click to log' : ''}`}
                       style={{
                         flex: '1 1 0',
                         minWidth: 0,
@@ -171,6 +207,7 @@ export function Board({ onLogToday }: { onLogToday?: (personId: string) => void 
                         background: hit || some ? r.p.color : 'var(--b1, rgba(127,127,127,0.18))',
                         opacity: hit ? 1 : some ? 0.45 : 0.5,
                         boxShadow: hit ? 'inset 0 0 0 1px rgba(255,255,255,0.55)' : undefined,
+                        cursor: onLogDate ? 'pointer' : undefined,
                       }}
                     />
                   )
