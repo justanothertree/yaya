@@ -176,6 +176,17 @@ li {
   border-color: var(--border-strong);
 }
 
+/* Project showcase card: stack on mobile, slideshow + write-up side by side on wide screens */
+.proj-grid {
+  grid-template-columns: 1fr;
+}
+@media (min-width: 860px) {
+  .proj-grid {
+    grid-template-columns: 1.05fr 1fr;
+    align-items: start;
+  }
+}
+
 /* Avoid bottom glitches between sections by ensuring content fills viewport */
 :root {
   --nav-h: 56px;
@@ -487,3 +498,38 @@ select {
 
 /* Avoid double scrollbars: let the page scroll normally */
 /* Removed forced overflow hidden on #root to improve zoom/scroll behavior */
+
+/* Print / "Save as PDF" résumé: strip app chrome, force a clean light layout. */
+@media print {
+  .nav,
+  .edge-btn,
+  .back-to-top,
+  .skip-link,
+  .live-region {
+    display: none !important;
+  }
+  body {
+    padding-top: 0 !important;
+    background: #fff !important;
+    color: #111 !important;
+  }
+  .container {
+    max-width: none !important;
+    padding: 0 !important;
+  }
+  .card {
+    box-shadow: none !important;
+    border: 1px solid #ddd !important;
+    break-inside: avoid;
+  }
+  /* Don't print the hero CTA row or social buttons */
+  .no-print {
+    display: none !important;
+  }
+  .proj-grid {
+    grid-template-columns: 1fr 1.2fr !important;
+  }
+  a[href]::after {
+    content: '';
+  }
+}
