@@ -41,9 +41,9 @@ export function Circuit({ authed = false }: { authed?: boolean } = {}) {
     void connectCircuit()
   }, [])
 
-  // Undo/redo keyboard shortcuts (skip while typing in a field)
+  // Undo/redo keyboard shortcuts (skip while typing in a field). Works in the
+  // signed-out sandbox too, since edits there are local-only.
   useEffect(() => {
-    if (!authed) return
     const onKey = (e: KeyboardEvent) => {
       if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== 'z') return
       const t = e.target as HTMLElement | null
@@ -55,7 +55,7 @@ export function Circuit({ authed = false }: { authed?: boolean } = {}) {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [authed])
+  }, [])
 
   useEffect(() => {
     const onResize = () => setDesktop(isDesktop())
@@ -105,52 +105,6 @@ export function Circuit({ authed = false }: { authed?: boolean } = {}) {
     { id: 'watchlist', title: '🍿 Watchlist', node: <Watchlist /> },
   ]
 
-  // Non-member preview: board is visible read-only; no other tabs
-  if (!authed) {
-    return (
-      <div>
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.75rem', flexWrap: 'wrap' }}>
-          <h2 className="section-title" style={{ margin: 0 }}>
-            The Circuit
-          </h2>
-          <span className="muted" style={{ fontSize: '0.85rem' }}>
-            fitness + movies tracker
-          </span>
-        </div>
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '0.75rem',
-            flexWrap: 'wrap',
-            padding: '0.6rem 0.9rem',
-            margin: '0.9rem 0',
-            background: 'rgba(124,106,247,0.08)',
-            borderRadius: 10,
-            border: '1px solid rgba(124,106,247,0.25)',
-          }}
-        >
-          <span style={{ fontSize: '1.1rem' }}>🔒</span>
-          <span style={{ flex: 1, fontSize: '0.9rem' }}>
-            <strong>Members-only app.</strong>{' '}
-            <span className="muted">
-              Sign in to log workouts, rate movies, and track progress with the group.
-            </span>
-          </span>
-          <a
-            href="#signin"
-            className="btn"
-            style={{ background: 'var(--accent, #7c6af7)', color: '#fff', fontSize: '0.85rem' }}
-          >
-            Sign in
-          </a>
-        </div>
-        <Board />
-        <Toast />
-      </div>
-    )
-  }
-
   return (
     <div>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.75rem', flexWrap: 'wrap' }}>
@@ -158,9 +112,11 @@ export function Circuit({ authed = false }: { authed?: boolean } = {}) {
           The Circuit
         </h2>
         <span className="muted" style={{ fontSize: '0.85rem' }}>
-          fitness + movies, synced for you and friends
+          {authed ? 'fitness + movies, synced for you and friends' : 'fitness + movies tracker'}
         </span>
       </div>
+
+      {!authed && <DemoBanner />}
 
       {canvas ? (
         <div style={{ marginTop: '0.9rem' }}>
@@ -241,6 +197,60 @@ export function Circuit({ authed = false }: { authed?: boolean } = {}) {
       )}
 
       <Toast />
+    </div>
+  )
+}
+
+// Shown to signed-out visitors: this is Evan's public demo. They can try every feature;
+// edits live only in their browser. Sign in to save and start their own group.
+function DemoBanner() {
+  const reset = () => {
+    try {
+      localStorage.removeItem('circuit_state_v1')
+    } catch {
+      /* ignore */
+    }
+    window.location.reload()
+  }
+  return (
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: '0.75rem',
+        flexWrap: 'wrap',
+        padding: '0.6rem 0.9rem',
+        margin: '0.9rem 0',
+        background: 'rgba(124,106,247,0.08)',
+        borderRadius: 10,
+        border: '1px solid rgba(124,106,247,0.25)',
+      }}
+    >
+      <span style={{ fontSize: '1.1rem' }}>👋</span>
+      <span style={{ flex: 1, minWidth: 220, fontSize: '0.9rem' }}>
+        <strong>You’re exploring Evan’s Circuit.</strong>{' '}
+        <span className="muted">
+          Try every feature with my real data — anything you change stays in your browser and won’t
+          touch mine. Sign in to save your own progress and start a Circuit with your friends.
+        </span>
+      </span>
+      <span style={{ display: 'inline-flex', gap: '0.4rem' }}>
+        <button
+          className="btn btn-ghost"
+          onClick={reset}
+          title="Restore the demo to Evan’s data"
+          style={{ fontSize: '0.85rem' }}
+        >
+          Reset demo
+        </button>
+        <a
+          href="#signin"
+          className="btn"
+          style={{ background: 'var(--accent, #7c6af7)', color: '#fff', fontSize: '0.85rem' }}
+        >
+          Sign in
+        </a>
+      </span>
     </div>
   )
 }
