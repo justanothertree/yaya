@@ -3,21 +3,10 @@
 import { useMemo, useState } from 'react'
 import { useCircuit } from '../store'
 import { dayTotal, monthLabel, monthTotal } from '../scoring'
+import { catColor } from '../catColors'
 import type { Person } from '../types'
 
 type HoverDay = { day: number } | null
-
-const CAT_COLORS: Record<string, string> = {
-  arms: '#f46b6b',
-  core: '#a78bfa',
-  legs: '#5b9cf6',
-  bike: '#2ec4b6',
-  skate: '#fb923c',
-  run: '#22cc78',
-  walk: '#f5c060',
-  other: '#9aa0aa',
-}
-const catColor = (c: string) => CAT_COLORS[c] || '#9aa0aa'
 
 export function Charts({
   onDayClick,

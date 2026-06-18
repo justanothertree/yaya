@@ -102,6 +102,33 @@ a {
   text-decoration: none;
 }
 
+/* Thin, themed scrollbars — quieter than the chunky native ones, and they pick up
+   the active theme. Applies to every scroll container (canvas windows, modals, tables). */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 8px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--muted);
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
 /* Fluid type scale */
 h1 {
   font-size: clamp(1.6rem, 1.2rem + 2vw, 2.4rem);
