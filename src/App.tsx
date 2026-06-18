@@ -89,6 +89,17 @@ export default function App() {
       ? 'light'
       : 'dark'
   })
+  // Site-wide UI scale (the "+ / −" zoom in the banner). Applies to everything,
+  // modals and overlays included, via CSS zoom. Persisted across sessions.
+  const [uiScale, setUiScale] = useState<number>(() => {
+    const s = parseFloat(localStorage.getItem('ui_scale') || '1')
+    return Number.isFinite(s) ? Math.min(2.5, Math.max(0.5, s)) : 1
+  })
+  useEffect(() => {
+    localStorage.setItem('ui_scale', String(uiScale))
+  }, [uiScale])
+  const bumpScale = (d: number) =>
+    setUiScale((s) => Math.min(2.5, Math.max(0.5, Math.round((s + d) * 100) / 100)))
   const topRef = useRef<HTMLDivElement>(null)
   const liveRef = useRef<HTMLDivElement>(null)
   const navLinksRef = useRef<HTMLDivElement>(null)
@@ -395,7 +406,7 @@ export default function App() {
   }, [])
 
   return (
-    <div data-theme={theme} data-page={active}>
+    <div data-theme={theme} data-page={active} style={{ zoom: uiScale }}>
       <a href="#content" className="skip-link">
         Skip to content
       </a>
@@ -474,9 +485,45 @@ export default function App() {
             >
               Contact
             </a>
+            <span
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.15rem',
+                marginLeft: '0.75rem',
+              }}
+              title={`UI scale ${Math.round(uiScale * 100)}%`}
+            >
+              <button
+                className="btn"
+                aria-label="Zoom out"
+                onClick={() => bumpScale(-0.1)}
+                disabled={uiScale <= 0.5}
+                style={{ padding: '0.5rem 0.6rem' }}
+              >
+                A−
+              </button>
+              <button
+                className="btn"
+                aria-label="Reset zoom"
+                onClick={() => setUiScale(1)}
+                style={{ padding: '0.5rem 0.4rem', fontVariantNumeric: 'tabular-nums' }}
+              >
+                {Math.round(uiScale * 100)}%
+              </button>
+              <button
+                className="btn"
+                aria-label="Zoom in"
+                onClick={() => bumpScale(0.1)}
+                disabled={uiScale >= 2.5}
+                style={{ padding: '0.5rem 0.6rem' }}
+              >
+                A+
+              </button>
+            </span>
             <button
               className="btn"
-              style={{ marginLeft: '0.75rem' }}
+              style={{ marginLeft: '0.5rem' }}
               aria-label="Toggle theme"
               onClick={() => {
                 const next = theme === 'dark' ? 'light' : theme === 'light' ? 'alt' : 'dark'
