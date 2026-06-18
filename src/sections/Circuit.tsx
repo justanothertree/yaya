@@ -9,23 +9,48 @@ import { Charts } from '../circuit/ui/Charts'
 import { Movies } from '../circuit/ui/Movies'
 import { Watchlist } from '../circuit/ui/Watchlist'
 import { Toast } from '../circuit/ui/Toast'
+import { CircuitCanvas, type CanvasPane } from '../circuit/ui/CircuitCanvas'
 
 type Tab = 'board' | 'log' | 'feed' | 'charts' | 'movies' | 'watchlist'
 
 const todayISO = () => new Date().toISOString().slice(0, 10)
+const isDesktop = () => typeof window !== 'undefined' && window.innerWidth >= 820
 
 export function Circuit() {
   const [tab, setTab] = useState<Tab>('board')
   const [logTarget, setLogTarget] = useState<{ personId: string; date: string } | null>(null)
+  const [canvas, setCanvas] = useState(false)
+  const [focusPane, setFocusPane] = useState<{ id: string; nonce: number } | null>(null)
+  const [desktop, setDesktop] = useState(isDesktop())
 
   useEffect(() => {
     void connectCircuit()
   }, [])
 
+  useEffect(() => {
+    const onResize = () => setDesktop(isDesktop())
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
+
+  // canvas is desktop-only; drop out if the viewport shrinks
+  useEffect(() => {
+    if (!desktop && canvas) setCanvas(false)
+  }, [desktop, canvas])
+
   function handleLogToday(personId: string) {
     setLogTarget({ personId, date: todayISO() })
-    setTab('log')
+    if (canvas) setFocusPane({ id: 'log', nonce: Date.now() })
+    else setTab('log')
   }
+
+  const logNode = (
+    <Log
+      key={logTarget ? `${logTarget.personId}-${logTarget.date}` : 'default'}
+      defaultPersonId={logTarget?.personId}
+      defaultDate={logTarget?.date}
+    />
+  )
 
   const tabs: { id: Tab; label: string }[] = [
     { id: 'board', label: '🏆 Board' },
@@ -34,6 +59,15 @@ export function Circuit() {
     { id: 'charts', label: '📊 Charts' },
     { id: 'movies', label: '🎬 Movies' },
     { id: 'watchlist', label: '🍿 Watchlist' },
+  ]
+
+  const canvasPanes: CanvasPane[] = [
+    { id: 'board', title: '🏆 Board', node: <Board onLogToday={handleLogToday} /> },
+    { id: 'log', title: '✏️ Log', node: logNode },
+    { id: 'feed', title: '📋 Feed', node: <Feed /> },
+    { id: 'charts', title: '📊 Charts', node: <Charts /> },
+    { id: 'movies', title: '🎬 Movies', node: <Movies /> },
+    { id: 'watchlist', title: '🍿 Watchlist', node: <Watchlist /> },
   ]
 
   return (
@@ -47,40 +81,64 @@ export function Circuit() {
         </span>
       </div>
 
-      <div style={{ display: 'flex', gap: '0.4rem', margin: '0.9rem 0 1.1rem', flexWrap: 'wrap' }}>
-        {tabs.map((t) => (
-          <button
-            key={t.id}
-            className="btn"
-            onClick={() => setTab(t.id)}
-            aria-pressed={tab === t.id}
-            style={
-              tab === t.id
-                ? {
-                    background: 'var(--accent, #7c6af7)',
-                    color: '#fff',
-                    borderColor: 'transparent',
-                  }
-                : undefined
-            }
+      {canvas ? (
+        <div style={{ marginTop: '0.9rem' }}>
+          <CircuitCanvas
+            panes={canvasPanes}
+            focusPane={focusPane}
+            onExit={() => setCanvas(false)}
+          />
+        </div>
+      ) : (
+        <>
+          <div
+            style={{
+              display: 'flex',
+              gap: '0.4rem',
+              margin: '0.9rem 0 1.1rem',
+              flexWrap: 'wrap',
+              alignItems: 'center',
+            }}
           >
-            {t.label}
-          </button>
-        ))}
-      </div>
+            {tabs.map((t) => (
+              <button
+                key={t.id}
+                className="btn"
+                onClick={() => setTab(t.id)}
+                aria-pressed={tab === t.id}
+                style={
+                  tab === t.id
+                    ? {
+                        background: 'var(--accent, #7c6af7)',
+                        color: '#fff',
+                        borderColor: 'transparent',
+                      }
+                    : undefined
+                }
+              >
+                {t.label}
+              </button>
+            ))}
+            {desktop && (
+              <button
+                className="btn"
+                onClick={() => setCanvas(true)}
+                title="Free canvas — drag & resize windows"
+                style={{ marginLeft: 'auto' }}
+              >
+                ⛶ Canvas
+              </button>
+            )}
+          </div>
 
-      {tab === 'board' && <Board onLogToday={handleLogToday} />}
-      {tab === 'log' && (
-        <Log
-          key={logTarget ? `${logTarget.personId}-${logTarget.date}` : 'default'}
-          defaultPersonId={logTarget?.personId}
-          defaultDate={logTarget?.date}
-        />
+          {tab === 'board' && <Board onLogToday={handleLogToday} />}
+          {tab === 'log' && logNode}
+          {tab === 'feed' && <Feed />}
+          {tab === 'charts' && <Charts />}
+          {tab === 'movies' && <Movies />}
+          {tab === 'watchlist' && <Watchlist />}
+        </>
       )}
-      {tab === 'feed' && <Feed />}
-      {tab === 'charts' && <Charts />}
-      {tab === 'movies' && <Movies />}
-      {tab === 'watchlist' && <Watchlist />}
 
       <Toast />
     </div>
