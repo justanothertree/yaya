@@ -112,20 +112,18 @@ export default function App() {
     }
     let alive = true
 
-    async function checkAdmin(userId: string) {
-      const { data } = await getSupabaseClient()
-        .from('user_roles')
-        .select('role')
-        .eq('user_id', userId)
-        .maybeSingle()
-      if (alive) setIsAdmin((data as { role?: string } | null)?.role === 'admin')
+    // Admin = the server's source of truth (is_admin() → admin_users), so the client
+    // never disagrees with the security-definer RPCs the Admin panel calls.
+    async function checkAdmin() {
+      const { data } = await getSupabaseClient().rpc('is_admin')
+      if (alive) setIsAdmin(data === true)
     }
 
     void getUser()
       .then((u) => {
         if (!alive) return
         setIsFinanceAuthed(!!u)
-        if (u) void checkAdmin(u.id)
+        if (u) void checkAdmin()
         else setIsAdmin(false)
       })
       .catch(() => {
@@ -136,7 +134,7 @@ export default function App() {
 
     const { data } = onAuthStateChange((_event, session) => {
       setIsFinanceAuthed(!!session?.user)
-      if (session?.user) void checkAdmin(session.user.id)
+      if (session?.user) void checkAdmin()
       else setIsAdmin(false)
     })
     return () => {
