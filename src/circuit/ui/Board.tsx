@@ -88,7 +88,16 @@ export function Board({
           {rows.map((r, i) => (
             <div key={r.p.id}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                <span style={{ width: '1.5rem', textAlign: 'right', opacity: 0.6 }}>{i + 1}</span>
+                <span
+                  style={{
+                    width: '1.5rem',
+                    textAlign: 'center',
+                    opacity: i < 3 ? 1 : 0.55,
+                    fontSize: i < 3 ? '1rem' : undefined,
+                  }}
+                >
+                  {i < 3 ? ['🥇', '🥈', '🥉'][i] : i + 1}
+                </span>
                 <span
                   onClick={() => setProfile(r.p)}
                   title={`${r.p.name}'s stats`}
@@ -99,21 +108,36 @@ export function Board({
                 <span
                   style={{
                     flex: 1,
+                    position: 'relative',
                     background: 'var(--b1, rgba(127,127,127,0.18))',
                     borderRadius: 6,
                     height: 14,
-                    overflow: 'hidden',
                   }}
                 >
                   <span
                     style={{
                       display: 'block',
                       height: '100%',
-                      width: `${(r.total / max) * 100}%`,
+                      width: `${Math.min(100, (r.total / max) * 100)}%`,
                       background: r.p.color,
                       borderRadius: 6,
+                      transition: 'width .7s cubic-bezier(.22,1,.36,1)',
                     }}
                   />
+                  {r.goal * days <= max && (
+                    <span
+                      title={`goal pace · ${Math.round(r.goal * days)} pts`}
+                      style={{
+                        position: 'absolute',
+                        top: -2,
+                        height: 18,
+                        width: 2,
+                        left: `${((r.goal * days) / max) * 100}%`,
+                        background: 'rgba(255,255,255,0.4)',
+                        borderRadius: 1,
+                      }}
+                    />
+                  )}
                 </span>
                 {r.streak > 0 && (
                   <span
@@ -125,11 +149,11 @@ export function Board({
                 )}
                 {r.avgDay > 0 && (
                   <span
+                    className="cz-num"
                     style={{
                       flexShrink: 0,
                       width: '3rem',
                       textAlign: 'right',
-                      fontVariantNumeric: 'tabular-nums',
                       fontSize: '0.74rem',
                       fontWeight: 700,
                       color:
@@ -145,11 +169,12 @@ export function Board({
                   </span>
                 )}
                 <span
+                  className="cz-num"
                   style={{
                     width: '3.5rem',
                     textAlign: 'right',
-                    fontVariantNumeric: 'tabular-nums',
-                    fontWeight: 700,
+                    fontWeight: 800,
+                    fontSize: '0.95rem',
                   }}
                   title={`${Math.round(r.total)} pts · goal ${r.goal}/day`}
                 >

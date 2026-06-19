@@ -85,6 +85,94 @@
   --btn-text: #ffffff;
 }
 
+/* ── shared "Circuit" design language (ported from the standalone) ───────────── */
+/* mono numerals — points, stats, totals */
+.cz-num {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+}
+/* segmented pill tab control */
+.cz-tabs {
+  display: inline-flex;
+  gap: 2px;
+  background: var(--b1);
+  border-radius: 9px;
+  padding: 2px;
+  flex-wrap: wrap;
+}
+.cz-tab {
+  padding: 7px 16px;
+  border-radius: 7px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  transition: 0.12s;
+  font-family: inherit;
+}
+.cz-tab:hover:not(.cz-on) {
+  color: var(--text);
+  background: rgba(127, 127, 127, 0.12);
+}
+.cz-tab.cz-on {
+  background: var(--accent);
+  color: var(--btn-text);
+  box-shadow: 0 2px 8px rgba(124, 106, 247, 0.3);
+}
+/* pill chip (filters / person chips) */
+.cz-chip {
+  padding: 5px 14px;
+  border-radius: 100px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  border: 1.5px solid var(--b2);
+  color: var(--muted);
+  background: transparent;
+  transition: 0.12s;
+  font-family: inherit;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.cz-chip:hover:not(.cz-on) {
+  color: var(--text);
+}
+.cz-chip.cz-on {
+  color: #fff;
+  border-color: transparent;
+}
+/* tight uppercase section header */
+.cz-sec {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+/* pane slide-in on tab change */
+@keyframes czIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.cz-pane {
+  animation: czIn 0.18s ease both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .cz-pane {
+    animation: none;
+  }
+}
+
 * {
   box-sizing: border-box;
 }
