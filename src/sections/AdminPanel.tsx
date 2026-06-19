@@ -54,6 +54,7 @@ export function AdminPanel() {
     role: 'family' | 'friend'
   }>({ first_name: '', email: '', role: 'friend' })
   const [savingMember, setSavingMember] = useState(false)
+  const [features, setFeatures] = useState<Record<string, boolean>>({})
 
   async function loadAll() {
     const [invRes, memRes] = await Promise.all([sb.rpc('list_invites'), sb.rpc('list_members')])
@@ -131,6 +132,28 @@ export function AdminPanel() {
         email: d.email ?? '',
         role: d.role === 'family' ? 'family' : 'friend',
       })
+    }
+    const { data: feat } = await sb.rpc('admin_member_features', { p_user_id: userId })
+    setFeatures(
+      Object.fromEntries(
+        ((feat as { feature: string; enabled: boolean }[]) ?? []).map((f) => [
+          f.feature,
+          f.enabled,
+        ]),
+      ),
+    )
+  }
+
+  async function toggleFeature(userId: string, feature: string, enabled: boolean) {
+    setFeatures((prev) => ({ ...prev, [feature]: enabled })) // optimistic
+    const { error } = await sb.rpc('admin_set_feature', {
+      p_user_id: userId,
+      p_feature: feature,
+      p_enabled: enabled,
+    })
+    if (error) {
+      setError(error.message)
+      setFeatures((prev) => ({ ...prev, [feature]: !enabled })) // revert
     }
   }
 
@@ -518,6 +541,49 @@ export function AdminPanel() {
                                   </select>
                                 </label>
                               </div>
+
+                              {/* per-account feature flags — saved immediately */}
+                              <div
+                                style={{
+                                  borderTop: '1px solid var(--border, rgba(127,127,127,0.18))',
+                                  paddingTop: '0.6rem',
+                                }}
+                              >
+                                <div
+                                  className="muted"
+                                  style={{
+                                    fontSize: '0.72rem',
+                                    fontWeight: 700,
+                                    textTransform: 'uppercase',
+                                    letterSpacing: '0.05em',
+                                    marginBottom: '0.4rem',
+                                  }}
+                                >
+                                  Features
+                                </div>
+                                <label
+                                  style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '0.45rem',
+                                    fontSize: '0.85rem',
+                                    cursor: 'pointer',
+                                  }}
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={!!features.finance}
+                                    onChange={(e) =>
+                                      void toggleFeature(m.user_id, 'finance', e.target.checked)
+                                    }
+                                  />
+                                  💰 Finance / Investments
+                                  <span className="muted" style={{ fontSize: '0.72rem' }}>
+                                    (saves immediately)
+                                  </span>
+                                </label>
+                              </div>
+
                               <div
                                 style={{
                                   display: 'flex',

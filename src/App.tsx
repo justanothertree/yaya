@@ -44,13 +44,18 @@ type Section =
 // Home is the unified Evan Cook page (portfolio + about + projects). Circuit is featured
 // as a project on Home and appears in nav only for signed-in members.
 // 'invite' and 'admin' are not in the arrow/swipe order — accessed via direct link or nav only.
-const navOrder = (financeOn: boolean, authed: boolean, isAdmin: boolean): Section[] =>
+const navOrder = (
+  financeOn: boolean,
+  authed: boolean,
+  isAdmin: boolean,
+  canFinance: boolean,
+): Section[] =>
   financeOn
     ? authed
       ? [
           'home',
           'circuit',
-          'investments',
+          ...(canFinance ? (['investments'] as Section[]) : []),
           'account-settings',
           ...(isAdmin ? (['admin'] as Section[]) : []),
           'snake',
@@ -82,6 +87,8 @@ export default function App() {
   const [active, setActive] = useState<Section>(initialSection)
   const [isFinanceAuthed, setIsFinanceAuthed] = useState(false)
   const [isAdmin, setIsAdmin] = useState(false)
+  // 'finance' feature flag for this account: null = still loading (don't redirect yet)
+  const [canFinance, setCanFinance] = useState<boolean | null>(null)
   const [theme, setTheme] = useState<'light' | 'dark' | 'alt'>(() => {
     const saved = localStorage.getItem('theme') as 'light' | 'dark' | 'alt' | null
     if (saved) return saved
@@ -129,24 +136,41 @@ export default function App() {
       const { data } = await getSupabaseClient().rpc('is_admin')
       if (alive) setIsAdmin(data === true)
     }
+    // Feature flags: only show Investments if the 'finance' feature is on for this account.
+    async function checkFeatures() {
+      const { data } = await getSupabaseClient().rpc('my_features')
+      if (!alive) return
+      const fin = (data as { feature: string; enabled: boolean }[] | null)?.find(
+        (f) => f.feature === 'finance',
+      )?.enabled
+      setCanFinance(!!fin)
+    }
+    const onSignedIn = () => {
+      void checkAdmin()
+      void checkFeatures()
+    }
+    const onSignedOut = () => {
+      setIsAdmin(false)
+      setCanFinance(null)
+    }
 
     void getUser()
       .then((u) => {
         if (!alive) return
         setIsFinanceAuthed(!!u)
-        if (u) void checkAdmin()
-        else setIsAdmin(false)
+        if (u) onSignedIn()
+        else onSignedOut()
       })
       .catch(() => {
         if (!alive) return
         setIsFinanceAuthed(false)
-        setIsAdmin(false)
+        onSignedOut()
       })
 
     const { data } = onAuthStateChange((_event, session) => {
       setIsFinanceAuthed(!!session?.user)
-      if (session?.user) void checkAdmin()
-      else setIsAdmin(false)
+      if (session?.user) onSignedIn()
+      else onSignedOut()
     })
     return () => {
       alive = false
@@ -241,11 +265,17 @@ export default function App() {
       setActive('signin')
       return
     }
+    // Investments also requires the 'finance' feature. Only redirect once we KNOW
+    // it's off (canFinance === false); while loading (null) we wait.
+    if (financeConfigured && active === 'investments' && isFinanceAuthed && canFinance === false) {
+      setActive('home')
+      return
+    }
 
     if (financeConfigured && active === 'signin' && isFinanceAuthed) {
-      setActive('investments')
+      setActive('home')
     }
-  }, [active, isFinanceAuthed])
+  }, [active, isFinanceAuthed, canFinance])
 
   // Keyboard shortcuts: numeric keys jump to sections
   useEffect(() => {
@@ -253,7 +283,9 @@ export default function App() {
       '1': 'home',
       ...(hasFinanceSupabaseEnv()
         ? isFinanceAuthed
-          ? { '2': 'circuit', '3': 'investments', '4': 'snake', '5': 'contact' }
+          ? canFinance === true
+            ? { '2': 'circuit', '3': 'investments', '4': 'snake', '5': 'contact' }
+            : { '2': 'circuit', '3': 'snake', '4': 'contact' }
           : { '2': 'signin', '3': 'snake', '4': 'contact' }
         : { '2': 'snake', '3': 'contact' }),
     }
@@ -274,7 +306,12 @@ export default function App() {
       const onSnake = active === 'snake'
       const allowPageNav = !onSnake || (onSnake && !snakeHasControl)
       if (allowPageNav) {
-        const order = navOrder(hasFinanceSupabaseEnv(), isFinanceAuthed, isAdmin)
+        const order = navOrder(
+          hasFinanceSupabaseEnv(),
+          isFinanceAuthed,
+          isAdmin,
+          canFinance === true,
+        )
         const idx = order.indexOf(active)
         if (key === 'ArrowLeft' && idx > 0) {
           setActive(order[idx - 1])
@@ -288,7 +325,7 @@ export default function App() {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [active, snakeHasControl, isFinanceAuthed])
+  }, [active, snakeHasControl, isFinanceAuthed, isAdmin, canFinance])
 
   // Apply reveal-on-scroll to tagged elements
   useReveal('.reveal', active)
@@ -317,7 +354,7 @@ export default function App() {
       // Allow more forgiving horizontal intent
       const mostlyHorizontal = Math.abs(dx) > Math.abs(dy) * 1.2
       if (!mostlyHorizontal) return
-      const order = navOrder(hasFinanceSupabaseEnv(), isFinanceAuthed, isAdmin)
+      const order = navOrder(hasFinanceSupabaseEnv(), isFinanceAuthed, isAdmin, canFinance === true)
       const idx = order.indexOf(active)
       if (dx > THRESH && idx > 0) setActive(order[idx - 1]) // swipe right -> previous
       if (dx < -THRESH && idx < order.length - 1) setActive(order[idx + 1]) // swipe left -> next
@@ -328,7 +365,7 @@ export default function App() {
       window.removeEventListener('touchstart', onTouchStart)
       window.removeEventListener('touchend', onTouchEnd)
     }
-  }, [active, isFinanceAuthed])
+  }, [active, isFinanceAuthed, isAdmin, canFinance])
 
   // Keep active nav link visible in the top bar on section change
   useEffect(() => {
@@ -444,7 +481,7 @@ export default function App() {
                 Sign in
               </a>
             )}
-            {isFinanceAuthed && (
+            {isFinanceAuthed && canFinance === true && (
               <a
                 href="#investments"
                 onClick={() => setActive('investments')}
@@ -591,7 +628,7 @@ export default function App() {
         )}
         {active === 'investments' && (
           <section id="investments" className="card reveal">
-            {isFinanceAuthed ? (
+            {isFinanceAuthed && canFinance === true ? (
               <Suspense
                 fallback={
                   <div className="card" aria-busy>
@@ -607,7 +644,9 @@ export default function App() {
                   Investments
                 </h2>
                 <p className="muted" style={{ marginBottom: 0 }}>
-                  Sign in to view your investments.
+                  {isFinanceAuthed
+                    ? 'Investments aren’t enabled for your account.'
+                    : 'Sign in to view your investments.'}
                 </p>
               </div>
             )}
@@ -736,7 +775,12 @@ export default function App() {
           className={`edge-btn edge-left`}
           aria-label="Previous section"
           onClick={() => {
-            const order = navOrder(hasFinanceSupabaseEnv(), isFinanceAuthed, isAdmin)
+            const order = navOrder(
+              hasFinanceSupabaseEnv(),
+              isFinanceAuthed,
+              isAdmin,
+              canFinance === true,
+            )
             const idx = order.indexOf(active)
             if (idx > 0) setActive(order[idx - 1])
           }}
@@ -750,7 +794,12 @@ export default function App() {
           className={`edge-btn edge-right`}
           aria-label="Next section"
           onClick={() => {
-            const order = navOrder(hasFinanceSupabaseEnv(), isFinanceAuthed, isAdmin)
+            const order = navOrder(
+              hasFinanceSupabaseEnv(),
+              isFinanceAuthed,
+              isAdmin,
+              canFinance === true,
+            )
             const idx = order.indexOf(active)
             if (idx < order.length - 1) setActive(order[idx + 1])
           }}
