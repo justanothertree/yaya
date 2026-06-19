@@ -57,6 +57,8 @@ export function AdminPanel() {
   }>({ first_name: '', email: '', role: 'friend' })
   const [savingMember, setSavingMember] = useState(false)
   const [features, setFeatures] = useState<Record<string, boolean>>({})
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const [deletingMember, setDeletingMember] = useState(false)
 
   async function loadAll() {
     const [invRes, memRes] = await Promise.all([sb.rpc('list_invites'), sb.rpc('list_members')])
@@ -113,6 +115,7 @@ export function AdminPanel() {
   }
 
   async function openEdit(userId: string) {
+    setConfirmDelete(false)
     if (editing === userId) {
       setEditing(null)
       setDetail(null)
@@ -171,6 +174,23 @@ export function AdminPanel() {
     }
     setDetail((d) => (d && d.user_id === userId ? { ...d, suspended } : d))
     await loadAll()
+  }
+
+  async function deleteMember(userId: string) {
+    setDeletingMember(true)
+    setError(null)
+    try {
+      const { error } = await sb.rpc('admin_delete_member', { p_user_id: userId })
+      if (error) throw error
+      setConfirmDelete(false)
+      setEditing(null)
+      setDetail(null)
+      await loadAll()
+    } catch (e: unknown) {
+      setError(String((e as { message?: string })?.message ?? e))
+    } finally {
+      setDeletingMember(false)
+    }
   }
 
   async function saveMember(userId: string) {
@@ -659,6 +679,59 @@ export function AdminPanel() {
                                   {detail.created_at
                                     ? ` · joined ${new Date(detail.created_at).toLocaleDateString()}`
                                     : ''}
+                                </span>
+
+                                {/* permanent delete — two-step confirm */}
+                                <span
+                                  style={{
+                                    marginLeft: 'auto',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '0.4rem',
+                                  }}
+                                >
+                                  {confirmDelete ? (
+                                    <>
+                                      <span style={{ fontSize: '0.78rem', color: '#f46b6b' }}>
+                                        Delete @{detail.username ?? 'account'} permanently?
+                                      </span>
+                                      <button
+                                        className="btn"
+                                        onClick={() => void deleteMember(m.user_id)}
+                                        disabled={deletingMember}
+                                        style={{
+                                          background: '#e5484d',
+                                          color: '#fff',
+                                          borderColor: 'transparent',
+                                          fontSize: '0.78rem',
+                                          padding: '0.25rem 0.6rem',
+                                        }}
+                                      >
+                                        {deletingMember ? 'Deleting…' : 'Yes, delete'}
+                                      </button>
+                                      <button
+                                        className="btn btn-ghost"
+                                        onClick={() => setConfirmDelete(false)}
+                                        style={{ fontSize: '0.78rem', padding: '0.25rem 0.6rem' }}
+                                      >
+                                        Cancel
+                                      </button>
+                                    </>
+                                  ) : (
+                                    <button
+                                      className="btn btn-ghost"
+                                      onClick={() => setConfirmDelete(true)}
+                                      title="Permanently delete this account"
+                                      style={{
+                                        color: '#f46b6b',
+                                        borderColor: 'rgba(244,107,107,0.5)',
+                                        fontSize: '0.78rem',
+                                        padding: '0.25rem 0.6rem',
+                                      }}
+                                    >
+                                      🗑 Delete
+                                    </button>
+                                  )}
                                 </span>
                               </div>
                             </div>
