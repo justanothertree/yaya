@@ -20,6 +20,18 @@ type Member = {
   created_at: string | null
 }
 
+type MemberDetail = {
+  user_id: string
+  username: string | null
+  first_name: string | null
+  last_name: string | null
+  relation: string | null
+  email: string | null
+  phone: string | null
+  role: string
+  created_at: string | null
+}
+
 const SITE_URL = 'https://evancook.dev'
 const inviteLink = (token: string) => `${SITE_URL}/#invite?token=${token}`
 
@@ -34,6 +46,14 @@ export function AdminPanel() {
   const [newClass, setNewClass] = useState<'family' | 'friend'>('friend')
   const [newLabel, setNewLabel] = useState('')
   const [copied, setCopied] = useState<string | null>(null)
+  const [editing, setEditing] = useState<string | null>(null)
+  const [detail, setDetail] = useState<MemberDetail | null>(null)
+  const [form, setForm] = useState<{
+    first_name: string
+    email: string
+    role: 'family' | 'friend'
+  }>({ first_name: '', email: '', role: 'friend' })
+  const [savingMember, setSavingMember] = useState(false)
 
   async function loadAll() {
     const [invRes, memRes] = await Promise.all([sb.rpc('list_invites'), sb.rpc('list_members')])
@@ -87,6 +107,52 @@ export function AdminPanel() {
     await navigator.clipboard.writeText(inviteLink(token))
     setCopied(token)
     setTimeout(() => setCopied(null), 2500)
+  }
+
+  async function openEdit(userId: string) {
+    if (editing === userId) {
+      setEditing(null)
+      setDetail(null)
+      return
+    }
+    setEditing(userId)
+    setDetail(null)
+    setError(null)
+    const { data, error } = await sb.rpc('admin_get_member', { p_user_id: userId })
+    if (error) {
+      setError(error.message)
+      return
+    }
+    const d = (data as MemberDetail[])?.[0]
+    if (d) {
+      setDetail(d)
+      setForm({
+        first_name: d.first_name ?? '',
+        email: d.email ?? '',
+        role: d.role === 'family' ? 'family' : 'friend',
+      })
+    }
+  }
+
+  async function saveMember(userId: string) {
+    setSavingMember(true)
+    setError(null)
+    try {
+      const { error } = await sb.rpc('admin_update_member', {
+        p_user_id: userId,
+        p_first_name: form.first_name.trim() || null,
+        p_email: form.email.trim() || null,
+        p_role: form.role,
+      })
+      if (error) throw error
+      await loadAll()
+      setEditing(null)
+      setDetail(null)
+    } catch (e: unknown) {
+      setError(String((e as { message?: string })?.message ?? e))
+    } finally {
+      setSavingMember(false)
+    }
   }
 
   const pending = invites.filter((i) => !i.used_at)
@@ -333,39 +399,158 @@ export function AdminPanel() {
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
                   {group.map((m) => (
-                    <div
-                      key={m.user_id}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '0.6rem',
-                        padding: '0.4rem 0.65rem',
-                        background: 'var(--b1,rgba(127,127,127,0.07))',
-                        borderRadius: 8,
-                      }}
-                    >
-                      <span
+                    <div key={m.user_id} style={{ display: 'flex', flexDirection: 'column' }}>
+                      <div
                         style={{
-                          width: '8rem',
-                          fontSize: '0.85rem',
-                          fontWeight: 700,
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                          whiteSpace: 'nowrap',
-                          flexShrink: 0,
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '0.6rem',
+                          padding: '0.4rem 0.65rem',
+                          background: 'var(--b1,rgba(127,127,127,0.07))',
+                          borderRadius: 8,
                         }}
                       >
-                        {m.username ? `@${m.username}` : <span className="muted">no username</span>}
-                      </span>
-                      <span style={{ flex: 1, fontSize: '0.85rem' }}>
-                        {m.display_name ?? <span className="muted">—</span>}
-                      </span>
-                      <span className="muted" style={{ fontSize: '0.75rem' }}>
-                        {m.email ?? ''}
-                      </span>
-                      <span className="muted" style={{ fontSize: '0.72rem', flexShrink: 0 }}>
-                        {m.created_at ? new Date(m.created_at).toLocaleDateString() : ''}
-                      </span>
+                        <span
+                          style={{
+                            width: '8rem',
+                            fontSize: '0.85rem',
+                            fontWeight: 700,
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                            flexShrink: 0,
+                          }}
+                        >
+                          {m.username ? (
+                            `@${m.username}`
+                          ) : (
+                            <span className="muted">no username</span>
+                          )}
+                        </span>
+                        <span style={{ flex: 1, fontSize: '0.85rem' }}>
+                          {m.display_name ?? <span className="muted">—</span>}
+                        </span>
+                        <span className="muted" style={{ fontSize: '0.75rem' }}>
+                          {m.email ?? ''}
+                        </span>
+                        <span className="muted" style={{ fontSize: '0.72rem', flexShrink: 0 }}>
+                          {m.created_at ? new Date(m.created_at).toLocaleDateString() : ''}
+                        </span>
+                        {cls !== 'admin' && (
+                          <button
+                            className="btn"
+                            style={{ fontSize: '0.75rem', padding: '0.2rem 0.6rem', flexShrink: 0 }}
+                            onClick={() => void openEdit(m.user_id)}
+                          >
+                            {editing === m.user_id ? 'Close' : 'Edit'}
+                          </button>
+                        )}
+                      </div>
+
+                      {editing === m.user_id && (
+                        <div className="card" style={{ margin: '0.4rem 0 0.2rem' }}>
+                          {!detail ? (
+                            <p className="muted" style={{ margin: 0 }}>
+                              Loading…
+                            </p>
+                          ) : (
+                            <div
+                              style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}
+                            >
+                              <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+                                <label
+                                  style={{
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    gap: 3,
+                                    flex: 1,
+                                    minWidth: 150,
+                                  }}
+                                >
+                                  <span className="muted" style={{ fontSize: '0.74rem' }}>
+                                    Display name
+                                  </span>
+                                  <input
+                                    value={form.first_name}
+                                    onChange={(e) =>
+                                      setForm((f) => ({ ...f, first_name: e.target.value }))
+                                    }
+                                    style={{ padding: '0.4rem 0.6rem' }}
+                                  />
+                                </label>
+                                <label
+                                  style={{
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    gap: 3,
+                                    flex: 1,
+                                    minWidth: 150,
+                                  }}
+                                >
+                                  <span className="muted" style={{ fontSize: '0.74rem' }}>
+                                    Contact email
+                                  </span>
+                                  <input
+                                    value={form.email}
+                                    onChange={(e) =>
+                                      setForm((f) => ({ ...f, email: e.target.value }))
+                                    }
+                                    placeholder="optional"
+                                    style={{ padding: '0.4rem 0.6rem' }}
+                                  />
+                                </label>
+                                <label style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                                  <span className="muted" style={{ fontSize: '0.74rem' }}>
+                                    Class
+                                  </span>
+                                  <select
+                                    value={form.role}
+                                    onChange={(e) =>
+                                      setForm((f) => ({
+                                        ...f,
+                                        role: e.target.value as 'family' | 'friend',
+                                      }))
+                                    }
+                                    style={{ padding: '0.4rem 0.6rem' }}
+                                  >
+                                    <option value="friend">Friend</option>
+                                    <option value="family">Family</option>
+                                  </select>
+                                </label>
+                              </div>
+                              <div
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '0.6rem',
+                                  flexWrap: 'wrap',
+                                }}
+                              >
+                                <button
+                                  className="btn"
+                                  onClick={() => void saveMember(m.user_id)}
+                                  disabled={savingMember}
+                                  style={{
+                                    background: 'var(--accent,#7c6af7)',
+                                    color: '#fff',
+                                    borderColor: 'transparent',
+                                  }}
+                                >
+                                  {savingMember ? 'Saving…' : 'Save changes'}
+                                </button>
+                                <span className="muted" style={{ fontSize: '0.74rem' }}>
+                                  @{detail.username ?? '—'}
+                                  {detail.relation ? ` · ${detail.relation}` : ''}
+                                  {detail.phone ? ` · ${detail.phone}` : ''}
+                                  {detail.created_at
+                                    ? ` · joined ${new Date(detail.created_at).toLocaleDateString()}`
+                                    : ''}
+                                </span>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
