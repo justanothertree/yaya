@@ -89,6 +89,7 @@ export default function App() {
   const [isAdmin, setIsAdmin] = useState(false)
   // 'finance' feature flag for this account: null = still loading (don't redirect yet)
   const [canFinance, setCanFinance] = useState<boolean | null>(null)
+  const [suspended, setSuspended] = useState(false) // admin paused this account's access
   const [theme, setTheme] = useState<'light' | 'dark' | 'alt'>(() => {
     const saved = localStorage.getItem('theme') as 'light' | 'dark' | 'alt' | null
     if (saved) return saved
@@ -145,13 +146,21 @@ export default function App() {
       )?.enabled
       setCanFinance(!!fin)
     }
+    // Account status: an admin can pause (suspend) a member's access.
+    async function checkAccount() {
+      const { data } = await getSupabaseClient().rpc('my_account')
+      if (!alive) return
+      setSuspended(!!(data as { suspended: boolean }[] | null)?.[0]?.suspended)
+    }
     const onSignedIn = () => {
       void checkAdmin()
       void checkFeatures()
+      void checkAccount()
     }
     const onSignedOut = () => {
       setIsAdmin(false)
       setCanFinance(null)
+      setSuspended(false)
     }
 
     void getUser()
@@ -265,6 +274,11 @@ export default function App() {
       setActive('signin')
       return
     }
+    // A suspended account loses access to all member areas.
+    if (suspended && (active === 'circuit' || isFinanceSection)) {
+      setActive('home')
+      return
+    }
     // Investments also requires the 'finance' feature. Only redirect once we KNOW
     // it's off (canFinance === false); while loading (null) we wait.
     if (financeConfigured && active === 'investments' && isFinanceAuthed && canFinance === false) {
@@ -275,7 +289,7 @@ export default function App() {
     if (financeConfigured && active === 'signin' && isFinanceAuthed) {
       setActive('home')
     }
-  }, [active, isFinanceAuthed, canFinance])
+  }, [active, isFinanceAuthed, canFinance, suspended])
 
   // Keyboard shortcuts: numeric keys jump to sections
   useEffect(() => {
@@ -463,7 +477,7 @@ export default function App() {
             >
               Home
             </a>
-            {isFinanceAuthed && (
+            {isFinanceAuthed && !suspended && (
               <a
                 href="#circuit"
                 onClick={() => setActive('circuit')}
@@ -481,7 +495,7 @@ export default function App() {
                 Sign in
               </a>
             )}
-            {isFinanceAuthed && canFinance === true && (
+            {isFinanceAuthed && canFinance === true && !suspended && (
               <a
                 href="#investments"
                 onClick={() => setActive('investments')}
@@ -490,7 +504,7 @@ export default function App() {
                 Investments
               </a>
             )}
-            {isFinanceAuthed && (
+            {isFinanceAuthed && !suspended && (
               <a
                 href="#account-settings"
                 onClick={() => setActive('account-settings')}
@@ -595,6 +609,30 @@ export default function App() {
         tabIndex={-1}
         style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
       >
+        {suspended && (
+          <div
+            role="status"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.6rem',
+              padding: '0.7rem 1rem',
+              marginBottom: '1rem',
+              borderRadius: 12,
+              background: 'rgba(244,107,107,0.1)',
+              border: '1px solid rgba(244,107,107,0.4)',
+              fontSize: '0.92rem',
+            }}
+          >
+            <span style={{ fontSize: '1.1rem' }}>⏸</span>
+            <span>
+              <strong>Your member access is paused.</strong>{' '}
+              <span className="muted">
+                You can still browse the site — reach out to Evan to restore access.
+              </span>
+            </span>
+          </div>
+        )}
         {active === 'home' && (
           <section id="home">
             <EvanCook />

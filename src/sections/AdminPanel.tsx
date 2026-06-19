@@ -18,6 +18,7 @@ type Member = {
   email: string | null
   role: string
   created_at: string | null
+  suspended: boolean
 }
 
 type MemberDetail = {
@@ -30,6 +31,7 @@ type MemberDetail = {
   phone: string | null
   role: string
   created_at: string | null
+  suspended: boolean
 }
 
 const SITE_URL = 'https://evancook.dev'
@@ -155,6 +157,20 @@ export function AdminPanel() {
       setError(error.message)
       setFeatures((prev) => ({ ...prev, [feature]: !enabled })) // revert
     }
+  }
+
+  async function setSuspended(userId: string, suspended: boolean) {
+    setError(null)
+    const { error } = await sb.rpc('admin_set_suspended', {
+      p_user_id: userId,
+      p_suspended: suspended,
+    })
+    if (error) {
+      setError(error.message)
+      return
+    }
+    setDetail((d) => (d && d.user_id === userId ? { ...d, suspended } : d))
+    await loadAll()
   }
 
   async function saveMember(userId: string) {
@@ -456,6 +472,22 @@ export function AdminPanel() {
                         <span className="muted" style={{ fontSize: '0.75rem' }}>
                           {m.email ?? ''}
                         </span>
+                        {m.suspended && (
+                          <span
+                            style={{
+                              fontSize: '0.68rem',
+                              fontWeight: 700,
+                              color: '#f46b6b',
+                              background: 'rgba(244,107,107,0.14)',
+                              border: '1px solid rgba(244,107,107,0.4)',
+                              borderRadius: 10,
+                              padding: '1px 7px',
+                              flexShrink: 0,
+                            }}
+                          >
+                            ⏸ paused
+                          </span>
+                        )}
                         <span className="muted" style={{ fontSize: '0.72rem', flexShrink: 0 }}>
                           {m.created_at ? new Date(m.created_at).toLocaleDateString() : ''}
                         </span>
@@ -603,6 +635,22 @@ export function AdminPanel() {
                                   }}
                                 >
                                   {savingMember ? 'Saving…' : 'Save changes'}
+                                </button>
+                                <button
+                                  className="btn btn-ghost"
+                                  onClick={() => void setSuspended(m.user_id, !detail.suspended)}
+                                  title={
+                                    detail.suspended
+                                      ? 'Restore this account’s access'
+                                      : 'Pause this account’s access (reversible)'
+                                  }
+                                  style={
+                                    detail.suspended
+                                      ? undefined
+                                      : { color: '#f46b6b', borderColor: 'rgba(244,107,107,0.5)' }
+                                  }
+                                >
+                                  {detail.suspended ? '▶ Restore access' : '⏸ Suspend access'}
                                 </button>
                                 <span className="muted" style={{ fontSize: '0.74rem' }}>
                                   @{detail.username ?? '—'}
