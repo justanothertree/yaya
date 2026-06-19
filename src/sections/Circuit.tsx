@@ -131,31 +131,24 @@ export function Circuit({ authed = false }: { authed?: boolean } = {}) {
           <div
             style={{
               display: 'flex',
-              gap: '0.4rem',
+              gap: '0.5rem',
               margin: '0.9rem 0 1.1rem',
               flexWrap: 'wrap',
               alignItems: 'center',
             }}
           >
-            {tabs.map((t) => (
-              <button
-                key={t.id}
-                className="btn"
-                onClick={() => setTab(t.id)}
-                aria-pressed={tab === t.id}
-                style={
-                  tab === t.id
-                    ? {
-                        background: 'var(--accent, #7c6af7)',
-                        color: '#fff',
-                        borderColor: 'transparent',
-                      }
-                    : undefined
-                }
-              >
-                {t.label}
-              </button>
-            ))}
+            <span className="cz-tabs">
+              {tabs.map((t) => (
+                <button
+                  key={t.id}
+                  className={`cz-tab${tab === t.id ? ' cz-on' : ''}`}
+                  onClick={() => setTab(t.id)}
+                  aria-pressed={tab === t.id}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </span>
             <span style={{ display: 'inline-flex', gap: '0.4rem', marginLeft: 'auto' }}>
               <button
                 className="btn btn-ghost"
@@ -187,12 +180,14 @@ export function Circuit({ authed = false }: { authed?: boolean } = {}) {
             </span>
           </div>
 
-          {tab === 'board' && <Board onLogToday={handleLogToday} onLogDate={handleLog} />}
-          {tab === 'log' && logNode}
-          {tab === 'feed' && <Feed />}
-          {tab === 'charts' && <Charts onDayClick={handleLog} />}
-          {tab === 'movies' && <Movies />}
-          {tab === 'watchlist' && <Watchlist />}
+          <div className="cz-pane" key={tab}>
+            {tab === 'board' && <Board onLogToday={handleLogToday} onLogDate={handleLog} />}
+            {tab === 'log' && logNode}
+            {tab === 'feed' && <Feed />}
+            {tab === 'charts' && <Charts onDayClick={handleLog} />}
+            {tab === 'movies' && <Movies />}
+            {tab === 'watchlist' && <Watchlist />}
+          </div>
         </>
       )}
 
