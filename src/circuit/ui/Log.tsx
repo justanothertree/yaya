@@ -5,6 +5,7 @@ import { circuitStore, useCircuit } from '../store'
 import { isImportedTotal, logPoints } from '../scoring'
 import { showToast } from '../toast'
 import { ScrubInput } from './ScrubInput'
+import { ExerciseManager } from './ExerciseManager'
 
 const todayISO = () => new Date().toISOString().slice(0, 10)
 
@@ -19,6 +20,7 @@ export function Log({
   const [selPid, setSelPid] = useState(defaultPersonId ?? '')
   const [date, setDate] = useState(defaultDate ?? todayISO())
   const [vals, setVals] = useState<Record<string, string>>({})
+  const [managing, setManaging] = useState(false)
 
   const pid = selPid || state.people[0]?.id || ''
   const person = state.people.find((p) => p.id === pid)
@@ -196,6 +198,26 @@ export function Log({
       </div>
 
       {/* exercise sections by category */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          margin: '0.25rem 0 0.6rem',
+        }}
+      >
+        <span className="muted" style={{ fontSize: '0.78rem' }}>
+          Exercises
+        </span>
+        <button
+          className="btn btn-ghost"
+          onClick={() => setManaging(true)}
+          style={{ fontSize: '0.8rem' }}
+          title="Add, rename, reweight, or reorder this person's exercises"
+        >
+          ⚙️ Edit exercises
+        </button>
+      </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
         {cols.map((col, ci) => (
           <div key={ci}>
@@ -274,6 +296,8 @@ export function Log({
           Save
         </button>
       </div>
+
+      {managing && <ExerciseManager person={person} onClose={() => setManaging(false)} />}
     </div>
   )
 }
