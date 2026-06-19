@@ -1,22 +1,29 @@
-/* Cross-browser theme tokens and base styles */
+/* Cross-browser theme tokens and base styles.
+   Dark theme palette + layered surface tokens (--b1/--b2/--card2) and --mono are
+   adopted from the standalone Circuit so the whole site shares its richer look. */
 :root {
-  --bg: #0b0f19;
-  --panel: #141a2a;
-  --text: #e5e7eb;
-  --muted: #94a3b8;
+  --bg: #08080f;
+  --panel: #1a1a28;
+  --text: #eeeef8;
+  --muted: #9090b0;
   --accent: #22c55e;
   --accent-2: #ef4444;
   --btn-text: #052e16;
-  --bg-grad1: #0f1629;
-  --surface: linear-gradient(180deg, rgba(255, 255, 255, 0.02), rgba(255, 255, 255, 0));
-  --border: rgba(255, 255, 255, 0.08);
-  --border-strong: rgba(255, 255, 255, 0.12);
-  --nav-bg: rgba(11, 15, 25, 0.7);
+  --bg-grad1: #11111c;
+  --surface: linear-gradient(180deg, rgba(255, 255, 255, 0.025), rgba(255, 255, 255, 0));
+  --border: rgba(255, 255, 255, 0.1);
+  --border-strong: rgba(255, 255, 255, 0.17);
+  /* layered surfaces + mono numerals (Circuit components consume these) */
+  --b1: #272738;
+  --b2: #32324a;
+  --card2: #20202e;
+  --mono: 'Courier New', ui-monospace, monospace;
+  --nav-bg: rgba(17, 17, 28, 0.72);
   --nav-current-bg: rgba(255, 255, 255, 0.08);
   --control-bg: rgba(255, 255, 255, 0.06);
   --icon-bg: rgba(255, 255, 255, 0.06);
   --icon-bg-hover: rgba(255, 255, 255, 0.1);
-  --icon-border: rgba(255, 255, 255, 0.08);
+  --icon-border: rgba(255, 255, 255, 0.09);
   --icon-border-hover: rgba(255, 255, 255, 0.16);
 }
 
@@ -39,6 +46,10 @@
   --icon-bg-hover: rgba(15, 23, 42, 0.1);
   --icon-border: rgba(15, 23, 42, 0.12);
   --icon-border-hover: rgba(15, 23, 42, 0.2);
+  --b1: #eef1f6;
+  --b2: #dce1ea;
+  --card2: #f3f6fb;
+  --mono: 'Courier New', ui-monospace, monospace;
 }
 
 [data-theme='alt'] {
@@ -60,6 +71,18 @@
   --icon-bg-hover: rgba(230, 233, 255, 0.14);
   --icon-border: rgba(230, 233, 255, 0.16);
   --icon-border-hover: rgba(230, 233, 255, 0.24);
+  --b1: #272738;
+  --b2: #32324a;
+  --card2: #20202e;
+  --mono: 'Courier New', ui-monospace, monospace;
+}
+
+/* The Circuit keeps its signature purple accent regardless of the site theme,
+   so the module matches the standalone while the rest of the site stays on-brand. */
+#circuit {
+  --accent: #7c6af7;
+  --accent-2: #ff5566;
+  --btn-text: #ffffff;
 }
 
 * {
