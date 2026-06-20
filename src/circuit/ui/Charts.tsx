@@ -102,6 +102,16 @@ export function Charts({
           >
             ▶
           </button>
+          {ym !== curMonth && (
+            <button
+              className="btn btn-ghost"
+              onClick={() => setPicked(curMonth)}
+              style={{ fontSize: '0.78rem' }}
+              title="Jump back to the current month"
+            >
+              ● This month
+            </button>
+          )}
         </span>
         <span
           style={{ display: 'inline-flex', gap: '0.35rem', marginLeft: 'auto', flexWrap: 'wrap' }}

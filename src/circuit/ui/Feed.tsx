@@ -55,11 +55,13 @@ function LogCard({
   log,
   person,
   onPhoto,
+  onOpen,
   compact,
 }: {
   log: DayLog
   person: Person
   onPhoto: (src: string) => void
+  onOpen?: () => void
   compact?: boolean
 }) {
   const p = person
@@ -71,6 +73,8 @@ function LogCard({
   const imported = isImportedTotal(log)
   return (
     <div
+      onClick={onOpen}
+      title={onOpen ? `Open ${p.name}'s log for this day` : undefined}
       style={{
         display: 'flex',
         alignItems: 'flex-start',
@@ -79,6 +83,7 @@ function LogCard({
         background: 'var(--b1, rgba(127,127,127,0.05))',
         borderRadius: 10,
         borderLeft: `3px solid ${p.color}`,
+        cursor: onOpen ? 'pointer' : undefined,
       }}
     >
       {!compact && (
@@ -168,7 +173,10 @@ function LogCard({
           <img
             src={log.img}
             alt="workout"
-            onClick={() => onPhoto(log.img!)}
+            onClick={(e) => {
+              e.stopPropagation()
+              onPhoto(log.img!)
+            }}
             style={{
               marginTop: 6,
               maxHeight: 96,
@@ -183,7 +191,7 @@ function LogCard({
   )
 }
 
-export function Feed() {
+export function Feed({ onOpenLog }: { onOpenLog?: (personId: string, date: string) => void } = {}) {
   const state = useCircuit()
   const [view, setView] = useState<View>('list')
   const [filter, setFilter] = useState('') // '' = everyone
@@ -366,6 +374,7 @@ export function Feed() {
               log={log}
               person={peopleById[log.personId]}
               onPhoto={setLightbox}
+              onOpen={onOpenLog ? () => onOpenLog(log.personId, log.date) : undefined}
             />
           ))}
         </div>
@@ -388,11 +397,18 @@ export function Feed() {
           peopleById={peopleById}
           onPhoto={setLightbox}
           onDay={drillToDay}
+          onOpenLog={onOpenLog}
         />
       )}
 
       {view === 'day' && (
-        <DayView cur={cur} logsByDate={logsByDate} peopleById={peopleById} onPhoto={setLightbox} />
+        <DayView
+          cur={cur}
+          logsByDate={logsByDate}
+          peopleById={peopleById}
+          onPhoto={setLightbox}
+          onOpenLog={onOpenLog}
+        />
       )}
 
       {view === 'table' && (
@@ -624,12 +640,14 @@ function WeekView({
   peopleById,
   onPhoto,
   onDay,
+  onOpenLog,
 }: {
   cur: string
   logsByDate: Record<string, DayLog[]>
   peopleById: Record<string, Person>
   onPhoto: (src: string) => void
   onDay: (date: string) => void
+  onOpenLog?: (personId: string, date: string) => void
 }) {
   const sow = startOfWeek(cur)
   const days = Array.from({ length: 7 }, (_, i) => isoAdd(sow, i))
@@ -691,6 +709,7 @@ function WeekView({
                   log={log}
                   person={peopleById[log.personId]}
                   onPhoto={onPhoto}
+                  onOpen={onOpenLog ? () => onOpenLog(log.personId, log.date) : undefined}
                   compact
                 />
               ))
@@ -708,11 +727,13 @@ function DayView({
   logsByDate,
   peopleById,
   onPhoto,
+  onOpenLog,
 }: {
   cur: string
   logsByDate: Record<string, DayLog[]>
   peopleById: Record<string, Person>
   onPhoto: (src: string) => void
+  onOpenLog?: (personId: string, date: string) => void
 }) {
   const logs = (logsByDate[cur] || [])
     .slice()
@@ -726,7 +747,13 @@ function DayView({
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
       {logs.map((log) => (
-        <LogCard key={log.id} log={log} person={peopleById[log.personId]} onPhoto={onPhoto} />
+        <LogCard
+          key={log.id}
+          log={log}
+          person={peopleById[log.personId]}
+          onPhoto={onPhoto}
+          onOpen={onOpenLog ? () => onOpenLog(log.personId, log.date) : undefined}
+        />
       ))}
     </div>
   )
