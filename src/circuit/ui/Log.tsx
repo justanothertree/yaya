@@ -6,6 +6,7 @@ import { isImportedTotal, logPoints } from '../scoring'
 import { showToast } from '../toast'
 import { ScrubInput } from './ScrubInput'
 import { ExerciseManager } from './ExerciseManager'
+import { GoalBar } from './GoalBar'
 
 const todayISO = () => new Date().toISOString().slice(0, 10)
 
@@ -51,8 +52,16 @@ export function Log({
 
   const total = person.exercises.reduce((s, ex) => s + (parseFloat(vals[ex.id]) || 0) * ex.mult, 0)
   const goal = person.goal ?? 100
-  const pct = Math.min(100, goal ? (total / goal) * 100 : 0)
   const hit = total >= goal
+  const laps = Math.floor(total / goal)
+  const extra = Math.round(total % goal)
+  const goalNote = !hit
+    ? `/ ${goal} pts`
+    : laps > 1
+      ? `/ ${goal} pts ✓ ×${laps} goal!`
+      : extra > 0
+        ? `/ ${goal} pts ✓ +${extra} bonus`
+        : `/ ${goal} pts ✓ goal hit!`
 
   const setVal = (id: string, v: string) => setVals((prev) => ({ ...prev, [id]: v }))
   const shiftDay = (d: number) => {
@@ -183,25 +192,7 @@ export function Log({
 
       {/* goal / live total */}
       <div style={{ margin: '0.5rem 0 1rem' }}>
-        <div
-          style={{
-            height: 12,
-            borderRadius: 6,
-            background: 'var(--b1, rgba(127,127,127,0.18))',
-            overflow: 'hidden',
-          }}
-        >
-          <span
-            style={{
-              display: 'block',
-              height: '100%',
-              width: `${pct}%`,
-              background: hit ? '#22cc78' : 'var(--accent, #7c6af7)',
-              borderRadius: 6,
-              transition: 'width .2s',
-            }}
-          />
-        </div>
+        <GoalBar total={total} goal={goal} color="var(--accent, #7c6af7)" />
         <div className="muted" style={{ marginTop: 4 }}>
           <span
             className="cz-num"
@@ -213,8 +204,8 @@ export function Log({
           >
             {Math.round(total)}
           </span>{' '}
-          <span style={{ fontSize: '0.82rem' }}>
-            / {goal} pts {hit ? '✓ goal hit!' : ''}
+          <span style={{ fontSize: '0.82rem', color: hit ? '#22cc78' : undefined }}>
+            {goalNote}
           </span>
         </div>
       </div>
