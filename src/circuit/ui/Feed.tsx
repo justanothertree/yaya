@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react'
 import { useCircuit } from '../store'
 import { isImportedTotal, logPoints } from '../scoring'
 import { catColor } from '../catColors'
+import { GoalBar } from './GoalBar'
 import type { DayLog, Person } from '../types'
 
 type View = 'list' | 'month' | 'week' | 'day' | 'table'
@@ -67,7 +68,6 @@ function LogCard({
   const p = person
   const pts = Math.round(logPoints(p, log))
   const goal = p.goal ?? 100
-  const pct = Math.min(100, goal ? (pts / goal) * 100 : 0)
   const hit = pts >= goal
   const pills = pillsFor(p, log)
   const imported = isImportedTotal(log)
@@ -126,24 +126,8 @@ function LogCard({
             {hit ? ' ✓' : ''}
           </span>
         </div>
-        <div
-          style={{
-            height: 5,
-            borderRadius: 3,
-            background: 'var(--b1, rgba(127,127,127,0.18))',
-            overflow: 'hidden',
-            margin: '5px 0',
-          }}
-        >
-          <span
-            style={{
-              display: 'block',
-              height: '100%',
-              width: `${pct}%`,
-              background: hit ? '#22cc78' : p.color,
-              borderRadius: 3,
-            }}
-          />
+        <div style={{ margin: '5px 0' }}>
+          <GoalBar total={pts} goal={goal} color={p.color} height={5} radius={3} />
         </div>
         {imported ? (
           <span className="muted" style={{ fontSize: '0.76rem' }}>
