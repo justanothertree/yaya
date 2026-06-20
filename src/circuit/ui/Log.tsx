@@ -192,8 +192,20 @@ export function Log({
             }}
           />
         </div>
-        <div className="muted" style={{ marginTop: 4, fontVariantNumeric: 'tabular-nums' }}>
-          {Math.round(total)} / {goal} pts {hit ? '✓ goal hit!' : ''}
+        <div className="muted" style={{ marginTop: 4 }}>
+          <span
+            className="cz-num"
+            style={{
+              fontSize: '1.4rem',
+              fontWeight: 800,
+              color: hit ? '#22cc78' : 'var(--accent, #7c6af7)',
+            }}
+          >
+            {Math.round(total)}
+          </span>{' '}
+          <span style={{ fontSize: '0.82rem' }}>
+            / {goal} pts {hit ? '✓ goal hit!' : ''}
+          </span>
         </div>
       </div>
 
