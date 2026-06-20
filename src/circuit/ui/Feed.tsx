@@ -325,18 +325,10 @@ export function Feed() {
         {filterOpen && (
           <>
             <button
-              className="btn"
+              className={`cz-chip${filter === '' ? ' cz-on' : ''}`}
               onClick={() => setFilter('')}
               aria-pressed={filter === ''}
-              style={
-                filter === ''
-                  ? {
-                      background: 'var(--accent, #7c6af7)',
-                      color: '#fff',
-                      borderColor: 'transparent',
-                    }
-                  : undefined
-              }
+              style={filter === '' ? { background: 'var(--accent, #7c6af7)' } : undefined}
             >
               All
             </button>
@@ -345,13 +337,12 @@ export function Feed() {
               return (
                 <button
                   key={p.id}
-                  className="btn"
+                  className={`cz-chip${on ? ' cz-on' : ''}`}
                   onClick={() => setFilter(p.id)}
                   style={{
-                    borderColor: p.color,
+                    borderColor: on ? 'transparent' : p.color,
                     color: on ? '#fff' : p.color,
                     background: on ? p.color : 'transparent',
-                    fontWeight: 700,
                   }}
                 >
                   {p.name}

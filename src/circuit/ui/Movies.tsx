@@ -105,13 +105,13 @@ export function Movies() {
   const arrow = (k: string) => (sort === k ? (dir > 0 ? ' ↑' : ' ↓') : '')
   const chip = (v: number | null) => (
     <span
+      className="cz-num"
       style={{
         display: 'inline-block',
         minWidth: 30,
         padding: '2px 6px',
         borderRadius: 6,
         textAlign: 'center',
-        fontVariantNumeric: 'tabular-nums',
         fontWeight: 700,
         fontSize: '0.82rem',
         color: v == null ? 'var(--muted, #888)' : '#fff',
