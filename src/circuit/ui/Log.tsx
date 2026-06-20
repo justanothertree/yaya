@@ -130,6 +130,16 @@ export function Log({
         <button className="btn" aria-label="Next day" onClick={() => shiftDay(1)}>
           ›
         </button>
+        {date !== todayISO() && (
+          <button
+            className="btn btn-ghost"
+            onClick={() => setDate(todayISO())}
+            style={{ fontSize: '0.78rem' }}
+            title="Jump to today"
+          >
+            ● Today
+          </button>
+        )}
         {existing && !imported && (
           <span
             style={{

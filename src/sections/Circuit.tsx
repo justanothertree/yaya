@@ -99,7 +99,7 @@ export function Circuit({ authed = false }: { authed?: boolean } = {}) {
       node: <Board onLogToday={handleLogToday} onLogDate={handleLog} />,
     },
     { id: 'log', title: '✏️ Log', node: logNode },
-    { id: 'feed', title: '📋 Feed', node: <Feed /> },
+    { id: 'feed', title: '📋 Feed', node: <Feed onOpenLog={handleLog} /> },
     { id: 'charts', title: '📊 Charts', node: <Charts onDayClick={handleLog} /> },
     { id: 'movies', title: '🎬 Movies', node: <Movies /> },
     { id: 'watchlist', title: '🍿 Watchlist', node: <Watchlist /> },
@@ -183,7 +183,7 @@ export function Circuit({ authed = false }: { authed?: boolean } = {}) {
           <div className="cz-pane" key={tab}>
             {tab === 'board' && <Board onLogToday={handleLogToday} onLogDate={handleLog} />}
             {tab === 'log' && logNode}
-            {tab === 'feed' && <Feed />}
+            {tab === 'feed' && <Feed onOpenLog={handleLog} />}
             {tab === 'charts' && <Charts onDayClick={handleLog} />}
             {tab === 'movies' && <Movies />}
             {tab === 'watchlist' && <Watchlist />}

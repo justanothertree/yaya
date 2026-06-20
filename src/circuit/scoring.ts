@@ -36,16 +36,25 @@ export function isImportedTotal(log: DayLog | undefined): boolean {
   return !!log && (log.entries || []).some((e) => e.eid === '__total__')
 }
 
-/** Current streak: consecutive days (back from the latest logged day) with any points. */
+/** Current streak: consecutive days with points, ending today or yesterday.
+ * Returns 0 if the most recent log is older than yesterday (the streak is broken),
+ * so a streak from a previous month no longer counts as "current". */
 export function currentStreak(p: Person, logs: DayLog[]): number {
   const dates = new Set(
     logs.filter((l) => l.personId === p.id && logPoints(p, l) > 0).map((l) => l.date),
   )
   if (!dates.size) return 0
-  const latest = [...dates].sort().pop() as string
-  const d = new Date(latest + 'T00:00:00')
+  const iso = (d: Date) => d.toISOString().slice(0, 10)
+  const today = new Date()
+  const yesterday = new Date(today)
+  yesterday.setDate(yesterday.getDate() - 1)
+  // anchor the streak to today if logged today, else yesterday; otherwise it's broken
+  let d: Date
+  if (dates.has(iso(today))) d = today
+  else if (dates.has(iso(yesterday))) d = yesterday
+  else return 0
   let streak = 0
-  while (dates.has(d.toISOString().slice(0, 10))) {
+  while (dates.has(iso(d))) {
     streak++
     d.setDate(d.getDate() - 1)
   }

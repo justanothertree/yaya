@@ -71,6 +71,16 @@ export function Board({
           >
             ▶
           </button>
+          {ym !== curMonth && (
+            <button
+              className="btn btn-ghost"
+              onClick={() => setPicked(curMonth)}
+              style={{ fontSize: '0.78rem' }}
+              title="Jump back to the current month"
+            >
+              ● This month
+            </button>
+          )}
         </span>
       </div>
 
@@ -124,50 +134,65 @@ export function Board({
                       transition: 'width .7s cubic-bezier(.22,1,.36,1)',
                     }}
                   />
-                  {r.goal * days <= max && (
-                    <span
-                      title={`goal pace · ${Math.round(r.goal * days)} pts`}
-                      style={{
-                        position: 'absolute',
-                        top: -2,
-                        height: 18,
-                        width: 2,
-                        left: `${((r.goal * days) / max) * 100}%`,
-                        background: 'rgba(255,255,255,0.4)',
-                        borderRadius: 1,
-                      }}
-                    />
+                  {/* a tick at every 100-pt milestone; the goal-pace mark (goal × days) is brighter */}
+                  {Array.from({ length: Math.floor(max / 100) }, (_, k) => (k + 1) * 100).map(
+                    (mark) => (
+                      <span
+                        key={mark}
+                        title={mark === r.goal * days ? `goal pace · ${mark}` : `${mark}`}
+                        style={{
+                          position: 'absolute',
+                          top: -2,
+                          height: 18,
+                          width: mark === r.goal * days ? 2 : 1,
+                          left: `${(mark / max) * 100}%`,
+                          background:
+                            mark === r.goal * days
+                              ? 'rgba(255,255,255,0.5)'
+                              : 'rgba(255,255,255,0.15)',
+                          pointerEvents: 'none',
+                        }}
+                      />
+                    ),
                   )}
                 </span>
-                {r.streak > 0 && (
-                  <span
-                    style={{ flexShrink: 0, fontSize: '0.78rem', opacity: 0.85 }}
-                    title={`${r.streak}-day streak`}
-                  >
-                    🔥{r.streak}
-                  </span>
-                )}
-                {r.avgDay > 0 && (
-                  <span
-                    className="cz-num"
-                    style={{
-                      flexShrink: 0,
-                      width: '3rem',
-                      textAlign: 'right',
-                      fontSize: '0.74rem',
-                      fontWeight: 700,
-                      color:
-                        r.avgDay >= r.goal
+                <span
+                  style={{
+                    flexShrink: 0,
+                    width: '2.6rem',
+                    textAlign: 'right',
+                    fontSize: '0.78rem',
+                    opacity: r.streak > 0 ? 0.9 : 0,
+                  }}
+                  title={r.streak > 0 ? `${r.streak}-day streak` : undefined}
+                >
+                  {r.streak > 0 ? `🔥${r.streak}` : ''}
+                </span>
+                <span
+                  className="cz-num"
+                  style={{
+                    flexShrink: 0,
+                    width: '3rem',
+                    textAlign: 'right',
+                    fontSize: '0.74rem',
+                    fontWeight: 700,
+                    color:
+                      r.avgDay <= 0
+                        ? 'transparent'
+                        : r.avgDay >= r.goal
                           ? '#22cc78'
                           : r.avgDay >= r.goal * 0.6
                             ? '#f5c060'
                             : '#f46b6b',
-                    }}
-                    title={`${Math.round(r.avgDay)} pts/day across ${r.daysLogged} logged days`}
-                  >
-                    {Math.round(r.avgDay)}/d
-                  </span>
-                )}
+                  }}
+                  title={
+                    r.avgDay > 0
+                      ? `${Math.round(r.avgDay)} pts/day across ${r.daysLogged} logged days`
+                      : undefined
+                  }
+                >
+                  {r.avgDay > 0 ? `${Math.round(r.avgDay)}/d` : ''}
+                </span>
                 <span
                   className="cz-num"
                   style={{
