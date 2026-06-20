@@ -1,14 +1,23 @@
 // Daily log — pick a person + date, enter per-exercise amounts, watch points/goal live, save.
-// Writes through the shared store (localStorage now, Supabase realtime later).
-import { useEffect, useMemo, useState } from 'react'
+// The exercise grid is a "sheet" of slots that are moveable (drag the ⠿ handle to reorder
+// within or across columns) and editable in place (click a name to rename / tweak its
+// multiplier, unit, and category). Writes through the shared store (localStorage now,
+// Supabase realtime later) so every edit gets undo/redo + sync for free.
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { circuitStore, useCircuit } from '../store'
 import { isImportedTotal, logPoints } from '../scoring'
 import { showToast } from '../toast'
+import { CAT_COLORS, catColor } from '../catColors'
 import { ScrubInput } from './ScrubInput'
 import { ExerciseManager } from './ExerciseManager'
 import { GoalBar } from './GoalBar'
+import type { Exercise } from '../types'
 
 const todayISO = () => new Date().toISOString().slice(0, 10)
+const CATS = Object.keys(CAT_COLORS)
+const UNITS = ['reps', 'min', 'sec', 'mi', 'km', 'hr', 'other']
+const newId = () =>
+  crypto.randomUUID?.() ?? 'e' + Date.now() + Math.random().toString(36).slice(2, 6)
 
 export function Log({
   defaultPersonId,
@@ -23,6 +32,12 @@ export function Log({
   const [vals, setVals] = useState<Record<string, string>>({})
   const [managing, setManaging] = useState(false)
 
+  // slot interaction state
+  const [editId, setEditId] = useState<string | null>(null) // open edit panel
+  const [armedId, setArmedId] = useState<string | null>(null) // handle pressed → card draggable
+  const [dragId, setDragId] = useState<string | null>(null)
+  const [overId, setOverId] = useState<string | null>(null)
+
   const pid = selPid || state.people[0]?.id || ''
   const person = state.people.find((p) => p.id === pid)
   const existing = useMemo(
@@ -30,6 +45,18 @@ export function Log({
     [state.logs, pid, date],
   )
   const imported = isImportedTotal(existing)
+
+  // a stuck "armed" handle (mouse released without a drag) would leave the card draggable
+  // and fight the scrub input — clear it on any global mouseup / dragend.
+  useEffect(() => {
+    const clear = () => setArmedId(null)
+    window.addEventListener('mouseup', clear)
+    window.addEventListener('dragend', clear)
+    return () => {
+      window.removeEventListener('mouseup', clear)
+      window.removeEventListener('dragend', clear)
+    }
+  }, [])
 
   // load saved values when person/date (or underlying data) changes
   useEffect(() => {
@@ -44,6 +71,7 @@ export function Log({
     if (!person) return []
     return person.colLabels.map((label, ci) => ({
       label,
+      ci,
       exs: person.exercises.filter((e) => e.col === ci).sort((a, b) => a.row - b.row),
     }))
   }, [person])
@@ -69,6 +97,49 @@ export function Log({
     dt.setDate(dt.getDate() + d)
     setDate(dt.toISOString().slice(0, 10))
   }
+
+  // ── exercise-grid edits (persist through the store) ───────────────────────
+  const saveExs = (next: Exercise[]) => void circuitStore.savePerson({ ...person, exercises: next })
+  const patchEx = (id: string, p: Partial<Exercise>) =>
+    saveExs(person.exercises.map((e) => (e.id === id ? { ...e, ...p } : e)))
+  const delEx = (id: string) => {
+    saveExs(person.exercises.filter((e) => e.id !== id))
+    setVals((prev) => {
+      const n = { ...prev }
+      delete n[id]
+      return n
+    })
+    if (editId === id) setEditId(null)
+  }
+  const addEx = (col: number) => {
+    const row = Math.max(-1, ...person.exercises.filter((e) => e.col === col).map((e) => e.row)) + 1
+    const id = newId()
+    saveExs([
+      ...person.exercises,
+      { id, name: 'New exercise', unit: 'reps', mult: 1, cat: 'other', col, row },
+    ])
+    setEditId(id) // open the editor on the fresh slot
+  }
+  // move the dragged slot into `targetCol`, dropped just before `beforeId` (or to the end)
+  const reorder = (targetCol: number, beforeId: string | null) => {
+    if (!dragId) return
+    const moving = person.exercises.find((e) => e.id === dragId)
+    if (!moving || (beforeId === dragId && moving.col === targetCol)) return
+    const others = person.exercises.filter((e) => e.id !== dragId)
+    const colItems = others.filter((e) => e.col === targetCol).sort((a, b) => a.row - b.row)
+    let at = colItems.length
+    if (beforeId) {
+      const i = colItems.findIndex((e) => e.id === beforeId)
+      if (i >= 0) at = i
+    }
+    const merged = [...colItems.slice(0, at), moving, ...colItems.slice(at)].map((e, i) => ({
+      ...e,
+      col: targetCol,
+      row: i,
+    }))
+    saveExs([...others.filter((e) => e.col !== targetCol), ...merged])
+  }
+
   const save = () => {
     const entries = person.exercises
       .map((ex) => ({ eid: ex.id, val: parseFloat(vals[ex.id]) || 0 }))
@@ -210,7 +281,7 @@ export function Log({
         </div>
       </div>
 
-      {/* exercise sections by category */}
+      {/* slot sheet header */}
       <div
         style={{
           display: 'flex',
@@ -220,55 +291,73 @@ export function Log({
         }}
       >
         <span className="muted" style={{ fontSize: '0.78rem' }}>
-          Exercises
+          Drag ⠿ to move · click a name to edit
         </span>
         <button
           className="btn btn-ghost"
           onClick={() => setManaging(true)}
           style={{ fontSize: '0.8rem' }}
-          title="Add, rename, reweight, or reorder this person's exercises"
+          title="Rename or add columns and do bulk edits"
         >
-          ⚙️ Edit exercises
+          ⚙️ Columns
         </button>
       </div>
+
+      {/* the sheet: one section per column, slots inside */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-        {cols.map((col, ci) => (
-          <div key={ci}>
-            <div style={{ fontWeight: 700, opacity: 0.75, marginBottom: '0.4rem' }}>
+        {cols.map((col) => (
+          <div key={col.ci}>
+            <div className="cz-sec" style={{ marginBottom: '0.4rem' }}>
               {col.label}
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-              {col.exs.map((ex) => {
-                const v = parseFloat(vals[ex.id]) || 0
-                const pts = v * ex.mult
-                return (
-                  <div key={ex.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    <span style={{ flex: 1, minWidth: 0 }}>{ex.name}</span>
-                    <ScrubInput
-                      value={vals[ex.id] ?? ''}
-                      onChange={(v) => setVal(ex.id, v)}
-                      style={{ width: 80, textAlign: 'right', padding: '0.35rem 0.5rem' }}
-                    />
-                    <span className="muted" style={{ width: 44, fontSize: '0.8rem' }}>
-                      {ex.unit}
-                    </span>
-                    <span className="muted" style={{ width: 44, fontSize: '0.75rem' }}>
-                      ×{ex.mult}
-                    </span>
-                    <span
-                      style={{
-                        width: 54,
-                        textAlign: 'right',
-                        fontVariantNumeric: 'tabular-nums',
-                        color: pts > 0 ? 'var(--accent, #7c6af7)' : 'inherit',
-                        opacity: pts > 0 ? 1 : 0.4,
-                      }}
-                    >
-                      {pts > 0 ? `${Math.round(pts * 10) / 10} pt` : '—'}
-                    </span>
-                  </div>
-                )
-              })}
+            <div className="cz-ex-grid">
+              {col.exs.map((ex) => (
+                <Slot
+                  key={ex.id}
+                  ex={ex}
+                  val={vals[ex.id] ?? ''}
+                  open={editId === ex.id}
+                  dragging={dragId === ex.id}
+                  over={overId === ex.id}
+                  armed={armedId === ex.id}
+                  onVal={(v) => setVal(ex.id, v)}
+                  onToggleEdit={() => setEditId((id) => (id === ex.id ? null : ex.id))}
+                  onPatch={(p) => patchEx(ex.id, p)}
+                  onDelete={() => delEx(ex.id)}
+                  onArm={() => setArmedId(ex.id)}
+                  onDragStart={() => setDragId(ex.id)}
+                  onDragEnd={() => {
+                    setDragId(null)
+                    setOverId(null)
+                    setArmedId(null)
+                  }}
+                  onDragOver={() => dragId && dragId !== ex.id && setOverId(ex.id)}
+                  onDragLeave={() => setOverId((o) => (o === ex.id ? null : o))}
+                  onDrop={() => {
+                    reorder(ex.col, ex.id)
+                    setOverId(null)
+                  }}
+                />
+              ))}
+              <button
+                className={`cz-add-slot${overId === `add-${col.ci}` ? ' cz-drag-over' : ''}`}
+                onClick={() => addEx(col.ci)}
+                onDragOver={(e) => {
+                  if (dragId) {
+                    e.preventDefault()
+                    setOverId(`add-${col.ci}`)
+                  }
+                }}
+                onDragLeave={() => setOverId((o) => (o === `add-${col.ci}` ? null : o))}
+                onDrop={(e) => {
+                  e.preventDefault()
+                  reorder(col.ci, null)
+                  setOverId(null)
+                }}
+                title="Add an exercise to this column"
+              >
+                ＋ add
+              </button>
             </div>
           </div>
         ))}
@@ -311,6 +400,168 @@ export function Log({
       </div>
 
       {managing && <ExerciseManager person={person} onClose={() => setManaging(false)} />}
+    </div>
+  )
+}
+
+// ── one moveable + editable exercise slot ─────────────────────────────────────
+function Slot({
+  ex,
+  val,
+  open,
+  dragging,
+  over,
+  armed,
+  onVal,
+  onToggleEdit,
+  onPatch,
+  onDelete,
+  onArm,
+  onDragStart,
+  onDragEnd,
+  onDragOver,
+  onDragLeave,
+  onDrop,
+}: {
+  ex: Exercise
+  val: string
+  open: boolean
+  dragging: boolean
+  over: boolean
+  armed: boolean
+  onVal: (v: string) => void
+  onToggleEdit: () => void
+  onPatch: (p: Partial<Exercise>) => void
+  onDelete: () => void
+  onArm: () => void
+  onDragStart: () => void
+  onDragEnd: () => void
+  onDragOver: () => void
+  onDragLeave: () => void
+  onDrop: () => void
+}) {
+  const nameRef = useRef<HTMLInputElement>(null)
+  const pts = (parseFloat(val) || 0) * ex.mult
+  return (
+    <div
+      className={`cz-slot${dragging ? ' cz-dragging' : ''}${over ? ' cz-drag-over' : ''}`}
+      style={{ borderLeftColor: catColor(ex.cat) }}
+      draggable={armed}
+      onDragStart={onDragStart}
+      onDragEnd={onDragEnd}
+      onDragOver={(e) => {
+        e.preventDefault()
+        onDragOver()
+      }}
+      onDragLeave={onDragLeave}
+      onDrop={(e) => {
+        e.preventDefault()
+        onDrop()
+      }}
+    >
+      <div className="cz-slot-head">
+        <span className="cz-dot" style={{ background: catColor(ex.cat) }} />
+        {open ? (
+          <input
+            ref={nameRef}
+            defaultValue={ex.name}
+            placeholder="Exercise name"
+            autoFocus
+            onBlur={(e) => onPatch({ name: e.target.value.trim() || 'Exercise' })}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
+            }}
+            style={{ flex: 1, minWidth: 0, padding: '0.2rem 0.4rem', fontSize: '0.8rem' }}
+          />
+        ) : (
+          <span className="cz-slot-name" onClick={onToggleEdit} title="Click to edit this exercise">
+            {ex.name}
+          </span>
+        )}
+        <button
+          className="cz-slot-btn"
+          onClick={onToggleEdit}
+          title={open ? 'Close editor' : 'Edit exercise'}
+        >
+          {open ? '✓' : '✎'}
+        </button>
+        <span className="cz-handle" title="Drag to move" onMouseDown={onArm} onTouchStart={onArm}>
+          ⠿
+        </span>
+      </div>
+
+      <div className="cz-slot-body">
+        <ScrubInput
+          value={val}
+          onChange={onVal}
+          style={{ width: 72, textAlign: 'right', padding: '0.35rem 0.5rem' }}
+        />
+        <span className="muted" style={{ fontSize: '0.75rem' }}>
+          {ex.unit}
+        </span>
+        <span
+          style={{
+            marginLeft: 'auto',
+            fontVariantNumeric: 'tabular-nums',
+            fontSize: '0.75rem',
+            color: pts > 0 ? 'var(--accent, #7c6af7)' : 'inherit',
+            opacity: pts > 0 ? 1 : 0.4,
+          }}
+        >
+          {pts > 0 ? `${Math.round(pts * 10) / 10} pt` : `×${ex.mult}`}
+        </span>
+      </div>
+
+      {open && (
+        <div className="cz-edit-panel">
+          <div className="cz-edit-row">
+            <span className="muted" style={{ fontSize: '0.68rem', width: 28 }}>
+              ×
+            </span>
+            <input
+              type="number"
+              value={ex.mult}
+              onChange={(e) => onPatch({ mult: parseFloat(e.target.value) || 0 })}
+              title="Points multiplier"
+              style={{ width: 56, padding: '0.25rem 0.4rem', textAlign: 'right' }}
+            />
+            <select
+              value={ex.unit}
+              onChange={(e) => onPatch({ unit: e.target.value })}
+              title="Unit"
+              style={{ flex: 1, padding: '0.25rem 0.3rem' }}
+            >
+              {(UNITS.includes(ex.unit) ? UNITS : [ex.unit, ...UNITS]).map((u) => (
+                <option key={u} value={u}>
+                  {u}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="cz-edit-row">
+            <select
+              value={ex.cat ?? 'other'}
+              onChange={(e) => onPatch({ cat: e.target.value })}
+              title="Category (color)"
+              style={{ flex: 1, padding: '0.25rem 0.3rem' }}
+            >
+              {CATS.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </select>
+            <button
+              className="cz-slot-btn cz-del"
+              onClick={onDelete}
+              title="Delete this exercise"
+              style={{ fontSize: '0.85rem' }}
+            >
+              🗑
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
