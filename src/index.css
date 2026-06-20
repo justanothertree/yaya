@@ -172,6 +172,134 @@
     animation: none;
   }
 }
+/* Circuit log slot grid — moveable + editable exercise slots (ported from the standalone) */
+.cz-ex-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 6px;
+  align-items: start;
+}
+.cz-slot {
+  background: var(--card2, rgba(127, 127, 127, 0.06));
+  border: 1px solid var(--b1, rgba(127, 127, 127, 0.18));
+  border-radius: 8px;
+  padding: 8px 10px;
+  border-left: 3px solid transparent;
+  position: relative;
+  transition:
+    box-shadow 0.12s,
+    background 0.12s,
+    opacity 0.12s,
+    transform 0.12s;
+}
+.cz-slot.cz-dragging {
+  opacity: 0.25;
+  transform: scale(0.96);
+}
+.cz-slot.cz-drag-over {
+  box-shadow: 0 0 0 2px var(--accent, #7c6af7);
+  background: rgba(124, 106, 247, 0.1);
+}
+.cz-slot-head {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-bottom: 6px;
+}
+.cz-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.cz-slot-name {
+  flex: 1;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: text;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+  opacity: 0.85;
+}
+.cz-slot-name:hover {
+  opacity: 1;
+}
+.cz-handle {
+  cursor: grab;
+  color: var(--muted);
+  font-size: 0.85rem;
+  opacity: 0.4;
+  flex-shrink: 0;
+  line-height: 1;
+  padding: 0 2px;
+}
+.cz-handle:hover {
+  opacity: 0.85;
+}
+.cz-handle:active {
+  cursor: grabbing;
+}
+.cz-slot-btn {
+  background: none;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 0.82rem;
+  line-height: 1;
+  opacity: 0.35;
+  flex-shrink: 0;
+  padding: 1px 4px;
+  border-radius: 3px;
+  transition: 0.1s;
+}
+.cz-slot-btn:hover {
+  opacity: 1;
+}
+.cz-slot-btn.cz-del:hover {
+  color: #ff5566;
+  background: rgba(255, 85, 102, 0.12);
+}
+.cz-slot-body {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.cz-edit-panel {
+  margin-top: 7px;
+  padding-top: 7px;
+  border-top: 1px solid var(--b1, rgba(127, 127, 127, 0.2));
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.cz-edit-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.cz-add-slot {
+  background: transparent;
+  border: 1.5px dashed var(--b2, rgba(127, 127, 127, 0.3));
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  min-height: 40px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 600;
+  transition: 0.15s;
+  width: 100%;
+}
+.cz-add-slot:hover,
+.cz-add-slot.cz-drag-over {
+  border-color: var(--accent, #7c6af7);
+  color: var(--accent, #7c6af7);
+  background: rgba(124, 106, 247, 0.06);
+}
 
 * {
   box-sizing: border-box;
