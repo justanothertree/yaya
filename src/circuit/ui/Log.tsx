@@ -3,7 +3,7 @@
 // within or across columns) and editable in place (click a name to rename / tweak its
 // multiplier, unit, and category). Writes through the shared store (localStorage now,
 // Supabase realtime later) so every edit gets undo/redo + sync for free.
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { circuitStore, useCircuit } from '../store'
 import { isImportedTotal, logPoints } from '../scoring'
 import { showToast } from '../toast'
@@ -440,7 +440,6 @@ function Slot({
   onDragLeave: () => void
   onDrop: () => void
 }) {
-  const nameRef = useRef<HTMLInputElement>(null)
   const pts = (parseFloat(val) || 0) * ex.mult
   return (
     <div
@@ -463,11 +462,14 @@ function Slot({
         <span className="cz-dot" style={{ background: catColor(ex.cat) }} />
         {open ? (
           <input
-            ref={nameRef}
-            defaultValue={ex.name}
+            value={ex.name}
+            onChange={(e) => onPatch({ name: e.target.value })}
+            onBlur={() => {
+              if (!ex.name.trim()) onPatch({ name: 'Exercise' })
+            }}
             placeholder="Exercise name"
             autoFocus
-            onBlur={(e) => onPatch({ name: e.target.value.trim() || 'Exercise' })}
+            onFocus={(e) => e.target.select()}
             onKeyDown={(e) => {
               if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
             }}
