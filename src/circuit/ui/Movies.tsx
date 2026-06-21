@@ -8,7 +8,7 @@ import { AddMovie } from './AddMovie'
 import { MoviePersonProfile } from './MoviePersonProfile'
 import { MovieDetail } from './MovieDetail'
 import { MovieStats } from './MovieStats'
-import { MV_ICONS, MV_PIDS, scoreColor } from './movieMeta'
+import { MV_PIDS, scoreColor } from './movieMeta'
 
 type SortKey = 'avg' | 'alpha' | 'rt' | 'date'
 
@@ -321,45 +321,16 @@ export function Movies() {
                   </td>
                   {raters.map((p) => {
                     const r = m.ratings[p.id]
-                    const vibes = (r?.icons ?? [])
-                      .slice(0, 2)
-                      .map((id) => MV_ICONS.find((x) => x.id === id)?.emoji)
-                      .filter(Boolean)
-                    // Reserve a fixed emoji row for the whole movie row, so the number
-                    // chips stay aligned whether or not a given rater added vibes.
-                    const rowHasVibes = raters.some(
-                      (q) => (m.ratings[q.id]?.icons?.length ?? 0) > 0,
-                    )
+                    // Vibes/reactions live in the detail modal (click the title), so the list
+                    // stays a tight grid of score chips — no per-row emoji band bloating height.
                     return (
                       <td
                         key={p.id}
                         onClick={() => setRate({ movie: m, person: p })}
                         title={`Rate as ${p.name}`}
-                        style={{
-                          padding: '4px 8px',
-                          textAlign: 'center',
-                          cursor: 'pointer',
-                          verticalAlign: 'top',
-                        }}
+                        style={{ padding: '4px 8px', textAlign: 'center', cursor: 'pointer' }}
                       >
-                        <div
-                          style={{
-                            display: 'flex',
-                            flexDirection: 'column',
-                            alignItems: 'center',
-                            gap: 3,
-                          }}
-                        >
-                          {chip(r?.score ?? null)}
-                          {rowHasVibes && (
-                            <div
-                              style={{ fontSize: '0.74rem', lineHeight: 1, height: '0.9rem' }}
-                              aria-hidden={vibes.length === 0}
-                            >
-                              {vibes.join('')}
-                            </div>
-                          )}
-                        </div>
+                        {chip(r?.score ?? null)}
                       </td>
                     )
                   })}
