@@ -82,6 +82,1249 @@ export const publicSeed: CircuitState = {
   ],
   logs: [
     {
+      id: '20250723020',
+      personId: '2',
+      date: '2025-07-23',
+      entries: [
+        {
+          eid: '__total__',
+          val: 160,
+        },
+      ],
+    },
+    {
+      id: '20250725020',
+      personId: '2',
+      date: '2025-07-25',
+      entries: [
+        {
+          eid: '__total__',
+          val: 135,
+        },
+      ],
+    },
+    {
+      id: '20250726020',
+      personId: '2',
+      date: '2025-07-26',
+      entries: [
+        {
+          eid: '__total__',
+          val: 110,
+        },
+      ],
+    },
+    {
+      id: '20250727020',
+      personId: '2',
+      date: '2025-07-27',
+      entries: [
+        {
+          eid: '__total__',
+          val: 115.32,
+        },
+      ],
+    },
+    {
+      id: '20250728020',
+      personId: '2',
+      date: '2025-07-28',
+      entries: [
+        {
+          eid: '__total__',
+          val: 154,
+        },
+      ],
+    },
+    {
+      id: '20250729020',
+      personId: '2',
+      date: '2025-07-29',
+      entries: [
+        {
+          eid: '__total__',
+          val: 437.2,
+        },
+      ],
+    },
+    {
+      id: '20250730020',
+      personId: '2',
+      date: '2025-07-30',
+      entries: [
+        {
+          eid: '__total__',
+          val: 254,
+        },
+      ],
+    },
+    {
+      id: '20250731020',
+      personId: '2',
+      date: '2025-07-31',
+      entries: [
+        {
+          eid: '__total__',
+          val: 105,
+        },
+      ],
+    },
+    {
+      id: '20250801020',
+      personId: '2',
+      date: '2025-08-01',
+      entries: [
+        {
+          eid: '__total__',
+          val: 100,
+        },
+      ],
+    },
+    {
+      id: '20250802020',
+      personId: '2',
+      date: '2025-08-02',
+      entries: [
+        {
+          eid: '__total__',
+          val: 130,
+        },
+      ],
+    },
+    {
+      id: '20250803020',
+      personId: '2',
+      date: '2025-08-03',
+      entries: [
+        {
+          eid: '__total__',
+          val: 110,
+        },
+      ],
+    },
+    {
+      id: '20250804020',
+      personId: '2',
+      date: '2025-08-04',
+      entries: [
+        {
+          eid: '__total__',
+          val: 245,
+        },
+      ],
+    },
+    {
+      id: '20250806020',
+      personId: '2',
+      date: '2025-08-06',
+      entries: [
+        {
+          eid: '__total__',
+          val: 100,
+        },
+      ],
+    },
+    {
+      id: '20250807020',
+      personId: '2',
+      date: '2025-08-07',
+      entries: [
+        {
+          eid: '__total__',
+          val: 156.2,
+        },
+      ],
+    },
+    {
+      id: '20250808020',
+      personId: '2',
+      date: '2025-08-08',
+      entries: [
+        {
+          eid: '__total__',
+          val: 116,
+        },
+      ],
+    },
+    {
+      id: '20250809020',
+      personId: '2',
+      date: '2025-08-09',
+      entries: [
+        {
+          eid: '__total__',
+          val: 155,
+        },
+      ],
+    },
+    {
+      id: '20250810020',
+      personId: '2',
+      date: '2025-08-10',
+      entries: [
+        {
+          eid: '__total__',
+          val: 40,
+        },
+      ],
+    },
+    {
+      id: '20250811020',
+      personId: '2',
+      date: '2025-08-11',
+      entries: [
+        {
+          eid: '__total__',
+          val: 175.2,
+        },
+      ],
+    },
+    {
+      id: '20250812020',
+      personId: '2',
+      date: '2025-08-12',
+      entries: [
+        {
+          eid: '__total__',
+          val: 185.44,
+        },
+      ],
+    },
+    {
+      id: '20250813020',
+      personId: '2',
+      date: '2025-08-13',
+      entries: [
+        {
+          eid: '__total__',
+          val: 120,
+        },
+      ],
+    },
+    {
+      id: '20250814020',
+      personId: '2',
+      date: '2025-08-14',
+      entries: [
+        {
+          eid: '__total__',
+          val: 100,
+        },
+      ],
+    },
+    {
+      id: '20250815020',
+      personId: '2',
+      date: '2025-08-15',
+      entries: [
+        {
+          eid: '__total__',
+          val: 105,
+        },
+      ],
+    },
+    {
+      id: '20250816020',
+      personId: '2',
+      date: '2025-08-16',
+      entries: [
+        {
+          eid: '__total__',
+          val: 100,
+        },
+      ],
+    },
+    {
+      id: '20250817020',
+      personId: '2',
+      date: '2025-08-17',
+      entries: [
+        {
+          eid: '__total__',
+          val: 330,
+        },
+      ],
+    },
+    {
+      id: '20250818020',
+      personId: '2',
+      date: '2025-08-18',
+      entries: [
+        {
+          eid: '__total__',
+          val: 255.44,
+        },
+      ],
+    },
+    {
+      id: '20250819020',
+      personId: '2',
+      date: '2025-08-19',
+      entries: [
+        {
+          eid: '__total__',
+          val: 120,
+        },
+      ],
+    },
+    {
+      id: '20250820020',
+      personId: '2',
+      date: '2025-08-20',
+      entries: [
+        {
+          eid: '__total__',
+          val: 105,
+        },
+      ],
+    },
+    {
+      id: '20250821020',
+      personId: '2',
+      date: '2025-08-21',
+      entries: [
+        {
+          eid: '__total__',
+          val: 30,
+        },
+      ],
+    },
+    {
+      id: '20250822020',
+      personId: '2',
+      date: '2025-08-22',
+      entries: [
+        {
+          eid: '__total__',
+          val: 115,
+        },
+      ],
+    },
+    {
+      id: '20250823020',
+      personId: '2',
+      date: '2025-08-23',
+      entries: [
+        {
+          eid: '__total__',
+          val: 110,
+        },
+      ],
+    },
+    {
+      id: '20250824020',
+      personId: '2',
+      date: '2025-08-24',
+      entries: [
+        {
+          eid: '__total__',
+          val: 100,
+        },
+      ],
+    },
+    {
+      id: '20250826020',
+      personId: '2',
+      date: '2025-08-26',
+      entries: [
+        {
+          eid: '__total__',
+          val: 100,
+        },
+      ],
+    },
+    {
+      id: '20250827020',
+      personId: '2',
+      date: '2025-08-27',
+      entries: [
+        {
+          eid: '__total__',
+          val: 141,
+        },
+      ],
+    },
+    {
+      id: '20250828020',
+      personId: '2',
+      date: '2025-08-28',
+      entries: [
+        {
+          eid: '__total__',
+          val: 100,
+        },
+      ],
+    },
+    {
+      id: '20250830020',
+      personId: '2',
+      date: '2025-08-30',
+      entries: [
+        {
+          eid: '__total__',
+          val: 135,
+        },
+      ],
+    },
+    {
+      id: '20250831020',
+      personId: '2',
+      date: '2025-08-31',
+      entries: [
+        {
+          eid: '__total__',
+          val: 102,
+        },
+      ],
+    },
+    {
+      id: '20250901020',
+      personId: '2',
+      date: '2025-09-01',
+      entries: [
+        {
+          eid: '__total__',
+          val: 100,
+        },
+      ],
+    },
+    {
+      id: '20250902020',
+      personId: '2',
+      date: '2025-09-02',
+      entries: [
+        {
+          eid: '__total__',
+          val: 360,
+        },
+      ],
+    },
+    {
+      id: '20250903020',
+      personId: '2',
+      date: '2025-09-03',
+      entries: [
+        {
+          eid: '__total__',
+          val: 0.1,
+        },
+      ],
+    },
+    {
+      id: '20250904020',
+      personId: '2',
+      date: '2025-09-04',
+      entries: [
+        {
+          eid: '__total__',
+          val: 115,
+        },
+      ],
+    },
+    {
+      id: '20250905020',
+      personId: '2',
+      date: '2025-09-05',
+      entries: [
+        {
+          eid: '__total__',
+          val: 100,
+        },
+      ],
+    },
+    {
+      id: '20250906020',
+      personId: '2',
+      date: '2025-09-06',
+      entries: [
+        {
+          eid: '__total__',
+          val: 151,
+        },
+      ],
+    },
+    {
+      id: '20250907020',
+      personId: '2',
+      date: '2025-09-07',
+      entries: [
+        {
+          eid: '__total__',
+          val: 100,
+        },
+      ],
+    },
+    {
+      id: '20250908020',
+      personId: '2',
+      date: '2025-09-08',
+      entries: [
+        {
+          eid: '__total__',
+          val: 251.516,
+        },
+      ],
+    },
+    {
+      id: '20250909020',
+      personId: '2',
+      date: '2025-09-09',
+      entries: [
+        {
+          eid: '__total__',
+          val: 200,
+        },
+      ],
+    },
+    {
+      id: '20250910020',
+      personId: '2',
+      date: '2025-09-10',
+      entries: [
+        {
+          eid: '__total__',
+          val: 0.1,
+        },
+      ],
+    },
+    {
+      id: '20250911020',
+      personId: '2',
+      date: '2025-09-11',
+      entries: [
+        {
+          eid: '__total__',
+          val: 60,
+        },
+      ],
+    },
+    {
+      id: '20250912020',
+      personId: '2',
+      date: '2025-09-12',
+      entries: [
+        {
+          eid: '__total__',
+          val: 0.1,
+        },
+      ],
+    },
+    {
+      id: '20250913020',
+      personId: '2',
+      date: '2025-09-13',
+      entries: [
+        {
+          eid: '__total__',
+          val: 150,
+        },
+      ],
+    },
+    {
+      id: '20250914020',
+      personId: '2',
+      date: '2025-09-14',
+      entries: [
+        {
+          eid: '__total__',
+          val: 100.44,
+        },
+      ],
+    },
+    {
+      id: '20250915020',
+      personId: '2',
+      date: '2025-09-15',
+      entries: [
+        {
+          eid: '__total__',
+          val: 300,
+        },
+      ],
+    },
+    {
+      id: '20250916020',
+      personId: '2',
+      date: '2025-09-16',
+      entries: [
+        {
+          eid: '__total__',
+          val: 0.1,
+        },
+      ],
+    },
+    {
+      id: '20250917020',
+      personId: '2',
+      date: '2025-09-17',
+      entries: [
+        {
+          eid: '__total__',
+          val: 250,
+        },
+      ],
+    },
+    {
+      id: '20250918020',
+      personId: '2',
+      date: '2025-09-18',
+      entries: [
+        {
+          eid: '__total__',
+          val: 250,
+        },
+      ],
+    },
+    {
+      id: '20250919020',
+      personId: '2',
+      date: '2025-09-19',
+      entries: [
+        {
+          eid: '__total__',
+          val: 100,
+        },
+      ],
+    },
+    {
+      id: '20250920020',
+      personId: '2',
+      date: '2025-09-20',
+      entries: [
+        {
+          eid: '__total__',
+          val: 200,
+        },
+      ],
+    },
+    {
+      id: '20250921020',
+      personId: '2',
+      date: '2025-09-21',
+      entries: [
+        {
+          eid: '__total__',
+          val: 100,
+        },
+      ],
+    },
+    {
+      id: '20250922020',
+      personId: '2',
+      date: '2025-09-22',
+      entries: [
+        {
+          eid: '__total__',
+          val: 150,
+        },
+      ],
+    },
+    {
+      id: '20250924020',
+      personId: '2',
+      date: '2025-09-24',
+      entries: [
+        {
+          eid: '__total__',
+          val: 100,
+        },
+      ],
+    },
+    {
+      id: '20250925020',
+      personId: '2',
+      date: '2025-09-25',
+      entries: [
+        {
+          eid: '__total__',
+          val: 100,
+        },
+      ],
+    },
+    {
+      id: '20250926020',
+      personId: '2',
+      date: '2025-09-26',
+      entries: [
+        {
+          eid: '__total__',
+          val: 100,
+        },
+      ],
+    },
+    {
+      id: '20250928020',
+      personId: '2',
+      date: '2025-09-28',
+      entries: [
+        {
+          eid: '__total__',
+          val: 51,
+        },
+      ],
+    },
+    {
+      id: '20250930020',
+      personId: '2',
+      date: '2025-09-30',
+      entries: [
+        {
+          eid: '__total__',
+          val: 180.24,
+        },
+      ],
+    },
+    {
+      id: '20251002020',
+      personId: '2',
+      date: '2025-10-02',
+      entries: [
+        {
+          eid: '__total__',
+          val: 200,
+        },
+      ],
+    },
+    {
+      id: '20251003020',
+      personId: '2',
+      date: '2025-10-03',
+      entries: [
+        {
+          eid: '__total__',
+          val: 205,
+        },
+      ],
+    },
+    {
+      id: '20251004020',
+      personId: '2',
+      date: '2025-10-04',
+      entries: [
+        {
+          eid: '__total__',
+          val: 200,
+        },
+      ],
+    },
+    {
+      id: '20251006020',
+      personId: '2',
+      date: '2025-10-06',
+      entries: [
+        {
+          eid: '__total__',
+          val: 200,
+        },
+      ],
+    },
+    {
+      id: '20251010020',
+      personId: '2',
+      date: '2025-10-10',
+      entries: [
+        {
+          eid: '__total__',
+          val: 162,
+        },
+      ],
+    },
+    {
+      id: '20251012020',
+      personId: '2',
+      date: '2025-10-12',
+      entries: [
+        {
+          eid: '__total__',
+          val: 197.316,
+        },
+      ],
+    },
+    {
+      id: '20251015020',
+      personId: '2',
+      date: '2025-10-15',
+      entries: [
+        {
+          eid: '__total__',
+          val: 329.6,
+        },
+      ],
+    },
+    {
+      id: '20251016020',
+      personId: '2',
+      date: '2025-10-16',
+      entries: [
+        {
+          eid: '__total__',
+          val: 136.08,
+        },
+      ],
+    },
+    {
+      id: '20251020020',
+      personId: '2',
+      date: '2025-10-20',
+      entries: [
+        {
+          eid: '__total__',
+          val: 200,
+        },
+      ],
+    },
+    {
+      id: '20251021020',
+      personId: '2',
+      date: '2025-10-21',
+      entries: [
+        {
+          eid: '__total__',
+          val: 100,
+        },
+      ],
+    },
+    {
+      id: '20251022020',
+      personId: '2',
+      date: '2025-10-22',
+      entries: [
+        {
+          eid: '__total__',
+          val: 140,
+        },
+      ],
+    },
+    {
+      id: '20251023020',
+      personId: '2',
+      date: '2025-10-23',
+      entries: [
+        {
+          eid: '__total__',
+          val: 162,
+        },
+      ],
+    },
+    {
+      id: '20251024020',
+      personId: '2',
+      date: '2025-10-24',
+      entries: [
+        {
+          eid: '__total__',
+          val: 140,
+        },
+      ],
+    },
+    {
+      id: '20251025020',
+      personId: '2',
+      date: '2025-10-25',
+      entries: [
+        {
+          eid: '__total__',
+          val: 101,
+        },
+      ],
+    },
+    {
+      id: '20251026020',
+      personId: '2',
+      date: '2025-10-26',
+      entries: [
+        {
+          eid: '__total__',
+          val: 205,
+        },
+      ],
+    },
+    {
+      id: '20251027020',
+      personId: '2',
+      date: '2025-10-27',
+      entries: [
+        {
+          eid: '__total__',
+          val: 30,
+        },
+      ],
+    },
+    {
+      id: '20251029020',
+      personId: '2',
+      date: '2025-10-29',
+      entries: [
+        {
+          eid: '__total__',
+          val: 10,
+        },
+      ],
+    },
+    {
+      id: '20251030020',
+      personId: '2',
+      date: '2025-10-30',
+      entries: [
+        {
+          eid: '__total__',
+          val: 32.4,
+        },
+      ],
+    },
+    {
+      id: '20251102020',
+      personId: '2',
+      date: '2025-11-02',
+      entries: [
+        {
+          eid: '__total__',
+          val: 220,
+        },
+      ],
+    },
+    {
+      id: '20251103020',
+      personId: '2',
+      date: '2025-11-03',
+      entries: [
+        {
+          eid: '__total__',
+          val: 120,
+        },
+      ],
+    },
+    {
+      id: '20251105020',
+      personId: '2',
+      date: '2025-11-05',
+      entries: [
+        {
+          eid: '__total__',
+          val: 279.716,
+        },
+      ],
+    },
+    {
+      id: '20251107020',
+      personId: '2',
+      date: '2025-11-07',
+      entries: [
+        {
+          eid: '__total__',
+          val: 132,
+        },
+      ],
+    },
+    {
+      id: '20251108020',
+      personId: '2',
+      date: '2025-11-08',
+      entries: [
+        {
+          eid: '__total__',
+          val: 120,
+        },
+      ],
+    },
+    {
+      id: '20251111020',
+      personId: '2',
+      date: '2025-11-11',
+      entries: [
+        {
+          eid: '__total__',
+          val: 173.12,
+        },
+      ],
+    },
+    {
+      id: '20251112020',
+      personId: '2',
+      date: '2025-11-12',
+      entries: [
+        {
+          eid: '__total__',
+          val: 156,
+        },
+      ],
+    },
+    {
+      id: '20251114020',
+      personId: '2',
+      date: '2025-11-14',
+      entries: [
+        {
+          eid: '__total__',
+          val: 106,
+        },
+      ],
+    },
+    {
+      id: '20251115020',
+      personId: '2',
+      date: '2025-11-15',
+      entries: [
+        {
+          eid: '__total__',
+          val: 102,
+        },
+      ],
+    },
+    {
+      id: '20251118020',
+      personId: '2',
+      date: '2025-11-18',
+      entries: [
+        {
+          eid: '__total__',
+          val: 22,
+        },
+      ],
+    },
+    {
+      id: '20251120020',
+      personId: '2',
+      date: '2025-11-20',
+      entries: [
+        {
+          eid: '__total__',
+          val: 122,
+        },
+      ],
+    },
+    {
+      id: '20251121020',
+      personId: '2',
+      date: '2025-11-21',
+      entries: [
+        {
+          eid: '__total__',
+          val: 203,
+        },
+      ],
+    },
+    {
+      id: '20251122020',
+      personId: '2',
+      date: '2025-11-22',
+      entries: [
+        {
+          eid: '__total__',
+          val: 253.656,
+        },
+      ],
+    },
+    {
+      id: '20251123020',
+      personId: '2',
+      date: '2025-11-23',
+      entries: [
+        {
+          eid: '__total__',
+          val: 221.94,
+        },
+      ],
+    },
+    {
+      id: '20251128020',
+      personId: '2',
+      date: '2025-11-28',
+      entries: [
+        {
+          eid: '__total__',
+          val: 213,
+        },
+      ],
+    },
+    {
+      id: '20251129020',
+      personId: '2',
+      date: '2025-11-29',
+      entries: [
+        {
+          eid: '__total__',
+          val: 110,
+        },
+      ],
+    },
+    {
+      id: '20251130020',
+      personId: '2',
+      date: '2025-11-30',
+      entries: [
+        {
+          eid: '__total__',
+          val: 130,
+        },
+      ],
+    },
+    {
+      id: '20251201020',
+      personId: '2',
+      date: '2025-12-01',
+      entries: [
+        {
+          eid: '__total__',
+          val: 32,
+        },
+      ],
+    },
+    {
+      id: '20251202020',
+      personId: '2',
+      date: '2025-12-02',
+      entries: [
+        {
+          eid: '__total__',
+          val: 10,
+        },
+      ],
+    },
+    {
+      id: '20251203020',
+      personId: '2',
+      date: '2025-12-03',
+      entries: [
+        {
+          eid: '__total__',
+          val: 123,
+        },
+      ],
+    },
+    {
+      id: '20251204020',
+      personId: '2',
+      date: '2025-12-04',
+      entries: [
+        {
+          eid: '__total__',
+          val: 100,
+        },
+      ],
+    },
+    {
+      id: '20251209020',
+      personId: '2',
+      date: '2025-12-09',
+      entries: [
+        {
+          eid: '__total__',
+          val: 204,
+        },
+      ],
+    },
+    {
+      id: '20251211020',
+      personId: '2',
+      date: '2025-12-11',
+      entries: [
+        {
+          eid: '__total__',
+          val: 100,
+        },
+      ],
+    },
+    {
+      id: '20251212020',
+      personId: '2',
+      date: '2025-12-12',
+      entries: [
+        {
+          eid: '__total__',
+          val: 42,
+        },
+      ],
+    },
+    {
+      id: '20251214020',
+      personId: '2',
+      date: '2025-12-14',
+      entries: [
+        {
+          eid: '__total__',
+          val: 102,
+        },
+      ],
+    },
+    {
+      id: '20251216020',
+      personId: '2',
+      date: '2025-12-16',
+      entries: [
+        {
+          eid: '__total__',
+          val: 102,
+        },
+      ],
+    },
+    {
+      id: '20251227020',
+      personId: '2',
+      date: '2025-12-27',
+      entries: [
+        {
+          eid: '__total__',
+          val: 22,
+        },
+      ],
+    },
+    {
+      id: '20260101020',
+      personId: '2',
+      date: '2026-01-01',
+      entries: [
+        {
+          eid: '__total__',
+          val: 106.8,
+        },
+      ],
+    },
+    {
+      id: '20260103020',
+      personId: '2',
+      date: '2026-01-03',
+      entries: [
+        {
+          eid: '__total__',
+          val: 106.8,
+        },
+      ],
+    },
+    {
+      id: '20260121020',
+      personId: '2',
+      date: '2026-01-21',
+      entries: [
+        {
+          eid: '__total__',
+          val: 16.8,
+        },
+      ],
+    },
+    {
+      id: '20260201020',
+      personId: '2',
+      date: '2026-02-01',
+      entries: [
+        {
+          eid: '__total__',
+          val: 11.2,
+        },
+      ],
+    },
+    {
+      id: '20260202020',
+      personId: '2',
+      date: '2026-02-02',
+      entries: [
+        {
+          eid: '__total__',
+          val: 53.4,
+        },
+      ],
+    },
+    {
       id: '2018',
       personId: '2',
       date: '2026-04-05',

@@ -1,7 +1,6 @@
-// AUTO-GENERATED from the standalone app's DEF_P + Downloads/circuit_import.json (real history).
-// NOTE: this full-group history is NOT imported by the app and so is NOT shipped in the
-// client bundle — the live group data lives in Supabase. It's kept here as the source
-// snapshot for scripts/gen-public-seed.mjs, which derives the Evan-only publicSeed.ts.
+// Real Circuit history snapshot for the whole group. The Supabase cloud is the source of
+// truth; this file is the generator source for publicSeed.ts (and a local-dev fallback).
+// Nothing in the app imports it, so it is tree-shaken out of the client bundle.
 import type { CircuitState } from './types'
 
 export const circuitSeed: CircuitState = {
@@ -702,13 +701,5161 @@ export const circuitSeed: CircuitState = {
   ],
   logs: [
     {
-      id: '2000',
-      personId: '3',
-      date: '2026-03-09',
+      id: '20250723010',
+      personId: '1',
+      date: '2025-07-23',
       entries: [
         {
           eid: '__total__',
-          val: 131,
+          val: 180,
+        },
+      ],
+    },
+    {
+      id: '20250723020',
+      personId: '2',
+      date: '2025-07-23',
+      entries: [
+        {
+          eid: '__total__',
+          val: 160,
+        },
+      ],
+    },
+    {
+      id: '20250723030',
+      personId: '3',
+      date: '2025-07-23',
+      entries: [
+        {
+          eid: '__total__',
+          val: 200,
+        },
+      ],
+    },
+    {
+      id: '20250723040',
+      personId: '4',
+      date: '2025-07-23',
+      entries: [
+        {
+          eid: '__total__',
+          val: 100,
+        },
+      ],
+    },
+    {
+      id: '20250724010',
+      personId: '1',
+      date: '2025-07-24',
+      entries: [
+        {
+          eid: '__total__',
+          val: 106,
+        },
+      ],
+    },
+    {
+      id: '20250724030',
+      personId: '3',
+      date: '2025-07-24',
+      entries: [
+        {
+          eid: '__total__',
+          val: 200,
+        },
+      ],
+    },
+    {
+      id: '20250724040',
+      personId: '4',
+      date: '2025-07-24',
+      entries: [
+        {
+          eid: '__total__',
+          val: 120,
+        },
+      ],
+    },
+    {
+      id: '20250725010',
+      personId: '1',
+      date: '2025-07-25',
+      entries: [
+        {
+          eid: '__total__',
+          val: 155,
+        },
+      ],
+    },
+    {
+      id: '20250725020',
+      personId: '2',
+      date: '2025-07-25',
+      entries: [
+        {
+          eid: '__total__',
+          val: 135,
+        },
+      ],
+    },
+    {
+      id: '20250725030',
+      personId: '3',
+      date: '2025-07-25',
+      entries: [
+        {
+          eid: '__total__',
+          val: 200,
+        },
+      ],
+    },
+    {
+      id: '20250725040',
+      personId: '4',
+      date: '2025-07-25',
+      entries: [
+        {
+          eid: '__total__',
+          val: 100,
+        },
+      ],
+    },
+    {
+      id: '20250726010',
+      personId: '1',
+      date: '2025-07-26',
+      entries: [
+        {
+          eid: '__total__',
+          val: 150,
+        },
+      ],
+    },
+    {
+      id: '20250726020',
+      personId: '2',
+      date: '2025-07-26',
+      entries: [
+        {
+          eid: '__total__',
+          val: 110,
+        },
+      ],
+    },
+    {
+      id: '20250726030',
+      personId: '3',
+      date: '2025-07-26',
+      entries: [
+        {
+          eid: '__total__',
+          val: 200,
+        },
+      ],
+    },
+    {
+      id: '20250726040',
+      personId: '4',
+      date: '2025-07-26',
+      entries: [
+        {
+          eid: '__total__',
+          val: 100,
+        },
+      ],
+    },
+    {
+      id: '20250727010',
+      personId: '1',
+      date: '2025-07-27',
+      entries: [
+        {
+          eid: '__total__',
+          val: 160,
+        },
+      ],
+    },
+    {
+      id: '20250727020',
+      personId: '2',
+      date: '2025-07-27',
+      entries: [
+        {
+          eid: '__total__',
+          val: 115.32,
+        },
+      ],
+    },
+    {
+      id: '20250727030',
+      personId: '3',
+      date: '2025-07-27',
+      entries: [
+        {
+          eid: '__total__',
+          val: 200,
+        },
+      ],
+    },
+    {
+      id: '20250727040',
+      personId: '4',
+      date: '2025-07-27',
+      entries: [
+        {
+          eid: '__total__',
+          val: 100,
+        },
+      ],
+    },
+    {
+      id: '20250728010',
+      personId: '1',
+      date: '2025-07-28',
+      entries: [
+        {
+          eid: '__total__',
+          val: 163,
+        },
+      ],
+    },
+    {
+      id: '20250728020',
+      personId: '2',
+      date: '2025-07-28',
+      entries: [
+        {
+          eid: '__total__',
+          val: 154,
+        },
+      ],
+    },
+    {
+      id: '20250728030',
+      personId: '3',
+      date: '2025-07-28',
+      entries: [
+        {
+          eid: '__total__',
+          val: 200,
+        },
+      ],
+    },
+    {
+      id: '20250728040',
+      personId: '4',
+      date: '2025-07-28',
+      entries: [
+        {
+          eid: '__total__',
+          val: 100,
+        },
+      ],
+    },
+    {
+      id: '20250729010',
+      personId: '1',
+      date: '2025-07-29',
+      entries: [
+        {
+          eid: '__total__',
+          val: 173,
+        },
+      ],
+    },
+    {
+      id: '20250729020',
+      personId: '2',
+      date: '2025-07-29',
+      entries: [
+        {
+          eid: '__total__',
+          val: 437.2,
+        },
+      ],
+    },
+    {
+      id: '20250729030',
+      personId: '3',
+      date: '2025-07-29',
+      entries: [
+        {
+          eid: '__total__',
+          val: 200,
+        },
+      ],
+    },
+    {
+      id: '20250729040',
+      personId: '4',
+      date: '2025-07-29',
+      entries: [
+        {
+          eid: '__total__',
+          val: 100,
+        },
+      ],
+    },
+    {
+      id: '20250730010',
+      personId: '1',
+      date: '2025-07-30',
+      entries: [
+        {
+          eid: '__total__',
+          val: 261.5,
+        },
+      ],
+    },
+    {
+      id: '20250730020',
+      personId: '2',
+      date: '2025-07-30',
+      entries: [
+        {
+          eid: '__total__',
+          val: 254,
+        },
+      ],
+    },
+    {
+      id: '20250730030',
+      personId: '3',
+      date: '2025-07-30',
+      entries: [
+        {
+          eid: '__total__',
+          val: 420,
+        },
+      ],
+    },
+    {
+      id: '20250730040',
+      personId: '4',
+      date: '2025-07-30',
+      entries: [
+        {
+          eid: '__total__',
+          val: 125,
+        },
+      ],
+    },
+    {
+      id: '20250731010',
+      personId: '1',
+      date: '2025-07-31',
+      entries: [
+        {
+          eid: '__total__',
+          val: 340,
+        },
+      ],
+    },
+    {
+      id: '20250731020',
+      personId: '2',
+      date: '2025-07-31',
+      entries: [
+        {
+          eid: '__total__',
+          val: 105,
+        },
+      ],
+    },
+    {
+      id: '20250731030',
+      personId: '3',
+      date: '2025-07-31',
+      entries: [
+        {
+          eid: '__total__',
+          val: 420,
+        },
+      ],
+    },
+    {
+      id: '20250731040',
+      personId: '4',
+      date: '2025-07-31',
+      entries: [
+        {
+          eid: '__total__',
+          val: 100,
+        },
+      ],
+    },
+    {
+      id: '20250801010',
+      personId: '1',
+      date: '2025-08-01',
+      entries: [
+        {
+          eid: '__total__',
+          val: 160,
+        },
+      ],
+    },
+    {
+      id: '20250801020',
+      personId: '2',
+      date: '2025-08-01',
+      entries: [
+        {
+          eid: '__total__',
+          val: 100,
+        },
+      ],
+    },
+    {
+      id: '20250801030',
+      personId: '3',
+      date: '2025-08-01',
+      entries: [
+        {
+          eid: '__total__',
+          val: 200,
+        },
+      ],
+    },
+    {
+      id: '20250801040',
+      personId: '4',
+      date: '2025-08-01',
+      entries: [
+        {
+          eid: '__total__',
+          val: 100,
+        },
+      ],
+    },
+    {
+      id: '20250802010',
+      personId: '1',
+      date: '2025-08-02',
+      entries: [
+        {
+          eid: '__total__',
+          val: 147,
+        },
+      ],
+    },
+    {
+      id: '20250802020',
+      personId: '2',
+      date: '2025-08-02',
+      entries: [
+        {
+          eid: '__total__',
+          val: 130,
+        },
+      ],
+    },
+    {
+      id: '20250802030',
+      personId: '3',
+      date: '2025-08-02',
+      entries: [
+        {
+          eid: '__total__',
+          val: 200,
+        },
+      ],
+    },
+    {
+      id: '20250802040',
+      personId: '4',
+      date: '2025-08-02',
+      entries: [
+        {
+          eid: '__total__',
+          val: 100,
+        },
+      ],
+    },
+    {
+      id: '20250803010',
+      personId: '1',
+      date: '2025-08-03',
+      entries: [
+        {
+          eid: '__total__',
+          val: 110,
+        },
+      ],
+    },
+    {
+      id: '20250803020',
+      personId: '2',
+      date: '2025-08-03',
+      entries: [
+        {
+          eid: '__total__',
+          val: 110,
+        },
+      ],
+    },
+    {
+      id: '20250803030',
+      personId: '3',
+      date: '2025-08-03',
+      entries: [
+        {
+          eid: '__total__',
+          val: 551,
+        },
+      ],
+    },
+    {
+      id: '20250803040',
+      personId: '4',
+      date: '2025-08-03',
+      entries: [
+        {
+          eid: '__total__',
+          val: 100,
+        },
+      ],
+    },
+    {
+      id: '20250804010',
+      personId: '1',
+      date: '2025-08-04',
+      entries: [
+        {
+          eid: '__total__',
+          val: 277,
+        },
+      ],
+    },
+    {
+      id: '20250804020',
+      personId: '2',
+      date: '2025-08-04',
+      entries: [
+        {
+          eid: '__total__',
+          val: 245,
+        },
+      ],
+    },
+    {
+      id: '20250804030',
+      personId: '3',
+      date: '2025-08-04',
+      entries: [
+        {
+          eid: '__total__',
+          val: 251,
+        },
+      ],
+    },
+    {
+      id: '20250804040',
+      personId: '4',
+      date: '2025-08-04',
+      entries: [
+        {
+          eid: '__total__',
+          val: 100,
+        },
+      ],
+    },
+    {
+      id: '20250805010',
+      personId: '1',
+      date: '2025-08-05',
+      entries: [
+        {
+          eid: '__total__',
+          val: 180,
+        },
+      ],
+    },
+    {
+      id: '20250805030',
+      personId: '3',
+      date: '2025-08-05',
+      entries: [
+        {
+          eid: '__total__',
+          val: 251,
+        },
+      ],
+    },
+    {
+      id: '20250805040',
+      personId: '4',
+      date: '2025-08-05',
+      entries: [
+        {
+          eid: '__total__',
+          val: 105,
+        },
+      ],
+    },
+    {
+      id: '20250806010',
+      personId: '1',
+      date: '2025-08-06',
+      entries: [
+        {
+          eid: '__total__',
+          val: 320,
+        },
+      ],
+    },
+    {
+      id: '20250806020',
+      personId: '2',
+      date: '2025-08-06',
+      entries: [
+        {
+          eid: '__total__',
+          val: 100,
+        },
+      ],
+    },
+    {
+      id: '20250806030',
+      personId: '3',
+      date: '2025-08-06',
+      entries: [
+        {
+          eid: '__total__',
+          val: 251,
+        },
+      ],
+    },
+    {
+      id: '20250806040',
+      personId: '4',
+      date: '2025-08-06',
+      entries: [
+        {
+          eid: '__total__',
+          val: 100,
+        },
+      ],
+    },
+    {
+      id: '20250807010',
+      personId: '1',
+      date: '2025-08-07',
+      entries: [
+        {
+          eid: '__total__',
+          val: 220,
+        },
+      ],
+    },
+    {
+      id: '20250807020',
+      personId: '2',
+      date: '2025-08-07',
+      entries: [
+        {
+          eid: '__total__',
+          val: 156.2,
+        },
+      ],
+    },
+    {
+      id: '20250807030',
+      personId: '3',
+      date: '2025-08-07',
+      entries: [
+        {
+          eid: '__total__',
+          val: 251,
+        },
+      ],
+    },
+    {
+      id: '20250807040',
+      personId: '4',
+      date: '2025-08-07',
+      entries: [
+        {
+          eid: '__total__',
+          val: 105,
+        },
+      ],
+    },
+    {
+      id: '20250808010',
+      personId: '1',
+      date: '2025-08-08',
+      entries: [
+        {
+          eid: '__total__',
+          val: 175,
+        },
+      ],
+    },
+    {
+      id: '20250808020',
+      personId: '2',
+      date: '2025-08-08',
+      entries: [
+        {
+          eid: '__total__',
+          val: 116,
+        },
+      ],
+    },
+    {
+      id: '20250808030',
+      personId: '3',
+      date: '2025-08-08',
+      entries: [
+        {
+          eid: '__total__',
+          val: 251,
+        },
+      ],
+    },
+    {
+      id: '20250808040',
+      personId: '4',
+      date: '2025-08-08',
+      entries: [
+        {
+          eid: '__total__',
+          val: 105,
+        },
+      ],
+    },
+    {
+      id: '20250809010',
+      personId: '1',
+      date: '2025-08-09',
+      entries: [
+        {
+          eid: '__total__',
+          val: 155,
+        },
+      ],
+    },
+    {
+      id: '20250809020',
+      personId: '2',
+      date: '2025-08-09',
+      entries: [
+        {
+          eid: '__total__',
+          val: 155,
+        },
+      ],
+    },
+    {
+      id: '20250809030',
+      personId: '3',
+      date: '2025-08-09',
+      entries: [
+        {
+          eid: '__total__',
+          val: 251,
+        },
+      ],
+    },
+    {
+      id: '20250809040',
+      personId: '4',
+      date: '2025-08-09',
+      entries: [
+        {
+          eid: '__total__',
+          val: 100,
+        },
+      ],
+    },
+    {
+      id: '20250810010',
+      personId: '1',
+      date: '2025-08-10',
+      entries: [
+        {
+          eid: '__total__',
+          val: 110,
+        },
+      ],
+    },
+    {
+      id: '20250810020',
+      personId: '2',
+      date: '2025-08-10',
+      entries: [
+        {
+          eid: '__total__',
+          val: 40,
+        },
+      ],
+    },
+    {
+      id: '20250810030',
+      personId: '3',
+      date: '2025-08-10',
+      entries: [
+        {
+          eid: '__total__',
+          val: 251,
+        },
+      ],
+    },
+    {
+      id: '20250810040',
+      personId: '4',
+      date: '2025-08-10',
+      entries: [
+        {
+          eid: '__total__',
+          val: 100,
+        },
+      ],
+    },
+    {
+      id: '20250811010',
+      personId: '1',
+      date: '2025-08-11',
+      entries: [
+        {
+          eid: '__total__',
+          val: 265,
+        },
+      ],
+    },
+    {
+      id: '20250811020',
+      personId: '2',
+      date: '2025-08-11',
+      entries: [
+        {
+          eid: '__total__',
+          val: 175.2,
+        },
+      ],
+    },
+    {
+      id: '20250811030',
+      personId: '3',
+      date: '2025-08-11',
+      entries: [
+        {
+          eid: '__total__',
+          val: 251,
+        },
+      ],
+    },
+    {
+      id: '20250811040',
+      personId: '4',
+      date: '2025-08-11',
+      entries: [
+        {
+          eid: '__total__',
+          val: 100,
+        },
+      ],
+    },
+    {
+      id: '20250812010',
+      personId: '1',
+      date: '2025-08-12',
+      entries: [
+        {
+          eid: '__total__',
+          val: 222.5,
+        },
+      ],
+    },
+    {
+      id: '20250812020',
+      personId: '2',
+      date: '2025-08-12',
+      entries: [
+        {
+          eid: '__total__',
+          val: 185.44,
+        },
+      ],
+    },
+    {
+      id: '20250812030',
+      personId: '3',
+      date: '2025-08-12',
+      entries: [
+        {
+          eid: '__total__',
+          val: 251,
+        },
+      ],
+    },
+    {
+      id: '20250812040',
+      personId: '4',
+      date: '2025-08-12',
+      entries: [
+        {
+          eid: '__total__',
+          val: 100,
+        },
+      ],
+    },
+    {
+      id: '20250813010',
+      personId: '1',
+      date: '2025-08-13',
+      entries: [
+        {
+          eid: '__total__',
+          val: 195,
+        },
+      ],
+    },
+    {
+      id: '20250813020',
+      personId: '2',
+      date: '2025-08-13',
+      entries: [
+        {
+          eid: '__total__',
+          val: 120,
+        },
+      ],
+    },
+    {
+      id: '20250813030',
+      personId: '3',
+      date: '2025-08-13',
+      entries: [
+        {
+          eid: '__total__',
+          val: 251,
+        },
+      ],
+    },
+    {
+      id: '20250813040',
+      personId: '4',
+      date: '2025-08-13',
+      entries: [
+        {
+          eid: '__total__',
+          val: 100,
+        },
+      ],
+    },
+    {
+      id: '20250814010',
+      personId: '1',
+      date: '2025-08-14',
+      entries: [
+        {
+          eid: '__total__',
+          val: 241,
+        },
+      ],
+    },
+    {
+      id: '20250814020',
+      personId: '2',
+      date: '2025-08-14',
+      entries: [
+        {
+          eid: '__total__',
+          val: 100,
+        },
+      ],
+    },
+    {
+      id: '20250814030',
+      personId: '3',
+      date: '2025-08-14',
+      entries: [
+        {
+          eid: '__total__',
+          val: 251,
+        },
+      ],
+    },
+    {
+      id: '20250815010',
+      personId: '1',
+      date: '2025-08-15',
+      entries: [
+        {
+          eid: '__total__',
+          val: 311,
+        },
+      ],
+    },
+    {
+      id: '20250815020',
+      personId: '2',
+      date: '2025-08-15',
+      entries: [
+        {
+          eid: '__total__',
+          val: 105,
+        },
+      ],
+    },
+    {
+      id: '20250815030',
+      personId: '3',
+      date: '2025-08-15',
+      entries: [
+        {
+          eid: '__total__',
+          val: 251,
+        },
+      ],
+    },
+    {
+      id: '20250816010',
+      personId: '1',
+      date: '2025-08-16',
+      entries: [
+        {
+          eid: '__total__',
+          val: 171,
+        },
+      ],
+    },
+    {
+      id: '20250816020',
+      personId: '2',
+      date: '2025-08-16',
+      entries: [
+        {
+          eid: '__total__',
+          val: 100,
+        },
+      ],
+    },
+    {
+      id: '20250816030',
+      personId: '3',
+      date: '2025-08-16',
+      entries: [
+        {
+          eid: '__total__',
+          val: 251,
+        },
+      ],
+    },
+    {
+      id: '20250816040',
+      personId: '4',
+      date: '2025-08-16',
+      entries: [
+        {
+          eid: '__total__',
+          val: 100,
+        },
+      ],
+    },
+    {
+      id: '20250817010',
+      personId: '1',
+      date: '2025-08-17',
+      entries: [
+        {
+          eid: '__total__',
+          val: 340,
+        },
+      ],
+    },
+    {
+      id: '20250817020',
+      personId: '2',
+      date: '2025-08-17',
+      entries: [
+        {
+          eid: '__total__',
+          val: 330,
+        },
+      ],
+    },
+    {
+      id: '20250817030',
+      personId: '3',
+      date: '2025-08-17',
+      entries: [
+        {
+          eid: '__total__',
+          val: 251,
+        },
+      ],
+    },
+    {
+      id: '20250817040',
+      personId: '4',
+      date: '2025-08-17',
+      entries: [
+        {
+          eid: '__total__',
+          val: 100,
+        },
+      ],
+    },
+    {
+      id: '20250818010',
+      personId: '1',
+      date: '2025-08-18',
+      entries: [
+        {
+          eid: '__total__',
+          val: 170,
+        },
+      ],
+    },
+    {
+      id: '20250818020',
+      personId: '2',
+      date: '2025-08-18',
+      entries: [
+        {
+          eid: '__total__',
+          val: 255.44,
+        },
+      ],
+    },
+    {
+      id: '20250818030',
+      personId: '3',
+      date: '2025-08-18',
+      entries: [
+        {
+          eid: '__total__',
+          val: 251,
+        },
+      ],
+    },
+    {
+      id: '20250818040',
+      personId: '4',
+      date: '2025-08-18',
+      entries: [
+        {
+          eid: '__total__',
+          val: 100,
+        },
+      ],
+    },
+    {
+      id: '20250819010',
+      personId: '1',
+      date: '2025-08-19',
+      entries: [
+        {
+          eid: '__total__',
+          val: 300,
+        },
+      ],
+    },
+    {
+      id: '20250819020',
+      personId: '2',
+      date: '2025-08-19',
+      entries: [
+        {
+          eid: '__total__',
+          val: 120,
+        },
+      ],
+    },
+    {
+      id: '20250819030',
+      personId: '3',
+      date: '2025-08-19',
+      entries: [
+        {
+          eid: '__total__',
+          val: 251,
+        },
+      ],
+    },
+    {
+      id: '20250819040',
+      personId: '4',
+      date: '2025-08-19',
+      entries: [
+        {
+          eid: '__total__',
+          val: 100,
+        },
+      ],
+    },
+    {
+      id: '20250820010',
+      personId: '1',
+      date: '2025-08-20',
+      entries: [
+        {
+          eid: '__total__',
+          val: 280,
+        },
+      ],
+    },
+    {
+      id: '20250820020',
+      personId: '2',
+      date: '2025-08-20',
+      entries: [
+        {
+          eid: '__total__',
+          val: 105,
+        },
+      ],
+    },
+    {
+      id: '20250820030',
+      personId: '3',
+      date: '2025-08-20',
+      entries: [
+        {
+          eid: '__total__',
+          val: 251,
+        },
+      ],
+    },
+    {
+      id: '20250820040',
+      personId: '4',
+      date: '2025-08-20',
+      entries: [
+        {
+          eid: '__total__',
+          val: 100,
+        },
+      ],
+    },
+    {
+      id: '20250821010',
+      personId: '1',
+      date: '2025-08-21',
+      entries: [
+        {
+          eid: '__total__',
+          val: 263,
+        },
+      ],
+    },
+    {
+      id: '20250821020',
+      personId: '2',
+      date: '2025-08-21',
+      entries: [
+        {
+          eid: '__total__',
+          val: 30,
+        },
+      ],
+    },
+    {
+      id: '20250821030',
+      personId: '3',
+      date: '2025-08-21',
+      entries: [
+        {
+          eid: '__total__',
+          val: 251,
+        },
+      ],
+    },
+    {
+      id: '20250821040',
+      personId: '4',
+      date: '2025-08-21',
+      entries: [
+        {
+          eid: '__total__',
+          val: 100,
+        },
+      ],
+    },
+    {
+      id: '20250822010',
+      personId: '1',
+      date: '2025-08-22',
+      entries: [
+        {
+          eid: '__total__',
+          val: 170,
+        },
+      ],
+    },
+    {
+      id: '20250822020',
+      personId: '2',
+      date: '2025-08-22',
+      entries: [
+        {
+          eid: '__total__',
+          val: 115,
+        },
+      ],
+    },
+    {
+      id: '20250822030',
+      personId: '3',
+      date: '2025-08-22',
+      entries: [
+        {
+          eid: '__total__',
+          val: 251,
+        },
+      ],
+    },
+    {
+      id: '20250822040',
+      personId: '4',
+      date: '2025-08-22',
+      entries: [
+        {
+          eid: '__total__',
+          val: 100,
+        },
+      ],
+    },
+    {
+      id: '20250823010',
+      personId: '1',
+      date: '2025-08-23',
+      entries: [
+        {
+          eid: '__total__',
+          val: 150,
+        },
+      ],
+    },
+    {
+      id: '20250823020',
+      personId: '2',
+      date: '2025-08-23',
+      entries: [
+        {
+          eid: '__total__',
+          val: 110,
+        },
+      ],
+    },
+    {
+      id: '20250823030',
+      personId: '3',
+      date: '2025-08-23',
+      entries: [
+        {
+          eid: '__total__',
+          val: 251,
+        },
+      ],
+    },
+    {
+      id: '20250823040',
+      personId: '4',
+      date: '2025-08-23',
+      entries: [
+        {
+          eid: '__total__',
+          val: 100,
+        },
+      ],
+    },
+    {
+      id: '20250824010',
+      personId: '1',
+      date: '2025-08-24',
+      entries: [
+        {
+          eid: '__total__',
+          val: 170,
+        },
+      ],
+    },
+    {
+      id: '20250824020',
+      personId: '2',
+      date: '2025-08-24',
+      entries: [
+        {
+          eid: '__total__',
+          val: 100,
+        },
+      ],
+    },
+    {
+      id: '20250824030',
+      personId: '3',
+      date: '2025-08-24',
+      entries: [
+        {
+          eid: '__total__',
+          val: 251,
+        },
+      ],
+    },
+    {
+      id: '20250824040',
+      personId: '4',
+      date: '2025-08-24',
+      entries: [
+        {
+          eid: '__total__',
+          val: 100,
+        },
+      ],
+    },
+    {
+      id: '20250825010',
+      personId: '1',
+      date: '2025-08-25',
+      entries: [
+        {
+          eid: '__total__',
+          val: 145,
+        },
+      ],
+    },
+    {
+      id: '20250825030',
+      personId: '3',
+      date: '2025-08-25',
+      entries: [
+        {
+          eid: '__total__',
+          val: 251,
+        },
+      ],
+    },
+    {
+      id: '20250825040',
+      personId: '4',
+      date: '2025-08-25',
+      entries: [
+        {
+          eid: '__total__',
+          val: 100,
+        },
+      ],
+    },
+    {
+      id: '20250826010',
+      personId: '1',
+      date: '2025-08-26',
+      entries: [
+        {
+          eid: '__total__',
+          val: 105,
+        },
+      ],
+    },
+    {
+      id: '20250826020',
+      personId: '2',
+      date: '2025-08-26',
+      entries: [
+        {
+          eid: '__total__',
+          val: 100,
+        },
+      ],
+    },
+    {
+      id: '20250826030',
+      personId: '3',
+      date: '2025-08-26',
+      entries: [
+        {
+          eid: '__total__',
+          val: 251,
+        },
+      ],
+    },
+    {
+      id: '20250826040',
+      personId: '4',
+      date: '2025-08-26',
+      entries: [
+        {
+          eid: '__total__',
+          val: 100,
+        },
+      ],
+    },
+    {
+      id: '20250827010',
+      personId: '1',
+      date: '2025-08-27',
+      entries: [
+        {
+          eid: '__total__',
+          val: 175,
+        },
+      ],
+    },
+    {
+      id: '20250827020',
+      personId: '2',
+      date: '2025-08-27',
+      entries: [
+        {
+          eid: '__total__',
+          val: 141,
+        },
+      ],
+    },
+    {
+      id: '20250827030',
+      personId: '3',
+      date: '2025-08-27',
+      entries: [
+        {
+          eid: '__total__',
+          val: 251,
+        },
+      ],
+    },
+    {
+      id: '20250827040',
+      personId: '4',
+      date: '2025-08-27',
+      entries: [
+        {
+          eid: '__total__',
+          val: 100,
+        },
+      ],
+    },
+    {
+      id: '20250828010',
+      personId: '1',
+      date: '2025-08-28',
+      entries: [
+        {
+          eid: '__total__',
+          val: 135,
+        },
+      ],
+    },
+    {
+      id: '20250828020',
+      personId: '2',
+      date: '2025-08-28',
+      entries: [
+        {
+          eid: '__total__',
+          val: 100,
+        },
+      ],
+    },
+    {
+      id: '20250828030',
+      personId: '3',
+      date: '2025-08-28',
+      entries: [
+        {
+          eid: '__total__',
+          val: 251,
+        },
+      ],
+    },
+    {
+      id: '20250828040',
+      personId: '4',
+      date: '2025-08-28',
+      entries: [
+        {
+          eid: '__total__',
+          val: 100,
+        },
+      ],
+    },
+    {
+      id: '20250829010',
+      personId: '1',
+      date: '2025-08-29',
+      entries: [
+        {
+          eid: '__total__',
+          val: 160,
+        },
+      ],
+    },
+    {
+      id: '20250829030',
+      personId: '3',
+      date: '2025-08-29',
+      entries: [
+        {
+          eid: '__total__',
+          val: 251,
+        },
+      ],
+    },
+    {
+      id: '20250829040',
+      personId: '4',
+      date: '2025-08-29',
+      entries: [
+        {
+          eid: '__total__',
+          val: 100,
+        },
+      ],
+    },
+    {
+      id: '20250830010',
+      personId: '1',
+      date: '2025-08-30',
+      entries: [
+        {
+          eid: '__total__',
+          val: 125,
+        },
+      ],
+    },
+    {
+      id: '20250830020',
+      personId: '2',
+      date: '2025-08-30',
+      entries: [
+        {
+          eid: '__total__',
+          val: 135,
+        },
+      ],
+    },
+    {
+      id: '20250830030',
+      personId: '3',
+      date: '2025-08-30',
+      entries: [
+        {
+          eid: '__total__',
+          val: 251,
+        },
+      ],
+    },
+    {
+      id: '20250830040',
+      personId: '4',
+      date: '2025-08-30',
+      entries: [
+        {
+          eid: '__total__',
+          val: 159.5,
+        },
+      ],
+    },
+    {
+      id: '20250831010',
+      personId: '1',
+      date: '2025-08-31',
+      entries: [
+        {
+          eid: '__total__',
+          val: 130,
+        },
+      ],
+    },
+    {
+      id: '20250831020',
+      personId: '2',
+      date: '2025-08-31',
+      entries: [
+        {
+          eid: '__total__',
+          val: 102,
+        },
+      ],
+    },
+    {
+      id: '20250831030',
+      personId: '3',
+      date: '2025-08-31',
+      entries: [
+        {
+          eid: '__total__',
+          val: 251,
+        },
+      ],
+    },
+    {
+      id: '20250831040',
+      personId: '4',
+      date: '2025-08-31',
+      entries: [
+        {
+          eid: '__total__',
+          val: 306,
+        },
+      ],
+    },
+    {
+      id: '20250901010',
+      personId: '1',
+      date: '2025-09-01',
+      entries: [
+        {
+          eid: '__total__',
+          val: 160,
+        },
+      ],
+    },
+    {
+      id: '20250901020',
+      personId: '2',
+      date: '2025-09-01',
+      entries: [
+        {
+          eid: '__total__',
+          val: 100,
+        },
+      ],
+    },
+    {
+      id: '20250901030',
+      personId: '3',
+      date: '2025-09-01',
+      entries: [
+        {
+          eid: '__total__',
+          val: 251,
+        },
+      ],
+    },
+    {
+      id: '20250901040',
+      personId: '4',
+      date: '2025-09-01',
+      entries: [
+        {
+          eid: '__total__',
+          val: 125,
+        },
+      ],
+    },
+    {
+      id: '20250902010',
+      personId: '1',
+      date: '2025-09-02',
+      entries: [
+        {
+          eid: '__total__',
+          val: 299,
+        },
+      ],
+    },
+    {
+      id: '20250902020',
+      personId: '2',
+      date: '2025-09-02',
+      entries: [
+        {
+          eid: '__total__',
+          val: 360,
+        },
+      ],
+    },
+    {
+      id: '20250902030',
+      personId: '3',
+      date: '2025-09-02',
+      entries: [
+        {
+          eid: '__total__',
+          val: 251,
+        },
+      ],
+    },
+    {
+      id: '20250902040',
+      personId: '4',
+      date: '2025-09-02',
+      entries: [
+        {
+          eid: '__total__',
+          val: 100,
+        },
+      ],
+    },
+    {
+      id: '20250903010',
+      personId: '1',
+      date: '2025-09-03',
+      entries: [
+        {
+          eid: '__total__',
+          val: 170,
+        },
+      ],
+    },
+    {
+      id: '20250903020',
+      personId: '2',
+      date: '2025-09-03',
+      entries: [
+        {
+          eid: '__total__',
+          val: 0.1,
+        },
+      ],
+    },
+    {
+      id: '20250903030',
+      personId: '3',
+      date: '2025-09-03',
+      entries: [
+        {
+          eid: '__total__',
+          val: 151,
+        },
+      ],
+    },
+    {
+      id: '20250903040',
+      personId: '4',
+      date: '2025-09-03',
+      entries: [
+        {
+          eid: '__total__',
+          val: 100,
+        },
+      ],
+    },
+    {
+      id: '20250904010',
+      personId: '1',
+      date: '2025-09-04',
+      entries: [
+        {
+          eid: '__total__',
+          val: 240,
+        },
+      ],
+    },
+    {
+      id: '20250904020',
+      personId: '2',
+      date: '2025-09-04',
+      entries: [
+        {
+          eid: '__total__',
+          val: 115,
+        },
+      ],
+    },
+    {
+      id: '20250904030',
+      personId: '3',
+      date: '2025-09-04',
+      entries: [
+        {
+          eid: '__total__',
+          val: 251,
+        },
+      ],
+    },
+    {
+      id: '20250904040',
+      personId: '4',
+      date: '2025-09-04',
+      entries: [
+        {
+          eid: '__total__',
+          val: 100,
+        },
+      ],
+    },
+    {
+      id: '20250905010',
+      personId: '1',
+      date: '2025-09-05',
+      entries: [
+        {
+          eid: '__total__',
+          val: 170,
+        },
+      ],
+    },
+    {
+      id: '20250905020',
+      personId: '2',
+      date: '2025-09-05',
+      entries: [
+        {
+          eid: '__total__',
+          val: 100,
+        },
+      ],
+    },
+    {
+      id: '20250905030',
+      personId: '3',
+      date: '2025-09-05',
+      entries: [
+        {
+          eid: '__total__',
+          val: 251,
+        },
+      ],
+    },
+    {
+      id: '20250905040',
+      personId: '4',
+      date: '2025-09-05',
+      entries: [
+        {
+          eid: '__total__',
+          val: 100,
+        },
+      ],
+    },
+    {
+      id: '20250906010',
+      personId: '1',
+      date: '2025-09-06',
+      entries: [
+        {
+          eid: '__total__',
+          val: 130,
+        },
+      ],
+    },
+    {
+      id: '20250906020',
+      personId: '2',
+      date: '2025-09-06',
+      entries: [
+        {
+          eid: '__total__',
+          val: 151,
+        },
+      ],
+    },
+    {
+      id: '20250906030',
+      personId: '3',
+      date: '2025-09-06',
+      entries: [
+        {
+          eid: '__total__',
+          val: 251,
+        },
+      ],
+    },
+    {
+      id: '20250906040',
+      personId: '4',
+      date: '2025-09-06',
+      entries: [
+        {
+          eid: '__total__',
+          val: 100,
+        },
+      ],
+    },
+    {
+      id: '20250907010',
+      personId: '1',
+      date: '2025-09-07',
+      entries: [
+        {
+          eid: '__total__',
+          val: 150,
+        },
+      ],
+    },
+    {
+      id: '20250907020',
+      personId: '2',
+      date: '2025-09-07',
+      entries: [
+        {
+          eid: '__total__',
+          val: 100,
+        },
+      ],
+    },
+    {
+      id: '20250907030',
+      personId: '3',
+      date: '2025-09-07',
+      entries: [
+        {
+          eid: '__total__',
+          val: 251,
+        },
+      ],
+    },
+    {
+      id: '20250907040',
+      personId: '4',
+      date: '2025-09-07',
+      entries: [
+        {
+          eid: '__total__',
+          val: 100,
+        },
+      ],
+    },
+    {
+      id: '20250908010',
+      personId: '1',
+      date: '2025-09-08',
+      entries: [
+        {
+          eid: '__total__',
+          val: 170,
+        },
+      ],
+    },
+    {
+      id: '20250908020',
+      personId: '2',
+      date: '2025-09-08',
+      entries: [
+        {
+          eid: '__total__',
+          val: 251.516,
+        },
+      ],
+    },
+    {
+      id: '20250908030',
+      personId: '3',
+      date: '2025-09-08',
+      entries: [
+        {
+          eid: '__total__',
+          val: 151,
+        },
+      ],
+    },
+    {
+      id: '20250909010',
+      personId: '1',
+      date: '2025-09-09',
+      entries: [
+        {
+          eid: '__total__',
+          val: 180,
+        },
+      ],
+    },
+    {
+      id: '20250909020',
+      personId: '2',
+      date: '2025-09-09',
+      entries: [
+        {
+          eid: '__total__',
+          val: 200,
+        },
+      ],
+    },
+    {
+      id: '20250909030',
+      personId: '3',
+      date: '2025-09-09',
+      entries: [
+        {
+          eid: '__total__',
+          val: 251,
+        },
+      ],
+    },
+    {
+      id: '20250910010',
+      personId: '1',
+      date: '2025-09-10',
+      entries: [
+        {
+          eid: '__total__',
+          val: 195,
+        },
+      ],
+    },
+    {
+      id: '20250910020',
+      personId: '2',
+      date: '2025-09-10',
+      entries: [
+        {
+          eid: '__total__',
+          val: 0.1,
+        },
+      ],
+    },
+    {
+      id: '20250910030',
+      personId: '3',
+      date: '2025-09-10',
+      entries: [
+        {
+          eid: '__total__',
+          val: 151,
+        },
+      ],
+    },
+    {
+      id: '20250911010',
+      personId: '1',
+      date: '2025-09-11',
+      entries: [
+        {
+          eid: '__total__',
+          val: 226,
+        },
+      ],
+    },
+    {
+      id: '20250911020',
+      personId: '2',
+      date: '2025-09-11',
+      entries: [
+        {
+          eid: '__total__',
+          val: 60,
+        },
+      ],
+    },
+    {
+      id: '20250911030',
+      personId: '3',
+      date: '2025-09-11',
+      entries: [
+        {
+          eid: '__total__',
+          val: 151,
+        },
+      ],
+    },
+    {
+      id: '20250912010',
+      personId: '1',
+      date: '2025-09-12',
+      entries: [
+        {
+          eid: '__total__',
+          val: 174,
+        },
+      ],
+    },
+    {
+      id: '20250912020',
+      personId: '2',
+      date: '2025-09-12',
+      entries: [
+        {
+          eid: '__total__',
+          val: 0.1,
+        },
+      ],
+    },
+    {
+      id: '20250912030',
+      personId: '3',
+      date: '2025-09-12',
+      entries: [
+        {
+          eid: '__total__',
+          val: 471,
+        },
+      ],
+    },
+    {
+      id: '20250913010',
+      personId: '1',
+      date: '2025-09-13',
+      entries: [
+        {
+          eid: '__total__',
+          val: 180,
+        },
+      ],
+    },
+    {
+      id: '20250913020',
+      personId: '2',
+      date: '2025-09-13',
+      entries: [
+        {
+          eid: '__total__',
+          val: 150,
+        },
+      ],
+    },
+    {
+      id: '20250913030',
+      personId: '3',
+      date: '2025-09-13',
+      entries: [
+        {
+          eid: '__total__',
+          val: 251,
+        },
+      ],
+    },
+    {
+      id: '20250914010',
+      personId: '1',
+      date: '2025-09-14',
+      entries: [
+        {
+          eid: '__total__',
+          val: 266,
+        },
+      ],
+    },
+    {
+      id: '20250914020',
+      personId: '2',
+      date: '2025-09-14',
+      entries: [
+        {
+          eid: '__total__',
+          val: 100.44,
+        },
+      ],
+    },
+    {
+      id: '20250914030',
+      personId: '3',
+      date: '2025-09-14',
+      entries: [
+        {
+          eid: '__total__',
+          val: 251,
+        },
+      ],
+    },
+    {
+      id: '20250915010',
+      personId: '1',
+      date: '2025-09-15',
+      entries: [
+        {
+          eid: '__total__',
+          val: 160,
+        },
+      ],
+    },
+    {
+      id: '20250915020',
+      personId: '2',
+      date: '2025-09-15',
+      entries: [
+        {
+          eid: '__total__',
+          val: 300,
+        },
+      ],
+    },
+    {
+      id: '20250915030',
+      personId: '3',
+      date: '2025-09-15',
+      entries: [
+        {
+          eid: '__total__',
+          val: 151,
+        },
+      ],
+    },
+    {
+      id: '20250916010',
+      personId: '1',
+      date: '2025-09-16',
+      entries: [
+        {
+          eid: '__total__',
+          val: 130,
+        },
+      ],
+    },
+    {
+      id: '20250916020',
+      personId: '2',
+      date: '2025-09-16',
+      entries: [
+        {
+          eid: '__total__',
+          val: 0.1,
+        },
+      ],
+    },
+    {
+      id: '20250916030',
+      personId: '3',
+      date: '2025-09-16',
+      entries: [
+        {
+          eid: '__total__',
+          val: 351,
+        },
+      ],
+    },
+    {
+      id: '20250917010',
+      personId: '1',
+      date: '2025-09-17',
+      entries: [
+        {
+          eid: '__total__',
+          val: 156,
+        },
+      ],
+    },
+    {
+      id: '20250917020',
+      personId: '2',
+      date: '2025-09-17',
+      entries: [
+        {
+          eid: '__total__',
+          val: 250,
+        },
+      ],
+    },
+    {
+      id: '20250917030',
+      personId: '3',
+      date: '2025-09-17',
+      entries: [
+        {
+          eid: '__total__',
+          val: 151,
+        },
+      ],
+    },
+    {
+      id: '20250918010',
+      personId: '1',
+      date: '2025-09-18',
+      entries: [
+        {
+          eid: '__total__',
+          val: 280,
+        },
+      ],
+    },
+    {
+      id: '20250918020',
+      personId: '2',
+      date: '2025-09-18',
+      entries: [
+        {
+          eid: '__total__',
+          val: 250,
+        },
+      ],
+    },
+    {
+      id: '20250918030',
+      personId: '3',
+      date: '2025-09-18',
+      entries: [
+        {
+          eid: '__total__',
+          val: 151,
+        },
+      ],
+    },
+    {
+      id: '20250919010',
+      personId: '1',
+      date: '2025-09-19',
+      entries: [
+        {
+          eid: '__total__',
+          val: 246,
+        },
+      ],
+    },
+    {
+      id: '20250919020',
+      personId: '2',
+      date: '2025-09-19',
+      entries: [
+        {
+          eid: '__total__',
+          val: 100,
+        },
+      ],
+    },
+    {
+      id: '20250919030',
+      personId: '3',
+      date: '2025-09-19',
+      entries: [
+        {
+          eid: '__total__',
+          val: 505,
+        },
+      ],
+    },
+    {
+      id: '20250920010',
+      personId: '1',
+      date: '2025-09-20',
+      entries: [
+        {
+          eid: '__total__',
+          val: 10,
+        },
+      ],
+    },
+    {
+      id: '20250920020',
+      personId: '2',
+      date: '2025-09-20',
+      entries: [
+        {
+          eid: '__total__',
+          val: 200,
+        },
+      ],
+    },
+    {
+      id: '20250920030',
+      personId: '3',
+      date: '2025-09-20',
+      entries: [
+        {
+          eid: '__total__',
+          val: 251,
+        },
+      ],
+    },
+    {
+      id: '20250921020',
+      personId: '2',
+      date: '2025-09-21',
+      entries: [
+        {
+          eid: '__total__',
+          val: 100,
+        },
+      ],
+    },
+    {
+      id: '20250921030',
+      personId: '3',
+      date: '2025-09-21',
+      entries: [
+        {
+          eid: '__total__',
+          val: 251,
+        },
+      ],
+    },
+    {
+      id: '20250922010',
+      personId: '1',
+      date: '2025-09-22',
+      entries: [
+        {
+          eid: '__total__',
+          val: 140,
+        },
+      ],
+    },
+    {
+      id: '20250922020',
+      personId: '2',
+      date: '2025-09-22',
+      entries: [
+        {
+          eid: '__total__',
+          val: 150,
+        },
+      ],
+    },
+    {
+      id: '20250922030',
+      personId: '3',
+      date: '2025-09-22',
+      entries: [
+        {
+          eid: '__total__',
+          val: 201,
+        },
+      ],
+    },
+    {
+      id: '20250923010',
+      personId: '1',
+      date: '2025-09-23',
+      entries: [
+        {
+          eid: '__total__',
+          val: 156,
+        },
+      ],
+    },
+    {
+      id: '20250923030',
+      personId: '3',
+      date: '2025-09-23',
+      entries: [
+        {
+          eid: '__total__',
+          val: 251,
+        },
+      ],
+    },
+    {
+      id: '20250924010',
+      personId: '1',
+      date: '2025-09-24',
+      entries: [
+        {
+          eid: '__total__',
+          val: 106,
+        },
+      ],
+    },
+    {
+      id: '20250924020',
+      personId: '2',
+      date: '2025-09-24',
+      entries: [
+        {
+          eid: '__total__',
+          val: 100,
+        },
+      ],
+    },
+    {
+      id: '20250924030',
+      personId: '3',
+      date: '2025-09-24',
+      entries: [
+        {
+          eid: '__total__',
+          val: 151,
+        },
+      ],
+    },
+    {
+      id: '20250925020',
+      personId: '2',
+      date: '2025-09-25',
+      entries: [
+        {
+          eid: '__total__',
+          val: 100,
+        },
+      ],
+    },
+    {
+      id: '20250925030',
+      personId: '3',
+      date: '2025-09-25',
+      entries: [
+        {
+          eid: '__total__',
+          val: 151,
+        },
+      ],
+    },
+    {
+      id: '20250926010',
+      personId: '1',
+      date: '2025-09-26',
+      entries: [
+        {
+          eid: '__total__',
+          val: 227,
+        },
+      ],
+    },
+    {
+      id: '20250926020',
+      personId: '2',
+      date: '2025-09-26',
+      entries: [
+        {
+          eid: '__total__',
+          val: 100,
+        },
+      ],
+    },
+    {
+      id: '20250926030',
+      personId: '3',
+      date: '2025-09-26',
+      entries: [
+        {
+          eid: '__total__',
+          val: 251,
+        },
+      ],
+    },
+    {
+      id: '20250927030',
+      personId: '3',
+      date: '2025-09-27',
+      entries: [
+        {
+          eid: '__total__',
+          val: 251,
+        },
+      ],
+    },
+    {
+      id: '20250928020',
+      personId: '2',
+      date: '2025-09-28',
+      entries: [
+        {
+          eid: '__total__',
+          val: 51,
+        },
+      ],
+    },
+    {
+      id: '20250928030',
+      personId: '3',
+      date: '2025-09-28',
+      entries: [
+        {
+          eid: '__total__',
+          val: 251,
+        },
+      ],
+    },
+    {
+      id: '20250929030',
+      personId: '3',
+      date: '2025-09-29',
+      entries: [
+        {
+          eid: '__total__',
+          val: 101,
+        },
+      ],
+    },
+    {
+      id: '20250930020',
+      personId: '2',
+      date: '2025-09-30',
+      entries: [
+        {
+          eid: '__total__',
+          val: 180.24,
+        },
+      ],
+    },
+    {
+      id: '20250930030',
+      personId: '3',
+      date: '2025-09-30',
+      entries: [
+        {
+          eid: '__total__',
+          val: 251,
+        },
+      ],
+    },
+    {
+      id: '20251001010',
+      personId: '1',
+      date: '2025-10-01',
+      entries: [
+        {
+          eid: '__total__',
+          val: 148,
+        },
+      ],
+    },
+    {
+      id: '20251001030',
+      personId: '3',
+      date: '2025-10-01',
+      entries: [
+        {
+          eid: '__total__',
+          val: 101,
+        },
+      ],
+    },
+    {
+      id: '20251002010',
+      personId: '1',
+      date: '2025-10-02',
+      entries: [
+        {
+          eid: '__total__',
+          val: 100,
+        },
+      ],
+    },
+    {
+      id: '20251002020',
+      personId: '2',
+      date: '2025-10-02',
+      entries: [
+        {
+          eid: '__total__',
+          val: 200,
+        },
+      ],
+    },
+    {
+      id: '20251002030',
+      personId: '3',
+      date: '2025-10-02',
+      entries: [
+        {
+          eid: '__total__',
+          val: 101,
+        },
+      ],
+    },
+    {
+      id: '20251003010',
+      personId: '1',
+      date: '2025-10-03',
+      entries: [
+        {
+          eid: '__total__',
+          val: 197,
+        },
+      ],
+    },
+    {
+      id: '20251003020',
+      personId: '2',
+      date: '2025-10-03',
+      entries: [
+        {
+          eid: '__total__',
+          val: 205,
+        },
+      ],
+    },
+    {
+      id: '20251003030',
+      personId: '3',
+      date: '2025-10-03',
+      entries: [
+        {
+          eid: '__total__',
+          val: 251,
+        },
+      ],
+    },
+    {
+      id: '20251004010',
+      personId: '1',
+      date: '2025-10-04',
+      entries: [
+        {
+          eid: '__total__',
+          val: 146,
+        },
+      ],
+    },
+    {
+      id: '20251004020',
+      personId: '2',
+      date: '2025-10-04',
+      entries: [
+        {
+          eid: '__total__',
+          val: 200,
+        },
+      ],
+    },
+    {
+      id: '20251004030',
+      personId: '3',
+      date: '2025-10-04',
+      entries: [
+        {
+          eid: '__total__',
+          val: 201,
+        },
+      ],
+    },
+    {
+      id: '20251005010',
+      personId: '1',
+      date: '2025-10-05',
+      entries: [
+        {
+          eid: '__total__',
+          val: 146,
+        },
+      ],
+    },
+    {
+      id: '20251005030',
+      personId: '3',
+      date: '2025-10-05',
+      entries: [
+        {
+          eid: '__total__',
+          val: 101,
+        },
+      ],
+    },
+    {
+      id: '20251006010',
+      personId: '1',
+      date: '2025-10-06',
+      entries: [
+        {
+          eid: '__total__',
+          val: 146,
+        },
+      ],
+    },
+    {
+      id: '20251006020',
+      personId: '2',
+      date: '2025-10-06',
+      entries: [
+        {
+          eid: '__total__',
+          val: 200,
+        },
+      ],
+    },
+    {
+      id: '20251006030',
+      personId: '3',
+      date: '2025-10-06',
+      entries: [
+        {
+          eid: '__total__',
+          val: 151,
+        },
+      ],
+    },
+    {
+      id: '20251007010',
+      personId: '1',
+      date: '2025-10-07',
+      entries: [
+        {
+          eid: '__total__',
+          val: 146,
+        },
+      ],
+    },
+    {
+      id: '20251007030',
+      personId: '3',
+      date: '2025-10-07',
+      entries: [
+        {
+          eid: '__total__',
+          val: 251,
+        },
+      ],
+    },
+    {
+      id: '20251008010',
+      personId: '1',
+      date: '2025-10-08',
+      entries: [
+        {
+          eid: '__total__',
+          val: 191,
+        },
+      ],
+    },
+    {
+      id: '20251008030',
+      personId: '3',
+      date: '2025-10-08',
+      entries: [
+        {
+          eid: '__total__',
+          val: 151,
+        },
+      ],
+    },
+    {
+      id: '20251009010',
+      personId: '1',
+      date: '2025-10-09',
+      entries: [
+        {
+          eid: '__total__',
+          val: 161,
+        },
+      ],
+    },
+    {
+      id: '20251009030',
+      personId: '3',
+      date: '2025-10-09',
+      entries: [
+        {
+          eid: '__total__',
+          val: 251,
+        },
+      ],
+    },
+    {
+      id: '20251010010',
+      personId: '1',
+      date: '2025-10-10',
+      entries: [
+        {
+          eid: '__total__',
+          val: 115,
+        },
+      ],
+    },
+    {
+      id: '20251010020',
+      personId: '2',
+      date: '2025-10-10',
+      entries: [
+        {
+          eid: '__total__',
+          val: 162,
+        },
+      ],
+    },
+    {
+      id: '20251010030',
+      personId: '3',
+      date: '2025-10-10',
+      entries: [
+        {
+          eid: '__total__',
+          val: 251,
+        },
+      ],
+    },
+    {
+      id: '20251011010',
+      personId: '1',
+      date: '2025-10-11',
+      entries: [
+        {
+          eid: '__total__',
+          val: 181,
+        },
+      ],
+    },
+    {
+      id: '20251011030',
+      personId: '3',
+      date: '2025-10-11',
+      entries: [
+        {
+          eid: '__total__',
+          val: 101,
+        },
+      ],
+    },
+    {
+      id: '20251012020',
+      personId: '2',
+      date: '2025-10-12',
+      entries: [
+        {
+          eid: '__total__',
+          val: 197.316,
+        },
+      ],
+    },
+    {
+      id: '20251012030',
+      personId: '3',
+      date: '2025-10-12',
+      entries: [
+        {
+          eid: '__total__',
+          val: 301,
+        },
+      ],
+    },
+    {
+      id: '20251013030',
+      personId: '3',
+      date: '2025-10-13',
+      entries: [
+        {
+          eid: '__total__',
+          val: 301,
+        },
+      ],
+    },
+    {
+      id: '20251014010',
+      personId: '1',
+      date: '2025-10-14',
+      entries: [
+        {
+          eid: '__total__',
+          val: 181,
+        },
+      ],
+    },
+    {
+      id: '20251014030',
+      personId: '3',
+      date: '2025-10-14',
+      entries: [
+        {
+          eid: '__total__',
+          val: 301,
+        },
+      ],
+    },
+    {
+      id: '20251015010',
+      personId: '1',
+      date: '2025-10-15',
+      entries: [
+        {
+          eid: '__total__',
+          val: 166,
+        },
+      ],
+    },
+    {
+      id: '20251015020',
+      personId: '2',
+      date: '2025-10-15',
+      entries: [
+        {
+          eid: '__total__',
+          val: 329.6,
+        },
+      ],
+    },
+    {
+      id: '20251015030',
+      personId: '3',
+      date: '2025-10-15',
+      entries: [
+        {
+          eid: '__total__',
+          val: 201,
+        },
+      ],
+    },
+    {
+      id: '20251016010',
+      personId: '1',
+      date: '2025-10-16',
+      entries: [
+        {
+          eid: '__total__',
+          val: 166,
+        },
+      ],
+    },
+    {
+      id: '20251016020',
+      personId: '2',
+      date: '2025-10-16',
+      entries: [
+        {
+          eid: '__total__',
+          val: 136.08,
+        },
+      ],
+    },
+    {
+      id: '20251016030',
+      personId: '3',
+      date: '2025-10-16',
+      entries: [
+        {
+          eid: '__total__',
+          val: 101,
+        },
+      ],
+    },
+    {
+      id: '20251017010',
+      personId: '1',
+      date: '2025-10-17',
+      entries: [
+        {
+          eid: '__total__',
+          val: 135,
+        },
+      ],
+    },
+    {
+      id: '20251017030',
+      personId: '3',
+      date: '2025-10-17',
+      entries: [
+        {
+          eid: '__total__',
+          val: 101,
+        },
+      ],
+    },
+    {
+      id: '20251018030',
+      personId: '3',
+      date: '2025-10-18',
+      entries: [
+        {
+          eid: '__total__',
+          val: 201,
+        },
+      ],
+    },
+    {
+      id: '20251019030',
+      personId: '3',
+      date: '2025-10-19',
+      entries: [
+        {
+          eid: '__total__',
+          val: 101,
+        },
+      ],
+    },
+    {
+      id: '20251020010',
+      personId: '1',
+      date: '2025-10-20',
+      entries: [
+        {
+          eid: '__total__',
+          val: 150,
+        },
+      ],
+    },
+    {
+      id: '20251020020',
+      personId: '2',
+      date: '2025-10-20',
+      entries: [
+        {
+          eid: '__total__',
+          val: 200,
+        },
+      ],
+    },
+    {
+      id: '20251020030',
+      personId: '3',
+      date: '2025-10-20',
+      entries: [
+        {
+          eid: '__total__',
+          val: 101,
+        },
+      ],
+    },
+    {
+      id: '20251021010',
+      personId: '1',
+      date: '2025-10-21',
+      entries: [
+        {
+          eid: '__total__',
+          val: 120,
+        },
+      ],
+    },
+    {
+      id: '20251021020',
+      personId: '2',
+      date: '2025-10-21',
+      entries: [
+        {
+          eid: '__total__',
+          val: 100,
+        },
+      ],
+    },
+    {
+      id: '20251021030',
+      personId: '3',
+      date: '2025-10-21',
+      entries: [
+        {
+          eid: '__total__',
+          val: 101,
+        },
+      ],
+    },
+    {
+      id: '20251022010',
+      personId: '1',
+      date: '2025-10-22',
+      entries: [
+        {
+          eid: '__total__',
+          val: 200,
+        },
+      ],
+    },
+    {
+      id: '20251022020',
+      personId: '2',
+      date: '2025-10-22',
+      entries: [
+        {
+          eid: '__total__',
+          val: 140,
+        },
+      ],
+    },
+    {
+      id: '20251022030',
+      personId: '3',
+      date: '2025-10-22',
+      entries: [
+        {
+          eid: '__total__',
+          val: 100,
+        },
+      ],
+    },
+    {
+      id: '20251023020',
+      personId: '2',
+      date: '2025-10-23',
+      entries: [
+        {
+          eid: '__total__',
+          val: 162,
+        },
+      ],
+    },
+    {
+      id: '20251023030',
+      personId: '3',
+      date: '2025-10-23',
+      entries: [
+        {
+          eid: '__total__',
+          val: 100,
+        },
+      ],
+    },
+    {
+      id: '20251024010',
+      personId: '1',
+      date: '2025-10-24',
+      entries: [
+        {
+          eid: '__total__',
+          val: 100,
+        },
+      ],
+    },
+    {
+      id: '20251024020',
+      personId: '2',
+      date: '2025-10-24',
+      entries: [
+        {
+          eid: '__total__',
+          val: 140,
+        },
+      ],
+    },
+    {
+      id: '20251024030',
+      personId: '3',
+      date: '2025-10-24',
+      entries: [
+        {
+          eid: '__total__',
+          val: 101,
+        },
+      ],
+    },
+    {
+      id: '20251025010',
+      personId: '1',
+      date: '2025-10-25',
+      entries: [
+        {
+          eid: '__total__',
+          val: 106,
+        },
+      ],
+    },
+    {
+      id: '20251025020',
+      personId: '2',
+      date: '2025-10-25',
+      entries: [
+        {
+          eid: '__total__',
+          val: 101,
+        },
+      ],
+    },
+    {
+      id: '20251025030',
+      personId: '3',
+      date: '2025-10-25',
+      entries: [
+        {
+          eid: '__total__',
+          val: 121,
+        },
+      ],
+    },
+    {
+      id: '20251026010',
+      personId: '1',
+      date: '2025-10-26',
+      entries: [
+        {
+          eid: '__total__',
+          val: 110,
+        },
+      ],
+    },
+    {
+      id: '20251026020',
+      personId: '2',
+      date: '2025-10-26',
+      entries: [
+        {
+          eid: '__total__',
+          val: 205,
+        },
+      ],
+    },
+    {
+      id: '20251027010',
+      personId: '1',
+      date: '2025-10-27',
+      entries: [
+        {
+          eid: '__total__',
+          val: 30,
+        },
+      ],
+    },
+    {
+      id: '20251027020',
+      personId: '2',
+      date: '2025-10-27',
+      entries: [
+        {
+          eid: '__total__',
+          val: 30,
+        },
+      ],
+    },
+    {
+      id: '20251028010',
+      personId: '1',
+      date: '2025-10-28',
+      entries: [
+        {
+          eid: '__total__',
+          val: 120,
+        },
+      ],
+    },
+    {
+      id: '20251028030',
+      personId: '3',
+      date: '2025-10-28',
+      entries: [
+        {
+          eid: '__total__',
+          val: 201,
+        },
+      ],
+    },
+    {
+      id: '20251029010',
+      personId: '1',
+      date: '2025-10-29',
+      entries: [
+        {
+          eid: '__total__',
+          val: 66,
+        },
+      ],
+    },
+    {
+      id: '20251029020',
+      personId: '2',
+      date: '2025-10-29',
+      entries: [
+        {
+          eid: '__total__',
+          val: 10,
+        },
+      ],
+    },
+    {
+      id: '20251030020',
+      personId: '2',
+      date: '2025-10-30',
+      entries: [
+        {
+          eid: '__total__',
+          val: 32.4,
+        },
+      ],
+    },
+    {
+      id: '20251101010',
+      personId: '1',
+      date: '2025-11-01',
+      entries: [
+        {
+          eid: '__total__',
+          val: 120,
+        },
+      ],
+    },
+    {
+      id: '20251101030',
+      personId: '3',
+      date: '2025-11-01',
+      entries: [
+        {
+          eid: '__total__',
+          val: 201,
+        },
+      ],
+    },
+    {
+      id: '20251101060',
+      personId: '6',
+      date: '2025-11-01',
+      entries: [
+        {
+          eid: '__total__',
+          val: 103.705,
+        },
+      ],
+    },
+    {
+      id: '20251102020',
+      personId: '2',
+      date: '2025-11-02',
+      entries: [
+        {
+          eid: '__total__',
+          val: 220,
+        },
+      ],
+    },
+    {
+      id: '20251102030',
+      personId: '3',
+      date: '2025-11-02',
+      entries: [
+        {
+          eid: '__total__',
+          val: 201,
+        },
+      ],
+    },
+    {
+      id: '20251102060',
+      personId: '6',
+      date: '2025-11-02',
+      entries: [
+        {
+          eid: '__total__',
+          val: 0.78,
+        },
+      ],
+    },
+    {
+      id: '20251103020',
+      personId: '2',
+      date: '2025-11-03',
+      entries: [
+        {
+          eid: '__total__',
+          val: 120,
+        },
+      ],
+    },
+    {
+      id: '20251103060',
+      personId: '6',
+      date: '2025-11-03',
+      entries: [
+        {
+          eid: '__total__',
+          val: 13.775,
+        },
+      ],
+    },
+    {
+      id: '20251104010',
+      personId: '1',
+      date: '2025-11-04',
+      entries: [
+        {
+          eid: '__total__',
+          val: 106,
+        },
+      ],
+    },
+    {
+      id: '20251104030',
+      personId: '3',
+      date: '2025-11-04',
+      entries: [
+        {
+          eid: '__total__',
+          val: 201,
+        },
+      ],
+    },
+    {
+      id: '20251104060',
+      personId: '6',
+      date: '2025-11-04',
+      entries: [
+        {
+          eid: '__total__',
+          val: 14.83,
+        },
+      ],
+    },
+    {
+      id: '20251105010',
+      personId: '1',
+      date: '2025-11-05',
+      entries: [
+        {
+          eid: '__total__',
+          val: 120,
+        },
+      ],
+    },
+    {
+      id: '20251105020',
+      personId: '2',
+      date: '2025-11-05',
+      entries: [
+        {
+          eid: '__total__',
+          val: 279.716,
+        },
+      ],
+    },
+    {
+      id: '20251105060',
+      personId: '6',
+      date: '2025-11-05',
+      entries: [
+        {
+          eid: '__total__',
+          val: 9.095,
+        },
+      ],
+    },
+    {
+      id: '20251106010',
+      personId: '1',
+      date: '2025-11-06',
+      entries: [
+        {
+          eid: '__total__',
+          val: 90,
+        },
+      ],
+    },
+    {
+      id: '20251106030',
+      personId: '3',
+      date: '2025-11-06',
+      entries: [
+        {
+          eid: '__total__',
+          val: 201,
+        },
+      ],
+    },
+    {
+      id: '20251106060',
+      personId: '6',
+      date: '2025-11-06',
+      entries: [
+        {
+          eid: '__total__',
+          val: 13.71,
+        },
+      ],
+    },
+    {
+      id: '20251107020',
+      personId: '2',
+      date: '2025-11-07',
+      entries: [
+        {
+          eid: '__total__',
+          val: 132,
+        },
+      ],
+    },
+    {
+      id: '20251107030',
+      personId: '3',
+      date: '2025-11-07',
+      entries: [
+        {
+          eid: '__total__',
+          val: 101,
+        },
+      ],
+    },
+    {
+      id: '20251107060',
+      personId: '6',
+      date: '2025-11-07',
+      entries: [
+        {
+          eid: '__total__',
+          val: 201.735,
+        },
+      ],
+    },
+    {
+      id: '20251108010',
+      personId: '1',
+      date: '2025-11-08',
+      entries: [
+        {
+          eid: '__total__',
+          val: 80,
+        },
+      ],
+    },
+    {
+      id: '20251108020',
+      personId: '2',
+      date: '2025-11-08',
+      entries: [
+        {
+          eid: '__total__',
+          val: 120,
+        },
+      ],
+    },
+    {
+      id: '20251108060',
+      personId: '6',
+      date: '2025-11-08',
+      entries: [
+        {
+          eid: '__total__',
+          val: 44.435,
+        },
+      ],
+    },
+    {
+      id: '20251109060',
+      personId: '6',
+      date: '2025-11-09',
+      entries: [
+        {
+          eid: '__total__',
+          val: 12.01,
+        },
+      ],
+    },
+    {
+      id: '20251110060',
+      personId: '6',
+      date: '2025-11-10',
+      entries: [
+        {
+          eid: '__total__',
+          val: 203.595,
+        },
+      ],
+    },
+    {
+      id: '20251111010',
+      personId: '1',
+      date: '2025-11-11',
+      entries: [
+        {
+          eid: '__total__',
+          val: 160,
+        },
+      ],
+    },
+    {
+      id: '20251111020',
+      personId: '2',
+      date: '2025-11-11',
+      entries: [
+        {
+          eid: '__total__',
+          val: 173.12,
+        },
+      ],
+    },
+    {
+      id: '20251111060',
+      personId: '6',
+      date: '2025-11-11',
+      entries: [
+        {
+          eid: '__total__',
+          val: 174.21,
+        },
+      ],
+    },
+    {
+      id: '20251112010',
+      personId: '1',
+      date: '2025-11-12',
+      entries: [
+        {
+          eid: '__total__',
+          val: 100,
+        },
+      ],
+    },
+    {
+      id: '20251112020',
+      personId: '2',
+      date: '2025-11-12',
+      entries: [
+        {
+          eid: '__total__',
+          val: 156,
+        },
+      ],
+    },
+    {
+      id: '20251112060',
+      personId: '6',
+      date: '2025-11-12',
+      entries: [
+        {
+          eid: '__total__',
+          val: 1.315,
+        },
+      ],
+    },
+    {
+      id: '20251113060',
+      personId: '6',
+      date: '2025-11-13',
+      entries: [
+        {
+          eid: '__total__',
+          val: 16.445,
+        },
+      ],
+    },
+    {
+      id: '20251114020',
+      personId: '2',
+      date: '2025-11-14',
+      entries: [
+        {
+          eid: '__total__',
+          val: 106,
+        },
+      ],
+    },
+    {
+      id: '20251114030',
+      personId: '3',
+      date: '2025-11-14',
+      entries: [
+        {
+          eid: '__total__',
+          val: 101,
+        },
+      ],
+    },
+    {
+      id: '20251114060',
+      personId: '6',
+      date: '2025-11-14',
+      entries: [
+        {
+          eid: '__total__',
+          val: 10.985,
+        },
+      ],
+    },
+    {
+      id: '20251115020',
+      personId: '2',
+      date: '2025-11-15',
+      entries: [
+        {
+          eid: '__total__',
+          val: 102,
+        },
+      ],
+    },
+    {
+      id: '20251115060',
+      personId: '6',
+      date: '2025-11-15',
+      entries: [
+        {
+          eid: '__total__',
+          val: 180,
+        },
+      ],
+    },
+    {
+      id: '20251116060',
+      personId: '6',
+      date: '2025-11-16',
+      entries: [
+        {
+          eid: '__total__',
+          val: 3.38,
+        },
+      ],
+    },
+    {
+      id: '20251117060',
+      personId: '6',
+      date: '2025-11-17',
+      entries: [
+        {
+          eid: '__total__',
+          val: 3.565,
+        },
+      ],
+    },
+    {
+      id: '20251118010',
+      personId: '1',
+      date: '2025-11-18',
+      entries: [
+        {
+          eid: '__total__',
+          val: 40,
+        },
+      ],
+    },
+    {
+      id: '20251118020',
+      personId: '2',
+      date: '2025-11-18',
+      entries: [
+        {
+          eid: '__total__',
+          val: 22,
+        },
+      ],
+    },
+    {
+      id: '20251118030',
+      personId: '3',
+      date: '2025-11-18',
+      entries: [
+        {
+          eid: '__total__',
+          val: 201,
+        },
+      ],
+    },
+    {
+      id: '20251118060',
+      personId: '6',
+      date: '2025-11-18',
+      entries: [
+        {
+          eid: '__total__',
+          val: 1.065,
+        },
+      ],
+    },
+    {
+      id: '20251119010',
+      personId: '1',
+      date: '2025-11-19',
+      entries: [
+        {
+          eid: '__total__',
+          val: 120,
+        },
+      ],
+    },
+    {
+      id: '20251119060',
+      personId: '6',
+      date: '2025-11-19',
+      entries: [
+        {
+          eid: '__total__',
+          val: 3.405,
+        },
+      ],
+    },
+    {
+      id: '20251120020',
+      personId: '2',
+      date: '2025-11-20',
+      entries: [
+        {
+          eid: '__total__',
+          val: 122,
+        },
+      ],
+    },
+    {
+      id: '20251120030',
+      personId: '3',
+      date: '2025-11-20',
+      entries: [
+        {
+          eid: '__total__',
+          val: 301,
+        },
+      ],
+    },
+    {
+      id: '20251120060',
+      personId: '6',
+      date: '2025-11-20',
+      entries: [
+        {
+          eid: '__total__',
+          val: 17.325,
+        },
+      ],
+    },
+    {
+      id: '20251121020',
+      personId: '2',
+      date: '2025-11-21',
+      entries: [
+        {
+          eid: '__total__',
+          val: 203,
+        },
+      ],
+    },
+    {
+      id: '20251121030',
+      personId: '3',
+      date: '2025-11-21',
+      entries: [
+        {
+          eid: '__total__',
+          val: 201,
+        },
+      ],
+    },
+    {
+      id: '20251121060',
+      personId: '6',
+      date: '2025-11-21',
+      entries: [
+        {
+          eid: '__total__',
+          val: 15.57,
+        },
+      ],
+    },
+    {
+      id: '20251122020',
+      personId: '2',
+      date: '2025-11-22',
+      entries: [
+        {
+          eid: '__total__',
+          val: 253.656,
+        },
+      ],
+    },
+    {
+      id: '20251122030',
+      personId: '3',
+      date: '2025-11-22',
+      entries: [
+        {
+          eid: '__total__',
+          val: 231,
+        },
+      ],
+    },
+    {
+      id: '20251122060',
+      personId: '6',
+      date: '2025-11-22',
+      entries: [
+        {
+          eid: '__total__',
+          val: 16.745,
+        },
+      ],
+    },
+    {
+      id: '20251123020',
+      personId: '2',
+      date: '2025-11-23',
+      entries: [
+        {
+          eid: '__total__',
+          val: 221.94,
+        },
+      ],
+    },
+    {
+      id: '20251123030',
+      personId: '3',
+      date: '2025-11-23',
+      entries: [
+        {
+          eid: '__total__',
+          val: 241,
+        },
+      ],
+    },
+    {
+      id: '20251123060',
+      personId: '6',
+      date: '2025-11-23',
+      entries: [
+        {
+          eid: '__total__',
+          val: 70.165,
+        },
+      ],
+    },
+    {
+      id: '20251124060',
+      personId: '6',
+      date: '2025-11-24',
+      entries: [
+        {
+          eid: '__total__',
+          val: 3.96,
+        },
+      ],
+    },
+    {
+      id: '20251125060',
+      personId: '6',
+      date: '2025-11-25',
+      entries: [
+        {
+          eid: '__total__',
+          val: 192.61,
+        },
+      ],
+    },
+    {
+      id: '20251126060',
+      personId: '6',
+      date: '2025-11-26',
+      entries: [
+        {
+          eid: '__total__',
+          val: 0.92,
+        },
+      ],
+    },
+    {
+      id: '20251127030',
+      personId: '3',
+      date: '2025-11-27',
+      entries: [
+        {
+          eid: '__total__',
+          val: 201,
+        },
+      ],
+    },
+    {
+      id: '20251127060',
+      personId: '6',
+      date: '2025-11-27',
+      entries: [
+        {
+          eid: '__total__',
+          val: 4.245,
+        },
+      ],
+    },
+    {
+      id: '20251128020',
+      personId: '2',
+      date: '2025-11-28',
+      entries: [
+        {
+          eid: '__total__',
+          val: 213,
+        },
+      ],
+    },
+    {
+      id: '20251128060',
+      personId: '6',
+      date: '2025-11-28',
+      entries: [
+        {
+          eid: '__total__',
+          val: 14.795,
+        },
+      ],
+    },
+    {
+      id: '20251129020',
+      personId: '2',
+      date: '2025-11-29',
+      entries: [
+        {
+          eid: '__total__',
+          val: 110,
+        },
+      ],
+    },
+    {
+      id: '20251129030',
+      personId: '3',
+      date: '2025-11-29',
+      entries: [
+        {
+          eid: '__total__',
+          val: 201,
+        },
+      ],
+    },
+    {
+      id: '20251129060',
+      personId: '6',
+      date: '2025-11-29',
+      entries: [
+        {
+          eid: '__total__',
+          val: 15.32,
+        },
+      ],
+    },
+    {
+      id: '20251130020',
+      personId: '2',
+      date: '2025-11-30',
+      entries: [
+        {
+          eid: '__total__',
+          val: 130,
+        },
+      ],
+    },
+    {
+      id: '20251130060',
+      personId: '6',
+      date: '2025-11-30',
+      entries: [
+        {
+          eid: '__total__',
+          val: 29.315,
+        },
+      ],
+    },
+    {
+      id: '20251201010',
+      personId: '1',
+      date: '2025-12-01',
+      entries: [
+        {
+          eid: '__total__',
+          val: 115,
+        },
+      ],
+    },
+    {
+      id: '20251201020',
+      personId: '2',
+      date: '2025-12-01',
+      entries: [
+        {
+          eid: '__total__',
+          val: 32,
+        },
+      ],
+    },
+    {
+      id: '20251202010',
+      personId: '1',
+      date: '2025-12-02',
+      entries: [
+        {
+          eid: '__total__',
+          val: 105,
+        },
+      ],
+    },
+    {
+      id: '20251202020',
+      personId: '2',
+      date: '2025-12-02',
+      entries: [
+        {
+          eid: '__total__',
+          val: 10,
+        },
+      ],
+    },
+    {
+      id: '20251202030',
+      personId: '3',
+      date: '2025-12-02',
+      entries: [
+        {
+          eid: '__total__',
+          val: 321,
+        },
+      ],
+    },
+    {
+      id: '20251203010',
+      personId: '1',
+      date: '2025-12-03',
+      entries: [
+        {
+          eid: '__total__',
+          val: 115,
+        },
+      ],
+    },
+    {
+      id: '20251203020',
+      personId: '2',
+      date: '2025-12-03',
+      entries: [
+        {
+          eid: '__total__',
+          val: 123,
+        },
+      ],
+    },
+    {
+      id: '20251203060',
+      personId: '6',
+      date: '2025-12-03',
+      entries: [
+        {
+          eid: '__total__',
+          val: 150,
+        },
+      ],
+    },
+    {
+      id: '20251204010',
+      personId: '1',
+      date: '2025-12-04',
+      entries: [
+        {
+          eid: '__total__',
+          val: 50,
+        },
+      ],
+    },
+    {
+      id: '20251204020',
+      personId: '2',
+      date: '2025-12-04',
+      entries: [
+        {
+          eid: '__total__',
+          val: 100,
+        },
+      ],
+    },
+    {
+      id: '20251205010',
+      personId: '1',
+      date: '2025-12-05',
+      entries: [
+        {
+          eid: '__total__',
+          val: 100,
+        },
+      ],
+    },
+    {
+      id: '20251206060',
+      personId: '6',
+      date: '2025-12-06',
+      entries: [
+        {
+          eid: '__total__',
+          val: 180,
+        },
+      ],
+    },
+    {
+      id: '20251207060',
+      personId: '6',
+      date: '2025-12-07',
+      entries: [
+        {
+          eid: '__total__',
+          val: 180,
+        },
+      ],
+    },
+    {
+      id: '20251208010',
+      personId: '1',
+      date: '2025-12-08',
+      entries: [
+        {
+          eid: '__total__',
+          val: 100,
+        },
+      ],
+    },
+    {
+      id: '20251209010',
+      personId: '1',
+      date: '2025-12-09',
+      entries: [
+        {
+          eid: '__total__',
+          val: 210,
+        },
+      ],
+    },
+    {
+      id: '20251209020',
+      personId: '2',
+      date: '2025-12-09',
+      entries: [
+        {
+          eid: '__total__',
+          val: 204,
+        },
+      ],
+    },
+    {
+      id: '20251210010',
+      personId: '1',
+      date: '2025-12-10',
+      entries: [
+        {
+          eid: '__total__',
+          val: 100,
+        },
+      ],
+    },
+    {
+      id: '20251210060',
+      personId: '6',
+      date: '2025-12-10',
+      entries: [
+        {
+          eid: '__total__',
+          val: 150,
+        },
+      ],
+    },
+    {
+      id: '20251211010',
+      personId: '1',
+      date: '2025-12-11',
+      entries: [
+        {
+          eid: '__total__',
+          val: 50,
+        },
+      ],
+    },
+    {
+      id: '20251211020',
+      personId: '2',
+      date: '2025-12-11',
+      entries: [
+        {
+          eid: '__total__',
+          val: 100,
+        },
+      ],
+    },
+    {
+      id: '20251212010',
+      personId: '1',
+      date: '2025-12-12',
+      entries: [
+        {
+          eid: '__total__',
+          val: 40,
+        },
+      ],
+    },
+    {
+      id: '20251212020',
+      personId: '2',
+      date: '2025-12-12',
+      entries: [
+        {
+          eid: '__total__',
+          val: 42,
+        },
+      ],
+    },
+    {
+      id: '20251214020',
+      personId: '2',
+      date: '2025-12-14',
+      entries: [
+        {
+          eid: '__total__',
+          val: 102,
+        },
+      ],
+    },
+    {
+      id: '20251216010',
+      personId: '1',
+      date: '2025-12-16',
+      entries: [
+        {
+          eid: '__total__',
+          val: 100,
+        },
+      ],
+    },
+    {
+      id: '20251216020',
+      personId: '2',
+      date: '2025-12-16',
+      entries: [
+        {
+          eid: '__total__',
+          val: 102,
+        },
+      ],
+    },
+    {
+      id: '20251218010',
+      personId: '1',
+      date: '2025-12-18',
+      entries: [
+        {
+          eid: '__total__',
+          val: 40,
+        },
+      ],
+    },
+    {
+      id: '20251223010',
+      personId: '1',
+      date: '2025-12-23',
+      entries: [
+        {
+          eid: '__total__',
+          val: 60,
+        },
+      ],
+    },
+    {
+      id: '20251227010',
+      personId: '1',
+      date: '2025-12-27',
+      entries: [
+        {
+          eid: '__total__',
+          val: 20,
+        },
+      ],
+    },
+    {
+      id: '20251227020',
+      personId: '2',
+      date: '2025-12-27',
+      entries: [
+        {
+          eid: '__total__',
+          val: 22,
+        },
+      ],
+    },
+    {
+      id: '20260101010',
+      personId: '1',
+      date: '2026-01-01',
+      entries: [
+        {
+          eid: '__total__',
+          val: 100,
+        },
+      ],
+    },
+    {
+      id: '20260101020',
+      personId: '2',
+      date: '2026-01-01',
+      entries: [
+        {
+          eid: '__total__',
+          val: 106.8,
+        },
+      ],
+    },
+    {
+      id: '20260101040',
+      personId: '4',
+      date: '2026-01-01',
+      entries: [
+        {
+          eid: '__total__',
+          val: 100,
+        },
+      ],
+    },
+    {
+      id: '20260101050',
+      personId: '5',
+      date: '2026-01-01',
+      entries: [
+        {
+          eid: '__total__',
+          val: 20,
+        },
+      ],
+    },
+    {
+      id: '20260102040',
+      personId: '4',
+      date: '2026-01-02',
+      entries: [
+        {
+          eid: '__total__',
+          val: 60,
+        },
+      ],
+    },
+    {
+      id: '20260103020',
+      personId: '2',
+      date: '2026-01-03',
+      entries: [
+        {
+          eid: '__total__',
+          val: 106.8,
+        },
+      ],
+    },
+    {
+      id: '20260103040',
+      personId: '4',
+      date: '2026-01-03',
+      entries: [
+        {
+          eid: '__total__',
+          val: 100,
+        },
+      ],
+    },
+    {
+      id: '20260103050',
+      personId: '5',
+      date: '2026-01-03',
+      entries: [
+        {
+          eid: '__total__',
+          val: 15,
+        },
+      ],
+    },
+    {
+      id: '20260104050',
+      personId: '5',
+      date: '2026-01-04',
+      entries: [
+        {
+          eid: '__total__',
+          val: 30,
+        },
+      ],
+    },
+    {
+      id: '20260106030',
+      personId: '3',
+      date: '2026-01-06',
+      entries: [
+        {
+          eid: '__total__',
+          val: 161,
+        },
+      ],
+    },
+    {
+      id: '20260106050',
+      personId: '5',
+      date: '2026-01-06',
+      entries: [
+        {
+          eid: '__total__',
+          val: 75,
+        },
+      ],
+    },
+    {
+      id: '20260106060',
+      personId: '6',
+      date: '2026-01-06',
+      entries: [
+        {
+          eid: '__total__',
+          val: 180,
+        },
+      ],
+    },
+    {
+      id: '20260107030',
+      personId: '3',
+      date: '2026-01-07',
+      entries: [
+        {
+          eid: '__total__',
+          val: 201,
+        },
+      ],
+    },
+    {
+      id: '20260107050',
+      personId: '5',
+      date: '2026-01-07',
+      entries: [
+        {
+          eid: '__total__',
+          val: 20,
+        },
+      ],
+    },
+    {
+      id: '20260107060',
+      personId: '6',
+      date: '2026-01-07',
+      entries: [
+        {
+          eid: '__total__',
+          val: 180,
+        },
+      ],
+    },
+    {
+      id: '20260108030',
+      personId: '3',
+      date: '2026-01-08',
+      entries: [
+        {
+          eid: '__total__',
+          val: 100,
+        },
+      ],
+    },
+    {
+      id: '20260109030',
+      personId: '3',
+      date: '2026-01-09',
+      entries: [
+        {
+          eid: '__total__',
+          val: 101,
+        },
+      ],
+    },
+    {
+      id: '20260109050',
+      personId: '5',
+      date: '2026-01-09',
+      entries: [
+        {
+          eid: '__total__',
+          val: 45,
+        },
+      ],
+    },
+    {
+      id: '20260109060',
+      personId: '6',
+      date: '2026-01-09',
+      entries: [
+        {
+          eid: '__total__',
+          val: 100,
+        },
+      ],
+    },
+    {
+      id: '20260110060',
+      personId: '6',
+      date: '2026-01-10',
+      entries: [
+        {
+          eid: '__total__',
+          val: 160,
+        },
+      ],
+    },
+    {
+      id: '20260112030',
+      personId: '3',
+      date: '2026-01-12',
+      entries: [
+        {
+          eid: '__total__',
+          val: 201,
+        },
+      ],
+    },
+    {
+      id: '20260113030',
+      personId: '3',
+      date: '2026-01-13',
+      entries: [
+        {
+          eid: '__total__',
+          val: 121,
+        },
+      ],
+    },
+    {
+      id: '20260113050',
+      personId: '5',
+      date: '2026-01-13',
+      entries: [
+        {
+          eid: '__total__',
+          val: 120,
+        },
+      ],
+    },
+    {
+      id: '20260114060',
+      personId: '6',
+      date: '2026-01-14',
+      entries: [
+        {
+          eid: '__total__',
+          val: 190,
+        },
+      ],
+    },
+    {
+      id: '20260115050',
+      personId: '5',
+      date: '2026-01-15',
+      entries: [
+        {
+          eid: '__total__',
+          val: 45,
+        },
+      ],
+    },
+    {
+      id: '20260115060',
+      personId: '6',
+      date: '2026-01-15',
+      entries: [
+        {
+          eid: '__total__',
+          val: 120,
+        },
+      ],
+    },
+    {
+      id: '20260118060',
+      personId: '6',
+      date: '2026-01-18',
+      entries: [
+        {
+          eid: '__total__',
+          val: 40,
+        },
+      ],
+    },
+    {
+      id: '20260120050',
+      personId: '5',
+      date: '2026-01-20',
+      entries: [
+        {
+          eid: '__total__',
+          val: 85,
+        },
+      ],
+    },
+    {
+      id: '20260120060',
+      personId: '6',
+      date: '2026-01-20',
+      entries: [
+        {
+          eid: '__total__',
+          val: 100,
+        },
+      ],
+    },
+    {
+      id: '20260121020',
+      personId: '2',
+      date: '2026-01-21',
+      entries: [
+        {
+          eid: '__total__',
+          val: 16.8,
+        },
+      ],
+    },
+    {
+      id: '20260122050',
+      personId: '5',
+      date: '2026-01-22',
+      entries: [
+        {
+          eid: '__total__',
+          val: 15,
+        },
+      ],
+    },
+    {
+      id: '20260123050',
+      personId: '5',
+      date: '2026-01-23',
+      entries: [
+        {
+          eid: '__total__',
+          val: 40,
+        },
+      ],
+    },
+    {
+      id: '20260124050',
+      personId: '5',
+      date: '2026-01-24',
+      entries: [
+        {
+          eid: '__total__',
+          val: 15,
+        },
+      ],
+    },
+    {
+      id: '20260125050',
+      personId: '5',
+      date: '2026-01-25',
+      entries: [
+        {
+          eid: '__total__',
+          val: 40,
+        },
+      ],
+    },
+    {
+      id: '20260126050',
+      personId: '5',
+      date: '2026-01-26',
+      entries: [
+        {
+          eid: '__total__',
+          val: 20,
+        },
+      ],
+    },
+    {
+      id: '20260127050',
+      personId: '5',
+      date: '2026-01-27',
+      entries: [
+        {
+          eid: '__total__',
+          val: 40,
+        },
+      ],
+    },
+    {
+      id: '20260128050',
+      personId: '5',
+      date: '2026-01-28',
+      entries: [
+        {
+          eid: '__total__',
+          val: 60,
+        },
+      ],
+    },
+    {
+      id: '20260128060',
+      personId: '6',
+      date: '2026-01-28',
+      entries: [
+        {
+          eid: '__total__',
+          val: 180,
+        },
+      ],
+    },
+    {
+      id: '20260128070',
+      personId: '7',
+      date: '2026-01-28',
+      entries: [
+        {
+          eid: '__total__',
+          val: 240,
+        },
+      ],
+    },
+    {
+      id: '20260129070',
+      personId: '7',
+      date: '2026-01-29',
+      entries: [
+        {
+          eid: '__total__',
+          val: 240,
+        },
+      ],
+    },
+    {
+      id: '20260130050',
+      personId: '5',
+      date: '2026-01-30',
+      entries: [
+        {
+          eid: '__total__',
+          val: 45,
+        },
+      ],
+    },
+    {
+      id: '20260130070',
+      personId: '7',
+      date: '2026-01-30',
+      entries: [
+        {
+          eid: '__total__',
+          val: 300,
+        },
+      ],
+    },
+    {
+      id: '20260131050',
+      personId: '5',
+      date: '2026-01-31',
+      entries: [
+        {
+          eid: '__total__',
+          val: 30,
+        },
+      ],
+    },
+    {
+      id: '20260201020',
+      personId: '2',
+      date: '2026-02-01',
+      entries: [
+        {
+          eid: '__total__',
+          val: 11.2,
+        },
+      ],
+    },
+    {
+      id: '20260201040',
+      personId: '4',
+      date: '2026-02-01',
+      entries: [
+        {
+          eid: '__total__',
+          val: 100,
+        },
+      ],
+    },
+    {
+      id: '20260201050',
+      personId: '5',
+      date: '2026-02-01',
+      entries: [
+        {
+          eid: '__total__',
+          val: 60,
+        },
+      ],
+    },
+    {
+      id: '20260202020',
+      personId: '2',
+      date: '2026-02-02',
+      entries: [
+        {
+          eid: '__total__',
+          val: 53.4,
+        },
+      ],
+    },
+    {
+      id: '20260202040',
+      personId: '4',
+      date: '2026-02-02',
+      entries: [
+        {
+          eid: '__total__',
+          val: 60,
+        },
+      ],
+    },
+    {
+      id: '20260203040',
+      personId: '4',
+      date: '2026-02-03',
+      entries: [
+        {
+          eid: '__total__',
+          val: 100,
+        },
+      ],
+    },
+    {
+      id: '20260203050',
+      personId: '5',
+      date: '2026-02-03',
+      entries: [
+        {
+          eid: '__total__',
+          val: 90,
+        },
+      ],
+    },
+    {
+      id: '20260205050',
+      personId: '5',
+      date: '2026-02-05',
+      entries: [
+        {
+          eid: '__total__',
+          val: 50,
+        },
+      ],
+    },
+    {
+      id: '20260207030',
+      personId: '3',
+      date: '2026-02-07',
+      entries: [
+        {
+          eid: '__total__',
+          val: 161,
+        },
+      ],
+    },
+    {
+      id: '20260208030',
+      personId: '3',
+      date: '2026-02-08',
+      entries: [
+        {
+          eid: '__total__',
+          val: 201,
+        },
+      ],
+    },
+    {
+      id: '20260209030',
+      personId: '3',
+      date: '2026-02-09',
+      entries: [
+        {
+          eid: '__total__',
+          val: 100,
+        },
+      ],
+    },
+    {
+      id: '20260210030',
+      personId: '3',
+      date: '2026-02-10',
+      entries: [
+        {
+          eid: '__total__',
+          val: 101,
+        },
+      ],
+    },
+    {
+      id: '20260210050',
+      personId: '5',
+      date: '2026-02-10',
+      entries: [
+        {
+          eid: '__total__',
+          val: 40,
+        },
+      ],
+    },
+    {
+      id: '20260212050',
+      personId: '5',
+      date: '2026-02-12',
+      entries: [
+        {
+          eid: '__total__',
+          val: 50,
+        },
+      ],
+    },
+    {
+      id: '20260213030',
+      personId: '3',
+      date: '2026-02-13',
+      entries: [
+        {
+          eid: '__total__',
+          val: 201,
+        },
+      ],
+    },
+    {
+      id: '20260214030',
+      personId: '3',
+      date: '2026-02-14',
+      entries: [
+        {
+          eid: '__total__',
+          val: 121,
+        },
+      ],
+    },
+    {
+      id: '20260224050',
+      personId: '5',
+      date: '2026-02-24',
+      entries: [
+        {
+          eid: '__total__',
+          val: 55,
+        },
+      ],
+    },
+    {
+      id: '20260226050',
+      personId: '5',
+      date: '2026-02-26',
+      entries: [
+        {
+          eid: '__total__',
+          val: 60,
         },
       ],
     },
@@ -742,6 +5889,17 @@ export const circuitSeed: CircuitState = {
         {
           eid: '1',
           val: 30,
+        },
+      ],
+    },
+    {
+      id: '2000',
+      personId: '3',
+      date: '2026-03-09',
+      entries: [
+        {
+          eid: '__total__',
+          val: 131,
         },
       ],
     },
@@ -834,6 +5992,17 @@ export const circuitSeed: CircuitState = {
       ],
     },
     {
+      id: '2054',
+      personId: '7',
+      date: '2026-04-01',
+      entries: [
+        {
+          eid: '__total__',
+          val: 150,
+        },
+      ],
+    },
+    {
       id: '2012',
       personId: '1',
       date: '2026-04-02',
@@ -849,6 +6018,28 @@ export const circuitSeed: CircuitState = {
         {
           eid: '5',
           val: 25,
+        },
+      ],
+    },
+    {
+      id: '2027',
+      personId: '3',
+      date: '2026-04-02',
+      entries: [
+        {
+          eid: '__total__',
+          val: 198,
+        },
+      ],
+    },
+    {
+      id: '2055',
+      personId: '7',
+      date: '2026-04-02',
+      entries: [
+        {
+          eid: '__total__',
+          val: 150,
         },
       ],
     },
@@ -876,168 +6067,6 @@ export const circuitSeed: CircuitState = {
       ],
     },
     {
-      id: '2014',
-      personId: '1',
-      date: '2026-04-06',
-      entries: [
-        {
-          eid: '1',
-          val: 65,
-        },
-        {
-          eid: '5',
-          val: 20,
-        },
-      ],
-    },
-    {
-      id: '2015',
-      personId: '1',
-      date: '2026-04-09',
-      entries: [
-        {
-          eid: '8',
-          val: 2.25,
-        },
-      ],
-    },
-    {
-      id: '2016',
-      personId: '1',
-      date: '2026-04-17',
-      entries: [
-        {
-          eid: '1',
-          val: 20,
-        },
-        {
-          eid: '8',
-          val: 2.4,
-        },
-      ],
-    },
-    {
-      id: '2017',
-      personId: '1',
-      date: '2026-04-21',
-      entries: [
-        {
-          eid: '8',
-          val: 2.25,
-        },
-      ],
-    },
-    {
-      id: '2018',
-      personId: '2',
-      date: '2026-04-05',
-      entries: [
-        {
-          eid: '__total__',
-          val: 171.72,
-        },
-      ],
-    },
-    {
-      id: '2019',
-      personId: '2',
-      date: '2026-04-06',
-      entries: [
-        {
-          eid: '__total__',
-          val: 42.16,
-        },
-      ],
-    },
-    {
-      id: '2020',
-      personId: '2',
-      date: '2026-04-10',
-      entries: [
-        {
-          eid: '__total__',
-          val: 100.44,
-        },
-      ],
-    },
-    {
-      id: '2021',
-      personId: '2',
-      date: '2026-04-21',
-      entries: [
-        {
-          eid: '__total__',
-          val: 100.44,
-        },
-      ],
-    },
-    {
-      id: '2022',
-      personId: '2',
-      date: '2026-04-23',
-      entries: [
-        {
-          eid: '2',
-          val: 30,
-        },
-      ],
-    },
-    {
-      id: '2023',
-      personId: '2',
-      date: '2026-04-27',
-      entries: [
-        {
-          eid: '__total__',
-          val: 118.16,
-        },
-      ],
-    },
-    {
-      id: '2024',
-      personId: '2',
-      date: '2026-04-28',
-      entries: [
-        {
-          eid: '__total__',
-          val: 116.44,
-        },
-      ],
-    },
-    {
-      id: '2025',
-      personId: '2',
-      date: '2026-04-29',
-      entries: [
-        {
-          eid: '__total__',
-          val: 25.6,
-        },
-      ],
-    },
-    {
-      id: '2026',
-      personId: '2',
-      date: '2026-04-30',
-      entries: [
-        {
-          eid: '__total__',
-          val: 26.4,
-        },
-      ],
-    },
-    {
-      id: '2027',
-      personId: '3',
-      date: '2026-04-02',
-      entries: [
-        {
-          eid: '__total__',
-          val: 198,
-        },
-      ],
-    },
-    {
       id: '2028',
       personId: '3',
       date: '2026-04-03',
@@ -1045,127 +6074,6 @@ export const circuitSeed: CircuitState = {
         {
           eid: '__total__',
           val: 201,
-        },
-      ],
-    },
-    {
-      id: '2029',
-      personId: '3',
-      date: '2026-04-10',
-      entries: [
-        {
-          eid: '__total__',
-          val: 201,
-        },
-      ],
-    },
-    {
-      id: '2030',
-      personId: '3',
-      date: '2026-04-11',
-      entries: [
-        {
-          eid: '__total__',
-          val: 101,
-        },
-      ],
-    },
-    {
-      id: '2031',
-      personId: '3',
-      date: '2026-04-12',
-      entries: [
-        {
-          eid: '__total__',
-          val: 201,
-        },
-      ],
-    },
-    {
-      id: '2032',
-      personId: '3',
-      date: '2026-04-14',
-      entries: [
-        {
-          eid: '__total__',
-          val: 201,
-        },
-      ],
-    },
-    {
-      id: '2033',
-      personId: '3',
-      date: '2026-04-15',
-      entries: [
-        {
-          eid: '__total__',
-          val: 201,
-        },
-      ],
-    },
-    {
-      id: '2034',
-      personId: '3',
-      date: '2026-04-16',
-      entries: [
-        {
-          eid: '__total__',
-          val: 201,
-        },
-      ],
-    },
-    {
-      id: '2035',
-      personId: '3',
-      date: '2026-04-17',
-      entries: [
-        {
-          eid: '__total__',
-          val: 281,
-        },
-      ],
-    },
-    {
-      id: '2036',
-      personId: '3',
-      date: '2026-04-21',
-      entries: [
-        {
-          eid: '__total__',
-          val: 101,
-        },
-      ],
-    },
-    {
-      id: '2037',
-      personId: '3',
-      date: '2026-04-22',
-      entries: [
-        {
-          eid: '__total__',
-          val: 101,
-        },
-      ],
-    },
-    {
-      id: '2038',
-      personId: '3',
-      date: '2026-04-23',
-      entries: [
-        {
-          eid: '__total__',
-          val: 101,
-        },
-      ],
-    },
-    {
-      id: '2039',
-      personId: '3',
-      date: '2026-04-26',
-      entries: [
-        {
-          eid: '__total__',
-          val: 101,
         },
       ],
     },
@@ -1181,116 +6089,6 @@ export const circuitSeed: CircuitState = {
       ],
     },
     {
-      id: '2041',
-      personId: '5',
-      date: '2026-04-05',
-      entries: [
-        {
-          eid: '1',
-          val: 20,
-        },
-      ],
-    },
-    {
-      id: '2042',
-      personId: '5',
-      date: '2026-04-06',
-      entries: [
-        {
-          eid: '4',
-          val: 7,
-        },
-      ],
-    },
-    {
-      id: '2043',
-      personId: '5',
-      date: '2026-04-07',
-      entries: [
-        {
-          eid: '1',
-          val: 60,
-        },
-      ],
-    },
-    {
-      id: '2044',
-      personId: '5',
-      date: '2026-04-09',
-      entries: [
-        {
-          eid: '1',
-          val: 90,
-        },
-      ],
-    },
-    {
-      id: '2045',
-      personId: '5',
-      date: '2026-04-14',
-      entries: [
-        {
-          eid: '__total__',
-          val: 55,
-        },
-      ],
-    },
-    {
-      id: '2046',
-      personId: '5',
-      date: '2026-04-17',
-      entries: [
-        {
-          eid: '1',
-          val: 40,
-        },
-      ],
-    },
-    {
-      id: '2047',
-      personId: '5',
-      date: '2026-04-19',
-      entries: [
-        {
-          eid: '__total__',
-          val: 10,
-        },
-      ],
-    },
-    {
-      id: '2048',
-      personId: '5',
-      date: '2026-04-20',
-      entries: [
-        {
-          eid: '__total__',
-          val: 15,
-        },
-      ],
-    },
-    {
-      id: '2049',
-      personId: '5',
-      date: '2026-04-21',
-      entries: [
-        {
-          eid: '__total__',
-          val: 40,
-        },
-      ],
-    },
-    {
-      id: '2050',
-      personId: '5',
-      date: '2026-04-22',
-      entries: [
-        {
-          eid: '1',
-          val: 15,
-        },
-      ],
-    },
-    {
       id: '2051',
       personId: '6',
       date: '2026-04-04',
@@ -1298,50 +6096,6 @@ export const circuitSeed: CircuitState = {
         {
           eid: '__total__',
           val: 180,
-        },
-      ],
-    },
-    {
-      id: '2052',
-      personId: '6',
-      date: '2026-04-07',
-      entries: [
-        {
-          eid: '__total__',
-          val: 145,
-        },
-      ],
-    },
-    {
-      id: '2053',
-      personId: '6',
-      date: '2026-04-08',
-      entries: [
-        {
-          eid: '__total__',
-          val: 120,
-        },
-      ],
-    },
-    {
-      id: '2054',
-      personId: '7',
-      date: '2026-04-01',
-      entries: [
-        {
-          eid: '__total__',
-          val: 150,
-        },
-      ],
-    },
-    {
-      id: '2055',
-      personId: '7',
-      date: '2026-04-02',
-      entries: [
-        {
-          eid: '__total__',
-          val: 150,
         },
       ],
     },
@@ -1357,6 +6111,28 @@ export const circuitSeed: CircuitState = {
       ],
     },
     {
+      id: '2018',
+      personId: '2',
+      date: '2026-04-05',
+      entries: [
+        {
+          eid: '__total__',
+          val: 171.72,
+        },
+      ],
+    },
+    {
+      id: '2041',
+      personId: '5',
+      date: '2026-04-05',
+      entries: [
+        {
+          eid: '1',
+          val: 20,
+        },
+      ],
+    },
+    {
       id: '2057',
       personId: '7',
       date: '2026-04-05',
@@ -1364,6 +6140,43 @@ export const circuitSeed: CircuitState = {
         {
           eid: '__total__',
           val: 150,
+        },
+      ],
+    },
+    {
+      id: '2014',
+      personId: '1',
+      date: '2026-04-06',
+      entries: [
+        {
+          eid: '1',
+          val: 65,
+        },
+        {
+          eid: '5',
+          val: 20,
+        },
+      ],
+    },
+    {
+      id: '2019',
+      personId: '2',
+      date: '2026-04-06',
+      entries: [
+        {
+          eid: '__total__',
+          val: 42.16,
+        },
+      ],
+    },
+    {
+      id: '2042',
+      personId: '5',
+      date: '2026-04-06',
+      entries: [
+        {
+          eid: '4',
+          val: 7,
         },
       ],
     },
@@ -1379,6 +6192,28 @@ export const circuitSeed: CircuitState = {
       ],
     },
     {
+      id: '2043',
+      personId: '5',
+      date: '2026-04-07',
+      entries: [
+        {
+          eid: '1',
+          val: 60,
+        },
+      ],
+    },
+    {
+      id: '2052',
+      personId: '6',
+      date: '2026-04-07',
+      entries: [
+        {
+          eid: '__total__',
+          val: 145,
+        },
+      ],
+    },
+    {
       id: '2059',
       personId: '7',
       date: '2026-04-07',
@@ -1386,6 +6221,17 @@ export const circuitSeed: CircuitState = {
         {
           eid: '__total__',
           val: 90,
+        },
+      ],
+    },
+    {
+      id: '2053',
+      personId: '6',
+      date: '2026-04-08',
+      entries: [
+        {
+          eid: '__total__',
+          val: 120,
         },
       ],
     },
@@ -1401,6 +6247,50 @@ export const circuitSeed: CircuitState = {
       ],
     },
     {
+      id: '2015',
+      personId: '1',
+      date: '2026-04-09',
+      entries: [
+        {
+          eid: '8',
+          val: 2.25,
+        },
+      ],
+    },
+    {
+      id: '2044',
+      personId: '5',
+      date: '2026-04-09',
+      entries: [
+        {
+          eid: '1',
+          val: 90,
+        },
+      ],
+    },
+    {
+      id: '2020',
+      personId: '2',
+      date: '2026-04-10',
+      entries: [
+        {
+          eid: '__total__',
+          val: 100.44,
+        },
+      ],
+    },
+    {
+      id: '2029',
+      personId: '3',
+      date: '2026-04-10',
+      entries: [
+        {
+          eid: '__total__',
+          val: 201,
+        },
+      ],
+    },
+    {
       id: '2061',
       personId: '7',
       date: '2026-04-10',
@@ -1412,6 +6302,17 @@ export const circuitSeed: CircuitState = {
       ],
     },
     {
+      id: '2030',
+      personId: '3',
+      date: '2026-04-11',
+      entries: [
+        {
+          eid: '__total__',
+          val: 101,
+        },
+      ],
+    },
+    {
       id: '2062',
       personId: '7',
       date: '2026-04-11',
@@ -1419,6 +6320,17 @@ export const circuitSeed: CircuitState = {
         {
           eid: '__total__',
           val: 82.5,
+        },
+      ],
+    },
+    {
+      id: '2031',
+      personId: '3',
+      date: '2026-04-12',
+      entries: [
+        {
+          eid: '__total__',
+          val: 201,
         },
       ],
     },
@@ -1445,6 +6357,28 @@ export const circuitSeed: CircuitState = {
       ],
     },
     {
+      id: '2032',
+      personId: '3',
+      date: '2026-04-14',
+      entries: [
+        {
+          eid: '__total__',
+          val: 201,
+        },
+      ],
+    },
+    {
+      id: '2045',
+      personId: '5',
+      date: '2026-04-14',
+      entries: [
+        {
+          eid: '__total__',
+          val: 55,
+        },
+      ],
+    },
+    {
       id: '2065',
       personId: '7',
       date: '2026-04-14',
@@ -1456,6 +6390,28 @@ export const circuitSeed: CircuitState = {
       ],
     },
     {
+      id: '2033',
+      personId: '3',
+      date: '2026-04-15',
+      entries: [
+        {
+          eid: '__total__',
+          val: 201,
+        },
+      ],
+    },
+    {
+      id: '2034',
+      personId: '3',
+      date: '2026-04-16',
+      entries: [
+        {
+          eid: '__total__',
+          val: 201,
+        },
+      ],
+    },
+    {
       id: '2066',
       personId: '7',
       date: '2026-04-16',
@@ -1463,6 +6419,43 @@ export const circuitSeed: CircuitState = {
         {
           eid: '__total__',
           val: 82.5,
+        },
+      ],
+    },
+    {
+      id: '2016',
+      personId: '1',
+      date: '2026-04-17',
+      entries: [
+        {
+          eid: '1',
+          val: 20,
+        },
+        {
+          eid: '8',
+          val: 2.4,
+        },
+      ],
+    },
+    {
+      id: '2035',
+      personId: '3',
+      date: '2026-04-17',
+      entries: [
+        {
+          eid: '__total__',
+          val: 281,
+        },
+      ],
+    },
+    {
+      id: '2046',
+      personId: '5',
+      date: '2026-04-17',
+      entries: [
+        {
+          eid: '1',
+          val: 40,
         },
       ],
     },
@@ -1489,6 +6482,17 @@ export const circuitSeed: CircuitState = {
       ],
     },
     {
+      id: '2047',
+      personId: '5',
+      date: '2026-04-19',
+      entries: [
+        {
+          eid: '__total__',
+          val: 10,
+        },
+      ],
+    },
+    {
       id: '2069',
       personId: '7',
       date: '2026-04-19',
@@ -1496,6 +6500,17 @@ export const circuitSeed: CircuitState = {
         {
           eid: '__total__',
           val: 22.5,
+        },
+      ],
+    },
+    {
+      id: '2048',
+      personId: '5',
+      date: '2026-04-20',
+      entries: [
+        {
+          eid: '__total__',
+          val: 15,
         },
       ],
     },
@@ -1511,6 +6526,72 @@ export const circuitSeed: CircuitState = {
       ],
     },
     {
+      id: '2017',
+      personId: '1',
+      date: '2026-04-21',
+      entries: [
+        {
+          eid: '8',
+          val: 2.25,
+        },
+      ],
+    },
+    {
+      id: '2021',
+      personId: '2',
+      date: '2026-04-21',
+      entries: [
+        {
+          eid: '__total__',
+          val: 100.44,
+        },
+      ],
+    },
+    {
+      id: '2036',
+      personId: '3',
+      date: '2026-04-21',
+      entries: [
+        {
+          eid: '__total__',
+          val: 101,
+        },
+      ],
+    },
+    {
+      id: '2049',
+      personId: '5',
+      date: '2026-04-21',
+      entries: [
+        {
+          eid: '__total__',
+          val: 40,
+        },
+      ],
+    },
+    {
+      id: '2037',
+      personId: '3',
+      date: '2026-04-22',
+      entries: [
+        {
+          eid: '__total__',
+          val: 101,
+        },
+      ],
+    },
+    {
+      id: '2050',
+      personId: '5',
+      date: '2026-04-22',
+      entries: [
+        {
+          eid: '1',
+          val: 15,
+        },
+      ],
+    },
+    {
       id: '2071',
       personId: '7',
       date: '2026-04-22',
@@ -1518,6 +6599,28 @@ export const circuitSeed: CircuitState = {
         {
           eid: '__total__',
           val: 102.5,
+        },
+      ],
+    },
+    {
+      id: '2022',
+      personId: '2',
+      date: '2026-04-23',
+      entries: [
+        {
+          eid: '2',
+          val: 30,
+        },
+      ],
+    },
+    {
+      id: '2038',
+      personId: '3',
+      date: '2026-04-23',
+      entries: [
+        {
+          eid: '__total__',
+          val: 101,
         },
       ],
     },
@@ -1555,6 +6658,17 @@ export const circuitSeed: CircuitState = {
       ],
     },
     {
+      id: '2039',
+      personId: '3',
+      date: '2026-04-26',
+      entries: [
+        {
+          eid: '__total__',
+          val: 101,
+        },
+      ],
+    },
+    {
       id: '2075',
       personId: '7',
       date: '2026-04-26',
@@ -1566,6 +6680,17 @@ export const circuitSeed: CircuitState = {
       ],
     },
     {
+      id: '2023',
+      personId: '2',
+      date: '2026-04-27',
+      entries: [
+        {
+          eid: '__total__',
+          val: 118.16,
+        },
+      ],
+    },
+    {
       id: '2076',
       personId: '7',
       date: '2026-04-27',
@@ -1573,6 +6698,39 @@ export const circuitSeed: CircuitState = {
         {
           eid: '__total__',
           val: 140,
+        },
+      ],
+    },
+    {
+      id: '2024',
+      personId: '2',
+      date: '2026-04-28',
+      entries: [
+        {
+          eid: '__total__',
+          val: 116.44,
+        },
+      ],
+    },
+    {
+      id: '2025',
+      personId: '2',
+      date: '2026-04-29',
+      entries: [
+        {
+          eid: '__total__',
+          val: 25.6,
+        },
+      ],
+    },
+    {
+      id: '2026',
+      personId: '2',
+      date: '2026-04-30',
+      entries: [
+        {
+          eid: '__total__',
+          val: 26.4,
         },
       ],
     },
@@ -1606,6 +6764,17 @@ export const circuitSeed: CircuitState = {
         {
           eid: '__total__',
           val: 28,
+        },
+      ],
+    },
+    {
+      id: '2100',
+      personId: '3',
+      date: '2026-05-04',
+      entries: [
+        {
+          eid: '__total__',
+          val: 201,
         },
       ],
     },
@@ -1720,6 +6889,17 @@ export const circuitSeed: CircuitState = {
       ],
     },
     {
+      id: '2101',
+      personId: '3',
+      date: '2026-05-15',
+      entries: [
+        {
+          eid: '__total__',
+          val: 101,
+        },
+      ],
+    },
+    {
       id: '2090',
       personId: '2',
       date: '2026-05-16',
@@ -1727,6 +6907,17 @@ export const circuitSeed: CircuitState = {
         {
           eid: '__total__',
           val: 224.88,
+        },
+      ],
+    },
+    {
+      id: '2102',
+      personId: '3',
+      date: '2026-05-16',
+      entries: [
+        {
+          eid: '__total__',
+          val: 240,
         },
       ],
     },
@@ -1742,6 +6933,17 @@ export const circuitSeed: CircuitState = {
       ],
     },
     {
+      id: '2103',
+      personId: '3',
+      date: '2026-05-17',
+      entries: [
+        {
+          eid: '__total__',
+          val: 201,
+        },
+      ],
+    },
+    {
       id: '2092',
       personId: '2',
       date: '2026-05-18',
@@ -1749,6 +6951,17 @@ export const circuitSeed: CircuitState = {
         {
           eid: '__total__',
           val: 157.8,
+        },
+      ],
+    },
+    {
+      id: '2104',
+      personId: '3',
+      date: '2026-05-18',
+      entries: [
+        {
+          eid: '__total__',
+          val: 1,
         },
       ],
     },
@@ -1782,6 +6995,17 @@ export const circuitSeed: CircuitState = {
         {
           eid: '__total__',
           val: 100.44,
+        },
+      ],
+    },
+    {
+      id: '2105',
+      personId: '3',
+      date: '2026-05-22',
+      entries: [
+        {
+          eid: '4',
+          val: 5,
         },
       ],
     },
@@ -1826,72 +7050,6 @@ export const circuitSeed: CircuitState = {
         {
           eid: '__total__',
           val: 36,
-        },
-      ],
-    },
-    {
-      id: '2100',
-      personId: '3',
-      date: '2026-05-04',
-      entries: [
-        {
-          eid: '__total__',
-          val: 201,
-        },
-      ],
-    },
-    {
-      id: '2101',
-      personId: '3',
-      date: '2026-05-15',
-      entries: [
-        {
-          eid: '__total__',
-          val: 101,
-        },
-      ],
-    },
-    {
-      id: '2102',
-      personId: '3',
-      date: '2026-05-16',
-      entries: [
-        {
-          eid: '__total__',
-          val: 240,
-        },
-      ],
-    },
-    {
-      id: '2103',
-      personId: '3',
-      date: '2026-05-17',
-      entries: [
-        {
-          eid: '__total__',
-          val: 201,
-        },
-      ],
-    },
-    {
-      id: '2104',
-      personId: '3',
-      date: '2026-05-18',
-      entries: [
-        {
-          eid: '__total__',
-          val: 1,
-        },
-      ],
-    },
-    {
-      id: '2105',
-      personId: '3',
-      date: '2026-05-22',
-      entries: [
-        {
-          eid: '4',
-          val: 5,
         },
       ],
     },
