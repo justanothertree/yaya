@@ -37,6 +37,7 @@ export function Log({
   const [armedId, setArmedId] = useState<string | null>(null) // handle pressed → card draggable
   const [dragId, setDragId] = useState<string | null>(null)
   const [overId, setOverId] = useState<string | null>(null)
+  const [colEdit, setColEdit] = useState<number | null>(null) // column header being renamed
 
   const pid = selPid || state.people[0]?.id || ''
   const person = state.people.find((p) => p.id === pid)
@@ -83,6 +84,20 @@ export function Log({
     }))
   }, [person])
 
+  // personal best (max raw value) per exercise, for PR hints/highlights on the slots
+  const bestByEx = useMemo(() => {
+    const best: Record<string, number> = {}
+    if (!person) return best
+    for (const l of state.logs) {
+      if (l.personId !== person.id) continue
+      for (const e of l.entries) {
+        if (e.eid === '__total__' || !(e.val > 0)) continue
+        if (!best[e.eid] || e.val > best[e.eid]) best[e.eid] = e.val
+      }
+    }
+    return best
+  }, [state.logs, person])
+
   if (!person) return <p className="muted">No participants yet.</p>
 
   const total = person.exercises.reduce((s, ex) => s + (parseFloat(vals[ex.id]) || 0) * ex.mult, 0)
@@ -107,6 +122,15 @@ export function Log({
 
   // ── exercise-grid edits (persist through the store) ───────────────────────
   const saveExs = (next: Exercise[]) => void circuitStore.savePerson({ ...person, exercises: next })
+  const renameCol = (ci: number, label: string) =>
+    void circuitStore.savePerson({
+      ...person,
+      colLabels: person.colLabels.map((l, i) => (i === ci ? label : l)),
+    })
+  const addCol = () => {
+    void circuitStore.savePerson({ ...person, colLabels: [...person.colLabels, 'New column'] })
+    setColEdit(person.colLabels.length) // open the fresh header for naming
+  }
   const patchEx = (id: string, p: Partial<Exercise>) =>
     saveExs(person.exercises.map((e) => (e.id === id ? { ...e, ...p } : e)))
   const delEx = (id: string) => {
@@ -298,13 +322,13 @@ export function Log({
         }}
       >
         <span className="muted" style={{ fontSize: '0.78rem' }}>
-          Drag ⠿ to move · click a name to edit
+          Drag ⠿ to move · click a name or column to rename
         </span>
         <button
           className="btn btn-ghost"
           onClick={() => setManaging(true)}
           style={{ fontSize: '0.8rem' }}
-          title="Rename or add columns and do bulk edits"
+          title="Reorder, move, or delete columns and do bulk edits"
         >
           ⚙️ Columns
         </button>
@@ -314,15 +338,50 @@ export function Log({
       <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
         {cols.map((col) => (
           <div key={col.ci}>
-            <div className="cz-sec" style={{ marginBottom: '0.4rem' }}>
-              {col.label}
-            </div>
+            {colEdit === col.ci ? (
+              <input
+                className="cz-num"
+                value={col.label}
+                onChange={(e) => renameCol(col.ci, e.target.value)}
+                onBlur={() => {
+                  setColEdit(null)
+                  if (!col.label.trim()) renameCol(col.ci, 'Column')
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
+                }}
+                autoFocus
+                onFocus={(e) => e.target.select()}
+                style={{
+                  marginBottom: '0.4rem',
+                  fontSize: '10px',
+                  fontWeight: 700,
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.08em',
+                  background: 'transparent',
+                  border: 'none',
+                  borderBottom: '1px solid var(--b2, rgba(127,127,127,0.3))',
+                  padding: '0 0 2px',
+                  width: '11rem',
+                }}
+              />
+            ) : (
+              <div
+                className="cz-sec"
+                onClick={() => setColEdit(col.ci)}
+                title="Click to rename this column"
+                style={{ marginBottom: '0.4rem', cursor: 'text', display: 'inline-block' }}
+              >
+                {col.label || 'Column'}
+              </div>
+            )}
             <div className="cz-ex-grid">
               {col.exs.map((ex) => (
                 <Slot
                   key={ex.id}
                   ex={ex}
                   val={vals[ex.id] ?? ''}
+                  best={bestByEx[ex.id]}
                   open={editId === ex.id}
                   dragging={dragId === ex.id}
                   over={overId === ex.id}
@@ -370,6 +429,14 @@ export function Log({
             </div>
           </div>
         ))}
+        <button
+          className="btn btn-ghost"
+          onClick={addCol}
+          style={{ fontSize: '0.78rem', alignSelf: 'flex-start' }}
+          title="Add a new column to the sheet"
+        >
+          ＋ Column
+        </button>
       </div>
 
       {/* actions */}
@@ -417,6 +484,7 @@ export function Log({
 function Slot({
   ex,
   val,
+  best,
   open,
   dragging,
   over,
@@ -434,6 +502,7 @@ function Slot({
 }: {
   ex: Exercise
   val: string
+  best?: number
   open: boolean
   dragging: boolean
   over: boolean
@@ -449,7 +518,9 @@ function Slot({
   onDragLeave: () => void
   onDrop: () => void
 }) {
-  const pts = (parseFloat(val) || 0) * ex.mult
+  const v = parseFloat(val) || 0
+  const pts = v * ex.mult
+  const isPR = v > 0 && !!best && v > best
   return (
     <div
       className={`cz-slot${dragging ? ' cz-dragging' : ''}${over ? ' cz-drag-over' : ''}`}
@@ -511,17 +582,34 @@ function Slot({
           {ex.unit}
         </span>
         <span
+          title={isPR ? 'New personal best!' : undefined}
           style={{
             marginLeft: 'auto',
             fontVariantNumeric: 'tabular-nums',
             fontSize: '0.75rem',
-            color: pts > 0 ? 'var(--accent, #7c6af7)' : 'inherit',
+            fontWeight: isPR ? 800 : undefined,
+            color: isPR ? '#f5c060' : pts > 0 ? 'var(--accent, #7c6af7)' : 'inherit',
             opacity: pts > 0 ? 1 : 0.4,
           }}
         >
-          {pts > 0 ? `${Math.round(pts * 10) / 10} pt` : `×${ex.mult}`}
+          {pts > 0 ? `${isPR ? '🏆 ' : ''}${Math.round(pts * 10) / 10} pt` : `×${ex.mult}`}
         </span>
       </div>
+      {best ? (
+        <div
+          className="cz-num"
+          style={{
+            marginTop: 3,
+            fontSize: '0.6rem',
+            lineHeight: 1,
+            color: isPR ? '#f5c060' : 'var(--muted)',
+          }}
+        >
+          {isPR
+            ? '🏆 new best!'
+            : `best ${Math.round(best * 10) / 10}${ex.unit ? ' ' + ex.unit : ''}`}
+        </div>
+      ) : null}
 
       {open && (
         <div className="cz-edit-panel">
