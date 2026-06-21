@@ -26,6 +26,7 @@ export function CircuitsPanel() {
   const [joinCode, setJoinCode] = useState('')
   const [uid, setUid] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [claimOpen, setClaimOpen] = useState(false)
 
   const refresh = useCallback(async () => {
     const { data, error } = await sb.rpc('my_circuits')
@@ -90,6 +91,19 @@ export function CircuitsPanel() {
   }
 
   const input: React.CSSProperties = { padding: '0.45rem 0.6rem', flex: 1, minWidth: 0 }
+  const personRow = (color: string): React.CSSProperties => ({
+    display: 'flex',
+    alignItems: 'center',
+    gap: '0.5rem',
+    flexWrap: 'wrap',
+    padding: '0.45rem 0.6rem',
+    background: 'var(--b1, rgba(127,127,127,0.06))',
+    borderRadius: 8,
+    borderLeft: `3px solid ${color}`,
+  })
+
+  const myPeople = state.people.filter((p) => uid && p.ownerUserId === uid)
+  const claimable = state.people.filter((p) => !p.ownerUserId)
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.4rem', maxWidth: 620 }}>
@@ -202,68 +216,79 @@ export function CircuitsPanel() {
         </div>
       </section>
 
-      {/* people in your circuits: ownership + public-board opt-in */}
-      {state.people.length > 0 && (
+      {/* your own Circuit(s): just yours, with the public-board opt-in */}
+      {myPeople.length > 0 && (
         <section>
           <div className="cz-sec" style={{ marginBottom: '0.4rem' }}>
-            People in your circuits
+            Your Circuit{myPeople.length > 1 ? 's' : ''}
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-            {state.people.map((p) => {
-              const mine = !!p.ownerUserId && !!uid && p.ownerUserId === uid
-              const unclaimed = !p.ownerUserId
-              return (
-                <div
-                  key={p.id}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '0.5rem',
-                    flexWrap: 'wrap',
-                    padding: '0.45rem 0.6rem',
-                    background: 'var(--b1, rgba(127,127,127,0.06))',
-                    borderRadius: 8,
-                    borderLeft: `3px solid ${p.color}`,
-                  }}
+            {myPeople.map((p) => (
+              <div key={p.id} style={personRow(p.color)}>
+                <strong style={{ color: p.color }}>{p.name}</strong>
+                <span className="muted" style={{ fontSize: '0.76rem' }}>
+                  ✓ yours
+                </span>
+                <button
+                  className="btn btn-ghost"
+                  onClick={() => setPublic(p.id, !p.isPublic)}
+                  disabled={busy}
+                  style={{ fontSize: '0.74rem', marginLeft: 'auto' }}
+                  title="Whether your Circuit shows on the signed-out public board"
                 >
-                  <strong style={{ color: p.color }}>{p.name}</strong>
-                  {mine ? (
-                    <span className="muted" style={{ fontSize: '0.76rem' }}>
-                      ✓ yours
-                    </span>
-                  ) : unclaimed ? (
-                    <button
-                      className="btn btn-ghost"
-                      onClick={() => claim(p.id)}
-                      disabled={busy}
-                      style={{ fontSize: '0.78rem' }}
-                      title="Claim this Circuit as yours"
-                    >
-                      This is me
-                    </button>
-                  ) : (
-                    <span className="muted" style={{ fontSize: '0.76rem' }}>
-                      claimed
-                    </span>
-                  )}
-                  {mine && (
-                    <button
-                      className="btn btn-ghost"
-                      onClick={() => setPublic(p.id, !p.isPublic)}
-                      disabled={busy}
-                      style={{ fontSize: '0.74rem', marginLeft: 'auto' }}
-                      title="Whether your Circuit shows on the signed-out public board"
-                    >
-                      {p.isPublic ? '🌎 Public — make private' : 'Make public'}
-                    </button>
-                  )}
-                </div>
-              )
-            })}
+                  {p.isPublic ? '🌎 Public — make private' : 'Make public'}
+                </button>
+              </div>
+            ))}
           </div>
-          <p className="muted" style={{ margin: '0.5rem 0 0', fontSize: '0.78rem' }}>
-            Unclaimed people stay admin-managed until the real person signs in and claims them.
-          </p>
+        </section>
+      )}
+
+      {/* claiming is tucked away — only unclaimed people, only if you open it */}
+      {claimable.length > 0 && (
+        <section>
+          <button
+            className="btn btn-ghost"
+            onClick={() => setClaimOpen((o) => !o)}
+            style={{ fontSize: '0.8rem' }}
+            aria-expanded={claimOpen}
+          >
+            {claimOpen ? '▾' : '▸'} Claim your Circuit
+            {myPeople.length === 0 && (
+              <span className="muted" style={{ marginLeft: '0.4rem', fontSize: '0.74rem' }}>
+                ({claimable.length} unclaimed)
+              </span>
+            )}
+          </button>
+          {claimOpen && (
+            <div
+              style={{
+                marginTop: '0.55rem',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '0.4rem',
+              }}
+            >
+              <p className="muted" style={{ margin: 0, fontSize: '0.78rem' }}>
+                If one of these unclaimed people is you, claim it to own your logs. Otherwise leave
+                it — they’ll claim it when they sign in.
+              </p>
+              {claimable.map((p) => (
+                <div key={p.id} style={personRow(p.color)}>
+                  <strong style={{ color: p.color }}>{p.name}</strong>
+                  <button
+                    className="btn btn-ghost"
+                    onClick={() => claim(p.id)}
+                    disabled={busy}
+                    style={{ fontSize: '0.78rem', marginLeft: 'auto' }}
+                    title="Claim this Circuit as yours"
+                  >
+                    This is me
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
         </section>
       )}
 
