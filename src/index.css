@@ -173,11 +173,25 @@
   }
 }
 /* Circuit log slot grid — moveable + editable exercise slots (ported from the standalone) */
+/* one column of the log sheet = a vertical stack of slots */
 .cz-ex-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  display: flex;
+  flex-direction: column;
   gap: 6px;
-  align-items: start;
+}
+/* the sheet lays its columns side by side (spreadsheet style), wrapping when narrow */
+.cz-ex-sheet {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.85rem;
+  align-items: flex-start;
+}
+.cz-ex-col {
+  flex: 1 1 160px;
+  min-width: 150px;
+  max-width: 280px;
+  display: flex;
+  flex-direction: column;
 }
 .cz-slot {
   background: var(--card2, rgba(127, 127, 127, 0.06));
