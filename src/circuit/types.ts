@@ -15,6 +15,11 @@ export interface Person {
   exercises: Exercise[]
   /** Column header labels for this person's grid. */
   colLabels: string[]
+  /** Auth user who owns this Circuit (server-set; null/undefined = unclaimed). Read-only
+   *  on the client — changed only via the claim_person RPC, never written by savePerson. */
+  ownerUserId?: string | null
+  /** Whether this person opts into the public board / signed-out demo. */
+  isPublic?: boolean
 }
 
 export interface Exercise {
