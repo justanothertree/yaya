@@ -4,7 +4,6 @@
 import type { CircuitAdapter } from './adapter'
 import type { CircuitState, DayLog, Movie, MovieRating, Person, WatchlistItem, ID } from './types'
 import { getSupabaseClient } from '../finance/client'
-import { publicSeed } from './publicSeed'
 
 const TABLES = ['circuit_people', 'circuit_logs', 'circuit_movies', 'circuit_watchlist'] as const
 
@@ -107,23 +106,12 @@ export function createSupabaseAdapter(): CircuitAdapter {
     }
   }
 
-  // If the cloud is empty, seed a fresh group with just the signed-in starter slice.
-  // (The original full-group history was seeded long ago and lives in the cloud; the
-  // full seed is intentionally no longer bundled — see publicSeed.ts.) Idempotent: stable ids.
-  async function seedIfEmpty(): Promise<void> {
-    const { count } = await sb.from('circuit_people').select('id', { count: 'exact', head: true })
-    if (count && count > 0) return
-    await Promise.all([
-      sb.from('circuit_people').upsert(publicSeed.people.map(personToRow)),
-      sb.from('circuit_logs').upsert(publicSeed.logs.map(logToRow)),
-      sb.from('circuit_movies').upsert(publicSeed.movies.map(movieToRow)),
-      sb.from('circuit_watchlist').upsert(publicSeed.watchlist.map(wlToRow)),
-    ])
-  }
+  // Note: no auto-seeding. The crew's data already lives in the cloud, and under the
+  // ownership model (groups + per-person owner_user_id) a new/non-crew member must start
+  // empty and create or join a circuit — never inherit someone else's slice.
 
   return {
     async load() {
-      await seedIfEmpty()
       return loadAll()
     },
     async savePerson(p: Person) {

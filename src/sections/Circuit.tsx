@@ -12,8 +12,9 @@ import { Movies } from '../circuit/ui/Movies'
 import { Watchlist } from '../circuit/ui/Watchlist'
 import { Toast } from '../circuit/ui/Toast'
 import { CircuitCanvas, type CanvasPane } from '../circuit/ui/CircuitCanvas'
+import { CircuitsPanel } from '../circuit/ui/CircuitsPanel'
 
-type Tab = 'board' | 'log' | 'feed' | 'charts' | 'movies' | 'watchlist'
+type Tab = 'board' | 'log' | 'feed' | 'charts' | 'movies' | 'watchlist' | 'circuits'
 
 const todayISO = () => new Date().toISOString().slice(0, 10)
 const isDesktop = () => typeof window !== 'undefined' && window.innerWidth >= 820
@@ -90,6 +91,8 @@ export function Circuit({ authed = false }: { authed?: boolean } = {}) {
     { id: 'charts', label: '📊 Charts' },
     { id: 'movies', label: '🎬 Movies' },
     { id: 'watchlist', label: '🍿 Watchlist' },
+    // circuit management (create/join/invite/claim) is members-only
+    ...(authed ? [{ id: 'circuits' as Tab, label: '👥 Circuits' }] : []),
   ]
 
   const canvasPanes: CanvasPane[] = [
@@ -187,6 +190,7 @@ export function Circuit({ authed = false }: { authed?: boolean } = {}) {
             {tab === 'charts' && <Charts onDayClick={handleLog} />}
             {tab === 'movies' && <Movies />}
             {tab === 'watchlist' && <Watchlist />}
+            {tab === 'circuits' && <CircuitsPanel />}
           </div>
         </>
       )}
