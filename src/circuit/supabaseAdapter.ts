@@ -40,6 +40,10 @@ const personToRow = (p: Person): PersonRow => ({
   goal: p.goal ?? 100,
   exercises: p.exercises,
   col_labels: p.colLabels,
+  // Send the owner back unchanged so an owner's upsert passes the ownership INSERT check
+  // under the Phase-C policies. It's loaded from the DB, and the WITH CHECK forbids setting
+  // it to anyone but yourself, so this can't transfer/steal ownership.
+  owner_user_id: p.ownerUserId ?? null,
 })
 const rowToPerson = (r: PersonRow): Person => ({
   id: r.id,
@@ -51,8 +55,8 @@ const rowToPerson = (r: PersonRow): Person => ({
   ownerUserId: r.owner_user_id ?? null,
   isPublic: r.is_public ?? false,
 })
-// NB: personToRow deliberately omits owner_user_id / is_public so an edit-save never
-// clobbers them — ownership changes only through the claim_person / set_person_public RPCs.
+// NB: personToRow omits is_public — that's changed only through set_person_public, so a
+// normal edit-save never reverts a public-board toggle.
 const logToRow = (l: DayLog): LogRow => ({
   id: l.id,
   person_id: l.personId,
