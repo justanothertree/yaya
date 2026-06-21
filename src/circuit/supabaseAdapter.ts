@@ -14,6 +14,8 @@ type PersonRow = {
   goal: number | null
   exercises: Person['exercises']
   col_labels: string[]
+  owner_user_id?: string | null
+  is_public?: boolean | null
 }
 type LogRow = {
   id: string
@@ -46,7 +48,11 @@ const rowToPerson = (r: PersonRow): Person => ({
   goal: r.goal ?? 100,
   exercises: r.exercises ?? [],
   colLabels: r.col_labels ?? [],
+  ownerUserId: r.owner_user_id ?? null,
+  isPublic: r.is_public ?? false,
 })
+// NB: personToRow deliberately omits owner_user_id / is_public so an edit-save never
+// clobbers them — ownership changes only through the claim_person / set_person_public RPCs.
 const logToRow = (l: DayLog): LogRow => ({
   id: l.id,
   person_id: l.personId,
