@@ -46,15 +46,22 @@ export function Log({
   )
   const imported = isImportedTotal(existing)
 
-  // a stuck "armed" handle (mouse released without a drag) would leave the card draggable
-  // and fight the scrub input — clear it on any global mouseup / dragend.
+  // Drag bookkeeping cleanup. A stuck "armed" handle (mouse released without a drag) would
+  // leave the card draggable and fight the scrub input. And when a slot moves to a new row on
+  // drop, its own dragend can get lost — leaving it stuck at the dragging opacity (grayed out).
+  // Clear all drag state on any global mouseup / dragend so nothing lingers.
   useEffect(() => {
-    const clear = () => setArmedId(null)
-    window.addEventListener('mouseup', clear)
-    window.addEventListener('dragend', clear)
+    const clearArmed = () => setArmedId(null)
+    const clearDrag = () => {
+      setArmedId(null)
+      setDragId(null)
+      setOverId(null)
+    }
+    window.addEventListener('mouseup', clearArmed)
+    window.addEventListener('dragend', clearDrag)
     return () => {
-      window.removeEventListener('mouseup', clear)
-      window.removeEventListener('dragend', clear)
+      window.removeEventListener('mouseup', clearArmed)
+      window.removeEventListener('dragend', clearDrag)
     }
   }, [])
 
@@ -335,6 +342,7 @@ export function Log({
                   onDragLeave={() => setOverId((o) => (o === ex.id ? null : o))}
                   onDrop={() => {
                     reorder(ex.col, ex.id)
+                    setDragId(null)
                     setOverId(null)
                   }}
                 />
@@ -352,6 +360,7 @@ export function Log({
                 onDrop={(e) => {
                   e.preventDefault()
                   reorder(col.ci, null)
+                  setDragId(null)
                   setOverId(null)
                 }}
                 title="Add an exercise to this column"
