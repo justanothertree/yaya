@@ -324,20 +324,30 @@ export function Log({
         <span className="muted" style={{ fontSize: '0.78rem' }}>
           Drag ⠿ to move · click a name or column to rename
         </span>
-        <button
-          className="btn btn-ghost"
-          onClick={() => setManaging(true)}
-          style={{ fontSize: '0.8rem' }}
-          title="Reorder, move, or delete columns and do bulk edits"
-        >
-          ⚙️ Columns
-        </button>
+        <span style={{ display: 'inline-flex', gap: '0.4rem' }}>
+          <button
+            className="btn btn-ghost"
+            onClick={addCol}
+            style={{ fontSize: '0.8rem' }}
+            title="Add a new column to the sheet"
+          >
+            ＋ Column
+          </button>
+          <button
+            className="btn btn-ghost"
+            onClick={() => setManaging(true)}
+            style={{ fontSize: '0.8rem' }}
+            title="Reorder, move, or delete columns and do bulk edits"
+          >
+            ⚙️ Columns
+          </button>
+        </span>
       </div>
 
-      {/* the sheet: one section per column, slots inside */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+      {/* the sheet: columns side by side (spreadsheet style), slots stacked inside */}
+      <div className="cz-ex-sheet">
         {cols.map((col) => (
-          <div key={col.ci}>
+          <div key={col.ci} className="cz-ex-col">
             {colEdit === col.ci ? (
               <input
                 className="cz-num"
@@ -429,14 +439,6 @@ export function Log({
             </div>
           </div>
         ))}
-        <button
-          className="btn btn-ghost"
-          onClick={addCol}
-          style={{ fontSize: '0.78rem', alignSelf: 'flex-start' }}
-          title="Add a new column to the sheet"
-        >
-          ＋ Column
-        </button>
       </div>
 
       {/* actions */}
