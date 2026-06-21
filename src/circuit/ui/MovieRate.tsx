@@ -87,6 +87,17 @@ export function MovieRate({
   const toggle = (arr: string[], set: (v: string[]) => void, v: string) =>
     set(arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v])
 
+  // vibes stack: the same reaction can be added multiple times (🔥×3). icons is a flat
+  // list with repeats; click adds one, right-click removes one.
+  const iconCount = (id: string) => icons.filter((x) => x === id).length
+  // functional updaters so rapid repeats accumulate (don't read a stale `icons`)
+  const addIcon = (id: string) => setIcons((prev) => [...prev, id])
+  const removeIcon = (id: string) =>
+    setIcons((prev) => {
+      const i = prev.indexOf(id)
+      return i < 0 ? prev : [...prev.slice(0, i), ...prev.slice(i + 1)]
+    })
+
   const save = () => {
     const review: MovieReview = { sentiment, rewatch, rec, tips, tags, note: note.trim() }
     const reviewEmpty =
@@ -245,30 +256,43 @@ export function MovieRate({
           )
         })()}
 
-      {/* vibes */}
-      <div style={sectionLabel}>Vibes (optional)</div>
+      {/* vibes — stack the same reaction by clicking again */}
+      <div style={sectionLabel}>
+        Vibes (optional){' '}
+        <span className="muted" style={{ fontWeight: 400, textTransform: 'none' }}>
+          — click to add, right-click to remove
+        </span>
+      </div>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
-        {MV_ICONS.map((ic) => (
-          <button
-            key={ic.id}
-            type="button"
-            title={ic.label}
-            onClick={() => toggle(icons, setIcons, ic.id)}
-            style={{
-              fontSize: '1.2rem',
-              padding: '2px 6px',
-              borderRadius: 8,
-              cursor: 'pointer',
-              border: `1px solid ${icons.includes(ic.id) ? 'var(--accent, #7c6af7)' : 'transparent'}`,
-              background: icons.includes(ic.id)
-                ? 'var(--b1, rgba(124,106,247,0.15))'
-                : 'transparent',
-              opacity: icons.includes(ic.id) ? 1 : 0.5,
-            }}
-          >
-            {ic.emoji}
-          </button>
-        ))}
+        {MV_ICONS.map((ic) => {
+          const n = iconCount(ic.id)
+          return (
+            <button
+              key={ic.id}
+              type="button"
+              title={`${ic.label} — click +1, right-click −1`}
+              onClick={() => addIcon(ic.id)}
+              onContextMenu={(e) => {
+                e.preventDefault()
+                removeIcon(ic.id)
+              }}
+              style={{
+                fontSize: '1.2rem',
+                padding: '2px 7px',
+                borderRadius: 8,
+                cursor: 'pointer',
+                border: `1px solid ${n > 0 ? 'var(--accent, #7c6af7)' : 'transparent'}`,
+                background: n > 0 ? 'var(--b1, rgba(124,106,247,0.15))' : 'transparent',
+                opacity: n > 0 ? 1 : 0.5,
+              }}
+            >
+              {ic.emoji}
+              {n > 1 && (
+                <sup style={{ fontSize: '0.6rem', fontWeight: 700, marginLeft: 1 }}>{n}</sup>
+              )}
+            </button>
+          )
+        })}
       </div>
 
       {/* gut reaction */}

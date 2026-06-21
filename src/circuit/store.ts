@@ -88,6 +88,11 @@ export function createCircuitStore(): CircuitStore {
   const undoStack: HistEntry[] = []
   const redoStack: HistEntry[] = []
   let histSnap: HistoryState = { canUndo: false, canRedo: false }
+  // echo-suppression: timestamp of our most recent local write. Supabase realtime echoes
+  // our own writes back as a full reload; applying that mid-edit reverts an in-flight
+  // optimistic change. While we're actively writing we ignore echoes and reconcile after.
+  let lastLocalWriteAt = 0
+  let reconcileTimer: ReturnType<typeof setTimeout> | null = null
 
   const emit = () => listeners.forEach((l) => l())
   const refreshHist = () => {
@@ -111,6 +116,7 @@ export function createCircuitStore(): CircuitStore {
     emit()
   }
   const dispatch = (op: Op, record: boolean): Promise<void> => {
+    lastLocalWriteAt = Date.now()
     const inv = inverseOf(state, op)
     state = applyOpToState(state, op)
     if (record) {
@@ -132,9 +138,28 @@ export function createCircuitStore(): CircuitStore {
         unsub()
         unsub = null
       }
+      if (reconcileTimer) {
+        clearTimeout(reconcileTimer)
+        reconcileTimer = null
+      }
       adapter = a
       replaceState(await a.load())
-      unsub = a.subscribe((external) => replaceState(external))
+      // Realtime changes replace state — but our OWN writes echo back the same way, and a
+      // full reload mid-edit would revert an in-flight optimistic change (and wipe undo).
+      // While actively writing, ignore echoes; reconcile once ~2.5s of quiet has passed so
+      // a genuine change from another member still lands.
+      const ECHO_MS = 2500
+      unsub = a.subscribe((external) => {
+        if (Date.now() - lastLocalWriteAt < ECHO_MS) {
+          if (reconcileTimer) clearTimeout(reconcileTimer)
+          reconcileTimer = setTimeout(() => {
+            reconcileTimer = null
+            if (Date.now() - lastLocalWriteAt >= ECHO_MS) void a.load().then(replaceState)
+          }, ECHO_MS)
+          return
+        }
+        replaceState(external)
+      })
     },
     getState: () => state,
     subscribe(listener) {
@@ -145,6 +170,7 @@ export function createCircuitStore(): CircuitStore {
     undo() {
       const entry = undoStack.pop()
       if (!entry) return Promise.resolve()
+      lastLocalWriteAt = Date.now()
       state = applyOpToState(state, entry.undo)
       redoStack.push(entry)
       refreshHist()
@@ -156,6 +182,7 @@ export function createCircuitStore(): CircuitStore {
     redo() {
       const entry = redoStack.pop()
       if (!entry) return Promise.resolve()
+      lastLocalWriteAt = Date.now()
       state = applyOpToState(state, entry.do)
       undoStack.push(entry)
       refreshHist()

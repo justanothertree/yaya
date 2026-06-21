@@ -216,9 +216,13 @@ export function MovieDetail({ movie, onClose }: { movie: Movie; onClose: () => v
             const sentItem = rv?.sentiment != null ? SENTIMENT[rv.sentiment] : null
             const rewItem = rv?.rewatch != null ? REWATCH.find((x) => x.v === rv.rewatch) : null
             const recItem = rv?.rec ? REC.find((x) => x.v === rv.rec) : null
-            const vibes = (r?.icons ?? [])
-              .map((id) => MV_ICONS.find((x) => x.id === id)?.emoji)
-              .filter(Boolean)
+            // stack repeated reactions multiplicatively: 🔥🔥🔥 → "🔥×3"
+            const vibeCounts = new Map<string, number>()
+            for (const id of r?.icons ?? []) {
+              const emoji = MV_ICONS.find((x) => x.id === id)?.emoji
+              if (emoji) vibeCounts.set(emoji, (vibeCounts.get(emoji) ?? 0) + 1)
+            }
+            const vibes = [...vibeCounts.entries()].map(([e, n]) => (n > 1 ? `${e}×${n}` : e))
 
             return (
               <div
