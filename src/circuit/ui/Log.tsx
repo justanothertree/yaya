@@ -1,8 +1,8 @@
-// Daily log — pick a person + date, enter per-exercise amounts, watch points/goal live, save.
-// The exercise grid is a "sheet" of slots that are moveable (drag the ⠿ handle to reorder
-// within or across columns) and editable in place (click a name to rename / tweak its
-// multiplier, unit, and category). Writes through the shared store (localStorage now,
-// Supabase realtime later) so every edit gets undo/redo + sync for free.
+// Daily log — pick a person + date, enter per-exercise amounts, watch points/goal live.
+// The exercise grid is a "sheet" of slots: moveable (drag the ⠿ handle to reorder within or
+// across columns), and edited in a focused modal (name / multiplier / unit / category / tags).
+// Entries autosave through the shared store (localStorage now, Supabase realtime later), so
+// there's no Save button and every change gets undo/redo + sync for free.
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { circuitStore, useCircuit } from '../store'
 import { isImportedTotal, logPoints } from '../scoring'
@@ -10,7 +10,7 @@ import { CAT_COLORS, catColor } from '../catColors'
 import { ScrubInput } from './ScrubInput'
 import { Modal } from './Modal'
 import { GoalBar } from './GoalBar'
-import { todayISO } from '../dates'
+import { todayISO, localISO } from '../dates'
 import type { Exercise } from '../types'
 
 const CATS = Object.keys(CAT_COLORS)
@@ -148,7 +148,7 @@ export function Log({
   const shiftDay = (d: number) => {
     const dt = new Date(date + 'T00:00:00')
     dt.setDate(dt.getDate() + d)
-    setDate(dt.toISOString().slice(0, 10))
+    setDate(localISO(dt))
   }
 
   // ── exercise-grid edits (persist through the store) ───────────────────────
