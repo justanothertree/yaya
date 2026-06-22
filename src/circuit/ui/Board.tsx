@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react'
 import { useCircuit } from '../store'
 import { currentStreak, monthDaily, monthLabel, monthTotal } from '../scoring'
+import { todayISO, todayMonth } from '../dates'
 import { CircuitPersonProfile } from './CircuitPersonProfile'
 import type { Person } from '../types'
 
@@ -15,8 +16,8 @@ export function Board({
 } = {}) {
   const state = useCircuit()
   const [profile, setProfile] = useState<Person | null>(null)
-  const curMonth = new Date().toISOString().slice(0, 7)
-  const todayStr = new Date().toISOString().slice(0, 10)
+  const curMonth = todayMonth()
+  const todayStr = todayISO()
   const months = useMemo(
     () => [...new Set(state.logs.map((l) => l.date.slice(0, 7)))].sort(),
     [state.logs],

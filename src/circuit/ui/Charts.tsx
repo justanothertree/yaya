@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react'
 import { useCircuit } from '../store'
 import { dayTotal, monthLabel, monthTotal } from '../scoring'
+import { todayMonth } from '../dates'
 import { catColor } from '../catColors'
 import type { Person } from '../types'
 
@@ -12,7 +13,7 @@ export function Charts({
   onDayClick,
 }: { onDayClick?: (personId: string, date: string) => void } = {}) {
   const state = useCircuit()
-  const curMonth = new Date().toISOString().slice(0, 7)
+  const curMonth = todayMonth()
   const months = useMemo(
     () => [...new Set(state.logs.map((l) => l.date.slice(0, 7)))].sort(),
     [state.logs],
