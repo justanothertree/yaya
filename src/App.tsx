@@ -457,7 +457,7 @@ export default function App() {
   }, [])
 
   return (
-    <div data-theme={theme} data-page={active} style={{ zoom: uiScale }}>
+    <div data-theme={theme} data-page={active}>
       <a href="#content" className="skip-link">
         Skip to content
       </a>
@@ -558,7 +558,12 @@ export default function App() {
                 className="btn"
                 aria-label="Reset zoom"
                 onClick={() => setUiScale(1)}
-                style={{ padding: '0.5rem 0.4rem', fontVariantNumeric: 'tabular-nums' }}
+                style={{
+                  padding: '0.5rem 0.4rem',
+                  fontVariantNumeric: 'tabular-nums',
+                  minWidth: '3.1rem',
+                  textAlign: 'center',
+                }}
               >
                 {Math.round(uiScale * 100)}%
               </button>
@@ -607,7 +612,7 @@ export default function App() {
         id="content"
         className="container"
         tabIndex={-1}
-        style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+        style={{ paddingBottom: 'env(safe-area-inset-bottom)', zoom: uiScale }}
       >
         {suspended && (
           <div
