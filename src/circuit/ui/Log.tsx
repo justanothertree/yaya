@@ -11,6 +11,7 @@ import { ScrubInput } from './ScrubInput'
 import { Modal } from './Modal'
 import { GoalBar } from './GoalBar'
 import { todayISO, localISO } from '../dates'
+import { getSupabaseClient } from '../../finance/client'
 import type { Exercise } from '../types'
 
 const CATS = Object.keys(CAT_COLORS)
@@ -66,6 +67,25 @@ export function Log({
       window.removeEventListener('dragend', clearDrag)
     }
   }, [])
+
+  // Default to the signed-in user's OWN Circuit (the person they own), unless we arrived
+  // here targeting someone specific (clicked from the feed/board). Signed out, there's no
+  // owner, so it falls through to the first person (the demo "Example" persona).
+  useEffect(() => {
+    if (defaultPersonId || selPid) return
+    let cancelled = false
+    void getSupabaseClient()
+      .auth.getUser()
+      .then(({ data }) => {
+        const uid = data.user?.id
+        if (cancelled || !uid) return
+        const mine = state.people.find((p) => p.ownerUserId === uid)
+        if (mine) setSelPid(mine.id)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [defaultPersonId, selPid, state.people])
 
   // load saved values when person/date (or underlying data) changes; this is not a user
   // edit, so clear the dirty flag so it doesn't trigger an autosave.
