@@ -11,17 +11,6 @@ const KEY = 'circuit_state_v1'
 
 const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v))
 
-function read(): CircuitState {
-  try {
-    const raw = localStorage.getItem(KEY)
-    // first run (nothing saved yet): start from Evan's public demo slice only
-    if (!raw) return { ...emptyCircuitState(), ...clone(publicSeed) }
-    return { ...emptyCircuitState(), ...JSON.parse(raw) }
-  } catch {
-    return emptyCircuitState()
-  }
-}
-
 function write(state: CircuitState) {
   try {
     localStorage.setItem(KEY, JSON.stringify(state))
@@ -43,7 +32,20 @@ function removeById<T extends { id: ID }>(arr: T[], id: ID): T[] {
   return arr.filter((x) => x.id !== id)
 }
 
-export function createLocalAdapter(): CircuitAdapter {
+/** `seed` is the first-run sandbox state (signed-out demo). Defaults to the bundled
+ *  Evan slice; the home page passes a live public-board seed instead. */
+export function createLocalAdapter(seed?: CircuitState): CircuitAdapter {
+  const firstRun = (): CircuitState =>
+    seed ? clone(seed) : { ...emptyCircuitState(), ...clone(publicSeed) }
+  const read = (): CircuitState => {
+    try {
+      const raw = localStorage.getItem(KEY)
+      if (!raw) return firstRun() // nothing saved yet → seed the sandbox
+      return { ...emptyCircuitState(), ...JSON.parse(raw) }
+    } catch {
+      return emptyCircuitState()
+    }
+  }
   const mutate = (fn: (s: CircuitState) => CircuitState) => {
     const next = fn(read())
     write(next)

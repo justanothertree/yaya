@@ -3,6 +3,7 @@
 import { circuitStore } from './store'
 import { createLocalAdapter } from './localAdapter'
 import { createSupabaseAdapter } from './supabaseAdapter'
+import { fetchPublicCircuit } from './publicData'
 import { hasFinanceSupabaseEnv } from '../finance/env'
 import { getUser, onAuthStateChange } from '../finance/auth'
 
@@ -14,7 +15,13 @@ async function pickAdapter() {
     const user = await getUser().catch(() => null)
     if (user) return (supa ??= createSupabaseAdapter())
   }
-  return (local ??= createLocalAdapter())
+  // signed out: seed the local sandbox from the live public board (demo persona +
+  // everyone who opted in via is_public), so public Circuits show on the home page.
+  if (!local) {
+    const seed = await fetchPublicCircuit().catch(() => undefined)
+    local = createLocalAdapter(seed)
+  }
+  return local
 }
 
 let wired = false
