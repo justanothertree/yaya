@@ -562,43 +562,58 @@ function MonthView({
                 textAlign: 'left',
               }}
             >
-              <span
+              <div
                 style={{
-                  fontSize: '0.72rem',
-                  fontWeight: 700,
-                  opacity: isToday ? 1 : 0.55,
-                  color: isToday ? 'var(--accent, #7c6af7)' : 'inherit',
+                  display: 'flex',
+                  alignItems: 'baseline',
+                  justifyContent: 'space-between',
+                  width: '100%',
                 }}
               >
-                {dayNum}
-              </span>
-              {filter ? (
-                has && (
+                <span
+                  style={{
+                    fontSize: '0.72rem',
+                    fontWeight: 700,
+                    opacity: isToday ? 1 : 0.55,
+                    color: isToday ? 'var(--accent, #7c6af7)' : 'inherit',
+                  }}
+                >
+                  {dayNum}
+                </span>
+                {has && (
                   <span
+                    className="cz-num"
                     style={{
-                      fontSize: '0.7rem',
+                      fontSize: '0.64rem',
                       fontWeight: 800,
-                      fontVariantNumeric: 'tabular-nums',
-                      color: peopleById[pids[0]]?.color,
+                      opacity: 0.85,
+                      color: filter ? peopleById[pids[0]]?.color : 'inherit',
                     }}
                   >
                     {Math.round(total)}
                   </span>
-                )
-              ) : (
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 2, marginTop: 'auto' }}>
-                  {pids.slice(0, 6).map((pid) => (
-                    <span
-                      key={pid}
-                      title={peopleById[pid]?.name}
-                      style={{
-                        width: 7,
-                        height: 7,
-                        borderRadius: '50%',
-                        background: peopleById[pid]?.color || '#888',
-                      }}
-                    />
-                  ))}
+                )}
+              </div>
+              {!filter && (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3, marginTop: 'auto' }}>
+                  {pids.slice(0, 6).map((pid) => {
+                    const p = peopleById[pid]
+                    const hit = byP[pid] >= (p?.goal ?? 100)
+                    return (
+                      <span
+                        key={pid}
+                        title={`${p?.name}: ${Math.round(byP[pid])} pts${hit ? ' ✓ goal' : ''}`}
+                        style={{
+                          width: 8,
+                          height: 8,
+                          borderRadius: '50%',
+                          background: hit ? p?.color || '#888' : 'transparent',
+                          border: `1.5px solid ${p?.color || '#888'}`,
+                          opacity: hit ? 1 : 0.7,
+                        }}
+                      />
+                    )
+                  })}
                   {pids.length > 6 && (
                     <span className="muted" style={{ fontSize: '0.6rem', lineHeight: 1 }}>
                       +{pids.length - 6}
@@ -611,7 +626,7 @@ function MonthView({
         })}
       </div>
       <p className="muted" style={{ fontSize: '0.75rem', marginTop: '0.6rem' }}>
-        Tap a day to see everyone's logs.
+        Tap a day to see everyone's logs · number = total pts · ● hit goal · ○ logged
       </p>
     </div>
   )
