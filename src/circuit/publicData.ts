@@ -7,6 +7,7 @@ import type { CircuitState, DayLog, Person } from './types'
 import { emptyCircuitState } from './types'
 import { getSupabaseClient } from '../finance/client'
 import { hasFinanceSupabaseEnv } from '../finance/env'
+import { todayISO } from './dates'
 import { publicSeed } from './publicSeed'
 
 // An obviously-sample person so visitors have something of their own to play with.
@@ -27,7 +28,7 @@ const demoLogs: DayLog[] = [
   {
     id: 'dl1',
     personId: 'demo',
-    date: new Date().toISOString().slice(0, 10),
+    date: todayISO(),
     entries: [
       { eid: 'd1', val: 40 },
       { eid: 'd4', val: 2 },

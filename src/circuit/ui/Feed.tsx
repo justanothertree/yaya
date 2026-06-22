@@ -5,11 +5,10 @@ import { useCircuit } from '../store'
 import { isImportedTotal, logPoints } from '../scoring'
 import { catColor } from '../catColors'
 import { GoalBar } from './GoalBar'
+import { todayISO as isoToday } from '../dates'
 import type { DayLog, Person } from '../types'
 
 type View = 'list' | 'month' | 'week' | 'day' | 'table'
-
-const isoToday = () => new Date().toISOString().slice(0, 10)
 function isoAdd(iso: string, days: number): string {
   const d = new Date(iso + 'T00:00:00')
   d.setDate(d.getDate() + days)

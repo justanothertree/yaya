@@ -8,11 +8,11 @@ import { circuitStore, useCircuit } from '../store'
 import { isImportedTotal, logPoints } from '../scoring'
 import { CAT_COLORS, catColor } from '../catColors'
 import { ScrubInput } from './ScrubInput'
-import { ExerciseManager } from './ExerciseManager'
+import { Modal } from './Modal'
 import { GoalBar } from './GoalBar'
+import { todayISO } from '../dates'
 import type { Exercise } from '../types'
 
-const todayISO = () => new Date().toISOString().slice(0, 10)
 const CATS = Object.keys(CAT_COLORS)
 // suggestions only — the unit field is free text, so you can type your own
 const UNITS = ['reps', 'min', 'sec', 'mi', 'km', 'hr', 'cal', 'lbs', 'steps']
@@ -30,10 +30,9 @@ export function Log({
   const [selPid, setSelPid] = useState(defaultPersonId ?? '')
   const [date, setDate] = useState(defaultDate ?? todayISO())
   const [vals, setVals] = useState<Record<string, string>>({})
-  const [managing, setManaging] = useState(false)
 
   // slot interaction state
-  const [editId, setEditId] = useState<string | null>(null) // open edit panel
+  const [editId, setEditId] = useState<string | null>(null) // exercise open in the edit modal
   const [armedId, setArmedId] = useState<string | null>(null) // handle pressed → card draggable
   const [dragId, setDragId] = useState<string | null>(null)
   const [overId, setOverId] = useState<string | null>(null)
@@ -162,6 +161,21 @@ export function Log({
   const addCol = () => {
     void circuitStore.savePerson({ ...person, colLabels: [...person.colLabels, 'New column'] })
     setColEdit(person.colLabels.length) // open the fresh header for naming
+  }
+  // delete a column: its exercises merge into the neighbouring column (no data lost),
+  // later columns shift down, and rows renumber per column. Keeps at least one column.
+  const deleteCol = (ci: number) => {
+    if (person.colLabels.length <= 1) return
+    const target = ci > 0 ? ci - 1 : 0
+    const moved = person.exercises.map((e) =>
+      e.col === ci ? { ...e, col: target } : e.col > ci ? { ...e, col: e.col - 1 } : e,
+    )
+    const byCol: Record<number, Exercise[]> = {}
+    for (const e of moved) (byCol[e.col] ||= []).push(e)
+    const exercises = Object.values(byCol).flatMap((arr) => arr.map((e, i) => ({ ...e, row: i })))
+    const colLabels = person.colLabels.filter((_, i) => i !== ci)
+    void circuitStore.savePerson({ ...person, exercises, colLabels })
+    setColEdit(null)
   }
   const patchEx = (id: string, p: Partial<Exercise>) =>
     saveExs(person.exercises.map((e) => (e.id === id ? { ...e, ...p } : e)))
@@ -346,26 +360,16 @@ export function Log({
         }}
       >
         <span className="muted" style={{ fontSize: '0.78rem' }}>
-          Drag ⠿ to move · click a name or column to rename
+          Drag ⠿ to move · click a name to edit · click a column to rename
         </span>
-        <span style={{ display: 'inline-flex', gap: '0.4rem' }}>
-          <button
-            className="btn btn-ghost"
-            onClick={addCol}
-            style={{ fontSize: '0.8rem' }}
-            title="Add a new column to the sheet"
-          >
-            ＋ Column
-          </button>
-          <button
-            className="btn btn-ghost"
-            onClick={() => setManaging(true)}
-            style={{ fontSize: '0.8rem' }}
-            title="Reorder, move, or delete columns and do bulk edits"
-          >
-            ⚙️ Columns
-          </button>
-        </span>
+        <button
+          className="btn btn-ghost"
+          onClick={addCol}
+          style={{ fontSize: '0.8rem' }}
+          title="Add a new column to the sheet"
+        >
+          ＋ Column
+        </button>
       </div>
 
       {/* the sheet: columns side by side (spreadsheet style), slots stacked inside */}
@@ -373,32 +377,52 @@ export function Log({
         {cols.map((col) => (
           <div key={col.ci} className="cz-ex-col">
             {colEdit === col.ci ? (
-              <input
-                className="cz-num"
-                value={col.label}
-                onChange={(e) => renameCol(col.ci, e.target.value)}
-                onBlur={() => {
-                  setColEdit(null)
-                  if (!col.label.trim()) renameCol(col.ci, 'Column')
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
-                }}
-                autoFocus
-                onFocus={(e) => e.target.select()}
+              <div
                 style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.3rem',
                   marginBottom: '0.4rem',
-                  fontSize: '10px',
-                  fontWeight: 700,
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.08em',
-                  background: 'transparent',
-                  border: 'none',
-                  borderBottom: '1px solid var(--b2, rgba(127,127,127,0.3))',
-                  padding: '0 0 2px',
-                  width: '11rem',
                 }}
-              />
+              >
+                <input
+                  className="cz-num"
+                  value={col.label}
+                  onChange={(e) => renameCol(col.ci, e.target.value)}
+                  onBlur={() => {
+                    setColEdit(null)
+                    if (!col.label.trim()) renameCol(col.ci, 'Column')
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
+                  }}
+                  autoFocus
+                  onFocus={(e) => e.target.select()}
+                  style={{
+                    flex: 1,
+                    minWidth: 0,
+                    fontSize: '10px',
+                    fontWeight: 700,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.08em',
+                    background: 'transparent',
+                    border: 'none',
+                    borderBottom: '1px solid var(--b2, rgba(127,127,127,0.3))',
+                    padding: '0 0 2px',
+                  }}
+                />
+                {cols.length > 1 && (
+                  <button
+                    className="cz-slot-btn cz-del"
+                    onMouseDown={(e) => e.preventDefault()} // don't blur the input before the click
+                    onClick={() => deleteCol(col.ci)}
+                    title="Delete this column — its exercises merge into the neighbouring one"
+                    style={{ fontSize: '0.78rem' }}
+                  >
+                    🗑
+                  </button>
+                )}
+              </div>
             ) : (
               <div
                 className="cz-sec"
@@ -416,14 +440,11 @@ export function Log({
                   ex={ex}
                   val={vals[ex.id] ?? ''}
                   best={bestByEx[ex.id]}
-                  open={editId === ex.id}
                   dragging={dragId === ex.id}
                   over={overId === ex.id}
                   armed={armedId === ex.id}
                   onVal={(v) => setVal(ex.id, v)}
-                  onToggleEdit={() => setEditId((id) => (id === ex.id ? null : ex.id))}
-                  onPatch={(p) => patchEx(ex.id, p)}
-                  onDelete={() => delEx(ex.id)}
+                  onEdit={() => setEditId(ex.id)}
                   onArm={() => setArmedId(ex.id)}
                   onDragStart={() => setDragId(ex.id)}
                   onDragEnd={() => {
@@ -499,24 +520,33 @@ export function Log({
         </span>
       </div>
 
-      {managing && <ExerciseManager person={person} onClose={() => setManaging(false)} />}
+      {editId &&
+        (() => {
+          const ex = person.exercises.find((e) => e.id === editId)
+          return ex ? (
+            <ExerciseEditModal
+              ex={ex}
+              onPatch={(p) => patchEx(ex.id, p)}
+              onDelete={() => delEx(ex.id)}
+              onClose={() => setEditId(null)}
+            />
+          ) : null
+        })()}
     </div>
   )
 }
 
-// ── one moveable + editable exercise slot ─────────────────────────────────────
+// ── one moveable exercise slot — a compact spreadsheet cell. Editing happens in a
+//    modal (ExerciseEditModal), so the cell stays uniform and uncluttered. ───────────
 function Slot({
   ex,
   val,
   best,
-  open,
   dragging,
   over,
   armed,
   onVal,
-  onToggleEdit,
-  onPatch,
-  onDelete,
+  onEdit,
   onArm,
   onDragStart,
   onDragEnd,
@@ -527,14 +557,11 @@ function Slot({
   ex: Exercise
   val: string
   best?: number
-  open: boolean
   dragging: boolean
   over: boolean
   armed: boolean
   onVal: (v: string) => void
-  onToggleEdit: () => void
-  onPatch: (p: Partial<Exercise>) => void
-  onDelete: () => void
+  onEdit: () => void
   onArm: () => void
   onDragStart: () => void
   onDragEnd: () => void
@@ -545,14 +572,7 @@ function Slot({
   const v = parseFloat(val) || 0
   const pts = v * ex.mult
   const isPR = v > 0 && !!best && v > best
-  const [tagDraft, setTagDraft] = useState('')
   const tags = ex.tags ?? []
-  const addTag = (t: string) => {
-    const tv = t.trim().toLowerCase()
-    if (tv && !tags.includes(tv)) onPatch({ tags: [...tags, tv] })
-    setTagDraft('')
-  }
-  const removeTag = (t: string) => onPatch({ tags: tags.filter((x) => x !== t) })
   return (
     <div
       className={`cz-slot${dragging ? ' cz-dragging' : ''}${over ? ' cz-drag-over' : ''}`}
@@ -572,32 +592,11 @@ function Slot({
     >
       <div className="cz-slot-head">
         <span className="cz-dot" style={{ background: catColor(ex.cat) }} />
-        {open ? (
-          <input
-            value={ex.name}
-            onChange={(e) => onPatch({ name: e.target.value })}
-            onBlur={() => {
-              if (!ex.name.trim()) onPatch({ name: 'Exercise' })
-            }}
-            placeholder="Exercise name"
-            autoFocus
-            onFocus={(e) => e.target.select()}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
-            }}
-            style={{ flex: 1, minWidth: 0, padding: '0.2rem 0.4rem', fontSize: '0.8rem' }}
-          />
-        ) : (
-          <span className="cz-slot-name" onClick={onToggleEdit} title="Click to edit this exercise">
-            {ex.name}
-          </span>
-        )}
-        <button
-          className="cz-slot-btn"
-          onClick={onToggleEdit}
-          title={open ? 'Close editor' : 'Edit exercise'}
-        >
-          {open ? '✓' : '✎'}
+        <span className="cz-slot-name" onClick={onEdit} title="Edit this exercise">
+          {ex.name}
+        </span>
+        <button className="cz-slot-btn" onClick={onEdit} title="Edit exercise">
+          ✎
         </button>
         <span className="cz-handle" title="Drag to move" onMouseDown={onArm} onTouchStart={onArm}>
           ⠿
@@ -614,7 +613,9 @@ function Slot({
           {ex.unit}
         </span>
         <span
-          title={isPR ? 'New personal best!' : undefined}
+          title={
+            isPR ? 'New personal best!' : best ? `best ${Math.round(best * 10) / 10}` : undefined
+          }
           style={{
             marginLeft: 'auto',
             fontVariantNumeric: 'tabular-nums',
@@ -627,23 +628,25 @@ function Slot({
           {pts > 0 ? `${isPR ? '🏆 ' : ''}${Math.round(pts * 10) / 10} pt` : `×${ex.mult}`}
         </span>
       </div>
-      {best ? (
+      {(best || tags.length > 0) && (
         <div
-          className="cz-num"
           style={{
-            marginTop: 3,
-            fontSize: '0.6rem',
-            lineHeight: 1,
-            color: isPR ? '#f5c060' : 'var(--muted)',
+            display: 'flex',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: 4,
+            marginTop: 4,
+            minHeight: '0.7rem',
           }}
         >
-          {isPR
-            ? '🏆 new best!'
-            : `best ${Math.round(best * 10) / 10}${ex.unit ? ' ' + ex.unit : ''}`}
-        </div>
-      ) : null}
-      {!open && tags.length > 0 && (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3, marginTop: 4 }}>
+          {best ? (
+            <span
+              className="cz-num"
+              style={{ fontSize: '0.58rem', color: isPR ? '#f5c060' : 'var(--muted)' }}
+            >
+              {isPR ? '🏆 best!' : `best ${Math.round(best * 10) / 10}`}
+            </span>
+          ) : null}
           {tags.map((t) => (
             <span
               key={t}
@@ -661,63 +664,132 @@ function Slot({
           ))}
         </div>
       )}
+    </div>
+  )
+}
 
-      {open && (
-        <div className="cz-edit-panel">
-          <div className="cz-edit-row">
-            <span className="muted" style={{ fontSize: '0.68rem', width: 28 }}>
-              ×
-            </span>
+// ── focused editor for a single exercise (opened from a slot) ─────────────────
+function ExerciseEditModal({
+  ex,
+  onPatch,
+  onDelete,
+  onClose,
+}: {
+  ex: Exercise
+  onPatch: (p: Partial<Exercise>) => void
+  onDelete: () => void
+  onClose: () => void
+}) {
+  const [tagDraft, setTagDraft] = useState('')
+  const tags = ex.tags ?? []
+  const addTag = (t: string) => {
+    const tv = t.trim().toLowerCase()
+    if (tv && !tags.includes(tv)) onPatch({ tags: [...tags, tv] })
+    setTagDraft('')
+  }
+  const removeTag = (t: string) => onPatch({ tags: tags.filter((x) => x !== t) })
+  const label: React.CSSProperties = {
+    display: 'block',
+    fontSize: '0.72rem',
+    fontWeight: 700,
+    color: 'var(--muted)',
+    marginBottom: 4,
+  }
+  const field: React.CSSProperties = { width: '100%', padding: '0.45rem 0.6rem' }
+  return (
+    <Modal
+      title="Edit exercise"
+      onClose={onClose}
+      width={420}
+      footer={
+        <>
+          <button
+            className="btn btn-ghost"
+            onClick={onDelete}
+            style={{ color: '#ff5566', marginRight: 'auto' }}
+          >
+            🗑 Delete
+          </button>
+          <button
+            className="btn"
+            onClick={onClose}
+            style={{
+              background: 'var(--accent, #7c6af7)',
+              color: '#fff',
+              borderColor: 'transparent',
+            }}
+          >
+            Done
+          </button>
+        </>
+      }
+    >
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.9rem' }}>
+        <div>
+          <span style={label}>Name</span>
+          <input
+            value={ex.name}
+            autoFocus
+            onFocus={(e) => e.target.select()}
+            onChange={(e) => onPatch({ name: e.target.value })}
+            onBlur={() => {
+              if (!ex.name.trim()) onPatch({ name: 'Exercise' })
+            }}
+            style={field}
+          />
+        </div>
+        <div style={{ display: 'flex', gap: '0.7rem' }}>
+          <div style={{ flex: '0 0 6rem' }}>
+            <span style={label}>Multiplier</span>
             <input
               type="number"
               value={ex.mult}
               onChange={(e) => onPatch({ mult: parseFloat(e.target.value) || 0 })}
-              title="Points multiplier"
-              style={{ width: 56, padding: '0.25rem 0.4rem', textAlign: 'right' }}
+              style={{ ...field, textAlign: 'right' }}
             />
+          </div>
+          <div style={{ flex: 1 }}>
+            <span style={label}>Unit</span>
             <input
               list="cz-log-units"
               value={ex.unit}
+              placeholder="reps, min, mi…"
               onChange={(e) => onPatch({ unit: e.target.value })}
-              placeholder="unit"
-              title="Unit — pick a suggestion or type your own"
-              style={{ flex: 1, minWidth: 0, padding: '0.25rem 0.4rem' }}
+              style={field}
             />
           </div>
-          <div className="cz-edit-row">
-            <select
-              value={ex.cat ?? 'other'}
-              onChange={(e) => onPatch({ cat: e.target.value })}
-              title="Category (color)"
-              style={{ flex: 1, padding: '0.25rem 0.3rem' }}
-            >
-              {CATS.map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
-              ))}
-            </select>
-            <button
-              className="cz-slot-btn cz-del"
-              onClick={onDelete}
-              title="Delete this exercise"
-              style={{ fontSize: '0.85rem' }}
-            >
-              🗑
-            </button>
-          </div>
-          <div className="cz-edit-row" style={{ flexWrap: 'wrap' }}>
+        </div>
+        <p className="muted" style={{ margin: '-0.5rem 0 0', fontSize: '0.74rem' }}>
+          Points = the value you log × the multiplier.
+        </p>
+        <div>
+          <span style={label}>Category (sets the dot color)</span>
+          <select
+            value={ex.cat ?? 'other'}
+            onChange={(e) => onPatch({ cat: e.target.value })}
+            style={field}
+          >
+            {CATS.map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <span style={label}>Tags</span>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, alignItems: 'center' }}>
             {tags.map((t) => (
               <span
                 key={t}
                 style={{
-                  fontSize: '0.62rem',
-                  padding: '1px 4px 1px 7px',
-                  borderRadius: 10,
+                  fontSize: '0.74rem',
+                  padding: '2px 5px 2px 9px',
+                  borderRadius: 12,
                   background: 'var(--b1, rgba(127,127,127,0.15))',
                   display: 'inline-flex',
                   alignItems: 'center',
-                  gap: 3,
+                  gap: 4,
                 }}
               >
                 {t}
@@ -741,11 +813,11 @@ function Slot({
               }}
               onBlur={() => addTag(tagDraft)}
               placeholder="+ tag"
-              style={{ flex: 1, minWidth: 48, padding: '0.2rem 0.4rem', fontSize: '0.7rem' }}
+              style={{ flex: 1, minWidth: 70, padding: '0.35rem 0.5rem' }}
             />
           </div>
         </div>
-      )}
-    </div>
+      </div>
+    </Modal>
   )
 }

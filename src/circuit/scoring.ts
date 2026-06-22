@@ -44,7 +44,9 @@ export function currentStreak(p: Person, logs: DayLog[]): number {
     logs.filter((l) => l.personId === p.id && logPoints(p, l) > 0).map((l) => l.date),
   )
   if (!dates.size) return 0
-  const iso = (d: Date) => d.toISOString().slice(0, 10)
+  // local date (not UTC) so it matches the local calendar dates logs are stored under
+  const iso = (d: Date) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
   const today = new Date()
   const yesterday = new Date(today)
   yesterday.setDate(yesterday.getDate() - 1)
