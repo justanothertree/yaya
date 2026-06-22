@@ -5,19 +5,19 @@ import { useCircuit } from '../store'
 import { isImportedTotal, logPoints } from '../scoring'
 import { catColor } from '../catColors'
 import { GoalBar } from './GoalBar'
-import { todayISO as isoToday } from '../dates'
+import { todayISO as isoToday, localISO } from '../dates'
 import type { DayLog, Person } from '../types'
 
 type View = 'list' | 'month' | 'week' | 'day' | 'table'
 function isoAdd(iso: string, days: number): string {
   const d = new Date(iso + 'T00:00:00')
   d.setDate(d.getDate() + days)
-  return d.toISOString().slice(0, 10)
+  return localISO(d)
 }
 function startOfWeek(iso: string): string {
   const d = new Date(iso + 'T00:00:00')
   d.setDate(d.getDate() - d.getDay()) // back to Sunday
-  return d.toISOString().slice(0, 10)
+  return localISO(d)
 }
 function fmtDate(d: string, opts?: Intl.DateTimeFormatOptions): string {
   return new Date(d + 'T00:00:00').toLocaleDateString(
