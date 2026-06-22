@@ -545,6 +545,14 @@ function Slot({
   const v = parseFloat(val) || 0
   const pts = v * ex.mult
   const isPR = v > 0 && !!best && v > best
+  const [tagDraft, setTagDraft] = useState('')
+  const tags = ex.tags ?? []
+  const addTag = (t: string) => {
+    const tv = t.trim().toLowerCase()
+    if (tv && !tags.includes(tv)) onPatch({ tags: [...tags, tv] })
+    setTagDraft('')
+  }
+  const removeTag = (t: string) => onPatch({ tags: tags.filter((x) => x !== t) })
   return (
     <div
       className={`cz-slot${dragging ? ' cz-dragging' : ''}${over ? ' cz-drag-over' : ''}`}
@@ -634,6 +642,25 @@ function Slot({
             : `best ${Math.round(best * 10) / 10}${ex.unit ? ' ' + ex.unit : ''}`}
         </div>
       ) : null}
+      {!open && tags.length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3, marginTop: 4 }}>
+          {tags.map((t) => (
+            <span
+              key={t}
+              style={{
+                fontSize: '0.56rem',
+                padding: '1px 5px',
+                borderRadius: 4,
+                background: 'var(--b1, rgba(127,127,127,0.14))',
+                color: 'var(--muted)',
+                lineHeight: 1.5,
+              }}
+            >
+              {t}
+            </span>
+          ))}
+        </div>
+      )}
 
       {open && (
         <div className="cz-edit-panel">
@@ -678,6 +705,44 @@ function Slot({
             >
               🗑
             </button>
+          </div>
+          <div className="cz-edit-row" style={{ flexWrap: 'wrap' }}>
+            {tags.map((t) => (
+              <span
+                key={t}
+                style={{
+                  fontSize: '0.62rem',
+                  padding: '1px 4px 1px 7px',
+                  borderRadius: 10,
+                  background: 'var(--b1, rgba(127,127,127,0.15))',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 3,
+                }}
+              >
+                {t}
+                <span
+                  onClick={() => removeTag(t)}
+                  title="Remove tag"
+                  style={{ cursor: 'pointer', opacity: 0.6, fontWeight: 700 }}
+                >
+                  ×
+                </span>
+              </span>
+            ))}
+            <input
+              value={tagDraft}
+              onChange={(e) => setTagDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault()
+                  addTag(tagDraft)
+                }
+              }}
+              onBlur={() => addTag(tagDraft)}
+              placeholder="+ tag"
+              style={{ flex: 1, minWidth: 48, padding: '0.2rem 0.4rem', fontSize: '0.7rem' }}
+            />
           </div>
         </div>
       )}
