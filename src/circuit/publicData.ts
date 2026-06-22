@@ -3,7 +3,7 @@
 // into the public board (is_public) fetched live via the anon RPC circuit_public(). Movies
 // / watchlist stay from the bundled Evan slice so those tabs still have content. Falls back
 // to the bundled slice if there's no backend or the fetch fails.
-import type { CircuitState, DayLog, Person } from './types'
+import type { CircuitState, DayLog, Movie, Person, WatchlistItem } from './types'
 import { emptyCircuitState } from './types'
 import { getSupabaseClient } from '../finance/client'
 import { hasFinanceSupabaseEnv } from '../finance/env'
@@ -36,7 +36,12 @@ const demoLogs: DayLog[] = [
   },
 ]
 
-type PublicSlice = { people?: Person[]; logs?: DayLog[] }
+type PublicSlice = {
+  people?: Person[]
+  logs?: DayLog[]
+  movies?: Movie[]
+  watchlist?: WatchlistItem[]
+}
 
 const bundledFallback = (): CircuitState => ({
   ...emptyCircuitState(),
@@ -57,9 +62,9 @@ export async function fetchPublicCircuit(): Promise<CircuitState> {
       ...emptyCircuitState(),
       people: [demoPerson, ...(slice.people ?? [])],
       logs: [...demoLogs, ...(slice.logs ?? [])],
-      // movies/watchlist aren't per-person public; keep the bundled slice so those tabs work
-      movies: publicSeed.movies,
-      watchlist: publicSeed.watchlist,
+      // movies/watchlist now come from the board too (ratings/votes filtered to public people)
+      movies: slice.movies ?? publicSeed.movies,
+      watchlist: slice.watchlist ?? publicSeed.watchlist,
     }
   } catch {
     return bundledFallback()
