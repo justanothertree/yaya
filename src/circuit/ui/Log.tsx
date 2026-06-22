@@ -15,7 +15,8 @@ import type { Exercise } from '../types'
 
 const todayISO = () => new Date().toISOString().slice(0, 10)
 const CATS = Object.keys(CAT_COLORS)
-const UNITS = ['reps', 'min', 'sec', 'mi', 'km', 'hr', 'other']
+// suggestions only — the unit field is free text, so you can type your own
+const UNITS = ['reps', 'min', 'sec', 'mi', 'km', 'hr', 'cal', 'lbs', 'steps']
 const newId = () =>
   crypto.randomUUID?.() ?? 'e' + Date.now() + Math.random().toString(36).slice(2, 6)
 
@@ -440,6 +441,11 @@ export function Log({
           </div>
         ))}
       </div>
+      <datalist id="cz-log-units">
+        {UNITS.map((u) => (
+          <option key={u} value={u} />
+        ))}
+      </datalist>
 
       {/* actions */}
       <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1.25rem', flexWrap: 'wrap' }}>
@@ -626,18 +632,14 @@ function Slot({
               title="Points multiplier"
               style={{ width: 56, padding: '0.25rem 0.4rem', textAlign: 'right' }}
             />
-            <select
+            <input
+              list="cz-log-units"
               value={ex.unit}
               onChange={(e) => onPatch({ unit: e.target.value })}
-              title="Unit"
-              style={{ flex: 1, padding: '0.25rem 0.3rem' }}
-            >
-              {(UNITS.includes(ex.unit) ? UNITS : [ex.unit, ...UNITS]).map((u) => (
-                <option key={u} value={u}>
-                  {u}
-                </option>
-              ))}
-            </select>
+              placeholder="unit"
+              title="Unit — pick a suggestion or type your own"
+              style={{ flex: 1, minWidth: 0, padding: '0.25rem 0.4rem' }}
+            />
           </div>
           <div className="cz-edit-row">
             <select
