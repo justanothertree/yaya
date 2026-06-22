@@ -3,10 +3,9 @@
 // within or across columns) and editable in place (click a name to rename / tweak its
 // multiplier, unit, and category). Writes through the shared store (localStorage now,
 // Supabase realtime later) so every edit gets undo/redo + sync for free.
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { circuitStore, useCircuit } from '../store'
 import { isImportedTotal, logPoints } from '../scoring'
-import { showToast } from '../toast'
 import { CAT_COLORS, catColor } from '../catColors'
 import { ScrubInput } from './ScrubInput'
 import { ExerciseManager } from './ExerciseManager'
@@ -39,6 +38,8 @@ export function Log({
   const [dragId, setDragId] = useState<string | null>(null)
   const [overId, setOverId] = useState<string | null>(null)
   const [colEdit, setColEdit] = useState<number | null>(null) // column header being renamed
+  const dirty = useRef(false) // true once the user edits values — gates autosave vs load
+  const [savedPulse, setSavedPulse] = useState(0) // bumps to flash the "saved" indicator
 
   const pid = selPid || state.people[0]?.id || ''
   const person = state.people.find((p) => p.id === pid)
@@ -67,14 +68,41 @@ export function Log({
     }
   }, [])
 
-  // load saved values when person/date (or underlying data) changes
+  // load saved values when person/date (or underlying data) changes; this is not a user
+  // edit, so clear the dirty flag so it doesn't trigger an autosave.
   useEffect(() => {
     const next: Record<string, string> = {}
     if (existing && !isImportedTotal(existing)) {
       for (const e of existing.entries) if (e.val) next[e.eid] = String(e.val)
     }
     setVals(next)
+    dirty.current = false
   }, [existing])
+
+  // Autosave: after the user edits values, persist (debounced) — no Save button.
+  // The dirty flag keeps load/realtime updates from re-triggering a write loop.
+  useEffect(() => {
+    if (!dirty.current || !person) return
+    const t = setTimeout(() => {
+      const entries = person.exercises
+        .map((ex) => ({ eid: ex.id, val: parseFloat(vals[ex.id]) || 0 }))
+        .filter((e) => e.val > 0)
+      if (entries.length === 0) {
+        if (existing) void circuitStore.deleteLog(existing.id)
+      } else {
+        void circuitStore.saveLog({
+          id: existing?.id ?? `l-${pid}-${date}`,
+          personId: pid,
+          date,
+          entries,
+        })
+      }
+      dirty.current = false
+      setSavedPulse((n) => n + 1)
+    }, 600)
+    return () => clearTimeout(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vals, pid, date])
 
   const cols = useMemo(() => {
     if (!person) return []
@@ -114,7 +142,10 @@ export function Log({
         ? `/ ${goal} pts ✓ +${extra} bonus`
         : `/ ${goal} pts ✓ goal hit!`
 
-  const setVal = (id: string, v: string) => setVals((prev) => ({ ...prev, [id]: v }))
+  const setVal = (id: string, v: string) => {
+    dirty.current = true
+    setVals((prev) => ({ ...prev, [id]: v }))
+  }
   const shiftDay = (d: number) => {
     const dt = new Date(date + 'T00:00:00')
     dt.setDate(dt.getDate() + d)
@@ -172,19 +203,10 @@ export function Log({
     saveExs([...others.filter((e) => e.col !== targetCol), ...merged])
   }
 
-  const save = () => {
-    const entries = person.exercises
-      .map((ex) => ({ eid: ex.id, val: parseFloat(vals[ex.id]) || 0 }))
-      .filter((e) => e.val > 0)
-    if (entries.length === 0) {
-      if (existing) void circuitStore.deleteLog(existing.id)
-      return
-    }
-    const id = existing?.id ?? crypto.randomUUID?.() ?? 'l' + Date.now()
-    void circuitStore.saveLog({ id, personId: pid, date, entries })
-    showToast('Saved!')
+  const clear = () => {
+    dirty.current = true
+    setVals({})
   }
-  const clear = () => setVals({})
   const copyLast = () => {
     const prior = state.logs
       .filter(
@@ -199,6 +221,7 @@ export function Log({
     prior.entries.forEach((e) => {
       if (e.eid !== '__total__' && e.val > 0) next[e.eid] = String(e.val)
     })
+    dirty.current = true
     setVals(next)
   }
 
@@ -447,8 +470,16 @@ export function Log({
         ))}
       </datalist>
 
-      {/* actions */}
-      <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1.25rem', flexWrap: 'wrap' }}>
+      {/* actions — entries save automatically, so there's no Save button */}
+      <div
+        style={{
+          display: 'flex',
+          gap: '0.5rem',
+          marginTop: '1.25rem',
+          flexWrap: 'wrap',
+          alignItems: 'center',
+        }}
+      >
         <button
           className="btn"
           onClick={copyLast}
@@ -456,31 +487,16 @@ export function Log({
         >
           ⧉ Copy last
         </button>
-        <button className="btn" onClick={clear}>
+        <button className="btn" onClick={clear} title="Clear this day's entries (removes the log)">
           Clear
         </button>
-        {existing && (
-          <button
-            className="btn"
-            onClick={() => {
-              void circuitStore.deleteLog(existing.id)
-              setVals({})
-            }}
-          >
-            Delete
-          </button>
-        )}
-        <button
-          className="btn"
-          onClick={save}
-          style={{
-            background: 'var(--accent, #7c6af7)',
-            color: '#fff',
-            borderColor: 'transparent',
-          }}
+        <span
+          key={savedPulse}
+          className="muted"
+          style={{ fontSize: '0.78rem', marginLeft: 'auto', animation: 'czIn 0.2s ease' }}
         >
-          Save
-        </button>
+          {existing && !imported ? '✓ Saved automatically' : 'Saves automatically as you type'}
+        </span>
       </div>
 
       {managing && <ExerciseManager person={person} onClose={() => setManaging(false)} />}
