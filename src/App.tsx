@@ -18,6 +18,11 @@ const AccountSettings = lazy(() =>
   import('./sections/AccountSettings').then((m) => ({ default: m.AccountSettings })),
 )
 const Circuit = lazy(() => import('./sections/Circuit').then((m) => ({ default: m.Circuit })))
+// Generic window-manager (the Circuit's "canvas"), reused for the optional site-wide
+// canvas mode that turns a page into draggable/resizable/minimizable windows.
+const PageCanvas = lazy(() =>
+  import('./circuit/ui/CircuitCanvas').then((m) => ({ default: m.CircuitCanvas })),
+)
 const AdminPanel = lazy(() =>
   import('./sections/AdminPanel').then((m) => ({ default: m.AdminPanel })),
 )
@@ -108,6 +113,18 @@ export default function App() {
   }, [uiScale])
   const bumpScale = (d: number) =>
     setUiScale((s) => Math.min(2.5, Math.max(0.5, Math.round((s + d) * 100) / 100)))
+  // Optional canvas mode (desktop): turn the current page into draggable/resizable windows.
+  // Per-page, so it resets on navigation. Starting with Home; expands to other pages next.
+  const [desktop, setDesktop] = useState(
+    () => typeof window !== 'undefined' && window.innerWidth >= 820,
+  )
+  const [canvasOpen, setCanvasOpen] = useState(false)
+  useEffect(() => {
+    const onResize = () => setDesktop(window.innerWidth >= 820)
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
+  useEffect(() => setCanvasOpen(false), [active])
   const topRef = useRef<HTMLDivElement>(null)
   const liveRef = useRef<HTMLDivElement>(null)
   const navLinksRef = useRef<HTMLDivElement>(null)
@@ -577,6 +594,17 @@ export default function App() {
                 A+
               </button>
             </span>
+            {active === 'home' && desktop && (
+              <button
+                className="btn"
+                style={{ marginLeft: '0.5rem' }}
+                aria-pressed={canvasOpen}
+                title="Canvas mode — float this page as draggable windows"
+                onClick={() => setCanvasOpen((o) => !o)}
+              >
+                ⛶ Canvas
+              </button>
+            )}
             <button
               className="btn"
               style={{ marginLeft: '0.5rem' }}
@@ -638,11 +666,19 @@ export default function App() {
             </span>
           </div>
         )}
-        {active === 'home' && (
-          <section id="home">
-            <EvanCook />
-          </section>
-        )}
+        {active === 'home' &&
+          (canvasOpen && desktop ? (
+            <Suspense fallback={<EvanCook />}>
+              <PageCanvas
+                panes={[{ id: 'page:home', title: '🏠 Home', node: <EvanCook /> }]}
+                onExit={() => setCanvasOpen(false)}
+              />
+            </Suspense>
+          ) : (
+            <section id="home">
+              <EvanCook />
+            </section>
+          ))}
         {active === 'circuit' && (
           <section id="circuit" className="card reveal">
             <Suspense
