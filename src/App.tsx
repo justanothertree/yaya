@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, lazy, Suspense } from 'react'
 import { ContactForm } from './sections/ContactForm'
-import { EvanCook } from './sections/EvanCook'
+import { EvanCook, homePanes } from './sections/EvanCook'
 import { SnakeGame } from './sections/SnakeGame'
 import { site } from './config/site'
 import { IconGitHub, IconLinkedIn } from './components/Icons'
@@ -669,10 +669,7 @@ export default function App() {
         {active === 'home' &&
           (canvasOpen && desktop ? (
             <Suspense fallback={<EvanCook />}>
-              <PageCanvas
-                panes={[{ id: 'page:home', title: '🏠 Home', node: <EvanCook /> }]}
-                onExit={() => setCanvasOpen(false)}
-              />
+              <PageCanvas panes={homePanes()} onExit={() => setCanvasOpen(false)} />
             </Suspense>
           ) : (
             <section id="home">

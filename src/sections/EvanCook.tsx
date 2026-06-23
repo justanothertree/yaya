@@ -2,7 +2,7 @@
 // Home, Projects, and Resume sections. Each project has a click-through slideshow
 // of slides (real screenshots when present, themed poster tiles otherwise) plus an
 // informational write-up. Résumé content folds in as About / Skills, with a PDF link.
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { site } from '../config/site'
 import { IconGitHub, IconLinkedIn } from '../components/Icons'
 import { projects, skills, type Project, type Shot } from './work'
@@ -267,156 +267,186 @@ function ProjectCard({ project }: { project: Project }) {
   )
 }
 
+function Hero() {
+  return (
+    <section className="card" style={{ overflow: 'hidden' }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem', alignItems: 'flex-end' }}>
+        <div style={{ flex: 1, minWidth: 260 }}>
+          <p
+            className="muted"
+            style={{
+              margin: 0,
+              fontWeight: 700,
+              letterSpacing: '0.08em',
+              textTransform: 'uppercase',
+              fontSize: '0.74rem',
+            }}
+          >
+            {site.name}
+          </p>
+          <h1 style={{ margin: '0.3rem 0 0.5rem', lineHeight: 1.1 }}>
+            I design and build fast, playful web apps end to end.
+          </h1>
+          <p className="muted" style={{ margin: 0, fontSize: '1.02rem' }}>
+            Frontend-focused full-stack developer. This site is my playground — a single platform
+            where each project is a live, working module. React · TypeScript · Supabase.
+          </p>
+          <div
+            className="no-print"
+            style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginTop: '1rem' }}
+          >
+            <button
+              className="btn"
+              onClick={() =>
+                document
+                  .getElementById('projects-showcase')
+                  ?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+              }
+            >
+              See my work
+            </button>
+            <button
+              className="btn btn-ghost"
+              onClick={() => window.print()}
+              title="Print or save this page as a PDF résumé"
+            >
+              Résumé (PDF)
+            </button>
+            <a className="btn btn-ghost" href="#contact">
+              Get in touch
+            </a>
+          </div>
+          <div className="no-print" style={{ display: 'flex', gap: '0.5rem', marginTop: '0.9rem' }}>
+            <a
+              className="icon-link"
+              href={site.socials.github}
+              target="_blank"
+              rel="noreferrer"
+              aria-label="GitHub"
+            >
+              <IconGitHub />
+            </a>
+            <a
+              className="icon-link"
+              href={site.socials.linkedin}
+              target="_blank"
+              rel="noreferrer"
+              aria-label="LinkedIn"
+            >
+              <IconLinkedIn />
+            </a>
+          </div>
+        </div>
+      </div>
+    </section>
+  )
+}
+
+function AboutCard() {
+  return (
+    <div className="card">
+      <h2 className="section-title">About</h2>
+      <p className="muted" style={{ lineHeight: 1.6 }}>
+        I like turning ideas into things you can actually use. Most of what I build lives right here
+        — a fitness-and-movies tracker my friends use daily, a multiplayer take on Snake, a private
+        finance tool for my family — all running on one React + Supabase platform I keep sharpening.
+      </p>
+      <p className="muted" style={{ lineHeight: 1.6, marginBottom: 0 }}>
+        I care about the details: smooth interactions, fast loads, accessible layouts, and code
+        that’s tidy enough to move quickly in. Portfolio on the outside, personal toolkit on the
+        inside.
+      </p>
+    </div>
+  )
+}
+
+function SkillsCard() {
+  return (
+    <div className="card">
+      <h2 className="section-title">Skills</h2>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.8rem' }}>
+        {skills.map((s) => (
+          <div key={s.group}>
+            <div
+              className="muted"
+              style={{
+                fontSize: '0.7rem',
+                fontWeight: 700,
+                textTransform: 'uppercase',
+                letterSpacing: '0.05em',
+                marginBottom: '0.35rem',
+              }}
+            >
+              {s.group}
+            </div>
+            <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+              {s.items.map((it) => (
+                <span
+                  key={it}
+                  style={{
+                    fontSize: '0.78rem',
+                    fontWeight: 600,
+                    padding: '3px 10px',
+                    borderRadius: 8,
+                    background: 'var(--b1, rgba(127,127,127,0.1))',
+                    border: '1px solid var(--border, rgba(127,127,127,0.18))',
+                  }}
+                >
+                  {it}
+                </span>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function Work() {
+  return (
+    <section id="projects-showcase" style={{ scrollMarginTop: 'var(--nav-h)' }}>
+      <h2 className="section-title" style={{ marginBottom: '0.25rem' }}>
+        Selected work
+      </h2>
+      <p className="muted" style={{ marginTop: 0 }}>
+        Each of these is live or in progress on this site. Click through the slides.
+      </p>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', marginTop: '1rem' }}>
+        {projects.map((p) => (
+          <ProjectCard key={p.id} project={p} />
+        ))}
+      </div>
+    </section>
+  )
+}
+
 export function EvanCook() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-      {/* hero */}
-      <section className="card" style={{ overflow: 'hidden' }}>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem', alignItems: 'flex-end' }}>
-          <div style={{ flex: 1, minWidth: 260 }}>
-            <p
-              className="muted"
-              style={{
-                margin: 0,
-                fontWeight: 700,
-                letterSpacing: '0.08em',
-                textTransform: 'uppercase',
-                fontSize: '0.74rem',
-              }}
-            >
-              {site.name}
-            </p>
-            <h1 style={{ margin: '0.3rem 0 0.5rem', lineHeight: 1.1 }}>
-              I design and build fast, playful web apps end to end.
-            </h1>
-            <p className="muted" style={{ margin: 0, fontSize: '1.02rem' }}>
-              Frontend-focused full-stack developer. This site is my playground — a single platform
-              where each project is a live, working module. React · TypeScript · Supabase.
-            </p>
-            <div
-              className="no-print"
-              style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginTop: '1rem' }}
-            >
-              <button
-                className="btn"
-                onClick={() =>
-                  document
-                    .getElementById('projects-showcase')
-                    ?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-                }
-              >
-                See my work
-              </button>
-              <button
-                className="btn btn-ghost"
-                onClick={() => window.print()}
-                title="Print or save this page as a PDF résumé"
-              >
-                Résumé (PDF)
-              </button>
-              <a className="btn btn-ghost" href="#contact">
-                Get in touch
-              </a>
-            </div>
-            <div
-              className="no-print"
-              style={{ display: 'flex', gap: '0.5rem', marginTop: '0.9rem' }}
-            >
-              <a
-                className="icon-link"
-                href={site.socials.github}
-                target="_blank"
-                rel="noreferrer"
-                aria-label="GitHub"
-              >
-                <IconGitHub />
-              </a>
-              <a
-                className="icon-link"
-                href={site.socials.linkedin}
-                target="_blank"
-                rel="noreferrer"
-                aria-label="LinkedIn"
-              >
-                <IconLinkedIn />
-              </a>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* about + skills */}
+      <Hero />
       <section className="grid grid-2" style={{ gap: '1rem' }}>
-        <div className="card">
-          <h2 className="section-title">About</h2>
-          <p className="muted" style={{ lineHeight: 1.6 }}>
-            I like turning ideas into things you can actually use. Most of what I build lives right
-            here — a fitness-and-movies tracker my friends use daily, a multiplayer take on Snake, a
-            private finance tool for my family — all running on one React + Supabase platform I keep
-            sharpening.
-          </p>
-          <p className="muted" style={{ lineHeight: 1.6, marginBottom: 0 }}>
-            I care about the details: smooth interactions, fast loads, accessible layouts, and code
-            that’s tidy enough to move quickly in. Portfolio on the outside, personal toolkit on the
-            inside.
-          </p>
-        </div>
-        <div className="card">
-          <h2 className="section-title">Skills</h2>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.8rem' }}>
-            {skills.map((s) => (
-              <div key={s.group}>
-                <div
-                  className="muted"
-                  style={{
-                    fontSize: '0.7rem',
-                    fontWeight: 700,
-                    textTransform: 'uppercase',
-                    letterSpacing: '0.05em',
-                    marginBottom: '0.35rem',
-                  }}
-                >
-                  {s.group}
-                </div>
-                <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
-                  {s.items.map((it) => (
-                    <span
-                      key={it}
-                      style={{
-                        fontSize: '0.78rem',
-                        fontWeight: 600,
-                        padding: '3px 10px',
-                        borderRadius: 8,
-                        background: 'var(--b1, rgba(127,127,127,0.1))',
-                        border: '1px solid var(--border, rgba(127,127,127,0.18))',
-                      }}
-                    >
-                      {it}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
+        <AboutCard />
+        <SkillsCard />
       </section>
-
-      {/* projects showcase */}
-      <section id="projects-showcase" style={{ scrollMarginTop: 'var(--nav-h)' }}>
-        <h2 className="section-title" style={{ marginBottom: '0.25rem' }}>
-          Selected work
-        </h2>
-        <p className="muted" style={{ marginTop: 0 }}>
-          Each of these is live or in progress on this site. Click through the slides.
-        </p>
-        <div
-          style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', marginTop: '1rem' }}
-        >
-          {projects.map((p) => (
-            <ProjectCard key={p.id} project={p} />
-          ))}
-        </div>
-      </section>
+      <Work />
     </div>
   )
+}
+
+// Home as a set of canvas windows (used by the banner's optional canvas mode). Reuses this
+// file's section components, so it lives here despite the fast-refresh lint preference.
+export type HomePane = { id: string; title: string; node: ReactNode }
+// eslint-disable-next-line react-refresh/only-export-components
+export function homePanes(): HomePane[] {
+  return [
+    { id: 'home:hero', title: '👋 Intro', node: <Hero /> },
+    { id: 'home:about', title: 'About', node: <AboutCard /> },
+    { id: 'home:skills', title: 'Skills', node: <SkillsCard /> },
+    ...projects.map((p) => ({
+      id: `home:proj:${p.id}`,
+      title: p.title,
+      node: <ProjectCard project={p} />,
+    })),
+  ]
 }
