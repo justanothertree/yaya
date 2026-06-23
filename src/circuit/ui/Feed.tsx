@@ -6,6 +6,7 @@ import { isImportedTotal, logPoints } from '../scoring'
 import { catColor } from '../catColors'
 import { GoalBar } from './GoalBar'
 import { todayISO as isoToday, localISO } from '../dates'
+import { useFeedSocial, KUDOS, type FeedSocial } from '../social'
 import type { DayLog, Person } from '../types'
 
 type View = 'list' | 'month' | 'week' | 'day' | 'table'
@@ -57,12 +58,16 @@ function LogCard({
   onPhoto,
   onOpen,
   compact,
+  social,
+  me,
 }: {
   log: DayLog
   person: Person
   onPhoto: (src: string) => void
   onOpen?: () => void
   compact?: boolean
+  social?: FeedSocial
+  me?: string
 }) {
   const p = person
   const pts = Math.round(logPoints(p, log))
@@ -169,13 +174,170 @@ function LogCard({
             }}
           />
         )}
+        {social && <SocialBar logId={log.id} social={social} me={me ?? 'Me'} />}
       </div>
     </div>
   )
 }
 
-export function Feed({ onOpenLog }: { onOpenLog?: (personId: string, date: string) => void } = {}) {
+// ── kudos + comments under a log card ────────────────────────────────────────
+function SocialBar({ logId, social, me }: { logId: string; social: FeedSocial; me: string }) {
+  const [open, setOpen] = useState(false)
+  const [picker, setPicker] = useState(false)
+  const [draft, setDraft] = useState('')
+  const reactions = social.reactionsByLog[logId] ?? []
+  const comments = social.commentsByLog[logId] ?? []
+  const byEmoji: Record<string, { count: number; mine: boolean; who: string[] }> = {}
+  for (const r of reactions) {
+    const e = (byEmoji[r.emoji] ||= { count: 0, mine: false, who: [] })
+    e.count++
+    e.who.push(r.author_name || 'Member')
+    if (r.user_id === social.uid) e.mine = true
+  }
+  const stop = (e: React.MouseEvent) => e.stopPropagation()
+  const chip: React.CSSProperties = {
+    fontSize: '0.74rem',
+    padding: '1px 7px',
+    borderRadius: 12,
+    cursor: 'pointer',
+    background: 'transparent',
+    lineHeight: 1.6,
+  }
+  const post = () => {
+    void social.addComment(logId, draft, me)
+    setDraft('')
+  }
+  return (
+    <div
+      onClick={stop}
+      style={{
+        marginTop: 8,
+        paddingTop: 6,
+        borderTop: '1px solid var(--b1, rgba(127,127,127,0.15))',
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
+        {Object.entries(byEmoji).map(([emoji, info]) => (
+          <button
+            key={emoji}
+            onClick={() => void social.toggleReaction(logId, emoji, me)}
+            title={info.who.join(', ')}
+            style={{
+              ...chip,
+              border: `1px solid ${info.mine ? 'var(--accent, #7c6af7)' : 'var(--b2, rgba(127,127,127,0.3))'}`,
+              background: info.mine ? 'rgba(124,106,247,0.12)' : 'transparent',
+              fontWeight: info.mine ? 700 : 400,
+            }}
+          >
+            {emoji} {info.count}
+          </button>
+        ))}
+        <span style={{ position: 'relative' }}>
+          <button
+            onClick={() => setPicker((p) => !p)}
+            title="Add kudos"
+            style={{ ...chip, border: '1px solid var(--b2, rgba(127,127,127,0.3))' }}
+          >
+            ＋
+          </button>
+          {picker && (
+            <span
+              style={{
+                position: 'absolute',
+                bottom: '120%',
+                left: 0,
+                display: 'flex',
+                gap: 2,
+                padding: '3px 5px',
+                background: 'var(--panel, #1a1a28)',
+                border: '1px solid var(--b2, rgba(127,127,127,0.3))',
+                borderRadius: 10,
+                zIndex: 5,
+              }}
+            >
+              {KUDOS.map((e) => (
+                <button
+                  key={e}
+                  onClick={() => {
+                    void social.toggleReaction(logId, e, me)
+                    setPicker(false)
+                  }}
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    cursor: 'pointer',
+                    fontSize: '1rem',
+                  }}
+                >
+                  {e}
+                </button>
+              ))}
+            </span>
+          )}
+        </span>
+        <button
+          onClick={() => setOpen((o) => !o)}
+          style={{ ...chip, marginLeft: 'auto', color: 'var(--muted)' }}
+        >
+          💬 {comments.length || ''}
+        </button>
+      </div>
+      {open && (
+        <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 4 }}>
+          {comments.map((c) => (
+            <div key={c.id} style={{ fontSize: '0.78rem' }}>
+              <strong>{c.author_name || 'Member'}</strong> <span className="muted">{c.body}</span>
+              {c.user_id === social.uid && (
+                <span
+                  onClick={() => void social.deleteComment(c.id)}
+                  title="Delete"
+                  style={{ cursor: 'pointer', opacity: 0.5, marginLeft: 4 }}
+                >
+                  ×
+                </span>
+              )}
+            </div>
+          ))}
+          <div style={{ display: 'flex', gap: 4 }}>
+            <input
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') post()
+              }}
+              placeholder="Add a comment…"
+              style={{ flex: 1, minWidth: 0, padding: '0.3rem 0.5rem', fontSize: '0.78rem' }}
+            />
+            <button
+              className="btn btn-ghost"
+              onClick={post}
+              disabled={!draft.trim()}
+              style={{ fontSize: '0.76rem' }}
+            >
+              Post
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+export function Feed({
+  onOpenLog,
+  authed = false,
+}: {
+  onOpenLog?: (personId: string, date: string) => void
+  authed?: boolean
+} = {}) {
   const state = useCircuit()
+  const social = useFeedSocial(authed)
+  // the current member's display name (their own person's name) for kudos/comments
+  const me = useMemo(
+    () => state.people.find((p) => social.uid && p.ownerUserId === social.uid)?.name ?? 'Me',
+    [state.people, social.uid],
+  )
+  const cardSocial = authed ? social : undefined
   const [view, setView] = useState<View>('list')
   const [filter, setFilter] = useState('') // '' = everyone
   const [lightbox, setLightbox] = useState<string | null>(null)
@@ -358,6 +520,8 @@ export function Feed({ onOpenLog }: { onOpenLog?: (personId: string, date: strin
               person={peopleById[log.personId]}
               onPhoto={setLightbox}
               onOpen={onOpenLog ? () => onOpenLog(log.personId, log.date) : undefined}
+              social={cardSocial}
+              me={me}
             />
           ))}
         </div>
@@ -381,6 +545,8 @@ export function Feed({ onOpenLog }: { onOpenLog?: (personId: string, date: strin
           onPhoto={setLightbox}
           onDay={drillToDay}
           onOpenLog={onOpenLog}
+          social={cardSocial}
+          me={me}
         />
       )}
 
@@ -391,6 +557,8 @@ export function Feed({ onOpenLog }: { onOpenLog?: (personId: string, date: strin
           peopleById={peopleById}
           onPhoto={setLightbox}
           onOpenLog={onOpenLog}
+          social={cardSocial}
+          me={me}
         />
       )}
 
@@ -639,6 +807,8 @@ function WeekView({
   onPhoto,
   onDay,
   onOpenLog,
+  social,
+  me,
 }: {
   cur: string
   logsByDate: Record<string, DayLog[]>
@@ -646,6 +816,8 @@ function WeekView({
   onPhoto: (src: string) => void
   onDay: (date: string) => void
   onOpenLog?: (personId: string, date: string) => void
+  social?: FeedSocial
+  me?: string
 }) {
   const sow = startOfWeek(cur)
   const days = Array.from({ length: 7 }, (_, i) => isoAdd(sow, i))
@@ -709,6 +881,8 @@ function WeekView({
                   onPhoto={onPhoto}
                   onOpen={onOpenLog ? () => onOpenLog(log.personId, log.date) : undefined}
                   compact
+                  social={social}
+                  me={me}
                 />
               ))
             )}
@@ -726,12 +900,16 @@ function DayView({
   peopleById,
   onPhoto,
   onOpenLog,
+  social,
+  me,
 }: {
   cur: string
   logsByDate: Record<string, DayLog[]>
   peopleById: Record<string, Person>
   onPhoto: (src: string) => void
   onOpenLog?: (personId: string, date: string) => void
+  social?: FeedSocial
+  me?: string
 }) {
   const logs = (logsByDate[cur] || [])
     .slice()
@@ -751,6 +929,8 @@ function DayView({
           person={peopleById[log.personId]}
           onPhoto={onPhoto}
           onOpen={onOpenLog ? () => onOpenLog(log.personId, log.date) : undefined}
+          social={social}
+          me={me}
         />
       ))}
     </div>
