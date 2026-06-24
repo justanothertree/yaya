@@ -35,13 +35,20 @@ export function Movies() {
   const [detail, setDetail] = useState<Movie | null>(null)
   const [view, setView] = useState<'board' | 'stats'>('board')
 
+  // Raters = people you can actually see who have rated something — not a hardcoded crew
+  // list, so a member viewing another circuit doesn't get nameless ghost columns.
   const allRaters = useMemo<Person[]>(() => {
     const present = new Set<string>()
-    state.movies.forEach((m) => Object.keys(m.ratings).forEach((id) => present.add(id)))
-    const ids = MV_PIDS.filter((id) => present.has(id))
-    return (ids.length ? ids : MV_PIDS)
-      .map((id) => state.people.find((p) => p.id === id))
-      .filter((p): p is Person => !!p)
+    state.movies.forEach((m) =>
+      Object.entries(m.ratings).forEach(([id, r]) => {
+        if (r?.score != null) present.add(id)
+      }),
+    )
+    const order = (id: string) => {
+      const i = MV_PIDS.indexOf(id)
+      return i === -1 ? MV_PIDS.length : i
+    }
+    return state.people.filter((p) => present.has(p.id)).sort((a, b) => order(a.id) - order(b.id))
   }, [state.movies, state.people])
 
   const [hidden, setHidden] = useState<Set<string>>(() => {

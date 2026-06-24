@@ -636,11 +636,13 @@ export default function App() {
       </nav>
       {/* Mobile: reveal hit area removed; banner stays visible */}
       <div ref={topRef} />
+      {/* canvas mode has its own per-window scaling; the global zoom fights its fixed
+          full-screen surface (footer teleporting on big zoom), so suspend it while it's on */}
       <main
         id="content"
         className="container"
         tabIndex={-1}
-        style={{ paddingBottom: 'env(safe-area-inset-bottom)', zoom: uiScale }}
+        style={{ paddingBottom: 'env(safe-area-inset-bottom)', zoom: canvasOpen ? 1 : uiScale }}
       >
         {suspended && (
           <div
