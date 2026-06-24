@@ -43,6 +43,10 @@ type Dir = 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw'
 const RESIZE_DIRS: Dir[] = ['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw']
 const MIN_W = 240
 const MIN_H = 120
+// the width at which a window's content reads cleanly at 100%; wider windows scale their
+// content up from here (the "ideal size" the Window button snaps back to).
+const IDEAL_W = 440
+const IDEAL_H = 560
 
 function handleStyle(dir: Dir): React.CSSProperties {
   const base: React.CSSProperties = { position: 'absolute', zIndex: 6, touchAction: 'none' }
@@ -380,18 +384,22 @@ export function CircuitCanvas({
     })
     focus(id)
   }
-  function fitContent(id: string) {
-    const el = winRefs.current[id]
-    if (!el) return
-    const body = el.querySelector('.cz-body') as HTMLElement | null
-    const bar = el.querySelector('.cz-bar') as HTMLElement | null
-    if (!body) return
-    const h = (bar?.offsetHeight ?? 0) + body.scrollHeight + 4
-    setWins((prev) => ({
-      ...prev,
-      [id]: { ...prev[id], min: false, h: Math.min(Math.max(140, h), 720) },
-    }))
-    showToast('⤢ Fit to content')
+  // Window button: snap back to the ideal size where content reads at 100% (un-maximizes,
+  // un-minimizes), clamped so it stays fully on the canvas.
+  function idealSize(id: string) {
+    setWins((prev) => {
+      const w = prev[id]
+      const host = hostRef.current
+      const maxW = host ? host.clientWidth - 8 : IDEAL_W
+      const maxH = host ? host.clientHeight - 8 : IDEAL_H
+      const nw = Math.min(IDEAL_W, maxW)
+      const nh = Math.min(IDEAL_H, maxH)
+      const nx = Math.max(0, Math.min(w.x, maxW - nw))
+      const ny = Math.max(0, Math.min(w.y, maxH - nh))
+      return { ...prev, [id]: { ...w, min: false, max: false, x: nx, y: ny, w: nw, h: nh } }
+    })
+    focus(id)
+    showToast('▭ Ideal size')
   }
   function tile() {
     maxZ.current = 10
@@ -542,6 +550,9 @@ export function CircuitCanvas({
           const w = wins[p.id]
           // minimized windows vanish from the canvas — they live only as a taskbar tab
           if (!w || w.min) return null
+          // scale the content with the window size: at the "ideal" width it sits at 100%,
+          // and growing the window past that scales everything up so it's easier to see.
+          const bodyScale = Math.min(2.6, Math.max(0.7, w.w / IDEAL_W))
           return (
             <div
               key={p.id}
@@ -597,12 +608,23 @@ export function CircuitCanvas({
                   className="cz-btn btn"
                   onClick={(e) => {
                     e.stopPropagation()
-                    fitContent(p.id)
+                    toggleMin(p.id)
                   }}
-                  title="Fit to content"
+                  title="Minimize (hide)"
                   style={czBtn}
                 >
-                  ⤢
+                  －
+                </button>
+                <button
+                  className="cz-btn btn"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    idealSize(p.id)
+                  }}
+                  title="Window — ideal size"
+                  style={czBtn}
+                >
+                  ▭
                 </button>
                 <button
                   className="cz-btn btn"
@@ -610,26 +632,18 @@ export function CircuitCanvas({
                     e.stopPropagation()
                     toggleMax(p.id)
                   }}
-                  title={w.max ? 'Restore' : 'Maximize'}
+                  title={w.max ? 'Restore' : 'Full screen'}
                   style={czBtn}
                 >
-                  {w.max ? '❐' : '▢'}
-                </button>
-                <button
-                  className="cz-btn btn"
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    toggleMin(p.id)
-                  }}
-                  title={w.min ? 'Restore' : 'Minimize'}
-                  style={czBtn}
-                >
-                  {w.min ? '＋' : '－'}
+                  {w.max ? '🗗' : '⛶'}
                 </button>
               </div>
-              {/* body */}
+              {/* body — content scales with the window so a bigger window = bigger, clearer UI */}
               {!w.min && (
-                <div className="cz-body" style={{ flex: 1, overflow: 'auto', padding: 12 }}>
+                <div
+                  className="cz-body"
+                  style={{ flex: 1, overflow: 'auto', padding: 12, zoom: bodyScale }}
+                >
                   {p.node}
                 </div>
               )}
