@@ -6,7 +6,7 @@ function getTokenFromHash(): string | null {
   return new URLSearchParams(qs).get('token')
 }
 
-type InviteInfo = { class: string; label: string | null; is_used: boolean }
+type InviteInfo = { label: string | null; is_used: boolean }
 
 export function AcceptInvite() {
   const sb = getSupabaseClient()
