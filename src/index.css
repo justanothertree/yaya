@@ -193,6 +193,38 @@
   display: flex;
   flex-direction: column;
 }
+/* phones: stack the sheet's columns full-width so each exercise is a roomy full-width row
+   (no cramped side-by-side columns or horizontal scrolling while logging on a phone). */
+@media (max-width: 560px) {
+  .cz-ex-col {
+    flex-basis: 100%;
+    max-width: none;
+    min-width: 0;
+  }
+  .cz-sheet-hint {
+    display: none;
+  }
+  /* the standings bar squeezes to nothing on a phone — the day-squares below already give
+     the at-a-glance read, so hide it and let the name fill, keeping the numbers right-aligned. */
+  .cz-board-bar {
+    display: none;
+  }
+  .cz-board-name {
+    flex: 1 1 auto !important;
+    width: auto !important;
+  }
+  /* tighten the row so the name has room: smaller gaps, drop the secondary pts/day (still in
+     the profile), and let the day-squares run nearly full-width instead of indenting to 6rem. */
+  .cz-board-row {
+    gap: 0.4rem !important;
+  }
+  .cz-board-avg {
+    display: none;
+  }
+  .cz-board-days {
+    margin-left: 1.9rem !important;
+  }
+}
 .cz-slot {
   background: var(--card2, rgba(127, 127, 127, 0.06));
   border: 1px solid var(--b1, rgba(127, 127, 127, 0.18));
