@@ -43,7 +43,10 @@ type PublicSlice = {
   watchlist?: WatchlistItem[]
 }
 
-const bundledFallback = (): CircuitState => ({
+/** The board bundled into the build — demo persona + the last-known public slice. Shown
+ *  instantly so the page is never blank while the live board loads (Firefox's cross-site
+ *  fetch can be slow), and used as the fallback when there's no backend / the fetch fails. */
+export const bundledPublicBoard = (): CircuitState => ({
   ...emptyCircuitState(),
   people: [demoPerson, ...publicSeed.people],
   logs: [...demoLogs, ...publicSeed.logs],
@@ -51,22 +54,27 @@ const bundledFallback = (): CircuitState => ({
   watchlist: publicSeed.watchlist,
 })
 
-/** Live public board: demo persona + opted-in public people/logs (+ bundled movies). */
-export async function fetchPublicCircuit(): Promise<CircuitState> {
-  if (!hasFinanceSupabaseEnv()) return bundledFallback()
+/** Live public board: demo persona + opted-in public people/logs (+ movies). `live` is true
+ *  only when the anon RPC actually returned data, so callers can avoid overwriting a good
+ *  cached board with the bundled fallback on a transient/blocked fetch. */
+export async function fetchPublicCircuit(): Promise<{ state: CircuitState; live: boolean }> {
+  if (!hasFinanceSupabaseEnv()) return { state: bundledPublicBoard(), live: false }
   try {
     const { data, error } = await getSupabaseClient().rpc('circuit_public')
-    if (error || !data) return bundledFallback()
+    if (error || !data) return { state: bundledPublicBoard(), live: false }
     const slice = data as PublicSlice
     return {
-      ...emptyCircuitState(),
-      people: [demoPerson, ...(slice.people ?? [])],
-      logs: [...demoLogs, ...(slice.logs ?? [])],
-      // movies/watchlist now come from the board too (ratings/votes filtered to public people)
-      movies: slice.movies ?? publicSeed.movies,
-      watchlist: slice.watchlist ?? publicSeed.watchlist,
+      state: {
+        ...emptyCircuitState(),
+        people: [demoPerson, ...(slice.people ?? [])],
+        logs: [...demoLogs, ...(slice.logs ?? [])],
+        // movies/watchlist now come from the board too (ratings/votes filtered to public people)
+        movies: slice.movies ?? publicSeed.movies,
+        watchlist: slice.watchlist ?? publicSeed.watchlist,
+      },
+      live: true,
     }
   } catch {
-    return bundledFallback()
+    return { state: bundledPublicBoard(), live: false }
   }
 }
