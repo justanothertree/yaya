@@ -17,6 +17,8 @@ type CircuitRow = {
   is_owner: boolean
 }
 
+const ADD_PALETTE = ['#7c6af7', '#f46b6b', '#fb923c', '#22c55e', '#38bdf8', '#e879f9', '#facc15']
+
 export function CircuitsPanel() {
   const state = useCircuit()
   const sb = useMemo(() => getSupabaseClient(), [])
@@ -27,6 +29,9 @@ export function CircuitsPanel() {
   const [uid, setUid] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [claimOpen, setClaimOpen] = useState(false)
+  const [addFor, setAddFor] = useState<string | null>(null)
+  const [addName, setAddName] = useState('')
+  const [addColor, setAddColor] = useState(ADD_PALETTE[0])
 
   const refresh = useCallback(async () => {
     const { data, error } = await sb.rpc('my_circuits')
@@ -76,6 +81,23 @@ export function CircuitsPanel() {
       () => sb.rpc('claim_person', { p_person_id: personId }),
       'Claimed — this is now your Circuit',
     )
+
+  // Put yourself into a circuit: creates a person you own, shared into that circuit, so a
+  // joined-but-empty circuit (like one a friend invited you to) actually gets your data.
+  const addMe = (groupId: string) =>
+    run(async () => {
+      const r = await sb.rpc('add_self_to_circuit', {
+        p_group: groupId,
+        p_name: addName,
+        p_color: addColor,
+      })
+      if (!r.error) {
+        setAddFor(null)
+        setAddName('')
+        setAddColor(ADD_PALETTE[0])
+      }
+      return r
+    }, 'Added you to the circuit')
 
   const setPublic = (personId: string, pub: boolean) =>
     run(
@@ -132,38 +154,120 @@ export function CircuitsPanel() {
                 key={c.id}
                 style={{
                   display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.6rem',
-                  flexWrap: 'wrap',
+                  flexDirection: 'column',
+                  gap: '0.5rem',
                   padding: '0.6rem 0.75rem',
                   background: 'var(--b1, rgba(127,127,127,0.06))',
                   borderRadius: 10,
                 }}
               >
-                <strong>{c.name}</strong>
-                <span className="muted" style={{ fontSize: '0.76rem' }}>
-                  {c.member_count} member{c.member_count === 1 ? '' : 's'} ·{' '}
-                  {c.is_owner ? 'owner' : c.role}
-                </span>
-                {c.is_owner && c.join_code && (
-                  <button
-                    className="btn btn-ghost"
-                    onClick={() => copyCode(c.join_code!)}
-                    style={{ fontSize: '0.78rem' }}
-                    title="Copy the join code to invite friends"
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.6rem',
+                    flexWrap: 'wrap',
+                  }}
+                >
+                  <strong>{c.name}</strong>
+                  <span className="muted" style={{ fontSize: '0.76rem' }}>
+                    {c.member_count} member{c.member_count === 1 ? '' : 's'} ·{' '}
+                    {c.is_owner ? 'owner' : c.role}
+                  </span>
+                  <div
+                    style={{ display: 'flex', gap: '0.4rem', marginLeft: 'auto', flexWrap: 'wrap' }}
                   >
-                    🔗 Invite ({c.join_code})
-                  </button>
-                )}
-                {!c.is_owner && (
-                  <button
-                    className="btn btn-ghost"
-                    onClick={() => leave(c.id)}
-                    disabled={busy}
-                    style={{ fontSize: '0.78rem', marginLeft: 'auto' }}
+                    <button
+                      className="btn btn-ghost"
+                      onClick={() => {
+                        setAddFor((cur) => (cur === c.id ? null : c.id))
+                        setAddName('')
+                        setAddColor(ADD_PALETTE[0])
+                      }}
+                      style={{ fontSize: '0.78rem' }}
+                      title="Add yourself (your data) to this circuit"
+                      aria-expanded={addFor === c.id}
+                    >
+                      {addFor === c.id ? '✕ Cancel' : '➕ Add me'}
+                    </button>
+                    {c.is_owner && c.join_code && (
+                      <button
+                        className="btn btn-ghost"
+                        onClick={() => copyCode(c.join_code!)}
+                        style={{ fontSize: '0.78rem' }}
+                        title="Copy the join code to invite friends"
+                      >
+                        🔗 Invite ({c.join_code})
+                      </button>
+                    )}
+                    {!c.is_owner && (
+                      <button
+                        className="btn btn-ghost"
+                        onClick={() => leave(c.id)}
+                        disabled={busy}
+                        style={{ fontSize: '0.78rem' }}
+                      >
+                        Leave
+                      </button>
+                    )}
+                  </div>
+                </div>
+                {addFor === c.id && (
+                  <div
+                    style={{
+                      display: 'flex',
+                      gap: '0.5rem',
+                      alignItems: 'center',
+                      flexWrap: 'wrap',
+                    }}
                   >
-                    Leave
-                  </button>
+                    <input
+                      value={addName}
+                      onChange={(e) => setAddName(e.target.value)}
+                      placeholder="Your name in this circuit"
+                      style={{ ...input, flex: '1 1 160px' }}
+                      autoFocus
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && addName.trim() && !busy) addMe(c.id)
+                      }}
+                    />
+                    <div style={{ display: 'flex', gap: '0.3rem' }}>
+                      {ADD_PALETTE.map((col) => (
+                        <button
+                          key={col}
+                          onClick={() => setAddColor(col)}
+                          aria-label={`Pick colour ${col}`}
+                          style={{
+                            width: 22,
+                            height: 22,
+                            minWidth: 'auto',
+                            padding: 0,
+                            borderRadius: '50%',
+                            background: col,
+                            border:
+                              addColor === col
+                                ? '2px solid var(--fg,#fff)'
+                                : '2px solid transparent',
+                            boxShadow: addColor === col ? '0 0 0 1px rgba(0,0,0,0.35)' : 'none',
+                            cursor: 'pointer',
+                            flexShrink: 0,
+                          }}
+                        />
+                      ))}
+                    </div>
+                    <button
+                      className="btn"
+                      onClick={() => addMe(c.id)}
+                      disabled={busy || !addName.trim()}
+                      style={{
+                        background: 'var(--accent,#7c6af7)',
+                        color: '#fff',
+                        borderColor: 'transparent',
+                      }}
+                    >
+                      Add
+                    </button>
+                  </div>
                 )}
               </div>
             ))}

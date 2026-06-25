@@ -16,6 +16,15 @@ export function Board({
 } = {}) {
   const state = useCircuit()
   const [profile, setProfile] = useState<Person | null>(null)
+  // circuit picker: scope the standings to one of your circuits (only shown when you're
+  // signed in and belong to one or more). 'all' shows everyone you can see.
+  const groups = state.groups ?? []
+  const [viewGroup, setViewGroup] = useState<string>('')
+  const visiblePeople = useMemo(
+    () =>
+      viewGroup ? state.people.filter((p) => (p.groupIds ?? []).includes(viewGroup)) : state.people,
+    [state.people, viewGroup],
+  )
   const curMonth = todayMonth()
   const todayStr = todayISO()
   const months = useMemo(
@@ -34,7 +43,7 @@ export function Board({
 
   const rows = useMemo(
     () =>
-      state.people
+      visiblePeople
         .map((p) => {
           const daily = monthDaily(p, state.logs, ym, days)
           const daysLogged = daily.filter((d) => d > 0).length
@@ -50,7 +59,7 @@ export function Board({
           }
         })
         .sort((a, b) => b.total - a.total),
-    [state.people, state.logs, ym, days],
+    [visiblePeople, state.logs, ym, days],
   )
   const max = Math.max(1, ...rows.map((r) => r.total))
   const anyData = rows.some((r) => r.total > 0)
@@ -83,11 +92,40 @@ export function Board({
             </button>
           )}
         </span>
+        {groups.length > 0 && (
+          <label
+            className="muted"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '0.35rem',
+              fontSize: '0.8rem',
+              marginLeft: 'auto',
+            }}
+            title="Show just one of your circuits"
+          >
+            👥
+            <select
+              value={viewGroup}
+              onChange={(e) => setViewGroup(e.target.value)}
+              style={{ padding: '0.25rem 0.4rem' }}
+            >
+              <option value="">All circuits</option>
+              {groups.map((g) => (
+                <option key={g.id} value={g.id}>
+                  {g.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
       </div>
 
-      {state.people.length === 0 ? (
+      {visiblePeople.length === 0 ? (
         <p className="muted" style={{ marginTop: '1rem' }}>
-          No participants yet — your Circuit data will appear here once it’s seeded or synced.
+          {viewGroup
+            ? 'No one’s in this circuit yet — open the 👥 Circuits tab and “➕ Add me” to put yourself in it.'
+            : 'No participants yet — your Circuit data will appear here once it’s seeded or synced.'}
         </p>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginTop: '1rem' }}>
