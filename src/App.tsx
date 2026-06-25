@@ -554,6 +554,7 @@ export default function App() {
               Contact
             </a>
             <span
+              className="nav-zoom"
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',

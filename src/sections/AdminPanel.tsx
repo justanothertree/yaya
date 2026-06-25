@@ -280,7 +280,7 @@ export function AdminPanel() {
               <input
                 value={newLabel}
                 onChange={(e) => setNewLabel(e.target.value)}
-                placeholder="e.g. Josh, Cam's wife"
+                placeholder="a name or note for you"
                 style={{ padding: '0.4rem 0.6rem' }}
               />
             </label>

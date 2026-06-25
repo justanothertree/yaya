@@ -612,6 +612,13 @@ section[id] {
   font-weight: 700;
   letter-spacing: 0.2px;
 }
+/* phones: keep the nav to just the page links — the UI-scale cluster is a desktop power
+   tool (phones have pinch-zoom) and only clutters the scroll strip. */
+@media (max-width: 560px) {
+  .nav-zoom {
+    display: none !important;
+  }
+}
 
 .section-title {
   margin: 0 0 0.5rem 0;

@@ -181,8 +181,7 @@ export function AcceptInvite() {
         {invite.label ? `Hey ${invite.label}!` : 'Create your account'}
       </h2>
       <p className="muted" style={{ marginBottom: '1.25rem', fontSize: '0.88rem' }}>
-        You've been invited as a <strong>{invite.class}</strong> member. Pick a username and fill in
-        your info — takes 30 seconds.
+        You've been invited to join. Pick a username and fill in your info — takes 30 seconds.
       </p>
 
       {error && (
@@ -201,7 +200,7 @@ export function AcceptInvite() {
             value={username}
             onChange={(e) => setUsername(e.target.value)}
             required
-            placeholder="e.g. josh_c"
+            placeholder="pick a username"
             autoComplete="username"
           />
         </label>
@@ -214,7 +213,7 @@ export function AcceptInvite() {
             value={displayName}
             onChange={(e) => setDisplayName(e.target.value)}
             required
-            placeholder="e.g. Josh"
+            placeholder="your first name"
             autoComplete="given-name"
           />
         </label>

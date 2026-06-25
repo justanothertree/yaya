@@ -19,8 +19,17 @@ type Tab = 'board' | 'log' | 'feed' | 'charts' | 'movies' | 'watchlist' | 'circu
 const todayISO = () => new Date().toISOString().slice(0, 10)
 const isDesktop = () => typeof window !== 'undefined' && window.innerWidth >= 820
 
+// A phone bookmark/shortcut to `#circuit?tab=log` opens straight to logging — the on-the-fly
+// convenience friends had with the spreadsheet. Any of the always-available tabs works.
+function initialTab(): Tab {
+  const q = new URLSearchParams(window.location.hash.split('?')[1] ?? '')
+  const t = q.get('tab') as Tab | null
+  const quick: Tab[] = ['board', 'log', 'feed', 'charts', 'movies', 'watchlist']
+  return t && quick.includes(t) ? t : 'board'
+}
+
 export function Circuit({ authed = false }: { authed?: boolean } = {}) {
-  const [tab, setTab] = useState<Tab>('board')
+  const [tab, setTab] = useState<Tab>(initialTab)
   const [logTarget, setLogTarget] = useState<{ personId: string; date: string } | null>(null)
   const [canvas, setCanvas] = useState(false)
   const [focusPane, setFocusPane] = useState<{ id: string; nonce: number } | null>(null)
