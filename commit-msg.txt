@@ -1,5 +1,0 @@
-fix: multiplayer score modal suppressed; seed-gated countdown; leaderboard dedupe and filters
-
-- Do not show save score modal in multiplayer
-- Only start countdown/round on server seed
-- Leaderboard: filter to survival mode and score>0, over-fetch and dedupe by username
