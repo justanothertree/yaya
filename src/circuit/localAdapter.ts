@@ -32,16 +32,40 @@ function removeById<T extends { id: ID }>(arr: T[], id: ID): T[] {
   return arr.filter((x) => x.id !== id)
 }
 
-/** `seed` is the first-run sandbox state (signed-out demo). Defaults to the bundled
- *  Evan slice; the home page passes a live public-board seed instead. */
-export function createLocalAdapter(seed?: CircuitState): CircuitAdapter {
+/** Keep the visitor's own tinkering (the 'demo' persona + anything they created locally) but
+ *  refresh the public people/logs/movies from the live board, so a stale or blocked first
+ *  load self-heals and newly-public Circuits appear without a manual "Reset demo". */
+function refreshPublicBoard(cached: CircuitState, live: CircuitState): CircuitState {
+  const liveIds = new Set(live.people.map((p) => p.id))
+  // the visitor's people: the always-editable demo persona + anything not on the live board.
+  const localPeople = cached.people.filter((p) => p.id === 'demo' || !liveIds.has(p.id))
+  const localIds = new Set(localPeople.map((p) => p.id))
+  return {
+    ...emptyCircuitState(),
+    people: [...localPeople, ...live.people.filter((p) => !localIds.has(p.id))],
+    logs: [
+      ...cached.logs.filter((l) => localIds.has(l.personId)),
+      ...live.logs.filter((l) => !localIds.has(l.personId)),
+    ],
+    movies: live.movies,
+    watchlist: live.watchlist,
+  }
+}
+
+/** `seed` is the first-run sandbox state (signed-out demo). Defaults to the bundled Evan
+ *  slice; the home page passes a public-board seed instead. When `liveSeed` is true the seed
+ *  came fresh from the live board, so it also refreshes an already-seeded sandbox on load. */
+export function createLocalAdapter(seed?: CircuitState, liveSeed = false): CircuitAdapter {
   const firstRun = (): CircuitState =>
     seed ? clone(seed) : { ...emptyCircuitState(), ...clone(publicSeed) }
   const read = (): CircuitState => {
     try {
       const raw = localStorage.getItem(KEY)
       if (!raw) return firstRun() // nothing saved yet → seed the sandbox
-      return { ...emptyCircuitState(), ...JSON.parse(raw) }
+      const cached = { ...emptyCircuitState(), ...JSON.parse(raw) }
+      // refresh the public board over the cache when we have fresh live data; otherwise keep
+      // the cache as-is so an offline/blocked fetch never degrades a good board.
+      return seed && liveSeed ? refreshPublicBoard(cached, seed) : cached
     } catch {
       return emptyCircuitState()
     }
