@@ -17,6 +17,27 @@ import type { Exercise } from '../types'
 const CATS = Object.keys(CAT_COLORS)
 // suggestions only — the unit field is free text, so you can type your own
 const UNITS = ['reps', 'min', 'sec', 'mi', 'km', 'hr', 'cal', 'lbs', 'steps']
+// A sensible starter grid for a brand-new person, so a friend who just joined a circuit can
+// log right away instead of building columns and exercises from scratch. Multipliers match the
+// crew's scoring (miles weighted heavily, plank by the minute); everything is editable after.
+const STARTER_GRID: { label: string; exs: Omit<Exercise, 'id' | 'col' | 'row'>[] }[] = [
+  {
+    label: 'Body',
+    exs: [
+      { name: 'Pushups', unit: 'reps', mult: 1, cat: 'arms' },
+      { name: 'Situps', unit: 'reps', mult: 1, cat: 'core' },
+      { name: 'Squats', unit: 'reps', mult: 1, cat: 'legs' },
+      { name: 'Plank', unit: 'min', mult: 10, cat: 'core' },
+    ],
+  },
+  {
+    label: 'Cardio',
+    exs: [
+      { name: 'Run', unit: 'mi', mult: 32, cat: 'run' },
+      { name: 'Walk', unit: 'mi', mult: 16, cat: 'run' },
+    ],
+  },
+]
 const newId = () =>
   crypto.randomUUID?.() ?? 'e' + Date.now() + Math.random().toString(36).slice(2, 6)
 
@@ -181,6 +202,15 @@ export function Log({
   const addCol = () => {
     void circuitStore.savePerson({ ...person, colLabels: [...person.colLabels, 'New column'] })
     setColEdit(person.colLabels.length) // open the fresh header for naming
+  }
+  // one-tap onboarding for an empty person: drop in the common starter grid (editable after).
+  const addStarterSet = () => {
+    const colLabels = STARTER_GRID.map((c) => c.label)
+    const exercises: Exercise[] = []
+    STARTER_GRID.forEach((c, ci) =>
+      c.exs.forEach((e, row) => exercises.push({ ...e, id: newId(), col: ci, row })),
+    )
+    void circuitStore.savePerson({ ...person, colLabels, exercises })
   }
   // delete a column: its exercises merge into the neighbouring column (no data lost),
   // later columns shift down, and rows renumber per column. Keeps at least one column.
@@ -370,27 +400,73 @@ export function Log({
         </div>
       </div>
 
-      {/* slot sheet header */}
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          margin: '0.25rem 0 0.6rem',
-        }}
-      >
-        <span className="cz-sheet-hint muted" style={{ fontSize: '0.78rem' }}>
-          Drag ⠿ to move · click a name to edit · click a column to rename
-        </span>
-        <button
-          className="btn btn-ghost"
-          onClick={addCol}
-          style={{ fontSize: '0.8rem' }}
-          title="Add a new column to the sheet"
+      {/* brand-new person → a friendly starter CTA instead of a blank sheet */}
+      {cols.length === 0 && (
+        <div
+          className="card"
+          style={{
+            textAlign: 'center',
+            padding: '1.6rem 1rem',
+            display: 'grid',
+            gap: '0.55rem',
+            justifyItems: 'center',
+          }}
         >
-          ＋ Column
-        </button>
-      </div>
+          <div style={{ fontSize: '1.7rem' }}>🏋️</div>
+          <strong>Set up {person.name}&rsquo;s exercises</strong>
+          <span className="muted" style={{ fontSize: '0.86rem', maxWidth: 320 }}>
+            Start with a common set you can tweak anytime, or build your own grid.
+          </span>
+          <div
+            style={{
+              display: 'flex',
+              gap: '0.5rem',
+              flexWrap: 'wrap',
+              justifyContent: 'center',
+              marginTop: '0.2rem',
+            }}
+          >
+            <button
+              className="btn"
+              onClick={addStarterSet}
+              style={{
+                background: 'var(--accent,#7c6af7)',
+                color: '#fff',
+                borderColor: 'transparent',
+              }}
+            >
+              ➕ Add a starter set
+            </button>
+            <button className="btn btn-ghost" onClick={addCol}>
+              Build my own
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* slot sheet header */}
+      {cols.length > 0 && (
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            margin: '0.25rem 0 0.6rem',
+          }}
+        >
+          <span className="cz-sheet-hint muted" style={{ fontSize: '0.78rem' }}>
+            Drag ⠿ to move · click a name to edit · click a column to rename
+          </span>
+          <button
+            className="btn btn-ghost"
+            onClick={addCol}
+            style={{ fontSize: '0.8rem' }}
+            title="Add a new column to the sheet"
+          >
+            ＋ Column
+          </button>
+        </div>
+      )}
 
       {/* the sheet: columns side by side (spreadsheet style), slots stacked inside */}
       <div className="cz-ex-sheet">
