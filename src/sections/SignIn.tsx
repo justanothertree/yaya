@@ -82,7 +82,7 @@ export function SignIn() {
           Sign in
         </h2>
         <p className="muted" style={{ margin: 0 }}>
-          Sign in to access Investments. Session is used for Supabase RLS (`auth.uid()`).
+          Welcome back — sign in to track your Circuit and pick up where you left off.
         </p>
       </header>
 
