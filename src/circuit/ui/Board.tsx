@@ -136,7 +136,10 @@ export function Board({
           )}
           {rows.map((r, i) => (
             <div key={r.p.id}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+              <div
+                className="cz-board-row"
+                style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}
+              >
                 <span
                   style={{
                     width: '1.5rem',
@@ -148,6 +151,7 @@ export function Board({
                   {i < 3 ? ['🥇', '🥈', '🥉'][i] : i + 1}
                 </span>
                 <span
+                  className="cz-board-name"
                   onClick={() => setProfile(r.p)}
                   title={`${r.p.name}'s stats`}
                   style={{ width: '6rem', fontWeight: 700, color: r.p.color, cursor: 'pointer' }}
@@ -155,6 +159,7 @@ export function Board({
                   {r.p.name}
                 </span>
                 <span
+                  className="cz-board-bar"
                   style={{
                     flex: 1,
                     position: 'relative',
@@ -208,7 +213,7 @@ export function Board({
                   {r.streak > 0 ? `🔥${r.streak}` : ''}
                 </span>
                 <span
-                  className="cz-num"
+                  className="cz-num cz-board-avg"
                   style={{
                     flexShrink: 0,
                     width: '3rem',
@@ -272,6 +277,7 @@ export function Board({
               </div>
               {/* day-squares: one per day of the month */}
               <div
+                className="cz-board-days"
                 style={{
                   display: 'flex',
                   gap: 1.5,
@@ -306,7 +312,8 @@ export function Board({
           ))}
           {anyData && (
             <div className="muted" style={{ fontSize: '0.72rem', marginTop: 2 }}>
-              bar = month total · each square = a day · ▢ ring = goal hit · 🔥 = current streak
+              <span className="cz-board-bar">bar = month total · </span>each square = a day · ▢ ring
+              = goal hit · 🔥 = current streak
             </div>
           )}
         </div>

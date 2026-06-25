@@ -379,7 +379,7 @@ export function Log({
           margin: '0.25rem 0 0.6rem',
         }}
       >
-        <span className="muted" style={{ fontSize: '0.78rem' }}>
+        <span className="cz-sheet-hint muted" style={{ fontSize: '0.78rem' }}>
           Drag ⠿ to move · click a name to edit · click a column to rename
         </span>
         <button
