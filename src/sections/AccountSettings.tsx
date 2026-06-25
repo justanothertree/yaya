@@ -70,7 +70,6 @@ function MemberProfileCard() {
       {profile.username && (
         <p className="muted" style={{ margin: 0, fontSize: '0.85rem' }}>
           Username: <strong>@{profile.username}</strong>
-          {profile.role && <span style={{ marginLeft: 8, opacity: 0.6 }}>· {profile.role}</span>}
         </p>
       )}
       <label style={{ display: 'grid', gap: 6 }}>
