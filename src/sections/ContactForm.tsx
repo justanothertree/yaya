@@ -71,7 +71,7 @@ export function ContactForm() {
     <section className="card">
       <h2 className="section-title">Contact</h2>
       <p className="muted">
-        This form posts to Formspree. Replace the endpoint in <code>ContactForm.tsx</code>.
+        Questions, ideas, or just to say hi — drop me a line and I’ll get back to you.
       </p>
       <form ref={formRef} onSubmit={onSubmit} style={formStyle}>
         {/* Honeypot field for spam bots; hidden from users */}
