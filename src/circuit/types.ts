@@ -20,6 +20,15 @@ export interface Person {
   ownerUserId?: string | null
   /** Whether this person opts into the public board / signed-out demo. */
   isPublic?: boolean
+  /** Circuits (group ids) this person is shared into. Server-loaded; used to scope the
+   *  board to one circuit. Empty/undefined in the signed-out demo. */
+  groupIds?: ID[]
+}
+
+/** A circuit (group) the signed-in user belongs to — used by the board's circuit picker. */
+export interface CircuitGroup {
+  id: ID
+  name: string
 }
 
 export interface Exercise {
@@ -97,6 +106,8 @@ export interface CircuitState {
   logs: DayLog[]
   movies: Movie[]
   watchlist: WatchlistItem[]
+  /** Circuits the signed-in user belongs to (server-loaded). Empty in the demo. */
+  groups?: CircuitGroup[]
 }
 
 export const emptyCircuitState = (): CircuitState => ({
@@ -104,4 +115,5 @@ export const emptyCircuitState = (): CircuitState => ({
   logs: [],
   movies: [],
   watchlist: [],
+  groups: [],
 })

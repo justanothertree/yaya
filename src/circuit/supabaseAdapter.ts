@@ -102,17 +102,31 @@ export function createSupabaseAdapter(): CircuitAdapter {
   const sb = getSupabaseClient()
 
   async function loadAll(): Promise<CircuitState> {
-    const [ppl, logs, movies, wl] = await Promise.all([
+    const [ppl, logs, movies, wl, pgroups, groups] = await Promise.all([
       sb.from('circuit_people').select('*'),
       sb.from('circuit_logs').select('*'),
       sb.from('circuit_movies').select('*'),
       sb.from('circuit_watchlist').select('*'),
+      sb.from('circuit_person_groups').select('person_id, group_id'),
+      sb.from('circuit_groups').select('id, name'),
     ])
+    // which circuit(s) each person is shared into — lets the board scope to one circuit
+    const byPerson: Record<string, string[]> = {}
+    for (const r of (pgroups.data as { person_id: string; group_id: string }[] | null) ?? []) {
+      ;(byPerson[r.person_id] ||= []).push(r.group_id)
+    }
     return {
-      people: ((ppl.data as PersonRow[] | null) ?? []).map(rowToPerson),
+      people: ((ppl.data as PersonRow[] | null) ?? []).map((r) => ({
+        ...rowToPerson(r),
+        groupIds: byPerson[r.id] ?? [],
+      })),
       logs: ((logs.data as LogRow[] | null) ?? []).map(rowToLog),
       movies: ((movies.data as MovieRow[] | null) ?? []).map(rowToMovie),
       watchlist: ((wl.data as WlRow[] | null) ?? []).map(rowToWl),
+      groups: ((groups.data as { id: string; name: string }[] | null) ?? []).map((g) => ({
+        id: g.id,
+        name: g.name,
+      })),
     }
   }
 
