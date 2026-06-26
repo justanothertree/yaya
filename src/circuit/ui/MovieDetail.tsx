@@ -12,11 +12,17 @@ export function MovieDetail({ movie, onClose }: { movie: Movie; onClose: () => v
   const [editing, setEditing] = useState<Person | null>(null)
   const [personProfile, setPersonProfile] = useState<Person | null>(null)
 
-  const byId = useMemo(
-    () => Object.fromEntries(people.map((p) => [p.id, p])) as Record<string, Person>,
-    [people],
-  )
-  const raters = MV_PIDS.map((id) => byId[id]).filter(Boolean)
+  // Raters = people you can see who are either movie-raters or have actually rated this film —
+  // not a hardcoded crew list, so a member viewing from another circuit still sees real names.
+  const raters = useMemo(() => {
+    const ids = new Set<string>(MV_PIDS)
+    Object.keys(movie.ratings).forEach((id) => ids.add(id))
+    const order = (id: string) => {
+      const i = MV_PIDS.indexOf(id)
+      return i === -1 ? MV_PIDS.length : i
+    }
+    return people.filter((p) => ids.has(p.id)).sort((a, b) => order(a.id) - order(b.id))
+  }, [people, movie.ratings])
 
   const scores = raters.map((p) => movie.ratings[p.id]?.score).filter((s): s is number => s != null)
   const avg = scores.length ? scores.reduce((a, b) => a + b, 0) / scores.length : null
@@ -216,13 +222,12 @@ export function MovieDetail({ movie, onClose }: { movie: Movie; onClose: () => v
             const sentItem = rv?.sentiment != null ? SENTIMENT[rv.sentiment] : null
             const rewItem = rv?.rewatch != null ? REWATCH.find((x) => x.v === rv.rewatch) : null
             const recItem = rv?.rec ? REC.find((x) => x.v === rv.rec) : null
-            // stack repeated reactions multiplicatively: 🔥🔥🔥 → "🔥×3"
+            // stack repeated reactions multiplicatively: 🔥🔥🔥 → 🔥×3 (counted here, sized in JSX)
             const vibeCounts = new Map<string, number>()
             for (const id of r?.icons ?? []) {
               const emoji = MV_ICONS.find((x) => x.id === id)?.emoji
               if (emoji) vibeCounts.set(emoji, (vibeCounts.get(emoji) ?? 0) + 1)
             }
-            const vibes = [...vibeCounts.entries()].map(([e, n]) => (n > 1 ? `${e}×${n}` : e))
 
             return (
               <div
@@ -238,60 +243,79 @@ export function MovieDetail({ movie, onClose }: { movie: Movie; onClose: () => v
                   style={{
                     display: 'flex',
                     alignItems: 'center',
-                    gap: '0.45rem',
+                    gap: '0.6rem',
                     flexWrap: 'wrap',
                   }}
                 >
+                  {/* hero gut-reaction emoji, blown up */}
                   <span
-                    onClick={() => setPersonProfile(p)}
-                    style={{
-                      fontWeight: 700,
-                      color: p.color,
-                      cursor: 'pointer',
-                      fontSize: '0.88rem',
-                    }}
-                    title={`${p.name}'s movie stats`}
+                    title={sentItem?.l}
+                    style={{ fontSize: '2rem', lineHeight: 1, width: '2rem', textAlign: 'center' }}
                   >
-                    {p.name}
+                    {sentItem ? sentItem.e : <span style={{ opacity: 0.25 }}>·</span>}
                   </span>
-                  {r?.score != null && (
+                  <span style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
                     <span
+                      onClick={() => setPersonProfile(p)}
                       style={{
-                        background: scoreColor(r.score),
-                        color: '#fff',
-                        borderRadius: 6,
-                        padding: '1px 8px',
                         fontWeight: 700,
-                        fontSize: '0.85rem',
+                        color: p.color,
+                        cursor: 'pointer',
+                        fontSize: '0.9rem',
                       }}
+                      title={`${p.name}'s movie stats`}
                     >
-                      {r.score}
+                      {p.name}
                     </span>
-                  )}
-                  {sentItem && (
-                    <span title={sentItem.l} style={{ fontSize: '1rem' }}>
-                      {sentItem.e}
-                    </span>
-                  )}
-                  {vibes.length > 0 && (
-                    <span style={{ fontSize: '0.9rem', letterSpacing: '0.04em' }}>
-                      {vibes.join(' ')}
-                    </span>
-                  )}
-                  <span style={{ marginLeft: 'auto', display: 'flex', gap: '0.25rem' }}>
-                    {recItem && (
-                      <span title={recItem.l} style={{ fontSize: '0.9rem' }}>
-                        {recItem.e}
+                    {/* vibes + rec + rewatch, blown up; counts kept small as superscripts */}
+                    {([...vibeCounts.entries()].length > 0 || recItem || rewItem) && (
+                      <span
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '0.4rem',
+                          fontSize: '1.45rem',
+                          lineHeight: 1,
+                        }}
+                      >
+                        {[...vibeCounts.entries()].map(([e, n]) => (
+                          <span key={e}>
+                            {e}
+                            {n > 1 && (
+                              <sup style={{ fontSize: '0.6rem', fontWeight: 700 }}>×{n}</sup>
+                            )}
+                          </span>
+                        ))}
+                        {recItem && <span title={recItem.l}>{recItem.e}</span>}
+                        {rewItem && <span title={rewItem.l}>{rewItem.e}</span>}
                       </span>
                     )}
-                    {rewItem && (
-                      <span title={rewItem.l} style={{ fontSize: '0.9rem' }}>
-                        {rewItem.e}
+                  </span>
+                  <span
+                    style={{
+                      marginLeft: 'auto',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.45rem',
+                    }}
+                  >
+                    {r?.score != null && (
+                      <span
+                        style={{
+                          background: scoreColor(r.score),
+                          color: '#fff',
+                          borderRadius: 6,
+                          padding: '2px 10px',
+                          fontWeight: 700,
+                          fontSize: '0.95rem',
+                        }}
+                      >
+                        {r.score}
                       </span>
                     )}
                     <button
                       className="btn"
-                      style={{ fontSize: '0.7rem', padding: '1px 7px', marginLeft: '0.25rem' }}
+                      style={{ fontSize: '0.7rem', padding: '2px 8px' }}
                       onClick={() => setEditing(p)}
                     >
                       {r?.score != null ? 'Edit' : 'Rate'}
