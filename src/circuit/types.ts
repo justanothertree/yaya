@@ -91,6 +91,9 @@ export interface Movie {
   rt?: string
   /** per-person ratings, keyed by Person.id (becomes a join table on Supabase) */
   ratings: Record<ID, MovieRating>
+  /** Circuit (group) this film belongs to; server-set/preserved. New ones default to the
+   *  member's circuit via a DB trigger. Undefined in the signed-out demo. */
+  groupId?: string | null
 }
 
 export interface WatchlistItem {
@@ -99,6 +102,8 @@ export interface WatchlistItem {
   rt?: string
   /** person ids who voted to watch it next */
   votes?: ID[]
+  /** Circuit this item belongs to (see Movie.groupId). */
+  groupId?: string | null
 }
 
 export interface CircuitState {
