@@ -30,8 +30,15 @@ type MovieRow = {
   date: string | null
   rt: string | null
   ratings: Record<string, MovieRating>
+  group_id?: string | null
 }
-type WlRow = { id: string; title: string; rt: string | null; votes: string[] }
+type WlRow = {
+  id: string
+  title: string
+  rt: string | null
+  votes: string[]
+  group_id?: string | null
+}
 
 const personToRow = (p: Person): PersonRow => ({
   id: p.id,
@@ -77,6 +84,8 @@ const movieToRow = (m: Movie): MovieRow => ({
   date: m.date ?? null,
   rt: m.rt ?? null,
   ratings: m.ratings,
+  // preserve an existing film's circuit; new films send null and a DB trigger scopes them
+  group_id: m.groupId ?? null,
 })
 const rowToMovie = (r: MovieRow): Movie => ({
   id: r.id,
@@ -84,18 +93,21 @@ const rowToMovie = (r: MovieRow): Movie => ({
   date: r.date ?? undefined,
   rt: r.rt ?? undefined,
   ratings: r.ratings ?? {},
+  groupId: r.group_id ?? null,
 })
 const wlToRow = (w: WatchlistItem): WlRow => ({
   id: w.id,
   title: w.title,
   rt: w.rt ?? null,
   votes: w.votes ?? [],
+  group_id: w.groupId ?? null,
 })
 const rowToWl = (r: WlRow): WatchlistItem => ({
   id: r.id,
   title: r.title,
   rt: r.rt ?? undefined,
   votes: r.votes ?? [],
+  groupId: r.group_id ?? null,
 })
 
 export function createSupabaseAdapter(): CircuitAdapter {
