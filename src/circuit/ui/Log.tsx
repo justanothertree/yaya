@@ -61,6 +61,8 @@ export function Log({
   const [colEdit, setColEdit] = useState<number | null>(null) // column header being renamed
   const dirty = useRef(false) // true once the user edits values — gates autosave vs load
   const [savedPulse, setSavedPulse] = useState(0) // bumps to flash the "saved" indicator
+  const [celebrate, setCelebrate] = useState(false) // brief flourish when you cross the goal
+  const prevHit = useRef(false) // tracks goal-hit so the celebration fires only on the cross
 
   const pid = selPid || state.people[0]?.id || ''
   const person = state.people.find((p) => p.id === pid)
@@ -167,11 +169,28 @@ export function Log({
     return best
   }, [state.logs, person])
 
+  // Live total + goal, computed before the early return so the celebrate effect (a hook) can
+  // watch the goal-hit state.
+  const goal = person?.goal ?? 100
+  const total = person
+    ? person.exercises.reduce((s, ex) => s + (parseFloat(vals[ex.id]) || 0) * ex.mult, 0)
+    : 0
+  const hit = total >= goal
+
+  // Fire a brief celebration the moment you cross the goal while logging — only on the
+  // false→true edge, and only on a real edit (not when loading an already-hit day).
+  useEffect(() => {
+    if (hit && !prevHit.current && dirty.current) {
+      setCelebrate(true)
+      const t = setTimeout(() => setCelebrate(false), 1500)
+      prevHit.current = true
+      return () => clearTimeout(t)
+    }
+    prevHit.current = hit
+  }, [hit])
+
   if (!person) return <p className="muted">No participants yet.</p>
 
-  const total = person.exercises.reduce((s, ex) => s + (parseFloat(vals[ex.id]) || 0) * ex.mult, 0)
-  const goal = person.goal ?? 100
-  const hit = total >= goal
   const laps = Math.floor(total / goal)
   const extra = Math.round(total % goal)
   const goalNote = !hit
@@ -383,9 +402,18 @@ export function Log({
       {/* goal / live total */}
       <div style={{ margin: '0.5rem 0 1rem' }}>
         <GoalBar total={total} goal={goal} color="var(--accent, #7c6af7)" />
-        <div className="muted" style={{ marginTop: 4 }}>
+        <div
+          className="muted"
+          style={{
+            marginTop: 4,
+            display: 'flex',
+            alignItems: 'baseline',
+            gap: '0.4rem',
+            flexWrap: 'wrap',
+          }}
+        >
           <span
-            className="cz-num"
+            className={`cz-num${celebrate ? ' cz-goal-pop' : ''}`}
             style={{
               fontSize: '1.4rem',
               fontWeight: 800,
@@ -393,10 +421,19 @@ export function Log({
             }}
           >
             {Math.round(total)}
-          </span>{' '}
+          </span>
           <span style={{ fontSize: '0.82rem', color: hit ? '#22cc78' : undefined }}>
             {goalNote}
           </span>
+          {celebrate && (
+            <span
+              className="cz-goal-cheer"
+              role="status"
+              style={{ fontSize: '0.9rem', fontWeight: 700, color: '#22cc78' }}
+            >
+              🎉 Goal!
+            </span>
+          )}
         </div>
       </div>
 
