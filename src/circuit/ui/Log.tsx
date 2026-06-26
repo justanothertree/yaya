@@ -706,6 +706,21 @@ function Slot({
   const pts = v * ex.mult
   const isPR = v > 0 && !!best && v > best
   const tags = ex.tags ?? []
+
+  // Celebrate the moment a value beats this exercise's previous best (false→true edge). The
+  // flash outlives the autosave that turns the new value into the record (isPR back to false).
+  const prevPR = useRef(false)
+  const [prFlash, setPrFlash] = useState(false)
+  useEffect(() => {
+    if (isPR && !prevPR.current) {
+      setPrFlash(true)
+      const t = setTimeout(() => setPrFlash(false), 1300)
+      prevPR.current = true
+      return () => clearTimeout(t)
+    }
+    prevPR.current = isPR
+  }, [isPR])
+
   return (
     <div
       className={`cz-slot${dragging ? ' cz-dragging' : ''}${over ? ' cz-drag-over' : ''}`}
@@ -746,6 +761,7 @@ function Slot({
           {ex.unit}
         </span>
         <span
+          className={prFlash ? 'cz-goal-pop' : undefined}
           title={
             isPR ? 'New personal best!' : best ? `best ${Math.round(best * 10) / 10}` : undefined
           }
@@ -753,12 +769,16 @@ function Slot({
             marginLeft: 'auto',
             fontVariantNumeric: 'tabular-nums',
             fontSize: '0.75rem',
-            fontWeight: isPR ? 800 : undefined,
-            color: isPR ? '#f5c060' : pts > 0 ? 'var(--accent, #7c6af7)' : 'inherit',
+            fontWeight: isPR || prFlash ? 800 : undefined,
+            color: isPR || prFlash ? '#f5c060' : pts > 0 ? 'var(--accent, #7c6af7)' : 'inherit',
             opacity: pts > 0 ? 1 : 0.4,
           }}
         >
-          {pts > 0 ? `${isPR ? '🏆 ' : ''}${Math.round(pts * 10) / 10} pt` : `×${ex.mult}`}
+          {prFlash
+            ? '🏆 PR!'
+            : pts > 0
+              ? `${isPR ? '🏆 ' : ''}${Math.round(pts * 10) / 10} pt`
+              : `×${ex.mult}`}
         </span>
       </div>
       {(best || tags.length > 0) && (
