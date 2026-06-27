@@ -256,92 +256,36 @@ export async function submitScore(
     timeElapsed?: number
   },
 ): Promise<void> {
-  const { url, anon, leaderboardTable, scoreHistoryTable, nameCol } = envs()
+  const { url, anon } = envs()
   const client = getClient()
-  const playerId = await ensurePlayerId(entry.username)
-  const payload = {
-    player_id: playerId,
-    [nameCol]: (entry.username || '').trim(),
-    score: entry.score,
-    game_mode: entry.gameMode || 'survival',
-    apples_eaten: entry.applesEaten ?? null,
-    time_elapsed: entry.timeElapsed ?? null,
-    created_at: entry.date,
+  const name = (entry.username || '').trim()
+  // Server-authoritative: every score goes through the submit_score RPC (direct table writes are
+  // locked down). It finds-or-creates the player, records history, and keeps only each player's
+  // best — so no one can tamper with or clear the board through the REST API.
+  const params = {
+    p_name: name,
+    p_score: entry.score,
+    p_game_mode: entry.gameMode || 'survival',
+    p_apples: entry.applesEaten ?? null,
+    p_time: entry.timeElapsed ?? null,
+    p_created_at: entry.date,
   }
-  if (client && url && anon) {
+  if (name && client && url && anon) {
     try {
-      // 1) Insert history row
-      await client.from(scoreHistoryTable).insert(payload)
-      // 2) Upsert leaderboard row per player (single best per player and mode)
-      const { data: existing } = await client
-        .from(leaderboardTable)
-        .select('id, score, game_mode, player_id')
-        .eq('player_id', playerId)
-        .eq('game_mode', payload.game_mode)
-        .maybeSingle()
-      if (!existing) {
-        await client.from(leaderboardTable).insert(payload)
-        return
-      }
-      const cur = existing as { id: number; score: number }
-      if (entry.score > (cur.score || 0)) {
-        await client
-          .from(leaderboardTable)
-          .update({
-            score: entry.score,
-            created_at: entry.date,
-            apples_eaten: payload.apples_eaten,
-            time_elapsed: payload.time_elapsed,
-            // keep display name in sync (trimmed)
-            [nameCol]: payload[nameCol as keyof typeof payload],
-          })
-          .eq('id', cur.id)
-      }
-      return
+      const { error } = await client.rpc('submit_score', params)
+      if (!error) return
     } catch {
-      // fall through to REST/local
+      // fall through to REST / local
     }
   }
-  if (url && anon) {
+  if (name && url && anon) {
     try {
-      // 1) history
-      await fetch(`${url}/rest/v1/${scoreHistoryTable}`, {
+      const res = await fetch(`${url}/rest/v1/rpc/submit_score`, {
         method: 'POST',
         headers: sbHeaders(anon, { Prefer: 'return=minimal' }),
-        body: JSON.stringify(payload),
+        body: JSON.stringify(params),
       })
-      // 2) leaderboard upsert
-      const sel = `${url}/rest/v1/${leaderboardTable}?select=id,score,player_id,game_mode&player_id=eq.${playerId}&game_mode=eq.${encodeURIComponent(
-        payload.game_mode as string,
-      )}`
-      const r = await fetch(sel, { headers: sbHeaders(anon) })
-      let lid: number | null = null
-      if (r.ok) {
-        const rows = (await r.json()) as Array<{ id: number; score: number }>
-        if (rows.length === 0) {
-          await fetch(`${url}/rest/v1/${leaderboardTable}`, {
-            method: 'POST',
-            headers: sbHeaders(anon, { Prefer: 'return=minimal' }),
-            body: JSON.stringify(payload),
-          })
-          return
-        } else {
-          lid = rows[0].id
-          if (entry.score > (rows[0].score || 0)) {
-            await fetch(`${url}/rest/v1/${leaderboardTable}?id=eq.${lid}`, {
-              method: 'PATCH',
-              headers: sbHeaders(anon, { Prefer: 'return=minimal' }),
-              body: JSON.stringify({
-                score: entry.score,
-                created_at: entry.date,
-                apples_eaten: payload.apples_eaten,
-                time_elapsed: payload.time_elapsed,
-              }),
-            })
-          }
-          return
-        }
-      }
+      if (res.ok) return
     } catch {
       /* ignore */
     }
