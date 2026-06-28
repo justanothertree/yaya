@@ -1,9 +1,11 @@
-// Family "dollar-a-day" investments — read-only portfolio for the signed-in member: their
-// accounts, each with the dollars/day promised and holdings rolled up at cost. Live prices and
-// profit/loss come in a later pass; for now value is shown at cost (what's been allocated).
+// Family "dollar-a-day" investments. Members see their own read-only portfolio (holdings at
+// cost + dollars/day). Admins also get an "All accounts" view to see every account and expand
+// any one into exactly what that member sees ("view as"). Live prices / profit-loss come later.
 import { useEffect, useState } from 'react'
 import {
   fetchMyPortfolio,
+  fetchAllPortfolios,
+  checkIsAdmin,
   accountTotalCost,
   promisedToDate,
   assetColor,
@@ -12,18 +14,28 @@ import {
 } from '../finance/portfolio'
 
 export function Investments() {
-  const [accounts, setAccounts] = useState<AccountPortfolio[] | null>(null)
+  const [mine, setMine] = useState<AccountPortfolio[] | null>(null)
+  const [all, setAll] = useState<AccountPortfolio[] | null>(null)
+  const [isAdmin, setIsAdmin] = useState(false)
+  const [mode, setMode] = useState<'mine' | 'all'>('mine')
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     let alive = true
-    void fetchMyPortfolio()
-      .then((a) => {
-        if (alive) setAccounts(a)
-      })
-      .catch((e: unknown) => {
+    void (async () => {
+      try {
+        const [m, admin] = await Promise.all([fetchMyPortfolio(), checkIsAdmin()])
+        if (!alive) return
+        setMine(m)
+        setIsAdmin(admin)
+        if (admin) {
+          const a = await fetchAllPortfolios()
+          if (alive) setAll(a)
+        }
+      } catch (e: unknown) {
         if (alive) setError(e instanceof Error ? e.message : String(e))
-      })
+      }
+    })()
     return () => {
       alive = false
     }
@@ -32,12 +44,25 @@ export function Investments() {
   return (
     <section className="grid" style={{ gap: '1rem' }}>
       <header className="card" style={{ display: 'grid', gap: 8 }}>
-        <h2 className="section-title" style={{ margin: 0 }}>
-          Investments
-        </h2>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.75rem', flexWrap: 'wrap' }}>
+          <h2 className="section-title" style={{ margin: 0 }}>
+            Investments
+          </h2>
+          {isAdmin && (
+            <span style={{ display: 'inline-flex', gap: '0.35rem', marginLeft: 'auto' }}>
+              <ModeBtn active={mode === 'mine'} onClick={() => setMode('mine')}>
+                My portfolio
+              </ModeBtn>
+              <ModeBtn active={mode === 'all'} onClick={() => setMode('all')}>
+                All accounts{all ? ` (${all.length})` : ''}
+              </ModeBtn>
+            </span>
+          )}
+        </div>
         <p className="muted" style={{ margin: 0 }}>
-          Your dollar-a-day portfolio — what’s been invested for you and how it’s allocated. Live
-          prices and profit/loss are coming soon.
+          {mode === 'all'
+            ? 'Every family account — expand one to see exactly what that member sees.'
+            : 'Your dollar-a-day portfolio — what’s been invested for you and how it’s allocated. Live prices and profit/loss are coming soon.'}
         </p>
       </header>
 
@@ -47,24 +72,140 @@ export function Investments() {
         </article>
       )}
 
-      {accounts === null && !error && (
-        <article className="card" aria-busy>
-          Loading your portfolio…
-        </article>
-      )}
+      {mode === 'mine' ? <PortfolioList accounts={mine} own /> : <AllAccounts accounts={all} />}
+    </section>
+  )
+}
 
-      {accounts !== null && accounts.length === 0 && (
-        <article className="card">
-          <p className="muted" style={{ margin: 0 }}>
-            No accounts yet — once an account is set up for you, your holdings will show here.
-          </p>
-        </article>
-      )}
+function ModeBtn({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean
+  onClick: () => void
+  children: React.ReactNode
+}) {
+  return (
+    <button
+      className="btn"
+      onClick={onClick}
+      aria-pressed={active}
+      style={{
+        fontSize: '0.82rem',
+        background: active ? 'var(--accent,#7c6af7)' : 'transparent',
+        color: active ? '#fff' : 'inherit',
+        borderColor: active ? 'transparent' : undefined,
+      }}
+    >
+      {children}
+    </button>
+  )
+}
 
-      {accounts?.map((a) => (
+function PortfolioList({ accounts, own }: { accounts: AccountPortfolio[] | null; own?: boolean }) {
+  if (accounts === null) {
+    return (
+      <article className="card" aria-busy>
+        Loading your portfolio…
+      </article>
+    )
+  }
+  if (accounts.length === 0) {
+    return (
+      <article className="card">
+        <p className="muted" style={{ margin: 0 }}>
+          {own
+            ? 'No accounts yet — once an account is set up for you, your holdings will show here.'
+            : 'No accounts.'}
+        </p>
+      </article>
+    )
+  }
+  return (
+    <>
+      {accounts.map((a) => (
         <AccountCard key={a.id} account={a} />
       ))}
-    </section>
+    </>
+  )
+}
+
+// Admin: every account as a compact row; expand one to "view as" (the full member card).
+function AllAccounts({ accounts }: { accounts: AccountPortfolio[] | null }) {
+  const [expanded, setExpanded] = useState<string | null>(null)
+
+  if (accounts === null) {
+    return (
+      <article className="card" aria-busy>
+        Loading all accounts…
+      </article>
+    )
+  }
+  if (accounts.length === 0) {
+    return (
+      <article className="card">
+        <p className="muted" style={{ margin: 0 }}>
+          No family accounts yet.
+        </p>
+      </article>
+    )
+  }
+
+  return (
+    <article className="card" style={{ display: 'grid', gap: '0.5rem' }}>
+      {accounts.map((a) => {
+        const open = expanded === a.id
+        const owner = a.ownerName || (a.ownerUsername ? `@${a.ownerUsername}` : 'Unlinked')
+        return (
+          <div key={a.id}>
+            <button
+              onClick={() => setExpanded(open ? null : a.id)}
+              aria-expanded={open}
+              style={{
+                width: '100%',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.6rem',
+                flexWrap: 'wrap',
+                textAlign: 'left',
+                padding: '0.55rem 0.7rem',
+                background: 'var(--b1,rgba(127,127,127,0.06))',
+                border: '1px solid var(--border, rgba(127,127,127,0.2))',
+                borderRadius: 8,
+                cursor: 'pointer',
+                color: 'inherit',
+              }}
+            >
+              <span style={{ opacity: 0.6, fontSize: '0.8rem' }}>{open ? '▾' : '▸'}</span>
+              <span style={{ fontWeight: 700 }}>{a.name || 'Account'}</span>
+              <span className="muted" style={{ fontSize: '0.78rem' }}>
+                {owner}
+              </span>
+              {a.dollarPerDay > 0 && (
+                <span className="muted" style={{ fontSize: '0.76rem' }}>
+                  · {usd(a.dollarPerDay)}/day
+                </span>
+              )}
+              <span className="cz-num" style={{ marginLeft: 'auto', fontWeight: 700 }}>
+                {usd(accountTotalCost(a))}
+              </span>
+              <span
+                className="muted cz-num"
+                style={{ fontSize: '0.76rem', width: '4.5rem', textAlign: 'right' }}
+              >
+                {a.holdings.length} held
+              </span>
+            </button>
+            {open && (
+              <div style={{ marginTop: '0.4rem' }}>
+                <AccountCard account={a} />
+              </div>
+            )}
+          </div>
+        )
+      })}
+    </article>
   )
 }
 
