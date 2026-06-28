@@ -133,6 +133,34 @@ export function promisedToDate(a: AccountPortfolio): number | null {
   return a.dollarPerDay * days
 }
 
+/** Ahead/behind schedule = invested-at-cost minus promised-to-date. Positive = pre-funded (can
+ *  pause buying); negative = owe more. Null when there's no promise rate/start to compare against. */
+export function aheadBehind(a: AccountPortfolio): number | null {
+  const promised = promisedToDate(a)
+  if (promised == null) return null
+  return accountTotalCost(a) - promised
+}
+
+/** Roll up invested / promised / ahead-behind across a set of accounts (only those with a promise). */
+export function portfolioTotals(accounts: AccountPortfolio[]): {
+  invested: number
+  promised: number
+  aheadBehind: number
+  tracked: number
+} {
+  let invested = 0
+  let promised = 0
+  let tracked = 0
+  for (const a of accounts) {
+    const p = promisedToDate(a)
+    if (p == null) continue
+    tracked++
+    invested += accountTotalCost(a)
+    promised += p
+  }
+  return { invested, promised, aheadBehind: invested - promised, tracked }
+}
+
 /** Stable, pleasant color per asset symbol (for bars + dots). */
 export function assetColor(symbol: string): string {
   let h = 0
