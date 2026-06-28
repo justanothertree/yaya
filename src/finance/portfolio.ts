@@ -63,6 +63,63 @@ export async function checkIsAdmin(): Promise<boolean> {
   return data === true
 }
 
+// ── Admin: manage family accounts ──────────────────────────────────────────
+export type Member = {
+  userId: string
+  username: string | null
+  displayName: string | null
+  role: string | null
+}
+
+/** Admin only: the member roster, for linking an account to a person. */
+export async function fetchMembers(): Promise<Member[]> {
+  const { data, error } = await getSupabaseClient().rpc('list_members')
+  if (error) throw error
+  return ((data as Array<Record<string, unknown>> | null) ?? []).map((m) => ({
+    userId: String(m.user_id),
+    username: (m.username as string | null) ?? null,
+    displayName: (m.display_name as string | null) ?? null,
+    role: (m.role as string | null) ?? null,
+  }))
+}
+
+export async function adminCreateAccount(
+  ownerUid: string,
+  name: string,
+  dollarPerDay: number,
+  startDate: string | null,
+): Promise<void> {
+  const { error } = await getSupabaseClient().rpc('admin_create_family_account', {
+    p_owner: ownerUid,
+    p_name: name,
+    p_dollar_per_day: dollarPerDay,
+    p_start_date: startDate || null,
+  })
+  if (error) throw error
+}
+
+export async function adminUpdateAccount(
+  accountId: string,
+  name: string,
+  dollarPerDay: number,
+  startDate: string | null,
+): Promise<void> {
+  const { error } = await getSupabaseClient().rpc('admin_update_family_account', {
+    p_account: accountId,
+    p_name: name,
+    p_dollar_per_day: dollarPerDay,
+    p_start_date: startDate || null,
+  })
+  if (error) throw error
+}
+
+export async function adminDeleteAccount(accountId: string): Promise<void> {
+  const { error } = await getSupabaseClient().rpc('admin_delete_family_account', {
+    p_account: accountId,
+  })
+  if (error) throw error
+}
+
 /** Total dollars invested (at cost) across an account's holdings. */
 export const accountTotalCost = (a: AccountPortfolio): number =>
   a.holdings.reduce((s, h) => s + h.cost, 0)
