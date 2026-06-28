@@ -10,6 +10,7 @@ import {
   adminCreateAccount,
   adminUpdateAccount,
   adminDeleteAccount,
+  adminEnableFinance,
   accountTotalCost,
   promisedToDate,
   aheadBehind,
@@ -342,8 +343,14 @@ function AccountForm({
     setBusy(true)
     setErr(null)
     try {
-      if (isEdit) await adminUpdateAccount(account.id, name, Number(dpd) || 0, start || null)
-      else await adminCreateAccount(ownerUid, name, Number(dpd) || 0, start || null)
+      if (isEdit) {
+        await adminUpdateAccount(account.id, name, Number(dpd) || 0, start || null)
+      } else {
+        await adminCreateAccount(ownerUid, name, Number(dpd) || 0, start || null)
+        // creating a member's fund account should let them see it — best-effort, since the
+        // account itself is the important part (the Admin feature toggle is the fallback).
+        await adminEnableFinance(ownerUid).catch(() => {})
+      }
       await onSaved()
     } catch (e2: unknown) {
       setErr(e2 instanceof Error ? e2.message : String(e2))

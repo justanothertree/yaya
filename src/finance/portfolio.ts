@@ -120,6 +120,17 @@ export async function adminDeleteAccount(accountId: string): Promise<void> {
   if (error) throw error
 }
 
+/** Turn on a member's Investments access. Done automatically when an account is created for them
+ *  so "add their account to the fund" also lets them see it. */
+export async function adminEnableFinance(userId: string): Promise<void> {
+  const { error } = await getSupabaseClient().rpc('admin_set_feature', {
+    p_user_id: userId,
+    p_feature: 'finance',
+    p_enabled: true,
+  })
+  if (error) throw error
+}
+
 /** Total dollars invested (at cost) across an account's holdings. */
 export const accountTotalCost = (a: AccountPortfolio): number =>
   a.holdings.reduce((s, h) => s + h.cost, 0)
