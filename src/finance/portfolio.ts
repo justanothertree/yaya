@@ -18,25 +18,49 @@ export type AccountPortfolio = {
   dollarPerDay: number
   startDate: string | null
   holdings: Holding[]
+  /** Owner info — only present in the admin (all-accounts) view. */
+  ownerUserId?: string | null
+  ownerName?: string | null
+  ownerUsername?: string | null
 }
 
-export async function fetchMyPortfolio(): Promise<AccountPortfolio[]> {
-  const sb = getSupabaseClient()
-  const { data, error } = await sb.rpc('get_my_portfolio')
-  if (error) throw error
-  const raw = (data as Array<Record<string, unknown>> | null) ?? []
-  return raw.map((a) => ({
+function mapAccount(a: Record<string, unknown>): AccountPortfolio {
+  return {
     id: String(a.id),
     name: (a.name as string | null) ?? null,
     dollarPerDay: Number(a.dollarPerDay ?? 0),
     startDate: (a.startDate as string | null) ?? null,
+    ownerUserId: (a.ownerUserId as string | null) ?? null,
+    ownerName: (a.ownerName as string | null) ?? null,
+    ownerUsername: (a.ownerUsername as string | null) ?? null,
     holdings: ((a.holdings as Array<Record<string, unknown>> | null) ?? []).map((h) => ({
       symbol: String(h.symbol ?? ''),
       assetType: (h.assetType as string | null) ?? null,
       units: Number(h.units ?? 0),
       cost: Number(h.cost ?? 0),
     })),
-  }))
+  }
+}
+
+/** The signed-in member's own portfolio. */
+export async function fetchMyPortfolio(): Promise<AccountPortfolio[]> {
+  const sb = getSupabaseClient()
+  const { data, error } = await sb.rpc('get_my_portfolio')
+  if (error) throw error
+  return ((data as Array<Record<string, unknown>> | null) ?? []).map(mapAccount)
+}
+
+/** Admin only: every family account's portfolio, with owner info. Throws for non-admins. */
+export async function fetchAllPortfolios(): Promise<AccountPortfolio[]> {
+  const sb = getSupabaseClient()
+  const { data, error } = await sb.rpc('admin_get_portfolios')
+  if (error) throw error
+  return ((data as Array<Record<string, unknown>> | null) ?? []).map(mapAccount)
+}
+
+export async function checkIsAdmin(): Promise<boolean> {
+  const { data } = await getSupabaseClient().rpc('is_admin')
+  return data === true
 }
 
 /** Total dollars invested (at cost) across an account's holdings. */
