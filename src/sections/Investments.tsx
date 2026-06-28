@@ -12,6 +12,8 @@ import {
   adminDeleteAccount,
   accountTotalCost,
   promisedToDate,
+  aheadBehind,
+  portfolioTotals,
   assetColor,
   usd,
   type AccountPortfolio,
@@ -86,9 +88,15 @@ export function Investments() {
       )}
 
       {mode === 'mine' ? (
-        <PortfolioList accounts={mine} own />
+        <>
+          {mine && mine.length > 0 && <ScheduleSummary accounts={mine} />}
+          <PortfolioList accounts={mine} own />
+        </>
       ) : (
-        <AllAccounts accounts={all} members={members} onChanged={reloadAll} />
+        <>
+          {all && all.length > 0 && <ScheduleSummary accounts={all} />}
+          <AllAccounts accounts={all} members={members} onChanged={reloadAll} />
+        </>
       )}
     </section>
   )
@@ -502,6 +510,7 @@ function AccountForm({
 function AccountCard({ account }: { account: AccountPortfolio }) {
   const total = accountTotalCost(account)
   const promised = promisedToDate(account)
+  const ab = aheadBehind(account)
   const holdings = [...account.holdings].sort((x, y) => y.cost - x.cost)
 
   return (
@@ -530,6 +539,13 @@ function AccountCard({ account }: { account: AccountPortfolio }) {
       <div style={{ display: 'flex', gap: '1.6rem', flexWrap: 'wrap' }}>
         <Stat label="Invested (at cost)" value={usd(total)} big />
         {promised != null && <Stat label="Promised to date" value={usd(promised)} />}
+        {ab != null && (
+          <Stat
+            label="Schedule"
+            value={`${ab >= 0 ? '+' : '−'}${usd(Math.abs(ab))} ${ab >= 0 ? 'ahead' : 'behind'}`}
+            color={ab >= 0 ? '#22cc78' : '#f46b6b'}
+          />
+        )}
         <Stat label="Holdings" value={String(holdings.length)} />
       </div>
 
@@ -621,7 +637,17 @@ function AccountCard({ account }: { account: AccountPortfolio }) {
   )
 }
 
-function Stat({ label, value, big }: { label: string; value: string; big?: boolean }) {
+function Stat({
+  label,
+  value,
+  big,
+  color,
+}: {
+  label: string
+  value: string
+  big?: boolean
+  color?: string
+}) {
   return (
     <div style={{ display: 'grid', gap: 2 }}>
       <span
@@ -630,9 +656,32 @@ function Stat({ label, value, big }: { label: string; value: string; big?: boole
       >
         {label}
       </span>
-      <span className="cz-num" style={{ fontWeight: 800, fontSize: big ? '1.5rem' : '1.05rem' }}>
+      <span
+        className="cz-num"
+        style={{ fontWeight: 800, fontSize: big ? '1.5rem' : '1.05rem', color }}
+      >
         {value}
       </span>
     </div>
+  )
+}
+
+// Overall "are we ahead or behind the dollar-a-day promise?" across a set of accounts.
+function ScheduleSummary({ accounts }: { accounts: AccountPortfolio[] }) {
+  const t = portfolioTotals(accounts)
+  if (t.tracked === 0) return null
+  const ahead = t.aheadBehind >= 0
+  return (
+    <article className="card" style={{ display: 'flex', gap: '1.6rem', flexWrap: 'wrap' }}>
+      <Stat label="Invested" value={usd(t.invested)} big />
+      <Stat label="Promised to date" value={usd(t.promised)} />
+      <Stat
+        label="Schedule"
+        value={`${ahead ? '+' : '−'}${usd(Math.abs(t.aheadBehind))} ${ahead ? 'ahead' : 'behind'}`}
+        big
+        color={ahead ? '#22cc78' : '#f46b6b'}
+      />
+      <Stat label="Accounts" value={String(t.tracked)} />
+    </article>
   )
 }
