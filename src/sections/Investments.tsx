@@ -6,19 +6,29 @@ import {
   fetchMyPortfolio,
   fetchAllPortfolios,
   checkIsAdmin,
+  fetchMembers,
+  adminCreateAccount,
+  adminUpdateAccount,
+  adminDeleteAccount,
   accountTotalCost,
   promisedToDate,
   assetColor,
   usd,
   type AccountPortfolio,
+  type Member,
 } from '../finance/portfolio'
 
 export function Investments() {
   const [mine, setMine] = useState<AccountPortfolio[] | null>(null)
   const [all, setAll] = useState<AccountPortfolio[] | null>(null)
+  const [members, setMembers] = useState<Member[]>([])
   const [isAdmin, setIsAdmin] = useState(false)
   const [mode, setMode] = useState<'mine' | 'all'>('mine')
   const [error, setError] = useState<string | null>(null)
+
+  const reloadAll = async () => {
+    setAll(await fetchAllPortfolios())
+  }
 
   useEffect(() => {
     let alive = true
@@ -29,8 +39,11 @@ export function Investments() {
         setMine(m)
         setIsAdmin(admin)
         if (admin) {
-          const a = await fetchAllPortfolios()
-          if (alive) setAll(a)
+          const [a, mem] = await Promise.all([fetchAllPortfolios(), fetchMembers()])
+          if (alive) {
+            setAll(a)
+            setMembers(mem)
+          }
         }
       } catch (e: unknown) {
         if (alive) setError(e instanceof Error ? e.message : String(e))
@@ -72,7 +85,11 @@ export function Investments() {
         </article>
       )}
 
-      {mode === 'mine' ? <PortfolioList accounts={mine} own /> : <AllAccounts accounts={all} />}
+      {mode === 'mine' ? (
+        <PortfolioList accounts={mine} own />
+      ) : (
+        <AllAccounts accounts={all} members={members} onChanged={reloadAll} />
+      )}
     </section>
   )
 }
@@ -131,9 +148,20 @@ function PortfolioList({ accounts, own }: { accounts: AccountPortfolio[] | null;
   )
 }
 
-// Admin: every account as a compact row; expand one to "view as" (the full member card).
-function AllAccounts({ accounts }: { accounts: AccountPortfolio[] | null }) {
+// Admin: manage every account — create (link to a member, set $/day + start), edit, delete, and
+// expand any row to "view as" (the full member card).
+function AllAccounts({
+  accounts,
+  members,
+  onChanged,
+}: {
+  accounts: AccountPortfolio[] | null
+  members: Member[]
+  onChanged: () => Promise<void>
+}) {
   const [expanded, setExpanded] = useState<string | null>(null)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [creating, setCreating] = useState(false)
 
   if (accounts === null) {
     return (
@@ -142,61 +170,130 @@ function AllAccounts({ accounts }: { accounts: AccountPortfolio[] | null }) {
       </article>
     )
   }
-  if (accounts.length === 0) {
-    return (
-      <article className="card">
-        <p className="muted" style={{ margin: 0 }}>
-          No family accounts yet.
-        </p>
-      </article>
-    )
-  }
 
   return (
     <article className="card" style={{ display: 'grid', gap: '0.5rem' }}>
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: '0.5rem',
+        }}
+      >
+        <span className="muted" style={{ fontSize: '0.8rem' }}>
+          {accounts.length} account{accounts.length === 1 ? '' : 's'}
+        </span>
+        <button
+          className="btn"
+          onClick={() => {
+            setCreating((c) => !c)
+            setEditingId(null)
+          }}
+          style={{
+            fontSize: '0.82rem',
+            background: creating ? 'transparent' : 'var(--accent,#7c6af7)',
+            color: creating ? 'inherit' : '#fff',
+            borderColor: creating ? undefined : 'transparent',
+          }}
+        >
+          {creating ? '✕ Cancel' : '➕ New account'}
+        </button>
+      </div>
+
+      {creating && (
+        <AccountForm
+          members={members}
+          onSaved={async () => {
+            setCreating(false)
+            await onChanged()
+          }}
+          onCancel={() => setCreating(false)}
+        />
+      )}
+
+      {accounts.length === 0 && !creating && (
+        <p className="muted" style={{ margin: 0 }}>
+          No family accounts yet — create one above.
+        </p>
+      )}
+
       {accounts.map((a) => {
         const open = expanded === a.id
+        const editing = editingId === a.id
         const owner = a.ownerName || (a.ownerUsername ? `@${a.ownerUsername}` : 'Unlinked')
         return (
           <div key={a.id}>
-            <button
-              onClick={() => setExpanded(open ? null : a.id)}
-              aria-expanded={open}
+            <div
               style={{
-                width: '100%',
                 display: 'flex',
                 alignItems: 'center',
-                gap: '0.6rem',
+                gap: '0.4rem',
                 flexWrap: 'wrap',
-                textAlign: 'left',
-                padding: '0.55rem 0.7rem',
+                padding: '0.5rem 0.7rem',
                 background: 'var(--b1,rgba(127,127,127,0.06))',
                 border: '1px solid var(--border, rgba(127,127,127,0.2))',
                 borderRadius: 8,
-                cursor: 'pointer',
-                color: 'inherit',
               }}
             >
-              <span style={{ opacity: 0.6, fontSize: '0.8rem' }}>{open ? '▾' : '▸'}</span>
-              <span style={{ fontWeight: 700 }}>{a.name || 'Account'}</span>
-              <span className="muted" style={{ fontSize: '0.78rem' }}>
-                {owner}
-              </span>
-              {a.dollarPerDay > 0 && (
-                <span className="muted" style={{ fontSize: '0.76rem' }}>
-                  · {usd(a.dollarPerDay)}/day
-                </span>
-              )}
-              <span className="cz-num" style={{ marginLeft: 'auto', fontWeight: 700 }}>
-                {usd(accountTotalCost(a))}
-              </span>
-              <span
-                className="muted cz-num"
-                style={{ fontSize: '0.76rem', width: '4.5rem', textAlign: 'right' }}
+              <button
+                onClick={() => setExpanded(open ? null : a.id)}
+                aria-expanded={open}
+                style={{
+                  flex: 1,
+                  minWidth: 0,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.6rem',
+                  flexWrap: 'wrap',
+                  textAlign: 'left',
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  color: 'inherit',
+                }}
               >
-                {a.holdings.length} held
-              </span>
-            </button>
+                <span style={{ opacity: 0.6, fontSize: '0.8rem' }}>{open ? '▾' : '▸'}</span>
+                <span style={{ fontWeight: 700 }}>{a.name || 'Account'}</span>
+                <span className="muted" style={{ fontSize: '0.78rem' }}>
+                  {owner}
+                </span>
+                {a.dollarPerDay > 0 && (
+                  <span className="muted" style={{ fontSize: '0.76rem' }}>
+                    · {usd(a.dollarPerDay)}/day
+                  </span>
+                )}
+                <span className="cz-num" style={{ marginLeft: 'auto', fontWeight: 700 }}>
+                  {usd(accountTotalCost(a))}
+                </span>
+              </button>
+              <button
+                className="btn btn-ghost"
+                onClick={() => {
+                  setEditingId(editing ? null : a.id)
+                  setExpanded(null)
+                }}
+                style={{ fontSize: '0.74rem' }}
+              >
+                {editing ? 'Close' : 'Edit'}
+              </button>
+            </div>
+            {editing && (
+              <AccountForm
+                account={a}
+                members={members}
+                onSaved={async () => {
+                  setEditingId(null)
+                  await onChanged()
+                }}
+                onCancel={() => setEditingId(null)}
+                onDeleted={async () => {
+                  setEditingId(null)
+                  await onChanged()
+                }}
+              />
+            )}
             {open && (
               <div style={{ marginTop: '0.4rem' }}>
                 <AccountCard account={a} />
@@ -206,6 +303,199 @@ function AllAccounts({ accounts }: { accounts: AccountPortfolio[] | null }) {
         )
       })}
     </article>
+  )
+}
+
+// Create or edit a family account. Create mode shows a member picker; edit mode keeps the owner.
+function AccountForm({
+  account,
+  members,
+  onSaved,
+  onCancel,
+  onDeleted,
+}: {
+  account?: AccountPortfolio
+  members: Member[]
+  onSaved: () => Promise<void>
+  onCancel: () => void
+  onDeleted?: () => Promise<void>
+}) {
+  const isEdit = !!account
+  const [ownerUid, setOwnerUid] = useState(account?.ownerUserId ?? members[0]?.userId ?? '')
+  const [name, setName] = useState(account?.name ?? '')
+  const [dpd, setDpd] = useState(account ? String(account.dollarPerDay || '') : '')
+  const [start, setStart] = useState(account?.startDate ?? '')
+  const [busy, setBusy] = useState(false)
+  const [confirmDel, setConfirmDel] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+
+  async function save(e: React.FormEvent) {
+    e.preventDefault()
+    setBusy(true)
+    setErr(null)
+    try {
+      if (isEdit) await adminUpdateAccount(account.id, name, Number(dpd) || 0, start || null)
+      else await adminCreateAccount(ownerUid, name, Number(dpd) || 0, start || null)
+      await onSaved()
+    } catch (e2: unknown) {
+      setErr(e2 instanceof Error ? e2.message : String(e2))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function del() {
+    if (!account || !onDeleted) return
+    setBusy(true)
+    setErr(null)
+    try {
+      await adminDeleteAccount(account.id)
+      await onDeleted()
+    } catch (e2: unknown) {
+      setErr(e2 instanceof Error ? e2.message : String(e2))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const field: React.CSSProperties = { padding: '0.4rem 0.6rem' }
+  return (
+    <form
+      onSubmit={(e) => void save(e)}
+      style={{
+        display: 'grid',
+        gap: '0.6rem',
+        padding: '0.7rem',
+        margin: '0.4rem 0',
+        border: '1px solid var(--border, rgba(127,127,127,0.25))',
+        borderRadius: 8,
+      }}
+    >
+      <div
+        style={{
+          display: 'grid',
+          gap: '0.6rem',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
+        }}
+      >
+        {!isEdit && (
+          <label style={{ display: 'grid', gap: 4 }}>
+            <span className="muted" style={{ fontSize: '0.78rem' }}>
+              Member
+            </span>
+            <select value={ownerUid} onChange={(e) => setOwnerUid(e.target.value)} style={field}>
+              {members.map((m) => (
+                <option key={m.userId} value={m.userId}>
+                  {m.displayName || (m.username ? '@' + m.username : m.userId.slice(0, 8))}
+                  {m.role ? ` · ${m.role}` : ''}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+        <label style={{ display: 'grid', gap: 4 }}>
+          <span className="muted" style={{ fontSize: '0.78rem' }}>
+            Account name
+          </span>
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="e.g. College Fund"
+            style={field}
+          />
+        </label>
+        <label style={{ display: 'grid', gap: 4 }}>
+          <span className="muted" style={{ fontSize: '0.78rem' }}>
+            $/day promised
+          </span>
+          <input
+            value={dpd}
+            onChange={(e) => setDpd(e.target.value)}
+            type="number"
+            min="0"
+            step="0.01"
+            placeholder="0"
+            style={field}
+          />
+        </label>
+        <label style={{ display: 'grid', gap: 4 }}>
+          <span className="muted" style={{ fontSize: '0.78rem' }}>
+            Start date
+          </span>
+          <input
+            value={start}
+            onChange={(e) => setStart(e.target.value)}
+            type="date"
+            style={field}
+          />
+        </label>
+      </div>
+      {err && <p style={{ margin: 0, color: 'var(--accent-2)', fontSize: '0.82rem' }}>{err}</p>}
+      <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+        <button
+          className="btn"
+          type="submit"
+          disabled={busy || !name.trim() || (!isEdit && !ownerUid)}
+          style={{ background: 'var(--accent,#7c6af7)', color: '#fff', borderColor: 'transparent' }}
+        >
+          {busy ? 'Saving…' : isEdit ? 'Save changes' : 'Create account'}
+        </button>
+        <button className="btn btn-ghost" type="button" onClick={onCancel} disabled={busy}>
+          Cancel
+        </button>
+        {isEdit && onDeleted && (
+          <span
+            style={{
+              marginLeft: 'auto',
+              display: 'inline-flex',
+              gap: '0.4rem',
+              alignItems: 'center',
+            }}
+          >
+            {confirmDel ? (
+              <>
+                <span style={{ fontSize: '0.78rem', color: '#f46b6b' }}>Delete this account?</span>
+                <button
+                  className="btn"
+                  type="button"
+                  onClick={() => void del()}
+                  disabled={busy}
+                  style={{
+                    background: '#e5484d',
+                    color: '#fff',
+                    borderColor: 'transparent',
+                    fontSize: '0.78rem',
+                  }}
+                >
+                  Yes, delete
+                </button>
+                <button
+                  className="btn btn-ghost"
+                  type="button"
+                  onClick={() => setConfirmDel(false)}
+                  style={{ fontSize: '0.78rem' }}
+                >
+                  No
+                </button>
+              </>
+            ) : (
+              <button
+                className="btn btn-ghost"
+                type="button"
+                onClick={() => setConfirmDel(true)}
+                style={{
+                  color: '#f46b6b',
+                  borderColor: 'rgba(244,107,107,0.5)',
+                  fontSize: '0.78rem',
+                }}
+              >
+                🗑 Delete
+              </button>
+            )}
+          </span>
+        )}
+      </div>
+    </form>
   )
 }
 
