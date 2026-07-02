@@ -584,7 +584,7 @@ function AccountCard({ account }: { account: AccountPortfolio }) {
 
       {/* summary stats */}
       <div style={{ display: 'flex', gap: '1.6rem', flexWrap: 'wrap' }}>
-        <Stat label="Invested (at cost)" value={usd(total)} big />
+        <Stat label="Invested" value={usd(total)} big />
         {promised != null && <Stat label="Promised to date" value={usd(promised)} />}
         {ab != null && (
           <Stat
@@ -720,23 +720,29 @@ function ScheduleSummary({ accounts }: { accounts: AccountPortfolio[] }) {
   const ahead = t.aheadBehind >= 0
   const days = runwayDays(t.aheadBehind, t.dailyRate)
   return (
-    <article className="card" style={{ display: 'flex', gap: '1.6rem', flexWrap: 'wrap' }}>
-      <Stat label="Invested" value={usd(t.invested)} big />
-      <Stat label="Promised to date" value={usd(t.promised)} />
-      <Stat
-        label="Schedule"
-        value={`${ahead ? '+' : '−'}${usd(Math.abs(t.aheadBehind))} ${ahead ? 'ahead' : 'behind'}`}
-        big
-        color={ahead ? '#22cc78' : '#f46b6b'}
-      />
-      {days != null && (
+    <article className="card" style={{ display: 'grid', gap: '0.7rem' }}>
+      <div style={{ display: 'flex', gap: '1.6rem', flexWrap: 'wrap' }}>
+        <Stat label="Invested" value={usd(t.invested)} big />
+        <Stat label="Promised to date" value={usd(t.promised)} />
         <Stat
-          label={ahead ? 'Days ahead' : 'Days behind'}
-          value={`≈ ${days}`}
+          label="Schedule"
+          value={`${ahead ? '+' : '−'}${usd(Math.abs(t.aheadBehind))} ${ahead ? 'ahead' : 'behind'}`}
+          big
           color={ahead ? '#22cc78' : '#f46b6b'}
         />
-      )}
-      <Stat label="Accounts" value={String(t.tracked)} />
+        {days != null && (
+          <Stat
+            label={ahead ? 'Days ahead' : 'Days behind'}
+            value={`≈ ${days}`}
+            color={ahead ? '#22cc78' : '#f46b6b'}
+          />
+        )}
+        <Stat label="Accounts" value={String(t.tracked)} />
+      </div>
+      <p className="muted" style={{ margin: 0, fontSize: '0.8rem' }}>
+        Each account is promised $1 a day; being ahead means more has already been invested than
+        promised so far — so buying could pause and still stay on plan.
+      </p>
     </article>
   )
 }
