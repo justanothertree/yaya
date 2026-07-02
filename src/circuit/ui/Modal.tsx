@@ -2,6 +2,7 @@
 // pinned while only the body scrolls, so tall content wraps cleanly and the close
 // button is always reachable. Caps at 92vh / 96vw so it always fits the screen.
 import { useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import type { ReactNode } from 'react'
 
 export function Modal({
@@ -28,7 +29,10 @@ export function Modal({
 
   const divider = '1px solid var(--border, rgba(127,127,127,0.18))'
 
-  return (
+  // Portal to <body> so the fixed overlay escapes any zoomed/transformed ancestor
+  // (the main zoom, or a canvas window) — otherwise the modal gets trapped and sized
+  // to that ancestor instead of the viewport, forcing an awkward tiny scroll box.
+  return createPortal(
     <div
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose()
@@ -101,6 +105,7 @@ export function Modal({
           </div>
         )}
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }
