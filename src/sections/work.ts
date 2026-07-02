@@ -123,7 +123,7 @@ export const projects: Project[] = [
       'Per-member portfolios behind strict row-level security',
       'Recurring orders and live price updates (in progress)',
     ],
-    links: [],
+    links: [{ href: '#investments', label: 'Try the demo', primary: true }],
     shots: [
       { label: 'Allocations', caption: 'Split one trade across the family.' },
       { label: 'My slice', caption: 'Each member sees only their own.' },
