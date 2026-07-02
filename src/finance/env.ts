@@ -17,18 +17,6 @@ export function hasFinanceSupabaseEnv(): boolean {
 }
 
 /**
- * Non-throwing env getter for optional features.
- * Returns null when Supabase is not configured for this build.
- */
-export function tryGetFinanceEnv(): FinanceEnv | null {
-  const env = readViteEnv()
-  const supabaseUrl = env.VITE_SUPABASE_URL
-  const supabaseAnonKey = env.VITE_SUPABASE_ANON_KEY
-  if (!supabaseUrl || !supabaseAnonKey) return null
-  return { supabaseUrl, supabaseAnonKey }
-}
-
-/**
  * Finance modules are frontend-only and intentionally use the Supabase anon key.
  * Security must come from Auth (JWT) + RLS policies in Supabase.
  */

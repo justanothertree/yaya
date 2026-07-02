@@ -25,16 +25,3 @@ export function getSupabaseClient(): SupabaseClient {
 
   return _supabase
 }
-
-/**
- * Legacy helper.
- *
- * NOTE: This project’s PostgREST is configured to only expose `public`, so
- * `schema('finance')` will fail with PGRST106.
- *
- * Use `getSupabaseClient().rpc(...)` to call `public.*` RPCs that proxy into
- * `finance.*` tables.
- */
-export function getFinanceClient(): SupabaseClient {
-  return getSupabaseClient()
-}

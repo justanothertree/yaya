@@ -2,7 +2,7 @@
 import type { DayLog, Person } from './types'
 
 /** Points for a single entry. Imported "__total__" days store points directly. */
-export function entryPoints(p: Person, eid: string, val: number): number {
+function entryPoints(p: Person, eid: string, val: number): number {
   if (eid === '__total__') return val
   const ex = p.exercises.find((x) => x.id === eid)
   return ex ? val * ex.mult : 0

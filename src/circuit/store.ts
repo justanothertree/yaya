@@ -80,7 +80,7 @@ function inverseOf(s: CircuitState, op: Op): Op {
   return { kind: 'delete', coll: op.coll, id }
 }
 
-export function createCircuitStore(): CircuitStore {
+function createCircuitStore(): CircuitStore {
   let state: CircuitState = emptyCircuitState()
   let adapter: CircuitAdapter | null = null
   let unsub: (() => void) | null = null
