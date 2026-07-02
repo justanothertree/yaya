@@ -158,18 +158,29 @@ export function portfolioTotals(accounts: AccountPortfolio[]): {
   promised: number
   aheadBehind: number
   tracked: number
+  /** Combined $/day promise across the tracked accounts (for the runway figure). */
+  dailyRate: number
 } {
   let invested = 0
   let promised = 0
   let tracked = 0
+  let dailyRate = 0
   for (const a of accounts) {
     const p = promisedToDate(a)
     if (p == null) continue
     tracked++
     invested += accountTotalCost(a)
     promised += p
+    dailyRate += a.dollarPerDay
   }
-  return { invested, promised, aheadBehind: invested - promised, tracked }
+  return { invested, promised, aheadBehind: invested - promised, tracked, dailyRate }
+}
+
+/** How many days ahead of / behind the dollar-a-day plan you are = |ahead$| ÷ daily rate.
+ *  Ahead → days you could pause buying; behind → days of buying to catch up. */
+export function runwayDays(aheadBehind: number, dailyRate: number): number | null {
+  if (!dailyRate) return null
+  return Math.round(Math.abs(aheadBehind) / dailyRate)
 }
 
 /** Stable, pleasant color per asset symbol (for bars + dots). */

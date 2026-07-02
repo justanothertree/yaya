@@ -15,6 +15,7 @@ import {
   promisedToDate,
   aheadBehind,
   portfolioTotals,
+  runwayDays,
   assetColor,
   usd,
   type AccountPortfolio,
@@ -717,6 +718,7 @@ function ScheduleSummary({ accounts }: { accounts: AccountPortfolio[] }) {
   const t = portfolioTotals(accounts)
   if (t.tracked === 0) return null
   const ahead = t.aheadBehind >= 0
+  const days = runwayDays(t.aheadBehind, t.dailyRate)
   return (
     <article className="card" style={{ display: 'flex', gap: '1.6rem', flexWrap: 'wrap' }}>
       <Stat label="Invested" value={usd(t.invested)} big />
@@ -727,6 +729,13 @@ function ScheduleSummary({ accounts }: { accounts: AccountPortfolio[] }) {
         big
         color={ahead ? '#22cc78' : '#f46b6b'}
       />
+      {days != null && (
+        <Stat
+          label={ahead ? 'Days ahead' : 'Days behind'}
+          value={`≈ ${days}`}
+          color={ahead ? '#22cc78' : '#f46b6b'}
+        />
+      )}
       <Stat label="Accounts" value={String(t.tracked)} />
     </article>
   )
