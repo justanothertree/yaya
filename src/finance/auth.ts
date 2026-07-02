@@ -8,13 +8,6 @@ import { getSupabaseClient } from './client'
  * exists and the browser is sending the JWT (handled by supabase-js automatically).
  */
 
-export async function getSession(): Promise<Session | null> {
-  const sb = getSupabaseClient()
-  const { data, error } = await sb.auth.getSession()
-  if (error) throw error
-  return data.session
-}
-
 export async function getUser(): Promise<User | null> {
   const sb = getSupabaseClient()
   const { data, error } = await sb.auth.getUser()
@@ -41,12 +34,6 @@ export async function signInWithPassword(email: string, password: string): Promi
   if (error) throw error
 }
 
-export async function signUp(email: string, password: string): Promise<void> {
-  const sb = getSupabaseClient()
-  const { error } = await sb.auth.signUp({ email, password })
-  if (error) throw error
-}
-
 export async function signOut(): Promise<void> {
   const sb = getSupabaseClient()
   const { error } = await sb.auth.signOut()
@@ -67,14 +54,6 @@ export async function updateUserPassword(password: string): Promise<User> {
   if (error) throw error
   if (!data.user) throw new Error('[finance] Failed to update user password (no user returned).')
   return data.user
-}
-
-export async function updateUserProfile(data: Record<string, unknown>): Promise<User> {
-  const sb = getSupabaseClient()
-  const { data: res, error } = await sb.auth.updateUser({ data })
-  if (error) throw error
-  if (!res.user) throw new Error('[finance] Failed to update user profile (no user returned).')
-  return res.user
 }
 
 export function onAuthStateChange(callback: (event: string, session: Session | null) => void) {

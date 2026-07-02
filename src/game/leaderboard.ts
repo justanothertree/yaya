@@ -47,80 +47,6 @@ function startIsoFor(period: LeaderboardPeriod): string | null {
   return start.toISOString()
 }
 
-// Server-authoritative round finalization RPC
-export async function finalizeRound(params: {
-  roomId: string
-  roundId: string
-  gameMode?: string
-  items: Array<{ id: string; name: string; score: number; finishIdx: number }>
-  participants: Array<{ id: string; name: string }>
-}): Promise<{
-  type: 'results'
-  roomId: string
-  roundId: string
-  total: number
-  awarded: true
-  items: Array<{ id: string; name: string; score: number; place: number }>
-} | null> {
-  const { url, anon } = envs()
-  const client = getClient()
-  const payload = {
-    p_room_id: params.roomId,
-    p_round_id: params.roundId,
-    p_game_mode: params.gameMode || 'survival',
-    p_items: params.items,
-    p_players: params.participants,
-  }
-  if (client && url && anon) {
-    try {
-      const { data, error } = await client.rpc(
-        'finalize_round_rpc',
-        payload as unknown as {
-          p_room_id: string
-          p_round_id: string
-          p_game_mode: string
-          p_items: Array<{ id: string; name: string; score: number; finishIdx: number }>
-          p_players: Array<{ id: string; name: string }>
-        },
-      )
-      if (error) throw error
-      return data as unknown as {
-        type: 'results'
-        roomId: string
-        roundId: string
-        total: number
-        awarded: true
-        items: Array<{ id: string; name: string; score: number; place: number }>
-      }
-    } catch {
-      // fall through to REST
-    }
-  }
-  if (url && anon) {
-    try {
-      const res = await fetch(`${url}/rest/v1/rpc/finalize_round_rpc`, {
-        method: 'POST',
-        headers: sbHeaders(anon),
-        body: JSON.stringify(payload),
-      })
-      if (res.ok) {
-        const out = (await res.json()) as {
-          type: 'results'
-          roomId: string
-          roundId: string
-          total: number
-          awarded: true
-          items: Array<{ id: string; name: string; score: number; place: number }>
-        }
-        return out
-      }
-    } catch {
-      /* ignore */
-    }
-  }
-  return null
-}
-
 // Lightweight env status for debug panel
 export function supabaseEnvStatus() {
   const { url, anon } = envs()
@@ -426,7 +352,7 @@ declare global {
   }
 }
 
-export function registerFinalizeRoundDevTest() {
+function registerFinalizeRoundDevTest() {
   try {
     const env = (import.meta as unknown as { env?: Record<string, string> }).env || {}
     const isDev =

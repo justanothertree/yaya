@@ -11,7 +11,7 @@ import { todayISO } from './dates'
 import { publicSeed } from './publicSeed'
 
 // An obviously-sample person so visitors have something of their own to play with.
-export const demoPerson: Person = {
+const demoPerson: Person = {
   id: 'demo',
   name: 'Example',
   color: '#22cc78',
