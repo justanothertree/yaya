@@ -1,6 +1,6 @@
 // Family "dollar-a-day" investments. Members see their own read-only portfolio (holdings at
-// cost + dollars/day). Admins also get an "All accounts" view to see every account and expand
-// any one into exactly what that member sees ("view as"). Live prices / profit-loss come later.
+// cost + dollars/day, plus current value and gain/loss from the daily price sweep). Admins
+// also get "All accounts" (view as any member) and the trades ledger.
 import { useEffect, useState } from 'react'
 import {
   fetchMyPortfolio,
@@ -21,6 +21,8 @@ import {
   fetchMyTrades,
   fetchMyAllocations,
   assignAllocation,
+  accountMarket,
+  adminSetPrice,
   type AccountPortfolio,
   type Member,
   type Trade,
@@ -96,7 +98,7 @@ export function Investments({ demo = false }: { demo?: boolean }) {
               ? 'Every family account — expand one to see exactly what that member sees.'
               : mode === 'trades'
                 ? 'Every trade you’ve made — what’s allocated to the family fund and what’s still yours. Expand a trade to assign shares.'
-                : 'Your dollar-a-day portfolio — what’s been invested for you and how it’s allocated. Live prices and profit/loss are coming soon.'}
+                : 'Your dollar-a-day portfolio — what’s been invested for you, what it’s worth now, and how it’s allocated.'}
         </p>
       </header>
 
@@ -570,6 +572,7 @@ function AccountCard({ account }: { account: AccountPortfolio }) {
   const total = accountTotalCost(account)
   const promised = promisedToDate(account)
   const ab = aheadBehind(account)
+  const market = accountMarket(account)
   const holdings = [...account.holdings].sort((x, y) => y.cost - x.cost)
 
   return (
@@ -605,8 +608,24 @@ function AccountCard({ account }: { account: AccountPortfolio }) {
             color={ab >= 0 ? '#22cc78' : '#f46b6b'}
           />
         )}
+        {market && (
+          <>
+            <Stat label="Value now" value={usd(market.value)} />
+            <Stat
+              label="Gain/loss"
+              value={`${market.gain >= 0 ? '+' : '−'}${usd(Math.abs(market.gain))}`}
+              color={market.gain >= 0 ? '#22cc78' : '#f46b6b'}
+            />
+          </>
+        )}
         <Stat label="Holdings" value={String(holdings.length)} />
       </div>
+      {market && market.unpriced > 0 && (
+        <p className="muted" style={{ margin: 0, fontSize: '0.76rem' }}>
+          Value and gain/loss cover {market.priced} of {holdings.length} holdings — the rest
+          don&rsquo;t have a price yet.
+        </p>
+      )}
 
       {holdings.length === 0 ? (
         <p className="muted" style={{ margin: 0, fontSize: '0.88rem' }}>
@@ -641,6 +660,7 @@ function AccountCard({ account }: { account: AccountPortfolio }) {
           <div style={{ display: 'grid', gap: '0.4rem' }}>
             {holdings.map((h) => {
               const pct = total > 0 ? (h.cost / total) * 100 : 0
+              const gain = h.price == null ? null : h.units * h.price - h.cost
               return (
                 <div
                   key={h.symbol}
@@ -648,6 +668,7 @@ function AccountCard({ account }: { account: AccountPortfolio }) {
                     display: 'flex',
                     alignItems: 'center',
                     gap: '0.6rem',
+                    flexWrap: 'wrap',
                     padding: '0.4rem 0.2rem',
                     borderBottom: '1px solid var(--b1, rgba(127,127,127,0.12))',
                   }}
@@ -680,6 +701,22 @@ function AccountCard({ account }: { account: AccountPortfolio }) {
                   >
                     {usd(h.cost)}
                   </span>
+                  {gain != null && (
+                    <span
+                      className="cz-num"
+                      style={{
+                        width: '4.5rem',
+                        textAlign: 'right',
+                        fontSize: '0.78rem',
+                        fontWeight: 700,
+                        color: gain >= 0 ? '#22cc78' : '#f46b6b',
+                      }}
+                      title={`Worth ${usd(h.units * (h.price ?? 0))} now`}
+                    >
+                      {gain >= 0 ? '+' : '−'}
+                      {usd(Math.abs(gain))}
+                    </span>
+                  )}
                   <span
                     className="muted cz-num"
                     style={{ width: '3rem', textAlign: 'right', fontSize: '0.78rem' }}
@@ -809,10 +846,13 @@ function TradesLedger({ accounts }: { accounts: AccountPortfolio[] | null }) {
 
   return (
     <>
-      <article className="card" style={{ display: 'flex', gap: '1.6rem', flexWrap: 'wrap' }}>
-        <Stat label="Family fund" value={usd(familyDollars)} big color="#22cc78" />
-        <Stat label="Still yours" value={usd(Math.max(0, totalDollars - familyDollars))} big />
-        <Stat label="Trades" value={String(trades.length)} />
+      <article className="card" style={{ display: 'grid', gap: '0.7rem' }}>
+        <div style={{ display: 'flex', gap: '1.6rem', flexWrap: 'wrap' }}>
+          <Stat label="Family fund" value={usd(familyDollars)} big color="#22cc78" />
+          <Stat label="Still yours" value={usd(Math.max(0, totalDollars - familyDollars))} big />
+          <Stat label="Trades" value={String(trades.length)} />
+        </div>
+        <SetPriceForm symbols={[...new Set(trades.map((t) => t.symbol))].sort()} />
       </article>
 
       <article className="card" style={{ display: 'grid', gap: '0.4rem' }}>
@@ -908,6 +948,74 @@ function TradesLedger({ accounts }: { accounts: AccountPortfolio[] | null }) {
         })}
       </article>
     </>
+  )
+}
+
+// Manually cache a symbol's price — the fallback when the daily sweep has no free source
+// for it. Prices show up as value / gain-loss on the portfolio cards.
+function SetPriceForm({ symbols }: { symbols: string[] }) {
+  const [symbol, setSymbol] = useState(symbols[0] ?? '')
+  const [price, setPrice] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [msg, setMsg] = useState<string | null>(null)
+  const parsed = parseFloat(price)
+  const valid = symbol && Number.isFinite(parsed) && parsed > 0
+  if (symbols.length === 0) return null
+
+  return (
+    <form
+      onSubmit={(e) => {
+        e.preventDefault()
+        if (!valid) return
+        setBusy(true)
+        setMsg(null)
+        adminSetPrice(symbol, parsed)
+          .then(() => {
+            setPrice('')
+            setMsg(`✓ ${symbol} price set — shown on the portfolio cards`)
+          })
+          .catch((e2: unknown) => setMsg(e2 instanceof Error ? e2.message : String(e2)))
+          .finally(() => setBusy(false))
+      }}
+      style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}
+    >
+      <span className="muted" style={{ fontSize: '0.78rem' }}>
+        💲 Set a price by hand
+      </span>
+      <select
+        value={symbol}
+        onChange={(e) => setSymbol(e.target.value)}
+        style={{ padding: '0.35rem 0.5rem' }}
+      >
+        {symbols.map((s) => (
+          <option key={s} value={s}>
+            {s}
+          </option>
+        ))}
+      </select>
+      <input
+        type="number"
+        min="0"
+        step="any"
+        value={price}
+        onChange={(e) => setPrice(e.target.value)}
+        placeholder="price ($)"
+        style={{ padding: '0.35rem 0.5rem', width: '7.5rem' }}
+      />
+      <button
+        className="btn"
+        type="submit"
+        disabled={busy || !valid}
+        style={{ fontSize: '0.8rem' }}
+      >
+        {busy ? 'Saving…' : 'Save'}
+      </button>
+      {msg && (
+        <span className="muted" style={{ fontSize: '0.76rem' }}>
+          {msg}
+        </span>
+      )}
+    </form>
   )
 }
 

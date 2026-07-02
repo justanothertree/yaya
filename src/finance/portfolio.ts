@@ -10,6 +10,10 @@ export type Holding = {
   units: number
   /** Dollars allocated to this account for this asset (cost basis). */
   cost: number
+  /** Latest cached market price (null until the price sweep has seen this symbol). */
+  price?: number | null
+  /** When that price was cached. */
+  priceAt?: string | null
 }
 
 export type AccountPortfolio = {
@@ -38,6 +42,8 @@ function mapAccount(a: Record<string, unknown>): AccountPortfolio {
       assetType: (h.assetType as string | null) ?? null,
       units: Number(h.units ?? 0),
       cost: Number(h.cost ?? 0),
+      price: h.price == null ? null : Number(h.price),
+      priceAt: (h.priceAt as string | null) ?? null,
     })),
   }
 }
@@ -201,6 +207,40 @@ export async function assignAllocation(
     },
   })
   if (error) throw error
+}
+
+/** Manually cache a price (the keyless fallback when no free source covers a symbol). */
+export async function adminSetPrice(symbol: string, price: number): Promise<void> {
+  const { error } = await getSupabaseClient().rpc('admin_set_price', {
+    p_symbol: symbol,
+    p_price: price,
+  })
+  if (error) throw error
+}
+
+/** Market value + gain/loss across an account's PRICED holdings. Null until any price is
+ *  cached. Deliberately separate from the ahead/behind schedule, which stays cost-vs-promised. */
+export function accountMarket(a: AccountPortfolio): {
+  value: number
+  gain: number
+  priced: number
+  unpriced: number
+} | null {
+  let value = 0
+  let cost = 0
+  let priced = 0
+  let unpriced = 0
+  for (const h of a.holdings) {
+    if (h.price == null) {
+      unpriced++
+      continue
+    }
+    priced++
+    value += h.units * h.price
+    cost += h.cost
+  }
+  if (priced === 0) return null
+  return { value, gain: value - cost, priced, unpriced }
 }
 
 /** Total dollars invested (at cost) across an account's holdings. */
