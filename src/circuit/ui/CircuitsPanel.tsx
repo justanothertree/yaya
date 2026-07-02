@@ -32,6 +32,8 @@ export function CircuitsPanel() {
   const [addFor, setAddFor] = useState<string | null>(null)
   const [addName, setAddName] = useState('')
   const [addColor, setAddColor] = useState(ADD_PALETTE[0])
+  const [renameFor, setRenameFor] = useState<string | null>(null)
+  const [renameVal, setRenameVal] = useState('')
 
   const refresh = useCallback(async () => {
     const { data, error } = await sb.rpc('my_circuits')
@@ -98,6 +100,16 @@ export function CircuitsPanel() {
       }
       return r
     }, 'Added you to the circuit')
+
+  const rename = (groupId: string) =>
+    run(async () => {
+      const r = await sb.rpc('rename_circuit', { p_group: groupId, p_name: renameVal })
+      if (!r.error) {
+        setRenameFor(null)
+        setRenameVal('')
+      }
+      return r
+    }, 'Circuit renamed')
 
   const setPublic = (personId: string, pub: boolean) =>
     run(
@@ -190,6 +202,20 @@ export function CircuitsPanel() {
                     >
                       {addFor === c.id ? '✕ Cancel' : '➕ Add me'}
                     </button>
+                    {c.is_owner && (
+                      <button
+                        className="btn btn-ghost"
+                        onClick={() => {
+                          setRenameFor((cur) => (cur === c.id ? null : c.id))
+                          setRenameVal(c.name)
+                        }}
+                        style={{ fontSize: '0.78rem' }}
+                        title="Rename this circuit"
+                        aria-expanded={renameFor === c.id}
+                      >
+                        {renameFor === c.id ? '✕ Cancel' : '✏️ Rename'}
+                      </button>
+                    )}
                     {c.is_owner && c.join_code && (
                       <button
                         className="btn btn-ghost"
@@ -212,6 +238,32 @@ export function CircuitsPanel() {
                     )}
                   </div>
                 </div>
+                {renameFor === c.id && (
+                  <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                    <input
+                      value={renameVal}
+                      onChange={(e) => setRenameVal(e.target.value)}
+                      placeholder="New circuit name"
+                      style={{ ...input, flex: '1 1 160px' }}
+                      autoFocus
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && renameVal.trim() && !busy) rename(c.id)
+                      }}
+                    />
+                    <button
+                      className="btn"
+                      onClick={() => rename(c.id)}
+                      disabled={busy || !renameVal.trim()}
+                      style={{
+                        background: 'var(--accent,#7c6af7)',
+                        color: '#fff',
+                        borderColor: 'transparent',
+                      }}
+                    >
+                      Save
+                    </button>
+                  </div>
+                )}
                 {addFor === c.id && (
                   <div
                     style={{
