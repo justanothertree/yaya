@@ -20,7 +20,11 @@ platform. Instead of describing past work, each nav section is something you can
   "circuits" (groups). Signed-out visitors get a live public demo board plus a sandbox to play in.
 - **Snake** — a canvas Snake game with single-player, an online leaderboard, and room-based
   multiplayer over WebSockets.
-- **Investments** — a private, family-only finance module, feature-flagged per account.
+- **Investments** — a family "dollar-a-day" fund: each member sees their own allocated
+  holdings, what's been promised vs invested, and whether the plan is ahead of schedule.
+  Trades import from broker CSV exports and are split across the family's accounts; an
+  admin ledger tracks what's allocated vs still unassigned. Feature-flagged per account,
+  with a sample-data demo for signed-out visitors.
 - **Accounts** — invite-based signup, member profiles, and an admin console, all enforced by
   Supabase Auth + row-level security.
 
@@ -61,9 +65,10 @@ src/
   sections/          # one module per nav section (EvanCook, Circuit, SnakeGame,
                      #   Investments, SignIn, AccountSettings, AdminPanel, AcceptInvite, ContactForm)
   circuit/           # The Circuit: store, adapters, scoring, social, seeds, and ui/
-  finance/           # Supabase client, auth, typed queries/RPCs for the finance module
+  finance/           # Supabase client, auth, and the investments data layer (RPC-backed)
   game/              # Snake engine, renderer, net client, leaderboard
   config/site.ts     # site metadata
+scripts/             # maintenance CLIs (broker CSV trade import, public-seed generator)
 server/              # Node.js WebSocket relay for multiplayer Snake
 docs/                # Supabase schema / RPC / trigger reference
 public/              # static assets, CNAME, web manifest, sitemap
