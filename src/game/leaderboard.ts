@@ -167,87 +167,6 @@ export async function getNextPlayerIdNumber(): Promise<number | null> {
   return null
 }
 
-// Ensure player exists in player_registry; return id
-// Trims name and performs a case-insensitive lookup to avoid duplicates
-async function ensurePlayerId(name: string): Promise<number | null> {
-  const rawName = (name || '').trim()
-  if (!rawName) return null
-  const { url, anon, playerTable, nameCol } = envs()
-  const client = getClient()
-  if (client && url && anon) {
-    try {
-      // exact match first
-      {
-        const { data: existing } = await client
-          .from(playerTable)
-          .select('id, ' + nameCol)
-          .eq(nameCol, rawName)
-          .maybeSingle()
-        if (existing && (existing as unknown as { id?: number }).id != null) {
-          return Number((existing as unknown as { id: number }).id)
-        }
-      }
-      // case-insensitive match
-      {
-        const { data: candidates } = await client
-          .from(playerTable)
-          .select('id, ' + nameCol)
-          .ilike(nameCol, rawName)
-        if (Array.isArray(candidates) && candidates.length > 0) {
-          const id = (candidates[0] as unknown as { id?: number }).id
-          if (id != null) return Number(id)
-        }
-      }
-      const { data: inserted, error } = await client
-        .from(playerTable)
-        .insert({ [nameCol]: rawName } as never)
-        .select('id')
-        .single()
-      if (!error && inserted && (inserted as { id?: number }).id != null) {
-        return Number((inserted as { id: number }).id)
-      }
-    } catch {
-      /* ignore */
-    }
-  }
-  // REST fallback
-  if (url && anon) {
-    try {
-      const base = `${url}/rest/v1/${playerTable}`
-      // exact
-      const sel = `${base}?select=id,${nameCol}&${nameCol}=eq.${encodeURIComponent(rawName)}`
-      const r = await fetch(sel, { headers: sbHeaders(anon) })
-      if (r.ok) {
-        const rows = (await r.json()) as Array<{ id: number }>
-        if (rows.length) return Number(rows[0].id)
-      }
-      // case-insensitive
-      const selIlike = `${base}?select=id,${nameCol}&${nameCol}=ilike.${encodeURIComponent(rawName)}`
-      const r2 = await fetch(selIlike, { headers: sbHeaders(anon) })
-      if (r2.ok) {
-        const rows = (await r2.json()) as Array<{ id: number }>
-        if (rows.length) return Number(rows[0].id)
-      }
-      const ins = await fetch(base, {
-        method: 'POST',
-        headers: sbHeaders(anon),
-        body: JSON.stringify({ [nameCol]: rawName }),
-      })
-      if (ins.ok) {
-        // Fetch back id
-        const r3 = await fetch(sel, { headers: sbHeaders(anon) })
-        if (r3.ok) {
-          const rows = (await r3.json()) as Array<{ id: number }>
-          if (rows.length) return Number(rows[0].id)
-        }
-      }
-    } catch {
-      /* ignore */
-    }
-  }
-  return null
-}
-
 // Insert into score_history and update leaderboard if new high
 export async function submitScore(
   entry: LeaderboardEntry & {
@@ -424,50 +343,6 @@ export function subscribeToLeaderboard(onChange: () => void): (() => void) | nul
   }
 }
 
-// Trophy utilities
-// Award a single trophy row to a leaderboard id
-export async function awardTrophy(
-  leaderboardId: number,
-  trophyName: 'gold' | 'silver' | 'bronze',
-): Promise<void> {
-  const { url, anon, trophiesTable } = envs()
-  const client = getClient()
-  if (client && url && anon) {
-    try {
-      await client
-        .from(trophiesTable)
-        .insert({ leaderboard_id: leaderboardId, trophy_name: trophyName })
-      return
-    } catch {
-      // fallthrough
-    }
-  }
-  if (url && anon) {
-    try {
-      await fetch(`${url}/rest/v1/${trophiesTable}`, {
-        method: 'POST',
-        headers: sbHeaders(anon, { Prefer: 'return=minimal' }),
-        body: JSON.stringify({ leaderboard_id: leaderboardId, trophy_name: trophyName }),
-      })
-      return
-    } catch {
-      /* ignore */
-    }
-  }
-  // local fallback: store counts by leaderboard id
-  try {
-    const raw = localStorage.getItem(LS_TROPHIES_KEY)
-    const map: Record<string, TrophyCounts> = raw ? JSON.parse(raw) : {}
-    const key = String(leaderboardId)
-    const cur = map[key] || { gold: 0, silver: 0, bronze: 0 }
-    cur[trophyName] = (cur[trophyName] || 0) + 1
-    map[key] = cur
-    localStorage.setItem(LS_TROPHIES_KEY, JSON.stringify(map))
-  } catch {
-    /* ignore */
-  }
-}
-
 export async function fetchTrophiesFor(
   leaderboardIds: number[],
 ): Promise<Record<number, TrophyCounts>> {
@@ -536,50 +411,6 @@ export async function fetchTrophiesFor(
     /* ignore */
   }
   return out
-}
-
-// Resolve or create a leaderboard row id for a given player name and game mode
-export async function getLeaderboardIdFor(
-  name: string,
-  gameMode: string = 'survival',
-): Promise<number | null> {
-  const { url, anon, leaderboardTable } = envs()
-  const client = getClient()
-  const playerId = await ensurePlayerId(name)
-  if (!playerId) return null
-  if (client && url && anon) {
-    try {
-      const { data: existing } = await client
-        .from(leaderboardTable)
-        .select('id')
-        .eq('player_id', playerId)
-        .eq('game_mode', gameMode)
-        .maybeSingle()
-      if (existing && (existing as { id?: number }).id != null) {
-        return Number((existing as { id: number }).id)
-      }
-      // Avoid inserting placeholder rows here; the row should exist after submitScore
-      return null
-    } catch {
-      /* ignore */
-    }
-  }
-  if (url && anon) {
-    try {
-      const sel = `${url}/rest/v1/${leaderboardTable}?select=id&player_id=eq.${playerId}&game_mode=eq.${encodeURIComponent(
-        gameMode,
-      )}`
-      const r = await fetch(sel, { headers: sbHeaders(anon) })
-      if (r.ok) {
-        const rows = (await r.json()) as Array<{ id: number }>
-        if (rows.length) return Number(rows[0].id)
-      }
-      // Don't create placeholder via REST either
-    } catch {
-      /* ignore */
-    }
-  }
-  return null
 }
 
 // ---------------------------------------------------------------------------
