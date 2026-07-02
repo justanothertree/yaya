@@ -63,9 +63,15 @@ export function Log({
   const [savedPulse, setSavedPulse] = useState(0) // bumps to flash the "saved" indicator
   const [celebrate, setCelebrate] = useState(false) // brief flourish when you cross the goal
   const prevHit = useRef(false) // tracks goal-hit so the celebration fires only on the cross
+  const [uid, setUid] = useState<string | null | undefined>(undefined) // undefined=loading, null=out
+  const [isAdmin, setIsAdmin] = useState(false)
 
   const pid = selPid || state.people[0]?.id || ''
   const person = state.people.find((p) => p.id === pid)
+  // Can the signed-in user edit this person? Signed out = local demo sandbox (always editable);
+  // signed in = only your OWN Circuit, or admin. Mirrors the server RLS and surfaces it so edits
+  // to someone else's board aren't silently dropped.
+  const canEdit = uid == null || isAdmin || person?.ownerUserId === uid
   const existing = useMemo(
     () => state.logs.find((l) => l.personId === pid && l.date === date),
     [state.logs, pid, date],
@@ -91,20 +97,25 @@ export function Log({
     }
   }, [])
 
-  // Default to the signed-in user's OWN Circuit (the person they own), unless we arrived
-  // here targeting someone specific (clicked from the feed/board). Signed out, there's no
+  // Resolve who's signed in — both for edit permissions and to default to their OWN Circuit
+  // (the person they own) unless we arrived targeting someone specific. Signed out there's no
   // owner, so it falls through to the first person (the demo "Example" persona).
   useEffect(() => {
-    if (defaultPersonId || selPid) return
     let cancelled = false
-    void getSupabaseClient()
-      .auth.getUser()
-      .then(({ data }) => {
-        const uid = data.user?.id
-        if (cancelled || !uid) return
-        const mine = state.people.find((p) => p.ownerUserId === uid)
+    const sb = getSupabaseClient()
+    void sb.auth.getUser().then(async ({ data }) => {
+      if (cancelled) return
+      const u = data.user?.id ?? null
+      setUid(u)
+      if (!u) return
+      const { data: adm } = await sb.rpc('is_admin')
+      if (cancelled) return
+      setIsAdmin(adm === true)
+      if (!defaultPersonId && !selPid) {
+        const mine = state.people.find((p) => p.ownerUserId === u)
         if (mine) setSelPid(mine.id)
-      })
+      }
+    })
     return () => {
       cancelled = true
     }
@@ -124,7 +135,7 @@ export function Log({
   // Autosave: after the user edits values, persist (debounced) — no Save button.
   // The dirty flag keeps load/realtime updates from re-triggering a write loop.
   useEffect(() => {
-    if (!dirty.current || !person) return
+    if (!dirty.current || !person || !canEdit) return
     const t = setTimeout(() => {
       const entries = person.exercises
         .map((ex) => ({ eid: ex.id, val: parseFloat(vals[ex.id]) || 0 }))
@@ -202,6 +213,7 @@ export function Log({
         : `/ ${goal} pts ✓ goal hit!`
 
   const setVal = (id: string, v: string) => {
+    if (!canEdit) return
     dirty.current = true
     setVals((prev) => ({ ...prev, [id]: v }))
   }
@@ -212,18 +224,25 @@ export function Log({
   }
 
   // ── exercise-grid edits (persist through the store) ───────────────────────
-  const saveExs = (next: Exercise[]) => void circuitStore.savePerson({ ...person, exercises: next })
-  const renameCol = (ci: number, label: string) =>
+  const saveExs = (next: Exercise[]) => {
+    if (!canEdit) return
+    void circuitStore.savePerson({ ...person, exercises: next })
+  }
+  const renameCol = (ci: number, label: string) => {
+    if (!canEdit) return
     void circuitStore.savePerson({
       ...person,
       colLabels: person.colLabels.map((l, i) => (i === ci ? label : l)),
     })
+  }
   const addCol = () => {
+    if (!canEdit) return
     void circuitStore.savePerson({ ...person, colLabels: [...person.colLabels, 'New column'] })
     setColEdit(person.colLabels.length) // open the fresh header for naming
   }
   // one-tap onboarding for an empty person: drop in the common starter grid (editable after).
   const addStarterSet = () => {
+    if (!canEdit) return
     const colLabels = STARTER_GRID.map((c) => c.label)
     const exercises: Exercise[] = []
     STARTER_GRID.forEach((c, ci) =>
@@ -234,6 +253,7 @@ export function Log({
   // delete a column: its exercises merge into the neighbouring column (no data lost),
   // later columns shift down, and rows renumber per column. Keeps at least one column.
   const deleteCol = (ci: number) => {
+    if (!canEdit) return
     if (person.colLabels.length <= 1) return
     const target = ci > 0 ? ci - 1 : 0
     const moved = person.exercises.map((e) =>
@@ -287,10 +307,12 @@ export function Log({
   }
 
   const clear = () => {
+    if (!canEdit) return
     dirty.current = true
     setVals({})
   }
   const copyLast = () => {
+    if (!canEdit) return
     const prior = state.logs
       .filter(
         (l) =>
@@ -331,6 +353,28 @@ export function Log({
           )
         })}
       </div>
+
+      {!canEdit && person && (
+        <div
+          className="card"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.5rem',
+            flexWrap: 'wrap',
+            marginBottom: '0.9rem',
+            borderColor: '#f5c060',
+            background: 'rgba(245,192,96,0.1)',
+          }}
+        >
+          <span style={{ fontSize: '1.05rem' }}>🔒</span>
+          <span style={{ fontWeight: 700 }}>Read-only</span>
+          <span className="muted" style={{ fontSize: '0.86rem' }}>
+            This is {person.name}&rsquo;s Circuit — you can look, but changes won&rsquo;t save. Pick
+            your own name above to log yours.
+          </span>
+        </div>
+      )}
 
       {/* date row */}
       <div
