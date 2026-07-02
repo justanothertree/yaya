@@ -20,8 +20,9 @@ import {
   type AccountPortfolio,
   type Member,
 } from '../finance/portfolio'
+import { DEMO_PORTFOLIO } from '../finance/demoPortfolio'
 
-export function Investments() {
+export function Investments({ demo = false }: { demo?: boolean }) {
   const [mine, setMine] = useState<AccountPortfolio[] | null>(null)
   const [all, setAll] = useState<AccountPortfolio[] | null>(null)
   const [members, setMembers] = useState<Member[]>([])
@@ -34,6 +35,10 @@ export function Investments() {
   }
 
   useEffect(() => {
+    if (demo) {
+      setMine(DEMO_PORTFOLIO)
+      return
+    }
     let alive = true
     void (async () => {
       try {
@@ -55,7 +60,7 @@ export function Investments() {
     return () => {
       alive = false
     }
-  }, [])
+  }, [demo])
 
   return (
     <section className="grid" style={{ gap: '1rem' }}>
@@ -76,11 +81,45 @@ export function Investments() {
           )}
         </div>
         <p className="muted" style={{ margin: 0 }}>
-          {mode === 'all'
-            ? 'Every family account — expand one to see exactly what that member sees.'
-            : 'Your dollar-a-day portfolio — what’s been invested for you and how it’s allocated. Live prices and profit/loss are coming soon.'}
+          {demo
+            ? 'A sample of the dollar-a-day fund — each account gets $1/day, invested and split across holdings. This is example data.'
+            : mode === 'all'
+              ? 'Every family account — expand one to see exactly what that member sees.'
+              : 'Your dollar-a-day portfolio — what’s been invested for you and how it’s allocated. Live prices and profit/loss are coming soon.'}
         </p>
       </header>
+
+      {demo && (
+        <article
+          className="card"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.6rem',
+            flexWrap: 'wrap',
+            borderColor: 'var(--accent,#7c6af7)',
+          }}
+        >
+          <span style={{ fontSize: '1.1rem' }}>🔎</span>
+          <span style={{ fontWeight: 700 }}>Demo</span>
+          <span className="muted" style={{ fontSize: '0.88rem' }}>
+            Sample data — sign in to track your family’s real fund.
+          </span>
+          <a
+            className="btn"
+            href="#signin"
+            style={{
+              marginLeft: 'auto',
+              fontSize: '0.82rem',
+              background: 'var(--accent,#7c6af7)',
+              color: '#fff',
+              borderColor: 'transparent',
+            }}
+          >
+            Sign in
+          </a>
+        </article>
+      )}
 
       {error && (
         <article className="card">
