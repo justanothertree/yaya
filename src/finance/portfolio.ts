@@ -131,6 +131,78 @@ export async function adminEnableFinance(userId: string): Promise<void> {
   if (error) throw error
 }
 
+// ── Admin: the trades ledger (what's allocated to the family fund vs still yours) ──
+export type Trade = {
+  id: string
+  symbol: string
+  assetType: string | null
+  platform: string | null
+  /** ISO date (yyyy-mm-dd) of execution. */
+  date: string
+  dollars: number
+  price: number
+  units: number
+}
+
+export type AllocationRow = {
+  id: string
+  familyAccountId: string
+  executedTradeId: string
+  unitsAllocated: number
+}
+
+/** The signed-in owner's executed trades (self-scoped RPC — returns your own rows). */
+export async function fetchMyTrades(): Promise<Trade[]> {
+  const sb = getSupabaseClient()
+  const { data: u } = await sb.auth.getUser()
+  const uid = u.user?.id
+  if (!uid) return []
+  const { data, error } = await sb.rpc('get_executed_trades', { uid })
+  if (error) throw error
+  return ((data as Array<Record<string, unknown>> | null) ?? []).map((t) => ({
+    id: String(t.id),
+    symbol: String(t.asset_symbol ?? ''),
+    assetType: (t.asset_type as string | null) ?? null,
+    platform: (t.platform as string | null) ?? null,
+    date: String(t.execution_time ?? '').slice(0, 10),
+    dollars: Number(t.dollar_amount ?? 0),
+    price: Number(t.price ?? 0),
+    units: Number(t.units_acquired ?? 0),
+  }))
+}
+
+/** The signed-in owner's allocations (self-scoped RPC). */
+export async function fetchMyAllocations(): Promise<AllocationRow[]> {
+  const sb = getSupabaseClient()
+  const { data: u } = await sb.auth.getUser()
+  const uid = u.user?.id
+  if (!uid) return []
+  const { data, error } = await sb.rpc('get_allocations', { uid })
+  if (error) throw error
+  return ((data as Array<Record<string, unknown>> | null) ?? []).map((a) => ({
+    id: String(a.id),
+    familyAccountId: String(a.family_account_id),
+    executedTradeId: String(a.executed_trade_id),
+    unitsAllocated: Number(a.units_allocated ?? 0),
+  }))
+}
+
+/** Assign units of one trade to one account (manual allocation — e.g. a single share). */
+export async function assignAllocation(
+  accountId: string,
+  tradeId: string,
+  units: number,
+): Promise<void> {
+  const { error } = await getSupabaseClient().rpc('insert_allocation', {
+    payload: {
+      family_account_id: accountId,
+      executed_trade_id: tradeId,
+      units_allocated: units,
+    },
+  })
+  if (error) throw error
+}
+
 /** Total dollars invested (at cost) across an account's holdings. */
 export const accountTotalCost = (a: AccountPortfolio): number =>
   a.holdings.reduce((s, h) => s + h.cost, 0)

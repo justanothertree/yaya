@@ -18,8 +18,13 @@ import {
   runwayDays,
   assetColor,
   usd,
+  fetchMyTrades,
+  fetchMyAllocations,
+  assignAllocation,
   type AccountPortfolio,
   type Member,
+  type Trade,
+  type AllocationRow,
 } from '../finance/portfolio'
 import { DEMO_PORTFOLIO } from '../finance/demoPortfolio'
 
@@ -28,7 +33,7 @@ export function Investments({ demo = false }: { demo?: boolean }) {
   const [all, setAll] = useState<AccountPortfolio[] | null>(null)
   const [members, setMembers] = useState<Member[]>([])
   const [isAdmin, setIsAdmin] = useState(false)
-  const [mode, setMode] = useState<'mine' | 'all'>('mine')
+  const [mode, setMode] = useState<'mine' | 'all' | 'trades'>('mine')
   const [error, setError] = useState<string | null>(null)
 
   const reloadAll = async () => {
@@ -78,6 +83,9 @@ export function Investments({ demo = false }: { demo?: boolean }) {
               <ModeBtn active={mode === 'all'} onClick={() => setMode('all')}>
                 All accounts{all ? ` (${all.length})` : ''}
               </ModeBtn>
+              <ModeBtn active={mode === 'trades'} onClick={() => setMode('trades')}>
+                Trades
+              </ModeBtn>
             </span>
           )}
         </div>
@@ -86,7 +94,9 @@ export function Investments({ demo = false }: { demo?: boolean }) {
             ? 'A sample of the dollar-a-day fund — each account gets $1/day, invested and split across holdings. This is example data.'
             : mode === 'all'
               ? 'Every family account — expand one to see exactly what that member sees.'
-              : 'Your dollar-a-day portfolio — what’s been invested for you and how it’s allocated. Live prices and profit/loss are coming soon.'}
+              : mode === 'trades'
+                ? 'Every trade you’ve made — what’s allocated to the family fund and what’s still yours. Expand a trade to assign shares.'
+                : 'Your dollar-a-day portfolio — what’s been invested for you and how it’s allocated. Live prices and profit/loss are coming soon.'}
         </p>
       </header>
 
@@ -133,6 +143,8 @@ export function Investments({ demo = false }: { demo?: boolean }) {
           {mine && mine.length > 0 && <ScheduleSummary accounts={mine} />}
           <PortfolioList accounts={mine} own />
         </>
+      ) : mode === 'trades' ? (
+        <TradesLedger accounts={all} />
       ) : (
         <>
           {all && all.length > 0 && <ScheduleSummary accounts={all} />}
@@ -744,5 +756,229 @@ function ScheduleSummary({ accounts }: { accounts: AccountPortfolio[] }) {
         promised so far — so buying could pause and still stay on plan.
       </p>
     </article>
+  )
+}
+
+// Admin: the trades ledger — every trade with its allocation status (family fund / partial /
+// still yours), expandable to see the per-account split and assign shares by hand (e.g. one
+// share of one trade to one person). Unassigned units stay yours until you assign them.
+function TradesLedger({ accounts }: { accounts: AccountPortfolio[] | null }) {
+  const [trades, setTrades] = useState<Trade[] | null>(null)
+  const [allocs, setAllocs] = useState<AllocationRow[]>([])
+  const [open, setOpen] = useState<string | null>(null)
+  const [err, setErr] = useState<string | null>(null)
+
+  const load = async () => {
+    const [t, a] = await Promise.all([fetchMyTrades(), fetchMyAllocations()])
+    t.sort((x, y) => y.date.localeCompare(x.date) || x.symbol.localeCompare(y.symbol))
+    setTrades(t)
+    setAllocs(a)
+  }
+  useEffect(() => {
+    void load().catch((e: unknown) => setErr(e instanceof Error ? e.message : String(e)))
+  }, [])
+
+  if (err) {
+    return (
+      <article className="card">
+        <p style={{ margin: 0, color: 'var(--accent-2)' }}>{err}</p>
+      </article>
+    )
+  }
+  if (trades === null) {
+    return (
+      <article className="card" aria-busy>
+        Loading trades…
+      </article>
+    )
+  }
+
+  const accName = (id: string) =>
+    accounts?.find((a) => a.id === id)?.name || `Account ${id.slice(0, 6)}…`
+  const allocatedUnits = (tradeId: string) =>
+    allocs.filter((a) => a.executedTradeId === tradeId).reduce((s, a) => s + a.unitsAllocated, 0)
+
+  let familyDollars = 0
+  let totalDollars = 0
+  for (const t of trades) {
+    totalDollars += t.dollars
+    if (t.units > 0) familyDollars += (allocatedUnits(t.id) / t.units) * t.dollars
+  }
+
+  const fmtU = (n: number) => n.toLocaleString(undefined, { maximumFractionDigits: 6 })
+
+  return (
+    <>
+      <article className="card" style={{ display: 'flex', gap: '1.6rem', flexWrap: 'wrap' }}>
+        <Stat label="Family fund" value={usd(familyDollars)} big color="#22cc78" />
+        <Stat label="Still yours" value={usd(Math.max(0, totalDollars - familyDollars))} big />
+        <Stat label="Trades" value={String(trades.length)} />
+      </article>
+
+      <article className="card" style={{ display: 'grid', gap: '0.4rem' }}>
+        {trades.length === 0 && (
+          <p className="muted" style={{ margin: 0 }}>
+            No trades yet — import your broker history or log one, then allocate it here.
+          </p>
+        )}
+        {trades.map((t) => {
+          const got = allocatedUnits(t.id)
+          const remaining = Math.max(0, t.units - got)
+          const full = t.units > 0 && remaining <= t.units * 1e-6
+          const none = got <= t.units * 1e-6
+          const status = full ? '🟢 Family fund' : none ? '⚪ Yours' : '🟡 Partial'
+          const isOpen = open === t.id
+          const rows = allocs.filter((a) => a.executedTradeId === t.id)
+          return (
+            <div key={t.id}>
+              <button
+                onClick={() => setOpen(isOpen ? null : t.id)}
+                aria-expanded={isOpen}
+                style={{
+                  width: '100%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.6rem',
+                  flexWrap: 'wrap',
+                  textAlign: 'left',
+                  padding: '0.5rem 0.7rem',
+                  background: 'var(--b1,rgba(127,127,127,0.06))',
+                  border: '1px solid var(--border, rgba(127,127,127,0.2))',
+                  borderRadius: 8,
+                  cursor: 'pointer',
+                  color: 'inherit',
+                }}
+              >
+                <span style={{ opacity: 0.6, fontSize: '0.8rem' }}>{isOpen ? '▾' : '▸'}</span>
+                <span style={{ fontWeight: 700, minWidth: '3.5rem' }}>{t.symbol}</span>
+                <span className="muted cz-num" style={{ fontSize: '0.78rem' }}>
+                  {t.date}
+                </span>
+                <span className="muted cz-num" style={{ fontSize: '0.78rem' }}>
+                  {fmtU(t.units)} @ {usd(t.price)}
+                </span>
+                <span style={{ fontSize: '0.76rem' }}>{status}</span>
+                <span className="cz-num" style={{ marginLeft: 'auto', fontWeight: 700 }}>
+                  {usd(t.dollars)}
+                </span>
+              </button>
+              {isOpen && (
+                <div
+                  style={{
+                    display: 'grid',
+                    gap: '0.5rem',
+                    padding: '0.6rem 0.7rem',
+                    margin: '0.3rem 0 0.5rem',
+                    border: '1px solid var(--border, rgba(127,127,127,0.2))',
+                    borderRadius: 8,
+                  }}
+                >
+                  {rows.length > 0 ? (
+                    rows.map((a) => (
+                      <div
+                        key={a.id}
+                        style={{ display: 'flex', gap: '0.6rem', fontSize: '0.84rem' }}
+                      >
+                        <span style={{ fontWeight: 600 }}>{accName(a.familyAccountId)}</span>
+                        <span className="muted cz-num" style={{ marginLeft: 'auto' }}>
+                          {fmtU(a.unitsAllocated)} units ·{' '}
+                          {usd(t.units > 0 ? (a.unitsAllocated / t.units) * t.dollars : 0)}
+                        </span>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="muted" style={{ margin: 0, fontSize: '0.84rem' }}>
+                      Nothing assigned yet — all {fmtU(t.units)} units are still yours.
+                    </p>
+                  )}
+                  {remaining > t.units * 1e-6 && accounts && accounts.length > 0 && (
+                    <AssignForm
+                      accounts={accounts}
+                      remaining={remaining}
+                      onAssign={async (accountId, units) => {
+                        await assignAllocation(accountId, t.id, units)
+                        await load()
+                      }}
+                    />
+                  )}
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </article>
+    </>
+  )
+}
+
+// Assign some of a trade's remaining units to one account.
+function AssignForm({
+  accounts,
+  remaining,
+  onAssign,
+}: {
+  accounts: AccountPortfolio[]
+  remaining: number
+  onAssign: (accountId: string, units: number) => Promise<void>
+}) {
+  const [accountId, setAccountId] = useState(accounts[0]?.id ?? '')
+  const [units, setUnits] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+  const parsed = parseFloat(units)
+  const valid = Number.isFinite(parsed) && parsed > 0 && parsed <= remaining + 1e-9
+
+  return (
+    <form
+      onSubmit={(e) => {
+        e.preventDefault()
+        if (!valid || !accountId) return
+        setBusy(true)
+        setErr(null)
+        onAssign(accountId, parsed)
+          .then(() => setUnits(''))
+          .catch((e2: unknown) => setErr(e2 instanceof Error ? e2.message : String(e2)))
+          .finally(() => setBusy(false))
+      }}
+      style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}
+    >
+      <span className="muted" style={{ fontSize: '0.78rem' }}>
+        Assign to
+      </span>
+      <select
+        value={accountId}
+        onChange={(e) => setAccountId(e.target.value)}
+        style={{ padding: '0.35rem 0.5rem' }}
+      >
+        {accounts.map((a) => (
+          <option key={a.id} value={a.id}>
+            {a.name || 'Account'}
+          </option>
+        ))}
+      </select>
+      <input
+        type="number"
+        min="0"
+        step="any"
+        value={units}
+        onChange={(e) => setUnits(e.target.value)}
+        placeholder={`units (≤ ${remaining.toLocaleString(undefined, { maximumFractionDigits: 6 })})`}
+        style={{ padding: '0.35rem 0.5rem', width: '11rem' }}
+      />
+      <button
+        className="btn"
+        type="submit"
+        disabled={busy || !valid || !accountId}
+        style={{
+          fontSize: '0.8rem',
+          background: 'var(--accent,#7c6af7)',
+          color: '#fff',
+          borderColor: 'transparent',
+        }}
+      >
+        {busy ? 'Assigning…' : 'Assign'}
+      </button>
+      {err && <span style={{ color: 'var(--accent-2)', fontSize: '0.78rem' }}>{err}</span>}
+    </form>
   )
 }
