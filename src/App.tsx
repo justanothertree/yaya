@@ -66,7 +66,7 @@ const navOrder = (
           'snake',
           'contact',
         ]
-      : ['home', 'signin', 'investments', 'snake', 'contact']
+      : ['home', 'signin', 'snake', 'contact']
     : ['home', 'snake', 'contact']
 
 export default function App() {
@@ -323,7 +323,7 @@ export default function App() {
           ? canFinance === true
             ? { '2': 'circuit', '3': 'investments', '4': 'snake', '5': 'contact' }
             : { '2': 'circuit', '3': 'snake', '4': 'contact' }
-          : { '2': 'signin', '3': 'investments', '4': 'snake', '5': 'contact' }
+          : { '2': 'signin', '3': 'snake', '4': 'contact' }
         : { '2': 'snake', '3': 'contact' }),
     }
     const onKey = (e: KeyboardEvent) => {
@@ -516,15 +516,6 @@ export default function App() {
                 aria-current={active === 'signin' ? 'page' : undefined}
               >
                 Sign in
-              </a>
-            )}
-            {hasFinanceSupabaseEnv() && !isFinanceAuthed && (
-              <a
-                href="#investments"
-                onClick={() => setActive('investments')}
-                aria-current={active === 'investments' ? 'page' : undefined}
-              >
-                Investments
               </a>
             )}
             {isFinanceAuthed && canFinance === true && !suspended && (
