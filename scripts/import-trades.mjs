@@ -80,42 +80,67 @@ function headerLookup(header) {
   return (name) => map[name.toLowerCase()]
 }
 
-function makeTrade(t) {
-  // Stable natural key for de-duping across re-imports (these exports carry no
-  // usable order id, so we hash the row's identifying fields).
+function makeTrade(t, externalId) {
+  // Stable key for de-duping across re-imports. Cash App rows carry a Transaction ID —
+  // use it so two genuinely identical buys (same day/price/amount, e.g. recurring
+  // purchases) aren't collapsed. Robinhood has no id, so hash the identifying fields.
   const importKey = createHash('sha1')
-    .update([t.platform, t.date, t.symbol, t.units, t.price, t.dollars].join('|'))
+    .update(
+      externalId
+        ? `${t.platform}|id|${externalId}`
+        : [t.platform, t.date, t.symbol, t.units, t.price, t.dollars].join('|'),
+    )
     .digest('hex')
   return { ...t, importKey }
 }
 
+// Shared per-file bookkeeping: skip counts, one raw sample row per skip reason (for
+// diagnosing formats we haven't seen), and in-window sells (warned about, not imported).
+function makeStats() {
+  return { trades: [], skips: {}, samples: {}, sells: { count: 0, dollars: 0 }, dataRows: 0 }
+}
+function skip(stats, reason, row) {
+  stats.skips[reason] = (stats.skips[reason] || 0) + 1
+  if (!stats.samples[reason]) stats.samples[reason] = row.join(' | ').slice(0, 220)
+}
+
 // ── Robinhood: Activity Date, Instrument, Description, Trans Code, Quantity, Price, Amount
-function fromRobinhood(rows) {
+function fromRobinhood(rows, since) {
   const at = headerLookup(rows[0])
-  const trades = []
-  const skips = {}
-  let dataRows = 0
+  const s = makeStats()
   for (let r = 1; r < rows.length; r++) {
     const row = rows[r]
     if (!row || row.every((c) => c.trim() === '')) continue
-    dataRows++
+    s.dataRows++
+    const date = toISODate(row[at('Activity Date')], 'robinhood')
+    if (since && date && date < since) {
+      s.skips[`before ${since}`] = (s.skips[`before ${since}`] || 0) + 1
+      continue
+    }
     const code = (row[at('Trans Code')] || '').trim()
     const symbol = (row[at('Instrument')] || '').trim()
     const units = num(row[at('Quantity')])
+    if (code === 'Sell') {
+      s.sells.count++
+      s.sells.dollars += Math.abs(money(row[at('Amount')]))
+      skip(s, 'sell (not imported yet)', row)
+      continue
+    }
     if (code !== 'Buy' || !symbol || units <= 0) {
       const reason =
         ['OEXP', 'BTO', 'STO', 'STC', 'BTC', 'OASGN', 'OCA'].includes(code) ? 'option'
         : code === 'CDIV' ? 'cash dividend'
         : code === 'ACH' ? 'deposit'
-        : code === 'Sell' ? 'sell'
+        : code === 'SPR' ? 'stock split (heads up — affects share counts)'
+        : code === 'SXCH' ? 'symbol change (heads up)'
         : code || 'other'
-      skips[reason] = (skips[reason] || 0) + 1
+      skip(s, reason, row)
       continue
     }
     const note = (row[at('Description')] || '').replace(/\s+/g, ' ').trim()
-    trades.push(makeTrade({
+    s.trades.push(makeTrade({
       platform: 'robinhood',
-      date: toISODate(row[at('Activity Date')], 'robinhood'),
+      date,
       symbol,
       assetType: 'stock',
       units,
@@ -126,50 +151,70 @@ function fromRobinhood(rows) {
       note,
     }))
   }
-  return { trades, skips, dataRows }
+  return s
 }
 
 // ── Cash App: Date, Transaction Type, Amount, Fee, Asset Type, Asset Price, Asset Amount, Notes
-function fromCashApp(rows) {
+function fromCashApp(rows, since) {
   const at = headerLookup(rows[0])
-  const trades = []
-  const skips = {}
-  let dataRows = 0
+  const s = makeStats()
   for (let r = 1; r < rows.length; r++) {
     const row = rows[r]
     if (!row || row.every((c) => c.trim() === '')) continue
-    dataRows++
-    const type = (row[at('Transaction Type')] || '').trim()
-    const symbol = (row[at('Asset Type')] || '').trim()
-    const units = num(row[at('Asset Amount')])
-    if (!/buy/i.test(type) || !symbol || units <= 0) {
-      skips[type.toLowerCase() || 'other'] = (skips[type.toLowerCase() || 'other'] || 0) + 1
+    s.dataRows++
+    const date = toISODate(row[at('Date')], 'cashapp')
+    if (since && date && date < since) {
+      s.skips[`before ${since}`] = (s.skips[`before ${since}`] || 0) + 1
       continue
     }
-    trades.push(makeTrade({
+    const type = (row[at('Transaction Type')] || '').trim()
+    const isBitcoin = /bitcoin|btc/i.test(type)
+    // bitcoin rows sometimes leave Asset Type blank — the asset is bitcoin itself
+    const symbol = (row[at('Asset Type')] || '').trim() || (isBitcoin ? 'BTC' : '')
+    const units = num(row[at('Asset Amount')])
+    if (/sell/i.test(type)) {
+      s.sells.count++
+      s.sells.dollars += Math.abs(money(row[at('Amount')]))
+      skip(s, 'sell (not imported yet)', row)
+      continue
+    }
+    if (!/buy/i.test(type) || !symbol || units <= 0) {
+      skip(s, type.toLowerCase() || 'other', row)
+      continue
+    }
+    s.trades.push(makeTrade({
       platform: 'cashapp',
-      date: toISODate(row[at('Date')], 'cashapp'),
+      date,
       symbol,
-      assetType: /bitcoin|btc/i.test(type) || symbol.toUpperCase() === 'BTC' ? 'crypto' : 'stock',
+      assetType: isBitcoin || symbol.toUpperCase() === 'BTC' ? 'crypto' : 'stock',
       units,
       price: money(row[at('Asset Price')]),
       dollars: Math.abs(money(row[at('Amount')])),
       fee: Math.abs(money(row[at('Fee')])),
       reinvestment: false,
       note: (row[at('Notes')] || '').trim(),
-    }))
+    }, (row[at('Transaction ID')] || '').trim() || undefined))
   }
-  return { trades, skips, dataRows }
+  return s
 }
 
 // ── main ───────────────────────────────────────────────────────────────────
 const args = process.argv.slice(2)
 const file = args.find((a) => !a.startsWith('--'))
 if (!file) {
-  console.error('usage: node scripts/import-trades.mjs <export.csv> [--source robinhood|cashapp]')
+  console.error(
+    'usage: node scripts/import-trades.mjs <export.csv> [--source robinhood|cashapp] [--since YYYY-MM-DD]',
+  )
   process.exit(1)
 }
 let source = (args.includes('--source') ? args[args.indexOf('--source') + 1] : '').toLowerCase()
+// Only import trades on/after this date. Full exports go back years — for the family fund
+// you almost always want --since 2026-01-01 (the dollar-a-day start).
+const since = args.includes('--since') ? args[args.indexOf('--since') + 1] : null
+if (since && !/^\d{4}-\d{2}-\d{2}$/.test(since)) {
+  console.error('--since must be YYYY-MM-DD')
+  process.exit(1)
+}
 
 const rows = parseCSV(readFileSync(file, 'utf8'))
 if (!source) {
@@ -182,7 +227,8 @@ if (source !== 'robinhood' && source !== 'cashapp') {
   process.exit(1)
 }
 
-const { trades, skips, dataRows } = source === 'robinhood' ? fromRobinhood(rows) : fromCashApp(rows)
+const { trades, skips, samples, sells, dataRows } =
+  source === 'robinhood' ? fromRobinhood(rows, since) : fromCashApp(rows, since)
 
 // de-dupe within the file
 const seen = new Set()
@@ -202,15 +248,26 @@ for (const t of unique) bySymbol[t.symbol] = (bySymbol[t.symbol] || 0) + t.dolla
 
 console.log('\n=== Trade import (DRY RUN) ===')
 console.log(`Source         : ${source}`)
+console.log(`Since          : ${since || 'ALL HISTORY — for the family fund use --since 2026-01-01'}`)
 console.log(`Rows in file   : ${dataRows}`)
 console.log(`Kept (buys)    : ${unique.length}${trades.length - unique.length ? ` (after removing ${trades.length - unique.length} in-file dupes)` : ''}${reinv ? `, incl ${reinv} dividend reinvestments` : ''}`)
 console.log(`Skipped        : ${skippedTotal}`)
 for (const [k, v] of Object.entries(skips).sort((a, b) => b[1] - a[1])) console.log(`   - ${k}: ${v}`)
+if (sells.count > 0) {
+  console.log(
+    `\n⚠ ${sells.count} sell(s) totaling $${sells.dollars.toFixed(2)} in this range were NOT imported —` +
+      '\n  sells aren’t supported yet, so holdings/invested will overstate by roughly that much.',
+  )
+}
 console.log(`Invested (cost): $${total.toFixed(2)}`)
 console.log(`Date range     : ${dates[0] || '—'} → ${dates[dates.length - 1] || '—'}`)
 console.log(`Symbols (${Object.keys(bySymbol).length}):`)
 for (const [s, d] of Object.entries(bySymbol).sort((a, b) => b[1] - a[1])) {
   console.log(`   ${s.padEnd(6)} $${d.toFixed(2)}`)
+}
+if (Object.keys(samples).length) {
+  console.log('\nOne raw example per skipped kind (for spot-checking the filter):')
+  for (const [k, v] of Object.entries(samples)) console.log(`   [${k}]\n      ${v}`)
 }
 
 const out = file.replace(/\.csv$/i, '') + '.parsed.json'
