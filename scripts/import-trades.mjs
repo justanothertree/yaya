@@ -120,10 +120,21 @@ function fromRobinhood(rows, since) {
     const code = (row[at('Trans Code')] || '').trim()
     const symbol = (row[at('Instrument')] || '').trim()
     const units = num(row[at('Quantity')])
-    if (code === 'Sell') {
+    if (code === 'Sell' && symbol && units > 0) {
       s.sells.count++
       s.sells.dollars += Math.abs(money(row[at('Amount')]))
-      skip(s, 'sell (not imported yet)', row)
+      s.trades.push(makeTrade({
+        platform: 'robinhood',
+        date,
+        symbol,
+        assetType: 'stock',
+        units: -units,
+        price: money(row[at('Price')]),
+        dollars: -Math.abs(money(row[at('Amount')])),
+        fee: 0,
+        reinvestment: false,
+        note: (row[at('Description')] || '').replace(/\s+/g, ' ').trim(),
+      }))
       continue
     }
     if (code !== 'Buy' || !symbol || units <= 0) {
@@ -172,10 +183,21 @@ function fromCashApp(rows, since) {
     // bitcoin rows sometimes leave Asset Type blank — the asset is bitcoin itself
     const symbol = (row[at('Asset Type')] || '').trim() || (isBitcoin ? 'BTC' : '')
     const units = num(row[at('Asset Amount')])
-    if (/sell/i.test(type)) {
+    if (/sell/i.test(type) && symbol && units > 0) {
       s.sells.count++
       s.sells.dollars += Math.abs(money(row[at('Amount')]))
-      skip(s, 'sell (not imported yet)', row)
+      s.trades.push(makeTrade({
+        platform: 'cashapp',
+        date,
+        symbol,
+        assetType: isBitcoin || symbol.toUpperCase() === 'BTC' ? 'crypto' : 'stock',
+        units: -units,
+        price: money(row[at('Asset Price')]),
+        dollars: -Math.abs(money(row[at('Amount')])),
+        fee: Math.abs(money(row[at('Fee')])),
+        reinvestment: false,
+        note: (row[at('Notes')] || '').trim(),
+      }, (row[at('Transaction ID')] || '').trim() || undefined))
       continue
     }
     if (!/buy/i.test(type) || !symbol || units <= 0) {
@@ -250,16 +272,15 @@ console.log('\n=== Trade import (DRY RUN) ===')
 console.log(`Source         : ${source}`)
 console.log(`Since          : ${since || 'ALL HISTORY — for the family fund use --since 2025-12-01'}`)
 console.log(`Rows in file   : ${dataRows}`)
-console.log(`Kept (buys)    : ${unique.length}${trades.length - unique.length ? ` (after removing ${trades.length - unique.length} in-file dupes)` : ''}${reinv ? `, incl ${reinv} dividend reinvestments` : ''}`)
+console.log(`Kept           : ${unique.length} buys+sells${trades.length - unique.length ? ` (after removing ${trades.length - unique.length} in-file dupes)` : ''}${reinv ? `, incl ${reinv} dividend reinvestments` : ''}`)
 console.log(`Skipped        : ${skippedTotal}`)
 for (const [k, v] of Object.entries(skips).sort((a, b) => b[1] - a[1])) console.log(`   - ${k}: ${v}`)
 if (sells.count > 0) {
   console.log(
-    `\n⚠ ${sells.count} sell(s) totaling $${sells.dollars.toFixed(2)} in this range were NOT imported —` +
-      '\n  sells aren’t supported yet, so holdings/invested will overstate by roughly that much.',
+    `Sells          : ${sells.count} imported as negative trades (−$${sells.dollars.toFixed(2)}) — positions and invested are netted.`,
   )
 }
-console.log(`Invested (cost): $${total.toFixed(2)}`)
+console.log(`Net invested   : $${total.toFixed(2)} (buys minus sells)`)
 console.log(`Date range     : ${dates[0] || '—'} → ${dates[dates.length - 1] || '—'}`)
 console.log(`Symbols (${Object.keys(bySymbol).length}):`)
 for (const [s, d] of Object.entries(bySymbol).sort((a, b) => b[1] - a[1])) {

@@ -883,7 +883,7 @@ function TradesLedger({ accounts }: { accounts: AccountPortfolio[] | null }) {
   let totalDollars = 0
   for (const t of trades) {
     totalDollars += t.dollars
-    if (t.units > 0) familyDollars += (allocatedUnits(t.id) / t.units) * t.dollars
+    if (t.units !== 0) familyDollars += (allocatedUnits(t.id) / t.units) * t.dollars
   }
 
   const fmtU = (n: number) => n.toLocaleString(undefined, { maximumFractionDigits: 6 })
@@ -927,8 +927,17 @@ function TradesLedger({ accounts }: { accounts: AccountPortfolio[] | null }) {
                 </span>
               )}
               <span className="muted cz-num" style={{ fontSize: '0.76rem' }}>
-                {p.trades} trade{p.trades === 1 ? '' : 's'} · {usd(p.dollars)}
+                {fmtU(p.units)} units · net in {usd(p.dollars)}
+                {p.value != null ? ` · worth ${usd(p.value)}` : ''}
               </span>
+              {p.units < 0 && (
+                <span
+                  style={{ fontSize: '0.7rem', color: '#f46b6b', fontWeight: 700 }}
+                  title="More sold than bought in the data — often a stock split or pre-history buys"
+                >
+                  oversold?
+                </span>
+              )}
               <button
                 className="btn btn-ghost"
                 onClick={() => toggleDesignation(p)}
@@ -962,9 +971,11 @@ function TradesLedger({ accounts }: { accounts: AccountPortfolio[] | null }) {
         )}
         {trades.map((t) => {
           const got = allocatedUnits(t.id)
-          const remaining = Math.max(0, t.units - got)
-          const full = t.units > 0 && remaining <= t.units * 1e-6
-          const none = got <= t.units * 1e-6
+          const absU = Math.abs(t.units)
+          const remaining = t.units - got
+          const isSell = t.units < 0
+          const full = absU > 0 && Math.abs(remaining) <= absU * 1e-6
+          const none = Math.abs(got) <= absU * 1e-6
           const status = full ? '🟢 Family fund' : none ? '⚪ Yours' : '🟡 Partial'
           const isOpen = open === t.id
           const rows = allocs.filter((a) => a.executedTradeId === t.id)
@@ -990,6 +1001,11 @@ function TradesLedger({ accounts }: { accounts: AccountPortfolio[] | null }) {
               >
                 <span style={{ opacity: 0.6, fontSize: '0.8rem' }}>{isOpen ? '▾' : '▸'}</span>
                 <span style={{ fontWeight: 700, minWidth: '3.5rem' }}>{t.symbol}</span>
+                {isSell && (
+                  <span style={{ fontSize: '0.68rem', color: '#f46b6b', fontWeight: 700 }}>
+                    SELL
+                  </span>
+                )}
                 <span className="muted cz-num" style={{ fontSize: '0.78rem' }}>
                   {t.date}
                 </span>
@@ -1021,7 +1037,7 @@ function TradesLedger({ accounts }: { accounts: AccountPortfolio[] | null }) {
                         <span style={{ fontWeight: 600 }}>{accName(a.familyAccountId)}</span>
                         <span className="muted cz-num" style={{ marginLeft: 'auto' }}>
                           {fmtU(a.unitsAllocated)} units ·{' '}
-                          {usd(t.units > 0 ? (a.unitsAllocated / t.units) * t.dollars : 0)}
+                          {usd(t.units !== 0 ? (a.unitsAllocated / t.units) * t.dollars : 0)}
                         </span>
                       </div>
                     ))
@@ -1030,7 +1046,7 @@ function TradesLedger({ accounts }: { accounts: AccountPortfolio[] | null }) {
                       Nothing assigned yet — all {fmtU(t.units)} units are still yours.
                     </p>
                   )}
-                  {remaining > t.units * 1e-6 && accounts && accounts.length > 0 && (
+                  {!isSell && remaining > absU * 1e-6 && accounts && accounts.length > 0 && (
                     <AssignForm
                       accounts={accounts}
                       remaining={remaining}

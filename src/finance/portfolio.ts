@@ -207,9 +207,14 @@ export async function fetchMyAllocations(): Promise<AllocationRow[]> {
 export type Position = {
   symbol: string
   assetType: string | null
+  /** Net units held (buys minus sells). */
   units: number
+  /** Net dollars in (buys minus sell proceeds). */
   dollars: number
   trades: number
+  price: number | null
+  /** Current market value (units × cached price), null until priced. */
+  value: number | null
   isFamily: boolean
 }
 
@@ -223,6 +228,8 @@ export async function fetchPositions(): Promise<Position[]> {
     units: Number(p.units ?? 0),
     dollars: Number(p.dollars ?? 0),
     trades: Number(p.trades ?? 0),
+    price: p.price == null ? null : Number(p.price),
+    value: p.value == null ? null : Number(p.value),
     isFamily: p.isFamily !== false,
   }))
 }
