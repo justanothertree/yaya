@@ -279,6 +279,17 @@ if (!args.includes('--commit')) {
   process.exit(0)
 }
 
+// Guardrail: a full-history export without --since once imported six years of gross buys
+// into the fund. Committing pre-fund data now requires saying so explicitly.
+if (!since && dates[0] && dates[0] < '2026-01-01' && !args.includes('--all-history')) {
+  console.error(
+    `\n⛔ Not committing: this export reaches back to ${dates[0]}, before the fund started.` +
+      '\n   For the family fund, add:      --since 2026-01-01' +
+      '\n   To really import everything:   --all-history\n',
+  )
+  process.exit(1)
+}
+
 // ── --commit: push into the database via the admin import RPC ────────────────
 // Runs against your project with YOUR service-role key, read from the environment
 // (never committed, never printed). Nothing here can run without that key.
