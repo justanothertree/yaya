@@ -209,7 +209,7 @@ if (!file) {
 }
 let source = (args.includes('--source') ? args[args.indexOf('--source') + 1] : '').toLowerCase()
 // Only import trades on/after this date. Full exports go back years — for the family fund
-// you almost always want --since 2026-01-01 (the dollar-a-day start).
+// you almost always want --since 2025-12-01 (the dollar-a-day start).
 const since = args.includes('--since') ? args[args.indexOf('--since') + 1] : null
 if (since && !/^\d{4}-\d{2}-\d{2}$/.test(since)) {
   console.error('--since must be YYYY-MM-DD')
@@ -248,7 +248,7 @@ for (const t of unique) bySymbol[t.symbol] = (bySymbol[t.symbol] || 0) + t.dolla
 
 console.log('\n=== Trade import (DRY RUN) ===')
 console.log(`Source         : ${source}`)
-console.log(`Since          : ${since || 'ALL HISTORY — for the family fund use --since 2026-01-01'}`)
+console.log(`Since          : ${since || 'ALL HISTORY — for the family fund use --since 2025-12-01'}`)
 console.log(`Rows in file   : ${dataRows}`)
 console.log(`Kept (buys)    : ${unique.length}${trades.length - unique.length ? ` (after removing ${trades.length - unique.length} in-file dupes)` : ''}${reinv ? `, incl ${reinv} dividend reinvestments` : ''}`)
 console.log(`Skipped        : ${skippedTotal}`)
@@ -281,10 +281,10 @@ if (!args.includes('--commit')) {
 
 // Guardrail: a full-history export without --since once imported six years of gross buys
 // into the fund. Committing pre-fund data now requires saying so explicitly.
-if (!since && dates[0] && dates[0] < '2026-01-01' && !args.includes('--all-history')) {
+if (!since && dates[0] && dates[0] < '2025-12-01' && !args.includes('--all-history')) {
   console.error(
     `\n⛔ Not committing: this export reaches back to ${dates[0]}, before the fund started.` +
-      '\n   For the family fund, add:      --since 2026-01-01' +
+      '\n   For the family fund, add:      --since 2025-12-01' +
       '\n   To really import everything:   --all-history\n',
   )
   process.exit(1)
