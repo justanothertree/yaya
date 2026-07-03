@@ -24,10 +24,13 @@ import {
   assignAllocation,
   accountMarket,
   adminSetPrice,
+  fetchPositions,
+  setSymbolDesignation,
   type AccountPortfolio,
   type Member,
   type Trade,
   type AllocationRow,
+  type Position,
 } from '../finance/portfolio'
 import { DEMO_PORTFOLIO } from '../finance/demoPortfolio'
 import {
@@ -831,14 +834,26 @@ function ScheduleSummary({ accounts }: { accounts: AccountPortfolio[] }) {
 function TradesLedger({ accounts }: { accounts: AccountPortfolio[] | null }) {
   const [trades, setTrades] = useState<Trade[] | null>(null)
   const [allocs, setAllocs] = useState<AllocationRow[]>([])
+  const [positions, setPositions] = useState<Position[]>([])
   const [open, setOpen] = useState<string | null>(null)
+  const [busySym, setBusySym] = useState<string | null>(null)
   const [err, setErr] = useState<string | null>(null)
 
   const load = async () => {
-    const [t, a] = await Promise.all([fetchMyTrades(), fetchMyAllocations()])
+    const [t, a, p] = await Promise.all([fetchMyTrades(), fetchMyAllocations(), fetchPositions()])
     t.sort((x, y) => y.date.localeCompare(x.date) || x.symbol.localeCompare(y.symbol))
     setTrades(t)
     setAllocs(a)
+    setPositions(p)
+  }
+
+  const toggleDesignation = (pos: Position) => {
+    setBusySym(pos.symbol)
+    setErr(null)
+    setSymbolDesignation(pos.symbol, !pos.isFamily)
+      .then(load)
+      .catch((e: unknown) => setErr(e instanceof Error ? e.message : String(e)))
+      .finally(() => setBusySym(null))
   }
   useEffect(() => {
     void load().catch((e: unknown) => setErr(e instanceof Error ? e.message : String(e)))
@@ -883,6 +898,61 @@ function TradesLedger({ accounts }: { accounts: AccountPortfolio[] | null }) {
         </div>
         <SetPriceForm symbols={[...new Set(trades.map((t) => t.symbol))].sort()} />
       </article>
+
+      {positions.length > 0 && (
+        <article className="card" style={{ display: 'grid', gap: '0.45rem' }}>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.6rem', flexWrap: 'wrap' }}>
+            <strong>Positions</strong>
+            <span className="muted" style={{ fontSize: '0.78rem' }}>
+              Family positions are split across the fund’s accounts; personal ones stay yours.
+            </span>
+          </div>
+          {positions.map((p) => (
+            <div
+              key={p.symbol}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.6rem',
+                flexWrap: 'wrap',
+                padding: '0.35rem 0.5rem',
+                background: 'var(--b1,rgba(127,127,127,0.06))',
+                borderRadius: 8,
+              }}
+            >
+              <span style={{ fontWeight: 700, minWidth: '3.5rem' }}>{p.symbol}</span>
+              {p.assetType && (
+                <span className="muted" style={{ fontSize: '0.72rem' }}>
+                  {p.assetType}
+                </span>
+              )}
+              <span className="muted cz-num" style={{ fontSize: '0.76rem' }}>
+                {p.trades} trade{p.trades === 1 ? '' : 's'} · {usd(p.dollars)}
+              </span>
+              <button
+                className="btn btn-ghost"
+                onClick={() => toggleDesignation(p)}
+                disabled={busySym !== null}
+                aria-pressed={p.isFamily}
+                title={
+                  p.isFamily
+                    ? 'Allocated to the family fund — click to make personal'
+                    : 'Yours — click to allocate to the family fund'
+                }
+                style={{
+                  marginLeft: 'auto',
+                  fontSize: '0.74rem',
+                  padding: '0.18rem 0.6rem',
+                  color: p.isFamily ? '#22cc78' : 'inherit',
+                  borderColor: p.isFamily ? 'rgba(34,204,120,0.5)' : undefined,
+                }}
+              >
+                {busySym === p.symbol ? '…' : p.isFamily ? '👨‍👩‍👧 Family fund' : '🔒 Personal'}
+              </button>
+            </div>
+          ))}
+        </article>
+      )}
 
       <article className="card" style={{ display: 'grid', gap: '0.4rem' }}>
         {trades.length === 0 && (
