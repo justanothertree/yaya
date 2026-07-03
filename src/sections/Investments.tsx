@@ -10,6 +10,7 @@ import {
   adminCreateAccount,
   adminUpdateAccount,
   adminDeleteAccount,
+  adminReassignAccount,
   adminEnableFinance,
   accountTotalCost,
   promisedToDate,
@@ -424,6 +425,11 @@ function AccountForm({
     try {
       if (isEdit) {
         await adminUpdateAccount(account.id, name, Number(dpd) || 0, start || null)
+        // owner changed → hand the account (holdings and all) to the new member
+        if (ownerUid && ownerUid !== (account.ownerUserId ?? '')) {
+          await adminReassignAccount(account.id, ownerUid)
+          await adminEnableFinance(ownerUid).catch(() => {})
+        }
       } else {
         await adminCreateAccount(ownerUid, name, Number(dpd) || 0, start || null)
         // creating a member's fund account should let them see it — best-effort, since the
@@ -472,21 +478,19 @@ function AccountForm({
           gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
         }}
       >
-        {!isEdit && (
-          <label style={{ display: 'grid', gap: 4 }}>
-            <span className="muted" style={{ fontSize: '0.78rem' }}>
-              Member
-            </span>
-            <select value={ownerUid} onChange={(e) => setOwnerUid(e.target.value)} style={field}>
-              {members.map((m) => (
-                <option key={m.userId} value={m.userId}>
-                  {m.displayName || (m.username ? '@' + m.username : m.userId.slice(0, 8))}
-                  {m.role ? ` · ${m.role}` : ''}
-                </option>
-              ))}
-            </select>
-          </label>
-        )}
+        <label style={{ display: 'grid', gap: 4 }}>
+          <span className="muted" style={{ fontSize: '0.78rem' }}>
+            Member{isEdit ? ' (change to hand this account over)' : ''}
+          </span>
+          <select value={ownerUid} onChange={(e) => setOwnerUid(e.target.value)} style={field}>
+            {members.map((m) => (
+              <option key={m.userId} value={m.userId}>
+                {m.displayName || (m.username ? '@' + m.username : m.userId.slice(0, 8))}
+                {m.role ? ` · ${m.role}` : ''}
+              </option>
+            ))}
+          </select>
+        </label>
         <label style={{ display: 'grid', gap: 4 }}>
           <span className="muted" style={{ fontSize: '0.78rem' }}>
             Account name

@@ -126,6 +126,16 @@ export async function adminDeleteAccount(accountId: string): Promise<void> {
   if (error) throw error
 }
 
+/** Hand an account (with all its holdings/history) to a different member — the
+ *  test-slot → real-family transition. */
+export async function adminReassignAccount(accountId: string, newOwnerUid: string): Promise<void> {
+  const { error } = await getSupabaseClient().rpc('admin_reassign_family_account', {
+    p_account: accountId,
+    p_new_owner: newOwnerUid,
+  })
+  if (error) throw error
+}
+
 /** Turn on a member's Investments access. Done automatically when an account is created for them
  *  so "add their account to the fund" also lets them see it. */
 export async function adminEnableFinance(userId: string): Promise<void> {
