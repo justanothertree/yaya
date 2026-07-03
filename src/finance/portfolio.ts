@@ -203,6 +203,40 @@ export async function fetchMyAllocations(): Promise<AllocationRow[]> {
   }))
 }
 
+// ── Positions: family vs personal designation ──────────────────────────────
+export type Position = {
+  symbol: string
+  assetType: string | null
+  units: number
+  dollars: number
+  trades: number
+  isFamily: boolean
+}
+
+/** Admin: every symbol you hold, with totals and its family/personal designation. */
+export async function fetchPositions(): Promise<Position[]> {
+  const { data, error } = await getSupabaseClient().rpc('admin_list_positions')
+  if (error) throw error
+  return ((data as Array<Record<string, unknown>> | null) ?? []).map((p) => ({
+    symbol: String(p.symbol ?? ''),
+    assetType: (p.assetType as string | null) ?? null,
+    units: Number(p.units ?? 0),
+    dollars: Number(p.dollars ?? 0),
+    trades: Number(p.trades ?? 0),
+    isFamily: p.isFamily !== false,
+  }))
+}
+
+/** Flip a symbol family/personal — allocations re-sync to match (family = split across
+ *  the fund's accounts; personal = released back to you). */
+export async function setSymbolDesignation(symbol: string, family: boolean): Promise<void> {
+  const { error } = await getSupabaseClient().rpc('admin_set_symbol_designation', {
+    p_symbol: symbol,
+    p_family: family,
+  })
+  if (error) throw error
+}
+
 /** Assign units of one trade to one account (manual allocation — e.g. a single share). */
 export async function assignAllocation(
   accountId: string,
