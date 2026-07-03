@@ -29,6 +29,13 @@ import {
   type AllocationRow,
 } from '../finance/portfolio'
 import { DEMO_PORTFOLIO } from '../finance/demoPortfolio'
+import {
+  fetchMyTimeline,
+  fetchFundTimeline,
+  demoTimeline,
+  type Timeline,
+} from '../finance/timeline'
+import { PortfolioChart } from './PortfolioChart'
 
 export function Investments({ demo = false }: { demo?: boolean }) {
   const [mine, setMine] = useState<AccountPortfolio[] | null>(null)
@@ -37,6 +44,8 @@ export function Investments({ demo = false }: { demo?: boolean }) {
   const [isAdmin, setIsAdmin] = useState(false)
   const [mode, setMode] = useState<'mine' | 'all' | 'trades'>('mine')
   const [error, setError] = useState<string | null>(null)
+  const [tl, setTl] = useState<Timeline | null>(null)
+  const [tlAll, setTlAll] = useState<Timeline | null>(null)
 
   const reloadAll = async () => {
     setAll(await fetchAllPortfolios())
@@ -45,6 +54,7 @@ export function Investments({ demo = false }: { demo?: boolean }) {
   useEffect(() => {
     if (demo) {
       setMine(DEMO_PORTFOLIO)
+      setTl(demoTimeline())
       return
     }
     let alive = true
@@ -54,12 +64,21 @@ export function Investments({ demo = false }: { demo?: boolean }) {
         if (!alive) return
         setMine(m)
         setIsAdmin(admin)
+        // the chart is a bonus — never block the page on it
+        fetchMyTimeline().then(
+          (t) => alive && setTl(t),
+          () => undefined,
+        )
         if (admin) {
           const [a, mem] = await Promise.all([fetchAllPortfolios(), fetchMembers()])
           if (alive) {
             setAll(a)
             setMembers(mem)
           }
+          fetchFundTimeline().then(
+            (t) => alive && setTlAll(t),
+            () => undefined,
+          )
         }
       } catch (e: unknown) {
         if (alive) setError(e instanceof Error ? e.message : String(e))
@@ -143,6 +162,9 @@ export function Investments({ demo = false }: { demo?: boolean }) {
       {mode === 'mine' ? (
         <>
           {mine && mine.length > 0 && <ScheduleSummary accounts={mine} />}
+          {tl && tl.events.length > 0 && (
+            <PortfolioChart timeline={tl} title="Your fund over time" />
+          )}
           <PortfolioList accounts={mine} own />
         </>
       ) : mode === 'trades' ? (
@@ -150,6 +172,9 @@ export function Investments({ demo = false }: { demo?: boolean }) {
       ) : (
         <>
           {all && all.length > 0 && <ScheduleSummary accounts={all} />}
+          {tlAll && tlAll.events.length > 0 && (
+            <PortfolioChart timeline={tlAll} title="Whole fund over time" />
+          )}
           <AllAccounts accounts={all} members={members} onChanged={reloadAll} />
         </>
       )}
