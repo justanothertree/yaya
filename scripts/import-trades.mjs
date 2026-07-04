@@ -97,7 +97,14 @@ function makeTrade(t, externalId) {
 // Shared per-file bookkeeping: skip counts, one raw sample row per skip reason (for
 // diagnosing formats we haven't seen), and in-window sells (warned about, not imported).
 function makeStats() {
-  return { trades: [], skips: {}, samples: {}, sells: { count: 0, dollars: 0 }, dataRows: 0 }
+  return {
+    trades: [],
+    skips: {},
+    samples: {},
+    sells: { count: 0, dollars: 0 },
+    adjustments: 0,
+    dataRows: 0,
+  }
 }
 function skip(stats, reason, row) {
   stats.skips[reason] = (stats.skips[reason] || 0) + 1
@@ -138,13 +145,38 @@ function fromRobinhood(rows, since) {
       }))
       continue
     }
+    // splits + symbol changes: unit-only adjustment pairs — "30S" = shares removed,
+    // plain "1" = shares added (e.g. QNCX 30-for-1 reverse split, CCIV→LCID conversion)
+    if (code === 'SPR' || code === 'SXCH') {
+      const qRaw = (row[at('Quantity')] || '').trim()
+      const m = symbol ? qRaw.match(/^([\d.]+)(S?)$/i) : null
+      const qty = m ? num(m[1]) : 0
+      if (qty > 0) {
+        s.adjustments++
+        s.trades.push(makeTrade({
+          platform: 'robinhood',
+          date,
+          symbol,
+          assetType: 'stock',
+          units: m[2] ? -qty : qty,
+          price: 0,
+          dollars: 0,
+          fee: 0,
+          reinvestment: false,
+          note:
+            (row[at('Description')] || '').replace(/\s+/g, ' ').trim() +
+            (code === 'SPR' ? ' [stock split]' : ' [symbol change]'),
+        }))
+      } else {
+        skip(s, code === 'SPR' ? 'stock split (unparsed)' : 'symbol change (unparsed)', row)
+      }
+      continue
+    }
     if (code !== 'Buy' || !symbol || units <= 0) {
       const reason =
         ['OEXP', 'BTO', 'STO', 'STC', 'BTC', 'OASGN', 'OCA'].includes(code) ? 'option'
         : code === 'CDIV' ? 'cash dividend'
         : code === 'ACH' ? 'deposit'
-        : code === 'SPR' ? 'stock split (heads up — affects share counts)'
-        : code === 'SXCH' ? 'symbol change (heads up)'
         : code || 'other'
       skip(s, reason, row)
       continue
@@ -188,6 +220,11 @@ function fromCashApp(rows, since) {
     }
     const type = (row[at('Transaction Type')] || '').trim()
     const note = (row[at('Notes')] || '').trim()
+    // "Stock Dividends" rows are DRIPs only when reinvested; "Dividend from X" is cash
+    if (/stock dividends/i.test(type) && !/reinvested/i.test(note)) {
+      skip(s, 'cash dividend', row)
+      continue
+    }
     const isBitcoin = /bitcoin|btc/i.test(type) || /\bBTC\b/.test((row[at('Asset Type')] || ''))
     const symbol = (row[at('Asset Type')] || '').trim() || (isBitcoin ? 'BTC' : '')
 
@@ -301,6 +338,9 @@ function parseFile(file) {
   console.log(`Kept           : ${unique.length} buys+sells${s.trades.length - unique.length ? ` (after removing ${s.trades.length - unique.length} in-file dupes)` : ''}${reinv ? `, incl ${reinv} dividend reinvestments` : ''}`)
   if (s.sells.count > 0) {
     console.log(`Sells          : ${s.sells.count} (−$${s.sells.dollars.toFixed(2)}) — netted against buys`)
+  }
+  if (s.adjustments > 0) {
+    console.log(`Adjustments    : ${s.adjustments} split/symbol-change unit corrections`)
   }
   console.log(`Skipped        : ${skippedTotal}`)
   for (const [k, v] of Object.entries(s.skips).sort((a, b) => b[1] - a[1])) console.log(`   - ${k}: ${v}`)
