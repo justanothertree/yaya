@@ -167,6 +167,12 @@ function fromRobinhood(rows, since) {
 }
 
 // ── Cash App: Date, Transaction Type, Amount, Fee, Asset Type, Asset Price, Asset Amount, Notes
+// Format quirks seen in real exports (2020→2026):
+//   - stock SELLS have an EMPTY Transaction Type; only the note says "$X Sale of <Company>"
+//   - old bitcoin rows put the quantity in the note ("purchase of BTC 0.00244915") with the
+//     Asset Amount column empty, and carry the total in Net Amount
+//   - "Stock Dividends" rows are DRIPs that acquire shares (units + price present)
+//   - stock rows have no Transaction ID, so dedupe keys use the full timestamp instead
 function fromCashApp(rows, since) {
   const at = headerLookup(rows[0])
   const s = makeStats()
@@ -174,49 +180,67 @@ function fromCashApp(rows, since) {
     const row = rows[r]
     if (!row || row.every((c) => c.trim() === '')) continue
     s.dataRows++
-    const date = toISODate(row[at('Date')], 'cashapp')
+    const rawTs = (row[at('Date')] || '').trim()
+    const date = toISODate(rawTs, 'cashapp')
     if (since && date && date < since) {
       s.skips[`before ${since}`] = (s.skips[`before ${since}`] || 0) + 1
       continue
     }
     const type = (row[at('Transaction Type')] || '').trim()
-    const isBitcoin = /bitcoin|btc/i.test(type)
-    // bitcoin rows sometimes leave Asset Type blank — the asset is bitcoin itself
+    const note = (row[at('Notes')] || '').trim()
+    const isBitcoin = /bitcoin|btc/i.test(type) || /\bBTC\b/.test((row[at('Asset Type')] || ''))
     const symbol = (row[at('Asset Type')] || '').trim() || (isBitcoin ? 'BTC' : '')
-    const units = num(row[at('Asset Amount')])
-    if (/sell/i.test(type) && symbol && units > 0) {
-      s.sells.count++
-      s.sells.dollars += Math.abs(money(row[at('Amount')]))
-      s.trades.push(makeTrade({
-        platform: 'cashapp',
-        date,
-        symbol,
-        assetType: isBitcoin || symbol.toUpperCase() === 'BTC' ? 'crypto' : 'stock',
-        units: -units,
-        price: money(row[at('Asset Price')]),
-        dollars: -Math.abs(money(row[at('Amount')])),
-        fee: Math.abs(money(row[at('Fee')])),
-        reinvestment: false,
-        note: (row[at('Notes')] || '').trim(),
-      }, (row[at('Transaction ID')] || '').trim() || undefined))
+
+    // classify: labeled buys/sells/DRIPs, or unlabeled rows identified by their note
+    const kind =
+      /sell/i.test(type) ? 'sell'
+      : /buy/i.test(type) ? 'buy'
+      : /stock dividends/i.test(type) ? 'buy'
+      : !type && /sale of/i.test(note) ? 'sell'
+      : !type && /purchase of/i.test(note) ? 'buy'
+      : null
+    if (!kind || !symbol) {
+      skip(s, type.toLowerCase() || 'unlabeled', row)
       continue
     }
-    if (!/buy/i.test(type) || !symbol || units <= 0) {
-      skip(s, type.toLowerCase() || 'other', row)
+
+    // units: the Asset Amount column, else the note ("… BTC 0.00244915")
+    let units = num(row[at('Asset Amount')])
+    if (units <= 0) {
+      const m = note.match(/\b(?:BTC|of)\s+([\d.]+)\s*$/i)
+      if (m) units = num(m[1])
+    }
+    // dollars: Net Amount when present (old bitcoin rows), else Amount
+    const net = Math.abs(money(row[at('Net Amount')]))
+    const dollars = net > 0 ? net : Math.abs(money(row[at('Amount')]))
+    let price = money(row[at('Asset Price')])
+    if (price <= 0 && units > 0) price = dollars / units
+    if (units <= 0 || dollars <= 0 || price <= 0) {
+      skip(s, `unparsed ${kind}`, row)
       continue
+    }
+
+    // stock rows carry no Transaction ID — the full timestamp keeps two identical
+    // same-day purchases distinct instead of collapsing them as duplicates
+    const externalId =
+      (row[at('Transaction ID')] || '').trim() || `${rawTs}|${symbol}|${units}|${dollars}`
+    const sell = kind === 'sell'
+    if (sell) {
+      s.sells.count++
+      s.sells.dollars += dollars
     }
     s.trades.push(makeTrade({
       platform: 'cashapp',
       date,
       symbol,
       assetType: isBitcoin || symbol.toUpperCase() === 'BTC' ? 'crypto' : 'stock',
-      units,
-      price: money(row[at('Asset Price')]),
-      dollars: Math.abs(money(row[at('Amount')])),
+      units: sell ? -units : units,
+      price,
+      dollars: sell ? -dollars : dollars,
       fee: Math.abs(money(row[at('Fee')])),
-      reinvestment: false,
-      note: (row[at('Notes')] || '').trim(),
-    }, (row[at('Transaction ID')] || '').trim() || undefined))
+      reinvestment: /dividend reinvested/i.test(note) || /stock dividends/i.test(type),
+      note,
+    }, externalId))
   }
   return s
 }
