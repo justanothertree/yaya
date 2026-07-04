@@ -145,9 +145,10 @@ function fromRobinhood(rows, since) {
       }))
       continue
     }
-    // splits + symbol changes: unit-only adjustment pairs — "30S" = shares removed,
-    // plain "1" = shares added (e.g. QNCX 30-for-1 reverse split, CCIV→LCID conversion)
-    if (code === 'SPR' || code === 'SXCH') {
+    // unit-only share events (no cash): SPR/SXCH splits & symbol changes arrive as pairs —
+    // "30S" = shares removed, plain "1" = shares added (QNCX 30-for-1 reverse split,
+    // CCIV→LCID conversion); SDIV = a dividend paid in shares (always additive).
+    if (code === 'SPR' || code === 'SXCH' || code === 'SDIV') {
       const qRaw = (row[at('Quantity')] || '').trim()
       const m = symbol ? qRaw.match(/^([\d.]+)(S?)$/i) : null
       const qty = m ? num(m[1]) : 0
@@ -162,13 +163,13 @@ function fromRobinhood(rows, since) {
           price: 0,
           dollars: 0,
           fee: 0,
-          reinvestment: false,
+          reinvestment: code === 'SDIV',
           note:
             (row[at('Description')] || '').replace(/\s+/g, ' ').trim() +
-            (code === 'SPR' ? ' [stock split]' : ' [symbol change]'),
+            (code === 'SPR' ? ' [stock split]' : code === 'SDIV' ? ' [share dividend]' : ' [symbol change]'),
         }))
       } else {
-        skip(s, code === 'SPR' ? 'stock split (unparsed)' : 'symbol change (unparsed)', row)
+        skip(s, `${code} (unparsed)`, row)
       }
       continue
     }

@@ -905,6 +905,9 @@ function TradesLedger({ accounts }: { accounts: AccountPortfolio[] | null }) {
   }
 
   const fmtU = (n: number) => n.toLocaleString(undefined, { maximumFractionDigits: 6 })
+  const portfolioValue = positions.reduce((sum, p) => sum + (p.value ?? 0), 0)
+  const pricedCount = positions.filter((p) => p.value != null).length
+  const familyCount = positions.filter((p) => p.isFamily).length
 
   return (
     <>
@@ -920,11 +923,19 @@ function TradesLedger({ accounts }: { accounts: AccountPortfolio[] | null }) {
       {positions.length > 0 && (
         <article className="card" style={{ display: 'grid', gap: '0.45rem' }}>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.6rem', flexWrap: 'wrap' }}>
-            <strong>Positions</strong>
-            <span className="muted" style={{ fontSize: '0.78rem' }}>
-              Family positions are split across the fund’s accounts; personal ones stay yours.
+            <strong>Your portfolio</strong>
+            <span className="cz-num" style={{ fontWeight: 800, fontSize: '1.15rem' }}>
+              {usd(portfolioValue)}
+            </span>
+            <span className="muted" style={{ fontSize: '0.74rem' }}>
+              {positions.length} symbols · {pricedCount} priced · {familyCount} marked family
             </span>
           </div>
+          <p className="muted" style={{ margin: 0, fontSize: '0.76rem' }}>
+            Your whole synced portfolio (both brokers). Mark a symbol <strong>👨‍👩‍👧 Family</strong> to
+            split it across the fund’s accounts — everything else stays personal. Wrong count after
+            a split the export missed? Use ✏️ to set the true units.
+          </p>
           {positions.map((p) => (
             <div
               key={p.symbol}
