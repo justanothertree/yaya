@@ -26,6 +26,7 @@ import {
   adminSetPrice,
   fetchPositions,
   setSymbolDesignation,
+  correctPosition,
   type AccountPortfolio,
   type Member,
   type Trade,
@@ -837,6 +838,8 @@ function TradesLedger({ accounts }: { accounts: AccountPortfolio[] | null }) {
   const [positions, setPositions] = useState<Position[]>([])
   const [open, setOpen] = useState<string | null>(null)
   const [busySym, setBusySym] = useState<string | null>(null)
+  const [fixFor, setFixFor] = useState<string | null>(null)
+  const [fixVal, setFixVal] = useState('')
   const [err, setErr] = useState<string | null>(null)
 
   const load = async () => {
@@ -852,6 +855,21 @@ function TradesLedger({ accounts }: { accounts: AccountPortfolio[] | null }) {
     setErr(null)
     setSymbolDesignation(pos.symbol, !pos.isFamily)
       .then(load)
+      .catch((e: unknown) => setErr(e instanceof Error ? e.message : String(e)))
+      .finally(() => setBusySym(null))
+  }
+
+  const saveCorrection = (symbol: string) => {
+    const v = parseFloat(fixVal)
+    if (!Number.isFinite(v) || v < 0) return
+    setBusySym(symbol)
+    setErr(null)
+    correctPosition(symbol, v)
+      .then(() => {
+        setFixFor(null)
+        setFixVal('')
+        return load()
+      })
       .catch((e: unknown) => setErr(e instanceof Error ? e.message : String(e)))
       .finally(() => setBusySym(null))
   }
@@ -936,6 +954,44 @@ function TradesLedger({ accounts }: { accounts: AccountPortfolio[] | null }) {
                   title="More sold than bought in the data — often a stock split or pre-history buys"
                 >
                   oversold?
+                </span>
+              )}
+              <button
+                className="btn btn-ghost"
+                onClick={() => {
+                  setFixFor((cur) => (cur === p.symbol ? null : p.symbol))
+                  setFixVal(String(Math.max(0, p.units)))
+                }}
+                disabled={busySym !== null}
+                title="The export missed something (e.g. a split)? Enter the true units you hold."
+                style={{ fontSize: '0.72rem', padding: '0.15rem 0.45rem' }}
+                aria-expanded={fixFor === p.symbol}
+              >
+                {fixFor === p.symbol ? '✕' : '✏️'}
+              </button>
+              {fixFor === p.symbol && (
+                <span style={{ display: 'inline-flex', gap: '0.35rem', alignItems: 'center' }}>
+                  <input
+                    type="number"
+                    min="0"
+                    step="any"
+                    value={fixVal}
+                    onChange={(e) => setFixVal(e.target.value)}
+                    placeholder="true units"
+                    autoFocus
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') saveCorrection(p.symbol)
+                    }}
+                    style={{ padding: '0.2rem 0.4rem', width: '8rem' }}
+                  />
+                  <button
+                    className="btn"
+                    onClick={() => saveCorrection(p.symbol)}
+                    disabled={busySym !== null || !Number.isFinite(parseFloat(fixVal))}
+                    style={{ fontSize: '0.72rem', padding: '0.15rem 0.5rem' }}
+                  >
+                    Set
+                  </button>
                 </span>
               )}
               <button

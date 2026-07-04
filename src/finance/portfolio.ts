@@ -244,6 +244,16 @@ export async function setSymbolDesignation(symbol: string, family: boolean): Pro
   if (error) throw error
 }
 
+/** Assert a symbol's TRUE current units (exports miss some events — Cash App has no split
+ *  rows at all). The delta lands as a zero-dollar manual adjustment. */
+export async function correctPosition(symbol: string, trueUnits: number): Promise<void> {
+  const { error } = await getSupabaseClient().rpc('admin_correct_position', {
+    p_symbol: symbol,
+    p_true_units: trueUnits,
+  })
+  if (error) throw error
+}
+
 /** Assign units of one trade to one account (manual allocation — e.g. a single share). */
 export async function assignAllocation(
   accountId: string,
