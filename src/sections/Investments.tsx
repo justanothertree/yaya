@@ -1001,10 +1001,16 @@ function TradesLedger({ accounts }: { accounts: AccountPortfolio[] | null }) {
               >
                 <span style={{ opacity: 0.6, fontSize: '0.8rem' }}>{isOpen ? '▾' : '▸'}</span>
                 <span style={{ fontWeight: 700, minWidth: '3.5rem' }}>{t.symbol}</span>
-                {isSell && (
-                  <span style={{ fontSize: '0.68rem', color: '#f46b6b', fontWeight: 700 }}>
-                    SELL
+                {t.dollars === 0 ? (
+                  <span className="muted" style={{ fontSize: '0.68rem', fontWeight: 700 }}>
+                    SPLIT/ADJ
                   </span>
+                ) : (
+                  isSell && (
+                    <span style={{ fontSize: '0.68rem', color: '#f46b6b', fontWeight: 700 }}>
+                      SELL
+                    </span>
+                  )
                 )}
                 <span className="muted cz-num" style={{ fontSize: '0.78rem' }}>
                   {t.date}
