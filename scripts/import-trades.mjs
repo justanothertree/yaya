@@ -101,7 +101,8 @@ function makeStats() {
 }
 function skip(stats, reason, row) {
   stats.skips[reason] = (stats.skips[reason] || 0) + 1
-  if (!stats.samples[reason]) stats.samples[reason] = row.join(' | ').slice(0, 220)
+  const list = (stats.samples[reason] ||= [])
+  if (list.length < 3) list.push(row.join(' | ').slice(0, 220))
 }
 
 // ── Robinhood: Activity Date, Instrument, Description, Trans Code, Quantity, Price, Amount
@@ -220,100 +221,93 @@ function fromCashApp(rows, since) {
   return s
 }
 
-// ── main ───────────────────────────────────────────────────────────────────
+// ── main: the sync ──────────────────────────────────────────────────────────
+// One command, now and forever: download fresh exports, run with --commit, done.
+// Full history by default (dedupe makes re-runs safe); family/personal is decided
+// by the position toggles on the site, not by import flags.
 const args = process.argv.slice(2)
-const file = args.find((a) => !a.startsWith('--'))
-if (!file) {
+const files = args.filter((a, i) => !a.startsWith('--') && args[i - 1] !== '--source' && args[i - 1] !== '--since')
+if (files.length === 0) {
   console.error(
-    'usage: node scripts/import-trades.mjs <export.csv> [--source robinhood|cashapp] [--since YYYY-MM-DD]',
+    'usage: node scripts/import-trades.mjs <export.csv> [more.csv…] [--commit] [--since YYYY-MM-DD]',
   )
   process.exit(1)
 }
-let source = (args.includes('--source') ? args[args.indexOf('--source') + 1] : '').toLowerCase()
-// Only import trades on/after this date. Full exports go back years — for the family fund
-// you almost always want --since 2025-12-01 (the dollar-a-day start).
+const forcedSource = (args.includes('--source') ? args[args.indexOf('--source') + 1] : '').toLowerCase()
+// Optional: only trades on/after this date (rarely needed — the sync imports everything).
 const since = args.includes('--since') ? args[args.indexOf('--since') + 1] : null
 if (since && !/^\d{4}-\d{2}-\d{2}$/.test(since)) {
   console.error('--since must be YYYY-MM-DD')
   process.exit(1)
 }
+const committing = args.includes('--commit')
 
-const rows = parseCSV(readFileSync(file, 'utf8'))
-if (!source) {
-  const header = rows[0].map((h) => h.trim().toLowerCase()).join(',')
-  source = header.includes('activity date') ? 'robinhood'
-    : header.includes('transaction type') ? 'cashapp' : ''
+function parseFile(file) {
+  const rows = parseCSV(readFileSync(file, 'utf8'))
+  let source = forcedSource
+  if (!source) {
+    const header = rows[0].map((h) => h.trim().toLowerCase()).join(',')
+    source = header.includes('activity date') ? 'robinhood'
+      : header.includes('transaction type') ? 'cashapp' : ''
+  }
+  if (source !== 'robinhood' && source !== 'cashapp') {
+    console.error(`Could not detect source for ${file} — pass --source robinhood|cashapp`)
+    process.exit(1)
+  }
+  const s = source === 'robinhood' ? fromRobinhood(rows, since) : fromCashApp(rows, since)
+
+  // de-dupe within the file
+  const seenKeys = new Set()
+  const unique = []
+  for (const t of s.trades) {
+    if (seenKeys.has(t.importKey)) continue
+    seenKeys.add(t.importKey)
+    unique.push(t)
+  }
+
+  const total = unique.reduce((acc, t) => acc + t.dollars, 0)
+  const reinv = unique.filter((t) => t.reinvestment).length
+  const skippedTotal = Object.values(s.skips).reduce((acc, n) => acc + n, 0)
+  const dates = unique.map((t) => t.date).filter(Boolean).sort()
+  const bySymbol = {}
+  for (const t of unique) bySymbol[t.symbol] = (bySymbol[t.symbol] || 0) + t.dollars
+
+  console.log(`\n=== ${source} — ${file}${committing ? '' : ' (DRY RUN)'} ===`)
+  console.log(`Rows in file   : ${s.dataRows}${since ? `   (only ${since} and later)` : ''}`)
+  console.log(`Kept           : ${unique.length} buys+sells${s.trades.length - unique.length ? ` (after removing ${s.trades.length - unique.length} in-file dupes)` : ''}${reinv ? `, incl ${reinv} dividend reinvestments` : ''}`)
+  if (s.sells.count > 0) {
+    console.log(`Sells          : ${s.sells.count} (−$${s.sells.dollars.toFixed(2)}) — netted against buys`)
+  }
+  console.log(`Skipped        : ${skippedTotal}`)
+  for (const [k, v] of Object.entries(s.skips).sort((a, b) => b[1] - a[1])) console.log(`   - ${k}: ${v}`)
+  console.log(`Net invested   : $${total.toFixed(2)} (buys minus sells)`)
+  console.log(`Date range     : ${dates[0] || '—'} → ${dates[dates.length - 1] || '—'}`)
+  console.log(`Symbols        : ${Object.keys(bySymbol).length}`)
+  if (Object.keys(s.samples).length) {
+    console.log('Raw examples per skipped kind (spot-check that nothing real is skipped):')
+    for (const [k, list] of Object.entries(s.samples)) {
+      console.log(`   [${k}]`)
+      for (const line of list) console.log(`      ${line}`)
+    }
+  }
+
+  const out = file.replace(/\.csv$/i, '') + '.parsed.json'
+  writeFileSync(out, JSON.stringify(unique, null, 2))
+  console.log(`Wrote ${unique.length} normalized trades → ${out}`)
+  return unique
 }
-if (source !== 'robinhood' && source !== 'cashapp') {
-  console.error('Could not detect source — pass --source robinhood|cashapp')
-  process.exit(1)
-}
 
-const { trades, skips, samples, sells, dataRows } =
-  source === 'robinhood' ? fromRobinhood(rows, since) : fromCashApp(rows, since)
+const parsed = files.map(parseFile)
 
-// de-dupe within the file
-const seen = new Set()
-const unique = []
-for (const t of trades) {
-  if (seen.has(t.importKey)) continue
-  seen.add(t.importKey)
-  unique.push(t)
-}
-
-const total = unique.reduce((s, t) => s + t.dollars, 0)
-const reinv = unique.filter((t) => t.reinvestment).length
-const skippedTotal = Object.values(skips).reduce((s, n) => s + n, 0)
-const dates = unique.map((t) => t.date).filter(Boolean).sort()
-const bySymbol = {}
-for (const t of unique) bySymbol[t.symbol] = (bySymbol[t.symbol] || 0) + t.dollars
-
-console.log('\n=== Trade import (DRY RUN) ===')
-console.log(`Source         : ${source}`)
-console.log(`Since          : ${since || 'ALL HISTORY — for the family fund use --since 2025-12-01'}`)
-console.log(`Rows in file   : ${dataRows}`)
-console.log(`Kept           : ${unique.length} buys+sells${trades.length - unique.length ? ` (after removing ${trades.length - unique.length} in-file dupes)` : ''}${reinv ? `, incl ${reinv} dividend reinvestments` : ''}`)
-console.log(`Skipped        : ${skippedTotal}`)
-for (const [k, v] of Object.entries(skips).sort((a, b) => b[1] - a[1])) console.log(`   - ${k}: ${v}`)
-if (sells.count > 0) {
-  console.log(
-    `Sells          : ${sells.count} imported as negative trades (−$${sells.dollars.toFixed(2)}) — positions and invested are netted.`,
-  )
-}
-console.log(`Net invested   : $${total.toFixed(2)} (buys minus sells)`)
-console.log(`Date range     : ${dates[0] || '—'} → ${dates[dates.length - 1] || '—'}`)
-console.log(`Symbols (${Object.keys(bySymbol).length}):`)
-for (const [s, d] of Object.entries(bySymbol).sort((a, b) => b[1] - a[1])) {
-  console.log(`   ${s.padEnd(6)} $${d.toFixed(2)}`)
-}
-if (Object.keys(samples).length) {
-  console.log('\nOne raw example per skipped kind (for spot-checking the filter):')
-  for (const [k, v] of Object.entries(samples)) console.log(`   [${k}]\n      ${v}`)
-}
-
-const out = file.replace(/\.csv$/i, '') + '.parsed.json'
-writeFileSync(out, JSON.stringify(unique, null, 2))
-console.log(`\nWrote ${unique.length} normalized trades → ${out}`)
-
-if (!args.includes('--commit')) {
-  console.log('DRY RUN — nothing written to the database. Re-run with --commit to import.\n')
+if (!committing) {
+  console.log('\nDRY RUN — nothing written. Re-run with --commit to sync.\n')
   process.exit(0)
 }
 
-// Guardrail: a full-history export without --since once imported six years of gross buys
-// into the fund. Committing pre-fund data now requires saying so explicitly.
-if (!since && dates[0] && dates[0] < '2025-12-01' && !args.includes('--all-history')) {
-  console.error(
-    `\n⛔ Not committing: this export reaches back to ${dates[0]}, before the fund started.` +
-      '\n   For the family fund, add:      --since 2025-12-01' +
-      '\n   To really import everything:   --all-history\n',
-  )
-  process.exit(1)
-}
-
-// ── --commit: push into the database via the admin import RPC ────────────────
-// Runs against your project with YOUR service-role key, read from the environment
-// (never committed, never printed). Nothing here can run without that key.
+// ── commit: sync into the database via the admin RPCs ───────────────────────
+// Uses YOUR service-role key from the environment (never committed, never printed).
+// Idempotent: existing trades are skipped, existing allocations untouched, and
+// only symbols you haven't toggled to Personal get split across the fund.
 const url = process.env.SUPABASE_URL || 'https://lcpyatpktpkiybocyoij.supabase.co'
 const key = process.env.SUPABASE_SERVICE_ROLE_KEY
 const owner = process.env.FUND_OWNER_UID || 'e7f2eec5-f4cb-4b1b-bf94-09e4ec1751f7'
@@ -325,19 +319,24 @@ if (!key) {
 const { createClient } = await import('@supabase/supabase-js')
 const sb = createClient(url, key, { auth: { persistSession: false } })
 
-const { data: imp, error: impErr } = await sb.rpc('admin_import_trades', { p_user_id: owner, p_trades: unique })
-if (impErr) {
-  console.error('Import failed:', impErr.message)
-  process.exit(1)
-}
-console.log(`\nImported → inserted ${imp.inserted}, skipped ${imp.skipped} (already present) of ${imp.total}.`)
-
-if (args.includes('--allocate-even')) {
-  const { data: alloc, error: allocErr } = await sb.rpc('admin_even_split_trades', { p_user_id: owner })
-  if (allocErr) {
-    console.error('Allocation failed:', allocErr.message)
+for (let i = 0; i < files.length; i++) {
+  const { data: imp, error: impErr } = await sb.rpc('admin_import_trades', {
+    p_user_id: owner,
+    p_trades: parsed[i],
+  })
+  if (impErr) {
+    console.error(`Import failed for ${files[i]}:`, impErr.message)
     process.exit(1)
   }
-  console.log(`Even-split → ${alloc.tradesAllocated} trades across ${alloc.accounts} active family accounts (${alloc.allocationsCreated} allocations).`)
+  console.log(`\n${files[i]} → inserted ${imp.inserted}, already present ${imp.skipped} of ${imp.total}.`)
 }
-console.log('Done.\n')
+
+const { data: alloc, error: allocErr } = await sb.rpc('admin_even_split_trades', { p_user_id: owner })
+if (allocErr) {
+  console.error('Allocation failed:', allocErr.message)
+  process.exit(1)
+}
+console.log(
+  `Even-split → ${alloc.tradesAllocated} new trades across ${alloc.accounts} active accounts (${alloc.allocationsCreated} allocations; personal-toggled symbols skipped).`,
+)
+console.log('Synced.\n')
