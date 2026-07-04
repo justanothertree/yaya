@@ -1,8 +1,9 @@
 // Sweeps current prices for every symbol the family fund holds into finance.price_cache.
 // Crypto comes from CoinGecko (keyless). Stocks come from Finnhub when a FINNHUB_API_KEY
-// secret is set; until then they're skipped and can be entered manually (admin_set_price).
-// Invoked on a pg_cron schedule; all database access goes through service-role-gated RPCs
-// because PostgREST does not expose the finance schema directly.
+// secret is set. Finnhub free allows 60 calls/min, so each run prices at most 55 stocks;
+// list_fund_symbols returns stalest-first, so successive runs (or the daily cron) cycle
+// through the whole set. All database access goes through service-role-gated RPCs because
+// PostgREST does not expose the finance schema directly.
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 
 const COINGECKO_IDS: Record<string, string> = {
@@ -14,6 +15,8 @@ const COINGECKO_IDS: Record<string, string> = {
   XRP: 'ripple',
   LTC: 'litecoin',
 }
+
+const MAX_STOCKS_PER_RUN = 55
 
 type SymbolRow = { symbol: string; asset_type: string }
 type Price = { symbol: string; price: number }
@@ -35,7 +38,13 @@ Deno.serve(async () => {
   const rows = (data ?? []) as SymbolRow[]
 
   const prices: Price[] = []
-  const summary = { crypto: 0, stocks: 0, skipped: [] as string[], errors: [] as string[] }
+  const summary = {
+    crypto: 0,
+    stocks: 0,
+    deferred: 0,
+    skipped: [] as string[],
+    errors: [] as string[],
+  }
 
   // ── crypto via CoinGecko (no key) ──
   const cryptos = rows.filter((r) => r.asset_type === 'crypto')
@@ -64,13 +73,15 @@ Deno.serve(async () => {
     }
   }
 
-  // ── stocks via Finnhub (free key; skipped until the secret is set) ──
+  // ── stocks via Finnhub (free key; stalest-first, capped per run) ──
   const key = Deno.env.get('FINNHUB_API_KEY')
   const stocks = rows.filter((r) => r.asset_type !== 'crypto')
   if (!key) {
     for (const s of stocks) summary.skipped.push(s.symbol)
   } else {
-    for (const s of stocks) {
+    const batch = stocks.slice(0, MAX_STOCKS_PER_RUN)
+    summary.deferred = stocks.length - batch.length
+    for (const s of batch) {
       try {
         const res = await fetch(
           `https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(s.symbol)}&token=${key}`,
@@ -81,6 +92,9 @@ Deno.serve(async () => {
             prices.push({ symbol: s.symbol, price: q.c })
             summary.stocks++
           } else summary.skipped.push(s.symbol)
+        } else if (res.status === 429) {
+          summary.errors.push(`${s.symbol}: rate limited`)
+          break // let the next run pick these up
         } else summary.errors.push(`${s.symbol}: ${res.status}`)
       } catch (e) {
         summary.errors.push(`${s.symbol}: ${String(e)}`)
