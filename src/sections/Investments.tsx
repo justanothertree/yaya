@@ -12,7 +12,7 @@ import {
   adminDeleteAccount,
   adminReassignAccount,
   adminEnableFinance,
-  accountTotalCost,
+  accountReserved,
   promisedToDate,
   aheadBehind,
   portfolioTotals,
@@ -22,7 +22,6 @@ import {
   fetchMyTrades,
   fetchMyAllocations,
   assignAllocation,
-  accountMarket,
   adminSetPrice,
   fetchPositions,
   setSymbolDesignation,
@@ -358,7 +357,7 @@ function AllAccounts({
                   </span>
                 )}
                 <span className="cz-num" style={{ marginLeft: 'auto', fontWeight: 700 }}>
-                  {usd(accountTotalCost(a))}
+                  {usd(accountReserved(a))}
                 </span>
               </button>
               <button
@@ -602,11 +601,13 @@ function AccountForm({
 }
 
 function AccountCard({ account }: { account: AccountPortfolio }) {
-  const total = accountTotalCost(account)
+  const hVal = (h: AccountPortfolio['holdings'][number]) =>
+    h.price != null ? h.units * h.price : 0
+  const total = accountReserved(account)
   const promised = promisedToDate(account)
   const ab = aheadBehind(account)
-  const market = accountMarket(account)
-  const holdings = [...account.holdings].sort((x, y) => y.cost - x.cost)
+  const unpriced = account.holdings.filter((h) => h.price == null).length
+  const holdings = [...account.holdings].sort((x, y) => hVal(y) - hVal(x))
 
   return (
     <article className="card" style={{ display: 'grid', gap: '0.9rem' }}>
@@ -632,7 +633,7 @@ function AccountCard({ account }: { account: AccountPortfolio }) {
 
       {/* summary stats */}
       <div style={{ display: 'flex', gap: '1.6rem', flexWrap: 'wrap' }}>
-        <Stat label="Invested" value={usd(total)} big />
+        <Stat label="Reserved value" value={usd(total)} big />
         {promised != null && <Stat label="Promised to date" value={usd(promised)} />}
         {ab != null && (
           <Stat
@@ -641,22 +642,12 @@ function AccountCard({ account }: { account: AccountPortfolio }) {
             color={ab >= 0 ? '#22cc78' : '#f46b6b'}
           />
         )}
-        {market && (
-          <>
-            <Stat label="Value now" value={usd(market.value)} />
-            <Stat
-              label="Gain/loss"
-              value={`${market.gain >= 0 ? '+' : '−'}${usd(Math.abs(market.gain))}`}
-              color={market.gain >= 0 ? '#22cc78' : '#f46b6b'}
-            />
-          </>
-        )}
         <Stat label="Holdings" value={String(holdings.length)} />
       </div>
-      {market && market.unpriced > 0 && (
+      {unpriced > 0 && (
         <p className="muted" style={{ margin: 0, fontSize: '0.76rem' }}>
-          Value and gain/loss cover {market.priced} of {holdings.length} holdings — the rest
-          don&rsquo;t have a price yet.
+          Reserved value covers {holdings.length - unpriced} of {holdings.length} holdings — the
+          rest aren&rsquo;t priced yet.
         </p>
       )}
 
@@ -680,9 +671,9 @@ function AccountCard({ account }: { account: AccountPortfolio }) {
             {holdings.map((h) => (
               <span
                 key={h.symbol}
-                title={`${h.symbol}: ${usd(h.cost)}`}
+                title={`${h.symbol}: ${usd(hVal(h))}`}
                 style={{
-                  width: `${total > 0 ? (h.cost / total) * 100 : 0}%`,
+                  width: `${total > 0 ? (hVal(h) / total) * 100 : 0}%`,
                   background: assetColor(h.symbol),
                 }}
               />
@@ -692,8 +683,8 @@ function AccountCard({ account }: { account: AccountPortfolio }) {
           {/* holdings list */}
           <div style={{ display: 'grid', gap: '0.4rem' }}>
             {holdings.map((h) => {
-              const pct = total > 0 ? (h.cost / total) * 100 : 0
-              const gain = h.price == null ? null : h.units * h.price - h.cost
+              const val = hVal(h)
+              const pct = total > 0 ? (val / total) * 100 : 0
               return (
                 <div
                   key={h.symbol}
@@ -731,25 +722,10 @@ function AccountCard({ account }: { account: AccountPortfolio }) {
                   <span
                     className="cz-num"
                     style={{ width: '6rem', textAlign: 'right', fontWeight: 700 }}
+                    title="Current worth (units × price)"
                   >
-                    {usd(h.cost)}
+                    {h.price == null ? '—' : usd(val)}
                   </span>
-                  {gain != null && (
-                    <span
-                      className="cz-num"
-                      style={{
-                        width: '4.5rem',
-                        textAlign: 'right',
-                        fontSize: '0.78rem',
-                        fontWeight: 700,
-                        color: gain >= 0 ? '#22cc78' : '#f46b6b',
-                      }}
-                      title={`Worth ${usd(h.units * (h.price ?? 0))} now`}
-                    >
-                      {gain >= 0 ? '+' : '−'}
-                      {usd(Math.abs(gain))}
-                    </span>
-                  )}
                   <span
                     className="muted cz-num"
                     style={{ width: '3rem', textAlign: 'right', fontSize: '0.78rem' }}
@@ -804,7 +780,7 @@ function ScheduleSummary({ accounts }: { accounts: AccountPortfolio[] }) {
   return (
     <article className="card" style={{ display: 'grid', gap: '0.7rem' }}>
       <div style={{ display: 'flex', gap: '1.6rem', flexWrap: 'wrap' }}>
-        <Stat label="Invested" value={usd(t.invested)} big />
+        <Stat label="Reserved value" value={usd(t.invested)} big />
         <Stat label="Promised to date" value={usd(t.promised)} />
         <Stat
           label="Schedule"
@@ -822,8 +798,8 @@ function ScheduleSummary({ accounts }: { accounts: AccountPortfolio[] }) {
         <Stat label="Accounts" value={String(t.tracked)} />
       </div>
       <p className="muted" style={{ margin: 0, fontSize: '0.8rem' }}>
-        Each account is promised $1 a day; being ahead means more has already been invested than
-        promised so far — so buying could pause and still stay on plan.
+        Each account is promised $1 a day; “reserved value” is what the family-marked holdings are
+        worth today. Ahead means more value is reserved than promised so far.
       </p>
     </article>
   )
