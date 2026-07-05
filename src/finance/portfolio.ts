@@ -308,6 +308,13 @@ export function accountMarket(a: AccountPortfolio): {
 export const accountTotalCost = (a: AccountPortfolio): number =>
   a.holdings.reduce((s, h) => s + h.cost, 0)
 
+/** Current worth of what's reserved for this account = units × price (priced holdings only).
+ *  This is the family fund's basis instead of at-cost: a churned symbol (bought and sold over
+ *  years) can have a negative net cash cost while still holding shares worth a positive amount,
+ *  so we value what's reserved by what it's worth today. */
+export const accountReserved = (a: AccountPortfolio): number =>
+  a.holdings.reduce((s, h) => (h.price != null ? s + h.units * h.price : s), 0)
+
 /** Dollars promised to date = rate × days since the account's start date (null if unset). */
 export function promisedToDate(a: AccountPortfolio): number | null {
   if (!a.dollarPerDay || !a.startDate) return null
@@ -317,12 +324,12 @@ export function promisedToDate(a: AccountPortfolio): number | null {
   return a.dollarPerDay * days
 }
 
-/** Ahead/behind schedule = invested-at-cost minus promised-to-date. Positive = pre-funded (can
- *  pause buying); negative = owe more. Null when there's no promise rate/start to compare against. */
+/** Ahead/behind schedule = reserved value minus promised-to-date. Positive = more value is
+ *  reserved than promised so far; negative = owe more. Null when there's no promise to compare. */
 export function aheadBehind(a: AccountPortfolio): number | null {
   const promised = promisedToDate(a)
   if (promised == null) return null
-  return accountTotalCost(a) - promised
+  return accountReserved(a) - promised
 }
 
 /** Roll up invested / promised / ahead-behind across a set of accounts (only those with a promise). */
@@ -342,7 +349,7 @@ export function portfolioTotals(accounts: AccountPortfolio[]): {
     const p = promisedToDate(a)
     if (p == null) continue
     tracked++
-    invested += accountTotalCost(a)
+    invested += accountReserved(a)
     promised += p
     dailyRate += a.dollarPerDay
   }
