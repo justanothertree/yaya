@@ -203,9 +203,11 @@ export async function fetchMyAllocations(): Promise<AllocationRow[]> {
   }))
 }
 
-// ── Positions: family vs personal designation ──────────────────────────────
+// ── Positions: family vs personal designation, per broker ──────────────────
 export type Position = {
   symbol: string
+  /** Which broker this holding is on — the same ticker can differ per broker. */
+  platform: string
   assetType: string | null
   /** Net units held (buys minus sells). */
   units: number
@@ -218,12 +220,13 @@ export type Position = {
   isFamily: boolean
 }
 
-/** Admin: every symbol you hold, with totals and its family/personal designation. */
+/** Admin: every holding (per broker) with totals and its family/personal designation. */
 export async function fetchPositions(): Promise<Position[]> {
   const { data, error } = await getSupabaseClient().rpc('admin_list_positions')
   if (error) throw error
   return ((data as Array<Record<string, unknown>> | null) ?? []).map((p) => ({
     symbol: String(p.symbol ?? ''),
+    platform: String(p.platform ?? 'unknown'),
     assetType: (p.assetType as string | null) ?? null,
     units: Number(p.units ?? 0),
     dollars: Number(p.dollars ?? 0),
@@ -234,21 +237,30 @@ export async function fetchPositions(): Promise<Position[]> {
   }))
 }
 
-/** Flip a symbol family/personal — allocations re-sync to match (family = split across
- *  the fund's accounts; personal = released back to you). */
-export async function setSymbolDesignation(symbol: string, family: boolean): Promise<void> {
+/** Flip one broker's holding of a symbol family/personal — allocations re-sync to match. */
+export async function setSymbolDesignation(
+  symbol: string,
+  platform: string,
+  family: boolean,
+): Promise<void> {
   const { error } = await getSupabaseClient().rpc('admin_set_symbol_designation', {
     p_symbol: symbol,
+    p_platform: platform,
     p_family: family,
   })
   if (error) throw error
 }
 
-/** Assert a symbol's TRUE current units (exports miss some events — Cash App has no split
- *  rows at all). The delta lands as a zero-dollar manual adjustment. */
-export async function correctPosition(symbol: string, trueUnits: number): Promise<void> {
+/** Assert one broker's TRUE current units for a symbol (exports miss some events — Cash App
+ *  has no split rows at all). The delta lands as a zero-dollar adjustment on that broker. */
+export async function correctPosition(
+  symbol: string,
+  platform: string,
+  trueUnits: number,
+): Promise<void> {
   const { error } = await getSupabaseClient().rpc('admin_correct_position', {
     p_symbol: symbol,
+    p_platform: platform,
     p_true_units: trueUnits,
   })
   if (error) throw error

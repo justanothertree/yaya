@@ -826,21 +826,23 @@ function TradesLedger({ accounts }: { accounts: AccountPortfolio[] | null }) {
     setPositions(p)
   }
 
+  const posKey = (p: Position) => `${p.symbol}|${p.platform}`
+
   const toggleDesignation = (pos: Position) => {
-    setBusySym(pos.symbol)
+    setBusySym(posKey(pos))
     setErr(null)
-    setSymbolDesignation(pos.symbol, !pos.isFamily)
+    setSymbolDesignation(pos.symbol, pos.platform, !pos.isFamily)
       .then(load)
       .catch((e: unknown) => setErr(e instanceof Error ? e.message : String(e)))
       .finally(() => setBusySym(null))
   }
 
-  const saveCorrection = (symbol: string) => {
+  const saveCorrection = (pos: Position) => {
     const v = parseFloat(fixVal)
     if (!Number.isFinite(v) || v < 0) return
-    setBusySym(symbol)
+    setBusySym(posKey(pos))
     setErr(null)
-    correctPosition(symbol, v)
+    correctPosition(pos.symbol, pos.platform, v)
       .then(() => {
         setFixFor(null)
         setFixVal('')
@@ -884,6 +886,10 @@ function TradesLedger({ accounts }: { accounts: AccountPortfolio[] | null }) {
   const portfolioValue = positions.reduce((sum, p) => sum + (p.value ?? 0), 0)
   const pricedCount = positions.filter((p) => p.value != null).length
   const familyCount = positions.filter((p) => p.isFamily).length
+  const brokerLabel = (pl: string) =>
+    pl === 'cashapp' ? 'Cash App' : pl === 'robinhood' ? 'Robinhood' : pl
+  const byPlatform = new Map<string, Position[]>()
+  for (const p of positions) byPlatform.set(p.platform, [...(byPlatform.get(p.platform) ?? []), p])
 
   return (
     <>
@@ -908,101 +914,120 @@ function TradesLedger({ accounts }: { accounts: AccountPortfolio[] | null }) {
             </span>
           </div>
           <p className="muted" style={{ margin: 0, fontSize: '0.76rem' }}>
-            Your whole synced portfolio (both brokers). Mark a symbol <strong>👨‍👩‍👧 Family</strong> to
-            split it across the fund’s accounts — everything else stays personal. Wrong count after
-            a split the export missed? Use ✏️ to set the true units.
+            Your synced portfolio, grouped by broker — the same ticker can be Family on one and
+            Personal on another. Mark a holding <strong>👨‍👩‍👧 Family</strong> to split it across the
+            fund; wrong count after a split the export missed? Use ✏️ to set the true units.
           </p>
-          {positions.map((p) => (
-            <div
-              key={p.symbol}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.6rem',
-                flexWrap: 'wrap',
-                padding: '0.35rem 0.5rem',
-                background: 'var(--b1,rgba(127,127,127,0.06))',
-                borderRadius: 8,
-              }}
-            >
-              <span style={{ fontWeight: 700, minWidth: '3.5rem' }}>{p.symbol}</span>
-              {p.assetType && (
-                <span className="muted" style={{ fontSize: '0.72rem' }}>
-                  {p.assetType}
-                </span>
-              )}
-              <span className="muted cz-num" style={{ fontSize: '0.76rem' }}>
-                {fmtU(p.units)} units · net in {usd(p.dollars)}
-                {p.value != null ? ` · worth ${usd(p.value)}` : ''}
-              </span>
-              {p.units < 0 && (
-                <span
-                  style={{ fontSize: '0.7rem', color: '#f46b6b', fontWeight: 700 }}
-                  title="More sold than bought in the data — often a stock split or pre-history buys"
+          {[...byPlatform.entries()].map(([platform, list]) => {
+            const subtotal = list.reduce((s, p) => s + (p.value ?? 0), 0)
+            return (
+              <div key={platform} style={{ display: 'grid', gap: '0.4rem' }}>
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'baseline',
+                    gap: '0.5rem',
+                    marginTop: '0.5rem',
+                  }}
                 >
-                  oversold?
-                </span>
-              )}
-              <button
-                className="btn btn-ghost"
-                onClick={() => {
-                  setFixFor((cur) => (cur === p.symbol ? null : p.symbol))
-                  setFixVal(String(Math.max(0, p.units)))
-                }}
-                disabled={busySym !== null}
-                title="The export missed something (e.g. a split)? Enter the true units you hold."
-                style={{ fontSize: '0.72rem', padding: '0.15rem 0.45rem' }}
-                aria-expanded={fixFor === p.symbol}
-              >
-                {fixFor === p.symbol ? '✕' : '✏️'}
-              </button>
-              {fixFor === p.symbol && (
-                <span style={{ display: 'inline-flex', gap: '0.35rem', alignItems: 'center' }}>
-                  <input
-                    type="number"
-                    min="0"
-                    step="any"
-                    value={fixVal}
-                    onChange={(e) => setFixVal(e.target.value)}
-                    placeholder="true units"
-                    autoFocus
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') saveCorrection(p.symbol)
-                    }}
-                    style={{ padding: '0.2rem 0.4rem', width: '8rem' }}
-                  />
-                  <button
-                    className="btn"
-                    onClick={() => saveCorrection(p.symbol)}
-                    disabled={busySym !== null || !Number.isFinite(parseFloat(fixVal))}
-                    style={{ fontSize: '0.72rem', padding: '0.15rem 0.5rem' }}
-                  >
-                    Set
-                  </button>
-                </span>
-              )}
-              <button
-                className="btn btn-ghost"
-                onClick={() => toggleDesignation(p)}
-                disabled={busySym !== null}
-                aria-pressed={p.isFamily}
-                title={
-                  p.isFamily
-                    ? 'Allocated to the family fund — click to make personal'
-                    : 'Yours — click to allocate to the family fund'
-                }
-                style={{
-                  marginLeft: 'auto',
-                  fontSize: '0.74rem',
-                  padding: '0.18rem 0.6rem',
-                  color: p.isFamily ? '#22cc78' : 'inherit',
-                  borderColor: p.isFamily ? 'rgba(34,204,120,0.5)' : undefined,
-                }}
-              >
-                {busySym === p.symbol ? '…' : p.isFamily ? '👨‍👩‍👧 Family fund' : '🔒 Personal'}
-              </button>
-            </div>
-          ))}
+                  <strong style={{ fontSize: '0.9rem' }}>{brokerLabel(platform)}</strong>
+                  <span className="muted cz-num" style={{ fontSize: '0.76rem' }}>
+                    {list.length} holdings · {usd(subtotal)}
+                  </span>
+                </div>
+                {list.map((p) => {
+                  const key = posKey(p)
+                  return (
+                    <div
+                      key={key}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.6rem',
+                        flexWrap: 'wrap',
+                        padding: '0.35rem 0.5rem',
+                        background: 'var(--b1,rgba(127,127,127,0.06))',
+                        borderRadius: 8,
+                      }}
+                    >
+                      <span style={{ fontWeight: 700, minWidth: '3.5rem' }}>{p.symbol}</span>
+                      <span className="muted cz-num" style={{ fontSize: '0.76rem' }}>
+                        {fmtU(p.units)} units{p.value != null ? ` · worth ${usd(p.value)}` : ''}
+                      </span>
+                      {p.units < 0 && (
+                        <span
+                          style={{ fontSize: '0.7rem', color: '#f46b6b', fontWeight: 700 }}
+                          title="More sold than bought in the data — usually a stock split the export missed"
+                        >
+                          oversold?
+                        </span>
+                      )}
+                      <button
+                        className="btn btn-ghost"
+                        onClick={() => {
+                          setFixFor((cur) => (cur === key ? null : key))
+                          setFixVal(String(Math.max(0, p.units)))
+                        }}
+                        disabled={busySym !== null}
+                        title="Wrong count? Enter the true units you hold on this broker."
+                        style={{ fontSize: '0.72rem', padding: '0.15rem 0.45rem' }}
+                        aria-expanded={fixFor === key}
+                      >
+                        {fixFor === key ? '✕' : '✏️'}
+                      </button>
+                      {fixFor === key && (
+                        <span
+                          style={{ display: 'inline-flex', gap: '0.35rem', alignItems: 'center' }}
+                        >
+                          <input
+                            type="number"
+                            min="0"
+                            step="any"
+                            value={fixVal}
+                            onChange={(e) => setFixVal(e.target.value)}
+                            placeholder="true units"
+                            autoFocus
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') saveCorrection(p)
+                            }}
+                            style={{ padding: '0.2rem 0.4rem', width: '8rem' }}
+                          />
+                          <button
+                            className="btn"
+                            onClick={() => saveCorrection(p)}
+                            disabled={busySym !== null || !Number.isFinite(parseFloat(fixVal))}
+                            style={{ fontSize: '0.72rem', padding: '0.15rem 0.5rem' }}
+                          >
+                            Set
+                          </button>
+                        </span>
+                      )}
+                      <button
+                        className="btn btn-ghost"
+                        onClick={() => toggleDesignation(p)}
+                        disabled={busySym !== null}
+                        aria-pressed={p.isFamily}
+                        title={
+                          p.isFamily
+                            ? 'In the family fund — click to make personal'
+                            : 'Yours — click to add to the family fund'
+                        }
+                        style={{
+                          marginLeft: 'auto',
+                          fontSize: '0.74rem',
+                          padding: '0.18rem 0.6rem',
+                          color: p.isFamily ? '#22cc78' : 'inherit',
+                          borderColor: p.isFamily ? 'rgba(34,204,120,0.5)' : undefined,
+                        }}
+                      >
+                        {busySym === key ? '…' : p.isFamily ? '👨‍👩‍👧 Family' : '🔒 Personal'}
+                      </button>
+                    </div>
+                  )
+                })}
+              </div>
+            )
+          })}
         </article>
       )}
 
