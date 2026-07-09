@@ -213,6 +213,7 @@ function ModeBtn({
 }
 
 function PortfolioList({ accounts, own }: { accounts: AccountPortfolio[] | null; own?: boolean }) {
+  const [expanded, setExpanded] = useState<string | null>(null)
   if (accounts === null) {
     return (
       <article className="card" aria-busy>
@@ -231,12 +232,62 @@ function PortfolioList({ accounts, own }: { accounts: AccountPortfolio[] | null;
       </article>
     )
   }
+  // One card renders open; the rest are compact rows (33 full cards would scroll forever).
+  if (accounts.length === 1) return <AccountCard account={accounts[0]} />
   return (
-    <>
-      {accounts.map((a) => (
-        <AccountCard key={a.id} account={a} />
-      ))}
-    </>
+    <article className="card" style={{ display: 'grid', gap: '0.5rem' }}>
+      {accounts.map((a) => {
+        const open = expanded === a.id
+        const ab = aheadBehind(a)
+        return (
+          <div key={a.id}>
+            <button
+              onClick={() => setExpanded(open ? null : a.id)}
+              aria-expanded={open}
+              style={{
+                width: '100%',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.6rem',
+                flexWrap: 'wrap',
+                textAlign: 'left',
+                padding: '0.5rem 0.7rem',
+                background: 'var(--b1,rgba(127,127,127,0.06))',
+                border: '1px solid var(--border, rgba(127,127,127,0.2))',
+                borderRadius: 8,
+                cursor: 'pointer',
+                color: 'inherit',
+              }}
+            >
+              <span style={{ opacity: 0.6, fontSize: '0.8rem' }}>{open ? '▾' : '▸'}</span>
+              <span style={{ fontWeight: 700 }}>{a.name || 'Account'}</span>
+              {a.dollarPerDay > 0 && (
+                <span className="muted" style={{ fontSize: '0.76rem' }}>
+                  {usd(a.dollarPerDay)}/day
+                </span>
+              )}
+              {ab != null && (
+                <span
+                  className="cz-num"
+                  style={{ fontSize: '0.76rem', color: ab >= 0 ? '#22cc78' : '#f46b6b' }}
+                >
+                  {ab >= 0 ? '+' : '−'}
+                  {usd(Math.abs(ab))}
+                </span>
+              )}
+              <span className="cz-num" style={{ marginLeft: 'auto', fontWeight: 700 }}>
+                {usd(accountReserved(a))}
+              </span>
+            </button>
+            {open && (
+              <div style={{ marginTop: '0.4rem' }}>
+                <AccountCard account={a} />
+              </div>
+            )}
+          </div>
+        )
+      })}
+    </article>
   )
 }
 
@@ -601,6 +652,7 @@ function AccountForm({
 }
 
 function AccountCard({ account }: { account: AccountPortfolio }) {
+  const [showAll, setShowAll] = useState(false)
   const hVal = (h: AccountPortfolio['holdings'][number]) =>
     h.price != null ? h.units * h.price : 0
   const total = accountReserved(account)
@@ -608,6 +660,8 @@ function AccountCard({ account }: { account: AccountPortfolio }) {
   const ab = aheadBehind(account)
   const unpriced = account.holdings.filter((h) => h.price == null).length
   const holdings = [...account.holdings].sort((x, y) => hVal(y) - hVal(x))
+  const HOLDINGS_PREVIEW = 10
+  const shown = showAll ? holdings : holdings.slice(0, HOLDINGS_PREVIEW)
 
   return (
     <article className="card" style={{ display: 'grid', gap: '0.9rem' }}>
@@ -682,7 +736,7 @@ function AccountCard({ account }: { account: AccountPortfolio }) {
 
           {/* holdings list */}
           <div style={{ display: 'grid', gap: '0.4rem' }}>
-            {holdings.map((h) => {
+            {shown.map((h) => {
               const val = hVal(h)
               const pct = total > 0 ? (val / total) * 100 : 0
               return (
@@ -735,6 +789,16 @@ function AccountCard({ account }: { account: AccountPortfolio }) {
                 </div>
               )
             })}
+            {holdings.length > HOLDINGS_PREVIEW && (
+              <button
+                className="btn btn-ghost"
+                onClick={() => setShowAll((s) => !s)}
+                style={{ fontSize: '0.78rem', justifySelf: 'start' }}
+                aria-expanded={showAll}
+              >
+                {showAll ? '▴ Show top holdings only' : `▾ Show all ${holdings.length} holdings`}
+              </button>
+            )}
           </div>
         </>
       )}
