@@ -1,7 +1,7 @@
 // Family "dollar-a-day" investments. Members see their own read-only portfolio (holdings at
 // cost + dollars/day, plus current value and gain/loss from the daily price sweep). Admins
 // also get "All accounts" (view as any member) and the trades ledger.
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   fetchMyPortfolio,
   fetchAllPortfolios,
@@ -165,11 +165,12 @@ export function Investments({ demo = false }: { demo?: boolean }) {
 
       {mode === 'mine' ? (
         <>
-          {mine && mine.length > 0 && <ScheduleSummary accounts={mine} />}
+          {/* one account = the card says it all; the roll-up banner is for multi-account views */}
+          {mine && mine.length > 1 && <ScheduleSummary accounts={mine} />}
           {tl && tl.events.length > 0 && (
             <PortfolioChart timeline={tl} title="Your fund over time" />
           )}
-          <PortfolioList accounts={mine} own />
+          <PortfolioList accounts={mine} own timeline={tl} />
         </>
       ) : mode === 'trades' ? (
         <TradesLedger accounts={all} />
@@ -179,7 +180,7 @@ export function Investments({ demo = false }: { demo?: boolean }) {
           {tlAll && tlAll.events.length > 0 && (
             <PortfolioChart timeline={tlAll} title="Whole fund over time" />
           )}
-          <AllAccounts accounts={all} members={members} onChanged={reloadAll} />
+          <AllAccounts accounts={all} members={members} onChanged={reloadAll} timeline={tlAll} />
         </>
       )}
     </section>
@@ -212,7 +213,15 @@ function ModeBtn({
   )
 }
 
-function PortfolioList({ accounts, own }: { accounts: AccountPortfolio[] | null; own?: boolean }) {
+function PortfolioList({
+  accounts,
+  own,
+  timeline,
+}: {
+  accounts: AccountPortfolio[] | null
+  own?: boolean
+  timeline?: Timeline | null
+}) {
   const [expanded, setExpanded] = useState<string | null>(null)
   if (accounts === null) {
     return (
@@ -233,7 +242,7 @@ function PortfolioList({ accounts, own }: { accounts: AccountPortfolio[] | null;
     )
   }
   // One card renders open; the rest are compact rows (33 full cards would scroll forever).
-  if (accounts.length === 1) return <AccountCard account={accounts[0]} />
+  if (accounts.length === 1) return <AccountCard account={accounts[0]} timeline={timeline} />
   return (
     <article className="card" style={{ display: 'grid', gap: '0.5rem' }}>
       {accounts.map((a) => {
@@ -281,7 +290,7 @@ function PortfolioList({ accounts, own }: { accounts: AccountPortfolio[] | null;
             </button>
             {open && (
               <div style={{ marginTop: '0.4rem' }}>
-                <AccountCard account={a} />
+                <AccountCard account={a} timeline={timeline} />
               </div>
             )}
           </div>
@@ -297,10 +306,12 @@ function AllAccounts({
   accounts,
   members,
   onChanged,
+  timeline,
 }: {
   accounts: AccountPortfolio[] | null
   members: Member[]
   onChanged: () => Promise<void>
+  timeline?: Timeline | null
 }) {
   const [expanded, setExpanded] = useState<string | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -439,7 +450,7 @@ function AllAccounts({
             )}
             {open && (
               <div style={{ marginTop: '0.4rem' }}>
-                <AccountCard account={a} />
+                <AccountCard account={a} timeline={timeline} />
               </div>
             )}
           </div>
@@ -651,8 +662,15 @@ function AccountForm({
   )
 }
 
-function AccountCard({ account }: { account: AccountPortfolio }) {
+function AccountCard({
+  account,
+  timeline,
+}: {
+  account: AccountPortfolio
+  timeline?: Timeline | null
+}) {
   const [showAll, setShowAll] = useState(false)
+  const [openSym, setOpenSym] = useState<string | null>(null)
   const hVal = (h: AccountPortfolio['holdings'][number]) =>
     h.price != null ? h.units * h.price : 0
   const total = accountReserved(account)
@@ -662,6 +680,34 @@ function AccountCard({ account }: { account: AccountPortfolio }) {
   const holdings = [...account.holdings].sort((x, y) => hVal(y) - hVal(x))
   const HOLDINGS_PREVIEW = 10
   const shown = showAll ? holdings : holdings.slice(0, HOLDINGS_PREVIEW)
+
+  // daily price series per symbol (for sparklines + the "today" change)
+  const priceSeries = useMemo(() => {
+    const m = new Map<string, { date: string; price: number }[]>()
+    if (timeline) {
+      for (const p of timeline.prices) {
+        const arr = m.get(p.symbol) ?? []
+        arr.push(p)
+        m.set(p.symbol, arr)
+      }
+      for (const arr of m.values()) arr.sort((a, b) => a.date.localeCompare(b.date))
+    }
+    return m
+  }, [timeline])
+
+  const dayChange = useMemo(() => {
+    let sum = 0
+    let any = false
+    for (const h of account.holdings) {
+      const s = priceSeries.get(h.symbol)
+      if (!s || s.length < 2) continue
+      any = true
+      sum += h.units * (s[s.length - 1].price - s[s.length - 2].price)
+    }
+    return any ? sum : null
+  }, [account, priceSeries])
+
+  const toggleSym = (symbol: string) => setOpenSym((cur) => (cur === symbol ? null : symbol))
 
   return (
     <article className="card" style={{ display: 'grid', gap: '0.9rem' }}>
@@ -688,6 +734,13 @@ function AccountCard({ account }: { account: AccountPortfolio }) {
       {/* summary stats */}
       <div style={{ display: 'flex', gap: '1.6rem', flexWrap: 'wrap' }}>
         <Stat label="Reserved value" value={usd(total)} big />
+        {dayChange != null && Math.abs(dayChange) >= 0.005 && (
+          <Stat
+            label="Today"
+            value={`${dayChange >= 0 ? '▲ +' : '▼ −'}${usd(Math.abs(dayChange))}`}
+            color={dayChange >= 0 ? '#22cc78' : '#f46b6b'}
+          />
+        )}
         {promised != null && <Stat label="Promised to date" value={usd(promised)} />}
         {ab != null && (
           <Stat
@@ -725,10 +778,17 @@ function AccountCard({ account }: { account: AccountPortfolio }) {
             {holdings.map((h) => (
               <span
                 key={h.symbol}
-                title={`${h.symbol}: ${usd(hVal(h))}`}
+                title={`${h.symbol}: ${usd(hVal(h))} — tap for details`}
+                onClick={() => {
+                  setShowAll(true)
+                  toggleSym(h.symbol)
+                }}
                 style={{
                   width: `${total > 0 ? (hVal(h) / total) * 100 : 0}%`,
                   background: assetColor(h.symbol),
+                  cursor: 'pointer',
+                  outline: openSym === h.symbol ? '2px solid var(--fg,#fff)' : 'none',
+                  outlineOffset: -2,
                 }}
               />
             ))}
@@ -739,53 +799,92 @@ function AccountCard({ account }: { account: AccountPortfolio }) {
             {shown.map((h) => {
               const val = hVal(h)
               const pct = total > 0 ? (val / total) * 100 : 0
+              const isOpen = openSym === h.symbol
+              const series = priceSeries.get(h.symbol) ?? []
+              const spark = series.slice(-90).map((p) => p.price)
               return (
-                <div
-                  key={h.symbol}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '0.6rem',
-                    flexWrap: 'wrap',
-                    padding: '0.4rem 0.2rem',
-                    borderBottom: '1px solid var(--b1, rgba(127,127,127,0.12))',
-                  }}
-                >
-                  <span
+                <div key={h.symbol}>
+                  <div
+                    onClick={() => toggleSym(h.symbol)}
+                    role="button"
+                    aria-expanded={isOpen}
                     style={{
-                      width: 9,
-                      height: 9,
-                      borderRadius: '50%',
-                      background: assetColor(h.symbol),
-                      flexShrink: 0,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.6rem',
+                      flexWrap: 'wrap',
+                      padding: '0.4rem 0.2rem',
+                      borderBottom: '1px solid var(--b1, rgba(127,127,127,0.12))',
+                      cursor: 'pointer',
                     }}
-                  />
-                  <span style={{ fontWeight: 700, minWidth: '4.5rem' }}>{h.symbol}</span>
-                  {h.assetType && (
-                    <span className="muted" style={{ fontSize: '0.74rem' }}>
-                      {h.assetType}
+                  >
+                    <span
+                      style={{
+                        width: 9,
+                        height: 9,
+                        borderRadius: '50%',
+                        background: assetColor(h.symbol),
+                        flexShrink: 0,
+                      }}
+                    />
+                    <span style={{ fontWeight: 700, minWidth: '4.5rem' }}>{h.symbol}</span>
+                    <span style={{ opacity: 0.5, fontSize: '0.72rem' }}>{isOpen ? '▾' : '▸'}</span>
+                    <span
+                      className="cz-num"
+                      style={{
+                        marginLeft: 'auto',
+                        width: '6rem',
+                        textAlign: 'right',
+                        fontWeight: 700,
+                      }}
+                      title="Current worth (units × price)"
+                    >
+                      {h.price == null ? '—' : usd(val)}
                     </span>
+                    <span
+                      className="muted cz-num"
+                      style={{ width: '3rem', textAlign: 'right', fontSize: '0.78rem' }}
+                    >
+                      {pct.toFixed(0)}%
+                    </span>
+                  </div>
+                  {isOpen && (
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '1.2rem',
+                        flexWrap: 'wrap',
+                        padding: '0.6rem 0.4rem 0.7rem 1.2rem',
+                        borderBottom: '1px solid var(--b1, rgba(127,127,127,0.12))',
+                        background: 'var(--b1, rgba(127,127,127,0.05))',
+                        borderRadius: 8,
+                      }}
+                    >
+                      <Stat
+                        label="Your share"
+                        value={`${h.units.toLocaleString(undefined, { maximumFractionDigits: 4 })} units`}
+                      />
+                      {h.price != null && <Stat label="Price" value={usd(h.price)} />}
+                      {h.price != null && <Stat label="Worth" value={usd(val)} />}
+                      <Stat label="Of this fund" value={`${pct.toFixed(1)}%`} />
+                      {spark.length >= 2 && (
+                        <span style={{ marginLeft: 'auto', display: 'grid', gap: 2 }}>
+                          <span
+                            className="muted"
+                            style={{
+                              fontSize: '0.68rem',
+                              textTransform: 'uppercase',
+                              letterSpacing: '0.05em',
+                            }}
+                          >
+                            Last {spark.length} days
+                          </span>
+                          <Sparkline points={spark} />
+                        </span>
+                      )}
+                    </div>
                   )}
-                  <span
-                    className="muted cz-num"
-                    style={{ marginLeft: 'auto', fontSize: '0.82rem' }}
-                    title="Units held"
-                  >
-                    {h.units.toLocaleString(undefined, { maximumFractionDigits: 4 })} units
-                  </span>
-                  <span
-                    className="cz-num"
-                    style={{ width: '6rem', textAlign: 'right', fontWeight: 700 }}
-                    title="Current worth (units × price)"
-                  >
-                    {h.price == null ? '—' : usd(val)}
-                  </span>
-                  <span
-                    className="muted cz-num"
-                    style={{ width: '3rem', textAlign: 'right', fontSize: '0.78rem' }}
-                  >
-                    {pct.toFixed(0)}%
-                  </span>
                 </div>
               )
             })}
@@ -803,6 +902,35 @@ function AccountCard({ account }: { account: AccountPortfolio }) {
         </>
       )}
     </article>
+  )
+}
+
+// Tiny inline price line for a holding's expanded detail — green when up over the window.
+function Sparkline({
+  points,
+  width = 130,
+  height = 34,
+}: {
+  points: number[]
+  width?: number
+  height?: number
+}) {
+  if (points.length < 2) return null
+  const min = Math.min(...points)
+  const max = Math.max(...points)
+  const span = max - min || 1
+  const step = width / (points.length - 1)
+  const d = points
+    .map(
+      (v, i) =>
+        `${i ? 'L' : 'M'}${(i * step).toFixed(1)},${(height - 3 - ((v - min) / span) * (height - 6)).toFixed(1)}`,
+    )
+    .join('')
+  const up = points[points.length - 1] >= points[0]
+  return (
+    <svg viewBox={`0 0 ${width} ${height}`} style={{ width, height }} aria-hidden>
+      <path d={d} fill="none" stroke={up ? '#22cc78' : '#f46b6b'} strokeWidth="1.6" />
+    </svg>
   )
 }
 
