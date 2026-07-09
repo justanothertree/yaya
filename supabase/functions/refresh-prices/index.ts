@@ -14,6 +14,7 @@ const COINGECKO_IDS: Record<string, string> = {
   ADA: 'cardano',
   XRP: 'ripple',
   LTC: 'litecoin',
+  ZORA: 'zora',
 }
 
 const MAX_STOCKS_PER_RUN = 55
