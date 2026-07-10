@@ -284,21 +284,6 @@ export async function correctPosition(
   if (error) throw error
 }
 
-/** Set (or clear, with 0/null) the true average cost per share for a position — the basis
- *  for percent P/L when the trade history can't reconstruct it (churn, missing early buys). */
-export async function setPositionCost(
-  symbol: string,
-  platform: string,
-  avgCost: number | null,
-): Promise<void> {
-  const { error } = await getSupabaseClient().rpc('admin_set_position_cost', {
-    p_symbol: symbol,
-    p_platform: platform,
-    p_avg_cost: avgCost,
-  })
-  if (error) throw error
-}
-
 /** Assign units of one trade to one account (manual allocation — e.g. a single share). */
 export async function assignAllocation(
   accountId: string,

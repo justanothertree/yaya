@@ -26,7 +26,6 @@ import {
   fetchPositions,
   setSymbolDesignation,
   correctPosition,
-  setPositionCost,
   type AccountPortfolio,
   type Member,
   type Trade,
@@ -1170,7 +1169,6 @@ function TradesLedger({ accounts }: { accounts: AccountPortfolio[] | null }) {
   const [busySym, setBusySym] = useState<string | null>(null)
   const [fixFor, setFixFor] = useState<string | null>(null)
   const [fixVal, setFixVal] = useState('')
-  const [fixCost, setFixCost] = useState('')
   const [err, setErr] = useState<string | null>(null)
   // trade-list filters + lazy rendering (1,500+ rows would drown the page)
   const [fSymbol, setFSymbol] = useState('')
@@ -1197,24 +1195,15 @@ function TradesLedger({ accounts }: { accounts: AccountPortfolio[] | null }) {
       .finally(() => setBusySym(null))
   }
 
-  // Save whichever fields were filled: true units (correctPosition) and/or true avg cost.
   const saveCorrection = (pos: Position) => {
     const v = parseFloat(fixVal)
-    const c = fixCost.trim() === '' ? null : parseFloat(fixCost)
-    // only re-correct units if the number actually changed (avoids a no-op adjustment trade)
-    const doUnits = Number.isFinite(v) && v >= 0 && Math.abs(v - pos.units) > 1e-9
-    const wantCost = fixCost.trim() !== ''
-    const doCost = wantCost && Number.isFinite(c) && (c as number) >= 0
-    if (!doUnits && !doCost) return
+    if (!Number.isFinite(v) || v < 0) return
     setBusySym(posKey(pos))
     setErr(null)
-    Promise.resolve()
-      .then(() => (doUnits ? correctPosition(pos.symbol, pos.platform, v) : undefined))
-      .then(() => (doCost ? setPositionCost(pos.symbol, pos.platform, c as number) : undefined))
+    correctPosition(pos.symbol, pos.platform, v)
       .then(() => {
         setFixFor(null)
         setFixVal('')
-        setFixCost('')
         return load()
       })
       .catch((e: unknown) => setErr(e instanceof Error ? e.message : String(e)))
@@ -1350,13 +1339,11 @@ function TradesLedger({ accounts }: { accounts: AccountPortfolio[] | null }) {
                       <button
                         className="btn btn-ghost"
                         onClick={() => {
-                          const opening = fixFor !== key
-                          setFixFor(opening ? key : null)
-                          setFixVal(opening ? String(Math.max(0, p.units)) : '')
-                          setFixCost('')
+                          setFixFor((cur) => (cur === key ? null : key))
+                          setFixVal(String(Math.max(0, p.units)))
                         }}
                         disabled={busySym !== null}
-                        title="Fix the true units and/or the true average cost for this holding."
+                        title="Wrong count after a split the export missed? Enter the true units you hold."
                         style={{ fontSize: '0.72rem', padding: '0.15rem 0.45rem' }}
                         aria-expanded={fixFor === key}
                       >
@@ -1364,12 +1351,7 @@ function TradesLedger({ accounts }: { accounts: AccountPortfolio[] | null }) {
                       </button>
                       {fixFor === key && (
                         <span
-                          style={{
-                            display: 'inline-flex',
-                            gap: '0.35rem',
-                            alignItems: 'center',
-                            flexWrap: 'wrap',
-                          }}
+                          style={{ display: 'inline-flex', gap: '0.35rem', alignItems: 'center' }}
                         >
                           <input
                             type="number"
@@ -1382,25 +1364,12 @@ function TradesLedger({ accounts }: { accounts: AccountPortfolio[] | null }) {
                             onKeyDown={(e) => {
                               if (e.key === 'Enter') saveCorrection(p)
                             }}
-                            style={{ padding: '0.2rem 0.4rem', width: '7rem' }}
-                          />
-                          <input
-                            type="number"
-                            min="0"
-                            step="any"
-                            value={fixCost}
-                            onChange={(e) => setFixCost(e.target.value)}
-                            placeholder="avg cost $/sh"
-                            title="Your true average cost per share — sets percent gain/loss when the data can't"
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') saveCorrection(p)
-                            }}
                             style={{ padding: '0.2rem 0.4rem', width: '8rem' }}
                           />
                           <button
                             className="btn"
                             onClick={() => saveCorrection(p)}
-                            disabled={busySym !== null}
+                            disabled={busySym !== null || !Number.isFinite(parseFloat(fixVal))}
                             style={{ fontSize: '0.72rem', padding: '0.15rem 0.5rem' }}
                           >
                             Set
