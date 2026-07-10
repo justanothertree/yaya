@@ -751,12 +751,22 @@ function AccountCard({
         )}
         <Stat label="Holdings" value={String(holdings.length)} />
       </div>
-      {unpriced > 0 && (
-        <p className="muted" style={{ margin: 0, fontSize: '0.76rem' }}>
-          Reserved value covers {holdings.length - unpriced} of {holdings.length} holdings — the
-          rest aren&rsquo;t priced yet.
-        </p>
-      )}
+      <p className="muted" style={{ margin: 0, fontSize: '0.76rem' }}>
+        Reserved value is what these holdings are worth at the latest prices
+        {(() => {
+          const asOf = account.holdings.reduce<string | null>(
+            (acc, h) => (h.priceAt && (!acc || h.priceAt > acc) ? h.priceAt : acc),
+            null,
+          )
+          return asOf
+            ? ` (updated ${new Date(asOf).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })})`
+            : ''
+        })()}
+        . &ldquo;Ahead&rdquo; means more is set aside than the {usd(account.dollarPerDay)}/day
+        promise so far; &ldquo;behind&rdquo; means less.
+        {unpriced > 0 &&
+          ` Covers ${holdings.length - unpriced} of ${holdings.length} holdings — the rest aren’t priced yet.`}
+      </p>
 
       {holdings.length === 0 ? (
         <p className="muted" style={{ margin: 0, fontSize: '0.88rem' }}>
@@ -1009,6 +1019,11 @@ function TradesLedger({ accounts }: { accounts: AccountPortfolio[] | null }) {
   const [fixFor, setFixFor] = useState<string | null>(null)
   const [fixVal, setFixVal] = useState('')
   const [err, setErr] = useState<string | null>(null)
+  // trade-list filters + lazy rendering (1,500+ rows would drown the page)
+  const [fSymbol, setFSymbol] = useState('')
+  const [fPlatform, setFPlatform] = useState<'all' | 'cashapp' | 'robinhood' | 'manual'>('all')
+  const [fKind, setFKind] = useState<'all' | 'buys' | 'sells' | 'adjustments'>('all')
+  const [visibleCount, setVisibleCount] = useState(50)
 
   const load = async () => {
     const [t, a, p] = await Promise.all([fetchMyTrades(), fetchMyAllocations(), fetchPositions()])
@@ -1067,15 +1082,9 @@ function TradesLedger({ accounts }: { accounts: AccountPortfolio[] | null }) {
   const allocatedUnits = (tradeId: string) =>
     allocs.filter((a) => a.executedTradeId === tradeId).reduce((s, a) => s + a.unitsAllocated, 0)
 
-  let familyDollars = 0
-  let totalDollars = 0
-  for (const t of trades) {
-    totalDollars += t.dollars
-    if (t.units !== 0) familyDollars += (allocatedUnits(t.id) / t.units) * t.dollars
-  }
-
   const fmtU = (n: number) => n.toLocaleString(undefined, { maximumFractionDigits: 6 })
   const portfolioValue = positions.reduce((sum, p) => sum + (p.value ?? 0), 0)
+  const familyValue = positions.reduce((sum, p) => sum + (p.isFamily ? (p.value ?? 0) : 0), 0)
   const pricedCount = positions.filter((p) => p.value != null).length
   const familyCount = positions.filter((p) => p.isFamily).length
   const brokerLabel = (pl: string) =>
@@ -1083,14 +1092,36 @@ function TradesLedger({ accounts }: { accounts: AccountPortfolio[] | null }) {
   const byPlatform = new Map<string, Position[]>()
   for (const p of positions) byPlatform.set(p.platform, [...(byPlatform.get(p.platform) ?? []), p])
 
+  const nBuys = trades.filter((t) => t.units > 0 && t.dollars !== 0).length
+  const nSells = trades.filter((t) => t.units < 0 && t.dollars !== 0).length
+  const nAdj = trades.filter((t) => t.dollars === 0).length
+  const filtered = trades.filter((t) => {
+    if (fSymbol && !t.symbol.toUpperCase().includes(fSymbol.toUpperCase())) return false
+    if (fPlatform !== 'all' && t.platform !== fPlatform) return false
+    if (fKind === 'buys' && !(t.units > 0 && t.dollars !== 0)) return false
+    if (fKind === 'sells' && !(t.units < 0 && t.dollars !== 0)) return false
+    if (fKind === 'adjustments' && t.dollars !== 0) return false
+    return true
+  })
+  const visible = filtered.slice(0, visibleCount)
+
   return (
     <>
       <article className="card" style={{ display: 'grid', gap: '0.7rem' }}>
         <div style={{ display: 'flex', gap: '1.6rem', flexWrap: 'wrap' }}>
-          <Stat label="Family fund" value={usd(familyDollars)} big color="#22cc78" />
-          <Stat label="Still yours" value={usd(Math.max(0, totalDollars - familyDollars))} big />
-          <Stat label="Trades" value={String(trades.length)} />
+          <Stat label="Family fund (worth)" value={usd(familyValue)} big color="#22cc78" />
+          <Stat
+            label="Still yours (worth)"
+            value={usd(Math.max(0, portfolioValue - familyValue))}
+            big
+          />
+          <Stat label="Trades on record" value={String(trades.length)} />
         </div>
+        <p className="muted" style={{ margin: 0, fontSize: '0.76rem' }}>
+          This tab is your control room: mark each holding Family or Personal below, fix any wrong
+          share count with ✏️, and dig into the raw trade history at the bottom if you ever need to
+          audit where a number came from.
+        </p>
         <SetPriceForm symbols={[...new Set(trades.map((t) => t.symbol))].sort()} />
       </article>
 
@@ -1224,12 +1255,60 @@ function TradesLedger({ accounts }: { accounts: AccountPortfolio[] | null }) {
       )}
 
       <article className="card" style={{ display: 'grid', gap: '0.4rem' }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.6rem', flexWrap: 'wrap' }}>
+          <strong>Trade history</strong>
+          <span className="muted cz-num" style={{ fontSize: '0.76rem' }}>
+            {trades.length} on record — {nBuys} buys · {nSells} sells · {nAdj} splits/corrections
+          </span>
+        </div>
+        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
+          <input
+            value={fSymbol}
+            onChange={(e) => {
+              setFSymbol(e.target.value)
+              setVisibleCount(50)
+            }}
+            placeholder="Filter by symbol…"
+            style={{ padding: '0.35rem 0.5rem', width: '10rem' }}
+          />
+          <select
+            value={fPlatform}
+            onChange={(e) => {
+              setFPlatform(e.target.value as typeof fPlatform)
+              setVisibleCount(50)
+            }}
+            style={{ padding: '0.35rem 0.5rem' }}
+          >
+            <option value="all">Both brokers</option>
+            <option value="cashapp">Cash App</option>
+            <option value="robinhood">Robinhood</option>
+            <option value="manual">Manual fixes</option>
+          </select>
+          <select
+            value={fKind}
+            onChange={(e) => {
+              setFKind(e.target.value as typeof fKind)
+              setVisibleCount(50)
+            }}
+            style={{ padding: '0.35rem 0.5rem' }}
+          >
+            <option value="all">Buys + sells + fixes</option>
+            <option value="buys">Buys only</option>
+            <option value="sells">Sells only</option>
+            <option value="adjustments">Splits/corrections</option>
+          </select>
+          {filtered.length !== trades.length && (
+            <span className="muted" style={{ fontSize: '0.76rem' }}>
+              {filtered.length} match
+            </span>
+          )}
+        </div>
         {trades.length === 0 && (
           <p className="muted" style={{ margin: 0 }}>
-            No trades yet — import your broker history or log one, then allocate it here.
+            No trades yet — run the sync script after your next broker export.
           </p>
         )}
-        {trades.map((t) => {
+        {visible.map((t) => {
           const got = allocatedUnits(t.id)
           const absU = Math.abs(t.units)
           const remaining = t.units - got
@@ -1327,6 +1406,16 @@ function TradesLedger({ accounts }: { accounts: AccountPortfolio[] | null }) {
             </div>
           )
         })}
+        {filtered.length > visibleCount && (
+          <button
+            className="btn btn-ghost"
+            onClick={() => setVisibleCount((n) => n + 100)}
+            style={{ fontSize: '0.78rem', justifySelf: 'start' }}
+          >
+            ▾ Show {Math.min(100, filtered.length - visibleCount)} more (
+            {filtered.length - visibleCount} remaining)
+          </button>
+        )}
       </article>
     </>
   )
