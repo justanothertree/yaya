@@ -1,6 +1,7 @@
-// Interactive portfolio-over-time chart: value / invested / promised lines with
-// week / month / year / all ranges and a hover (or touch) crosshair readout.
-// Hand-rolled SVG to match the Circuit's charts — no chart library.
+// Interactive portfolio-over-time chart: worth / net in / promised lines with
+// week / month / year / all ranges, a hover (or touch) crosshair readout, and a
+// clickable legend that shows or hides each line. Hand-rolled SVG to match the
+// Circuit's charts — no chart library.
 import { useMemo, useRef, useState } from 'react'
 import { buildDailySeries, type Timeline } from '../finance/timeline'
 import { usd } from '../finance/portfolio'
@@ -18,11 +19,27 @@ const H = 260
 const PAD = { top: 14, right: 14, bottom: 26, left: 56 }
 const DAY = 86_400_000
 
-const COLORS = {
-  value: '#22cc78',
-  invested: 'var(--accent, #7c6af7)',
-  promised: 'rgba(150,150,170,0.9)',
-}
+const LINES = [
+  {
+    key: 'value' as const,
+    label: 'Worth',
+    hint: 'What the holdings are worth at each day’s prices',
+    color: '#22cc78',
+  },
+  {
+    key: 'invested' as const,
+    label: 'Net in',
+    hint: 'Money put in minus money taken out, at cost',
+    color: '#7c6af7',
+  },
+  {
+    key: 'promised' as const,
+    label: 'Promised',
+    hint: 'The $-per-day plan line',
+    color: 'rgba(150,150,170,0.9)',
+  },
+]
+type LineKey = (typeof LINES)[number]['key']
 
 const compact = (n: number) =>
   n >= 1000 ? `$${(n / 1000).toLocaleString(undefined, { maximumFractionDigits: 1 })}k` : usd(n)
@@ -30,28 +47,45 @@ const compact = (n: number) =>
 export function PortfolioChart({ timeline, title }: { timeline: Timeline; title?: string }) {
   const [range, setRange] = useState<RangeKey>('1M')
   const [hover, setHover] = useState<number | null>(null)
+  const [show, setShow] = useState<Record<LineKey, boolean>>({
+    value: true,
+    invested: true,
+    promised: true,
+  })
   const svgRef = useRef<SVGSVGElement | null>(null)
 
   const today = new Date().toISOString().slice(0, 10)
+
+  // "All" means the fund era (earliest account start), not the whole trade history —
+  // pre-fund churn from years past would drown the story otherwise.
+  const fundStart = useMemo(() => {
+    const starts = timeline.accounts.map((a) => a.startDate).filter((s): s is string => !!s)
+    if (starts.length) return starts.sort()[0]
+    return timeline.events[0]?.date ?? today
+  }, [timeline, today])
+
   const series = useMemo(() => {
     const r = RANGES.find((x) => x.key === range)!
-    let from: string
-    if (r.days == null) {
-      const first = timeline.events[0]?.date
-      from = first ?? today
-    } else {
-      from = new Date(Date.parse(today + 'T00:00:00Z') - (r.days - 1) * DAY)
-        .toISOString()
-        .slice(0, 10)
-    }
+    const from =
+      r.days == null
+        ? fundStart
+        : new Date(Date.parse(today + 'T00:00:00Z') - (r.days - 1) * DAY).toISOString().slice(0, 10)
     return buildDailySeries(timeline, from, today)
-  }, [timeline, range, today])
+  }, [timeline, range, today, fundStart])
+
+  const spansYears =
+    series.length > 1 && series[0].date.slice(0, 4) !== series[series.length - 1].date.slice(0, 4)
 
   const { paths, yMin, yMax, xFor, yFor } = useMemo(() => {
     let lo = Infinity
     let hi = -Infinity
     for (const p of series) {
-      for (const v of [p.invested, p.promised, p.value]) {
+      const candidates: Array<number | null> = [
+        show.invested ? p.invested : null,
+        show.promised ? p.promised : null,
+        show.value ? p.value : null,
+      ]
+      for (const v of candidates) {
         if (v == null) continue
         if (v < lo) lo = v
         if (v > hi) hi = v
@@ -63,7 +97,7 @@ export function PortfolioChart({ timeline, title }: { timeline: Timeline; title?
     }
     if (hi - lo < 1) hi = lo + 1
     const pad = (hi - lo) * 0.08
-    const yMin = Math.max(0, lo - pad)
+    const yMin = Math.min(0, lo - pad)
     const yMax = hi + pad
     const innerW = W - PAD.left - PAD.right
     const innerH = H - PAD.top - PAD.bottom
@@ -87,16 +121,16 @@ export function PortfolioChart({ timeline, title }: { timeline: Timeline; title?
     }
     return {
       paths: {
-        value: line((p) => p.value),
-        invested: line((p) => p.invested),
-        promised: line((p) => p.promised),
+        value: show.value ? line((p) => p.value) : '',
+        invested: show.invested ? line((p) => p.invested) : '',
+        promised: show.promised ? line((p) => p.promised) : '',
       },
       yMin,
       yMax,
       xFor,
       yFor,
     }
-  }, [series])
+  }, [series, show])
 
   const onMove = (e: React.PointerEvent<SVGSVGElement>) => {
     const svg = svgRef.current
@@ -111,11 +145,24 @@ export function PortfolioChart({ timeline, title }: { timeline: Timeline; title?
 
   const hp = hover != null ? series[hover] : null
   const ticks = [0, 0.5, 1].map((f) => yMin + (yMax - yMin) * f)
-  const dateLabel = (isoDate: string) =>
+  // readout always carries the year; axis adds it when the window crosses years
+  const fullDate = (isoDate: string) =>
     new Date(isoDate + 'T00:00:00').toLocaleDateString(undefined, {
       month: 'short',
       day: 'numeric',
+      year: 'numeric',
     })
+  const axisDate = (isoDate: string) =>
+    new Date(isoDate + 'T00:00:00').toLocaleDateString(
+      undefined,
+      spansYears ? { month: 'short', year: 'numeric' } : { month: 'short', day: 'numeric' },
+    )
+
+  const pricesThrough = useMemo(() => {
+    let last = ''
+    for (const p of timeline.prices) if (p.date > last) last = p.date
+    return last || null
+  }, [timeline])
 
   return (
     <article className="card" style={{ display: 'grid', gap: '0.6rem' }}>
@@ -155,14 +202,16 @@ export function PortfolioChart({ timeline, title }: { timeline: Timeline; title?
           if (!p) return <span className="muted">No activity in this range yet.</span>
           return (
             <>
-              <span className="muted">{dateLabel(p.date)}</span>
-              {p.value != null && (
-                <span style={{ color: COLORS.value, fontWeight: 700 }}>Value {usd(p.value)}</span>
+              <span className="muted">{fullDate(p.date)}</span>
+              {show.value && p.value != null && (
+                <span style={{ color: LINES[0].color, fontWeight: 700 }}>Worth {usd(p.value)}</span>
               )}
-              <span style={{ color: 'var(--accent,#7c6af7)', fontWeight: 700 }}>
-                Invested {usd(p.invested)}
-              </span>
-              <span className="muted">Promised {usd(p.promised)}</span>
+              {show.invested && (
+                <span style={{ color: LINES[1].color, fontWeight: 700 }}>
+                  Net in {usd(p.invested)}
+                </span>
+              )}
+              {show.promised && <span className="muted">Promised {usd(p.promised)}</span>}
             </>
           )
         })()}
@@ -176,7 +225,7 @@ export function PortfolioChart({ timeline, title }: { timeline: Timeline; title?
         onPointerDown={onMove}
         onPointerLeave={() => setHover(null)}
         role="img"
-        aria-label="Portfolio value, invested, and promised over time"
+        aria-label="Portfolio worth, net in, and promised over time"
       >
         {/* y grid + labels */}
         {ticks.map((v) => (
@@ -215,19 +264,25 @@ export function PortfolioChart({ timeline, title }: { timeline: Timeline; title?
                 fill="currentColor"
                 opacity={0.55}
               >
-                {dateLabel(series[i].date)}
+                {axisDate(series[i].date)}
               </text>
             ))}
 
-        <path
-          d={paths.promised}
-          fill="none"
-          stroke={COLORS.promised}
-          strokeWidth="1.4"
-          strokeDasharray="5 4"
-        />
-        <path d={paths.invested} fill="none" stroke={COLORS.invested} strokeWidth="2" />
-        <path d={paths.value} fill="none" stroke={COLORS.value} strokeWidth="2.2" />
+        {paths.promised && (
+          <path
+            d={paths.promised}
+            fill="none"
+            stroke={LINES[2].color}
+            strokeWidth="1.4"
+            strokeDasharray="5 4"
+          />
+        )}
+        {paths.invested && (
+          <path d={paths.invested} fill="none" stroke={LINES[1].color} strokeWidth="2" />
+        )}
+        {paths.value && (
+          <path d={paths.value} fill="none" stroke={LINES[0].color} strokeWidth="2.2" />
+        )}
 
         {/* crosshair */}
         {hp && hover != null && (
@@ -239,29 +294,60 @@ export function PortfolioChart({ timeline, title }: { timeline: Timeline; title?
               y2={H - PAD.bottom}
               stroke="rgba(127,127,127,0.5)"
             />
-            {hp.value != null && (
-              <circle cx={xFor(hover)} cy={yFor(hp.value)} r="3.5" fill={COLORS.value} />
+            {show.value && hp.value != null && (
+              <circle cx={xFor(hover)} cy={yFor(hp.value)} r="3.5" fill={LINES[0].color} />
             )}
-            <circle cx={xFor(hover)} cy={yFor(hp.invested)} r="3" fill="var(--accent,#7c6af7)" />
-            <circle cx={xFor(hover)} cy={yFor(hp.promised)} r="2.5" fill={COLORS.promised} />
+            {show.invested && (
+              <circle cx={xFor(hover)} cy={yFor(hp.invested)} r="3" fill={LINES[1].color} />
+            )}
+            {show.promised && (
+              <circle cx={xFor(hover)} cy={yFor(hp.promised)} r="2.5" fill={LINES[2].color} />
+            )}
           </g>
         )}
       </svg>
 
+      {/* legend: tap a chip to show/hide that line */}
       <div
-        className="muted"
-        style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', fontSize: '0.72rem' }}
+        style={{
+          display: 'flex',
+          gap: '0.5rem',
+          flexWrap: 'wrap',
+          alignItems: 'center',
+          fontSize: '0.76rem',
+        }}
       >
-        <span>
-          <span style={{ color: COLORS.value }}>━</span> Value (market)
+        {LINES.map((l) => (
+          <button
+            key={l.key}
+            className="btn btn-ghost"
+            onClick={() => setShow((s) => ({ ...s, [l.key]: !s[l.key] }))}
+            aria-pressed={show[l.key]}
+            title={`${l.hint} — tap to ${show[l.key] ? 'hide' : 'show'}`}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '0.4rem',
+              padding: '0.2rem 0.6rem',
+              fontSize: '0.76rem',
+              opacity: show[l.key] ? 1 : 0.45,
+            }}
+          >
+            <span
+              style={{
+                width: 14,
+                height: 4,
+                borderRadius: 2,
+                background: l.color,
+                display: 'inline-block',
+              }}
+            />
+            {l.label}
+          </button>
+        ))}
+        <span className="muted" style={{ marginLeft: 'auto' }}>
+          {pricesThrough ? `Prices through ${fullDate(pricesThrough)} · ` : ''}daily resolution
         </span>
-        <span>
-          <span style={{ color: 'var(--accent,#7c6af7)' }}>━</span> Invested (at cost)
-        </span>
-        <span>
-          <span style={{ color: COLORS.promised }}>┅</span> Promised ($/day plan)
-        </span>
-        <span style={{ marginLeft: 'auto' }}>Daily resolution — prices captured once a day.</span>
       </div>
     </article>
   )

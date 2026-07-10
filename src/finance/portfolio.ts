@@ -167,15 +167,34 @@ export type AllocationRow = {
   unitsAllocated: number
 }
 
-/** The signed-in owner's executed trades (self-scoped RPC — returns your own rows). */
+/** PostgREST caps any single response at 1000 rows — with 1,500+ trades and 7,000+
+ *  allocations that silently truncated the ledger and corrupted its family/yours math.
+ *  Page through the RPC until a short page says we have everything. */
+async function rpcAllRows(
+  fn: 'get_executed_trades' | 'get_allocations',
+  uid: string,
+): Promise<Array<Record<string, unknown>>> {
+  const sb = getSupabaseClient()
+  const PAGE = 1000
+  const out: Array<Record<string, unknown>> = []
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await sb.rpc(fn, { uid }).range(from, from + PAGE - 1)
+    if (error) throw error
+    const rows = (data as Array<Record<string, unknown>> | null) ?? []
+    out.push(...rows)
+    if (rows.length < PAGE) break
+  }
+  return out
+}
+
+/** The signed-in owner's executed trades — all of them (paged past the row cap). */
 export async function fetchMyTrades(): Promise<Trade[]> {
   const sb = getSupabaseClient()
   const { data: u } = await sb.auth.getUser()
   const uid = u.user?.id
   if (!uid) return []
-  const { data, error } = await sb.rpc('get_executed_trades', { uid })
-  if (error) throw error
-  return ((data as Array<Record<string, unknown>> | null) ?? []).map((t) => ({
+  const rows = await rpcAllRows('get_executed_trades', uid)
+  return rows.map((t) => ({
     id: String(t.id),
     symbol: String(t.asset_symbol ?? ''),
     assetType: (t.asset_type as string | null) ?? null,
@@ -187,15 +206,14 @@ export async function fetchMyTrades(): Promise<Trade[]> {
   }))
 }
 
-/** The signed-in owner's allocations (self-scoped RPC). */
+/** The signed-in owner's allocations — all of them (paged past the row cap). */
 export async function fetchMyAllocations(): Promise<AllocationRow[]> {
   const sb = getSupabaseClient()
   const { data: u } = await sb.auth.getUser()
   const uid = u.user?.id
   if (!uid) return []
-  const { data, error } = await sb.rpc('get_allocations', { uid })
-  if (error) throw error
-  return ((data as Array<Record<string, unknown>> | null) ?? []).map((a) => ({
+  const rows = await rpcAllRows('get_allocations', uid)
+  return rows.map((a) => ({
     id: String(a.id),
     familyAccountId: String(a.family_account_id),
     executedTradeId: String(a.executed_trade_id),
