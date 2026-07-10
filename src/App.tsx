@@ -367,30 +367,47 @@ export default function App() {
   // Apply reveal-on-scroll to tagged elements
   useReveal('.reveal', active)
 
-  // Swipe navigation on touch devices (anywhere, excluding interactive elements/canvas)
+  // Swipe navigation on touch devices. Deliberately strict: page changes are jarring when
+  // accidental, so only a quick, clearly-horizontal flick navigates — a scroll that wobbles
+  // sideways, a slow drag, or a gesture on charts/scrollable rows must never flip the page.
   useEffect(() => {
     let startX = 0
     let startY = 0
+    let startAt = 0
     let startTarget: EventTarget | null = null
-    const THRESH = 50 // a bit lower threshold so it triggers more reliably on mobile
+    const THRESH = 90 // a real flick, not scroll drift
+    const MAX_DRIFT = 70 // too much vertical movement = it was a scroll
+    const MAX_MS = 600 // flicks are fast; slow drags don't navigate
+    const inHorizontalScroller = (el: HTMLElement | null): boolean => {
+      for (let n = el; n && n !== document.body; n = n.parentElement) {
+        if (n.scrollWidth > n.clientWidth + 4) {
+          const ox = getComputedStyle(n).overflowX
+          if (ox === 'auto' || ox === 'scroll') return true
+        }
+      }
+      return false
+    }
     const onTouchStart = (e: TouchEvent) => {
       if (e.touches.length !== 1) return // ignore multi-touch
       const t = e.touches[0]
       startX = t.clientX
       startY = t.clientY
+      startAt = e.timeStamp
       startTarget = e.target
     }
     const onTouchEnd = (e: TouchEvent) => {
       if (!startTarget) return
-      // ignore if gesture started on interactive or canvas (e.g., snake)
+      // ignore gestures that start on interactive things: canvas (snake), charts (svg),
+      // form fields, links/buttons, or anything horizontally scrollable (tables, chips)
       const node = startTarget as HTMLElement
-      if (node.closest('canvas, input, textarea, button, a, select')) return
+      if (node.closest('canvas, svg, input, textarea, button, a, select, [data-noswipe]')) return
+      if (inHorizontalScroller(node)) return
+      if (e.timeStamp - startAt > MAX_MS) return
       const t = e.changedTouches[0]
       const dx = t.clientX - startX
       const dy = t.clientY - startY
-      // Allow more forgiving horizontal intent
-      const mostlyHorizontal = Math.abs(dx) > Math.abs(dy) * 1.2
-      if (!mostlyHorizontal) return
+      const clearlyHorizontal = Math.abs(dx) > Math.abs(dy) * 2 && Math.abs(dy) < MAX_DRIFT
+      if (!clearlyHorizontal) return
       const order = navOrder(hasFinanceSupabaseEnv(), isFinanceAuthed, isAdmin, canFinance === true)
       const idx = order.indexOf(active)
       if (dx > THRESH && idx > 0) setActive(order[idx - 1]) // swipe right -> previous
