@@ -7,10 +7,13 @@ import { getSupabaseClient } from './client'
 export type TimelineAccount = { dollarPerDay: number; startDate: string | null }
 export type TimelineEvent = { date: string; symbol: string; units: number; cost: number }
 export type PricePoint = { symbol: string; date: string; price: number }
+/** Admin-set true average cost for a symbol whose basis can't be derived from the data. */
+export type CostOverride = { symbol: string; avgCost: number }
 export type Timeline = {
   accounts: TimelineAccount[]
   events: TimelineEvent[]
   prices: PricePoint[]
+  costBasis: CostOverride[]
 }
 
 function mapTimeline(data: Record<string, unknown>): Timeline {
@@ -29,6 +32,10 @@ function mapTimeline(data: Record<string, unknown>): Timeline {
       symbol: String(p.symbol ?? ''),
       date: String(p.date ?? ''),
       price: Number(p.price ?? 0),
+    })),
+    costBasis: ((data.costBasis as Array<Record<string, unknown>> | null) ?? []).map((o) => ({
+      symbol: String(o.symbol ?? ''),
+      avgCost: Number(o.avgCost ?? 0),
     })),
   }
 }
@@ -154,6 +161,10 @@ export function avgCostBySymbol(t: Timeline): Map<string, number> {
   for (const [sym, s] of state) {
     if (s.units > 1e-9 && s.cost > 0) out.set(sym, s.cost / s.units)
   }
+  // Admin-set true averages win — for holdings whose real basis the data can't reconstruct.
+  for (const o of t.costBasis ?? []) {
+    if (o.avgCost > 0) out.set(o.symbol, o.avgCost)
+  }
   return out
 }
 
@@ -218,5 +229,5 @@ export function demoTimeline(): Timeline {
     dollarPerDay: a.dollarPerDay,
     startDate: a.startDate,
   }))
-  return { accounts, events, prices }
+  return { accounts, events, prices, costBasis: [] }
 }
