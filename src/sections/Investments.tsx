@@ -37,6 +37,7 @@ import {
   fetchMyTimeline,
   fetchFundTimeline,
   demoTimeline,
+  avgCostBySymbol,
   type Timeline,
 } from '../finance/timeline'
 import { PortfolioChart } from './PortfolioChart'
@@ -707,6 +708,18 @@ function AccountCard({
     return any ? sum : null
   }, [account, priceSeries])
 
+  // Broker-style average cost per share (buys blend in, sells leave at the average), so
+  // each held position gets a percent gain/loss from its cost to the current price.
+  const avgCost = useMemo(
+    () => (timeline ? avgCostBySymbol(timeline) : new Map<string, number>()),
+    [timeline],
+  )
+  const plFor = (h: AccountPortfolio['holdings'][number]) => {
+    const ac = avgCost.get(h.symbol)
+    if (ac == null || ac <= 0 || h.price == null) return null
+    return { avgCost: ac, pct: ((h.price - ac) / ac) * 100, dollars: (h.price - ac) * h.units }
+  }
+
   const toggleSym = (symbol: string) => setOpenSym((cur) => (cur === symbol ? null : symbol))
 
   return (
@@ -812,6 +825,7 @@ function AccountCard({
               const isOpen = openSym === h.symbol
               const series = priceSeries.get(h.symbol) ?? []
               const spark = series.slice(-90).map((p) => p.price)
+              const pl = plFor(h)
               return (
                 <div key={h.symbol}>
                   <div
@@ -852,10 +866,21 @@ function AccountCard({
                       {h.price == null ? '—' : usd(val)}
                     </span>
                     <span
-                      className="muted cz-num"
-                      style={{ width: '3rem', textAlign: 'right', fontSize: '0.78rem' }}
+                      className="cz-num"
+                      title={
+                        pl
+                          ? `${pl.pct >= 0 ? 'Up' : 'Down'} from your average cost of ${usd(pl.avgCost)}/share`
+                          : 'Not enough cost history to show gain/loss'
+                      }
+                      style={{
+                        width: '4.5rem',
+                        textAlign: 'right',
+                        fontSize: '0.8rem',
+                        fontWeight: 700,
+                        color: pl ? (pl.pct >= 0 ? '#22cc78' : '#f46b6b') : 'var(--muted,#888)',
+                      }}
                     >
-                      {pct.toFixed(0)}%
+                      {pl ? `${pl.pct >= 0 ? '▲ ' : '▼ '}${Math.abs(pl.pct).toFixed(1)}%` : '—'}
                     </span>
                   </div>
                   {isOpen && (
@@ -875,8 +900,16 @@ function AccountCard({
                         label="Your share"
                         value={`${h.units.toLocaleString(undefined, { maximumFractionDigits: 4 })} units`}
                       />
-                      {h.price != null && <Stat label="Price" value={usd(h.price)} />}
+                      {pl && <Stat label="Avg cost" value={`${usd(pl.avgCost)}/sh`} />}
+                      {h.price != null && <Stat label="Price now" value={usd(h.price)} />}
                       {h.price != null && <Stat label="Worth" value={usd(val)} />}
+                      {pl && (
+                        <Stat
+                          label="Gain / loss"
+                          value={`${pl.dollars >= 0 ? '+' : '−'}${usd(Math.abs(pl.dollars))} · ${pl.pct >= 0 ? '▲' : '▼'}${Math.abs(pl.pct).toFixed(1)}%`}
+                          color={pl.pct >= 0 ? '#22cc78' : '#f46b6b'}
+                        />
+                      )}
                       <Stat label="Of this fund" value={`${pct.toFixed(1)}%`} />
                       {spark.length >= 2 && (
                         <span style={{ marginLeft: 'auto', display: 'grid', gap: 2 }}>

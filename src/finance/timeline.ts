@@ -122,6 +122,41 @@ export function buildDailySeries(t: Timeline, fromISO: string, toISO: string): S
   return out
 }
 
+/** Average cost per share for what's currently held, per symbol — the broker-style basis
+ *  for percent P/L. Replayed chronologically: buys blend into the average, sells remove
+ *  shares AT the average (so realized churn doesn't poison it), and zero-dollar events
+ *  (splits, manual unit corrections) change the share count while total cost stands. */
+export function avgCostBySymbol(t: Timeline): Map<string, number> {
+  const events = [...t.events].sort((a, b) => a.date.localeCompare(b.date))
+  const state = new Map<string, { units: number; cost: number }>()
+  for (const e of events) {
+    const s = state.get(e.symbol) ?? { units: 0, cost: 0 }
+    if (e.cost > 0 && e.units > 0) {
+      // buy: add shares at their price
+      s.units += e.units
+      s.cost += e.cost
+    } else if (e.cost < 0 && e.units < 0) {
+      // sell: remove shares at the current average
+      const avg = s.units > 0 ? s.cost / s.units : 0
+      s.units += e.units
+      s.cost += avg * e.units
+    } else {
+      // split / correction: units move, dollars don't
+      s.units += e.units
+    }
+    if (s.units <= 1e-9) {
+      s.units = Math.max(0, s.units)
+      s.cost = 0
+    }
+    state.set(e.symbol, s)
+  }
+  const out = new Map<string, number>()
+  for (const [sym, s] of state) {
+    if (s.units > 1e-9 && s.cost > 0) out.set(sym, s.cost / s.units)
+  }
+  return out
+}
+
 // ── Demo timeline (signed-out) ─────────────────────────────────────────────
 // Derived from the demo holdings so the chart's endpoints match the demo cards
 // exactly: each holding accrues in equal weekly buys, and each symbol's price
