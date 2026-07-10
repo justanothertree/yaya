@@ -317,6 +317,11 @@ function AllAccounts({
   const [expanded, setExpanded] = useState<string | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
+  const [query, setQuery] = useState('')
+  const [bulkOpen, setBulkOpen] = useState(false)
+  const [bulkVal, setBulkVal] = useState('')
+  const [bulkBusy, setBulkBusy] = useState(false)
+  const [bulkMsg, setBulkMsg] = useState<string | null>(null)
 
   if (accounts === null) {
     return (
@@ -326,20 +331,65 @@ function AllAccounts({
     )
   }
 
+  const totalDaily = accounts.reduce((s, a) => s + a.dollarPerDay, 0)
+  const totalReserved = accounts.reduce((s, a) => s + accountReserved(a), 0)
+  const people = new Set(accounts.map((a) => a.ownerUserId).filter(Boolean)).size
+  const openSlots = accounts.filter((a) => !a.ownerName && !a.ownerUsername).length
+  const q = query.trim().toLowerCase()
+  const filtered = q
+    ? accounts.filter((a) =>
+        [a.name, a.ownerName, a.ownerUsername].some((v) => (v ?? '').toLowerCase().includes(q)),
+      )
+    : accounts
+
+  async function applyBulk() {
+    const v = Number(bulkVal)
+    if (!accounts || !Number.isFinite(v) || v < 0) return
+    setBulkBusy(true)
+    setBulkMsg(null)
+    try {
+      for (const a of accounts) await adminUpdateAccount(a.id, a.name ?? '', v, a.startDate || null)
+      await onChanged()
+      setBulkMsg(
+        `✓ Set all ${accounts.length} account${accounts.length === 1 ? '' : 's'} to ${usd(v)}/day`,
+      )
+      setBulkVal('')
+      setBulkOpen(false)
+    } catch (e) {
+      setBulkMsg(e instanceof Error ? e.message : String(e))
+    } finally {
+      setBulkBusy(false)
+    }
+  }
+
   return (
     <article className="card" style={{ display: 'grid', gap: '0.5rem' }}>
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          flexWrap: 'wrap',
-          gap: '0.5rem',
-        }}
-      >
-        <span className="muted" style={{ fontSize: '0.8rem' }}>
-          {accounts.length} account{accounts.length === 1 ? '' : 's'}
-        </span>
+      {/* fund-wide config summary */}
+      <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap' }}>
+        <Stat label="Accounts" value={String(accounts.length)} />
+        <Stat label="People linked" value={`${people}${openSlots ? ` · ${openSlots} open` : ''}`} />
+        <Stat label="Promised / day" value={`${usd(totalDaily)}`} />
+        <Stat label="Reserved total" value={usd(totalReserved)} color="#22cc78" />
+      </div>
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Find an account or person…"
+          style={{ padding: '0.4rem 0.6rem', flex: '1 1 12rem', minWidth: 0 }}
+        />
+        <button
+          className="btn btn-ghost"
+          onClick={() => {
+            setBulkOpen((b) => !b)
+            setBulkMsg(null)
+          }}
+          style={{ fontSize: '0.8rem' }}
+          aria-expanded={bulkOpen}
+        >
+          {bulkOpen ? '✕' : '⚙️ Set $/day for all'}
+        </button>
         <button
           className="btn"
           onClick={() => {
@@ -357,6 +407,55 @@ function AllAccounts({
         </button>
       </div>
 
+      {bulkOpen && (
+        <div
+          style={{
+            display: 'flex',
+            gap: '0.5rem',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            padding: '0.6rem 0.7rem',
+            border: '1px solid var(--border, rgba(127,127,127,0.25))',
+            borderRadius: 8,
+          }}
+        >
+          <span className="muted" style={{ fontSize: '0.8rem' }}>
+            Promise every account
+          </span>
+          <span style={{ fontWeight: 700 }}>$</span>
+          <input
+            value={bulkVal}
+            onChange={(e) => setBulkVal(e.target.value)}
+            type="number"
+            min="0"
+            step="0.01"
+            placeholder="1.00"
+            autoFocus
+            style={{ padding: '0.35rem 0.5rem', width: '6rem' }}
+          />
+          <span className="muted" style={{ fontSize: '0.8rem' }}>
+            /day — overwrites all {accounts.length}
+          </span>
+          <button
+            className="btn"
+            onClick={() => void applyBulk()}
+            disabled={bulkBusy || !bulkVal || !Number.isFinite(Number(bulkVal))}
+            style={{
+              background: 'var(--accent,#7c6af7)',
+              color: '#fff',
+              borderColor: 'transparent',
+            }}
+          >
+            {bulkBusy ? 'Applying…' : 'Apply to all'}
+          </button>
+        </div>
+      )}
+      {bulkMsg && (
+        <p className="muted" style={{ margin: 0, fontSize: '0.8rem' }}>
+          {bulkMsg}
+        </p>
+      )}
+
       {creating && (
         <AccountForm
           members={members}
@@ -373,11 +472,17 @@ function AllAccounts({
           No family accounts yet — create one above.
         </p>
       )}
+      {accounts.length > 0 && filtered.length === 0 && (
+        <p className="muted" style={{ margin: 0 }}>
+          No account matches “{query}”.
+        </p>
+      )}
 
-      {accounts.map((a) => {
+      {filtered.map((a) => {
         const open = expanded === a.id
         const editing = editingId === a.id
-        const owner = a.ownerName || (a.ownerUsername ? `@${a.ownerUsername}` : 'Unlinked')
+        const linked = !!(a.ownerName || a.ownerUsername)
+        const owner = a.ownerName || (a.ownerUsername ? `@${a.ownerUsername}` : 'Open slot')
         return (
           <div key={a.id}>
             <div
@@ -411,8 +516,21 @@ function AllAccounts({
               >
                 <span style={{ opacity: 0.6, fontSize: '0.8rem' }}>{open ? '▾' : '▸'}</span>
                 <span style={{ fontWeight: 700 }}>{a.name || 'Account'}</span>
-                <span className="muted" style={{ fontSize: '0.78rem' }}>
-                  {owner}
+                <span
+                  className={linked ? 'muted' : undefined}
+                  style={{
+                    fontSize: '0.74rem',
+                    ...(linked
+                      ? {}
+                      : {
+                          color: 'var(--accent,#7c6af7)',
+                          border: '1px solid rgba(124,106,247,0.4)',
+                          borderRadius: 10,
+                          padding: '1px 8px',
+                        }),
+                  }}
+                >
+                  {linked ? owner : '◇ open slot'}
                 </span>
                 {a.dollarPerDay > 0 && (
                   <span className="muted" style={{ fontSize: '0.76rem' }}>
