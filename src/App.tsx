@@ -6,7 +6,7 @@ import { site } from './config/site'
 import { IconGitHub, IconLinkedIn } from './components/Icons'
 import { useReveal } from './hooks/useReveal'
 import { hasFinanceSupabaseEnv } from './finance/env'
-import { getUser, onAuthStateChange, signOut } from './finance/auth'
+import { getSessionUser, onAuthStateChange, signOut } from './finance/auth'
 import { getSupabaseClient } from './finance/client'
 
 // Lazy-load heavier sections (declared at module scope so they don't remount on each App render)
@@ -69,6 +69,57 @@ const navOrder = (
       : ['home', 'signin', 'snake', 'contact']
     : ['home', 'snake', 'contact']
 
+// ── optimistic boot: what the browser already knows about this user ──
+// Supabase persists the session in localStorage; peeking at it synchronously lets a
+// returning user boot signed-in on the very first paint instead of flashing "Sign in"
+// until a network round-trip confirms. Same for the gated tabs: the last confirmed
+// admin/finance flags are cached per user and re-verified in the background.
+function cachedAuthUid(): string | null {
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i)
+      if (!k || !/^sb-.+-auth-token$/.test(k)) continue
+      const raw = localStorage.getItem(k)
+      if (!raw) continue
+      const s = JSON.parse(raw) as {
+        user?: { id?: string }
+        expires_at?: number
+        refresh_token?: string
+      }
+      const uid = s.user?.id
+      if (!uid) continue
+      // usable if still valid or refreshable
+      if ((s.expires_at ?? 0) * 1000 > Date.now() || s.refresh_token) return uid
+    }
+  } catch {
+    /* ignore */
+  }
+  return null
+}
+type NavFlags = { uid: string; admin: boolean; finance: boolean; suspended: boolean }
+const NAV_FLAGS_KEY = 'nav_flags_v1'
+function readNavFlags(uid: string): NavFlags | null {
+  try {
+    const f = JSON.parse(localStorage.getItem(NAV_FLAGS_KEY) || 'null') as NavFlags | null
+    return f && f.uid === uid ? f : null
+  } catch {
+    return null
+  }
+}
+function writeNavFlags(patch: Partial<NavFlags> & { uid: string }) {
+  try {
+    const cur = readNavFlags(patch.uid) ?? {
+      uid: patch.uid,
+      admin: false,
+      finance: false,
+      suspended: false,
+    }
+    localStorage.setItem(NAV_FLAGS_KEY, JSON.stringify({ ...cur, ...patch }))
+  } catch {
+    /* ignore */
+  }
+}
+
 export default function App() {
   const initialSection: Section = (() => {
     const raw = (window.location.hash || '#home').replace('#', '')
@@ -90,11 +141,19 @@ export default function App() {
       : 'home'
   })()
   const [active, setActive] = useState<Section>(initialSection)
-  const [isFinanceAuthed, setIsFinanceAuthed] = useState(false)
-  const [isAdmin, setIsAdmin] = useState(false)
-  // 'finance' feature flag for this account: null = still loading (don't redirect yet)
-  const [canFinance, setCanFinance] = useState<boolean | null>(null)
-  const [suspended, setSuspended] = useState(false) // admin paused this account's access
+  // boot from the persisted session + last-confirmed flags (verified in the background)
+  const [boot] = useState(() => {
+    const uid = hasFinanceSupabaseEnv() ? cachedAuthUid() : null
+    return { uid, flags: uid ? readNavFlags(uid) : null }
+  })
+  const uidRef = useRef<string | null>(boot.uid)
+  const [isFinanceAuthed, setIsFinanceAuthed] = useState(!!boot.uid)
+  const [isAdmin, setIsAdmin] = useState(boot.flags?.admin ?? false)
+  // 'finance' feature flag for this account: null = still loading (don't redirect yet).
+  // A cached true paints the tab immediately; a cached false stays "loading" so a
+  // deep link to #investments can't be bounced before the server weighs in.
+  const [canFinance, setCanFinance] = useState<boolean | null>(boot.flags?.finance ? true : null)
+  const [suspended, setSuspended] = useState(boot.flags?.suspended ?? false)
   const [theme, setTheme] = useState<'light' | 'dark' | 'alt'>(() => {
     const saved = localStorage.getItem('theme') as 'light' | 'dark' | 'alt' | null
     if (saved) return saved
@@ -158,25 +217,31 @@ export default function App() {
     let alive = true
 
     // Admin = the server's source of truth (is_admin() → admin_users), so the client
-    // never disagrees with the security-definer RPCs the Admin panel calls.
+    // never disagrees with the security-definer RPCs the Admin panel calls. Each check
+    // also refreshes the per-user cache the next boot paints from.
     async function checkAdmin() {
       const { data } = await getSupabaseClient().rpc('is_admin')
-      if (alive) setIsAdmin(data === true)
+      if (!alive) return
+      setIsAdmin(data === true)
+      if (uidRef.current) writeNavFlags({ uid: uidRef.current, admin: data === true })
     }
     // Feature flags: only show Investments if the 'finance' feature is on for this account.
     async function checkFeatures() {
       const { data } = await getSupabaseClient().rpc('my_features')
       if (!alive) return
-      const fin = (data as { feature: string; enabled: boolean }[] | null)?.find(
+      const fin = !!(data as { feature: string; enabled: boolean }[] | null)?.find(
         (f) => f.feature === 'finance',
       )?.enabled
-      setCanFinance(!!fin)
+      setCanFinance(fin)
+      if (uidRef.current) writeNavFlags({ uid: uidRef.current, finance: fin })
     }
     // Account status: an admin can pause (suspend) a member's access.
     async function checkAccount() {
       const { data } = await getSupabaseClient().rpc('my_account')
       if (!alive) return
-      setSuspended(!!(data as { suspended: boolean }[] | null)?.[0]?.suspended)
+      const sus = !!(data as { suspended: boolean }[] | null)?.[0]?.suspended
+      setSuspended(sus)
+      if (uidRef.current) writeNavFlags({ uid: uidRef.current, suspended: sus })
     }
     const onSignedIn = () => {
       void checkAdmin()
@@ -184,14 +249,22 @@ export default function App() {
       void checkAccount()
     }
     const onSignedOut = () => {
+      uidRef.current = null
       setIsAdmin(false)
       setCanFinance(null)
       setSuspended(false)
+      try {
+        localStorage.removeItem(NAV_FLAGS_KEY)
+      } catch {
+        /* ignore */
+      }
     }
 
-    void getUser()
+    // local session read (no network) — near-instant confirm of the optimistic boot
+    void getSessionUser()
       .then((u) => {
         if (!alive) return
+        uidRef.current = u?.id ?? null
         setIsFinanceAuthed(!!u)
         if (u) onSignedIn()
         else onSignedOut()
@@ -203,6 +276,7 @@ export default function App() {
       })
 
     const { data } = onAuthStateChange((_event, session) => {
+      uidRef.current = session?.user?.id ?? null
       setIsFinanceAuthed(!!session?.user)
       if (session?.user) onSignedIn()
       else onSignedOut()
