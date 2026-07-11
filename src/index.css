@@ -264,6 +264,11 @@
   .cz-board-days {
     margin-left: 1.9rem !important;
   }
+  /* day-number header: cells are too narrow for digits on a phone — keep only the
+     highlighted "today" pill visible so the column marker survives */
+  .cz-board-dayhead span:not(.is-today) {
+    color: transparent !important;
+  }
 }
 .cz-slot {
   background: var(--card2, rgba(127, 127, 127, 0.06));
