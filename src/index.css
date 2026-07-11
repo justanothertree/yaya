@@ -401,6 +401,12 @@ body {
 /* Reserve vertical scrollbar to prevent horizontal shifts between pages */
 html {
   overflow-y: scroll;
+  /* Fluid type: the whole site is styled in rem, so scaling the root scales text AND
+     spacing together — each screen lands at its natural sweet spot (16px on phones,
+     ~17.5px on laptops, capped 20px on big monitors) without touching the zoom control.
+     The A− / A+ zoom still multiplies on top as a personal override. rem-based clamp
+     respects the user's browser font preference. */
+  font-size: clamp(1rem, 0.925rem + 0.22vw, 1.25rem);
 }
 
 html,
@@ -512,7 +518,10 @@ li {
 }
 
 .container {
-  max-width: min(1440px, calc(100vw - 2rem));
+  /* rem-based cap: the content column grows with the fluid root size, so the
+     characters-per-line stays comfortable on every monitor (90rem = 1440px at the
+     16px base, up to 1800px when the root reaches its 20px cap on big screens) */
+  max-width: min(90rem, calc(100vw - 2rem));
   margin: 0 auto;
   padding: clamp(0.9rem, 1.5vw, 1.25rem);
 }
