@@ -63,6 +63,9 @@ export function Board({
   )
   const max = Math.max(1, ...rows.map((r) => r.total))
   const anyData = rows.some((r) => r.total > 0)
+  // today's day-of-month when the board is showing the current month (−1 otherwise) —
+  // drives the highlighted "today" column, like the old fitness sheet's header
+  const todayDay = ym === curMonth ? Number(todayStr.slice(8, 10)) : -1
 
   return (
     <div>
@@ -134,6 +137,43 @@ export function Board({
               No logs in {monthLabel(ym)} — try ◀ for an earlier month.
             </p>
           )}
+          {/* day-number header — one cell per day, aligned with every row's squares;
+              today's column gets the accent pill (the fitness sheet's highlighted header) */}
+          <div
+            className="cz-board-days cz-board-dayhead"
+            style={{
+              display: 'flex',
+              gap: 1.5,
+              margin: '0 0 -6px calc(1.5rem + 0.75rem + 6rem + 0.75rem)',
+            }}
+            aria-hidden
+          >
+            {Array.from({ length: days }, (_, di) => {
+              const isToday = di + 1 === todayDay
+              return (
+                <span
+                  key={di}
+                  className={isToday ? 'is-today' : undefined}
+                  title={isToday ? 'Today' : undefined}
+                  style={{
+                    flex: '1 1 0',
+                    minWidth: 0,
+                    textAlign: 'center',
+                    fontSize: '0.58rem',
+                    lineHeight: '13px',
+                    height: 13,
+                    borderRadius: 4,
+                    overflow: 'hidden',
+                    fontWeight: isToday ? 800 : 500,
+                    color: isToday ? '#fff' : 'var(--ink2, rgba(127,127,127,0.75))',
+                    background: isToday ? 'var(--accent, #7c6af7)' : 'transparent',
+                  }}
+                >
+                  {di + 1}
+                </span>
+              )
+            })}
+          </div>
           {rows.map((r, i) => (
             <div key={r.p.id}>
               <div
@@ -288,6 +328,7 @@ export function Board({
                 {r.daily.map((pts, di) => {
                   const hit = pts >= r.goal
                   const some = pts > 0 && !hit
+                  const isToday = di + 1 === todayDay
                   const dStr = `${ym}-${String(di + 1).padStart(2, '0')}`
                   return (
                     <span
@@ -300,8 +341,16 @@ export function Board({
                         height: 8,
                         borderRadius: 1.5,
                         background: hit || some ? r.p.color : 'var(--b1, rgba(127,127,127,0.18))',
-                        opacity: hit ? 1 : some ? 0.45 : 0.5,
-                        boxShadow: hit ? 'inset 0 0 0 1px rgba(255,255,255,0.55)' : undefined,
+                        opacity: hit ? 1 : some ? 0.45 : isToday ? 0.85 : 0.5,
+                        // today's column stays visible down every row (accent ring),
+                        // goal-hit keeps its white inner ring
+                        boxShadow:
+                          [
+                            hit ? 'inset 0 0 0 1px rgba(255,255,255,0.55)' : '',
+                            isToday ? '0 0 0 1.5px var(--accent, #7c6af7)' : '',
+                          ]
+                            .filter(Boolean)
+                            .join(', ') || undefined,
                         cursor: onLogDate ? 'pointer' : undefined,
                       }}
                     />
@@ -312,8 +361,9 @@ export function Board({
           ))}
           {anyData && (
             <div className="muted" style={{ fontSize: '0.72rem', marginTop: 2 }}>
-              <span className="cz-board-bar">bar = month total · </span>each square = a day · ▢ ring
-              = goal hit · 🔥 = current streak
+              <span className="cz-board-bar">bar = month total · </span>each square = a day
+              {todayDay > 0 ? ' · ▣ purple column = today' : ''} · ▢ ring = goal hit · 🔥 = current
+              streak
             </div>
           )}
         </div>

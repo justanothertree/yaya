@@ -20,16 +20,41 @@ const todayISO = () => new Date().toISOString().slice(0, 10)
 const isDesktop = () => typeof window !== 'undefined' && window.innerWidth >= 820
 
 // A phone bookmark/shortcut to `#circuit?tab=log` opens straight to logging — the on-the-fly
-// convenience friends had with the spreadsheet. Any of the always-available tabs works.
-function initialTab(): Tab {
+// convenience friends had with the spreadsheet. Otherwise the Circuit reopens on whatever
+// sub-tab you were on last (navigating away unmounts this component, so it's persisted).
+const TAB_KEY = 'circuit_tab'
+function initialTab(authed: boolean): Tab {
+  const valid: Tab[] = [
+    'board',
+    'log',
+    'feed',
+    'charts',
+    'movies',
+    'watchlist',
+    ...(authed ? (['circuits'] as Tab[]) : []),
+  ]
   const q = new URLSearchParams(window.location.hash.split('?')[1] ?? '')
-  const t = q.get('tab') as Tab | null
-  const quick: Tab[] = ['board', 'log', 'feed', 'charts', 'movies', 'watchlist']
-  return t && quick.includes(t) ? t : 'board'
+  const fromLink = q.get('tab') as Tab | null
+  if (fromLink && valid.includes(fromLink)) return fromLink
+  try {
+    const saved = localStorage.getItem(TAB_KEY) as Tab | null
+    if (saved && valid.includes(saved)) return saved
+  } catch {
+    /* ignore */
+  }
+  return 'board'
 }
 
 export function Circuit({ authed = false }: { authed?: boolean } = {}) {
-  const [tab, setTab] = useState<Tab>(initialTab)
+  const [tab, setTabRaw] = useState<Tab>(() => initialTab(authed))
+  const setTab = (t: Tab) => {
+    setTabRaw(t)
+    try {
+      localStorage.setItem(TAB_KEY, t)
+    } catch {
+      /* ignore */
+    }
+  }
   const [logTarget, setLogTarget] = useState<{ personId: string; date: string } | null>(null)
   const [canvas, setCanvas] = useState(false)
   const [focusPane, setFocusPane] = useState<{ id: string; nonce: number } | null>(null)
