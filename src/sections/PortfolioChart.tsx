@@ -145,18 +145,44 @@ export function PortfolioChart({ timeline, title }: { timeline: Timeline; title?
 
   const hp = hover != null ? series[hover] : null
   const ticks = [0, 0.5, 1].map((f) => yMin + (yMax - yMin) * f)
-  // readout always carries the year; axis adds it when the window crosses years
+  // readout carries weekday + year; the axis format adapts to the range width
   const fullDate = (isoDate: string) =>
     new Date(isoDate + 'T00:00:00').toLocaleDateString(undefined, {
+      weekday: 'short',
       month: 'short',
       day: 'numeric',
       year: 'numeric',
     })
-  const axisDate = (isoDate: string) =>
-    new Date(isoDate + 'T00:00:00').toLocaleDateString(
-      undefined,
-      spansYears ? { month: 'short', year: 'numeric' } : { month: 'short', day: 'numeric' },
-    )
+  const axisLabel = (isoDate: string) => {
+    const d = new Date(isoDate + 'T00:00:00')
+    if (range === '1W') return d.toLocaleDateString(undefined, { weekday: 'short' }) // Mon…Sun
+    if (range === '1M') return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+    if (spansYears) return d.toLocaleDateString(undefined, { month: 'short', year: 'numeric' })
+    return d.toLocaleDateString(undefined, { month: 'short' })
+  }
+  // which points get an x-axis label: every day in Week view, else ~6 evenly spaced
+  const xTickIdx =
+    series.length <= 1
+      ? [0]
+      : range === '1W'
+        ? series.map((_, i) => i)
+        : Array.from({ length: Math.min(6, series.length) }, (_, k) =>
+            Math.round((k * (series.length - 1)) / (Math.min(6, series.length) - 1)),
+          ).filter((v, i, a) => a.indexOf(v) === i)
+
+  // Days the fund actually placed orders (real money in/out — not zero-dollar split fixes),
+  // so the chart can mark them and the readout can name what was ordered that day.
+  const ordersByDay = useMemo(() => {
+    const m = new Map<string, { cost: number; count: number }>()
+    for (const e of timeline.events) {
+      if (!e.cost) continue
+      const cur = m.get(e.date) ?? { cost: 0, count: 0 }
+      cur.cost += e.cost
+      cur.count += 1
+      m.set(e.date, cur)
+    }
+    return m
+  }, [timeline])
 
   const pricesThrough = useMemo(() => {
     let last = ''
@@ -200,6 +226,7 @@ export function PortfolioChart({ timeline, title }: { timeline: Timeline; title?
         {(() => {
           const p = hp ?? series[series.length - 1]
           if (!p) return <span className="muted">No activity in this range yet.</span>
+          const order = ordersByDay.get(p.date)
           return (
             <>
               <span className="muted">{fullDate(p.date)}</span>
@@ -212,6 +239,12 @@ export function PortfolioChart({ timeline, title }: { timeline: Timeline; title?
                 </span>
               )}
               {show.promised && <span className="muted">Promised {usd(p.promised)}</span>}
+              {order && (
+                <span style={{ color: order.cost < 0 ? '#f46b6b' : 'var(--accent,#7c6af7)' }}>
+                  ● {order.cost < 0 ? 'Sold' : 'Ordered'} {usd(Math.abs(order.cost))}
+                  {order.count > 1 ? ` · ${order.count} orders` : ''}
+                </span>
+              )}
             </>
           )
         })()}
@@ -250,23 +283,39 @@ export function PortfolioChart({ timeline, title }: { timeline: Timeline; title?
             </text>
           </g>
         ))}
-        {/* x labels: first / middle / last */}
+        {/* fund-order rug: a tick under the axis on each day money went in or out */}
+        {series.map((p, i) => {
+          const o = ordersByDay.get(p.date)
+          if (!o) return null
+          const sell = o.cost < 0
+          return (
+            <line
+              key={`o${i}`}
+              x1={xFor(i)}
+              x2={xFor(i)}
+              y1={H - PAD.bottom}
+              y2={H - PAD.bottom - 6}
+              stroke={sell ? '#f46b6b' : 'var(--accent,#7c6af7)'}
+              strokeWidth="1.6"
+              opacity={0.65}
+            />
+          )
+        })}
+        {/* x labels: weekdays (Week), dated ticks (Month), months (Year/All) */}
         {series.length > 0 &&
-          [0, Math.floor((series.length - 1) / 2), series.length - 1]
-            .filter((i, idx, a) => a.indexOf(i) === idx)
-            .map((i) => (
-              <text
-                key={i}
-                x={xFor(i)}
-                y={H - 8}
-                textAnchor={i === 0 ? 'start' : i === series.length - 1 ? 'end' : 'middle'}
-                fontSize="10"
-                fill="currentColor"
-                opacity={0.55}
-              >
-                {axisDate(series[i].date)}
-              </text>
-            ))}
+          xTickIdx.map((i) => (
+            <text
+              key={i}
+              x={xFor(i)}
+              y={H - 8}
+              textAnchor={i === 0 ? 'start' : i === series.length - 1 ? 'end' : 'middle'}
+              fontSize="10"
+              fill="currentColor"
+              opacity={0.55}
+            >
+              {axisLabel(series[i].date)}
+            </text>
+          ))}
 
         {paths.promised && (
           <path
@@ -345,8 +394,17 @@ export function PortfolioChart({ timeline, title }: { timeline: Timeline; title?
             {l.label}
           </button>
         ))}
-        <span className="muted" style={{ marginLeft: 'auto' }}>
-          {pricesThrough ? `Prices through ${fullDate(pricesThrough)} · ` : ''}daily resolution
+        <span
+          className="muted"
+          style={{
+            marginLeft: 'auto',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '0.3rem',
+          }}
+        >
+          <span style={{ color: 'var(--accent,#7c6af7)' }}>●</span> order days ·{' '}
+          {pricesThrough ? `prices through ${fullDate(pricesThrough)}` : 'daily'}
         </span>
       </div>
     </article>
