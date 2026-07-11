@@ -13,7 +13,6 @@ import {
   adminReassignAccount,
   adminEnableFinance,
   accountReserved,
-  promisedToDate,
   aheadBehind,
   portfolioTotals,
   runwayDays,
@@ -790,10 +789,10 @@ function AccountCard({
 }) {
   const [showAll, setShowAll] = useState(false)
   const [openSym, setOpenSym] = useState<string | null>(null)
+  const [showInfo, setShowInfo] = useState(false)
   const hVal = (h: AccountPortfolio['holdings'][number]) =>
     h.price != null ? h.units * h.price : 0
   const total = accountReserved(account)
-  const promised = promisedToDate(account)
   const ab = aheadBehind(account)
   const unpriced = account.holdings.filter((h) => h.price == null).length
   const holdings = [...account.holdings].sort((x, y) => hVal(y) - hVal(x))
@@ -838,6 +837,24 @@ function AccountCard({
     return { avgCost: ac, pct: ((h.price - ac) / ac) * 100, dollars: (h.price - ac) * h.units }
   }
 
+  // Account-wide gain since bought = value − cost, over holdings with a known basis.
+  const gain = (() => {
+    let basis = 0
+    let val = 0
+    for (const h of holdings) {
+      const ac = avgCost.get(h.symbol)
+      if (ac != null && ac > 0 && h.price != null) {
+        basis += h.units * ac
+        val += h.units * h.price
+      }
+    }
+    return basis > 0 ? { dollars: val - basis, pct: ((val - basis) / basis) * 100 } : null
+  })()
+  const pricedAsOf = account.holdings.reduce<string | null>(
+    (acc, h) => (h.priceAt && (!acc || h.priceAt > acc) ? h.priceAt : acc),
+    null,
+  )
+
   const toggleSym = (symbol: string) => setOpenSym((cur) => (cur === symbol ? null : symbol))
 
   return (
@@ -860,44 +877,72 @@ function AccountCard({
             {usd(account.dollarPerDay)}/day
           </span>
         )}
+        <button
+          className="btn btn-ghost"
+          onClick={() => setShowInfo((s) => !s)}
+          aria-expanded={showInfo}
+          title="What do these numbers mean?"
+          style={{ marginLeft: 'auto', fontSize: '0.82rem', padding: '0.1rem 0.5rem' }}
+        >
+          {showInfo ? '✕' : 'ⓘ'}
+        </button>
       </div>
 
-      {/* summary stats */}
-      <div style={{ display: 'flex', gap: '1.6rem', flexWrap: 'wrap' }}>
-        <Stat label="Reserved value" value={usd(total)} big />
-        {dayChange != null && Math.abs(dayChange) >= 0.005 && (
-          <Stat
-            label="Today"
-            value={`${dayChange >= 0 ? '▲ +' : '▼ −'}${usd(Math.abs(dayChange))}`}
-            color={dayChange >= 0 ? '#22cc78' : '#f46b6b'}
-          />
+      {/* hero: the one number that matters, with today and since-bought under it */}
+      <div style={{ display: 'grid', gap: '0.25rem' }}>
+        <span
+          className="muted"
+          style={{ fontSize: '0.74rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}
+        >
+          Worth today
+        </span>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.7rem', flexWrap: 'wrap' }}>
+          <span className="cz-num" style={{ fontWeight: 800, fontSize: '2rem', lineHeight: 1 }}>
+            {usd(total)}
+          </span>
+          {dayChange != null && Math.abs(dayChange) >= 0.005 && (
+            <span
+              className="cz-num"
+              style={{ fontWeight: 700, color: dayChange >= 0 ? '#22cc78' : '#f46b6b' }}
+            >
+              {dayChange >= 0 ? '▲ +' : '▼ −'}
+              {usd(Math.abs(dayChange))} today
+            </span>
+          )}
+        </div>
+        {(gain || ab != null) && (
+          <div className="cz-num" style={{ fontSize: '0.84rem' }}>
+            {gain && (
+              <span style={{ fontWeight: 700, color: gain.dollars >= 0 ? '#22cc78' : '#f46b6b' }}>
+                {gain.dollars >= 0 ? '▲ +' : '▼ −'}
+                {usd(Math.abs(gain.dollars))} ({Math.abs(gain.pct).toFixed(1)}%)
+              </span>
+            )}
+            {gain && <span className="muted"> since bought</span>}
+            {ab != null && (
+              <span className="muted">
+                {gain ? ' · ' : ''}
+                {usd(Math.abs(ab))} {ab >= 0 ? 'ahead of' : 'behind'} your{' '}
+                {usd(account.dollarPerDay)}/day plan
+              </span>
+            )}
+          </div>
         )}
-        {promised != null && <Stat label="Promised to date" value={usd(promised)} />}
-        {ab != null && (
-          <Stat
-            label="Schedule"
-            value={`${ab >= 0 ? '+' : '−'}${usd(Math.abs(ab))} ${ab >= 0 ? 'ahead' : 'behind'}`}
-            color={ab >= 0 ? '#22cc78' : '#f46b6b'}
-          />
-        )}
-        <Stat label="Holdings" value={String(holdings.length)} />
       </div>
-      <p className="muted" style={{ margin: 0, fontSize: '0.76rem' }}>
-        Reserved value is what these holdings are worth at the latest prices
-        {(() => {
-          const asOf = account.holdings.reduce<string | null>(
-            (acc, h) => (h.priceAt && (!acc || h.priceAt > acc) ? h.priceAt : acc),
-            null,
-          )
-          return asOf
-            ? ` (updated ${new Date(asOf).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })})`
-            : ''
-        })()}
-        . &ldquo;Ahead&rdquo; means more is set aside than the {usd(account.dollarPerDay)}/day
-        promise so far; &ldquo;behind&rdquo; means less.
-        {unpriced > 0 &&
-          ` Covers ${holdings.length - unpriced} of ${holdings.length} holdings — the rest aren’t priced yet.`}
-      </p>
+
+      {showInfo && (
+        <p className="muted" style={{ margin: 0, fontSize: '0.76rem' }}>
+          <strong>Worth today</strong> is what these holdings would sell for at the latest prices
+          {pricedAsOf
+            ? ` (updated ${new Date(pricedAsOf).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })})`
+            : ''}
+          . <strong>Since bought</strong> compares that to what was paid for them.{' '}
+          <strong>Ahead / behind</strong> compares it to the {usd(account.dollarPerDay)}/day you’re
+          promised — ahead means more is saved up than promised so far.
+          {unpriced > 0 &&
+            ` A few holdings aren’t priced yet (${holdings.length - unpriced} of ${holdings.length} shown).`}
+        </p>
+      )}
 
       {holdings.length === 0 ? (
         <p className="muted" style={{ margin: 0, fontSize: '0.88rem' }}>
@@ -1133,11 +1178,10 @@ function ScheduleSummary({ accounts }: { accounts: AccountPortfolio[] }) {
   return (
     <article className="card" style={{ display: 'grid', gap: '0.7rem' }}>
       <div style={{ display: 'flex', gap: '1.6rem', flexWrap: 'wrap' }}>
-        <Stat label="Reserved value" value={usd(t.invested)} big />
-        <Stat label="Promised to date" value={usd(t.promised)} />
+        <Stat label="Worth today" value={usd(t.invested)} big />
         <Stat
-          label="Schedule"
-          value={`${ahead ? '+' : '−'}${usd(Math.abs(t.aheadBehind))} ${ahead ? 'ahead' : 'behind'}`}
+          label={ahead ? 'Ahead of plan' : 'Behind plan'}
+          value={`${ahead ? '+' : '−'}${usd(Math.abs(t.aheadBehind))}`}
           big
           color={ahead ? '#22cc78' : '#f46b6b'}
         />
@@ -1148,11 +1192,10 @@ function ScheduleSummary({ accounts }: { accounts: AccountPortfolio[] }) {
             color={ahead ? '#22cc78' : '#f46b6b'}
           />
         )}
-        <Stat label="Accounts" value={String(t.tracked)} />
       </div>
       <p className="muted" style={{ margin: 0, fontSize: '0.8rem' }}>
-        Each account is promised $1 a day; “reserved value” is what the family-marked holdings are
-        worth today. Ahead means more value is reserved than promised so far.
+        Everyone’s promised {usd(t.dailyRate / Math.max(1, t.tracked))} a day. “Worth today” is what
+        the family holdings are worth now — ahead means that’s more than promised so far.
       </p>
     </article>
   )
