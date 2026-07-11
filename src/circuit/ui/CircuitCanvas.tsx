@@ -19,20 +19,27 @@ type WinBox = {
 }
 type Layout = Record<string, WinBox>
 
-const STORE_KEY = 'circuit_canvas_v3' // v3: full-width canvas surface (re-tile from old layouts)
+// v4: layouts are stored per canvas (home vs circuit have different panes — one shared
+// key made each page clobber the other's layout and re-tile every visit).
+const storeKey = (panes: CanvasPane[]) =>
+  'canvas_v4:' +
+  panes
+    .map((p) => p.id)
+    .sort()
+    .join(',')
 const GAP = 12
 
-function loadLayout(): Layout | null {
+function loadLayout(key: string): Layout | null {
   try {
-    const raw = localStorage.getItem(STORE_KEY)
+    const raw = localStorage.getItem(key)
     return raw ? (JSON.parse(raw) as Layout) : null
   } catch {
     return null
   }
 }
-function saveLayout(l: Layout) {
+function saveLayout(key: string, l: Layout) {
   try {
-    localStorage.setItem(STORE_KEY, JSON.stringify(l))
+    localStorage.setItem(key, JSON.stringify(l))
   } catch {
     /* ignore quota */
   }
@@ -47,6 +54,10 @@ const MIN_H = 120
 // content up from here (the "ideal size" the Window button snaps back to).
 const IDEAL_W = 440
 const IDEAL_H = 560
+// Content scale for a window width — quantized to 5% steps so text doesn't reflow on
+// every pixel of a resize (that shimmer read as "clunky"). Used live during the drag
+// AND for the committed style, so nothing pops when the pointer is released.
+const scaleFor = (w: number) => Math.min(2.6, Math.max(0.7, Math.round(w / IDEAL_W / 0.05) * 0.05))
 
 function handleStyle(dir: Dir): React.CSSProperties {
   const base: React.CSSProperties = { position: 'absolute', zIndex: 6, touchAction: 'none' }
@@ -168,11 +179,38 @@ export function CircuitCanvas({
     return next
   }, [hostBox, panes])
 
-  // ── init: restore saved layout or tile fresh ──
+  // Fit every window to the current canvas: maximized ones re-take the full surface,
+  // the rest are clamped fully inside. Fixes stale saved layouts (from a bigger window
+  // or different zoom) that used to leave a "full screen" window hanging past the edge.
+  const clampAll = useCallback(
+    (l: Layout): Layout => {
+      const b = hostBox()
+      const next: Layout = {}
+      for (const [id, w] of Object.entries(l)) {
+        if (w.max) {
+          next[id] = { ...w, ...snapGeom('max')! }
+        } else {
+          const cw = Math.max(MIN_W, Math.min(w.w, b.w))
+          const ch = Math.max(MIN_H, Math.min(w.h, b.h))
+          next[id] = {
+            ...w,
+            w: cw,
+            h: ch,
+            x: Math.max(0, Math.min(w.x, b.w - cw)),
+            y: Math.max(0, Math.min(w.y, b.h - ch)),
+          }
+        }
+      }
+      return next
+    },
+    [hostBox, snapGeom],
+  )
+
+  // ── init: restore saved layout (fitted to today's canvas) or tile fresh ──
   useLayoutEffect(() => {
-    const saved = loadLayout()
+    const saved = loadLayout(storeKey(panes))
     const valid = saved && panes.every((p) => saved[p.id])
-    const next = valid ? saved! : defaultTile()
+    const next = clampAll(valid ? saved! : defaultTile())
     Object.values(next).forEach((w) => {
       if (w.z > maxZ.current) maxZ.current = w.z
     })
@@ -182,15 +220,35 @@ export function CircuitCanvas({
 
   // persist whenever layout settles
   useEffect(() => {
-    if (Object.keys(wins).length) saveLayout(wins)
-  }, [wins])
+    if (Object.keys(wins).length) saveLayout(storeKey(panes), wins)
+  }, [wins, panes])
 
-  // lock background scroll while the full-width canvas overlay is open
+  // canvas resized (browser window, devtools, zoom) → keep every window fitting
+  useEffect(() => {
+    const host = hostRef.current
+    if (!host || typeof ResizeObserver === 'undefined') return
+    let raf = 0
+    const ro = new ResizeObserver(() => {
+      cancelAnimationFrame(raf)
+      raf = requestAnimationFrame(() => setWins((prev) => clampAll(prev)))
+    })
+    ro.observe(host)
+    return () => {
+      cancelAnimationFrame(raf)
+      ro.disconnect()
+    }
+  }, [clampAll])
+
+  // lock background scroll while the full-width canvas overlay is open, and tell the
+  // app shell a canvas is active (it suspends the global zoom, which otherwise fights
+  // the fixed surface and pushes maximized windows past the viewport)
   useEffect(() => {
     const prev = document.body.style.overflow
     document.body.style.overflow = 'hidden'
+    window.dispatchEvent(new CustomEvent('yaya:canvas', { detail: true }))
     return () => {
       document.body.style.overflow = prev
+      window.dispatchEvent(new CustomEvent('yaya:canvas', { detail: false }))
     }
   }, [])
 
@@ -217,18 +275,46 @@ export function CircuitCanvas({
     focus(id)
     const w = wins[id]
     if (!w) return
-    drag.current = { id, sx: e.clientX, sy: e.clientY, ox: w.x, oy: w.y, zone: null }
+    let ox = w.x
+    let oy = w.y
+    // dragging a maximized window restores it under the cursor (OS behavior), instead
+    // of the old height-collapse glitch mid-drag
+    if (w.max) {
+      const host = hostRef.current?.getBoundingClientRect()
+      const rw = w.prev?.w ?? Math.min(IDEAL_W, w.w)
+      const rh = w.prev?.h ?? Math.min(IDEAL_H, w.h)
+      const b = hostBox()
+      const px = host ? e.clientX - host.left : 0
+      ox = Math.max(0, Math.min(px - rw / 2, b.w - rw))
+      oy = 0
+      const el = winRefs.current[id]
+      if (el) {
+        el.style.left = ox + 'px'
+        el.style.top = '0px'
+        el.style.width = rw + 'px'
+        el.style.height = rh + 'px'
+        const body = el.querySelector<HTMLElement>('.cz-body')
+        if (body) body.style.zoom = String(scaleFor(rw))
+      }
+      setWins((prev) => ({
+        ...prev,
+        [id]: { ...prev[id], x: ox, y: 0, w: rw, h: rh, max: false },
+      }))
+    }
+    drag.current = { id, sx: e.clientX, sy: e.clientY, ox, oy, zone: null }
     e.preventDefault()
     window.addEventListener('pointermove', onDragMove)
     window.addEventListener('pointerup', onDragUp)
   }
 
+  // Snap only when the pointer is pressed right against an edge (12px) — the old 36px
+  // band hijacked ordinary drags that merely passed near a border.
   const zoneFor = useCallback((e: PointerEvent): Zone | null => {
     const host = hostRef.current
     if (!host) return null
     const h = host.getBoundingClientRect()
-    const T = 36
-    const C = 90
+    const T = 12
+    const C = 48
     const rx = e.clientX - h.left
     const ry = e.clientY - h.top
     const nearL = rx < T
@@ -259,7 +345,6 @@ export function CircuitCanvas({
       // move via direct DOM for smoothness; commit to state on drop
       el.style.left = nx + 'px'
       el.style.top = ny + 'px'
-      el.style.height = '' // moving cancels max
       const zone = zoneFor(e)
       d.zone = zone
       setSnap(zone ? snapGeom(zone) : null)
@@ -331,6 +416,9 @@ export function CircuitCanvas({
       el.style.top = y + 'px'
       el.style.width = w + 'px'
       el.style.height = h + 'px'
+      // content scale tracks the resize live (it used to pop only on release)
+      const body = el.querySelector<HTMLElement>('.cz-body')
+      if (body) body.style.zoom = String(scaleFor(w))
     },
     [hostBox],
   )
@@ -540,7 +628,9 @@ export function CircuitCanvas({
           flex: 1,
           minHeight: 0,
           padding: 4,
-          overflow: 'auto',
+          // windows are always clamped inside the surface, so nothing ever scrolls —
+          // a maximized window is exactly the visible canvas
+          overflow: 'hidden',
           background:
             'repeating-linear-gradient(45deg, transparent, transparent 11px, rgba(127,127,127,0.025) 11px, rgba(127,127,127,0.025) 12px)',
           borderRadius: 10,
@@ -552,7 +642,7 @@ export function CircuitCanvas({
           if (!w || w.min) return null
           // scale the content with the window size: at the "ideal" width it sits at 100%,
           // and growing the window past that scales everything up so it's easier to see.
-          const bodyScale = Math.min(2.6, Math.max(0.7, w.w / IDEAL_W))
+          const bodyScale = scaleFor(w.w)
           return (
             <div
               key={p.id}
