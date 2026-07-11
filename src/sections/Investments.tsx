@@ -1172,7 +1172,7 @@ function TradesLedger({ accounts }: { accounts: AccountPortfolio[] | null }) {
   const [err, setErr] = useState<string | null>(null)
   // trade-list filters + lazy rendering (1,500+ rows would drown the page)
   const [fSymbol, setFSymbol] = useState('')
-  const [fPlatform, setFPlatform] = useState<'all' | 'cashapp' | 'robinhood' | 'manual'>('all')
+  const [fPlatform, setFPlatform] = useState<'all' | 'cashapp' | 'robinhood'>('all')
   const [fKind, setFKind] = useState<'all' | 'buys' | 'sells' | 'adjustments'>('all')
   const [visibleCount, setVisibleCount] = useState(50)
 
@@ -1433,7 +1433,6 @@ function TradesLedger({ accounts }: { accounts: AccountPortfolio[] | null }) {
             <option value="all">Both brokers</option>
             <option value="cashapp">Cash App</option>
             <option value="robinhood">Robinhood</option>
-            <option value="manual">Manual fixes</option>
           </select>
           <select
             value={fKind}
