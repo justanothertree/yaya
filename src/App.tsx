@@ -119,6 +119,15 @@ export default function App() {
     () => typeof window !== 'undefined' && window.innerWidth >= 820,
   )
   const [canvasOpen, setCanvasOpen] = useState(false)
+  // ANY mounted canvas (home's or the Circuit's own) announces itself; the global zoom
+  // is suspended while one is up — CSS zoom fights the fixed full-screen surface and
+  // used to push a "full screen" window past the viewport (scroll to see it all).
+  const [canvasMounted, setCanvasMounted] = useState(false)
+  useEffect(() => {
+    const onCanvas = (e: Event) => setCanvasMounted(!!(e as CustomEvent).detail)
+    window.addEventListener('yaya:canvas', onCanvas)
+    return () => window.removeEventListener('yaya:canvas', onCanvas)
+  }, [])
   useEffect(() => {
     const onResize = () => setDesktop(window.innerWidth >= 820)
     window.addEventListener('resize', onResize)
@@ -666,7 +675,10 @@ export default function App() {
         id="content"
         className="container"
         tabIndex={-1}
-        style={{ paddingBottom: 'env(safe-area-inset-bottom)', zoom: canvasOpen ? 1 : uiScale }}
+        style={{
+          paddingBottom: 'env(safe-area-inset-bottom)',
+          zoom: canvasOpen || canvasMounted ? 1 : uiScale,
+        }}
       >
         {suspended && (
           <div
