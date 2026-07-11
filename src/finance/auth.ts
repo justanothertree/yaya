@@ -15,6 +15,15 @@ export async function getUser(): Promise<User | null> {
   return data.user
 }
 
+/** The locally-persisted session's user — no network round-trip, so it resolves
+ *  near-instantly on boot. Use for UI gating (nav tabs); RLS still guards all data,
+ *  and the auth listener corrects if the session turns out stale. */
+export async function getSessionUser(): Promise<User | null> {
+  const sb = getSupabaseClient()
+  const { data } = await sb.auth.getSession()
+  return data.session?.user ?? null
+}
+
 /**
  * Enforces “authenticated-only” usage for finance operations.
  *
