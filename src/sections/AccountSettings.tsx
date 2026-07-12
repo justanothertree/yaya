@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import {
   getSessionUser,
   onAuthStateChange,
+  peekPersistedUserId,
   signOut,
   updateUserEmail,
   updateUserPassword,
@@ -322,21 +323,38 @@ export function AccountSettings() {
         const user = await getSessionUser()
         if (!alive) return
         if (!user) {
-          setError('Not signed in')
+          // a persisted token means a refresh is still in flight — stay on the loading
+          // card and let the auth listener below resolve it, instead of flashing the
+          // sign-in-required message at a signed-in user
+          if (!peekPersistedUserId()) {
+            setError('Not signed in')
+            setLoading(false)
+          }
           return
         }
         setCurrentEmail(user.email ?? '')
         setNewEmail(user.email ?? '')
+        setLoading(false)
       } catch (err) {
-        if (alive) setError(normalizeError(err))
-      } finally {
-        if (alive) setLoading(false)
+        if (alive) {
+          setError(normalizeError(err))
+          setLoading(false)
+        }
       }
     }
     void load()
-    const { data } = onAuthStateChange((_event, session) => {
+    const { data } = onAuthStateChange((event, session) => {
       if (!alive) return
-      setCurrentEmail(session?.user?.email ?? '')
+      if (session?.user) {
+        setError(null)
+        setLoading(false)
+        setCurrentEmail(session.user.email ?? '')
+        setNewEmail((cur) => cur || (session.user.email ?? ''))
+      } else if (event === 'SIGNED_OUT') {
+        setCurrentEmail('')
+        setError('Not signed in')
+        setLoading(false)
+      }
     })
     return () => {
       alive = false

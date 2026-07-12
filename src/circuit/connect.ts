@@ -52,10 +52,15 @@ export async function connectCircuit() {
   }
   if (!wired) {
     wired = true
-    // when the member signs in/out, swap to Supabase / localStorage accordingly
-    onAuthStateChange((_event, session) => {
-      if (!session?.user) clearCloudCache() // next user/session starts clean
+    // when the member signs in/out, swap to Supabase / localStorage accordingly.
+    // Only an EXPLICIT sign-out swaps away — the auth library also emits transient
+    // null-session events mid-refresh, and reacting to those flashed the demo board
+    // ("read-only, sign in") at signed-in members.
+    onAuthStateChange((event, session) => {
+      if (!session?.user && event !== 'SIGNED_OUT') return
+      if (event === 'SIGNED_OUT') clearCloudCache() // next user/session starts clean
       const a = pickAdapter()
+      if (a === current) return // no churn on token refreshes
       current = a
       void circuitStore.init(a).catch(() => undefined)
     })
