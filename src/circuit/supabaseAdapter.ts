@@ -7,6 +7,48 @@ import { getSupabaseClient } from '../finance/client'
 
 const TABLES = ['circuit_people', 'circuit_logs', 'circuit_movies', 'circuit_watchlist'] as const
 
+// Last cloud snapshot, cached locally so a returning member's board paints instantly on
+// mount instead of sitting empty (or flashing the demo) while the network load runs.
+// The fresh board follows moments later through the same channel realtime updates use.
+const CLOUD_CACHE_KEY = 'circuit_cloud_cache_v1'
+function readCloudCache(): CircuitState | null {
+  try {
+    const raw = localStorage.getItem(CLOUD_CACHE_KEY)
+    if (!raw) return null
+    const s = JSON.parse(raw) as CircuitState
+    // a corrupt/outdated snapshot must never crash the board — validate the shape
+    // the renderers rely on, else discard and load fresh
+    const ok =
+      Array.isArray(s.people) &&
+      Array.isArray(s.logs) &&
+      Array.isArray(s.movies) &&
+      Array.isArray(s.watchlist) &&
+      s.logs.every((l) => Array.isArray(l.entries))
+    if (!ok) {
+      localStorage.removeItem(CLOUD_CACHE_KEY)
+      return null
+    }
+    return s
+  } catch {
+    return null
+  }
+}
+function writeCloudCache(s: CircuitState) {
+  try {
+    localStorage.setItem(CLOUD_CACHE_KEY, JSON.stringify(s))
+  } catch {
+    /* quota — the cache is an optimization, never required */
+  }
+}
+/** Wipe the snapshot (called on sign-out so the next user/session starts clean). */
+export function clearCloudCache() {
+  try {
+    localStorage.removeItem(CLOUD_CACHE_KEY)
+  } catch {
+    /* ignore */
+  }
+}
+
 type PersonRow = {
   id: string
   name: string
@@ -146,9 +188,26 @@ export function createSupabaseAdapter(): CircuitAdapter {
   // ownership model (groups + per-person owner_user_id) a new/non-crew member must start
   // empty and create or join a circuit — never inherit someone else's slice.
 
+  // set when the store subscribes; the background refresh delivers the fresh board
+  // through the same path a realtime change would
+  let emitExternal: ((s: CircuitState) => void) | null = null
+
   return {
     async load() {
-      return loadAll()
+      const cached = readCloudCache()
+      if (cached) {
+        // serve the snapshot instantly; the fresh board lands like a realtime update
+        void loadAll()
+          .then((s) => {
+            writeCloudCache(s)
+            emitExternal?.(s)
+          })
+          .catch(() => undefined)
+        return cached
+      }
+      const s = await loadAll()
+      writeCloudCache(s)
+      return s
     },
     async savePerson(p: Person) {
       await sb.from('circuit_people').upsert(personToRow(p))
@@ -175,14 +234,19 @@ export function createSupabaseAdapter(): CircuitAdapter {
       await sb.from('circuit_watchlist').delete().eq('id', id)
     },
     subscribe(onExternalChange) {
+      emitExternal = onExternalChange
       const ch = sb.channel('circuit-sync')
       for (const table of TABLES) {
         ch.on('postgres_changes', { event: '*', schema: 'public', table }, () => {
-          void loadAll().then(onExternalChange)
+          void loadAll().then((s) => {
+            writeCloudCache(s) // keep next mount's instant paint current
+            onExternalChange(s)
+          })
         })
       }
       ch.subscribe()
       return () => {
+        emitExternal = null
         void sb.removeChannel(ch)
       }
     },

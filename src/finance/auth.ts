@@ -24,6 +24,32 @@ export async function getSessionUser(): Promise<User | null> {
   return data.session?.user ?? null
 }
 
+/** Synchronous peek at the persisted session's user id — no client, no network, no
+ *  await. For boot-time decisions (nav shape, which Circuit adapter) before supabase-js
+ *  even initializes. A stale value only mispaints for a beat: RLS still guards every
+ *  byte, and the auth listener corrects the UI. */
+export function peekPersistedUserId(): string | null {
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i)
+      if (!k || !/^sb-.+-auth-token$/.test(k)) continue
+      const raw = localStorage.getItem(k)
+      if (!raw) continue
+      const s = JSON.parse(raw) as {
+        user?: { id?: string }
+        expires_at?: number
+        refresh_token?: string
+      }
+      if (!s.user?.id) continue
+      // usable if still valid or refreshable
+      if ((s.expires_at ?? 0) * 1000 > Date.now() || s.refresh_token) return s.user.id
+    }
+  } catch {
+    /* ignore */
+  }
+  return null
+}
+
 /**
  * Enforces “authenticated-only” usage for finance operations.
  *

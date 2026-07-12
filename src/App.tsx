@@ -6,7 +6,7 @@ import { site } from './config/site'
 import { IconGitHub, IconLinkedIn } from './components/Icons'
 import { useReveal } from './hooks/useReveal'
 import { hasFinanceSupabaseEnv } from './finance/env'
-import { getSessionUser, onAuthStateChange, signOut } from './finance/auth'
+import { getSessionUser, onAuthStateChange, peekPersistedUserId, signOut } from './finance/auth'
 import { getSupabaseClient } from './finance/client'
 
 // Lazy-load heavier sections (declared at module scope so they don't remount on each App render)
@@ -70,32 +70,10 @@ const navOrder = (
     : ['home', 'snake', 'contact']
 
 // ── optimistic boot: what the browser already knows about this user ──
-// Supabase persists the session in localStorage; peeking at it synchronously lets a
-// returning user boot signed-in on the very first paint instead of flashing "Sign in"
+// The persisted Supabase session is peeked synchronously (peekPersistedUserId) so a
+// returning user boots signed-in on the very first paint instead of flashing "Sign in"
 // until a network round-trip confirms. Same for the gated tabs: the last confirmed
 // admin/finance flags are cached per user and re-verified in the background.
-function cachedAuthUid(): string | null {
-  try {
-    for (let i = 0; i < localStorage.length; i++) {
-      const k = localStorage.key(i)
-      if (!k || !/^sb-.+-auth-token$/.test(k)) continue
-      const raw = localStorage.getItem(k)
-      if (!raw) continue
-      const s = JSON.parse(raw) as {
-        user?: { id?: string }
-        expires_at?: number
-        refresh_token?: string
-      }
-      const uid = s.user?.id
-      if (!uid) continue
-      // usable if still valid or refreshable
-      if ((s.expires_at ?? 0) * 1000 > Date.now() || s.refresh_token) return uid
-    }
-  } catch {
-    /* ignore */
-  }
-  return null
-}
 type NavFlags = { uid: string; admin: boolean; finance: boolean; suspended: boolean }
 const NAV_FLAGS_KEY = 'nav_flags_v1'
 function readNavFlags(uid: string): NavFlags | null {
@@ -143,7 +121,7 @@ export default function App() {
   const [active, setActive] = useState<Section>(initialSection)
   // boot from the persisted session + last-confirmed flags (verified in the background)
   const [boot] = useState(() => {
-    const uid = hasFinanceSupabaseEnv() ? cachedAuthUid() : null
+    const uid = hasFinanceSupabaseEnv() ? peekPersistedUserId() : null
     return { uid, flags: uid ? readNavFlags(uid) : null }
   })
   const uidRef = useRef<string | null>(boot.uid)

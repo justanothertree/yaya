@@ -2,21 +2,22 @@
 // signed in (and Supabase is configured), localStorage otherwise. Re-wires on auth change.
 import { circuitStore } from './store'
 import { createLocalAdapter } from './localAdapter'
-import { createSupabaseAdapter } from './supabaseAdapter'
+import { createSupabaseAdapter, clearCloudCache } from './supabaseAdapter'
 import { fetchPublicCircuit, bundledPublicBoard } from './publicData'
 import { hasFinanceSupabaseEnv } from '../finance/env'
-import { getUser, onAuthStateChange } from '../finance/auth'
+import { onAuthStateChange, peekPersistedUserId } from '../finance/auth'
 import type { CircuitAdapter } from './adapter'
 
 let local: ReturnType<typeof createLocalAdapter> | null = null
 let supa: ReturnType<typeof createSupabaseAdapter> | null = null
 let current: CircuitAdapter | null = null
 
-async function pickAdapter() {
-  if (hasFinanceSupabaseEnv()) {
-    const user = await getUser().catch(() => null)
-    if (user) return (supa ??= createSupabaseAdapter())
-  }
+function pickAdapter() {
+  // The persisted session is peeked synchronously — the old `await getUser()` here was a
+  // network round-trip on EVERY mount, and when a stale token made it fail, a signed-in
+  // member briefly got the demo sandbox (the "sign in" flash). If the session really is
+  // dead, the queries fail, connectCircuit falls back, and the auth listener re-wires.
+  if (hasFinanceSupabaseEnv() && peekPersistedUserId()) return (supa ??= createSupabaseAdapter())
   // Signed out: seed the local sandbox INSTANTLY from the bundled public board so the page
   // is never blank while the live board loads. The live data is pulled in the background
   // (see connectCircuit) — this matters most on Firefox, whose cross-site fetch is slower.
@@ -37,16 +38,26 @@ async function refreshPublicInBackground() {
 
 let wired = false
 export async function connectCircuit() {
-  current = await pickAdapter()
-  await circuitStore.init(current)
+  current = pickAdapter()
+  try {
+    await circuitStore.init(current)
+  } catch {
+    // cloud load failed (dead session, network) — fall back to the sandbox for now;
+    // the auth listener below re-wires the moment the session settles
+    if (current !== local) {
+      if (!local) local = createLocalAdapter(bundledPublicBoard())
+      current = local
+      await circuitStore.init(local).catch(() => undefined)
+    }
+  }
   if (!wired) {
     wired = true
     // when the member signs in/out, swap to Supabase / localStorage accordingly
-    onAuthStateChange(() => {
-      void pickAdapter().then((a) => {
-        current = a
-        void circuitStore.init(a)
-      })
+    onAuthStateChange((_event, session) => {
+      if (!session?.user) clearCloudCache() // next user/session starts clean
+      const a = pickAdapter()
+      current = a
+      void circuitStore.init(a).catch(() => undefined)
     })
   }
   // signed out → upgrade the bundled board to the live one in the background
