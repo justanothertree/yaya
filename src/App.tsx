@@ -280,19 +280,35 @@ export default function App() {
       data.subscription.unsubscribe()
     }
   }, [])
-  // Keep CSS var --nav-h in sync with actual nav height (for padding/offset calculations)
+  // Keep CSS var --nav-h in sync with the actual nav height (drives content offset + anchor
+  // scroll-margin). Reads on the next frame so it measures the settled layout, not a
+  // mid-resize/mid-reflow height — that lag briefly left a gap/overlap under the bar.
   useEffect(() => {
     const el = navRef.current
     if (!el) return
+    let raf = 0
     const apply = () => {
-      const h = el.offsetHeight || 56
-      document.documentElement.style.setProperty('--nav-h', h + 'px')
+      cancelAnimationFrame(raf)
+      raf = requestAnimationFrame(() => {
+        const h = el.offsetHeight
+        if (h > 0) document.documentElement.style.setProperty('--nav-h', h + 'px')
+      })
     }
     apply()
     const ro = new ResizeObserver(apply)
     ro.observe(el)
     window.addEventListener('resize', apply)
+    // the nav grows a few px when the web font swaps in — re-measure once that lands so the
+    // reserved offset matches (otherwise the bar overlaps the first line of content)
+    document.fonts?.ready.then(apply).catch(() => undefined)
+    // settle insurance: catch any late layout shift (font swap, slow device, async
+    // viewport settle) that a single observer callback can miss
+    const t1 = setTimeout(apply, 250)
+    const t2 = setTimeout(apply, 900)
     return () => {
+      cancelAnimationFrame(raf)
+      clearTimeout(t1)
+      clearTimeout(t2)
       ro.disconnect()
       window.removeEventListener('resize', apply)
     }

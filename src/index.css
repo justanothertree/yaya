@@ -85,6 +85,27 @@
   --btn-text: #ffffff;
 }
 
+/* ── one spacing + radius rhythm for the whole site ──────────────────────────
+   Every gap, pad, and corner reads from this scale so sections, cards, and
+   controls stay in proportion at any screen size. Spacing is rem-based, so it
+   rides the fluid root font-size; radii are a small coherent family. */
+:root {
+  --sp-1: 0.25rem;
+  --sp-2: 0.5rem;
+  --sp-3: 0.75rem;
+  --sp-4: 1rem;
+  --sp-5: 1.5rem;
+  --sp-6: 2rem;
+  --r-sm: 8px;
+  --r-md: 12px;
+  --r-lg: 16px;
+  --r-pill: 999px;
+  /* card interior — a touch more generous on wide screens */
+  --card-pad: clamp(0.9rem, 0.72rem + 0.7vw, 1.35rem);
+  /* the standard gap between stacked cards / sections */
+  --stack: var(--sp-4);
+}
+
 /* ── shared "Circuit" design language (ported from the standalone) ───────────── */
 /* mono numerals — points, stats, totals */
 .cz-num {
@@ -553,9 +574,11 @@ li {
   }
 }
 
-/* Avoid bottom glitches between sections by ensuring content fills viewport */
+/* Avoid bottom glitches between sections by ensuring content fills viewport.
+   --nav-h is kept exact by JS (ResizeObserver on the nav); this is just the
+   pre-hydration fallback, tuned to the leaner bar. */
 :root {
-  --nav-h: 56px;
+  --nav-h: 54px;
 }
 /* Removed 100dvh-based min-height on main to prevent snap/jitter at high zoom */
 /* Keep content below fixed nav (fallback; see enhanced version near end) */
@@ -570,7 +593,7 @@ section[id] {
 .grid {
   display: grid;
   grid-template-columns: 1fr;
-  gap: 1rem;
+  gap: var(--stack);
 }
 @media (min-width: 900px) {
   .grid-2 {
@@ -584,8 +607,8 @@ section[id] {
 .card {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 14px;
-  padding: 1rem;
+  border-radius: var(--r-lg);
+  padding: var(--card-pad);
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
   color: var(--text);
 }
@@ -622,9 +645,21 @@ section[id] {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  /* the nav sets its OWN compact vertical padding instead of inheriting the container's
+     larger fluid pad — that's what made the bar ~75px tall and stole space up top */
+  padding-block: clamp(0.4rem, 0.28rem + 0.4vw, 0.62rem);
+}
+/* banner utility controls (zoom, theme, sign-out) are power tools — a touch more compact
+   than a primary CTA so the nav stays lean, and never wrap to a second line */
+.nav .btn {
+  padding: 0.4rem 0.72rem;
+  font-size: 0.85rem;
+  white-space: nowrap;
+  line-height: 1.2;
 }
 .nav-links {
   display: flex;
+  align-items: center; /* children sit at their natural height — no stretch inflating the bar */
   gap: 0.25rem;
   overflow-x: auto;
   overscroll-behavior-x: contain;
@@ -653,9 +688,9 @@ section[id] {
 .nav a {
   color: var(--text);
   opacity: 0.9;
-  margin-left: 0.75rem;
-  padding: 0.25rem 0.35rem;
-  border-radius: 6px;
+  margin-left: var(--sp-3);
+  padding: 0.3rem 0.5rem;
+  border-radius: var(--r-sm);
   white-space: nowrap;
   scroll-snap-align: center;
 }
@@ -675,7 +710,7 @@ section[id] {
 }
 
 .section-title {
-  margin: 0 0 0.5rem 0;
+  margin: 0 0 var(--sp-2) 0;
   font-size: 1.25rem;
   color: var(--text);
 }
@@ -799,7 +834,7 @@ section[id] {
   background: var(--icon-bg);
   color: var(--text);
   border: 1px solid var(--icon-border);
-  border-radius: 10px;
+  border-radius: var(--r-md);
   width: 40px;
   height: 40px;
   display: grid;
