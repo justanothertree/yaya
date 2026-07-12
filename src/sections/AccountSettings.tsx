@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
+  getSessionUser,
   onAuthStateChange,
-  requireUser,
   signOut,
   updateUserEmail,
   updateUserPassword,
@@ -317,8 +317,14 @@ export function AccountSettings() {
       setLoading(true)
       setError(null)
       try {
-        const user = await requireUser()
+        // local session read — the old network requireUser() could lag or transiently
+        // fail during a token refresh, flashing "Sign in required" at a signed-in user
+        const user = await getSessionUser()
         if (!alive) return
+        if (!user) {
+          setError('Not signed in')
+          return
+        }
         setCurrentEmail(user.email ?? '')
         setNewEmail(user.email ?? '')
       } catch (err) {

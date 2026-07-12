@@ -542,50 +542,28 @@ export function CircuitCanvas({
         boxSizing: 'border-box',
       }}
     >
-      {/* control bar */}
+      {/* one compact bar: canvas label · window tabs · tile / done. The how-to lives in
+          a tooltip (ⓘ) instead of a sentence eating a whole row. */}
       <div
         style={{
           display: 'flex',
           alignItems: 'center',
-          gap: '0.6rem',
-          marginBottom: '0.5rem',
-          flexWrap: 'wrap',
-          flexShrink: 0,
-        }}
-      >
-        <strong style={{ fontSize: '0.9rem' }}>⛶ Canvas</strong>
-        <span className="muted" style={{ fontSize: '0.74rem' }}>
-          drag the title bar (snaps at edges) · drag any edge or corner to resize · ⤢ fit · ▢ max ·
-          － min
-        </span>
-        <span style={{ marginLeft: 'auto', display: 'flex', gap: '0.4rem' }}>
-          <button className="btn" onClick={tile}>
-            ⊞ Tile
-          </button>
-          <button
-            className="btn"
-            onClick={onExit}
-            style={{
-              background: 'var(--accent,#7c6af7)',
-              color: '#fff',
-              borderColor: 'transparent',
-            }}
-          >
-            Done
-          </button>
-        </span>
-      </div>
-
-      {/* window-switcher taskbar: highlights the focused window, dims minimized ones */}
-      <div
-        style={{
-          display: 'flex',
           gap: '0.35rem',
+          marginBottom: '0.45rem',
           flexWrap: 'wrap',
-          marginBottom: '0.5rem',
           flexShrink: 0,
         }}
       >
+        <strong
+          style={{ fontSize: '0.88rem', marginRight: '0.15rem', whiteSpace: 'nowrap' }}
+          title="Drag a title bar to move (press against an edge to snap) · drag any edge or corner to resize · ▭ ideal size · ⛶ full screen · － hide"
+        >
+          ⛶ Canvas
+          <span className="muted" style={{ fontWeight: 400, fontSize: '0.74rem' }}>
+            {' '}
+            ⓘ
+          </span>
+        </strong>
         {panes.map((p) => {
           const w = wins[p.id]
           const min = !!w?.min
@@ -618,6 +596,23 @@ export function CircuitCanvas({
             </button>
           )
         })}
+        <span style={{ marginLeft: 'auto', display: 'flex', gap: '0.4rem' }}>
+          <button className="btn" onClick={tile} style={{ fontSize: '0.8rem' }}>
+            ⊞ Tile
+          </button>
+          <button
+            className="btn"
+            onClick={onExit}
+            style={{
+              fontSize: '0.8rem',
+              background: 'var(--accent,#7c6af7)',
+              color: '#fff',
+              borderColor: 'transparent',
+            }}
+          >
+            Done
+          </button>
+        </span>
       </div>
 
       {/* canvas surface */}
@@ -638,8 +633,10 @@ export function CircuitCanvas({
       >
         {panes.map((p) => {
           const w = wins[p.id]
-          // minimized windows vanish from the canvas — they live only as a taskbar tab
-          if (!w || w.min) return null
+          if (!w) return null
+          // minimized windows stay MOUNTED but hidden — restoring from the taskbar used
+          // to rebuild the whole pane from scratch (a visible flash); now it's instant
+          // and keeps scroll position / half-typed inputs alive
           // scale the content with the window size: at the "ideal" width it sits at 100%,
           // and growing the window past that scales everything up so it's easier to see.
           const bodyScale = scaleFor(w.w)
@@ -656,9 +653,9 @@ export function CircuitCanvas({
                 left: w.x,
                 top: w.y,
                 width: w.w,
-                height: w.min ? undefined : w.h,
+                height: w.h,
                 zIndex: w.z,
-                display: 'flex',
+                display: w.min ? 'none' : 'flex',
                 flexDirection: 'column',
                 background: 'var(--panel, #141a2a)',
                 border:
@@ -670,7 +667,7 @@ export function CircuitCanvas({
                   p.id === topId ? '0 10px 34px rgba(0,0,0,0.55)' : '0 8px 28px rgba(0,0,0,0.45)',
                 overflow: 'hidden',
                 minWidth: MIN_W,
-                minHeight: w.min ? 0 : MIN_H,
+                minHeight: MIN_H,
               }}
             >
               {/* title bar */}
@@ -686,7 +683,7 @@ export function CircuitCanvas({
                   gap: '0.4rem',
                   padding: '6px 9px',
                   background: 'var(--b1, rgba(127,127,127,0.12))',
-                  borderBottom: w.min ? 'none' : '1px solid var(--b1, rgba(127,127,127,0.15))',
+                  borderBottom: '1px solid var(--b1, rgba(127,127,127,0.15))',
                   cursor: 'grab',
                   userSelect: 'none',
                   flexShrink: 0,
@@ -729,17 +726,14 @@ export function CircuitCanvas({
                 </button>
               </div>
               {/* body — content scales with the window so a bigger window = bigger, clearer UI */}
-              {!w.min && (
-                <div
-                  className="cz-body"
-                  style={{ flex: 1, overflow: 'auto', padding: 12, zoom: bodyScale }}
-                >
-                  {p.node}
-                </div>
-              )}
+              <div
+                className="cz-body"
+                style={{ flex: 1, overflow: 'auto', padding: 12, zoom: bodyScale }}
+              >
+                {p.node}
+              </div>
               {/* resize handles on every edge + corner */}
-              {!w.min &&
-                !w.max &&
+              {!w.max &&
                 RESIZE_DIRS.map((dir) => (
                   <div
                     key={dir}
