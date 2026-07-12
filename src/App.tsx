@@ -238,26 +238,42 @@ export default function App() {
       }
     }
 
+    // The auth library emits transient null-session events while a token refresh is in
+    // flight (cold loads, returning to the tab) — treating those as sign-outs is what
+    // flashed "Sign in"/read-only at signed-in users. Only an EXPLICIT sign-out (or a
+    // null session with no persisted token left) may flip the UI to signed-out.
+    const confirmSignedOut = () => {
+      if (peekPersistedUserId()) return // refresh in flight — events will settle it
+      uidRef.current = null
+      setIsFinanceAuthed(false)
+      onSignedOut()
+    }
+
     // local session read (no network) — near-instant confirm of the optimistic boot
     void getSessionUser()
       .then((u) => {
         if (!alive) return
-        uidRef.current = u?.id ?? null
-        setIsFinanceAuthed(!!u)
-        if (u) onSignedIn()
-        else onSignedOut()
+        if (u) {
+          uidRef.current = u.id
+          setIsFinanceAuthed(true)
+          onSignedIn()
+        } else confirmSignedOut()
       })
       .catch(() => {
-        if (!alive) return
-        setIsFinanceAuthed(false)
-        onSignedOut()
+        if (alive) confirmSignedOut()
       })
 
-    const { data } = onAuthStateChange((_event, session) => {
-      uidRef.current = session?.user?.id ?? null
-      setIsFinanceAuthed(!!session?.user)
-      if (session?.user) onSignedIn()
-      else onSignedOut()
+    const { data } = onAuthStateChange((event, session) => {
+      if (session?.user) {
+        uidRef.current = session.user.id
+        setIsFinanceAuthed(true)
+        onSignedIn()
+      } else if (event === 'SIGNED_OUT') {
+        uidRef.current = null
+        setIsFinanceAuthed(false)
+        onSignedOut()
+      }
+      // other null-session events (INITIAL_SESSION mid-refresh etc.) change nothing
     })
     return () => {
       alive = false
