@@ -485,20 +485,60 @@ export function CircuitCanvas({
   }
   // Window button: snap back to the ideal size where content reads at 100% (un-maximizes,
   // un-minimizes), clamped so it stays fully on the canvas.
+  // "Fit to content" — measure THIS window's content and size the window to show all of
+  // it without forced wrapping or scrolling, instead of a one-size-fits-all constant.
+  // Width = the content's natural unwrapped width; height = what that width needs. Both
+  // clamped to the canvas. Measured at scale 1; the window's actual scale is ≤1 (wider
+  // effective layout), so the fit always has a little slack rather than clipping.
   function idealSize(id: string) {
+    const el = winRefs.current[id]
+    const body = el?.querySelector<HTMLElement>('.cz-body')
+    const b = hostBox()
+    if (!el || !body) {
+      // fallback: the old fixed guess if we can't measure
+      const nw = Math.min(IDEAL_W, b.w)
+      const nh = Math.min(IDEAL_H, b.h)
+      setWins((prev) => {
+        const win = prev[id]
+        if (!win) return prev
+        const x = Math.max(0, Math.min(win.x, b.w - nw))
+        const y = Math.max(0, Math.min(win.y, b.h - nh))
+        return { ...prev, [id]: { ...win, min: false, max: false, x, y, w: nw, h: nh } }
+      })
+      focus(id)
+      return
+    }
+    const bar = el.querySelector<HTMLElement>('.cz-bar')
+    const barH = Math.ceil(bar?.getBoundingClientRect().height ?? 38)
+    const sZoom = body.style.zoom
+    const sBodyW = body.style.width
+    const sElW = el.style.width
+    // measure at natural scale so the numbers are the content's own, not the current zoom's
+    body.style.zoom = '1'
+    // natural unwrapped width (content + the body's own padding), forced no-wrap
+    body.style.width = 'max-content'
+    const wNeed = Math.ceil(body.getBoundingClientRect().width)
+    body.style.width = ''
+    const w = Math.min(b.w, Math.max(MIN_W, wNeed + 4))
+    // height the content needs once wrapped to that width
+    el.style.width = w + 'px'
+    const hNeed = Math.ceil(body.scrollHeight)
+    // restore the live styles (the state update below re-applies the real ones)
+    body.style.zoom = sZoom
+    body.style.width = sBodyW
+    el.style.width = sElW
+    // a little vertical slack so a hairline overflow (scrollbar reserve, async image,
+    // sub-pixel rounding) doesn't summon a scrollbar and defeat the whole point
+    const h = Math.min(b.h, Math.max(MIN_H, hNeed + barH + 12))
     setWins((prev) => {
-      const w = prev[id]
-      const host = hostRef.current
-      const maxW = host ? host.clientWidth - 8 : IDEAL_W
-      const maxH = host ? host.clientHeight - 8 : IDEAL_H
-      const nw = Math.min(IDEAL_W, maxW)
-      const nh = Math.min(IDEAL_H, maxH)
-      const nx = Math.max(0, Math.min(w.x, maxW - nw))
-      const ny = Math.max(0, Math.min(w.y, maxH - nh))
-      return { ...prev, [id]: { ...w, min: false, max: false, x: nx, y: ny, w: nw, h: nh } }
+      const win = prev[id]
+      if (!win) return prev
+      const x = Math.max(0, Math.min(win.x, b.w - w))
+      const y = Math.max(0, Math.min(win.y, b.h - h))
+      return { ...prev, [id]: { ...win, min: false, max: false, x, y, w, h } }
     })
     focus(id)
-    showToast('▭ Ideal size')
+    showToast('▭ Fit to content')
   }
   function tile() {
     maxZ.current = 10
@@ -722,7 +762,7 @@ export function CircuitCanvas({
                     e.stopPropagation()
                     idealSize(p.id)
                   }}
-                  title="Window — ideal size"
+                  title="Fit to content — size this window to show everything, no scroll"
                   style={czBtn}
                 >
                   ▭
