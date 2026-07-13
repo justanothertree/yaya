@@ -51,17 +51,18 @@ type Dir = 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw'
 const RESIZE_DIRS: Dir[] = ['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw']
 const MIN_W = 240
 const MIN_H = 120
-// the size at which a window's content reads cleanly at 100%; bigger windows scale their
-// content up from here (the "ideal size" the Window button snaps back to).
+// the width at which a window's content reads cleanly at 100% (also the "ideal size" the
+// Window button snaps back to).
 const IDEAL_W = 440
 const IDEAL_H = 560
-// Content scale for a window — driven by the SMALLER of its width/height ratios so a
-// maximized (very wide) window doesn't blow content up past its own height and force a
-// scroll. Content only grows when there's room both ways. Quantized to 5% steps so text
-// doesn't reflow on every pixel of a resize, and used live during the drag so nothing
-// pops on release.
-const scaleFor = (w: number, h: number) =>
-  Math.min(2.6, Math.max(0.7, Math.round(Math.min(w / IDEAL_W, h / IDEAL_H) / 0.05) * 0.05))
+// Content scale from WIDTH only, capped at 100%. A window is never zoomed PAST natural
+// size, so making it bigger always reveals MORE content instead of enlarging what's there
+// — dragging a window taller used to also grow the content (via a width+height scale), so
+// you could never catch the bottom. Narrow windows still shrink content a little so it
+// fits without excessive reflow. Height no longer affects scale, so growing height purely
+// shows more. Content already reads at a screen-appropriate size via the fluid root.
+// Quantized to 5% steps so text doesn't reflow on every pixel of a resize.
+const scaleFor = (w: number) => Math.min(1, Math.max(0.6, Math.round(w / IDEAL_W / 0.05) * 0.05))
 
 function handleStyle(dir: Dir): React.CSSProperties {
   const base: React.CSSProperties = { position: 'absolute', zIndex: 6, touchAction: 'none' }
@@ -304,7 +305,7 @@ export function CircuitCanvas({
         el.style.width = rw + 'px'
         el.style.height = rh + 'px'
         const body = el.querySelector<HTMLElement>('.cz-body')
-        if (body) body.style.zoom = String(scaleFor(rw, rh))
+        if (body) body.style.zoom = String(scaleFor(rw))
       }
       setWins((prev) => ({
         ...prev,
@@ -428,7 +429,7 @@ export function CircuitCanvas({
       el.style.height = h + 'px'
       // content scale tracks the resize live (it used to pop only on release)
       const body = el.querySelector<HTMLElement>('.cz-body')
-      if (body) body.style.zoom = String(scaleFor(w, h))
+      if (body) body.style.zoom = String(scaleFor(w))
     },
     [hostBox],
   )
@@ -652,7 +653,7 @@ export function CircuitCanvas({
           // and keeps scroll position / half-typed inputs alive
           // scale the content with the window size: at the "ideal" width it sits at 100%,
           // and growing the window past that scales everything up so it's easier to see.
-          const bodyScale = scaleFor(w.w, w.h)
+          const bodyScale = scaleFor(w.w)
           return (
             <div
               key={p.id}
