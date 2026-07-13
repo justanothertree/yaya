@@ -3,6 +3,7 @@
 // Ported from the standalone's "operating system" mode. Desktop-only.
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import { showToast } from '../toast'
 
 export type CanvasPane = { id: string; title: string; node: ReactNode }
@@ -50,14 +51,17 @@ type Dir = 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw'
 const RESIZE_DIRS: Dir[] = ['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw']
 const MIN_W = 240
 const MIN_H = 120
-// the width at which a window's content reads cleanly at 100%; wider windows scale their
+// the size at which a window's content reads cleanly at 100%; bigger windows scale their
 // content up from here (the "ideal size" the Window button snaps back to).
 const IDEAL_W = 440
 const IDEAL_H = 560
-// Content scale for a window width — quantized to 5% steps so text doesn't reflow on
-// every pixel of a resize (that shimmer read as "clunky"). Used live during the drag
-// AND for the committed style, so nothing pops when the pointer is released.
-const scaleFor = (w: number) => Math.min(2.6, Math.max(0.7, Math.round(w / IDEAL_W / 0.05) * 0.05))
+// Content scale for a window — driven by the SMALLER of its width/height ratios so a
+// maximized (very wide) window doesn't blow content up past its own height and force a
+// scroll. Content only grows when there's room both ways. Quantized to 5% steps so text
+// doesn't reflow on every pixel of a resize, and used live during the drag so nothing
+// pops on release.
+const scaleFor = (w: number, h: number) =>
+  Math.min(2.6, Math.max(0.7, Math.round(Math.min(w / IDEAL_W, h / IDEAL_H) / 0.05) * 0.05))
 
 function handleStyle(dir: Dir): React.CSSProperties {
   const base: React.CSSProperties = { position: 'absolute', zIndex: 6, touchAction: 'none' }
@@ -95,6 +99,12 @@ export function CircuitCanvas({
   const hostRef = useRef<HTMLDivElement>(null)
   const winRefs = useRef<Record<string, HTMLDivElement | null>>({})
   const maxZ = useRef(10)
+  // portal target captured once at first render (this is a browser-only SPA, so body is
+  // always present) — evaluating document.body per-render tripped an intermittent
+  // "target container is not a DOM element" during error-boundary recovery / HMR
+  const [portalTarget] = useState<HTMLElement | null>(() =>
+    typeof document !== 'undefined' ? document.body : null,
+  )
   const [wins, setWins] = useState<Layout>({})
   const [snap, setSnap] = useState<{ x: number; y: number; w: number; h: number } | null>(null)
   const drag = useRef<{
@@ -294,7 +304,7 @@ export function CircuitCanvas({
         el.style.width = rw + 'px'
         el.style.height = rh + 'px'
         const body = el.querySelector<HTMLElement>('.cz-body')
-        if (body) body.style.zoom = String(scaleFor(rw))
+        if (body) body.style.zoom = String(scaleFor(rw, rh))
       }
       setWins((prev) => ({
         ...prev,
@@ -418,7 +428,7 @@ export function CircuitCanvas({
       el.style.height = h + 'px'
       // content scale tracks the resize live (it used to pop only on release)
       const body = el.querySelector<HTMLElement>('.cz-body')
-      if (body) body.style.zoom = String(scaleFor(w))
+      if (body) body.style.zoom = String(scaleFor(w, h))
     },
     [hostBox],
   )
@@ -523,10 +533,13 @@ export function CircuitCanvas({
 
   const host = hostRef.current?.getBoundingClientRect()
 
-  return (
-    // Full-width canvas surface: a fixed panel spanning the viewport below the nav,
-    // so the "operating system" isn't capped by the page container. Desktop-only
-    // (the launcher button is hidden on phones), so mobile keeps the clean tab layout.
+  if (!portalTarget) return null
+  // Portaled to <body> so the fixed surface spans the true viewport. Rendered inline it
+  // gets trapped by any ancestor that establishes a containing block (the #circuit card's
+  // reveal transform did exactly that — a maximized window collapsed to the card's height).
+  return createPortal(
+    // Full-width canvas surface: a fixed panel spanning the viewport below the nav.
+    // Desktop-only (the launcher button is hidden on phones), so mobile keeps the tabs.
     <div
       style={{
         position: 'fixed',
@@ -639,7 +652,7 @@ export function CircuitCanvas({
           // and keeps scroll position / half-typed inputs alive
           // scale the content with the window size: at the "ideal" width it sits at 100%,
           // and growing the window past that scales everything up so it's easier to see.
-          const bodyScale = scaleFor(w.w)
+          const bodyScale = scaleFor(w.w, w.h)
           return (
             <div
               key={p.id}
@@ -764,7 +777,8 @@ export function CircuitCanvas({
           />
         )}
       </div>
-    </div>
+    </div>,
+    portalTarget,
   )
 }
 
