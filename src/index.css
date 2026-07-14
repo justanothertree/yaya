@@ -420,6 +420,12 @@ html,
 body {
   min-height: 100%;
 }
+/* Paint the root itself the theme background — the body's gradient doesn't cover the
+   overscroll / rubber-band area, so fast scrolling used to flash the browser's default
+   white behind it. */
+html {
+  background: var(--bg);
+}
 #root {
   min-height: 100%;
 }

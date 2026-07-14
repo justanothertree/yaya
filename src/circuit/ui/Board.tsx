@@ -27,13 +27,12 @@ export function Board({
   )
   const curMonth = todayMonth()
   const todayStr = todayISO()
-  const months = useMemo(
-    () => [...new Set(state.logs.map((l) => l.date.slice(0, 7)))].sort(),
-    [state.logs],
-  )
   const [picked, setPicked] = useState('')
-  const ym =
-    picked || (months.includes(curMonth) ? curMonth : months[months.length - 1] || curMonth)
+  // Default to the CURRENT month. Defaulting to "latest month with data" made the signed-
+  // out demo jump last-month → current-month when the live board replaced the bundled
+  // snapshot mid-load (a clunky switch); anchoring to the current month means the label
+  // never moves — data just populates into it.
+  const ym = picked || curMonth
   const [yNum, mNum] = ym.split('-').map(Number)
   const days = new Date(yNum, mNum, 0).getDate()
   const shiftMonth = (d: number) => {
