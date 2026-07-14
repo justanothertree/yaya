@@ -711,10 +711,19 @@ export default function App() {
                 A+
               </button>
             </span>
-            {active === 'home' && desktop && (
+            {desktop && (
+              // always rendered on desktop so the nav width doesn't jump when it appears;
+              // only interactive on pages that have a canvas (Home today), hidden-but-
+              // space-reserved elsewhere
               <button
                 className="btn"
-                style={{ marginLeft: '0.5rem' }}
+                style={{
+                  marginLeft: '0.5rem',
+                  visibility: active === 'home' ? 'visible' : 'hidden',
+                  pointerEvents: active === 'home' ? 'auto' : 'none',
+                }}
+                aria-hidden={active !== 'home'}
+                tabIndex={active === 'home' ? 0 : -1}
                 aria-pressed={canvasOpen}
                 title="Canvas mode — float this page as draggable windows"
                 onClick={() => setCanvasOpen((o) => !o)}

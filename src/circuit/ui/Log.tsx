@@ -65,6 +65,10 @@ export function Log({
   const prevHit = useRef(false) // tracks goal-hit so the celebration fires only on the cross
   const [uid, setUid] = useState<string | null | undefined>(undefined) // undefined=loading, null=out
   const [isAdmin, setIsAdmin] = useState(false)
+  // true once BOTH uid and admin status have resolved — until then we don't render the
+  // Read-only badge, so a signed-in admin doesn't flash "read-only" on a default person
+  // during the beat between the session resolving and is_admin() returning.
+  const [authReady, setAuthReady] = useState(false)
 
   const pid = selPid || state.people[0]?.id || ''
   const person = state.people.find((p) => p.id === pid)
@@ -103,18 +107,23 @@ export function Log({
   useEffect(() => {
     let cancelled = false
     const sb = getSupabaseClient()
-    void sb.auth.getUser().then(async ({ data }) => {
+    // local session first (instant, no network) so the owner default lands fast
+    void sb.auth.getSession().then(async ({ data }) => {
       if (cancelled) return
-      const u = data.user?.id ?? null
+      const u = data.session?.user?.id ?? null
       setUid(u)
-      if (!u) return
-      const { data: adm } = await sb.rpc('is_admin')
-      if (cancelled) return
-      setIsAdmin(adm === true)
+      if (!u) {
+        setAuthReady(true)
+        return
+      }
       if (!defaultPersonId && !selPid) {
         const mine = state.people.find((p) => p.ownerUserId === u)
         if (mine) setSelPid(mine.id)
       }
+      const { data: adm } = await sb.rpc('is_admin')
+      if (cancelled) return
+      setIsAdmin(adm === true)
+      setAuthReady(true)
     })
     return () => {
       cancelled = true
@@ -354,7 +363,7 @@ export function Log({
         })}
       </div>
 
-      {!canEdit && person && (
+      {authReady && !canEdit && person && (
         <div
           className="card"
           style={{

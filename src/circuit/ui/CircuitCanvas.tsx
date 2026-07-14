@@ -527,9 +527,8 @@ export function CircuitCanvas({
     body.style.zoom = sZoom
     body.style.width = sBodyW
     el.style.width = sElW
-    // a little vertical slack so a hairline overflow (scrollbar reserve, async image,
-    // sub-pixel rounding) doesn't summon a scrollbar and defeat the whole point
-    const h = Math.min(b.h, Math.max(MIN_H, hNeed + barH + 12))
+    // just 2px slack — enough to dodge sub-pixel rounding without leaving visible dead space
+    const h = Math.min(b.h, Math.max(MIN_H, hNeed + barH + 2))
     setWins((prev) => {
       const win = prev[id]
       if (!win) return prev
@@ -539,6 +538,12 @@ export function CircuitCanvas({
     })
     focus(id)
     showToast('▭ Fit to content')
+    // an image (Feed photo) whose height wasn't known at measure time would force a
+    // scroll once it loads — re-fit when each pending image finishes so the window
+    // grows to include it instead
+    body.querySelectorAll('img').forEach((img) => {
+      if (!img.complete) img.addEventListener('load', () => idealSize(id), { once: true })
+    })
   }
   function tile() {
     maxZ.current = 10
