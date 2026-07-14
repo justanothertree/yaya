@@ -589,6 +589,62 @@ export default function App() {
     }
   }, [])
 
+  // ── canvas on every tab ──
+  // Home splits into its own multi-pane layout; the Circuit has its own internal canvas
+  // (the nav button routes to it by event). Every other content tab floats as a single
+  // window. signin / invite (auth flows) don't get canvas.
+  const singleCanvasTabs: Section[] = [
+    'investments',
+    'account-settings',
+    'snake',
+    'contact',
+    'admin',
+  ]
+  const canvasCapable =
+    active === 'home' || active === 'circuit' || singleCanvasTabs.includes(active)
+  const inGenericCanvas = desktop && canvasOpen && singleCanvasTabs.includes(active)
+  const canvasTitleFor: Partial<Record<Section, string>> = {
+    investments: '📈 Investments',
+    'account-settings': '👤 Account',
+    snake: '🐍 Snake',
+    contact: '✉️ Contact',
+    admin: '🛠 Admin',
+  }
+  // the inner content for whichever single-window tab is active (mirrors the section body)
+  const singleCanvasNode = () => {
+    switch (active) {
+      case 'investments':
+        return isFinanceAuthed && canFinance === true ? (
+          <Investments />
+        ) : !isFinanceAuthed ? (
+          <Investments demo />
+        ) : (
+          <p className="muted">Investments aren’t enabled for your account.</p>
+        )
+      case 'account-settings':
+        return isFinanceAuthed ? (
+          <AccountSettings />
+        ) : (
+          <p className="muted">Sign in to manage your account.</p>
+        )
+      case 'snake':
+        return <SnakeGame onControlChange={setSnakeHasControl} autoFocus />
+      case 'contact':
+        return <ContactForm />
+      case 'admin':
+        return isAdmin ? <AdminPanel /> : <p className="muted">Admin access required.</p>
+      default:
+        return null
+    }
+  }
+  const toggleCanvas = () => {
+    if (active === 'circuit') {
+      window.dispatchEvent(new Event('yaya:toggle-canvas')) // the Circuit owns its own canvas
+      return
+    }
+    setCanvasOpen((o) => !o)
+  }
+
   return (
     <div data-theme={theme} data-page={active}>
       <a href="#content" className="skip-link">
@@ -672,7 +728,9 @@ export default function App() {
             <span
               className="nav-zoom"
               style={{
-                display: 'inline-flex',
+                // canvas windows scale to their own size, so the global zoom does nothing
+                // there — hide the A− / A+ cluster while a canvas is open to avoid dead controls
+                display: canvasOpen || canvasMounted ? 'none' : 'inline-flex',
                 alignItems: 'center',
                 gap: '0.15rem',
                 marginLeft: '0.75rem',
@@ -712,21 +770,20 @@ export default function App() {
               </button>
             </span>
             {desktop && (
-              // always rendered on desktop so the nav width doesn't jump when it appears;
-              // only interactive on pages that have a canvas (Home today), hidden-but-
-              // space-reserved elsewhere
+              // always rendered on desktop so the nav width doesn't jump; visible on any
+              // canvas-capable tab, hidden-but-space-reserved on the auth flows
               <button
                 className="btn"
                 style={{
                   marginLeft: '0.5rem',
-                  visibility: active === 'home' ? 'visible' : 'hidden',
-                  pointerEvents: active === 'home' ? 'auto' : 'none',
+                  visibility: canvasCapable ? 'visible' : 'hidden',
+                  pointerEvents: canvasCapable ? 'auto' : 'none',
                 }}
-                aria-hidden={active !== 'home'}
-                tabIndex={active === 'home' ? 0 : -1}
+                aria-hidden={!canvasCapable}
+                tabIndex={canvasCapable ? 0 : -1}
                 aria-pressed={canvasOpen}
                 title="Canvas mode — float this page as draggable windows"
-                onClick={() => setCanvasOpen((o) => !o)}
+                onClick={toggleCanvas}
               >
                 ⛶ Canvas
               </button>
@@ -797,7 +854,24 @@ export default function App() {
             </span>
           </div>
         )}
-        {active === 'home' &&
+        {inGenericCanvas && (
+          <Suspense
+            fallback={
+              <div className="card" aria-busy>
+                Loading…
+              </div>
+            }
+          >
+            <PageCanvas
+              panes={[
+                { id: active, title: canvasTitleFor[active] ?? active, node: singleCanvasNode() },
+              ]}
+              onExit={() => setCanvasOpen(false)}
+            />
+          </Suspense>
+        )}
+        {!inGenericCanvas &&
+          active === 'home' &&
           (canvasOpen && desktop ? (
             <Suspense fallback={<EvanCook />}>
               <PageCanvas panes={homePanes()} onExit={() => setCanvasOpen(false)} />
@@ -833,7 +907,7 @@ export default function App() {
             </Suspense>
           </section>
         )}
-        {active === 'investments' && (
+        {!inGenericCanvas && active === 'investments' && (
           <section id="investments" className="card reveal">
             {isFinanceAuthed && canFinance === true ? (
               <Suspense
@@ -867,7 +941,7 @@ export default function App() {
             )}
           </section>
         )}
-        {active === 'account-settings' && (
+        {!inGenericCanvas && active === 'account-settings' && (
           <section id="account-settings" className="card reveal">
             {isFinanceAuthed ? (
               <Suspense
@@ -891,7 +965,7 @@ export default function App() {
             )}
           </section>
         )}
-        {active === 'admin' && (
+        {!inGenericCanvas && active === 'admin' && (
           <section id="admin" className="card reveal">
             {isAdmin ? (
               <Suspense
@@ -921,12 +995,12 @@ export default function App() {
             </Suspense>
           </section>
         )}
-        {active === 'snake' && (
+        {!inGenericCanvas && active === 'snake' && (
           <section id="snake" className="card reveal show-dpad">
             <SnakeGame onControlChange={setSnakeHasControl} autoFocus />
           </section>
         )}
-        {active === 'contact' && (
+        {!inGenericCanvas && active === 'contact' && (
           <section id="contact" className="card reveal">
             <ContactForm />
           </section>
