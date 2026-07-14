@@ -76,6 +76,16 @@ export function Circuit({ authed = false }: { authed?: boolean } = {}) {
     void connectCircuit()
   }, [])
 
+  // the nav's ⛶ Canvas button drives every tab's canvas; on the Circuit it toggles our own
+  // (specialized) canvas via this event, so there's one launcher instead of two
+  useEffect(() => {
+    const toggle = () => {
+      if (isDesktop()) setCanvas((c) => !c)
+    }
+    window.addEventListener('yaya:toggle-canvas', toggle)
+    return () => window.removeEventListener('yaya:toggle-canvas', toggle)
+  }, [])
+
   // Undo/redo keyboard shortcuts (skip while typing in a field). Works in the
   // signed-out sandbox too, since edits there are local-only.
   useEffect(() => {
@@ -205,15 +215,8 @@ export function Circuit({ authed = false }: { authed?: boolean } = {}) {
               >
                 ↷
               </button>
-              {desktop && (
-                <button
-                  className="btn"
-                  onClick={() => setCanvas(true)}
-                  title="Free canvas — drag & resize windows"
-                >
-                  ⛶ Canvas
-                </button>
-              )}
+              {/* the ⛶ Canvas launcher lives in the top nav now (one launcher for every
+                  tab); it toggles this canvas via the yaya:toggle-canvas event above */}
             </span>
           </div>
 
