@@ -45,7 +45,16 @@ function initialTab(authed: boolean): Tab {
   return 'board'
 }
 
-export function Circuit({ authed = false }: { authed?: boolean } = {}) {
+export function Circuit({
+  authed = false,
+  canvasMode = false,
+  onExitCanvas,
+}: {
+  authed?: boolean
+  // App owns canvas state now (one launcher, persists across tabs); the Circuit reflects it
+  canvasMode?: boolean
+  onExitCanvas?: () => void
+} = {}) {
   const [tab, setTabRaw] = useState<Tab>(() => initialTab(authed))
   const setTab = (t: Tab) => {
     setTabRaw(t)
@@ -56,10 +65,10 @@ export function Circuit({ authed = false }: { authed?: boolean } = {}) {
     }
   }
   const [logTarget, setLogTarget] = useState<{ personId: string; date: string } | null>(null)
-  const [canvas, setCanvas] = useState(false)
   const [focusPane, setFocusPane] = useState<{ id: string; nonce: number } | null>(null)
   const [desktop, setDesktop] = useState(isDesktop())
   const { canUndo, canRedo } = useCircuitHistory()
+  const canvas = canvasMode && desktop
 
   const doUndo = () => {
     if (!circuitStore.getHistoryState().canUndo) return
@@ -74,16 +83,6 @@ export function Circuit({ authed = false }: { authed?: boolean } = {}) {
 
   useEffect(() => {
     void connectCircuit()
-  }, [])
-
-  // the nav's ⛶ Canvas button drives every tab's canvas; on the Circuit it toggles our own
-  // (specialized) canvas via this event, so there's one launcher instead of two
-  useEffect(() => {
-    const toggle = () => {
-      if (isDesktop()) setCanvas((c) => !c)
-    }
-    window.addEventListener('yaya:toggle-canvas', toggle)
-    return () => window.removeEventListener('yaya:toggle-canvas', toggle)
   }, [])
 
   // Undo/redo keyboard shortcuts (skip while typing in a field). Works in the
@@ -107,11 +106,6 @@ export function Circuit({ authed = false }: { authed?: boolean } = {}) {
     window.addEventListener('resize', onResize)
     return () => window.removeEventListener('resize', onResize)
   }, [])
-
-  // canvas is desktop-only; drop out if the viewport shrinks
-  useEffect(() => {
-    if (!desktop && canvas) setCanvas(false)
-  }, [desktop, canvas])
 
   function handleLog(personId: string, date: string) {
     setLogTarget({ personId, date })
@@ -170,7 +164,7 @@ export function Circuit({ authed = false }: { authed?: boolean } = {}) {
           <CircuitCanvas
             panes={canvasPanes}
             focusPane={focusPane}
-            onExit={() => setCanvas(false)}
+            onExit={() => onExitCanvas?.()}
           />
         </div>
       ) : (
