@@ -4,6 +4,25 @@ import { circuitStore } from '../store'
 import type { Movie } from '../types'
 import { Modal } from './Modal'
 
+// A new movie must join a group everyone in the crew can see, or it's invisible to
+// members (RLS scopes by group membership). Default to wherever the collection already
+// lives — the group most existing movies belong to — falling back to the user's first
+// group. This is what a movie added with no group silently broke: it siloed in a private
+// group and friends couldn't see it.
+function defaultMovieGroup(): string | undefined {
+  const st = circuitStore.getState()
+  const counts = new Map<string, number>()
+  for (const m of st.movies) if (m.groupId) counts.set(m.groupId, (counts.get(m.groupId) ?? 0) + 1)
+  let best: string | undefined
+  let bestN = 0
+  for (const [g, n] of counts)
+    if (n > bestN) {
+      bestN = n
+      best = g
+    }
+  return best ?? st.groups?.[0]?.id ?? undefined
+}
+
 export function AddMovie({
   onClose,
   onAdded,
@@ -25,6 +44,7 @@ export function AddMovie({
       date: date || undefined,
       rt: rt.trim() || undefined,
       ratings: {},
+      groupId: defaultMovieGroup(),
     }
     void circuitStore.saveMovie(movie)
     onAdded?.(movie)

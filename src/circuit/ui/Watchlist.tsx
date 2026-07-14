@@ -33,6 +33,25 @@ export function Watchlist({ onWatched }: { onWatched?: (title: string, rt?: stri
     void circuitStore.saveWatchlist({ ...item, votes: next })
   }
 
+  // default a new item to the group the watchlist already lives in (falling back to
+  // movies, then the first group) so friends can see + vote — same fix as AddMovie
+  function defaultGroup(): string | undefined {
+    const st = circuitStore.getState()
+    const counts = new Map<string, number>()
+    for (const w of st.watchlist)
+      if (w.groupId) counts.set(w.groupId, (counts.get(w.groupId) ?? 0) + 1)
+    for (const m of st.movies)
+      if (m.groupId) counts.set(m.groupId, (counts.get(m.groupId) ?? 0) + 1)
+    let best: string | undefined
+    let bestN = 0
+    for (const [g, n] of counts)
+      if (n > bestN) {
+        bestN = n
+        best = g
+      }
+    return best ?? st.groups?.[0]?.id ?? undefined
+  }
+
   function addItem() {
     const t = newTitle.trim()
     if (!t) return
@@ -41,6 +60,7 @@ export function Watchlist({ onWatched }: { onWatched?: (title: string, rt?: stri
       title: t,
       rt: newRt.trim() ? newRt.trim() + '%' : undefined,
       votes: [],
+      groupId: defaultGroup(),
     }
     void circuitStore.saveWatchlist(item)
     setNewTitle('')
