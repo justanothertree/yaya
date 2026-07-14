@@ -170,7 +170,12 @@ export default function App() {
     window.addEventListener('resize', onResize)
     return () => window.removeEventListener('resize', onResize)
   }, [])
-  useEffect(() => setCanvasOpen(false), [active])
+  // Canvas mode now PERSISTS across tab navigation — clicking another tab keeps you in
+  // canvas (each tab swaps in its own windows). It only auto-closes when the viewport
+  // drops below desktop (canvas is desktop-only).
+  useEffect(() => {
+    if (!desktop) setCanvasOpen(false)
+  }, [desktop])
   const topRef = useRef<HTMLDivElement>(null)
   const liveRef = useRef<HTMLDivElement>(null)
   const navLinksRef = useRef<HTMLDivElement>(null)
@@ -599,6 +604,7 @@ export default function App() {
     'snake',
     'contact',
     'admin',
+    'signin',
   ]
   const canvasCapable =
     active === 'home' || active === 'circuit' || singleCanvasTabs.includes(active)
@@ -609,6 +615,7 @@ export default function App() {
     snake: '🐍 Snake',
     contact: '✉️ Contact',
     admin: '🛠 Admin',
+    signin: '🔑 Sign in',
   }
   // the inner content for whichever single-window tab is active (mirrors the section body)
   const singleCanvasNode = () => {
@@ -633,17 +640,14 @@ export default function App() {
         return <ContactForm />
       case 'admin':
         return isAdmin ? <AdminPanel /> : <p className="muted">Admin access required.</p>
+      case 'signin':
+        return <SignIn />
       default:
         return null
     }
   }
-  const toggleCanvas = () => {
-    if (active === 'circuit') {
-      window.dispatchEvent(new Event('yaya:toggle-canvas')) // the Circuit owns its own canvas
-      return
-    }
-    setCanvasOpen((o) => !o)
-  }
+  // one launcher for the whole site; canvas state lives here and persists across tabs
+  const toggleCanvas = () => setCanvasOpen((o) => !o)
 
   return (
     <div data-theme={theme} data-page={active}>
@@ -863,6 +867,10 @@ export default function App() {
             }
           >
             <PageCanvas
+              // key by tab so the window manager re-tiles fresh for each tab's pane
+              // (it initialises its layout once per mount) — without this, navigating
+              // between two single-window tabs left the canvas empty
+              key={active}
               panes={[
                 { id: active, title: canvasTitleFor[active] ?? active, node: singleCanvasNode() },
               ]}
@@ -890,11 +898,15 @@ export default function App() {
                 </div>
               }
             >
-              <Circuit authed={isFinanceAuthed || !hasFinanceSupabaseEnv()} />
+              <Circuit
+                authed={isFinanceAuthed || !hasFinanceSupabaseEnv()}
+                canvasMode={canvasOpen && desktop}
+                onExitCanvas={() => setCanvasOpen(false)}
+              />
             </Suspense>
           </section>
         )}
-        {active === 'signin' && (
+        {!inGenericCanvas && active === 'signin' && (
           <section id="signin" className="card reveal">
             <Suspense
               fallback={
