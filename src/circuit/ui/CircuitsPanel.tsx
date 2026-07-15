@@ -34,6 +34,7 @@ export function CircuitsPanel() {
   const [addColor, setAddColor] = useState(ADD_PALETTE[0])
   const [renameFor, setRenameFor] = useState<string | null>(null)
   const [renameVal, setRenameVal] = useState('')
+  const [confirmDelFor, setConfirmDelFor] = useState<string | null>(null)
 
   const refresh = useCallback(async () => {
     const { data, error } = await sb.rpc('my_circuits')
@@ -77,6 +78,13 @@ export function CircuitsPanel() {
     }, 'Joined circuit')
 
   const leave = (id: string) => run(() => sb.rpc('leave_circuit', { p_group: id }), 'Left circuit')
+
+  const del = (id: string) =>
+    run(async () => {
+      const r = await sb.rpc('delete_circuit', { p_group: id })
+      if (!r.error) setConfirmDelFor(null)
+      return r
+    }, 'Circuit deleted')
 
   const claim = (personId: string) =>
     run(
@@ -236,8 +244,47 @@ export function CircuitsPanel() {
                         Leave
                       </button>
                     )}
+                    {c.is_owner && (
+                      <button
+                        className="btn btn-ghost"
+                        onClick={() => setConfirmDelFor((cur) => (cur === c.id ? null : c.id))}
+                        style={{
+                          fontSize: '0.78rem',
+                          color: '#f46b6b',
+                          borderColor: 'rgba(244,107,107,0.4)',
+                        }}
+                        title="Delete this circuit"
+                        aria-expanded={confirmDelFor === c.id}
+                      >
+                        {confirmDelFor === c.id ? '✕ Cancel' : '🗑 Delete'}
+                      </button>
+                    )}
                   </div>
                 </div>
+                {confirmDelFor === c.id && (
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.5rem',
+                      flexWrap: 'wrap',
+                      fontSize: '0.82rem',
+                    }}
+                  >
+                    <span className="muted">
+                      Delete <strong>{c.name}</strong> for everyone? Its shared movies, watchlist,
+                      and members are removed — this can’t be undone.
+                    </span>
+                    <button
+                      className="btn"
+                      onClick={() => del(c.id)}
+                      disabled={busy}
+                      style={{ background: '#e5484d', color: '#fff', borderColor: 'transparent' }}
+                    >
+                      Yes, delete
+                    </button>
+                  </div>
+                )}
                 {renameFor === c.id && (
                   <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
                     <input
