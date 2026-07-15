@@ -61,6 +61,11 @@ function Slideshow({ project }: { project: Project }) {
         style={{
           position: 'relative',
           aspectRatio: '16 / 10',
+          // cap the width (keeps the 16:10 ratio, centered) so a wide window / big monitor
+          // doesn't stretch the media tall and force a scroll for the text below it
+          width: '100%',
+          maxWidth: 560,
+          margin: '0 auto',
           borderRadius: 12,
           overflow: 'hidden',
           border: `1px solid ${project.accent}44`,

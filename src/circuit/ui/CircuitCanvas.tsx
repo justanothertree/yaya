@@ -791,15 +791,15 @@ export function CircuitCanvas({
               >
                 {p.node}
               </div>
-              {/* resize handles on every edge + corner */}
-              {!w.max &&
-                RESIZE_DIRS.map((dir) => (
-                  <div
-                    key={dir}
-                    onPointerDown={(e) => onResizeStart(e, p.id, dir)}
-                    style={handleStyle(dir)}
-                  />
-                ))}
+              {/* resize handles on every edge + corner — available even when maximized,
+                  so dragging an edge inward shrinks it back out of full-screen */}
+              {RESIZE_DIRS.map((dir) => (
+                <div
+                  key={dir}
+                  onPointerDown={(e) => onResizeStart(e, p.id, dir)}
+                  style={handleStyle(dir)}
+                />
+              ))}
             </div>
           )
         })}
