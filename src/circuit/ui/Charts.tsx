@@ -160,6 +160,9 @@ export function Charts({
               onMouseLeave={() => setHover(null)}
               style={{
                 width: '100%',
+                // cap so the chart doesn't balloon (and get tall via its aspect) on a wide
+                // window / big monitor — it stays a comfortable size, left-aligned
+                maxWidth: 820,
                 height: 'auto',
                 background: 'var(--b1, rgba(127,127,127,0.06))',
                 borderRadius: 8,
