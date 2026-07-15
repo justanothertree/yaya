@@ -387,8 +387,26 @@ export function AdminPanel() {
                   letterSpacing: '0.05em',
                 }}
               >
-                ACCEPTED ({used.length})
+                ACCEPTED INVITES ({used.length})
               </div>
+              <p className="muted" style={{ margin: '0 0 0.4rem', fontSize: '0.74rem' }}>
+                Just invite-link signups — anyone who joined a circuit with a code is in the{' '}
+                <button
+                  onClick={() => setTab('members')}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    padding: 0,
+                    color: 'var(--accent,#7c6af7)',
+                    cursor: 'pointer',
+                    font: 'inherit',
+                    textDecoration: 'underline',
+                  }}
+                >
+                  Members
+                </button>{' '}
+                tab.
+              </p>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
                 {used.map((inv) => (
                   <div
