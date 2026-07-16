@@ -51,6 +51,7 @@ export function Circuit({
   pinnedPanes = [],
   pinnedIds = [],
   onTogglePin,
+  onRefreshPinned,
 }: {
   authed?: boolean
   // App owns canvas state now (one launcher, persists across tabs); the Circuit reflects it
@@ -59,6 +60,8 @@ export function Circuit({
   pinnedPanes?: CanvasPane[]
   pinnedIds?: string[]
   onTogglePin?: (pane: CanvasPane) => void
+  /** hand App fresh copies of our pinned panes when what they render changes */
+  onRefreshPinned?: (panes: CanvasPane[]) => void
 } = {}) {
   const [tab, setTabRaw] = useState<Tab>(() => initialTab(authed))
   const setTab = (t: Tab) => {
@@ -195,6 +198,19 @@ export function Circuit({
     { id: 'movies', title: '🎬 Movies', node: <Movies viewGroup={viewGroup} /> },
     { id: 'watchlist', title: '🍿 Watchlist', node: <Watchlist viewGroup={viewGroup} /> },
   ]
+
+  // App pins the pane OBJECTS (it has to — they must outlive this component when you
+  // navigate away), which means they freeze whatever they were built with. Change the
+  // circuit filter and a pinned Board would still be showing the circuit you pinned it
+  // from — the wrong numbers, silently. So re-hand App fresh copies whenever the inputs
+  // behind them change. Keyed on those inputs and not on every render, so App's setState
+  // can't bounce straight back into another publish.
+  useEffect(() => {
+    if (!onRefreshPinned || !pinnedIds.length) return
+    const mine = canvasPanes.filter((p) => pinnedIds.includes(p.id))
+    if (mine.length) onRefreshPinned(mine)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewGroup, authed, logTarget, pinnedIds.join(',')])
 
   // shared circuit picker — shown in the toolbar and above the canvas when you're in 2+
   const groupPicker = groups.length > 1 && (
