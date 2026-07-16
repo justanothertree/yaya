@@ -2,6 +2,7 @@
 // (Detail modal / reviews / stats / watchlist from the standalone come later.)
 import { useMemo, useState } from 'react'
 import { useCircuit } from '../store'
+import { moviesInGroup } from '../groupFilter'
 import type { Movie, Person } from '../types'
 import { MovieRate } from './MovieRate'
 import { AddMovie } from './AddMovie'
@@ -27,7 +28,7 @@ const stickyTh: React.CSSProperties = {
   zIndex: 1,
 }
 
-export function Movies() {
+export function Movies({ viewGroup = '' }: { viewGroup?: string } = {}) {
   const state = useCircuit()
   const [rate, setRate] = useState<{ movie: Movie; person: Person } | null>(null)
   const [adding, setAdding] = useState(false)
@@ -35,11 +36,14 @@ export function Movies() {
   const [detail, setDetail] = useState<Movie | null>(null)
   const [view, setView] = useState<'board' | 'stats'>('board')
 
+  // scope to the viewed circuit (shared filter) — '' shows all movies you can see
+  const movies = useMemo(() => moviesInGroup(state.movies, viewGroup), [state.movies, viewGroup])
+
   // Raters = people you can actually see who have rated something — not a hardcoded crew
   // list, so a member viewing another circuit doesn't get nameless ghost columns.
   const allRaters = useMemo<Person[]>(() => {
     const present = new Set<string>()
-    state.movies.forEach((m) =>
+    movies.forEach((m) =>
       Object.entries(m.ratings).forEach(([id, r]) => {
         if (r?.score != null) present.add(id)
       }),
@@ -49,7 +53,7 @@ export function Movies() {
       return i === -1 ? MV_PIDS.length : i
     }
     return state.people.filter((p) => present.has(p.id)).sort((a, b) => order(a.id) - order(b.id))
-  }, [state.movies, state.people])
+  }, [movies, state.people])
 
   const [hidden, setHidden] = useState<Set<string>>(() => {
     try {
@@ -84,7 +88,7 @@ export function Movies() {
   }
 
   const rows = useMemo(() => {
-    const list = state.movies.map((m) => ({ m, avg: avgOf(m) }))
+    const list = movies.map((m) => ({ m, avg: avgOf(m) }))
     type Row = (typeof list)[0]
     // sort by a per-row number; unrated always sinks to the bottom regardless of direction
     const byScore =
@@ -107,7 +111,7 @@ export function Movies() {
     else if (sort === 'date') cmp = (a, b) => (a.m.date || '').localeCompare(b.m.date || '') * dir
     else cmp = (a, b) => ((a.avg ?? -1) - (b.avg ?? -1)) * dir
     return [...list].sort(cmp)
-  }, [state.movies, sort, dir])
+  }, [movies, sort, dir])
 
   const arrow = (k: string) => (sort === k ? (dir > 0 ? ' ↑' : ' ↓') : '')
   const chip = (v: number | null) => (
@@ -129,14 +133,14 @@ export function Movies() {
     </span>
   )
 
-  if (state.movies.length === 0)
+  if (movies.length === 0)
     return (
       <div>
         <button className="btn" onClick={() => setAdding(true)}>
           ＋ Add movie
         </button>
         <p className="muted" style={{ marginTop: '0.75rem' }}>
-          No movies yet.
+          {viewGroup ? 'No movies in this circuit yet.' : 'No movies yet.'}
         </p>
         {adding && <AddMovie onClose={() => setAdding(false)} />}
       </div>
@@ -147,7 +151,7 @@ export function Movies() {
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
         <h3 style={{ margin: 0 }}>Movies</h3>
         <span className="muted" style={{ fontSize: '0.85rem' }}>
-          {state.movies.length} rated
+          {movies.length} rated
         </span>
         <button className="btn" onClick={() => setAdding(true)}>
           ＋ Add
@@ -222,7 +226,7 @@ export function Movies() {
 
       {view === 'stats' && (
         <div style={{ marginTop: '0.9rem' }}>
-          <MovieStats />
+          <MovieStats viewGroup={viewGroup} />
         </div>
       )}
 

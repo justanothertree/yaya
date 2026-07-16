@@ -2,6 +2,7 @@
 // All views share the person filter. Month/Table day cells drill into Day view.
 import { useMemo, useState } from 'react'
 import { useCircuit } from '../store'
+import { peopleInGroup } from '../groupFilter'
 import { isImportedTotal, logPoints } from '../scoring'
 import { catColor } from '../catColors'
 import { GoalBar } from './GoalBar'
@@ -326,12 +327,20 @@ function SocialBar({ logId, social, me }: { logId: string; social: FeedSocial; m
 export function Feed({
   onOpenLog,
   authed = false,
+  viewGroup = '',
 }: {
   onOpenLog?: (personId: string, date: string) => void
   authed?: boolean
+  viewGroup?: string
 } = {}) {
   const state = useCircuit()
   const social = useFeedSocial(authed)
+  // people scoped to the viewed circuit (shared filter); keying the feed off this map
+  // scopes every entry to the group automatically
+  const groupPeople = useMemo(
+    () => peopleInGroup(state.people, viewGroup),
+    [state.people, viewGroup],
+  )
   // the current member's display name (their own person's name) for kudos/comments
   const me = useMemo(
     () => state.people.find((p) => social.uid && p.ownerUserId === social.uid)?.name ?? 'Me',
@@ -361,8 +370,8 @@ export function Feed({
     })
 
   const peopleById = useMemo(
-    () => Object.fromEntries(state.people.map((p) => [p.id, p])) as Record<string, Person>,
-    [state.people],
+    () => Object.fromEntries(groupPeople.map((p) => [p.id, p])) as Record<string, Person>,
+    [groupPeople],
   )
 
   const rows = useMemo(
@@ -485,7 +494,7 @@ export function Feed({
             >
               All
             </button>
-            {state.people.map((p) => {
+            {groupPeople.map((p) => {
               const on = filter === p.id
               return (
                 <button
@@ -530,7 +539,7 @@ export function Feed({
       {view === 'month' && (
         <MonthView
           ym={cur.slice(0, 7)}
-          people={state.people}
+          people={groupPeople}
           ptsIndex={ptsIndex}
           filter={filter}
           onDay={drillToDay}
@@ -565,7 +574,7 @@ export function Feed({
       {view === 'table' && (
         <TableView
           rows={rows}
-          people={state.people}
+          people={groupPeople}
           ptsIndex={ptsIndex}
           filter={filter}
           onDay={drillToDay}

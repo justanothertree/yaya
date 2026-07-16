@@ -4,25 +4,24 @@ import { useMemo, useState } from 'react'
 import { useCircuit } from '../store'
 import { currentStreak, monthDaily, monthLabel, monthTotal } from '../scoring'
 import { todayISO, todayMonth } from '../dates'
+import { peopleInGroup } from '../groupFilter'
 import { CircuitPersonProfile } from './CircuitPersonProfile'
 import type { Person } from '../types'
 
 export function Board({
   onLogToday,
   onLogDate,
+  viewGroup = '',
 }: {
   onLogToday?: (personId: string) => void
   onLogDate?: (personId: string, date: string) => void
+  // which circuit to scope to (shared filter from the Circuit shell; '' = all)
+  viewGroup?: string
 } = {}) {
   const state = useCircuit()
   const [profile, setProfile] = useState<Person | null>(null)
-  // circuit picker: scope the standings to one of your circuits (only shown when you're
-  // signed in and belong to one or more). 'all' shows everyone you can see.
-  const groups = state.groups ?? []
-  const [viewGroup, setViewGroup] = useState<string>('')
   const visiblePeople = useMemo(
-    () =>
-      viewGroup ? state.people.filter((p) => (p.groupIds ?? []).includes(viewGroup)) : state.people,
+    () => peopleInGroup(state.people, viewGroup),
     [state.people, viewGroup],
   )
   const curMonth = todayMonth()
@@ -94,33 +93,6 @@ export function Board({
             </button>
           )}
         </span>
-        {groups.length > 0 && (
-          <label
-            className="muted"
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '0.35rem',
-              fontSize: '0.8rem',
-              marginLeft: 'auto',
-            }}
-            title="Show just one of your circuits"
-          >
-            👥
-            <select
-              value={viewGroup}
-              onChange={(e) => setViewGroup(e.target.value)}
-              style={{ padding: '0.25rem 0.4rem' }}
-            >
-              <option value="">All circuits</option>
-              {groups.map((g) => (
-                <option key={g.id} value={g.id}>
-                  {g.name}
-                </option>
-              ))}
-            </select>
-          </label>
-        )}
       </div>
 
       {visiblePeople.length === 0 ? (

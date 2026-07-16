@@ -2,7 +2,7 @@
 // Backed by the shared store (localStorage now → Supabase realtime later, no UI change).
 import { useEffect, useState } from 'react'
 import { connectCircuit } from '../circuit/connect'
-import { circuitStore, useCircuitHistory } from '../circuit/store'
+import { circuitStore, useCircuit, useCircuitHistory } from '../circuit/store'
 import { showToast } from '../circuit/toast'
 import { Board } from '../circuit/ui/Board'
 import { Log } from '../circuit/ui/Log'
@@ -69,6 +69,29 @@ export function Circuit({
   const [desktop, setDesktop] = useState(isDesktop())
   const { canUndo, canRedo } = useCircuitHistory()
   const canvas = canvasMode && desktop
+  // Which circuit is being viewed — one shared filter for EVERY tab (was Board-only).
+  // '' = all circuits you can see. Persisted so it sticks across visits.
+  const state = useCircuit()
+  const groups = state.groups ?? []
+  const [viewGroup, setViewGroup] = useState<string>(() => {
+    try {
+      return localStorage.getItem('circuit_view_group') ?? ''
+    } catch {
+      return ''
+    }
+  })
+  const pickGroup = (g: string) => {
+    setViewGroup(g)
+    try {
+      localStorage.setItem('circuit_view_group', g)
+    } catch {
+      /* ignore */
+    }
+  }
+  // if the viewed group vanished (left/deleted), fall back to "all"
+  useEffect(() => {
+    if (viewGroup && groups.length && !groups.some((g) => g.id === viewGroup)) pickGroup('')
+  }, [groups, viewGroup])
 
   const doUndo = () => {
     if (!circuitStore.getHistoryState().canUndo) return
@@ -119,6 +142,7 @@ export function Circuit({
       key={logTarget ? `${logTarget.personId}-${logTarget.date}` : 'default'}
       defaultPersonId={logTarget?.personId}
       defaultDate={logTarget?.date}
+      viewGroup={viewGroup}
     />
   )
 
@@ -137,14 +161,45 @@ export function Circuit({
     {
       id: 'board',
       title: '🏆 Board',
-      node: <Board onLogToday={handleLogToday} onLogDate={handleLog} />,
+      node: <Board onLogToday={handleLogToday} onLogDate={handleLog} viewGroup={viewGroup} />,
     },
     { id: 'log', title: '✏️ Log', node: logNode },
-    { id: 'feed', title: '📋 Feed', node: <Feed onOpenLog={handleLog} authed={authed} /> },
-    { id: 'charts', title: '📊 Charts', node: <Charts onDayClick={handleLog} /> },
-    { id: 'movies', title: '🎬 Movies', node: <Movies /> },
-    { id: 'watchlist', title: '🍿 Watchlist', node: <Watchlist /> },
+    {
+      id: 'feed',
+      title: '📋 Feed',
+      node: <Feed onOpenLog={handleLog} authed={authed} viewGroup={viewGroup} />,
+    },
+    {
+      id: 'charts',
+      title: '📊 Charts',
+      node: <Charts onDayClick={handleLog} viewGroup={viewGroup} />,
+    },
+    { id: 'movies', title: '🎬 Movies', node: <Movies viewGroup={viewGroup} /> },
+    { id: 'watchlist', title: '🍿 Watchlist', node: <Watchlist viewGroup={viewGroup} /> },
   ]
+
+  // shared circuit picker — shown in the toolbar and above the canvas when you're in 2+
+  const groupPicker = groups.length > 1 && (
+    <label
+      className="muted"
+      style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.8rem' }}
+      title="Show just one of your circuits, across every tab"
+    >
+      👥
+      <select
+        value={viewGroup}
+        onChange={(e) => pickGroup(e.target.value)}
+        style={{ padding: '0.25rem 0.4rem' }}
+      >
+        <option value="">All circuits</option>
+        {groups.map((g) => (
+          <option key={g.id} value={g.id}>
+            {g.name}
+          </option>
+        ))}
+      </select>
+    </label>
+  )
 
   return (
     <div>
@@ -161,6 +216,7 @@ export function Circuit({
 
       {canvas ? (
         <div style={{ marginTop: '0.9rem' }}>
+          {groupPicker && <div style={{ marginBottom: '0.6rem' }}>{groupPicker}</div>}
           <CircuitCanvas
             panes={canvasPanes}
             focusPane={focusPane}
@@ -190,7 +246,15 @@ export function Circuit({
                 </button>
               ))}
             </span>
-            <span style={{ display: 'inline-flex', gap: '0.4rem', marginLeft: 'auto' }}>
+            <span
+              style={{
+                display: 'inline-flex',
+                gap: '0.5rem',
+                marginLeft: 'auto',
+                alignItems: 'center',
+              }}
+            >
+              {groupPicker}
               <button
                 className="btn btn-ghost"
                 onClick={doUndo}
@@ -215,12 +279,14 @@ export function Circuit({
           </div>
 
           <div className="cz-pane" key={tab}>
-            {tab === 'board' && <Board onLogToday={handleLogToday} onLogDate={handleLog} />}
+            {tab === 'board' && (
+              <Board onLogToday={handleLogToday} onLogDate={handleLog} viewGroup={viewGroup} />
+            )}
             {tab === 'log' && logNode}
-            {tab === 'feed' && <Feed onOpenLog={handleLog} authed={authed} />}
-            {tab === 'charts' && <Charts onDayClick={handleLog} />}
-            {tab === 'movies' && <Movies />}
-            {tab === 'watchlist' && <Watchlist />}
+            {tab === 'feed' && <Feed onOpenLog={handleLog} authed={authed} viewGroup={viewGroup} />}
+            {tab === 'charts' && <Charts onDayClick={handleLog} viewGroup={viewGroup} />}
+            {tab === 'movies' && <Movies viewGroup={viewGroup} />}
+            {tab === 'watchlist' && <Watchlist viewGroup={viewGroup} />}
             {tab === 'circuits' && <CircuitsPanel />}
           </div>
         </>

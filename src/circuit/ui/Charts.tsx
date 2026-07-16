@@ -2,6 +2,7 @@
 // Ported flavor of the standalone's Charts tab; reads from the shared store.
 import { useMemo, useState } from 'react'
 import { useCircuit } from '../store'
+import { peopleInGroup } from '../groupFilter'
 import { dayTotal, monthLabel, monthTotal } from '../scoring'
 import { todayMonth } from '../dates'
 import { catColor } from '../catColors'
@@ -11,8 +12,11 @@ type HoverDay = { day: number } | null
 
 export function Charts({
   onDayClick,
-}: { onDayClick?: (personId: string, date: string) => void } = {}) {
+  viewGroup = '',
+}: { onDayClick?: (personId: string, date: string) => void; viewGroup?: string } = {}) {
   const state = useCircuit()
+  // people scoped to the viewed circuit (shared filter)
+  const people = useMemo(() => peopleInGroup(state.people, viewGroup), [state.people, viewGroup])
   const curMonth = todayMonth()
   const months = useMemo(
     () => [...new Set(state.logs.map((l) => l.date.slice(0, 7)))].sort(),
@@ -43,7 +47,7 @@ export function Charts({
 
   // people with any points this month, with their per-day + derived series
   const series = useMemo(() => {
-    return state.people
+    return people
       .map((p) => {
         const total = monthTotal(p, state.logs, ym)
         if (total <= 0) return null
@@ -66,7 +70,7 @@ export function Charts({
       })
       .filter((x): x is { p: Person; total: number; pts: number[] } => !!x)
       .sort((a, b) => b.total - a.total)
-  }, [state.people, state.logs, ym, days, mode])
+  }, [people, state.logs, ym, days, mode])
 
   const maxY = Math.max(1, ...series.flatMap((s) => s.pts))
   const modeLabel =
@@ -413,13 +417,14 @@ export function Charts({
       )}
 
       {/* monthly totals across all months with data */}
-      {months.length > 1 && <MonthlyTotals />}
+      {months.length > 1 && <MonthlyTotals viewGroup={viewGroup} />}
     </div>
   )
 }
 
-function MonthlyTotals() {
+function MonthlyTotals({ viewGroup = '' }: { viewGroup?: string }) {
   const state = useCircuit()
+  const people = useMemo(() => peopleInGroup(state.people, viewGroup), [state.people, viewGroup])
   const months = useMemo(
     () => [...new Set(state.logs.map((l) => l.date.slice(0, 7)))].sort(),
     [state.logs],
@@ -428,11 +433,11 @@ function MonthlyTotals() {
     () =>
       months.map((ym) => ({
         ym,
-        people: state.people
+        people: people
           .map((p) => ({ p, total: monthTotal(p, state.logs, ym) }))
           .filter((x) => x.total > 0),
       })),
-    [months, state.people, state.logs],
+    [months, people, state.logs],
   )
   const maxT = Math.max(1, ...data.flatMap((d) => d.people.map((x) => x.total)))
 
