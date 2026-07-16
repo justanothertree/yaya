@@ -8,10 +8,6 @@ import { showToast } from '../toast'
 
 export type CanvasPane = { id: string; title: string; node: ReactNode }
 
-// The site nav renders this slot and the canvas portals its taskbar into it, so the window
-// tabs and the page links read as ONE menu. Exported so the nav can't drift from it.
-export const NAV_BAR_SLOT = 'yaya-canvas-bar'
-
 type WinBox = {
   x: number
   y: number
@@ -138,11 +134,6 @@ export function CircuitCanvas({
   const [portalTarget] = useState<HTMLElement | null>(() =>
     typeof document !== 'undefined' ? document.body : null,
   )
-  // the nav's slot for the window taskbar — one menu instead of a second bar under it
-  const [barTarget, setBarTarget] = useState<HTMLElement | null>(null)
-  useLayoutEffect(() => {
-    setBarTarget(document.getElementById(NAV_BAR_SLOT))
-  }, [])
   const [wins, setWins] = useState<Layout>({})
   const [snap, setSnap] = useState<{ x: number; y: number; w: number; h: number } | null>(null)
   const drag = useRef<{
@@ -667,49 +658,49 @@ export function CircuitCanvas({
   // The window taskbar lives IN the site nav (one menu, not a second bar stacked under the
   // first). The nav renders an empty slot; we portal into it when it's there, and fall back
   // to an in-surface bar if it isn't (the Circuit can mount this canvas on its own).
-  // Only MINIMIZED windows get a chip. A window you can see is one you can click, so
-  // listing all of them made the menu compete with the page links for width, overflow into
-  // a scrollbar, and grow the nav by the scrollbar's height every time canvas opened.
-  // Minimize now means "put it in the menu", and the menu is empty until you do.
-  const barPanes = panes.filter((p) => wins[p.id]?.min)
+  // The canvas menu is its OWN bar, but it speaks the nav's language: same .btn, same
+  // sizing, same accent for the active item (see .cz-menu in index.css). Two menus, one
+  // design — rather than one bar doing two jobs.
   const bar = (
-    <div
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: '0.35rem',
-        minWidth: 0,
-        flexShrink: 1,
-      }}
-    >
-      {barPanes.map((p) => (
-        <button
-          key={p.id}
-          onClick={() => onTab(p.id)}
-          title={`Restore ${p.title}`}
-          style={{ ...taskTab, background: 'transparent' }}
-        >
-          <span style={{ fontSize: '0.7rem' }}>▫</span>
-          {p.title}
-        </button>
-      ))}
+    <div className="cz-menu">
+      <strong
+        className="cz-menu-label"
+        title="Drag a title bar to move (press against an edge to snap) · drag any edge or corner to resize · ▭ fit to content · ⛶ full screen · － hide"
+      >
+        ⛶ Canvas <span className="muted">ⓘ</span>
+      </strong>
+      {panes.map((p) => {
+        const w = wins[p.id]
+        const min = !!w?.min
+        const front = p.id === topId && !min
+        return (
+          <button
+            key={p.id}
+            className={'btn' + (min ? ' is-min' : '')}
+            aria-pressed={front}
+            onClick={() => onTab(p.id)}
+            title={
+              min ? `Restore ${p.title}` : front ? `Hide ${p.title}` : `Bring ${p.title} to front`
+            }
+          >
+            <span aria-hidden style={{ fontSize: '0.7rem' }}>
+              {min ? '▫' : '▪'}
+            </span>{' '}
+            {p.title}
+          </button>
+        )
+      })}
       <button
-        className="btn"
+        className="btn cz-menu-end"
         onClick={tile}
         title="Tile the open windows to fill the canvas"
-        style={{ ...taskTab, flexShrink: 0 }}
       >
-        ⊞
+        ⊞ Tile
       </button>
     </div>
   )
 
-  return (
-    <>
-      {barTarget && createPortal(bar, barTarget)}
-      {createPortal(surface(barTarget ? null : bar), portalTarget)}
-    </>
-  )
+  return createPortal(surface(bar), portalTarget)
 
   // Full-width canvas surface: a fixed panel spanning the viewport below the nav.
   // Desktop-only (the launcher button is hidden on phones), so mobile keeps the tabs.
@@ -730,7 +721,7 @@ export function CircuitCanvas({
           boxSizing: 'border-box',
         }}
       >
-        {inlineBar && <div style={{ marginBottom: '0.45rem', flexShrink: 0 }}>{inlineBar}</div>}
+        <div style={{ marginBottom: '0.45rem', flexShrink: 0 }}>{inlineBar}</div>
 
         {/* canvas surface */}
         <div
@@ -919,17 +910,4 @@ const czBtn: React.CSSProperties = {
   lineHeight: 1,
   minWidth: 'auto',
   flexShrink: 0,
-}
-
-const taskTab: React.CSSProperties = {
-  display: 'inline-flex',
-  alignItems: 'center',
-  gap: '0.3rem',
-  padding: '0.28rem 0.6rem',
-  borderRadius: 8,
-  border: '1px solid var(--border, rgba(127,127,127,0.25))',
-  fontSize: '0.8rem',
-  fontWeight: 600,
-  cursor: 'pointer',
-  whiteSpace: 'nowrap',
 }

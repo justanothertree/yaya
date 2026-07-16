@@ -23,7 +23,6 @@ const Circuit = lazy(() => import('./sections/Circuit').then((m) => ({ default: 
 const PageCanvas = lazy(() =>
   import('./circuit/ui/CircuitCanvas').then((m) => ({ default: m.CircuitCanvas })),
 )
-import { NAV_BAR_SLOT } from './circuit/ui/CircuitCanvas'
 import type { CanvasPane } from './circuit/ui/CircuitCanvas'
 const AdminPanel = lazy(() =>
   import('./sections/AdminPanel').then((m) => ({ default: m.AdminPanel })),
@@ -810,9 +809,6 @@ export default function App() {
                 A+
               </button>
             </span>
-            {/* the canvas taskbar portals in here, so the window tabs sit in the SAME menu
-                as the page links instead of a second bar stacked underneath */}
-            <div id={NAV_BAR_SLOT} className="nav-canvas" />
             {desktop && (
               // always rendered on desktop so the nav width doesn't jump; visible on any
               // canvas-capable tab, hidden-but-space-reserved on the auth flows.

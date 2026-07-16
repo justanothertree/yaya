@@ -720,31 +720,53 @@ section[id] {
   }
 }
 
-/* The canvas taskbar lands here, in the SAME bar as the page links — one menu that grows
-   a second group when you're in canvas, rather than a separate strip bolted underneath.
-   The rule reads: page links = where you are, window tabs = what's open. The divider only
-   exists when there's something open to divide. */
-.nav-canvas {
+/* ── the canvas menu ──
+   Its own bar (the nav navigates pages; this one manages windows) but deliberately the
+   SAME design language: the nav's bar treatment, the nav's button size, the nav's accent
+   for the current item. Two menus that match, rather than one bar doing two jobs. */
+.cz-menu {
   display: flex;
   align-items: center;
-  gap: 0.3rem;
-  min-width: 0;
-  overflow-x: auto;
-  /* NO visible scrollbar: it added its own height to the row, so opening canvas grew the
-     nav by ~6px and shifted the whole page down. The nav's height is the page links' to
-     set — nothing the canvas puts in here may change it. */
-  scrollbar-width: none;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md, 10px);
+  padding: 0.32rem 0.45rem;
 }
-.nav-canvas::-webkit-scrollbar {
-  display: none;
+.cz-menu-label {
+  font-size: 0.88rem;
+  white-space: nowrap;
+  margin-right: 0.15rem;
+  cursor: help;
 }
-.nav-canvas:not(:empty) {
-  margin-left: 0.5rem;
-  padding-left: 0.6rem;
-  border-left: 1px solid var(--border, rgba(127, 127, 127, 0.25));
+.cz-menu-label .muted {
+  font-weight: 400;
+  font-size: 0.74rem;
 }
-.nav-canvas > * {
-  max-height: 30px;
+/* mirrors `.nav .btn` — same padding, size and rhythm as the page links' controls */
+.cz-menu .btn {
+  padding: 0.4rem 0.72rem;
+  font-size: 0.85rem;
+  white-space: nowrap;
+  line-height: 1.2;
+  background: var(--control-bg, rgba(127, 127, 127, 0.12));
+  color: var(--text);
+  border: 1px solid var(--border, rgba(127, 127, 127, 0.25));
+}
+/* the window on top reads like the nav's current page */
+.cz-menu .btn[aria-pressed='true'] {
+  background: var(--accent);
+  color: var(--btn-text);
+  border-color: transparent;
+}
+/* hidden windows sit back until you call them up */
+.cz-menu .btn.is-min {
+  background: transparent;
+  opacity: 0.6;
+}
+.cz-menu-end {
+  margin-left: auto;
 }
 
 .section-title {
