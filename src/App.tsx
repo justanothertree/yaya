@@ -99,6 +99,9 @@ function writeNavFlags(patch: Partial<NavFlags> & { uid: string }) {
   }
 }
 
+// remembers whether this visitor chose canvas mode last time
+const CANVAS_PREF = 'canvas_mode_v1'
+
 export default function App() {
   const initialSection: Section = (() => {
     const raw = (window.location.hash || '#home').replace('#', '')
@@ -152,11 +155,18 @@ export default function App() {
   const bumpScale = (d: number) =>
     setUiScale((s) => Math.min(2.5, Math.max(0.5, Math.round((s + d) * 100) / 100)))
   // Optional canvas mode (desktop): turn the current page into draggable/resizable windows.
-  // Per-page, so it resets on navigation. Starting with Home; expands to other pages next.
   const [desktop, setDesktop] = useState(
     () => typeof window !== 'undefined' && window.innerWidth >= 820,
   )
-  const [canvasOpen, setCanvasOpen] = useState(false)
+  // Canvas is opt-in, but it REMEMBERS: someone who likes it lands in it every visit,
+  // while a first-timer still meets the plain page. Only an explicit toggle writes the
+  // preference — the desktop-only auto-close below must not erase it on a phone.
+  const [canvasOpen, setCanvasOpen] = useState(
+    () =>
+      typeof window !== 'undefined' &&
+      window.innerWidth >= 820 &&
+      localStorage.getItem(CANVAS_PREF) === '1',
+  )
   // windows the user pinned — they ride along onto every tab's canvas
   const [pinned, setPinned] = useState<CanvasPane[]>([])
   // ANY mounted canvas (home's or the Circuit's own) announces itself; the global zoom
@@ -650,7 +660,16 @@ export default function App() {
     }
   }
   // one launcher for the whole site; canvas state lives here and persists across tabs
-  const toggleCanvas = () => setCanvasOpen((o) => !o)
+  // every explicit open/exit is a preference — the auto-close on narrow viewports isn't
+  const setCanvasChoice = (open: boolean) => {
+    setCanvasOpen(open)
+    try {
+      localStorage.setItem(CANVAS_PREF, open ? '1' : '0')
+    } catch {
+      /* ignore quota / private mode */
+    }
+  }
+  const toggleCanvas = () => setCanvasChoice(!canvasOpen)
 
   // Pinned windows follow you across tabs. We keep the pane OBJECTS (not just ids) so a
   // window pinned on one tab can still render on another after its own page unmounted —
@@ -893,7 +912,7 @@ export default function App() {
               ])}
               pinnedIds={pinnedIds}
               onTogglePin={togglePin}
-              onExit={() => setCanvasOpen(false)}
+              onExit={() => setCanvasChoice(false)}
             />
           </Suspense>
         )}
@@ -905,7 +924,7 @@ export default function App() {
                 panes={withPinned(homePanes())}
                 pinnedIds={pinnedIds}
                 onTogglePin={togglePin}
-                onExit={() => setCanvasOpen(false)}
+                onExit={() => setCanvasChoice(false)}
               />
             </Suspense>
           ) : (
@@ -925,7 +944,7 @@ export default function App() {
               <Circuit
                 authed={isFinanceAuthed || !hasFinanceSupabaseEnv()}
                 canvasMode={canvasOpen && desktop}
-                onExitCanvas={() => setCanvasOpen(false)}
+                onExitCanvas={() => setCanvasChoice(false)}
                 pinnedPanes={pinned}
                 pinnedIds={pinnedIds}
                 onTogglePin={togglePin}
