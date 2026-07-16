@@ -4,6 +4,7 @@ import { EvanCook, homePanes } from './sections/EvanCook'
 import { SnakeGame } from './sections/SnakeGame'
 import { site } from './config/site'
 import { IconGitHub, IconLinkedIn } from './components/Icons'
+import { SettingsMenu } from './components/SettingsMenu'
 import { useReveal } from './hooks/useReveal'
 import { hasFinanceSupabaseEnv } from './finance/env'
 import { getSessionUser, onAuthStateChange, peekPersistedUserId, signOut } from './finance/auth'
@@ -169,6 +170,24 @@ export default function App() {
   )
   // windows the user pinned — they ride along onto every tab's canvas
   const [pinned, setPinned] = useState<CanvasPane[]>([])
+  // who the cog menu greets. Read from the LOCAL session (no network) so it can't flash or
+  // gate anything — the menu just shows a name where a profile will eventually live.
+  const [userEmail, setUserEmail] = useState<string | null>(null)
+  useEffect(() => {
+    if (!hasFinanceSupabaseEnv() || !isFinanceAuthed) {
+      setUserEmail(null)
+      return
+    }
+    let live = true
+    void getSessionUser()
+      .then((u) => live && setUserEmail(u?.email ?? null))
+      .catch(() => {
+        /* cosmetic only */
+      })
+    return () => {
+      live = false
+    }
+  }, [isFinanceAuthed])
   // ANY mounted canvas (home's or the Circuit's own) announces itself; the global zoom
   // is suspended while one is up — CSS zoom fights the fixed full-screen surface and
   // used to push a "full screen" window past the viewport (scroll to see it all).
@@ -794,107 +813,29 @@ export default function App() {
               >
                 Contact
               </a>
-              <span
-                className="nav-zoom"
-                style={{
-                  // canvas windows scale to their own size, so the global zoom does nothing
-                  // there — hide the A− / A+ cluster while a canvas is open to avoid dead controls
-                  display: canvasOpen || canvasMounted ? 'none' : 'inline-flex',
-                  alignItems: 'center',
-                  gap: '0.15rem',
-                  marginLeft: '0.75rem',
+              <SettingsMenu
+                theme={theme}
+                onTheme={(t) => {
+                  setTheme(t)
+                  localStorage.setItem('theme', t)
                 }}
-                title={`UI scale ${Math.round(uiScale * 100)}%`}
-              >
-                <button
-                  className="btn"
-                  aria-label="Zoom out"
-                  onClick={() => bumpScale(-0.1)}
-                  disabled={uiScale <= 0.5}
-                  style={{ padding: '0.5rem 0.6rem' }}
-                >
-                  A−
-                </button>
-                <button
-                  className="btn"
-                  aria-label="Reset zoom"
-                  onClick={() => setUiScale(1)}
-                  style={{
-                    padding: '0.5rem 0.4rem',
-                    fontVariantNumeric: 'tabular-nums',
-                    minWidth: '3.1rem',
-                    textAlign: 'center',
-                  }}
-                >
-                  {Math.round(uiScale * 100)}%
-                </button>
-                <button
-                  className="btn"
-                  aria-label="Zoom in"
-                  onClick={() => bumpScale(0.1)}
-                  disabled={uiScale >= 2.5}
-                  style={{ padding: '0.5rem 0.6rem' }}
-                >
-                  A+
-                </button>
-              </span>
-              {desktop && (
-                // always rendered on desktop so the nav width doesn't jump; visible on any
-                // canvas-capable tab, hidden-but-space-reserved on the auth flows.
-                // This is the ONE canvas control — it replaced the old bar's "Done".
-                <button
-                  className="btn"
-                  style={{
-                    marginLeft: '0.5rem',
-                    visibility: canvasCapable ? 'visible' : 'hidden',
-                    pointerEvents: canvasCapable ? 'auto' : 'none',
-                    ...(canvasOpen
-                      ? {
-                          background: 'var(--accent,#7c6af7)',
-                          color: '#fff',
-                          borderColor: 'transparent',
-                        }
-                      : null),
-                  }}
-                  aria-hidden={!canvasCapable}
-                  tabIndex={canvasCapable ? 0 : -1}
-                  aria-pressed={canvasOpen}
-                  title={
-                    canvasOpen
-                      ? 'Leave canvas mode · drag a title bar to move (press an edge to snap) · drag any edge to resize · ▭ fit · ⛶ full screen · － hide'
-                      : 'Canvas mode — float this page as draggable windows'
-                  }
-                  onClick={toggleCanvas}
-                >
-                  ⛶ Canvas
-                </button>
-              )}
-              <button
-                className="btn"
-                style={{ marginLeft: '0.5rem' }}
-                aria-label="Toggle theme"
-                onClick={() => {
-                  const next = theme === 'dark' ? 'light' : theme === 'light' ? 'alt' : 'dark'
-                  setTheme(next)
-                  localStorage.setItem('theme', next)
+                uiScale={uiScale}
+                onScale={(d) => (d === 0 ? setUiScale(1) : bumpScale(d))}
+                canvasOpen={canvasOpen}
+                onToggleCanvas={toggleCanvas}
+                canvasCapable={canvasCapable}
+                desktop={desktop}
+                authed={hasFinanceSupabaseEnv() && isFinanceAuthed}
+                isAdmin={isAdmin}
+                email={userEmail}
+                onAccount={() => setActive('account-settings')}
+                onSignIn={() => setActive('signin')}
+                onSignOut={() => {
+                  void signOut().catch(() => {
+                    /* ignore */
+                  })
                 }}
-              >
-                {theme === 'dark' ? 'Light' : theme === 'light' ? 'Alt' : 'Dark'}
-              </button>
-              {hasFinanceSupabaseEnv() && isFinanceAuthed && (
-                <button
-                  className="btn"
-                  style={{ marginLeft: '0.5rem' }}
-                  onClick={() => {
-                    void signOut().catch(() => {
-                      /* ignore */
-                    })
-                  }}
-                  aria-label="Sign out"
-                >
-                  Sign out
-                </button>
-              )}
+              />
             </div>
             <button
               className="nav-arrow nav-arrow-r"

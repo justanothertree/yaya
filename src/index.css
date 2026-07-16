@@ -769,12 +769,197 @@ section[id] {
   font-weight: 700;
   letter-spacing: 0.2px;
 }
-/* phones: keep the nav to just the page links — the UI-scale cluster is a desktop power
-   tool (phones have pinch-zoom) and only clutters the scroll strip. */
-@media (max-width: 560px) {
-  .nav-zoom {
-    display: none !important;
+/* ── the cog: you + how the site looks ──
+   One control instead of four (zoom cluster, theme, canvas, sign out) that between them
+   ate ~250px of bar and appeared/vanished per page. Shaped like an account menu, because
+   that's what it's growing into. */
+.nav-cog-wrap {
+  position: relative;
+  flex-shrink: 0;
+  margin-left: 0.5rem;
+}
+.nav-cog {
+  padding: 0.32rem 0.5rem;
+  font-size: 0.95rem;
+  line-height: 1;
+  background: var(--control-bg, rgba(127, 127, 127, 0.12));
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+.nav-cog.is-open {
+  background: var(--accent);
+  color: var(--btn-text);
+  border-color: transparent;
+}
+.nav-cog-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--btn-text);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+.nav-cog-avatar.lg {
+  width: 2.1rem;
+  height: 2.1rem;
+  font-size: 1rem;
+}
+.nav-cog.is-open .nav-cog-avatar {
+  background: var(--bg);
+  color: var(--text);
+}
+
+.nav-menu {
+  position: absolute;
+  top: calc(100% + 0.45rem);
+  right: 0;
+  z-index: 120;
+  min-width: 15rem;
+  padding: 0.4rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md, 10px);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.28);
+  animation: nav-menu-in 0.12s ease-out;
+}
+@keyframes nav-menu-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
   }
+}
+@media (prefers-reduced-motion: reduce) {
+  .nav-menu {
+    animation: none;
+  }
+}
+.nav-menu-id {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.45rem 0.5rem 0.55rem;
+}
+.nav-menu-id-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.nav-menu-id-text strong {
+  font-size: 0.85rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.nav-menu-id-text .muted {
+  font-size: 0.72rem;
+}
+.nav-menu-label {
+  font-size: 0.68rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  opacity: 0.5;
+  padding: 0.35rem 0.5rem 0.15rem;
+}
+.nav-menu-sep {
+  height: 1px;
+  background: var(--border);
+  margin: 0.3rem 0.15rem;
+}
+.nav-menu-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  width: 100%;
+  padding: 0.45rem 0.5rem;
+  border: 0;
+  border-radius: var(--r-sm, 7px);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 0.85rem;
+  text-align: left;
+  cursor: pointer;
+}
+.nav-menu-row:hover:not(.is-static):not(:disabled) {
+  background: var(--control-bg, rgba(127, 127, 127, 0.12));
+}
+.nav-menu-row:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.nav-menu-row.is-static {
+  cursor: default;
+}
+.nav-menu-row.is-cta strong,
+.nav-menu-row.is-cta {
+  font-weight: 600;
+}
+.nav-menu-steps {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+}
+.nav-menu-steps .btn {
+  padding: 0.2rem 0.45rem;
+  font-size: 0.8rem;
+  line-height: 1.2;
+  background: var(--control-bg, rgba(127, 127, 127, 0.12));
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+.nav-menu-steps .btn.is-on,
+.nav-menu-steps .btn[aria-pressed='true'] {
+  background: var(--accent);
+  color: var(--btn-text);
+  border-color: transparent;
+}
+.nav-menu-steps .btn:hover {
+  transform: none;
+}
+.nav-menu-pct {
+  min-width: 3rem;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.nav-menu-switch {
+  width: 1.9rem;
+  height: 1.05rem;
+  border-radius: 999px;
+  background: var(--control-bg, rgba(127, 127, 127, 0.2));
+  border: 1px solid var(--border);
+  position: relative;
+  transition: background 0.15s ease;
+  flex-shrink: 0;
+}
+.nav-menu-switch::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 2px;
+  transform: translateY(-50%);
+  width: 0.72rem;
+  height: 0.72rem;
+  border-radius: 50%;
+  background: var(--text);
+  opacity: 0.65;
+  transition: left 0.15s ease;
+}
+.nav-menu-switch.is-on {
+  background: var(--accent);
+  border-color: transparent;
+}
+.nav-menu-switch.is-on::after {
+  left: calc(100% - 0.72rem - 2px);
+  background: var(--btn-text);
+  opacity: 1;
 }
 
 /* ── the canvas menu ──
