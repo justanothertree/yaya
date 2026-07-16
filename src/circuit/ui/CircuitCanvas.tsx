@@ -667,6 +667,11 @@ export function CircuitCanvas({
   // The window taskbar lives IN the site nav (one menu, not a second bar stacked under the
   // first). The nav renders an empty slot; we portal into it when it's there, and fall back
   // to an in-surface bar if it isn't (the Circuit can mount this canvas on its own).
+  // Only MINIMIZED windows get a chip. A window you can see is one you can click, so
+  // listing all of them made the menu compete with the page links for width, overflow into
+  // a scrollbar, and grow the nav by the scrollbar's height every time canvas opened.
+  // Minimize now means "put it in the menu", and the menu is empty until you do.
+  const barPanes = panes.filter((p) => wins[p.id]?.min)
   const bar = (
     <div
       style={{
@@ -677,43 +682,22 @@ export function CircuitCanvas({
         flexShrink: 1,
       }}
     >
-      {panes.map((p) => {
-        const w = wins[p.id]
-        const min = !!w?.min
-        const active = p.id === topId
-        return (
-          <button
-            key={p.id}
-            onClick={() => onTab(p.id)}
-            title={
-              min
-                ? `Restore ${p.title}`
-                : active
-                  ? `Minimize ${p.title}`
-                  : `Bring ${p.title} to front`
-            }
-            style={{
-              ...taskTab,
-              background: active
-                ? 'var(--accent, #7c6af7)'
-                : min
-                  ? 'transparent'
-                  : 'var(--b1, rgba(127,127,127,0.12))',
-              color: active ? '#fff' : 'inherit',
-              opacity: min ? 0.5 : 1,
-              borderColor: active ? 'transparent' : 'var(--border, rgba(127,127,127,0.25))',
-            }}
-          >
-            <span style={{ fontSize: '0.7rem' }}>{min ? '▫' : '▪'}</span>
-            {p.title}
-          </button>
-        )
-      })}
+      {barPanes.map((p) => (
+        <button
+          key={p.id}
+          onClick={() => onTab(p.id)}
+          title={`Restore ${p.title}`}
+          style={{ ...taskTab, background: 'transparent' }}
+        >
+          <span style={{ fontSize: '0.7rem' }}>▫</span>
+          {p.title}
+        </button>
+      ))}
       <button
         className="btn"
         onClick={tile}
         title="Tile the open windows to fill the canvas"
-        style={{ fontSize: '0.8rem', flexShrink: 0 }}
+        style={{ ...taskTab, flexShrink: 0 }}
       >
         ⊞
       </button>
