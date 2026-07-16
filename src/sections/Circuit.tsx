@@ -13,10 +13,10 @@ import { Watchlist } from '../circuit/ui/Watchlist'
 import { Toast } from '../circuit/ui/Toast'
 import { CircuitCanvas, type CanvasPane } from '../circuit/ui/CircuitCanvas'
 import { CircuitsPanel } from '../circuit/ui/CircuitsPanel'
+import { onLogIntent, requestLog, requestLogToday, takePendingLog } from '../circuit/logIntent'
 
 type Tab = 'board' | 'log' | 'feed' | 'charts' | 'movies' | 'watchlist' | 'circuits'
 
-const todayISO = () => new Date().toISOString().slice(0, 10)
 const isDesktop = () => typeof window !== 'undefined' && window.innerWidth >= 820
 
 // A phone bookmark/shortcut to `#circuit?tab=log` opens straight to logging — the on-the-fly
@@ -140,7 +140,20 @@ export function Circuit({
     if (canvas) setFocusPane({ id: 'log', nonce: Date.now() })
     else setTab('log')
   }
-  const handleLogToday = (personId: string) => handleLog(personId, todayISO())
+
+  // Panes hand out `requestLog` (a module function) rather than this closure, so a pinned
+  // Board floating over another tab still works — its button used to call into an unmounted
+  // Circuit and silently do nothing. Here we just answer the requests.
+  useEffect(() => {
+    return onLogIntent((i) => handleLog(i.personId, i.date))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canvas])
+  // a request raised while we weren't mounted (that's what brought us here)
+  useEffect(() => {
+    const p = takePendingLog()
+    if (p) handleLog(p.personId, p.date)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const logNode = (
     <Log
@@ -166,18 +179,18 @@ export function Circuit({
     {
       id: 'board',
       title: '🏆 Board',
-      node: <Board onLogToday={handleLogToday} onLogDate={handleLog} viewGroup={viewGroup} />,
+      node: <Board onLogToday={requestLogToday} onLogDate={requestLog} viewGroup={viewGroup} />,
     },
     { id: 'log', title: '✏️ Log', node: logNode },
     {
       id: 'feed',
       title: '📋 Feed',
-      node: <Feed onOpenLog={handleLog} authed={authed} viewGroup={viewGroup} />,
+      node: <Feed onOpenLog={requestLog} authed={authed} viewGroup={viewGroup} />,
     },
     {
       id: 'charts',
       title: '📊 Charts',
-      node: <Charts onDayClick={handleLog} viewGroup={viewGroup} />,
+      node: <Charts onDayClick={requestLog} viewGroup={viewGroup} />,
     },
     { id: 'movies', title: '🎬 Movies', node: <Movies viewGroup={viewGroup} /> },
     { id: 'watchlist', title: '🍿 Watchlist', node: <Watchlist viewGroup={viewGroup} /> },
@@ -289,11 +302,13 @@ export function Circuit({
 
           <div className="cz-pane" key={tab}>
             {tab === 'board' && (
-              <Board onLogToday={handleLogToday} onLogDate={handleLog} viewGroup={viewGroup} />
+              <Board onLogToday={requestLogToday} onLogDate={requestLog} viewGroup={viewGroup} />
             )}
             {tab === 'log' && logNode}
-            {tab === 'feed' && <Feed onOpenLog={handleLog} authed={authed} viewGroup={viewGroup} />}
-            {tab === 'charts' && <Charts onDayClick={handleLog} viewGroup={viewGroup} />}
+            {tab === 'feed' && (
+              <Feed onOpenLog={requestLog} authed={authed} viewGroup={viewGroup} />
+            )}
+            {tab === 'charts' && <Charts onDayClick={requestLog} viewGroup={viewGroup} />}
             {tab === 'movies' && <Movies viewGroup={viewGroup} />}
             {tab === 'watchlist' && <Watchlist viewGroup={viewGroup} />}
             {tab === 'circuits' && <CircuitsPanel />}
