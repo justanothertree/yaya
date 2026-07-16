@@ -23,6 +23,7 @@ const Circuit = lazy(() => import('./sections/Circuit').then((m) => ({ default: 
 const PageCanvas = lazy(() =>
   import('./circuit/ui/CircuitCanvas').then((m) => ({ default: m.CircuitCanvas })),
 )
+import type { CanvasPane } from './circuit/ui/CircuitCanvas'
 const AdminPanel = lazy(() =>
   import('./sections/AdminPanel').then((m) => ({ default: m.AdminPanel })),
 )
@@ -156,6 +157,8 @@ export default function App() {
     () => typeof window !== 'undefined' && window.innerWidth >= 820,
   )
   const [canvasOpen, setCanvasOpen] = useState(false)
+  // windows the user pinned — they ride along onto every tab's canvas
+  const [pinned, setPinned] = useState<CanvasPane[]>([])
   // ANY mounted canvas (home's or the Circuit's own) announces itself; the global zoom
   // is suspended while one is up — CSS zoom fights the fixed full-screen surface and
   // used to push a "full screen" window past the viewport (scroll to see it all).
@@ -649,6 +652,20 @@ export default function App() {
   // one launcher for the whole site; canvas state lives here and persists across tabs
   const toggleCanvas = () => setCanvasOpen((o) => !o)
 
+  // Pinned windows follow you across tabs. We keep the pane OBJECTS (not just ids) so a
+  // window pinned on one tab can still render on another after its own page unmounted —
+  // the node re-mounts and reads the same live store.
+  const pinnedIds = pinned.map((p) => p.id)
+  const togglePin = (pane: CanvasPane) =>
+    setPinned((prev) =>
+      prev.some((p) => p.id === pane.id) ? prev.filter((p) => p.id !== pane.id) : [...prev, pane],
+    )
+  /** this tab's panes plus any pinned ones it doesn't already own */
+  const withPinned = (tabPanes: CanvasPane[]) => [
+    ...tabPanes,
+    ...pinned.filter((p) => !tabPanes.some((t) => t.id === p.id)),
+  ]
+
   return (
     <div data-theme={theme} data-page={active}>
       <a href="#content" className="skip-link">
@@ -871,9 +888,11 @@ export default function App() {
               // (it initialises its layout once per mount) — without this, navigating
               // between two single-window tabs left the canvas empty
               key={active}
-              panes={[
+              panes={withPinned([
                 { id: active, title: canvasTitleFor[active] ?? active, node: singleCanvasNode() },
-              ]}
+              ])}
+              pinnedIds={pinnedIds}
+              onTogglePin={togglePin}
               onExit={() => setCanvasOpen(false)}
             />
           </Suspense>
@@ -882,7 +901,12 @@ export default function App() {
           active === 'home' &&
           (canvasOpen && desktop ? (
             <Suspense fallback={<EvanCook />}>
-              <PageCanvas panes={homePanes()} onExit={() => setCanvasOpen(false)} />
+              <PageCanvas
+                panes={withPinned(homePanes())}
+                pinnedIds={pinnedIds}
+                onTogglePin={togglePin}
+                onExit={() => setCanvasOpen(false)}
+              />
             </Suspense>
           ) : (
             <section id="home">
@@ -902,6 +926,9 @@ export default function App() {
                 authed={isFinanceAuthed || !hasFinanceSupabaseEnv()}
                 canvasMode={canvasOpen && desktop}
                 onExitCanvas={() => setCanvasOpen(false)}
+                pinnedPanes={pinned}
+                pinnedIds={pinnedIds}
+                onTogglePin={togglePin}
               />
             </Suspense>
           </section>

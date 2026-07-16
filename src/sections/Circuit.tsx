@@ -49,11 +49,18 @@ export function Circuit({
   authed = false,
   canvasMode = false,
   onExitCanvas,
+  pinnedPanes = [],
+  pinnedIds = [],
+  onTogglePin,
 }: {
   authed?: boolean
   // App owns canvas state now (one launcher, persists across tabs); the Circuit reflects it
   canvasMode?: boolean
   onExitCanvas?: () => void
+  // windows pinned on other tabs ride along into this canvas too
+  pinnedPanes?: CanvasPane[]
+  pinnedIds?: string[]
+  onTogglePin?: (pane: CanvasPane) => void
 } = {}) {
   const [tab, setTabRaw] = useState<Tab>(() => initialTab(authed))
   const setTab = (t: Tab) => {
@@ -218,8 +225,13 @@ export function Circuit({
         <div style={{ marginTop: '0.9rem' }}>
           {groupPicker && <div style={{ marginBottom: '0.6rem' }}>{groupPicker}</div>}
           <CircuitCanvas
-            panes={canvasPanes}
+            panes={[
+              ...canvasPanes,
+              ...pinnedPanes.filter((p) => !canvasPanes.some((c) => c.id === p.id)),
+            ]}
             focusPane={focusPane}
+            pinnedIds={pinnedIds}
+            onTogglePin={onTogglePin}
             onExit={() => onExitCanvas?.()}
           />
         </div>
