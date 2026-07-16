@@ -538,23 +538,39 @@ export default function App() {
     el?.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' })
   }, [active])
 
-  // Add fade only when nav links actually overflow
+  // Which way is there more nav to see? Drives the edge fade AND the arrows: a phone can
+  // swipe the strip, but on a mouse there was nothing to tell you links existed off the
+  // edge, let alone a way to reach them. Directional on purpose — fading the left edge
+  // while you're scrolled hard-left dims a link that isn't cut off.
+  const [navMore, setNavMore] = useState({ l: false, r: false })
   useEffect(() => {
     const el = navLinksRef.current
     if (!el) return
     const check = () => {
-      const hasOverflow = el.scrollWidth > el.clientWidth + 2
-      el.classList.toggle('has-overflow', hasOverflow)
+      const l = el.scrollLeft > 2
+      const r = el.scrollLeft + el.clientWidth < el.scrollWidth - 2
+      setNavMore((p) => (p.l === l && p.r === r ? p : { l, r }))
     }
     check()
     const ro = new ResizeObserver(check)
     ro.observe(el)
+    // the link set itself changes on sign-in / admin, not just on resize
+    const mo = new MutationObserver(check)
+    mo.observe(el, { childList: true, subtree: true })
+    el.addEventListener('scroll', check, { passive: true })
     window.addEventListener('resize', check)
     return () => {
       ro.disconnect()
+      mo.disconnect()
+      el.removeEventListener('scroll', check)
       window.removeEventListener('resize', check)
     }
   }, [])
+  const nudgeNav = (dir: 1 | -1) =>
+    navLinksRef.current?.scrollBy({
+      left: dir * navLinksRef.current.clientWidth * 0.75,
+      behavior: 'smooth',
+    })
 
   // Back-to-top visibility on scroll
   useEffect(() => {
@@ -698,174 +714,197 @@ export default function App() {
           <a className="brand" href="#home" aria-label="Home">
             {site.name}
           </a>
-          <div className="nav-links" ref={navLinksRef}>
-            <a
-              href="#home"
-              onClick={() => setActive('home')}
-              aria-current={active === 'home' ? 'page' : undefined}
-            >
-              Home
-            </a>
-            {isFinanceAuthed && !suspended && (
-              <a
-                href="#circuit"
-                onClick={() => setActive('circuit')}
-                aria-current={active === 'circuit' ? 'page' : undefined}
-              >
-                Circuit
-              </a>
-            )}
-            {hasFinanceSupabaseEnv() && !isFinanceAuthed && (
-              <a
-                href="#signin"
-                onClick={() => setActive('signin')}
-                aria-current={active === 'signin' ? 'page' : undefined}
-              >
-                Sign in
-              </a>
-            )}
-            {isFinanceAuthed && canFinance === true && !suspended && (
-              <a
-                href="#investments"
-                onClick={() => setActive('investments')}
-                aria-current={active === 'investments' ? 'page' : undefined}
-              >
-                Investments
-              </a>
-            )}
-            {isFinanceAuthed && !suspended && (
-              <a
-                href="#account-settings"
-                onClick={() => setActive('account-settings')}
-                aria-current={active === 'account-settings' ? 'page' : undefined}
-              >
-                Account
-              </a>
-            )}
-            {isAdmin && (
-              <a
-                href="#admin"
-                onClick={() => setActive('admin')}
-                aria-current={active === 'admin' ? 'page' : undefined}
-              >
-                Admin
-              </a>
-            )}
-            <a
-              href="#snake"
-              onClick={() => setActive('snake')}
-              aria-current={active === 'snake' ? 'page' : undefined}
-            >
-              Snake
-            </a>
-            <a
-              href="#contact"
-              onClick={() => setActive('contact')}
-              aria-current={active === 'contact' ? 'page' : undefined}
-            >
-              Contact
-            </a>
-            <span
-              className="nav-zoom"
-              style={{
-                // canvas windows scale to their own size, so the global zoom does nothing
-                // there — hide the A− / A+ cluster while a canvas is open to avoid dead controls
-                display: canvasOpen || canvasMounted ? 'none' : 'inline-flex',
-                alignItems: 'center',
-                gap: '0.15rem',
-                marginLeft: '0.75rem',
-              }}
-              title={`UI scale ${Math.round(uiScale * 100)}%`}
-            >
-              <button
-                className="btn"
-                aria-label="Zoom out"
-                onClick={() => bumpScale(-0.1)}
-                disabled={uiScale <= 0.5}
-                style={{ padding: '0.5rem 0.6rem' }}
-              >
-                A−
-              </button>
-              <button
-                className="btn"
-                aria-label="Reset zoom"
-                onClick={() => setUiScale(1)}
-                style={{
-                  padding: '0.5rem 0.4rem',
-                  fontVariantNumeric: 'tabular-nums',
-                  minWidth: '3.1rem',
-                  textAlign: 'center',
-                }}
-              >
-                {Math.round(uiScale * 100)}%
-              </button>
-              <button
-                className="btn"
-                aria-label="Zoom in"
-                onClick={() => bumpScale(0.1)}
-                disabled={uiScale >= 2.5}
-                style={{ padding: '0.5rem 0.6rem' }}
-              >
-                A+
-              </button>
-            </span>
-            {desktop && (
-              // always rendered on desktop so the nav width doesn't jump; visible on any
-              // canvas-capable tab, hidden-but-space-reserved on the auth flows.
-              // This is the ONE canvas control — it replaced the old bar's "Done".
-              <button
-                className="btn"
-                style={{
-                  marginLeft: '0.5rem',
-                  visibility: canvasCapable ? 'visible' : 'hidden',
-                  pointerEvents: canvasCapable ? 'auto' : 'none',
-                  ...(canvasOpen
-                    ? {
-                        background: 'var(--accent,#7c6af7)',
-                        color: '#fff',
-                        borderColor: 'transparent',
-                      }
-                    : null),
-                }}
-                aria-hidden={!canvasCapable}
-                tabIndex={canvasCapable ? 0 : -1}
-                aria-pressed={canvasOpen}
-                title={
-                  canvasOpen
-                    ? 'Leave canvas mode · drag a title bar to move (press an edge to snap) · drag any edge to resize · ▭ fit · ⛶ full screen · － hide'
-                    : 'Canvas mode — float this page as draggable windows'
-                }
-                onClick={toggleCanvas}
-              >
-                ⛶ Canvas
-              </button>
-            )}
+          {/* the arrows are a pointer affordance: touch already swipes this strip, and the
+              keyboard reaches the links by tabbing (which scrolls them into view), so they
+              stay out of the tab order rather than adding two dead stops to it */}
+          <div className={'nav-scroll' + (navMore.l ? ' can-l' : '') + (navMore.r ? ' can-r' : '')}>
             <button
-              className="btn"
-              style={{ marginLeft: '0.5rem' }}
-              aria-label="Toggle theme"
-              onClick={() => {
-                const next = theme === 'dark' ? 'light' : theme === 'light' ? 'alt' : 'dark'
-                setTheme(next)
-                localStorage.setItem('theme', next)
-              }}
+              className="nav-arrow nav-arrow-l"
+              onClick={() => nudgeNav(-1)}
+              tabIndex={-1}
+              aria-hidden
+              title="More"
             >
-              {theme === 'dark' ? 'Light' : theme === 'light' ? 'Alt' : 'Dark'}
+              ‹
             </button>
-            {hasFinanceSupabaseEnv() && isFinanceAuthed && (
+            <div className="nav-links" ref={navLinksRef}>
+              <a
+                href="#home"
+                onClick={() => setActive('home')}
+                aria-current={active === 'home' ? 'page' : undefined}
+              >
+                Home
+              </a>
+              {isFinanceAuthed && !suspended && (
+                <a
+                  href="#circuit"
+                  onClick={() => setActive('circuit')}
+                  aria-current={active === 'circuit' ? 'page' : undefined}
+                >
+                  Circuit
+                </a>
+              )}
+              {hasFinanceSupabaseEnv() && !isFinanceAuthed && (
+                <a
+                  href="#signin"
+                  onClick={() => setActive('signin')}
+                  aria-current={active === 'signin' ? 'page' : undefined}
+                >
+                  Sign in
+                </a>
+              )}
+              {isFinanceAuthed && canFinance === true && !suspended && (
+                <a
+                  href="#investments"
+                  onClick={() => setActive('investments')}
+                  aria-current={active === 'investments' ? 'page' : undefined}
+                >
+                  Investments
+                </a>
+              )}
+              {isFinanceAuthed && !suspended && (
+                <a
+                  href="#account-settings"
+                  onClick={() => setActive('account-settings')}
+                  aria-current={active === 'account-settings' ? 'page' : undefined}
+                >
+                  Account
+                </a>
+              )}
+              {isAdmin && (
+                <a
+                  href="#admin"
+                  onClick={() => setActive('admin')}
+                  aria-current={active === 'admin' ? 'page' : undefined}
+                >
+                  Admin
+                </a>
+              )}
+              <a
+                href="#snake"
+                onClick={() => setActive('snake')}
+                aria-current={active === 'snake' ? 'page' : undefined}
+              >
+                Snake
+              </a>
+              <a
+                href="#contact"
+                onClick={() => setActive('contact')}
+                aria-current={active === 'contact' ? 'page' : undefined}
+              >
+                Contact
+              </a>
+              <span
+                className="nav-zoom"
+                style={{
+                  // canvas windows scale to their own size, so the global zoom does nothing
+                  // there — hide the A− / A+ cluster while a canvas is open to avoid dead controls
+                  display: canvasOpen || canvasMounted ? 'none' : 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.15rem',
+                  marginLeft: '0.75rem',
+                }}
+                title={`UI scale ${Math.round(uiScale * 100)}%`}
+              >
+                <button
+                  className="btn"
+                  aria-label="Zoom out"
+                  onClick={() => bumpScale(-0.1)}
+                  disabled={uiScale <= 0.5}
+                  style={{ padding: '0.5rem 0.6rem' }}
+                >
+                  A−
+                </button>
+                <button
+                  className="btn"
+                  aria-label="Reset zoom"
+                  onClick={() => setUiScale(1)}
+                  style={{
+                    padding: '0.5rem 0.4rem',
+                    fontVariantNumeric: 'tabular-nums',
+                    minWidth: '3.1rem',
+                    textAlign: 'center',
+                  }}
+                >
+                  {Math.round(uiScale * 100)}%
+                </button>
+                <button
+                  className="btn"
+                  aria-label="Zoom in"
+                  onClick={() => bumpScale(0.1)}
+                  disabled={uiScale >= 2.5}
+                  style={{ padding: '0.5rem 0.6rem' }}
+                >
+                  A+
+                </button>
+              </span>
+              {desktop && (
+                // always rendered on desktop so the nav width doesn't jump; visible on any
+                // canvas-capable tab, hidden-but-space-reserved on the auth flows.
+                // This is the ONE canvas control — it replaced the old bar's "Done".
+                <button
+                  className="btn"
+                  style={{
+                    marginLeft: '0.5rem',
+                    visibility: canvasCapable ? 'visible' : 'hidden',
+                    pointerEvents: canvasCapable ? 'auto' : 'none',
+                    ...(canvasOpen
+                      ? {
+                          background: 'var(--accent,#7c6af7)',
+                          color: '#fff',
+                          borderColor: 'transparent',
+                        }
+                      : null),
+                  }}
+                  aria-hidden={!canvasCapable}
+                  tabIndex={canvasCapable ? 0 : -1}
+                  aria-pressed={canvasOpen}
+                  title={
+                    canvasOpen
+                      ? 'Leave canvas mode · drag a title bar to move (press an edge to snap) · drag any edge to resize · ▭ fit · ⛶ full screen · － hide'
+                      : 'Canvas mode — float this page as draggable windows'
+                  }
+                  onClick={toggleCanvas}
+                >
+                  ⛶ Canvas
+                </button>
+              )}
               <button
                 className="btn"
                 style={{ marginLeft: '0.5rem' }}
+                aria-label="Toggle theme"
                 onClick={() => {
-                  void signOut().catch(() => {
-                    /* ignore */
-                  })
+                  const next = theme === 'dark' ? 'light' : theme === 'light' ? 'alt' : 'dark'
+                  setTheme(next)
+                  localStorage.setItem('theme', next)
                 }}
-                aria-label="Sign out"
               >
-                Sign out
+                {theme === 'dark' ? 'Light' : theme === 'light' ? 'Alt' : 'Dark'}
               </button>
-            )}
+              {hasFinanceSupabaseEnv() && isFinanceAuthed && (
+                <button
+                  className="btn"
+                  style={{ marginLeft: '0.5rem' }}
+                  onClick={() => {
+                    void signOut().catch(() => {
+                      /* ignore */
+                    })
+                  }}
+                  aria-label="Sign out"
+                >
+                  Sign out
+                </button>
+              )}
+            </div>
+            <button
+              className="nav-arrow nav-arrow-r"
+              onClick={() => nudgeNav(1)}
+              tabIndex={-1}
+              aria-hidden
+              title="More"
+            >
+              ›
+            </button>
           </div>
         </div>
       </nav>
