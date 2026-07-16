@@ -677,21 +677,78 @@ section[id] {
   scrollbar-width: none;
   scroll-snap-type: x proximity;
 }
-.nav-links.has-overflow {
+/* Fade only the edge that's actually hiding something. The old rule fed both edges the
+   moment the strip overflowed, so a link sitting flush at the left came up dimmed for no
+   reason. */
+.nav-scroll {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+.nav-scroll.can-l .nav-links {
+  -webkit-mask-image: linear-gradient(to right, transparent 0, black 18px);
+  mask-image: linear-gradient(to right, transparent 0, black 18px);
+}
+.nav-scroll.can-r .nav-links {
+  -webkit-mask-image: linear-gradient(to right, black calc(100% - 18px), transparent 100%);
+  mask-image: linear-gradient(to right, black calc(100% - 18px), transparent 100%);
+}
+.nav-scroll.can-l.can-r .nav-links {
   -webkit-mask-image: linear-gradient(
     to right,
     transparent 0,
-    black 16px,
-    black calc(100% - 16px),
+    black 18px,
+    black calc(100% - 18px),
     transparent 100%
   );
   mask-image: linear-gradient(
     to right,
     transparent 0,
-    black 16px,
-    black calc(100% - 16px),
+    black 18px,
+    black calc(100% - 18px),
     transparent 100%
   );
+}
+
+/* Arrows appear at an edge only while it has more to show. Pointer devices only — a phone
+   swipes the strip, so there they'd just eat the width the links need. */
+.nav-arrow {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 2;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 1.35rem;
+  height: 1.35rem;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 0.8rem;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+.nav-arrow-l {
+  left: 0;
+}
+.nav-arrow-r {
+  right: 0;
+}
+@media (hover: hover) and (pointer: fine) {
+  .nav-scroll.can-l .nav-arrow-l,
+  .nav-scroll.can-r .nav-arrow-r {
+    display: flex;
+    opacity: 1;
+  }
+}
+.nav-arrow:hover {
+  border-color: var(--border-strong, var(--accent));
 }
 .nav-links::-webkit-scrollbar {
   display: none;
