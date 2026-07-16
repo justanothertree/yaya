@@ -23,6 +23,7 @@ const Circuit = lazy(() => import('./sections/Circuit').then((m) => ({ default: 
 const PageCanvas = lazy(() =>
   import('./circuit/ui/CircuitCanvas').then((m) => ({ default: m.CircuitCanvas })),
 )
+import { NAV_BAR_SLOT } from './circuit/ui/CircuitCanvas'
 import type { CanvasPane } from './circuit/ui/CircuitCanvas'
 const AdminPanel = lazy(() =>
   import('./sections/AdminPanel').then((m) => ({ default: m.AdminPanel })),
@@ -809,20 +810,35 @@ export default function App() {
                 A+
               </button>
             </span>
+            {/* the canvas taskbar portals in here, so the window tabs sit in the SAME menu
+                as the page links instead of a second bar stacked underneath */}
+            <div id={NAV_BAR_SLOT} className="nav-canvas" />
             {desktop && (
               // always rendered on desktop so the nav width doesn't jump; visible on any
-              // canvas-capable tab, hidden-but-space-reserved on the auth flows
+              // canvas-capable tab, hidden-but-space-reserved on the auth flows.
+              // This is the ONE canvas control — it replaced the old bar's "Done".
               <button
                 className="btn"
                 style={{
                   marginLeft: '0.5rem',
                   visibility: canvasCapable ? 'visible' : 'hidden',
                   pointerEvents: canvasCapable ? 'auto' : 'none',
+                  ...(canvasOpen
+                    ? {
+                        background: 'var(--accent,#7c6af7)',
+                        color: '#fff',
+                        borderColor: 'transparent',
+                      }
+                    : null),
                 }}
                 aria-hidden={!canvasCapable}
                 tabIndex={canvasCapable ? 0 : -1}
                 aria-pressed={canvasOpen}
-                title="Canvas mode — float this page as draggable windows"
+                title={
+                  canvasOpen
+                    ? 'Leave canvas mode · drag a title bar to move (press an edge to snap) · drag any edge to resize · ▭ fit · ⛶ full screen · － hide'
+                    : 'Canvas mode — float this page as draggable windows'
+                }
                 onClick={toggleCanvas}
               >
                 ⛶ Canvas
@@ -912,7 +928,6 @@ export default function App() {
               ])}
               pinnedIds={pinnedIds}
               onTogglePin={togglePin}
-              onExit={() => setCanvasChoice(false)}
             />
           </Suspense>
         )}
@@ -924,7 +939,6 @@ export default function App() {
                 panes={withPinned(homePanes())}
                 pinnedIds={pinnedIds}
                 onTogglePin={togglePin}
-                onExit={() => setCanvasChoice(false)}
               />
             </Suspense>
           ) : (
@@ -944,7 +958,6 @@ export default function App() {
               <Circuit
                 authed={isFinanceAuthed || !hasFinanceSupabaseEnv()}
                 canvasMode={canvasOpen && desktop}
-                onExitCanvas={() => setCanvasChoice(false)}
                 pinnedPanes={pinned}
                 pinnedIds={pinnedIds}
                 onTogglePin={togglePin}

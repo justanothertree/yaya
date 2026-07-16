@@ -48,7 +48,6 @@ function initialTab(authed: boolean): Tab {
 export function Circuit({
   authed = false,
   canvasMode = false,
-  onExitCanvas,
   pinnedPanes = [],
   pinnedIds = [],
   onTogglePin,
@@ -56,7 +55,6 @@ export function Circuit({
   authed?: boolean
   // App owns canvas state now (one launcher, persists across tabs); the Circuit reflects it
   canvasMode?: boolean
-  onExitCanvas?: () => void
   // windows pinned on other tabs ride along into this canvas too
   pinnedPanes?: CanvasPane[]
   pinnedIds?: string[]
@@ -232,7 +230,6 @@ export function Circuit({
             focusPane={focusPane}
             pinnedIds={pinnedIds}
             onTogglePin={onTogglePin}
-            onExit={() => onExitCanvas?.()}
           />
         </div>
       ) : (
