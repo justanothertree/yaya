@@ -663,7 +663,12 @@ section[id] {
   white-space: nowrap;
   line-height: 1.2;
 }
+/* The bar's height must not depend on WHICH clusters are showing — the zoom keys are a
+   touch taller than the links and they vanish in canvas, so the row (and the whole page
+   under it) used to shift on toggle. Hold the row open in rem so it still scales with the
+   fluid root instead of freezing at a pixel. */
 .nav-links {
+  min-height: 2.15rem;
   display: flex;
   align-items: center; /* children sit at their natural height — no stretch inflating the bar */
   gap: 0.25rem;
@@ -725,20 +730,21 @@ section[id] {
   gap: 0.3rem;
   min-width: 0;
   overflow-x: auto;
-  scrollbar-width: thin;
+  /* NO visible scrollbar: it added its own height to the row, so opening canvas grew the
+     nav by ~6px and shifted the whole page down. The nav's height is the page links' to
+     set — nothing the canvas puts in here may change it. */
+  scrollbar-width: none;
+}
+.nav-canvas::-webkit-scrollbar {
+  display: none;
 }
 .nav-canvas:not(:empty) {
   margin-left: 0.5rem;
   padding-left: 0.6rem;
   border-left: 1px solid var(--border, rgba(127, 127, 127, 0.25));
 }
-
-/* A 16:10 screenshot at full width gets TALL, which is fine on the page (it scrolls) but
-   inside a canvas window it pushes the text under it out of view for very little payoff.
-   Cap it only there, and derive the cap from the SCREEN height so it still scales with the
-   display instead of freezing at a pixel guess — big monitor, bigger picture. */
-.cz-body .proj-media {
-  max-width: min(100%, calc(38vh * 1.6));
+.nav-canvas > * {
+  max-height: 30px;
 }
 
 .section-title {

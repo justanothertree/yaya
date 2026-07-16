@@ -62,11 +62,10 @@ function Slideshow({ project }: { project: Project }) {
         style={{
           position: 'relative',
           aspectRatio: '16 / 10',
-          // full width of whatever holds it — the page scrolls, so there's nothing to
-          // protect here. Only a canvas WINDOW is short enough to need a cap, and that
-          // one lives in css scoped to `.cz-body` (screen-relative, not a fixed guess).
+          // natural scale: the shot fills whatever holds it, at its own ratio. Capping it
+          // to stop a canvas window from scrolling was the wrong trade — a window that's
+          // too short for its content is what ▭ fit-to-content and dragging are for.
           width: '100%',
-          margin: '0 auto',
           borderRadius: 12,
           overflow: 'hidden',
           border: `1px solid ${project.accent}44`,
