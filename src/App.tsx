@@ -170,20 +170,38 @@ export default function App() {
   )
   // windows the user pinned — they ride along onto every tab's canvas
   const [pinned, setPinned] = useState<CanvasPane[]>([])
-  // who the cog menu greets. Read from the LOCAL session (no network) so it can't flash or
-  // gate anything — the menu just shows a name where a profile will eventually live.
-  const [userEmail, setUserEmail] = useState<string | null>(null)
+  // Who the cog menu greets. The email is peeked from the LOCAL session so it paints
+  // instantly and can never flash or gate anything; the real name follows from the profile
+  // a moment later. An address is not a name — "cvaneook@outlook.com" made the avatar a
+  // "C" for a man called Evan.
+  const [me, setMe] = useState<{ name: string | null; email: string | null }>({
+    name: null,
+    email: null,
+  })
   useEffect(() => {
     if (!hasFinanceSupabaseEnv() || !isFinanceAuthed) {
-      setUserEmail(null)
+      setMe({ name: null, email: null })
       return
     }
     let live = true
-    void getSessionUser()
-      .then((u) => live && setUserEmail(u?.email ?? null))
-      .catch(() => {
-        /* cosmetic only */
-      })
+    void (async () => {
+      const u = await getSessionUser().catch(() => null)
+      if (!live) return
+      setMe((m) => ({ ...m, email: u?.email ?? null }))
+      try {
+        const { data } = await getSupabaseClient().rpc('get_my_profile')
+        const row = (Array.isArray(data) ? data[0] : data) as {
+          username?: string | null
+          first_name?: string | null
+          last_name?: string | null
+        } | null
+        if (!live || !row) return
+        const full = [row.first_name, row.last_name].filter(Boolean).join(' ')
+        setMe((m) => ({ ...m, name: full || row.username || null }))
+      } catch {
+        // no profile row (not a member yet) — the email still greets them
+      }
+    })()
     return () => {
       live = false
     }
@@ -846,7 +864,8 @@ export default function App() {
               desktop={desktop}
               authed={hasFinanceSupabaseEnv() && isFinanceAuthed}
               isAdmin={isAdmin}
-              email={userEmail}
+              name={me.name}
+              email={me.email}
               onAccount={() => setActive('account-settings')}
               onSignIn={() => setActive('signin')}
               onSignOut={() => {
