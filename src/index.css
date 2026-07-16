@@ -715,6 +715,24 @@ section[id] {
   }
 }
 
+/* The canvas taskbar lands here, in the SAME bar as the page links — one menu that grows
+   a second group when you're in canvas, rather than a separate strip bolted underneath.
+   The rule reads: page links = where you are, window tabs = what's open. The divider only
+   exists when there's something open to divide. */
+.nav-canvas {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+.nav-canvas:not(:empty) {
+  margin-left: 0.5rem;
+  padding-left: 0.6rem;
+  border-left: 1px solid var(--border, rgba(127, 127, 127, 0.25));
+}
+
 /* A 16:10 screenshot at full width gets TALL, which is fine on the page (it scrolls) but
    inside a canvas window it pushes the text under it out of view for very little payoff.
    Cap it only there, and derive the cap from the SCREEN height so it still scales with the

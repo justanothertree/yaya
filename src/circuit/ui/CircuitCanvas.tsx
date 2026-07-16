@@ -8,6 +8,10 @@ import { showToast } from '../toast'
 
 export type CanvasPane = { id: string; title: string; node: ReactNode }
 
+// The site nav renders this slot and the canvas portals its taskbar into it, so the window
+// tabs and the page links read as ONE menu. Exported so the nav can't drift from it.
+export const NAV_BAR_SLOT = 'yaya-canvas-bar'
+
 type WinBox = {
   x: number
   y: number
@@ -116,13 +120,11 @@ function handleStyle(dir: Dir): React.CSSProperties {
 export function CircuitCanvas({
   panes,
   focusPane,
-  onExit,
   pinnedIds = [],
   onTogglePin,
 }: {
   panes: CanvasPane[]
   focusPane?: { id: string; nonce: number } | null
-  onExit: () => void
   /** ids of panes the user pinned — they follow them across tabs */
   pinnedIds?: string[]
   onTogglePin?: (pane: CanvasPane) => void
@@ -136,6 +138,11 @@ export function CircuitCanvas({
   const [portalTarget] = useState<HTMLElement | null>(() =>
     typeof document !== 'undefined' ? document.body : null,
   )
+  // the nav's slot for the window taskbar — one menu instead of a second bar under it
+  const [barTarget, setBarTarget] = useState<HTMLElement | null>(null)
+  useLayoutEffect(() => {
+    setBarTarget(document.getElementById(NAV_BAR_SLOT))
+  }, [])
   const [wins, setWins] = useState<Layout>({})
   const [snap, setSnap] = useState<{ x: number; y: number; w: number; h: number } | null>(null)
   const drag = useRef<{
@@ -657,271 +664,264 @@ export function CircuitCanvas({
   // Portaled to <body> so the fixed surface spans the true viewport. Rendered inline it
   // gets trapped by any ancestor that establishes a containing block (the #circuit card's
   // reveal transform did exactly that — a maximized window collapsed to the card's height).
-  return createPortal(
-    // Full-width canvas surface: a fixed panel spanning the viewport below the nav.
-    // Desktop-only (the launcher button is hidden on phones), so mobile keeps the tabs.
+  // The window taskbar lives IN the site nav (one menu, not a second bar stacked under the
+  // first). The nav renders an empty slot; we portal into it when it's there, and fall back
+  // to an in-surface bar if it isn't (the Circuit can mount this canvas on its own).
+  const bar = (
     <div
       style={{
-        position: 'fixed',
-        top: 'var(--nav-h, 56px)',
-        left: 0,
-        right: 0,
-        bottom: 0,
-        zIndex: 50,
         display: 'flex',
-        flexDirection: 'column',
-        background: 'var(--bg)',
-        padding: '0.5rem clamp(0.6rem, 1.6vw, 1.1rem) 0.6rem',
-        boxSizing: 'border-box',
+        alignItems: 'center',
+        gap: '0.35rem',
+        minWidth: 0,
+        flexShrink: 1,
       }}
     >
-      {/* one compact bar: canvas label · window tabs · tile / done. The how-to lives in
-          a tooltip (ⓘ) instead of a sentence eating a whole row. */}
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: '0.35rem',
-          marginBottom: '0.45rem',
-          flexWrap: 'wrap',
-          flexShrink: 0,
-        }}
-      >
-        <strong
-          style={{ fontSize: '0.88rem', marginRight: '0.15rem', whiteSpace: 'nowrap' }}
-          title="Drag a title bar to move (press against an edge to snap) · drag any edge or corner to resize · ▭ ideal size · ⛶ full screen · － hide"
-        >
-          ⛶ Canvas
-          <span className="muted" style={{ fontWeight: 400, fontSize: '0.74rem' }}>
-            {' '}
-            ⓘ
-          </span>
-        </strong>
-        {panes.map((p) => {
-          const w = wins[p.id]
-          const min = !!w?.min
-          const active = p.id === topId
-          return (
-            <button
-              key={p.id}
-              onClick={() => onTab(p.id)}
-              title={
-                min
-                  ? `Restore ${p.title}`
-                  : active
-                    ? `Minimize ${p.title}`
-                    : `Bring ${p.title} to front`
-              }
-              style={{
-                ...taskTab,
-                background: active
-                  ? 'var(--accent, #7c6af7)'
-                  : min
-                    ? 'transparent'
-                    : 'var(--b1, rgba(127,127,127,0.12))',
-                color: active ? '#fff' : 'inherit',
-                opacity: min ? 0.5 : 1,
-                borderColor: active ? 'transparent' : 'var(--border, rgba(127,127,127,0.25))',
-              }}
-            >
-              <span style={{ fontSize: '0.7rem' }}>{min ? '▫' : '▪'}</span>
-              {p.title}
-            </button>
-          )
-        })}
-        <span style={{ marginLeft: 'auto', display: 'flex', gap: '0.4rem' }}>
-          <button className="btn" onClick={tile} style={{ fontSize: '0.8rem' }}>
-            ⊞ Tile
-          </button>
+      {panes.map((p) => {
+        const w = wins[p.id]
+        const min = !!w?.min
+        const active = p.id === topId
+        return (
           <button
-            className="btn"
-            onClick={onExit}
+            key={p.id}
+            onClick={() => onTab(p.id)}
+            title={
+              min
+                ? `Restore ${p.title}`
+                : active
+                  ? `Minimize ${p.title}`
+                  : `Bring ${p.title} to front`
+            }
             style={{
-              fontSize: '0.8rem',
-              background: 'var(--accent,#7c6af7)',
-              color: '#fff',
-              borderColor: 'transparent',
+              ...taskTab,
+              background: active
+                ? 'var(--accent, #7c6af7)'
+                : min
+                  ? 'transparent'
+                  : 'var(--b1, rgba(127,127,127,0.12))',
+              color: active ? '#fff' : 'inherit',
+              opacity: min ? 0.5 : 1,
+              borderColor: active ? 'transparent' : 'var(--border, rgba(127,127,127,0.25))',
             }}
           >
-            Done
+            <span style={{ fontSize: '0.7rem' }}>{min ? '▫' : '▪'}</span>
+            {p.title}
           </button>
-        </span>
-      </div>
+        )
+      })}
+      <button
+        className="btn"
+        onClick={tile}
+        title="Tile the open windows to fill the canvas"
+        style={{ fontSize: '0.8rem', flexShrink: 0 }}
+      >
+        ⊞
+      </button>
+    </div>
+  )
 
-      {/* canvas surface */}
+  return (
+    <>
+      {barTarget && createPortal(bar, barTarget)}
+      {createPortal(surface(barTarget ? null : bar), portalTarget)}
+    </>
+  )
+
+  // Full-width canvas surface: a fixed panel spanning the viewport below the nav.
+  // Desktop-only (the launcher button is hidden on phones), so mobile keeps the tabs.
+  function surface(inlineBar: ReactNode) {
+    return (
       <div
-        ref={hostRef}
         style={{
-          position: 'relative',
-          flex: 1,
-          minHeight: 0,
-          padding: 4,
-          // windows are always clamped inside the surface, so nothing ever scrolls —
-          // a maximized window is exactly the visible canvas
-          overflow: 'hidden',
-          background:
-            'repeating-linear-gradient(45deg, transparent, transparent 11px, rgba(127,127,127,0.025) 11px, rgba(127,127,127,0.025) 12px)',
-          borderRadius: 10,
+          position: 'fixed',
+          top: 'var(--nav-h, 56px)',
+          left: 0,
+          right: 0,
+          bottom: 0,
+          zIndex: 50,
+          display: 'flex',
+          flexDirection: 'column',
+          background: 'var(--bg)',
+          padding: '0.5rem clamp(0.6rem, 1.6vw, 1.1rem) 0.6rem',
+          boxSizing: 'border-box',
         }}
       >
-        {panes.map((p) => {
-          const w = wins[p.id]
-          if (!w) return null
-          // minimized windows stay MOUNTED but hidden — restoring from the taskbar used
-          // to rebuild the whole pane from scratch (a visible flash); now it's instant
-          // and keeps scroll position / half-typed inputs alive
-          // scale the content with the window size: at the "ideal" width it sits at 100%,
-          // and growing the window past that scales everything up so it's easier to see.
-          const bodyScale = scaleFor(w.w)
-          return (
-            <div
-              key={p.id}
-              ref={(el) => {
-                winRefs.current[p.id] = el
-              }}
-              data-czid={p.id}
-              onPointerDown={() => focus(p.id)}
-              style={{
-                position: 'absolute',
-                left: w.x,
-                top: w.y,
-                width: w.w,
-                height: w.h,
-                zIndex: w.z,
-                display: w.min ? 'none' : 'flex',
-                flexDirection: 'column',
-                background: 'var(--panel, #141a2a)',
-                border:
-                  p.id === topId
-                    ? '1px solid var(--accent, #7c6af7)'
-                    : '1px solid var(--b2, rgba(127,127,127,0.3))',
-                borderRadius: 12,
-                boxShadow:
-                  p.id === topId ? '0 10px 34px rgba(0,0,0,0.55)' : '0 8px 28px rgba(0,0,0,0.45)',
-                overflow: 'hidden',
-                minWidth: MIN_W,
-                minHeight: MIN_H,
-              }}
-            >
-              {/* title bar */}
+        {inlineBar && <div style={{ marginBottom: '0.45rem', flexShrink: 0 }}>{inlineBar}</div>}
+
+        {/* canvas surface */}
+        <div
+          ref={hostRef}
+          style={{
+            position: 'relative',
+            flex: 1,
+            minHeight: 0,
+            padding: 4,
+            // windows are always clamped inside the surface, so nothing ever scrolls —
+            // a maximized window is exactly the visible canvas
+            overflow: 'hidden',
+            background:
+              'repeating-linear-gradient(45deg, transparent, transparent 11px, rgba(127,127,127,0.025) 11px, rgba(127,127,127,0.025) 12px)',
+            borderRadius: 10,
+          }}
+        >
+          {panes.map((p) => {
+            const w = wins[p.id]
+            if (!w) return null
+            // minimized windows stay MOUNTED but hidden — restoring from the taskbar used
+            // to rebuild the whole pane from scratch (a visible flash); now it's instant
+            // and keeps scroll position / half-typed inputs alive
+            // scale the content with the window size: at the "ideal" width it sits at 100%,
+            // and growing the window past that scales everything up so it's easier to see.
+            const bodyScale = scaleFor(w.w)
+            return (
               <div
-                className="cz-bar"
-                onPointerDown={(e) => onWinPointerDown(e, p.id)}
-                onDoubleClick={(e) => {
-                  if (!(e.target as HTMLElement).closest('.cz-btn')) toggleMax(p.id)
+                key={p.id}
+                ref={(el) => {
+                  winRefs.current[p.id] = el
                 }}
+                data-czid={p.id}
+                onPointerDown={() => focus(p.id)}
                 style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.4rem',
-                  padding: '6px 9px',
-                  background: 'var(--b1, rgba(127,127,127,0.12))',
-                  borderBottom: '1px solid var(--b1, rgba(127,127,127,0.15))',
-                  cursor: 'grab',
-                  userSelect: 'none',
-                  flexShrink: 0,
-                  touchAction: 'none',
+                  position: 'absolute',
+                  left: w.x,
+                  top: w.y,
+                  width: w.w,
+                  height: w.h,
+                  zIndex: w.z,
+                  display: w.min ? 'none' : 'flex',
+                  flexDirection: 'column',
+                  background: 'var(--panel, #141a2a)',
+                  border:
+                    p.id === topId
+                      ? '1px solid var(--accent, #7c6af7)'
+                      : '1px solid var(--b2, rgba(127,127,127,0.3))',
+                  borderRadius: 12,
+                  boxShadow:
+                    p.id === topId ? '0 10px 34px rgba(0,0,0,0.55)' : '0 8px 28px rgba(0,0,0,0.45)',
+                  overflow: 'hidden',
+                  minWidth: MIN_W,
+                  minHeight: MIN_H,
                 }}
               >
-                <span style={{ fontWeight: 700, fontSize: '0.82rem', flex: 1 }}>{p.title}</span>
-                {onTogglePin && (
+                {/* title bar */}
+                <div
+                  className="cz-bar"
+                  onPointerDown={(e) => onWinPointerDown(e, p.id)}
+                  onDoubleClick={(e) => {
+                    if (!(e.target as HTMLElement).closest('.cz-btn')) toggleMax(p.id)
+                  }}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.4rem',
+                    padding: '6px 9px',
+                    background: 'var(--b1, rgba(127,127,127,0.12))',
+                    borderBottom: '1px solid var(--b1, rgba(127,127,127,0.15))',
+                    cursor: 'grab',
+                    userSelect: 'none',
+                    flexShrink: 0,
+                    touchAction: 'none',
+                  }}
+                >
+                  <span style={{ fontWeight: 700, fontSize: '0.82rem', flex: 1 }}>{p.title}</span>
+                  {onTogglePin && (
+                    <button
+                      className="cz-btn btn"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        onTogglePin(p)
+                      }}
+                      title={
+                        pinnedIds.includes(p.id)
+                          ? 'Unpin — stops following you across tabs'
+                          : 'Pin — keep this window with you on every tab'
+                      }
+                      aria-pressed={pinnedIds.includes(p.id)}
+                      style={{
+                        ...czBtn,
+                        color: pinnedIds.includes(p.id) ? 'var(--accent, #7c6af7)' : undefined,
+                        opacity: pinnedIds.includes(p.id) ? 1 : 0.55,
+                      }}
+                    >
+                      📌
+                    </button>
+                  )}
                   <button
                     className="cz-btn btn"
                     onClick={(e) => {
                       e.stopPropagation()
-                      onTogglePin(p)
+                      toggleMin(p.id)
                     }}
-                    title={
-                      pinnedIds.includes(p.id)
-                        ? 'Unpin — stops following you across tabs'
-                        : 'Pin — keep this window with you on every tab'
-                    }
-                    aria-pressed={pinnedIds.includes(p.id)}
-                    style={{
-                      ...czBtn,
-                      color: pinnedIds.includes(p.id) ? 'var(--accent, #7c6af7)' : undefined,
-                      opacity: pinnedIds.includes(p.id) ? 1 : 0.55,
-                    }}
+                    title="Minimize (hide)"
+                    style={czBtn}
                   >
-                    📌
+                    －
                   </button>
-                )}
-                <button
-                  className="cz-btn btn"
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    toggleMin(p.id)
-                  }}
-                  title="Minimize (hide)"
-                  style={czBtn}
-                >
-                  －
-                </button>
-                <button
-                  className="cz-btn btn"
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    idealSize(p.id)
-                  }}
-                  title="Fit to content — size this window to show everything, no scroll"
-                  style={czBtn}
-                >
-                  ▭
-                </button>
-                <button
-                  className="cz-btn btn"
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    toggleMax(p.id)
-                  }}
-                  title={w.max ? 'Restore' : 'Full screen'}
-                  style={czBtn}
-                >
-                  {w.max ? '🗗' : '⛶'}
-                </button>
-              </div>
-              {/* body — content scales with the window so a bigger window = bigger, clearer UI */}
-              <div
-                className="cz-body"
-                style={{ flex: 1, overflow: 'auto', padding: 12, zoom: bodyScale }}
-              >
-                {p.node}
-              </div>
-              {/* resize handles on every edge + corner — available even when maximized,
-                  so dragging an edge inward shrinks it back out of full-screen */}
-              {RESIZE_DIRS.map((dir) => (
+                  <button
+                    className="cz-btn btn"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      idealSize(p.id)
+                    }}
+                    title="Fit to content — size this window to show everything, no scroll"
+                    style={czBtn}
+                  >
+                    ▭
+                  </button>
+                  <button
+                    className="cz-btn btn"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      toggleMax(p.id)
+                    }}
+                    title={w.max ? 'Restore' : 'Full screen'}
+                    style={czBtn}
+                  >
+                    {w.max ? '🗗' : '⛶'}
+                  </button>
+                </div>
+                {/* body — content scales with the window so a bigger window = bigger, clearer UI */}
                 <div
-                  key={dir}
-                  onPointerDown={(e) => onResizeStart(e, p.id, dir)}
-                  style={handleStyle(dir)}
-                />
-              ))}
-            </div>
-          )
-        })}
+                  className="cz-body"
+                  style={{ flex: 1, overflow: 'auto', padding: 12, zoom: bodyScale }}
+                >
+                  {p.node}
+                </div>
+                {/* resize handles on every edge + corner — available even when maximized,
+                  so dragging an edge inward shrinks it back out of full-screen */}
+                {RESIZE_DIRS.map((dir) => (
+                  <div
+                    key={dir}
+                    onPointerDown={(e) => onResizeStart(e, p.id, dir)}
+                    style={handleStyle(dir)}
+                  />
+                ))}
+              </div>
+            )
+          })}
 
-        {/* snap preview overlay */}
-        {snap && host && (
-          <div
-            style={{
-              position: 'fixed',
-              left: host.left + 4 + snap.x,
-              top: host.top + 4 + snap.y,
-              width: snap.w,
-              height: snap.h,
-              border: '2px solid var(--accent, #7c6af7)',
-              background: 'rgba(124,106,247,0.16)',
-              borderRadius: 12,
-              pointerEvents: 'none',
-              zIndex: 9999,
-              transition: 'left .08s, top .08s, width .08s, height .08s',
-            }}
-          />
-        )}
+          {/* snap preview overlay */}
+          {snap && host && (
+            <div
+              style={{
+                position: 'fixed',
+                left: host.left + 4 + snap.x,
+                top: host.top + 4 + snap.y,
+                width: snap.w,
+                height: snap.h,
+                border: '2px solid var(--accent, #7c6af7)',
+                background: 'rgba(124,106,247,0.16)',
+                borderRadius: 12,
+                pointerEvents: 'none',
+                zIndex: 9999,
+                transition: 'left .08s, top .08s, width .08s, height .08s',
+              }}
+            />
+          )}
+        </div>
       </div>
-    </div>,
-    portalTarget,
-  )
+    )
+  }
 }
 
 const czBtn: React.CSSProperties = {
