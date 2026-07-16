@@ -27,6 +27,7 @@ export function SettingsMenu({
   desktop,
   authed,
   isAdmin,
+  name,
   email,
   onAccount,
   onSignIn,
@@ -42,6 +43,8 @@ export function SettingsMenu({
   desktop: boolean
   authed: boolean
   isAdmin: boolean
+  /** their actual name, once the profile lands — an email address is not a name */
+  name: string | null
   email: string | null
   onAccount: () => void
   onSignIn: () => void
@@ -72,7 +75,8 @@ export function SettingsMenu({
   }, [open])
 
   const pct = Math.round(uiScale * 100)
-  const initial = (email?.[0] ?? '★').toUpperCase()
+  // prefer the name; the email is only a stand-in until the profile arrives
+  const initial = (name?.trim()[0] ?? email?.[0] ?? '★').toUpperCase()
 
   return (
     <div className="nav-cog-wrap" ref={wrapRef}>
@@ -94,8 +98,10 @@ export function SettingsMenu({
             <div className="nav-menu-id">
               <span className="nav-cog-avatar lg">{initial}</span>
               <span className="nav-menu-id-text">
-                <strong>{email ?? 'Signed in'}</strong>
-                <span className="muted">{isAdmin ? 'Admin' : 'Member'}</span>
+                <strong>{name ?? email ?? 'Signed in'}</strong>
+                <span className="muted">
+                  {name && email ? email : isAdmin ? 'Admin' : 'Member'}
+                </span>
               </span>
             </div>
           ) : (
