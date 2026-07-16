@@ -22,13 +22,21 @@ type Layout = Record<string, WinBox>
 
 // v4: layouts are stored per canvas (home vs circuit have different panes — one shared
 // key made each page clobber the other's layout and re-tile every visit).
-const storeKey = (panes: CanvasPane[]) =>
+// PINNED panes are excluded from the key and from the per-tab layout: they're the same
+// window following you between tabs, so their box lives in the shared pin store below.
+// Keeping them out also means pinning/unpinning no longer changes a tab's key — which
+// used to invalidate its saved layout and re-tile everything.
+const storeKey = (panes: CanvasPane[], pinnedIds: string[]) =>
   'canvas_v4:' +
   panes
+    .filter((p) => !pinnedIds.includes(p.id))
     .map((p) => p.id)
     .sort()
     .join(',')
 const GAP = 12
+// One box per pinned window, shared by every tab's canvas — so a pinned window stays
+// exactly where you put it as you move page to page.
+const PIN_KEY = 'canvas_pins_v1'
 
 function loadLayout(key: string): Layout | null {
   try {
@@ -44,6 +52,10 @@ function saveLayout(key: string, l: Layout) {
   } catch {
     /* ignore quota */
   }
+}
+const loadPins = (): Layout => loadLayout(PIN_KEY) || {}
+function savePins(boxes: Layout) {
+  saveLayout(PIN_KEY, { ...loadPins(), ...boxes })
 }
 
 type Zone = 'max' | 'left' | 'right' | 'tl' | 'tr' | 'bl' | 'br'
@@ -63,6 +75,19 @@ const IDEAL_H = 560
 // shows more. Content already reads at a screen-appropriate size via the fluid root.
 // Quantized to 5% steps so text doesn't reflow on every pixel of a resize.
 const scaleFor = (w: number) => Math.min(1, Math.max(0.6, Math.round(w / IDEAL_W / 0.05) * 0.05))
+
+// fit one window fully inside the canvas (shared by the restore paths and clampAll)
+function clampBox(w: WinBox, b: { w: number; h: number }): WinBox {
+  const cw = Math.max(MIN_W, Math.min(w.w, b.w))
+  const ch = Math.max(MIN_H, Math.min(w.h, b.h))
+  return {
+    ...w,
+    w: cw,
+    h: ch,
+    x: Math.max(0, Math.min(w.x, b.w - cw)),
+    y: Math.max(0, Math.min(w.y, b.h - ch)),
+  }
+}
 
 function handleStyle(dir: Dir): React.CSSProperties {
   const base: React.CSSProperties = { position: 'absolute', zIndex: 6, touchAction: 'none' }
@@ -171,29 +196,32 @@ export function CircuitCanvas({
 
   // Tile to fill the whole canvas: pick a column count for the width, then size
   // rows/cols so the grid uses all the available space (no dead gaps).
-  const defaultTile = useCallback((): Layout => {
-    const b = hostBox()
-    const n = panes.length
-    const cols = b.w >= 1180 ? 3 : b.w >= 680 ? 2 : 1
-    const rows = Math.ceil(n / cols)
-    const colW = Math.floor((b.w - (cols - 1) * GAP) / cols)
-    const rowH = Math.floor((b.h - (rows - 1) * GAP) / rows)
-    const next: Layout = {}
-    panes.forEach((p, i) => {
-      const col = i % cols
-      const row = Math.floor(i / cols)
-      next[p.id] = {
-        x: col * (colW + GAP),
-        y: row * (rowH + GAP),
-        w: colW,
-        h: rowH,
-        min: false,
-        max: false,
-        z: ++maxZ.current,
-      }
-    })
-    return next
-  }, [hostBox, panes])
+  const defaultTile = useCallback(
+    (list: CanvasPane[] = panes): Layout => {
+      const b = hostBox()
+      const n = list.length
+      const cols = b.w >= 1180 ? 3 : b.w >= 680 ? 2 : 1
+      const rows = Math.ceil(n / cols)
+      const colW = Math.floor((b.w - (cols - 1) * GAP) / cols)
+      const rowH = Math.floor((b.h - (rows - 1) * GAP) / rows)
+      const next: Layout = {}
+      list.forEach((p, i) => {
+        const col = i % cols
+        const row = Math.floor(i / cols)
+        next[p.id] = {
+          x: col * (colW + GAP),
+          y: row * (rowH + GAP),
+          w: colW,
+          h: rowH,
+          min: false,
+          max: false,
+          z: ++maxZ.current,
+        }
+      })
+      return next
+    },
+    [hostBox, panes],
+  )
 
   // Fit every window to the current canvas: maximized ones re-take the full surface,
   // the rest are clamped fully inside. Fixes stale saved layouts (from a bigger window
@@ -203,19 +231,7 @@ export function CircuitCanvas({
       const b = hostBox()
       const next: Layout = {}
       for (const [id, w] of Object.entries(l)) {
-        if (w.max) {
-          next[id] = { ...w, ...snapGeom('max')! }
-        } else {
-          const cw = Math.max(MIN_W, Math.min(w.w, b.w))
-          const ch = Math.max(MIN_H, Math.min(w.h, b.h))
-          next[id] = {
-            ...w,
-            w: cw,
-            h: ch,
-            x: Math.max(0, Math.min(w.x, b.w - cw)),
-            y: Math.max(0, Math.min(w.y, b.h - ch)),
-          }
-        }
+        next[id] = w.max ? { ...w, ...snapGeom('max')! } : clampBox(w, b)
       }
       return next
     },
@@ -224,26 +240,42 @@ export function CircuitCanvas({
 
   // ── init: restore saved layout (fitted to today's canvas) or tile fresh ──
   useLayoutEffect(() => {
-    const saved = loadLayout(storeKey(panes))
-    const valid = saved && panes.every((p) => saved[p.id])
-    const next = clampAll(valid ? saved! : defaultTile())
-    Object.values(next).forEach((w) => {
+    // only this tab's OWN panes come from its layout; pinned ones carry their box with them
+    const own = panes.filter((p) => !pinnedIds.includes(p.id))
+    const saved = loadLayout(storeKey(panes, pinnedIds))
+    const valid = saved && own.every((p) => saved[p.id])
+    const base = valid ? saved! : defaultTile(own)
+    const pins = loadPins()
+    const next: Layout = {}
+    for (const p of panes) {
+      const box = pinnedIds.includes(p.id) ? pins[p.id] || base[p.id] : base[p.id]
+      if (box) next[p.id] = box
+    }
+    const fitted = clampAll(next)
+    Object.values(fitted).forEach((w) => {
       if (w.z > maxZ.current) maxZ.current = w.z
     })
-    setWins(next)
+    setWins(fitted)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Panes can arrive after mount — a window pinned on another tab follows you here. Give
-  // any pane without a box a spot (cascaded so it doesn't land exactly on another window);
-  // the init above only runs once, so without this a new pane would never render.
+  // Panes can arrive after mount — pinning a window here, or one following you from another
+  // tab. A pinned window keeps its shared box (it's the same window, so it must not jump);
+  // anything genuinely new gets a cascaded spot. The init above only runs once, so without
+  // this a late pane would never render.
   useEffect(() => {
     setWins((prev) => {
       const missing = panes.filter((p) => !prev[p.id])
       if (!missing.length) return prev
       const b = hostBox()
+      const pins = loadPins()
       const next = { ...prev }
       missing.forEach((p, i) => {
+        const pin = pins[p.id]
+        if (pin) {
+          next[p.id] = { ...clampBox(pin, b), z: ++maxZ.current }
+          return
+        }
         const w = Math.min(IDEAL_W, b.w)
         const h = Math.min(IDEAL_H, b.h)
         const off = 26 * ((Object.keys(prev).length + i) % 5)
@@ -261,10 +293,20 @@ export function CircuitCanvas({
     })
   }, [panes, hostBox])
 
-  // persist whenever layout settles
+  // Persist whenever layout settles — this tab's own windows to its layout, pinned ones to
+  // the shared pin store so wherever you drop a pinned window is where the next tab shows it.
   useEffect(() => {
-    if (Object.keys(wins).length) saveLayout(storeKey(panes), wins)
-  }, [wins, panes])
+    if (!Object.keys(wins).length) return
+    const own: Layout = {}
+    const pins: Layout = {}
+    for (const [id, w] of Object.entries(wins)) {
+      if (pinnedIds.includes(id)) pins[id] = w
+      else own[id] = w
+    }
+    if (Object.keys(own).length) saveLayout(storeKey(panes, pinnedIds), own)
+    if (Object.keys(pins).length) savePins(pins)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [wins, panes, pinnedIds.join(',')])
 
   // canvas resized (browser window, devtools, zoom) → keep every window fitting
   useEffect(() => {

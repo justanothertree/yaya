@@ -715,6 +715,14 @@ section[id] {
   }
 }
 
+/* A 16:10 screenshot at full width gets TALL, which is fine on the page (it scrolls) but
+   inside a canvas window it pushes the text under it out of view for very little payoff.
+   Cap it only there, and derive the cap from the SCREEN height so it still scales with the
+   display instead of freezing at a pixel guess — big monitor, bigger picture. */
+.cz-body .proj-media {
+  max-width: min(100%, calc(38vh * 1.6));
+}
+
 .section-title {
   margin: 0 0 var(--sp-2) 0;
   font-size: 1.25rem;
