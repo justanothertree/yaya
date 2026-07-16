@@ -715,6 +715,11 @@ export default function App() {
       prev.some((p) => p.id === pane.id) ? prev.filter((p) => p.id !== pane.id) : [...prev, pane],
     )
   /** this tab's panes plus any pinned ones it doesn't already own */
+  // A tab's own panes are rebuilt every render, but pinned copies are frozen at pin time —
+  // so the page that owns them hands back fresh ones when what they render changes.
+  const refreshPinned = (fresh: CanvasPane[]) =>
+    setPinned((prev) => prev.map((p) => fresh.find((f) => f.id === p.id) ?? p))
+
   const withPinned = (tabPanes: CanvasPane[]) => [
     ...tabPanes,
     ...pinned.filter((p) => !tabPanes.some((t) => t.id === p.id)),
@@ -937,6 +942,7 @@ export default function App() {
                 pinnedPanes={pinned}
                 pinnedIds={pinnedIds}
                 onTogglePin={togglePin}
+                onRefreshPinned={refreshPinned}
               />
             </Suspense>
           </section>
