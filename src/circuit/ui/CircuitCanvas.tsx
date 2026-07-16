@@ -92,10 +92,15 @@ export function CircuitCanvas({
   panes,
   focusPane,
   onExit,
+  pinnedIds = [],
+  onTogglePin,
 }: {
   panes: CanvasPane[]
   focusPane?: { id: string; nonce: number } | null
   onExit: () => void
+  /** ids of panes the user pinned — they follow them across tabs */
+  pinnedIds?: string[]
+  onTogglePin?: (pane: CanvasPane) => void
 }) {
   const hostRef = useRef<HTMLDivElement>(null)
   const winRefs = useRef<Record<string, HTMLDivElement | null>>({})
@@ -228,6 +233,33 @@ export function CircuitCanvas({
     setWins(next)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // Panes can arrive after mount — a window pinned on another tab follows you here. Give
+  // any pane without a box a spot (cascaded so it doesn't land exactly on another window);
+  // the init above only runs once, so without this a new pane would never render.
+  useEffect(() => {
+    setWins((prev) => {
+      const missing = panes.filter((p) => !prev[p.id])
+      if (!missing.length) return prev
+      const b = hostBox()
+      const next = { ...prev }
+      missing.forEach((p, i) => {
+        const w = Math.min(IDEAL_W, b.w)
+        const h = Math.min(IDEAL_H, b.h)
+        const off = 26 * ((Object.keys(prev).length + i) % 5)
+        next[p.id] = {
+          x: Math.max(0, Math.min(off, b.w - w)),
+          y: Math.max(0, Math.min(off, b.h - h)),
+          w,
+          h,
+          min: false,
+          max: false,
+          z: ++maxZ.current,
+        }
+      })
+      return next
+    })
+  }, [panes, hostBox])
 
   // persist whenever layout settles
   useEffect(() => {
@@ -750,6 +782,28 @@ export function CircuitCanvas({
                 }}
               >
                 <span style={{ fontWeight: 700, fontSize: '0.82rem', flex: 1 }}>{p.title}</span>
+                {onTogglePin && (
+                  <button
+                    className="cz-btn btn"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      onTogglePin(p)
+                    }}
+                    title={
+                      pinnedIds.includes(p.id)
+                        ? 'Unpin — stops following you across tabs'
+                        : 'Pin — keep this window with you on every tab'
+                    }
+                    aria-pressed={pinnedIds.includes(p.id)}
+                    style={{
+                      ...czBtn,
+                      color: pinnedIds.includes(p.id) ? 'var(--accent, #7c6af7)' : undefined,
+                      opacity: pinnedIds.includes(p.id) ? 1 : 0.55,
+                    }}
+                  >
+                    📌
+                  </button>
+                )}
                 <button
                   className="cz-btn btn"
                   onClick={(e) => {
