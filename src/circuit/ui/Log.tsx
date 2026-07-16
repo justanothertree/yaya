@@ -5,6 +5,7 @@
 // there's no Save button and every change gets undo/redo + sync for free.
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { circuitStore, useCircuit } from '../store'
+import { peopleInGroup } from '../groupFilter'
 import { isImportedTotal, logPoints } from '../scoring'
 import { CAT_COLORS, catColor } from '../catColors'
 import { ScrubInput } from './ScrubInput'
@@ -44,11 +45,15 @@ const newId = () =>
 export function Log({
   defaultPersonId,
   defaultDate,
+  viewGroup = '',
 }: {
   defaultPersonId?: string
   defaultDate?: string
+  viewGroup?: string
 } = {}) {
   const state = useCircuit()
+  // the person picker scopes to the viewed circuit (shared filter)
+  const people = useMemo(() => peopleInGroup(state.people, viewGroup), [state.people, viewGroup])
   const [selPid, setSelPid] = useState(defaultPersonId ?? '')
   const [date, setDate] = useState(defaultDate ?? todayISO())
   const [vals, setVals] = useState<Record<string, string>>({})
@@ -70,7 +75,7 @@ export function Log({
   // during the beat between the session resolving and is_admin() returning.
   const [authReady, setAuthReady] = useState(false)
 
-  const pid = selPid || state.people[0]?.id || ''
+  const pid = selPid || people[0]?.id || ''
   const person = state.people.find((p) => p.id === pid)
   // Can the signed-in user edit this person? Signed out = local demo sandbox (always editable);
   // signed in = only your OWN Circuit, or admin. Mirrors the server RLS and surfaces it so edits
@@ -343,7 +348,7 @@ export function Log({
     <div>
       {/* person chips */}
       <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', marginBottom: '0.9rem' }}>
-        {state.people.map((p) => {
+        {people.map((p) => {
           const on = p.id === pid
           return (
             <button

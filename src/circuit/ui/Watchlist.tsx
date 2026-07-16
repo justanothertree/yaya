@@ -1,14 +1,26 @@
 // Watchlist — queued movies with per-person vote buttons, sortable.
 import { useMemo, useState } from 'react'
 import { circuitStore, useCircuit } from '../store'
+import { watchlistInGroup } from '../groupFilter'
 import { MV_PIDS } from './movieMeta'
 import { Modal } from './Modal'
 import type { WatchlistItem } from '../types'
 
 type SortW = 'votes' | 'alpha' | 'rt'
 
-export function Watchlist({ onWatched }: { onWatched?: (title: string, rt?: string) => void }) {
-  const { watchlist, people } = useCircuit()
+export function Watchlist({
+  onWatched,
+  viewGroup = '',
+}: {
+  onWatched?: (title: string, rt?: string) => void
+  viewGroup?: string
+} = {}) {
+  const { watchlist: allWatchlist, people } = useCircuit()
+  // scope to the viewed circuit (shared filter)
+  const watchlist = useMemo(
+    () => watchlistInGroup(allWatchlist, viewGroup),
+    [allWatchlist, viewGroup],
+  )
   const [sort, setSort] = useState<SortW>('votes')
   const [adding, setAdding] = useState(false)
   const [newTitle, setNewTitle] = useState('')

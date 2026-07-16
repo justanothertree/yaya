@@ -1,6 +1,7 @@
 // Movies stats — group facts, per-rater average bars, and taste twins / foes.
 import { useMemo } from 'react'
 import { useCircuit } from '../store'
+import { moviesInGroup } from '../groupFilter'
 import { MV_PIDS, scoreColor } from './movieMeta'
 import type { Person } from '../types'
 
@@ -50,8 +51,9 @@ function Fact({
   )
 }
 
-export function MovieStats() {
-  const { movies, people } = useCircuit()
+export function MovieStats({ viewGroup = '' }: { viewGroup?: string } = {}) {
+  const { movies: allMovies, people } = useCircuit()
+  const movies = useMemo(() => moviesInGroup(allMovies, viewGroup), [allMovies, viewGroup])
   const byId = useMemo(
     () => Object.fromEntries(people.map((p) => [p.id, p])) as Record<string, Person>,
     [people],
