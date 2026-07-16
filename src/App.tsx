@@ -741,116 +741,120 @@ export default function App() {
           {/* the arrows are a pointer affordance: touch already swipes this strip, and the
               keyboard reaches the links by tabbing (which scrolls them into view), so they
               stay out of the tab order rather than adding two dead stops to it */}
-          <div className={'nav-scroll' + (navMore.l ? ' can-l' : '') + (navMore.r ? ' can-r' : '')}>
-            <button
-              className="nav-arrow nav-arrow-l"
-              onClick={() => nudgeNav(-1)}
-              tabIndex={-1}
-              aria-hidden
-              title="More"
+          <div className="nav-right">
+            <div
+              className={'nav-scroll' + (navMore.l ? ' can-l' : '') + (navMore.r ? ' can-r' : '')}
             >
-              ‹
-            </button>
-            <div className="nav-links" ref={navLinksRef}>
-              <a
-                href="#home"
-                onClick={() => setActive('home')}
-                aria-current={active === 'home' ? 'page' : undefined}
+              <button
+                className="nav-arrow nav-arrow-l"
+                onClick={() => nudgeNav(-1)}
+                tabIndex={-1}
+                aria-hidden
+                title="More"
               >
-                Home
-              </a>
-              {isFinanceAuthed && !suspended && (
+                ‹
+              </button>
+              <div className="nav-links" ref={navLinksRef}>
                 <a
-                  href="#circuit"
-                  onClick={() => setActive('circuit')}
-                  aria-current={active === 'circuit' ? 'page' : undefined}
+                  href="#home"
+                  onClick={() => setActive('home')}
+                  aria-current={active === 'home' ? 'page' : undefined}
                 >
-                  Circuit
+                  Home
                 </a>
-              )}
-              {hasFinanceSupabaseEnv() && !isFinanceAuthed && (
+                {isFinanceAuthed && !suspended && (
+                  <a
+                    href="#circuit"
+                    onClick={() => setActive('circuit')}
+                    aria-current={active === 'circuit' ? 'page' : undefined}
+                  >
+                    Circuit
+                  </a>
+                )}
+                {hasFinanceSupabaseEnv() && !isFinanceAuthed && (
+                  <a
+                    href="#signin"
+                    onClick={() => setActive('signin')}
+                    aria-current={active === 'signin' ? 'page' : undefined}
+                  >
+                    Sign in
+                  </a>
+                )}
+                {isFinanceAuthed && canFinance === true && !suspended && (
+                  <a
+                    href="#investments"
+                    onClick={() => setActive('investments')}
+                    aria-current={active === 'investments' ? 'page' : undefined}
+                  >
+                    Investments
+                  </a>
+                )}
+                {isFinanceAuthed && !suspended && (
+                  <a
+                    href="#account-settings"
+                    onClick={() => setActive('account-settings')}
+                    aria-current={active === 'account-settings' ? 'page' : undefined}
+                  >
+                    Account
+                  </a>
+                )}
+                {isAdmin && (
+                  <a
+                    href="#admin"
+                    onClick={() => setActive('admin')}
+                    aria-current={active === 'admin' ? 'page' : undefined}
+                  >
+                    Admin
+                  </a>
+                )}
                 <a
-                  href="#signin"
-                  onClick={() => setActive('signin')}
-                  aria-current={active === 'signin' ? 'page' : undefined}
+                  href="#snake"
+                  onClick={() => setActive('snake')}
+                  aria-current={active === 'snake' ? 'page' : undefined}
                 >
-                  Sign in
+                  Snake
                 </a>
-              )}
-              {isFinanceAuthed && canFinance === true && !suspended && (
                 <a
-                  href="#investments"
-                  onClick={() => setActive('investments')}
-                  aria-current={active === 'investments' ? 'page' : undefined}
+                  href="#contact"
+                  onClick={() => setActive('contact')}
+                  aria-current={active === 'contact' ? 'page' : undefined}
                 >
-                  Investments
+                  Contact
                 </a>
-              )}
-              {isFinanceAuthed && !suspended && (
-                <a
-                  href="#account-settings"
-                  onClick={() => setActive('account-settings')}
-                  aria-current={active === 'account-settings' ? 'page' : undefined}
-                >
-                  Account
-                </a>
-              )}
-              {isAdmin && (
-                <a
-                  href="#admin"
-                  onClick={() => setActive('admin')}
-                  aria-current={active === 'admin' ? 'page' : undefined}
-                >
-                  Admin
-                </a>
-              )}
-              <a
-                href="#snake"
-                onClick={() => setActive('snake')}
-                aria-current={active === 'snake' ? 'page' : undefined}
+              </div>
+              <button
+                className="nav-arrow nav-arrow-r"
+                onClick={() => nudgeNav(1)}
+                tabIndex={-1}
+                aria-hidden
+                title="More"
               >
-                Snake
-              </a>
-              <a
-                href="#contact"
-                onClick={() => setActive('contact')}
-                aria-current={active === 'contact' ? 'page' : undefined}
-              >
-                Contact
-              </a>
-              <SettingsMenu
-                theme={theme}
-                onTheme={(t) => {
-                  setTheme(t)
-                  localStorage.setItem('theme', t)
-                }}
-                uiScale={uiScale}
-                onScale={(d) => (d === 0 ? setUiScale(1) : bumpScale(d))}
-                canvasOpen={canvasOpen}
-                onToggleCanvas={toggleCanvas}
-                canvasCapable={canvasCapable}
-                desktop={desktop}
-                authed={hasFinanceSupabaseEnv() && isFinanceAuthed}
-                isAdmin={isAdmin}
-                email={userEmail}
-                onAccount={() => setActive('account-settings')}
-                onSignIn={() => setActive('signin')}
-                onSignOut={() => {
-                  void signOut().catch(() => {
-                    /* ignore */
-                  })
-                }}
-              />
+                ›
+              </button>
             </div>
-            <button
-              className="nav-arrow nav-arrow-r"
-              onClick={() => nudgeNav(1)}
-              tabIndex={-1}
-              aria-hidden
-              title="More"
-            >
-              ›
-            </button>
+            <SettingsMenu
+              theme={theme}
+              onTheme={(t) => {
+                setTheme(t)
+                localStorage.setItem('theme', t)
+              }}
+              uiScale={uiScale}
+              onScale={(d) => (d === 0 ? setUiScale(1) : bumpScale(d))}
+              canvasOpen={canvasOpen}
+              onToggleCanvas={toggleCanvas}
+              canvasCapable={canvasCapable}
+              desktop={desktop}
+              authed={hasFinanceSupabaseEnv() && isFinanceAuthed}
+              isAdmin={isAdmin}
+              email={userEmail}
+              onAccount={() => setActive('account-settings')}
+              onSignIn={() => setActive('signin')}
+              onSignOut={() => {
+                void signOut().catch(() => {
+                  /* ignore */
+                })
+              }}
+            />
           </div>
         </div>
       </nav>

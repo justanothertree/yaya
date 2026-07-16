@@ -680,6 +680,15 @@ section[id] {
 /* Fade only the edge that's actually hiding something. The old rule fed both edges the
    moment the strip overflowed, so a link sitting flush at the left came up dimmed for no
    reason. */
+/* The right-hand group: the scrolling link strip, then the cog beside it.
+   The cog must live OUTSIDE .nav-links — that strip scrolls, and `overflow-x: auto`
+   forces overflow-y to `auto` as well, so anything absolutely positioned inside it
+   (like the cog's dropdown) is clipped at the strip's edge and never seen. */
+.nav-right {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
 .nav-scroll {
   position: relative;
   display: flex;
