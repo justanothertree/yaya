@@ -58,13 +58,14 @@ function Slideshow({ project }: { project: Project }) {
   return (
     <div>
       <div
+        className="proj-media"
         style={{
           position: 'relative',
           aspectRatio: '16 / 10',
-          // cap the width (keeps the 16:10 ratio, centered) so a wide window / big monitor
-          // doesn't stretch the media tall and force a scroll for the text below it
+          // full width of whatever holds it — the page scrolls, so there's nothing to
+          // protect here. Only a canvas WINDOW is short enough to need a cap, and that
+          // one lives in css scoped to `.cz-body` (screen-relative, not a fixed guess).
           width: '100%',
-          maxWidth: 560,
           margin: '0 auto',
           borderRadius: 12,
           overflow: 'hidden',
