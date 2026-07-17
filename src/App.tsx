@@ -32,6 +32,7 @@ const AdminPanel = lazy(() =>
 const AcceptInvite = lazy(() =>
   import('./sections/AcceptInvite').then((m) => ({ default: m.AcceptInvite })),
 )
+const Profile = lazy(() => import('./sections/Profile').then((m) => ({ default: m.Profile })))
 
 if (import.meta.env.DEV) {
   import('./dev/supabaseDebug')
@@ -47,6 +48,7 @@ type Section =
   | 'contact'
   | 'admin'
   | 'invite'
+  | 'profile'
 
 // Single source of truth for left/right section order (keyboard, swipe, edge buttons).
 // Home is the unified Evan Cook page (portfolio + about + projects). Circuit is featured
@@ -119,6 +121,7 @@ export default function App() {
         'contact',
         'admin',
         'invite',
+        'profile',
       ] as Section[]
     ).includes(base)
       ? base
@@ -190,13 +193,14 @@ export default function App() {
   // instantly and can never flash or gate anything; the real name follows from the profile
   // a moment later. An address is not a name — "cvaneook@outlook.com" made the avatar a
   // "C" for a man called Evan.
-  const [me, setMe] = useState<{ name: string | null; email: string | null }>({
-    name: null,
-    email: null,
-  })
+  const [me, setMe] = useState<{
+    name: string | null
+    email: string | null
+    username: string | null
+  }>({ name: null, email: null, username: null })
   useEffect(() => {
     if (!hasFinanceSupabaseEnv() || !isFinanceAuthed) {
-      setMe({ name: null, email: null })
+      setMe({ name: null, email: null, username: null })
       return
     }
     let live = true
@@ -213,7 +217,7 @@ export default function App() {
         } | null
         if (!live || !row) return
         const full = [row.first_name, row.last_name].filter(Boolean).join(' ')
-        setMe((m) => ({ ...m, name: full || row.username || null }))
+        setMe((m) => ({ ...m, name: full || row.username || null, username: row.username ?? null }))
       } catch {
         // no profile row (not a member yet) — the email still greets them
       }
@@ -886,6 +890,14 @@ export default function App() {
               name={me.name}
               email={me.email}
               onAccount={() => setActive('account-settings')}
+              onProfile={
+                me.username
+                  ? () => {
+                      window.location.hash = '#profile?u=' + encodeURIComponent(me.username!)
+                      setActive('profile')
+                    }
+                  : undefined
+              }
               onSignIn={() => setActive('signin')}
               onSignOut={() => {
                 void signOut().catch(() => {
@@ -1087,6 +1099,19 @@ export default function App() {
               }
             >
               <AcceptInvite />
+            </Suspense>
+          </section>
+        )}
+        {active === 'profile' && (
+          <section id="profile" className="reveal">
+            <Suspense
+              fallback={
+                <div className="card" aria-busy>
+                  Loading…
+                </div>
+              }
+            >
+              <Profile authed={isFinanceAuthed} />
             </Suspense>
           </section>
         )}
