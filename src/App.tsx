@@ -547,7 +547,9 @@ export default function App() {
   }, [active, snakeHasControl, isFinanceAuthed, isAdmin, canFinance])
 
   // Apply reveal-on-scroll to tagged elements
-  useReveal('.reveal', active)
+  // canvas exit re-mounts the page's sections without changing tabs — they need a
+  // fresh reveal pass too, or they mount opacity-0 and stay invisible
+  useReveal('.reveal', `${active}:${canvasOpen}`)
 
   // Swipe navigation on touch devices. Deliberately strict: page changes are jarring when
   // accidental, so only a quick, clearly-horizontal flick navigates — a scroll that wobbles
