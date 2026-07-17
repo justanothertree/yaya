@@ -13,9 +13,10 @@ import { Watchlist } from '../circuit/ui/Watchlist'
 import { Toast } from '../circuit/ui/Toast'
 import { CircuitCanvas, type CanvasPane } from '../circuit/ui/CircuitCanvas'
 import { CircuitsPanel } from '../circuit/ui/CircuitsPanel'
+import { Chat } from '../circuit/ui/Chat'
 import { onLogIntent, requestLog, requestLogToday, takePendingLog } from '../circuit/logIntent'
 
-type Tab = 'board' | 'log' | 'feed' | 'charts' | 'movies' | 'watchlist' | 'circuits'
+type Tab = 'board' | 'log' | 'feed' | 'charts' | 'movies' | 'watchlist' | 'chat' | 'circuits'
 
 const isDesktop = () => typeof window !== 'undefined' && window.innerWidth >= 820
 
@@ -31,7 +32,7 @@ function initialTab(authed: boolean): Tab {
     'charts',
     'movies',
     'watchlist',
-    ...(authed ? (['circuits'] as Tab[]) : []),
+    ...(authed ? (['chat', 'circuits'] as Tab[]) : []),
   ]
   const q = new URLSearchParams(window.location.hash.split('?')[1] ?? '')
   const fromLink = q.get('tab') as Tab | null
@@ -174,8 +175,13 @@ export function Circuit({
     { id: 'charts', label: '📊 Charts' },
     { id: 'movies', label: '🎬 Movies' },
     { id: 'watchlist', label: '🍿 Watchlist' },
-    // circuit management (create/join/invite/claim) is members-only
-    ...(authed ? [{ id: 'circuits' as Tab, label: '👥 Circuits' }] : []),
+    // chat + circuit management are members-only
+    ...(authed
+      ? [
+          { id: 'chat' as Tab, label: '💬 Chat' },
+          { id: 'circuits' as Tab, label: '👥 Circuits' },
+        ]
+      : []),
   ]
 
   const canvasPanes: CanvasPane[] = [
@@ -197,6 +203,7 @@ export function Circuit({
     },
     { id: 'movies', title: '🎬 Movies', node: <Movies viewGroup={viewGroup} /> },
     { id: 'watchlist', title: '🍿 Watchlist', node: <Watchlist viewGroup={viewGroup} /> },
+    ...(authed ? [{ id: 'chat', title: '💬 Chat', node: <Chat authed /> }] : []),
   ]
 
   // App pins the pane OBJECTS (it has to — they must outlive this component when you
@@ -325,6 +332,7 @@ export function Circuit({
               <Feed onOpenLog={requestLog} authed={authed} viewGroup={viewGroup} />
             )}
             {tab === 'charts' && <Charts onDayClick={requestLog} viewGroup={viewGroup} />}
+            {tab === 'chat' && <Chat authed={authed} />}
             {tab === 'movies' && <Movies viewGroup={viewGroup} />}
             {tab === 'watchlist' && <Watchlist viewGroup={viewGroup} />}
             {tab === 'circuits' && <CircuitsPanel />}
