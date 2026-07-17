@@ -439,6 +439,7 @@ export default function App() {
           'contact',
           'admin',
           'invite',
+          'profile',
         ] as Section[]
       ).includes(base)
         ? base
