@@ -1287,3 +1287,17 @@ select {
     content: '';
   }
 }
+
+/* While fit-to-content measures a window at max-content, media must not stretch to its
+   file's intrinsic width — a wide screenshot or svg poster would claim thousands of px
+   and drive the fit. Media is flexible; text and controls decide the size. */
+.cz-measure * {
+  max-width: 700px !important;
+  white-space: normal !important;
+}
+.cz-measure img,
+.cz-measure svg,
+.cz-measure video,
+.cz-measure .proj-media {
+  max-width: 440px !important;
+}

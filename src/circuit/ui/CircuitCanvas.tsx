@@ -767,7 +767,11 @@ export function CircuitCanvas({
     const sElW = el.style.width
     // measure at natural scale so the numbers are the content's own, not the current zoom's
     body.style.zoom = '1'
-    // natural unwrapped width (content + the body's own padding), forced no-wrap
+    // natural unwrapped width (content + the body's own padding), forced no-wrap.
+    // cz-measure caps media while we look: images/svg report their FILE's intrinsic width
+    // at max-content (a wide screenshot voted for a 4,600px window), but media is
+    // flexible — only text and controls should decide the fit
+    body.classList.add('cz-measure')
     body.style.width = 'max-content'
     const wNeed = Math.ceil(body.getBoundingClientRect().width)
     body.style.width = ''
@@ -779,6 +783,7 @@ export function CircuitCanvas({
     body.style.zoom = sZoom
     body.style.width = sBodyW
     el.style.width = sElW
+    body.classList.remove('cz-measure')
     // just 2px slack — enough to dodge sub-pixel rounding without leaving visible dead space
     const h = Math.min(b.h, Math.max(MIN_H, hNeed + barH + 2))
     // armed only now — a transition during the measurement above would animate the probe
