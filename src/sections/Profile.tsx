@@ -25,8 +25,11 @@ type ProfileData = {
 const userFromHash = () =>
   new URLSearchParams(window.location.hash.split('?')[1] ?? '').get('u') ?? ''
 
+type Person = { username: string; name: string; is_friend: boolean }
+
 export function Profile({ authed }: { authed: boolean }) {
   const [u, setU] = useState(userFromHash)
+  const [people, setPeople] = useState<Person[]>([])
   const [state, setState] = useState<
     | { kind: 'loading' }
     | { kind: 'missing' }
@@ -58,6 +61,20 @@ export function Profile({ authed }: { authed: boolean }) {
       live = false
     }
   }, [u, authed])
+
+  // the People list — how you find everyone else's page
+  useEffect(() => {
+    if (!authed) return
+    let live = true
+    void getSupabaseClient()
+      .rpc('list_member_directory')
+      .then(({ data }) => {
+        if (live && data) setPeople(data as Person[])
+      })
+    return () => {
+      live = false
+    }
+  }, [authed])
 
   if (!authed)
     return (
@@ -245,6 +262,28 @@ export function Profile({ authed }: { authed: boolean }) {
             </p>
           )}
         </div>
+
+        {/* everyone else — the door to their pages */}
+        {people.length > 0 && (
+          <div className="card">
+            <h3 style={{ marginTop: 0 }}>🧑‍🤝‍🧑 People</h3>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
+              {people
+                .filter((m) => m.username.toLowerCase() !== p.username.toLowerCase())
+                .map((m) => (
+                  <a
+                    key={m.username}
+                    className="cz-chip"
+                    href={'#profile?u=' + encodeURIComponent(m.username)}
+                    style={{ textDecoration: 'none' }}
+                    title={m.is_friend ? 'Friend' : 'View profile'}
+                  >
+                    {m.is_friend ? '⭐' : '👤'} {m.name}
+                  </a>
+                ))}
+            </div>
+          </div>
+        )}
 
         {/* snake */}
         <div className="card">
