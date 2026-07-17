@@ -36,6 +36,7 @@ const storeKey = (panes: CanvasPane[], pinnedIds: string[]) =>
     .sort()
     .join(',')
 const GAP = 12
+const MAP_W = 120
 // the canvas plane extends 2x the screen in each direction - room to park windows off-view
 const WORLD = 2
 // One box per pinned window, shared by every tab's canvas — so a pinned window stays
@@ -150,6 +151,17 @@ export function CircuitCanvas({
   const panRef = useRef({ x: 0, y: 0 })
   const worldRef = useRef<HTMLDivElement>(null)
   const panDrag = useRef<{ sx: number; sy: number; ox: number; oy: number } | null>(null)
+  // selection: the wheel scrolls only the window you CLICKED; everywhere else it zooms
+  // the canvas. Clicking empty canvas deselects.
+  const [selId, setSelId] = useState<string | null>(null)
+  const selRef = useRef<string | null>(null)
+  // minimap: fades in while the view moves, updated via refs so panning stays render-free
+  const mapRef = useRef<HTMLDivElement>(null)
+  const vpRef = useRef<HTMLSpanElement>(null)
+  const mapFade = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  // visibility is React state (a render on show/hide is fine); the viewport RECT stays
+  // ref-driven so per-frame panning never renders
+  const [mapOn, setMapOn] = useState(false)
   const [snap, setSnap] = useState<{ x: number; y: number; w: number; h: number } | null>(null)
   const drag = useRef<{
     id: string
@@ -231,6 +243,35 @@ export function CircuitCanvas({
   }, [])
   const worldTransform = (pn: { x: number; y: number }, v: number) =>
     `translate(${-pn.x * v}px, ${-pn.y * v}px) scale(${v})`
+  const pokeMap = useCallback(() => {
+    const host = hostRef.current
+    const mapEl = mapRef.current
+    const vp = vpRef.current
+    if (!host || !mapEl || !vp) return
+    const scale = MAP_W / (host.clientWidth * WORLD)
+    setMapOn(true)
+    vp.style.left = panRef.current.x * scale + 'px'
+    vp.style.top = panRef.current.y * scale + 'px'
+    vp.style.width = (host.clientWidth / viewRef.current) * scale + 'px'
+    vp.style.height = (host.clientHeight / viewRef.current) * scale + 'px'
+    clearTimeout(mapFade.current)
+    mapFade.current = setTimeout(() => setMapOn(false), 1400)
+  }, [])
+  // one zoom path for wheel and slider: anchored so the given point stays put
+  const applyZoom = useCallback(
+    (target: number, cx: number, cy: number) => {
+      const v = viewRef.current
+      const next = Math.min(1, Math.max(0.5, +target.toFixed(2)))
+      if (next === v) return
+      const k = 1 / v - 1 / next
+      viewRef.current = next
+      panRef.current = clampPan({ x: panRef.current.x + cx * k, y: panRef.current.y + cy * k })
+      if (worldRef.current) worldRef.current.style.transform = worldTransform(panRef.current, next)
+      pokeMap()
+      setView(next)
+    },
+    [clampPan, pokeMap],
+  )
   const onPanMove = useCallback(
     (e: PointerEvent) => {
       const d = panDrag.current
@@ -239,8 +280,9 @@ export function CircuitCanvas({
       const pn = clampPan({ x: d.ox - (e.clientX - d.sx) / v, y: d.oy - (e.clientY - d.sy) / v })
       panRef.current = pn
       if (worldRef.current) worldRef.current.style.transform = worldTransform(pn, v)
+      pokeMap()
     },
-    [clampPan],
+    [clampPan, pokeMap],
   )
   const onPanUp = useCallback(() => {
     window.removeEventListener('pointermove', onPanMove)
@@ -253,6 +295,8 @@ export function CircuitCanvas({
   function onPanStart(e: React.PointerEvent) {
     // only empty canvas pans - windows, links and buttons keep their own gestures
     if ((e.target as HTMLElement).closest('[data-czid], a, button')) return
+    setSelId(null)
+    selRef.current = null
     panDrag.current = { sx: e.clientX, sy: e.clientY, ox: panRef.current.x, oy: panRef.current.y }
     if (hostRef.current) hostRef.current.style.cursor = 'grabbing'
     e.preventDefault()
@@ -341,29 +385,22 @@ export function CircuitCanvas({
     const host = hostRef.current
     if (!host) return
     const onWheel = (e: WheelEvent) => {
-      if ((e.target as HTMLElement).closest('[data-czid]')) return
+      // only the window you SELECTED scrolls its content — over everything else
+      // (empty canvas or unselected windows) the wheel zooms, so browsing the plane
+      // never hijacks a window's scroll by accident
+      const winEl = (e.target as HTMLElement).closest('[data-czid]')
+      if (winEl && winEl.getAttribute('data-czid') === selRef.current) return
       e.preventDefault()
       const rect = host.getBoundingClientRect()
-      const cx = e.clientX - rect.left
-      const cy = e.clientY - rect.top
-      // side effects stay OUT of the setView updater — StrictMode double-invokes
-      // updaters, and the anchor applied twice (drift equal and opposite to none at all)
-      const v = viewRef.current
-      const next = Math.min(1, Math.max(0.5, +(v - Math.sign(e.deltaY) * 0.1).toFixed(2)))
-      if (next === v) return
-      showToast(`🔍 ${Math.round(next * 100)}%`)
-      // anchor the zoom on the cursor: the world point under it stays put, so
-      // pan' = pan + cursor * (1/v - 1/next). Applied to the DOM immediately —
-      // waiting for the state round-trip showed one frame of origin-anchored zoom.
-      const k = 1 / v - 1 / next
-      viewRef.current = next
-      panRef.current = clampPan({ x: panRef.current.x + cx * k, y: panRef.current.y + cy * k })
-      if (worldRef.current) worldRef.current.style.transform = worldTransform(panRef.current, next)
-      setView(next)
+      applyZoom(
+        viewRef.current - Math.sign(e.deltaY) * 0.1,
+        e.clientX - rect.left,
+        e.clientY - rect.top,
+      )
     }
     host.addEventListener('wheel', onWheel, { passive: false })
     return () => host.removeEventListener('wheel', onWheel)
-  }, [])
+  }, [applyZoom])
   // zooming back IN shrinks the world — pull any window parked out there back inside
   useEffect(() => {
     viewRef.current = view
@@ -510,6 +547,8 @@ export function CircuitCanvas({
   }, [focusPane?.nonce])
 
   function focus(id: string) {
+    setSelId(id)
+    selRef.current = id
     maxZ.current++
     setWins((prev) => (prev[id] ? { ...prev, [id]: { ...prev[id], z: maxZ.current } } : prev))
   }
@@ -787,8 +826,8 @@ export function CircuitCanvas({
       setWins((prev) => {
         const win = prev[id]
         if (!win) return prev
-        const x = Math.max(0, Math.min(win.x, b.w - nw))
-        const y = Math.max(0, Math.min(win.y, b.h - nh))
+        const x = Math.max(b.x, Math.min(win.x, b.x + b.w - nw))
+        const y = Math.max(b.y, Math.min(win.y, b.y + b.h - nh))
         return { ...prev, [id]: { ...win, min: false, max: false, x, y, w: nw, h: nh } }
       })
       focus(id)
@@ -826,8 +865,38 @@ export function CircuitCanvas({
     setWins((prev) => {
       const win = prev[id]
       if (!win) return prev
-      const x = Math.max(0, Math.min(win.x, b.w - w))
-      const y = Math.max(0, Math.min(win.y, b.h - h))
+      // land IN VIEW, preferring unused space: try where it is, then the view's corners
+      // and centre — first spot covering no other window wins (else least overlap)
+      const others = Object.entries(prev).filter(([oid, ow]) => oid !== id && !ow.min)
+      const overlapAt = (qx: number, qy: number) =>
+        others.reduce((acc, [, o]) => {
+          const ix = Math.max(0, Math.min(qx + w, o.x + o.w) - Math.max(qx, o.x))
+          const iy = Math.max(0, Math.min(qy + h, o.y + o.h) - Math.max(qy, o.y))
+          return acc + ix * iy
+        }, 0)
+      const spots: [number, number][] = [
+        [
+          Math.max(b.x, Math.min(win.x, b.x + b.w - w)),
+          Math.max(b.y, Math.min(win.y, b.y + b.h - h)),
+        ],
+        [b.x, b.y],
+        [b.x + b.w - w, b.y],
+        [b.x, b.y + b.h - h],
+        [b.x + b.w - w, b.y + b.h - h],
+        [b.x + (b.w - w) / 2, b.y + (b.h - h) / 2],
+      ]
+      let x = spots[0][0]
+      let y = spots[0][1]
+      let best = Infinity
+      for (const [qx, qy] of spots) {
+        const ov = overlapAt(qx, qy)
+        if (ov < best) {
+          best = ov
+          x = qx
+          y = qy
+        }
+        if (best === 0) break
+      }
       return { ...prev, [id]: { ...win, min: false, max: false, x, y, w, h } }
     })
     focus(id)
@@ -913,11 +982,23 @@ export function CircuitCanvas({
           </button>
         )
       })}
-      <button
-        className="btn cz-menu-end"
-        onClick={tile}
-        title="Tile the open windows to fill the canvas"
-      >
+      <input
+        type="range"
+        min={50}
+        max={100}
+        step={5}
+        value={Math.round(view * 100)}
+        onChange={(e) => {
+          const host = hostRef.current
+          if (!host) return
+          applyZoom(+e.target.value / 100, host.clientWidth / 2, host.clientHeight / 2)
+        }}
+        title={`Zoom ${Math.round(view * 100)}%`}
+        aria-label="Canvas zoom"
+        className="cz-menu-end"
+        style={{ width: 76, flexShrink: 0, accentColor: 'var(--accent, #7c6af7)' }}
+      />
+      <button className="btn" onClick={tile} title="Tile the open windows to fill the canvas">
         ⊞ Tile
       </button>
     </div>
@@ -928,6 +1009,10 @@ export function CircuitCanvas({
   // Full-width canvas surface: a fixed panel spanning the viewport below the nav.
   // Desktop-only (the launcher button is hidden on phones), so mobile keeps the tabs.
   function surface(inlineBar: ReactNode) {
+    const hw = hostRef.current?.clientWidth ?? 1200
+    const hh = hostRef.current?.clientHeight ?? 800
+    const mScale = MAP_W / (hw * WORLD)
+    const mapH = hh * WORLD * mScale
     return (
       <div
         style={{
@@ -1048,12 +1133,12 @@ export function CircuitCanvas({
                     flexDirection: 'column',
                     background: 'var(--panel, #141a2a)',
                     border:
-                      p.id === topId
+                      p.id === selId
                         ? '1px solid var(--accent, #7c6af7)'
                         : '1px solid var(--b2, rgba(127,127,127,0.3))',
                     borderRadius: 12,
                     boxShadow:
-                      p.id === topId
+                      p.id === selId
                         ? '0 10px 34px rgba(0,0,0,0.55)'
                         : '0 8px 28px rgba(0,0,0,0.45)',
                     overflow: 'hidden',
@@ -1176,6 +1261,51 @@ export function CircuitCanvas({
                 }}
               />
             )}
+          </div>
+          {/* minimap: where you are on the plane — fades in while the view moves */}
+          <div
+            ref={mapRef}
+            aria-hidden
+            style={{
+              position: 'absolute',
+              left: 10,
+              bottom: 8,
+              width: MAP_W,
+              height: mapH,
+              opacity: mapOn ? 1 : 0,
+              transition: 'opacity 0.35s',
+              background: 'rgba(10,10,18,0.55)',
+              border: '1px solid var(--b2, rgba(127,127,127,0.3))',
+              borderRadius: 6,
+              zIndex: 5,
+              pointerEvents: 'none',
+            }}
+          >
+            {Object.entries(wins)
+              .filter(([, w]) => !w.min)
+              .map(([wid, w]) => (
+                <span
+                  key={wid}
+                  style={{
+                    position: 'absolute',
+                    left: w.x * mScale,
+                    top: w.y * mScale,
+                    width: Math.max(2, w.w * mScale),
+                    height: Math.max(2, w.h * mScale),
+                    background: 'rgba(124,106,247,0.55)',
+                    borderRadius: 1,
+                  }}
+                />
+              ))}
+            <span
+              ref={vpRef}
+              style={{
+                position: 'absolute',
+                border: '1px solid rgba(255,255,255,0.85)',
+                borderRadius: 2,
+                boxSizing: 'border-box',
+              }}
+            />
           </div>
         </div>
       </div>
