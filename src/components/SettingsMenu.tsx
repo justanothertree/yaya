@@ -32,6 +32,7 @@ export function SettingsMenu({
   name,
   email,
   onAccount,
+  onProfile,
   onSignIn,
   onSignOut,
 }: {
@@ -51,6 +52,8 @@ export function SettingsMenu({
   name: string | null
   email: string | null
   onAccount: () => void
+  /** opens their own profile page; absent until the username is known */
+  onProfile?: () => void
   onSignIn: () => void
   onSignOut: () => void
 }) {
@@ -122,6 +125,19 @@ export function SettingsMenu({
             </button>
           )}
 
+          {authed && onProfile && (
+            <button
+              className="nav-menu-row"
+              role="menuitem"
+              onClick={() => {
+                setOpen(false)
+                onProfile()
+              }}
+            >
+              <span>🪪 My profile</span>
+              <span className="muted">›</span>
+            </button>
+          )}
           {authed && (
             <button
               className="nav-menu-row"
