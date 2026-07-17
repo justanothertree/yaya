@@ -181,7 +181,7 @@ export function Board({
                     position: 'relative',
                     background: 'var(--b1, rgba(127,127,127,0.18))',
                     borderRadius: 6,
-                    height: 14,
+                    height: 18,
                   }}
                 >
                   <span
@@ -194,6 +194,50 @@ export function Board({
                       transition: 'width .7s cubic-bezier(.22,1,.36,1)',
                     }}
                   />
+                  {(() => {
+                    const pct = Math.min(100, (r.total / max) * 100)
+                    const inside = pct > 16
+                    const c = r.p.color.replace('#', '')
+                    const n =
+                      c.length === 3
+                        ? c
+                            .split('')
+                            .map((x) => x + x)
+                            .join('')
+                        : c
+                    const v = parseInt(n, 16)
+                    const lum =
+                      (0.2126 * ((v >> 16) & 255) +
+                        0.7152 * ((v >> 8) & 255) +
+                        0.0722 * (v & 255)) /
+                      255
+                    return (
+                      <span
+                        className="cz-num"
+                        title={`${Math.round(r.total)} pts · goal ${r.goal}/day`}
+                        style={{
+                          position: 'absolute',
+                          top: '50%',
+                          left: `${pct}%`,
+                          transform: inside ? 'translate(-100%, -50%)' : 'translateY(-50%)',
+                          padding: '0 6px',
+                          color: inside
+                            ? lum > 0.55
+                              ? '#10101a'
+                              : '#fff'
+                            : 'var(--text, #eeeef8)',
+                          fontWeight: 800,
+                          fontSize: '0.8rem',
+                          lineHeight: 1,
+                          zIndex: 1,
+                          pointerEvents: 'none',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        {Math.round(r.total)}
+                      </span>
+                    )
+                  })()}
                   {/* a tick at every 100-pt milestone; the goal-pace mark (goal × days) is brighter */}
                   {Array.from({ length: Math.floor(max / 100) }, (_, k) => (k + 1) * 100).map(
                     (mark) => (
@@ -203,7 +247,7 @@ export function Board({
                         style={{
                           position: 'absolute',
                           top: -2,
-                          height: 18,
+                          height: 22,
                           width: mark === r.goal * days ? 2 : 1,
                           left: `${(mark / max) * 100}%`,
                           background:
@@ -252,18 +296,6 @@ export function Board({
                   }
                 >
                   {r.avgDay > 0 ? `${Math.round(r.avgDay)}/d` : ''}
-                </span>
-                <span
-                  className="cz-num"
-                  style={{
-                    width: '3.5rem',
-                    textAlign: 'right',
-                    fontWeight: 800,
-                    fontSize: '0.95rem',
-                  }}
-                  title={`${Math.round(r.total)} pts · goal ${r.goal}/day`}
-                >
-                  {Math.round(r.total)}
                 </span>
                 {onLogToday && (
                   <button
