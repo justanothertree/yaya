@@ -143,7 +143,35 @@ export function CircuitCanvas({
     ox: number
     oy: number
     zone: Zone | null
+    // velocity tracking (px/ms, exponentially smoothed) — a released window keeps
+    // its momentum instead of stopping dead under the cursor
+    lx: number
+    ly: number
+    lt: number
+    vx: number
+    vy: number
   } | null>(null)
+  // ── weight: programmatic box changes settle into place instead of teleporting ──
+  const settleTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
+  const reducedMotion =
+    typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  // Arm a one-shot eased transition on a window, then disarm so pointer drags stay 1:1.
+  // The bezier overshoots a touch (1.35) — enough to read as mass, tight enough to
+  // never read as broken.
+  const settle = useCallback(
+    (id: string) => {
+      if (reducedMotion) return
+      const el = winRefs.current[id]
+      if (!el) return
+      const ease = 'cubic-bezier(0.3, 1.35, 0.45, 1)'
+      el.style.transition = `left 0.32s ${ease}, top 0.32s ${ease}, width 0.32s ${ease}, height 0.32s ${ease}`
+      clearTimeout(settleTimers.current[id])
+      settleTimers.current[id] = setTimeout(() => {
+        el.style.transition = ''
+      }, 340)
+    },
+    [reducedMotion],
+  )
   const resz = useRef<{
     id: string
     dir: Dir
@@ -384,7 +412,22 @@ export function CircuitCanvas({
         [id]: { ...prev[id], x: ox, y: 0, w: rw, h: rh, max: false },
       }))
     }
-    drag.current = { id, sx: e.clientX, sy: e.clientY, ox, oy, zone: null }
+    drag.current = {
+      id,
+      sx: e.clientX,
+      sy: e.clientY,
+      ox,
+      oy,
+      zone: null,
+      lx: e.clientX,
+      ly: e.clientY,
+      lt: performance.now(),
+      vx: 0,
+      vy: 0,
+    }
+    // a fresh grab must kill any in-flight settle, or the drag fights the transition
+    const grabbed = winRefs.current[id]
+    if (grabbed) grabbed.style.transition = ''
     e.preventDefault()
     window.addEventListener('pointermove', onDragMove)
     window.addEventListener('pointerup', onDragUp)
@@ -428,6 +471,15 @@ export function CircuitCanvas({
       // move via direct DOM for smoothness; commit to state on drop
       el.style.left = nx + 'px'
       el.style.top = ny + 'px'
+      // smoothed velocity, so the release direction is the hand's real direction and a
+      // single jittery event can't fling the window somewhere surprising
+      const now = performance.now()
+      const dt = Math.max(1, now - d.lt)
+      d.vx = 0.75 * d.vx + 0.25 * ((e.clientX - d.lx) / dt)
+      d.vy = 0.75 * d.vy + 0.25 * ((e.clientY - d.ly) / dt)
+      d.lx = e.clientX
+      d.ly = e.clientY
+      d.lt = now
       const zone = zoneFor(e)
       d.zone = zone
       setSnap(zone ? snapGeom(zone) : null)
@@ -446,6 +498,8 @@ export function CircuitCanvas({
       const w = prev[d.id]
       if (!w) return prev
       if (d.zone) {
+        // snapping is a programmatic move — ease into the zone instead of teleporting
+        settle(d.id)
         const g = snapGeom(d.zone)!
         return {
           ...prev,
@@ -454,10 +508,33 @@ export function CircuitCanvas({
       }
       const nx = el ? parseFloat(el.style.left) || w.x : w.x
       const ny = el ? parseFloat(el.style.top) || w.y : w.y
+      // Momentum: a thrown window glides on for a beat and settles, clamped to the
+      // canvas. The velocity must DECAY with hold time — while the pointer sits still no
+      // pointermove fires, so without decay a flick-then-hold released at the stale flick
+      // speed and the window flew off. Slow drops land exactly where the hand left them.
+      const idle = performance.now() - d.lt
+      const decay = Math.exp(-idle / 55)
+      const vx = d.vx * decay
+      const vy = d.vy * decay
+      if (Math.hypot(vx, vy) > 0.3 && el && !reducedMotion) {
+        const b = hostBox()
+        const glide = 110 // ms worth of carried momentum
+        const cap = 130 // a throw carries, it doesn't escape
+        const gx = Math.max(
+          0,
+          Math.min(nx + Math.max(-cap, Math.min(vx * glide, cap)), b.w - el.offsetWidth),
+        )
+        const gy = Math.max(
+          0,
+          Math.min(ny + Math.max(-cap, Math.min(vy * glide, cap)), b.h - el.offsetHeight),
+        )
+        settle(d.id)
+        return { ...prev, [d.id]: { ...w, x: gx, y: gy, max: false } }
+      }
       return { ...prev, [d.id]: { ...w, x: nx, y: ny, max: false } }
     })
     drag.current = null
-  }, [onDragMove, snapGeom])
+  }, [onDragMove, snapGeom, settle, hostBox, reducedMotion])
 
   // ── resize from any edge / corner ──
   const onResizeMove = useCallback(
@@ -547,6 +624,7 @@ export function CircuitCanvas({
     if (!wins[id]?.min) focus(id)
   }
   function toggleMax(id: string) {
+    settle(id)
     setWins((prev) => {
       const w = prev[id]
       if (w.max && w.prev) return { ...prev, [id]: { ...w, ...w.prev, max: false } }
@@ -570,6 +648,7 @@ export function CircuitCanvas({
       // fallback: the old fixed guess if we can't measure
       const nw = Math.min(IDEAL_W, b.w)
       const nh = Math.min(IDEAL_H, b.h)
+      settle(id)
       setWins((prev) => {
         const win = prev[id]
         if (!win) return prev
@@ -601,6 +680,9 @@ export function CircuitCanvas({
     el.style.width = sElW
     // just 2px slack — enough to dodge sub-pixel rounding without leaving visible dead space
     const h = Math.min(b.h, Math.max(MIN_H, hNeed + barH + 2))
+    // armed only now — a transition during the measurement above would animate the probe
+    // width and make scrollHeight read against the old layout
+    settle(id)
     setWins((prev) => {
       const win = prev[id]
       if (!win) return prev
@@ -619,6 +701,7 @@ export function CircuitCanvas({
   }
   function tile() {
     maxZ.current = 10
+    panes.forEach((p) => settle(p.id))
     setWins(defaultTile())
     showToast('⊞ Windows tiled')
   }

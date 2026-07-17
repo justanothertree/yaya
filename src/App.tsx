@@ -5,6 +5,7 @@ import { SnakeGame } from './sections/SnakeGame'
 import { site } from './config/site'
 import { IconGitHub, IconLinkedIn } from './components/Icons'
 import { SettingsMenu } from './components/SettingsMenu'
+import { AmbientBackdrop } from './components/AmbientBackdrop'
 import { useReveal } from './hooks/useReveal'
 import { hasFinanceSupabaseEnv } from './finance/env'
 import { getSessionUser, onAuthStateChange, peekPersistedUserId, signOut } from './finance/auth'
@@ -170,6 +171,21 @@ export default function App() {
   )
   // windows the user pinned — they ride along onto every tab's canvas
   const [pinned, setPinned] = useState<CanvasPane[]>([])
+  // the ambient glow behind the page — on by default, but it's a taste thing, so the
+  // cog remembers whoever turns it off
+  const [ambientOn, setAmbientOn] = useState(
+    () => typeof window === 'undefined' || localStorage.getItem('ambient_v1') !== '0',
+  )
+  const toggleAmbient = () => {
+    setAmbientOn((v) => {
+      try {
+        localStorage.setItem('ambient_v1', v ? '0' : '1')
+      } catch {
+        /* ignore */
+      }
+      return !v
+    })
+  }
   // Who the cog menu greets. The email is peeked from the LOCAL session so it paints
   // instantly and can never flash or gate anything; the real name follows from the profile
   // a moment later. An address is not a name — "cvaneook@outlook.com" made the avatar a
@@ -745,6 +761,7 @@ export default function App() {
 
   return (
     <div data-theme={theme} data-page={active}>
+      <AmbientBackdrop section={active} theme={theme} enabled={ambientOn} />
       <a href="#content" className="skip-link">
         Skip to content
       </a>
@@ -864,6 +881,8 @@ export default function App() {
               desktop={desktop}
               authed={hasFinanceSupabaseEnv() && isFinanceAuthed}
               isAdmin={isAdmin}
+              ambientOn={ambientOn}
+              onToggleAmbient={toggleAmbient}
               name={me.name}
               email={me.email}
               onAccount={() => setActive('account-settings')}
