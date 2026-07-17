@@ -5,6 +5,8 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import type { ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { showToast } from '../toast'
+import { site } from '../../config/site'
+import { IconGitHub, IconLinkedIn } from '../../components/Icons'
 
 export type CanvasPane = { id: string; title: string; node: ReactNode }
 
@@ -822,6 +824,47 @@ export function CircuitCanvas({
             borderRadius: 10,
           }}
         >
+          {/* the site's signature, canvas edition — copyright, build and socials were the
+              one thing full-screen canvas hid entirely. Bottom-right, under the windows. */}
+          <div
+            className="muted"
+            style={{
+              position: 'absolute',
+              right: 10,
+              bottom: 6,
+              zIndex: 1,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 10,
+              fontSize: '0.72rem',
+              opacity: 0.75,
+            }}
+          >
+            <span>
+              © {new Date().getFullYear()} {site.name}
+              {import.meta.env.VITE_APP_VERSION
+                ? ` · build ${import.meta.env.VITE_APP_VERSION}`
+                : ''}
+            </span>
+            <a
+              href={site.socials.github}
+              className="icon-link"
+              aria-label="GitHub"
+              target="_blank"
+              rel="noreferrer"
+            >
+              <IconGitHub />
+            </a>
+            <a
+              href={site.socials.linkedin}
+              className="icon-link"
+              aria-label="LinkedIn"
+              target="_blank"
+              rel="noreferrer"
+            >
+              <IconLinkedIn />
+            </a>
+          </div>
           {panes.map((p) => {
             const w = wins[p.id]
             if (!w) return null
