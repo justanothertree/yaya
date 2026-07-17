@@ -343,11 +343,23 @@ export function CircuitCanvas({
     const onWheel = (e: WheelEvent) => {
       if ((e.target as HTMLElement).closest('[data-czid]')) return
       e.preventDefault()
-      setView((v) => {
-        const next = Math.min(1, Math.max(0.5, +(v - Math.sign(e.deltaY) * 0.1).toFixed(2)))
-        if (next !== v) showToast(`🔍 ${Math.round(next * 100)}%`)
-        return next
-      })
+      const rect = host.getBoundingClientRect()
+      const cx = e.clientX - rect.left
+      const cy = e.clientY - rect.top
+      // side effects stay OUT of the setView updater — StrictMode double-invokes
+      // updaters, and the anchor applied twice (drift equal and opposite to none at all)
+      const v = viewRef.current
+      const next = Math.min(1, Math.max(0.5, +(v - Math.sign(e.deltaY) * 0.1).toFixed(2)))
+      if (next === v) return
+      showToast(`🔍 ${Math.round(next * 100)}%`)
+      // anchor the zoom on the cursor: the world point under it stays put, so
+      // pan' = pan + cursor * (1/v - 1/next). Applied to the DOM immediately —
+      // waiting for the state round-trip showed one frame of origin-anchored zoom.
+      const k = 1 / v - 1 / next
+      viewRef.current = next
+      panRef.current = clampPan({ x: panRef.current.x + cx * k, y: panRef.current.y + cy * k })
+      if (worldRef.current) worldRef.current.style.transform = worldTransform(panRef.current, next)
+      setView(next)
     }
     host.addEventListener('wheel', onWheel, { passive: false })
     return () => host.removeEventListener('wheel', onWheel)
@@ -355,8 +367,10 @@ export function CircuitCanvas({
   // zooming back IN shrinks the world — pull any window parked out there back inside
   useEffect(() => {
     viewRef.current = view
-    setPanState((pn) => {
-      const c = clampPan(pn)
+    // panRef is the truth here — the wheel handler may have just anchored it to the
+    // cursor; clamping the stale state instead would throw that adjustment away
+    setPanState(() => {
+      const c = clampPan(panRef.current)
       panRef.current = c
       return c
     })
@@ -365,11 +379,31 @@ export function CircuitCanvas({
 
   // ── init: restore saved layout (fitted to today's canvas) or tile fresh ──
   useLayoutEffect(() => {
+    // Start the viewport at the plane's CENTRE, not its corner — cursor-anchored zoom
+    // needs pan room on every side, and at the corner the clamp eats the anchor (the
+    // map-edge problem: zoom drifted instead of holding under the cursor).
+    const hostEl = hostRef.current
+    const ex = hostEl ? (hostEl.clientWidth * (WORLD - 1)) / 2 : 0
+    const ey = hostEl ? (hostEl.clientHeight * (WORLD - 1)) / 2 : 0
+    panRef.current = { x: ex, y: ey }
+    setPanState({ x: ex, y: ey })
     // only this tab's OWN panes come from its layout; pinned ones carry their box with them
     const own = panes.filter((p) => !pinnedIds.includes(p.id))
     const saved = loadLayout(storeKey(panes, pinnedIds))
     const valid = saved && own.every((p) => saved[p.id])
     const base = valid ? saved! : defaultTile(own)
+    // layouts saved before the plane existed live in the top-left quadrant — carry them
+    // to the centre once (post-shift coords fail this test, so it can't double-apply)
+    if (valid && hostEl) {
+      const legacy = own.every((pn) => {
+        const b0 = base[pn.id]
+        return b0.x + b0.w <= hostEl.clientWidth + 8 && b0.y + b0.h <= hostEl.clientHeight + 8
+      })
+      if (legacy)
+        own.forEach((pn) => {
+          base[pn.id] = { ...base[pn.id], x: base[pn.id].x + ex, y: base[pn.id].y + ey }
+        })
+    }
     const pins = loadPins()
     const next: Layout = {}
     for (const p of panes) {
