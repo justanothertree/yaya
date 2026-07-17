@@ -38,8 +38,15 @@ export function Charts({
 
   const handleSvgMove = (e: React.MouseEvent<SVGSVGElement>) => {
     if (!series.length) return
+    // Map the pointer into viewBox coords via the SVG's own matrix. The old
+    // rect-proportional math broke inside canvas windows: the .cz-body zoom scales the
+    // rendering but not getBoundingClientRect consistently, so the hover landed where
+    // the full-size point would be. getScreenCTM reflects every transform above us.
+    const ctm = e.currentTarget.getScreenCTM()
     const rect = e.currentTarget.getBoundingClientRect()
-    const svgX = ((e.clientX - rect.left) / rect.width) * VW
+    const svgX = ctm
+      ? new DOMPoint(e.clientX, e.clientY).matrixTransform(ctm.inverse()).x
+      : ((e.clientX - rect.left) / rect.width) * VW
     const rawDay = ((svgX - PL) / (VW - PL - PR)) * (days - 1)
     const day = Math.max(1, Math.min(days, Math.round(rawDay) + 1))
     setHover({ day })

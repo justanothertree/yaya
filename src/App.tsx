@@ -244,6 +244,22 @@ export default function App() {
   // — never by flipping the state. Auto-closing on !desktop kicked Evan out of canvas
   // when dragging the browser between monitors (the drag fires transient resizes); now a
   // narrow moment just renders the normal page and canvas is still there on the far side.
+  // Prefetch every lazy section once the first page has settled — clicking a new tab
+  // used to pay its chunk fetch right then (the "small load times" on each first visit).
+  // Now the code is already in the browser and navigation is instant.
+  useEffect(() => {
+    const warm = () => {
+      void import('./sections/SignIn')
+      void import('./sections/Investments')
+      void import('./sections/AccountSettings')
+      void import('./sections/Circuit')
+      void import('./circuit/ui/CircuitCanvas')
+      void import('./sections/AdminPanel')
+      void import('./sections/Profile')
+    }
+    if ('requestIdleCallback' in window) window.requestIdleCallback(warm, { timeout: 4000 })
+    else setTimeout(warm, 1500)
+  }, [])
   const topRef = useRef<HTMLDivElement>(null)
   const liveRef = useRef<HTMLDivElement>(null)
   const navLinksRef = useRef<HTMLDivElement>(null)
