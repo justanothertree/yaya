@@ -427,7 +427,14 @@ body {
    against the canvas-mode surface (z 50, portaled to body), which painted OVER the cog's
    dropdown — an invisible, unclickable menu, again. */
 html {
-  background: radial-gradient(1200px 600px at 20% -10%, var(--bg-grad1) 0%, var(--bg) 60%);
+  /* The COLOUR is what kills the white flash: a background-colour on the root fills the
+     entire canvas, rubber-band overscroll included. The gradient is only an image layer
+     on top of it — `background: <gradient>` alone reset the colour to transparent and the
+     flash came straight back. Keep both, and never collapse them into one shorthand. */
+  background-color: var(--bg);
+  background-image: radial-gradient(1200px 600px at 20% -10%, var(--bg-grad1) 0%, var(--bg) 60%);
+  background-repeat: no-repeat;
+  background-attachment: fixed;
 }
 #root {
   min-height: 100%;
