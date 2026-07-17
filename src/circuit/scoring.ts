@@ -40,9 +40,15 @@ export function isImportedTotal(log: DayLog | undefined): boolean {
  * Returns 0 if the most recent log is older than yesterday (the streak is broken),
  * so a streak from a previous month no longer counts as "current". */
 export function currentStreak(p: Person, logs: DayLog[]): number {
-  const dates = new Set(
-    logs.filter((l) => l.personId === p.id && logPoints(p, l) > 0).map((l) => l.date),
-  )
+  // a streak day = the day's TOTAL reached the daily goal — "logged something" isn't a
+  // streak, hitting the target is (and two half-goal logs on one day still count once)
+  const byDate = new Map<string, number>()
+  for (const l of logs) {
+    if (l.personId !== p.id) continue
+    byDate.set(l.date, (byDate.get(l.date) ?? 0) + logPoints(p, l))
+  }
+  const goal = p.goal ?? 100
+  const dates = new Set([...byDate].filter(([, pts]) => pts >= goal).map(([date]) => date))
   if (!dates.size) return 0
   // local date (not UTC) so it matches the local calendar dates logs are stored under
   const iso = (d: Date) =>

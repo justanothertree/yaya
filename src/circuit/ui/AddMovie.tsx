@@ -31,7 +31,8 @@ export function AddMovie({
   onAdded?: (m: Movie) => void
 }) {
   const [title, setTitle] = useState('')
-  const [date, setDate] = useState('')
+  // watched-tonight is the overwhelming case — default today, still editable
+  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10))
   const [rt, setRt] = useState('')
 
   const save = () => {

@@ -43,6 +43,9 @@ export function Board({
     () =>
       visiblePeople
         .map((p) => {
+          const now = new Date()
+          const curYm = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+          const elapsedDays = ym === curYm ? now.getDate() : days
           const daily = monthDaily(p, state.logs, ym, days)
           const daysLogged = daily.filter((d) => d > 0).length
           const total = monthTotal(p, state.logs, ym)
@@ -52,7 +55,9 @@ export function Board({
             goal: p.goal ?? 100,
             daily,
             daysLogged,
-            avgDay: daysLogged ? total / daysLogged : 0,
+            // pace over the month SO FAR (calendar days elapsed), not just workout days —
+            // skipping a day should lower your average, that's what pace means
+            avgDay: total / Math.max(1, elapsedDays),
             streak: currentStreak(p, state.logs),
           }
         })
@@ -274,9 +279,12 @@ export function Board({
                       border: 'none',
                       cursor: 'pointer',
                       fontSize: '0.82rem',
+                      // explicit colour — a bare glyph fell back to UA black on the dark board
+                      color: 'var(--accent, #7c6af7)',
+                      fontWeight: 700,
                       opacity: state.logs.some((l) => l.personId === r.p.id && l.date === todayStr)
                         ? 1
-                        : 0.4,
+                        : 0.65,
                       padding: '0 2px',
                     }}
                   >
