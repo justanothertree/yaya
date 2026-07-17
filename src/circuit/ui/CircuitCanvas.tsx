@@ -36,6 +36,8 @@ const storeKey = (panes: CanvasPane[], pinnedIds: string[]) =>
     .sort()
     .join(',')
 const GAP = 12
+// the canvas plane extends 2x the screen in each direction - room to park windows off-view
+const WORLD = 2
 // One box per pinned window, shared by every tab's canvas — so a pinned window stays
 // exactly where you put it as you move page to page.
 const PIN_KEY = 'canvas_pins_v1'
@@ -141,6 +143,13 @@ export function CircuitCanvas({
   // scrolling back in caps at the default 1.0 — never closer than natural size ──
   const [view, setView] = useState(1)
   const viewRef = useRef(1)
+  // pan: the plane is WORLD x the screen per axis; grab empty canvas and drag to move
+  // around it. During the drag the transform is written straight to the DOM - no React
+  // render per pointer move, so it stays at the pointer's own frame rate.
+  const [pan, setPanState] = useState({ x: 0, y: 0 })
+  const panRef = useRef({ x: 0, y: 0 })
+  const worldRef = useRef<HTMLDivElement>(null)
+  const panDrag = useRef<{ sx: number; sy: number; ox: number; oy: number } | null>(null)
   const [snap, setSnap] = useState<{ x: number; y: number; w: number; h: number } | null>(null)
   const drag = useRef<{
     id: string
@@ -192,7 +201,7 @@ export function CircuitCanvas({
   // ── geometry helpers (host-relative coordinate space) ──
   const hostBox = useCallback(() => {
     const host = hostRef.current
-    if (!host) return { w: 900, h: 700 }
+    if (!host) return { x: 0, y: 0, w: 900, h: 700 }
     const cs = getComputedStyle(host)
     const padL = parseFloat(cs.paddingLeft) || 0
     const padR = parseFloat(cs.paddingRight) || 0
@@ -200,31 +209,83 @@ export function CircuitCanvas({
     const padB = parseFloat(cs.paddingBottom) || 0
     const v = viewRef.current
     return {
+      x: panRef.current.x,
+      y: panRef.current.y,
       w: (host.clientWidth - padL - padR) / v,
       h: (host.clientHeight - padT - padB) / v,
     }
   }, [])
+  // the whole plane, in world coords - windows clamp to THIS, the viewport just looks at it
+  const worldBox = useCallback(() => {
+    const host = hostRef.current
+    if (!host) return { w: 1800, h: 1400 }
+    return { w: host.clientWidth * WORLD, h: host.clientHeight * WORLD }
+  }, [])
+  const clampPan = useCallback((pn: { x: number; y: number }) => {
+    const host = hostRef.current
+    if (!host) return pn
+    const v = viewRef.current
+    const maxX = Math.max(0, host.clientWidth * WORLD - host.clientWidth / v)
+    const maxY = Math.max(0, host.clientHeight * WORLD - host.clientHeight / v)
+    return { x: Math.min(maxX, Math.max(0, pn.x)), y: Math.min(maxY, Math.max(0, pn.y)) }
+  }, [])
+  const worldTransform = (pn: { x: number; y: number }, v: number) =>
+    `translate(${-pn.x * v}px, ${-pn.y * v}px) scale(${v})`
+  const onPanMove = useCallback(
+    (e: PointerEvent) => {
+      const d = panDrag.current
+      if (!d) return
+      const v = viewRef.current
+      const pn = clampPan({ x: d.ox - (e.clientX - d.sx) / v, y: d.oy - (e.clientY - d.sy) / v })
+      panRef.current = pn
+      if (worldRef.current) worldRef.current.style.transform = worldTransform(pn, v)
+    },
+    [clampPan],
+  )
+  const onPanUp = useCallback(() => {
+    window.removeEventListener('pointermove', onPanMove)
+    window.removeEventListener('pointerup', onPanUp)
+    if (!panDrag.current) return
+    panDrag.current = null
+    if (hostRef.current) hostRef.current.style.cursor = 'grab'
+    setPanState({ ...panRef.current })
+  }, [onPanMove])
+  function onPanStart(e: React.PointerEvent) {
+    // only empty canvas pans - windows, links and buttons keep their own gestures
+    if ((e.target as HTMLElement).closest('[data-czid], a, button')) return
+    panDrag.current = { sx: e.clientX, sy: e.clientY, ox: panRef.current.x, oy: panRef.current.y }
+    if (hostRef.current) hostRef.current.style.cursor = 'grabbing'
+    e.preventDefault()
+    window.addEventListener('pointermove', onPanMove)
+    window.addEventListener('pointerup', onPanUp)
+  }
 
   const snapGeom = useCallback(
     (zone: Zone) => {
       const b = hostBox()
       const halfW = Math.floor((b.w - GAP) / 2)
       const halfH = Math.floor((b.h - GAP) / 2)
+      // zones are relative to what you're LOOKING at (the panned viewport), not the plane
       switch (zone) {
         case 'max':
-          return { x: 0, y: 0, w: b.w, h: b.h }
+          return { x: b.x, y: b.y, w: b.w, h: b.h }
         case 'left':
-          return { x: 0, y: 0, w: halfW, h: b.h }
+          return { x: b.x, y: b.y, w: halfW, h: b.h }
         case 'right':
-          return { x: halfW + GAP, y: 0, w: b.w - halfW - GAP, h: b.h }
+          return { x: b.x + halfW + GAP, y: b.y, w: b.w - halfW - GAP, h: b.h }
         case 'tl':
-          return { x: 0, y: 0, w: halfW, h: halfH }
+          return { x: b.x, y: b.y, w: halfW, h: halfH }
         case 'tr':
-          return { x: halfW + GAP, y: 0, w: b.w - halfW - GAP, h: halfH }
+          return { x: b.x + halfW + GAP, y: b.y, w: b.w - halfW - GAP, h: halfH }
         case 'bl':
-          return { x: 0, y: halfH + GAP, w: halfW, h: b.h - halfH - GAP }
+          return { x: b.x, y: b.y + halfH + GAP, w: halfW, h: b.h - halfH - GAP }
         case 'br':
-          return { x: halfW + GAP, y: halfH + GAP, w: b.w - halfW - GAP, h: b.h - halfH - GAP }
+          return {
+            x: b.x + halfW + GAP,
+            y: b.y + halfH + GAP,
+            w: b.w - halfW - GAP,
+            h: b.h - halfH - GAP,
+          }
       }
     },
     [hostBox],
@@ -245,8 +306,8 @@ export function CircuitCanvas({
         const col = i % cols
         const row = Math.floor(i / cols)
         next[p.id] = {
-          x: col * (colW + GAP),
-          y: row * (rowH + GAP),
+          x: b.x + col * (colW + GAP),
+          y: b.y + row * (rowH + GAP),
           w: colW,
           h: rowH,
           min: false,
@@ -264,14 +325,14 @@ export function CircuitCanvas({
   // or different zoom) that used to leave a "full screen" window hanging past the edge.
   const clampAll = useCallback(
     (l: Layout): Layout => {
-      const b = hostBox()
+      const b = worldBox()
       const next: Layout = {}
       for (const [id, w] of Object.entries(l)) {
         next[id] = w.max ? { ...w, ...snapGeom('max')! } : clampBox(w, b)
       }
       return next
     },
-    [hostBox, snapGeom],
+    [worldBox, snapGeom],
   )
 
   // Wheel on empty canvas zooms the view; wheel INSIDE a window still scrolls that
@@ -294,8 +355,13 @@ export function CircuitCanvas({
   // zooming back IN shrinks the world — pull any window parked out there back inside
   useEffect(() => {
     viewRef.current = view
+    setPanState((pn) => {
+      const c = clampPan(pn)
+      panRef.current = c
+      return c
+    })
     setWins((prev) => clampAll(prev))
-  }, [view, clampAll])
+  }, [view, clampAll, clampPan])
 
   // ── init: restore saved layout (fitted to today's canvas) or tile fresh ──
   useLayoutEffect(() => {
@@ -327,20 +393,21 @@ export function CircuitCanvas({
       const missing = panes.filter((p) => !prev[p.id])
       if (!missing.length) return prev
       const b = hostBox()
+      const wb = worldBox()
       const pins = loadPins()
       const next = { ...prev }
       missing.forEach((p, i) => {
         const pin = pins[p.id]
         if (pin) {
-          next[p.id] = { ...clampBox(pin, b), z: ++maxZ.current }
+          next[p.id] = { ...clampBox(pin, wb), z: ++maxZ.current }
           return
         }
         const w = Math.min(IDEAL_W, b.w)
         const h = Math.min(IDEAL_H, b.h)
         const off = 26 * ((Object.keys(prev).length + i) % 5)
         next[p.id] = {
-          x: Math.max(0, Math.min(off, b.w - w)),
-          y: Math.max(0, Math.min(off, b.h - h)),
+          x: b.x + Math.max(0, Math.min(off, b.w - w)),
+          y: b.y + Math.max(0, Math.min(off, b.h - h)),
           w,
           h,
           min: false,
@@ -350,7 +417,7 @@ export function CircuitCanvas({
       })
       return next
     })
-  }, [panes, hostBox])
+  }, [panes, hostBox, worldBox])
 
   // Persist whenever layout settles — this tab's own windows to its layout, pinned ones to
   // the shared pin store so wherever you drop a pinned window is where the next tab shows it.
@@ -427,13 +494,13 @@ export function CircuitCanvas({
       const rw = w.prev?.w ?? Math.min(IDEAL_W, w.w)
       const rh = w.prev?.h ?? Math.min(IDEAL_H, w.h)
       const b = hostBox()
-      const px = host ? (e.clientX - host.left) / viewRef.current : 0
+      const px = host ? (e.clientX - host.left) / viewRef.current + panRef.current.x : 0
       ox = Math.max(0, Math.min(px - rw / 2, b.w - rw))
-      oy = 0
+      oy = panRef.current.y
       const el = winRefs.current[id]
       if (el) {
         el.style.left = ox + 'px'
-        el.style.top = '0px'
+        el.style.top = oy + 'px'
         el.style.width = rw + 'px'
         el.style.height = rh + 'px'
         const body = el.querySelector<HTMLElement>('.cz-body')
@@ -494,8 +561,9 @@ export function CircuitCanvas({
       if (!d) return
       const el = winRefs.current[d.id]
       if (!el) return
-      // keep the window fully inside the canvas (don't let it slide past any edge)
-      const b = hostBox()
+      // keep the window inside the PLANE (it may leave the visible screen - that's
+      // what panning is for)
+      const b = worldBox()
       const maxX = Math.max(0, b.w - el.offsetWidth)
       const maxY = Math.max(0, b.h - el.offsetHeight)
       const v = viewRef.current
@@ -550,7 +618,7 @@ export function CircuitCanvas({
       const vx = d.vx * decay
       const vy = d.vy * decay
       if (Math.hypot(vx, vy) > 0.3 && el && !reducedMotion) {
-        const b = hostBox()
+        const b = worldBox()
         const glide = 110 // ms worth of carried momentum
         const cap = 130 // a throw carries, it doesn't escape
         const gx = Math.max(
@@ -576,7 +644,7 @@ export function CircuitCanvas({
       if (!r) return
       const el = winRefs.current[r.id]
       if (!el) return
-      const b = hostBox()
+      const b = worldBox()
       const dx = (e.clientX - r.sx) / viewRef.current
       const dy = (e.clientY - r.sy) / viewRef.current
       let x = r.ox
@@ -842,14 +910,17 @@ export function CircuitCanvas({
         {/* canvas surface */}
         <div
           ref={hostRef}
+          onPointerDown={onPanStart}
           style={{
             position: 'relative',
             flex: 1,
             minHeight: 0,
             padding: 4,
-            // windows are always clamped inside the surface, so nothing ever scrolls —
-            // a maximized window is exactly the visible canvas
+            // the viewport onto the plane: windows clamp to the WORLD, and grabbing
+            // empty canvas pans the view around it
             overflow: 'hidden',
+            cursor: 'grab',
+            touchAction: 'none',
             background:
               'repeating-linear-gradient(45deg, transparent, transparent 11px, rgba(127,127,127,0.025) 11px, rgba(127,127,127,0.025) 12px)',
             borderRadius: 10,
@@ -903,11 +974,12 @@ export function CircuitCanvas({
               position: 'absolute',
               top: 0,
               left: 0,
-              width: `${100 / view}%`,
-              height: `${100 / view}%`,
-              transform: `scale(${view})`,
+              width: `${WORLD * 100}%`,
+              height: `${WORLD * 100}%`,
+              transform: worldTransform(pan, view),
               transformOrigin: '0 0',
             }}
+            ref={worldRef}
           >
             {panes.map((p) => {
               const w = wins[p.id]
