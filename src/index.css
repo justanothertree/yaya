@@ -420,18 +420,14 @@ html,
 body {
   min-height: 100%;
 }
-/* Paint the root itself the theme background — the body's gradient doesn't cover the
-   overscroll / rubber-band area, so fast scrolling used to flash the browser's default
-   white behind it. */
+/* The page's ground lives on HTML, not body: the root background covers the overscroll
+   area (no white flash on fast scroll), and it paints beneath even negative-z children of
+   body — which is where the ambient backdrop sits (z -1). Nothing else may create a
+   stacking context around the nav: lifting #root to z-index 1 flattened the nav's z 100
+   against the canvas-mode surface (z 50, portaled to body), which painted OVER the cog's
+   dropdown — an invisible, unclickable menu, again. */
 html {
-  background: var(--bg);
-}
-/* Lift the app above the ambient backdrop (a fixed canvas portaled to <body> at z 0).
-   With the app at z 1 the glow can only ever paint BEHIND content, never over text —
-   and the canvas-mode surface (z 50) still covers both, keeping its own ground. */
-#root {
-  position: relative;
-  z-index: 1;
+  background: radial-gradient(1200px 600px at 20% -10%, var(--bg-grad1) 0%, var(--bg) 60%);
 }
 #root {
   min-height: 100%;
@@ -461,7 +457,8 @@ body {
     Roboto,
     Helvetica,
     Arial;
-  background: radial-gradient(1200px 600px at 20% -10%, var(--bg-grad1) 0%, var(--bg) 60%);
+  /* ground moved to html (see above) — body must stay transparent so the ambient
+     backdrop at z -1 shows through */
   overflow-x: hidden; /* Prevent horizontal overflow */
   overscroll-behavior-x: contain;
   color: var(--text);

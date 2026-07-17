@@ -10,9 +10,10 @@ import { createPortal } from 'react-dom'
  * devicePixelRatio, and under prefers-reduced-motion paints ONCE and stops (still
  * coloured, just still). The whole thing is one canvas and three gradients.
  *
- * It portals to <body> behind #root (which index.css lifts to z-index: 1), so it can
- * never sit over text — and the canvas-mode surface is opaque and covers it, which is
- * right: canvas mode has its own ground.
+ * It portals to <body> at z-index -1: painted above the html ground but beneath every
+ * in-flow box, so it can never sit over text. (NOT via a z-lift on #root — a stacking
+ * context there flattens the nav's z against the canvas-mode surface and buries the
+ * cog's dropdown. Learned the hard way.)
  */
 
 // each section leans its own way; anything unlisted breathes in the theme accent
@@ -101,8 +102,10 @@ export function AmbientBackdrop({
       const hues = SECTION_HUES[sectionRef.current] ?? ['accent', 'accent']
       return hues.map((h) => parseColor(h === 'accent' ? css('--accent') || '#7c6af7' : h))
     }
-    // light grounds need quieter colour than dark ones
-    const baseAlpha = () => (lum(parseColor(css('--bg') || '#08080f')) > 0.5 ? 0.09 : 0.16)
+    // light grounds need quieter colour than dark ones. Deliberately faint — Evan's read
+    // on the first cut was "overbearing": ambience should be noticed on the second look,
+    // not the first.
+    const baseAlpha = () => (lum(parseColor(css('--bg') || '#08080f')) > 0.5 ? 0.045 : 0.08)
 
     const paint = () => {
       const w = innerWidth
@@ -117,29 +120,25 @@ export function AmbientBackdrop({
       })
       sx += (mx - sx) * 0.05
       sy += (my - sy) * 0.05
-      const t = frame * 0.004
+      // Two composed fields, not three overlapping ones — anchored to opposite corners
+      // so the middle of the page (where the content lives) stays clean. Slow drift,
+      // gentle lean: a breath, not a lava lamp.
+      const t = frame * 0.0022
       const a = baseAlpha()
       const fields = [
         {
           c: cur[0],
-          x: 0.24 + Math.sin(t) * 0.05 + (sx - 0.5) * 0.1,
-          y: 0.3 + Math.cos(t * 0.8) * 0.05 + (sy - 0.5) * 0.08,
-          r: 0.5,
+          x: 0.14 + Math.sin(t) * 0.025 + (sx - 0.5) * 0.05,
+          y: 0.08 + Math.cos(t * 0.8) * 0.02 + (sy - 0.5) * 0.04,
+          r: 0.42,
           k: 1,
         },
         {
           c: cur[1],
-          x: 0.76 + Math.cos(t * 0.7) * 0.06 + (sx - 0.5) * 0.14,
-          y: 0.62 + Math.sin(t * 0.9) * 0.06 + (sy - 0.5) * 0.1,
-          r: 0.44,
-          k: 0.8,
-        },
-        {
-          c: cur[0],
-          x: 0.52 + Math.sin(t * 0.5 + 2) * 0.07 + (sx - 0.5) * 0.06,
-          y: 0.9,
+          x: 0.88 + Math.cos(t * 0.7) * 0.03 + (sx - 0.5) * 0.06,
+          y: 0.92 + Math.sin(t * 0.9) * 0.02 + (sy - 0.5) * 0.05,
           r: 0.38,
-          k: 0.55,
+          k: 0.75,
         },
       ]
       for (const f of fields) {
@@ -205,7 +204,7 @@ export function AmbientBackdrop({
     <canvas
       ref={canvasRef}
       aria-hidden
-      style={{ position: 'fixed', inset: 0, zIndex: 0, pointerEvents: 'none' }}
+      style={{ position: 'fixed', inset: 0, zIndex: -1, pointerEvents: 'none' }}
     />,
     document.body,
   )
