@@ -137,6 +137,10 @@ export function CircuitCanvas({
     typeof document !== 'undefined' ? document.body : null,
   )
   const [wins, setWins] = useState<Layout>({})
+  // ── wheel zoom: scroll out to EXPAND the canvas area (view shrinks, world grows);
+  // scrolling back in caps at the default 1.0 — never closer than natural size ──
+  const [view, setView] = useState(1)
+  const viewRef = useRef(1)
   const [snap, setSnap] = useState<{ x: number; y: number; w: number; h: number } | null>(null)
   const drag = useRef<{
     id: string
@@ -194,7 +198,11 @@ export function CircuitCanvas({
     const padR = parseFloat(cs.paddingRight) || 0
     const padT = parseFloat(cs.paddingTop) || 0
     const padB = parseFloat(cs.paddingBottom) || 0
-    return { w: host.clientWidth - padL - padR, h: host.clientHeight - padT - padB }
+    const v = viewRef.current
+    return {
+      w: (host.clientWidth - padL - padR) / v,
+      h: (host.clientHeight - padT - padB) / v,
+    }
   }, [])
 
   const snapGeom = useCallback(
@@ -265,6 +273,29 @@ export function CircuitCanvas({
     },
     [hostBox, snapGeom],
   )
+
+  // Wheel on empty canvas zooms the view; wheel INSIDE a window still scrolls that
+  // window. Non-passive listener because we must preventDefault the page.
+  useEffect(() => {
+    const host = hostRef.current
+    if (!host) return
+    const onWheel = (e: WheelEvent) => {
+      if ((e.target as HTMLElement).closest('[data-czid]')) return
+      e.preventDefault()
+      setView((v) => {
+        const next = Math.min(1, Math.max(0.5, +(v - Math.sign(e.deltaY) * 0.1).toFixed(2)))
+        if (next !== v) showToast(`🔍 ${Math.round(next * 100)}%`)
+        return next
+      })
+    }
+    host.addEventListener('wheel', onWheel, { passive: false })
+    return () => host.removeEventListener('wheel', onWheel)
+  }, [])
+  // zooming back IN shrinks the world — pull any window parked out there back inside
+  useEffect(() => {
+    viewRef.current = view
+    setWins((prev) => clampAll(prev))
+  }, [view, clampAll])
 
   // ── init: restore saved layout (fitted to today's canvas) or tile fresh ──
   useLayoutEffect(() => {
@@ -393,11 +424,10 @@ export function CircuitCanvas({
     // dragging a maximized window restores it under the cursor (OS behavior), instead
     // of the old height-collapse glitch mid-drag
     if (w.max) {
-      const host = hostRef.current?.getBoundingClientRect()
       const rw = w.prev?.w ?? Math.min(IDEAL_W, w.w)
       const rh = w.prev?.h ?? Math.min(IDEAL_H, w.h)
       const b = hostBox()
-      const px = host ? e.clientX - host.left : 0
+      const px = host ? (e.clientX - host.left) / viewRef.current : 0
       ox = Math.max(0, Math.min(px - rw / 2, b.w - rw))
       oy = 0
       const el = winRefs.current[id]
@@ -468,8 +498,9 @@ export function CircuitCanvas({
       const b = hostBox()
       const maxX = Math.max(0, b.w - el.offsetWidth)
       const maxY = Math.max(0, b.h - el.offsetHeight)
-      const nx = Math.min(maxX, Math.max(0, d.ox + (e.clientX - d.sx)))
-      const ny = Math.min(maxY, Math.max(0, d.oy + (e.clientY - d.sy)))
+      const v = viewRef.current
+      const nx = Math.min(maxX, Math.max(0, d.ox + (e.clientX - d.sx) / v))
+      const ny = Math.min(maxY, Math.max(0, d.oy + (e.clientY - d.sy) / v))
       // move via direct DOM for smoothness; commit to state on drop
       el.style.left = nx + 'px'
       el.style.top = ny + 'px'
@@ -477,8 +508,8 @@ export function CircuitCanvas({
       // single jittery event can't fling the window somewhere surprising
       const now = performance.now()
       const dt = Math.max(1, now - d.lt)
-      d.vx = 0.75 * d.vx + 0.25 * ((e.clientX - d.lx) / dt)
-      d.vy = 0.75 * d.vy + 0.25 * ((e.clientY - d.ly) / dt)
+      d.vx = 0.75 * d.vx + 0.25 * ((e.clientX - d.lx) / v / dt)
+      d.vy = 0.75 * d.vy + 0.25 * ((e.clientY - d.ly) / v / dt)
       d.lx = e.clientX
       d.ly = e.clientY
       d.lt = now
@@ -546,8 +577,8 @@ export function CircuitCanvas({
       const el = winRefs.current[r.id]
       if (!el) return
       const b = hostBox()
-      const dx = e.clientX - r.sx
-      const dy = e.clientY - r.sy
+      const dx = (e.clientX - r.sx) / viewRef.current
+      const dy = (e.clientY - r.sy) / viewRef.current
       let x = r.ox
       let y = r.oy
       let w = r.ow
@@ -865,160 +896,176 @@ export function CircuitCanvas({
               <IconLinkedIn />
             </a>
           </div>
-          {panes.map((p) => {
-            const w = wins[p.id]
-            if (!w) return null
-            // minimized windows stay MOUNTED but hidden — restoring from the taskbar used
-            // to rebuild the whole pane from scratch (a visible flash); now it's instant
-            // and keeps scroll position / half-typed inputs alive
-            // scale the content with the window size: at the "ideal" width it sits at 100%,
-            // and growing the window past that scales everything up so it's easier to see.
-            const bodyScale = scaleFor(w.w)
-            return (
-              <div
-                key={p.id}
-                ref={(el) => {
-                  winRefs.current[p.id] = el
-                }}
-                data-czid={p.id}
-                onPointerDown={() => focus(p.id)}
-                style={{
-                  position: 'absolute',
-                  left: w.x,
-                  top: w.y,
-                  width: w.w,
-                  height: w.h,
-                  zIndex: w.z,
-                  display: w.min ? 'none' : 'flex',
-                  flexDirection: 'column',
-                  background: 'var(--panel, #141a2a)',
-                  border:
-                    p.id === topId
-                      ? '1px solid var(--accent, #7c6af7)'
-                      : '1px solid var(--b2, rgba(127,127,127,0.3))',
-                  borderRadius: 12,
-                  boxShadow:
-                    p.id === topId ? '0 10px 34px rgba(0,0,0,0.55)' : '0 8px 28px rgba(0,0,0,0.45)',
-                  overflow: 'hidden',
-                  minWidth: MIN_W,
-                  minHeight: MIN_H,
-                }}
-              >
-                {/* title bar */}
+          {/* the world: windows live in world coordinates and the whole plane scales —
+              zoomed out it's bigger than the host, giving more room to arrange */}
+          <div
+            style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              width: `${100 / view}%`,
+              height: `${100 / view}%`,
+              transform: `scale(${view})`,
+              transformOrigin: '0 0',
+            }}
+          >
+            {panes.map((p) => {
+              const w = wins[p.id]
+              if (!w) return null
+              // minimized windows stay MOUNTED but hidden — restoring from the taskbar used
+              // to rebuild the whole pane from scratch (a visible flash); now it's instant
+              // and keeps scroll position / half-typed inputs alive
+              // scale the content with the window size: at the "ideal" width it sits at 100%,
+              // and growing the window past that scales everything up so it's easier to see.
+              const bodyScale = scaleFor(w.w)
+              return (
                 <div
-                  className="cz-bar"
-                  onPointerDown={(e) => onWinPointerDown(e, p.id)}
-                  onDoubleClick={(e) => {
-                    if (!(e.target as HTMLElement).closest('.cz-btn')) toggleMax(p.id)
+                  key={p.id}
+                  ref={(el) => {
+                    winRefs.current[p.id] = el
                   }}
+                  data-czid={p.id}
+                  onPointerDown={() => focus(p.id)}
                   style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '0.4rem',
-                    padding: '6px 9px',
-                    background: 'var(--b1, rgba(127,127,127,0.12))',
-                    borderBottom: '1px solid var(--b1, rgba(127,127,127,0.15))',
-                    cursor: 'grab',
-                    userSelect: 'none',
-                    flexShrink: 0,
-                    touchAction: 'none',
+                    position: 'absolute',
+                    left: w.x,
+                    top: w.y,
+                    width: w.w,
+                    height: w.h,
+                    zIndex: w.z,
+                    display: w.min ? 'none' : 'flex',
+                    flexDirection: 'column',
+                    background: 'var(--panel, #141a2a)',
+                    border:
+                      p.id === topId
+                        ? '1px solid var(--accent, #7c6af7)'
+                        : '1px solid var(--b2, rgba(127,127,127,0.3))',
+                    borderRadius: 12,
+                    boxShadow:
+                      p.id === topId
+                        ? '0 10px 34px rgba(0,0,0,0.55)'
+                        : '0 8px 28px rgba(0,0,0,0.45)',
+                    overflow: 'hidden',
+                    minWidth: MIN_W,
+                    minHeight: MIN_H,
                   }}
                 >
-                  <span style={{ fontWeight: 700, fontSize: '0.82rem', flex: 1 }}>{p.title}</span>
-                  {onTogglePin && (
+                  {/* title bar */}
+                  <div
+                    className="cz-bar"
+                    onPointerDown={(e) => onWinPointerDown(e, p.id)}
+                    onDoubleClick={(e) => {
+                      if (!(e.target as HTMLElement).closest('.cz-btn')) toggleMax(p.id)
+                    }}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.4rem',
+                      padding: '6px 9px',
+                      background: 'var(--b1, rgba(127,127,127,0.12))',
+                      borderBottom: '1px solid var(--b1, rgba(127,127,127,0.15))',
+                      cursor: 'grab',
+                      userSelect: 'none',
+                      flexShrink: 0,
+                      touchAction: 'none',
+                    }}
+                  >
+                    <span style={{ fontWeight: 700, fontSize: '0.82rem', flex: 1 }}>{p.title}</span>
+                    {onTogglePin && (
+                      <button
+                        className="cz-btn btn"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          onTogglePin(p)
+                        }}
+                        title={
+                          pinnedIds.includes(p.id)
+                            ? 'Unpin — stops following you across tabs'
+                            : 'Pin — keep this window with you on every tab'
+                        }
+                        aria-pressed={pinnedIds.includes(p.id)}
+                        style={{
+                          ...czBtn,
+                          color: pinnedIds.includes(p.id) ? 'var(--accent, #7c6af7)' : undefined,
+                          opacity: pinnedIds.includes(p.id) ? 1 : 0.55,
+                        }}
+                      >
+                        📌
+                      </button>
+                    )}
                     <button
                       className="cz-btn btn"
                       onClick={(e) => {
                         e.stopPropagation()
-                        onTogglePin(p)
+                        toggleMin(p.id)
                       }}
-                      title={
-                        pinnedIds.includes(p.id)
-                          ? 'Unpin — stops following you across tabs'
-                          : 'Pin — keep this window with you on every tab'
-                      }
-                      aria-pressed={pinnedIds.includes(p.id)}
-                      style={{
-                        ...czBtn,
-                        color: pinnedIds.includes(p.id) ? 'var(--accent, #7c6af7)' : undefined,
-                        opacity: pinnedIds.includes(p.id) ? 1 : 0.55,
-                      }}
+                      title="Minimize (hide)"
+                      style={czBtn}
                     >
-                      📌
+                      －
                     </button>
-                  )}
-                  <button
-                    className="cz-btn btn"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      toggleMin(p.id)
-                    }}
-                    title="Minimize (hide)"
-                    style={czBtn}
-                  >
-                    －
-                  </button>
-                  <button
-                    className="cz-btn btn"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      idealSize(p.id)
-                    }}
-                    title="Fit to content — size this window to show everything, no scroll"
-                    style={czBtn}
-                  >
-                    ▭
-                  </button>
-                  <button
-                    className="cz-btn btn"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      toggleMax(p.id)
-                    }}
-                    title={w.max ? 'Restore' : 'Full screen'}
-                    style={czBtn}
-                  >
-                    {w.max ? '🗗' : '⛶'}
-                  </button>
-                </div>
-                {/* body — content scales with the window so a bigger window = bigger, clearer UI */}
-                <div
-                  className="cz-body"
-                  style={{ flex: 1, overflow: 'auto', padding: 12, zoom: bodyScale }}
-                >
-                  {p.node}
-                </div>
-                {/* resize handles on every edge + corner — available even when maximized,
-                  so dragging an edge inward shrinks it back out of full-screen */}
-                {RESIZE_DIRS.map((dir) => (
+                    <button
+                      className="cz-btn btn"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        idealSize(p.id)
+                      }}
+                      title="Fit to content — size this window to show everything, no scroll"
+                      style={czBtn}
+                    >
+                      ▭
+                    </button>
+                    <button
+                      className="cz-btn btn"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        toggleMax(p.id)
+                      }}
+                      title={w.max ? 'Restore' : 'Full screen'}
+                      style={czBtn}
+                    >
+                      {w.max ? '🗗' : '⛶'}
+                    </button>
+                  </div>
+                  {/* body — content scales with the window so a bigger window = bigger, clearer UI */}
                   <div
-                    key={dir}
-                    onPointerDown={(e) => onResizeStart(e, p.id, dir)}
-                    style={handleStyle(dir)}
-                  />
-                ))}
-              </div>
-            )
-          })}
+                    className="cz-body"
+                    style={{ flex: 1, overflow: 'auto', padding: 12, zoom: bodyScale }}
+                  >
+                    {p.node}
+                  </div>
+                  {/* resize handles on every edge + corner — available even when maximized,
+                  so dragging an edge inward shrinks it back out of full-screen */}
+                  {RESIZE_DIRS.map((dir) => (
+                    <div
+                      key={dir}
+                      onPointerDown={(e) => onResizeStart(e, p.id, dir)}
+                      style={handleStyle(dir)}
+                    />
+                  ))}
+                </div>
+              )
+            })}
 
-          {/* snap preview overlay */}
-          {snap && host && (
-            <div
-              style={{
-                position: 'fixed',
-                left: host.left + 4 + snap.x,
-                top: host.top + 4 + snap.y,
-                width: snap.w,
-                height: snap.h,
-                border: '2px solid var(--accent, #7c6af7)',
-                background: 'rgba(124,106,247,0.16)',
-                borderRadius: 12,
-                pointerEvents: 'none',
-                zIndex: 9999,
-                transition: 'left .08s, top .08s, width .08s, height .08s',
-              }}
-            />
-          )}
+            {/* snap preview overlay — world coords, so it scales with the view */}
+            {snap && (
+              <div
+                style={{
+                  position: 'absolute',
+                  left: snap.x,
+                  top: snap.y,
+                  width: snap.w,
+                  height: snap.h,
+                  border: '2px solid var(--accent, #7c6af7)',
+                  background: 'rgba(124,106,247,0.16)',
+                  borderRadius: 12,
+                  pointerEvents: 'none',
+                  zIndex: 9999,
+                  transition: 'left .08s, top .08s, width .08s, height .08s',
+                }}
+              />
+            )}
+          </div>
         </div>
       </div>
     )
