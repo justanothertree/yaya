@@ -25,6 +25,8 @@ export function SettingsMenu({
   onToggleCanvas,
   canvasCapable,
   desktop,
+  ambientOn,
+  onToggleAmbient,
   authed,
   isAdmin,
   name,
@@ -41,6 +43,8 @@ export function SettingsMenu({
   onToggleCanvas: () => void
   canvasCapable: boolean
   desktop: boolean
+  ambientOn: boolean
+  onToggleAmbient: () => void
   authed: boolean
   isAdmin: boolean
   /** their actual name, once the profile lands — an email address is not a name */
@@ -175,6 +179,17 @@ export function SettingsMenu({
               ))}
             </span>
           </div>
+
+          <button
+            className="nav-menu-row"
+            role="menuitemcheckbox"
+            aria-checked={ambientOn}
+            onClick={onToggleAmbient}
+            title="A soft glow behind the page that drifts and follows your cursor"
+          >
+            <span>✨ Ambient glow</span>
+            <span className={'nav-menu-switch' + (ambientOn ? ' is-on' : '')} aria-hidden />
+          </button>
 
           {desktop && (
             <button

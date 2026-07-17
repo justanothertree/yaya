@@ -426,6 +426,13 @@ body {
 html {
   background: var(--bg);
 }
+/* Lift the app above the ambient backdrop (a fixed canvas portaled to <body> at z 0).
+   With the app at z 1 the glow can only ever paint BEHIND content, never over text —
+   and the canvas-mode surface (z 50) still covers both, keeping its own ground. */
+#root {
+  position: relative;
+  z-index: 1;
+}
 #root {
   min-height: 100%;
 }
@@ -1045,6 +1052,19 @@ section[id] {
 }
 .btn:hover {
   transform: translateY(-1px);
+}
+/* weight: a button compresses under the press — the click answers the hand */
+.btn:active:not(:disabled) {
+  transform: translateY(0) scale(0.95);
+}
+.cz-btn:active:not(:disabled) {
+  transform: scale(0.88);
+}
+@media (prefers-reduced-motion: reduce) {
+  .btn:active:not(:disabled),
+  .cz-btn:active:not(:disabled) {
+    transform: none;
+  }
 }
 .btn:disabled {
   opacity: 0.6;
