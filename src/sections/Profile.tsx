@@ -16,6 +16,7 @@ type ProfileData = {
   first_name: string | null
   member_since: string
   is_me: boolean
+  friend_status: 'friends' | 'pending_out' | 'pending_in' | null
   shared_circuits: { name: string; people: string[] }[]
   movies_rated: number
   snake_best: { score: number; game_mode: string | null; achieved: string } | null
@@ -96,6 +97,25 @@ export function Profile({ authed }: { authed: boolean }) {
     )
 
   const p = state.p
+  async function act(
+    kind: 'request_friend' | 'remove_friend' | 'respond_accept' | 'respond_decline',
+  ) {
+    const sb = getSupabaseClient()
+    const { error } =
+      kind === 'respond_accept' || kind === 'respond_decline'
+        ? await sb.rpc('respond_friend', { p_username: u, p_accept: kind === 'respond_accept' })
+        : await sb.rpc(kind, { p_username: u })
+    if (!error) {
+      // refetch so the button reflects the new standing
+      const { data } = await sb.rpc('get_member_profile', { p_username: u })
+      if (data) setState({ kind: 'ok', p: data as ProfileData })
+    }
+  }
+  async function message() {
+    const sb = getSupabaseClient()
+    const { data, error } = await sb.rpc('open_dm', { p_username: u })
+    if (!error && data) window.location.hash = '#circuit?tab=chat&room=' + data
+  }
   const display = p.first_name || p.username
   const initial = display[0]?.toUpperCase() ?? '★'
 
@@ -134,6 +154,53 @@ export function Profile({ authed }: { authed: boolean }) {
             @{p.username} · member since {p.member_since}
           </p>
         </div>
+        {!p.is_me && (
+          <span style={{ marginLeft: 'auto', display: 'flex', gap: '0.4rem', flexShrink: 0 }}>
+            {p.friend_status === 'friends' && (
+              <>
+                <button className="btn" onClick={() => void message()}>
+                  💬 Message
+                </button>
+                <button
+                  className="btn"
+                  title="Remove friend"
+                  onClick={() => void act('remove_friend')}
+                  style={{ opacity: 0.7 }}
+                >
+                  ✓ Friends
+                </button>
+              </>
+            )}
+            {p.friend_status === 'pending_out' && (
+              <button
+                className="btn"
+                title="Cancel request"
+                onClick={() => void act('remove_friend')}
+              >
+                Request sent
+              </button>
+            )}
+            {p.friend_status === 'pending_in' && (
+              <>
+                <button className="btn" onClick={() => void act('respond_accept')}>
+                  Accept friend
+                </button>
+                <button
+                  className="btn"
+                  style={{ opacity: 0.7 }}
+                  onClick={() => void act('respond_decline')}
+                >
+                  Decline
+                </button>
+              </>
+            )}
+            {!p.friend_status && (
+              <button className="btn" onClick={() => void act('request_friend')}>
+                ➕ Add friend
+              </button>
+            )}
+          </span>
+        )}
       </div>
 
       <div

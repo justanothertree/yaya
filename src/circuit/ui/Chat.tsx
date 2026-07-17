@@ -38,8 +38,15 @@ export function Chat({ authed = false }: { authed?: boolean }) {
       if (!live || !data) return
       const rs = data as Room[]
       setRooms(rs)
-      // land in your circuit's room; the lounge is one chip away
-      setRoom(rs.find((r) => r.kind === 'circuit') ?? rs[0] ?? null)
+      // a ?room= deep link (the profile's Message button) wins; otherwise land in your
+      // circuit's room with the lounge one chip away
+      const wanted = new URLSearchParams(window.location.hash.split('?')[1] ?? '').get('room')
+      setRoom(
+        (wanted ? rs.find((r) => r.id === wanted) : undefined) ??
+          rs.find((r) => r.kind === 'circuit') ??
+          rs[0] ??
+          null,
+      )
     })
     return () => {
       live = false
