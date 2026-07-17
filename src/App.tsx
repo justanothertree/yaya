@@ -240,12 +240,10 @@ export default function App() {
     window.addEventListener('resize', onResize)
     return () => window.removeEventListener('resize', onResize)
   }, [])
-  // Canvas mode now PERSISTS across tab navigation — clicking another tab keeps you in
-  // canvas (each tab swaps in its own windows). It only auto-closes when the viewport
-  // drops below desktop (canvas is desktop-only).
-  useEffect(() => {
-    if (!desktop) setCanvasOpen(false)
-  }, [desktop])
+  // Canvas is desktop-only, but that's enforced where it RENDERS (canvasOpen && desktop)
+  // — never by flipping the state. Auto-closing on !desktop kicked Evan out of canvas
+  // when dragging the browser between monitors (the drag fires transient resizes); now a
+  // narrow moment just renders the normal page and canvas is still there on the far side.
   const topRef = useRef<HTMLDivElement>(null)
   const liveRef = useRef<HTMLDivElement>(null)
   const navLinksRef = useRef<HTMLDivElement>(null)

@@ -799,12 +799,23 @@ section[id] {
   margin-left: 0.5rem;
 }
 .nav-cog {
-  padding: 0.32rem 0.5rem;
+  /* fixed height = the nav row's own (2.15rem): the signed-in avatar is taller than the
+     signed-out ⚙ glyph, and an unclamped cog grew the whole bar the moment you signed in */
+  height: 2.15rem;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 0.5rem;
   font-size: 0.95rem;
   line-height: 1;
   background: var(--control-bg, rgba(127, 127, 127, 0.12));
   color: var(--text);
   border: 1px solid var(--border);
+}
+.nav-cog .nav-cog-avatar {
+  width: 1.4rem;
+  height: 1.4rem;
+  font-size: 0.72rem;
 }
 .nav-cog.is-open {
   background: var(--accent);
