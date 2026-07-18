@@ -848,15 +848,20 @@ export function CircuitCanvas({
     body.style.width = 'max-content'
     const wNeed = Math.ceil(body.getBoundingClientRect().width)
     body.style.width = ''
+    body.classList.remove('cz-measure')
     const w = Math.min(b.w, Math.max(MIN_W, wNeed + 4))
-    // height the content needs once wrapped to that width
+    // Height is measured under the window's REAL final conditions: its width AND its
+    // content zoom. Narrow windows render shrunk (scaleFor < 1) and reflow wider, so
+    // measuring at zoom 1 overshot — fitted windows came out tall and skinny with dead
+    // space at the bottom. scrollHeight is in layout px; times the zoom = rendered px.
+    const sFit = scaleFor(w)
     el.style.width = w + 'px'
-    const hNeed = Math.ceil(body.scrollHeight)
+    body.style.zoom = String(sFit)
+    const hNeed = Math.ceil(body.scrollHeight * sFit)
     // restore the live styles (the state update below re-applies the real ones)
     body.style.zoom = sZoom
     body.style.width = sBodyW
     el.style.width = sElW
-    body.classList.remove('cz-measure')
     // just 2px slack — enough to dodge sub-pixel rounding without leaving visible dead space
     const h = Math.min(b.h, Math.max(MIN_H, hNeed + barH + 2))
     // armed only now — a transition during the measurement above would animate the probe
