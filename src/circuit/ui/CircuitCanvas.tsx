@@ -919,9 +919,11 @@ export function CircuitCanvas({
     const host = hostRef.current
     if (host) {
       const v = viewRef.current
+      // land at the mosaic's TOP, horizontally centred — centring vertically put the
+      // first rows above the view and their title bars out of reach
       const pn = clampPan({
         x: ox + blockW / 2 - host.clientWidth / (2 * v),
-        y: oy + blockH / 2 - host.clientHeight / (2 * v),
+        y: oy - GAP,
       })
       panRef.current = pn
       setPanState(pn)

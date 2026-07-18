@@ -521,10 +521,10 @@ export default function App() {
         e.preventDefault()
         return
       }
-      // Arrow navigation across sections
-      // On Snake page, Arrow keys control page nav unless the game has control (focused/playing)
-      const onSnake = active === 'snake'
-      const allowPageNav = !onSnake || (onSnake && !snakeHasControl)
+      // Arrow navigation across sections — but never while the snake game has control.
+      // The game can live anywhere now (its page, or a pinned canvas window over any
+      // tab), so the guard follows the GAME, not the page.
+      const allowPageNav = !snakeHasControl
       if (allowPageNav) {
         const order = navOrder(
           hasFinanceSupabaseEnv(),
