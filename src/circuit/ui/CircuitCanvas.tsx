@@ -40,6 +40,9 @@ const GAP = 12
 const MAP_W = 120
 // the canvas plane extends 2x the screen in each direction - room to park windows off-view
 const WORLD = 2
+// the plane can GROW past its default when a fit-all mosaic needs more room — shrinking
+// every window to fit a fixed plane made them all scroll, which defeats fitting
+const MAX_WORLD = 4
 // One box per pinned window, shared by every tab's canvas — so a pinned window stays
 // exactly where you put it as you move page to page.
 const PIN_KEY = 'canvas_pins_v1'
@@ -62,7 +65,7 @@ function saveLayout(key: string, l: Layout) {
 const loadPins = (): Layout => loadLayout(PIN_KEY) || {}
 // where you LEFT the view (pan + zoom), per canvas — without this every remount reset to
 // the plane's centre, and any windows arranged above it sat off-view over the top edge
-type SavedView = { x: number; y: number; v: number }
+type SavedView = { x: number; y: number; v: number; m?: number }
 function loadView(key: string): SavedView | null {
   try {
     const raw = localStorage.getItem('canvas_view_v1:' + key)
@@ -181,6 +184,9 @@ export function CircuitCanvas({
   // visibility is React state (a render on show/hide is fine); the viewport RECT stays
   // ref-driven so per-frame panning never renders
   const [mapOn, setMapOn] = useState(false)
+  // plane size multiplier (>= WORLD); fit-all raises it when the mosaic needs the space
+  const [worldMul, setWorldMul] = useState(WORLD)
+  const worldMulRef = useRef(WORLD)
   // the canvas wallpaper honours the same cog toggle as the page glow
   const [ambientOn] = useState(
     () => typeof localStorage === 'undefined' || localStorage.getItem('ambient_v1') !== '0',
@@ -254,14 +260,16 @@ export function CircuitCanvas({
   const worldBox = useCallback(() => {
     const host = hostRef.current
     if (!host) return { w: 1800, h: 1400 }
-    return { w: host.clientWidth * WORLD, h: host.clientHeight * WORLD }
+    const m = worldMulRef.current
+    return { w: host.clientWidth * m, h: host.clientHeight * m }
   }, [])
   const clampPan = useCallback((pn: { x: number; y: number }) => {
     const host = hostRef.current
     if (!host) return pn
     const v = viewRef.current
-    const maxX = Math.max(0, host.clientWidth * WORLD - host.clientWidth / v)
-    const maxY = Math.max(0, host.clientHeight * WORLD - host.clientHeight / v)
+    const m = worldMulRef.current
+    const maxX = Math.max(0, host.clientWidth * m - host.clientWidth / v)
+    const maxY = Math.max(0, host.clientHeight * m - host.clientHeight / v)
     return { x: Math.min(maxX, Math.max(0, pn.x)), y: Math.min(maxY, Math.max(0, pn.y)) }
   }, [])
   const worldTransform = (pn: { x: number; y: number }, v: number) =>
@@ -271,7 +279,7 @@ export function CircuitCanvas({
     const mapEl = mapRef.current
     const vp = vpRef.current
     if (!host || !mapEl || !vp) return
-    const scale = MAP_W / (host.clientWidth * WORLD)
+    const scale = MAP_W / (host.clientWidth * worldMulRef.current)
     setMapOn(true)
     vp.style.left = panRef.current.x * scale + 'px'
     vp.style.top = panRef.current.y * scale + 'px'
@@ -447,6 +455,10 @@ export function CircuitCanvas({
     const ey = hostEl ? (hostEl.clientHeight * (WORLD - 1)) / 2 : 0
     // come back where you left off; the centre is only the first-visit default
     const sv = loadView(storeKey(panes, pinnedIds))
+    if (sv?.m && sv.m > WORLD) {
+      worldMulRef.current = Math.min(MAX_WORLD, sv.m)
+      setWorldMul(worldMulRef.current)
+    }
     const p0 = sv ? { x: sv.x, y: sv.y } : { x: ex, y: ey }
     if (sv && sv.v !== 1) {
       viewRef.current = sv.v
@@ -522,9 +534,9 @@ export function CircuitCanvas({
 
   // remember where the view sits, so the next mount opens on your arrangement
   useEffect(() => {
-    saveView(storeKey(panes, pinnedIds), { x: pan.x, y: pan.y, v: view })
+    saveView(storeKey(panes, pinnedIds), { x: pan.x, y: pan.y, v: view, m: worldMul })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pan, view])
+  }, [pan, view, worldMul])
 
   // Persist whenever layout settles — this tab's own windows to its layout, pinned ones to
   // the shared pin store so wherever you drop a pinned window is where the next tab shows it.
@@ -877,8 +889,14 @@ export function CircuitCanvas({
     const wNeed = Math.ceil(body.getBoundingClientRect().width)
     body.style.width = ''
     body.classList.remove('cz-measure')
+    // wide candidates matter: a long text line only stops scrolling once the window is
+    // wide enough to hold its paragraphs at sane heights
     const cands = Array.from(
-      new Set([wNeed + 4, 560, 700, 860].map((c) => Math.round(Math.min(b.w, Math.max(MIN_W, c))))),
+      new Set(
+        [wNeed + 4, 560, 700, 860, 1060, 1280, b.w].map((c) =>
+          Math.round(Math.min(b.w, Math.max(MIN_W, c))),
+        ),
+      ),
     ).sort((c1, c2) => c1 - c2)
     let best: { w: number; h: number; score: number } | null = null
     for (const cw of cands) {
@@ -887,8 +905,9 @@ export function CircuitCanvas({
       body.style.zoom = String(sc)
       const rawH = Math.ceil(body.scrollHeight * sc) + barH + 2
       const ch = Math.min(b.h, Math.max(MIN_H, rawH))
-      // a scrolling candidate only wins if nothing fits; wider wins near-ties
-      const score = (rawH > b.h ? 1e9 : 0) + cw * ch
+      // a scrolling candidate only wins if nothing fits — and then the LEAST overflow
+      // wins, not the least area (least area picked narrow towers that scrolled forever)
+      const score = rawH > b.h ? 1e9 + rawH : cw * ch
       if (!best || score <= best.score * 1.05) best = { w: cw, h: ch, score }
     }
     body.style.zoom = sZoom
@@ -931,9 +950,21 @@ export function CircuitCanvas({
     if (cur.ids.length) rows.push(cur)
     let blockW = Math.max(...rows.map((r) => r.w))
     let blockH = rows.reduce((acc, r) => acc + r.h, 0) + GAP * (rows.length - 1)
+    // GROW the plane to hold the mosaic rather than shrinking the windows into it —
+    // shrinking made every window scroll, which is exactly what fitting is for. Only if
+    // the mosaic still won't fit at MAX_WORLD does anything scale down.
+    const host0 = hostRef.current
+    if (host0) {
+      const needMul = Math.max(
+        WORLD,
+        Math.ceil(((blockW + 4 * GAP) / host0.clientWidth) * 10) / 10,
+        Math.ceil(((blockH + 4 * GAP) / host0.clientHeight) * 10) / 10,
+      )
+      const mul = Math.min(MAX_WORLD, needMul)
+      worldMulRef.current = mul
+      setWorldMul(mul)
+    }
     const wb = worldBox()
-    // the mosaic must FIT THE PLANE — beyond its edge, clamps pile windows into a heap.
-    // If it's too big, every window scales down uniformly (a little scroll beats chaos).
     const f = Math.min(1, (wb.w - 2 * GAP) / blockW, (wb.h - 2 * GAP) / blockH)
     if (f < 1) {
       for (const id of ids) {
@@ -1173,8 +1204,8 @@ export function CircuitCanvas({
   function surface(inlineBar: ReactNode) {
     const hw = hostRef.current?.clientWidth ?? 1200
     const hh = hostRef.current?.clientHeight ?? 800
-    const mScale = MAP_W / (hw * WORLD)
-    const mapH = hh * WORLD * mScale
+    const mScale = MAP_W / (hw * worldMul)
+    const mapH = hh * worldMul * mScale
     return (
       <div
         style={{
@@ -1261,8 +1292,8 @@ export function CircuitCanvas({
               position: 'absolute',
               top: 0,
               left: 0,
-              width: `${WORLD * 100}%`,
-              height: `${WORLD * 100}%`,
+              width: `${worldMul * 100}%`,
+              height: `${worldMul * 100}%`,
               transform: worldTransform(pan, view),
               transformOrigin: '0 0',
             }}
