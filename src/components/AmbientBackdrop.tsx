@@ -57,10 +57,13 @@ export function AmbientBackdrop({
   section,
   theme,
   enabled,
+  inline = false,
 }: {
   section: string
   theme: string
   enabled: boolean
+  /** render inside the parent element (canvas-mode wallpaper) instead of behind the page */
+  inline?: boolean
 }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const sectionRef = useRef(section)
@@ -90,12 +93,22 @@ export function AmbientBackdrop({
     let cur: RGB[] | null = null
 
     const dpr = Math.min(1.5, window.devicePixelRatio || 1)
+    const parent = inline ? cv.parentElement : null
+    let W = innerWidth
+    let H = innerHeight
     const size = () => {
-      cv.width = Math.max(1, Math.floor(innerWidth * dpr))
-      cv.height = Math.max(1, Math.floor(innerHeight * dpr))
+      W = parent ? parent.clientWidth : innerWidth
+      H = parent ? parent.clientHeight : innerHeight
+      cv.width = Math.max(1, Math.floor(W * dpr))
+      cv.height = Math.max(1, Math.floor(H * dpr))
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
     }
     size()
+    let ro: ResizeObserver | null = null
+    if (parent && typeof ResizeObserver !== 'undefined') {
+      ro = new ResizeObserver(() => size())
+      ro.observe(parent)
+    }
 
     const css = (v: string) => getComputedStyle(document.documentElement).getPropertyValue(v).trim()
     const targets = (): RGB[] => {
@@ -108,8 +121,8 @@ export function AmbientBackdrop({
     const baseAlpha = () => (lum(parseColor(css('--bg') || '#08080f')) > 0.5 ? 0.045 : 0.08)
 
     const paint = () => {
-      const w = innerWidth
-      const h = innerHeight
+      const w = W
+      const h = H
       ctx.clearRect(0, 0, w, h)
       const tgt = targets()
       if (!cur) cur = tgt.map((c) => ({ ...c }))
@@ -166,8 +179,14 @@ export function AmbientBackdrop({
     }
 
     const onMove = (e: PointerEvent) => {
-      mx = e.clientX / innerWidth
-      my = e.clientY / innerHeight
+      if (parent) {
+        const r = parent.getBoundingClientRect()
+        mx = (e.clientX - r.left) / Math.max(1, r.width)
+        my = (e.clientY - r.top) / Math.max(1, r.height)
+      } else {
+        mx = e.clientX / innerWidth
+        my = e.clientY / innerHeight
+      }
     }
     const onResize = () => {
       size()
@@ -191,15 +210,24 @@ export function AmbientBackdrop({
     return () => {
       running = false
       cancelAnimationFrame(raf)
+      ro?.disconnect()
       repaintStill.current = null
       window.removeEventListener('pointermove', onMove)
       window.removeEventListener('resize', onResize)
     }
     // theme in deps: the CSS vars it reads change with the theme, and reduced-motion's
     // single paint would otherwise keep the old ground
-  }, [enabled, theme])
+  }, [enabled, theme, inline])
 
   if (!enabled || typeof document === 'undefined') return null
+  if (inline)
+    return (
+      <canvas
+        ref={canvasRef}
+        aria-hidden
+        style={{ position: 'absolute', inset: 0, zIndex: 0, pointerEvents: 'none' }}
+      />
+    )
   return createPortal(
     <canvas
       ref={canvasRef}
