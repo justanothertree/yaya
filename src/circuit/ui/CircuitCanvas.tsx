@@ -60,6 +60,24 @@ function saveLayout(key: string, l: Layout) {
   }
 }
 const loadPins = (): Layout => loadLayout(PIN_KEY) || {}
+// where you LEFT the view (pan + zoom), per canvas — without this every remount reset to
+// the plane's centre, and any windows arranged above it sat off-view over the top edge
+type SavedView = { x: number; y: number; v: number }
+function loadView(key: string): SavedView | null {
+  try {
+    const raw = localStorage.getItem('canvas_view_v1:' + key)
+    return raw ? (JSON.parse(raw) as SavedView) : null
+  } catch {
+    return null
+  }
+}
+function saveView(key: string, sv: SavedView) {
+  try {
+    localStorage.setItem('canvas_view_v1:' + key, JSON.stringify(sv))
+  } catch {
+    /* ignore */
+  }
+}
 function savePins(boxes: Layout) {
   saveLayout(PIN_KEY, { ...loadPins(), ...boxes })
 }
@@ -427,8 +445,15 @@ export function CircuitCanvas({
     const hostEl = hostRef.current
     const ex = hostEl ? (hostEl.clientWidth * (WORLD - 1)) / 2 : 0
     const ey = hostEl ? (hostEl.clientHeight * (WORLD - 1)) / 2 : 0
-    panRef.current = { x: ex, y: ey }
-    setPanState({ x: ex, y: ey })
+    // come back where you left off; the centre is only the first-visit default
+    const sv = loadView(storeKey(panes, pinnedIds))
+    const p0 = sv ? { x: sv.x, y: sv.y } : { x: ex, y: ey }
+    if (sv && sv.v !== 1) {
+      viewRef.current = sv.v
+      setView(sv.v)
+    }
+    panRef.current = p0
+    setPanState(p0)
     // only this tab's OWN panes come from its layout; pinned ones carry their box with them
     const own = panes.filter((p) => !pinnedIds.includes(p.id))
     const saved = loadLayout(storeKey(panes, pinnedIds))
@@ -494,6 +519,12 @@ export function CircuitCanvas({
       return next
     })
   }, [panes, hostBox, worldBox])
+
+  // remember where the view sits, so the next mount opens on your arrangement
+  useEffect(() => {
+    saveView(storeKey(panes, pinnedIds), { x: pan.x, y: pan.y, v: view })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pan, view])
 
   // Persist whenever layout settles — this tab's own windows to its layout, pinned ones to
   // the shared pin store so wherever you drop a pinned window is where the next tab shows it.
