@@ -7,6 +7,7 @@ import { createPortal } from 'react-dom'
 import { showToast } from '../toast'
 import { site } from '../../config/site'
 import { IconGitHub, IconLinkedIn } from '../../components/Icons'
+import { AmbientBackdrop } from '../../components/AmbientBackdrop'
 
 export type CanvasPane = { id: string; title: string; node: ReactNode }
 
@@ -162,6 +163,10 @@ export function CircuitCanvas({
   // visibility is React state (a render on show/hide is fine); the viewport RECT stays
   // ref-driven so per-frame panning never renders
   const [mapOn, setMapOn] = useState(false)
+  // the canvas wallpaper honours the same cog toggle as the page glow
+  const [ambientOn] = useState(
+    () => typeof localStorage === 'undefined' || localStorage.getItem('ambient_v1') !== '0',
+  )
   const [snap, setSnap] = useState<{ x: number; y: number; w: number; h: number } | null>(null)
   const drag = useRef<{
     id: string
@@ -814,6 +819,118 @@ export function CircuitCanvas({
   // Width = the content's natural unwrapped width; height = what that width needs. Both
   // clamped to the canvas. Measured at scale 1; the window's actual scale is ≤1 (wider
   // effective layout), so the fit always has a little slack rather than clipping.
+  // Measure one window's best fit. Tries several widths — a wider window that reflows
+  // shorter beats a skinny tower (word-wrap is what makes towers), so among candidates
+  // that need no scrollbar we take the least AREA, with a nudge toward wide. Height is
+  // read under the candidate's real content zoom, so fit ends where the scrollbar would
+  // begin.
+  function measureFit(id: string): { w: number; h: number } | null {
+    const el = winRefs.current[id]
+    const body = el?.querySelector<HTMLElement>('.cz-body')
+    const b = hostBox()
+    if (!el || !body) return null
+    const bar = el.querySelector<HTMLElement>('.cz-bar')
+    const barH = Math.ceil(bar?.getBoundingClientRect().height ?? 38)
+    const sZoom = body.style.zoom
+    const sBodyW = body.style.width
+    const sElW = el.style.width
+    const sDisp = el.style.display
+    el.style.display = 'flex' // minimized windows are display:none and would measure 0
+    body.classList.add('cz-measure')
+    body.style.zoom = '1'
+    body.style.width = 'max-content'
+    const wNeed = Math.ceil(body.getBoundingClientRect().width)
+    body.style.width = ''
+    body.classList.remove('cz-measure')
+    const cands = Array.from(
+      new Set([wNeed + 4, 560, 700, 860].map((c) => Math.round(Math.min(b.w, Math.max(MIN_W, c))))),
+    ).sort((c1, c2) => c1 - c2)
+    let best: { w: number; h: number; score: number } | null = null
+    for (const cw of cands) {
+      const sc = scaleFor(cw)
+      el.style.width = cw + 'px'
+      body.style.zoom = String(sc)
+      const rawH = Math.ceil(body.scrollHeight * sc) + barH + 2
+      const ch = Math.min(b.h, Math.max(MIN_H, rawH))
+      // a scrolling candidate only wins if nothing fits; wider wins near-ties
+      const score = (rawH > b.h ? 1e9 : 0) + cw * ch
+      if (!best || score <= best.score * 1.05) best = { w: cw, h: ch, score }
+    }
+    body.style.zoom = sZoom
+    body.style.width = sBodyW
+    el.style.width = sElW
+    el.style.display = sDisp
+    return best && { w: best.w, h: best.h }
+  }
+
+  // ▣ Fit all: every window at its fitted size, packed around the plane's centre —
+  // the whole site laid out as a mosaic you pan through.
+  function fitTile() {
+    const sizes: Record<string, { w: number; h: number }> = {}
+    panes.forEach((p) => {
+      const m = measureFit(p.id)
+      if (m) sizes[p.id] = m
+    })
+    const ids = panes.map((p) => p.id).filter((id) => sizes[id])
+    if (!ids.length) return
+    ids.sort((a2, b2) => sizes[b2].h - sizes[a2].h)
+    const totalArea = ids.reduce((acc, id) => acc + (sizes[id].w + GAP) * (sizes[id].h + GAP), 0)
+    const targetW = Math.max(...ids.map((id) => sizes[id].w), Math.sqrt(totalArea * 1.6))
+    const rows: { ids: string[]; w: number; h: number }[] = []
+    let cur = { ids: [] as string[], w: 0, h: 0 }
+    for (const id of ids) {
+      const sz = sizes[id]
+      if (cur.w > 0 && cur.w + sz.w + GAP > targetW) {
+        rows.push(cur)
+        cur = { ids: [], w: 0, h: 0 }
+      }
+      cur.w += (cur.w ? GAP : 0) + sz.w
+      cur.h = Math.max(cur.h, sz.h)
+      cur.ids.push(id)
+    }
+    if (cur.ids.length) rows.push(cur)
+    const blockW = Math.max(...rows.map((r) => r.w))
+    const blockH = rows.reduce((acc, r) => acc + r.h, 0) + GAP * (rows.length - 1)
+    const wb = worldBox()
+    const ox = Math.max(0, (wb.w - blockW) / 2)
+    const oy = Math.max(0, (wb.h - blockH) / 2)
+    const next: Layout = {}
+    let yy = oy
+    for (const r of rows) {
+      let xx = ox + (blockW - r.w) / 2
+      for (const id of r.ids) {
+        const sz = sizes[id]
+        next[id] = {
+          x: xx,
+          y: yy + (r.h - sz.h) / 2,
+          w: sz.w,
+          h: sz.h,
+          min: false,
+          max: false,
+          z: ++maxZ.current,
+        }
+        xx += sz.w + GAP
+      }
+      yy += r.h + GAP
+    }
+    panes.forEach((p) => settle(p.id))
+    setWins((prev) => ({ ...prev, ...next }))
+    // centre the view on the mosaic
+    const host = hostRef.current
+    if (host) {
+      const v = viewRef.current
+      const pn = clampPan({
+        x: ox + blockW / 2 - host.clientWidth / (2 * v),
+        y: oy + blockH / 2 - host.clientHeight / (2 * v),
+      })
+      panRef.current = pn
+      setPanState(pn)
+      if (worldRef.current) worldRef.current.style.transform = worldTransform(pn, v)
+      pokeMap()
+    }
+    showToast('▣ Everything, fitted')
+  }
+
   function idealSize(id: string) {
     const el = winRefs.current[id]
     const body = el?.querySelector<HTMLElement>('.cz-body')
@@ -833,37 +950,10 @@ export function CircuitCanvas({
       focus(id)
       return
     }
-    const bar = el.querySelector<HTMLElement>('.cz-bar')
-    const barH = Math.ceil(bar?.getBoundingClientRect().height ?? 38)
-    const sZoom = body.style.zoom
-    const sBodyW = body.style.width
-    const sElW = el.style.width
-    // measure at natural scale so the numbers are the content's own, not the current zoom's
-    body.style.zoom = '1'
-    // natural unwrapped width (content + the body's own padding), forced no-wrap.
-    // cz-measure caps media while we look: images/svg report their FILE's intrinsic width
-    // at max-content (a wide screenshot voted for a 4,600px window), but media is
-    // flexible — only text and controls should decide the fit
-    body.classList.add('cz-measure')
-    body.style.width = 'max-content'
-    const wNeed = Math.ceil(body.getBoundingClientRect().width)
-    body.style.width = ''
-    body.classList.remove('cz-measure')
-    const w = Math.min(b.w, Math.max(MIN_W, wNeed + 4))
-    // Height is measured under the window's REAL final conditions: its width AND its
-    // content zoom. Narrow windows render shrunk (scaleFor < 1) and reflow wider, so
-    // measuring at zoom 1 overshot — fitted windows came out tall and skinny with dead
-    // space at the bottom. scrollHeight is in layout px; times the zoom = rendered px.
-    const sFit = scaleFor(w)
-    el.style.width = w + 'px'
-    body.style.zoom = String(sFit)
-    const hNeed = Math.ceil(body.scrollHeight * sFit)
-    // restore the live styles (the state update below re-applies the real ones)
-    body.style.zoom = sZoom
-    body.style.width = sBodyW
-    el.style.width = sElW
-    // just 2px slack — enough to dodge sub-pixel rounding without leaving visible dead space
-    const h = Math.min(b.h, Math.max(MIN_H, hNeed + barH + 2))
+    const m = measureFit(id)
+    if (!m) return
+    const w = m.w
+    const h = m.h
     // armed only now — a transition during the measurement above would animate the probe
     // width and make scrollHeight read against the old layout
     settle(id)
@@ -983,6 +1073,7 @@ export function CircuitCanvas({
             <span aria-hidden style={{ fontSize: '0.7rem' }}>
               {min ? '▫' : '▪'}
             </span>{' '}
+            {pinnedIds.includes(p.id) ? '📌 ' : ''}
             {p.title}
           </button>
         )
@@ -1005,6 +1096,13 @@ export function CircuitCanvas({
       />
       <button className="btn" onClick={tile} title="Tile the open windows to fill the canvas">
         ⊞ Tile
+      </button>
+      <button
+        className="btn"
+        onClick={fitTile}
+        title="Fit every window to its content and arrange them around the centre — pan to explore"
+      >
+        ▣ Fit all
       </button>
     </div>
   )
@@ -1055,6 +1153,7 @@ export function CircuitCanvas({
             borderRadius: 10,
           }}
         >
+          {ambientOn && <AmbientBackdrop inline section="home" theme="" enabled />}
           {/* the site's signature, canvas edition — copyright, build and socials were the
               one thing full-screen canvas hid entirely. Bottom-right, under the windows. */}
           <div
