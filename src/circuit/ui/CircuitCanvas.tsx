@@ -827,8 +827,12 @@ export function CircuitCanvas({
   function measureFit(id: string): { w: number; h: number } | null {
     const el = winRefs.current[id]
     const body = el?.querySelector<HTMLElement>('.cz-body')
-    const b = hostBox()
-    if (!el || !body) return null
+    const host = hostRef.current
+    if (!el || !body || !host) return null
+    // fits target the 100%-zoom view — Evan's ideal is navigating and organizing at
+    // 100% — NOT the current-zoom viewport, which balloons when zoomed out and made
+    // fitted windows bigger than a screen
+    const b = { w: host.clientWidth - 8, h: host.clientHeight - 8 }
     const bar = el.querySelector<HTMLElement>('.cz-bar')
     const barH = Math.ceil(bar?.getBoundingClientRect().height ?? 38)
     const sZoom = body.style.zoom
@@ -871,7 +875,12 @@ export function CircuitCanvas({
       const m = measureFit(p.id)
       if (m) sizes[p.id] = m
     })
-    const ids = panes.map((p) => p.id).filter((id) => sizes[id])
+    // every pane joins the mosaic — an unmeasured one gets the default box rather than
+    // staying behind to overlap the others
+    panes.forEach((p) => {
+      if (!sizes[p.id]) sizes[p.id] = { w: IDEAL_W, h: IDEAL_H }
+    })
+    const ids = panes.map((p) => p.id)
     if (!ids.length) return
     ids.sort((a2, b2) => sizes[b2].h - sizes[a2].h)
     const totalArea = ids.reduce((acc, id) => acc + (sizes[id].w + GAP) * (sizes[id].h + GAP), 0)
@@ -889,11 +898,28 @@ export function CircuitCanvas({
       cur.ids.push(id)
     }
     if (cur.ids.length) rows.push(cur)
-    const blockW = Math.max(...rows.map((r) => r.w))
-    const blockH = rows.reduce((acc, r) => acc + r.h, 0) + GAP * (rows.length - 1)
+    let blockW = Math.max(...rows.map((r) => r.w))
+    let blockH = rows.reduce((acc, r) => acc + r.h, 0) + GAP * (rows.length - 1)
     const wb = worldBox()
-    const ox = Math.max(0, (wb.w - blockW) / 2)
-    const oy = Math.max(0, (wb.h - blockH) / 2)
+    // the mosaic must FIT THE PLANE — beyond its edge, clamps pile windows into a heap.
+    // If it's too big, every window scales down uniformly (a little scroll beats chaos).
+    const f = Math.min(1, (wb.w - 2 * GAP) / blockW, (wb.h - 2 * GAP) / blockH)
+    if (f < 1) {
+      for (const id of ids) {
+        sizes[id] = {
+          w: Math.max(MIN_W, Math.floor(sizes[id].w * f)),
+          h: Math.max(MIN_H, Math.floor(sizes[id].h * f)),
+        }
+      }
+      for (const r of rows) {
+        r.w = Math.floor(r.w * f)
+        r.h = Math.floor(r.h * f)
+      }
+      blockW = Math.floor(blockW * f)
+      blockH = Math.floor(blockH * f)
+    }
+    const ox = Math.max(GAP, (wb.w - blockW) / 2)
+    const oy = Math.max(GAP, (wb.h - blockH) / 2)
     const next: Layout = {}
     let yy = oy
     for (const r of rows) {
