@@ -73,6 +73,27 @@ export function Circuit({
       /* ignore */
     }
   }
+  // A #circuit?tab=… deep link (the mobile quick-action buttons) can arrive while the
+  // Circuit is already mounted — switch the sub-tab live instead of only reading on mount.
+  useEffect(() => {
+    const onHash = () => {
+      const q = new URLSearchParams(window.location.hash.split('?')[1] ?? '')
+      const t = q.get('tab') as Tab | null
+      const valid: Tab[] = [
+        'board',
+        'log',
+        'feed',
+        'charts',
+        'movies',
+        'watchlist',
+        ...(authed ? (['chat', 'circuits'] as Tab[]) : []),
+      ]
+      if (t && valid.includes(t)) setTab(t)
+    }
+    window.addEventListener('hashchange', onHash)
+    return () => window.removeEventListener('hashchange', onHash)
+     
+  }, [authed])
   const [logTarget, setLogTarget] = useState<{ personId: string; date: string } | null>(null)
   const [focusPane, setFocusPane] = useState<{ id: string; nonce: number } | null>(null)
   const [desktop, setDesktop] = useState(isDesktop())

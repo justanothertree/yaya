@@ -555,6 +555,42 @@ li {
   cursor: pointer;
   z-index: 30;
 }
+
+/* Mobile quick-action buttons — bottom-LEFT so they never collide with back-to-top on the
+   right. Log is the primary daily action (accent), chat a quieter companion above it. */
+.quick-fabs {
+  position: fixed;
+  left: 14px;
+  bottom: calc(14px + env(safe-area-inset-bottom, 0px));
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 10px;
+  z-index: 30;
+}
+.quick-fab {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 1.35rem;
+  line-height: 1;
+  cursor: pointer;
+  background: var(--accent);
+  border: 1px solid transparent;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+  transition: transform 0.12s ease;
+}
+.quick-fab:active {
+  transform: scale(0.92);
+}
+.quick-fab-alt {
+  width: 44px;
+  height: 44px;
+  font-size: 1.15rem;
+  background: var(--icon-bg);
+  border: 1px solid var(--icon-border);
+}
 .back-to-top:hover {
   background: var(--icon-bg-hover);
   border-color: var(--icon-border-hover);
