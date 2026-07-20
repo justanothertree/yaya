@@ -556,40 +556,204 @@ li {
   z-index: 30;
 }
 
-/* Mobile quick-action buttons — bottom-LEFT so they never collide with back-to-top on the
-   right. Log is the primary daily action (accent), chat a quieter companion above it. */
-.quick-fabs {
-  position: fixed;
-  left: 14px;
-  bottom: calc(14px + env(safe-area-inset-bottom, 0px));
-  display: flex;
-  flex-direction: column-reverse;
-  gap: 10px;
-  z-index: 30;
+/* ── the phone's navigation ────────────────────────────────────────────────
+   A bottom bar (thumb zone) + a full-screen launcher. Desktop is untouched:
+   both only appear below the 820px breakpoint, where the top link strip hides. */
+.mnav,
+.mlaunch {
+  display: none;
 }
-.quick-fab {
-  width: 52px;
-  height: 52px;
-  border-radius: 50%;
-  display: grid;
-  place-items: center;
+@media (max-width: 819.98px) {
+  /* the cramped top link strip gives way to the bottom bar; brand + cog stay up top.
+     `.nav-right .nav-scroll` (two classes) out-specifies the base `.nav-scroll { display:
+     flex }` so it wins regardless of source order */
+  .nav-right .nav-scroll {
+    display: none;
+  }
+  .mnav {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 40;
+    display: flex;
+    align-items: stretch;
+    justify-content: space-around;
+    gap: 2px;
+    padding: 6px 6px calc(6px + env(safe-area-inset-bottom, 0px));
+    background: color-mix(in srgb, var(--bg) 86%, transparent);
+    -webkit-backdrop-filter: blur(12px);
+    backdrop-filter: blur(12px);
+    border-top: 1px solid var(--border);
+  }
+  /* keep page content clear of the fixed bar */
+  #content {
+    padding-bottom: calc(72px + env(safe-area-inset-bottom, 0px));
+  }
+}
+.mnav-item {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 6px 2px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  border-radius: 12px;
+  transition:
+    color 0.12s ease,
+    transform 0.1s ease;
+}
+.mnav-item:active {
+  transform: scale(0.94);
+}
+.mnav-item.is-on {
+  color: var(--text);
+}
+.mnav-ic {
   font-size: 1.35rem;
   line-height: 1;
-  cursor: pointer;
+}
+.mnav-lbl {
+  font-size: 0.64rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+/* the primary daily action rides above the bar in an accent disc */
+.mnav-item.is-primary {
+  color: var(--btn-text);
+}
+.mnav-item.is-primary .mnav-ic {
+  display: grid;
+  place-items: center;
+  width: 3rem;
+  height: 3rem;
+  margin-top: -1.25rem;
+  border-radius: 50%;
   background: var(--accent);
-  border: 1px solid transparent;
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
-  transition: transform 0.12s ease;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.35);
+  font-size: 1.4rem;
 }
-.quick-fab:active {
-  transform: scale(0.92);
+.mnav-item.is-primary .mnav-lbl {
+  color: var(--text);
 }
-.quick-fab-alt {
-  width: 44px;
-  height: 44px;
-  font-size: 1.15rem;
-  background: var(--icon-bg);
-  border: 1px solid var(--icon-border);
+
+/* ── the launcher: the whole site at a glance ── */
+.mlaunch {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: block;
+}
+.mlaunch-scrim {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  background: rgba(0, 0, 0, 0.5);
+  -webkit-backdrop-filter: blur(3px);
+  backdrop-filter: blur(3px);
+  animation: mfade 0.2s ease;
+}
+.mlaunch-sheet {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: var(--bg);
+  border-top-left-radius: 20px;
+  border-top-right-radius: 20px;
+  border-top: 1px solid var(--border);
+  padding: 10px 16px calc(20px + env(safe-area-inset-bottom, 0px));
+  box-shadow: 0 -12px 40px rgba(0, 0, 0, 0.4);
+  animation: msheet 0.26s cubic-bezier(0.2, 0.9, 0.3, 1);
+}
+.mlaunch-grab {
+  width: 40px;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--border-strong);
+  margin: 2px auto 14px;
+}
+.mlaunch-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+.mtile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 16px 8px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--control-bg, rgba(127, 127, 127, 0.08));
+  color: var(--text);
+  cursor: pointer;
+  animation: mtilein 0.28s ease both;
+}
+.mtile:active {
+  transform: scale(0.95);
+}
+.mtile.is-on {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+}
+.mtile-ic {
+  font-size: 1.7rem;
+  line-height: 1;
+}
+.mtile-lbl {
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+.mlaunch-foot {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+.mlaunch-foot-btn {
+  flex: 1 1 auto;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: transparent;
+  color: var(--text);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+@keyframes mfade {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes msheet {
+  from {
+    transform: translateY(100%);
+  }
+}
+@keyframes mtilein {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mlaunch-scrim,
+  .mlaunch-sheet,
+  .mtile {
+    animation: none;
+  }
 }
 .back-to-top:hover {
   background: var(--icon-bg-hover);
