@@ -1244,6 +1244,33 @@ export default function App() {
         </button>
       )}
 
+      {/* Mobile quick actions: logging (and chat) are the daily reasons the crew opens the
+          site on a phone — one tap from anywhere beats nav → Circuit → the right sub-tab. */}
+      {!desktop && isFinanceAuthed && !suspended && (
+        <div className="quick-fabs" role="group" aria-label="Quick actions">
+          <button
+            className="quick-fab"
+            aria-label="Log a workout"
+            onClick={() => {
+              window.location.hash = '#circuit?tab=log'
+              setActive('circuit')
+            }}
+          >
+            ✏️
+          </button>
+          <button
+            className="quick-fab quick-fab-alt"
+            aria-label="Open chat"
+            onClick={() => {
+              window.location.hash = '#circuit?tab=chat'
+              setActive('circuit')
+            }}
+          >
+            💬
+          </button>
+        </div>
+      )}
+
       {/* Keyboard help overlay */}
       {helpOpen && (
         <div
