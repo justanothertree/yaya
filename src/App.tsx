@@ -5,6 +5,7 @@ import { SnakeGame } from './sections/SnakeGame'
 import { site } from './config/site'
 import { IconGitHub, IconLinkedIn } from './components/Icons'
 import { SettingsMenu } from './components/SettingsMenu'
+import { MobileNav } from './components/MobileNav'
 import { AmbientBackdrop } from './components/AmbientBackdrop'
 import { useReveal } from './hooks/useReveal'
 import { hasFinanceSupabaseEnv } from './finance/env'
@@ -761,6 +762,18 @@ export default function App() {
   }
   const toggleCanvas = () => setCanvasChoice(!canvasOpen)
 
+  // one navigator for the mobile bar/launcher — sets the hash (with an optional Circuit
+  // sub-tab) and the active section, matching how the nav links move around
+  const go = (section: Section, tab?: string) => {
+    window.location.hash = tab ? `#${section}?tab=${tab}` : `#${section}`
+    setActive(section)
+  }
+  const cycleTheme = () => {
+    const next = theme === 'dark' ? 'light' : theme === 'light' ? 'alt' : 'dark'
+    setTheme(next)
+    localStorage.setItem('theme', next)
+  }
+
   // Pinned windows follow you across tabs. We keep the pane OBJECTS (not just ids) so a
   // window pinned on one tab can still render on another after its own page unmounted —
   // the node re-mounts and reads the same live store.
@@ -934,7 +947,11 @@ export default function App() {
         className="container"
         tabIndex={-1}
         style={{
-          paddingBottom: 'env(safe-area-inset-bottom)',
+          // clear the fixed mobile bottom bar (this inline style would otherwise win over
+          // any stylesheet rule); desktop keeps just the safe-area inset
+          paddingBottom: !desktop
+            ? 'calc(74px + env(safe-area-inset-bottom))'
+            : 'env(safe-area-inset-bottom)',
           zoom: canvasOpen || canvasMounted ? 1 : uiScale,
         }}
       >
@@ -1244,31 +1261,33 @@ export default function App() {
         </button>
       )}
 
-      {/* Mobile quick actions: logging (and chat) are the daily reasons the crew opens the
-          site on a phone — one tap from anywhere beats nav → Circuit → the right sub-tab. */}
-      {!desktop && isFinanceAuthed && !suspended && (
-        <div className="quick-fabs" role="group" aria-label="Quick actions">
-          <button
-            className="quick-fab"
-            aria-label="Log a workout"
-            onClick={() => {
-              window.location.hash = '#circuit?tab=log'
-              setActive('circuit')
-            }}
-          >
-            ✏️
-          </button>
-          <button
-            className="quick-fab quick-fab-alt"
-            aria-label="Open chat"
-            onClick={() => {
-              window.location.hash = '#circuit?tab=chat'
-              setActive('circuit')
-            }}
-          >
-            💬
-          </button>
-        </div>
+      {/* The phone's whole navigation: a thumb-zone bottom bar + a full-screen launcher.
+          Desktop keeps the top nav; this only renders below the desktop breakpoint. */}
+      {!desktop && (
+        <MobileNav
+          active={active}
+          go={go}
+          authed={hasFinanceSupabaseEnv() && isFinanceAuthed}
+          hasAuth={hasFinanceSupabaseEnv()}
+          canFinance={canFinance === true}
+          isAdmin={isAdmin}
+          suspended={suspended}
+          theme={theme}
+          onCycleTheme={cycleTheme}
+          onSignOut={() => {
+            void signOut().catch(() => {
+              /* ignore */
+            })
+          }}
+          onProfile={
+            me.username
+              ? () => {
+                  window.location.hash = '#profile?u=' + encodeURIComponent(me.username!)
+                  setActive('profile')
+                }
+              : undefined
+          }
+        />
       )}
 
       {/* Keyboard help overlay */}
