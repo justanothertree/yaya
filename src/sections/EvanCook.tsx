@@ -126,15 +126,29 @@ function Slideshow({ project }: { project: Project }) {
                 aria-label={`Go to slide ${di + 1}`}
                 onClick={() => setI(di)}
                 style={{
-                  width: 7,
-                  height: 7,
-                  borderRadius: '50%',
+                  // a roomy transparent tap target (thumb-friendly) around a small dot —
+                  // 7px buttons were untappable on a phone
+                  width: 28,
+                  height: 22,
+                  display: 'inline-grid',
+                  placeItems: 'center',
                   border: 'none',
                   padding: 0,
+                  background: 'transparent',
                   cursor: 'pointer',
-                  background: di === i ? project.accent : 'var(--border, rgba(127,127,127,0.35))',
                 }}
-              />
+              >
+                <span
+                  aria-hidden
+                  style={{
+                    width: di === i ? 9 : 7,
+                    height: di === i ? 9 : 7,
+                    borderRadius: '50%',
+                    transition: 'width 0.15s, height 0.15s',
+                    background: di === i ? project.accent : 'var(--border, rgba(127,127,127,0.35))',
+                  }}
+                />
+              </button>
             ))}
           </span>
         )}
