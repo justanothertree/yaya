@@ -1373,59 +1373,20 @@ section[id] {
 }
 
 /* Edge arrow buttons */
-.edge-btn {
-  position: fixed;
-  top: 50%;
-  transform: translateY(-50%);
-  background: var(--icon-bg);
-  color: var(--text);
-  border: 1px solid var(--icon-border);
-  border-radius: var(--r-md);
-  width: 40px;
-  height: 40px;
-  display: grid;
-  place-items: center;
-  cursor: pointer;
-  opacity: 0.85;
-  z-index: 20;
-}
-.edge-hide {
-  opacity: 0;
-  pointer-events: none;
-}
-/* Mobile arrows remain mid-screen for visibility */
-/* Nav reveal hit target removed (banner is always visible) */
-.edge-btn:hover {
-  background: var(--icon-bg-hover);
-  border-color: var(--icon-border-hover);
-}
-.edge-btn:disabled {
-  opacity: 0.4;
-  cursor: default;
-}
-.edge-left {
-  left: 10px;
-}
-.edge-right {
-  right: 10px;
-}
-
-/* Align bottom-right back-to-top with edge-right to avoid overlap */
 .back-to-top {
   right: 12px;
 }
 @media (max-width: 700px) {
   .back-to-top {
     bottom: calc(16px + env(safe-area-inset-bottom, 0px));
-  }
-}
-
-/* Slightly larger on mobile for easier taps */
-@media (max-width: 700px) {
-  .edge-btn,
-  .back-to-top {
     width: 48px;
     height: 48px;
+  }
+}
+/* on phones, lift back-to-top above the bottom nav bar */
+@media (max-width: 819.98px) {
+  .back-to-top {
+    bottom: calc(84px + env(safe-area-inset-bottom, 0px));
   }
 }
 
