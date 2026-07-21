@@ -265,7 +265,6 @@ export default function App() {
   const liveRef = useRef<HTMLDivElement>(null)
   const navLinksRef = useRef<HTMLDivElement>(null)
   const navRef = useRef<HTMLElement>(null)
-  const [hasInputFocus, setHasInputFocus] = useState(false)
   const [snakeHasControl, setSnakeHasControl] = useState(false)
   // Keep banner persistent; auto-hide disabled for reliability
   const [showTop, setShowTop] = useState(false)
@@ -678,25 +677,6 @@ export default function App() {
   }, [helpOpen])
 
   // (Auto-hide removed)
-
-  // Track if an input/textarea/select has focus to adjust UI (hide edge arrows)
-  useEffect(() => {
-    const onFocusIn = (e: FocusEvent) => {
-      const node = e.target as HTMLElement
-      if (node.closest('input, textarea, select, [contenteditable="true"]')) setHasInputFocus(true)
-    }
-    const onFocusOut = () => {
-      const a = document.activeElement as HTMLElement | null
-      const stillIn = a?.closest?.('input, textarea, select, [contenteditable="true"]')
-      if (!stillIn) setHasInputFocus(false)
-    }
-    window.addEventListener('focusin', onFocusIn)
-    window.addEventListener('focusout', onFocusOut)
-    return () => {
-      window.removeEventListener('focusin', onFocusIn)
-      window.removeEventListener('focusout', onFocusOut)
-    }
-  }, [])
 
   // ── canvas on every tab ──
   // Home splits into its own multi-pane layout; the Circuit has its own internal canvas
@@ -1212,45 +1192,9 @@ export default function App() {
           </span>
         </div>
       </footer>
-      {/* Edge arrow buttons for desktop/touch (hidden while typing) */}
-      {!hasInputFocus && (
-        <button
-          className={`edge-btn edge-left`}
-          aria-label="Previous section"
-          onClick={() => {
-            const order = navOrder(
-              hasFinanceSupabaseEnv(),
-              isFinanceAuthed,
-              isAdmin,
-              canFinance === true,
-            )
-            const idx = order.indexOf(active)
-            if (idx > 0) setActive(order[idx - 1])
-          }}
-          disabled={active === 'home'}
-        >
-          ◀
-        </button>
-      )}
-      {!hasInputFocus && (
-        <button
-          className={`edge-btn edge-right`}
-          aria-label="Next section"
-          onClick={() => {
-            const order = navOrder(
-              hasFinanceSupabaseEnv(),
-              isFinanceAuthed,
-              isAdmin,
-              canFinance === true,
-            )
-            const idx = order.indexOf(active)
-            if (idx < order.length - 1) setActive(order[idx + 1])
-          }}
-          disabled={active === 'contact'}
-        >
-          ▶
-        </button>
-      )}
+      {/* The floating prev/next section arrows are gone — the top nav (desktop) and the
+          bottom bar + launcher (mobile) are the navigation now; the arrows just hovered
+          awkwardly over the content. Keyboard Left/Right section nav is kept (invisible). */}
       {showTop && (
         <button
           className="back-to-top"
