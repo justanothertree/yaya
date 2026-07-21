@@ -92,7 +92,6 @@ export function Circuit({
     }
     window.addEventListener('hashchange', onHash)
     return () => window.removeEventListener('hashchange', onHash)
-     
   }, [authed])
   const [logTarget, setLogTarget] = useState<{ personId: string; date: string } | null>(null)
   const [focusPane, setFocusPane] = useState<{ id: string; nonce: number } | null>(null)
@@ -269,7 +268,7 @@ export function Circuit({
         <h2 className="section-title" style={{ margin: 0 }}>
           The Circuit
         </h2>
-        <span className="muted" style={{ fontSize: '0.85rem' }}>
+        <span className="muted cz-subtitle" style={{ fontSize: '0.85rem' }}>
           {authed ? 'fitness + movies, synced for you and friends' : 'fitness + movies tracker'}
         </span>
       </div>

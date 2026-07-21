@@ -291,6 +291,97 @@
     color: transparent !important;
   }
 }
+
+/* ══ mobile layout pass ════════════════════════════════════════════════════
+   A phone is not a small desktop. This calms the Circuit down to a focused
+   app: less chrome above the fold, thumb-sized swipeable sub-tabs, and a log
+   where the number you're entering is the loudest thing on screen while the
+   edit/drag controls recede until you reach for them. */
+@media (max-width: 640px) {
+  /* calmer section headers — the big fluid title eats the top of a phone */
+  .section-title {
+    font-size: 1.35rem;
+  }
+  /* the Circuit's decorative subtitle is a whole line of chrome before content */
+  .cz-subtitle {
+    display: none;
+  }
+
+  /* sub-tabs become a clean swipeable strip: one row, snap, thumb-height, no
+     wrapping to a second line, and the active tab clearly reads */
+  .cz-tabs {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 4px;
+    overflow-x: auto;
+    scrollbar-width: none;
+    scroll-snap-type: x proximity;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 2px;
+    margin-right: -14px; /* let it bleed to the screen edge so more is visible */
+    padding-right: 14px;
+  }
+  .cz-tabs::-webkit-scrollbar {
+    display: none;
+  }
+  .cz-tab {
+    min-height: 40px;
+    padding: 8px 14px;
+    font-size: 0.82rem;
+    scroll-snap-align: start;
+    flex: 0 0 auto;
+  }
+
+  /* the log's exercise slots: the value input leads. Its chrome (edit pencil,
+     drag handle) recedes to a quiet grey until tapped — logging is frequent,
+     rearranging is rare. */
+  .cz-slot {
+    padding: 10px 12px;
+  }
+  .cz-slot-body {
+    gap: 0.5rem;
+  }
+  .cz-slot-body input {
+    min-width: 84px;
+    min-height: 44px;
+    font-size: 1.05rem;
+  }
+  .cz-slot-btn,
+  .cz-handle {
+    opacity: 0.4;
+  }
+  .cz-slot-btn {
+    min-width: 34px;
+    min-height: 34px;
+  }
+  /* touch can't drag-reorder (it's a mouse gesture), so the handle is dead weight
+     on a phone — hide it and give the name the room */
+  .cz-handle {
+    display: none;
+  }
+  .cz-slot-name {
+    font-size: 0.95rem;
+  }
+
+  /* grid-management buttons (＋ Column, ＋ add) read as quiet, not primary */
+  .cz-add-slot {
+    min-height: 40px;
+  }
+
+  /* undo/redo are desktop power tools — keep them reachable but compact so they
+     don't dominate the log toolbar */
+  .cz-tabs ~ span .btn-ghost {
+    min-width: 40px;
+    min-height: 40px;
+    padding: 0.35rem 0.5rem;
+  }
+
+  /* cards breathe: comfortable interior padding, honest full-width feel */
+  .card {
+    padding: 1rem 1rem;
+  }
+}
+
 .cz-slot {
   background: var(--card2, rgba(127, 127, 127, 0.06));
   border: 1px solid var(--b1, rgba(127, 127, 127, 0.18));
