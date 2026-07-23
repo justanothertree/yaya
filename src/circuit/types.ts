@@ -85,9 +85,11 @@ export interface MovieRating {
 export interface Movie {
   id: ID
   title: string
-  /** ISO date watched */
+  /** review category — 'movie' (default/legacy), 'food', 'beer', 'restaurant', … */
+  kind?: string
+  /** ISO date experienced */
   date?: string
-  /** Rotten Tomatoes string, e.g. "94%" */
+  /** Rotten Tomatoes string, e.g. "94%" — movie-only */
   rt?: string
   /** per-person ratings, keyed by Person.id (becomes a join table on Supabase) */
   ratings: Record<ID, MovieRating>

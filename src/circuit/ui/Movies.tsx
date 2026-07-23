@@ -10,6 +10,7 @@ import { MoviePersonProfile } from './MoviePersonProfile'
 import { MovieDetail } from './MovieDetail'
 import { MovieStats } from './MovieStats'
 import { MV_PIDS, scoreColor } from './movieMeta'
+import { REVIEW_KINDS, kindEmoji } from '../reviewKinds'
 
 type SortKey = 'avg' | 'alpha' | 'rt' | 'date'
 
@@ -36,8 +37,23 @@ export function Movies({ viewGroup = '' }: { viewGroup?: string } = {}) {
   const [detail, setDetail] = useState<Movie | null>(null)
   const [view, setView] = useState<'board' | 'stats'>('board')
 
-  // scope to the viewed circuit (shared filter) — '' shows all movies you can see
-  const movies = useMemo(() => moviesInGroup(state.movies, viewGroup), [state.movies, viewGroup])
+  // scope to the viewed circuit (shared filter) — '' shows everything you can see
+  const inGroup = useMemo(() => moviesInGroup(state.movies, viewGroup), [state.movies, viewGroup])
+  // which review kinds are present here, and the active category filter ('' = all)
+  const kindCounts = useMemo(() => {
+    const m = new Map<string, number>()
+    inGroup.forEach((r) => {
+      const k = r.kind ?? 'movie'
+      m.set(k, (m.get(k) ?? 0) + 1)
+    })
+    return m
+  }, [inGroup])
+  const multiKind = kindCounts.size > 1
+  const [kindFilter, setKindFilter] = useState('')
+  const movies = useMemo(
+    () => (kindFilter ? inGroup.filter((r) => (r.kind ?? 'movie') === kindFilter) : inGroup),
+    [inGroup, kindFilter],
+  )
 
   // Raters = people you can actually see who have rated something — not a hardcoded crew
   // list, so a member viewing another circuit doesn't get nameless ghost columns.
@@ -137,10 +153,11 @@ export function Movies({ viewGroup = '' }: { viewGroup?: string } = {}) {
     return (
       <div>
         <button className="btn" onClick={() => setAdding(true)}>
-          ＋ Add movie
+          ＋ Add a review
         </button>
         <p className="muted" style={{ marginTop: '0.75rem' }}>
-          {viewGroup ? 'No movies in this circuit yet.' : 'No movies yet.'}
+          {viewGroup ? 'Nothing rated in this circuit yet.' : 'Nothing rated yet.'} Rate a movie, a
+          meal, a beer — anything you want to compare.
         </p>
         {adding && <AddMovie onClose={() => setAdding(false)} />}
       </div>
@@ -149,7 +166,7 @@ export function Movies({ viewGroup = '' }: { viewGroup?: string } = {}) {
   return (
     <div>
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
-        <h3 style={{ margin: 0 }}>Movies</h3>
+        <h3 style={{ margin: 0 }}>Reviews</h3>
         <span className="muted" style={{ fontSize: '0.85rem' }}>
           {movies.length} rated
         </span>
@@ -183,6 +200,37 @@ export function Movies({ viewGroup = '' }: { viewGroup?: string } = {}) {
           ))}
         </span>
       </div>
+
+      {/* category filter — only appears once the board holds more than movies */}
+      {multiKind && (
+        <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap', marginTop: '0.6rem' }}>
+          <button
+            className={'cz-chip' + (kindFilter === '' ? ' cz-on' : '')}
+            style={
+              kindFilter === ''
+                ? { background: 'var(--accent, #7c6af7)', color: '#fff' }
+                : undefined
+            }
+            onClick={() => setKindFilter('')}
+          >
+            All {inGroup.length}
+          </button>
+          {REVIEW_KINDS.filter((rk) => kindCounts.has(rk.id)).map((rk) => (
+            <button
+              key={rk.id}
+              className={'cz-chip' + (kindFilter === rk.id ? ' cz-on' : '')}
+              style={
+                kindFilter === rk.id
+                  ? { background: 'var(--accent, #7c6af7)', color: '#fff' }
+                  : undefined
+              }
+              onClick={() => setKindFilter(rk.id)}
+            >
+              {rk.emoji} {rk.plural} {kindCounts.get(rk.id)}
+            </button>
+          ))}
+        </div>
+      )}
 
       {view === 'board' && (
         <div style={{ marginTop: '0.6rem' }}>
@@ -322,6 +370,11 @@ export function Movies({ viewGroup = '' }: { viewGroup?: string } = {}) {
                       style={{ cursor: 'pointer' }}
                       title="See all ratings"
                     >
+                      {multiKind && (
+                        <span aria-hidden style={{ marginRight: 5 }}>
+                          {kindEmoji(m.kind)}
+                        </span>
+                      )}
                       {m.title}
                     </span>
                     {m.date && (

@@ -69,6 +69,7 @@ type LogRow = {
 type MovieRow = {
   id: string
   title: string
+  kind?: string | null
   date: string | null
   rt: string | null
   ratings: Record<string, MovieRating>
@@ -123,6 +124,7 @@ const rowToLog = (r: LogRow): DayLog => ({
 const movieToRow = (m: Movie): MovieRow => ({
   id: m.id,
   title: m.title,
+  kind: m.kind ?? 'movie',
   date: m.date ?? null,
   rt: m.rt ?? null,
   ratings: m.ratings,
@@ -132,6 +134,7 @@ const movieToRow = (m: Movie): MovieRow => ({
 const rowToMovie = (r: MovieRow): Movie => ({
   id: r.id,
   title: r.title,
+  kind: r.kind ?? 'movie',
   date: r.date ?? undefined,
   rt: r.rt ?? undefined,
   ratings: r.ratings ?? {},
