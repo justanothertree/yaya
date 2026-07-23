@@ -176,7 +176,7 @@ export function Movies({ viewGroup = '' }: { viewGroup?: string } = {}) {
         <span style={{ display: 'inline-flex', gap: '0.35rem', marginLeft: 'auto' }}>
           {(
             [
-              ['board', '🎬 Board'],
+              ['board', '📋 Board'],
               ['stats', '📊 Stats'],
             ] as ['board' | 'stats', string][]
           ).map(([k, label]) => (
