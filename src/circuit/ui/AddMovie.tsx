@@ -1,7 +1,9 @@
-// Add a new movie to the leaderboard (ratings get added afterward via the rating sheet).
+// Add a new review to the board (ratings get added afterward via the rating sheet).
+// A review is any rated thing — a movie, a meal, a beer, a restaurant — tagged by kind.
 import { useState } from 'react'
 import { circuitStore } from '../store'
 import type { Movie } from '../types'
+import { REVIEW_KINDS, kindOf } from '../reviewKinds'
 import { Modal } from './Modal'
 
 // A new movie must join a group everyone in the crew can see, or it's invisible to
@@ -30,10 +32,13 @@ export function AddMovie({
   onClose: () => void
   onAdded?: (m: Movie) => void
 }) {
+  const [kind, setKind] = useState('movie')
   const [title, setTitle] = useState('')
-  // watched-tonight is the overwhelming case — default today, still editable
+  // did-it-tonight is the overwhelming case — default today, still editable
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10))
   const [rt, setRt] = useState('')
+  const k = kindOf(kind)
+  const isMovie = kind === 'movie'
 
   const save = () => {
     const t = title.trim()
@@ -42,8 +47,9 @@ export function AddMovie({
     const movie: Movie = {
       id,
       title: t,
+      kind,
       date: date || undefined,
-      rt: rt.trim() || undefined,
+      rt: isMovie ? rt.trim() || undefined : undefined,
       ratings: {},
       groupId: defaultMovieGroup(),
     }
@@ -62,7 +68,7 @@ export function AddMovie({
 
   return (
     <Modal
-      title="Add a movie"
+      title="Add a review"
       onClose={onClose}
       footer={
         <>
@@ -84,30 +90,63 @@ export function AddMovie({
         </>
       }
     >
+      <span style={label}>What is it?</span>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', marginTop: 4 }}>
+        {REVIEW_KINDS.map((rk) => (
+          <button
+            key={rk.id}
+            type="button"
+            className={'cz-chip' + (kind === rk.id ? ' cz-on' : '')}
+            style={
+              kind === rk.id ? { background: 'var(--accent, #7c6af7)', color: '#fff' } : undefined
+            }
+            onClick={() => setKind(rk.id)}
+          >
+            {rk.emoji} {rk.label}
+          </button>
+        ))}
+      </div>
       <label style={label}>
-        Title
+        {isMovie ? 'Title' : `${k.label} name`}
         <input
           autoFocus
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && save()}
-          placeholder="Movie title"
+          placeholder={isMovie ? 'Movie title' : `e.g. ${exampleFor(kind)}`}
           style={field}
         />
       </label>
       <label style={label}>
-        Date watched <span className="muted">(optional)</span>
+        {isMovie ? 'Date watched' : 'Date'} <span className="muted">(optional)</span>
         <input type="date" value={date} onChange={(e) => setDate(e.target.value)} style={field} />
       </label>
-      <label style={label}>
-        Rotten Tomatoes % <span className="muted">(optional)</span>
-        <input
-          value={rt}
-          onChange={(e) => setRt(e.target.value)}
-          placeholder="e.g. 94%"
-          style={field}
-        />
-      </label>
+      {isMovie && (
+        <label style={label}>
+          Rotten Tomatoes % <span className="muted">(optional)</span>
+          <input
+            value={rt}
+            onChange={(e) => setRt(e.target.value)}
+            placeholder="e.g. 94%"
+            style={field}
+          />
+        </label>
+      )}
     </Modal>
   )
+}
+
+function exampleFor(kind: string): string {
+  switch (kind) {
+    case 'food':
+      return 'Margherita pizza'
+    case 'beer':
+      return 'Hazy IPA'
+    case 'restaurant':
+      return "Tony's Diner"
+    case 'game':
+      return 'Elden Ring'
+    default:
+      return 'What you rated'
+  }
 }

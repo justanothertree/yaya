@@ -193,7 +193,7 @@ export function Circuit({
     { id: 'log', label: '✏️ Log' },
     { id: 'feed', label: '📋 Feed' },
     { id: 'charts', label: '📊 Charts' },
-    { id: 'movies', label: '🎬 Movies' },
+    { id: 'movies', label: '📝 Reviews' },
     { id: 'watchlist', label: '🍿 Watchlist' },
     // chat + circuit management are members-only
     ...(authed
@@ -221,7 +221,7 @@ export function Circuit({
       title: '📊 Charts',
       node: <Charts onDayClick={requestLog} viewGroup={viewGroup} />,
     },
-    { id: 'movies', title: '🎬 Movies', node: <Movies viewGroup={viewGroup} /> },
+    { id: 'movies', title: '📝 Reviews', node: <Movies viewGroup={viewGroup} /> },
     { id: 'watchlist', title: '🍿 Watchlist', node: <Watchlist viewGroup={viewGroup} /> },
     ...(authed ? [{ id: 'chat', title: '💬 Chat', node: <Chat authed /> }] : []),
   ]
