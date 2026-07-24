@@ -61,6 +61,7 @@ export function MovieRate({
   onClose: () => void
 }) {
   const existing = movie.ratings[personId]
+  const isMovie = (movie.kind ?? 'movie') === 'movie'
   const rv = existing?.review ?? {}
   const [score, setScore] = useState<number | null>(existing?.score ?? null)
   const [icons, setIcons] = useState<string[]>(existing?.icons ?? [])
@@ -309,8 +310,8 @@ export function MovieRate({
         ))}
       </div>
 
-      {/* watch again */}
-      <div style={sectionLabel}>Watch it again?</div>
+      {/* do it again — "watch" for movies, generic elsewhere */}
+      <div style={sectionLabel}>{isMovie ? 'Watch it again?' : 'Again?'}</div>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
         {REWATCH.map((rw) => (
           <Chip
@@ -333,15 +334,19 @@ export function MovieRate({
         ))}
       </div>
 
-      {/* tip of the cap */}
-      <div style={sectionLabel}>🎩 Tip of the cap</div>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
-        {TIPS.map((t) => (
-          <Chip key={t.id} on={tips.includes(t.id)} onClick={() => toggle(tips, setTips, t.id)}>
-            {t.e} {t.l}
-          </Chip>
-        ))}
-      </div>
+      {/* tip of the cap — soundtrack/plot/cinematography only make sense for movies */}
+      {isMovie && (
+        <>
+          <div style={sectionLabel}>🎩 Tip of the cap</div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
+            {TIPS.map((t) => (
+              <Chip key={t.id} on={tips.includes(t.id)} onClick={() => toggle(tips, setTips, t.id)}>
+                {t.e} {t.l}
+              </Chip>
+            ))}
+          </div>
+        </>
+      )}
 
       {/* tags */}
       <div style={sectionLabel}>Tags</div>

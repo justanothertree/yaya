@@ -55,11 +55,13 @@ export function Movies({ viewGroup = '' }: { viewGroup?: string } = {}) {
     [inGroup, kindFilter],
   )
 
-  // Raters = people you can actually see who have rated something — not a hardcoded crew
-  // list, so a member viewing another circuit doesn't get nameless ghost columns.
+  // Raters = people you can see who have rated something — not a hardcoded crew list, so a
+  // member viewing another circuit doesn't get nameless ghost columns. Derived from the
+  // WHOLE visible set (all kinds), not the category-filtered view: otherwise filtering to a
+  // fresh category with no ratings yet leaves zero rater columns and you can't rate it.
   const allRaters = useMemo<Person[]>(() => {
     const present = new Set<string>()
-    movies.forEach((m) =>
+    inGroup.forEach((m) =>
       Object.entries(m.ratings).forEach(([id, r]) => {
         if (r?.score != null) present.add(id)
       }),
@@ -69,7 +71,7 @@ export function Movies({ viewGroup = '' }: { viewGroup?: string } = {}) {
       return i === -1 ? MV_PIDS.length : i
     }
     return state.people.filter((p) => present.has(p.id)).sort((a, b) => order(a.id) - order(b.id))
-  }, [movies, state.people])
+  }, [inGroup, state.people])
 
   const [hidden, setHidden] = useState<Set<string>>(() => {
     try {
