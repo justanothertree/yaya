@@ -145,7 +145,7 @@ export function MovieStats({ viewGroup = '' }: { viewGroup?: string } = {}) {
     }
   }, [movies, raters])
 
-  if (!movies.length) return <p className="muted">No movies rated yet.</p>
+  if (!movies.length) return <p className="muted">Nothing rated yet.</p>
 
   return (
     <div>
