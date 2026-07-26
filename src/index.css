@@ -380,6 +380,37 @@
   .card {
     padding: 1rem 1rem;
   }
+
+  /* chat is a real messaging screen on a phone: the conversation fills the space
+     between the room switcher and the composer, not a cramped 24rem box. 100dvh keeps
+     the composer above the keyboard when it opens. */
+  /* fill the space above the bottom bar. The offset is conservative on purpose — it must
+     never push the composer under the fixed nav bar; a little slack beats a hidden input.
+     (Tune this one number if a signed-in phone shows dead space or a buried composer.) */
+  .cz-chat {
+    height: calc(100dvh - 300px);
+    min-height: 16rem;
+  }
+  .cz-chat-log {
+    flex: 1;
+    max-height: none !important;
+    min-height: 0 !important;
+  }
+  .cz-chat-rooms {
+    overflow-x: auto;
+    flex-wrap: nowrap !important;
+    scrollbar-width: none;
+    padding-bottom: 2px;
+  }
+  .cz-chat-rooms::-webkit-scrollbar {
+    display: none;
+  }
+  .cz-chat-rooms .cz-chip {
+    flex: 0 0 auto;
+  }
+  .cz-chat-form input {
+    min-height: 44px;
+  }
 }
 
 .cz-slot {
