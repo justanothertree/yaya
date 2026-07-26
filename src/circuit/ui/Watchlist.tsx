@@ -205,9 +205,9 @@ export function Watchlist({
                   flexShrink: 0,
                 }}
                 onClick={() => markWatched(item)}
-                title="We watched it — move to Movies"
+                title="Done — take it off the list"
               >
-                ✓ Watched
+                ✓ Done
               </button>
               <button
                 className="btn"
@@ -222,7 +222,7 @@ export function Watchlist({
         })}
         {watchlist.length === 0 && (
           <p className="muted" style={{ marginTop: '0.5rem' }}>
-            Nothing queued yet. Add movies to watch together.
+            Nothing queued yet. Line up movies, meals — anything to do together.
           </p>
         )}
       </div>
@@ -259,7 +259,7 @@ export function Watchlist({
               value={newTitle}
               onChange={(e) => setNewTitle(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && addItem()}
-              placeholder="Movie title"
+              placeholder="What do you want to try?"
               autoFocus
             />
           </label>
