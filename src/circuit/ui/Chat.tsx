@@ -132,9 +132,15 @@ export function Chat({ authed = false }: { authed?: boolean }) {
     new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', minHeight: 0 }}>
+    <div
+      className="cz-chat"
+      style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', minHeight: 0 }}
+    >
       {rooms.length > 1 && (
-        <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
+        <div
+          className="cz-chat-rooms"
+          style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}
+        >
           {rooms.map((r) => (
             <button
               key={r.id}
@@ -142,13 +148,14 @@ export function Chat({ authed = false }: { authed?: boolean }) {
               style={room?.id === r.id ? { background: 'var(--accent, #7c6af7)' } : undefined}
               onClick={() => setRoom(r)}
             >
-              {r.kind === 'lounge' ? '🛋️' : '👥'} {r.name}
+              {r.kind === 'lounge' ? '🛋️' : r.kind === 'dm' ? '✉️' : '👥'} {r.name}
             </button>
           ))}
         </div>
       )}
 
       <div
+        className="cz-chat-log"
         style={{
           flex: 1,
           minHeight: '14rem',
@@ -221,7 +228,7 @@ export function Chat({ authed = false }: { authed?: boolean }) {
         </p>
       )}
 
-      <form onSubmit={send} style={{ display: 'flex', gap: '0.4rem' }}>
+      <form className="cz-chat-form" onSubmit={send} style={{ display: 'flex', gap: '0.4rem' }}>
         <input
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
