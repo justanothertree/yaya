@@ -388,8 +388,12 @@
      never push the composer under the fixed nav bar; a little slack beats a hidden input.
      (Tune this one number if a signed-in phone shows dead space or a buried composer.) */
   .cz-chat {
-    height: calc(100dvh - 300px);
-    min-height: 16rem;
+    /* Fill from below the sub-tabs down to just above the fixed bottom nav. Split into its
+       two parts so each is tunable: ~250px of chrome above the chat (title + tab row +
+       margins), and ~84px for the bottom nav + safe-area + a little slack. Verified in the
+       member preview harness that the composer clears the nav (was buried at -300px). */
+    height: calc(100dvh - 250px - 84px);
+    min-height: 14rem;
   }
   .cz-chat-log {
     flex: 1;
