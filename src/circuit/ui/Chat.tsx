@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { getSupabaseClient } from '../../finance/client'
+import { previewMember, PREVIEW_ME, PREVIEW_ROOMS, PREVIEW_MSGS } from '../../dev/previewMember'
 
 /**
  * Chat — the crew's rooms. One rooms model serves every shape: each circuit has a room
@@ -20,7 +21,8 @@ type Msg = {
 }
 
 export function Chat({ authed = false }: { authed?: boolean }) {
-  const sb = authed ? getSupabaseClient() : null
+  // DEV member preview: render with fake rooms/messages, no Supabase session (see previewMember)
+  const sb = authed && !previewMember ? getSupabaseClient() : null
   const [rooms, setRooms] = useState<Room[]>([])
   const [room, setRoom] = useState<Room | null>(null)
   const [msgs, setMsgs] = useState<Msg[]>([])
@@ -28,9 +30,14 @@ export function Chat({ authed = false }: { authed?: boolean }) {
   const [sending, setSending] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   const endRef = useRef<HTMLDivElement>(null)
-  const [me, setMe] = useState<string | null>(null)
+  const [me, setMe] = useState<string | null>(previewMember ? PREVIEW_ME.id : null)
 
   useEffect(() => {
+    if (previewMember) {
+      setRooms(PREVIEW_ROOMS)
+      setRoom((r) => r ?? PREVIEW_ROOMS.find((x) => x.kind === 'circuit') ?? PREVIEW_ROOMS[0])
+      return
+    }
     if (!sb) return
     let live = true
     void sb.auth.getSession().then(({ data }) => live && setMe(data.session?.user.id ?? null))
@@ -60,6 +67,13 @@ export function Chat({ authed = false }: { authed?: boolean }) {
 
   // load + live-follow the open room
   useEffect(() => {
+    if (previewMember) {
+      if (room) {
+        setMsgs(PREVIEW_MSGS[room.id] ?? [])
+        setTimeout(scrollDown, 60)
+      }
+      return
+    }
     if (!sb || !room) return
     let live = true
     void sb
@@ -102,7 +116,22 @@ export function Chat({ authed = false }: { authed?: boolean }) {
 
   async function send(e: React.FormEvent) {
     e.preventDefault()
-    if (!sb || !room || !draft.trim() || sending) return
+    if (!room || !draft.trim() || sending) return
+    if (previewMember) {
+      const m: Msg = {
+        id: 'pv' + Date.now(),
+        room_id: room.id,
+        user_id: PREVIEW_ME.id,
+        author_name: PREVIEW_ME.name,
+        body: draft.trim(),
+        created_at: new Date().toISOString(),
+      }
+      setMsgs((prev) => [...prev, m])
+      setDraft('')
+      setTimeout(scrollDown, 60)
+      return
+    }
+    if (!sb) return
     setSending(true)
     setErr(null)
     const { data, error } = await sb.rpc('send_chat_message', {
@@ -120,7 +149,7 @@ export function Chat({ authed = false }: { authed?: boolean }) {
     setTimeout(scrollDown, 60)
   }
 
-  if (!authed)
+  if (!authed && !previewMember)
     return (
       <p className="muted" style={{ margin: 0 }}>
         Chat is for members — sign in and your crew&apos;s room is waiting.
