@@ -11,6 +11,7 @@ import { useReveal } from './hooks/useReveal'
 import { hasFinanceSupabaseEnv } from './finance/env'
 import { getSessionUser, onAuthStateChange, peekPersistedUserId, signOut } from './finance/auth'
 import { getSupabaseClient } from './finance/client'
+import { previewMember, PREVIEW_ME } from './dev/previewMember'
 
 // Lazy-load heavier sections (declared at module scope so they don't remount on each App render)
 const SignIn = lazy(() => import('./sections/SignIn').then((m) => ({ default: m.SignIn })))
@@ -135,12 +136,15 @@ export default function App() {
     return { uid, flags: uid ? readNavFlags(uid) : null }
   })
   const uidRef = useRef<string | null>(boot.uid)
-  const [isFinanceAuthed, setIsFinanceAuthed] = useState(!!boot.uid)
+  // DEV member preview (previewMember): render the signed-in UI with fake data, no login
+  const [isFinanceAuthed, setIsFinanceAuthed] = useState(!!boot.uid || previewMember)
   const [isAdmin, setIsAdmin] = useState(boot.flags?.admin ?? false)
   // 'finance' feature flag for this account: null = still loading (don't redirect yet).
   // A cached true paints the tab immediately; a cached false stays "loading" so a
   // deep link to #investments can't be bounced before the server weighs in.
-  const [canFinance, setCanFinance] = useState<boolean | null>(boot.flags?.finance ? true : null)
+  const [canFinance, setCanFinance] = useState<boolean | null>(
+    previewMember ? true : boot.flags?.finance ? true : null,
+  )
   const [suspended, setSuspended] = useState(boot.flags?.suspended ?? false)
   const [theme, setTheme] = useState<'light' | 'dark' | 'alt'>(() => {
     const saved = localStorage.getItem('theme') as 'light' | 'dark' | 'alt' | null
@@ -200,6 +204,10 @@ export default function App() {
     username: string | null
   }>({ name: null, email: null, username: null })
   useEffect(() => {
+    if (previewMember) {
+      setMe({ name: PREVIEW_ME.name, email: PREVIEW_ME.email, username: PREVIEW_ME.username })
+      return
+    }
     if (!hasFinanceSupabaseEnv() || !isFinanceAuthed) {
       setMe({ name: null, email: null, username: null })
       return
@@ -277,6 +285,8 @@ export default function App() {
 
   // Finance nav gating: show Investments only when Supabase is configured AND a user is signed in.
   useEffect(() => {
+    // DEV member preview: skip all real-auth resolution — stay the forced signed-in member
+    if (previewMember) return
     if (!hasFinanceSupabaseEnv()) {
       setIsFinanceAuthed(false)
       return
