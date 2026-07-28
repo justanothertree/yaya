@@ -706,7 +706,10 @@ function MonthView({
           </div>
         ))}
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4 }}>
+      <div
+        className="cz-monthgrid"
+        style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4 }}
+      >
         {cells.map((date, i) => {
           if (!date) return <div key={i} />
           const dayNum = Number(date.slice(8))
@@ -718,6 +721,7 @@ function MonthView({
           return (
             <button
               key={i}
+              className="cz-monthcell"
               onClick={() => onDay(date)}
               title={has ? `${pids.length} logged · ${Math.round(total)} pts` : 'No activity'}
               style={{

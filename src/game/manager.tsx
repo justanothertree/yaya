@@ -1948,7 +1948,7 @@ export function GameManager({
           {/* LEFT: Controls & Settings */}
           <div className="controls-group">
             <div className="controls-row">
-              <div className="muted">Mode:</div>
+              <div className="muted group-label">Mode:</div>
               {(['solo', 'versus'] as Mode[]).map((m) => (
                 <button
                   key={m}
