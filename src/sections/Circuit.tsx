@@ -263,8 +263,11 @@ export function Circuit({
   )
 
   return (
-    <div>
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.75rem', flexWrap: 'wrap' }}>
+    <div className={`cz-tab-${tab}`}>
+      <div
+        className="cz-head"
+        style={{ display: 'flex', alignItems: 'baseline', gap: '0.75rem', flexWrap: 'wrap' }}
+      >
         <h2 className="section-title" style={{ margin: 0 }}>
           The Circuit
         </h2>
@@ -291,6 +294,7 @@ export function Circuit({
       ) : (
         <>
           <div
+            className="cz-toolbar"
             style={{
               display: 'flex',
               gap: '0.5rem',
