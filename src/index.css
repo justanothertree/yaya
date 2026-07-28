@@ -415,6 +415,18 @@
   .cz-chat-form input {
     min-height: 44px;
   }
+  /* Chat tab on a phone = a dedicated messaging screen. Drop the Circuit chrome (title,
+     subtitle, the sub-tab + undo/redo toolbar) so the conversation owns the viewport;
+     the room chips are its header, the bottom bar is how you leave. With the chrome gone
+     the chat can be much taller — only the slim top nav + a little padding sit above it. */
+  /* !important because both carry an inline display:flex, which a stylesheet can't beat */
+  .cz-tab-chat .cz-head,
+  .cz-tab-chat .cz-toolbar {
+    display: none !important;
+  }
+  .cz-tab-chat .cz-chat {
+    height: calc(100dvh - 96px - 84px);
+  }
 }
 
 .cz-slot {
