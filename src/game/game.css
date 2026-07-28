@@ -255,4 +255,18 @@
   .previews-section {
     display: none; /* hide previews on phones to reduce clutter */
   }
+  /* Compact the settings toolbar so it stops burying the game. With the "Mode:" label
+     now hidden (group-label) and buttons tightened, each controls-row fits one line
+     instead of wrapping to two — the toolbar drops from a ~230px wall to ~140px, while
+     the tap targets grow to a comfortable 40px. */
+  .snake-toolbar .controls-row {
+    gap: 6px;
+  }
+  .snake-toolbar .btn {
+    padding: 8px 10px;
+    min-height: 40px;
+  }
+  .snake-toolbar .btn--stable {
+    min-width: 60px;
+  }
 }

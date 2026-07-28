@@ -478,6 +478,7 @@ export function AdminPanel() {
                   {group.map((m) => (
                     <div key={m.user_id} style={{ display: 'flex', flexDirection: 'column' }}>
                       <div
+                        className="admin-member-row"
                         style={{
                           display: 'flex',
                           alignItems: 'center',
@@ -488,6 +489,7 @@ export function AdminPanel() {
                         }}
                       >
                         <span
+                          className="admin-member-user"
                           style={{
                             width: '8rem',
                             fontSize: '0.85rem',
