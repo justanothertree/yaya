@@ -338,7 +338,7 @@
   .cz-tabs {
     display: flex;
     flex-wrap: nowrap;
-    gap: 4px;
+    gap: 3px;
     overflow-x: auto;
     scrollbar-width: none;
     scroll-snap-type: x proximity;
@@ -352,8 +352,11 @@
   }
   .cz-tab {
     min-height: 40px;
-    padding: 8px 14px;
-    font-size: 0.82rem;
+    /* tight enough that the Circuit's four daily tabs all fit a 375px screen at once —
+       a strip whose last chip is half cut off looks broken, where a full row reads as
+       designed. Height still carries the tap target, so narrower padding costs nothing. */
+    padding: 8px 6px;
+    font-size: 0.8rem;
     scroll-snap-align: start;
     flex: 0 0 auto;
   }
@@ -458,22 +461,28 @@
     min-height: 40px;
   }
 
-  /* undo/redo are desktop power tools — keep them reachable but compact so they
-     don't dominate the log toolbar */
+  /* Undo/redo are desktop power tools (there is no Ctrl+Z on a phone, and the Log carries
+     its own Clear / Copy last). Keeping them here cost 88px of a 283px toolbar, which left
+     the tab strip showing 2 of 6 tabs — it read as an accident rather than a scroller.
+     Dropping them on mobile gives the tabs the whole row. */
   .cz-tabs ~ span .btn-ghost {
-    min-width: 40px;
-    min-height: 40px;
-    padding: 0.35rem 0.5rem;
+    display: none !important;
   }
-  /* the tab strip is full-width, so undo/redo wrapped onto their own line and cost a
-     whole 48px row on every Circuit screen. Keep the toolbar on one line and let the
-     (already scrollable) tab strip take the remaining width. */
-  .cz-toolbar {
-    flex-wrap: nowrap !important;
-  }
+  /* the tab strip owns its row and scrolls; the circuit picker (when you're in more than
+     one circuit) wraps below it rather than stealing width */
   .cz-toolbar .cz-tabs {
-    flex: 1 1 auto;
+    flex: 1 1 100%;
     min-width: 0;
+  }
+  /* make the scroll obviously intentional: the strip fades out at the right edge while
+     there's more to reach, so a cut-off tab reads as "keep swiping", not as clipping */
+  .cz-tabs {
+    -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent 100%);
+    mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent 100%);
+  }
+  .cz-tabs.cz-scroll-end {
+    -webkit-mask-image: none;
+    mask-image: none;
   }
 
   /* cards breathe: comfortable interior padding, honest full-width feel */

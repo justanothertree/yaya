@@ -15,6 +15,7 @@ import { CircuitCanvas, type CanvasPane } from '../circuit/ui/CircuitCanvas'
 import { CircuitsPanel } from '../circuit/ui/CircuitsPanel'
 import { Chat } from '../circuit/ui/Chat'
 import { onLogIntent, requestLog, requestLogToday, takePendingLog } from '../circuit/logIntent'
+import { useScrollFade } from '../hooks/useScrollFade'
 
 type Tab = 'board' | 'log' | 'feed' | 'charts' | 'movies' | 'watchlist' | 'chat' | 'circuits'
 
@@ -95,6 +96,7 @@ export function Circuit({
     window.addEventListener('hashchange', onHash)
     return () => window.removeEventListener('hashchange', onHash)
   }, [authed])
+  const tabsRef = useScrollFade<HTMLSpanElement>()
   const [logTarget, setLogTarget] = useState<{ personId: string; date: string } | null>(null)
   const [focusPane, setFocusPane] = useState<{ id: string; nonce: number } | null>(null)
   const [desktop, setDesktop] = useState(isDesktop())
@@ -190,7 +192,7 @@ export function Circuit({
     />
   )
 
-  const tabs: { id: Tab; label: string }[] = [
+  const allTabs: { id: Tab; label: string }[] = [
     { id: 'board', label: '🏆 Board' },
     { id: 'log', label: '✏️ Log' },
     { id: 'feed', label: '📋 Feed' },
@@ -207,6 +209,14 @@ export function Circuit({
           { id: 'watchlist' as Tab, label: '🍿 Watchlist' },
         ]),
   ]
+  // On a phone six chips can't fit, and two of them don't belong in a daily strip anyway:
+  // Chat is a bottom-bar destination and Circuits is management (it lives in the ☰ launcher).
+  // Dropping them leaves four that nearly fit, so the strip reads as a row rather than a
+  // squeezed scroller. Both stay routable — only their chips are hidden — and whichever tab
+  // is open always keeps a chip so the active state is never orphaned.
+  const dailyTabs: Tab[] = ['board', 'log', 'feed', 'charts']
+  const tabs =
+    desktop || !authed ? allTabs : allTabs.filter((t) => dailyTabs.includes(t.id) || t.id === tab)
 
   const canvasPanes: CanvasPane[] = [
     {
@@ -310,7 +320,7 @@ export function Circuit({
               alignItems: 'center',
             }}
           >
-            <span className="cz-tabs">
+            <span className="cz-tabs" ref={tabsRef}>
               {tabs.map((t) => (
                 <button
                   key={t.id}

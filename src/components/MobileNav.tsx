@@ -110,6 +110,8 @@ export function MobileNav({
           { key: 'log', label: 'Quick log', icon: '✏️', section: 'circuit', tab: 'log' },
           { key: 'ratings', label: 'Ratings', icon: '⭐', section: 'ratings' },
           { key: 'chat', label: 'Chat', icon: '💬', section: 'circuit', tab: 'chat' },
+          // circuit management: out of the daily tab strip, but one tap from here
+          { key: 'circuits', label: 'Circuits', icon: '👥', section: 'circuit', tab: 'circuits' },
         ] as Dest[])
       : []),
     ...(member && canFinance
