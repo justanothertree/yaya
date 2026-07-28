@@ -25,14 +25,14 @@ const isDesktop = () => typeof window !== 'undefined' && window.innerWidth >= 82
 // sub-tab you were on last (navigating away unmounts this component, so it's persisted).
 const TAB_KEY = 'circuit_tab'
 function initialTab(authed: boolean): Tab {
+  // Members get the fitness-only Circuit — Reviews/Watchlist moved to the Ratings
+  // destination. The signed-out demo keeps them so a visitor can try everything in one place.
   const valid: Tab[] = [
     'board',
     'log',
     'feed',
     'charts',
-    'movies',
-    'watchlist',
-    ...(authed ? (['chat', 'circuits'] as Tab[]) : []),
+    ...(authed ? (['chat', 'circuits'] as Tab[]) : (['movies', 'watchlist'] as Tab[])),
   ]
   const q = new URLSearchParams(window.location.hash.split('?')[1] ?? '')
   const fromLink = q.get('tab') as Tab | null
@@ -84,9 +84,7 @@ export function Circuit({
         'log',
         'feed',
         'charts',
-        'movies',
-        'watchlist',
-        ...(authed ? (['chat', 'circuits'] as Tab[]) : []),
+        ...(authed ? (['chat', 'circuits'] as Tab[]) : (['movies', 'watchlist'] as Tab[])),
       ]
       if (t && valid.includes(t)) setTab(t)
     }
@@ -193,15 +191,17 @@ export function Circuit({
     { id: 'log', label: '✏️ Log' },
     { id: 'feed', label: '📋 Feed' },
     { id: 'charts', label: '📊 Charts' },
-    { id: 'movies', label: '📝 Reviews' },
-    { id: 'watchlist', label: '🍿 Watchlist' },
-    // chat + circuit management are members-only
+    // Reviews/Watchlist live under Ratings for members; the demo keeps them here.
+    // Chat + circuit management are members-only.
     ...(authed
       ? [
           { id: 'chat' as Tab, label: '💬 Chat' },
           { id: 'circuits' as Tab, label: '👥 Circuits' },
         ]
-      : []),
+      : [
+          { id: 'movies' as Tab, label: '📝 Reviews' },
+          { id: 'watchlist' as Tab, label: '🍿 Watchlist' },
+        ]),
   ]
 
   const canvasPanes: CanvasPane[] = [
@@ -221,9 +221,12 @@ export function Circuit({
       title: '📊 Charts',
       node: <Charts onDayClick={requestLog} viewGroup={viewGroup} />,
     },
-    { id: 'movies', title: '📝 Reviews', node: <Movies viewGroup={viewGroup} /> },
-    { id: 'watchlist', title: '🍿 Watchlist', node: <Watchlist viewGroup={viewGroup} /> },
-    ...(authed ? [{ id: 'chat', title: '💬 Chat', node: <Chat authed /> }] : []),
+    ...(authed
+      ? [{ id: 'chat', title: '💬 Chat', node: <Chat authed /> }]
+      : [
+          { id: 'movies', title: '📝 Reviews', node: <Movies viewGroup={viewGroup} /> },
+          { id: 'watchlist', title: '🍿 Watchlist', node: <Watchlist viewGroup={viewGroup} /> },
+        ]),
   ]
 
   // App pins the pane OBJECTS (it has to — they must outlive this component when you

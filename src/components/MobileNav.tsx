@@ -16,6 +16,7 @@ import { useEffect, useState } from 'react'
 export type MobileSection =
   | 'home'
   | 'circuit'
+  | 'ratings'
   | 'signin'
   | 'investments'
   | 'account-settings'
@@ -80,7 +81,7 @@ export function MobileNav({
     ? [
         { key: 'home', label: 'Home', icon: '🏠', section: 'home' },
         { key: 'circuit', label: 'Circuit', icon: '🏆', section: 'circuit' },
-        { key: 'log', label: 'Log', icon: '✏️', section: 'circuit', tab: 'log', primary: true },
+        { key: 'ratings', label: 'Ratings', icon: '⭐', section: 'ratings' },
         { key: 'chat', label: 'Chat', icon: '💬', section: 'circuit', tab: 'chat' },
       ]
     : [
@@ -107,6 +108,7 @@ export function MobileNav({
       ? ([
           { key: 'circuit', label: 'Circuit', icon: '🏆', section: 'circuit' },
           { key: 'log', label: 'Quick log', icon: '✏️', section: 'circuit', tab: 'log' },
+          { key: 'ratings', label: 'Ratings', icon: '⭐', section: 'ratings' },
           { key: 'chat', label: 'Chat', icon: '💬', section: 'circuit', tab: 'chat' },
         ] as Dest[])
       : []),

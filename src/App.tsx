@@ -35,6 +35,7 @@ const AcceptInvite = lazy(() =>
   import('./sections/AcceptInvite').then((m) => ({ default: m.AcceptInvite })),
 )
 const Profile = lazy(() => import('./sections/Profile').then((m) => ({ default: m.Profile })))
+const Ratings = lazy(() => import('./sections/Ratings').then((m) => ({ default: m.Ratings })))
 
 if (import.meta.env.DEV) {
   import('./dev/supabaseDebug')
@@ -43,6 +44,7 @@ if (import.meta.env.DEV) {
 type Section =
   | 'home'
   | 'circuit'
+  | 'ratings'
   | 'signin'
   | 'investments'
   | 'account-settings'
@@ -51,6 +53,22 @@ type Section =
   | 'admin'
   | 'invite'
   | 'profile'
+
+// Every routable section — the single source of truth for hash validation (initial load +
+// hashchange). Keep in sync with the Section type above; a missing entry silently routes home.
+const ALL_SECTIONS: Section[] = [
+  'home',
+  'circuit',
+  'ratings',
+  'signin',
+  'investments',
+  'account-settings',
+  'snake',
+  'contact',
+  'admin',
+  'invite',
+  'profile',
+]
 
 // Single source of truth for left/right section order (keyboard, swipe, edge buttons).
 // Home is the unified Evan Cook page (portfolio + about + projects). Circuit is featured
@@ -67,6 +85,7 @@ const navOrder = (
       ? [
           'home',
           'circuit',
+          'ratings',
           ...(canFinance ? (['investments'] as Section[]) : []),
           'account-settings',
           ...(isAdmin ? (['admin'] as Section[]) : []),
@@ -112,22 +131,7 @@ export default function App() {
   const initialSection: Section = (() => {
     const raw = (window.location.hash || '#home').replace('#', '')
     const base = (raw.split('?')[0] || 'home') as Section
-    return (
-      [
-        'home',
-        'circuit',
-        'signin',
-        'investments',
-        'account-settings',
-        'snake',
-        'contact',
-        'admin',
-        'invite',
-        'profile',
-      ] as Section[]
-    ).includes(base)
-      ? base
-      : 'home'
+    return ALL_SECTIONS.includes(base) ? base : 'home'
   })()
   const [active, setActive] = useState<Section>(initialSection)
   // boot from the persisted session + last-confirmed flags (verified in the background)
@@ -438,22 +442,7 @@ export default function App() {
     const parseHash = (): Section => {
       const raw = (window.location.hash || '#home').replace('#', '')
       const base = (raw.split('?')[0] || 'home') as Section
-      return (
-        [
-          'home',
-          'circuit',
-          'signin',
-          'investments',
-          'account-settings',
-          'snake',
-          'contact',
-          'admin',
-          'invite',
-          'profile',
-        ] as Section[]
-      ).includes(base)
-        ? base
-        : 'home'
+      return ALL_SECTIONS.includes(base) ? base : 'home'
     }
     const onHash = () => setActive(parseHash())
     window.addEventListener('hashchange', onHash)
@@ -830,6 +819,15 @@ export default function App() {
                     Circuit
                   </a>
                 )}
+                {isFinanceAuthed && !suspended && (
+                  <a
+                    href="#ratings"
+                    onClick={() => setActive('ratings')}
+                    aria-current={active === 'ratings' ? 'page' : undefined}
+                  >
+                    Ratings
+                  </a>
+                )}
                 {hasFinanceSupabaseEnv() && !isFinanceAuthed && (
                   <a
                     href="#signin"
@@ -1022,6 +1020,19 @@ export default function App() {
                 onTogglePin={togglePin}
                 onRefreshPinned={refreshPinned}
               />
+            </Suspense>
+          </section>
+        )}
+        {active === 'ratings' && (
+          <section id="ratings" className="card reveal">
+            <Suspense
+              fallback={
+                <div className="card" aria-busy>
+                  Loading Ratings…
+                </div>
+              }
+            >
+              <Ratings />
             </Suspense>
           </section>
         )}
