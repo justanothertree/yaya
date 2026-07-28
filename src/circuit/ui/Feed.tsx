@@ -221,6 +221,7 @@ function SocialBar({ logId, social, me }: { logId: string; social: FeedSocial; m
         {Object.entries(byEmoji).map(([emoji, info]) => (
           <button
             key={emoji}
+            className="cz-tap"
             onClick={() => void social.toggleReaction(logId, emoji, me)}
             title={info.who.join(', ')}
             style={{
@@ -235,6 +236,7 @@ function SocialBar({ logId, social, me }: { logId: string; social: FeedSocial; m
         ))}
         <span style={{ position: 'relative' }}>
           <button
+            className="cz-tap"
             onClick={() => setPicker((p) => !p)}
             title="Add kudos"
             style={{ ...chip, border: '1px solid var(--b2, rgba(127,127,127,0.3))' }}
@@ -277,6 +279,7 @@ function SocialBar({ logId, social, me }: { logId: string; social: FeedSocial; m
           )}
         </span>
         <button
+          className="cz-tap"
           onClick={() => setOpen((o) => !o)}
           style={{ ...chip, marginLeft: 'auto', color: 'var(--muted)' }}
         >

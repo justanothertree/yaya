@@ -2120,7 +2120,7 @@ export function GameManager({
               {[1, 2, 3, 4].map((n) => (
                 <button
                   key={n}
-                  className="btn"
+                  className="btn apple-btn"
                   aria-pressed={settings.apples === n}
                   onClick={() => {
                     const next = { ...settings, apples: n }

@@ -433,6 +433,31 @@
     min-height: 40px;
   }
 
+  /* ── thumb targets ────────────────────────────────────────────────────────
+     A sweep found controls down to 14x17 (the board's log-today ＋/✓), 20-22px
+     (watchlist vote chips, ✓ Done, ✕) and 23-25px (feed kudos/comment pills) —
+     all far under a fingertip. They're marked .cz-tap and grown here. !important
+     because every one of them carries inline styles that a stylesheet can't beat. */
+  .cz-tap {
+    min-height: 38px !important;
+    min-width: 38px !important;
+    display: inline-flex !important;
+    align-items: center;
+    justify-content: center;
+  }
+  /* filter chips (feed people, review categories) were 28px tall */
+  .cz-chip {
+    min-height: 34px;
+  }
+
+  /* text fields were as short as 24px (the contact form). No field should be
+     shorter than a fingertip; min-height only ever grows them. */
+  input:not([type='checkbox']):not([type='radio']):not([type='range']),
+  select,
+  textarea {
+    min-height: 40px;
+  }
+
   /* undo/redo are desktop power tools — keep them reachable but compact so they
      don't dominate the log toolbar */
   .cz-tabs ~ span .btn-ghost {

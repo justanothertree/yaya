@@ -123,11 +123,12 @@ function Slideshow({ project }: { project: Project }) {
             {shots.map((_, di) => (
               <button
                 key={di}
+                className="cz-tap"
                 aria-label={`Go to slide ${di + 1}`}
                 onClick={() => setI(di)}
                 style={{
                   // a roomy transparent tap target (thumb-friendly) around a small dot —
-                  // 7px buttons were untappable on a phone
+                  // 7px buttons were untappable on a phone; .cz-tap grows it again on mobile
                   width: 28,
                   height: 22,
                   display: 'inline-grid',
