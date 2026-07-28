@@ -37,6 +37,10 @@ function initialTab(authed: boolean): Tab {
   const q = new URLSearchParams(window.location.hash.split('?')[1] ?? '')
   const fromLink = q.get('tab') as Tab | null
   if (fromLink && valid.includes(fromLink)) return fromLink
+  // Members land on the Log: logging is the daily reason to open the Circuit, and now that
+  // the bottom bar carries Ratings instead of a Log shortcut, this IS the quick-log path.
+  // (The signed-out demo still opens on the Board — a visitor wants the story, not a form.)
+  if (authed) return 'log'
   try {
     const saved = localStorage.getItem(TAB_KEY) as Tab | null
     if (saved && valid.includes(saved)) return saved

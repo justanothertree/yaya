@@ -299,6 +299,7 @@ export function Board({
                 </span>
                 {onLogToday && (
                   <button
+                    className="cz-tap"
                     onClick={() => onLogToday(r.p.id)}
                     title={
                       state.logs.some((l) => l.personId === r.p.id && l.date === todayStr)

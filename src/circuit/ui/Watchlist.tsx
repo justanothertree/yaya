@@ -161,6 +161,7 @@ export function Watchlist({
                   return (
                     <button
                       key={p.id}
+                      className="cz-tap"
                       onClick={() => toggleVote(item, p.id)}
                       title={`${p.name} ${voted ? '— remove vote' : '— vote to watch'}`}
                       style={{
@@ -195,7 +196,7 @@ export function Watchlist({
                 </span>
               )}
               <button
-                className="btn"
+                className="btn cz-tap"
                 style={{
                   fontSize: '0.74rem',
                   padding: '2px 9px',
@@ -210,7 +211,7 @@ export function Watchlist({
                 ✓ Done
               </button>
               <button
-                className="btn"
+                className="btn cz-tap"
                 style={{ fontSize: '0.74rem', padding: '2px 6px', opacity: 0.45, flexShrink: 0 }}
                 onClick={() => void circuitStore.deleteWatchlist(item.id)}
                 title="Remove"

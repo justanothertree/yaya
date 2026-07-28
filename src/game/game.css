@@ -260,11 +260,22 @@
      instead of wrapping to two — the toolbar drops from a ~230px wall to ~140px, while
      the tap targets grow to a comfortable 40px. */
   .snake-toolbar .controls-row {
-    gap: 6px;
+    gap: 5px;
   }
   .snake-toolbar .btn {
-    padding: 8px 10px;
+    /* Solo+Multiplayer+Play+Restart needed 289px in a 288px row and wrapped to a second
+       line by ONE pixel. Tighter horizontal padding buys ~20px of slack so it stays one
+       row on a 375px phone instead of silently doubling the toolbar's height. */
+    padding: 8px 7px;
     min-height: 40px;
+  }
+  /* the single-digit apple buttons shrank to 23px with the tighter padding; the Edges row
+     has ~65px of slack, so widen just these back to a comfortable target */
+  .snake-toolbar .apple-btn {
+    min-width: 34px;
+    /* deliberately NO min-width: the 1/2/3/4 apple buttons are 29px wide but a full 40px
+       tall, which is a fine thumb target. Forcing them wider re-wrapped the control rows
+       and grew the toolbar from 149px back to 245px, burying the game again. */
   }
   .snake-toolbar .btn--stable {
     min-width: 60px;
