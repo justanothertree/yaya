@@ -260,6 +260,17 @@ export function Board({
                     ),
                   )}
                 </span>
+                {/* The month total, for phones. On desktop the number rides inside the bar,
+                    but the bar is too narrow to be worth drawing on a phone — and hiding it
+                    took the score with it, leaving a standings board with no scores. This
+                    span carries the number wherever the bar isn't. */}
+                <span
+                  className="cz-num cz-board-total"
+                  style={{ flexShrink: 0, fontWeight: 800, fontSize: '0.95rem', color: r.p.color }}
+                  title={`${Math.round(r.total)} pts · goal ${r.goal}/day`}
+                >
+                  {Math.round(r.total)}
+                </span>
                 <span
                   style={{
                     flexShrink: 0,

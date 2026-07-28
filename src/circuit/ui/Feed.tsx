@@ -1,6 +1,6 @@
 // Activity feed — multi-view: List · Month · Week · Day · Table.
 // All views share the person filter. Month/Table day cells drill into Day view.
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useCircuit } from '../store'
 import { peopleInGroup } from '../groupFilter'
 import { isImportedTotal, logPoints } from '../scoring'
@@ -351,7 +351,14 @@ export function Feed({
   )
   const cardSocial = authed ? social : undefined
   const [view, setView] = useState<View>('list')
+  // The list rendered every entry at once — 309 of them built a 43,000px page (53 screens)
+  // that a phone has to lay out and scroll through. Show a page at a time instead.
+  const PAGE = 30
+  const [shown, setShown] = useState(PAGE)
   const [filter, setFilter] = useState('') // '' = everyone
+  // start the list back at page one whenever the set of entries changes under it, so
+  // narrowing to one person doesn't leave you scrolled into a page you can no longer see
+  useEffect(() => setShown(PAGE), [filter, view])
   const [lightbox, setLightbox] = useState<string | null>(null)
   const [cursor, setCursor] = useState<string | null>(null)
   const [filterOpen, setFilterOpen] = useState(() => {
@@ -525,7 +532,7 @@ export function Feed({
 
       {view === 'list' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-          {rows.map((log) => (
+          {rows.slice(0, shown).map((log) => (
             <LogCard
               key={log.id}
               log={log}
@@ -536,6 +543,15 @@ export function Feed({
               me={me}
             />
           ))}
+          {rows.length > shown && (
+            <button
+              className="btn"
+              onClick={() => setShown((n) => n + PAGE)}
+              style={{ alignSelf: 'center', marginTop: '0.4rem' }}
+            >
+              Show more ({rows.length - shown} older)
+            </button>
+          )}
         </div>
       )}
 
