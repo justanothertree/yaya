@@ -254,6 +254,13 @@
   display: flex;
   flex-direction: column;
 }
+/* The board's month total. On a wide screen the number rides inside the progress bar, so
+   this duplicate stays hidden; phones hide the bar (too narrow to read) and show this
+   instead. Declared BEFORE the media block below so the mobile rule wins on source order. */
+.cz-board-total {
+  display: none;
+}
+
 /* phones: stack the sheet's columns full-width so each exercise is a roomy full-width row
    (no cramped side-by-side columns or horizontal scrolling while logging on a phone). */
 @media (max-width: 560px) {
@@ -269,6 +276,12 @@
      the at-a-glance read, so hide it and let the name fill, keeping the numbers right-aligned. */
   .cz-board-bar {
     display: none;
+  }
+  /* ...but keep the score: hiding the bar used to hide the number inside it, leaving a
+     standings board with no standings. */
+  .cz-board-total {
+    display: inline;
+    margin-left: auto;
   }
   .cz-board-name {
     flex: 1 1 auto !important;

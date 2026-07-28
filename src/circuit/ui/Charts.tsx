@@ -1,6 +1,6 @@
 // Charts — cumulative "race" line through the month + per-person category donuts.
 // Ported flavor of the standalone's Charts tab; reads from the shared store.
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useCircuit } from '../store'
 import { peopleInGroup } from '../groupFilter'
 import { dayTotal, monthLabel, monthTotal } from '../scoring'
@@ -15,6 +15,14 @@ export function Charts({
   viewGroup = '',
 }: { onDayClick?: (personId: string, date: string) => void; viewGroup?: string } = {}) {
   const state = useCircuit()
+  const [narrow, setNarrow] = useState(
+    () => typeof window !== 'undefined' && window.innerWidth <= 640,
+  )
+  useEffect(() => {
+    const onResize = () => setNarrow(window.innerWidth <= 640)
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
   // people scoped to the viewed circuit (shared filter)
   const people = useMemo(() => peopleInGroup(state.people, viewGroup), [state.people, viewGroup])
   const curMonth = todayMonth()
@@ -87,13 +95,18 @@ export function Charts({
         ? 'Points per day'
         : '7-day rolling average'
 
-  // race chart geometry
+  // Race chart geometry. The SVG scales its viewBox down to the container, so on a phone
+  // (~283px wide against a 720-unit box) everything shrinks by ~0.4x — which rendered the
+  // axis labels at FIVE pixels tall, unreadable. Rather than shrink a desktop chart, the
+  // phone gets its own proportions: text and padding grow in viewBox units so they land at
+  // a legible size on screen, and the plot gets taller since a phone has height to spare.
   const VW = 720,
-    VH = 280,
-    PL = 38,
-    PR = 14,
-    PT = 12,
-    PB = 24
+    VH = narrow ? 420 : 280,
+    PL = narrow ? 92 : 38,
+    PR = narrow ? 20 : 14,
+    PT = narrow ? 18 : 12,
+    PB = narrow ? 46 : 24,
+    axisFont = narrow ? 26 : 9
   const x = (day: number) => PL + ((day - 1) / Math.max(1, days - 1)) * (VW - PL - PR)
   const yy = (v: number) => VH - PB - (v / maxY) * (VH - PT - PB)
 
@@ -199,7 +212,7 @@ export function Charts({
                       y={yy(v)}
                       textAnchor="end"
                       dominantBaseline="middle"
-                      fontSize={9}
+                      fontSize={axisFont}
                       fill="currentColor"
                       opacity={0.45}
                     >
@@ -217,7 +230,7 @@ export function Charts({
                     x={x(d)}
                     y={VH - 5}
                     textAnchor="middle"
-                    fontSize={9}
+                    fontSize={axisFont}
                     fill="currentColor"
                     opacity={0.38}
                   >
