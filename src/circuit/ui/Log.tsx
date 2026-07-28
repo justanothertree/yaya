@@ -542,6 +542,7 @@ export function Log({
       {/* slot sheet header */}
       {cols.length > 0 && (
         <div
+          className="cz-sheet-head"
           style={{
             display: 'flex',
             alignItems: 'center',
@@ -841,6 +842,7 @@ function Slot({
       </div>
       {(best || tags.length > 0) && (
         <div
+          className="cz-slot-meta"
           style={{
             display: 'flex',
             alignItems: 'center',
