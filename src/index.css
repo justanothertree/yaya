@@ -407,44 +407,27 @@
     padding: 1rem 1rem;
   }
 
-  /* chat is a real messaging screen on a phone: the conversation fills the space
-     between the room switcher and the composer, not a cramped 24rem box. 100dvh keeps
-     the composer above the keyboard when it opens. */
-  /* fill the space above the bottom bar. The offset is conservative on purpose — it must
-     never push the composer under the fixed nav bar; a little slack beats a hidden input.
-     (Tune this one number if a signed-in phone shows dead space or a buried composer.) */
+  /* chat is a real messaging screen on a phone: the list and the open thread take turns
+     (see the data-view rules below), each filling the space above the bottom bar. 100dvh
+     keeps the composer above the keyboard when it opens. */
   .cz-chat {
     /* Fill from below the sub-tabs down to just above the fixed bottom nav. Split into its
        two parts so each is tunable: ~250px of chrome above the chat (title + tab row +
        margins), and ~84px for the bottom nav + safe-area + a little slack. Verified in the
        member preview harness that the composer clears the nav (was buried at -300px). */
+    grid-template-columns: 1fr;
     height: calc(100dvh - 250px - 84px);
     min-height: 14rem;
   }
-  .cz-chat-log {
-    flex: 1;
-    max-height: none !important;
-    min-height: 0 !important;
-  }
-  .cz-chat-rooms {
-    overflow-x: auto;
-    flex-wrap: nowrap !important;
-    scrollbar-width: none;
-    padding-bottom: 2px;
-  }
-  .cz-chat-rooms::-webkit-scrollbar {
-    display: none;
-  }
-  .cz-chat-rooms .cz-chip {
-    flex: 0 0 auto;
-  }
+  /* NB: the one-pane-at-a-time and back-button rules live in their own media block AFTER
+     the base chat styles below — putting them here loses to the later base declarations. */
   .cz-chat-form input {
     min-height: 44px;
   }
   /* Chat tab on a phone = a dedicated messaging screen. Drop the Circuit chrome (title,
      subtitle, the sub-tab + undo/redo toolbar) so the conversation owns the viewport;
-     the room chips are its header, the bottom bar is how you leave. With the chrome gone
-     the chat can be much taller — only the slim top nav + a little padding sit above it. */
+     the conversation list is the screen, the bottom bar is how you leave. With the chrome
+     gone the chat can be much taller — only the slim top nav + a little padding above it. */
   /* !important because both carry an inline display:flex, which a stylesheet can't beat */
   .cz-tab-chat .cz-head,
   .cz-tab-chat .cz-toolbar {
@@ -452,6 +435,168 @@
   }
   .cz-tab-chat .cz-chat {
     height: calc(100dvh - 96px - 84px);
+  }
+}
+
+/* ══ chat: conversations + thread ══════════════════════════════════════════
+   Wide screens show both panes side by side (list left, open thread right);
+   the phone rules above collapse this to one pane at a time via data-view. */
+.cz-chat {
+  display: grid;
+  grid-template-columns: minmax(200px, 260px) 1fr;
+  gap: 0.75rem;
+  min-height: 0;
+  height: 26rem;
+}
+.cz-chat-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow-y: auto;
+  min-height: 0;
+  padding-right: 2px;
+}
+.cz-chat-thread {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-height: 0;
+}
+.cz-thread-empty {
+  margin: auto;
+  font-size: 0.85rem;
+}
+
+/* a conversation row: icon · name + last message · time · unread badge */
+.cz-conv {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  width: 100%;
+  padding: 0.45rem 0.55rem;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.cz-conv:hover {
+  background: var(--b1, rgba(127, 127, 127, 0.08));
+}
+.cz-conv.is-open {
+  background: var(--card2, rgba(127, 127, 127, 0.16));
+}
+.cz-conv-ic {
+  font-size: 1.15rem;
+  flex: 0 0 auto;
+}
+.cz-conv-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.cz-conv-top {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+}
+.cz-conv-name {
+  flex: 1;
+  min-width: 0;
+  font-weight: 700;
+  font-size: 0.9rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cz-conv-when {
+  flex: 0 0 auto;
+  font-size: 0.68rem;
+}
+/* the preview must never wrap — it's a one-line teaser, ellipsis does the rest */
+.cz-conv-last {
+  display: block;
+  font-size: 0.78rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cz-conv-badge {
+  flex: 0 0 auto;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 10px;
+  background: var(--accent, #7c6af7);
+  color: var(--btn-text, #fff);
+  font-size: 0.7rem;
+  font-weight: 800;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.cz-thread-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding-bottom: 0.4rem;
+  border-bottom: 1px solid var(--b1, rgba(127, 127, 127, 0.18));
+}
+/* back only exists where the panes take turns (phones) */
+.cz-thread-back {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 auto;
+  border: 0;
+  border-radius: 8px;
+  background: var(--b1, rgba(127, 127, 127, 0.1));
+  color: inherit;
+  font-size: 1.3rem;
+  line-height: 1;
+  cursor: pointer;
+}
+.cz-thread-name {
+  font-weight: 800;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cz-chat-log {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  padding: 0.5rem;
+  background: var(--b1, rgba(127, 127, 127, 0.08));
+  border-radius: 10px;
+}
+
+/* Phone: the two panes take turns instead of sitting side by side, and the thread grows a
+   back button. This block MUST come after the base rules above — same specificity, so the
+   later declaration wins (an earlier copy of these rules lost to `.cz-thread-back{none}`
+   and shipped an invisible back button until the harness caught it). */
+@media (max-width: 640px) {
+  .cz-chat[data-view='list'] .cz-chat-thread {
+    display: none;
+  }
+  .cz-chat[data-view='thread'] .cz-chat-list {
+    display: none;
+  }
+  .cz-thread-back {
+    display: inline-flex;
+  }
+  .cz-conv {
+    min-height: 56px;
   }
 }
 

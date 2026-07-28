@@ -1,16 +1,32 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { getSupabaseClient } from '../../finance/client'
-import { previewMember, PREVIEW_ME, PREVIEW_ROOMS, PREVIEW_MSGS } from '../../dev/previewMember'
+import {
+  previewMember,
+  PREVIEW_ME,
+  PREVIEW_MSGS,
+  PREVIEW_UNREAD,
+  previewOverview,
+} from '../../dev/previewMember'
 
 /**
- * Chat — the crew's rooms. One rooms model serves every shape: each circuit has a room
- * (membership = the circuit's), The Lounge is everyone with an account, and DMs slot in
- * later once friendships exist. Reads ride RLS directly (realtime included); sends go
- * through send_chat_message, which resolves the author's name server-side so it can't
- * be spoofed.
+ * Chat — a real messaging screen, not a row of room chips. You land on a list of
+ * conversations (last message + who said it + unread badge, newest first) and tap one to
+ * open its thread; on a phone the list and the thread take turns, on a wide screen they sit
+ * side by side. One rooms model still serves every shape: each circuit has a room, The
+ * Lounge is everyone with an account, and DMs come from friendships.
+ *
+ * Reads ride RLS directly (realtime included); sends go through send_chat_message, which
+ * resolves the author's name server-side so it can't be spoofed. The list comes from
+ * list_chat_overview, and opening a room calls mark_room_read to clear its badge.
  */
 
 type Room = { id: string; kind: string; name: string }
+type Overview = Room & {
+  last_body: string | null
+  last_author: string | null
+  last_at: string | null
+  unread: number
+}
 type Msg = {
   id: string
   room_id: string
@@ -20,10 +36,24 @@ type Msg = {
   created_at: string
 }
 
+const roomIcon = (kind: string) => (kind === 'lounge' ? '🛋️' : kind === 'dm' ? '✉️' : '👥')
+
+/** compact "when" for a conversation row: 4:07 PM today, weekday this week, else a date */
+function whenLabel(iso: string | null): string {
+  if (!iso) return ''
+  const d = new Date(iso)
+  const now = new Date()
+  const sameDay = d.toDateString() === now.toDateString()
+  if (sameDay) return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+  const days = (now.getTime() - d.getTime()) / 86400000
+  if (days < 7) return d.toLocaleDateString([], { weekday: 'short' })
+  return d.toLocaleDateString([], { month: 'numeric', day: 'numeric' })
+}
+
 export function Chat({ authed = false }: { authed?: boolean }) {
   // DEV member preview: render with fake rooms/messages, no Supabase session (see previewMember)
   const sb = authed && !previewMember ? getSupabaseClient() : null
-  const [rooms, setRooms] = useState<Room[]>([])
+  const [rooms, setRooms] = useState<Overview[]>([])
   const [room, setRoom] = useState<Room | null>(null)
   const [msgs, setMsgs] = useState<Msg[]>([])
   const [draft, setDraft] = useState('')
@@ -32,31 +62,56 @@ export function Chat({ authed = false }: { authed?: boolean }) {
   const endRef = useRef<HTMLDivElement>(null)
   const [me, setMe] = useState<string | null>(previewMember ? PREVIEW_ME.id : null)
 
-  useEffect(() => {
+  const loadOverview = useCallback(async () => {
     if (previewMember) {
-      setRooms(PREVIEW_ROOMS)
-      setRoom((r) => r ?? PREVIEW_ROOMS.find((x) => x.kind === 'circuit') ?? PREVIEW_ROOMS[0])
+      setRooms(previewOverview())
       return
     }
     if (!sb) return
+    const { data } = await sb.rpc('list_chat_overview')
+    if (data) setRooms(data as Overview[])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authed])
+
+  // initial load — plus a ?room= deep link (the profile's Message button) opens that thread
+  useEffect(() => {
     let live = true
-    void sb.auth.getSession().then(({ data }) => live && setMe(data.session?.user.id ?? null))
-    void sb.rpc('list_chat_rooms').then(({ data }) => {
-      if (!live || !data) return
-      const rs = data as Room[]
-      setRooms(rs)
-      // a ?room= deep link (the profile's Message button) wins; otherwise land in your
-      // circuit's room with the lounge one chip away
+    if (previewMember) {
+      const list = previewOverview()
+      setRooms(list)
       const wanted = new URLSearchParams(window.location.hash.split('?')[1] ?? '').get('room')
-      setRoom(
-        (wanted ? rs.find((r) => r.id === wanted) : undefined) ??
-          rs.find((r) => r.kind === 'circuit') ??
-          rs[0] ??
-          null,
-      )
+      if (wanted) setRoom(list.find((r) => r.id === wanted) ?? null)
+      return
+    }
+    if (!sb) return
+    void sb.auth.getSession().then(({ data }) => live && setMe(data.session?.user.id ?? null))
+    void sb.rpc('list_chat_overview').then(({ data }) => {
+      if (!live || !data) return
+      const rs = data as Overview[]
+      setRooms(rs)
+      const wanted = new URLSearchParams(window.location.hash.split('?')[1] ?? '').get('room')
+      if (wanted) setRoom(rs.find((r) => r.id === wanted) ?? null)
     })
     return () => {
       live = false
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authed])
+
+  // keep the conversation list fresh: any message we're allowed to see bumps it. RLS applies
+  // to realtime too, so this only ever fires for rooms we're actually in.
+  useEffect(() => {
+    if (!sb) return
+    const ch = sb
+      .channel('chat:overview')
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'chat_messages' },
+        () => void loadOverview(),
+      )
+      .subscribe()
+    return () => {
+      void sb.removeChannel(ch)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authed])
@@ -104,6 +159,8 @@ export function Chat({ authed = false }: { authed?: boolean }) {
           const m = payload.new as Msg
           setMsgs((prev) => (prev.some((x) => x.id === m.id) ? prev : [...prev, m]))
           setTimeout(scrollDown, 60)
+          // we're looking at it, so keep it read
+          void sb.rpc('mark_room_read', { p_room: m.room_id })
         },
       )
       .subscribe()
@@ -113,6 +170,24 @@ export function Chat({ authed = false }: { authed?: boolean }) {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [room?.id, authed])
+
+  function openRoom(r: Overview) {
+    setRoom(r)
+    setErr(null)
+    // clear the badge locally right away, then persist it
+    setRooms((prev) => prev.map((x) => (x.id === r.id ? { ...x, unread: 0 } : x)))
+    if (previewMember) {
+      PREVIEW_UNREAD[r.id] = 0
+      return
+    }
+    if (sb) void sb.rpc('mark_room_read', { p_room: r.id })
+  }
+
+  function backToList() {
+    setRoom(null)
+    setMsgs([])
+    void loadOverview()
+  }
 
   async function send(e: React.FormEvent) {
     e.preventDefault()
@@ -127,6 +202,7 @@ export function Chat({ authed = false }: { authed?: boolean }) {
         created_at: new Date().toISOString(),
       }
       setMsgs((prev) => [...prev, m])
+      PREVIEW_MSGS[room.id] = [...(PREVIEW_MSGS[room.id] ?? []), m]
       setDraft('')
       setTimeout(scrollDown, 60)
       return
@@ -161,114 +237,143 @@ export function Chat({ authed = false }: { authed?: boolean }) {
     new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
 
   return (
-    <div
-      className="cz-chat"
-      style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', minHeight: 0 }}
-    >
-      {rooms.length > 1 && (
-        <div
-          className="cz-chat-rooms"
-          style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}
-        >
-          {rooms.map((r) => (
-            <button
-              key={r.id}
-              className={'cz-chip' + (room?.id === r.id ? ' cz-on' : '')}
-              style={room?.id === r.id ? { background: 'var(--accent, #7c6af7)' } : undefined}
-              onClick={() => setRoom(r)}
-            >
-              {r.kind === 'lounge' ? '🛋️' : r.kind === 'dm' ? '✉️' : '👥'} {r.name}
-            </button>
-          ))}
-        </div>
-      )}
-
-      <div
-        className="cz-chat-log"
-        style={{
-          flex: 1,
-          minHeight: '14rem',
-          maxHeight: '24rem',
-          overflowY: 'auto',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '0.45rem',
-          padding: '0.5rem',
-          background: 'var(--b1, rgba(127,127,127,0.08))',
-          borderRadius: 10,
-        }}
-      >
-        {msgs.length === 0 && (
-          <p className="muted" style={{ margin: 'auto', fontSize: '0.85rem' }}>
-            Nothing here yet — say the first thing.
+    <div className="cz-chat" data-view={room ? 'thread' : 'list'}>
+      {/* ── conversations ─────────────────────────────────────────────── */}
+      <div className="cz-chat-list">
+        {rooms.length === 0 && (
+          <p className="muted" style={{ margin: '0.5rem', fontSize: '0.85rem' }}>
+            No conversations yet.
           </p>
         )}
-        {msgs.map((m, i) => {
-          const mine = m.user_id === me
-          const newDay = i === 0 || dayOf(m.created_at) !== dayOf(msgs[i - 1].created_at)
-          return (
-            <div key={m.id}>
-              {newDay && (
-                <div
-                  className="muted"
-                  style={{ textAlign: 'center', fontSize: '0.7rem', margin: '0.35rem 0' }}
-                >
-                  {dayOf(m.created_at)}
-                </div>
-              )}
-              <div
-                style={{
-                  maxWidth: '85%',
-                  marginLeft: mine ? 'auto' : 0,
-                  padding: '0.4rem 0.6rem',
-                  borderRadius: 10,
-                  background: mine
-                    ? 'var(--accent, #7c6af7)'
-                    : 'var(--card2, rgba(127,127,127,0.15))',
-                  color: mine ? 'var(--btn-text, #fff)' : 'var(--text, #eeeef8)',
-                }}
-              >
-                {!mine && (
-                  <div style={{ fontSize: '0.72rem', fontWeight: 700, opacity: 0.85 }}>
-                    {m.author_name}
-                  </div>
+        {rooms.map((r) => (
+          <button
+            key={r.id}
+            className={'cz-conv' + (room?.id === r.id ? ' is-open' : '')}
+            onClick={() => openRoom(r)}
+          >
+            <span className="cz-conv-ic" aria-hidden>
+              {roomIcon(r.kind)}
+            </span>
+            <span className="cz-conv-main">
+              <span className="cz-conv-top">
+                <span className="cz-conv-name">{r.name}</span>
+                <span className="cz-conv-when muted">{whenLabel(r.last_at)}</span>
+              </span>
+              <span className="cz-conv-last muted">
+                {r.last_body ? (
+                  <>
+                    {r.kind !== 'dm' && r.last_author ? `${r.last_author}: ` : ''}
+                    {r.last_body}
+                  </>
+                ) : (
+                  'No messages yet'
                 )}
-                <div
-                  style={{ fontSize: '0.9rem', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}
-                >
-                  {m.body}
-                </div>
-                <div style={{ fontSize: '0.65rem', opacity: 0.7, textAlign: 'right' }}>
-                  {timeOf(m.created_at)}
-                </div>
-              </div>
-            </div>
-          )
-        })}
-        <div ref={endRef} />
+              </span>
+            </span>
+            {r.unread > 0 && <span className="cz-conv-badge">{r.unread}</span>}
+          </button>
+        ))}
       </div>
 
-      {err && (
-        <p
-          className="muted"
-          style={{ margin: 0, fontSize: '0.8rem', color: 'var(--accent-2, #ff5566)' }}
-        >
-          {err}
-        </p>
-      )}
+      {/* ── the open thread ───────────────────────────────────────────── */}
+      <div className="cz-chat-thread">
+        {room ? (
+          <>
+            <div className="cz-thread-head">
+              <button className="cz-thread-back" onClick={backToList} aria-label="Back to messages">
+                ‹
+              </button>
+              <span className="cz-thread-ic" aria-hidden>
+                {roomIcon(room.kind)}
+              </span>
+              <span className="cz-thread-name">{room.name}</span>
+            </div>
 
-      <form className="cz-chat-form" onSubmit={send} style={{ display: 'flex', gap: '0.4rem' }}>
-        <input
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          placeholder={room ? `Message ${room.name}` : 'Pick a room'}
-          maxLength={2000}
-          style={{ flex: 1, padding: '0.55rem 0.7rem', borderRadius: 10 }}
-        />
-        <button className="btn" disabled={!draft.trim() || sending || !room} type="submit">
-          {sending ? '…' : 'Send'}
-        </button>
-      </form>
+            <div className="cz-chat-log">
+              {msgs.length === 0 && (
+                <p className="muted" style={{ margin: 'auto', fontSize: '0.85rem' }}>
+                  Nothing here yet — say the first thing.
+                </p>
+              )}
+              {msgs.map((m, i) => {
+                const mine = m.user_id === me
+                const newDay = i === 0 || dayOf(m.created_at) !== dayOf(msgs[i - 1].created_at)
+                return (
+                  <div key={m.id}>
+                    {newDay && (
+                      <div
+                        className="muted"
+                        style={{ textAlign: 'center', fontSize: '0.7rem', margin: '0.35rem 0' }}
+                      >
+                        {dayOf(m.created_at)}
+                      </div>
+                    )}
+                    <div
+                      style={{
+                        maxWidth: '85%',
+                        marginLeft: mine ? 'auto' : 0,
+                        padding: '0.4rem 0.6rem',
+                        borderRadius: 10,
+                        background: mine
+                          ? 'var(--accent, #7c6af7)'
+                          : 'var(--card2, rgba(127,127,127,0.15))',
+                        color: mine ? 'var(--btn-text, #fff)' : 'var(--text, #eeeef8)',
+                      }}
+                    >
+                      {!mine && (
+                        <div style={{ fontSize: '0.72rem', fontWeight: 700, opacity: 0.85 }}>
+                          {m.author_name}
+                        </div>
+                      )}
+                      <div
+                        style={{
+                          fontSize: '0.9rem',
+                          whiteSpace: 'pre-wrap',
+                          wordBreak: 'break-word',
+                        }}
+                      >
+                        {m.body}
+                      </div>
+                      <div style={{ fontSize: '0.65rem', opacity: 0.7, textAlign: 'right' }}>
+                        {timeOf(m.created_at)}
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+              <div ref={endRef} />
+            </div>
+
+            {err && (
+              <p
+                className="muted"
+                style={{ margin: 0, fontSize: '0.8rem', color: 'var(--accent-2, #ff5566)' }}
+              >
+                {err}
+              </p>
+            )}
+
+            <form
+              className="cz-chat-form"
+              onSubmit={send}
+              style={{ display: 'flex', gap: '0.4rem' }}
+            >
+              <input
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                placeholder={`Message ${room.name}`}
+                maxLength={2000}
+                style={{ flex: 1, padding: '0.55rem 0.7rem', borderRadius: 10 }}
+              />
+              <button className="btn" disabled={!draft.trim() || sending} type="submit">
+                {sending ? '…' : 'Send'}
+              </button>
+            </form>
+          </>
+        ) : (
+          <p className="muted cz-thread-empty">Pick a conversation to start reading.</p>
+        )}
+      </div>
     </div>
   )
 }
