@@ -7,6 +7,7 @@ import { useCircuit } from '../circuit/store'
 import { Movies } from '../circuit/ui/Movies'
 import { Watchlist } from '../circuit/ui/Watchlist'
 import { Toast } from '../circuit/ui/Toast'
+import { useScrollFade } from '../hooks/useScrollFade'
 
 type RTab = 'reviews' | 'watchlist'
 const TAB_KEY = 'ratings_tab'
@@ -27,6 +28,7 @@ function initialTab(): RTab {
 export function Ratings() {
   const state = useCircuit()
   const groups = state.groups ?? []
+  const tabsRef = useScrollFade<HTMLSpanElement>()
   const [tab, setTabRaw] = useState<RTab>(() => initialTab())
   const setTab = (t: RTab) => {
     setTabRaw(t)
@@ -124,7 +126,7 @@ export function Ratings() {
           alignItems: 'center',
         }}
       >
-        <span className="cz-tabs">
+        <span className="cz-tabs" ref={tabsRef}>
           {tabs.map((t) => (
             <button
               key={t.id}
