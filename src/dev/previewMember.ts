@@ -41,6 +41,36 @@ export const PREVIEW_ROOMS: PreviewRoom[] = [
 
 const t = (minsAgo: number) => new Date(Date.now() - minsAgo * 60000).toISOString()
 
+/** unread counts the conversation list shows in preview (cleared when a room is opened) */
+export const PREVIEW_UNREAD: Record<string, number> = {
+  'pv-crew': 0,
+  'pv-lounge': 0,
+  'pv-dm': 2,
+}
+
+/** the conversation-list shape, derived from the mock rooms + messages */
+export function previewOverview(): {
+  id: string
+  kind: string
+  name: string
+  last_body: string | null
+  last_author: string | null
+  last_at: string | null
+  unread: number
+}[] {
+  return PREVIEW_ROOMS.map((r) => {
+    const ms = PREVIEW_MSGS[r.id] ?? []
+    const last = ms[ms.length - 1]
+    return {
+      ...r,
+      last_body: last?.body ?? null,
+      last_author: last?.author_name ?? null,
+      last_at: last?.created_at ?? null,
+      unread: PREVIEW_UNREAD[r.id] ?? 0,
+    }
+  }).sort((a, b) => (b.last_at ?? '').localeCompare(a.last_at ?? ''))
+}
+
 export const PREVIEW_MSGS: Record<string, PreviewMsg[]> = {
   'pv-crew': [
     {
