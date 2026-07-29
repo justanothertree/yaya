@@ -74,11 +74,23 @@ export function Board({
     <div>
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
         <h3 style={{ margin: 0 }}>Standings</h3>
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}>
+        <span
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '0.4rem',
+            maxWidth: '100%',
+            minWidth: 0,
+          }}
+        >
           <button className="btn" aria-label="Previous month" onClick={() => shiftMonth(-1)}>
             ◀
           </button>
-          <strong style={{ minWidth: '9rem', textAlign: 'center' }}>{monthLabel(ym)}</strong>
+          <strong
+            style={{ flex: '1 1 auto', minWidth: 0, textAlign: 'center', whiteSpace: 'nowrap' }}
+          >
+            {monthLabel(ym)}
+          </strong>
           <button
             className="btn"
             aria-label="Next month"

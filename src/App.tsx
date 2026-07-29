@@ -1175,7 +1175,14 @@ export default function App() {
       />
       <footer
         className="container"
-        style={{ opacity: 0.9, paddingTop: '1rem', paddingBottom: '2rem' }}
+        style={{
+          opacity: 0.9,
+          paddingTop: '1rem',
+          // The footer sits OUTSIDE main, so main's bottom padding never protected it: on
+          // any page long enough to scroll, the fixed bottom bar covered the last ~60px —
+          // the copyright line and the GitHub/LinkedIn icons. It needs its own clearance.
+          paddingBottom: !desktop ? 'calc(2rem + 74px + env(safe-area-inset-bottom))' : '2rem',
+        }}
       >
         <div
           className="muted"

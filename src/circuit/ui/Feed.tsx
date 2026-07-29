@@ -674,7 +674,9 @@ function DateNav({
       <button className="btn btn-ghost" aria-label="Previous" onClick={() => onShift(prev)}>
         ◀
       </button>
-      <strong style={{ minWidth: '12rem', textAlign: 'center' }}>{label}</strong>
+      <strong style={{ flex: '1 1 auto', minWidth: 0, textAlign: 'center', whiteSpace: 'nowrap' }}>
+        {label}
+      </strong>
       <button
         className="btn btn-ghost"
         aria-label="Next"
