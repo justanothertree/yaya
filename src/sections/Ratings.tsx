@@ -8,6 +8,7 @@ import { Movies } from '../circuit/ui/Movies'
 import { Watchlist } from '../circuit/ui/Watchlist'
 import { Toast } from '../circuit/ui/Toast'
 import { useScrollFade } from '../hooks/useScrollFade'
+import { previewMember, PREVIEW_GROUPS } from '../dev/previewMember'
 
 type RTab = 'reviews' | 'watchlist'
 const TAB_KEY = 'ratings_tab'
@@ -27,7 +28,7 @@ function initialTab(): RTab {
 
 export function Ratings() {
   const state = useCircuit()
-  const groups = state.groups ?? []
+  const groups = state.groups?.length ? state.groups : previewMember ? PREVIEW_GROUPS : []
   const tabsRef = useScrollFade<HTMLSpanElement>()
   const [tab, setTabRaw] = useState<RTab>(() => initialTab())
   const setTab = (t: RTab) => {
@@ -114,6 +115,12 @@ export function Ratings() {
         <span className="muted cz-subtitle" style={{ fontSize: '0.85rem' }}>
           reviews &amp; watchlist, shared with your circles
         </span>
+        {/* filter sits on the title line, matching the Circuit */}
+        {groupPicker && (
+          <span className="cz-head-filter" style={{ marginLeft: 'auto' }}>
+            {groupPicker}
+          </span>
+        )}
       </div>
 
       <div
@@ -138,7 +145,6 @@ export function Ratings() {
             </button>
           ))}
         </span>
-        {groupPicker && <span style={{ marginLeft: 'auto' }}>{groupPicker}</span>}
       </div>
 
       <div className="cz-pane" key={tab}>

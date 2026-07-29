@@ -23,6 +23,16 @@ export const PREVIEW_ME = {
   email: 'preview@localhost',
 }
 
+/**
+ * Stand-in circuits, so anything scoped to a group (the circuit filter, group-scoped boards)
+ * can be exercised in the preview. The real store loads from its adapter, which overwrites
+ * anything seeded into localStorage, so the harness has to supply these itself.
+ */
+export const PREVIEW_GROUPS = [
+  { id: 'pv-crew', name: 'The Crew' },
+  { id: 'pv-family', name: 'Family' },
+]
+
 export type PreviewRoom = { id: string; kind: string; name: string }
 export type PreviewMsg = {
   id: string
