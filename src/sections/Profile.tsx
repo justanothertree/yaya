@@ -131,7 +131,7 @@ export function Profile({ authed }: { authed: boolean }) {
   async function message() {
     const sb = getSupabaseClient()
     const { data, error } = await sb.rpc('open_dm', { p_username: u })
-    if (!error && data) window.location.hash = '#circuit?tab=chat&room=' + data
+    if (!error && data) window.location.hash = '#chat?room=' + data
   }
   const display = p.first_name || p.username
   const initial = display[0]?.toUpperCase() ?? '★'
