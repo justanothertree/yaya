@@ -161,7 +161,7 @@ export function SettingsMenu({
               <button
                 className="btn"
                 onClick={() => onScale(-0.1)}
-                disabled={uiScale <= 0.5}
+                disabled={uiScale <= 0.85}
                 aria-label="Smaller text"
               >
                 −
@@ -172,7 +172,7 @@ export function SettingsMenu({
               <button
                 className="btn"
                 onClick={() => onScale(0.1)}
-                disabled={uiScale >= 2.5}
+                disabled={uiScale >= 1.3}
                 aria-label="Bigger text"
               >
                 +

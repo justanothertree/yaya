@@ -854,9 +854,14 @@ html {
   /* Fluid type: the whole site is styled in rem, so scaling the root scales text AND
      spacing together — each screen lands at its natural sweet spot (16px on phones,
      ~17.5px on laptops, capped 20px on big monitors) without touching the zoom control.
-     The A− / A+ zoom still multiplies on top as a personal override. rem-based clamp
-     respects the user's browser font preference. */
-  font-size: clamp(1rem, 0.925rem + 0.22vw, 1.25rem);
+     rem-based clamp respects the user's browser font preference.
+
+     The A− / A+ control multiplies THIS, which is what makes it a text-size control: the
+     layout reflows at the new size. It used to apply CSS `zoom` to <main> instead, which
+     scaled geometry rather than text — so at larger settings the content simply grew wider
+     than the phone and got clipped, with `overflow-x: hidden` below removing any way to
+     scroll to it. That is what made the feature feel broken. */
+  font-size: calc(clamp(1rem, 0.925rem + 0.22vw, 1.25rem) * var(--ui-scale, 1));
 }
 
 html,

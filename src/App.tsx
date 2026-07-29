@@ -159,15 +159,20 @@ export default function App() {
   })
   // Site-wide UI scale (the "+ / −" zoom in the banner). Applies to everything,
   // modals and overlays included, via CSS zoom. Persisted across sessions.
+  // Range is deliberately modest. The old 0.5x-2.5x could push the layout past the edge of
+  // a phone with no way to scroll to what fell off; text stays readable and everything still
+  // fits across this range. Verified on a 375px screen at each step.
+  const SCALE_MIN = 0.85
+  const SCALE_MAX = 1.3
   const [uiScale, setUiScale] = useState<number>(() => {
     const s = parseFloat(localStorage.getItem('ui_scale') || '1')
-    return Number.isFinite(s) ? Math.min(2.5, Math.max(0.5, s)) : 1
+    return Number.isFinite(s) ? Math.min(SCALE_MAX, Math.max(SCALE_MIN, s)) : 1
   })
   useEffect(() => {
     localStorage.setItem('ui_scale', String(uiScale))
   }, [uiScale])
   const bumpScale = (d: number) =>
-    setUiScale((s) => Math.min(2.5, Math.max(0.5, Math.round((s + d) * 100) / 100)))
+    setUiScale((s) => Math.min(SCALE_MAX, Math.max(SCALE_MIN, Math.round((s + d) * 100) / 100)))
   // Optional canvas mode (desktop): turn the current page into draggable/resizable windows.
   const [desktop, setDesktop] = useState(
     () => typeof window !== 'undefined' && window.innerWidth >= 820,
@@ -243,6 +248,15 @@ export default function App() {
   // is suspended while one is up — CSS zoom fights the fixed full-screen surface and
   // used to push a "full screen" window past the viewport (scroll to see it all).
   const [canvasMounted, setCanvasMounted] = useState(false)
+
+  // Drives the root font-size (see index.css). Canvas mode opts out: it positions windows
+  // in its own coordinate space and a scaled root fights it.
+  useEffect(() => {
+    document.documentElement.style.setProperty(
+      '--ui-scale',
+      String(canvasOpen || canvasMounted ? 1 : uiScale),
+    )
+  }, [uiScale, canvasOpen, canvasMounted])
   useEffect(() => {
     const onCanvas = (e: Event) => setCanvasMounted(!!(e as CustomEvent).detail)
     window.addEventListener('yaya:canvas', onCanvas)
@@ -273,7 +287,6 @@ export default function App() {
     if ('requestIdleCallback' in window) window.requestIdleCallback(warm, { timeout: 4000 })
     else setTimeout(warm, 1500)
   }, [])
-  const topRef = useRef<HTMLDivElement>(null)
   const liveRef = useRef<HTMLDivElement>(null)
   const navLinksRef = useRef<HTMLDivElement>(null)
   const navRef = useRef<HTMLElement>(null)
@@ -432,9 +445,15 @@ export default function App() {
   useEffect(() => {
     if (import.meta.env.DEV && buildInfo) console.log(`%c${buildInfo}`, 'color:#22c55e')
   }, [buildInfo])
-  // Scroll to top when changing sections
+  // Scroll to top when changing sections.
+  // Deliberately scrolls the window to absolute zero rather than scrolling an element into
+  // view: the old target sat below body's padding-top (nav height, plus the safe-area inset
+  // on a notched phone), and a smooth animation could also land short when a lazy-loaded
+  // section resolved and shifted the layout mid-scroll — either way you arrived a little
+  // way down the page. Position zero can't drift, and an instant jump reads as a new page
+  // rather than a scroll you didn't ask for.
   useEffect(() => {
-    topRef.current?.scrollIntoView({ behavior: 'smooth' })
+    window.scrollTo({ top: 0, left: 0, behavior: 'auto' })
   }, [active])
 
   // Read hash when it changes (deep links + back/forward)
@@ -926,8 +945,6 @@ export default function App() {
           </div>
         </div>
       </nav>
-      {/* Mobile: reveal hit area removed; banner stays visible */}
-      <div ref={topRef} />
       {/* canvas mode has its own per-window scaling; the global zoom fights its fixed
           full-screen surface (footer teleporting on big zoom), so suspend it while it's on */}
       <main
@@ -939,7 +956,6 @@ export default function App() {
           // only needs normal breathing room — it used to add its own 74px on top, which
           // stacked into a large dead gap between the content and the footer.
           paddingBottom: !desktop ? '1rem' : 'env(safe-area-inset-bottom)',
-          zoom: canvasOpen || canvasMounted ? 1 : uiScale,
         }}
       >
         {suspended && (
