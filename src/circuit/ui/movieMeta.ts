@@ -1,5 +1,5 @@
 // Movie rating vocabulary (mirrors the standalone app) + shared helpers.
-export const MV_PIDS = ['1', '2', '3', '5', '6'] // raters: Josh, Evan, Cam, Mills, Tin
+export const MV_PIDS = ['1', '2', '3', '5', '6'] // the rating crew, by person id
 
 export const MV_ICONS = [
   { id: 'pop', emoji: '🍿', label: 'Popcorn' },
