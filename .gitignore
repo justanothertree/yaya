@@ -34,3 +34,7 @@ members-credentials.csv
 
 # Scratch files
 commit-msg.txt
+
+# The group's real Circuit history (names + every logged workout). Kept locally as the
+# generator source for publicSeed.ts, never committed: only Evan's own slice is public.
+src/circuit/seed.ts

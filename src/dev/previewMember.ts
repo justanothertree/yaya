@@ -7,6 +7,9 @@
 // components hardcoded mock data. Real RLS/security is completely untouched, and the whole
 // module is `import.meta.env.DEV`-gated so it tree-shakes out of production builds.
 //
+// NOTE: every name here is invented. This file is committed to a public repo, so it must
+// never carry a real member's name or username.
+//
 // Enable in the dev browser:  localStorage.setItem('dev_preview_member','1'); location.reload()
 // Disable:                    localStorage.removeItem('dev_preview_member'); location.reload()
 
@@ -41,11 +44,11 @@ export type PreviewPerson = {
   rel: 'none' | 'in' | 'out' | 'friend'
 }
 export const PREVIEW_PEOPLE: PreviewPerson[] = [
-  { username: 'member', name: 'Shawn', rel: 'friend' },
-  { username: 'Cam', name: 'Cam', rel: 'out' },
-  { username: 'Josh', name: 'Josh', rel: 'in' },
-  { username: 'Mills', name: 'Mills', rel: 'none' },
-  { username: 'member', name: 'Colin', rel: 'none' },
+  { username: 'jordan_b', name: 'Jordan', rel: 'friend' },
+  { username: 'Riley', name: 'Riley', rel: 'out' },
+  { username: 'Alex', name: 'Alex', rel: 'in' },
+  { username: 'Sam', name: 'Sam', rel: 'none' },
+  { username: 'casey_m', name: 'Casey', rel: 'none' },
 ]
 
 export type PreviewRoom = { id: string; kind: string; name: string }
@@ -61,7 +64,7 @@ export type PreviewMsg = {
 export const PREVIEW_ROOMS: PreviewRoom[] = [
   { id: 'pv-crew', kind: 'circuit', name: 'The Crew' },
   { id: 'pv-lounge', kind: 'lounge', name: 'The Lounge' },
-  { id: 'pv-dm', kind: 'dm', name: 'Josh' },
+  { id: 'pv-dm', kind: 'dm', name: 'Alex' },
 ]
 
 const t = (minsAgo: number) => new Date(Date.now() - minsAgo * 60000).toISOString()
@@ -101,16 +104,16 @@ export const PREVIEW_MSGS: Record<string, PreviewMsg[]> = {
     {
       id: 'c1',
       room_id: 'pv-crew',
-      user_id: 'josh',
-      author_name: 'Josh',
+      user_id: 'pv-alex',
+      author_name: 'Alex',
       body: 'anyone lifting today?',
       created_at: t(180),
     },
     {
       id: 'c2',
       room_id: 'pv-crew',
-      user_id: 'cam',
-      author_name: 'Cam',
+      user_id: 'pv-riley',
+      author_name: 'Riley',
       body: 'leg day 💀',
       created_at: t(174),
     },
@@ -125,8 +128,8 @@ export const PREVIEW_MSGS: Record<string, PreviewMsg[]> = {
     {
       id: 'c4',
       room_id: 'pv-crew',
-      user_id: 'josh',
-      author_name: 'Josh',
+      user_id: 'pv-alex',
+      author_name: 'Alex',
       body: 'beast. catching up tonight',
       created_at: t(12),
     },
@@ -135,8 +138,8 @@ export const PREVIEW_MSGS: Record<string, PreviewMsg[]> = {
     {
       id: 'l1',
       room_id: 'pv-lounge',
-      user_id: 'mills',
-      author_name: 'Mills',
+      user_id: 'pv-sam',
+      author_name: 'Sam',
       body: 'new here, hi all 👋',
       created_at: t(300),
     },
@@ -153,8 +156,8 @@ export const PREVIEW_MSGS: Record<string, PreviewMsg[]> = {
     {
       id: 'd1',
       room_id: 'pv-dm',
-      user_id: 'josh',
-      author_name: 'Josh',
+      user_id: 'pv-alex',
+      author_name: 'Alex',
       body: 'you around for the movie thing?',
       created_at: t(45),
     },
@@ -169,8 +172,8 @@ export const PREVIEW_MSGS: Record<string, PreviewMsg[]> = {
     {
       id: 'd3',
       room_id: 'pv-dm',
-      user_id: 'josh',
-      author_name: 'Josh',
+      user_id: 'pv-alex',
+      author_name: 'Alex',
       body: '🔥',
       created_at: t(38),
     },

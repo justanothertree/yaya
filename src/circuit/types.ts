@@ -4,7 +4,7 @@
 
 export type ID = string
 
-/** A participant in the shared Circuit (Josh, Evan, Cam, …). */
+/** A participant in the shared Circuit. */
 export interface Person {
   id: ID
   name: string
