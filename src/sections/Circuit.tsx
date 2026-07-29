@@ -34,7 +34,7 @@ function initialTab(authed: boolean): Tab {
     'log',
     'feed',
     'charts',
-    ...(authed ? (['chat', 'circuits'] as Tab[]) : (['movies', 'watchlist'] as Tab[])),
+    ...(authed ? (['circuits'] as Tab[]) : (['movies', 'watchlist'] as Tab[])),
   ]
   const q = new URLSearchParams(window.location.hash.split('?')[1] ?? '')
   const fromLink = q.get('tab') as Tab | null
@@ -95,7 +95,7 @@ export function Circuit({
         'log',
         'feed',
         'charts',
-        ...(authed ? (['chat', 'circuits'] as Tab[]) : (['movies', 'watchlist'] as Tab[])),
+        ...(authed ? (['circuits'] as Tab[]) : (['movies', 'watchlist'] as Tab[])),
       ]
       if (t && valid.includes(t)) setTab(t)
     }
@@ -208,10 +208,7 @@ export function Circuit({
     // Reviews/Watchlist live under Ratings for members; the demo keeps them here.
     // Chat + circuit management are members-only.
     ...(authed
-      ? [
-          { id: 'chat' as Tab, label: '💬 Chat' },
-          { id: 'circuits' as Tab, label: '👥 Circuits' },
-        ]
+      ? [{ id: 'circuits' as Tab, label: '👥 Circuits' }]
       : [
           { id: 'movies' as Tab, label: '📝 Reviews' },
           { id: 'watchlist' as Tab, label: '🍿 Watchlist' },
@@ -223,8 +220,20 @@ export function Circuit({
   // squeezed scroller. Both stay routable — only their chips are hidden — and whichever tab
   // is open always keeps a chip so the active state is never orphaned.
   const dailyTabs: Tab[] = ['board', 'log', 'feed', 'charts']
+  // Once you've opened a non-daily tab (Circuits, from the launcher), its chip STAYS for the
+  // rest of the visit. Showing it only while active meant it vanished the moment you tapped
+  // another tab, stranding you with no way back except the launcher.
+  const [visitedExtra, setVisitedExtra] = useState<Tab[]>([])
+  useEffect(() => {
+    if (!dailyTabs.includes(tab)) setVisitedExtra((v) => (v.includes(tab) ? v : [...v, tab]))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab])
   const tabs =
-    desktop || !authed ? allTabs : allTabs.filter((t) => dailyTabs.includes(t.id) || t.id === tab)
+    desktop || !authed
+      ? allTabs
+      : allTabs.filter(
+          (t) => dailyTabs.includes(t.id) || t.id === tab || visitedExtra.includes(t.id),
+        )
 
   const canvasPanes: CanvasPane[] = [
     {

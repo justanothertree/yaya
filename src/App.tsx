@@ -36,6 +36,7 @@ const AcceptInvite = lazy(() =>
 )
 const Profile = lazy(() => import('./sections/Profile').then((m) => ({ default: m.Profile })))
 const Ratings = lazy(() => import('./sections/Ratings').then((m) => ({ default: m.Ratings })))
+const ChatPage = lazy(() => import('./sections/ChatPage').then((m) => ({ default: m.ChatPage })))
 
 if (import.meta.env.DEV) {
   import('./dev/supabaseDebug')
@@ -45,6 +46,7 @@ type Section =
   | 'home'
   | 'circuit'
   | 'ratings'
+  | 'chat'
   | 'signin'
   | 'investments'
   | 'account-settings'
@@ -60,6 +62,7 @@ const ALL_SECTIONS: Section[] = [
   'home',
   'circuit',
   'ratings',
+  'chat',
   'signin',
   'investments',
   'account-settings',
@@ -86,6 +89,7 @@ const navOrder = (
           'home',
           'circuit',
           'ratings',
+          'chat',
           ...(canFinance ? (['investments'] as Section[]) : []),
           'account-settings',
           ...(isAdmin ? (['admin'] as Section[]) : []),
@@ -461,6 +465,9 @@ export default function App() {
     const parseHash = (): Section => {
       const raw = (window.location.hash || '#home').replace('#', '')
       const base = (raw.split('?')[0] || 'home') as Section
+      // chat used to live as a Circuit tab; keep those links working
+      if (base === 'circuit' && new URLSearchParams(raw.split('?')[1] ?? '').get('tab') === 'chat')
+        return 'chat'
       return ALL_SECTIONS.includes(base) ? base : 'home'
     }
     const onHash = () => setActive(parseHash())
@@ -847,6 +854,15 @@ export default function App() {
                     Ratings
                   </a>
                 )}
+                {isFinanceAuthed && !suspended && (
+                  <a
+                    href="#chat"
+                    onClick={() => setActive('chat')}
+                    aria-current={active === 'chat' ? 'page' : undefined}
+                  >
+                    Chat
+                  </a>
+                )}
                 {hasFinanceSupabaseEnv() && !isFinanceAuthed && (
                   <a
                     href="#signin"
@@ -1035,6 +1051,19 @@ export default function App() {
                 onTogglePin={togglePin}
                 onRefreshPinned={refreshPinned}
               />
+            </Suspense>
+          </section>
+        )}
+        {active === 'chat' && (
+          <section id="chat" className="card reveal">
+            <Suspense
+              fallback={
+                <div className="card" aria-busy>
+                  Loading Chat…
+                </div>
+              }
+            >
+              <ChatPage authed={isFinanceAuthed || previewMember} />
             </Suspense>
           </section>
         )}
