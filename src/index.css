@@ -298,12 +298,12 @@
   .cz-board-days {
     margin-left: 1.9rem !important;
   }
-  /* day-number header: cells are ~7px on a phone — far too narrow for a two-digit day,
-     so today's "27" was clipping inside its pill. Hide every number and let today's
-     accent pill stand alone as a clean, aligned column marker (the number is illegible
-     at this density anyway; the legend already reads "purple column = today"). */
-  .cz-board-dayhead span {
-    color: transparent !important;
+  /* Day-number header: drop it entirely on a phone. The cells are ~7px wide, so the numbers
+     can never be legible; blanking them but keeping today's pill left a single stray dot
+     floating above the board that read as a rendering glitch. Today is already marked in
+     every row by the accent ring on its square, so the header earns nothing here. */
+  .cz-board-dayhead {
+    display: none !important;
   }
   /* Feed month calendar: the square cells (aspect-ratio 1/1 + min-height 52) force each
      cell to ~52px wide, so 7 columns overflow a ~284px phone and the last days spill off.
