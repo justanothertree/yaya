@@ -80,7 +80,17 @@ export function Chat({ authed = false }: { authed?: boolean }) {
       const list = previewOverview()
       setRooms(list)
       const wanted = new URLSearchParams(window.location.hash.split('?')[1] ?? '').get('room')
-      if (wanted) setRoom(list.find((r) => r.id === wanted) ?? null)
+      if (wanted) {
+        const r = list.find((x) => x.id === wanted) ?? null
+        setRoom(r)
+        // arriving straight into a room (from the bell, or a profile's Message button) has
+        // to clear its unread the same way tapping the row does — it didn't, so the badge
+        // kept counting messages you were literally looking at
+        if (r) {
+          PREVIEW_UNREAD[r.id] = 0
+          setRooms((prev) => prev.map((x) => (x.id === r.id ? { ...x, unread: 0 } : x)))
+        }
+      }
       return
     }
     if (!sb) return
@@ -90,7 +100,14 @@ export function Chat({ authed = false }: { authed?: boolean }) {
       const rs = data as Overview[]
       setRooms(rs)
       const wanted = new URLSearchParams(window.location.hash.split('?')[1] ?? '').get('room')
-      if (wanted) setRoom(rs.find((r) => r.id === wanted) ?? null)
+      if (wanted) {
+        const r = rs.find((x) => x.id === wanted) ?? null
+        setRoom(r)
+        if (r) {
+          setRooms((prev) => prev.map((x) => (x.id === r.id ? { ...x, unread: 0 } : x)))
+          void sb.rpc('mark_room_read', { p_room: r.id })
+        }
+      }
     })
     return () => {
       live = false

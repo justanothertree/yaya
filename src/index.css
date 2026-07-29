@@ -537,6 +537,140 @@
   }
 }
 
+/* ══ notification bell ═════════════════════════════════════════════════════ */
+.notif-wrap {
+  position: relative;
+  flex: 0 0 auto;
+}
+.notif-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  border: 1px solid var(--icon-border, rgba(127, 127, 127, 0.16));
+  background: var(--icon-bg, rgba(127, 127, 127, 0.08));
+  color: inherit;
+  font-size: 1rem;
+  cursor: pointer;
+}
+.notif-btn:hover {
+  background: var(--icon-bg-hover, rgba(127, 127, 127, 0.14));
+}
+.notif-dot {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  border-radius: 9px;
+  background: var(--accent-2, #ff5566);
+  color: #fff;
+  font-size: 0.66rem;
+  font-weight: 800;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.notif-panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 200;
+  width: min(310px, calc(100vw - 24px));
+  max-height: 60vh;
+  overflow-y: auto;
+  padding: 6px;
+  border-radius: 12px;
+  border: 1px solid var(--border, rgba(127, 127, 127, 0.2));
+  background: var(--panel, #1a1a28);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+}
+/* On a phone the bell sits ~84px in from the right edge, so a 310px panel anchored to it
+   hung 19px off the left of the screen. Anchor it to the viewport instead. `fixed` is safe
+   here despite the nav's backdrop-filter (which does make the nav the containing block for
+   fixed children): the nav is a full-width bar at x=0 with no padding, so its box and the
+   viewport coincide — and `top: 100%` then resolves to just below the nav, whatever its height. */
+@media (max-width: 640px) {
+  .notif-panel {
+    position: fixed;
+    left: 10px;
+    right: 10px;
+    width: auto;
+  }
+}
+.notif-head {
+  font-size: 0.7rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  opacity: 0.6;
+  padding: 6px 8px;
+}
+.notif-empty {
+  margin: 0;
+  padding: 8px;
+  font-size: 0.85rem;
+}
+.notif-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.5rem;
+  border-radius: 9px;
+  color: inherit;
+  text-decoration: none;
+  min-height: 44px;
+}
+.notif-item:hover {
+  background: var(--b1, rgba(127, 127, 127, 0.1));
+}
+.notif-ic {
+  flex: 0 0 auto;
+  font-size: 1rem;
+}
+.notif-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.3;
+}
+.notif-title {
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+.notif-detail {
+  font-size: 0.75rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* the bottom bar's own unread pip, on Chat and Menu */
+.mnav-item {
+  position: relative;
+}
+.mnav-pip {
+  position: absolute;
+  top: 4px;
+  left: 50%;
+  margin-left: 4px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: var(--accent-2, #ff5566);
+  color: #fff;
+  font-size: 0.6rem;
+  font-weight: 800;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
 /* ══ people directory ══════════════════════════════════════════════════════
    One row per member: avatar + name/handle on the left (the whole block is the
    link to their profile), the relationship action on the right. */

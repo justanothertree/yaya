@@ -8,6 +8,8 @@ import { SettingsMenu } from './components/SettingsMenu'
 import { MobileNav } from './components/MobileNav'
 import { AmbientBackdrop } from './components/AmbientBackdrop'
 import { useReveal } from './hooks/useReveal'
+import { useNotifications } from './hooks/useNotifications'
+import { NotificationBell } from './components/NotificationBell'
 import { hasFinanceSupabaseEnv } from './finance/env'
 import { getSessionUser, onAuthStateChange, peekPersistedUserId, signOut } from './finance/auth'
 import { getSupabaseClient } from './finance/client'
@@ -256,6 +258,7 @@ export default function App() {
   // is suspended while one is up — CSS zoom fights the fixed full-screen surface and
   // used to push a "full screen" window past the viewport (scroll to see it all).
   const [canvasMounted, setCanvasMounted] = useState(false)
+  const notifications = useNotifications(isFinanceAuthed || previewMember)
 
   // Drives the root font-size (see index.css). Canvas mode opts out: it positions windows
   // in its own coordinate space and a scaled root fights it.
@@ -937,6 +940,9 @@ export default function App() {
                 ›
               </button>
             </div>
+            {(isFinanceAuthed || previewMember) && !suspended && (
+              <NotificationBell notifications={notifications} />
+            )}
             <SettingsMenu
               theme={theme}
               onTheme={(t) => {
@@ -1322,6 +1328,8 @@ export default function App() {
               /* ignore */
             })
           }}
+          unreadChats={notifications.unreadChats}
+          friendRequests={notifications.friendRequests}
           onProfile={
             me.username
               ? () => {

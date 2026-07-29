@@ -48,6 +48,8 @@ export function MobileNav({
   onCycleTheme,
   onSignOut,
   onProfile,
+  unreadChats = 0,
+  friendRequests = 0,
 }: {
   active: string
   go: (section: MobileSection, tab?: string) => void
@@ -60,6 +62,9 @@ export function MobileNav({
   onCycleTheme: () => void
   onSignOut: () => void
   onProfile?: () => void
+  /** what's waiting, so the bar can pip it without opening anything */
+  unreadChats?: number
+  friendRequests?: number
 }) {
   const [open, setOpen] = useState(false)
   const member = authed && !suspended
@@ -149,6 +154,9 @@ export function MobileNav({
               {d.icon}
             </span>
             <span className="mnav-lbl">{d.label}</span>
+            {d.key === 'chat' && unreadChats > 0 && (
+              <span className="mnav-pip">{unreadChats > 9 ? '9+' : unreadChats}</span>
+            )}
           </button>
         ))}
         <button
@@ -161,6 +169,9 @@ export function MobileNav({
             ☰
           </span>
           <span className="mnav-lbl">Menu</span>
+          {friendRequests > 0 && (
+            <span className="mnav-pip">{friendRequests > 9 ? '9+' : friendRequests}</span>
+          )}
         </button>
       </nav>
 
@@ -185,6 +196,9 @@ export function MobileNav({
                     {d.icon}
                   </span>
                   <span className="mtile-lbl">{d.label}</span>
+                  {d.key === 'people' && friendRequests > 0 && (
+                    <span className="mnav-pip">{friendRequests}</span>
+                  )}
                 </button>
               ))}
             </div>
