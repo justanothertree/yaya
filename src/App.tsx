@@ -935,11 +935,10 @@ export default function App() {
         className="container"
         tabIndex={-1}
         style={{
-          // clear the fixed mobile bottom bar (this inline style would otherwise win over
-          // any stylesheet rule); desktop keeps just the safe-area inset
-          paddingBottom: !desktop
-            ? 'calc(74px + env(safe-area-inset-bottom))'
-            : 'env(safe-area-inset-bottom)',
+          // The footer below carries the clearance for the fixed bottom bar now, so main
+          // only needs normal breathing room — it used to add its own 74px on top, which
+          // stacked into a large dead gap between the content and the footer.
+          paddingBottom: !desktop ? '1rem' : 'env(safe-area-inset-bottom)',
           zoom: canvasOpen || canvasMounted ? 1 : uiScale,
         }}
       >
@@ -1180,8 +1179,9 @@ export default function App() {
           paddingTop: '1rem',
           // The footer sits OUTSIDE main, so main's bottom padding never protected it: on
           // any page long enough to scroll, the fixed bottom bar covered the last ~60px —
-          // the copyright line and the GitHub/LinkedIn icons. It needs its own clearance.
-          paddingBottom: !desktop ? 'calc(2rem + 74px + env(safe-area-inset-bottom))' : '2rem',
+          // the copyright line and the GitHub/LinkedIn icons. It carries its own clearance
+          // now: just the bar's height plus a little, not a whole extra screenful.
+          paddingBottom: !desktop ? 'calc(0.75rem + 66px + env(safe-area-inset-bottom))' : '2rem',
         }}
       >
         <div
