@@ -17,6 +17,7 @@ export type MobileSection =
   | 'home'
   | 'circuit'
   | 'ratings'
+  | 'chat'
   | 'signin'
   | 'investments'
   | 'account-settings'
@@ -82,7 +83,7 @@ export function MobileNav({
         { key: 'home', label: 'Home', icon: '🏠', section: 'home' },
         { key: 'circuit', label: 'Circuit', icon: '🏆', section: 'circuit' },
         { key: 'ratings', label: 'Ratings', icon: '⭐', section: 'ratings' },
-        { key: 'chat', label: 'Chat', icon: '💬', section: 'circuit', tab: 'chat' },
+        { key: 'chat', label: 'Chat', icon: '💬', section: 'chat' },
       ]
     : [
         { key: 'home', label: 'Home', icon: '🏠', section: 'home' },
@@ -109,7 +110,7 @@ export function MobileNav({
           { key: 'circuit', label: 'Circuit', icon: '🏆', section: 'circuit' },
           { key: 'log', label: 'Quick log', icon: '✏️', section: 'circuit', tab: 'log' },
           { key: 'ratings', label: 'Ratings', icon: '⭐', section: 'ratings' },
-          { key: 'chat', label: 'Chat', icon: '💬', section: 'circuit', tab: 'chat' },
+          { key: 'chat', label: 'Chat', icon: '💬', section: 'chat' },
           // circuit management: out of the daily tab strip, but one tap from here
           { key: 'circuits', label: 'Circuits', icon: '👥', section: 'circuit', tab: 'circuits' },
         ] as Dest[])
