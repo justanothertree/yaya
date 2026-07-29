@@ -30,9 +30,12 @@ export function Ratings() {
   const state = useCircuit()
   const groups = state.groups?.length ? state.groups : previewMember ? PREVIEW_GROUPS : []
   const tabsRef = useScrollFade<HTMLSpanElement>()
+
   const [tab, setTabRaw] = useState<RTab>(() => initialTab())
   const setTab = (t: RTab) => {
     setTabRaw(t)
+    // land at the top of the new tab (see the same note in Circuit)
+    if (t !== tab) window.scrollTo({ top: 0, left: 0, behavior: 'auto' })
     try {
       localStorage.setItem(TAB_KEY, t)
     } catch {

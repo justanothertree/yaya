@@ -73,6 +73,11 @@ export function Circuit({
   const [tab, setTabRaw] = useState<Tab>(() => initialTab(authed))
   const setTab = (t: Tab) => {
     setTabRaw(t)
+    // Switching sub-tabs is a page-level change, but it doesn't change the section, so
+    // App's scroll-to-top never covered it — you'd land on a new tab still scrolled part
+    // way down the previous one. Done here rather than in an effect on `tab` so it fires
+    // on the actual navigation, including hash-driven ones (which route through here too).
+    if (t !== tab) window.scrollTo({ top: 0, left: 0, behavior: 'auto' })
     try {
       localStorage.setItem(TAB_KEY, t)
     } catch {
@@ -98,6 +103,7 @@ export function Circuit({
     return () => window.removeEventListener('hashchange', onHash)
   }, [authed])
   const tabsRef = useScrollFade<HTMLSpanElement>()
+
   const [logTarget, setLogTarget] = useState<{ personId: string; date: string } | null>(null)
   const [focusPane, setFocusPane] = useState<{ id: string; nonce: number } | null>(null)
   const [desktop, setDesktop] = useState(isDesktop())
