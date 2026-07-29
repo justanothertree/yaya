@@ -33,6 +33,21 @@ export const PREVIEW_GROUPS = [
   { id: 'pv-family', name: 'Family' },
 ]
 
+/** stand-in member directory + friendships, so the People screen can be exercised */
+export type PreviewPerson = {
+  username: string
+  name: string
+  /** none = not connected, in/out = pending request, friend = accepted */
+  rel: 'none' | 'in' | 'out' | 'friend'
+}
+export const PREVIEW_PEOPLE: PreviewPerson[] = [
+  { username: 'member', name: 'Shawn', rel: 'friend' },
+  { username: 'Cam', name: 'Cam', rel: 'out' },
+  { username: 'Josh', name: 'Josh', rel: 'in' },
+  { username: 'Mills', name: 'Mills', rel: 'none' },
+  { username: 'member', name: 'Colin', rel: 'none' },
+]
+
 export type PreviewRoom = { id: string; kind: string; name: string }
 export type PreviewMsg = {
   id: string

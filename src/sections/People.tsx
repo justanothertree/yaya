@@ -1,0 +1,243 @@
+// People — the member directory as a real social surface: who's here, who's asked to be
+// friends, and one tap to message or add. The RPCs already existed (they powered the buttons
+// on a single profile); what was missing was somewhere to see everyone at once.
+//
+// Grouped rather than flat, because the groups are what you act on: requests waiting on you
+// come first (they're the only rows with a decision attached), then your friends, then
+// everyone else.
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { getSupabaseClient } from '../finance/client'
+import { previewMember, PREVIEW_PEOPLE, type PreviewPerson } from '../dev/previewMember'
+
+type Rel = 'none' | 'in' | 'out' | 'friend'
+type Person = { username: string; name: string; rel: Rel }
+
+/** directory + friendships, folded into one row per person */
+async function loadPeople(): Promise<Person[]> {
+  const sb = getSupabaseClient()
+  const [dir, friends] = await Promise.all([
+    sb.rpc('list_member_directory'),
+    sb.rpc('list_friends'),
+  ])
+  const rel = new Map<string, Rel>()
+  for (const f of (friends.data ?? []) as {
+    username: string
+    status: string
+    direction: string
+  }[]) {
+    rel.set(f.username, f.status === 'accepted' ? 'friend' : f.direction === 'in' ? 'in' : 'out')
+  }
+  return ((dir.data ?? []) as { username: string; name: string }[]).map((p) => ({
+    username: p.username,
+    name: p.name,
+    rel: rel.get(p.username) ?? 'none',
+  }))
+}
+
+export function People({ authed = false }: { authed?: boolean }) {
+  const [people, setPeople] = useState<Person[]>([])
+  const [q, setQ] = useState('')
+  const [busy, setBusy] = useState<string | null>(null)
+  const [err, setErr] = useState<string | null>(null)
+
+  const refresh = useCallback(async () => {
+    if (previewMember) {
+      setPeople(PREVIEW_PEOPLE.map((p: PreviewPerson) => ({ ...p })))
+      return
+    }
+    if (!authed) return
+    try {
+      setPeople(await loadPeople())
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Could not load members')
+    }
+  }, [authed])
+
+  useEffect(() => {
+    void refresh()
+  }, [refresh])
+
+  /** run a friendship RPC, then reflect the new standing */
+  async function act(username: string, kind: 'add' | 'remove' | 'accept' | 'decline') {
+    setBusy(username)
+    setErr(null)
+    if (previewMember) {
+      setPeople((prev) =>
+        prev.map((p) =>
+          p.username === username
+            ? { ...p, rel: kind === 'add' ? 'out' : kind === 'accept' ? 'friend' : 'none' }
+            : p,
+        ),
+      )
+      setBusy(null)
+      return
+    }
+    const sb = getSupabaseClient()
+    const { error } =
+      kind === 'accept' || kind === 'decline'
+        ? await sb.rpc('respond_friend', { p_username: username, p_accept: kind === 'accept' })
+        : await sb.rpc(kind === 'add' ? 'request_friend' : 'remove_friend', {
+            p_username: username,
+          })
+    if (error) setErr(error.message)
+    else await refresh()
+    setBusy(null)
+  }
+
+  async function message(username: string) {
+    if (previewMember) {
+      window.location.hash = '#chat'
+      return
+    }
+    const { data, error } = await getSupabaseClient().rpc('open_dm', { p_username: username })
+    if (error) setErr(error.message)
+    else if (data) window.location.hash = '#chat?room=' + data
+  }
+
+  const groups = useMemo(() => {
+    const needle = q.trim().toLowerCase()
+    const match = (p: Person) =>
+      !needle || p.name.toLowerCase().includes(needle) || p.username.toLowerCase().includes(needle)
+    const hit = people.filter(match)
+    return {
+      requests: hit.filter((p) => p.rel === 'in'),
+      friends: hit.filter((p) => p.rel === 'friend'),
+      others: hit.filter((p) => p.rel === 'none' || p.rel === 'out'),
+    }
+  }, [people, q])
+
+  if (!authed && !previewMember)
+    return (
+      <p className="muted" style={{ margin: 0 }}>
+        The member directory is for members — sign in to find your people.
+      </p>
+    )
+
+  const row = (p: Person) => (
+    <div key={p.username} className="cz-person">
+      <a
+        className="cz-person-main"
+        href={'#profile?u=' + encodeURIComponent(p.username)}
+        title={`See ${p.name}'s profile`}
+      >
+        <span className="cz-person-av" aria-hidden>
+          {(p.name[0] ?? '★').toUpperCase()}
+        </span>
+        <span className="cz-person-text">
+          <span className="cz-person-name">{p.name}</span>
+          <span className="cz-person-handle muted">@{p.username}</span>
+        </span>
+      </a>
+      <span className="cz-person-actions">
+        {p.rel === 'in' && (
+          <>
+            <button
+              className="btn cz-tap"
+              disabled={busy === p.username}
+              onClick={() => void act(p.username, 'accept')}
+              style={{
+                background: 'var(--accent, #7c6af7)',
+                color: '#fff',
+                borderColor: 'transparent',
+              }}
+            >
+              Accept
+            </button>
+            <button
+              className="btn cz-tap"
+              disabled={busy === p.username}
+              onClick={() => void act(p.username, 'decline')}
+            >
+              Decline
+            </button>
+          </>
+        )}
+        {p.rel === 'friend' && (
+          <button className="btn cz-tap" onClick={() => void message(p.username)}>
+            💬 Message
+          </button>
+        )}
+        {p.rel === 'out' && (
+          <button
+            className="btn cz-tap"
+            disabled={busy === p.username}
+            onClick={() => void act(p.username, 'remove')}
+            title="Cancel request"
+            style={{ opacity: 0.7 }}
+          >
+            Requested
+          </button>
+        )}
+        {p.rel === 'none' && (
+          <button
+            className="btn cz-tap"
+            disabled={busy === p.username}
+            onClick={() => void act(p.username, 'add')}
+          >
+            ＋ Add
+          </button>
+        )}
+      </span>
+    </div>
+  )
+
+  const section = (title: string, list: Person[], empty?: string) =>
+    list.length > 0 || empty ? (
+      <div style={{ marginBottom: '1.1rem' }}>
+        <div className="cz-sec" style={{ marginBottom: '0.4rem' }}>
+          {title} {list.length > 0 && `(${list.length})`}
+        </div>
+        {list.length > 0 ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>{list.map(row)}</div>
+        ) : (
+          <p className="muted" style={{ margin: 0, fontSize: '0.85rem' }}>
+            {empty}
+          </p>
+        )}
+      </div>
+    ) : null
+
+  return (
+    <div>
+      <div
+        className="cz-head"
+        style={{ display: 'flex', alignItems: 'baseline', gap: '0.75rem', flexWrap: 'wrap' }}
+      >
+        <h2 className="section-title" style={{ margin: 0 }}>
+          People
+        </h2>
+        <span className="muted cz-subtitle" style={{ fontSize: '0.85rem' }}>
+          everyone on the site — add friends, start a DM
+        </span>
+      </div>
+
+      <input
+        value={q}
+        onChange={(e) => setQ(e.target.value)}
+        placeholder="Search people"
+        aria-label="Search people"
+        style={{
+          width: '100%',
+          margin: '0.9rem 0 1rem',
+          padding: '0.55rem 0.7rem',
+          borderRadius: 10,
+        }}
+      />
+
+      {err && (
+        <p className="muted" style={{ fontSize: '0.85rem', color: 'var(--accent-2, #ff5566)' }}>
+          {err}
+        </p>
+      )}
+
+      {section('Wants to be friends', groups.requests)}
+      {section('Your friends', groups.friends, 'No friends yet — add someone below.')}
+      {section('Everyone else', groups.others)}
+
+      {people.length > 0 &&
+        groups.requests.length + groups.friends.length + groups.others.length === 0 && (
+          <p className="muted">No one matches “{q}”.</p>
+        )}
+    </div>
+  )
+}

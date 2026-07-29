@@ -37,6 +37,7 @@ const AcceptInvite = lazy(() =>
 const Profile = lazy(() => import('./sections/Profile').then((m) => ({ default: m.Profile })))
 const Ratings = lazy(() => import('./sections/Ratings').then((m) => ({ default: m.Ratings })))
 const ChatPage = lazy(() => import('./sections/ChatPage').then((m) => ({ default: m.ChatPage })))
+const People = lazy(() => import('./sections/People').then((m) => ({ default: m.People })))
 
 if (import.meta.env.DEV) {
   import('./dev/supabaseDebug')
@@ -47,6 +48,7 @@ type Section =
   | 'circuit'
   | 'ratings'
   | 'chat'
+  | 'people'
   | 'signin'
   | 'investments'
   | 'account-settings'
@@ -63,6 +65,7 @@ const ALL_SECTIONS: Section[] = [
   'circuit',
   'ratings',
   'chat',
+  'people',
   'signin',
   'investments',
   'account-settings',
@@ -90,6 +93,7 @@ const navOrder = (
           'circuit',
           'ratings',
           'chat',
+          'people',
           ...(canFinance ? (['investments'] as Section[]) : []),
           'account-settings',
           ...(isAdmin ? (['admin'] as Section[]) : []),
@@ -863,6 +867,15 @@ export default function App() {
                     Chat
                   </a>
                 )}
+                {isFinanceAuthed && !suspended && (
+                  <a
+                    href="#people"
+                    onClick={() => setActive('people')}
+                    aria-current={active === 'people' ? 'page' : undefined}
+                  >
+                    People
+                  </a>
+                )}
                 {hasFinanceSupabaseEnv() && !isFinanceAuthed && (
                   <a
                     href="#signin"
@@ -1051,6 +1064,19 @@ export default function App() {
                 onTogglePin={togglePin}
                 onRefreshPinned={refreshPinned}
               />
+            </Suspense>
+          </section>
+        )}
+        {active === 'people' && (
+          <section id="people" className="card reveal">
+            <Suspense
+              fallback={
+                <div className="card" aria-busy>
+                  Loading People…
+                </div>
+              }
+            >
+              <People authed={isFinanceAuthed || previewMember} />
             </Suspense>
           </section>
         )}
