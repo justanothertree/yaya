@@ -16,6 +16,7 @@ import { CircuitsPanel } from '../circuit/ui/CircuitsPanel'
 import { Chat } from '../circuit/ui/Chat'
 import { onLogIntent, requestLog, requestLogToday, takePendingLog } from '../circuit/logIntent'
 import { useScrollFade } from '../hooks/useScrollFade'
+import { previewMember, PREVIEW_GROUPS } from '../dev/previewMember'
 
 type Tab = 'board' | 'log' | 'feed' | 'charts' | 'movies' | 'watchlist' | 'chat' | 'circuits'
 
@@ -105,7 +106,8 @@ export function Circuit({
   // Which circuit is being viewed — one shared filter for EVERY tab (was Board-only).
   // '' = all circuits you can see. Persisted so it sticks across visits.
   const state = useCircuit()
-  const groups = state.groups ?? []
+  // the DEV harness supplies stand-in circuits so the filter can be exercised
+  const groups = state.groups?.length ? state.groups : previewMember ? PREVIEW_GROUPS : []
   const [viewGroup, setViewGroup] = useState<string>(() => {
     try {
       return localStorage.getItem('circuit_view_group') ?? ''
@@ -291,6 +293,14 @@ export function Circuit({
         <span className="muted cz-subtitle" style={{ fontSize: '0.85rem' }}>
           {authed ? 'fitness + movies, synced for you and friends' : 'fitness + movies tracker'}
         </span>
+        {/* the circuit filter rides up here on the title line rather than taking a row of
+            its own below the tabs — and because it lives in the header it now shows on
+            every tab, including the Log, instead of appearing and vanishing */}
+        {groupPicker && (
+          <span className="cz-head-filter" style={{ marginLeft: 'auto' }}>
+            {groupPicker}
+          </span>
+        )}
       </div>
 
       {!authed && <DemoBanner />}
@@ -340,7 +350,7 @@ export function Circuit({
                 alignItems: 'center',
               }}
             >
-              {groupPicker}
+              {/* the circuit filter moved up to the header line (see cz-head above) */}
               <button
                 className="btn btn-ghost"
                 onClick={doUndo}

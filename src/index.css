@@ -433,9 +433,12 @@
     grid-column: 1 / -1;
     margin-top: 2px !important;
   }
-  /* the log tab drops the section title/subtitle like chat does — that chrome is the
-     single biggest reason the first input sat below the fold */
-  .cz-tab-log .cz-head {
+  /* The log tab drops the section title/subtitle — that chrome is the single biggest reason
+     the first input sat below the fold. It hides the TEXT rather than the whole header row,
+     so the circuit filter (which lives up there now) stays put instead of vanishing on this
+     one tab. With no filter to show, the empty row collapses to nothing anyway. */
+  .cz-tab-log .cz-head .section-title,
+  .cz-tab-log .cz-head .cz-subtitle {
     display: none !important;
   }
   /* sheet header holds only the ＋ Column editing button on a phone (the hint is
