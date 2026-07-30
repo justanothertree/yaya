@@ -33,6 +33,8 @@ export function AddMovie({
   onAdded?: (m: Movie) => void
 }) {
   const [kind, setKind] = useState('movie')
+  // true once the visitor chooses to name their own category
+  const [custom, setCustom] = useState(false)
   const [title, setTitle] = useState('')
   // did-it-tonight is the overwhelming case — default today, still editable
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10))
@@ -105,6 +107,31 @@ export function AddMovie({
             {rk.emoji} {rk.label}
           </button>
         ))}
+        {/* Categories are open-ended — six built-ins can't cover "soda", "hot sauce", "hike".
+            Typing one here makes it a real category the moment it's used. */}
+        {custom ? (
+          <input
+            autoFocus
+            value={kind}
+            onChange={(e) => setKind(e.target.value)}
+            placeholder="Your category"
+            maxLength={20}
+            aria-label="Custom category"
+            style={{ width: 150, padding: '0.3rem 0.55rem', fontSize: '0.85rem' }}
+          />
+        ) : (
+          <button
+            type="button"
+            className="cz-chip"
+            onClick={() => {
+              setCustom(true)
+              setKind('')
+            }}
+            title="Name your own category"
+          >
+            ＋ Custom
+          </button>
+        )}
       </div>
       <label style={label}>
         {isMovie ? 'Title' : `${k.label} name`}
