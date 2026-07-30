@@ -9,6 +9,7 @@ import {
   submitScore,
   fetchMyScores,
   fetchMyBestAndRank,
+  fetchFriendNames,
   fetchRankForScore,
   subscribeToLeaderboard,
   type LeaderboardPeriod,
@@ -79,6 +80,8 @@ export function GameManager({
   const [myScores, setMyScores] = useState<LeaderboardEntry[]>([])
   // your standing when you're nowhere near the visible 15
   const [myStanding, setMyStanding] = useState<{ best: number; rank: number } | null>(null)
+  // typed handle -> friend's name, for the "Krazay (Josh)" reveal. Empty when signed out.
+  const [friendNames, setFriendNames] = useState<Record<string, string>>({})
   const [showDebug, setShowDebug] = useState(false)
   const [debugInfo, setDebugInfo] = useState<{
     nextPlayerId?: number | null
@@ -586,6 +589,16 @@ export function GameManager({
   useEffect(() => {
     scoreRef.current = score
   }, [score])
+  useEffect(() => {
+    let live = true
+    void fetchFriendNames().then((m) => {
+      if (live) setFriendNames(m)
+    })
+    return () => {
+      live = false
+    }
+  }, [])
+
   // your best + rank for the shown period, so being 40th still tells you something
   useEffect(() => {
     let live = true
@@ -3011,7 +3024,16 @@ export function GameManager({
                 <li key={typeof l.id === 'number' ? l.id : i} className="muted">
                   <strong style={{ color: 'var(--text)' }}>
                     {profanityFilter.clean(l.username)}
-                  </strong>{' '}
+                  </strong>
+                  {/* who that is — shown only for you and your friends; the RPC returns nothing
+                      to anyone else, so a stranger sees the handle alone */}
+                  {friendNames[(l.username || '').toLowerCase()] &&
+                    friendNames[(l.username || '').toLowerCase()] !== l.username && (
+                      <span className="muted" style={{ fontSize: '0.82rem' }}>
+                        {' '}
+                        ({friendNames[(l.username || '').toLowerCase()]})
+                      </span>
+                    )}{' '}
                   — {l.score}
                   <span className="muted" style={{ marginLeft: 6, fontSize: 12 }}>
                     • Survival • {l.date ? new Date(l.date).toLocaleString() : ''}

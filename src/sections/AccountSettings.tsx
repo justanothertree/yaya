@@ -241,6 +241,66 @@ type CircuitRow = {
  * context, and clearing a field falls back again. The chain is resolved server-side by
  * display_name() / snake_display_name(), so every surface agrees.
  */
+
+/**
+ * Claim an old leaderboard handle. Scores from before you had an account sit under whatever
+ * name was typed at the time ("Krazay", "Jefe Legendary"), owned by nobody — this attaches them
+ * to you. First claim wins, and it can't take a handle someone else already owns.
+ */
+function ClaimSnakeName() {
+  const sb = useMemo(() => getSupabaseClient(), [])
+  const [handle, setHandle] = useState('')
+  const [msg, setMsg] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+
+  async function claim() {
+    const h = handle.trim()
+    if (!h) return
+    setBusy(true)
+    setMsg(null)
+    const { error } = await sb.rpc('claim_snake_name', { p_name: h })
+    setBusy(false)
+    if (error) setMsg(error.message)
+    else {
+      setMsg(`“${h}” is yours — its scores now count as you.`)
+      setHandle('')
+    }
+  }
+
+  return (
+    <div style={{ display: 'grid', gap: 3 }}>
+      <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>Claim an old handle</span>
+      <span className="muted" style={{ fontSize: '0.78rem' }}>
+        Played Snake before you had an account? Claim that name to keep those scores.
+      </span>
+      <span style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+        <input
+          value={handle}
+          onChange={(e) => setHandle(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && void claim()}
+          placeholder="The name you played under"
+          maxLength={24}
+          aria-label="Leaderboard handle to claim"
+          style={{ flex: 1, minWidth: 160 }}
+        />
+        <button
+          className="btn cz-tap"
+          type="button"
+          onClick={() => void claim()}
+          disabled={busy || !handle.trim()}
+        >
+          {busy ? '…' : 'Claim'}
+        </button>
+      </span>
+      {msg && (
+        <span className="muted" style={{ fontSize: '0.78rem' }}>
+          {msg}
+        </span>
+      )}
+    </div>
+  )
+}
+
 function NicknamesCard() {
   const sb = useMemo(() => getSupabaseClient(), [])
   const [nickname, setNickname] = useState('')
@@ -315,6 +375,7 @@ function NicknamesCard() {
         setCircuitNickname,
       )}
       {field('On the Snake leaderboard', 'Your arcade handle.', snakeNickname, setSnakeNickname)}
+      <ClaimSnakeName />
       {err && (
         <p className="muted" style={{ margin: 0, color: 'var(--accent-2)', fontSize: '0.85rem' }}>
           {err}
