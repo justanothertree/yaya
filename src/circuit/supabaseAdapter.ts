@@ -81,6 +81,7 @@ type WlRow = {
   rt: string | null
   votes: string[]
   group_id?: string | null
+  kind?: string | null
 }
 
 const personToRow = (p: Person): PersonRow => ({
@@ -146,6 +147,7 @@ const wlToRow = (w: WatchlistItem): WlRow => ({
   rt: w.rt ?? null,
   votes: w.votes ?? [],
   group_id: w.groupId ?? null,
+  kind: w.kind ?? 'movie',
 })
 const rowToWl = (r: WlRow): WatchlistItem => ({
   id: r.id,
@@ -153,6 +155,7 @@ const rowToWl = (r: WlRow): WatchlistItem => ({
   rt: r.rt ?? undefined,
   votes: r.votes ?? [],
   groupId: r.group_id ?? null,
+  kind: r.kind ?? 'movie',
 })
 
 export function createSupabaseAdapter(): CircuitAdapter {

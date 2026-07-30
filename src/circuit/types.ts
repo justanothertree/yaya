@@ -102,8 +102,10 @@ export interface WatchlistItem {
   id: ID
   title: string
   rt?: string
-  /** person ids who voted to watch it next */
+  /** person ids who voted for it */
   votes?: ID[]
+  /** what kind of thing this pool holds (movie, food, game…) — see reviewKinds */
+  kind?: string
   /** Circuit this item belongs to (see Movie.groupId). */
   groupId?: string | null
 }

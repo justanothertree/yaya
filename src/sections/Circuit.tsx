@@ -211,7 +211,7 @@ export function Circuit({
       ? [{ id: 'circuits' as Tab, label: '👥 Circuits' }]
       : [
           { id: 'movies' as Tab, label: '📝 Reviews' },
-          { id: 'watchlist' as Tab, label: '🍿 Watchlist' },
+          { id: 'watchlist' as Tab, label: '🎲 Pool' },
         ]),
   ]
   // On a phone six chips can't fit, and two of them don't belong in a daily strip anyway:
@@ -256,7 +256,7 @@ export function Circuit({
       ? [{ id: 'chat', title: '💬 Chat', node: <Chat authed /> }]
       : [
           { id: 'movies', title: '📝 Reviews', node: <Movies viewGroup={viewGroup} /> },
-          { id: 'watchlist', title: '🍿 Watchlist', node: <Watchlist viewGroup={viewGroup} /> },
+          { id: 'watchlist', title: '🎲 Pool', node: <Watchlist viewGroup={viewGroup} /> },
         ]),
   ]
 
