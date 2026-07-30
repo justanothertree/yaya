@@ -39,11 +39,14 @@ export type LeaderboardPeriod = 'all' | 'month' | 'today'
 
 function startIsoFor(period: LeaderboardPeriod): string | null {
   if (period === 'all') return null
+  // LOCAL midnight, not UTC. Building this from Date.UTC meant "Today" began at 00:00 UTC —
+  // which is 7pm the previous day in US Central — so games played this morning dropped out of
+  // "Today" as soon as UTC rolled over, and the tab looked empty even though you'd just played.
   const now = new Date()
-  const y = now.getUTCFullYear()
-  const m = now.getUTCMonth()
-  const d = now.getUTCDate()
-  const start = period === 'today' ? new Date(Date.UTC(y, m, d)) : new Date(Date.UTC(y, m, 1))
+  const start =
+    period === 'today'
+      ? new Date(now.getFullYear(), now.getMonth(), now.getDate())
+      : new Date(now.getFullYear(), now.getMonth(), 1)
   return start.toISOString()
 }
 
