@@ -8,6 +8,7 @@ import {
   fetchLeaderboard,
   submitScore,
   fetchMyScores,
+  fetchMyBestAndRank,
   fetchRankForScore,
   subscribeToLeaderboard,
   type LeaderboardPeriod,
@@ -76,6 +77,8 @@ export function GameManager({
   // 'mine' isn't a server period — it's your own full history, which the Top 15 can't show
   const [showMine, setShowMine] = useState(false)
   const [myScores, setMyScores] = useState<LeaderboardEntry[]>([])
+  // your standing when you're nowhere near the visible 15
+  const [myStanding, setMyStanding] = useState<{ best: number; rank: number } | null>(null)
   const [showDebug, setShowDebug] = useState(false)
   const [debugInfo, setDebugInfo] = useState<{
     nextPlayerId?: number | null
@@ -583,6 +586,17 @@ export function GameManager({
   useEffect(() => {
     scoreRef.current = score
   }, [score])
+  // your best + rank for the shown period, so being 40th still tells you something
+  useEffect(() => {
+    let live = true
+    void fetchMyBestAndRank((playerName || '').trim(), period).then((r) => {
+      if (live) setMyStanding(r)
+    })
+    return () => {
+      live = false
+    }
+  }, [playerName, period, leaders])
+
   // load my own runs whenever that view is open (or the name changes under it)
   useEffect(() => {
     if (!showMine) return
@@ -2937,6 +2951,17 @@ export function GameManager({
             Your rank: <strong style={{ color: 'var(--text)' }}>{myRank}</strong>
           </div>
         )}
+        {!showMine &&
+          myStanding != null &&
+          !leaders.some(
+            (l) =>
+              (l.username || '').trim().toLowerCase() === (playerName || '').trim().toLowerCase(),
+          ) && (
+            <div className="muted" style={{ marginTop: 6 }}>
+              You — <strong style={{ color: 'var(--text)' }}>{myStanding.best}</strong> · #
+              {myStanding.rank}
+            </div>
+          )}
         {showMine ? (
           myScores.length === 0 ? (
             <div className="muted" style={{ marginTop: 6 }}>
