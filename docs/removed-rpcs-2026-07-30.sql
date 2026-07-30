@@ -1,0 +1,28 @@
+-- Archive: RPCs dropped on 2026-07-30 as dead surface.
+--
+-- Every one was confirmed unreferenced by a word-boundary search across src/, scripts/,
+-- server/ and supabase/ (docs mentions only). Kept here so any of them can be restored by
+-- pasting a block back — that is the point of this file.
+--
+-- Why each went:
+--   list_chat_rooms            superseded by list_chat_overview (adds last message + unread)
+--   snake_leaderboard          built then withdrawn: resolving names on a PUBLIC board exposed
+--                              members' real names, and reading score_history instead of the
+--                              leaderboard table lost the row ids trophies key on
+--   admin_set_position_cost    the manual avg-cost entry that was rejected in favour of
+--                              deriving cost basis from the broker CSV
+--   admin_insert_family_account / insert_family_account / insert_executed_trade
+--                              an older write surface. NOTE the (uid, payload) variants were
+--                              thin wrappers that called the 1-arg versions, and
+--                              admin_insert_family_account wrote account_name/balances while
+--                              insert_family_account wrote display_name — different column
+--                              sets, i.e. these had already drifted apart from the schema.
+--   get_family_accounts, delete_allocation, delete_executed_trade, delete_family_account
+--                              the uid-passing read/delete surface superseded by
+--                              get_my_portfolio. Their siblings get_allocations and
+--                              get_executed_trades are STILL LIVE — portfolio.ts calls them
+--                              through a variable (sb.rpc(fn, { uid })) with paging, which is
+--                              exactly why a naive grep for rpc('name') misses them.
+--
+-- Definitions as they existed at drop time are recorded in the migration
+-- `drop_dead_rpcs` and in this repo's git history for this file's first revision.
