@@ -7,6 +7,7 @@ import {
   updateUserEmail,
   updateUserPassword,
 } from '../finance/auth'
+import { previewMember, PREVIEW_ME, PREVIEW_GROUPS } from '../dev/previewMember'
 import { hasFinanceSupabaseEnv } from '../finance/env'
 import { getSupabaseClient } from '../finance/client'
 
@@ -231,6 +232,8 @@ type CircuitRow = {
   role: string
   member_count: number
   is_owner: boolean
+  /** how you appear inside THIS circuit; null = use your ordinary name */
+  nickname: string | null
 }
 
 /**
@@ -326,11 +329,85 @@ function NicknamesCard() {
   )
 }
 
+/** How you appear inside one circuit. Blank falls back to your ordinary name. */
+function CircuitNickname({
+  groupId,
+  initial,
+  onSaved,
+}: {
+  groupId: string
+  initial: string
+  onSaved: (v: string) => void
+}) {
+  const sb = useMemo(() => getSupabaseClient(), [])
+  const [value, setValue] = useState(initial)
+  const [state, setState] = useState<'idle' | 'saving' | 'saved'>('idle')
+  const dirty = value.trim() !== initial.trim()
+
+  async function save() {
+    if (!dirty) return
+    setState('saving')
+    const { error } = await sb.rpc('set_my_circuit_nickname', {
+      p_group: groupId,
+      p_nickname: value,
+    })
+    if (error) {
+      setState('idle')
+      return
+    }
+    onSaved(value.trim())
+    setState('saved')
+    window.setTimeout(() => setState('idle'), 1500)
+  }
+
+  return (
+    <span
+      style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginLeft: 'auto' }}
+      title="Your name inside this circuit"
+    >
+      <input
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        onKeyDown={(e) => e.key === 'Enter' && void save()}
+        maxLength={24}
+        placeholder="Name here"
+        aria-label="Your nickname in this circuit"
+        style={{ width: 130, padding: '0.3rem 0.5rem', fontSize: '0.85rem' }}
+      />
+      {dirty ? (
+        <button className="btn cz-tap" onClick={() => void save()} disabled={state === 'saving'}>
+          {state === 'saving' ? '…' : 'Save'}
+        </button>
+      ) : (
+        state === 'saved' && (
+          <span className="muted" style={{ fontSize: '0.78rem' }}>
+            ✓
+          </span>
+        )
+      )}
+    </span>
+  )
+}
+
 function CircuitsCard() {
   const sb = useMemo(() => getSupabaseClient(), [])
   const [rows, setRows] = useState<CircuitRow[] | null>(null)
 
   useEffect(() => {
+    if (previewMember) {
+      // stand-in circuits so the per-circuit name editor can be inspected (see previewMember)
+      setRows(
+        PREVIEW_GROUPS.map((g, i) => ({
+          id: g.id,
+          name: g.name,
+          role: 'member',
+          member_count: 4 - i,
+          is_owner: i === 0,
+          nickname: i === 0 ? 'CrewCaptain' : null,
+        })),
+      )
+      return
+    }
     void sb.rpc('my_circuits').then(({ data }) => setRows((data as CircuitRow[]) ?? []))
   }, [sb])
 
@@ -367,6 +444,16 @@ function CircuitsCard() {
                 {c.member_count} member{c.member_count === 1 ? '' : 's'} ·{' '}
                 {c.is_owner ? 'owner' : c.role}
               </span>
+              <CircuitNickname
+                groupId={c.id}
+                initial={c.nickname ?? ''}
+                onSaved={(v) =>
+                  setRows(
+                    (prev) =>
+                      prev?.map((r) => (r.id === c.id ? { ...r, nickname: v || null } : r)) ?? prev,
+                  )
+                }
+              />
             </div>
           ))}
         </div>
@@ -413,6 +500,14 @@ export function AccountSettings() {
       try {
         // local session read — the old network requireUser() could lag or transiently
         // fail during a token refresh, flashing "Sign in required" at a signed-in user
+        // DEV harness: render the signed-in account UI with a stand-in identity so these
+        // cards can be inspected without a session (see previewMember). No real auth touched.
+        if (previewMember) {
+          setCurrentEmail(PREVIEW_ME.email)
+          setNewEmail(PREVIEW_ME.email)
+          setLoading(false)
+          return
+        }
         const user = await getSessionUser()
         if (!alive) return
         if (!user) {
