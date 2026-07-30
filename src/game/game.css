@@ -272,12 +272,66 @@
   /* the single-digit apple buttons shrank to 23px with the tighter padding; the Edges row
      has ~65px of slack, so widen just these back to a comfortable target */
   .snake-toolbar .apple-btn {
+    /* only THESE get a min-width. Applying one to every toolbar button re-wrapped the
+       control rows and grew the toolbar from 149px back to 245px; the Edges row has ~65px
+       of slack, so the single digits can afford it. */
     min-width: 34px;
-    /* deliberately NO min-width: the 1/2/3/4 apple buttons are 29px wide but a full 40px
-       tall, which is a fine thumb target. Forcing them wider re-wrapped the control rows
-       and grew the toolbar from 149px back to 245px, burying the game again. */
   }
   .snake-toolbar .btn--stable {
     min-width: 60px;
   }
+}
+
+/* ── name-your-score prompt ─────────────────────────────────────────────────
+   An anonymous player used to have their best filed under "Player7f3a" without
+   ever being asked. This offers a name at the one moment they care. Skipping
+   still saves the score — the prompt must never cost you a run. */
+.snake-name-prompt {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: rgba(0, 0, 0, 0.55);
+}
+.snake-name-card {
+  width: min(320px, 100%);
+  padding: 1.1rem 1rem;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  text-align: center;
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.4);
+}
+.snake-name-score {
+  font-size: 2.2rem;
+  font-weight: 800;
+  line-height: 1;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+.snake-name-lead {
+  margin: 0.4rem 0 0.8rem;
+  font-weight: 600;
+}
+.snake-name-card input {
+  width: 100%;
+  min-height: 44px;
+  padding: 0.5rem 0.7rem;
+  border-radius: 10px;
+  text-align: center;
+}
+.snake-name-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.7rem;
+}
+.snake-name-actions .btn {
+  flex: 1;
+  min-height: 42px;
+}
+.snake-name-note {
+  margin: 0.7rem 0 0;
+  font-size: 0.75rem;
 }
