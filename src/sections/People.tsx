@@ -39,6 +39,10 @@ export function People({ authed = false }: { authed?: boolean }) {
   const [q, setQ] = useState('')
   const [busy, setBusy] = useState<string | null>(null)
   const [err, setErr] = useState<string | null>(null)
+  // The directory only lists people you already share something with, so finding someone new
+  // is an explicit act: look up their exact handle (they had to share it with you).
+  const [found, setFound] = useState<Person[] | null>(null)
+  const [looking, setLooking] = useState(false)
 
   const refresh = useCallback(async () => {
     if (previewMember) {
@@ -82,6 +86,34 @@ export function People({ authed = false }: { authed?: boolean }) {
     if (error) setErr(error.message)
     else await refresh()
     setBusy(null)
+  }
+
+  async function lookUp() {
+    const handle = q.trim()
+    if (handle.length < 2) return
+    setLooking(true)
+    setErr(null)
+    if (previewMember) {
+      const hit = PREVIEW_PEOPLE.filter((p) => p.username.toLowerCase() === handle.toLowerCase())
+      setFound(hit.map((p) => ({ ...p })))
+      setLooking(false)
+      return
+    }
+    const { data, error } = await getSupabaseClient().rpc('find_member_by_username', {
+      p_username: handle,
+    })
+    if (error) setErr(error.message)
+    else {
+      const rows = (data ?? []) as { username: string; name: string; is_friend: boolean }[]
+      setFound(
+        rows.map((r) => ({
+          username: r.username,
+          name: r.name,
+          rel: r.is_friend ? 'friend' : 'none',
+        })),
+      )
+    }
+    setLooking(false)
   }
 
   async function message(username: string) {
@@ -207,14 +239,18 @@ export function People({ authed = false }: { authed?: boolean }) {
           People
         </h2>
         <span className="muted cz-subtitle" style={{ fontSize: '0.85rem' }}>
-          everyone on the site — add friends, start a DM
+          friends, requests, and people in your circles
         </span>
       </div>
 
       <input
         value={q}
-        onChange={(e) => setQ(e.target.value)}
-        placeholder="Search people"
+        onChange={(e) => {
+          setQ(e.target.value)
+          setFound(null)
+        }}
+        onKeyDown={(e) => e.key === 'Enter' && void lookUp()}
+        placeholder="Search, or type an exact @handle"
         aria-label="Search people"
         style={{
           width: '100%',
@@ -229,6 +265,26 @@ export function People({ authed = false }: { authed?: boolean }) {
           {err}
         </p>
       )}
+
+      {found !== null &&
+        (found.length > 0 ? (
+          section('Found', found)
+        ) : (
+          <p className="muted" style={{ fontSize: '0.85rem' }}>
+            No member with the handle “{q.trim()}”.
+          </p>
+        ))}
+
+      {q.trim().length >= 2 &&
+        found === null &&
+        groups.requests.length + groups.friends.length + groups.others.length === 0 && (
+          <p className="muted" style={{ fontSize: '0.85rem' }}>
+            Nobody you share a circle with matches that.{' '}
+            <button className="btn cz-tap" onClick={() => void lookUp()} disabled={looking}>
+              {looking ? 'Looking…' : `Look up @${q.trim()}`}
+            </button>
+          </p>
+        )}
 
       {section('Wants to be friends', groups.requests)}
       {section('Your friends', groups.friends, 'No friends yet — add someone below.')}
