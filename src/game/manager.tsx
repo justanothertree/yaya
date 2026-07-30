@@ -194,6 +194,28 @@ export function GameManager({
   const myIdRef = useRef<string | null>(null)
   // hostId state declared earlier; removed duplicate
   const [toast, setToast] = useState<string | null>(null)
+  // A score waiting for a name: set when an anonymous player (never chose a name) finishes a
+  // run, so their best doesn't get filed under "Player7f3a" without ever being asked.
+  const [pendingScore, setPendingScore] = useState<number | null>(null)
+  const [pendingName, setPendingName] = useState('')
+
+  /** file a score under a given name, then refresh the board */
+  const saveScoreAs = useCallback(async (nm: string, sc: number) => {
+    try {
+      await submitScore({ username: nm, score: sc, date: new Date().toISOString() })
+      const [top, rank] = await Promise.all([
+        fetchLeaderboard(periodRef.current, 15),
+        fetchRankForScore(sc, periodRef.current),
+      ])
+      setLeaders(top)
+      setMyRank(rank)
+      setToast('Score saved!')
+      if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current)
+      toastTimerRef.current = window.setTimeout(() => setToast(null), 2000) as unknown as number
+    } catch {
+      /* ignore */
+    }
+  }, [])
   const toastTimerRef = useRef<number | null>(null)
   // Silent deep-link retry controller (avoid alert spam)
   const deepRetryTimerRef = useRef<number | null>(null)
@@ -700,32 +722,15 @@ export function GameManager({
                   // Auto-submit solo score to leaderboard if possible
                   const nm = (playerNameRef.current || '').trim() || 'Player'
                   const sc = scoreRef.current
-                  if (sc > 0 && nm) {
-                    ;(async () => {
-                      try {
-                        await submitScore({
-                          username: nm,
-                          score: sc,
-                          date: new Date().toISOString(),
-                        })
-                        const [top, rank] = await Promise.all([
-                          fetchLeaderboard(periodRef.current, 15),
-                          fetchRankForScore(sc, periodRef.current),
-                        ])
-                        setLeaders(top)
-                        setMyRank(rank)
-                        setToast('Score saved!')
-                        if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current)
-                        toastTimerRef.current = window.setTimeout(
-                          () => setToast(null),
-                          2000,
-                        ) as unknown as number
-                      } catch {
-                        /* ignore */
-                      }
-                    })()
+                  if (sc > 0) {
+                    if (nameSourceRef.current === 'auto') {
+                      // never picked a name — offer one before the score is filed
+                      setPendingName('')
+                      setPendingScore(sc)
+                    } else {
+                      void saveScoreAs(nm, sc)
+                    }
                   }
-                  // Solo auto-saves; no modal needed
                 }
               }
             })
@@ -1926,6 +1931,71 @@ export function GameManager({
   return (
     <div>
       {/* Toast notification */}
+      {pendingScore != null && (
+        <div className="snake-name-prompt" role="dialog" aria-label="Name your score">
+          <div className="snake-name-card">
+            <div className="snake-name-score">{pendingScore}</div>
+            <p className="snake-name-lead">Nice run — want your name on it?</p>
+            <input
+              value={pendingName}
+              onChange={(e) => setPendingName(e.target.value)}
+              placeholder="Your name"
+              maxLength={24}
+              aria-label="Name for the leaderboard"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && pendingName.trim()) {
+                  const nm = pendingName.trim()
+                  setPlayerName(nm)
+                  nameSourceRef.current = 'custom'
+                  try {
+                    localStorage.setItem(LS_PLAYER_NAME_KEY, nm)
+                    localStorage.setItem(LS_PLAYER_NAME_SOURCE_KEY, 'custom')
+                  } catch {
+                    /* ignore */
+                  }
+                  void saveScoreAs(nm, pendingScore)
+                  setPendingScore(null)
+                }
+              }}
+              autoFocus
+            />
+            <div className="snake-name-actions">
+              <button
+                className="btn"
+                disabled={!pendingName.trim()}
+                onClick={() => {
+                  const nm = pendingName.trim()
+                  setPlayerName(nm)
+                  nameSourceRef.current = 'custom'
+                  try {
+                    localStorage.setItem(LS_PLAYER_NAME_KEY, nm)
+                    localStorage.setItem(LS_PLAYER_NAME_SOURCE_KEY, 'custom')
+                  } catch {
+                    /* ignore */
+                  }
+                  void saveScoreAs(nm, pendingScore)
+                  setPendingScore(null)
+                }}
+              >
+                Save it
+              </button>
+              <button
+                className="btn btn-ghost"
+                onClick={() => {
+                  // still saves — skipping shouldn't cost them the score
+                  void saveScoreAs((playerNameRef.current || 'Player').trim(), pendingScore)
+                  setPendingScore(null)
+                }}
+              >
+                Stay anonymous
+              </button>
+            </div>
+            <p className="snake-name-note muted">
+              Make an account later and this name can be yours.
+            </p>
+          </div>
+        </div>
+      )}
       {toast && (
         <div
           style={{
