@@ -220,6 +220,57 @@ export async function fetchLeaderboard(
   }
 }
 
+/**
+ * Every run by one player, newest first — deliberately NOT de-duplicated.
+ * The Top 15 keeps one row per player, which meant your own history was unreachable: below
+ * rank 15 you vanished, and beating your second-best showed nothing.
+ */
+export async function fetchMyScores(name: string, limit = 50): Promise<LeaderboardEntry[]> {
+  const nm = (name || '').trim()
+  if (!nm) return []
+  // score_history, NOT the leaderboard table: `leaderboard` holds one best row per player,
+  // which is exactly why your own history was invisible. Every run lives in score_history.
+  const { url, anon, scoreHistoryTable, nameCol } = envs()
+  const MODE = 'survival'
+  if (url && anon) {
+    try {
+      const select = `id,username:${nameCol},score,created_at`
+      const endpoint =
+        `${url}/rest/v1/${scoreHistoryTable}?select=${encodeURIComponent(select)}` +
+        `&order=created_at.desc&limit=${Math.max(1, Math.min(limit, 200))}` +
+        `&game_mode=eq.${encodeURIComponent(MODE)}&score=gt.0` +
+        `&${nameCol}=ilike.${encodeURIComponent(nm)}`
+      const res = await fetch(endpoint, { headers: sbHeaders(anon) })
+      if (res.ok) {
+        const rows = (await res.json()) as Array<{
+          id: number
+          username: string
+          score: number
+          created_at: string
+        }>
+        return rows.map((r) => ({
+          id: r.id,
+          username: r.username,
+          score: r.score,
+          date: r.created_at,
+        }))
+      }
+    } catch {
+      /* fall through to local */
+    }
+  }
+  try {
+    const raw = localStorage.getItem(LS_KEY)
+    const all = raw ? (JSON.parse(raw) as LeaderboardEntry[]) : []
+    return all
+      .filter((e) => e.score > 0 && e.username.toLowerCase() === nm.toLowerCase())
+      .sort((a, b) => (a.date < b.date ? 1 : -1))
+      .slice(0, limit)
+  } catch {
+    return []
+  }
+}
+
 export async function fetchRankForScore(
   score: number,
   period: LeaderboardPeriod = 'all',

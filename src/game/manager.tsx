@@ -7,6 +7,7 @@ import { NetClient } from './net'
 import {
   fetchLeaderboard,
   submitScore,
+  fetchMyScores,
   fetchRankForScore,
   subscribeToLeaderboard,
   type LeaderboardPeriod,
@@ -72,6 +73,9 @@ export function GameManager({
   const [trophyMap, setTrophyMap] = useState<Record<number, TrophyCounts>>({})
   const [myRank, setMyRank] = useState<number | null>(null)
   const [period, setPeriod] = useState<LeaderboardPeriod>('all')
+  // 'mine' isn't a server period — it's your own full history, which the Top 15 can't show
+  const [showMine, setShowMine] = useState(false)
+  const [myScores, setMyScores] = useState<LeaderboardEntry[]>([])
   const [showDebug, setShowDebug] = useState(false)
   const [debugInfo, setDebugInfo] = useState<{
     nextPlayerId?: number | null
@@ -579,6 +583,18 @@ export function GameManager({
   useEffect(() => {
     scoreRef.current = score
   }, [score])
+  // load my own runs whenever that view is open (or the name changes under it)
+  useEffect(() => {
+    if (!showMine) return
+    let live = true
+    void fetchMyScores((playerName || '').trim(), 50).then((rows) => {
+      if (live) setMyScores(rows)
+    })
+    return () => {
+      live = false
+    }
+  }, [showMine, playerName])
+
   useEffect(() => {
     periodRef.current = period
   }, [period])
@@ -2885,13 +2901,25 @@ export function GameManager({
             <button
               key={p.k}
               className="btn"
-              aria-pressed={period === p.k}
-              data-active={period === p.k || undefined}
-              onClick={() => setPeriod(p.k)}
+              aria-pressed={!showMine && period === p.k}
+              data-active={(!showMine && period === p.k) || undefined}
+              onClick={() => {
+                setShowMine(false)
+                setPeriod(p.k)
+              }}
             >
               {p.label}
             </button>
           ))}
+          <button
+            className="btn"
+            aria-pressed={showMine}
+            data-active={showMine || undefined}
+            onClick={() => setShowMine((v) => !v)}
+            title="Every run you've played, not just your best"
+          >
+            My runs
+          </button>
           {/* Filters removed per request */}
           <div style={{ marginLeft: 'auto' }} />
           <button
@@ -2909,7 +2937,34 @@ export function GameManager({
             Your rank: <strong style={{ color: 'var(--text)' }}>{myRank}</strong>
           </div>
         )}
-        {leaders.length === 0 ? (
+        {showMine ? (
+          myScores.length === 0 ? (
+            <div className="muted" style={{ marginTop: 6 }}>
+              No runs saved under “{profanityFilter.clean((playerName || '').trim() || 'Player')}”
+              yet.
+            </div>
+          ) : (
+            <div style={{ marginTop: 6 }}>
+              <div className="muted" style={{ marginBottom: 4, fontSize: '0.8rem' }}>
+                {myScores.length} run{myScores.length === 1 ? '' : 's'} as{' '}
+                <strong style={{ color: 'var(--text)' }}>
+                  {profanityFilter.clean((playerName || '').trim())}
+                </strong>{' '}
+                · best {Math.max(...myScores.map((m) => m.score))}
+              </div>
+              <ol className="snake-my-runs">
+                {myScores.map((m, i) => (
+                  <li key={typeof m.id === 'number' ? m.id : i} className="muted">
+                    <strong style={{ color: 'var(--text)' }}>{m.score}</strong>{' '}
+                    <span style={{ fontSize: '0.8rem' }}>
+                      {new Date(m.date).toLocaleDateString([], { month: 'short', day: 'numeric' })}
+                    </span>
+                  </li>
+                ))}
+              </ol>
+            </div>
+          )
+        ) : leaders.length === 0 ? (
           <div className="muted" style={{ marginTop: 6 }}>
             No scores yet{period === 'today' ? ' today' : period === 'month' ? ' this month' : ''}—
             be the first!
