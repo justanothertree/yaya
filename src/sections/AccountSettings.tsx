@@ -233,6 +233,99 @@ type CircuitRow = {
   is_owner: boolean
 }
 
+/**
+ * Display names. Your profile name is the default; each field below overrides it for one
+ * context, and clearing a field falls back again. The chain is resolved server-side by
+ * display_name() / snake_display_name(), so every surface agrees.
+ */
+function NicknamesCard() {
+  const sb = useMemo(() => getSupabaseClient(), [])
+  const [nickname, setNickname] = useState('')
+  const [circuitNickname, setCircuitNickname] = useState('')
+  const [snakeNickname, setSnakeNickname] = useState('')
+  const [state, setState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
+  const [err, setErr] = useState<string | null>(null)
+
+  useEffect(() => {
+    void sb
+      .from('profiles')
+      .select('nickname,circuit_nickname,snake_nickname')
+      .limit(1)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (!data) return
+        const d = data as {
+          nickname: string | null
+          circuit_nickname: string | null
+          snake_nickname: string | null
+        }
+        setNickname(d.nickname ?? '')
+        setCircuitNickname(d.circuit_nickname ?? '')
+        setSnakeNickname(d.snake_nickname ?? '')
+      })
+  }, [sb])
+
+  async function save(e: React.FormEvent) {
+    e.preventDefault()
+    setState('saving')
+    setErr(null)
+    const { error } = await sb.rpc('set_my_nicknames', {
+      p_nickname: nickname,
+      p_circuit_nickname: circuitNickname,
+      p_snake_nickname: snakeNickname,
+    })
+    if (error) {
+      setErr(error.message)
+      setState('error')
+    } else {
+      setState('saved')
+      window.setTimeout(() => setState('idle'), 1800)
+    }
+  }
+
+  const field = (label: string, hint: string, value: string, onChange: (v: string) => void) => (
+    <label style={{ display: 'grid', gap: 3 }}>
+      <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>{label}</span>
+      <span className="muted" style={{ fontSize: '0.78rem' }}>
+        {hint}
+      </span>
+      <input
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        maxLength={24}
+        placeholder="Leave blank to use your name"
+      />
+    </label>
+  )
+
+  return (
+    <form className="card" onSubmit={save} style={{ display: 'grid', gap: 12 }}>
+      <h3 style={{ margin: 0 }}>What people call you</h3>
+      <p className="muted" style={{ margin: 0, fontSize: '0.85rem' }}>
+        Your name is the default everywhere. Override it per place — clear a field to go back.
+      </p>
+      {field('Nickname', 'Used anywhere you have no more specific name.', nickname, setNickname)}
+      {field(
+        'In the Circuit',
+        'How you appear on the board, feed and charts.',
+        circuitNickname,
+        setCircuitNickname,
+      )}
+      {field('On the Snake leaderboard', 'Your arcade handle.', snakeNickname, setSnakeNickname)}
+      {err && (
+        <p className="muted" style={{ margin: 0, color: 'var(--accent-2)', fontSize: '0.85rem' }}>
+          {err}
+        </p>
+      )}
+      <div>
+        <button className="btn" type="submit" disabled={state === 'saving'}>
+          {state === 'saving' ? 'Saving…' : state === 'saved' ? 'Saved ✓' : 'Save names'}
+        </button>
+      </div>
+    </form>
+  )
+}
+
 function CircuitsCard() {
   const sb = useMemo(() => getSupabaseClient(), [])
   const [rows, setRows] = useState<CircuitRow[] | null>(null)
@@ -467,6 +560,7 @@ export function AccountSettings() {
         <>
           <MemberProfileCard />
 
+          <NicknamesCard />
           <CircuitsCard />
 
           {/* Account & security */}

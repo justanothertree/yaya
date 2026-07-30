@@ -271,6 +271,43 @@ export async function fetchMyScores(name: string, limit = 50): Promise<Leaderboa
   }
 }
 
+/**
+ * Your best in a period plus where it actually sits. The board only shows 15 rows, so below
+ * that you had no idea whether you ranked 16th or 200th — this makes your standing visible
+ * without pretending you're on the podium.
+ */
+export async function fetchMyBestAndRank(
+  name: string,
+  period: LeaderboardPeriod = 'all',
+): Promise<{ best: number; rank: number } | null> {
+  const nm = (name || '').trim()
+  if (!nm) return null
+  const { url, anon, scoreHistoryTable, nameCol } = envs()
+  const since = startIsoFor(period)
+  const MODE = 'survival'
+  if (!url || !anon) return null
+  try {
+    const parts = [
+      `${url}/rest/v1/${scoreHistoryTable}?select=score`,
+      `order=score.desc`,
+      `limit=1`,
+      `game_mode=eq.${encodeURIComponent(MODE)}`,
+      `score=gt.0`,
+      `${nameCol}=ilike.${encodeURIComponent(nm)}`,
+    ]
+    if (since) parts.push(`created_at=gte.${encodeURIComponent(since)}`)
+    const res = await fetch(parts[0] + '&' + parts.slice(1).join('&'), { headers: sbHeaders(anon) })
+    if (!res.ok) return null
+    const rows = (await res.json()) as Array<{ score: number }>
+    const best = rows[0]?.score
+    if (!best) return null
+    const rank = await fetchRankForScore(best, period)
+    return rank == null ? null : { best, rank }
+  } catch {
+    return null
+  }
+}
+
 export async function fetchRankForScore(
   score: number,
   period: LeaderboardPeriod = 'all',
