@@ -335,3 +335,25 @@
   margin: 0.7rem 0 0;
   font-size: 0.75rem;
 }
+
+/* "My runs" — your own history, so it reads as a compact list of scores + dates rather
+   than a ranked board (rank is meaningless against yourself). */
+.snake-my-runs {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(88px, 1fr));
+  gap: 4px;
+  max-height: 46vh;
+  overflow-y: auto;
+  text-align: left;
+}
+.snake-my-runs li {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: 8px;
+  background: var(--control-bg);
+}
