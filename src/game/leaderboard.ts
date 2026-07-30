@@ -162,36 +162,13 @@ export async function fetchLeaderboard(
   const { url, anon, leaderboardTable, nameCol } = envs()
   const since = startIsoFor(period)
   const MODE = 'survival'
-  // Prefer the RPC: it de-duplicates by PERSON (so one human with two handles is one row) and
-  // resolves a member's chosen nickname instead of whatever they typed. The REST path below
-  // stays as a fallback, and still powers the local/offline case.
-  if (url && anon) {
-    try {
-      const res = await fetch(`${url}/rest/v1/rpc/snake_leaderboard`, {
-        method: 'POST',
-        headers: { ...sbHeaders(anon), 'Content-Type': 'application/json' },
-        body: JSON.stringify({ p_limit: limit, p_since: since }),
-      })
-      if (res.ok) {
-        const rows = (await res.json()) as Array<{
-          player_name: string
-          display_name: string
-          score: number
-          created_at: string
-        }>
-        if (Array.isArray(rows) && rows.length > 0) {
-          return rows.map((r, i) => ({
-            id: i,
-            username: r.display_name || r.player_name,
-            score: r.score,
-            date: r.created_at,
-          }))
-        }
-      }
-    } catch {
-      /* fall through to the direct table read */
-    }
-  }
+  // NOTE: the board deliberately shows the TYPED handle, not the member's real name.
+  // Snake is public — anyone, including strangers, can read it — and Evan's rule is that
+  // friends' identities are not on display there. A friends-only "handle (Josh)" variant is
+  // wanted, but it must be built so a non-friend can never resolve a handle to a person.
+  //
+  // This also must keep returning the real leaderboard row id: fetchTrophiesFor() keys
+  // trophies by it, so substituting an index silently emptied everyone's trophy case.
   if (url && anon) {
     try {
       const select = `id,username:${nameCol},score,created_at`
