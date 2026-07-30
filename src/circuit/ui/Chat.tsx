@@ -133,6 +133,31 @@ export function Chat({ authed = false }: { authed?: boolean }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authed])
 
+  /**
+   * A ?room= link has to work when this screen is already open. It was only read on mount, so
+   * tapping an unread DM in the bell did nothing if you happened to be on the chat page — the
+   * hash changed under a mounted component and nobody was listening.
+   */
+  useEffect(() => {
+    const onHash = () => {
+      const wanted = new URLSearchParams(window.location.hash.split('?')[1] ?? '').get('room')
+      if (!wanted) return
+      setRooms((prev) => {
+        const hit = prev.find((x) => x.id === wanted)
+        if (hit) {
+          setRoom(hit)
+          if (previewMember) PREVIEW_UNREAD[hit.id] = 0
+          else if (sb) void sb.rpc('mark_room_read', { p_room: hit.id })
+          return prev.map((x) => (x.id === hit.id ? { ...x, unread: 0 } : x))
+        }
+        return prev
+      })
+    }
+    window.addEventListener('hashchange', onHash)
+    return () => window.removeEventListener('hashchange', onHash)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authed])
+
   const scrollDown = useCallback(() => {
     endRef.current?.scrollIntoView({ block: 'nearest' })
   }, [])

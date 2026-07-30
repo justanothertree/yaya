@@ -2119,3 +2119,30 @@ select {
     flex: 1 0 100%;
   }
 }
+
+/* remove-review affordance: quiet until you look for it, never competing with the title */
+.cz-review-x {
+  margin-left: 6px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  opacity: 0.28;
+  cursor: pointer;
+  font-size: 0.78rem;
+  padding: 4px 6px;
+  border-radius: 6px;
+  line-height: 1;
+}
+.cz-review-x:hover {
+  opacity: 1;
+  background: rgba(255, 85, 102, 0.16);
+  color: var(--accent-2, #ff5566);
+}
+@media (max-width: 640px) {
+  /* thumb-sized on a phone, where there's no hover to reveal it */
+  .cz-review-x {
+    opacity: 0.5;
+    min-width: 34px;
+    min-height: 34px;
+  }
+}

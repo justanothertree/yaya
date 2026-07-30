@@ -263,7 +263,7 @@ export function MovieDetail({ movie, onClose }: { movie: Movie; onClose: () => v
                         cursor: 'pointer',
                         fontSize: '0.9rem',
                       }}
-                      title={`${p.name}'s movie stats`}
+                      title={`${p.name}'s rating stats`}
                     >
                       {p.name}
                     </span>
