@@ -2074,3 +2074,48 @@ select {
 .cz-measure .proj-media {
   max-width: 440px !important;
 }
+
+/* ══ the pool (was the watchlist) ══════════════════════════════════════════
+   One option per row: the title takes the space, the "who's up for it" votes
+   are initial circles rather than full-name chips, and the count/remove sit
+   quietly at the end. Full names on every row were the clutter. */
+.cz-pool-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.45rem 0.65rem;
+  background: var(--b1, rgba(127, 127, 127, 0.07));
+  border-radius: 8px;
+}
+.cz-pool-title {
+  flex: 1;
+  min-width: 0;
+  font-weight: 600;
+  font-size: 0.9rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cz-pool-votes {
+  display: inline-flex;
+  gap: 3px;
+  flex-shrink: 0;
+}
+.cz-pool-count {
+  flex-shrink: 0;
+  font-size: 0.78rem;
+  font-weight: 800;
+  color: var(--accent, #7c6af7);
+  min-width: 1.1rem;
+  text-align: right;
+}
+/* on a phone the title gets its own line so the vote circles never squeeze it */
+@media (max-width: 640px) {
+  .cz-pool-row {
+    flex-wrap: wrap;
+    row-gap: 0.35rem;
+  }
+  .cz-pool-title {
+    flex: 1 0 100%;
+  }
+}

@@ -103,7 +103,7 @@ export function Ratings() {
 
   const tabs: { id: RTab; label: string }[] = [
     { id: 'reviews', label: '📝 Reviews' },
-    { id: 'watchlist', label: '🍿 Watchlist' },
+    { id: 'watchlist', label: '🎲 Pool' },
   ]
 
   return (

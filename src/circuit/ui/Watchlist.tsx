@@ -1,8 +1,14 @@
-// Watchlist — queued movies with per-person vote buttons, sortable.
+// Pool — a set of options a circle is choosing between, not a list to admire.
+//
+// It used to be a watchlist: queued titles with a full-name vote chip per person on every row,
+// which read as clutter and never actually decided anything. Same data, reframed around the
+// decision — say what you're up for, then let it pick. Pools are typed (movies, food, games…)
+// so one circle can run several without them mixing.
 import { useMemo, useState } from 'react'
 import { circuitStore, useCircuit } from '../store'
 import { watchlistInGroup } from '../groupFilter'
 import { MV_PIDS } from './movieMeta'
+import { REVIEW_KINDS, kindEmoji } from '../reviewKinds'
 import { Modal } from './Modal'
 import type { WatchlistItem } from '../types'
 
@@ -16,19 +22,35 @@ export function Watchlist({
   viewGroup?: string
 } = {}) {
   const { watchlist: allWatchlist, people } = useCircuit()
-  // scope to the viewed circuit (shared filter)
-  const watchlist = useMemo(
+  const inGroup = useMemo(
     () => watchlistInGroup(allWatchlist, viewGroup),
     [allWatchlist, viewGroup],
   )
   const [sort, setSort] = useState<SortW>('votes')
+  const [kindFilter, setKindFilter] = useState<string>('')
   const [adding, setAdding] = useState(false)
   const [newTitle, setNewTitle] = useState('')
   const [newRt, setNewRt] = useState('')
+  const [newKind, setNewKind] = useState('movie')
+  /** the current pick, kept so it can be re-rolled or accepted */
+  const [picked, setPicked] = useState<WatchlistItem | null>(null)
 
   const voters = useMemo(
     () => MV_PIDS.map((id) => people.find((p) => p.id === id)).filter(Boolean) as typeof people,
     [people],
+  )
+
+  // which kinds are actually present — the filter only earns its space when there's a choice
+  const kindCounts = useMemo(() => {
+    const m = new Map<string, number>()
+    for (const w of inGroup) m.set(w.kind ?? 'movie', (m.get(w.kind ?? 'movie') ?? 0) + 1)
+    return m
+  }, [inGroup])
+  const multiKind = kindCounts.size > 1
+
+  const watchlist = useMemo(
+    () => (kindFilter ? inGroup.filter((w) => (w.kind ?? 'movie') === kindFilter) : inGroup),
+    [inGroup, kindFilter],
   )
 
   const sorted = useMemo(() => {
@@ -39,14 +61,33 @@ export function Watchlist({
     return list
   }, [watchlist, sort])
 
+  /**
+   * Pick one, weighted by votes: votes tilt the odds rather than deciding outright, so the
+   * option nobody championed can still come up. That's the point of a randomiser — it settles
+   * the argument without pretending the vote was unanimous.
+   */
+  function pick() {
+    if (watchlist.length === 0) return
+    const weights = watchlist.map((w) => 1 + (w.votes?.length ?? 0) * 2)
+    const total = weights.reduce((a, b) => a + b, 0)
+    let r = Math.random() * total
+    for (let i = 0; i < watchlist.length; i++) {
+      r -= weights[i]
+      if (r <= 0) {
+        setPicked(watchlist[i])
+        return
+      }
+    }
+    setPicked(watchlist[watchlist.length - 1])
+  }
+
   function toggleVote(item: WatchlistItem, pid: string) {
     const votes = item.votes ?? []
     const next = votes.includes(pid) ? votes.filter((v) => v !== pid) : [...votes, pid]
     void circuitStore.saveWatchlist({ ...item, votes: next })
   }
 
-  // default a new item to the group the watchlist already lives in (falling back to
-  // movies, then the first group) so friends can see + vote — same fix as AddMovie
+  // default a new option to the circuit the pool already lives in, so friends can see + vote
   function defaultGroup(): string | undefined {
     const st = circuitStore.getState()
     const counts = new Map<string, number>()
@@ -67,28 +108,29 @@ export function Watchlist({
   function addItem() {
     const t = newTitle.trim()
     if (!t) return
-    const item: WatchlistItem = {
+    void circuitStore.saveWatchlist({
       id: 'wl' + (crypto.randomUUID?.() ?? String(Date.now())),
       title: t,
       rt: newRt.trim() ? newRt.trim() + '%' : undefined,
       votes: [],
+      kind: newKind,
       groupId: defaultGroup(),
-    }
-    void circuitStore.saveWatchlist(item)
+    })
     setNewTitle('')
     setNewRt('')
     setAdding(false)
   }
 
-  function markWatched(item: WatchlistItem) {
+  function markDone(item: WatchlistItem) {
     void circuitStore.deleteWatchlist(item.id)
+    if (picked?.id === item.id) setPicked(null)
     onWatched?.(item.title, item.rt)
   }
 
   const sortBtn = (k: SortW, label: string) => (
     <button
       key={k}
-      className="btn"
+      className="btn cz-tap"
       onClick={() => setSort(k)}
       style={
         sort === k
@@ -100,6 +142,9 @@ export function Watchlist({
     </button>
   )
 
+  // RT% only means anything for films
+  const moviesOnly = !multiKind && (kindCounts.has('movie') || kindCounts.size === 0)
+
   return (
     <div>
       <div
@@ -108,113 +153,147 @@ export function Watchlist({
           alignItems: 'center',
           gap: '0.6rem',
           flexWrap: 'wrap',
-          marginBottom: '1rem',
+          marginBottom: '0.8rem',
         }}
       >
-        <h3 style={{ margin: 0 }}>Watchlist</h3>
+        <h3 style={{ margin: 0 }}>The pool</h3>
         <span className="muted" style={{ fontSize: '0.85rem' }}>
-          {watchlist.length} queued
+          {watchlist.length} option{watchlist.length === 1 ? '' : 's'}
         </span>
-        <button className="btn" onClick={() => setAdding(true)}>
+        <button className="btn cz-tap" onClick={() => setAdding(true)}>
           ＋ Add
         </button>
         <span style={{ marginLeft: 'auto', display: 'flex', gap: '0.35rem' }}>
           {sortBtn('votes', 'Top')}
           {sortBtn('alpha', 'A–Z')}
-          {sortBtn('rt', 'RT%')}
+          {moviesOnly && sortBtn('rt', 'RT%')}
         </span>
       </div>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-        {sorted.map((item, i) => {
+      {/* the decision — the reason this screen exists */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
+        <button
+          className="btn cz-tap"
+          onClick={pick}
+          disabled={watchlist.length === 0}
+          style={{
+            background: 'var(--accent,#7c6af7)',
+            color: '#fff',
+            borderColor: 'transparent',
+            fontWeight: 700,
+          }}
+        >
+          🎲 {picked ? 'Pick again' : 'Pick for us'}
+        </button>
+        {picked && (
+          <span
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '0.5rem',
+              flexWrap: 'wrap',
+            }}
+          >
+            <strong style={{ fontSize: '1.05rem' }}>
+              {kindEmoji(picked.kind)} {picked.title}
+            </strong>
+            <button className="btn cz-tap" onClick={() => markDone(picked)} title="We did this one">
+              ✓ Did it
+            </button>
+          </span>
+        )}
+      </div>
+      {watchlist.length > 0 && (
+        <p className="muted" style={{ fontSize: '0.76rem', margin: '0.4rem 0 0.9rem' }}>
+          Votes tilt the odds — anything in the pool can still come up.
+        </p>
+      )}
+
+      {/* kind filter, only when there's more than one kind of thing in here */}
+      {multiKind && (
+        <div style={{ display: 'flex', gap: '0.3rem', flexWrap: 'wrap', marginBottom: '0.7rem' }}>
+          <button
+            className={'cz-chip' + (kindFilter === '' ? ' cz-on' : '')}
+            style={kindFilter === '' ? { background: 'var(--accent,#7c6af7)', color: '#fff' } : {}}
+            onClick={() => setKindFilter('')}
+          >
+            All {inGroup.length}
+          </button>
+          {REVIEW_KINDS.filter((k) => kindCounts.has(k.id)).map((k) => (
+            <button
+              key={k.id}
+              className={'cz-chip' + (kindFilter === k.id ? ' cz-on' : '')}
+              style={
+                kindFilter === k.id ? { background: 'var(--accent,#7c6af7)', color: '#fff' } : {}
+              }
+              onClick={() => setKindFilter(k.id)}
+            >
+              {k.emoji} {kindCounts.get(k.id)}
+            </button>
+          ))}
+        </div>
+      )}
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+        {sorted.map((item) => {
           const voteCount = item.votes?.length ?? 0
+          const isPick = picked?.id === item.id
           return (
             <div
               key={item.id}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.5rem',
-                padding: '0.45rem 0.65rem',
-                background: 'var(--b1,rgba(127,127,127,0.07))',
-                borderRadius: 8,
-                flexWrap: 'wrap',
-              }}
+              className="cz-pool-row"
+              style={isPick ? { boxShadow: '0 0 0 2px var(--accent,#7c6af7)' } : {}}
             >
-              <span style={{ opacity: 0.4, fontSize: '0.78rem', width: '1.5rem', flexShrink: 0 }}>
-                {i + 1}
-              </span>
-              <span style={{ flex: 1, fontWeight: 600, fontSize: '0.88rem', minWidth: 100 }}>
+              <span className="cz-pool-title">
+                {multiKind && <span aria-hidden>{kindEmoji(item.kind)} </span>}
                 {item.title}
+                {item.rt && (
+                  <span style={{ color: '#fa4242', fontWeight: 700, fontSize: '0.74rem' }}>
+                    {' '}
+                    {item.rt}
+                  </span>
+                )}
               </span>
-              {item.rt && (
-                <span
-                  style={{ color: '#fa4242', fontWeight: 700, fontSize: '0.76rem', flexShrink: 0 }}
-                >
-                  {item.rt}
-                </span>
-              )}
-              {/* Per-person vote chips */}
-              <span style={{ display: 'flex', gap: '0.2rem', flexWrap: 'wrap' }}>
+
+              {/* who's up for it — initials, so a row stays one row */}
+              <span className="cz-pool-votes">
                 {voters.map((p) => {
                   const voted = (item.votes ?? []).includes(p.id)
                   return (
                     <button
                       key={p.id}
-                      className="cz-tap"
                       onClick={() => toggleVote(item, p.id)}
-                      title={`${p.name} ${voted ? '— remove vote' : '— vote to watch'}`}
+                      title={`${p.name} ${voted ? '— remove vote' : '— up for it'}`}
+                      aria-pressed={voted}
+                      aria-label={`${p.name} up for ${item.title}`}
                       style={{
                         background: voted ? p.color : 'transparent',
                         border: `1.5px solid ${p.color}`,
                         color: voted ? '#fff' : p.color,
-                        borderRadius: 10,
-                        padding: '1px 7px',
+                        borderRadius: '50%',
+                        width: 30,
+                        height: 30,
+                        padding: 0,
                         fontSize: '0.72rem',
-                        fontWeight: 700,
+                        fontWeight: 800,
                         cursor: 'pointer',
-                        opacity: voted ? 1 : 0.55,
-                        transition: 'opacity 0.12s, background 0.12s',
-                        lineHeight: 1.6,
+                        opacity: voted ? 1 : 0.5,
+                        lineHeight: 1,
+                        flexShrink: 0,
                       }}
                     >
-                      {p.name.split(' ')[0]}
+                      {p.name[0]?.toUpperCase()}
                     </button>
                   )
                 })}
               </span>
-              {voteCount > 0 && (
-                <span
-                  style={{
-                    fontSize: '0.76rem',
-                    color: 'var(--accent,#7c6af7)',
-                    fontWeight: 700,
-                    flexShrink: 0,
-                  }}
-                >
-                  {voteCount} 🗳
-                </span>
-              )}
+
+              {voteCount > 0 && <span className="cz-pool-count">{voteCount}</span>}
               <button
                 className="btn cz-tap"
-                style={{
-                  fontSize: '0.74rem',
-                  padding: '2px 9px',
-                  background: 'rgba(34,204,120,0.12)',
-                  borderColor: '#22cc78',
-                  color: '#22cc78',
-                  flexShrink: 0,
-                }}
-                onClick={() => markWatched(item)}
-                title="Done — take it off the list"
-              >
-                ✓ Done
-              </button>
-              <button
-                className="btn cz-tap"
-                style={{ fontSize: '0.74rem', padding: '2px 6px', opacity: 0.45, flexShrink: 0 }}
                 onClick={() => void circuitStore.deleteWatchlist(item.id)}
-                title="Remove"
+                title="Take it out of the pool"
+                style={{ opacity: 0.45, flexShrink: 0 }}
               >
                 ✕
               </button>
@@ -223,14 +302,14 @@ export function Watchlist({
         })}
         {watchlist.length === 0 && (
           <p className="muted" style={{ marginTop: '0.5rem' }}>
-            Nothing queued yet. Line up movies, meals — anything to do together.
+            Nothing in the pool yet. Add a few options and let it choose.
           </p>
         )}
       </div>
 
       {adding && (
         <Modal
-          title="Add to Watchlist"
+          title="Add to the pool"
           onClose={() => setAdding(false)}
           footer={
             <>
@@ -252,31 +331,47 @@ export function Watchlist({
             </>
           }
         >
+          <div style={{ display: 'flex', gap: '0.3rem', flexWrap: 'wrap', marginBottom: '0.7rem' }}>
+            {REVIEW_KINDS.map((k) => (
+              <button
+                key={k.id}
+                className={'cz-chip' + (newKind === k.id ? ' cz-on' : '')}
+                style={
+                  newKind === k.id ? { background: 'var(--accent,#7c6af7)', color: '#fff' } : {}
+                }
+                onClick={() => setNewKind(k.id)}
+              >
+                {k.emoji} {k.label}
+              </button>
+            ))}
+          </div>
           <label style={{ display: 'grid', gap: 4, marginBottom: '0.6rem' }}>
             <span className="muted" style={{ fontSize: '0.82rem' }}>
-              Title
+              What&apos;s the option?
             </span>
             <input
               value={newTitle}
               onChange={(e) => setNewTitle(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && addItem()}
-              placeholder="What do you want to try?"
+              placeholder="Something to choose between"
               autoFocus
             />
           </label>
-          <label style={{ display: 'grid', gap: 4 }}>
-            <span className="muted" style={{ fontSize: '0.82rem' }}>
-              RT% (optional)
-            </span>
-            <input
-              value={newRt}
-              onChange={(e) => setNewRt(e.target.value)}
-              placeholder="e.g. 87"
-              type="number"
-              min={0}
-              max={100}
-            />
-          </label>
+          {newKind === 'movie' && (
+            <label style={{ display: 'grid', gap: 4 }}>
+              <span className="muted" style={{ fontSize: '0.82rem' }}>
+                RT% (optional)
+              </span>
+              <input
+                value={newRt}
+                onChange={(e) => setNewRt(e.target.value)}
+                placeholder="e.g. 87"
+                type="number"
+                min={0}
+                max={100}
+              />
+            </label>
+          )}
         </Modal>
       )}
     </div>
