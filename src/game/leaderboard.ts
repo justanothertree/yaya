@@ -232,6 +232,31 @@ export async function fetchLeaderboard(
  * The Top 15 keeps one row per player, which meant your own history was unreachable: below
  * rank 15 you vanished, and beating your second-best showed nothing.
  */
+/**
+ * Typed handle -> the friend behind it, so the board can read "handle (Josh)".
+ * Only ever returns your own handles and your friends'; a signed-out visitor gets nothing at
+ * all (the RPC is not granted to anon), so the public board can't resolve anyone.
+ */
+export async function fetchFriendNames(): Promise<Record<string, string>> {
+  const out: Record<string, string> = {}
+  const { url, anon } = envs()
+  if (!url || !anon) return out
+  try {
+    // the APP's client, not this module's: getClient() runs with persistSession:false and its
+    // own storage key, so it carries no session — auth.uid() would be null and a friends-only
+    // lookup would correctly return nothing.
+    const { getSupabaseClient } = await import('../finance/client')
+    const { data, error } = await getSupabaseClient().rpc('snake_friend_names')
+    if (error || !data) return out
+    for (const r of data as Array<{ player_name: string; member_name: string }>) {
+      if (r.player_name && r.member_name) out[r.player_name.toLowerCase()] = r.member_name
+    }
+  } catch {
+    /* signed out or unavailable — the board simply shows handles */
+  }
+  return out
+}
+
 export async function fetchMyScores(name: string, limit = 50): Promise<LeaderboardEntry[]> {
   const nm = (name || '').trim()
   if (!nm) return []

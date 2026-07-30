@@ -79,6 +79,15 @@ export function AcceptInvite() {
           p_contact_email: email,
         })
         if (rpcErr) throw rpcErr
+        // A leaderboard name was reserved for this member before they had an account (see
+        // player_registry). Claim it now so their existing Snake scores are theirs from the
+        // first sign-in, rather than sitting under a handle nobody owns. Best-effort: a
+        // failure here must never block finishing signup.
+        try {
+          await sb.rpc('claim_my_reserved_snake_name')
+        } catch {
+          /* nothing reserved, or it's already claimed */
+        }
         setDone(true)
       } else {
         // Email confirmation is on — user must confirm before profile can be saved
