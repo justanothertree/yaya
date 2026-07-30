@@ -1,13 +1,16 @@
-// Movies leaderboard — per-person scores + group average + RT%, sortable.
+// Reviews board — per-person scores + group average, sortable. Any category of thing: films
+// were first, but a soda or a restaurant works the same way. RT% is the one movie-only column,
+// so it hides itself whenever you aren't looking at films.
 // (Detail modal / reviews / stats / watchlist from the standalone come later.)
 import { useMemo, useState } from 'react'
-import { useCircuit } from '../store'
+import { circuitStore, useCircuit } from '../store'
 import { moviesInGroup } from '../groupFilter'
 import type { Movie, Person } from '../types'
 import { MovieRate } from './MovieRate'
 import { AddMovie } from './AddMovie'
 import { MoviePersonProfile } from './MoviePersonProfile'
 import { MovieDetail } from './MovieDetail'
+import { Modal } from './Modal'
 import { MovieStats } from './MovieStats'
 import { MV_PIDS, scoreColor } from './movieMeta'
 import { kindEmoji, kindsPresent } from '../reviewKinds'
@@ -35,6 +38,7 @@ export function Movies({ viewGroup = '' }: { viewGroup?: string } = {}) {
   const [adding, setAdding] = useState(false)
   const [profile, setProfile] = useState<Person | null>(null)
   const [detail, setDetail] = useState<Movie | null>(null)
+  const [confirmDel, setConfirmDel] = useState<Movie | null>(null)
   const [view, setView] = useState<'board' | 'stats'>('board')
 
   // scope to the viewed circuit (shared filter) — '' shows everything you can see
@@ -50,6 +54,9 @@ export function Movies({ viewGroup = '' }: { viewGroup?: string } = {}) {
   }, [inGroup])
   const multiKind = kindCounts.size > 1
   const [kindFilter, setKindFilter] = useState('')
+  // RT% is a film-only score. Show the column when films are actually in view — either the
+  // filter is on movies, or there's no filter and movies are present.
+  const showRt = kindFilter === 'movie' || (kindFilter === '' && kindCounts.has('movie'))
   const movies = useMemo(
     () => (kindFilter ? inGroup.filter((r) => (r.kind ?? 'movie') === kindFilter) : inGroup),
     [inGroup, kindFilter],
@@ -296,7 +303,8 @@ export function Movies({ viewGroup = '' }: { viewGroup?: string } = {}) {
             [
               ['avg', 'Avg'],
               ['alpha', 'A–Z'],
-              ['rt', 'RT%'],
+              // RT% is meaningless for a soda; only offer it when films are in view
+              ...((showRt ? [['rt', 'RT%']] : []) as [SortKey, string][]),
               ['date', 'Date'],
             ] as [SortKey, string][]
           ).map(([k, label]) => (
@@ -341,7 +349,7 @@ export function Movies({ viewGroup = '' }: { viewGroup?: string } = {}) {
                     </span>
                     <button
                       onClick={() => setProfile(p)}
-                      title={`${p.name}'s movie stats`}
+                      title={`${p.name}'s rating stats`}
                       style={{
                         display: 'block',
                         margin: '1px auto 0',
@@ -357,7 +365,9 @@ export function Movies({ viewGroup = '' }: { viewGroup?: string } = {}) {
                   </th>
                 ))}
                 <th style={{ ...stickyTh, textAlign: 'center' }}>Avg</th>
-                <th style={{ ...stickyTh, textAlign: 'center', color: '#fa4242' }}>RT%</th>
+                {showRt && (
+                  <th style={{ ...stickyTh, textAlign: 'center', color: '#fa4242' }}>RT%</th>
+                )}
               </tr>
             </thead>
             <tbody>
@@ -386,6 +396,20 @@ export function Movies({ viewGroup = '' }: { viewGroup?: string } = {}) {
                         {m.date.slice(0, 7)}
                       </span>
                     )}
+                    {/* Removal had no UI at all, so a duplicate entry was permanent. Confirmed
+                        first: a review can carry the whole group's ratings, and a mis-tap on a
+                        phone shouldn't delete them. */}
+                    <button
+                      className="cz-review-x"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        setConfirmDel(m)
+                      }}
+                      title={`Remove ${m.title}`}
+                      aria-label={`Remove ${m.title}`}
+                    >
+                      ✕
+                    </button>
                   </td>
                   {raters.map((p) => {
                     const r = m.ratings[p.id]
@@ -405,16 +429,18 @@ export function Movies({ viewGroup = '' }: { viewGroup?: string } = {}) {
                   <td style={{ padding: '6px 8px', textAlign: 'center' }}>
                     {chip(avg == null ? null : Math.round(avg * 10) / 10)}
                   </td>
-                  <td
-                    style={{
-                      padding: '6px 8px',
-                      textAlign: 'center',
-                      color: '#fa4242',
-                      fontWeight: 700,
-                    }}
-                  >
-                    {m.rt || '—'}
-                  </td>
+                  {showRt && (
+                    <td
+                      style={{
+                        padding: '6px 8px',
+                        textAlign: 'center',
+                        color: '#fa4242',
+                        fontWeight: 700,
+                      }}
+                    >
+                      {m.rt || '—'}
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>
@@ -439,6 +465,44 @@ export function Movies({ viewGroup = '' }: { viewGroup?: string } = {}) {
           color={profile.color}
           onClose={() => setProfile(null)}
         />
+      )}
+      {confirmDel && (
+        <Modal
+          title={`Remove “${confirmDel.title}”?`}
+          onClose={() => setConfirmDel(null)}
+          footer={
+            <>
+              <button className="btn" onClick={() => setConfirmDel(null)}>
+                Keep it
+              </button>
+              <button
+                className="btn"
+                onClick={() => {
+                  void circuitStore.deleteMovie(confirmDel.id)
+                  setConfirmDel(null)
+                }}
+                style={{
+                  background: 'var(--accent-2,#ff5566)',
+                  color: '#fff',
+                  borderColor: 'transparent',
+                }}
+              >
+                Remove
+              </button>
+            </>
+          }
+        >
+          <p style={{ margin: 0 }}>
+            {(() => {
+              const n = Object.values(confirmDel.ratings ?? {}).filter(
+                (r) => r && r.score != null,
+              ).length
+              return n > 0
+                ? `This also deletes ${n} rating${n === 1 ? '' : 's'} from the group. It can't be undone here.`
+                : 'Nobody has rated this yet, so nothing else is lost.'
+            })()}
+          </p>
+        </Modal>
       )}
       {detail && <MovieDetail movie={detail} onClose={() => setDetail(null)} />}
     </div>

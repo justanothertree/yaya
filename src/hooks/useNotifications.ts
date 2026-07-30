@@ -171,9 +171,20 @@ export function useNotifications(authed: boolean): Notifications {
 
   // reading a room or answering a request happens on another screen — recheck on navigation
   useEffect(() => {
-    const onHash = () => void load()
+    let t = 0
+    const onHash = () => {
+      void load()
+      // Opening a room marks it read as part of the same navigation, so an immediate reload can
+      // still count the message you just opened. Check again once that has landed — this is why
+      // the badge appeared not to clear.
+      clearTimeout(t)
+      t = window.setTimeout(() => void load(), 900)
+    }
     window.addEventListener('hashchange', onHash)
-    return () => window.removeEventListener('hashchange', onHash)
+    return () => {
+      clearTimeout(t)
+      window.removeEventListener('hashchange', onHash)
+    }
   }, [load])
 
   // Opening the bell is the read receipt for ACTIVITY only: unread messages stay unread
