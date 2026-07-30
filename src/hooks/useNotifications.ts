@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { getSupabaseClient } from '../finance/client'
 import {
   previewMember,
   PREVIEW_PEOPLE,
   PREVIEW_UNREAD,
+  PREVIEW_ACTIVITY,
   previewOverview,
 } from '../dev/previewMember'
 
@@ -16,7 +17,7 @@ import {
 
 export type Notice = {
   id: string
-  kind: 'chat' | 'friend'
+  kind: 'chat' | 'friend' | 'kudos' | 'comment' | 'join'
   text: string
   detail?: string
   /** where tapping it should take you */
@@ -30,10 +31,41 @@ export type Notifications = {
   unreadChats: number
   friendRequests: number
   refresh: () => void
+  /** called when the bell is opened: activity stops being "new" */
+  markSeen: () => void
+}
+
+type ActivityRow = {
+  kind: 'kudos' | 'comment' | 'join'
+  actor: string
+  subject: string
+  detail: string | null
+  at?: string
+}
+
+/** one activity row -> a bell entry. Kudos/comments point at the feed, joins at the circuit. */
+function activityNotice(a: ActivityRow, i: number): Notice {
+  const text =
+    a.kind === 'kudos'
+      ? `${a.actor} cheered your ${a.subject} log`
+      : a.kind === 'comment'
+        ? `${a.actor} commented on your ${a.subject} log`
+        : `${a.actor} joined ${a.subject}`
+  return {
+    id: `${a.kind}-${a.actor}-${a.subject}-${i}`,
+    kind: a.kind,
+    text,
+    detail: a.detail ?? undefined,
+    href: a.kind === 'join' ? '#circuit?tab=circuits' : '#circuit?tab=feed',
+  }
 }
 
 export function useNotifications(authed: boolean): Notifications {
   const [items, setItems] = useState<Notice[]>([])
+  // set once the bell has been opened, so activity drops out of the count immediately while
+  // the panel you're reading still shows it
+  const seenRef = useRef(false)
+  const [seen, setSeen] = useState(false)
 
   const load = useCallback(async () => {
     if (previewMember) {
@@ -55,6 +87,7 @@ export function useNotifications(authed: boolean): Notifications {
           detail: '@' + p.username,
           href: '#people',
         })),
+        ...(seenRef.current ? [] : PREVIEW_ACTIVITY.map(activityNotice)),
       ])
       return
     }
@@ -63,9 +96,10 @@ export function useNotifications(authed: boolean): Notifications {
       return
     }
     const sb = getSupabaseClient()
-    const [chat, friends] = await Promise.all([
+    const [chat, friends, activity] = await Promise.all([
       sb.rpc('list_chat_overview'),
       sb.rpc('list_friends'),
+      sb.rpc('list_activity_notices'),
     ])
     const rooms = (
       (chat.data ?? []) as {
@@ -99,12 +133,23 @@ export function useNotifications(authed: boolean): Notifications {
         detail: '@' + f.username,
         href: '#people',
       })),
+      ...(seenRef.current ? [] : ((activity.data ?? []) as ActivityRow[]).map(activityNotice)),
     ])
   }, [authed])
 
   useEffect(() => {
     void load()
   }, [load])
+
+  // new activity arriving after you've looked should light the bell up again
+  useEffect(() => {
+    if (!seen) return
+    const t = window.setTimeout(() => {
+      seenRef.current = false
+      setSeen(false)
+    }, 60000)
+    return () => clearTimeout(t)
+  }, [seen])
 
   // a new message anywhere we can see should update the badge without a reload; RLS applies
   // to realtime too, so this only fires for rooms we're actually in
@@ -131,13 +176,27 @@ export function useNotifications(authed: boolean): Notifications {
     return () => window.removeEventListener('hashchange', onHash)
   }, [load])
 
+  // Opening the bell is the read receipt for ACTIVITY only: unread messages stay unread
+  // until you actually open the room. It deliberately leaves `items` alone — clearing the
+  // list on open meant the notices vanished before you could read them.
+  const markSeen = useCallback(() => {
+    seenRef.current = true
+    setSeen(true)
+    if (!previewMember && authed) void getSupabaseClient().rpc('mark_activity_seen')
+  }, [authed])
+
   const unreadChats = items.filter((i) => i.kind === 'chat').reduce((n, i) => n + (i.count ?? 0), 0)
   const friendRequests = items.filter((i) => i.kind === 'friend').length
+  // kudos/comments/joins count until the bell has been opened
+  const activity = seen
+    ? 0
+    : items.filter((i) => i.kind === 'kudos' || i.kind === 'comment' || i.kind === 'join').length
   return {
     items,
-    total: unreadChats + friendRequests,
+    total: unreadChats + friendRequests + activity,
     unreadChats,
     friendRequests,
     refresh: () => void load(),
+    markSeen,
   }
 }
