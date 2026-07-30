@@ -7,7 +7,7 @@ import type { Notifications } from '../hooks/useNotifications'
  * gets clipped out of existence, because its overflow-x:auto forces overflow-y to auto too.
  */
 export function NotificationBell({ notifications }: { notifications: Notifications }) {
-  const { items, total } = notifications
+  const { items, total, markSeen } = notifications
   const [open, setOpen] = useState(false)
   const wrapRef = useRef<HTMLDivElement>(null)
 
@@ -32,7 +32,12 @@ export function NotificationBell({ notifications }: { notifications: Notificatio
         aria-label={total > 0 ? `Notifications (${total} waiting)` : 'Notifications'}
         aria-haspopup="menu"
         aria-expanded={open}
-        onClick={() => setOpen((o) => !o)}
+        onClick={() => {
+          const next = !open
+          setOpen(next)
+          // opening it is the read receipt — the count clears while the list stays readable
+          if (next) markSeen()
+        }}
       >
         <span aria-hidden>🔔</span>
         {total > 0 && <span className="notif-dot">{total > 9 ? '9+' : total}</span>}
@@ -53,7 +58,15 @@ export function NotificationBell({ notifications }: { notifications: Notificatio
                 onClick={() => setOpen(false)}
               >
                 <span className="notif-ic" aria-hidden>
-                  {n.kind === 'chat' ? '💬' : '🧑‍🤝‍🧑'}
+                  {n.kind === 'chat'
+                    ? '💬'
+                    : n.kind === 'friend'
+                      ? '🧑‍🤝‍🧑'
+                      : n.kind === 'kudos'
+                        ? '👏'
+                        : n.kind === 'comment'
+                          ? '💭'
+                          : '🎉'}
                 </span>
                 <span className="notif-text">
                   <span className="notif-title">{n.text}</span>

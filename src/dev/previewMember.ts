@@ -51,6 +51,18 @@ export const PREVIEW_PEOPLE: PreviewPerson[] = [
   { username: 'casey_m', name: 'Casey', rel: 'none' },
 ]
 
+/** stand-in activity notices (kudos / comments / joins) for the bell */
+export const PREVIEW_ACTIVITY: {
+  kind: 'kudos' | 'comment' | 'join'
+  actor: string
+  subject: string
+  detail: string | null
+}[] = [
+  { kind: 'kudos', actor: 'Alex', subject: '2026-07-28', detail: '🔥' },
+  { kind: 'comment', actor: 'Riley', subject: '2026-07-28', detail: 'that leg day was unreal' },
+  { kind: 'join', actor: 'Casey', subject: 'The Crew', detail: null },
+]
+
 export type PreviewRoom = { id: string; kind: string; name: string }
 export type PreviewMsg = {
   id: string
