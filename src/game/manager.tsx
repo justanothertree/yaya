@@ -601,7 +601,7 @@ export function GameManager({
   useEffect(() => {
     if (!showMine) return
     let live = true
-    void fetchMyScores((playerName || '').trim(), 50).then((rows) => {
+    void fetchMyScores((playerName || '').trim(), 200).then((rows) => {
       if (live) setMyScores(rows)
     })
     return () => {
@@ -2975,7 +2975,10 @@ export function GameManager({
                 <strong style={{ color: 'var(--text)' }}>
                   {profanityFilter.clean((playerName || '').trim())}
                 </strong>{' '}
-                · best {Math.max(...myScores.map((m) => m.score))}
+                {/* the true all-time best, not the best of the page we loaded: the list is the
+                    most recent runs, so an older personal best sat outside it and the summary
+                    under-reported it (225 shown as 98) */}
+                · best {Math.max(myStanding?.best ?? 0, ...myScores.map((m) => m.score))}
               </div>
               <ol className="snake-my-runs">
                 {myScores.map((m, i) => (
