@@ -10,7 +10,7 @@ import { MoviePersonProfile } from './MoviePersonProfile'
 import { MovieDetail } from './MovieDetail'
 import { MovieStats } from './MovieStats'
 import { MV_PIDS, scoreColor } from './movieMeta'
-import { REVIEW_KINDS, kindEmoji } from '../reviewKinds'
+import { kindEmoji, kindsPresent } from '../reviewKinds'
 
 type SortKey = 'avg' | 'alpha' | 'rt' | 'date'
 
@@ -217,20 +217,22 @@ export function Movies({ viewGroup = '' }: { viewGroup?: string } = {}) {
           >
             All {inGroup.length}
           </button>
-          {REVIEW_KINDS.filter((rk) => kindCounts.has(rk.id)).map((rk) => (
-            <button
-              key={rk.id}
-              className={'cz-chip' + (kindFilter === rk.id ? ' cz-on' : '')}
-              style={
-                kindFilter === rk.id
-                  ? { background: 'var(--accent, #7c6af7)', color: '#fff' }
-                  : undefined
-              }
-              onClick={() => setKindFilter(rk.id)}
-            >
-              {rk.emoji} {rk.plural} {kindCounts.get(rk.id)}
-            </button>
-          ))}
+          {kindsPresent(kindCounts.keys())
+            .filter((rk) => kindCounts.has(rk.id))
+            .map((rk) => (
+              <button
+                key={rk.id}
+                className={'cz-chip' + (kindFilter === rk.id ? ' cz-on' : '')}
+                style={
+                  kindFilter === rk.id
+                    ? { background: 'var(--accent, #7c6af7)', color: '#fff' }
+                    : undefined
+                }
+                onClick={() => setKindFilter(rk.id)}
+              >
+                {rk.emoji} {rk.plural} {kindCounts.get(rk.id)}
+              </button>
+            ))}
         </div>
       )}
 

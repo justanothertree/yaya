@@ -8,7 +8,7 @@ import { useMemo, useState } from 'react'
 import { circuitStore, useCircuit } from '../store'
 import { watchlistInGroup } from '../groupFilter'
 import { MV_PIDS } from './movieMeta'
-import { REVIEW_KINDS, kindEmoji } from '../reviewKinds'
+import { REVIEW_KINDS, kindEmoji, kindsPresent } from '../reviewKinds'
 import { Modal } from './Modal'
 import type { WatchlistItem } from '../types'
 
@@ -219,18 +219,20 @@ export function Watchlist({
           >
             All {inGroup.length}
           </button>
-          {REVIEW_KINDS.filter((k) => kindCounts.has(k.id)).map((k) => (
-            <button
-              key={k.id}
-              className={'cz-chip' + (kindFilter === k.id ? ' cz-on' : '')}
-              style={
-                kindFilter === k.id ? { background: 'var(--accent,#7c6af7)', color: '#fff' } : {}
-              }
-              onClick={() => setKindFilter(k.id)}
-            >
-              {k.emoji} {kindCounts.get(k.id)}
-            </button>
-          ))}
+          {kindsPresent(kindCounts.keys())
+            .filter((k) => kindCounts.has(k.id))
+            .map((k) => (
+              <button
+                key={k.id}
+                className={'cz-chip' + (kindFilter === k.id ? ' cz-on' : '')}
+                style={
+                  kindFilter === k.id ? { background: 'var(--accent,#7c6af7)', color: '#fff' } : {}
+                }
+                onClick={() => setKindFilter(k.id)}
+              >
+                {k.emoji} {kindCounts.get(k.id)}
+              </button>
+            ))}
         </div>
       )}
 
