@@ -32,22 +32,18 @@ export const projects: Project[] = [
   {
     id: 'circuit',
     title: 'The Circuit',
-    tagline: 'A group fitness + movie-night tracker for me and my friends.',
+    tagline: 'A workout and movie-night tracker my friends use every day.',
     period: '2026 — ongoing',
     status: 'live',
     tags: ['React', 'TypeScript', 'Supabase', 'Realtime', 'PWA'],
     accent: '#7c6af7',
     blurb: [
-      'The Circuit started as a single HTML file my friends and I used to score daily workouts and rate the movies we watched together. I rebuilt it as a real module inside this site — same data, far more polish — backed by Supabase so everyone’s entries sync live across devices.',
-      'It’s equal parts leaderboard, journal, and toy. A custom scoring engine turns reps, miles, and time into points; a free-canvas mode lets you pop every panel into draggable, resizable windows like a little desktop OS.',
+      'Reps, miles and minutes turn into points, so a run and a set of pushups can sit on the same leaderboard. We rate the movies we watch together in the same place. Everyone owns their own board and it syncs across our phones as we log.',
     ],
     highlights: [
-      'Live standings with streaks, per-day averages, and quick-log',
-      'Activity feed with month / week / day / table calendar views',
-      'Movie leaderboard with reviews, vibes, stats, and a watchlist',
-      'Charts with hover tooltips that jump you straight to that day’s log',
-      'Free-canvas window manager, 30-step undo/redo, drag-to-scrub inputs',
-      'Realtime sync over Supabase with row-level security per member',
+      'Standings, streaks and one-tap logging',
+      'Reviews and a voting pool for picking movie night',
+      'Pop any panel into a draggable window, like a small desktop',
     ],
     links: [{ href: '#circuit', label: 'Open the app', primary: true }],
     shots: [
@@ -60,20 +56,18 @@ export const projects: Project[] = [
   {
     id: 'platform',
     title: 'evancook.dev',
-    tagline: 'This site — a personal platform that doubles as my portfolio.',
+    tagline: 'This site — one app, and every project inside it is live.',
     period: '2025 — ongoing',
     status: 'live',
     tags: ['React 19', 'Vite', 'TypeScript', 'Supabase', 'GitHub Actions'],
     accent: '#22c55e',
     blurb: [
-      'Rather than a static résumé, my site is one app where each project is a live module on a shared Supabase backend with real auth and row-level security. The public face is a portfolio; signed-in members get the tools.',
-      'It’s a single-page React app with hash routing, keyboard and swipe navigation, three themes, scroll-reveal animations, and a CI/CD pipeline that lints, builds, and ships to GitHub Pages on every push.',
+      'Nothing here is a screenshot of something that ran once. It’s one React and Supabase app with real accounts, so the outside is a portfolio and the inside is the set of tools my friends and family actually sign in to use.',
     ],
     highlights: [
-      'One codebase, many modules: Circuit, Snake, finance, account system',
-      'Supabase auth + RLS; invite-link onboarding for friends and family',
-      'Three themes, full keyboard/swipe nav, accessible and responsive',
-      'Conventional-commit CI with lint + build gates, Pages deploy',
+      'One codebase: Circuit, Snake, chat, investing, accounts',
+      'Invite links to join, and per-person permissions on every row',
+      'Lints, builds and deploys itself on every push',
     ],
     links: [
       { href: 'https://github.com/justanothertree/yaya', label: 'View the repo', external: true },
@@ -87,18 +81,18 @@ export const projects: Project[] = [
   {
     id: 'snake',
     title: 'Multiplayer Snake',
-    tagline: 'The classic, rebuilt on canvas — now with online rooms.',
+    tagline: 'The classic, rebuilt from scratch — then made multiplayer.',
     period: '2025',
     status: 'live',
     tags: ['Canvas', 'WebSockets', 'React', 'TypeScript'],
     accent: '#2ec4b6',
     blurb: [
-      'A from-scratch Snake on an HTML canvas with crisp devicePixelRatio scaling, wrap-around edges, swipe gestures, and an on-screen D-pad for touch. A lightweight WebSocket relay adds shareable multiplayer rooms.',
+      'My first project here, picked because it was small enough to actually finish. Then I added multiplayer rooms anyway. Built from scratch on a canvas — keyboard, swipe, or an on-screen D-pad.',
     ],
     highlights: [
-      'Canvas rendering tuned for sharpness on every display',
-      'Keyboard, swipe, and D-pad controls',
-      'Shareable online rooms via a WebSocket relay',
+      'Keyboard, swipe and D-pad controls',
+      'Share a link and play together',
+      'A leaderboard anyone can post to, no account needed',
     ],
     links: [{ href: '#snake', label: 'Play now', primary: true }],
     shots: [
@@ -109,19 +103,18 @@ export const projects: Project[] = [
   {
     id: 'finance',
     title: 'Dollar-a-Day',
-    tagline: 'A family portfolio that splits my trades into everyone’s share.',
-    period: '2026 — building',
+    tagline: 'A dollar a day, invested for everyone in my family.',
+    period: '2026 — ongoing',
     status: 'building',
     tags: ['Supabase', 'Postgres', 'RLS', 'React'],
     accent: '#f5c060',
     blurb: [
-      'A private, family-only module where I log trades — ticker, shares, date, price — and allocate them evenly or by custom split across the family. Each person signs in to see only their own slice of the portfolio, updated against live prices.',
-      'It’s the most security-sensitive part of the platform, so every row is locked down with strict per-user policies and nothing sensitive ever touches the public surface.',
+      'I put a dollar a day aside for each person in my family. Real buying is lumpy — markets close, and I buy when it makes sense — so one purchase gets split across every account. Each person signs in and sees their own share, and whether it’s ahead of or behind the dollar a day they were promised.',
     ],
     highlights: [
-      'Trade entry with even, share-based, or percentage allocation',
-      'Per-member portfolios behind strict row-level security',
-      'Recurring orders and live price updates (in progress)',
+      'One purchase splits across every account',
+      'Everyone sees only their own share',
+      'Tracks how far ahead or behind schedule each account is',
     ],
     links: [{ href: '#investments', label: 'Try the demo', primary: true }],
     shots: [
