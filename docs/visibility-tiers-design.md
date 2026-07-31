@@ -39,22 +39,29 @@ additive — today's group behaviour keeps working untouched while tiers layer o
 
 ### One predicate, used everywhere
 
+As shipped (branch order matters — each line encodes an approved decision):
+
 ```sql
-create function can_see(p_owner uuid, p_tier visibility_tier) returns boolean as $$
-  select case
-    when p_owner = auth.uid()          then true          -- always see your own
-    when public.is_admin()             then true          -- caretaker access
-    when p_tier = 'public'             then true
-    when p_tier = 'members'            then exists (select 1 from profiles
-                                          where user_id = auth.uid()
-                                            and coalesce(suspended,false) = false)
-    when p_tier = 'friends'            then public.are_friends(auth.uid(), p_owner)
-    else false                                            -- 'private'
-  end;
-$$ language sql stable security definer;
+select case
+  when p_tier = 'public' then true                    -- public regardless of owner
+  when auth.uid() is not null and p_owner = auth.uid() then true   -- your own rows
+  when p_tier = 'members' then exists (select 1 from profiles
+        where user_id = auth.uid() and coalesce(suspended,false) = false)
+  when p_tier = 'friends' then public.is_admin()
+        or (auth.uid() is not null and p_owner is not null
+            and public.are_friends(auth.uid(), p_owner))
+  when p_owner is null then public.is_admin()         -- ownerless: caretaker only
+  else false                                          -- another member's 'private'
+end;
 ```
 
 Every policy calls this. Change the rule once, it changes everywhere — which is the whole point.
+
+**The ownerless branch was a discovery, not part of the original sketch.** Tin and Nat have no
+`owner_user_id`. Under a literal "admin override stops at private" they would have become invisible
+to everyone including Evan, breaking caretaking of unclaimed boards. A row with no owner has no
+member's privacy to protect, so it falls to the admin. It sits _below_ the tier checks, because a
+`members`-tier row with no owner — a lounge chat room — must still be members-visible.
 
 ---
 
