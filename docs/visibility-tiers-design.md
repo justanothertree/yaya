@@ -1,7 +1,9 @@
 # Visibility tiers — design for approval
 
-**Status:** proposed, nothing applied. Per the standing agreement, the schema gets Evan's
-approval before it touches prod.
+**Status:** steps 1–3 applied 2026-07-31 and verified with simulated-JWT sessions. Steps 4 (client
+picker) and 5 (drop `is_public`) remain. Chat is deferred until the pinned lounge opt-in lands,
+since both touch `chat_room_member()`. Two bugs found in review are fixed — see
+`visibility-step3b-bugfixes.sql`.
 
 **Goal:** replace four hand-rolled privacy mechanisms with one. Today "who can see this row?"
 is answered differently in four places — `circuit_people.is_public`, circuit group membership,
