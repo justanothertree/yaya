@@ -305,11 +305,11 @@ function Hero() {
             {site.name}
           </p>
           <h1 style={{ margin: '0.3rem 0 0.5rem', lineHeight: 1.1 }}>
-            I design and build fast, playful web apps end to end.
+            I build tools for the people around me.
           </h1>
           <p className="muted" style={{ margin: 0, fontSize: '1.02rem' }}>
-            Frontend-focused full-stack developer. This site is my playground — a single platform
-            where each project is a live, working module. React · TypeScript · Supabase.
+            A workout tracker my friends use every day. An investing tracker for my family. Games I
+            wanted to exist. It all runs here, and I build it with AI.
           </p>
           <div
             className="no-print"
@@ -367,14 +367,13 @@ function AboutCard() {
     <div className="card">
       <h2 className="section-title">About</h2>
       <p className="muted" style={{ lineHeight: 1.6 }}>
-        I like turning ideas into things you can actually use. Most of what I build lives right here
-        — a fitness-and-movies tracker my friends use daily, a multiplayer take on Snake, a private
-        finance tool for my family — all running on one React + Supabase platform I keep sharpening.
+        The Circuit started as a spreadsheet my friends and I used to score our workouts. Then a
+        single HTML file. Now it’s the biggest thing on this site and they still use it daily.
       </p>
       <p className="muted" style={{ lineHeight: 1.6, marginBottom: 0 }}>
-        I care about the details: smooth interactions, fast loads, accessible layouts, and code
-        that’s tidy enough to move quickly in. Portfolio on the outside, personal toolkit on the
-        inside.
+        That’s how all of it goes — something small that a few people actually want, rebuilt
+        properly. I work with AI the whole way through, so this site is also a record of what
+        building that way is like. Still prototyping. Always adding.
       </p>
     </div>
   )
@@ -430,7 +429,7 @@ function Work() {
         Selected work
       </h2>
       <p className="muted" style={{ marginTop: 0 }}>
-        Each of these is live or in progress on this site. Click through the slides.
+        All of it runs here. Click through the slides.
       </p>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', marginTop: '1rem' }}>
         {projects.map((p) => (
