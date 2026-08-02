@@ -81,7 +81,19 @@ export function AmbientBackdrop({
     const ctx = cv?.getContext('2d')
     if (!cv || !ctx) return
 
-    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    /**
+     * Treat phones like reduced-motion: paint the glow once, then stop.
+     *
+     * A full-viewport canvas repainting every other frame costs the same on a phone as on
+     * a desktop, but it sits BEHIND the content where almost none of it is visible, and it
+     * competes with scrolling for the main thread — which showed up as stuttery scrolling
+     * on a mid-range phone. The still frame looks the same as the animated one at any given
+     * instant; only the drift is lost, and the drift is the part nobody sees behind a page.
+     * Coarse pointer rather than width, so a narrow desktop window keeps the animation.
+     */
+    const coarse =
+      window.matchMedia('(hover: none) and (pointer: coarse)').matches || innerWidth < 820
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches || coarse
     let raf = 0
     let frame = 0
     let running = true

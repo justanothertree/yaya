@@ -1309,9 +1309,11 @@ li {
     justify-content: space-around;
     gap: 2px;
     padding: 6px 6px calc(6px + env(safe-area-inset-bottom, 0px));
-    background: color-mix(in srgb, var(--bg) 86%, transparent);
-    -webkit-backdrop-filter: blur(12px);
-    backdrop-filter: blur(12px);
+    /* Nearly opaque instead of translucent-plus-blur. A backdrop-filter on a fixed bar
+       has to re-blur whatever scrolls underneath it every single frame — the main cause
+       of stuttery scrolling on a phone — and on Firefox for Android it also makes the bar
+       detach and slide during the browser's toolbar animation. The look barely changes. */
+    background: color-mix(in srgb, var(--bg) 97%, transparent);
     border-top: 1px solid var(--border);
   }
   /* keep page content clear of the fixed bar */
@@ -1574,8 +1576,9 @@ section[id] {
   top: 0;
   left: 0;
   right: 0;
-  -webkit-backdrop-filter: blur(8px);
-  backdrop-filter: blur(8px);
+  /* No backdrop-filter: the background below is fully opaque, so a blur can't show
+     through it — but it still made this fixed bar re-composite on every scroll frame,
+     which is exactly the kind of cost that shows up as stutter on a phone. */
   background: var(--bg); /* opaque so nothing shows behind the banner */
   border-bottom: 1px solid var(--border);
   z-index: 100;
