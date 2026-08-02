@@ -1,7 +1,11 @@
 # Visibility tiers — design for approval
 
-**Status:** steps 1–4 applied and verified. Step 5 (drop `is_public`) remains. Two bugs found in
-review are fixed — see `visibility-step3b-bugfixes.sql`.
+**Status: ✅ complete.** All five steps applied and verified. `is_public` is gone; `visibility` is
+the only source of truth. Two bugs found in review are fixed — see `visibility-step3b-bugfixes.sql`.
+
+**Still outstanding, deliberately:** chat's per-room setting. `chat_rooms.visibility` is backfilled
+but `chat_room_member()` doesn't read it yet, because that function also carries the lounge opt-in
+— flip both together.
 
 Step 4 shipped `set_person_visibility`, `my_snake_handles` and `set_my_snake_visibility`, plus a
 shared `<VisibilityPicker>` wired into the Circuits panel (replacing the old public/private
