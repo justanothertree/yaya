@@ -36,9 +36,11 @@ export const TIER_HINTS: Record<'circuit' | 'snake', Record<VisibilityTier, stri
     public:
       'Also anyone at all, including people who aren’t signed in — this puts you on the public board.',
   },
+  // No real names in example copy, ever — not even as illustration. This file ships in a
+  // public repo and renders on a page other members read.
   snake: {
-    private: 'Your scores show under the name you typed, and nobody learns it’s you.',
-    friends: 'Friends see “Krazay (Josh)”. Everyone else sees just the handle.',
+    private: 'Your scores show under the handle you typed, and nobody learns it’s you.',
+    friends: 'Friends see your name beside the handle. Everyone else sees just the handle.',
     members: 'Anyone signed in can tell these scores are yours.',
     public: 'Your name shows next to these scores for anyone, signed in or not.',
   },

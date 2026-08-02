@@ -8,6 +8,37 @@ import { emptyCircuitState } from './types'
 import { publicSeed } from './publicSeed'
 
 const KEY = 'circuit_state_v1'
+/**
+ * Ids of people the visitor created in THIS browser.
+ *
+ * ⚠️ Without this, refreshPublicBoard couldn't tell "someone the visitor invented in the
+ * demo" from "someone who used to be public and isn't any more" — both are simply absent
+ * from the live board. It kept both, so a member who turned their board private stayed
+ * cached in every browser that had ever loaded the demo while they were public, and no
+ * amount of reloading removed them. An explicit list means anyone not on the live board
+ * and not created here is dropped, which is also a one-time cleanup for existing caches.
+ */
+const LOCAL_KEY = 'circuit_local_ids_v1'
+
+function readLocalIds(): Set<string> {
+  try {
+    const raw = localStorage.getItem(LOCAL_KEY)
+    return new Set<string>(raw ? JSON.parse(raw) : [])
+  } catch {
+    return new Set()
+  }
+}
+
+function rememberLocalId(id: ID) {
+  try {
+    const ids = readLocalIds()
+    if (ids.has(id)) return
+    ids.add(id)
+    localStorage.setItem(LOCAL_KEY, JSON.stringify([...ids]))
+  } catch {
+    /* quota / private mode — ignore */
+  }
+}
 
 const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v))
 
@@ -36,9 +67,11 @@ function removeById<T extends { id: ID }>(arr: T[], id: ID): T[] {
  *  refresh the public people/logs/movies from the live board, so a stale or blocked first
  *  load self-heals and newly-public Circuits appear without a manual "Reset demo". */
 function refreshPublicBoard(cached: CircuitState, live: CircuitState): CircuitState {
-  const liveIds = new Set(live.people.map((p) => p.id))
-  // the visitor's people: the always-editable demo persona + anything not on the live board.
-  const localPeople = cached.people.filter((p) => p.id === 'demo' || !liveIds.has(p.id))
+  const mine = readLocalIds()
+  // The visitor's people: the always-editable demo persona plus anyone they created here.
+  // NOT "anything missing from the live board" — that also matches a member who has since
+  // made their board private, and keeping them would strand real data in this browser.
+  const localPeople = cached.people.filter((p) => p.id === 'demo' || mine.has(p.id))
   const localIds = new Set(localPeople.map((p) => p.id))
   return {
     ...emptyCircuitState(),
@@ -65,7 +98,21 @@ export function createLocalAdapter(seed?: CircuitState, liveSeed = false): Circu
       const cached = { ...emptyCircuitState(), ...JSON.parse(raw) }
       // refresh the public board over the cache when we have fresh live data; otherwise keep
       // the cache as-is so an offline/blocked fetch never degrades a good board.
-      return seed && liveSeed ? refreshPublicBoard(cached, seed) : cached
+      const merged = seed && liveSeed ? refreshPublicBoard(cached, seed) : cached
+      // Filtering someone out of the render isn't the same as removing them. If the merge
+      // dropped anyone — e.g. a member who has since made their board private — persist the
+      // cleaned state so their data actually leaves this browser rather than lingering in
+      // localStorage unrendered.
+      if (merged !== cached && merged.people.length !== cached.people.length) write(merged)
+      // A cache that ended up with nobody in it renders "No one's in this circuit yet" and
+      // stays that way, because there's nothing left to merge against. Seen in Firefox,
+      // whose cross-site fetch to Supabase is flakier. If we have a seed with people, an
+      // empty board is always wrong — reseed rather than show an empty demo forever.
+      if (merged.people.length === 0) {
+        const fallback = firstRun()
+        if (fallback.people.length > 0) return fallback
+      }
+      return merged
     } catch {
       return emptyCircuitState()
     }
@@ -79,7 +126,15 @@ export function createLocalAdapter(seed?: CircuitState, liveSeed = false): Circu
   return {
     load: () => Promise.resolve(read()),
 
-    savePerson: (p: Person) => mutate((s) => ({ ...s, people: upsert(s.people, p) })),
+    savePerson: (p: Person) =>
+      mutate((s) => {
+        // Anyone the visitor makes here who isn't part of the seeded board is theirs to
+        // keep across reloads. Editing a seeded person (logging for the demo board) is not
+        // a claim on them, so it doesn't mark them.
+        const seeded = seed?.people ?? publicSeed.people
+        if (p.id !== 'demo' && !seeded.some((x) => x.id === p.id)) rememberLocalId(p.id)
+        return { ...s, people: upsert(s.people, p) }
+      }),
     deletePerson: (id: ID) => mutate((s) => ({ ...s, people: removeById(s.people, id) })),
 
     saveLog: (log: DayLog) => mutate((s) => ({ ...s, logs: upsert(s.logs, log) })),
