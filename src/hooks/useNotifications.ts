@@ -7,6 +7,7 @@ import {
   PREVIEW_ACTIVITY,
   previewOverview,
 } from '../dev/previewMember'
+import { onNotificationsChanged } from './notifySignal'
 
 /**
  * What's waiting for you, in one place: unread messages per conversation and friend requests
@@ -168,6 +169,11 @@ export function useNotifications(authed: boolean): Notifications {
       void sb.removeChannel(ch)
     }
   }, [authed, load])
+
+  // Reading a room doesn't always move the hash — tapping a conversation row marks it read
+  // in place — so the screens that change these counts say so directly. This is the reliable
+  // path; the hashchange listener below is the backstop for anything that doesn't announce.
+  useEffect(() => onNotificationsChanged(() => void load()), [load])
 
   // reading a room or answering a request happens on another screen — recheck on navigation
   useEffect(() => {

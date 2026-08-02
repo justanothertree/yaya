@@ -8,6 +8,7 @@ import {
   previewOverview,
   PREVIEW_LOUNGE_IN,
 } from '../../dev/previewMember'
+import { notificationsChanged } from '../../hooks/notifySignal'
 
 /**
  * Chat — a real messaging screen, not a row of room chips. You land on a list of
@@ -111,7 +112,7 @@ export function Chat({ authed = false }: { authed?: boolean }) {
         setRoom(r)
         if (r) {
           setRooms((prev) => prev.map((x) => (x.id === r.id ? { ...x, unread: 0 } : x)))
-          void sb.rpc('mark_room_read', { p_room: r.id })
+          void sb.rpc('mark_room_read', { p_room: r.id }).then(() => notificationsChanged())
         }
       }
     })
@@ -152,8 +153,12 @@ export function Chat({ authed = false }: { authed?: boolean }) {
         const hit = prev.find((x) => x.id === wanted)
         if (hit) {
           setRoom(hit)
-          if (previewMember) PREVIEW_UNREAD[hit.id] = 0
-          else if (sb) void sb.rpc('mark_room_read', { p_room: hit.id })
+          if (previewMember) {
+            PREVIEW_UNREAD[hit.id] = 0
+            notificationsChanged()
+          } else if (sb) {
+            void sb.rpc('mark_room_read', { p_room: hit.id }).then(() => notificationsChanged())
+          }
           return prev.map((x) => (x.id === hit.id ? { ...x, unread: 0 } : x))
         }
         return prev
@@ -226,9 +231,12 @@ export function Chat({ authed = false }: { authed?: boolean }) {
     setRooms((prev) => prev.map((x) => (x.id === r.id ? { ...x, unread: 0 } : x)))
     if (previewMember) {
       PREVIEW_UNREAD[r.id] = 0
+      notificationsChanged()
       return
     }
-    if (sb) void sb.rpc('mark_room_read', { p_room: r.id })
+    // Tapping a row doesn't change the hash, so the bell has no other way to learn this
+    // room is read. Announce only once the write lands, or it re-counts what we just read.
+    if (sb) void sb.rpc('mark_room_read', { p_room: r.id }).then(() => notificationsChanged())
   }
 
   function backToList() {

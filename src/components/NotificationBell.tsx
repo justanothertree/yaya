@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { Notifications } from '../hooks/useNotifications'
+import { notificationsChanged } from '../hooks/notifySignal'
 
 /**
  * The bell: what's waiting for you, in one list. Lives as a direct child of .nav-right —
@@ -55,7 +56,14 @@ export function NotificationBell({ notifications }: { notifications: Notificatio
                 className="notif-item"
                 href={n.href}
                 role="menuitem"
-                onClick={() => setOpen(false)}
+                onClick={() => {
+                  setOpen(false)
+                  // If the href matches where we already are, the browser fires no
+                  // hashchange and nothing re-reads. Most visible when the entry is for
+                  // the very room you're looking at. Let the target screen mark it read,
+                  // then recheck. Harmless when the hash does change.
+                  window.setTimeout(() => notificationsChanged(), 700)
+                }}
               >
                 <span className="notif-ic" aria-hidden>
                   {n.kind === 'chat'
