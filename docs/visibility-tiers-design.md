@@ -1,9 +1,13 @@
 # Visibility tiers — design for approval
 
-**Status:** steps 1–3 applied 2026-07-31 and verified with simulated-JWT sessions. Steps 4 (client
-picker) and 5 (drop `is_public`) remain. Chat is deferred until the pinned lounge opt-in lands,
-since both touch `chat_room_member()`. Two bugs found in review are fixed — see
-`visibility-step3b-bugfixes.sql`.
+**Status:** steps 1–4 applied and verified. Step 5 (drop `is_public`) remains. Two bugs found in
+review are fixed — see `visibility-step3b-bugfixes.sql`.
+
+Step 4 shipped `set_person_visibility`, `my_snake_handles` and `set_my_snake_visibility`, plus a
+shared `<VisibilityPicker>` wired into the Circuits panel (replacing the old public/private
+toggle) and Account settings (Snake handles). **Chat's per-room setting is still pending**: the
+column is backfilled but `chat_room_member()` doesn't read it yet, because that function is also
+touched by the lounge opt-in. Flip both together.
 
 **Goal:** replace four hand-rolled privacy mechanisms with one. Today "who can see this row?"
 is answered differently in four places — `circuit_people.is_public`, circuit group membership,

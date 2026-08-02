@@ -58,6 +58,7 @@ type PersonRow = {
   col_labels: string[]
   owner_user_id?: string | null
   is_public?: boolean | null
+  visibility?: Person['visibility'] | null
 }
 type LogRow = {
   id: string
@@ -105,9 +106,11 @@ const rowToPerson = (r: PersonRow): Person => ({
   colLabels: r.col_labels ?? [],
   ownerUserId: r.owner_user_id ?? null,
   isPublic: r.is_public ?? false,
+  visibility: r.visibility ?? 'private',
 })
-// NB: personToRow omits is_public — that's changed only through set_person_public, so a
-// normal edit-save never reverts a public-board toggle.
+// NB: personToRow omits is_public AND visibility — both change only through their own RPCs
+// (set_person_public / set_person_visibility), so a normal edit-save can never quietly
+// revert someone's audience choice.
 const logToRow = (l: DayLog): LogRow => ({
   id: l.id,
   person_id: l.personId,
