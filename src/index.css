@@ -590,13 +590,16 @@
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
 }
 /* On a phone the bell sits ~84px in from the right edge, so a 310px panel anchored to it
-   hung 19px off the left of the screen. Anchor it to the viewport instead. `fixed` is safe
-   here despite the nav's backdrop-filter (which does make the nav the containing block for
-   fixed children): the nav is a full-width bar at x=0 with no padding, so its box and the
-   viewport coincide — and `top: 100%` then resolves to just below the nav, whatever its height. */
+   hung 19px off the left of the screen. Anchor it to the viewport instead.
+   ⚠️ `top` must be stated explicitly here. The base rule's `top: calc(100% + 8px)` only
+   landed below the nav because the nav's backdrop-filter happened to make it the containing
+   block for fixed children. Removing that blur for scroll performance turned 100% into
+   100% OF THE VIEWPORT, and the panel dropped off the bottom of the screen entirely.
+   Don't let a popover's position depend on a side effect of a paint property. */
 @media (max-width: 640px) {
   .notif-panel {
     position: fixed;
+    top: calc(var(--nav-h, 60px) + 8px);
     left: 10px;
     right: 10px;
     width: auto;
@@ -1315,6 +1318,8 @@ li {
        detach and slide during the browser's toolbar animation. The look barely changes. */
     background: color-mix(in srgb, var(--bg) 97%, transparent);
     border-top: 1px solid var(--border);
+    /* own layer, same reasoning as .nav — this is the bar that visibly wobbled */
+    will-change: transform;
   }
   /* keep page content clear of the fixed bar */
   #content {
@@ -1580,6 +1585,11 @@ section[id] {
      through it — but it still made this fixed bar re-composite on every scroll frame,
      which is exactly the kind of cost that shows up as stutter on a phone. */
   background: var(--bg); /* opaque so nothing shows behind the banner */
+  /* Keep the bar on its own compositor layer. A fixed bar that shares a layer with the
+     scrolling page gets re-rastered as the page moves, which reads as a slight up/down
+     wobble on a phone. NB: this makes .nav a containing block for fixed children again —
+     .notif-panel therefore states its own `top` rather than relying on `100%`. */
+  will-change: transform;
   border-bottom: 1px solid var(--border);
   z-index: 100;
   /* No auto-hide transform to keep banner persistent */
