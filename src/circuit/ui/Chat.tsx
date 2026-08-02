@@ -212,8 +212,10 @@ export function Chat({ authed = false }: { authed?: boolean }) {
           const m = payload.new as Msg
           setMsgs((prev) => (prev.some((x) => x.id === m.id) ? prev : [...prev, m]))
           setTimeout(scrollDown, 60)
-          // we're looking at it, so keep it read
-          void sb.rpc('mark_room_read', { p_room: m.room_id })
+          // We're looking at it, so keep it read. The bell reloads off this same INSERT,
+          // so without announcing after the write lands it races us and badges a room
+          // you are actively reading — with nothing left to re-read and clear it.
+          void sb.rpc('mark_room_read', { p_room: m.room_id }).then(() => notificationsChanged())
         },
       )
       .subscribe()
