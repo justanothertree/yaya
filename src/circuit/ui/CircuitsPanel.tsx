@@ -7,6 +7,9 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { getSupabaseClient } from '../../finance/client'
 import { useCircuit } from '../store'
 import { showToast } from '../toast'
+import { VisibilityPicker } from '../../components/VisibilityPicker'
+import { TIER_LABEL } from '../../components/visibilityLabels'
+import type { VisibilityTier } from '../types'
 
 type CircuitRow = {
   id: string
@@ -119,10 +122,10 @@ export function CircuitsPanel() {
       return r
     }, 'Circuit renamed')
 
-  const setPublic = (personId: string, pub: boolean) =>
+  const setVisibility = (personId: string, tier: VisibilityTier) =>
     run(
-      () => sb.rpc('set_person_public', { p_person_id: personId, p_public: pub }),
-      pub ? 'Now on the public board' : 'Removed from the public board',
+      () => sb.rpc('set_person_visibility', { p_person_id: personId, p_tier: tier }),
+      `Now visible to: ${TIER_LABEL[tier].toLowerCase()}`,
     )
 
   const copyCode = (code: string) => {
@@ -427,20 +430,22 @@ export function CircuitsPanel() {
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
             {myPeople.map((p) => (
-              <div key={p.id} style={personRow(p.color)}>
-                <strong style={{ color: p.color }}>{p.name}</strong>
-                <span className="muted" style={{ fontSize: '0.76rem' }}>
-                  ✓ yours
-                </span>
-                <button
-                  className="btn btn-ghost"
-                  onClick={() => setPublic(p.id, !p.isPublic)}
+              <div
+                key={p.id}
+                style={{ ...personRow(p.color), flexDirection: 'column', alignItems: 'stretch' }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <strong style={{ color: p.color }}>{p.name}</strong>
+                  <span className="muted" style={{ fontSize: '0.76rem' }}>
+                    ✓ yours
+                  </span>
+                </div>
+                <VisibilityPicker
+                  value={p.visibility ?? (p.isPublic ? 'public' : 'private')}
+                  onChange={(t) => setVisibility(p.id, t)}
                   disabled={busy}
-                  style={{ fontSize: '0.74rem', marginLeft: 'auto' }}
-                  title="Whether your Circuit shows on the signed-out public board"
-                >
-                  {p.isPublic ? '🌎 Public — make private' : 'Make public'}
-                </button>
+                  kind="circuit"
+                />
               </div>
             ))}
           </div>

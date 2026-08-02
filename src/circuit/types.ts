@@ -4,6 +4,13 @@
 
 export type ID = string
 
+/**
+ * Who can see a thing. One vocabulary shared by circuit boards, chat rooms and Snake
+ * handles, matching the `visibility_tier` enum in Postgres. Circuit group sharing is a
+ * separate mechanism layered on top — see docs/visibility-tiers-design.md.
+ */
+export type VisibilityTier = 'private' | 'friends' | 'members' | 'public'
+
 /** A participant in the shared Circuit. */
 export interface Person {
   id: ID
@@ -18,8 +25,12 @@ export interface Person {
   /** Auth user who owns this Circuit (server-set; null/undefined = unclaimed). Read-only
    *  on the client — changed only via the claim_person RPC, never written by savePerson. */
   ownerUserId?: string | null
-  /** Whether this person opts into the public board / signed-out demo. */
+  /** Whether this person opts into the public board / signed-out demo.
+   *  Superseded by `visibility` — kept in lockstep server-side until it's dropped. */
   isPublic?: boolean
+  /** Who can see this Circuit. Server-set; changed only via set_person_visibility,
+   *  never written by savePerson (same reasoning as ownerUserId and isPublic). */
+  visibility?: VisibilityTier
   /** Circuits (group ids) this person is shared into. Server-loaded; used to scope the
    *  board to one circuit. Empty/undefined in the signed-out demo. */
   groupIds?: ID[]

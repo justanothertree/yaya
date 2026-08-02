@@ -10,6 +10,9 @@ import {
 import { previewMember, PREVIEW_ME, PREVIEW_GROUPS } from '../dev/previewMember'
 import { hasFinanceSupabaseEnv } from '../finance/env'
 import { getSupabaseClient } from '../finance/client'
+import { VisibilityPicker } from '../components/VisibilityPicker'
+import type { VisibilityTier } from '../circuit/types'
+import { showToast } from '../circuit/toast'
 
 function normalizeError(err: unknown): string {
   if (!err) return 'Unknown error'
@@ -247,6 +250,71 @@ type CircuitRow = {
  * name was typed at the time ("Krazay", "Jefe Legendary"), owned by nobody — this attaches them
  * to you. First claim wins, and it can't take a handle someone else already owns.
  */
+/**
+ * Who may learn that a Snake handle is you. The tier lives on the handle rather than on
+ * each score, because score_history has no user_id at all — the link runs through
+ * player_registry. Someone with several handles gets one decision for all of them, since
+ * "these are me" is one fact.
+ */
+function SnakeVisibility() {
+  const [tier, setTier] = useState<VisibilityTier | null>(null)
+  const [handles, setHandles] = useState<string[]>([])
+  const [busy, setBusy] = useState(false)
+
+  useEffect(() => {
+    if (previewMember) {
+      setHandles(['preview', 'preview phone'])
+      setTier('friends')
+      return
+    }
+    let live = true
+    void getSupabaseClient()
+      .rpc('my_snake_handles')
+      .then(({ data }) => {
+        if (!live || !data) return
+        const rows = data as { player_name: string; visibility: VisibilityTier }[]
+        setHandles(rows.map((r) => r.player_name))
+        setTier(rows[0]?.visibility ?? 'friends')
+      })
+    return () => {
+      live = false
+    }
+  }, [])
+
+  // nothing claimed yet means nothing to decide about
+  if (!tier || handles.length === 0) return null
+
+  const change = async (t: VisibilityTier) => {
+    if (previewMember) {
+      setTier(t)
+      return
+    }
+    setBusy(true)
+    const { error } = await getSupabaseClient().rpc('set_my_snake_visibility', { p_tier: t })
+    if (!error) {
+      setTier(t)
+      showToast('Snake name visibility updated')
+    }
+    setBusy(false)
+  }
+
+  return (
+    <div style={{ display: 'grid', gap: 8 }}>
+      <VisibilityPicker
+        value={tier}
+        onChange={(t) => void change(t)}
+        kind="snake"
+        disabled={busy}
+        label={`Who can tell ${handles.length > 1 ? 'these handles are' : 'this handle is'} you?`}
+      />
+      <p className="muted" style={{ margin: 0, fontSize: '0.75rem' }}>
+        {handles.length > 1 ? 'Your handles: ' : 'Your handle: '}
+        {handles.join(', ')}
+      </p>
+    </div>
+  )
+}
+
 function ClaimSnakeName() {
   const sb = useMemo(() => getSupabaseClient(), [])
   const [handle, setHandle] = useState('')
@@ -375,6 +443,7 @@ function NicknamesCard() {
         setCircuitNickname,
       )}
       {field('On the Snake leaderboard', 'Your arcade handle.', snakeNickname, setSnakeNickname)}
+      <SnakeVisibility />
       <ClaimSnakeName />
       {err && (
         <p className="muted" style={{ margin: 0, color: 'var(--accent-2)', fontSize: '0.85rem' }}>

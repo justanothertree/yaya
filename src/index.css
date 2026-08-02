@@ -867,6 +867,60 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* "Who can see this?" — closed to open, left to right, so moving right is always more
+   people. Wraps rather than scrolls: the labels are words, not chips, and a hidden
+   option is a privacy setting someone doesn't know exists. */
+.vis-picker {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1, 0.25rem);
+}
+.vis-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  opacity: 0.75;
+}
+.vis-opts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-1, 0.25rem);
+}
+.vis-opt {
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 0.25rem 0.6rem;
+  min-height: 32px;
+  border-radius: var(--r-pill, 999px);
+  border: 1px solid var(--b2, rgba(127, 127, 127, 0.3));
+  background: transparent;
+  /* never inherit — a bare button falls back to the UA's black ButtonText */
+  color: var(--text, #eeeef8);
+  cursor: pointer;
+  transition:
+    background 0.12s,
+    border-color 0.12s;
+}
+.vis-opt:hover:not(:disabled) {
+  border-color: var(--accent, #7c6af7);
+}
+.vis-opt.is-on {
+  background: var(--accent, #7c6af7);
+  border-color: transparent;
+  color: var(--btn-text, #fff);
+}
+.vis-opt:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+.vis-hint {
+  margin: 0;
+  font-size: 0.75rem;
+  line-height: 1.4;
+}
+
 /* pushes Leave to the far edge without giving the name a fixed width */
 .cz-thread-leave {
   margin-left: auto;
