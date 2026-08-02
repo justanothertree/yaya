@@ -1,5 +1,5 @@
 import type { VisibilityTier } from '../circuit/types'
-import { TIER_LABEL, TIER_ORDER, TIER_HINTS } from './visibilityLabels'
+import { TIER_LABEL, TIER_ORDER, TIER_HINTS, CIRCUIT_ALWAYS } from './visibilityLabels'
 
 /**
  * "Who can see this?" — the one control for the visibility model.
@@ -44,6 +44,7 @@ export function VisibilityPicker({
         ))}
       </div>
       <p className="vis-hint muted">{TIER_HINTS[kind][value]}</p>
+      {kind === 'circuit' && <p className="vis-always muted">{CIRCUIT_ALWAYS}</p>}
     </div>
   )
 }

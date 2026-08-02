@@ -200,19 +200,29 @@ export function CircuitsPanel() {
                   <div
                     style={{ display: 'flex', gap: '0.4rem', marginLeft: 'auto', flexWrap: 'wrap' }}
                   >
-                    <button
-                      className="btn btn-ghost"
-                      onClick={() => {
-                        setAddFor((cur) => (cur === c.id ? null : c.id))
-                        setAddName('')
-                        setAddColor(ADD_PALETTE[0])
-                      }}
-                      style={{ fontSize: '0.78rem' }}
-                      title="Add yourself (your data) to this circuit"
-                      aria-expanded={addFor === c.id}
-                    >
-                      {addFor === c.id ? '✕ Cancel' : '➕ Add me'}
-                    </button>
+                    {/* "Add me" only makes sense when your data isn't in this circuit yet.
+                        Offering it when you're already on the board invited a second, empty
+                        board for yourself — which is the duplicate-person bug we closed at
+                        the database level. Don't offer the action that causes it. */}
+                    {myPeople.some((p) => p.groupIds?.includes(c.id)) ? (
+                      <span className="muted" style={{ fontSize: '0.76rem' }}>
+                        ✓ you’re on this board
+                      </span>
+                    ) : (
+                      <button
+                        className="btn btn-ghost"
+                        onClick={() => {
+                          setAddFor((cur) => (cur === c.id ? null : c.id))
+                          setAddName('')
+                          setAddColor(ADD_PALETTE[0])
+                        }}
+                        style={{ fontSize: '0.78rem' }}
+                        title="Put your data into this circuit so its members can see it"
+                        aria-expanded={addFor === c.id}
+                      >
+                        {addFor === c.id ? '✕ Cancel' : '➕ Add me'}
+                      </button>
+                    )}
                     {c.is_owner && (
                       <button
                         className="btn btn-ghost"

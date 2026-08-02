@@ -322,8 +322,11 @@ export function Circuit({
 
       {canvas ? (
         <div style={{ marginTop: '0.9rem' }}>
-          {groupPicker && <div style={{ marginBottom: '0.6rem' }}>{groupPicker}</div>}
+          {/* the picker used to render here, behind the canvas's fixed full-viewport
+              surface — present in the DOM, invisible on screen. It goes into the canvas
+              menu instead, which is the only chrome you can actually reach in canvas mode. */}
           <CircuitCanvas
+            toolbar={groupPicker || undefined}
             panes={[
               ...canvasPanes,
               ...pinnedPanes.filter((p) => !canvasPanes.some((c) => c.id === p.id)),

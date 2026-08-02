@@ -920,6 +920,30 @@
   font-size: 0.75rem;
   line-height: 1.4;
 }
+/* page controls handed to the canvas menu (the Circuit's group filter). Keeps its own
+   sizing rather than inheriting the window-tab button treatment around it. */
+.cz-menu-tool {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  margin-right: 0.15rem;
+}
+.cz-menu-tool select {
+  font-size: 0.78rem;
+  padding: 0.15rem 0.35rem;
+  max-width: 10rem;
+}
+
+/* the standing fact about circuit sharing — quieter than the per-choice hint, but always
+   there, because reading only the tier makes people think it hides them from a crewmate */
+.vis-always {
+  margin: 0;
+  font-size: 0.72rem;
+  line-height: 1.35;
+  opacity: 0.72;
+  padding-top: 0.15rem;
+  border-top: 1px dashed var(--b1, rgba(127, 127, 127, 0.18));
+}
 
 /* pushes Leave to the far edge without giving the name a fixed width */
 .cz-thread-leave {
