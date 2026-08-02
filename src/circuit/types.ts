@@ -25,11 +25,8 @@ export interface Person {
   /** Auth user who owns this Circuit (server-set; null/undefined = unclaimed). Read-only
    *  on the client — changed only via the claim_person RPC, never written by savePerson. */
   ownerUserId?: string | null
-  /** Whether this person opts into the public board / signed-out demo.
-   *  Superseded by `visibility` — kept in lockstep server-side until it's dropped. */
-  isPublic?: boolean
-  /** Who can see this Circuit. Server-set; changed only via set_person_visibility,
-   *  never written by savePerson (same reasoning as ownerUserId and isPublic). */
+  /** Who can see this Circuit — replaced the old is_public boolean. Server-set; changed
+   *  only via set_person_visibility, never written by savePerson (same as ownerUserId). */
   visibility?: VisibilityTier
   /** Circuits (group ids) this person is shared into. Server-loaded; used to scope the
    *  board to one circuit. Empty/undefined in the signed-out demo. */

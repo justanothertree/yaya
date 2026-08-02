@@ -451,7 +451,7 @@ export function CircuitsPanel() {
                   </span>
                 </div>
                 <VisibilityPicker
-                  value={p.visibility ?? (p.isPublic ? 'public' : 'private')}
+                  value={p.visibility ?? 'private'}
                   onChange={(t) => setVisibility(p.id, t)}
                   disabled={busy}
                   kind="circuit"

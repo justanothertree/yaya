@@ -1,6 +1,6 @@
 // Signed-out public board data. The home-page demo seeds its local sandbox from this:
 // a dummy "Example" persona to freely tinker with, plus everyone who opted their Circuit
-// into the public board (is_public) fetched live via the anon RPC circuit_public(). Movies
+// into the public board (visibility = 'public') fetched live via the anon RPC circuit_public(). Movies
 // / watchlist stay from the bundled Evan slice so those tabs still have content. Falls back
 // to the bundled slice if there's no backend or the fetch fails.
 import type { CircuitState, DayLog, Movie, Person, WatchlistItem } from './types'
