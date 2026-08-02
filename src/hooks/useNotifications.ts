@@ -199,7 +199,23 @@ export function useNotifications(authed: boolean): Notifications {
   const markSeen = useCallback(() => {
     seenRef.current = true
     setSeen(true)
-    if (!previewMember && authed) void getSupabaseClient().rpc('mark_activity_seen')
+    if (previewMember || !authed) return
+    // ⚠️ A supabase-js builder is LAZY: the request is only sent when something calls
+    // .then() on it. `void sb.rpc(...)` evaluates the builder and throws it away without
+    // ever hitting the network — silently, with no error to notice. That is why the bell
+    // cleared on screen and came back on reload for months: the local `seen` state was
+    // the only thing that ever changed, and activity_reads stayed empty.
+    // Always .then() or await a builder, even when the result doesn't matter.
+    void getSupabaseClient()
+      .rpc('mark_activity_seen')
+      .then(({ error }) => {
+        // If it didn't land, don't let the bell claim it cleared — it would only come
+        // back on the next reload, which is the confusing behaviour we just fixed.
+        if (error) {
+          seenRef.current = false
+          setSeen(false)
+        }
+      })
   }, [authed])
 
   const unreadChats = items.filter((i) => i.kind === 'chat').reduce((n, i) => n + (i.count ?? 0), 0)
