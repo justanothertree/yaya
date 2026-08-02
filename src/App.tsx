@@ -680,10 +680,17 @@ export default function App() {
 
   // Back-to-top visibility on scroll
   useEffect(() => {
+    // Only touch state when the answer actually changes. This fires on every scroll
+    // frame, and on a phone that's the frame budget scrolling is already competing for.
+    let shown = window.scrollY > 200
+    setShowTop(shown)
     const onScroll = () => {
-      setShowTop(window.scrollY > 200)
+      const next = window.scrollY > 200
+      if (next !== shown) {
+        shown = next
+        setShowTop(next)
+      }
     }
-    onScroll()
     window.addEventListener('scroll', onScroll, { passive: true })
     return () => window.removeEventListener('scroll', onScroll)
   }, [])
