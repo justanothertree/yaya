@@ -105,6 +105,26 @@ grant execute on function public.enforce_best_score(integer, text) to authentica
 
 
 -- ============================================================================
+-- APPLIED 2026-08-01. anon-executable functions went 29 -> 6.
+--
+-- FOLLOW-UP: the first run of the verify query below returned one row,
+-- `can_see(uuid, visibility_tier)`. Not a leak -- can_see did not exist when
+-- this file was written, so it was missing from the allowlist, and step 1 of
+-- the visibility epic had granted it to anon as a precaution.
+--
+-- That precaution was wrong: NO policy calls can_see directly. Its only callers
+-- (circuit_can_see_person, snake_friend_names) are SECURITY DEFINER and invoke
+-- it as the owner, and anon has no SELECT grant on circuit_people anyway.
+-- Revoked in migration `revoke_can_see_from_anon`, so the query below is once
+-- again a clean zero-rows invariant. Public board verified unaffected as anon:
+-- 1 person, 71 movies, 188 logs.
+--
+-- Re-grant to anon ONLY if a policy on an anon-readable table ever calls
+-- can_see directly -- player_registry is the plausible candidate, being
+-- anon-SELECTable for the Snake board and now carrying a visibility column.
+-- ============================================================================
+
+-- ============================================================================
 -- VERIFY — should return zero rows.
 -- ============================================================================
 select p.proname, pg_get_function_identity_arguments(p.oid) as args
