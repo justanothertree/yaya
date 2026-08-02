@@ -6,6 +6,7 @@ import {
   PREVIEW_MSGS,
   PREVIEW_UNREAD,
   previewOverview,
+  PREVIEW_LOUNGE_IN,
 } from '../../dev/previewMember'
 
 /**
@@ -61,6 +62,10 @@ export function Chat({ authed = false }: { authed?: boolean }) {
   const [err, setErr] = useState<string | null>(null)
   const endRef = useRef<HTMLDivElement>(null)
   const [me, setMe] = useState<string | null>(previewMember ? PREVIEW_ME.id : null)
+  // The Lounge is opt-in: nobody is placed in a room with every other account by
+  // default. null = not looked up yet, so the invite card doesn't flash on load.
+  const [loungeIn, setLoungeIn] = useState<boolean | null>(previewMember ? PREVIEW_LOUNGE_IN : null)
+  const [loungeBusy, setLoungeBusy] = useState(false)
 
   const loadOverview = useCallback(async () => {
     if (previewMember) {
@@ -95,6 +100,7 @@ export function Chat({ authed = false }: { authed?: boolean }) {
     }
     if (!sb) return
     void sb.auth.getSession().then(({ data }) => live && setMe(data.session?.user.id ?? null))
+    void sb.rpc('my_lounge_opt_in').then(({ data }) => live && setLoungeIn(data === true))
     void sb.rpc('list_chat_overview').then(({ data }) => {
       if (!live || !data) return
       const rs = data as Overview[]
@@ -231,6 +237,26 @@ export function Chat({ authed = false }: { authed?: boolean }) {
     void loadOverview()
   }
 
+  // Joining/leaving changes what chat_room_member() allows, so the room appears in
+  // or vanishes from list_chat_overview on the next load — no local splicing needed.
+  async function setLounge(on: boolean) {
+    if (!sb || loungeBusy) return
+    setLoungeBusy(true)
+    setErr(null)
+    const { error } = await sb.rpc('set_lounge_opt_in', { p_on: on })
+    if (error) {
+      setErr(error.message)
+    } else {
+      setLoungeIn(on)
+      if (!on && room?.kind === 'lounge') {
+        setRoom(null)
+        setMsgs([])
+      }
+      await loadOverview()
+    }
+    setLoungeBusy(false)
+  }
+
   async function send(e: React.FormEvent) {
     e.preventDefault()
     if (!room || !draft.trim() || sending) return
@@ -315,6 +341,23 @@ export function Chat({ authed = false }: { authed?: boolean }) {
             {r.unread > 0 && <span className="cz-conv-badge">{r.unread}</span>}
           </button>
         ))}
+
+        {/* The Lounge is the one room that isn't yours by default — offer it rather
+            than assuming it. Hidden until we know the answer, so it can't flash. */}
+        {loungeIn === false && (
+          <div className="cz-lounge-invite">
+            <span className="cz-lounge-ic" aria-hidden>
+              🛋️
+            </span>
+            <div className="cz-lounge-copy">
+              <strong>The Lounge</strong>
+              <span className="muted">One open room shared by everyone with an account.</span>
+            </div>
+            <button className="btn" onClick={() => void setLounge(true)} disabled={loungeBusy}>
+              {loungeBusy ? 'Joining…' : 'Join'}
+            </button>
+          </div>
+        )}
       </div>
 
       {/* ── the open thread ───────────────────────────────────────────── */}
@@ -329,6 +372,16 @@ export function Chat({ authed = false }: { authed?: boolean }) {
                 {roomIcon(room.kind)}
               </span>
               <span className="cz-thread-name">{room.name}</span>
+              {room.kind === 'lounge' && loungeIn && (
+                <button
+                  className="btn btn-ghost cz-thread-leave"
+                  onClick={() => void setLounge(false)}
+                  disabled={loungeBusy}
+                  title="Stop seeing The Lounge. You can rejoin any time."
+                >
+                  {loungeBusy ? 'Leaving…' : 'Leave'}
+                </button>
+              )}
             </div>
 
             <div className="cz-chat-log">
