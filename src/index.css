@@ -744,7 +744,11 @@
   grid-template-columns: minmax(200px, 260px) 1fr;
   gap: 0.75rem;
   min-height: 0;
-  height: 26rem;
+  /* Grows with the window instead of sitting at a fixed 26rem, which left a tall screen
+     mostly empty below the composer. Floor keeps it usable on a short laptop; the cap
+     stops a very tall monitor stretching one conversation over the whole height. The
+     subtracted chunk is the nav plus this page's own heading and padding. */
+  height: clamp(26rem, calc(100dvh - var(--nav-h, 60px) - 13rem), 62rem);
 }
 .cz-chat-list {
   display: flex;
