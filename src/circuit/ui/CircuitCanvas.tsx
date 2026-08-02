@@ -145,12 +145,20 @@ export function CircuitCanvas({
   focusPane,
   pinnedIds = [],
   onTogglePin,
+  toolbar,
 }: {
   panes: CanvasPane[]
   focusPane?: { id: string; nonce: number } | null
   /** ids of panes the user pinned — they follow them across tabs */
   pinnedIds?: string[]
   onTogglePin?: (pane: CanvasPane) => void
+  /**
+   * Page-specific controls that belong to the canvas chrome. The surface is a fixed
+   * full-viewport panel, so anything the page renders behind it is invisible — the
+   * Circuit's group filter was rendered but buried, which read as "no filter in canvas".
+   * Whatever the page still needs to reach has to come in here.
+   */
+  toolbar?: React.ReactNode
 }) {
   const hostRef = useRef<HTMLDivElement>(null)
   const winRefs = useRef<Record<string, HTMLDivElement | null>>({})
@@ -1146,6 +1154,7 @@ export function CircuitCanvas({
       >
         ⛶ Canvas <span className="muted">ⓘ</span>
       </strong>
+      {toolbar && <span className="cz-menu-tool">{toolbar}</span>}
       {panes.map((p) => {
         const w = wins[p.id]
         const min = !!w?.min
