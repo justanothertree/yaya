@@ -129,10 +129,29 @@ export function Circuit({
       /* ignore */
     }
   }
-  // if the viewed group vanished (left/deleted), fall back to "all"
+  /**
+   * ⚠️ Apply the saved filter only when it names a circuit we can actually see.
+   *
+   * A filter saved while signed in used to keep applying after signing out, where there
+   * are no circuits at all: it matched nobody, so the demo board rendered "No one's in
+   * this circuit yet" with no picker on screen to undo it — and a hard refresh doesn't
+   * clear localStorage, so it stayed broken. That's why the demo looked fine in one
+   * browser and empty in another.
+   *
+   * Resolving it per-render rather than clearing the stored value avoids a race: `groups`
+   * is briefly empty while signed in before the adapter loads, and `authed` can be false
+   * for a beat during boot, so *erasing* on either signal throws away a real choice.
+   * This way the member's pick survives a signed-out visit and simply doesn't apply
+   * while it can't be honoured.
+   */
+  const activeGroup = viewGroup && groups.some((g) => g.id === viewGroup) ? viewGroup : ''
+
+  // Tidy storage only in the unambiguous case: signed in, groups loaded, group gone for good.
   useEffect(() => {
-    if (viewGroup && groups.length && !groups.some((g) => g.id === viewGroup)) pickGroup('')
-  }, [groups, viewGroup])
+    if (viewGroup && authed && groups.length && !groups.some((g) => g.id === viewGroup)) {
+      pickGroup('')
+    }
+  }, [groups, viewGroup, authed])
 
   const doUndo = () => {
     if (!circuitStore.getHistoryState().canUndo) return
@@ -196,7 +215,7 @@ export function Circuit({
       key={logTarget ? `${logTarget.personId}-${logTarget.date}` : 'default'}
       defaultPersonId={logTarget?.personId}
       defaultDate={logTarget?.date}
-      viewGroup={viewGroup}
+      viewGroup={activeGroup}
     />
   )
 
@@ -239,24 +258,24 @@ export function Circuit({
     {
       id: 'board',
       title: '🏆 Board',
-      node: <Board onLogToday={requestLogToday} onLogDate={requestLog} viewGroup={viewGroup} />,
+      node: <Board onLogToday={requestLogToday} onLogDate={requestLog} viewGroup={activeGroup} />,
     },
     { id: 'log', title: '✏️ Log', node: logNode },
     {
       id: 'feed',
       title: '📋 Feed',
-      node: <Feed onOpenLog={requestLog} authed={authed} viewGroup={viewGroup} />,
+      node: <Feed onOpenLog={requestLog} authed={authed} viewGroup={activeGroup} />,
     },
     {
       id: 'charts',
       title: '📊 Charts',
-      node: <Charts onDayClick={requestLog} viewGroup={viewGroup} />,
+      node: <Charts onDayClick={requestLog} viewGroup={activeGroup} />,
     },
     ...(authed
       ? [{ id: 'chat', title: '💬 Chat', node: <Chat authed /> }]
       : [
-          { id: 'movies', title: '📝 Reviews', node: <Movies viewGroup={viewGroup} /> },
-          { id: 'watchlist', title: '🎲 Pool', node: <Watchlist viewGroup={viewGroup} /> },
+          { id: 'movies', title: '📝 Reviews', node: <Movies viewGroup={activeGroup} /> },
+          { id: 'watchlist', title: '🎲 Pool', node: <Watchlist viewGroup={activeGroup} /> },
         ]),
   ]
 
@@ -271,7 +290,7 @@ export function Circuit({
     const mine = canvasPanes.filter((p) => pinnedIds.includes(p.id))
     if (mine.length) onRefreshPinned(mine)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [viewGroup, authed, logTarget, pinnedIds.join(',')])
+  }, [activeGroup, authed, logTarget, pinnedIds.join(',')])
 
   // shared circuit picker — shown in the toolbar and above the canvas when you're in 2+
   const groupPicker = groups.length > 1 && (
@@ -282,7 +301,7 @@ export function Circuit({
     >
       👥
       <select
-        value={viewGroup}
+        value={activeGroup}
         onChange={(e) => pickGroup(e.target.value)}
         style={{ padding: '0.25rem 0.4rem' }}
       >
@@ -394,16 +413,16 @@ export function Circuit({
 
           <div className="cz-pane" key={tab}>
             {tab === 'board' && (
-              <Board onLogToday={requestLogToday} onLogDate={requestLog} viewGroup={viewGroup} />
+              <Board onLogToday={requestLogToday} onLogDate={requestLog} viewGroup={activeGroup} />
             )}
             {tab === 'log' && logNode}
             {tab === 'feed' && (
-              <Feed onOpenLog={requestLog} authed={authed} viewGroup={viewGroup} />
+              <Feed onOpenLog={requestLog} authed={authed} viewGroup={activeGroup} />
             )}
-            {tab === 'charts' && <Charts onDayClick={requestLog} viewGroup={viewGroup} />}
+            {tab === 'charts' && <Charts onDayClick={requestLog} viewGroup={activeGroup} />}
             {tab === 'chat' && <Chat authed={authed} />}
-            {tab === 'movies' && <Movies viewGroup={viewGroup} />}
-            {tab === 'watchlist' && <Watchlist viewGroup={viewGroup} />}
+            {tab === 'movies' && <Movies viewGroup={activeGroup} />}
+            {tab === 'watchlist' && <Watchlist viewGroup={activeGroup} />}
             {tab === 'circuits' && <CircuitsPanel />}
           </div>
         </>

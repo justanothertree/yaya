@@ -26,7 +26,7 @@ function initialTab(): RTab {
   return 'reviews'
 }
 
-export function Ratings() {
+export function Ratings({ authed = false }: { authed?: boolean }) {
   const state = useCircuit()
   const groups = state.groups?.length ? state.groups : previewMember ? PREVIEW_GROUPS : []
   const tabsRef = useScrollFade<HTMLSpanElement>()
@@ -75,9 +75,16 @@ export function Ratings() {
       /* ignore */
     }
   }
+  // Same rule as the Circuit — both screens share the circuit_view_group key. Apply the
+  // saved filter only when it names a circuit we can see, rather than erasing it, so a
+  // member's choice survives a signed-out visit. Full reasoning in Circuit.tsx.
+  const activeGroup = viewGroup && groups.some((g) => g.id === viewGroup) ? viewGroup : ''
+
   useEffect(() => {
-    if (viewGroup && groups.length && !groups.some((g) => g.id === viewGroup)) pickGroup('')
-  }, [groups, viewGroup])
+    if (viewGroup && authed && groups.length && !groups.some((g) => g.id === viewGroup)) {
+      pickGroup('')
+    }
+  }, [groups, viewGroup, authed])
 
   const groupPicker = groups.length > 1 && (
     <label
@@ -87,7 +94,7 @@ export function Ratings() {
     >
       👥
       <select
-        value={viewGroup}
+        value={activeGroup}
         onChange={(e) => pickGroup(e.target.value)}
         style={{ padding: '0.25rem 0.4rem' }}
       >
@@ -151,8 +158,8 @@ export function Ratings() {
       </div>
 
       <div className="cz-pane" key={tab}>
-        {tab === 'reviews' && <Movies viewGroup={viewGroup} />}
-        {tab === 'watchlist' && <Watchlist viewGroup={viewGroup} />}
+        {tab === 'reviews' && <Movies viewGroup={activeGroup} />}
+        {tab === 'watchlist' && <Watchlist viewGroup={activeGroup} />}
       </div>
 
       <Toast />
