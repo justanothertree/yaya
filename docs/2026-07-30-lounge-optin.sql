@@ -1,5 +1,8 @@
 -- ============================================================================
--- 📌 PINNED — not applied. Make The Lounge opt-in instead of automatic.
+-- ✅ APPLIED 2026-08-01 by Evan. Verify returned opted_in = 0, i.e. nobody is in
+-- The Lounge until they choose to be. The "Join The Lounge" UI shipped alongside.
+--
+-- Make The Lounge opt-in instead of automatic.
 --
 -- Today chat_room_member() treats the lounge as "anyone with an unsuspended
 -- profile", so every account is silently dropped into one open room with every
@@ -9,9 +12,8 @@
 -- Lounge simply stops appearing for anyone who hasn't opted in — no client
 -- change is required for it to disappear.
 --
--- ⚠️ There is no "Join the Lounge" button in the app yet. Until that ships,
--- the only way to opt in is the UPDATE at the bottom of this file. Run this
--- when you want the UI work to follow.
+-- The "Join The Lounge" invite card now sits at the bottom of the chat
+-- conversation list (src/circuit/ui/Chat.tsx), with Leave in the room's header.
 --
 -- Self-contained: safe to run before or after 2026-07-30-anon-lockdown.sql.
 -- ============================================================================

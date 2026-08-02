@@ -88,6 +88,14 @@ export const PREVIEW_UNREAD: Record<string, number> = {
   'pv-dm': 2,
 }
 
+/**
+ * Whether the preview member has opted into The Lounge. Flip to false to exercise
+ * the "Join The Lounge" invite card — the real list_chat_overview omits the room
+ * until you opt in, so previewOverview() has to omit it too or the preview shows a
+ * room and an invitation to join it at the same time.
+ */
+export const PREVIEW_LOUNGE_IN = true
+
 /** the conversation-list shape, derived from the mock rooms + messages */
 export function previewOverview(): {
   id: string
@@ -98,17 +106,19 @@ export function previewOverview(): {
   last_at: string | null
   unread: number
 }[] {
-  return PREVIEW_ROOMS.map((r) => {
-    const ms = PREVIEW_MSGS[r.id] ?? []
-    const last = ms[ms.length - 1]
-    return {
-      ...r,
-      last_body: last?.body ?? null,
-      last_author: last?.author_name ?? null,
-      last_at: last?.created_at ?? null,
-      unread: PREVIEW_UNREAD[r.id] ?? 0,
-    }
-  }).sort((a, b) => (b.last_at ?? '').localeCompare(a.last_at ?? ''))
+  return PREVIEW_ROOMS.filter((r) => r.kind !== 'lounge' || PREVIEW_LOUNGE_IN)
+    .map((r) => {
+      const ms = PREVIEW_MSGS[r.id] ?? []
+      const last = ms[ms.length - 1]
+      return {
+        ...r,
+        last_body: last?.body ?? null,
+        last_author: last?.author_name ?? null,
+        last_at: last?.created_at ?? null,
+        unread: PREVIEW_UNREAD[r.id] ?? 0,
+      }
+    })
+    .sort((a, b) => (b.last_at ?? '').localeCompare(a.last_at ?? ''))
 }
 
 export const PREVIEW_MSGS: Record<string, PreviewMsg[]> = {

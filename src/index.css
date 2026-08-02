@@ -867,6 +867,40 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* pushes Leave to the far edge without giving the name a fixed width */
+.cz-thread-leave {
+  margin-left: auto;
+  flex: 0 0 auto;
+  font-size: 0.78rem;
+  padding: 0.15rem 0.5rem;
+}
+/* The Lounge invite — a conversation you don't have yet, so it reads as an
+   offer rather than a row. Sits under the list; disappears once joined. */
+.cz-lounge-invite {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2, 0.5rem);
+  margin-top: var(--sp-2, 0.5rem);
+  padding: var(--sp-3, 0.75rem);
+  border: 1px dashed var(--b2, rgba(127, 127, 127, 0.3));
+  border-radius: var(--r-md, 12px);
+  background: var(--b1, rgba(127, 127, 127, 0.06));
+}
+.cz-lounge-ic {
+  font-size: 1.3rem;
+  flex: 0 0 auto;
+}
+.cz-lounge-copy {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.cz-lounge-copy span {
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
 .cz-chat-log {
   flex: 1;
   min-height: 0;
