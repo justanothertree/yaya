@@ -714,6 +714,10 @@ export default function App() {
   // Home splits into its own multi-pane layout; the Circuit has its own internal canvas
   // (the nav button routes to it by event). Every other content tab floats as a single
   // window. signin / invite (auth flows) don't get canvas.
+  // NOTE: this list, canvasTitleFor and singleCanvasNode below must all gain an entry
+  // together, and the section's normal render must be guarded with !inGenericCanvas or it
+  // draws twice. chat/ratings/people/profile arrived with the mobile restructure and were
+  // missed here, so the canvas button did nothing on them.
   const singleCanvasTabs: Section[] = [
     'investments',
     'account-settings',
@@ -721,6 +725,10 @@ export default function App() {
     'contact',
     'admin',
     'signin',
+    'chat',
+    'ratings',
+    'people',
+    'profile',
   ]
   const canvasCapable =
     active === 'home' || active === 'circuit' || singleCanvasTabs.includes(active)
@@ -732,6 +740,10 @@ export default function App() {
     contact: '✉️ Contact',
     admin: '🛠 Admin',
     signin: '🔑 Sign in',
+    chat: '💬 Chat',
+    ratings: '📝 Ratings',
+    people: '🧑‍🤝‍🧑 People',
+    profile: '🪪 Profile',
   }
   // the inner content for whichever single-window tab is active (mirrors the section body)
   const singleCanvasNode = () => {
@@ -758,6 +770,14 @@ export default function App() {
         return isAdmin ? <AdminPanel /> : <p className="muted">Admin access required.</p>
       case 'signin':
         return <SignIn />
+      case 'chat':
+        return <ChatPage authed={isFinanceAuthed || previewMember} />
+      case 'ratings':
+        return <Ratings />
+      case 'people':
+        return <People authed={isFinanceAuthed || previewMember} />
+      case 'profile':
+        return <Profile authed={isFinanceAuthed} />
       default:
         return null
     }
@@ -1073,7 +1093,7 @@ export default function App() {
             </Suspense>
           </section>
         )}
-        {active === 'people' && (
+        {!inGenericCanvas && active === 'people' && (
           <section id="people" className="card reveal">
             <Suspense
               fallback={
@@ -1086,7 +1106,7 @@ export default function App() {
             </Suspense>
           </section>
         )}
-        {active === 'chat' && (
+        {!inGenericCanvas && active === 'chat' && (
           <section id="chat" className="card reveal">
             <Suspense
               fallback={
@@ -1099,7 +1119,7 @@ export default function App() {
             </Suspense>
           </section>
         )}
-        {active === 'ratings' && (
+        {!inGenericCanvas && active === 'ratings' && (
           <section id="ratings" className="card reveal">
             <Suspense
               fallback={
@@ -1213,7 +1233,7 @@ export default function App() {
             </Suspense>
           </section>
         )}
-        {active === 'profile' && (
+        {!inGenericCanvas && active === 'profile' && (
           <section id="profile" className="reveal">
             <Suspense
               fallback={

@@ -6,6 +6,7 @@
 // come first (they're the only rows with a decision attached), then your friends, then
 // everyone else.
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { notificationsChanged } from '../hooks/notifySignal'
 import { getSupabaseClient } from '../finance/client'
 import { previewMember, PREVIEW_PEOPLE, type PreviewPerson } from '../dev/previewMember'
 
@@ -84,7 +85,11 @@ export function People({ authed = false }: { authed?: boolean }) {
             p_username: username,
           })
     if (error) setErr(error.message)
-    else await refresh()
+    else {
+      await refresh()
+      // answering a request changes the bell's count, and this screen never navigates
+      notificationsChanged()
+    }
     setBusy(null)
   }
 
