@@ -773,7 +773,7 @@ export default function App() {
       case 'chat':
         return <ChatPage authed={isFinanceAuthed || previewMember} />
       case 'ratings':
-        return <Ratings />
+        return <Ratings authed={isFinanceAuthed || previewMember} />
       case 'people':
         return <People authed={isFinanceAuthed || previewMember} />
       case 'profile':
@@ -1128,7 +1128,7 @@ export default function App() {
                 </div>
               }
             >
-              <Ratings />
+              <Ratings authed={isFinanceAuthed || previewMember} />
             </Suspense>
           </section>
         )}
