@@ -80,7 +80,7 @@ export function GameManager({
   const [myScores, setMyScores] = useState<LeaderboardEntry[]>([])
   // your standing when you're nowhere near the visible 15
   const [myStanding, setMyStanding] = useState<{ best: number; rank: number } | null>(null)
-  // typed handle -> friend's name, for the "handle (Josh)" reveal. Empty when signed out.
+  // typed handle -> friend's name, for the "handle (Name)" reveal. Empty when signed out.
   const [friendNames, setFriendNames] = useState<Record<string, string>>({})
   const [showDebug, setShowDebug] = useState(false)
   const [debugInfo, setDebugInfo] = useState<{

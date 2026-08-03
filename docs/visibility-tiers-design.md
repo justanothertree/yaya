@@ -93,7 +93,7 @@ is. They get no column, so there's nothing to keep in sync.
 `score_history`, `leaderboard`, `trophies` and `round_results` have **no `user_id` at all** —
 Snake identity is name-keyed, and only `player_registry.user_id` links a handle to an account
 (10 of 108 handles are linked). So the tier belongs on **the handle, not the score**: "who may
-learn that handle is me." That is what Evan actually asked for. Per-score tiers would be a lot of
+learn that this handle is me." That is what Evan actually asked for. Per-score tiers would be a lot of
 machinery for a question nobody has asked.
 
 ---
