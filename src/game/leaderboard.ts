@@ -164,7 +164,7 @@ export async function fetchLeaderboard(
   const MODE = 'survival'
   // NOTE: the board deliberately shows the TYPED handle, not the member's real name.
   // Snake is public — anyone, including strangers, can read it — and Evan's rule is that
-  // friends' identities are not on display there. A friends-only "Krazay (Josh)" variant is
+  // friends' identities are not on display there. A friends-only "handle (Name)" variant is
   // wanted, but it must be built so a non-friend can never resolve a handle to a person.
   //
   // This also must keep returning the real leaderboard row id: fetchTrophiesFor() keys
@@ -233,7 +233,7 @@ export async function fetchLeaderboard(
  * rank 15 you vanished, and beating your second-best showed nothing.
  */
 /**
- * Typed handle -> the friend behind it, so the board can read "Krazay (Josh)".
+ * Typed handle -> the friend behind it, so the board can read "handle (Name)".
  * Only ever returns your own handles and your friends'; a signed-out visitor gets nothing at
  * all (the RPC is not granted to anon), so the public board can't resolve anyone.
  */

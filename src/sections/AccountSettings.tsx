@@ -247,7 +247,7 @@ type CircuitRow = {
 
 /**
  * Claim an old leaderboard handle. Scores from before you had an account sit under whatever
- * name was typed at the time ("Krazay", "Jefe Legendary"), owned by nobody — this attaches them
+ * name was typed at the time, owned by nobody — this attaches them
  * to you. First claim wins, and it can't take a handle someone else already owns.
  */
 /**
