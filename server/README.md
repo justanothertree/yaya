@@ -23,7 +23,7 @@ Messages are JSON objects:
 ```
 {
   grid: 30,
-  apples: 2,
+  apples: 4,
   passThroughEdges: true,
   canvasSize: 'medium'
 }

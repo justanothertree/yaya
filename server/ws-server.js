@@ -25,7 +25,8 @@ const MAX_ROOM_ID_LEN = 64
 // Default settings mirrored from client DEFAULT_SETTINGS
 const DEFAULT_SETTINGS = {
   grid: 30,
-  apples: 2,
+  // Mirrors DEFAULT_SETTINGS in src/game/manager.tsx — change both together.
+  apples: 4,
   passThroughEdges: true,
   canvasSize: 'medium',
 }
