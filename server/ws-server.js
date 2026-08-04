@@ -571,9 +571,18 @@ wss.on('connection', (ws) => {
       const r = room.round
       if (r && r.active && r.participants && r.participants.has(id)) {
         if (!r.finished) r.finished = new Set()
-        r.participants.delete(id)
-        r.finished.delete(id)
-        // If this disconnect unblocks finalization, try finalize now
+        // Keep them IN the round, with the score they had when they left.
+        //
+        // We used to drop leavers from the round entirely, so a player who died and
+        // closed the tab vanished from the results. Their score is still right here --
+        // room.state is never deleted on disconnect and lastScore is updated live -- so
+        // there is no reason to throw it away. Mark them finished instead: they can't
+        // finish later, and leaving them un-finished blocks the round for everyone else.
+        //
+        // Deliberately NOT added to finishOrder: on a tie, someone who played it out
+        // should rank above someone who left, and finishIdx defaults to last.
+        r.finished.add(id)
+        // If this was the last player still going, this finalizes the round now.
         void tryFinalize(room, joinedRoomId)
       }
     } catch {
@@ -586,7 +595,15 @@ wss.on('connection', (ws) => {
       if (room.hostId) broadcast(room, { type: 'host', hostId: room.hostId })
     }
     if (room.clients.size === 0) {
-      rooms.delete(joinedRoomId)
+      // A round exists only in this process's memory, so dropping the room is what
+      // silently loses everyone's scores when the last person leaves. Finalize first,
+      // then delete — otherwise the async finalize races the delete and loses.
+      const r = room.round
+      if (r && r.active && !r.finalized && !r.finalizing) {
+        void tryFinalize(room, joinedRoomId).finally(() => rooms.delete(joinedRoomId))
+      } else {
+        rooms.delete(joinedRoomId)
+      }
     } else {
       // Notify remaining peers that this player has left so they can
       // clear lobby rows and any per-player state.
