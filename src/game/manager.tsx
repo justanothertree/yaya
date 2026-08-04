@@ -50,9 +50,18 @@ const LS_PLAYER_NAME_SOURCE_KEY = 'snake.playerName.source' // 'auto' | 'custom'
 export function GameManager({
   autoFocus,
   onControlChange,
+  onLiveChange,
 }: {
   autoFocus?: boolean
   onControlChange?: (v: boolean) => void
+  /**
+   * True while connected to a multiplayer room. App uses this to stop offering canvas
+   * mode: switching to canvas re-mounts this component, which drops the socket and takes
+   * the player out of a round that is still being played by everyone else. A round's
+   * results only exist in the ws-server's memory until every participant finishes, so
+   * leaving mid-round can cost the whole room its scores.
+   */
+  onLiveChange?: (live: boolean) => void
 }) {
   const [mode, setMode] = useState<Mode>('solo')
   const [engineSeed, setEngineSeed] = useState<number>(() => Math.floor(Math.random() * 1e9))
@@ -132,6 +141,12 @@ export function GameManager({
   const [presence, setPresence] = useState(1)
   const prevPresenceRef = useRef<number>(1)
   const [conn, setConn] = useState<'disconnected' | 'connecting' | 'connected'>('disconnected')
+  // One effect rather than reporting at each of the ten setConn call sites — this can't
+  // miss one, and a missed one would silently re-enable the canvas toggle mid-round.
+  useEffect(() => {
+    onLiveChange?.(conn === 'connected')
+    return () => onLiveChange?.(false)
+  }, [conn, onLiveChange])
   const [joining, setJoining] = useState(false)
   const [ready, setReady] = useState(false)
   // peerReady removed; using players map + own ready state

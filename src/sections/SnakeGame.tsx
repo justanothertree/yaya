@@ -1,7 +1,12 @@
 import { useEffect } from 'react'
 import { GameManager } from '../game/manager'
 
-export function SnakeGame(props: { onControlChange?: (v: boolean) => void; autoFocus?: boolean }) {
+export function SnakeGame(props: {
+  onControlChange?: (v: boolean) => void
+  /** true while in a multiplayer room — see GameManager's onLiveChange */
+  onLiveChange?: (live: boolean) => void
+  autoFocus?: boolean
+}) {
   const { onControlChange } = props
   // If not auto-focusing the game, signal that the page retains control.
   useEffect(() => {
@@ -14,7 +19,11 @@ export function SnakeGame(props: { onControlChange?: (v: boolean) => void; autoF
   // Keep the same component name for compatibility with the rest of the app
   return (
     <section className="snake-wrap">
-      <GameManager autoFocus={props.autoFocus} onControlChange={onControlChange} />
+      <GameManager
+        autoFocus={props.autoFocus}
+        onControlChange={onControlChange}
+        onLiveChange={props.onLiveChange}
+      />
       <p className="muted" style={{ marginTop: '0.75rem' }}>
         Click or tap the canvas to capture controls. Use Arrow keys or WASD to move; Space to
         pause/play; swipe on the canvas to control on touch devices. Adjust apples and edge behavior

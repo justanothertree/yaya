@@ -302,6 +302,11 @@ export default function App() {
   const navLinksRef = useRef<HTMLDivElement>(null)
   const navRef = useRef<HTMLElement>(null)
   const [snakeHasControl, setSnakeHasControl] = useState(false)
+  // True while Snake is connected to a multiplayer room. Toggling canvas re-mounts the
+  // section, which drops the socket mid-round — and a round's results live only in the
+  // ws-server's memory until every participant finishes, so leaving can cost the whole
+  // room its scores. Canvas is a nice-to-have; a live match isn't ours to interrupt.
+  const [snakeLive, setSnakeLive] = useState(false)
   // Keep banner persistent; auto-hide disabled for reliability
   const [showTop, setShowTop] = useState(false)
   const [helpOpen, setHelpOpen] = useState(false)
@@ -738,7 +743,9 @@ export default function App() {
     'profile',
   ]
   const canvasCapable =
-    active === 'home' || active === 'circuit' || singleCanvasTabs.includes(active)
+    (active === 'home' || active === 'circuit' || singleCanvasTabs.includes(active)) &&
+    // …except Snake while a multiplayer room is connected — see snakeLive above.
+    !(active === 'snake' && snakeLive)
   const inGenericCanvas = desktop && canvasOpen && singleCanvasTabs.includes(active)
   const canvasTitleFor: Partial<Record<Section, string>> = {
     investments: '📈 Investments',
@@ -770,7 +777,9 @@ export default function App() {
           <p className="muted">Sign in to manage your account.</p>
         )
       case 'snake':
-        return <SnakeGame onControlChange={setSnakeHasControl} autoFocus />
+        return (
+          <SnakeGame onControlChange={setSnakeHasControl} onLiveChange={setSnakeLive} autoFocus />
+        )
       case 'contact':
         return <ContactForm />
       case 'admin':
@@ -981,6 +990,11 @@ export default function App() {
               canvasOpen={canvasOpen}
               onToggleCanvas={toggleCanvas}
               canvasCapable={canvasCapable}
+              canvasReason={
+                active === 'snake' && snakeLive
+                  ? 'Not while you’re in a multiplayer room — switching would drop you from the round'
+                  : undefined
+              }
               desktop={desktop}
               authed={hasFinanceSupabaseEnv() && isFinanceAuthed}
               isAdmin={isAdmin}
@@ -1255,7 +1269,7 @@ export default function App() {
         )}
         {!inGenericCanvas && active === 'snake' && (
           <section id="snake" className="card reveal show-dpad">
-            <SnakeGame onControlChange={setSnakeHasControl} autoFocus />
+            <SnakeGame onControlChange={setSnakeHasControl} onLiveChange={setSnakeLive} autoFocus />
           </section>
         )}
         {!inGenericCanvas && active === 'contact' && (
