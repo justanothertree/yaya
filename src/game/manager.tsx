@@ -27,7 +27,10 @@ const MAX_DIR_BUFFER = 2
 
 const DEFAULT_SETTINGS: Settings = {
   grid: GRID,
-  apples: 2,
+  // 4 by default, solo and multiplayer alike — a livelier board out of the box.
+  // Keep this in step with DEFAULT_SETTINGS in server/ws-server.js, which is what a
+  // multiplayer room starts from before the host changes anything.
+  apples: 4,
   passThroughEdges: true,
   canvasSize: 'medium',
 }
@@ -46,6 +49,8 @@ const LS_SETTINGS_KEY = 'snake.settings.v1'
 const LS_PERSIST_KEY = 'snake.persist.v1'
 const LS_PLAYER_NAME_KEY = 'snake.playerName'
 const LS_PLAYER_NAME_SOURCE_KEY = 'snake.playerName.source' // 'auto' | 'custom'
+// one-time marker for the 2 -> 4 apple default bump (see the settings initializer)
+const LS_APPLES_BUMP_KEY = 'snake.apples.v2'
 
 export function GameManager({
   autoFocus,
@@ -68,12 +73,33 @@ export function GameManager({
   const [settings, setSettings] = useState<Settings>(() => {
     try {
       const raw = localStorage.getItem(LS_SETTINGS_KEY)
-      if (raw) return { ...DEFAULT_SETTINGS, ...(JSON.parse(raw) as Partial<Settings>) }
+      if (raw) {
+        const saved = { ...DEFAULT_SETTINGS, ...(JSON.parse(raw) as Partial<Settings>) }
+        // Raising the apple default only reaches new players: a saved value always wins,
+        // so everyone who has played before — which is everyone who'd notice — would keep
+        // the old 2 forever. Take the new default once, keeping their other choices.
+        //
+        // Read-only here on purpose. Writing the marker inside this initializer looked
+        // fine and silently did nothing: StrictMode invokes it twice, so the first pass
+        // set the marker and the second pass saw it and skipped the bump.
+        // The marker is written in an effect below; running this branch twice is harmless.
+        if (!localStorage.getItem(LS_APPLES_BUMP_KEY)) saved.apples = DEFAULT_SETTINGS.apples
+        return saved
+      }
     } catch {
       // ignore
     }
     return DEFAULT_SETTINGS
   })
+  // Record that the one-time apple bump has happened, so a later deliberate choice of 2
+  // isn't overwritten on the next visit. Kept out of the initializer above — see the note.
+  useEffect(() => {
+    try {
+      localStorage.setItem(LS_APPLES_BUMP_KEY, '1')
+    } catch {
+      /* quota / private mode — worst case the bump applies again next visit */
+    }
+  }, [])
   // Simplified flow: no tabs; sections always visible based on mode
   const [alive, setAlive] = useState(true)
   const [paused, setPaused] = useState(true)
@@ -2957,7 +2983,10 @@ export function GameManager({
             className="btn"
             aria-pressed={showMine}
             data-active={showMine || undefined}
-            onClick={() => setShowMine((v) => !v)}
+            // A fourth tab, not a toggle. It used to flip, so a second click dropped you
+            // back to whichever period was underneath — the three beside it are
+            // idempotent, so it read as a bug rather than a feature.
+            onClick={() => setShowMine(true)}
             title="Every run you've played, not just your best"
           >
             My runs
