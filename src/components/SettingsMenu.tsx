@@ -24,6 +24,7 @@ export function SettingsMenu({
   canvasOpen,
   onToggleCanvas,
   canvasCapable,
+  canvasReason,
   desktop,
   ambientOn,
   onToggleAmbient,
@@ -43,6 +44,8 @@ export function SettingsMenu({
   canvasOpen: boolean
   onToggleCanvas: () => void
   canvasCapable: boolean
+  /** why canvas is unavailable, when it is — a disabled control should say why */
+  canvasReason?: string
   desktop: boolean
   ambientOn: boolean
   onToggleAmbient: () => void
@@ -217,7 +220,7 @@ export function SettingsMenu({
               title={
                 canvasCapable
                   ? 'Float this page as draggable windows'
-                  : 'Canvas isn’t available on this page'
+                  : (canvasReason ?? 'Canvas isn’t available on this page')
               }
             >
               <span>⛶ Canvas</span>
