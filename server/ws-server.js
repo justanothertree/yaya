@@ -242,6 +242,50 @@ async function tryFinalize(room, roomId) {
   r.finalizing = false
 }
 
+/**
+ * Rescue rounds that can never finish on their own.
+ *
+ * A player whose socket stays open but who stops sending — a frozen tab, a phone put to
+ * sleep, a laptop lid closed — leaves the round un-finalizable forever, and everyone
+ * else's scores die with it when the room is eventually dropped.
+ *
+ * Keyed on SILENCE, not elapsed time, and that distinction is the whole safety argument:
+ * a client that is actually playing sends `tick` every game tick and `preview` every
+ * animation frame, so it is impossible for someone still playing to trip this. Only a
+ * client that has said nothing for two solid minutes is treated as gone, and it keeps the
+ * last score they were seen playing — the same rule as a clean disconnect.
+ */
+const STUCK_IDLE_MS = Number(process.env.STUCK_IDLE_MS || 120000)
+// Check often enough that the rescue actually lands near the threshold rather than up to a
+// sweep late — and so a shorter threshold stays meaningful instead of being rounded away.
+const STUCK_SWEEP_MS = Math.max(1000, Math.min(15000, Math.floor(STUCK_IDLE_MS / 2)))
+
+async function sweepStuckRounds() {
+  const now = Date.now()
+  for (const [roomId, room] of rooms) {
+    const r = room.round
+    if (!r || !r.active || r.finalizing || r.finalized) continue
+    if (!r.participants || r.participants.size === 0) continue
+    if (!r.finished) r.finished = new Set()
+    let rescued = false
+    for (const pid of r.participants) {
+      if (r.finished.has(pid)) continue
+      const st = room.state.get(pid) || {}
+      const seen = Number(st.lastSeen || 0)
+      if (seen && now - seen > STUCK_IDLE_MS) {
+        r.finished.add(pid) // keeps st.lastScore, same as a disconnect
+        rescued = true
+        if (WS_DEBUG) console.log(`[ws] stuck participant ${pid} in ${roomId} — treating as gone`)
+      }
+    }
+    if (rescued) await tryFinalize(room, roomId)
+  }
+}
+
+setInterval(() => {
+  void sweepStuckRounds()
+}, STUCK_SWEEP_MS).unref?.()
+
 const server = createServer((req, res) => {
   res.writeHead(200, { 'Content-Type': 'text/plain' })
   res.end('ok')
@@ -278,6 +322,18 @@ wss.on('connection', (ws) => {
       return
     }
     if (!msg || typeof msg !== 'object') return
+
+    // Heartbeat for the stuck-round sweeper below. Any message counts: a client that is
+    // actually playing sends `tick` every game tick and `preview` every animation frame,
+    // so silence means genuinely gone, never "still playing".
+    if (joinedRoomId) {
+      const rm = rooms.get(joinedRoomId)
+      const st = rm && rm.state.get(id)
+      if (st) {
+        st.lastSeen = Date.now()
+        rm.state.set(id, st)
+      }
+    }
 
     // Allow lobby list discovery without joining a room
     if (msg.type === 'list') {
@@ -331,7 +387,13 @@ wss.on('connection', (ws) => {
         rooms.set(roomId, room)
       }
       room.clients.set(id, ws)
-      room.state.set(id, { ready: false, spectate: false, lastScore: 0, finished: false })
+      room.state.set(id, {
+        ready: false,
+        spectate: false,
+        lastScore: 0,
+        finished: false,
+        lastSeen: Date.now(),
+      })
       joinedRoomId = roomId
       // Visitor numbering only if client did not supply id
       const visitor = room.visitorCounter++
