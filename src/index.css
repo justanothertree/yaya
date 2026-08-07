@@ -952,6 +952,65 @@
   border-top: 1px dashed var(--b1, rgba(127, 127, 127, 0.18));
 }
 
+/* Voice call strip under a conversation header. One button at rest — mute, who's here and
+   hang up only appear once you're actually in a call. */
+.voice-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2, 0.5rem);
+  flex-wrap: wrap;
+  padding-bottom: 0.4rem;
+}
+.voice-bar .btn {
+  font-size: 0.78rem;
+  padding: 0.2rem 0.6rem;
+  min-height: 32px;
+}
+.voice-bar.is-live {
+  border-bottom: 1px solid var(--b1, rgba(127, 127, 127, 0.18));
+}
+.voice-status {
+  font-size: 0.78rem;
+  flex: 1;
+  min-width: 0;
+}
+.voice-err {
+  font-size: 0.75rem;
+  color: var(--red, #ff5566);
+  flex: 1 1 100%;
+}
+.voice-leave {
+  color: var(--red, #ff5566);
+}
+.voice-bar .btn.is-muted {
+  background: var(--red, #ff5566);
+  border-color: transparent;
+  color: var(--btn-text, #fff);
+}
+/* a live-mic pulse, so "you are being heard" is visible at a glance */
+.voice-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--grn, #22cc78);
+  flex: 0 0 auto;
+  animation: voicepulse 1.8s ease-in-out infinite;
+}
+@keyframes voicepulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .voice-dot {
+    animation: none;
+  }
+}
+
 /* pushes Leave to the far edge without giving the name a fixed width */
 .cz-thread-leave {
   margin-left: auto;

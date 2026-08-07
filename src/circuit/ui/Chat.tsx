@@ -9,6 +9,8 @@ import {
   PREVIEW_LOUNGE_IN,
 } from '../../dev/previewMember'
 import { notificationsChanged } from '../../hooks/notifySignal'
+import { useVoiceRoom } from '../../voice/useVoiceRoom'
+import { VoiceBar } from '../../voice/VoiceBar'
 
 /**
  * Chat — a real messaging screen, not a row of room chips. You land on a list of
@@ -67,6 +69,9 @@ export function Chat({ authed = false }: { authed?: boolean }) {
   // default. null = not looked up yet, so the invite card doesn't flash on load.
   const [loungeIn, setLoungeIn] = useState<boolean | null>(previewMember ? PREVIEW_LOUNGE_IN : null)
   const [loungeBusy, setLoungeBusy] = useState(false)
+  // Voice rides the room you're already in: a DM is a 1:1 call, a circuit room a small
+  // group one. Media is peer-to-peer and never reaches a server — see useVoiceRoom.
+  const voice = useVoiceRoom(room?.id ?? null, me, previewMember ? 'Preview You' : 'You')
 
   const loadOverview = useCallback(async () => {
     if (previewMember) {
@@ -393,6 +398,20 @@ export function Chat({ authed = false }: { authed?: boolean }) {
                 </button>
               )}
             </div>
+
+            {/* Voice only makes sense with a real session — the DEV harness has no peers. */}
+            {!previewMember && sb && (
+              <VoiceBar
+                inCall={voice.inCall}
+                peers={voice.peers}
+                muted={voice.muted}
+                error={voice.error}
+                onJoin={() => void voice.join()}
+                onLeave={voice.leave}
+                onToggleMute={voice.toggleMute}
+                label={room.name}
+              />
+            )}
 
             <div className="cz-chat-log">
               {msgs.length === 0 && (
