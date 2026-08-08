@@ -10,6 +10,7 @@ import {
 } from '../../dev/previewMember'
 import { notificationsChanged } from '../../hooks/notifySignal'
 import { useVoiceRoom } from '../../voice/useVoiceRoom'
+import { useVoicePresence } from '../../voice/useVoicePresence'
 import { VoiceBar } from '../../voice/VoiceBar'
 
 /**
@@ -72,6 +73,13 @@ export function Chat({ authed = false }: { authed?: boolean }) {
   // Voice rides the room you're already in: a DM is a 1:1 call, a circuit room a small
   // group one. Media is peer-to-peer and never reaches a server — see useVoiceRoom.
   const voice = useVoiceRoom(room?.id ?? null, me, previewMember ? 'Preview You' : 'You')
+  // Live occupancy for every conversation you can see, so a call in progress is visible
+  // from the list without opening it — the thing that makes people join.
+  const voiceIn = useVoicePresence(
+    previewMember || !sb ? [] : rooms.map((r) => r.id),
+    previewMember ? 'Preview You' : 'You',
+    voice.inCall ? (room?.id ?? null) : null,
+  )
 
   const loadOverview = useCallback(async () => {
     if (previewMember) {
@@ -353,6 +361,17 @@ export function Chat({ authed = false }: { authed?: boolean }) {
                 )}
               </span>
             </span>
+            {/* Someone's in there right now — shown before the unread count, because a live
+                call is a reason to act and an unread message is a reason to read. */}
+            {(voiceIn[r.id]?.length ?? 0) > 0 && (
+              <span
+                className="cz-conv-voice"
+                title={`In the call: ${voiceIn[r.id].join(', ')}`}
+                aria-label={`${voiceIn[r.id].length} in the call`}
+              >
+                🎙 {voiceIn[r.id].length}
+              </span>
+            )}
             {r.unread > 0 && <span className="cz-conv-badge">{r.unread}</span>}
           </button>
         ))}
