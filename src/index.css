@@ -952,6 +952,20 @@
   border-top: 1px dashed var(--b1, rgba(127, 127, 127, 0.18));
 }
 
+/* "someone is in this call" on a conversation row — green rather than the accent used for
+   unread, so a live call reads as a different kind of thing from a message waiting */
+.cz-conv-voice {
+  flex: 0 0 auto;
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: var(--r-pill, 999px);
+  color: var(--grn, #22cc78);
+  background: color-mix(in srgb, var(--grn, #22cc78) 16%, transparent);
+  border: 1px solid color-mix(in srgb, var(--grn, #22cc78) 40%, transparent);
+  white-space: nowrap;
+}
+
 /* Voice call strip under a conversation header. One button at rest — mute, who's here and
    hang up only appear once you're actually in a call. */
 .voice-bar {
