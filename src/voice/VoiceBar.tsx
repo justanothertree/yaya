@@ -1,30 +1,16 @@
-import { useEffect, useRef } from 'react'
-import type { VoicePeer } from './useVoiceRoom'
+import type { VoicePeer } from './voiceSession'
 
 /**
- * The call strip that sits under a conversation's header.
+ * The call strip inside a conversation.
  *
  * Deliberately one button until you're in a call. Someone with no computer literacy should
  * see "Call" and nothing else — mute, who's here and hang up only appear once they're
  * relevant. Same progressive-disclosure rule the rest of the site follows.
+ *
+ * It does NOT render the audio: CallDock does, once, at app level. Playing the same stream
+ * from two elements would double it, and audio mounted here would cut out the moment you
+ * navigated away.
  */
-
-/** One <audio> per peer. Rendered, not created imperatively, so React owns the teardown. */
-function PeerAudio({ peer }: { peer: VoicePeer }) {
-  const ref = useRef<HTMLAudioElement>(null)
-  useEffect(() => {
-    const el = ref.current
-    if (!el) return
-    el.srcObject = peer.stream
-    // Autoplay is allowed here because joining the call was itself a user gesture.
-    void el.play().catch(() => {})
-    return () => {
-      el.srcObject = null
-    }
-  }, [peer.stream])
-  return <audio ref={ref} autoPlay playsInline />
-}
-
 export function VoiceBar({
   inCall,
   peers,
@@ -75,9 +61,6 @@ export function VoiceBar({
       <button className="btn voice-leave" onClick={onLeave} title="Leave the call">
         Leave
       </button>
-      {peers.map((p) => (
-        <PeerAudio key={p.id} peer={p} />
-      ))}
     </div>
   )
 }

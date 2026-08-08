@@ -7,6 +7,7 @@ import { IconGitHub, IconLinkedIn } from './components/Icons'
 import { SettingsMenu } from './components/SettingsMenu'
 import { MobileNav } from './components/MobileNav'
 import { AmbientBackdrop } from './components/AmbientBackdrop'
+import { CallDock } from './voice/CallDock'
 import { useReveal } from './hooks/useReveal'
 import { useNotifications } from './hooks/useNotifications'
 import { NotificationBell } from './components/NotificationBell'
@@ -844,6 +845,9 @@ export default function App() {
   return (
     <div data-theme={theme} data-page={active}>
       <AmbientBackdrop section={active} theme={theme} enabled={ambientOn} />
+      {/* A call outlives the screen it started on, so its controls and its audio live at app
+          level — otherwise you'd navigate away and be stuck in a call you can't hear or end. */}
+      <CallDock />
       <a href="#content" className="skip-link">
         Skip to content
       </a>

@@ -9,7 +9,7 @@ import {
   PREVIEW_LOUNGE_IN,
 } from '../../dev/previewMember'
 import { notificationsChanged } from '../../hooks/notifySignal'
-import { useVoiceRoom } from '../../voice/useVoiceRoom'
+import { useVoiceSession } from '../../voice/useVoiceSession'
 import { useVoicePresence } from '../../voice/useVoicePresence'
 import { VoiceBar } from '../../voice/VoiceBar'
 
@@ -71,14 +71,17 @@ export function Chat({ authed = false }: { authed?: boolean }) {
   const [loungeIn, setLoungeIn] = useState<boolean | null>(previewMember ? PREVIEW_LOUNGE_IN : null)
   const [loungeBusy, setLoungeBusy] = useState(false)
   // Voice rides the room you're already in: a DM is a 1:1 call, a circuit room a small
-  // group one. Media is peer-to-peer and never reaches a server — see useVoiceRoom.
-  const voice = useVoiceRoom(room?.id ?? null, me, previewMember ? 'Preview You' : 'You')
+  // group one. The call lives in voiceSession, not here, so it survives navigating away or
+  // toggling canvas — this component only reads and controls it.
+  const voice = useVoiceSession()
   // Live occupancy for every conversation you can see, so a call in progress is visible
   // from the list without opening it — the thing that makes people join.
   const voiceIn = useVoicePresence(
     previewMember || !sb ? [] : rooms.map((r) => r.id),
     previewMember ? 'Preview You' : 'You',
-    voice.inCall ? (room?.id ?? null) : null,
+    // the room the CALL is in, which is no longer necessarily the one you're looking at —
+    // you can browse other conversations without leaving the call
+    voice.inCall ? voice.roomId : null,
   )
 
   const loadOverview = useCallback(async () => {
@@ -419,13 +422,16 @@ export function Chat({ authed = false }: { authed?: boolean }) {
             </div>
 
             {/* Voice only makes sense with a real session — the DEV harness has no peers. */}
-            {!previewMember && sb && (
+            {!previewMember && sb && me && (
               <VoiceBar
-                inCall={voice.inCall}
+                // Only show this room's call here. If the call is in another conversation,
+                // the app-wide bar is what controls it — two live "Leave" buttons for
+                // different rooms on one screen would be a trap.
+                inCall={voice.inCall && voice.roomId === room.id}
                 peers={voice.peers}
                 muted={voice.muted}
                 error={voice.error}
-                onJoin={() => void voice.join()}
+                onJoin={() => void voice.join(room.id, room.name, me, 'You')}
                 onLeave={voice.leave}
                 onToggleMute={voice.toggleMute}
                 label={room.name}
