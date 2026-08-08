@@ -10,6 +10,11 @@ import type { VoicePeer } from './voiceSession'
  * isn't going to open a console to find out why they can't hear anyone.
  */
 
+/** Discord's cue: who is making noise right now. */
+export function speakingNames(peers: VoicePeer[]): string[] {
+  return peers.filter((p) => p.speaking && p.status === 'connected').map((p) => p.name)
+}
+
 export function peerWord(p: VoicePeer): string {
   switch (p.status) {
     case 'connecting':

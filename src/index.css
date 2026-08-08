@@ -1081,6 +1081,22 @@
   font-size: 0.72rem;
   line-height: 1.35;
 }
+/* who's talking, right now — green like the live-mic dot so the two read as the same idea */
+.voice-talking,
+.call-dock-talking {
+  color: var(--grn, #22cc78);
+  font-weight: 700;
+  font-size: 0.72rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.voice-row-label.is-talking {
+  color: var(--grn, #22cc78);
+}
+.voice-row-label.is-talking::before {
+  content: '🗣 ';
+}
 /* the level bar, with the threshold marked on it */
 .mic-meter {
   position: relative;
@@ -1116,14 +1132,56 @@
    MUST sit after every base rule above: these are single-class selectors, so an earlier copy
    lost to `.mic-meter { flex: 1; min-width: 60px }` and the meter stayed 60px wide. That is
    the third time this file has caught me with source order — check it every time. */
-/* The chat page is a messaging screen, not a document, so it shouldn't sit inside a card's
-   worth of padding on a phone. Between the container's margin and padding and the card's own,
-   ~45px of each side was chrome — 24% of a 375px screen gone before a message appeared.
-   Scoped to #chat by id so no other section changes. */
+/* On a phone, chat is a SCREEN, not a document in a scrolling page.
+   It used to be a card inside `main`, with the site footer below it — 102px of page scroll
+   under a messaging app, which is what made it feel like a page within a page. Here it fills
+   from under the banner to the bottom bar and only its own panes scroll.
+   `[data-page]` is set on the root by App, which is the one hook that identifies the page. */
 @media (max-width: 640px) {
-  #chat.card {
-    padding-left: 0.4rem;
-    padding-right: 0.4rem;
+  /* Pinned between the banner and the bottom bar rather than sized with magic numbers —
+     it fills exactly, at full width, escaping the container padding a document wants and a
+     conversation doesn't. */
+  [data-page='chat'] #chat.card {
+    position: fixed;
+    top: var(--nav-h, 52px);
+    left: 0;
+    right: 0;
+    bottom: calc(60px + env(safe-area-inset-bottom, 0px));
+    margin: 0;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    background: var(--bg);
+    /* a little bottom padding so the composer isn't glued to the bottom bar */
+    padding: 0.3rem 0.5rem 0.3rem;
+    display: flex;
+    flex-direction: column;
+    /* the scroll-reveal animation would shift a fixed box off its anchor */
+    transform: none;
+    opacity: 1;
+  }
+  /* let flex own the height instead of the earlier calc() */
+  [data-page='chat'] .cz-tab-chat {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  [data-page='chat'] .cz-tab-chat .cz-chat {
+    flex: 1;
+    min-height: 0;
+    height: auto;
+  }
+  /* the footer belongs under a document, not under a conversation */
+  [data-page='chat'] footer {
+    display: none;
+  }
+  /* !important because App sets main's bottom padding inline, and inline beats stylesheets */
+  [data-page='chat'] main {
+    padding-bottom: 0 !important;
+  }
+  [data-page='chat'] {
+    overflow: hidden;
   }
 }
 

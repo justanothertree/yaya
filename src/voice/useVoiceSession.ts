@@ -19,8 +19,10 @@ export function useVoiceSession() {
     toggleMute: voiceSession.toggleMute,
     setThreshold: voiceSession.setThreshold,
     setPeerVolume: voiceSession.setPeerVolume,
+    setMaster: voiceSession.setMaster,
     // not part of the snapshot on purpose — see voiceSession.getMicLevel
     getMicLevel: voiceSession.getMicLevel,
     isOpen: voiceSession.isOpen,
+    usesWebAudio: voiceSession.usesWebAudio,
   }
 }

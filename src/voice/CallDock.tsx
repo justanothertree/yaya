@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useVoiceSession } from './useVoiceSession'
 import type { VoicePeer } from './voiceSession'
-import { callWord, peerWord } from './callWords'
+import { callWord, peerWord, speakingNames } from './callWords'
 
 /**
  * A call now outlives the screen it started on, which is what makes it usable — but a call
@@ -24,8 +24,21 @@ function readVol(): number {
   }
 }
 
-/** master × that person's own level — the dock knob moves everyone, the per-person one doesn't */
-function PeerAudio({ peer, volume }: { peer: VoicePeer; volume: number }) {
+/**
+ * The element exists to keep the remote track flowing — some browsers won't deliver one
+ * without a media sink attached. When Web Audio is handling playback (which is what lets
+ * volume exceed 100%) this stays muted so nothing is heard twice; if Web Audio failed it
+ * plays normally, capped at source level.
+ */
+function PeerAudio({
+  peer,
+  fallbackVolume,
+  webAudio,
+}: {
+  peer: VoicePeer
+  fallbackVolume: number
+  webAudio: boolean
+}) {
   const ref = useRef<HTMLAudioElement>(null)
   useEffect(() => {
     const el = ref.current
@@ -36,26 +49,40 @@ function PeerAudio({ peer, volume }: { peer: VoicePeer; volume: number }) {
       el.srcObject = null
     }
   }, [peer.stream])
-  // Volume is applied on its own, so dragging the slider doesn't re-attach the stream —
-  // re-attaching mid-call causes an audible gap.
+  // Applied separately so dragging a slider never re-attaches the stream — re-attaching
+  // mid-call causes an audible gap.
   useEffect(() => {
-    if (ref.current) ref.current.volume = volume
-  }, [volume])
+    const el = ref.current
+    if (!el) return
+    el.muted = webAudio
+    el.volume = Math.min(1, fallbackVolume)
+  }, [fallbackVolume, webAudio])
   return <audio ref={ref} autoPlay playsInline />
 }
 
 export function CallDock() {
-  const { inCall, roomId, roomName, peers, muted, leave, toggleMute, peerVolume } =
-    useVoiceSession()
+  const {
+    inCall,
+    roomId,
+    roomName,
+    peers,
+    muted,
+    leave,
+    toggleMute,
+    peerVolume,
+    setMaster,
+    usesWebAudio,
+  } = useVoiceSession()
   const [volume, setVolume] = useState(readVol)
 
   useEffect(() => {
+    setMaster(volume)
     try {
       localStorage.setItem(VOL_KEY, String(volume))
     } catch {
       /* private mode — it just won't persist */
     }
-  }, [volume])
+  }, [volume, setMaster])
 
   if (!inCall) return null
 
@@ -70,7 +97,13 @@ export function CallDock() {
         title={peers.map(peerWord).join('\n') || `Back to ${roomName}`}
       >
         <strong>{roomName}</strong>
-        <span className="muted">{callWord(peers)}</span>
+        {/* Who's talking wins over the roster while it's happening — that's the information
+            you want mid-call, and it's the Discord cue Evan's friends asked for. */}
+        {speakingNames(peers).length > 0 ? (
+          <span className="call-dock-talking">🗣 {speakingNames(peers).join(', ')}</span>
+        ) : (
+          <span className="muted">{callWord(peers)}</span>
+        )}
       </a>
       <label className="call-vol" title={`Their volume: ${Math.round(volume * 100)}%`}>
         <span aria-hidden>{volume === 0 ? '🔈' : '🔊'}</span>
@@ -100,7 +133,12 @@ export function CallDock() {
       {peers
         .filter((p) => p.stream)
         .map((p) => (
-          <PeerAudio key={p.id} peer={p} volume={volume * (peerVolume[p.id] ?? 1)} />
+          <PeerAudio
+            key={p.id}
+            peer={p}
+            fallbackVolume={volume * (peerVolume[p.id] ?? 0.5) * 2}
+            webAudio={usesWebAudio()}
+          />
         ))}
     </div>
   )

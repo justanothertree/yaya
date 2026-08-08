@@ -29,7 +29,23 @@ export type VoicePeer = {
   name: string
   stream: MediaStream | null
   status: 'connecting' | 'connected' | 'reconnecting' | 'failed'
+  /** currently making noise — drives the Discord-style "who's talking" highlight */
+  speaking: boolean
 }
+
+/**
+ * Incoming audio runs through Web Audio rather than straight out of an <audio> element,
+ * for two reasons that arrived together from testing:
+ *
+ *  - an element's `volume` is hard-capped at 1.0, and a friend reported that his 100% was
+ *    still too quiet. Going louder than source needs a GainNode. peerVolume 0.5 is unity,
+ *    so the slider reads 100% at normal and goes to 200%.
+ *  - it gives us an analyser per person, which is what makes a speaking indicator possible.
+ *
+ * The <audio> element stays, muted, because some browsers won't flow a remote track without
+ * a media element sink attached.
+ */
+type PeerOut = { src: MediaStreamAudioSourceNode; gain: GainNode; analyser: AnalyserNode }
 
 export type VoiceState = {
   roomId: string | null
@@ -91,6 +107,12 @@ let gate: GainNode | null = null
 let gateTimer = 0
 let micLevel = 0
 let openUntil = 0
+/** one shared context for playback, plus a node graph per person */
+let outCtx: AudioContext | null = null
+const outs = new Map<string, PeerOut>()
+/** master attenuation from the dock, 0–1; per-person gain multiplies on top */
+let master = 1
+let speakTick = 0
 let chan: ReturnType<ReturnType<typeof getSupabaseClient>['channel']> | null = null
 let meId: string | null = null
 let myName = 'You'
@@ -156,7 +178,12 @@ function buildGate(mic: MediaStream): MediaStream {
     // you either hot-mic or silently muted for as long as you were looking elsewhere.
     // Timers are throttled in background tabs rather than stopped, so the gate keeps
     // deciding; it just reacts up to about a second late until you come back.
-    gateTimer = window.setInterval(tick, 40)
+    gateTimer = window.setInterval(() => {
+      tick()
+      // Same timer drives the speaking indicators — one interval, not two, and it keeps
+      // working in a background tab where rAF would stop.
+      if (++speakTick % 3 === 0) pollSpeaking()
+    }, 40)
     tick()
     return dest.stream
   } catch {
@@ -166,6 +193,64 @@ function buildGate(mic: MediaStream): MediaStream {
     gate = null
     return mic
   }
+}
+
+/** peerVolume is 0–1 with 0.5 = unity, so the UI can offer 0–200%. */
+const gainFor = (peerId: string) => master * (state.peerVolume[peerId] ?? 0.5) * 2
+
+/** Build the playback graph for a person once their track arrives. */
+function attachOutput(peerId: string, stream: MediaStream) {
+  try {
+    if (!outCtx) outCtx = new AudioContext()
+    outs.get(peerId)?.src.disconnect()
+    const src = outCtx.createMediaStreamSource(stream)
+    const gain = outCtx.createGain()
+    const analyser = outCtx.createAnalyser()
+    analyser.fftSize = 512
+    gain.gain.value = gainFor(peerId)
+    src.connect(gain)
+    gain.connect(analyser)
+    gain.connect(outCtx.destination)
+    outs.set(peerId, { src, gain, analyser })
+    // A context created before a user gesture starts suspended; joining was the gesture,
+    // but resume anyway or nobody is audible and nothing says why.
+    void outCtx.resume().catch(() => {})
+  } catch {
+    // No Web Audio — the element falls back to plain playback, capped at 100%.
+  }
+}
+
+function detachOutput(peerId: string) {
+  const o = outs.get(peerId)
+  if (o) {
+    try {
+      o.src.disconnect()
+      o.gain.disconnect()
+    } catch {
+      /* already gone */
+    }
+  }
+  outs.delete(peerId)
+}
+
+/** Poll every peer's analyser and flip `speaking` only when it actually changes. */
+function pollSpeaking() {
+  if (!outs.size) return
+  const buf = new Float32Array(512)
+  let changed = false
+  const next = state.peers.map((p) => {
+    const o = outs.get(p.id)
+    if (!o) return p
+    o.analyser.getFloatTimeDomainData(buf)
+    let s = 0
+    for (let i = 0; i < buf.length; i++) s += buf[i] * buf[i]
+    // low bar — this is "is there voice" not "is it loud"
+    const talking = Math.sqrt(s / buf.length) > 0.01
+    if (talking !== p.speaking) changed = true
+    return talking === p.speaking ? p : { ...p, speaking: talking }
+  })
+  // Only touch state on a real transition; this runs ten times a second.
+  if (changed) set({ peers: next })
 }
 
 function teardownGate() {
@@ -184,6 +269,7 @@ function dropPeer(id: string) {
   pcs.get(id)?.close()
   pcs.delete(id)
   names.delete(id)
+  detachOutput(id)
   set({ peers: state.peers.filter((p) => p.id !== id) })
 }
 
@@ -226,6 +312,7 @@ function makePc(peerId: string, peerName: string) {
     const stream = e.streams[0]
     if (!stream) return
     upsertPeer(peerId, { stream, name: names.get(peerId) ?? 'Someone' })
+    attachOutput(peerId, stream)
   }
   pc.onconnectionstatechange = () => {
     switch (pc.connectionState) {
@@ -257,7 +344,14 @@ export const voiceSession = {
   },
 
   async join(roomId: string, roomName: string, userId: string, displayName: string) {
-    if (state.inCall) return
+    // Already here — nothing to do.
+    if (state.inCall && state.roomId === roomId) return
+    // Calling a different room switches to it. It used to refuse until you'd left the old
+    // one first, which is a step nobody should have to think about; every app that has
+    // rooms just moves you.
+    // voiceSession.leave, not this.leave — these methods get passed around as bare
+    // references (the hook hands them straight to components), so `this` isn't reliable.
+    if (state.inCall) voiceSession.leave()
     set({ error: null })
     if (!navigator.mediaDevices?.getUserMedia || typeof RTCPeerConnection === 'undefined') {
       set({ error: 'This browser can’t do voice calls. Try Chrome, Edge, Safari or Firefox.' })
@@ -360,6 +454,10 @@ export const voiceSession = {
     pcs.clear()
     names.clear()
     teardownGate()
+    outs.forEach((_, id) => detachOutput(id))
+    outs.clear()
+    void outCtx?.close().catch(() => {})
+    outCtx = null
     local?.getTracks().forEach((t) => t.stop())
     rawMic?.getTracks().forEach((t) => t.stop())
     local = null
@@ -384,6 +482,13 @@ export const voiceSession = {
    */
   getMicLevel: () => micLevel,
 
+  /**
+   * True when playback is going through Web Audio, which is what allows above-100% volume.
+   * The <audio> elements mute themselves in that case so the sound isn't played twice; if
+   * Web Audio failed they stay unmuted and fall back to plain, capped playback.
+   */
+  usesWebAudio: () => !!outCtx,
+
   /** Is the gate currently letting audio through? Lets the meter show open vs held shut. */
   isOpen: () => state.threshold <= 0 || performance.now() < openUntil,
 
@@ -400,6 +505,15 @@ export const voiceSession = {
   setPeerVolume(peerId: string, v: number) {
     const vol = Math.min(1, Math.max(0, v))
     set({ peerVolume: { ...state.peerVolume, [peerId]: vol } })
+    const o = outs.get(peerId)
+    if (o && outCtx) o.gain.gain.setTargetAtTime(gainFor(peerId), outCtx.currentTime, 0.02)
+  },
+
+  /** The dock's knob: attenuation across everyone, on top of each person's own level. */
+  setMaster(v: number) {
+    master = Math.min(1, Math.max(0, v))
+    if (!outCtx) return
+    outs.forEach((o, id) => o.gain.gain.setTargetAtTime(gainFor(id), outCtx!.currentTime, 0.02))
   },
 }
 

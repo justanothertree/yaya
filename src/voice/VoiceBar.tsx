@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useVoiceSession } from './useVoiceSession'
-import { callWord, callHelp, peerWord } from './callWords'
+import { callWord, callHelp, peerWord, speakingNames } from './callWords'
 import { MicMeter } from './MicMeter'
 
 /**
@@ -38,12 +38,16 @@ export function VoiceBar({
         <button
           className="btn"
           onClick={() => void v.join(roomId, roomName, meId, myName)}
-          title={v.inCall ? `You're already in ${v.roomName}` : `Start a voice call in ${roomName}`}
-          disabled={v.inCall}
+          title={
+            v.inCall
+              ? `Leave ${v.roomName} and join this call instead`
+              : `Start a voice call in ${roomName}`
+          }
         >
-          🎙 Call
+          {/* Switching used to be blocked until you'd left the other call first. It just
+              moves you now, so the button says which it's about to do. */}
+          {v.inCall ? '🎙 Switch to this call' : '🎙 Call'}
         </button>
-        {/* Being in another room's call is why the button is dead — say so, don't just grey out */}
         {v.inCall && <span className="voice-status muted">In a call in {v.roomName}</span>}
         {v.error && <span className="voice-err">{v.error}</span>}
       </div>
@@ -55,7 +59,11 @@ export function VoiceBar({
       <div className="voice-bar is-live">
         <span className="voice-dot" aria-hidden />
         <span className="voice-status" title={v.peers.map(peerWord).join('\n')}>
-          {callWord(v.peers)}
+          {speakingNames(v.peers).length > 0 ? (
+            <span className="voice-talking">🗣 {speakingNames(v.peers).join(', ')}</span>
+          ) : (
+            callWord(v.peers)
+          )}
         </span>
         <button
           className={'btn' + (v.muted ? ' is-muted' : '')}
@@ -111,18 +119,23 @@ export function VoiceBar({
               <div className="voice-row-label">How loud each person is</div>
               {v.peers.map((p) => (
                 <label className="voice-row" key={p.id}>
-                  <span className="voice-row-label">{p.name}</span>
+                  <span className={'voice-row-label' + (p.speaking ? ' is-talking' : '')}>
+                    {p.name}
+                  </span>
                   <input
                     type="range"
                     min={0}
                     max={1}
                     step={0.05}
-                    value={v.peerVolume[p.id] ?? 1}
+                    /* 0.5 is unity, so the slider reads 100% at normal and goes to 200% —
+                       a friend's 100% was too quiet, and an <audio> element can't exceed
+                       source level. Web Audio gain can. */
+                    value={v.peerVolume[p.id] ?? 0.5}
                     onChange={(e) => v.setPeerVolume(p.id, parseFloat(e.target.value))}
                     aria-label={`Volume for ${p.name}`}
                   />
                   <span className="voice-row-val">
-                    {Math.round((v.peerVolume[p.id] ?? 1) * 100)}%
+                    {Math.round((v.peerVolume[p.id] ?? 0.5) * 200)}%
                   </span>
                 </label>
               ))}
