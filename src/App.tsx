@@ -79,10 +79,11 @@ const ALL_SECTIONS: Section[] = [
   'profile',
 ]
 
-// Single source of truth for left/right section order (keyboard, swipe, edge buttons).
+// Single source of truth for left/right section order (keyboard shortcuts and the nav).
+// No longer drives a swipe gesture — see the note where that was removed.
 // Home is the unified Evan Cook page (portfolio + about + projects). Circuit is featured
 // as a project on Home and appears in nav only for signed-in members.
-// 'invite' and 'admin' are not in the arrow/swipe order — accessed via direct link or nav only.
+// 'invite' and 'admin' are not in the arrow-key order — accessed via direct link or nav only.
 const navOrder = (
   financeOn: boolean,
   authed: boolean,
@@ -590,59 +591,17 @@ export default function App() {
   // fresh reveal pass too, or they mount opacity-0 and stay invisible
   useReveal('.reveal', `${active}:${canvasOpen}`)
 
-  // Swipe navigation on touch devices. Deliberately strict: page changes are jarring when
-  // accidental, so only a quick, clearly-horizontal flick navigates — a scroll that wobbles
-  // sideways, a slow drag, or a gesture on charts/scrollable rows must never flip the page.
-  useEffect(() => {
-    let startX = 0
-    let startY = 0
-    let startAt = 0
-    let startTarget: EventTarget | null = null
-    const THRESH = 90 // a real flick, not scroll drift
-    const MAX_DRIFT = 70 // too much vertical movement = it was a scroll
-    const MAX_MS = 600 // flicks are fast; slow drags don't navigate
-    const inHorizontalScroller = (el: HTMLElement | null): boolean => {
-      for (let n = el; n && n !== document.body; n = n.parentElement) {
-        if (n.scrollWidth > n.clientWidth + 4) {
-          const ox = getComputedStyle(n).overflowX
-          if (ox === 'auto' || ox === 'scroll') return true
-        }
-      }
-      return false
-    }
-    const onTouchStart = (e: TouchEvent) => {
-      if (e.touches.length !== 1) return // ignore multi-touch
-      const t = e.touches[0]
-      startX = t.clientX
-      startY = t.clientY
-      startAt = e.timeStamp
-      startTarget = e.target
-    }
-    const onTouchEnd = (e: TouchEvent) => {
-      if (!startTarget) return
-      // ignore gestures that start on interactive things: canvas (snake), charts (svg),
-      // form fields, links/buttons, or anything horizontally scrollable (tables, chips)
-      const node = startTarget as HTMLElement
-      if (node.closest('canvas, svg, input, textarea, button, a, select, [data-noswipe]')) return
-      if (inHorizontalScroller(node)) return
-      if (e.timeStamp - startAt > MAX_MS) return
-      const t = e.changedTouches[0]
-      const dx = t.clientX - startX
-      const dy = t.clientY - startY
-      const clearlyHorizontal = Math.abs(dx) > Math.abs(dy) * 2 && Math.abs(dy) < MAX_DRIFT
-      if (!clearlyHorizontal) return
-      const order = navOrder(hasFinanceSupabaseEnv(), isFinanceAuthed, isAdmin, canFinance === true)
-      const idx = order.indexOf(active)
-      if (dx > THRESH && idx > 0) setActive(order[idx - 1]) // swipe right -> previous
-      if (dx < -THRESH && idx < order.length - 1) setActive(order[idx + 1]) // swipe left -> next
-    }
-    window.addEventListener('touchstart', onTouchStart, { passive: true })
-    window.addEventListener('touchend', onTouchEnd)
-    return () => {
-      window.removeEventListener('touchstart', onTouchStart)
-      window.removeEventListener('touchend', onTouchEnd)
-    }
-  }, [active, isFinanceAuthed, isAdmin, canFinance])
+  // REMOVED: swipe-to-change-page.
+  //
+  // It was tuned hard against false positives — flick distance, vertical drift, duration,
+  // and exemptions for canvases, charts, form fields and horizontal scrollers. None of that
+  // was enough: Evan only ever triggered it by accident, and it moved the page out from
+  // under whatever he was doing. The bottom bar and launcher made it redundant anyway, so
+  // the gesture was pure downside.
+  //
+  // Note this was a WINDOW-level listener, which is why it could fire over almost anything.
+  // Swipe still works where it's asked for and scoped to an element: Snake's controls, the
+  // nav link strip, the sub-tab strips.
 
   // Keep active nav link visible in the top bar on section change
   useEffect(() => {
