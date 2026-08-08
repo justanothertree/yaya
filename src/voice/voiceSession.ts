@@ -168,7 +168,19 @@ export const voiceSession = {
     }
     let mic: MediaStream
     try {
-      mic = await navigator.mediaDevices.getUserMedia({ audio: true, video: false })
+      mic = await navigator.mediaDevices.getUserMedia({
+        // Ask for the browser's built-in voice processing explicitly rather than trusting
+        // the defaults. echoCancellation is what stops two people in one room feeding back
+        // through each other's speakers; noiseSuppression gates room hum and fans;
+        // autoGainControl levels a quiet talker against a loud one, which is the practical
+        // version of compression here. Browsers vary in what they enable unasked.
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+        video: false,
+      })
     } catch (e) {
       // Blocked and absent need different advice — telling someone with no microphone to
       // check their permissions sends them somewhere that can't help.
