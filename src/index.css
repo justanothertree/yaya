@@ -952,6 +952,57 @@
   border-top: 1px dashed var(--b1, rgba(127, 127, 127, 0.18));
 }
 
+/* The call that follows you across pages. Sits above the mobile bottom bar rather than
+   behind it, and clear of the safe area — being unable to reach Leave is the one failure
+   this component can't have. */
+.call-dock {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: calc(0.75rem + env(safe-area-inset-bottom, 0px));
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2, 0.5rem);
+  max-width: min(92vw, 26rem);
+  padding: 0.4rem 0.6rem;
+  border-radius: var(--r-pill, 999px);
+  background: var(--panel, #1a1a28);
+  border: 1px solid var(--border, rgba(127, 127, 127, 0.25));
+  box-shadow: 0 8px 26px rgba(0, 0, 0, 0.38);
+  will-change: transform;
+}
+@media (max-width: 819.98px) {
+  /* clear the bottom nav */
+  .call-dock {
+    bottom: calc(72px + env(safe-area-inset-bottom, 0px));
+  }
+}
+.call-dock-who {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.2;
+}
+.call-dock-who strong {
+  font-size: 0.8rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.call-dock-who .muted {
+  font-size: 0.7rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.call-dock .btn {
+  font-size: 0.78rem;
+  padding: 0.15rem 0.55rem;
+  min-height: 32px;
+  flex: 0 0 auto;
+}
+
 /* "someone is in this call" on a conversation row — green rather than the accent used for
    unread, so a live call reads as a different kind of thing from a message waiting */
 .cz-conv-voice {
