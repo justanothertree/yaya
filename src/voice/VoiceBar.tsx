@@ -1,4 +1,5 @@
 import type { VoicePeer } from './voiceSession'
+import { callWord, callHelp, peerWord } from './callWords'
 
 /**
  * The call strip inside a conversation.
@@ -45,10 +46,8 @@ export function VoiceBar({
   return (
     <div className="voice-bar is-live">
       <span className="voice-dot" aria-hidden />
-      <span className="voice-status">
-        {peers.length === 0
-          ? 'Waiting for someone to join…'
-          : `In call with ${peers.map((p) => p.name).join(', ')}`}
+      <span className="voice-status" title={peers.map(peerWord).join('\n')}>
+        {callWord(peers)}
       </span>
       <button
         className={'btn' + (muted ? ' is-muted' : '')}
@@ -61,6 +60,7 @@ export function VoiceBar({
       <button className="btn voice-leave" onClick={onLeave} title="Leave the call">
         Leave
       </button>
+      {callHelp(peers) && <span className="voice-err">{callHelp(peers)}</span>}
     </div>
   )
 }
