@@ -14,14 +14,23 @@ import { getSupabaseClient } from '../finance/client'
  * would still have arrived.
  *
  * So: one channel per room, and only for rooms already in your own conversation list, which
- * list_chat_overview has access-controlled. You can only learn about rooms you're in. That
- * costs a handful of channels instead of one, which at family scale is nothing.
+ * list_chat_overview has access-controlled. You can only learn about rooms you're in.
+ *
+ * ⚠️ THE KEY MUST BE THE USER ID, NOT THE NAME
+ *
+ * It was the name, and the name was the literal 'You' for everybody, so Supabase filed all
+ * participants under one presence key. Consequences, all reported from real testing: the
+ * count never rose above 1 however many people joined, and the badge lingered after someone
+ * left because the shared key stayed occupied by whoever remained. A presence key has to be
+ * unique per person; the display name rides in the payload where it belongs.
  *
  * Topic is separate from the signalling channel (`voice:<id>`) on purpose. Subscribing twice
  * to one topic from the same client would report you as two people in the room.
  */
 export function useVoicePresence(
   roomIds: string[],
+  /** unique per person — this is the presence key */
+  myId: string | null,
   myName: string,
   /** the room whose call you're actually in, if any — you appear only there */
   activeRoomId: string | null,
@@ -32,17 +41,17 @@ export function useVoicePresence(
   const key = roomIds.join(',')
 
   useEffect(() => {
+    if (!myId) return
     const sb = getSupabaseClient()
     const ids = key ? key.split(',') : []
     const channels = ids.map((id) => {
-      const ch = sb.channel(`vp:${id}`, { config: { presence: { key: myName } } })
+      const ch = sb.channel(`vp:${id}`, { config: { presence: { key: myId } } })
       ch.on('presence', { event: 'sync' }, () => {
         const state = ch.presenceState() as Record<string, Array<{ name?: string }>>
-        const names = Object.values(state)
-          .flat()
-          .map((m) => m?.name)
-          .filter((n): n is string => !!n)
-        setByRoom((prev) => ({ ...prev, [id]: Array.from(new Set(names)) }))
+        // One entry per presence KEY, i.e. per person. Deduping by name would merge two
+        // people who happen to share one — which is exactly how the count got stuck at 1.
+        const names = Object.entries(state).map(([, metas]) => metas[0]?.name || 'Someone')
+        setByRoom((prev) => ({ ...prev, [id]: names }))
       })
       ch.subscribe((status) => {
         // Announce yourself only in the room you're actually calling in. Watching a room
@@ -53,9 +62,14 @@ export function useVoicePresence(
       return ch
     })
     return () => {
-      channels.forEach((ch) => void sb.removeChannel(ch))
+      // untrack before removing, so the badge clears for everyone else immediately rather
+      // than waiting for the server to time the connection out
+      channels.forEach((ch) => {
+        void ch.untrack().catch(() => {})
+        void sb.removeChannel(ch)
+      })
     }
-  }, [key, activeRoomId, myName])
+  }, [key, activeRoomId, myId, myName])
 
   return byRoom
 }

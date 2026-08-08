@@ -66,6 +66,11 @@ export function Chat({ authed = false }: { authed?: boolean }) {
   const [err, setErr] = useState<string | null>(null)
   const endRef = useRef<HTMLDivElement>(null)
   const [me, setMe] = useState<string | null>(previewMember ? PREVIEW_ME.id : null)
+  // Your own name, for voice. It used to be the literal string 'You', which meant every
+  // participant announced themselves as "You" — so the call read "in call with You", two
+  // friends showed as "You, You", and the presence count never rose above 1 because they
+  // all shared one identity. A real name per person fixes all three.
+  const [myName, setMyName] = useState<string>(previewMember ? 'Preview You' : 'You')
   // The Lounge is opt-in: nobody is placed in a room with every other account by
   // default. null = not looked up yet, so the invite card doesn't flash on load.
   const [loungeIn, setLoungeIn] = useState<boolean | null>(previewMember ? PREVIEW_LOUNGE_IN : null)
@@ -78,7 +83,8 @@ export function Chat({ authed = false }: { authed?: boolean }) {
   // from the list without opening it — the thing that makes people join.
   const voiceIn = useVoicePresence(
     previewMember || !sb ? [] : rooms.map((r) => r.id),
-    previewMember ? 'Preview You' : 'You',
+    me,
+    myName,
     // the room the CALL is in, which is no longer necessarily the one you're looking at —
     // you can browse other conversations without leaving the call
     voice.inCall ? voice.roomId : null,
@@ -117,6 +123,16 @@ export function Chat({ authed = false }: { authed?: boolean }) {
     }
     if (!sb) return
     void sb.auth.getSession().then(({ data }) => live && setMe(data.session?.user.id ?? null))
+    void sb.rpc('get_my_profile').then(({ data }) => {
+      const row = (Array.isArray(data) ? data[0] : data) as {
+        nickname?: string | null
+        first_name?: string | null
+        username?: string | null
+      } | null
+      // same order the server's display_name() resolver uses
+      const n = row?.nickname || row?.first_name || row?.username
+      if (live && n) setMyName(n)
+    })
     void sb.rpc('my_lounge_opt_in').then(({ data }) => live && setLoungeIn(data === true))
     void sb.rpc('list_chat_overview').then(({ data }) => {
       if (!live || !data) return
@@ -431,7 +447,7 @@ export function Chat({ authed = false }: { authed?: boolean }) {
                 peers={voice.peers}
                 muted={voice.muted}
                 error={voice.error}
-                onJoin={() => void voice.join(room.id, room.name, me, 'You')}
+                onJoin={() => void voice.join(room.id, room.name, me, myName)}
                 onLeave={voice.leave}
                 onToggleMute={voice.toggleMute}
                 label={room.name}

@@ -983,6 +983,24 @@
   flex-direction: column;
   min-width: 0;
   line-height: 1.2;
+  /* it's a link back to the conversation, but it shouldn't shout like one */
+  color: inherit;
+  text-decoration: none;
+}
+.call-dock-who:hover strong {
+  text-decoration: underline;
+}
+/* their volume, not yours — the mic button next to it is yours */
+.call-vol {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  flex: 0 0 auto;
+  font-size: 0.75rem;
+}
+.call-vol input[type='range'] {
+  width: 56px;
+  accent-color: var(--accent, #7c6af7);
 }
 .call-dock-who strong {
   font-size: 0.8rem;
