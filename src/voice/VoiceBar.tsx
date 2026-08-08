@@ -1,66 +1,135 @@
-import type { VoicePeer } from './voiceSession'
+import { useState } from 'react'
+import { useVoiceSession } from './useVoiceSession'
 import { callWord, callHelp, peerWord } from './callWords'
+import { MicMeter } from './MicMeter'
 
 /**
  * The call strip inside a conversation.
  *
- * Deliberately one button until you're in a call. Someone with no computer literacy should
- * see "Call" and nothing else — mute, who's here and hang up only appear once they're
- * relevant. Same progressive-disclosure rule the rest of the site follows.
+ * One button until you're in a call — someone with no computer literacy should see "Call"
+ * and nothing else. Once connected you get who's here, mute and leave; the fiddly bits
+ * (mic sensitivity, per-person volume) sit behind a settings toggle so they're there when
+ * wanted and invisible when not.
  *
- * It does NOT render the audio: CallDock does, once, at app level. Playing the same stream
- * from two elements would double it, and audio mounted here would cut out the moment you
- * navigated away.
+ * Reads the session directly rather than taking a dozen props: the call is a global thing
+ * now, and threading it through would only invite the two surfaces to disagree.
+ *
+ * It does NOT render the audio — CallDock does, once, at app level. Two elements playing one
+ * stream would double it, and audio mounted here would cut out when you navigated away.
  */
 export function VoiceBar({
-  inCall,
-  peers,
-  muted,
-  error,
-  onJoin,
-  onLeave,
-  onToggleMute,
-  label,
+  roomId,
+  roomName,
+  meId,
+  myName,
 }: {
-  inCall: boolean
-  peers: VoicePeer[]
-  muted: boolean
-  error: string | null
-  onJoin: () => void
-  onLeave: () => void
-  onToggleMute: () => void
-  /** who you'd be calling, for the resting state */
-  label: string
+  roomId: string
+  roomName: string
+  meId: string
+  myName: string
 }) {
-  if (!inCall) {
+  const v = useVoiceSession()
+  const [showAudio, setShowAudio] = useState(false)
+  const mine = v.inCall && v.roomId === roomId
+
+  if (!mine) {
     return (
       <div className="voice-bar">
-        <button className="btn" onClick={onJoin} title={`Start a voice call in ${label}`}>
+        <button
+          className="btn"
+          onClick={() => void v.join(roomId, roomName, meId, myName)}
+          title={v.inCall ? `You're already in ${v.roomName}` : `Start a voice call in ${roomName}`}
+          disabled={v.inCall}
+        >
           🎙 Call
         </button>
-        {error && <span className="voice-err">{error}</span>}
+        {/* Being in another room's call is why the button is dead — say so, don't just grey out */}
+        {v.inCall && <span className="voice-status muted">In a call in {v.roomName}</span>}
+        {v.error && <span className="voice-err">{v.error}</span>}
       </div>
     )
   }
 
   return (
-    <div className="voice-bar is-live">
-      <span className="voice-dot" aria-hidden />
-      <span className="voice-status" title={peers.map(peerWord).join('\n')}>
-        {callWord(peers)}
-      </span>
-      <button
-        className={'btn' + (muted ? ' is-muted' : '')}
-        onClick={onToggleMute}
-        aria-pressed={muted}
-        title={muted ? 'Unmute your microphone' : 'Mute your microphone'}
-      >
-        {muted ? '🔇 Muted' : '🎙 Mute'}
-      </button>
-      <button className="btn voice-leave" onClick={onLeave} title="Leave the call">
-        Leave
-      </button>
-      {callHelp(peers) && <span className="voice-err">{callHelp(peers)}</span>}
+    <div className="voice-wrap">
+      <div className="voice-bar is-live">
+        <span className="voice-dot" aria-hidden />
+        <span className="voice-status" title={v.peers.map(peerWord).join('\n')}>
+          {callWord(v.peers)}
+        </span>
+        <button
+          className={'btn' + (v.muted ? ' is-muted' : '')}
+          onClick={v.toggleMute}
+          aria-pressed={v.muted}
+          title={v.muted ? 'Unmute your microphone' : 'Mute your microphone'}
+        >
+          {v.muted ? '🔇 Muted' : '🎙 Mute'}
+        </button>
+        <button
+          className="btn"
+          onClick={() => setShowAudio((s) => !s)}
+          aria-expanded={showAudio}
+          title="Microphone sensitivity and how loud each person is"
+        >
+          ⚙
+        </button>
+        <button className="btn voice-leave" onClick={v.leave} title="Leave the call">
+          Leave
+        </button>
+        {callHelp(v.peers) && <span className="voice-err">{callHelp(v.peers)}</span>}
+      </div>
+
+      {showAudio && (
+        <div className="voice-audio">
+          <label className="voice-row">
+            <span className="voice-row-label">Only send when I’m this loud</span>
+            <MicMeter getLevel={v.getMicLevel} isOpen={v.isOpen} threshold={v.threshold} />
+            <input
+              type="range"
+              min={0}
+              max={0.6}
+              step={0.02}
+              value={v.threshold}
+              onChange={(e) => v.setThreshold(parseFloat(e.target.value))}
+              aria-label="Microphone sensitivity"
+            />
+            <span className="voice-row-val">
+              {/* Shown as position along the slider, not the raw value. Measured against real
+                  signal: room noise sits near 0.05 and normal speech near 0.56, so the useful
+                  band is 0–0.6. Printing the raw number meant "20%" landed at 0.2, i.e. right
+                  on top of normal speech, and would have cut off anyone talking quietly. */}
+              {v.threshold === 0 ? 'always on' : `${Math.round((v.threshold / 0.6) * 100)}%`}
+            </span>
+          </label>
+          <p className="voice-hint muted">
+            Speak normally and watch the bar. Put the marker just below where it reaches, and quiet
+            rooms stop being broadcast. Leave it at 0 to always send.
+          </p>
+
+          {v.peers.length > 0 && (
+            <>
+              <div className="voice-row-label">How loud each person is</div>
+              {v.peers.map((p) => (
+                <label className="voice-row" key={p.id}>
+                  <span className="voice-row-label">{p.name}</span>
+                  <input
+                    type="range"
+                    min={0}
+                    max={1}
+                    step={0.05}
+                    value={v.peerVolume[p.id] ?? 1}
+                    onChange={(e) => v.setPeerVolume(p.id, parseFloat(e.target.value))}
+                    aria-label={`Volume for ${p.name}`}
+                  />
+                  <span className="voice-row-val">
+                    {Math.round((v.peerVolume[p.id] ?? 1) * 100)}%
+                  </span>
+                </label>
+              ))}
+            </>
+          )}
+        </div>
+      )}
     </div>
   )
 }

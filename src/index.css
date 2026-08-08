@@ -1035,6 +1035,82 @@
   white-space: nowrap;
 }
 
+/* Mic sensitivity + per-person volume, revealed by the ⚙ in the call strip. Hidden by
+   default: useful to the person who wants it, invisible to the person who just wants to talk. */
+.voice-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  padding-bottom: 0.4rem;
+}
+.voice-audio {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  padding: var(--sp-2, 0.5rem);
+  border: 1px solid var(--b1, rgba(127, 127, 127, 0.18));
+  border-radius: var(--r-md, 12px);
+  background: var(--b1, rgba(127, 127, 127, 0.06));
+}
+.voice-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.76rem;
+}
+.voice-row-label {
+  flex: 0 0 auto;
+  min-width: 7rem;
+  font-size: 0.76rem;
+  font-weight: 600;
+}
+.voice-row input[type='range'] {
+  flex: 1;
+  min-width: 60px;
+  accent-color: var(--accent, #7c6af7);
+}
+.voice-row-val {
+  flex: 0 0 auto;
+  min-width: 4.2rem;
+  text-align: right;
+  font-size: 0.72rem;
+  opacity: 0.75;
+}
+.voice-hint {
+  margin: 0;
+  font-size: 0.72rem;
+  line-height: 1.35;
+}
+/* the level bar, with the threshold marked on it */
+.mic-meter {
+  position: relative;
+  flex: 1;
+  min-width: 60px;
+  height: 8px;
+  border-radius: var(--r-pill, 999px);
+  background: var(--b2, rgba(127, 127, 127, 0.28));
+  overflow: hidden;
+}
+.mic-meter-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 0%;
+  background: var(--grn, #22cc78);
+  transition: background 0.12s;
+}
+/* grey while the gate is holding you shut — you can see you're not being heard */
+.mic-meter-fill[data-open='0'] {
+  background: var(--b2, rgba(127, 127, 127, 0.5));
+}
+.mic-meter-mark {
+  position: absolute;
+  top: -2px;
+  bottom: -2px;
+  width: 2px;
+  background: var(--text, #eeeef8);
+  opacity: 0.85;
+}
+
 /* Voice call strip under a conversation header. One button at rest — mute, who's here and
    hang up only appear once you're actually in a call. */
 .voice-bar {

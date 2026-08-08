@@ -24,6 +24,7 @@ function readVol(): number {
   }
 }
 
+/** master × that person's own level — the dock knob moves everyone, the per-person one doesn't */
 function PeerAudio({ peer, volume }: { peer: VoicePeer; volume: number }) {
   const ref = useRef<HTMLAudioElement>(null)
   useEffect(() => {
@@ -44,7 +45,8 @@ function PeerAudio({ peer, volume }: { peer: VoicePeer; volume: number }) {
 }
 
 export function CallDock() {
-  const { inCall, roomId, roomName, peers, muted, leave, toggleMute } = useVoiceSession()
+  const { inCall, roomId, roomName, peers, muted, leave, toggleMute, peerVolume } =
+    useVoiceSession()
   const [volume, setVolume] = useState(readVol)
 
   useEffect(() => {
@@ -98,7 +100,7 @@ export function CallDock() {
       {peers
         .filter((p) => p.stream)
         .map((p) => (
-          <PeerAudio key={p.id} peer={p} volume={volume} />
+          <PeerAudio key={p.id} peer={p} volume={volume * (peerVolume[p.id] ?? 1)} />
         ))}
     </div>
   )

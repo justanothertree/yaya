@@ -439,19 +439,7 @@ export function Chat({ authed = false }: { authed?: boolean }) {
 
             {/* Voice only makes sense with a real session — the DEV harness has no peers. */}
             {!previewMember && sb && me && (
-              <VoiceBar
-                // Only show this room's call here. If the call is in another conversation,
-                // the app-wide bar is what controls it — two live "Leave" buttons for
-                // different rooms on one screen would be a trap.
-                inCall={voice.inCall && voice.roomId === room.id}
-                peers={voice.peers}
-                muted={voice.muted}
-                error={voice.error}
-                onJoin={() => void voice.join(room.id, room.name, me, myName)}
-                onLeave={voice.leave}
-                onToggleMute={voice.toggleMute}
-                label={room.name}
-              />
+              <VoiceBar roomId={room.id} roomName={room.name} meId={me} myName={myName} />
             )}
 
             <div className="cz-chat-log">

@@ -17,5 +17,10 @@ export function useVoiceSession() {
     join: voiceSession.join,
     leave: voiceSession.leave,
     toggleMute: voiceSession.toggleMute,
+    setThreshold: voiceSession.setThreshold,
+    setPeerVolume: voiceSession.setPeerVolume,
+    // not part of the snapshot on purpose — see voiceSession.getMicLevel
+    getMicLevel: voiceSession.getMicLevel,
+    isOpen: voiceSession.isOpen,
   }
 }

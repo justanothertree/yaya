@@ -38,6 +38,21 @@ export type VoiceState = {
   muted: boolean
   peers: VoicePeer[]
   error: string | null
+  /** mic gate: below this loudness (0–1) nothing is transmitted. 0 disables the gate. */
+  threshold: number
+  /** per-person listening level, 0–1, keyed by peer id. Missing means 1. */
+  peerVolume: Record<string, number>
+}
+
+const THRESH_KEY = 'voice.threshold.v1'
+
+function readThreshold(): number {
+  try {
+    const v = parseFloat(localStorage.getItem(THRESH_KEY) ?? '0')
+    return Number.isFinite(v) ? Math.min(1, Math.max(0, v)) : 0
+  } catch {
+    return 0
+  }
 }
 
 const ICE: RTCConfiguration = {
@@ -59,6 +74,8 @@ const IDLE: VoiceState = {
   muted: false,
   peers: [],
   error: null,
+  threshold: readThreshold(),
+  peerVolume: {},
 }
 
 let state: VoiceState = IDLE
@@ -66,6 +83,14 @@ const listeners = new Set<() => void>()
 
 // live plumbing, deliberately outside the snapshot — React never needs to see these
 let local: MediaStream | null = null
+/** the raw mic, kept so it can be stopped; `local` is the gated stream peers receive */
+let rawMic: MediaStream | null = null
+let audioCtx: AudioContext | null = null
+let analyser: AnalyserNode | null = null
+let gate: GainNode | null = null
+let gateTimer = 0
+let micLevel = 0
+let openUntil = 0
 let chan: ReturnType<ReturnType<typeof getSupabaseClient>['channel']> | null = null
 let meId: string | null = null
 let myName = 'You'
@@ -80,6 +105,78 @@ function set(patch: Partial<VoiceState>) {
 
 function send(msg: Signal) {
   void chan?.send({ type: 'broadcast', event: 'voice', payload: msg })
+}
+
+/**
+ * Route the mic through a gate so a quiet room transmits nothing.
+ *
+ * This is Discord's "input sensitivity", and it exists because an always-open mic broadcasts
+ * your fan, your keyboard and your family in the next room to everyone in the call. The gate
+ * only decides WHETHER to send; the browser's noiseSuppression cleans up what does get sent.
+ *
+ * Returns the stream peers should receive. Peers get the gated output, never the raw mic.
+ */
+function buildGate(mic: MediaStream): MediaStream {
+  try {
+    audioCtx = new AudioContext()
+    const src = audioCtx.createMediaStreamSource(mic)
+    analyser = audioCtx.createAnalyser()
+    analyser.fftSize = 512
+    gate = audioCtx.createGain()
+    const dest = audioCtx.createMediaStreamDestination()
+    // measure off the source, gate on the way out
+    src.connect(analyser)
+    src.connect(gate)
+    gate.connect(dest)
+    gate.gain.value = 1
+
+    const buf = new Float32Array(analyser.fftSize)
+    const tick = () => {
+      if (!analyser || !gate || !audioCtx) return
+      analyser.getFloatTimeDomainData(buf)
+      let sum = 0
+      for (let i = 0; i < buf.length; i++) sum += buf[i] * buf[i]
+      // RMS, scaled so ordinary speech lands around the middle of the slider's range
+      micLevel = Math.min(1, Math.sqrt(sum / buf.length) * 4)
+
+      const th = state.threshold
+      const now = performance.now()
+      if (th <= 0) {
+        // gate disabled — always open
+        gate.gain.setTargetAtTime(1, audioCtx.currentTime, 0.01)
+      } else {
+        if (micLevel >= th) openUntil = now + 350 // hold, so pauses between words don't chop
+        const open = now < openUntil
+        // short ramps rather than hard switches; a hard cut clicks
+        gate.gain.setTargetAtTime(open ? 1 : 0, audioCtx.currentTime, open ? 0.01 : 0.08)
+      }
+    }
+    // A timer, NOT requestAnimationFrame. rAF is suspended while the tab is in the
+    // background, which would freeze the gate in whatever state it was last in — leaving
+    // you either hot-mic or silently muted for as long as you were looking elsewhere.
+    // Timers are throttled in background tabs rather than stopped, so the gate keeps
+    // deciding; it just reacts up to about a second late until you come back.
+    gateTimer = window.setInterval(tick, 40)
+    tick()
+    return dest.stream
+  } catch {
+    // Web Audio unavailable or blocked — fall back to the plain mic rather than no call
+    audioCtx = null
+    analyser = null
+    gate = null
+    return mic
+  }
+}
+
+function teardownGate() {
+  if (gateTimer) clearInterval(gateTimer)
+  gateTimer = 0
+  analyser = null
+  gate = null
+  micLevel = 0
+  openUntil = 0
+  void audioCtx?.close().catch(() => {})
+  audioCtx = null
 }
 
 /** They hung up or left — remove them entirely. Not the same as failing to connect. */
@@ -195,7 +292,9 @@ export const voiceSession = {
       })
       return
     }
-    local = mic
+    rawMic = mic
+    // peers receive the gated stream, never the raw mic
+    local = buildGate(mic)
     meId = userId
     myName = displayName
 
@@ -260,12 +359,16 @@ export const voiceSession = {
     pcs.forEach((pc) => pc.close())
     pcs.clear()
     names.clear()
+    teardownGate()
     local?.getTracks().forEach((t) => t.stop())
+    rawMic?.getTracks().forEach((t) => t.stop())
     local = null
+    rawMic = null
     if (chan) void getSupabaseClient().removeChannel(chan)
     chan = null
     meId = null
-    state = IDLE
+    // keep the settings, drop the call
+    state = { ...IDLE, threshold: state.threshold }
     listeners.forEach((l) => l())
   },
 
@@ -273,6 +376,30 @@ export const voiceSession = {
     const next = !state.muted
     local?.getAudioTracks().forEach((t) => (t.enabled = !next))
     set({ muted: next })
+  },
+
+  /**
+   * Live mic loudness, 0–1. Deliberately NOT in the snapshot: it changes every frame, and
+   * putting it in state would re-render the app sixty times a second. The meter polls it.
+   */
+  getMicLevel: () => micLevel,
+
+  /** Is the gate currently letting audio through? Lets the meter show open vs held shut. */
+  isOpen: () => state.threshold <= 0 || performance.now() < openUntil,
+
+  setThreshold(v: number) {
+    const t = Math.min(1, Math.max(0, v))
+    try {
+      localStorage.setItem(THRESH_KEY, String(t))
+    } catch {
+      /* private mode — it just won't persist */
+    }
+    set({ threshold: t })
+  },
+
+  setPeerVolume(peerId: string, v: number) {
+    const vol = Math.min(1, Math.max(0, v))
+    set({ peerVolume: { ...state.peerVolume, [peerId]: vol } })
   },
 }
 
