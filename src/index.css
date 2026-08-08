@@ -1110,6 +1110,44 @@
   background: var(--text, #eeeef8);
   opacity: 0.85;
 }
+/* On a phone there isn't room for label + meter + slider + value on one line — the slider
+   ran past the panel's right edge. Stack the label, give the meter its own full-width line,
+   and give the slider a real thumb to hit.
+   MUST sit after every base rule above: these are single-class selectors, so an earlier copy
+   lost to `.mic-meter { flex: 1; min-width: 60px }` and the meter stayed 60px wide. That is
+   the third time this file has caught me with source order — check it every time. */
+/* The chat page is a messaging screen, not a document, so it shouldn't sit inside a card's
+   worth of padding on a phone. Between the container's margin and padding and the card's own,
+   ~45px of each side was chrome — 24% of a 375px screen gone before a message appeared.
+   Scoped to #chat by id so no other section changes. */
+@media (max-width: 640px) {
+  #chat.card {
+    padding-left: 0.4rem;
+    padding-right: 0.4rem;
+  }
+}
+
+@media (max-width: 640px) {
+  .voice-row {
+    flex-wrap: wrap;
+  }
+  .voice-row-label {
+    flex: 1 1 100%;
+    min-width: 0;
+  }
+  .mic-meter {
+    flex: 1 1 100%;
+    height: 10px;
+  }
+  .voice-row input[type='range'] {
+    flex: 1 1 8rem;
+    min-width: 0;
+    height: 28px;
+  }
+  .voice-row-val {
+    min-width: 3.6rem;
+  }
+}
 
 /* Voice call strip under a conversation header. One button at rest — mute, who's here and
    hang up only appear once you're actually in a call. */
@@ -1221,6 +1259,15 @@
    later declaration wins (an earlier copy of these rules lost to `.cz-thread-back{none}`
    and shipped an invisible back button until the harness caught it). */
 @media (max-width: 640px) {
+  /* One column, and it has to be declared HERE rather than in the earlier phone block.
+     That copy is single-class, so the later base `.cz-chat { grid-template-columns:
+     minmax(200px,260px) 1fr }` was beating it — the phone kept the desktop two-column grid,
+     with the empty list column still reserving its width. Result: the thread rendered 260px
+     wide inside a 375px screen and roughly 90px sat unused, which is what made the call
+     panel's controls overflow. Same trap the note above describes, one property later. */
+  .cz-chat {
+    grid-template-columns: 1fr;
+  }
   .cz-chat[data-view='list'] .cz-chat-thread {
     display: none;
   }
