@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { useVoiceSession } from './useVoiceSession'
 import type { VoicePeer } from './voiceSession'
+import { callWord, peerWord } from './callWords'
 
 /**
  * A call now outlives the screen it started on, which is what makes it usable — but a call
@@ -15,7 +16,7 @@ function PeerAudio({ peer }: { peer: VoicePeer }) {
   const ref = useRef<HTMLAudioElement>(null)
   useEffect(() => {
     const el = ref.current
-    if (!el) return
+    if (!el || !peer.stream) return
     el.srcObject = peer.stream
     void el.play().catch(() => {})
     return () => {
@@ -32,11 +33,9 @@ export function CallDock() {
   return (
     <div className="call-dock" role="status" aria-live="polite">
       <span className="voice-dot" aria-hidden />
-      <span className="call-dock-who">
+      <span className="call-dock-who" title={peers.map(peerWord).join('\n')}>
         <strong>{roomName}</strong>
-        <span className="muted">
-          {peers.length === 0 ? 'waiting for someone…' : peers.map((p) => p.name).join(', ')}
-        </span>
+        <span className="muted">{callWord(peers)}</span>
       </span>
       <button
         className={'btn' + (muted ? ' is-muted' : '')}
@@ -49,10 +48,13 @@ export function CallDock() {
       <button className="btn voice-leave" onClick={leave} title="Leave the call">
         Leave
       </button>
-      {/* audio lives here so it survives navigation */}
-      {peers.map((p) => (
-        <PeerAudio key={p.id} peer={p} />
-      ))}
+      {/* Audio lives here so it survives navigation. Only peers that actually sent a
+          stream — a failed peer has none, and an <audio> with a null source is noise. */}
+      {peers
+        .filter((p) => p.stream)
+        .map((p) => (
+          <PeerAudio key={p.id} peer={p} />
+        ))}
     </div>
   )
 }

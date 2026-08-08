@@ -18,7 +18,18 @@ import { getSupabaseClient } from '../finance/client'
  * rides Supabase Realtime rather than the ws-server.
  */
 
-export type VoicePeer = { id: string; name: string; stream: MediaStream }
+/**
+ * `status` exists because failure and emptiness used to look identical. A peer we tried and
+ * failed to reach was silently dropped, so "Josh's network is blocking this" rendered as
+ * "waiting for someone to join…" — the single most likely failure (no TURN relay) was also
+ * the most confusing one. Every peer we know about is now visible with its real state.
+ */
+export type VoicePeer = {
+  id: string
+  name: string
+  stream: MediaStream | null
+  status: 'connecting' | 'connected' | 'reconnecting' | 'failed'
+}
 
 export type VoiceState = {
   roomId: string | null
@@ -71,11 +82,31 @@ function send(msg: Signal) {
   void chan?.send({ type: 'broadcast', event: 'voice', payload: msg })
 }
 
+/** They hung up or left — remove them entirely. Not the same as failing to connect. */
 function dropPeer(id: string) {
   pcs.get(id)?.close()
   pcs.delete(id)
   names.delete(id)
   set({ peers: state.peers.filter((p) => p.id !== id) })
+}
+
+/** Add or update a peer row, so someone we're mid-handshake with is already on screen. */
+function upsertPeer(id: string, patch: Partial<VoicePeer>) {
+  const existing = state.peers.find((p) => p.id === id)
+  set({
+    peers: existing
+      ? state.peers.map((p) => (p.id === id ? { ...p, ...patch } : p))
+      : [
+          ...state.peers,
+          {
+            id,
+            name: names.get(id) ?? 'Someone',
+            stream: null,
+            status: 'connecting',
+            ...patch,
+          } as VoicePeer,
+        ],
+  })
 }
 
 function makePc(peerId: string, peerName: string) {
@@ -85,6 +116,9 @@ function makePc(peerId: string, peerName: string) {
   pcs.set(peerId, pc)
   names.set(peerId, peerName)
   local?.getTracks().forEach((t) => pc.addTrack(t, local!))
+  // On screen from the first handshake, not from the first audio packet. Otherwise a peer
+  // that never connects is invisible and the room just looks empty.
+  upsertPeer(peerId, { name: peerName, status: 'connecting' })
 
   pc.onicecandidate = (e) => {
     if (e.candidate && meId) {
@@ -94,15 +128,26 @@ function makePc(peerId: string, peerName: string) {
   pc.ontrack = (e) => {
     const stream = e.streams[0]
     if (!stream) return
-    const nm = names.get(peerId) ?? 'Someone'
-    set({
-      peers: state.peers.some((p) => p.id === peerId)
-        ? state.peers.map((p) => (p.id === peerId ? { ...p, stream, name: nm } : p))
-        : [...state.peers, { id: peerId, name: nm, stream }],
-    })
+    upsertPeer(peerId, { stream, name: names.get(peerId) ?? 'Someone' })
   }
   pc.onconnectionstatechange = () => {
-    if (pc.connectionState === 'failed' || pc.connectionState === 'closed') dropPeer(peerId)
+    switch (pc.connectionState) {
+      case 'connected':
+        upsertPeer(peerId, { status: 'connected' })
+        break
+      case 'disconnected':
+        // Often a blip that recovers on its own — say "reconnecting", don't declare death.
+        upsertPeer(peerId, { status: 'reconnecting' })
+        break
+      case 'failed':
+        // Usually a network that can't do peer-to-peer and has no relay to fall back on.
+        // Keep the row so the UI can say WHY nobody can be heard.
+        upsertPeer(peerId, { status: 'failed', stream: null })
+        break
+      case 'closed':
+        dropPeer(peerId)
+        break
+    }
   }
   return pc
 }
@@ -117,11 +162,25 @@ export const voiceSession = {
   async join(roomId: string, roomName: string, userId: string, displayName: string) {
     if (state.inCall) return
     set({ error: null })
+    if (!navigator.mediaDevices?.getUserMedia || typeof RTCPeerConnection === 'undefined') {
+      set({ error: 'This browser can’t do voice calls. Try Chrome, Edge, Safari or Firefox.' })
+      return
+    }
     let mic: MediaStream
     try {
       mic = await navigator.mediaDevices.getUserMedia({ audio: true, video: false })
-    } catch {
-      set({ error: 'Microphone blocked. Allow it in your browser’s site settings, then retry.' })
+    } catch (e) {
+      // Blocked and absent need different advice — telling someone with no microphone to
+      // check their permissions sends them somewhere that can't help.
+      const name = (e as DOMException)?.name
+      set({
+        error:
+          name === 'NotFoundError' || name === 'OverconstrainedError'
+            ? 'No microphone found. Plug one in or check your system sound settings.'
+            : name === 'NotReadableError'
+              ? 'Your microphone is in use by another app. Close that, then try again.'
+              : 'Microphone blocked. Allow it for this site in your browser, then try again.',
+      })
       return
     }
     local = mic
