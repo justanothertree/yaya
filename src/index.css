@@ -2628,3 +2628,23 @@ select {
     min-height: 34px;
   }
 }
+
+/* ── a Snake challenge inside a chat message ────────────────────────────────
+   The invite is a normal message with a room link in it, rendered as a card so the reader gets
+   a button instead of a URL. Kept inside the bubble so it still reads as something a person
+   sent you, not a system notice. */
+.cz-challenge {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: flex-start;
+}
+.cz-challenge-say {
+  font-size: 0.9rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.cz-challenge-join {
+  text-decoration: none;
+  font-weight: 600;
+}

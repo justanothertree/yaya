@@ -18,6 +18,7 @@ import {
   supabaseEnvStatus,
 } from './leaderboard'
 import type { LeaderboardEntry, Mode, Point, Settings, TrophyCounts } from './types'
+import { ChallengeFriend } from './ChallengeFriend'
 
 const GRID = 30
 const BASE_SPEED = 110
@@ -2641,6 +2642,10 @@ export function GameManager({
                     >
                       Copy link
                     </button>
+                    {/* Copy-link works for anyone; this is the version for people you already
+                        know — it puts the same link in your DM with them, so they get it where
+                        they'd actually see it rather than needing you to paste it somewhere. */}
+                    <ChallengeFriend roomId={room.trim()} roomLabel={roomName} />
                     <button
                       className="btn"
                       onClick={() => {

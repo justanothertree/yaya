@@ -12,6 +12,7 @@ import { notificationsChanged } from '../../hooks/notifySignal'
 import { useVoiceSession } from '../../voice/useVoiceSession'
 import { useVoicePresence } from '../../voice/useVoicePresence'
 import { VoiceBar } from '../../voice/VoiceBar'
+import { challengeRoomOf, challengeText } from '../../game/challenge'
 
 /**
  * Chat — a real messaging screen, not a row of room chips. You land on a list of
@@ -478,15 +479,32 @@ export function Chat({ authed = false }: { authed?: boolean }) {
                           {m.author_name}
                         </div>
                       )}
-                      <div
-                        style={{
-                          fontSize: '0.9rem',
-                          whiteSpace: 'pre-wrap',
-                          wordBreak: 'break-word',
-                        }}
-                      >
-                        {m.body}
-                      </div>
+                      {/* A Snake challenge is an ordinary message with a room link in it. Shown
+                          as a card with a Join button rather than a URL to squint at — and it
+                          still falls back to the plain text if the link is malformed. */}
+                      {challengeRoomOf(m.body) ? (
+                        <div className="cz-challenge">
+                          {challengeText(m.body) && (
+                            <div className="cz-challenge-say">{challengeText(m.body)}</div>
+                          )}
+                          <a
+                            className="btn cz-challenge-join"
+                            href={`#snake?room=${encodeURIComponent(challengeRoomOf(m.body)!)}`}
+                          >
+                            🎮 Join the game
+                          </a>
+                        </div>
+                      ) : (
+                        <div
+                          style={{
+                            fontSize: '0.9rem',
+                            whiteSpace: 'pre-wrap',
+                            wordBreak: 'break-word',
+                          }}
+                        >
+                          {m.body}
+                        </div>
+                      )}
                       <div style={{ fontSize: '0.65rem', opacity: 0.7, textAlign: 'right' }}>
                         {timeOf(m.created_at)}
                       </div>
