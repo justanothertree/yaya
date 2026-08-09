@@ -406,7 +406,12 @@ export const voiceSession = {
     myName = displayName
 
     const sb = getSupabaseClient()
-    const ch = sb.channel(`voice:${roomId}`, { config: { broadcast: { self: false } } })
+    // `private: true` routes the join through the realtime.messages policies, which gate the
+    // topic on room membership. Public channels skip authorization, which is why signalling
+    // used to be protected by nothing but the room UUID being hard to guess.
+    const ch = sb.channel(`voice:${roomId}`, {
+      config: { broadcast: { self: false }, private: true },
+    })
     chan = ch
 
     ch.on('broadcast', { event: 'voice' }, ({ payload }) => {
@@ -455,11 +460,41 @@ export const voiceSession = {
       })()
     })
 
-    ch.subscribe((status) => {
-      if (status === 'SUBSCRIBED' && meId) send({ kind: 'hello', from: meId, name: myName })
-    })
     set({ inCall: true, roomId, roomName, muted: false, peers: [] })
-    callSounds.join()
+
+    let joined = false
+    ch.subscribe((status, err) => {
+      if (status === 'SUBSCRIBED') {
+        joined = true
+        if (meId) send({ kind: 'hello', from: meId, name: myName })
+        // Chime only once the room actually accepted us. It used to fire unconditionally, so a
+        // refused join sounded exactly like a successful one.
+        callSounds.join()
+        return
+      }
+      // The topic is private now, so a join can be REFUSED — not being in the room, or a
+      // session that expired. Every one of those used to land here and be dropped on the
+      // floor: you'd hear the join chime, your mic would be live, the dock would sit on
+      // "waiting for someone to join…", and nothing would ever connect. Fail loudly instead.
+      // Hanging up removes the channel, which reports CLOSED right back to here — without this
+      // guard every normal leave would raise "couldn't reach the call". `chan` is nulled by
+      // leave(), so this is also what stops a stale callback touching a newer call.
+      if (chan !== ch || state.roomId !== roomId) return
+      // And after a successful join, CLOSED is just the socket dropping; realtime reconnects.
+      if (
+        status === 'CHANNEL_ERROR' ||
+        status === 'TIMED_OUT' ||
+        (status === 'CLOSED' && !joined)
+      ) {
+        const refused = /unauthor|permission/i.test(String(err?.message ?? err ?? ''))
+        voiceSession.leave(true)
+        set({
+          error: refused
+            ? 'You don’t have access to this call. If you were just added, sign out and back in.'
+            : 'Couldn’t reach the call. Check your connection and try again.',
+        })
+      }
+    })
   },
 
   /** `silent` is for the leave that's really the first half of switching rooms — a departure

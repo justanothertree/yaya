@@ -45,7 +45,12 @@ export function useVoicePresence(
     const sb = getSupabaseClient()
     const ids = key ? key.split(',') : []
     const channels = ids.map((id) => {
-      const ch = sb.channel(`vp:${id}`, { config: { presence: { key: myId } } })
+      // `private: true` is what makes the realtime.messages policies apply. Without it the
+      // topic is a public channel and authorization is skipped entirely, so anyone holding
+      // the anon key and this room's UUID could watch who is in the call.
+      const ch = sb.channel(`vp:${id}`, {
+        config: { presence: { key: myId }, private: true },
+      })
       ch.on('presence', { event: 'sync' }, () => {
         const state = ch.presenceState() as Record<string, Array<{ name?: string }>>
         // One entry per presence KEY, i.e. per person. Deduping by name would merge two
