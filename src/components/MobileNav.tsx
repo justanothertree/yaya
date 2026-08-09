@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 /**
  * The phone's navigation. A cramped horizontal scroll strip is the wrong shape for a
@@ -138,11 +138,48 @@ export function MobileNav({
     { key: 'contact', label: 'Contact', icon: '✉️', section: 'contact' },
   ]
 
+  /**
+   * Publish the bar's real height as `--mnav-h` so anything else pinned to the bottom of the
+   * screen can clear it without hardcoding a copy of this number. Same approach as `--nav-h`
+   * for the top bar, and for the same reason: the height comes from content and padding, so a
+   * label change or a font swap moves it.
+   *
+   * Below the breakpoint the bar is `display: none`, which measures as 0 — so the token is
+   * self-zeroing on desktop and no media query is needed anywhere downstream.
+   */
+  const barRef = useRef<HTMLElement>(null)
+  useEffect(() => {
+    const el = barRef.current
+    if (!el) return
+    const publish = () => {
+      const h = el.getBoundingClientRect().height
+      document.documentElement.style.setProperty('--mnav-h', `${Math.round(h)}px`)
+    }
+    publish()
+    const ro = new ResizeObserver(publish)
+    ro.observe(el)
+    // ResizeObserver is NOT enough on its own: it doesn't notify for an element that has no
+    // box, so crossing the desktop breakpoint — where the bar becomes `display: none` —
+    // left the token stuck at its last visible height. The dock then floated 60px too high on
+    // desktop. Measured, not theorised: the token read 60px while the bar measured 0.
+    const onResize = () => publish()
+    window.addEventListener('resize', onResize)
+    window.addEventListener('orientationchange', onResize)
+    // a font swap grows the labels after mount, which ResizeObserver alone can also miss
+    void document.fonts?.ready.then(publish).catch(() => {})
+    return () => {
+      ro.disconnect()
+      window.removeEventListener('resize', onResize)
+      window.removeEventListener('orientationchange', onResize)
+      document.documentElement.style.removeProperty('--mnav-h')
+    }
+  }, [])
+
   const themeIcon = theme === 'light' ? '☀' : theme === 'dark' ? '☾' : '✦'
 
   return (
     <>
-      <nav className="mnav" aria-label="Primary (mobile)">
+      <nav className="mnav" aria-label="Primary (mobile)" ref={barRef}>
         {bar.map((d) => (
           <button
             key={d.key}

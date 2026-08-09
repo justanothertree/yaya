@@ -85,24 +85,40 @@ export function CallDock() {
   }, [volume, setMaster])
 
   /**
-   * Tell the stylesheet a call is up. The dock is fixed and floats over whatever is beneath
-   * it, which is fine on a document and wrong on the chat screen, where the composer lives at
-   * exactly that height. Layout that needs to make room for the dock keys off this.
-   * Set above the early return so it still clears when the call ends.
+   * Tell the stylesheet a call is up, and how tall this thing actually is.
+   *
+   * The dock is fixed and floats over whatever is beneath it, which is fine on a document and
+   * wrong on the chat screen, where the composer lives at exactly that height. Rather than
+   * writing the dock's height into the chat rule as a constant, publish it: a second line of
+   * status text or a longer room name changes this box, and the composer should move with it
+   * instead of quietly ending up underneath.
+   *
+   * Set above the early return so both tokens still clear when the call ends.
    */
+  const dockRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
     const el = document.documentElement
     if (!inCall) return
     el.dataset.inCall = '1'
+    const node = dockRef.current
+    const publish = () => {
+      const h = node?.getBoundingClientRect().height ?? 0
+      el.style.setProperty('--dock-h', `${Math.round(h)}px`)
+    }
+    publish()
+    const ro = node ? new ResizeObserver(publish) : null
+    if (node && ro) ro.observe(node)
     return () => {
+      ro?.disconnect()
       delete el.dataset.inCall
+      el.style.removeProperty('--dock-h')
     }
   }, [inCall])
 
   if (!inCall) return null
 
   return (
-    <div className="call-dock" role="status" aria-live="polite">
+    <div className="call-dock" role="status" aria-live="polite" ref={dockRef}>
       <span className="voice-dot" aria-hidden />
       {/* Tapping the room name takes you back to the conversation the call is in — you can
           wander off mid-call, and finding your way back shouldn't mean hunting for it. */}

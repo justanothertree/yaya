@@ -961,7 +961,9 @@
   position: fixed;
   left: 50%;
   transform: translateX(-50%);
-  bottom: calc(0.75rem + env(safe-area-inset-bottom, 0px));
+  /* sits directly above whatever else is pinned down there — no breakpoint needed, because
+     --mnav-h is simply 0 when there's no bottom bar */
+  bottom: calc(var(--bottom-guard) + var(--kb) + var(--pin-gap));
   z-index: 60;
   display: flex;
   align-items: center;
@@ -973,12 +975,6 @@
   border: 1px solid var(--border, rgba(127, 127, 127, 0.25));
   box-shadow: 0 8px 26px rgba(0, 0, 0, 0.38);
   will-change: transform;
-}
-@media (max-width: 819.98px) {
-  /* clear the bottom nav */
-  .call-dock {
-    bottom: calc(72px + env(safe-area-inset-bottom, 0px));
-  }
 }
 .call-dock-who {
   display: flex;
@@ -1148,9 +1144,10 @@
     top: var(--nav-h, 52px);
     left: 0;
     right: 0;
-    /* --kb is the on-screen keyboard's height, published by App from visualViewport; 0 when
-       there's no keyboard. Without it the composer sits behind the keys you're typing on. */
-    bottom: calc(60px + var(--kb, 0px) + env(safe-area-inset-bottom, 0px));
+    /* clears the bottom bar, and rises with the keyboard — without --kb the composer sits
+       behind the keys you're typing on, because a fixed box is anchored to the layout
+       viewport and the keyboard doesn't shrink that */
+    bottom: calc(var(--bottom-guard) + var(--kb));
     margin: 0;
     border: 0;
     border-radius: 0;
@@ -1164,12 +1161,12 @@
     transform: none;
     opacity: 1;
   }
-  /* A call floats the dock at 72px with a 46px body — which on a phone is exactly where the
-     composer sits. Measured with hit-testing: the message field resolved to the dock's status
-     text and Send resolved to the dock's Leave button, so in a call you could not type, and
-     tapping Send hung up instead. Give the panel that strip back while a call is up. */
+  /* A call floats the dock right where the composer sits. Measured with hit-testing: the
+     message field resolved to the dock's status text and Send resolved to the dock's Leave
+     button, so in a call you could not type, and tapping Send hung up instead. Give the panel
+     that strip back — derived from the dock's real height, so it can't drift. */
   :root[data-in-call='1'] [data-page='chat'] #chat.card {
-    bottom: calc(126px + var(--kb, 0px) + env(safe-area-inset-bottom, 0px));
+    bottom: calc(var(--bottom-guard) + var(--kb) + var(--pin-gap) + var(--dock-h) + var(--pin-gap));
   }
   /* let flex own the height instead of the earlier calc() */
   [data-page='chat'] .cz-tab-chat {
@@ -1867,6 +1864,26 @@ li {
    pre-hydration fallback, tuned to the leaner bar. */
 :root {
   --nav-h: 54px;
+}
+
+/* ── what's pinned to the bottom of the screen ──────────────────────────────
+   On a phone, things stack up from the bottom edge: the nav bar, a call dock above it, and
+   the on-screen keyboard pushing all of it up. Anything else pinned down there — the chat
+   composer is the one that matters — has to clear whichever of those happen to be present.
+
+   Each is measured or published by JS and is 0px when absent, so one expression covers every
+   combination. This exists because the alternative kept biting: each pinned thing carried its
+   own hardcoded copy of the others' heights (60px here, 72px there, 126px in a third place),
+   they were only *correct* because they'd been measured once, and nothing would have told us
+   when one drifted. Add a second line to the dock now and the composer moves on its own. */
+:root {
+  --mnav-h: 0px; /* the bottom bar, measured by MobileNav; 0 on desktop where it's hidden */
+  --dock-h: 0px; /* the call dock, measured by CallDock; 0 when there's no call */
+  --kb: 0px; /* on-screen keyboard inset, published by App from visualViewport */
+  --pin-gap: 0.75rem; /* breathing room between stacked pinned things */
+  /* The bar's own padding already includes the safe area, so don't add it twice — but when
+     there's no bar, the safe area still has to be cleared on its own. */
+  --bottom-guard: max(var(--mnav-h), env(safe-area-inset-bottom, 0px));
 }
 /* Removed 100dvh-based min-height on main to prevent snap/jitter at high zoom */
 /* Keep content below fixed nav (fallback; see enhanced version near end) */
