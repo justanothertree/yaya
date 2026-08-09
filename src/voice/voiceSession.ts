@@ -203,7 +203,10 @@ const gainFor = (peerId: string) => master * (state.peerVolume[peerId] ?? 0.5) *
 function attachOutput(peerId: string, stream: MediaStream) {
   try {
     if (!outCtx) outCtx = new AudioContext()
-    outs.get(peerId)?.src.disconnect()
+    // Full teardown, not just the source: a peer whose connection drops and recovers comes
+    // back through here, and disconnecting only the source left the old gain node wired to
+    // the destination forever. Inaudible — nothing feeds it — but it accumulates per recovery.
+    detachOutput(peerId)
     const src = outCtx.createMediaStreamSource(stream)
     const gain = outCtx.createGain()
     const analyser = outCtx.createAnalyser()

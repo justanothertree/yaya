@@ -1148,7 +1148,9 @@
     top: var(--nav-h, 52px);
     left: 0;
     right: 0;
-    bottom: calc(60px + env(safe-area-inset-bottom, 0px));
+    /* --kb is the on-screen keyboard's height, published by App from visualViewport; 0 when
+       there's no keyboard. Without it the composer sits behind the keys you're typing on. */
+    bottom: calc(60px + var(--kb, 0px) + env(safe-area-inset-bottom, 0px));
     margin: 0;
     border: 0;
     border-radius: 0;
@@ -1161,6 +1163,13 @@
     /* the scroll-reveal animation would shift a fixed box off its anchor */
     transform: none;
     opacity: 1;
+  }
+  /* A call floats the dock at 72px with a 46px body — which on a phone is exactly where the
+     composer sits. Measured with hit-testing: the message field resolved to the dock's status
+     text and Send resolved to the dock's Leave button, so in a call you could not type, and
+     tapping Send hung up instead. Give the panel that strip back while a call is up. */
+  :root[data-in-call='1'] [data-page='chat'] #chat.card {
+    bottom: calc(126px + var(--kb, 0px) + env(safe-area-inset-bottom, 0px));
   }
   /* let flex own the height instead of the earlier calc() */
   [data-page='chat'] .cz-tab-chat {

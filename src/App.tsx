@@ -611,6 +611,35 @@ export default function App() {
     }
   }, [active])
 
+  /**
+   * Keep the message box above the on-screen keyboard.
+   *
+   * The chat panel is `position: fixed`, which anchors it to the LAYOUT viewport — and the
+   * keyboard doesn't shrink that. So the panel keeps its full height, the keyboard slides up
+   * over the bottom of it, and the composer you were about to type into is behind the keys.
+   *
+   * `visualViewport` is the part actually visible, so its height plus offset against the
+   * window height is the keyboard's inset. Published as a CSS var the chat rule adds to its
+   * own bottom. Guarded at 80px so a URL bar hiding or a rotation doesn't count as a keyboard.
+   */
+  useEffect(() => {
+    const vv = window.visualViewport
+    if (active !== 'chat' || !vv) return
+    const el = document.documentElement
+    const apply = () => {
+      const inset = window.innerHeight - vv.height - vv.offsetTop
+      el.style.setProperty('--kb', inset > 80 ? `${Math.round(inset)}px` : '0px')
+    }
+    apply()
+    vv.addEventListener('resize', apply)
+    vv.addEventListener('scroll', apply)
+    return () => {
+      vv.removeEventListener('resize', apply)
+      vv.removeEventListener('scroll', apply)
+      el.style.removeProperty('--kb')
+    }
+  }, [active])
+
   // REMOVED: swipe-to-change-page.
   //
   // It was tuned hard against false positives — flick distance, vertical drift, duration,

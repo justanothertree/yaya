@@ -84,6 +84,21 @@ export function CallDock() {
     }
   }, [volume, setMaster])
 
+  /**
+   * Tell the stylesheet a call is up. The dock is fixed and floats over whatever is beneath
+   * it, which is fine on a document and wrong on the chat screen, where the composer lives at
+   * exactly that height. Layout that needs to make room for the dock keys off this.
+   * Set above the early return so it still clears when the call ends.
+   */
+  useEffect(() => {
+    const el = document.documentElement
+    if (!inCall) return
+    el.dataset.inCall = '1'
+    return () => {
+      delete el.dataset.inCall
+    }
+  }, [inCall])
+
   if (!inCall) return null
 
   return (
