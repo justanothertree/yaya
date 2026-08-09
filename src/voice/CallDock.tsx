@@ -125,7 +125,8 @@ export function CallDock() {
       >
         {muted ? '🔇' : '🎙'}
       </button>
-      <button className="btn voice-leave" onClick={leave} title="Leave the call">
+      {/* wrapped so the click event isn't passed as leave()'s `silent` flag — see VoiceBar */}
+      <button className="btn voice-leave" onClick={() => leave()} title="Leave the call">
         Leave
       </button>
       {/* Audio lives here so it survives navigation. Only peers that actually sent a

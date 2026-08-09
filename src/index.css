@@ -760,6 +760,8 @@
   overflow-y: auto;
   min-height: 0;
   padding-right: 2px;
+  /* don't hand the gesture on to the page when you hit the end of the list */
+  overscroll-behavior: contain;
 }
 .cz-chat-thread {
   display: flex;
@@ -1300,7 +1302,9 @@
   font-size: 0.78rem;
   line-height: 1.35;
 }
+/* same for the message log — reaching the top shouldn't start dragging the page */
 .cz-chat-log {
+  overscroll-behavior: contain;
   flex: 1;
   min-height: 0;
   overflow-y: auto;

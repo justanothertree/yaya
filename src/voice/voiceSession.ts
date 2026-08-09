@@ -1,4 +1,5 @@
 import { getSupabaseClient } from '../finance/client'
+import { callSounds } from './callSounds'
 
 /**
  * The live call, owned by the module rather than by a component.
@@ -270,7 +271,11 @@ function dropPeer(id: string) {
   pcs.delete(id)
   names.delete(id)
   detachOutput(id)
+  // Only chime if we'd actually connected to them. A peer that never got past the handshake
+  // "leaving" isn't a departure, and shouldn't sound like one.
+  const wasConnected = state.peers.find((p) => p.id === id)?.status === 'connected'
   set({ peers: state.peers.filter((p) => p.id !== id) })
+  if (wasConnected && state.inCall) callSounds.peerLeave()
 }
 
 /** Add or update a peer row, so someone we're mid-handshake with is already on screen. */
@@ -316,9 +321,13 @@ function makePc(peerId: string, peerName: string) {
   }
   pc.onconnectionstatechange = () => {
     switch (pc.connectionState) {
-      case 'connected':
+      case 'connected': {
+        // chime only on the first connect, not on every recovery from a blip
+        const first = state.peers.find((p) => p.id === peerId)?.status !== 'connected'
         upsertPeer(peerId, { status: 'connected' })
+        if (first) callSounds.peerJoin()
         break
+      }
       case 'disconnected':
         // Often a blip that recovers on its own — say "reconnecting", don't declare death.
         upsertPeer(peerId, { status: 'reconnecting' })
@@ -351,7 +360,8 @@ export const voiceSession = {
     // rooms just moves you.
     // voiceSession.leave, not this.leave — these methods get passed around as bare
     // references (the hook hands them straight to components), so `this` isn't reliable.
-    if (state.inCall) voiceSession.leave()
+    // Silent: the join chime that follows is the sound of the switch.
+    if (state.inCall) voiceSession.leave(true)
     set({ error: null })
     if (!navigator.mediaDevices?.getUserMedia || typeof RTCPeerConnection === 'undefined') {
       set({ error: 'This browser can’t do voice calls. Try Chrome, Edge, Safari or Firefox.' })
@@ -446,9 +456,13 @@ export const voiceSession = {
       if (status === 'SUBSCRIBED' && meId) send({ kind: 'hello', from: meId, name: myName })
     })
     set({ inCall: true, roomId, roomName, muted: false, peers: [] })
+    callSounds.join()
   },
 
-  leave() {
+  /** `silent` is for the leave that's really the first half of switching rooms — a departure
+   *  chime followed 50ms later by an arrival chime is just a muddle. */
+  leave(silent = false) {
+    if (state.inCall && !silent) callSounds.leave()
     if (meId) send({ kind: 'bye', from: meId })
     pcs.forEach((pc) => pc.close())
     pcs.clear()

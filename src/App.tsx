@@ -591,6 +591,26 @@ export default function App() {
   // fresh reveal pass too, or they mount opacity-0 and stay invisible
   useReveal('.reveal', `${active}:${canvasOpen}`)
 
+  /**
+   * Chat is pinned to the viewport with nothing to scroll, but a touch-drag still
+   * rubber-banded the whole document — which reads as "it scrolls a little when it
+   * shouldn't". Measuring found no overflow anywhere (html 0, body 0, no inner scroller), so
+   * it's overscroll bounce rather than content.
+   *
+   * Done here rather than in CSS because the bounce belongs to the document element, and
+   * `data-page` lives on a div inside body — a descendant selector can't reach up to <html>.
+   * Scoped to chat so the rest of the site keeps pull-to-refresh.
+   */
+  useEffect(() => {
+    if (active !== 'chat') return
+    const el = document.documentElement
+    const prev = el.style.overscrollBehavior
+    el.style.overscrollBehavior = 'none'
+    return () => {
+      el.style.overscrollBehavior = prev
+    }
+  }, [active])
+
   // REMOVED: swipe-to-change-page.
   //
   // It was tuned hard against false positives — flick distance, vertical drift, duration,

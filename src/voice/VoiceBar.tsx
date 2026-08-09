@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useVoiceSession } from './useVoiceSession'
 import { callWord, callHelp, peerWord, speakingNames } from './callWords'
 import { MicMeter } from './MicMeter'
+import { soundsEnabled, setSoundsEnabled } from './callSounds'
 
 /**
  * The call strip inside a conversation.
@@ -30,6 +31,7 @@ export function VoiceBar({
 }) {
   const v = useVoiceSession()
   const [showAudio, setShowAudio] = useState(false)
+  const [sounds, setSounds] = useState(soundsEnabled)
   const mine = v.inCall && v.roomId === roomId
 
   if (!mine) {
@@ -81,7 +83,10 @@ export function VoiceBar({
         >
           ⚙
         </button>
-        <button className="btn voice-leave" onClick={v.leave} title="Leave the call">
+        {/* Wrapped, not passed bare: onClick would hand leave() the click event as its
+            `silent` argument, and an event object is truthy — every hang-up would have been
+            silent. TypeScript caught it; the runtime would not have. */}
+        <button className="btn voice-leave" onClick={() => v.leave()} title="Leave the call">
           Leave
         </button>
         {callHelp(v.peers) && <span className="voice-err">{callHelp(v.peers)}</span>}
@@ -108,6 +113,18 @@ export function VoiceBar({
                   on top of normal speech, and would have cut off anyone talking quietly. */}
               {v.threshold === 0 ? 'always on' : `${Math.round((v.threshold / 0.6) * 100)}%`}
             </span>
+          </label>
+          <label className="voice-row">
+            <span className="voice-row-label">Join / leave sounds</span>
+            <input
+              type="checkbox"
+              checked={sounds}
+              onChange={(e) => {
+                setSoundsEnabled(e.target.checked)
+                setSounds(e.target.checked)
+              }}
+              aria-label="Play a sound when someone joins or leaves"
+            />
           </label>
           <p className="voice-hint muted">
             Speak normally and watch the bar. Put the marker just below where it reaches, and quiet
