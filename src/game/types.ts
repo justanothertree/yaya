@@ -55,6 +55,13 @@ export type NetMessage =
       name?: string
       spectate?: boolean
     }
+  /**
+   * In-match chat. Ephemeral and room-scoped: the relay forwards it and keeps nothing, so
+   * there is no history to load, moderate or leak. `name` is filled in by the server from the
+   * name that player already announced to the room, rather than trusted from the sender —
+   * otherwise anyone could put words in someone else's mouth.
+   */
+  | { type: 'chat'; text: string; from?: string; name?: string }
   | { type: 'roommeta'; name?: string; public?: boolean }
   | { type: 'list' }
   | { type: 'rooms'; items: Array<{ id: string; name: string; count: number }> }

@@ -196,6 +196,20 @@ export function GameManager({
     Record<string, { state: ReturnType<GameEngine['snapshot']>; score: number; name?: string }>
   >({})
   const [rooms, setRooms] = useState<Array<{ id: string; name?: string; count: number }>>([])
+  /**
+   * In-match chat. Held in memory only — the relay forwards lines and stores nothing, so there
+   * is no history to fetch and nothing left behind when the round ends. Capped, because a long
+   * match shouldn't grow an unbounded array behind the canvas.
+   */
+  const [chatLines, setChatLines] = useState<
+    Array<{ id: number; who: string; text: string; mine: boolean }>
+  >([])
+  const chatSeqRef = useRef(0)
+  const chatInputRef = useRef<HTMLInputElement | null>(null)
+  const [chatDraft, setChatDraft] = useState('')
+  const pushChat = useCallback((who: string, text: string, mine: boolean) => {
+    setChatLines((prev) => [...prev.slice(-39), { id: ++chatSeqRef.current, who, text, mine }])
+  }, [])
   const [roomName] = useState<string>(() => {
     try {
       return localStorage.getItem('snake.room.name') || ''
@@ -903,6 +917,24 @@ export function GameManager({
     }
     const onKey = (e: KeyboardEvent) => {
       const key = e.key
+      /**
+       * Enter jumps to the chat box — the muscle memory from every game chat there has ever
+       * been: Enter, type, Enter, back to playing. Sending is handled on the input itself.
+       *
+       * Guarded on the active element so pressing Enter while already typing (here, or in the
+       * room name, or anywhere else on the page) doesn't get hijacked. Nothing else is needed
+       * to stop typing from steering the snake: the movement keys below all bail out unless the
+       * canvas holds capture, and focusing the chat box blurs it.
+       */
+      if (key === 'Enter') {
+        const el = document.activeElement
+        const typing = el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement
+        if (!typing && chatInputRef.current) {
+          e.preventDefault()
+          chatInputRef.current.focus()
+        }
+        return
+      }
       // Esc releases capture (blur canvas) so site navigation keys work again
       if (key === 'Escape') {
         if (capturedRef.current) {
@@ -1373,6 +1405,12 @@ export function GameManager({
                 return { ...map, [fromId]: { ...map[fromId], name: msg.name } }
               })
             }
+          } else if (msg.type === 'chat') {
+            // The relay excludes the sender, so everything arriving here is someone else's.
+            // Name comes off the message, not out of `players` — reading component state from
+            // inside this long-lived socket handler is how you get a stale closure showing the
+            // wrong person's name.
+            if (msg.text) pushChat(msg.name || 'Someone', msg.text, false)
           } else if (msg.type === 'rooms') {
             setRooms(msg.items || [])
           } else if (msg.type === 'settings') {
@@ -2664,6 +2702,9 @@ export function GameManager({
                         setReady(false)
                         setCountdown(null)
                         setMultiStep('landing')
+                        // the conversation belonged to that room; don't carry it into the next
+                        setChatLines([])
+                        setChatDraft('')
                       }}
                     >
                       Leave lobby
@@ -2675,6 +2716,71 @@ export function GameManager({
           </div>
         </div>
       </div>
+
+      {/* ── in-match chat ────────────────────────────────────────────────────
+          Everyone in the room can talk, which is Evan's call and the consistent one: the room
+          already shows every player's chosen name to everyone in it, so chat reveals nothing
+          new. Nothing is stored anywhere — the relay forwards a line and forgets it.
+
+          Names and messages both go through the profanity filter on the way to the screen, the
+          same view-only treatment the leaderboard gets: nobody is stopped from saying anything,
+          it just isn't rendered raw on a site Evan shows to employers. */}
+      {mode === 'versus' && multiStep !== 'landing' && conn === 'connected' && (
+        <div className="snake-chat card">
+          <div className="snake-chat-log" aria-live="polite" aria-label="Match chat">
+            {chatLines.length === 0 ? (
+              <p className="muted snake-chat-empty">
+                Press <kbd>Enter</kbd> to chat with the room.
+              </p>
+            ) : (
+              chatLines.map((l) => (
+                <p key={l.id} className={'snake-chat-line' + (l.mine ? ' is-mine' : '')}>
+                  <b>{profanityFilter.clean(l.who)}:</b> {profanityFilter.clean(l.text)}
+                </p>
+              ))
+            )}
+          </div>
+          <form
+            className="snake-chat-form"
+            onSubmit={(e) => {
+              e.preventDefault()
+              const text = chatDraft.trim()
+              if (!text) return
+              netRef.current?.send({ type: 'chat', text })
+              // The relay excludes the sender, so our own line is added here rather than
+              // waiting for an echo that never comes.
+              pushChat(playerName.trim() || 'You', text, true)
+              setChatDraft('')
+              // Hand control back to the game: Enter, type, Enter, still playing.
+              canvasRef.current?.focus()
+            }}
+          >
+            <input
+              ref={chatInputRef}
+              value={chatDraft}
+              onChange={(e) => setChatDraft(e.target.value)}
+              onKeyDown={(e) => {
+                // Escape gets you out without sending, and puts you back on the snake.
+                if (e.key === 'Escape') {
+                  e.preventDefault()
+                  // Must not reach the window handler: that one treats Escape as "release the
+                  // canvas" and blurred it again the instant this focused it, dumping focus on
+                  // <body> — so Escape got you out of chat but not back into the game.
+                  e.stopPropagation()
+                  setChatDraft('')
+                  canvasRef.current?.focus()
+                }
+              }}
+              maxLength={300}
+              placeholder="Say something to the room…"
+              aria-label="Message the room"
+            />
+            <button className="btn" type="submit" disabled={!chatDraft.trim()}>
+              Send
+            </button>
+          </form>
+        </div>
+      )}
 
       {/* Lobby box under settings, above the game */}
       {mode === 'versus' && multiStep !== 'landing' && (

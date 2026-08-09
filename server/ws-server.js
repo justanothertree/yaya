@@ -20,6 +20,11 @@ const WS_DEBUG = process.env.WS_DEBUG === '1' || process.env.WS_DEBUG === 'true'
 const MAX_MSG_BYTES = 32768
 // Max length for user-supplied strings before they are truncated.
 const MAX_NAME_LEN = 64
+// In-match chat. Nothing is stored: the relay forwards a line to the room and forgets it.
+const MAX_CHAT_LEN = 300
+// A relay that forwards anything to everyone needs a ceiling, or one client can flood a room.
+const CHAT_BURST = 5
+const CHAT_WINDOW_MS = 4000
 const MAX_ROOM_ID_LEN = 64
 
 // Default settings mirrored from client DEFAULT_SETTINGS
@@ -440,6 +445,28 @@ wss.on('connection', (ws) => {
           // Broadcast name updates to peers, matching legacy behavior
           broadcast(room, { type: 'name', name: st.name, from: id }, id)
         }
+        break
+      }
+      case 'chat': {
+        const st = room.state.get(id) || {}
+        const text = typeof msg.text === 'string' ? msg.text.trim().slice(0, MAX_CHAT_LEN) : ''
+        if (!text) break
+        // Sliding window, per client. Dropped silently rather than answered with an error:
+        // telling a flooder they've been limited just tells them how fast to go.
+        const now = Date.now()
+        const recent = (st.chatTimes || []).filter((t) => now - t < CHAT_WINDOW_MS)
+        if (recent.length >= CHAT_BURST) {
+          st.chatTimes = recent
+          room.state.set(id, st)
+          break
+        }
+        recent.push(now)
+        st.chatTimes = recent
+        room.state.set(id, st)
+        // `name` comes from what this client already told the room, never from this message —
+        // otherwise a sender could attribute a line to somebody else. Sender is excluded, same
+        // as 'name' and 'ready'; the client shows its own line locally.
+        broadcast(room, { type: 'chat', text, from: id, name: st.name }, id)
         break
       }
       case 'ready': {

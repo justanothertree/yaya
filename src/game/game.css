@@ -399,3 +399,51 @@
   margin: 4px 0 0;
   font-size: 0.75rem;
 }
+
+/* ── in-match chat ──────────────────────────────────────────────────────────
+   Sits with the multiplayer UI rather than floating over the canvas: the board is the thing
+   you're looking at mid-round, and a panel on top of it costs you the game. */
+.snake-chat {
+  margin-top: 8px;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.snake-chat-log {
+  max-height: 8.5rem;
+  min-height: 3rem;
+  overflow-y: auto;
+  /* a burst of messages shouldn't rubber-band the whole page behind it */
+  overscroll-behavior: contain;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.snake-chat-line {
+  margin: 0;
+  font-size: 0.85rem;
+  line-height: 1.35;
+  word-break: break-word;
+}
+.snake-chat-line.is-mine {
+  color: var(--acc, #7c6af7);
+}
+.snake-chat-empty {
+  margin: 0;
+  font-size: 0.8rem;
+}
+.snake-chat-empty kbd {
+  padding: 0 4px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 0.75rem;
+}
+.snake-chat-form {
+  display: flex;
+  gap: 6px;
+}
+.snake-chat-form input {
+  flex: 1;
+  min-width: 0;
+}
