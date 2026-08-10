@@ -471,7 +471,19 @@ export default function App() {
   }, [])
   // Ensure theme applies at the root so body/background use the same tokens
   useEffect(() => {
-    document.documentElement.setAttribute('data-theme', theme)
+    /**
+     * `custom` on purpose, and it must match the value on the wrapper div below.
+     *
+     * `data-theme` lives on BOTH <html> and a div inside body, and each `[data-theme='…']`
+     * block re-declares all 21 tokens. The div is the closer ancestor, so its values won for
+     * the entire visible tree — which meant the custom palette, written as inline properties on
+     * <html>, reached almost nothing. Measured: `--bg` was the custom colour at <html> and the
+     * light theme's #ffffff two elements down.
+     *
+     * Naming it something no stylesheet block matches means nothing re-declares the tokens
+     * below <html>, so the inline values inherit the whole way down.
+     */
+    document.documentElement.setAttribute('data-theme', customPalette ? 'custom' : theme)
     // Update theme-color meta to match current theme background
     const meta = document.querySelector('meta[name="theme-color"]') as HTMLMetaElement | null
     if (meta) {
@@ -879,8 +891,14 @@ export default function App() {
   ]
 
   return (
-    <div data-theme={theme} data-page={active}>
-      <AmbientBackdrop section={active} theme={theme} enabled={ambientOn} />
+    <div data-theme={customPalette ? 'custom' : theme} data-page={active}>
+      {/* the effective name, not the built-in one: this prop exists only to re-read the CSS
+          vars when they change, and a palette switch changes them without changing `theme` */}
+      <AmbientBackdrop
+        section={active}
+        theme={customPalette ? 'custom' : theme}
+        enabled={ambientOn}
+      />
       {/* A call outlives the screen it started on, so its controls and its audio live at app
           level — otherwise you'd navigate away and be stuck in a call you can't hear or end. */}
       <CallDock />

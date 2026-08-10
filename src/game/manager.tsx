@@ -852,7 +852,10 @@ export function GameManager({
       const snap = engineRef.current?.snapshot()
       if (snap) rendererRef.current?.draw(snap)
     })
-    obs.observe(el, { attributes: true, attributeFilter: ['data-theme', 'class'] })
+    // `style` as well as `data-theme`: a custom palette is written as inline custom properties
+    // on <html> and doesn't change the theme name, so watching the attribute alone left the
+    // board painted in the previous palette's colours until something else forced a redraw.
+    obs.observe(el, { attributes: true, attributeFilter: ['data-theme', 'class', 'style'] })
     return () => obs.disconnect()
   }, [])
 

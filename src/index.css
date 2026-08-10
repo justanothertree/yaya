@@ -84,6 +84,16 @@
   --accent-2: #ff5566;
   --btn-text: #ffffff;
 }
+/* ...but not when someone has set their own colours. The purple holds against the three
+   built-in themes because it's brand; a custom palette is the user saying "use MY colours",
+   and one module quietly ignoring them reads as a bug rather than as branding.
+   `inherit` hands back to whatever the palette put on <html>. Delete this block to make the
+   purple absolute again. */
+:root[data-theme='custom'] #circuit {
+  --accent: inherit;
+  --accent-2: inherit;
+  --btn-text: inherit;
+}
 
 /* ── one spacing + radius rhythm for the whole site ──────────────────────────
    Every gap, pad, and corner reads from this scale so sections, cards, and
@@ -2650,56 +2660,101 @@ select {
 }
 
 /* ── make your own palette ──────────────────────────────────────────────────
-   Lives inside the cog menu. Kept narrow and stacked because the menu is a popover, not a
-   settings page — and on a phone that popover is most of the screen. */
+   A dialog, not a row in the cog popover. Three colour pickers, three hex fields, a contrast
+   readout and a live preview don't fit in ~230px, which is what made it fiddly to see and
+   handle. Full-width sheet on a phone, centred card on a desktop. */
+.pal-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--sp-4, 1rem);
+  background: rgba(0, 0, 0, 0.55);
+}
+.pal-sheet {
+  width: min(30rem, 100%);
+  max-height: min(86vh, 44rem);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3, 0.75rem);
+  padding: var(--card-pad, 1.1rem);
+  border-radius: var(--r-lg, 16px);
+  background: var(--panel);
+  border: 1px solid var(--border-strong);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.45);
+}
+.pal-sheet-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2, 0.5rem);
+}
 .pal {
   display: flex;
   flex-direction: column;
-  gap: var(--sp-2, 0.5rem);
+  gap: var(--sp-3, 0.75rem);
   width: 100%;
   min-width: 0;
 }
-.pal-toggle,
-.pal-seed {
+.pal-toggle {
   display: flex;
   align-items: center;
   gap: var(--sp-2, 0.5rem);
+  font-weight: 600;
+}
+.pal-toggle input {
+  width: 1.1rem;
+  height: 1.1rem;
 }
 .pal-seeds {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--sp-2, 0.5rem);
+}
+/* label / swatch / hex on one line, with the swatch big enough to be a real target */
+.pal-seed {
+  display: grid;
+  grid-template-columns: 5.5rem 2.6rem 1fr;
+  align-items: center;
+  gap: var(--sp-2, 0.5rem);
 }
 .pal-seed > span:first-child {
-  flex: 0 0 5.5rem;
-  font-size: 0.8rem;
+  font-size: 0.85rem;
 }
 .pal-seed input[type='color'] {
-  width: 2rem;
-  height: 1.6rem;
+  width: 2.6rem;
+  height: 2.1rem;
   padding: 0;
-  border: 1px solid var(--border);
-  border-radius: 6px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
   background: none;
+  cursor: pointer;
 }
 .pal-hex {
-  flex: 1;
   min-width: 0;
   width: 100%;
   font-family: var(--mono);
-  font-size: 0.78rem;
+  font-size: 0.82rem;
+  padding: 0.35rem 0.5rem;
 }
 .pal-checks {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 3px;
+  padding: var(--sp-2, 0.5rem);
+  border-radius: var(--r-sm, 8px);
+  background: var(--control-bg, rgba(127, 127, 127, 0.1));
 }
 .pal-check {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
   gap: var(--sp-2, 0.5rem);
-  font-size: 0.75rem;
+  font-size: 0.8rem;
 }
 .pal-check-label {
   color: var(--muted);
@@ -2707,6 +2762,7 @@ select {
 .pal-check-val {
   white-space: nowrap;
   font-family: var(--mono);
+  font-size: 0.78rem;
 }
 /* Not colour alone — the words carry the same information, because a contrast warning that
    only works if you can distinguish red from green is a poor joke. */
@@ -2720,48 +2776,60 @@ select {
   color: var(--red, #ff5566);
 }
 .pal-warn {
-  margin: 2px 0 0;
-  font-size: 0.75rem;
+  margin: 4px 0 0;
+  font-size: 0.78rem;
   color: var(--ylw, #f5c060);
 }
-/* The preview sets the derived tokens on itself, so everything inside it renders in the
-   candidate palette while the rest of the menu stays in the current one. */
+/* The preview sets the derived tokens on itself, so everything inside renders in the candidate
+   palette while the dialog around it stays in the current one. */
 .pal-preview {
   border-radius: var(--r-md, 12px);
-  padding: 2px;
 }
 .pal-preview-card {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
   padding: var(--sp-3, 0.75rem);
   border-radius: var(--r-md, 12px);
   border: 1px solid var(--border);
   background: var(--panel);
   color: var(--text);
-  font-size: 0.8rem;
+  font-size: 0.85rem;
 }
 .pal-preview-card .muted {
   color: var(--muted);
 }
 .pal-preview-btn {
   align-self: flex-start;
-  padding: 3px 10px;
+  padding: 5px 14px;
   border-radius: var(--r-pill, 999px);
   background: var(--accent);
   color: var(--btn-text);
-  font-size: 0.78rem;
+  font-size: 0.82rem;
   font-weight: 600;
+}
+.pal-starts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
 }
 .pal-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
+  gap: 6px;
 }
 .pal-actions .btn {
-  font-size: 0.75rem;
-  padding: 3px 8px;
+  flex: 1 1 8rem;
 }
-.nav-menu-pal {
-  align-items: stretch;
+@media (max-width: 640px) {
+  .pal-scrim {
+    padding: 0;
+    align-items: flex-end;
+  }
+  .pal-sheet {
+    width: 100%;
+    max-height: 92vh;
+    border-radius: var(--r-lg, 16px) var(--r-lg, 16px) 0 0;
+    padding-bottom: calc(var(--card-pad, 1.1rem) + env(safe-area-inset-bottom, 0px));
+  }
 }

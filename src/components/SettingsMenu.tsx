@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { PalettePicker } from '../theme/PalettePicker'
 
 export type Theme = 'light' | 'dark' | 'alt'
@@ -91,6 +92,17 @@ export function SettingsMenu({
       window.removeEventListener('keydown', onKey)
     }
   }, [open])
+
+  // Escape closes the palette dialog. Its own listener because the menu's one only knows about
+  // the dropdown, and the dialog outlives it now.
+  useEffect(() => {
+    if (!palOpen) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setPalOpen(false)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [palOpen])
 
   const pct = Math.round(uiScale * 100)
   // prefer the name; the email is only a stand-in until the profile arrives
@@ -210,18 +222,17 @@ export function SettingsMenu({
                 className={'btn' + (customPalette ? ' is-on' : '')}
                 aria-pressed={customPalette}
                 aria-expanded={palOpen}
-                onClick={() => setPalOpen((o) => !o)}
+                onClick={() => {
+                  // close the dropdown as the dialog opens, so it isn't sitting behind it
+                  setPalOpen(true)
+                  setOpen(false)
+                }}
                 title="Make your own palette"
               >
                 🎨
               </button>
             </span>
           </div>
-          {palOpen && (
-            <div className="nav-menu-row is-static nav-menu-pal">
-              <PalettePicker active={customPalette} onActiveChange={onCustomPalette} />
-            </div>
-          )}
 
           <button
             className="nav-menu-row"
@@ -269,6 +280,39 @@ export function SettingsMenu({
           )}
         </div>
       )}
+
+      {/* A dialog rather than another row inside the cog. The editor has three colour pickers,
+          three hex fields, a contrast readout and a preview — at the popover's ~230px that was
+          a column of slivers, and on a phone the popover is most of the screen already. */}
+      {/* Portalled to <body>, and it has to be. `.nav` sets `will-change: transform`, which
+          makes it a containing block for `position: fixed` — so a fixed scrim rendered in here
+          is positioned against the NAV's box, not the viewport. Measured before the portal: the
+          sheet didn't fit on screen and its colour swatch wasn't even hit-testable. This is the
+          same containing-block trap that has bitten the notification panel. */}
+      {palOpen &&
+        createPortal(
+          <div
+            className="pal-scrim"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Make your own palette"
+            onPointerDown={(e) => {
+              // backdrop only — a pointerdown that started inside shouldn't close it
+              if (e.target === e.currentTarget) setPalOpen(false)
+            }}
+          >
+            <div className="pal-sheet">
+              <div className="pal-sheet-head">
+                <strong>Your colours</strong>
+                <button className="btn" onClick={() => setPalOpen(false)} aria-label="Close">
+                  ✕
+                </button>
+              </div>
+              <PalettePicker active={customPalette} onActiveChange={onCustomPalette} />
+            </div>
+          </div>,
+          document.body,
+        )}
     </div>
   )
 }

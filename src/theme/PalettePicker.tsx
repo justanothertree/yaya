@@ -143,17 +143,18 @@ export function PalettePicker({
         </div>
       </div>
 
-      <div className="pal-actions">
+      {/* Starting points are separated from Save/Reset: one row changes what you're looking at,
+          the other decides what happens to it, and mixing them invites the wrong click. */}
+      <div className="pal-starts">
+        <span className="pal-check-label">Start from</span>
         {SWATCHES.map((s) => (
-          <button
-            key={s.label}
-            className="btn"
-            onClick={() => setSeed(s.seed)}
-            title={`Start from ${s.label}`}
-          >
+          <button key={s.label} className="btn" onClick={() => setSeed(s.seed)}>
             {s.label}
           </button>
         ))}
+      </div>
+
+      <div className="pal-actions">
         <button
           className="btn"
           onClick={() => {
