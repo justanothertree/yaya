@@ -378,7 +378,9 @@ export function subscribeToLeaderboard(onChange: () => void): (() => void) | nul
   const { leaderboardTable } = envs()
   if (!client) return null
   const channel = client
-    .channel('scores-changes')
+    // private, but readable by `anon` — the public leaderboard live-updates for signed-out
+    // visitors, and that has to keep working once public channels are switched off project-wide
+    .channel('scores-changes', { config: { private: true } })
     .on('postgres_changes', { event: '*', schema: 'public', table: leaderboardTable }, () =>
       onChange(),
     )

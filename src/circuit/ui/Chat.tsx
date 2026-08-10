@@ -158,9 +158,12 @@ export function Chat({ authed = false }: { authed?: boolean }) {
   // keep the conversation list fresh: any message we're allowed to see bumps it. RLS applies
   // to realtime too, so this only ever fires for rooms we're actually in.
   useEffect(() => {
-    if (!sb) return
+    // Also gated on being signed in, not just on having a client: the topic is private now, so
+    // a signed-out visitor would be refused rather than silently receiving nothing. They have
+    // no conversations either way, so the subscription was always pointless for them.
+    if (!sb || !authed) return
     const ch = sb
-      .channel('chat:overview')
+      .channel('chat:overview', { config: { private: true } })
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'chat_messages' },
@@ -232,7 +235,9 @@ export function Chat({ authed = false }: { authed?: boolean }) {
         }
       })
     const ch = sb
-      .channel('chat:' + room.id)
+      // private: gated on being in this room, so a non-member can't even hold the subscription
+      // open. The row payloads were already filtered by chat_messages' RLS — this is depth.
+      .channel('chat:' + room.id, { config: { private: true } })
       .on(
         'postgres_changes',
         {

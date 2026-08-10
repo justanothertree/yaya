@@ -158,7 +158,7 @@ export function useNotifications(authed: boolean): Notifications {
     if (!authed || previewMember) return
     const sb = getSupabaseClient()
     const ch = sb
-      .channel('notif:chat')
+      .channel('notif:chat', { config: { private: true } })
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'chat_messages' },

@@ -57,7 +57,7 @@ export function useFeedSocial(enabled: boolean): FeedSocial {
     void sb.auth.getUser().then(({ data }) => setUid(data.user?.id ?? null))
     void load()
     const ch = sb
-      .channel('circuit-social')
+      .channel('circuit-social', { config: { private: true } })
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'circuit_log_reactions' },

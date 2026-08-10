@@ -241,7 +241,7 @@ export function createSupabaseAdapter(): CircuitAdapter {
     },
     subscribe(onExternalChange) {
       emitExternal = onExternalChange
-      const ch = sb.channel('circuit-sync')
+      const ch = sb.channel('circuit-sync', { config: { private: true } })
       for (const table of TABLES) {
         ch.on('postgres_changes', { event: '*', schema: 'public', table }, () => {
           void loadAll().then((s) => {
