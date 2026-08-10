@@ -6,10 +6,12 @@ import {
   contrast,
   derivePalette,
   loadPalette,
-  parseHex,
   rate,
   savePalette,
 } from './customTheme'
+import { ColorField } from './ColorField'
+import { SnakePreview } from './SnakePreview'
+import { PRESET_GROUPS } from './presets'
 
 /**
  * Make your own palette.
@@ -22,13 +24,6 @@ import {
  * how you find out that a colour you like is unreadable *before* you save it, which is exactly
  * the mistake already sitting in one of the built-in themes.
  */
-
-const SWATCHES: Array<{ label: string; seed: PaletteSeed }> = [
-  { label: 'Midnight', seed: { bg: '#08080f', text: '#eeeef8', accent: '#22c55e' } },
-  { label: 'Paper', seed: { bg: '#fbfbfd', text: '#14141c', accent: '#2563eb' } },
-  { label: 'Ember', seed: { bg: '#120c0a', text: '#f6ece8', accent: '#f97316' } },
-  { label: 'Deep sea', seed: { bg: '#06121a', text: '#e4f4ff', accent: '#22d3ee' } },
-]
 
 function Row({ label, ratio }: { label: string; ratio: number }) {
   const r = rate(ratio)
@@ -72,54 +67,40 @@ export function PalettePicker({
 
   return (
     <div className="pal">
-      <div className="pal-head">
-        <label className="pal-toggle">
-          <input
-            type="checkbox"
-            checked={active}
-            onChange={(e) => {
-              const on = e.target.checked
-              onActiveChange(on)
-              if (on) {
-                savePalette(seed)
-                applyPalette(seed)
-              } else {
-                applyPalette(null)
-              }
-            }}
-          />
-          <span>Use my own colours</span>
-        </label>
-      </div>
+      <label className="pal-toggle">
+        <input
+          type="checkbox"
+          checked={active}
+          onChange={(e) => {
+            const on = e.target.checked
+            onActiveChange(on)
+            if (on) {
+              savePalette(seed)
+              applyPalette(seed)
+            } else {
+              applyPalette(null)
+            }
+          }}
+        />
+        <span>Use my own colours</span>
+      </label>
 
       <div className="pal-seeds">
-        {(
-          [
-            ['bg', 'Background'],
-            ['text', 'Text'],
-            ['accent', 'Accent'],
-          ] as Array<[keyof PaletteSeed, string]>
-        ).map(([k, label]) => (
-          <label className="pal-seed" key={k}>
-            <span>{label}</span>
-            <input
-              type="color"
-              value={parseHex(seed[k]) ? seed[k] : DEFAULT_SEED[k]}
-              onChange={(e) => set(k)(e.target.value)}
-              aria-label={label}
-            />
-            {/* the text field is for pasting a hex you already have; invalid input is simply
-                ignored by the derivation rather than blowing up the page */}
-            <input
-              className="pal-hex"
-              type="text"
-              value={seed[k]}
-              onChange={(e) => set(k)(e.target.value)}
-              spellCheck={false}
-              aria-label={`${label} hex code`}
-            />
-          </label>
-        ))}
+        <ColorField label="Background" value={seed.bg} onChange={set('bg')} />
+        <ColorField label="Text" value={seed.text} onChange={set('text')} />
+        <ColorField label="Accent" value={seed.accent} onChange={set('accent')} />
+      </div>
+
+      {/* What the derived tokens actually look like. Cheaper than describing them — and the
+          board is here because the accent IS the snake and the second accent IS the apples, so
+          this is where a palette most obviously works or doesn't. */}
+      <div className="pal-preview" style={derived as React.CSSProperties}>
+        <div className="pal-preview-card">
+          <strong>Preview</strong>
+          <p className="muted">Secondary text sits here.</p>
+          <SnakePreview tokens={derived} />
+          <span className="pal-preview-btn">Button</span>
+        </div>
       </div>
 
       <div className="pal-checks">
@@ -134,23 +115,37 @@ export function PalettePicker({
         )}
       </div>
 
-      {/* What the derived tokens actually look like. Cheaper than describing them. */}
-      <div className="pal-preview" style={derived as React.CSSProperties}>
-        <div className="pal-preview-card">
-          <strong>Preview</strong>
-          <p className="muted">Secondary text sits here.</p>
-          <span className="pal-preview-btn">Button</span>
-        </div>
-      </div>
-
-      {/* Starting points are separated from Save/Reset: one row changes what you're looking at,
-          the other decides what happens to it, and mixing them invites the wrong click. */}
-      <div className="pal-starts">
-        <span className="pal-check-label">Start from</span>
-        {SWATCHES.map((s) => (
-          <button key={s.label} className="btn" onClick={() => setSeed(s.seed)}>
-            {s.label}
-          </button>
+      {/* Presets show their three colours rather than only a name: you can find the one you want
+          by eye, which is the whole reason someone opens this. */}
+      <div className="pal-presets">
+        {PRESET_GROUPS.map((g) => (
+          <div className="pal-preset-group" key={g.group}>
+            <span className="pal-check-label">{g.group}</span>
+            <div className="pal-preset-row">
+              {g.items.map((p) => {
+                const on =
+                  p.seed.bg === seed.bg &&
+                  p.seed.text === seed.text &&
+                  p.seed.accent === seed.accent
+                return (
+                  <button
+                    key={p.label}
+                    className={'pal-preset' + (on ? ' is-on' : '')}
+                    onClick={() => setSeed(p.seed)}
+                    title={p.label}
+                    aria-pressed={on}
+                  >
+                    <span className="pal-preset-chips" aria-hidden>
+                      <i style={{ background: p.seed.bg }} />
+                      <i style={{ background: p.seed.text }} />
+                      <i style={{ background: p.seed.accent }} />
+                    </span>
+                    <span className="pal-preset-name">{p.label}</span>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
         ))}
       </div>
 

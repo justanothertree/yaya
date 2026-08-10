@@ -98,6 +98,50 @@ export function readableOn(bg: string): string {
   return contrast('#ffffff', bg) >= contrast('#0b0f19', bg) ? '#ffffff' : '#0b0f19'
 }
 
+/* ── HSL, for the picker ────────────────────────────────────────────────── */
+
+export type HSL = { h: number; s: number; l: number }
+
+/** h 0–360, s/l 0–1. */
+export function hexToHsl(hex: string): HSL {
+  const c = parseHex(hex) ?? { r: 0, g: 0, b: 0 }
+  const r = c.r / 255
+  const g = c.g / 255
+  const b = c.b / 255
+  const max = Math.max(r, g, b)
+  const min = Math.min(r, g, b)
+  const l = (max + min) / 2
+  const d = max - min
+  let h = 0
+  if (d !== 0) {
+    if (max === r) h = ((g - b) / d) % 6
+    else if (max === g) h = (b - r) / d + 2
+    else h = (r - g) / d + 4
+    h *= 60
+    if (h < 0) h += 360
+  }
+  const s = d === 0 ? 0 : d / (1 - Math.abs(2 * l - 1))
+  return { h, s, l }
+}
+
+export function hslToHex({ h, s, l }: HSL): string {
+  const c = (1 - Math.abs(2 * l - 1)) * s
+  const hh = ((h % 360) + 360) % 360
+  const x = c * (1 - Math.abs(((hh / 60) % 2) - 1))
+  const m = l - c / 2
+  const seg = Math.floor(hh / 60) % 6
+  const table: Array<[number, number, number]> = [
+    [c, x, 0],
+    [x, c, 0],
+    [0, c, x],
+    [0, x, c],
+    [x, 0, c],
+    [c, 0, x],
+  ]
+  const [r, g, b] = table[seg]
+  return toHex({ r: (r + m) * 255, g: (g + m) * 255, b: (b + m) * 255 })
+}
+
 /* ── the framework ──────────────────────────────────────────────────────── */
 
 /**
@@ -144,40 +188,9 @@ export function derivePalette(seed: PaletteSeed): Record<string, string> {
 }
 
 function rotateHue(hex: string, degrees: number): string {
-  const c = parseHex(hex)
-  if (!c) return hex
-  const r = c.r / 255
-  const g = c.g / 255
-  const b = c.b / 255
-  const max = Math.max(r, g, b)
-  const min = Math.min(r, g, b)
-  const l = (max + min) / 2
-  const d = max - min
-  let h = 0
-  if (d !== 0) {
-    if (max === r) h = ((g - b) / d) % 6
-    else if (max === g) h = (b - r) / d + 2
-    else h = (r - g) / d + 4
-    h *= 60
-    if (h < 0) h += 360
-  }
-  const s = d === 0 ? 0 : d / (1 - Math.abs(2 * l - 1))
-  const h2 = (h + degrees) % 360
-  // back to RGB
-  const cc = (1 - Math.abs(2 * l - 1)) * s
-  const x = cc * (1 - Math.abs(((h2 / 60) % 2) - 1))
-  const m = l - cc / 2
-  const seg = Math.floor(h2 / 60) % 6
-  const table: Array<[number, number, number]> = [
-    [cc, x, 0],
-    [x, cc, 0],
-    [0, cc, x],
-    [0, x, cc],
-    [x, 0, cc],
-    [cc, 0, x],
-  ]
-  const [r2, g2, b2] = table[seg]
-  return toHex({ r: (r2 + m) * 255, g: (g2 + m) * 255, b: (b2 + m) * 255 })
+  if (!parseHex(hex)) return hex
+  const { h, s, l } = hexToHsl(hex)
+  return hslToHex({ h: h + degrees, s, l })
 }
 
 /* ── applying and saving ────────────────────────────────────────────────── */

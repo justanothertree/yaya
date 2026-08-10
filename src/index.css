@@ -2716,30 +2716,157 @@ select {
   gap: var(--sp-2, 0.5rem);
 }
 /* label / swatch / hex on one line, with the swatch big enough to be a real target */
-.pal-seed {
+/* ── the inline colour field ────────────────────────────────────────────────
+   Replaces `<input type="color">`, which threw an OS dialog into the corner of the screen and
+   hid the very thing you were trying to watch change. */
+.cf {
   display: grid;
-  grid-template-columns: 5.5rem 2.6rem 1fr;
+  grid-template-columns: 2.4rem 5rem 1fr;
   align-items: center;
   gap: var(--sp-2, 0.5rem);
 }
-.pal-seed > span:first-child {
-  font-size: 0.85rem;
-}
-.pal-seed input[type='color'] {
-  width: 2.6rem;
+.cf-swatch {
+  width: 2.4rem;
   height: 2.1rem;
   padding: 0;
   border: 1px solid var(--border-strong);
   border-radius: 8px;
-  background: none;
   cursor: pointer;
 }
-.pal-hex {
+.cf-label {
+  font-size: 0.85rem;
+}
+.cf-hex {
   min-width: 0;
   width: 100%;
   font-family: var(--mono);
   font-size: 0.82rem;
   padding: 0.35rem 0.5rem;
+}
+/* spans the field's full width on the row below it */
+.cf-pop {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 2px;
+}
+.cf-pad {
+  position: relative;
+  height: 7rem;
+  border-radius: var(--r-sm, 8px);
+  border: 1px solid var(--border);
+  cursor: crosshair;
+  /* a drag that wanders off the pad should keep picking, not scroll the sheet */
+  touch-action: none;
+}
+.cf-dot {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  margin: -7px 0 0 -7px;
+  border-radius: 50%;
+  border: 2px solid #fff;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.55);
+  pointer-events: none;
+}
+.cf-hue {
+  width: 100%;
+  height: 1.1rem;
+  appearance: none;
+  border-radius: var(--r-pill, 999px);
+  border: 1px solid var(--border);
+  background: linear-gradient(
+    to right,
+    #f00 0%,
+    #ff0 17%,
+    #0f0 33%,
+    #0ff 50%,
+    #00f 67%,
+    #f0f 83%,
+    #f00 100%
+  );
+}
+.cf-hue::-webkit-slider-thumb {
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.5);
+  cursor: pointer;
+}
+.cf-hue::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.5);
+  cursor: pointer;
+}
+
+/* the little Snake board in the preview */
+.pal-snake {
+  width: 100%;
+  height: auto;
+  border-radius: var(--r-sm, 8px);
+  border: 1px solid var(--border);
+}
+
+/* ── presets ────────────────────────────────────────────────────────────── */
+.pal-presets {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2, 0.5rem);
+}
+.pal-preset-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.pal-preset-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(6.5rem, 1fr));
+  gap: 6px;
+}
+.pal-preset {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 7px;
+  border-radius: var(--r-sm, 8px);
+  border: 1px solid var(--border);
+  background: var(--control-bg, rgba(127, 127, 127, 0.08));
+  color: var(--text);
+  font-size: 0.76rem;
+  cursor: pointer;
+  text-align: left;
+}
+.pal-preset:hover {
+  border-color: var(--border-strong);
+}
+.pal-preset.is-on {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+/* three chips so you can find a palette by eye rather than by name */
+.pal-preset-chips {
+  display: inline-flex;
+  flex: 0 0 auto;
+  border-radius: 4px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+}
+.pal-preset-chips i {
+  display: block;
+  width: 8px;
+  height: 16px;
+}
+.pal-preset-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .pal-checks {
   display: flex;
@@ -2808,15 +2935,20 @@ select {
   font-size: 0.82rem;
   font-weight: 600;
 }
-.pal-starts {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
+/* Pinned to the bottom of the sheet. With a preview board and sixteen presets above it, Save
+   sat well below the fold on a phone — and the one control you always want is the one you had
+   to go looking for. */
 .pal-actions {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+  margin: 0 calc(-1 * var(--card-pad, 1.1rem)) calc(-1 * var(--card-pad, 1.1rem));
+  padding: var(--sp-2, 0.5rem) var(--card-pad, 1.1rem) var(--card-pad, 1.1rem);
+  background: var(--panel);
+  border-top: 1px solid var(--border);
 }
 .pal-actions .btn {
   flex: 1 1 8rem;
