@@ -2648,3 +2648,120 @@ select {
   text-decoration: none;
   font-weight: 600;
 }
+
+/* ── make your own palette ──────────────────────────────────────────────────
+   Lives inside the cog menu. Kept narrow and stacked because the menu is a popover, not a
+   settings page — and on a phone that popover is most of the screen. */
+.pal {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2, 0.5rem);
+  width: 100%;
+  min-width: 0;
+}
+.pal-toggle,
+.pal-seed {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2, 0.5rem);
+}
+.pal-seeds {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.pal-seed > span:first-child {
+  flex: 0 0 5.5rem;
+  font-size: 0.8rem;
+}
+.pal-seed input[type='color'] {
+  width: 2rem;
+  height: 1.6rem;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: none;
+}
+.pal-hex {
+  flex: 1;
+  min-width: 0;
+  width: 100%;
+  font-family: var(--mono);
+  font-size: 0.78rem;
+}
+.pal-checks {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.pal-check {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-2, 0.5rem);
+  font-size: 0.75rem;
+}
+.pal-check-label {
+  color: var(--muted);
+}
+.pal-check-val {
+  white-space: nowrap;
+  font-family: var(--mono);
+}
+/* Not colour alone — the words carry the same information, because a contrast warning that
+   only works if you can distinguish red from green is a poor joke. */
+.pal-check-val.is-aa {
+  color: var(--accent);
+}
+.pal-check-val.is-large {
+  color: var(--ylw, #f5c060);
+}
+.pal-check-val.is-fail {
+  color: var(--red, #ff5566);
+}
+.pal-warn {
+  margin: 2px 0 0;
+  font-size: 0.75rem;
+  color: var(--ylw, #f5c060);
+}
+/* The preview sets the derived tokens on itself, so everything inside it renders in the
+   candidate palette while the rest of the menu stays in the current one. */
+.pal-preview {
+  border-radius: var(--r-md, 12px);
+  padding: 2px;
+}
+.pal-preview-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: var(--sp-3, 0.75rem);
+  border-radius: var(--r-md, 12px);
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--text);
+  font-size: 0.8rem;
+}
+.pal-preview-card .muted {
+  color: var(--muted);
+}
+.pal-preview-btn {
+  align-self: flex-start;
+  padding: 3px 10px;
+  border-radius: var(--r-pill, 999px);
+  background: var(--accent);
+  color: var(--btn-text);
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+.pal-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.pal-actions .btn {
+  font-size: 0.75rem;
+  padding: 3px 8px;
+}
+.nav-menu-pal {
+  align-items: stretch;
+}

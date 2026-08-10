@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { PalettePicker } from '../theme/PalettePicker'
 
 export type Theme = 'light' | 'dark' | 'alt'
 
@@ -28,6 +29,8 @@ export function SettingsMenu({
   desktop,
   ambientOn,
   onToggleAmbient,
+  customPalette,
+  onCustomPalette,
   authed,
   isAdmin,
   name,
@@ -49,6 +52,9 @@ export function SettingsMenu({
   desktop: boolean
   ambientOn: boolean
   onToggleAmbient: () => void
+  /** true when the user's own palette is overriding the built-in theme */
+  customPalette: boolean
+  onCustomPalette: (on: boolean) => void
   authed: boolean
   isAdmin: boolean
   /** their actual name, once the profile lands — an email address is not a name */
@@ -61,6 +67,8 @@ export function SettingsMenu({
   onSignOut: () => void
 }) {
   const [open, setOpen] = useState(false)
+  /** the palette editor is collapsed by default — it's the one control here with real depth */
+  const [palOpen, setPalOpen] = useState(false)
   const wrapRef = useRef<HTMLDivElement>(null)
   const cogRef = useRef<HTMLButtonElement>(null)
 
@@ -189,15 +197,31 @@ export function SettingsMenu({
               {(['light', 'dark', 'alt'] as Theme[]).map((t) => (
                 <button
                   key={t}
-                  className={'btn' + (theme === t ? ' is-on' : '')}
-                  aria-pressed={theme === t}
+                  className={'btn' + (theme === t && !customPalette ? ' is-on' : '')}
+                  aria-pressed={theme === t && !customPalette}
                   onClick={() => onTheme(t)}
                 >
                   {t === 'light' ? '☀' : t === 'dark' ? '☾' : '✦'}
                 </button>
               ))}
+              {/* A fourth option beside the three, not buried on another page — it belongs
+                  where you already go to change how the site looks. */}
+              <button
+                className={'btn' + (customPalette ? ' is-on' : '')}
+                aria-pressed={customPalette}
+                aria-expanded={palOpen}
+                onClick={() => setPalOpen((o) => !o)}
+                title="Make your own palette"
+              >
+                🎨
+              </button>
             </span>
           </div>
+          {palOpen && (
+            <div className="nav-menu-row is-static nav-menu-pal">
+              <PalettePicker active={customPalette} onActiveChange={onCustomPalette} />
+            </div>
+          )}
 
           <button
             className="nav-menu-row"

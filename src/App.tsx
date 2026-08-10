@@ -31,6 +31,7 @@ const PageCanvas = lazy(() =>
   import('./circuit/ui/CircuitCanvas').then((m) => ({ default: m.CircuitCanvas })),
 )
 import type { CanvasPane } from './circuit/ui/CircuitCanvas'
+import { applyPalette, loadPalette } from './theme/customTheme'
 const AdminPanel = lazy(() =>
   import('./sections/AdminPanel').then((m) => ({ default: m.AdminPanel })),
 )
@@ -215,6 +216,27 @@ export default function App() {
       return !v
     })
   }
+  /**
+   * The user's own palette, if they made one. Kept separate from `theme` rather than being a
+   * fourth value of it: the palette is a set of inline custom properties on <html>, so it
+   * layers over whichever built-in theme is selected instead of replacing the concept. That
+   * also means everything downstream that reads `theme` — the ambient backdrop, Snake's
+   * renderer watching the attribute — keeps working untouched.
+   */
+  const [customPalette, setCustomPalette] = useState(
+    () => typeof window !== 'undefined' && localStorage.getItem('theme.custom.on') === '1',
+  )
+  useEffect(() => {
+    try {
+      localStorage.setItem('theme.custom.on', customPalette ? '1' : '0')
+    } catch {
+      /* ignore */
+    }
+    // Applying (and clearing) lives here so it survives a reload and so turning it off from
+    // anywhere puts the built-in theme straight back.
+    applyPalette(customPalette ? loadPalette() : null)
+  }, [customPalette])
+
   // Who the cog menu greets. The email is peeked from the LOCAL session so it paints
   // instantly and can never flash or gate anything; the real name follows from the profile
   // a moment later. An address is not a name — "cvaneook@outlook.com" made the avatar a
@@ -458,7 +480,10 @@ export default function App() {
         styles.getPropertyValue('--bg').trim() || (theme === 'light' ? '#ffffff' : '#0b0f19')
       meta.setAttribute('content', bg)
     }
-  }, [theme])
+    // `customPalette` is in here so the phone's browser chrome follows a custom background too.
+    // It reads the COMPUTED --bg, which already accounts for the inline palette — the dependency
+    // is only needed to re-run it, since switching palette doesn't change `theme`.
+  }, [theme, customPalette])
   // Log build info for quick verification
   useEffect(() => {
     if (import.meta.env.DEV && buildInfo) console.log(`%c${buildInfo}`, 'color:#22c55e')
@@ -829,6 +854,9 @@ export default function App() {
     const next = theme === 'dark' ? 'light' : theme === 'light' ? 'alt' : 'dark'
     setTheme(next)
     localStorage.setItem('theme', next)
+    // Asking for a built-in theme means you want that theme. The custom palette is inline
+    // styles on <html>, so leaving it on would win and the button would appear to do nothing.
+    if (customPalette) setCustomPalette(false)
   }
 
   // Pinned windows follow you across tabs. We keep the pane OBJECTS (not just ids) so a
@@ -996,6 +1024,9 @@ export default function App() {
               onTheme={(t) => {
                 setTheme(t)
                 localStorage.setItem('theme', t)
+                // same reason as cycleTheme: the inline palette would override the theme you
+                // just asked for, so choosing one steps out of the custom palette
+                setCustomPalette(false)
               }}
               uiScale={uiScale}
               onScale={(d) => (d === 0 ? setUiScale(1) : bumpScale(d))}
@@ -1012,6 +1043,8 @@ export default function App() {
               isAdmin={isAdmin}
               ambientOn={ambientOn}
               onToggleAmbient={toggleAmbient}
+              customPalette={customPalette}
+              onCustomPalette={setCustomPalette}
               name={me.name}
               email={me.email}
               onAccount={() => setActive('account-settings')}
