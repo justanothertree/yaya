@@ -407,22 +407,49 @@
   font-size: 0.75rem;
 }
 
-/* ── in-match chat ──────────────────────────────────────────────────────────
-   Sits with the multiplayer UI rather than floating over the canvas: the board is the thing
-   you're looking at mid-round, and a panel on top of it costs you the game. */
+/* ── in-match chat, as a HUD ────────────────────────────────────────────────
+   Anchored to the bottom of the screen and faded while you play, coming back to full strength
+   when a message lands or you start typing — the League behaviour: out of the way, there the
+   moment it matters. Enter focuses it from anywhere, Escape puts you back on the snake.
+
+   Fixed rather than in the page flow, because in flow it sat in an odd spot AND grew the page
+   when messages arrived. It clears whatever else is pinned down there via the shared
+   --bottom-guard chain, so it can't land on the mobile nav or the call dock. */
 .snake-chat {
-  margin-top: 8px;
-  padding: 8px;
+  position: fixed;
+  left: var(--pin-gap, 0.75rem);
+  bottom: calc(var(--bottom-guard, 0px) + var(--kb, 0px) + var(--pin-gap, 0.75rem));
+  z-index: 55;
+  width: min(22rem, calc(100vw - 1.5rem));
   display: flex;
   flex-direction: column;
   gap: 6px;
+  padding: 8px;
+  border-radius: var(--r-md, 12px);
+  border: 1px solid transparent;
+  background: transparent;
+  /* Idle: legible but recessive. Never fully invisible — a chat you can't find is worse than
+     one that's slightly in the way. */
+  opacity: 0.4;
+  transition:
+    opacity 0.25s ease,
+    background-color 0.25s ease,
+    border-color 0.25s ease;
+}
+/* a message arrived, you're typing, or you're pointing at it */
+.snake-chat.is-live,
+.snake-chat:hover,
+.snake-chat:focus-within {
+  opacity: 1;
+  background: var(--panel);
+  border-color: var(--border);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
 }
 .snake-chat-log {
   /* A FIXED height, not a min/max range. Ranging meant the box grew as messages arrived and
      shoved the board and everything under it down the page mid-round. It scrolls instead. */
   height: 8.5rem;
   overflow-y: auto;
-  /* a burst of messages shouldn't rubber-band the whole page behind it */
   overscroll-behavior: contain;
   display: flex;
   flex-direction: column;
@@ -433,13 +460,16 @@
   font-size: 0.85rem;
   line-height: 1.35;
   word-break: break-word;
+  /* readable over the board even while the panel behind it is transparent */
+  text-shadow: 0 1px 2px var(--bg);
 }
 .snake-chat-line.is-mine {
-  color: var(--acc, #7c6af7);
+  color: var(--acc, var(--accent));
 }
 .snake-chat-empty {
   margin: 0;
   font-size: 0.8rem;
+  text-shadow: 0 1px 2px var(--bg);
 }
 .snake-chat-empty kbd {
   padding: 0 4px;

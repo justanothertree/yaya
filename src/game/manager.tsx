@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { Filter } from 'bad-words'
 import './game.css'
 import { GameEngine } from './engine'
@@ -206,10 +207,46 @@ export function GameManager({
   >([])
   const chatSeqRef = useRef(0)
   const chatInputRef = useRef<HTMLInputElement | null>(null)
+  const chatLogRef = useRef<HTMLDivElement | null>(null)
   const [chatDraft, setChatDraft] = useState('')
-  const pushChat = useCallback((who: string, text: string, mine: boolean) => {
-    setChatLines((prev) => [...prev.slice(-39), { id: ++chatSeqRef.current, who, text, mine }])
+  /**
+   * The HUD is faded until something happens. `chatLive` is "a message arrived or you're typing",
+   * which is what brings it back to full strength — the League behaviour: out of the way while
+   * you play, there the moment it matters.
+   */
+  const [chatLive, setChatLive] = useState(false)
+  const chatFadeRef = useRef<number | undefined>(undefined)
+  const wakeChat = useCallback(() => {
+    setChatLive(true)
+    window.clearTimeout(chatFadeRef.current)
+    chatFadeRef.current = window.setTimeout(() => setChatLive(false), 6000)
   }, [])
+  const pushChat = useCallback(
+    (who: string, text: string, mine: boolean) => {
+      setChatLines((prev) => [...prev.slice(-39), { id: ++chatSeqRef.current, who, text, mine }])
+      wakeChat()
+    },
+    [wakeChat],
+  )
+  useEffect(() => () => window.clearTimeout(chatFadeRef.current), [])
+
+  /**
+   * Follow the conversation — but only when you were already at the bottom. Yanking someone
+   * down mid-scroll while they read back through the round is worse than a missed line, so a
+   * deliberate scroll up stops the auto-follow until they return.
+   */
+  const chatStickRef = useRef(true)
+  const onChatScroll = useCallback(() => {
+    const el = chatLogRef.current
+    if (el) chatStickRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 48
+  }, [])
+  useEffect(() => {
+    // Measured on SCROLL, not here: by the time this effect runs the new line is already in the
+    // DOM and scrollHeight has grown, so "am I at the bottom" always answers no and the log
+    // would never follow.
+    const el = chatLogRef.current
+    if (el && chatStickRef.current) el.scrollTop = el.scrollHeight
+  }, [chatLines])
   const [roomName] = useState<string>(() => {
     try {
       return localStorage.getItem('snake.room.name') || ''
@@ -2728,62 +2765,79 @@ export function GameManager({
           Names and messages both go through the profanity filter on the way to the screen, the
           same view-only treatment the leaderboard gets: nobody is stopped from saying anything,
           it just isn't rendered raw on a site Evan shows to employers. */}
-      {mode === 'versus' && multiStep !== 'landing' && conn === 'connected' && (
-        <div className="snake-chat card">
-          <div className="snake-chat-log" aria-live="polite" aria-label="Match chat">
-            {chatLines.length === 0 ? (
-              <p className="muted snake-chat-empty">
-                Press <kbd>Enter</kbd> to chat with the room.
-              </p>
-            ) : (
-              chatLines.map((l) => (
-                <p key={l.id} className={'snake-chat-line' + (l.mine ? ' is-mine' : '')}>
-                  <b>{profanityFilter.clean(l.who)}:</b> {profanityFilter.clean(l.text)}
+      {mode === 'versus' &&
+        multiStep !== 'landing' &&
+        conn === 'connected' &&
+        createPortal(
+          <div className={'snake-chat' + (chatLive ? ' is-live' : '')}>
+            <div
+              className="snake-chat-log"
+              ref={chatLogRef}
+              onScroll={onChatScroll}
+              aria-live="polite"
+              aria-label="Match chat"
+            >
+              {chatLines.length === 0 ? (
+                <p className="muted snake-chat-empty">
+                  Press <kbd>Enter</kbd> to chat with the room.
                 </p>
-              ))
-            )}
-          </div>
-          <form
-            className="snake-chat-form"
-            onSubmit={(e) => {
-              e.preventDefault()
-              const text = chatDraft.trim()
-              if (!text) return
-              netRef.current?.send({ type: 'chat', text })
-              // The relay excludes the sender, so our own line is added here rather than
-              // waiting for an echo that never comes.
-              pushChat(playerName.trim() || 'You', text, true)
-              setChatDraft('')
-              // Hand control back to the game: Enter, type, Enter, still playing.
-              canvasRef.current?.focus()
-            }}
-          >
-            <input
-              ref={chatInputRef}
-              value={chatDraft}
-              onChange={(e) => setChatDraft(e.target.value)}
-              onKeyDown={(e) => {
-                // Escape gets you out without sending, and puts you back on the snake.
-                if (e.key === 'Escape') {
-                  e.preventDefault()
-                  // Must not reach the window handler: that one treats Escape as "release the
-                  // canvas" and blurred it again the instant this focused it, dumping focus on
-                  // <body> — so Escape got you out of chat but not back into the game.
-                  e.stopPropagation()
-                  setChatDraft('')
-                  canvasRef.current?.focus()
-                }
+              ) : (
+                chatLines.map((l) => (
+                  <p key={l.id} className={'snake-chat-line' + (l.mine ? ' is-mine' : '')}>
+                    <b>{profanityFilter.clean(l.who)}:</b> {profanityFilter.clean(l.text)}
+                  </p>
+                ))
+              )}
+            </div>
+            <form
+              className="snake-chat-form"
+              onSubmit={(e) => {
+                e.preventDefault()
+                const text = chatDraft.trim()
+                if (!text) return
+                netRef.current?.send({ type: 'chat', text })
+                // The relay excludes the sender, so our own line is added here rather than
+                // waiting for an echo that never comes.
+                pushChat(playerName.trim() || 'You', text, true)
+                setChatDraft('')
+                // Hand control back to the game: Enter, type, Enter, still playing.
+                canvasRef.current?.focus()
               }}
-              maxLength={300}
-              placeholder="Say something to the room…"
-              aria-label="Message the room"
-            />
-            <button className="btn" type="submit" disabled={!chatDraft.trim()}>
-              Send
-            </button>
-          </form>
-        </div>
-      )}
+            >
+              <input
+                ref={chatInputRef}
+                value={chatDraft}
+                onFocus={wakeChat}
+                onChange={(e) => {
+                  setChatDraft(e.target.value)
+                  wakeChat()
+                }}
+                onKeyDown={(e) => {
+                  // Escape gets you out without sending, and puts you back on the snake.
+                  if (e.key === 'Escape') {
+                    e.preventDefault()
+                    // Must not reach the window handler: that one treats Escape as "release the
+                    // canvas" and blurred it again the instant this focused it, dumping focus on
+                    // <body> — so Escape got you out of chat but not back into the game.
+                    e.stopPropagation()
+                    setChatDraft('')
+                    canvasRef.current?.focus()
+                  }
+                }}
+                maxLength={300}
+                placeholder="Say something to the room…"
+                aria-label="Message the room"
+              />
+              <button className="btn" type="submit" disabled={!chatDraft.trim()}>
+                Send
+              </button>
+            </form>
+          </div>,
+          // Portalled to <body>, and it has to be: the Snake section carries the scroll-reveal
+          // animation's `transform`, which makes it a containing block for `position: fixed` —
+          // the HUD was being anchored to the section and sat 375px below the viewport.
+          document.body,
+        )}
 
       {/* Lobby box under settings, above the game */}
       {mode === 'versus' && multiStep !== 'landing' && (
