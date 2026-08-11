@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { getSupabaseClient } from '../finance/client'
 import { challengeMessage } from './challenge'
 
@@ -16,8 +16,14 @@ import { challengeMessage } from './challenge'
 
 type Friend = { username: string; name?: string }
 
+/** Keep in step with `.snake-challenge-panel`'s max-height — it decides which way to open. */
+const PANEL_MAX_PX = 16 * 16
+
 export function ChallengeFriend({ roomId, roomLabel }: { roomId: string; roomLabel?: string }) {
   const [open, setOpen] = useState(false)
+  /** open downward when there isn't room above — see the click handler */
+  const [dropDown, setDropDown] = useState(false)
+  const btnRef = useRef<HTMLButtonElement>(null)
   const [friends, setFriends] = useState<Friend[] | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
   const [sent, setSent] = useState<string[]>([])
@@ -102,8 +108,20 @@ export function ChallengeFriend({ roomId, roomLabel }: { roomId: string; roomLab
   return (
     <div className="snake-challenge">
       <button
+        ref={btnRef}
         className="btn"
-        onClick={() => setOpen((o) => !o)}
+        onClick={() => {
+          // Decide which way to open BEFORE opening. The panel used to always go upward and
+          // slid under the fixed banner, which sits at z-index 100 — raising the panel above
+          // that would only have covered the nav instead. Opening where there's room is the
+          // actual fix.
+          const r = btnRef.current?.getBoundingClientRect()
+          const navH = parseFloat(
+            getComputedStyle(document.documentElement).getPropertyValue('--nav-h') || '54',
+          )
+          setDropDown(!!r && r.top - navH < PANEL_MAX_PX)
+          setOpen((o) => !o)
+        }}
         aria-expanded={open}
         title="Send a friend an invite to this game"
       >
@@ -111,7 +129,7 @@ export function ChallengeFriend({ roomId, roomLabel }: { roomId: string; roomLab
       </button>
 
       {open && (
-        <div className="snake-challenge-panel">
+        <div className={'snake-challenge-panel' + (dropDown ? ' is-down' : '')}>
           {friends === null && <p className="muted">Loading…</p>}
           {/* `!err` matters: the error path also lands on an empty list, and showing "no friends
               yet" next to "couldn't load your friends" tells someone their friends are gone

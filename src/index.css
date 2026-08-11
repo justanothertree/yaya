@@ -2955,10 +2955,19 @@ select {
 .pal-check-val.is-fail {
   color: var(--red, #ff5566);
 }
+/* The slot is permanent so the dialog never resizes; only the text goes. `visibility` rather
+   than `display` keeps the box, and the fixed height keeps it the same box whether the message
+   wraps to two lines or three. */
 .pal-warn {
   margin: 4px 0 0;
+  height: 2.6rem;
+  overflow: hidden;
   font-size: 0.78rem;
+  line-height: 1.3;
   color: var(--ylw, #f5c060);
+}
+.pal-warn.is-clear {
+  visibility: hidden;
 }
 /* The preview sets the derived tokens on itself, so everything inside renders in the candidate
    palette while the dialog around it stays in the current one. */

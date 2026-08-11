@@ -145,12 +145,13 @@ export function PalettePicker({
           {checks.map((c) => (
             <Row key={c.label} label={c.label} ratio={c.ratio} />
           ))}
-          {worst < 4.5 && (
-            <p className="pal-warn">
-              Some of this is hard to read at normal text size. Try a lighter text colour on a dark
-              background — or a darker one on a light background — until every line above says good.
-            </p>
-          )}
+          {/* Always in the DOM, hidden rather than removed. Dragging across a shade pad crosses
+              the 4.5:1 line repeatedly, and mounting/unmounting this paragraph resized the whole
+              dialog each time — the same "something is always shifting" problem as the pads. */}
+          <p className={'pal-warn' + (worst < 4.5 ? '' : ' is-clear')} aria-hidden={worst >= 4.5}>
+            Some of this is hard to read at normal text size. Try a lighter text colour on a dark
+            background — or a darker one on a light background — until every line says good.
+          </p>
         </div>
 
         {/* Presets show their three colours rather than only a name: you can find the one you
