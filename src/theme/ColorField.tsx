@@ -19,10 +19,16 @@ export function ColorField({
   label,
   value,
   onChange,
+  open,
+  onOpen,
 }: {
   label: string
   value: string
   onChange: (hex: string) => void
+  /** Controlled by the parent so only one field is expanded at a time — three shade pads open
+   *  at once was the only thing that made the dialog scroll on a desktop. */
+  open: boolean
+  onOpen: (open: boolean) => void
 }) {
   const padRef = useRef<HTMLDivElement>(null)
   const valid = !!parseHex(value)
@@ -33,8 +39,6 @@ export function ColorField({
   useEffect(() => {
     if (hsl.s > 0.02 && hsl.l > 0.02 && hsl.l < 0.98) setHue(hsl.h)
   }, [hsl.h, hsl.s, hsl.l])
-
-  const [open, setOpen] = useState(false)
 
   const fromPoint = useCallback(
     (clientX: number, clientY: number) => {
@@ -55,7 +59,7 @@ export function ColorField({
         type="button"
         className="cf-swatch"
         style={{ background: valid ? value : 'transparent' }}
-        onClick={() => setOpen((o) => !o)}
+        onClick={() => onOpen(!open)}
         aria-expanded={open}
         aria-label={`${label}: ${value}. Click to ${open ? 'close' : 'open'} the picker`}
       />
@@ -65,7 +69,7 @@ export function ColorField({
         type="text"
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        onFocus={() => setOpen(true)}
+        onFocus={() => onOpen(true)}
         spellCheck={false}
         aria-label={`${label} hex code`}
       />

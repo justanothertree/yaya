@@ -47,6 +47,8 @@ export function PalettePicker({
   onActiveChange: (on: boolean) => void
 }) {
   const [seed, setSeed] = useState<PaletteSeed>(() => loadPalette() ?? DEFAULT_SEED)
+  /** which colour's shade pad is expanded — one at a time, so the dialog never has to scroll */
+  const [openField, setOpenField] = useState<keyof PaletteSeed | null>(null)
 
   // Live preview: while this is the active theme, every edit lands on the page immediately.
   useEffect(() => {
@@ -67,87 +69,107 @@ export function PalettePicker({
 
   return (
     <div className="pal">
-      <label className="pal-toggle">
-        <input
-          type="checkbox"
-          checked={active}
-          onChange={(e) => {
-            const on = e.target.checked
-            onActiveChange(on)
-            if (on) {
-              savePalette(seed)
-              applyPalette(seed)
-            } else {
-              applyPalette(null)
-            }
-          }}
-        />
-        <span>Use my own colours</span>
-      </label>
+      {/* Two columns on a desktop: controls here, the preview parked beside them. Opening a
+          colour picker adds a shade pad inline, which in one column pushed the preview off
+          screen — so the thing you're adjusting a colour *for* disappeared exactly when you
+          started adjusting it. */}
+      <div className="pal-main">
+        <label className="pal-toggle">
+          <input
+            type="checkbox"
+            checked={active}
+            onChange={(e) => {
+              const on = e.target.checked
+              onActiveChange(on)
+              if (on) {
+                savePalette(seed)
+                applyPalette(seed)
+              } else {
+                applyPalette(null)
+              }
+            }}
+          />
+          <span>Use my own colours</span>
+        </label>
 
-      <div className="pal-seeds">
-        <ColorField label="Background" value={seed.bg} onChange={set('bg')} />
-        <ColorField label="Text" value={seed.text} onChange={set('text')} />
-        <ColorField label="Accent" value={seed.accent} onChange={set('accent')} />
-      </div>
+        <div className="pal-seeds">
+          {(
+            [
+              ['bg', 'Background'],
+              ['text', 'Text'],
+              ['accent', 'Accent'],
+            ] as Array<[keyof PaletteSeed, string]>
+          ).map(([k, label]) => (
+            <ColorField
+              key={k}
+              label={label}
+              value={seed[k]}
+              onChange={set(k)}
+              open={openField === k}
+              onOpen={(on) => setOpenField(on ? k : null)}
+            />
+          ))}
+        </div>
 
-      {/* What the derived tokens actually look like. Cheaper than describing them — and the
-          board is here because the accent IS the snake and the second accent IS the apples, so
-          this is where a palette most obviously works or doesn't. */}
-      <div className="pal-preview" style={derived as React.CSSProperties}>
-        <div className="pal-preview-card">
-          <strong>Preview</strong>
-          <p className="muted">Secondary text sits here.</p>
-          <SnakePreview tokens={derived} />
-          <span className="pal-preview-btn">Button</span>
+        <div className="pal-checks">
+          {checks.map((c) => (
+            <Row key={c.label} label={c.label} ratio={c.ratio} />
+          ))}
+          {worst < 4.5 && (
+            <p className="pal-warn">
+              Some of this is hard to read at normal text size. Try a lighter text colour on a dark
+              background — or a darker one on a light background — until every line above says good.
+            </p>
+          )}
+        </div>
+
+        {/* Presets show their three colours rather than only a name: you can find the one you want
+          by eye, which is the whole reason someone opens this. */}
+        <div className="pal-presets">
+          {PRESET_GROUPS.map((g) => (
+            <div className="pal-preset-group" key={g.group}>
+              <span className="pal-check-label">{g.group}</span>
+              <div className="pal-preset-row">
+                {g.items.map((p) => {
+                  const on =
+                    p.seed.bg === seed.bg &&
+                    p.seed.text === seed.text &&
+                    p.seed.accent === seed.accent
+                  return (
+                    <button
+                      key={p.label}
+                      className={'pal-preset' + (on ? ' is-on' : '')}
+                      onClick={() => setSeed(p.seed)}
+                      title={p.label}
+                      aria-pressed={on}
+                    >
+                      <span className="pal-preset-chips" aria-hidden>
+                        <i style={{ background: p.seed.bg }} />
+                        <i style={{ background: p.seed.text }} />
+                        <i style={{ background: p.seed.accent }} />
+                      </span>
+                      <span className="pal-preset-name">{p.label}</span>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          ))}
         </div>
       </div>
 
-      <div className="pal-checks">
-        {checks.map((c) => (
-          <Row key={c.label} label={c.label} ratio={c.ratio} />
-        ))}
-        {worst < 4.5 && (
-          <p className="pal-warn">
-            Some of this is hard to read at normal text size. Try a lighter text colour on a dark
-            background — or a darker one on a light background — until every line above says good.
-          </p>
-        )}
-      </div>
-
-      {/* Presets show their three colours rather than only a name: you can find the one you want
-          by eye, which is the whole reason someone opens this. */}
-      <div className="pal-presets">
-        {PRESET_GROUPS.map((g) => (
-          <div className="pal-preset-group" key={g.group}>
-            <span className="pal-check-label">{g.group}</span>
-            <div className="pal-preset-row">
-              {g.items.map((p) => {
-                const on =
-                  p.seed.bg === seed.bg &&
-                  p.seed.text === seed.text &&
-                  p.seed.accent === seed.accent
-                return (
-                  <button
-                    key={p.label}
-                    className={'pal-preset' + (on ? ' is-on' : '')}
-                    onClick={() => setSeed(p.seed)}
-                    title={p.label}
-                    aria-pressed={on}
-                  >
-                    <span className="pal-preset-chips" aria-hidden>
-                      <i style={{ background: p.seed.bg }} />
-                      <i style={{ background: p.seed.text }} />
-                      <i style={{ background: p.seed.accent }} />
-                    </span>
-                    <span className="pal-preset-name">{p.label}</span>
-                  </button>
-                )
-              })}
-            </div>
+      {/* Sticky beside the controls on a desktop, so it stays put while you work through the
+          colours; a normal block above the presets on a phone, where there's only one column. */}
+      <aside className="pal-side">
+        <div className="pal-preview" style={derived as React.CSSProperties}>
+          <div className="pal-preview-card">
+            <strong>Preview</strong>
+            <p className="muted">Secondary text sits here.</p>
+            <SnakePreview tokens={derived} />
+            <span className="pal-preview-btn">Button</span>
           </div>
-        ))}
-      </div>
+        </div>
+      </aside>
 
       <div className="pal-actions">
         <button

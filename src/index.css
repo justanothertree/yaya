@@ -2674,8 +2674,11 @@ select {
   background: rgba(0, 0, 0, 0.55);
 }
 .pal-sheet {
-  width: min(30rem, 100%);
-  max-height: min(86vh, 44rem);
+  /* Wide enough for the controls and the preview side by side. It was 30rem and scrolled, which
+     on a desktop is a column of controls in a sea of unused space — and opening a shade pad
+     pushed the preview out of sight. */
+  width: min(52rem, 100%);
+  max-height: min(90vh, 46rem);
   overflow-y: auto;
   overscroll-behavior: contain;
   display: flex;
@@ -2693,12 +2696,38 @@ select {
   justify-content: space-between;
   gap: var(--sp-2, 0.5rem);
 }
+/* One column by default (phones); two from 40rem up, with the actions spanning both. */
 .pal {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: 1fr;
+  grid-template-areas: 'side' 'main' 'actions';
   gap: var(--sp-3, 0.75rem);
   width: 100%;
   min-width: 0;
+}
+.pal-main {
+  grid-area: main;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3, 0.75rem);
+}
+.pal-side {
+  grid-area: side;
+  min-width: 0;
+}
+@media (min-width: 40rem) {
+  .pal {
+    /* controls | preview — the preview column is fixed so the shade pad doesn't squeeze it */
+    grid-template-columns: minmax(0, 1fr) 17rem;
+    grid-template-areas: 'main side' 'actions actions';
+    align-items: start;
+  }
+  .pal-side {
+    /* stays in view while the controls scroll past it */
+    position: sticky;
+    top: 0;
+  }
 }
 .pal-toggle {
   display: flex;
@@ -2939,6 +2968,7 @@ select {
    sat well below the fold on a phone — and the one control you always want is the one you had
    to go looking for. */
 .pal-actions {
+  grid-area: actions;
   position: sticky;
   bottom: 0;
   z-index: 1;
