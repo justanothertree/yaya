@@ -9,7 +9,7 @@ import {
   rate,
   savePalette,
 } from './customTheme'
-import { ColorField } from './ColorField'
+import { ColorRow, ShadePad } from './ColorField'
 import { SnakePreview } from './SnakePreview'
 import { PRESET_GROUPS } from './presets'
 
@@ -18,17 +18,50 @@ import { PRESET_GROUPS } from './presets'
  *
  * Three colours, everything else derived (see customTheme.ts for why). Changes apply live as
  * you drag, because a colour picker that needs a Save button before you can see anything is a
- * guessing game — and reverting is one button, so there's nothing to lose by trying.
+ * guessing game.
+ *
+ * THERE IS NO SAVE BUTTON, and that's the fix for a real bug rather than a simplification for
+ * its own sake: picking a starting point, not saving, and closing the dialog left the site
+ * showing one palette and the stored seed holding another, so the next reload snapped back to
+ * something you'd already moved on from. Every edit persists immediately, so what you see and
+ * what is stored can't disagree.
  *
  * The contrast readout is the part that earns its place. It isn't a badge for its own sake: it's
- * how you find out that a colour you like is unreadable *before* you save it, which is exactly
- * the mistake already sitting in one of the built-in themes.
+ * how you find out that a colour you like is unreadable *before* you commit to it, which is
+ * exactly the mistake already sitting in one of the built-in themes.
  */
+
+const SEEDS: Array<[keyof PaletteSeed, string]> = [
+  ['bg', 'Background'],
+  ['text', 'Text'],
+  ['accent', 'Accent'],
+]
+
+/** Plain-language help for a contrast number, because "14.44:1" means nothing on its own. */
+function explain(ratio: number): string {
+  const r = rate(ratio)
+  const scale =
+    ratio >= 12
+      ? 'Very high contrast — crisp at any size.'
+      : ratio >= 7
+        ? 'Comfortable at any size, including small print.'
+        : ratio >= 4.5
+          ? 'Fine for normal text, though not luxurious.'
+          : ratio >= 3
+            ? 'Only safe for big or bold text; ordinary text will strain.'
+            : 'Hard to read — the two colours are too close in brightness.'
+  return (
+    `${ratio.toFixed(2)} to 1 is how much brighter the lighter colour is than the darker one. ` +
+    `1:1 is invisible, 21:1 is black on white. ${scale} ` +
+    `The accessibility standard asks for at least 4.5:1 for normal text and 3:1 for large text` +
+    (r === 'aa' ? ', which this clears.' : ', which this does not reach.')
+  )
+}
 
 function Row({ label, ratio }: { label: string; ratio: number }) {
   const r = rate(ratio)
   return (
-    <div className="pal-check">
+    <div className="pal-check" title={explain(ratio)}>
       <span className="pal-check-label">{label}</span>
       <span className={'pal-check-val is-' + r}>
         {ratio.toFixed(2)}:1{' '}
@@ -47,16 +80,19 @@ export function PalettePicker({
   onActiveChange: (on: boolean) => void
 }) {
   const [seed, setSeed] = useState<PaletteSeed>(() => loadPalette() ?? DEFAULT_SEED)
-  /** which colour's shade pad is expanded — one at a time, so the dialog never has to scroll */
-  const [openField, setOpenField] = useState<keyof PaletteSeed | null>(null)
+  /** which colour the shade pad is editing — the pad itself never goes away */
+  const [field, setField] = useState<keyof PaletteSeed>('accent')
 
-  // Live preview: while this is the active theme, every edit lands on the page immediately.
+  // Persist and apply together, so the stored palette and the visible one are never different
+  // things. This is what removes the "picked a starter, closed, got the old colours" bug.
   useEffect(() => {
+    savePalette(seed)
     if (active) applyPalette(seed)
   }, [seed, active])
 
   const derived = derivePalette(seed)
   const set = (k: keyof PaletteSeed) => (v: string) => setSeed((s) => ({ ...s, [k]: v }))
+  const fieldLabel = SEEDS.find(([k]) => k === field)?.[1] ?? 'Colour'
 
   const checks = [
     { label: 'Body text on the background', ratio: contrast(seed.text, seed.bg) },
@@ -69,11 +105,9 @@ export function PalettePicker({
 
   return (
     <div className="pal">
-      {/* Two columns on a desktop: controls here, the preview parked beside them. Opening a
-          colour picker adds a shade pad inline, which in one column pushed the preview off
-          screen — so the thing you're adjusting a colour *for* disappeared exactly when you
-          started adjusting it. */}
-      <div className="pal-main">
+      {/* Two columns on a desktop: controls here, the preview parked beside them, so the thing
+          you're adjusting a colour FOR stays on screen while you adjust it. */}
+      <div className="pal-controls">
         <label className="pal-toggle">
           <input
             type="checkbox"
@@ -81,36 +115,32 @@ export function PalettePicker({
             onChange={(e) => {
               const on = e.target.checked
               onActiveChange(on)
-              if (on) {
-                savePalette(seed)
-                applyPalette(seed)
-              } else {
-                applyPalette(null)
-              }
+              applyPalette(on ? seed : null)
             }}
           />
           <span>Use my own colours</span>
         </label>
 
         <div className="pal-seeds">
-          {(
-            [
-              ['bg', 'Background'],
-              ['text', 'Text'],
-              ['accent', 'Accent'],
-            ] as Array<[keyof PaletteSeed, string]>
-          ).map(([k, label]) => (
-            <ColorField
+          {SEEDS.map(([k, label]) => (
+            <ColorRow
               key={k}
               label={label}
               value={seed[k]}
+              selected={field === k}
+              onSelect={() => setField(k)}
               onChange={set(k)}
-              open={openField === k}
-              onOpen={(on) => setOpenField(on ? k : null)}
             />
           ))}
+          <ShadePad label={fieldLabel} value={seed[field]} onChange={set(field)} />
         </div>
+      </div>
 
+      {/* Split from the controls so a phone can put the preview BETWEEN them: the colour rows
+          and the pad are what you touch, so they come first, and the preview sits right under
+          them rather than pushing them off screen. On a desktop both halves stack in the left
+          column with the preview beside. */}
+      <div className="pal-extras">
         <div className="pal-checks">
           {checks.map((c) => (
             <Row key={c.label} label={c.label} ratio={c.ratio} />
@@ -123,8 +153,8 @@ export function PalettePicker({
           )}
         </div>
 
-        {/* Presets show their three colours rather than only a name: you can find the one you want
-          by eye, which is the whole reason someone opens this. */}
+        {/* Presets show their three colours rather than only a name: you can find the one you
+            want by eye, which is the whole reason someone opens this. */}
         <div className="pal-presets">
           {PRESET_GROUPS.map((g) => (
             <div className="pal-preset-group" key={g.group}>
@@ -158,8 +188,8 @@ export function PalettePicker({
         </div>
       </div>
 
-      {/* Sticky beside the controls on a desktop, so it stays put while you work through the
-          colours; a normal block above the presets on a phone, where there's only one column. */}
+      {/* Sticky beside the controls on a desktop; a normal block on a phone, where there's only
+          one column. */}
       <aside className="pal-side">
         <div className="pal-preview" style={derived as React.CSSProperties}>
           <div className="pal-preview-card">
@@ -169,21 +199,10 @@ export function PalettePicker({
             <span className="pal-preview-btn">Button</span>
           </div>
         </div>
-      </aside>
-
-      <div className="pal-actions">
+        {/* One button, so this doesn't need a bar of its own along the bottom obscuring the
+            presets. Everything else saves itself. */}
         <button
-          className="btn"
-          onClick={() => {
-            savePalette(seed)
-            onActiveChange(true)
-            applyPalette(seed)
-          }}
-        >
-          Save
-        </button>
-        <button
-          className="btn"
+          className="btn pal-reset"
           onClick={() => {
             setSeed(DEFAULT_SEED)
             savePalette(null)
@@ -192,9 +211,9 @@ export function PalettePicker({
           }}
           title="Forget my colours and go back to the built-in themes"
         >
-          Reset
+          Reset to built-in themes
         </button>
-      </div>
+      </aside>
     </div>
   )
 }

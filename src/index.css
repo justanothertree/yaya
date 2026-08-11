@@ -2696,17 +2696,27 @@ select {
   justify-content: space-between;
   gap: var(--sp-2, 0.5rem);
 }
-/* One column by default (phones); two from 40rem up, with the actions spanning both. */
+/* One column on a phone — controls, then the preview, then the rest — and two from 40rem up,
+   with the preview parked beside the lot. The controls come before the preview on a phone
+   because putting the preview first pushed the shade pad below the fold: you'd open the dialog
+   and have to scroll before you could touch anything. */
 .pal {
   display: grid;
   grid-template-columns: 1fr;
-  grid-template-areas: 'side' 'main' 'actions';
+  grid-template-areas: 'controls' 'side' 'extras';
   gap: var(--sp-3, 0.75rem);
   width: 100%;
   min-width: 0;
 }
-.pal-main {
-  grid-area: main;
+.pal-controls {
+  grid-area: controls;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3, 0.75rem);
+}
+.pal-extras {
+  grid-area: extras;
   min-width: 0;
   display: flex;
   flex-direction: column;
@@ -2720,7 +2730,7 @@ select {
   .pal {
     /* controls | preview — the preview column is fixed so the shade pad doesn't squeeze it */
     grid-template-columns: minmax(0, 1fr) 17rem;
-    grid-template-areas: 'main side' 'actions actions';
+    grid-template-areas: 'controls side' 'extras side';
     align-items: start;
   }
   .pal-side {
@@ -2745,14 +2755,24 @@ select {
   gap: var(--sp-2, 0.5rem);
 }
 /* label / swatch / hex on one line, with the swatch big enough to be a real target */
-/* ── the inline colour field ────────────────────────────────────────────────
+/* ── the colour rows + the shared shade pad ────────────────────────────────
    Replaces `<input type="color">`, which threw an OS dialog into the corner of the screen and
-   hid the very thing you were trying to watch change. */
-.cf {
+   hid the very thing you were trying to watch change.
+
+   One pad, always present, editing whichever row is selected. Per-row collapsible pads made
+   the dialog grow and shrink as you clicked between colours — "something is always shifting". */
+.cf-row {
   display: grid;
   grid-template-columns: 2.4rem 5rem 1fr;
   align-items: center;
   gap: var(--sp-2, 0.5rem);
+  padding: 3px;
+  border-radius: var(--r-sm, 8px);
+  border: 1px solid transparent;
+}
+.cf-row.is-on {
+  border-color: var(--accent);
+  background: var(--control-bg, rgba(127, 127, 127, 0.08));
 }
 .cf-swatch {
   width: 2.4rem;
@@ -2762,8 +2782,14 @@ select {
   border-radius: 8px;
   cursor: pointer;
 }
-.cf-label {
+.cf-name {
+  background: none;
+  border: 0;
+  padding: 0;
+  color: var(--text);
   font-size: 0.85rem;
+  text-align: left;
+  cursor: pointer;
 }
 .cf-hex {
   min-width: 0;
@@ -2772,13 +2798,11 @@ select {
   font-size: 0.82rem;
   padding: 0.35rem 0.5rem;
 }
-/* spans the field's full width on the row below it */
 .cf-pop {
-  grid-column: 1 / -1;
   display: flex;
   flex-direction: column;
   gap: 6px;
-  padding-top: 2px;
+  margin-top: 2px;
 }
 .cf-pad {
   position: relative;
@@ -2964,24 +2988,13 @@ select {
   font-size: 0.82rem;
   font-weight: 600;
 }
-/* Pinned to the bottom of the sheet. With a preview board and sixteen presets above it, Save
-   sat well below the fold on a phone — and the one control you always want is the one you had
-   to go looking for. */
-.pal-actions {
-  grid-area: actions;
-  position: sticky;
-  bottom: 0;
-  z-index: 1;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin: 0 calc(-1 * var(--card-pad, 1.1rem)) calc(-1 * var(--card-pad, 1.1rem));
-  padding: var(--sp-2, 0.5rem) var(--card-pad, 1.1rem) var(--card-pad, 1.1rem);
-  background: var(--panel);
-  border-top: 1px solid var(--border);
-}
-.pal-actions .btn {
-  flex: 1 1 8rem;
+/* Reset sits under the preview rather than in a bar along the bottom: that bar reserved dead
+   space and, being sticky, floated over the last row of presets. Nothing else needs a footer —
+   every edit saves itself. */
+.pal-reset {
+  width: 100%;
+  margin-top: var(--sp-2, 0.5rem);
+  font-size: 0.78rem;
 }
 @media (max-width: 640px) {
   .pal-scrim {
