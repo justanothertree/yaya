@@ -485,3 +485,78 @@
   flex: 1;
   min-width: 0;
 }
+
+/* ── spectating ─────────────────────────────────────────────────────────────
+   The preview tiles used to be the whole spectator experience. They're a picker now, and this
+   is the view: one player's board at full size, with the roster a keypress away. */
+.preview-pick {
+  display: block;
+  width: 100%;
+  padding: 2px;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm, 8px);
+  background: none;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+.preview-pick:hover {
+  border-color: var(--border-strong);
+}
+.preview-pick.is-on {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+.spectate {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding: 10px;
+  border-radius: var(--r-md, 12px);
+  border: 1px solid var(--border);
+  background: var(--card2, rgba(127, 127, 127, 0.08));
+}
+.spectate-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.spectate-who {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.2;
+  min-width: 0;
+  flex: 1;
+}
+.spectate-who .muted {
+  font-size: 0.75rem;
+}
+.spectate-score {
+  font-family: var(--mono);
+  font-size: 1.25rem;
+  font-weight: 700;
+}
+.spectate-board {
+  display: flex;
+  justify-content: center;
+}
+.spectate-board canvas {
+  border-radius: var(--r-sm, 8px);
+  border: 1px solid var(--border);
+}
+/* which of the watchable players you're on */
+.spectate-dots {
+  display: flex;
+  justify-content: center;
+  gap: 5px;
+}
+.spectate-dots i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--border-strong);
+}
+.spectate-dots i.is-on {
+  background: var(--accent);
+}

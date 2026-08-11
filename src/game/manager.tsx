@@ -20,6 +20,7 @@ import {
 } from './leaderboard'
 import type { LeaderboardEntry, Mode, Point, Settings, TrophyCounts } from './types'
 import { ChallengeFriend } from './ChallengeFriend'
+import { SpectatorView } from './SpectatorView'
 
 const GRID = 30
 const BASE_SPEED = 110
@@ -205,6 +206,12 @@ export function GameManager({
   const [chatLines, setChatLines] = useState<
     Array<{ id: number; who: string; text: string; mine: boolean }>
   >([])
+  /**
+   * Whose board you're watching, or null for your own. Spectating is a VIEW, not a mode: it
+   * doesn't touch your connection, your snake or the round, so you can look at someone else's
+   * game mid-round and come straight back.
+   */
+  const [watching, setWatching] = useState<string | null>(null)
   const chatSeqRef = useRef(0)
   const chatInputRef = useRef<HTMLInputElement | null>(null)
   const chatLogRef = useRef<HTMLDivElement | null>(null)
@@ -3039,6 +3046,34 @@ export function GameManager({
           <div className="muted" style={{ fontWeight: 600, marginBottom: 6 }}>
             Live previews
           </div>
+          {/* Watching someone, full size. Costs nothing extra on the wire — the preview message
+              already carries their whole game state; this just draws it big. */}
+          {watching && previews[watching] && (
+            <SpectatorView
+              state={previews[watching].state}
+              grid={settings.grid}
+              name={profanityFilter.clean(previews[watching].name || 'Player')}
+              score={previews[watching].score}
+              status={
+                players[watching]?.spectate
+                  ? 'watching the round'
+                  : previews[watching].state.alive
+                    ? 'playing'
+                    : 'crashed'
+              }
+              peers={Object.entries(previews).map(([id, p]) => ({
+                id,
+                name: profanityFilter.clean(p.name || 'Player'),
+              }))}
+              onSwitch={(dir) => {
+                const ids = Object.keys(previews)
+                if (ids.length < 2) return
+                const at = ids.indexOf(watching)
+                setWatching(ids[(at + dir + ids.length) % ids.length])
+              }}
+              onClose={() => setWatching(null)}
+            />
+          )}
           {Object.keys(previews).length === 0 ? (
             <div className="muted" style={{ fontSize: 12 }}>
               Waiting for previews… players will appear here when they start.
@@ -3052,15 +3087,23 @@ export function GameManager({
               }}
             >
               {Object.entries(previews).map(([id, p]) => (
-                <Preview
+                // The tile is the way into the big view. It was the only spectator UI there
+                // was; now it's a picker for one.
+                <button
                   key={id}
-                  state={p.state}
-                  title={`${p.name || 'Player'} — ${
-                    players[id]?.spectate
-                      ? 'Spectating'
-                      : `${p.score}${players[id]?.ready ? ' ✓' : ''}`
-                  }`}
-                />
+                  className={'preview-pick' + (watching === id ? ' is-on' : '')}
+                  onClick={() => setWatching(watching === id ? null : id)}
+                  title={watching === id ? 'Stop watching' : `Watch ${p.name || 'this player'}`}
+                >
+                  <Preview
+                    state={p.state}
+                    title={`${p.name || 'Player'} — ${
+                      players[id]?.spectate
+                        ? 'Spectating'
+                        : `${p.score}${players[id]?.ready ? ' ✓' : ''}`
+                    }`}
+                  />
+                </button>
               ))}
             </div>
           )}
