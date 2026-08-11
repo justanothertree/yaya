@@ -560,3 +560,78 @@
 .spectate-dots i.is-on {
   background: var(--accent);
 }
+
+/* ── the stage ──────────────────────────────────────────────────────────────
+   The board keeps its own column and everything else moves beside it. Previously the lobby,
+   the other players and the round results stacked underneath, so a round in progress pushed
+   the board up the page as those panels appeared and grew — and every new setting or mode
+   would have added one more card to that stack. */
+.snake-stage {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--sp-3, 0.75rem);
+  align-items: start;
+}
+.snake-stage-board {
+  min-width: 0;
+}
+.snake-stage-side {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--r-md, 12px);
+  border: 1px solid var(--border);
+  background: var(--card2, rgba(127, 127, 127, 0.06));
+  overflow: hidden;
+}
+@media (min-width: 60rem) {
+  /* only once there's genuinely room — below this the panel would squeeze the board, and the
+     board is what you're here for */
+  .snake-stage[data-versus] {
+    grid-template-columns: minmax(0, 1fr) 20rem;
+  }
+  .snake-stage-side {
+    position: sticky;
+    top: calc(var(--nav-h, 54px) + 8px);
+    max-height: calc(100dvh - var(--nav-h, 54px) - 24px);
+  }
+}
+.snake-side-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+}
+.snake-side-tab {
+  flex: 1;
+  padding: 8px 10px;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+}
+.snake-side-tab:hover {
+  color: var(--text);
+}
+.snake-side-tab.is-on {
+  color: var(--text);
+  border-bottom-color: var(--accent);
+}
+.snake-side-body {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 8px;
+}
+/* the panels that moved in here brought their own card chrome; the panel is the card now */
+.snake-side-body > .card {
+  margin: 0 0 8px !important;
+  border: 0;
+  background: none;
+  padding: 0 !important;
+  min-height: 0 !important;
+}
+.snake-side-body > .card:last-child {
+  margin-bottom: 0 !important;
+}

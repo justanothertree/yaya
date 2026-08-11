@@ -22,6 +22,9 @@ import type { LeaderboardEntry, Mode, Point, Settings, TrophyCounts } from './ty
 import { ChallengeFriend } from './ChallengeFriend'
 import { SpectatorView } from './SpectatorView'
 
+/** The panel beside the board. Room is the lobby; Players is who's here and how they're doing. */
+type SideTab = 'players' | 'room'
+
 const GRID = 30
 const BASE_SPEED = 110
 const MIN_SPEED = 50
@@ -212,6 +215,8 @@ export function GameManager({
    * game mid-round and come straight back.
    */
   const [watching, setWatching] = useState<string | null>(null)
+  /** which view the panel beside the board is showing */
+  const [sideTab, setSideTab] = useState<SideTab>('players')
   const chatSeqRef = useRef(0)
   const chatInputRef = useRef<HTMLInputElement | null>(null)
   const chatLogRef = useRef<HTMLDivElement | null>(null)
@@ -2846,206 +2851,15 @@ export function GameManager({
           document.body,
         )}
 
-      {/* Lobby box under settings, above the game */}
-      {mode === 'versus' && multiStep !== 'landing' && (
-        <div
-          className="card"
-          style={{ marginTop: 8, padding: 10, maxHeight: 190, overflowY: 'auto', minHeight: 90 }}
-        >
-          <div className="muted" style={{ fontWeight: 600, marginBottom: 6 }}>
-            {multiStep === 'lobby' ? (
-              <>
-                Lobby — <span style={{ color: 'var(--text)' }}>{room || '—'}</span>{' '}
-                <span className="muted" style={{ fontWeight: 400 }}>
-                  (connected players: {presence})
-                </span>
-              </>
-            ) : (
-              <>Available lobbies</>
-            )}
-          </div>
-          {(multiStep === 'join' || multiStep === 'create') && (
-            <div style={{ display: 'grid', gap: 8 }}>
-              {rooms.length > 0 ? (
-                <div
-                  style={{
-                    display: 'grid',
-                    gridTemplateColumns: 'repeat(auto-fill, minmax(180px,1fr))',
-                    gap: 8,
-                  }}
-                >
-                  {rooms.map((r) => (
-                    <div key={r.id} className="card" style={{ padding: 8 }}>
-                      <div className="muted" style={{ fontWeight: 600 }}>
-                        {r.name || r.id}
-                      </div>
-                      <div className="muted" style={{ fontSize: 12 }}>
-                        ID: {r.id}
-                      </div>
-                      <div className="muted">Players: {r.count}</div>
-                      <div style={{ marginTop: 6 }}>
-                        <button
-                          className="btn"
-                          disabled={joining || conn === 'connecting'}
-                          onClick={() => {
-                            if (joining) return
-                            const rid = r.id
-                            if (room !== rid) setRoom(rid)
-                            setMultiStep('lobby')
-                            if (conn === 'connected') {
-                              netRef.current?.disconnect()
-                              setConn('disconnected')
-                              setJoining(true)
-                              setTimeout(() => connectVs(rid), 50)
-                            } else if (conn === 'disconnected') connectVs(rid)
-                          }}
-                        >
-                          Join
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="muted">No lobbies yet — click Browse to refresh.</div>
-              )}
-            </div>
-          )}
-          {multiStep === 'lobby' && (
-            <div style={{ display: 'grid', gap: 6 }}>
-              {myId && (
-                <div
-                  className="muted"
-                  style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}
-                >
-                  <span>
-                    {(players[myId]?.name || playerName || 'You').trim()}{' '}
-                    {isHost ? <em>(Host)</em> : null}
-                  </span>
-                  <span style={{ marginLeft: 12 }}>
-                    {spectate ? 'Spectator' : ready ? 'Ready ✓' : 'Not ready'}
-                  </span>
-                </div>
-              )}
-              {(() => {
-                const items: Array<{ id: string; name: string; ready?: boolean }> = []
-                for (const [id, p] of Object.entries(players)) {
-                  if (id === myId) continue
-                  const nameRaw = (p.name || 'Player').trim()
-                  items.push({ id, name: nameRaw, ready: p.ready })
-                }
-                return items.map(({ id, name, ready }) => (
-                  <div
-                    key={id}
-                    className="muted"
-                    style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}
-                  >
-                    <span>
-                      {name} {hostId === id ? <em>(Host)</em> : null}
-                    </span>
-                    <span style={{ marginLeft: 12 }}>
-                      {players[id]?.spectate ? 'Spectator' : ready ? 'Ready ✓' : 'Not ready'}
-                    </span>
-                  </div>
-                ))
-              })()}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Status bar (stable layout, separate from toolbar) */}
-      <div ref={statusRef} className="snake-status" aria-live="polite">
-        <div className="muted">
-          Score: <span style={{ color: 'var(--text)' }}>{score}</span>
-        </div>
-        {paused && <div className="muted">Paused</div>}
-        {mode === 'versus' && spectate && <div className="muted">Spectating</div>}
-        {mode === 'versus' && countdown != null && (
-          <div className="muted" aria-live="assertive">
-            Starting in… {countdown}
-          </div>
-        )}
-      </div>
-
-      {/* Canvases */}
-      <div ref={wrapRef} className="snake-grid" data-versus={mode === 'versus' || undefined}>
-        <div className="snake-canvas-wrap" data-captured={captured || undefined}>
-          {mode === 'versus' && (
-            <button
-              className="btn snake-fab"
-              onClick={() => {
-                if (mode === 'versus') {
-                  setSelfReady()
-                  focusCanvasAndScrollPreviews()
-                  return
-                }
-              }}
-              aria-pressed={!paused}
-              title={paused ? 'Play' : 'Pause'}
-              disabled={
-                mode === 'versus' &&
-                (!playerName.trim() ||
-                  conn !== 'connected' ||
-                  ready ||
-                  roundActiveRef.current ||
-                  spectate)
-              }
-            >
-              {mode === 'versus' ? (ready ? 'Ready ✓' : 'Ready') : paused ? 'Play' : 'Pause'}
-            </button>
-          )}
-          {/* Fullscreen buttons temporarily removed */}
-          <canvas
-            ref={canvasRef}
-            tabIndex={0}
-            className="snake-canvas"
-            onFocus={() => {
-              capturedRef.current = true
-              setCaptured(true)
-              onControlChange?.(true)
-              // show hint chip briefly only for fine pointers and only on user-initiated focus
-              if (!isCoarseRef.current && userInitiatedFocusRef.current) {
-                if (hintTimerRef.current) window.clearTimeout(hintTimerRef.current)
-                setHintVisible(true)
-                hintTimerRef.current = window.setTimeout(() => setHintVisible(false), 2000)
-              }
-              userInitiatedFocusRef.current = false
-            }}
-            onBlur={() => {
-              capturedRef.current = false
-              setCaptured(false)
-              onControlChange?.(false)
-              // Solo mode: auto-pause when canvas loses focus (unless we're mid-click suppressing blur)
-              if (mode === 'solo' && !suppressBlurPauseRef.current) setPaused(true)
-              suppressBlurPauseRef.current = false
-            }}
-            onPointerDown={() => {
-              // focus on first interaction, capture controls
-              userInitiatedFocusRef.current = true
-              canvasRef.current?.focus()
-            }}
-          />
-          {!isCoarseRef.current && (
-            <div className="snake-hint" aria-live="polite" data-show={hintVisible || undefined}>
-              Game controls active — Esc to release
-            </div>
-          )}
-          {/* Joystick removed; swipe and keys remain */}
-        </div>
-        {/* Opponent canvas removed for now; previews serve as spectator UI */}
-      </div>
-
-      {/* Live previews directly under the game (kept visible to avoid layout shift) */}
-      {mode === 'versus' && multiStep === 'lobby' && (
-        <div
-          ref={previewsRef}
-          className="card"
-          style={{ marginTop: '0.75rem', padding: 10, minHeight: 190 }}
-        >
-          <div className="muted" style={{ fontWeight: 600, marginBottom: 6 }}>
-            Live previews
-          </div>
+      {/* ── the stage ──────────────────────────────────────────────────────
+          The board is the thing you are here for, so it sits centre and keeps its own
+          column; everything that used to stack underneath it — the lobby, the other
+          players, the round results — moves into one panel beside it that swaps between
+          views. Before this, a round pushed the board up the page as panels appeared and
+          grew, and every new setting or mode would have added another card to that stack.
+          Now there is somewhere for them to go. */}
+      <div className="snake-stage" data-versus={mode === 'versus' || undefined}>
+        <div className="snake-stage-board">
           {/* Watching someone, full size. Costs nothing extra on the wire — the preview message
               already carries their whole game state; this just draws it big. */}
           {watching && previews[watching] && (
@@ -3074,95 +2888,354 @@ export function GameManager({
               onClose={() => setWatching(null)}
             />
           )}
-          {Object.keys(previews).length === 0 ? (
-            <div className="muted" style={{ fontSize: 12 }}>
-              Waiting for previews… players will appear here when they start.
+
+          {/* Status bar (stable layout, separate from toolbar) */}
+          <div ref={statusRef} className="snake-status" aria-live="polite">
+            <div className="muted">
+              Score: <span style={{ color: 'var(--text)' }}>{score}</span>
             </div>
-          ) : (
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))',
-                gap: 12,
-              }}
-            >
-              {Object.entries(previews).map(([id, p]) => (
-                // The tile is the way into the big view. It was the only spectator UI there
-                // was; now it's a picker for one.
+            {paused && <div className="muted">Paused</div>}
+            {mode === 'versus' && spectate && <div className="muted">Spectating</div>}
+            {mode === 'versus' && countdown != null && (
+              <div className="muted" aria-live="assertive">
+                Starting in… {countdown}
+              </div>
+            )}
+          </div>
+          {/* Canvases */}
+          {/* Hidden, NOT unmounted, while you watch someone else. The canvas element and the
+              renderer bound to it have to survive — unmounting would tear down the live game you
+              are still playing, which is the exact bug that used to hang up calls when you
+              navigated away from chat. */}
+          <div
+            ref={wrapRef}
+            className="snake-grid"
+            data-versus={mode === 'versus' || undefined}
+            hidden={!!(watching && previews[watching])}
+          >
+            <div className="snake-canvas-wrap" data-captured={captured || undefined}>
+              {mode === 'versus' && (
                 <button
-                  key={id}
-                  className={'preview-pick' + (watching === id ? ' is-on' : '')}
-                  onClick={() => setWatching(watching === id ? null : id)}
-                  title={watching === id ? 'Stop watching' : `Watch ${p.name || 'this player'}`}
+                  className="btn snake-fab"
+                  onClick={() => {
+                    if (mode === 'versus') {
+                      setSelfReady()
+                      focusCanvasAndScrollPreviews()
+                      return
+                    }
+                  }}
+                  aria-pressed={!paused}
+                  title={paused ? 'Play' : 'Pause'}
+                  disabled={
+                    mode === 'versus' &&
+                    (!playerName.trim() ||
+                      conn !== 'connected' ||
+                      ready ||
+                      roundActiveRef.current ||
+                      spectate)
+                  }
                 >
-                  <Preview
-                    state={p.state}
-                    title={`${p.name || 'Player'} — ${
-                      players[id]?.spectate
-                        ? 'Spectating'
-                        : `${p.score}${players[id]?.ready ? ' ✓' : ''}`
-                    }`}
-                  />
+                  {mode === 'versus' ? (ready ? 'Ready ✓' : 'Ready') : paused ? 'Play' : 'Pause'}
+                </button>
+              )}
+              {/* Fullscreen buttons temporarily removed */}
+              <canvas
+                ref={canvasRef}
+                tabIndex={0}
+                className="snake-canvas"
+                onFocus={() => {
+                  capturedRef.current = true
+                  setCaptured(true)
+                  onControlChange?.(true)
+                  // show hint chip briefly only for fine pointers and only on user-initiated focus
+                  if (!isCoarseRef.current && userInitiatedFocusRef.current) {
+                    if (hintTimerRef.current) window.clearTimeout(hintTimerRef.current)
+                    setHintVisible(true)
+                    hintTimerRef.current = window.setTimeout(() => setHintVisible(false), 2000)
+                  }
+                  userInitiatedFocusRef.current = false
+                }}
+                onBlur={() => {
+                  capturedRef.current = false
+                  setCaptured(false)
+                  onControlChange?.(false)
+                  // Solo mode: auto-pause when canvas loses focus (unless we're mid-click suppressing blur)
+                  if (mode === 'solo' && !suppressBlurPauseRef.current) setPaused(true)
+                  suppressBlurPauseRef.current = false
+                }}
+                onPointerDown={() => {
+                  // focus on first interaction, capture controls
+                  userInitiatedFocusRef.current = true
+                  canvasRef.current?.focus()
+                }}
+              />
+              {!isCoarseRef.current && (
+                <div className="snake-hint" aria-live="polite" data-show={hintVisible || undefined}>
+                  Game controls active — Esc to release
+                </div>
+              )}
+              {/* Joystick removed; swipe and keys remain */}
+            </div>
+            {/* Opponent canvas removed for now; previews serve as spectator UI */}
+          </div>
+        </div>
+
+        {mode === 'versus' && multiStep !== 'landing' && (
+          <aside className="snake-stage-side">
+            <div className="snake-side-tabs" role="tablist">
+              {(
+                [
+                  ['players', 'Players'],
+                  ['room', 'Room'],
+                ] as Array<[SideTab, string]>
+              ).map(([k, label]) => (
+                <button
+                  key={k}
+                  className={'snake-side-tab' + (sideTab === k ? ' is-on' : '')}
+                  role="tab"
+                  aria-selected={sideTab === k}
+                  onClick={() => setSideTab(k)}
+                >
+                  {label}
                 </button>
               ))}
             </div>
-          )}
-        </div>
-      )}
 
-      {/* Round results UI */}
-      {mode === 'versus' && showResults && roundResults && roundResults.items.length > 0 && (
-        <div className="card" style={{ marginTop: 8, padding: 10 }}>
-          <div className="muted" style={{ fontWeight: 600, marginBottom: 6 }}>
-            Round results
-          </div>
-          {(() => {
-            const items = roundResults.items
-            // Group by place ascending (1, then next occupied place, etc.)
-            const byPlace = new Map<number, typeof items>()
-            for (const it of items) {
-              if (!byPlace.has(it.place)) byPlace.set(it.place, [])
-              byPlace.get(it.place)!.push(it)
-            }
-            const placesSorted = Array.from(byPlace.keys()).sort((a, b) => a - b)
-            const g1 = placesSorted.length > 0 ? byPlace.get(placesSorted[0]) || [] : []
-            const g2 = placesSorted.length > 1 ? byPlace.get(placesSorted[1]) || [] : []
-            const g3 = placesSorted.length > 2 ? byPlace.get(placesSorted[2]) || [] : []
-            const medals = new Map<string, string>()
-            const participantCount = items.length
-            if (participantCount >= 2) {
-              for (const it of g1) medals.set(it.id, '🥇')
-            }
-            if (participantCount >= 3) {
-              if (g1.length > 1) {
-                const aliveNonGold = items.filter((x) => x.place !== 1 && x.score > 0)
-                if (aliveNonGold.length >= 2) for (const it of g2) medals.set(it.id, '🥈')
-              } else {
-                for (const it of g2) medals.set(it.id, '🥈')
-                if (participantCount >= 4 && g2.length === 1)
-                  for (const it of g3) medals.set(it.id, '🥉')
-              }
-            }
-            return (
-              <ol style={{ margin: 0, paddingLeft: '1.25rem' }}>
-                {items.map((it) => (
-                  <li key={it.id} className="muted">
-                    <strong style={{ color: 'var(--text)' }}>
-                      {profanityFilter.clean(it.name)}
-                    </strong>{' '}
-                    — {it.score} {medals.get(it.id) || ''}
-                  </li>
-                ))}
-              </ol>
-            )
-          })()}
-          <div className="muted" style={{ marginTop: 6, fontSize: 12 }}>
-            {isHost
-              ? 'Waiting for all players to Ready… or use Force start to begin now.'
-              : 'Waiting for the host to start the next round…'}
-          </div>
-        </div>
-      )}
+            {sideTab === 'players' && (
+              <div className="snake-side-body">
+                {/* Live previews directly under the game (kept visible to avoid layout shift) */}
+                {mode === 'versus' && multiStep === 'lobby' && (
+                  <div
+                    ref={previewsRef}
+                    className="card"
+                    style={{ marginTop: '0.75rem', padding: 10, minHeight: 190 }}
+                  >
+                    <div className="muted" style={{ fontWeight: 600, marginBottom: 6 }}>
+                      Live previews
+                    </div>
+                    {Object.keys(previews).length === 0 ? (
+                      <div className="muted" style={{ fontSize: 12 }}>
+                        Waiting for previews… players will appear here when they start.
+                      </div>
+                    ) : (
+                      <div
+                        style={{
+                          display: 'grid',
+                          gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))',
+                          gap: 12,
+                        }}
+                      >
+                        {Object.entries(previews).map(([id, p]) => (
+                          // The tile is the way into the big view. It was the only spectator UI there
+                          // was; now it's a picker for one.
+                          <button
+                            key={id}
+                            className={'preview-pick' + (watching === id ? ' is-on' : '')}
+                            onClick={() => setWatching(watching === id ? null : id)}
+                            title={
+                              watching === id ? 'Stop watching' : `Watch ${p.name || 'this player'}`
+                            }
+                          >
+                            <Preview
+                              state={p.state}
+                              title={`${p.name || 'Player'} — ${
+                                players[id]?.spectate
+                                  ? 'Spectating'
+                                  : `${p.score}${players[id]?.ready ? ' ✓' : ''}`
+                              }`}
+                            />
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+                {/* Round results UI */}
+                {mode === 'versus' &&
+                  showResults &&
+                  roundResults &&
+                  roundResults.items.length > 0 && (
+                    <div className="card" style={{ marginTop: 8, padding: 10 }}>
+                      <div className="muted" style={{ fontWeight: 600, marginBottom: 6 }}>
+                        Round results
+                      </div>
+                      {(() => {
+                        const items = roundResults.items
+                        // Group by place ascending (1, then next occupied place, etc.)
+                        const byPlace = new Map<number, typeof items>()
+                        for (const it of items) {
+                          if (!byPlace.has(it.place)) byPlace.set(it.place, [])
+                          byPlace.get(it.place)!.push(it)
+                        }
+                        const placesSorted = Array.from(byPlace.keys()).sort((a, b) => a - b)
+                        const g1 = placesSorted.length > 0 ? byPlace.get(placesSorted[0]) || [] : []
+                        const g2 = placesSorted.length > 1 ? byPlace.get(placesSorted[1]) || [] : []
+                        const g3 = placesSorted.length > 2 ? byPlace.get(placesSorted[2]) || [] : []
+                        const medals = new Map<string, string>()
+                        const participantCount = items.length
+                        if (participantCount >= 2) {
+                          for (const it of g1) medals.set(it.id, '🥇')
+                        }
+                        if (participantCount >= 3) {
+                          if (g1.length > 1) {
+                            const aliveNonGold = items.filter((x) => x.place !== 1 && x.score > 0)
+                            if (aliveNonGold.length >= 2)
+                              for (const it of g2) medals.set(it.id, '🥈')
+                          } else {
+                            for (const it of g2) medals.set(it.id, '🥈')
+                            if (participantCount >= 4 && g2.length === 1)
+                              for (const it of g3) medals.set(it.id, '🥉')
+                          }
+                        }
+                        return (
+                          <ol style={{ margin: 0, paddingLeft: '1.25rem' }}>
+                            {items.map((it) => (
+                              <li key={it.id} className="muted">
+                                <strong style={{ color: 'var(--text)' }}>
+                                  {profanityFilter.clean(it.name)}
+                                </strong>{' '}
+                                — {it.score} {medals.get(it.id) || ''}
+                              </li>
+                            ))}
+                          </ol>
+                        )
+                      })()}
+                      <div className="muted" style={{ marginTop: 6, fontSize: 12 }}>
+                        {isHost
+                          ? 'Waiting for all players to Ready… or use Force start to begin now.'
+                          : 'Waiting for the host to start the next round…'}
+                      </div>
+                    </div>
+                  )}
+              </div>
+            )}
+
+            {sideTab === 'room' && (
+              <div className="snake-side-body">
+                {/* The lobby. The `multiStep !== 'landing'` guard it used to carry is gone: the
+                    panel around it already only exists past the landing step, and TypeScript
+                    pointed out the comparison could no longer be false. */}
+                {mode === 'versus' && (
+                  <div
+                    className="card"
+                    style={{
+                      marginTop: 8,
+                      padding: 10,
+                      maxHeight: 190,
+                      overflowY: 'auto',
+                      minHeight: 90,
+                    }}
+                  >
+                    <div className="muted" style={{ fontWeight: 600, marginBottom: 6 }}>
+                      {multiStep === 'lobby' ? (
+                        <>
+                          Lobby — <span style={{ color: 'var(--text)' }}>{room || '—'}</span>{' '}
+                          <span className="muted" style={{ fontWeight: 400 }}>
+                            (connected players: {presence})
+                          </span>
+                        </>
+                      ) : (
+                        <>Available lobbies</>
+                      )}
+                    </div>
+                    {(multiStep === 'join' || multiStep === 'create') && (
+                      <div style={{ display: 'grid', gap: 8 }}>
+                        {rooms.length > 0 ? (
+                          <div
+                            style={{
+                              display: 'grid',
+                              gridTemplateColumns: 'repeat(auto-fill, minmax(180px,1fr))',
+                              gap: 8,
+                            }}
+                          >
+                            {rooms.map((r) => (
+                              <div key={r.id} className="card" style={{ padding: 8 }}>
+                                <div className="muted" style={{ fontWeight: 600 }}>
+                                  {r.name || r.id}
+                                </div>
+                                <div className="muted" style={{ fontSize: 12 }}>
+                                  ID: {r.id}
+                                </div>
+                                <div className="muted">Players: {r.count}</div>
+                                <div style={{ marginTop: 6 }}>
+                                  <button
+                                    className="btn"
+                                    disabled={joining || conn === 'connecting'}
+                                    onClick={() => {
+                                      if (joining) return
+                                      const rid = r.id
+                                      if (room !== rid) setRoom(rid)
+                                      setMultiStep('lobby')
+                                      if (conn === 'connected') {
+                                        netRef.current?.disconnect()
+                                        setConn('disconnected')
+                                        setJoining(true)
+                                        setTimeout(() => connectVs(rid), 50)
+                                      } else if (conn === 'disconnected') connectVs(rid)
+                                    }}
+                                  >
+                                    Join
+                                  </button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="muted">No lobbies yet — click Browse to refresh.</div>
+                        )}
+                      </div>
+                    )}
+                    {multiStep === 'lobby' && (
+                      <div style={{ display: 'grid', gap: 6 }}>
+                        {myId && (
+                          <div
+                            className="muted"
+                            style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}
+                          >
+                            <span>
+                              {(players[myId]?.name || playerName || 'You').trim()}{' '}
+                              {isHost ? <em>(Host)</em> : null}
+                            </span>
+                            <span style={{ marginLeft: 12 }}>
+                              {spectate ? 'Spectator' : ready ? 'Ready ✓' : 'Not ready'}
+                            </span>
+                          </div>
+                        )}
+                        {(() => {
+                          const items: Array<{ id: string; name: string; ready?: boolean }> = []
+                          for (const [id, p] of Object.entries(players)) {
+                            if (id === myId) continue
+                            const nameRaw = (p.name || 'Player').trim()
+                            items.push({ id, name: nameRaw, ready: p.ready })
+                          }
+                          return items.map(({ id, name, ready }) => (
+                            <div
+                              key={id}
+                              className="muted"
+                              style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}
+                            >
+                              <span>
+                                {name} {hostId === id ? <em>(Host)</em> : null}
+                              </span>
+                              <span style={{ marginLeft: 12 }}>
+                                {players[id]?.spectate
+                                  ? 'Spectator'
+                                  : ready
+                                    ? 'Ready ✓'
+                                    : 'Not ready'}
+                              </span>
+                            </div>
+                          ))
+                        })()}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+          </aside>
+        )}
+      </div>
 
       {/* Leaderboard */}
       <div className="card" style={{ marginTop: 8, padding: 10 }}>
