@@ -17,6 +17,12 @@ export type Settings = {
   race?: boolean
   /** first to this score wins the round. Only meaningful in race. */
   raceTarget?: number
+  /**
+   * Tron: your snake leaves a permanent trail and every trail is SOLID — hit any line, yours
+   * included, and you're out. Last one riding wins. Unlike ghosts, this needs the relay to own
+   * the trail and arbitrate every cell, which is why it's a mode rather than a toggle.
+   */
+  tron?: boolean
   /** milliseconds per tick; lower is faster. Undefined keeps the historical default. */
   speedMs?: number
   /**
@@ -58,7 +64,14 @@ export type NetMessage =
       type: 'seed'
       roundId: string
       /** `apples` only in race, where the relay owns them and sends them WITH the round */
-      seedData: { seed: number; settings: Settings; apples?: Apple[] }
+      seedData: {
+        seed: number
+        settings: Settings
+        /** race only: the relay owns the apples and sends them WITH the round */
+        apples?: Apple[]
+        /** tron only: where each rider begins, so nobody shares a starting cell */
+        starts?: Record<string, { x: number; y: number; dir: Point }>
+      }
     }
   | { type: 'settings'; settings: Settings }
   | { type: 'host'; hostId: string }
@@ -92,6 +105,11 @@ export type NetMessage =
    * score for it.
    */
   | { type: 'eat'; x: number; y: number; from?: string }
+  /** tron: claim the cell you're entering; the relay says whether you survive it */
+  | { type: 'claim'; x: number; y: number }
+  | { type: 'crash'; x: number; y: number }
+  | { type: 'trail'; x: number; y: number; from?: string }
+  | { type: 'tron'; over?: boolean; winner?: { id: string; name?: string } }
   | { type: 'apples'; apples: Apple[]; roundId?: string }
   | {
       type: 'race'

@@ -148,6 +148,12 @@ function makeSeed(room) {
     startRace(room)
     seedData.apples = room.apples
   }
+  // Tron's board is empty at the start by definition — the trails ARE the round — so there is
+  // nothing to send with the seed, only state to clear.
+  if (settings.tron) {
+    startTron(room)
+    seedData.starts = tronStarts(room)
+  }
   return { type: 'seed', roundId, seedData }
 }
 
@@ -162,6 +168,7 @@ function sanitizeSettings(input, prev) {
     next.canvasSize = s.canvasSize
   }
   if (typeof s.race === 'boolean') next.race = s.race
+  if (typeof s.tron === 'boolean') next.tron = s.tron
   if (typeof s.ghosts === 'boolean') next.ghosts = s.ghosts
   if (typeof s.raceTarget === 'number' && s.raceTarget >= 5 && s.raceTarget <= 500) {
     next.raceTarget = Math.floor(s.raceTarget)
@@ -205,6 +212,53 @@ function spawnApples(room) {
     if (!taken(p)) room.apples.push(p)
   }
 }
+
+/* ── tron: the relay owns the trails ─────────────────────────────────────────
+ * Ghost snakes are drawn but not solid, because collision needs an arbiter and a phantom death
+ * from someone else's lag feels terrible. Tron is the mode where they ARE solid, so it needs
+ * that arbiter — and this is the same shape as apples: one owner, clients claim, relay decides.
+ *
+ * Each move a client claims the cell it is entering. Taken already, by anyone including itself?
+ * That client crashed. Free? The cell becomes trail and everyone is told to draw it.
+ *
+ * This works here because the round trip is well under one tick (~32ms measured against the
+ * deployed relay, versus 110ms a tick at normal speed), so a claim resolves before the player's
+ * next move. It would be the wrong design on a slow link, where you would die a tick after the
+ * fact for a cell that looked empty.
+ */
+
+function startTron(room) {
+  room.trail = new Set()
+  room.crashed = new Set()
+}
+
+/**
+ * Where each rider starts.
+ *
+ * Every snake is spawned on the middle cell, which is fine when boards are private — in classic
+ * and race you each have your own copy of the grid. Tron shares one board, so identical starts
+ * mean everyone is stacked on the same square and the round is decided on tick one. Riders are
+ * spread evenly around a circle, each facing along it, so nobody begins pointed at a wall or at
+ * somebody's face.
+ */
+function tronStarts(room) {
+  const grid = (room.settings || DEFAULT_SETTINGS).grid || 30
+  const ids = Array.from(room.clients.keys()).filter((pid) => !(room.state.get(pid) || {}).spectate)
+  const r = Math.max(3, Math.floor(grid / 3))
+  const mid = Math.floor(grid / 2)
+  const starts = {}
+  ids.forEach((pid, i) => {
+    const a = (i / Math.max(1, ids.length)) * Math.PI * 2
+    const x = Math.min(grid - 1, Math.max(0, Math.round(mid + Math.cos(a) * r)))
+    const y = Math.min(grid - 1, Math.max(0, Math.round(mid + Math.sin(a) * r)))
+    // tangent to the circle: everyone sets off the same way round, so the opening seconds are
+    // a chase rather than a head-on
+    starts[pid] = { x, y, dir: { x: Math.round(-Math.sin(a)), y: Math.round(Math.cos(a)) } }
+  })
+  return starts
+}
+
+const cellKey = (x, y) => x + ',' + y
 
 /** Start a race round: fresh apples, scores back to zero. */
 function startRace(room) {
@@ -520,6 +574,43 @@ wss.on('connection', (ws) => {
           // Broadcast name updates to peers, matching legacy behavior
           broadcast(room, { type: 'name', name: st.name, from: id }, id)
         }
+        break
+      }
+      case 'claim': {
+        // Tron only. The client is entering a cell and wants to know if it survives.
+        if (!(room.settings || DEFAULT_SETTINGS).tron || !room.trail) break
+        if (room.crashed.has(id)) break
+        const grid = (room.settings || DEFAULT_SETTINGS).grid || 30
+        const x = Math.floor(Number(msg.x))
+        const y = Math.floor(Number(msg.y))
+        if (!Number.isFinite(x) || !Number.isFinite(y)) break
+        if (x < 0 || y < 0 || x >= grid || y >= grid) break
+        const key = cellKey(x, y)
+        if (room.trail.has(key)) {
+          // Taken. Told only to the player who hit it — everyone else finds out because their
+          // ghost stops moving, which is the same information without a broadcast per death.
+          room.crashed.add(id)
+          send(ws, { type: 'crash', x, y })
+          const alive = Array.from(room.clients.keys()).filter(
+            (pid) => !room.crashed.has(pid) && !(room.state.get(pid) || {}).spectate,
+          )
+          // Last one standing, or nobody: the round is decided.
+          if (alive.length <= 1) {
+            const winnerId = alive[0]
+            broadcast(room, {
+              type: 'tron',
+              over: true,
+              ...(winnerId
+                ? { winner: { id: winnerId, name: (room.state.get(winnerId) || {}).name } }
+                : {}),
+            })
+          }
+          break
+        }
+        room.trail.add(key)
+        // Just the new cell. Sending the whole trail every move would grow with the round —
+        // exactly the thing that makes a long game get heavier the longer it goes.
+        broadcast(room, { type: 'trail', x, y, from: id })
         break
       }
       case 'eat': {

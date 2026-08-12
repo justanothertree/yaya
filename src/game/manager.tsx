@@ -246,8 +246,17 @@ export function GameManager({
    * before the apples — without this the new engine starts bare.
    */
   const serverApplesRef = useRef<Point[]>([])
+  /** tron only: my starting cell and heading, handed out by the relay so riders don't stack */
+  const tronStartRef = useRef<{ x: number; y: number; dir: Point } | null>(null)
   /** set when the relay declares a winner, so the tick loop stops instead of circling forever */
   const raceOverRef = useRef(false)
+  /** tron trails from the relay, keyed "x,y" — solid, and the reason you can die in tron */
+  /** applesEaten, readable from socket handlers that close over a stale render */
+  const applesEatenRef = useRef(0)
+  const trailRef = useRef<Set<string>>(new Set())
+  /** the relay told us we hit something; the loop stops and the snake is out */
+  const tronCrashedRef = useRef(false)
+  const [tronWinner, setTronWinner] = useState<{ id: string; name?: string } | null>(null)
   /** which view the panel beside the board is showing */
   const [sideTab, setSideTab] = useState<SideTab>('players')
 
@@ -672,6 +681,18 @@ export function GameManager({
     if (settings.race && serverApplesRef.current.length) {
       engine.setApples(serverApplesRef.current)
     }
+    // Tron: take the starting cell the relay handed out. Every engine spawns on the middle
+    // square, which is fine when boards are private but puts every rider on one cell here.
+    if (settings.tron && tronStartRef.current) {
+      const st = tronStartRef.current
+      engine.loadSnapshot({
+        snake: [{ x: st.x, y: st.y }],
+        dir: st.dir,
+        apples: [],
+        alive: true,
+        ticks: 0,
+      })
+    }
     // Fresh engine: clear any queued turns and sync current direction
     dirBufferRef.current = []
     try {
@@ -868,6 +889,9 @@ export function GameManager({
   useEffect(() => {
     myIdRef.current = myId
   }, [myId])
+  useEffect(() => {
+    applesEatenRef.current = applesEaten
+  }, [applesEaten])
 
   // If still using auto-generated name and Supabase is available,
   // update default to a sequential Player{maxId+1}
@@ -922,6 +946,18 @@ export function GameManager({
       rendererRef.current!.draw(state)
       let ateThisTick = 0
       let diedThisTick = false
+      // Tron: every move is a claim. The relay decides whether the cell was free, so this goes
+      // out the moment the head lands rather than waiting for the eat/die events below.
+      if (settings.tron && state.alive && !tronCrashedRef.current) {
+        const head = state.snake[0]
+        if (head) {
+          try {
+            netRef.current?.send({ type: 'claim', x: head.x, y: head.y })
+          } catch {
+            /* noop */
+          }
+        }
+      }
       for (const ev of events) {
         if (ev.type === 'eat') {
           if (settings.race) {
@@ -986,7 +1022,7 @@ export function GameManager({
         const sp = speedFor(applesEaten, settings.speedMs)
         // A decided race stops here. The snake is still alive and steerable right up to this
         // point, so the last moment of the round plays out normally rather than freezing.
-        if (!raceOverRef.current) {
+        if (!raceOverRef.current && !tronCrashedRef.current) {
           timer = window.setTimeout(() => {
             if (epoch === sessionEpochRef.current) loop()
           }, sp)
@@ -1443,7 +1479,12 @@ export function GameManager({
             // Apples ride inside the seed now, so the round and its board arrive together and
             // there is no window where the engine exists but the fruit does not.
             serverApplesRef.current = Array.isArray(msg.seedData.apples) ? msg.seedData.apples : []
+            tronStartRef.current = msg.seedData.starts?.[myIdRef.current ?? ''] ?? null
             raceOverRef.current = false
+            tronCrashedRef.current = false
+            trailRef.current = new Set()
+            rendererRef.current?.setTrail(trailRef.current)
+            setTronWinner(null)
             setApplesEaten(0)
             setRaceScores([])
             setRaceWinner(null)
@@ -1608,6 +1649,34 @@ export function GameManager({
                 return { ...map, [fromId]: { ...map[fromId], name: msg.name } }
               })
             }
+          } else if (msg.type === 'trail') {
+            // One cell at a time. The whole trail would grow with the round — the thing that
+            // makes a long game get heavier the longer it lasts.
+            trailRef.current.add(msg.x + ',' + msg.y)
+            rendererRef.current?.setTrail(trailRef.current)
+          } else if (msg.type === 'crash') {
+            /**
+             * The relay says the cell was taken. This is the one death the client does NOT
+             * decide for itself: in tron the trails are shared, so only the owner of that state
+             * can say whether you made it.
+             */
+            if (!tronCrashedRef.current) {
+              tronCrashedRef.current = true
+              setAlive(false)
+              const finalScore = scoreFormula(applesEatenRef.current)
+              setScore(finalScore)
+              if (myIdRef.current) {
+                roundScoresRef.current[myIdRef.current] = finalScore
+                try {
+                  netRef.current?.send({ type: 'over', reason: 'die', score: finalScore })
+                } catch {
+                  /* noop */
+                }
+                registerFinish(myIdRef.current)
+              }
+            }
+          } else if (msg.type === 'tron') {
+            if (msg.over) setTronWinner(msg.winner ?? null)
           } else if (msg.type === 'apples') {
             // The relay's list is the board. Ours isn't a copy to reconcile — it's replaced.
             if (Array.isArray(msg.apples)) {
@@ -3136,6 +3205,16 @@ export function GameManager({
                   {/* In race the scoreboard is the game — it's the shared truth everyone is
                     playing against, and it comes from the relay rather than from anyone's
                     local count. */}
+                  {settings.tron && tronWinner && (
+                    <div className="race-board">
+                      <div className="muted race-board-head">
+                        {tronWinner.id === myId
+                          ? 'You win'
+                          : `${tronWinner.name || 'Someone'} wins`}
+                        <span>last one riding</span>
+                      </div>
+                    </div>
+                  )}
                   {settings.race && raceScores.length > 0 && (
                     <div className="race-board">
                       <div className="muted race-board-head">
@@ -3293,10 +3372,13 @@ export function GameManager({
                       <>
                         <div className="controls-row">
                           <div className="muted group-label">Mode</div>
+                          {/* One mode at a time: each turns the others off, because race and
+                              tron each hand a different piece of the board to the relay and
+                              running both would mean two owners of one round. */}
                           <button
                             className="btn"
-                            data-active={!settings.race || undefined}
-                            onClick={() => applySettings({ race: false })}
+                            data-active={(!settings.race && !settings.tron) || undefined}
+                            onClick={() => applySettings({ race: false, tron: false })}
                             title="Everyone runs the same course separately"
                           >
                             classic
@@ -3305,11 +3387,23 @@ export function GameManager({
                             className="btn"
                             data-active={settings.race || undefined}
                             onClick={() =>
-                              applySettings({ race: true, raceTarget: settings.raceTarget ?? 25 })
+                              applySettings({
+                                race: true,
+                                tron: false,
+                                raceTarget: settings.raceTarget ?? 25,
+                              })
                             }
                             title="Apples are shared — eat one and it's gone for everyone"
                           >
                             race
+                          </button>
+                          <button
+                            className="btn"
+                            data-active={settings.tron || undefined}
+                            onClick={() => applySettings({ tron: true, race: false })}
+                            title="Every snake leaves a solid trail — last one riding wins"
+                          >
+                            tron
                           </button>
                         </div>
                         <div className="controls-row">

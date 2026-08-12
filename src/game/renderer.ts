@@ -8,6 +8,8 @@ export class GameRenderer {
   private colors: ThemeColors
   /** other players, drawn as pass-through outlines — see setGhosts */
   private ghosts: Array<{ snake: Point[]; name?: string }> = []
+  /** tron trails, keyed "x,y". Solid, unlike ghosts — these are what you die to. */
+  private trail: Set<string> = new Set()
 
   constructor(canvas: HTMLCanvasElement, grid: number) {
     const ctx = canvas.getContext('2d')
@@ -52,6 +54,11 @@ export class GameRenderer {
     this.ghosts = ghosts
   }
 
+  /** Tron trails, owned by the relay. Solid: the whole point is that these kill you. */
+  setTrail(trail: Set<string>) {
+    this.trail = trail
+  }
+
   draw(state: GameState) {
     const { ctx, cell } = this
     // Refresh theme each frame to reflect runtime theme toggles
@@ -63,6 +70,19 @@ export class GameRenderer {
     ctx.fillStyle = this.colors.apple
     for (const a of state.apples) {
       ctx.fillRect(a.x * cell, a.y * cell, cell, cell)
+    }
+    // Trails first, under everything: they're scenery you must not touch, and drawing them
+    // over the snakes would hide whose head is where at the moment that matters most.
+    if (this.trail.size) {
+      ctx.globalAlpha = 0.5
+      ctx.fillStyle = this.colors.snake
+      for (const key of this.trail) {
+        const c = key.indexOf(',')
+        const x = +key.slice(0, c)
+        const y = +key.slice(c + 1)
+        ctx.fillRect(x * cell + 1, y * cell + 1, cell - 2, cell - 2)
+      }
+      ctx.globalAlpha = 1
     }
     // Ghosts UNDER your own snake: when you overlap, you should still see yourself clearly —
     // you're the one being steered.
