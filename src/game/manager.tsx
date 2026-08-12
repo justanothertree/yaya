@@ -215,6 +215,17 @@ export function GameManager({
    * game mid-round and come straight back.
    */
   const [watching, setWatching] = useState<string | null>(null)
+  /** race scoreboard, straight from the relay — the only score that counts in race mode */
+  const [raceScores, setRaceScores] = useState<Array<{ id: string; name?: string; score: number }>>(
+    [],
+  )
+  const [raceWinner, setRaceWinner] = useState<{
+    id: string
+    name?: string
+    score: number
+  } | null>(null)
+  /** my last confirmed score, so growth can be applied as a difference rather than a total */
+  const raceMineRef = useRef(0)
   /** which view the panel beside the board is showing */
   const [sideTab, setSideTab] = useState<SideTab>('players')
 
@@ -814,8 +825,15 @@ export function GameManager({
       let diedThisTick = false
       for (const ev of events) {
         if (ev.type === 'eat') {
-          ateThisTick += 1
-          setApplesEaten((n) => n + 1)
+          if (settings.race) {
+            // Race: touching an apple is a CLAIM, not a score. The relay decides whether it was
+            // ours; the local count and the snake's length both wait for its answer, so a lost
+            // photo-finish can't leave us longer or higher-scoring than we earned.
+            netRef.current?.send({ type: 'eat', x: ev.at.x, y: ev.at.y })
+          } else {
+            ateThisTick += 1
+            setApplesEaten((n) => n + 1)
+          }
         } else if (ev.type === 'die') {
           diedThisTick = true
         }
@@ -1315,6 +1333,12 @@ export function GameManager({
             setEngineSeed(msg.seedData.seed)
             setSettings(msg.seedData.settings)
             seedRoundIdRef.current = msg.roundId
+            // A new round starts everyone back at zero, so the confirmed-score baseline has to
+            // reset with it. Leaving it at last round's total would make the first few apples of
+            // the next round look like a score that had gone DOWN, and growth would never apply.
+            raceMineRef.current = 0
+            setRaceScores([])
+            setRaceWinner(null)
             // New round seed: clear any buffered turns so the next round starts clean
             dirBufferRef.current = []
             currentDirRef.current = null
@@ -1476,6 +1500,28 @@ export function GameManager({
                 return { ...map, [fromId]: { ...map[fromId], name: msg.name } }
               })
             }
+          } else if (msg.type === 'apples') {
+            // The relay's list is the board. Ours isn't a copy to reconcile — it's replaced.
+            if (Array.isArray(msg.apples)) {
+              engineRef.current?.setApples(msg.apples)
+              const snap = engineRef.current?.snapshot()
+              if (snap) rendererRef.current?.draw(snap)
+            }
+          } else if (msg.type === 'race') {
+            const rows = msg.scores || []
+            setRaceScores(rows)
+            setRaceWinner(msg.winner ?? null)
+            /**
+             * Growth is driven by the authoritative score, not by touching an apple. The
+             * DIFFERENCE is what's applied, so a dropped broadcast self-corrects: the next one
+             * simply owes two. This is what keeps the snake's length and the scoreboard from
+             * ever disagreeing.
+             */
+            const mine = rows.find((r) => r.id === myIdRef.current)?.score ?? 0
+            const delta = mine - raceMineRef.current
+            if (delta > 0) engineRef.current?.grow(delta)
+            raceMineRef.current = mine
+            if (msg.winner) setApplesEaten(mine)
           } else if (msg.type === 'chat') {
             // The relay excludes the sender, so everything arriving here is someone else's.
             // Name comes off the message, not out of `players` — reading component state from
@@ -2932,6 +2978,39 @@ export function GameManager({
 
             {activeSideTab === 'players' && (
               <div className="snake-side-body">
+                {/* In race the scoreboard is the game — it's the shared truth everyone is
+                    playing against, and it comes from the relay rather than from anyone's
+                    local count. */}
+                {settings.race && raceScores.length > 0 && (
+                  <div className="race-board">
+                    <div className="muted race-board-head">
+                      {raceWinner ? `${raceWinner.name || 'Someone'} wins` : 'Race'}
+                      <span>first to {settings.raceTarget ?? 50}</span>
+                    </div>
+                    {raceScores.map((r) => (
+                      <div
+                        key={r.id}
+                        className={
+                          'race-row' +
+                          (r.id === myId ? ' is-me' : '') +
+                          (raceWinner?.id === r.id ? ' is-won' : '')
+                        }
+                      >
+                        <span className="race-name">
+                          {profanityFilter.clean(r.name || 'Player')}
+                        </span>
+                        <span className="race-bar" aria-hidden>
+                          <i
+                            style={{
+                              width: `${Math.min(100, (r.score / (settings.raceTarget ?? 50)) * 100)}%`,
+                            }}
+                          />
+                        </span>
+                        <span className="race-score">{r.score}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
                 {/* Live previews directly under the game (kept visible to avoid layout shift) */}
                 {mode === 'versus' && multiStep === 'lobby' && (
                   <div
@@ -3047,6 +3126,53 @@ export function GameManager({
                     toolbar grows sideways until it wraps into a wall. Here they have a column
                     to grow down, next to the board they affect. */}
                 <div className="controls-group snake-side-settings">
+                  {/* Race is a multiplayer rule, so it only appears where it can apply. The host
+                      owns it: the relay takes settings from whoever is running the room, and two
+                      players disagreeing about whether apples are shared is not a game. */}
+                  {mode === 'versus' && (
+                    <>
+                      <div className="controls-row">
+                        <div className="muted group-label">Mode</div>
+                        <button
+                          className="btn"
+                          data-active={!settings.race || undefined}
+                          onClick={() => setSettings((s) => ({ ...s, race: false }))}
+                          title="Everyone runs the same course separately"
+                        >
+                          classic
+                        </button>
+                        <button
+                          className="btn"
+                          data-active={settings.race || undefined}
+                          onClick={() =>
+                            setSettings((s) => ({
+                              ...s,
+                              race: true,
+                              raceTarget: s.raceTarget ?? 25,
+                            }))
+                          }
+                          title="Apples are shared — eat one and it's gone for everyone"
+                        >
+                          race
+                        </button>
+                      </div>
+                      {settings.race && (
+                        <div className="controls-row">
+                          <div className="muted group-label">First to</div>
+                          {[10, 25, 50, 100].map((n) => (
+                            <button
+                              key={n}
+                              className="btn"
+                              data-active={(settings.raceTarget ?? 25) === n || undefined}
+                              onClick={() => setSettings((s) => ({ ...s, raceTarget: n }))}
+                            >
+                              {n}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </>
+                  )}
                   <div className="controls-row">
                     <div className="muted group-label">Apples</div>
                     {[1, 2, 3, 4].map((n) => (

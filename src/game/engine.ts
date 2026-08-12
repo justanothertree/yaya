@@ -6,6 +6,16 @@ export class GameEngine {
   readonly grid: number
   private rand: () => number
   private state: GameState
+  /**
+   * Segments owed. In race mode the snake does NOT grow when the head reaches an apple — it
+   * grows when the relay says the apple was yours. Growing on contact meant a player who lost a
+   * photo-finish kept a segment they never scored for, so the snake's length and the scoreboard
+   * disagreed. Length is driven by the authoritative score now, so they can't.
+   *
+   * Deferring growth by a tick or two is invisible: growing is just "don't drop the tail this
+   * tick", and it doesn't matter which tick that happens on.
+   */
+  private owed = 0
 
   constructor(settings: Settings, seed: number) {
     this.settings = settings
@@ -16,8 +26,24 @@ export class GameEngine {
 
   reset(seed?: number) {
     if (typeof seed === 'number') this.rand = mulberry32(seed)
+    this.owed = 0
     this.state = this.initialState()
     return this.snapshot()
+  }
+
+  /** Race only: the relay's apple list replaces ours. It is the one that counts. */
+  setApples(apples: Point[]) {
+    const clamp = (n: number) => Math.max(0, Math.min(this.grid - 1, Math.floor(n)))
+    this.state.apples = apples.map((a) => ({ x: clamp(a.x), y: clamp(a.y) }))
+  }
+
+  /**
+   * Race only: the relay confirmed `n` apples were yours, so grow by that much. Called with the
+   * DIFFERENCE in your authoritative score, which is what keeps length and score in lockstep
+   * even if a message is missed — a dropped `race` broadcast just means the next one owes two.
+   */
+  grow(n: number) {
+    if (n > 0) this.owed += Math.floor(n)
   }
 
   snapshot(): GameState {
@@ -81,9 +107,16 @@ export class GameEngine {
     }
 
     const newHead = { x: nx, y: ny }
-    // Will eat?
     const appleIdx = s.apples.findIndex((a) => a.x === newHead.x && a.y === newHead.y)
-    const willGrow = appleIdx !== -1
+    const onApple = appleIdx !== -1
+    const race = !!this.settings.race
+
+    /**
+     * Classic grows the instant the head reaches an apple, because the apple was only ever ours
+     * to take. Race can't: the apple is shared, and until the relay answers we don't know it was
+     * ours. So growth waits on `owed`, which the relay's score fills in.
+     */
+    const willGrow = race ? this.owed > 0 : onApple
 
     // Self collision: exclude tail when not growing
     const bodyToCheck = willGrow ? s.snake : s.snake.slice(0, -1)
@@ -94,13 +127,20 @@ export class GameEngine {
     }
 
     s.snake.unshift(newHead)
+    // The event fires on CONTACT in both modes — in race it's what makes the client claim the
+    // apple, and the claim has to go the moment you touch it or you lose races you won.
+    if (onApple) events.push({ type: 'eat', at: newHead })
     if (willGrow) {
-      events.push({ type: 'eat', at: newHead })
-      // Remove the eaten apple and spawn a replacement to maintain target count
-      s.apples.splice(appleIdx, 1)
-      this.spawnApplesUntil(this.settings.apples)
+      if (race) this.owed -= 1
     } else {
       s.snake.pop()
+    }
+    if (onApple && !race) {
+      // Classic only: we own the apples, so remove the eaten one and top the board back up.
+      // In race the relay's next `apples` broadcast is what removes it — doing it here would
+      // hide an apple that might still be there for everyone else.
+      s.apples.splice(appleIdx, 1)
+      this.spawnApplesUntil(this.settings.apples)
     }
 
     s.ticks += 1
@@ -116,9 +156,10 @@ export class GameEngine {
       alive: true,
       ticks: 0,
     }
-    // Fill apples deterministically
     this.state = start
-    this.spawnApplesUntil(this.settings.apples)
+    // Race apples belong to the relay and arrive by broadcast; spawning our own here would put
+    // fruit on the board that nobody else can see and nobody can score.
+    if (!this.settings.race) this.spawnApplesUntil(this.settings.apples)
     return this.snapshot()
   }
 
