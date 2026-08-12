@@ -29,6 +29,8 @@ const GRID = 30
 const BASE_SPEED = 110
 const MIN_SPEED = 50
 const SPEED_STEP = 4
+/** no speed setting may accelerate past this; below it the game stops being reactable */
+const ABSOLUTE_MIN_SPEED = 35
 const MAX_DIR_BUFFER = 2
 
 const DEFAULT_SETTINGS: Settings = {
@@ -41,9 +43,20 @@ const DEFAULT_SETTINGS: Settings = {
   canvasSize: 'medium',
 }
 
-function speedFor(score: number) {
-  const target = BASE_SPEED - SPEED_STEP * score
-  return Math.max(MIN_SPEED, target)
+/**
+ * Milliseconds per tick. Lower is faster, and it still tightens as you score — that ramp is
+ * what makes a long run tense, so a speed setting moves the STARTING point rather than
+ * replacing the curve. The floor scales with the choice too: a slow game that accelerated into
+ * the same 50ms wall as a fast one wouldn't really be slow, it'd just take longer to get there.
+ */
+function speedFor(score: number, baseMs?: number) {
+  const base = baseMs ?? BASE_SPEED
+  const target = base - SPEED_STEP * score
+  // The scaled floor alone let the fastest preset accelerate to 25ms — forty ticks a second,
+  // which is not difficulty, it's a coin flip. ABSOLUTE_MIN_SPEED is the point past which
+  // reaction time stops mattering, so no setting is allowed through it.
+  const floor = Math.max(ABSOLUTE_MIN_SPEED, Math.round(MIN_SPEED * (base / BASE_SPEED)))
+  return Math.max(floor, target)
 }
 
 function scoreFormula(apples: number) {
@@ -970,7 +983,7 @@ export function GameManager({
             /* noop */
           }
         }
-        const sp = speedFor(applesEaten)
+        const sp = speedFor(applesEaten, settings.speedMs)
         // A decided race stops here. The snake is still alive and steerable right up to this
         // point, so the last moment of the round plays out normally rather than freezing.
         if (!raceOverRef.current) {
@@ -3335,6 +3348,35 @@ export function GameManager({
                         )}
                       </>
                     )}
+                    {/* Speed sets where the game STARTS; it still accelerates as you score.
+                        Named rather than numbered, because "110ms per tick" is not something
+                        anyone wants to reason about mid-game. */}
+                    <div className="controls-row">
+                      <div className="muted group-label">Speed</div>
+                      {(
+                        [
+                          ['Calm', 170],
+                          ['Normal', 110],
+                          ['Quick', 80],
+                          ['Frantic', 55],
+                        ] as Array<[string, number]>
+                      ).map(([label, ms]) => (
+                        <button
+                          key={label}
+                          className="btn"
+                          data-active={(settings.speedMs ?? 110) === ms || undefined}
+                          onClick={() => applySettings({ speedMs: ms })}
+                          disabled={mode === 'versus' && conn === 'connected' && !isHost}
+                          title={
+                            mode === 'versus' && conn === 'connected' && !isHost
+                              ? 'Only the host sets the room’s speed'
+                              : `Start at ${label.toLowerCase()} pace`
+                          }
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
                     <div className="controls-row">
                       <div className="muted group-label">Apples</div>
                       {[1, 2, 3, 4].map((n) => (
