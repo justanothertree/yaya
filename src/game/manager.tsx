@@ -316,14 +316,24 @@ export function GameManager({
   // Always present: settings belong to solo and to versus-before-you-join just as much as to a
   // live room. Only the room-specific tabs come and go.
   const showSide = true
-  const inRoom = mode === 'versus' && multiStep !== 'landing'
-  const sideTabs: Array<[SideTab, string]> = inRoom
-    ? [
-        ['players', 'Players'],
-        ['settings', 'Settings'],
-        ['room', 'Room'],
-      ]
-    : [['settings', 'Settings']]
+  // Actually in a lobby, not merely browsing for one. Players is meaningless until you've
+  // joined — leaving it as the default tab meant clicking Multiplayer opened an empty panel
+  // while the lobby list sat unseen behind the Room tab.
+  const inLobby = mode === 'versus' && multiStep === 'lobby'
+  const sideTabs: Array<[SideTab, string]> =
+    mode !== 'versus'
+      ? [['settings', 'Settings']]
+      : inLobby
+        ? [
+            ['players', 'Players'],
+            ['settings', 'Settings'],
+            ['room', 'Room'],
+          ]
+        : // browsing: the list is the point, so it leads
+          [
+            ['room', 'Lobbies'],
+            ['settings', 'Settings'],
+          ]
   const activeSideTab: SideTab = sideTabs.some(([k]) => k === sideTab) ? sideTab : sideTabs[0][0]
   const [spectate, setSpectate] = useState(false)
   const lastSpectateAnnounceRef = useRef<number>(0)
@@ -2319,7 +2329,14 @@ export function GameManager({
                   key={m}
                   className="btn"
                   aria-pressed={mode === m}
-                  onClick={() => setMode(m)}
+                  onClick={() => {
+                    setMode(m)
+                    // Multiplayer means "who's playing?", so go straight to the list instead of
+                    // a landing screen whose two buttons only led here anyway. Browsing is the
+                    // safe default — it costs nothing and hosting is one button away — whereas
+                    // landing hid the lobby list two clicks deep and made it look broken.
+                    if (m === 'versus' && multiStep === 'landing') setMultiStep('join')
+                  }}
                   data-active={mode === m || undefined}
                 >
                   {m === 'versus' ? 'Multiplayer' : 'Solo'}
