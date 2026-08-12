@@ -7,6 +7,18 @@ export type Settings = {
   apples: number // number of apples on screen
   passThroughEdges: boolean // wrap vs wall death
   canvasSize: CanvasSize
+  /**
+   * Race: the apples are SHARED. Eat one and it is gone for everyone, which is what makes it a
+   * race rather than everyone running the same course separately. That single word changes who
+   * owns the game: in classic each client's engine spawns its own apples from a shared seed, so
+   * boards drift apart the moment anyone scores; in race the relay owns the apple list and
+   * decides who reached one first. Off by default, and classic is untouched by it.
+   */
+  race?: boolean
+  /** first to this score wins the round. Only meaningful in race. */
+  raceTarget?: number
+  /** milliseconds per tick; lower is faster. Undefined keeps the historical default. */
+  speedMs?: number
 }
 
 export type Apple = Point
@@ -62,6 +74,20 @@ export type NetMessage =
    * otherwise anyone could put words in someone else's mouth.
    */
   | { type: 'chat'; text: string; from?: string; name?: string }
+  /**
+   * Race mode. The client claims an apple; the relay decides. `apples` is the authoritative
+   * list — clients render that rather than their own — and `race` carries the scores the
+   * winner is judged on, so a client that grew optimistically and lost the race still can't
+   * score for it.
+   */
+  | { type: 'eat'; x: number; y: number; from?: string }
+  | { type: 'apples'; apples: Apple[]; roundId?: string }
+  | {
+      type: 'race'
+      scores: Array<{ id: string; name?: string; score: number }>
+      target: number
+      winner?: { id: string; name?: string; score: number }
+    }
   | { type: 'roommeta'; name?: string; public?: boolean }
   | { type: 'list' }
   | { type: 'rooms'; items: Array<{ id: string; name: string; count: number }> }

@@ -147,7 +147,67 @@ function sanitizeSettings(input, prev) {
   if (typeof s.canvasSize === 'string' && ['small', 'medium', 'large'].includes(s.canvasSize)) {
     next.canvasSize = s.canvasSize
   }
+  if (typeof s.race === 'boolean') next.race = s.race
+  if (typeof s.raceTarget === 'number' && s.raceTarget >= 5 && s.raceTarget <= 500) {
+    next.raceTarget = Math.floor(s.raceTarget)
+  }
+  if (typeof s.speedMs === 'number' && s.speedMs >= 40 && s.speedMs <= 400) {
+    next.speedMs = Math.floor(s.speedMs)
+  }
   return next
+}
+
+/* ── race mode: the relay owns the apples ────────────────────────────────────
+ * In classic, every client spawns its own apples from a shared seed. The seed makes the
+ * STARTING board identical, but each client respawns when ITS player eats, so the boards drift
+ * apart the moment anyone scores. That's fine for "same course, separate runs" and it is not a
+ * race: nobody can take an apple from anybody.
+ *
+ * Race makes the apples shared, and shared state needs one owner. This is it. Clients claim an
+ * apple; the relay decides who got there first, and the score it keeps is the one the winner is
+ * judged on — a client that grew optimistically and lost the race still doesn't score for it.
+ */
+
+/** mulberry32, same as the client's, so a room's apples are reproducible from its seed. */
+function makeRand(seed) {
+  let t = seed >>> 0
+  return function rand() {
+    t += 0x6d2b79f5
+    let r = Math.imul(t ^ (t >>> 15), 1 | t)
+    r ^= r + Math.imul(r ^ (r >>> 7), 61 | r)
+    return ((r ^ (r >>> 14)) >>> 0) / 4294967296
+  }
+}
+
+function spawnApples(room) {
+  const grid = (room.settings || DEFAULT_SETTINGS).grid || 30
+  const want = (room.settings || DEFAULT_SETTINGS).apples || 2
+  const taken = (p) => room.apples.some((a) => a.x === p.x && a.y === p.y)
+  // Bounded: a full board would otherwise spin here forever.
+  let guard = grid * grid * 4
+  while (room.apples.length < want && guard-- > 0) {
+    const p = { x: Math.floor(room.rand() * grid), y: Math.floor(room.rand() * grid) }
+    if (!taken(p)) room.apples.push(p)
+  }
+}
+
+/** Start a race round: fresh apples, scores back to zero. */
+function startRace(room) {
+  room.rand = makeRand(room.seed || 1)
+  room.apples = []
+  room.raceScores = new Map()
+  room.raceWinner = null
+  spawnApples(room)
+}
+
+function raceScorePayload(room) {
+  const target = (room.settings || DEFAULT_SETTINGS).raceTarget || 50
+  const scores = []
+  for (const [id, score] of room.raceScores || []) {
+    scores.push({ id, name: (room.state.get(id) || {}).name, score })
+  }
+  scores.sort((a, b) => b.score - a.score)
+  return { type: 'race', scores, target, ...(room.raceWinner ? { winner: room.raceWinner } : {}) }
 }
 
 async function finalizeRoundOnSupabase(roomId, roundId, gameMode, baseItems) {
@@ -447,6 +507,34 @@ wss.on('connection', (ws) => {
         }
         break
       }
+      case 'eat': {
+        // Only meaningful in race, and only for a round that's actually running.
+        if (!(room.settings || DEFAULT_SETTINGS).race || !Array.isArray(room.apples)) break
+        if (room.raceWinner) break
+        const x = Math.floor(Number(msg.x))
+        const y = Math.floor(Number(msg.y))
+        if (!Number.isFinite(x) || !Number.isFinite(y)) break
+        const idx = room.apples.findIndex((a) => a.x === x && a.y === y)
+        // Gone already: somebody else's claim arrived first. Nothing is sent back — their client
+        // has grown a segment it didn't earn, but the SCORE is here, and the score is what the
+        // round is judged on. Rolling their snake back would be a worse lie than one extra
+        // segment, because it would rewrite a board the player already reacted to.
+        if (idx === -1) break
+
+        room.apples.splice(idx, 1)
+        spawnApples(room)
+        const next = (room.raceScores.get(id) || 0) + 1
+        room.raceScores.set(id, next)
+
+        const target = (room.settings || DEFAULT_SETTINGS).raceTarget || 50
+        if (next >= target) {
+          room.raceWinner = { id, name: (room.state.get(id) || {}).name, score: next }
+        }
+        // Everyone, including the eater: their apple list has to match the room's.
+        broadcast(room, { type: 'apples', apples: room.apples, roundId: room.roundId })
+        broadcast(room, raceScorePayload(room))
+        break
+      }
       case 'chat': {
         const st = room.state.get(id) || {}
         const text = typeof msg.text === 'string' ? msg.text.trim().slice(0, MAX_CHAT_LEN) : ''
@@ -624,6 +712,13 @@ wss.on('connection', (ws) => {
           } catch {}
         }
         broadcast(room, seedPayload)
+        // A race round's apples belong to the room, so they're built here from the same seed the
+        // clients just got — and sent AFTER it, because the seed is what resets their boards.
+        if ((room.settings || DEFAULT_SETTINGS).race) {
+          startRace(room)
+          broadcast(room, { type: 'apples', apples: room.apples, roundId: room.roundId })
+          broadcast(room, raceScorePayload(room))
+        }
         // Explicit ack back to the sender so client can verify path
         send(ws, { type: 'restart-ack', roundId: room.roundId })
         break
