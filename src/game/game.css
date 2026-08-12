@@ -56,13 +56,19 @@
 .snake-toolbar .group-label {
   margin-left: 8px;
 }
-.snake-toolbar .btn[data-active] {
+/* The selected-state styling has to follow the controls. These rules were scoped to
+   .snake-toolbar, and when the settings moved into the side panel they silently stopped
+   applying — every button rendered identically, so clicking one gave no feedback at all and the
+   controls looked broken even though they worked. */
+.snake-toolbar .btn[data-active],
+.snake-side-settings .btn[data-active] {
   opacity: 1;
   background: var(--accent);
   color: var(--btn-text);
   border: 1px solid var(--border);
 }
-.snake-toolbar .btn:not([data-active]) {
+.snake-toolbar .btn:not([data-active]),
+.snake-side-settings .btn:not([data-active]) {
   opacity: 0.7;
   background: var(--control-bg);
   color: var(--text);

@@ -215,6 +215,7 @@ export function GameManager({
    * game mid-round and come straight back.
    */
   const [watching, setWatching] = useState<string | null>(null)
+
   /** race scoreboard, straight from the relay — the only score that counts in race mode */
   const [raceScores, setRaceScores] = useState<Array<{ id: string; name?: string; score: number }>>(
     [],
@@ -363,6 +364,33 @@ export function GameManager({
   const [hostId, setHostId] = useState<string | null>(null)
   const hostIdRef = useRef<string | null>(null)
   const isHost = myId != null && hostId === myId
+
+  /**
+   * Push a settings change to the room as well as applying it locally.
+   *
+   * Missing this is why race looked broken: the toggle set `race` on the client, but the relay
+   * never heard, so the room stayed classic, never generated apples — and worse, the next
+   * `seed` echoed the room's settings back with `race: false`, quietly undoing the click. Two
+   * symptoms, one cause. Only the host may change a room's rules; everyone else's copy comes
+   * from the seed.
+   */
+  const applySettings = useCallback(
+    (patch: Partial<Settings>) => {
+      setSettings((prev) => {
+        const next = { ...prev, ...patch }
+        lastSettingsChangeRef.current = Date.now()
+        if (mode === 'versus' && conn === 'connected' && isHost) {
+          try {
+            netRef.current?.send({ type: 'settings', settings: next })
+          } catch {
+            /* noop */
+          }
+        }
+        return next
+      })
+    },
+    [mode, conn, isHost],
+  )
   const myIdRef = useRef<string | null>(null)
   // hostId state declared earlier; removed duplicate
   const [toast, setToast] = useState<string | null>(null)
@@ -3163,7 +3191,7 @@ export function GameManager({
                         <button
                           className="btn"
                           data-active={!settings.race || undefined}
-                          onClick={() => setSettings((s) => ({ ...s, race: false }))}
+                          onClick={() => applySettings({ race: false })}
                           title="Everyone runs the same course separately"
                         >
                           classic
@@ -3172,11 +3200,7 @@ export function GameManager({
                           className="btn"
                           data-active={settings.race || undefined}
                           onClick={() =>
-                            setSettings((s) => ({
-                              ...s,
-                              race: true,
-                              raceTarget: s.raceTarget ?? 25,
-                            }))
+                            applySettings({ race: true, raceTarget: settings.raceTarget ?? 25 })
                           }
                           title="Apples are shared — eat one and it's gone for everyone"
                         >
@@ -3188,7 +3212,7 @@ export function GameManager({
                         <button
                           className="btn"
                           data-active={settings.ghosts !== false || undefined}
-                          onClick={() => setSettings((s) => ({ ...s, ghosts: true }))}
+                          onClick={() => applySettings({ ghosts: true })}
                           title="See everyone else on your board — you pass through them"
                         >
                           ghosts
@@ -3196,7 +3220,7 @@ export function GameManager({
                         <button
                           className="btn"
                           data-active={settings.ghosts === false || undefined}
-                          onClick={() => setSettings((s) => ({ ...s, ghosts: false }))}
+                          onClick={() => applySettings({ ghosts: false })}
                           title="Just your own snake"
                         >
                           hidden
@@ -3210,7 +3234,7 @@ export function GameManager({
                               key={n}
                               className="btn"
                               data-active={(settings.raceTarget ?? 25) === n || undefined}
-                              onClick={() => setSettings((s) => ({ ...s, raceTarget: n }))}
+                              onClick={() => applySettings({ raceTarget: n })}
                             >
                               {n}
                             </button>
