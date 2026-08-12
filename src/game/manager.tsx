@@ -227,6 +227,12 @@ export function GameManager({
   } | null>(null)
   /** my last confirmed score, so growth can be applied as a difference rather than a total */
   const raceMineRef = useRef(0)
+  /**
+   * The relay's apples, kept outside React so a rebuilt engine can be handed them again. The
+   * engine is recreated whenever settings or the seed change, and the seed always arrives just
+   * before the apples — without this the new engine starts bare.
+   */
+  const serverApplesRef = useRef<Point[]>([])
   /** which view the panel beside the board is showing */
   const [sideTab, setSideTab] = useState<SideTab>('players')
 
@@ -638,6 +644,19 @@ export function GameManager({
     const wrap = wrapRef.current!
     const engine = new GameEngine(settings, engineSeed)
     engineRef.current = engine
+    /**
+     * Re-apply the relay's apples to the NEW engine.
+     *
+     * This is why race looked empty. The relay sends `seed` then `apples`, back to back. The
+     * seed sets state, so this effect — which rebuilds the engine — doesn't run until after
+     * React re-renders, by which time the apples message has already been handled and applied
+     * to the engine that is about to be discarded. A race engine spawns nothing of its own, so
+     * the replacement came up with a bare board and stayed that way until someone ate an apple
+     * that wasn't there.
+     */
+    if (settings.race && serverApplesRef.current.length) {
+      engine.setApples(serverApplesRef.current)
+    }
     // Fresh engine: clear any queued turns and sync current direction
     dirBufferRef.current = []
     try {
@@ -1402,6 +1421,7 @@ export function GameManager({
             // reset with it. Leaving it at last round's total would make the first few apples of
             // the next round look like a score that had gone DOWN, and growth would never apply.
             raceMineRef.current = 0
+            serverApplesRef.current = []
             setRaceScores([])
             setRaceWinner(null)
             // New round seed: clear any buffered turns so the next round starts clean
@@ -1568,6 +1588,7 @@ export function GameManager({
           } else if (msg.type === 'apples') {
             // The relay's list is the board. Ours isn't a copy to reconcile — it's replaced.
             if (Array.isArray(msg.apples)) {
+              serverApplesRef.current = msg.apples
               engineRef.current?.setApples(msg.apples)
               const snap = engineRef.current?.snapshot()
               if (snap) rendererRef.current?.draw(snap)
@@ -2907,580 +2928,599 @@ export function GameManager({
           views. Before this, a round pushed the board up the page as panels appeared and
           grew, and every new setting or mode would have added another card to that stack.
           Now there is somewhere for them to go. */}
-      <div className="snake-stage" data-versus={showSide || undefined}>
-        <div className="snake-stage-board">
-          {/* Watching someone, full size. Costs nothing extra on the wire — the preview message
+      {/* The wrapper exists to be a QUERY CONTAINER. The stage below sizes itself against
+          this element rather than the window, because in canvas mode the page is a small
+          floating pane and a viewport media query would happily give a 500px pane the
+          1280px-wide layout. */}
+      <div className="snake-stage-wrap">
+        <div className="snake-stage" data-versus={showSide || undefined}>
+          <div className="snake-stage-board">
+            {/* Watching someone, full size. Costs nothing extra on the wire — the preview message
               already carries their whole game state; this just draws it big. */}
-          {watching && previews[watching] && (
-            <SpectatorView
-              state={previews[watching].state}
-              grid={settings.grid}
-              name={profanityFilter.clean(previews[watching].name || 'Player')}
-              score={previews[watching].score}
-              status={
-                players[watching]?.spectate
-                  ? 'watching the round'
-                  : previews[watching].state.alive
-                    ? 'playing'
-                    : 'crashed'
-              }
-              peers={Object.entries(previews).map(([id, p]) => ({
-                id,
-                name: profanityFilter.clean(p.name || 'Player'),
-              }))}
-              onSwitch={(dir) => {
-                const ids = Object.keys(previews)
-                if (ids.length < 2) return
-                const at = ids.indexOf(watching)
-                setWatching(ids[(at + dir + ids.length) % ids.length])
-              }}
-              onClose={() => setWatching(null)}
-            />
-          )}
-
-          {/* Status bar (stable layout, separate from toolbar) */}
-          <div ref={statusRef} className="snake-status" aria-live="polite">
-            <div className="muted">
-              Score: <span style={{ color: 'var(--text)' }}>{score}</span>
-            </div>
-            {paused && <div className="muted">Paused</div>}
-            {mode === 'versus' && spectate && <div className="muted">Spectating</div>}
-            {mode === 'versus' && countdown != null && (
-              <div className="muted" aria-live="assertive">
-                Starting in… {countdown}
-              </div>
+            {watching && previews[watching] && (
+              <SpectatorView
+                state={previews[watching].state}
+                grid={settings.grid}
+                name={profanityFilter.clean(previews[watching].name || 'Player')}
+                score={previews[watching].score}
+                status={
+                  players[watching]?.spectate
+                    ? 'watching the round'
+                    : previews[watching].state.alive
+                      ? 'playing'
+                      : 'crashed'
+                }
+                peers={Object.entries(previews).map(([id, p]) => ({
+                  id,
+                  name: profanityFilter.clean(p.name || 'Player'),
+                }))}
+                onSwitch={(dir) => {
+                  const ids = Object.keys(previews)
+                  if (ids.length < 2) return
+                  const at = ids.indexOf(watching)
+                  setWatching(ids[(at + dir + ids.length) % ids.length])
+                }}
+                onClose={() => setWatching(null)}
+              />
             )}
-          </div>
-          {/* Canvases */}
-          {/* Hidden, NOT unmounted, while you watch someone else. The canvas element and the
+
+            {/* Status bar (stable layout, separate from toolbar) */}
+            <div ref={statusRef} className="snake-status" aria-live="polite">
+              <div className="muted">
+                Score: <span style={{ color: 'var(--text)' }}>{score}</span>
+              </div>
+              {paused && <div className="muted">Paused</div>}
+              {mode === 'versus' && spectate && <div className="muted">Spectating</div>}
+              {mode === 'versus' && countdown != null && (
+                <div className="muted" aria-live="assertive">
+                  Starting in… {countdown}
+                </div>
+              )}
+            </div>
+            {/* Canvases */}
+            {/* Hidden, NOT unmounted, while you watch someone else. The canvas element and the
               renderer bound to it have to survive — unmounting would tear down the live game you
               are still playing, which is the exact bug that used to hang up calls when you
               navigated away from chat. */}
-          <div
-            ref={wrapRef}
-            className="snake-grid"
-            data-versus={mode === 'versus' || undefined}
-            hidden={!!(watching && previews[watching])}
-          >
-            <div className="snake-canvas-wrap" data-captured={captured || undefined}>
-              {mode === 'versus' && (
-                <button
-                  className="btn snake-fab"
-                  onClick={() => {
-                    if (mode === 'versus') {
-                      setSelfReady()
-                      focusCanvasAndScrollPreviews()
-                      return
+            <div
+              ref={wrapRef}
+              className="snake-grid"
+              data-versus={mode === 'versus' || undefined}
+              hidden={!!(watching && previews[watching])}
+            >
+              <div className="snake-canvas-wrap" data-captured={captured || undefined}>
+                {mode === 'versus' && (
+                  <button
+                    className="btn snake-fab"
+                    onClick={() => {
+                      if (mode === 'versus') {
+                        setSelfReady()
+                        focusCanvasAndScrollPreviews()
+                        return
+                      }
+                    }}
+                    aria-pressed={!paused}
+                    title={paused ? 'Play' : 'Pause'}
+                    disabled={
+                      mode === 'versus' &&
+                      (!playerName.trim() ||
+                        conn !== 'connected' ||
+                        ready ||
+                        roundActiveRef.current ||
+                        spectate)
                     }
+                  >
+                    {mode === 'versus' ? (ready ? 'Ready ✓' : 'Ready') : paused ? 'Play' : 'Pause'}
+                  </button>
+                )}
+                {/* Fullscreen buttons temporarily removed */}
+                <canvas
+                  ref={canvasRef}
+                  tabIndex={0}
+                  className="snake-canvas"
+                  onFocus={() => {
+                    capturedRef.current = true
+                    setCaptured(true)
+                    onControlChange?.(true)
+                    // show hint chip briefly only for fine pointers and only on user-initiated focus
+                    if (!isCoarseRef.current && userInitiatedFocusRef.current) {
+                      if (hintTimerRef.current) window.clearTimeout(hintTimerRef.current)
+                      setHintVisible(true)
+                      hintTimerRef.current = window.setTimeout(() => setHintVisible(false), 2000)
+                    }
+                    userInitiatedFocusRef.current = false
                   }}
-                  aria-pressed={!paused}
-                  title={paused ? 'Play' : 'Pause'}
-                  disabled={
-                    mode === 'versus' &&
-                    (!playerName.trim() ||
-                      conn !== 'connected' ||
-                      ready ||
-                      roundActiveRef.current ||
-                      spectate)
-                  }
-                >
-                  {mode === 'versus' ? (ready ? 'Ready ✓' : 'Ready') : paused ? 'Play' : 'Pause'}
-                </button>
-              )}
-              {/* Fullscreen buttons temporarily removed */}
-              <canvas
-                ref={canvasRef}
-                tabIndex={0}
-                className="snake-canvas"
-                onFocus={() => {
-                  capturedRef.current = true
-                  setCaptured(true)
-                  onControlChange?.(true)
-                  // show hint chip briefly only for fine pointers and only on user-initiated focus
-                  if (!isCoarseRef.current && userInitiatedFocusRef.current) {
-                    if (hintTimerRef.current) window.clearTimeout(hintTimerRef.current)
-                    setHintVisible(true)
-                    hintTimerRef.current = window.setTimeout(() => setHintVisible(false), 2000)
-                  }
-                  userInitiatedFocusRef.current = false
-                }}
-                onBlur={() => {
-                  capturedRef.current = false
-                  setCaptured(false)
-                  onControlChange?.(false)
-                  // Solo mode: auto-pause when canvas loses focus (unless we're mid-click suppressing blur)
-                  if (mode === 'solo' && !suppressBlurPauseRef.current) setPaused(true)
-                  suppressBlurPauseRef.current = false
-                }}
-                onPointerDown={() => {
-                  // focus on first interaction, capture controls
-                  userInitiatedFocusRef.current = true
-                  canvasRef.current?.focus()
-                }}
-              />
-              {!isCoarseRef.current && (
-                <div className="snake-hint" aria-live="polite" data-show={hintVisible || undefined}>
-                  Game controls active — Esc to release
-                </div>
-              )}
-              {/* Joystick removed; swipe and keys remain */}
+                  onBlur={() => {
+                    capturedRef.current = false
+                    setCaptured(false)
+                    onControlChange?.(false)
+                    // Solo mode: auto-pause when canvas loses focus (unless we're mid-click suppressing blur)
+                    if (mode === 'solo' && !suppressBlurPauseRef.current) setPaused(true)
+                    suppressBlurPauseRef.current = false
+                  }}
+                  onPointerDown={() => {
+                    // focus on first interaction, capture controls
+                    userInitiatedFocusRef.current = true
+                    canvasRef.current?.focus()
+                  }}
+                />
+                {!isCoarseRef.current && (
+                  <div
+                    className="snake-hint"
+                    aria-live="polite"
+                    data-show={hintVisible || undefined}
+                  >
+                    Game controls active — Esc to release
+                  </div>
+                )}
+                {/* Joystick removed; swipe and keys remain */}
+              </div>
+              {/* Opponent canvas removed for now; previews serve as spectator UI */}
             </div>
-            {/* Opponent canvas removed for now; previews serve as spectator UI */}
           </div>
-        </div>
 
-        {/* The panel is there in solo too, holding just the settings. Moving them out of the
+          {/* The panel is there in solo too, holding just the settings. Moving them out of the
             toolbar and into a versus-only panel would have taken the apple count and the edge
             rule away from single player entirely. */}
-        {showSide && (
-          <aside className="snake-stage-side">
-            <div className="snake-side-tabs" role="tablist">
-              {sideTabs.map(([k, label]) => (
-                <button
-                  key={k}
-                  className={'snake-side-tab' + (activeSideTab === k ? ' is-on' : '')}
-                  role="tab"
-                  aria-selected={activeSideTab === k}
-                  onClick={() => setSideTab(k)}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
+          {showSide && (
+            <aside className="snake-stage-side">
+              <div className="snake-side-tabs" role="tablist">
+                {sideTabs.map(([k, label]) => (
+                  <button
+                    key={k}
+                    className={'snake-side-tab' + (activeSideTab === k ? ' is-on' : '')}
+                    role="tab"
+                    aria-selected={activeSideTab === k}
+                    onClick={() => setSideTab(k)}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
 
-            {activeSideTab === 'players' && (
-              <div className="snake-side-body">
-                {/* In race the scoreboard is the game — it's the shared truth everyone is
+              {activeSideTab === 'players' && (
+                <div className="snake-side-body">
+                  {/* In race the scoreboard is the game — it's the shared truth everyone is
                     playing against, and it comes from the relay rather than from anyone's
                     local count. */}
-                {settings.race && raceScores.length > 0 && (
-                  <div className="race-board">
-                    <div className="muted race-board-head">
-                      {raceWinner ? `${raceWinner.name || 'Someone'} wins` : 'Race'}
-                      <span>first to {settings.raceTarget ?? 50}</span>
-                    </div>
-                    {raceScores.map((r) => (
-                      <div
-                        key={r.id}
-                        className={
-                          'race-row' +
-                          (r.id === myId ? ' is-me' : '') +
-                          (raceWinner?.id === r.id ? ' is-won' : '')
-                        }
-                      >
-                        <span className="race-name">
-                          {profanityFilter.clean(r.name || 'Player')}
-                        </span>
-                        <span className="race-bar" aria-hidden>
-                          <i
-                            style={{
-                              width: `${Math.min(100, (r.score / (settings.raceTarget ?? 50)) * 100)}%`,
-                            }}
-                          />
-                        </span>
-                        <span className="race-score">{r.score}</span>
+                  {settings.race && raceScores.length > 0 && (
+                    <div className="race-board">
+                      <div className="muted race-board-head">
+                        {raceWinner ? `${raceWinner.name || 'Someone'} wins` : 'Race'}
+                        <span>first to {settings.raceTarget ?? 50}</span>
                       </div>
-                    ))}
-                  </div>
-                )}
-                {/* Live previews directly under the game (kept visible to avoid layout shift) */}
-                {mode === 'versus' && multiStep === 'lobby' && (
-                  <div
-                    ref={previewsRef}
-                    className="card"
-                    style={{ marginTop: '0.75rem', padding: 10, minHeight: 190 }}
-                  >
-                    <div className="muted" style={{ fontWeight: 600, marginBottom: 6 }}>
-                      Live previews
-                    </div>
-                    {Object.keys(previews).length === 0 ? (
-                      <div className="muted" style={{ fontSize: 12 }}>
-                        Waiting for previews… players will appear here when they start.
-                      </div>
-                    ) : (
-                      <div
-                        style={{
-                          display: 'grid',
-                          gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))',
-                          gap: 12,
-                        }}
-                      >
-                        {Object.entries(previews).map(([id, p]) => (
-                          // The tile is the way into the big view. It was the only spectator UI there
-                          // was; now it's a picker for one.
-                          <button
-                            key={id}
-                            className={'preview-pick' + (watching === id ? ' is-on' : '')}
-                            onClick={() => setWatching(watching === id ? null : id)}
-                            title={
-                              watching === id ? 'Stop watching' : `Watch ${p.name || 'this player'}`
-                            }
-                          >
-                            <Preview
-                              state={p.state}
-                              title={`${p.name || 'Player'} — ${
-                                players[id]?.spectate
-                                  ? 'Spectating'
-                                  : `${p.score}${players[id]?.ready ? ' ✓' : ''}`
-                              }`}
-                            />
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
-                {/* Round results UI */}
-                {mode === 'versus' &&
-                  showResults &&
-                  roundResults &&
-                  roundResults.items.length > 0 && (
-                    <div className="card" style={{ marginTop: 8, padding: 10 }}>
-                      <div className="muted" style={{ fontWeight: 600, marginBottom: 6 }}>
-                        Round results
-                      </div>
-                      {(() => {
-                        const items = roundResults.items
-                        // Group by place ascending (1, then next occupied place, etc.)
-                        const byPlace = new Map<number, typeof items>()
-                        for (const it of items) {
-                          if (!byPlace.has(it.place)) byPlace.set(it.place, [])
-                          byPlace.get(it.place)!.push(it)
-                        }
-                        const placesSorted = Array.from(byPlace.keys()).sort((a, b) => a - b)
-                        const g1 = placesSorted.length > 0 ? byPlace.get(placesSorted[0]) || [] : []
-                        const g2 = placesSorted.length > 1 ? byPlace.get(placesSorted[1]) || [] : []
-                        const g3 = placesSorted.length > 2 ? byPlace.get(placesSorted[2]) || [] : []
-                        const medals = new Map<string, string>()
-                        const participantCount = items.length
-                        if (participantCount >= 2) {
-                          for (const it of g1) medals.set(it.id, '🥇')
-                        }
-                        if (participantCount >= 3) {
-                          if (g1.length > 1) {
-                            const aliveNonGold = items.filter((x) => x.place !== 1 && x.score > 0)
-                            if (aliveNonGold.length >= 2)
-                              for (const it of g2) medals.set(it.id, '🥈')
-                          } else {
-                            for (const it of g2) medals.set(it.id, '🥈')
-                            if (participantCount >= 4 && g2.length === 1)
-                              for (const it of g3) medals.set(it.id, '🥉')
+                      {raceScores.map((r) => (
+                        <div
+                          key={r.id}
+                          className={
+                            'race-row' +
+                            (r.id === myId ? ' is-me' : '') +
+                            (raceWinner?.id === r.id ? ' is-won' : '')
                           }
-                        }
-                        return (
-                          <ol style={{ margin: 0, paddingLeft: '1.25rem' }}>
-                            {items.map((it) => (
-                              <li key={it.id} className="muted">
-                                <strong style={{ color: 'var(--text)' }}>
-                                  {profanityFilter.clean(it.name)}
-                                </strong>{' '}
-                                — {it.score} {medals.get(it.id) || ''}
-                              </li>
-                            ))}
-                          </ol>
-                        )
-                      })()}
-                      <div className="muted" style={{ marginTop: 6, fontSize: 12 }}>
-                        {isHost
-                          ? 'Waiting for all players to Ready… or use Force start to begin now.'
-                          : 'Waiting for the host to start the next round…'}
-                      </div>
+                        >
+                          <span className="race-name">
+                            {profanityFilter.clean(r.name || 'Player')}
+                          </span>
+                          <span className="race-bar" aria-hidden>
+                            <i
+                              style={{
+                                width: `${Math.min(100, (r.score / (settings.raceTarget ?? 50)) * 100)}%`,
+                              }}
+                            />
+                          </span>
+                          <span className="race-score">{r.score}</span>
+                        </div>
+                      ))}
                     </div>
                   )}
-              </div>
-            )}
-
-            {activeSideTab === 'settings' && (
-              <div className="snake-side-body">
-                {/* The game settings used to sit in the toolbar above everything, in a row
-                    with the mode switch and the play button. That was fine for two settings
-                    and would not have survived speed, win conditions and per-mode rules — a
-                    toolbar grows sideways until it wraps into a wall. Here they have a column
-                    to grow down, next to the board they affect. */}
-                <div className="controls-group snake-side-settings">
-                  {/* Race is a multiplayer rule, so it only appears where it can apply. The host
-                      owns it: the relay takes settings from whoever is running the room, and two
-                      players disagreeing about whether apples are shared is not a game. */}
-                  {mode === 'versus' && (
-                    <>
-                      <div className="controls-row">
-                        <div className="muted group-label">Mode</div>
-                        <button
-                          className="btn"
-                          data-active={!settings.race || undefined}
-                          onClick={() => applySettings({ race: false })}
-                          title="Everyone runs the same course separately"
-                        >
-                          classic
-                        </button>
-                        <button
-                          className="btn"
-                          data-active={settings.race || undefined}
-                          onClick={() =>
-                            applySettings({ race: true, raceTarget: settings.raceTarget ?? 25 })
-                          }
-                          title="Apples are shared — eat one and it's gone for everyone"
-                        >
-                          race
-                        </button>
+                  {/* Live previews directly under the game (kept visible to avoid layout shift) */}
+                  {mode === 'versus' && multiStep === 'lobby' && (
+                    <div
+                      ref={previewsRef}
+                      className="card"
+                      style={{ marginTop: '0.75rem', padding: 10, minHeight: 190 }}
+                    >
+                      <div className="muted" style={{ fontWeight: 600, marginBottom: 6 }}>
+                        Live previews
                       </div>
-                      <div className="controls-row">
-                        <div className="muted group-label">Others</div>
-                        <button
-                          className="btn"
-                          data-active={settings.ghosts !== false || undefined}
-                          onClick={() => applySettings({ ghosts: true })}
-                          title="See everyone else on your board — you pass through them"
+                      {Object.keys(previews).length === 0 ? (
+                        <div className="muted" style={{ fontSize: 12 }}>
+                          Waiting for previews… players will appear here when they start.
+                        </div>
+                      ) : (
+                        <div
+                          style={{
+                            display: 'grid',
+                            gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))',
+                            gap: 12,
+                          }}
                         >
-                          ghosts
-                        </button>
-                        <button
-                          className="btn"
-                          data-active={settings.ghosts === false || undefined}
-                          onClick={() => applySettings({ ghosts: false })}
-                          title="Just your own snake"
-                        >
-                          hidden
-                        </button>
-                      </div>
-                      {settings.race && (
-                        <div className="controls-row">
-                          <div className="muted group-label">First to</div>
-                          {[10, 25, 50, 100].map((n) => (
+                          {Object.entries(previews).map(([id, p]) => (
+                            // The tile is the way into the big view. It was the only spectator UI there
+                            // was; now it's a picker for one.
                             <button
-                              key={n}
-                              className="btn"
-                              data-active={(settings.raceTarget ?? 25) === n || undefined}
-                              onClick={() => applySettings({ raceTarget: n })}
+                              key={id}
+                              className={'preview-pick' + (watching === id ? ' is-on' : '')}
+                              onClick={() => setWatching(watching === id ? null : id)}
+                              title={
+                                watching === id
+                                  ? 'Stop watching'
+                                  : `Watch ${p.name || 'this player'}`
+                              }
                             >
-                              {n}
+                              <Preview
+                                state={p.state}
+                                title={`${p.name || 'Player'} — ${
+                                  players[id]?.spectate
+                                    ? 'Spectating'
+                                    : `${p.score}${players[id]?.ready ? ' ✓' : ''}`
+                                }`}
+                              />
                             </button>
                           ))}
                         </div>
                       )}
-                    </>
-                  )}
-                  <div className="controls-row">
-                    <div className="muted group-label">Apples</div>
-                    {[1, 2, 3, 4].map((n) => (
-                      <button
-                        key={n}
-                        className="btn apple-btn"
-                        aria-pressed={settings.apples === n}
-                        onClick={() => {
-                          const next = { ...settings, apples: n }
-                          if (
-                            mode === 'versus' &&
-                            conn === 'connected' &&
-                            (roundActiveRef.current ||
-                              countdown != null ||
-                              seedCountdownRef.current)
-                          ) {
-                            setToast('Settings locked during countdown/round')
-                            if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current)
-                            toastTimerRef.current = window.setTimeout(
-                              () => setToast(null),
-                              1500,
-                            ) as unknown as number
-                            return
-                          }
-                          setSettings(next)
-                          lastSettingsChangeRef.current = Date.now()
-                          if (mode === 'versus' && conn === 'connected' && isHost) {
-                            try {
-                              netRef.current?.send({ type: 'settings', settings: next })
-                            } catch {
-                              /* noop */
-                            }
-                          }
-                        }}
-                        disabled={mode === 'versus' && conn === 'connected' && !isHost}
-                        title={
-                          mode === 'versus' && conn === 'connected' && !isHost
-                            ? 'Locked in multiplayer'
-                            : undefined
-                        }
-                        data-active={settings.apples === n || undefined}
-                      >
-                        {n}
-                      </button>
-                    ))}
-                    <div className="muted group-label">Edges</div>
-                    {['wrap', 'walls'].map((lab) => (
-                      <button
-                        key={lab}
-                        className="btn"
-                        aria-pressed={(settings.passThroughEdges ? 'wrap' : 'walls') === lab}
-                        onClick={() => {
-                          const nextVal = lab === 'wrap'
-                          const next = { ...settings, passThroughEdges: nextVal }
-                          if (
-                            mode === 'versus' &&
-                            conn === 'connected' &&
-                            (roundActiveRef.current ||
-                              countdown != null ||
-                              seedCountdownRef.current)
-                          ) {
-                            setToast('Settings locked during countdown/round')
-                            if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current)
-                            toastTimerRef.current = window.setTimeout(
-                              () => setToast(null),
-                              1500,
-                            ) as unknown as number
-                            return
-                          }
-                          setSettings(next)
-                          lastSettingsChangeRef.current = Date.now()
-                          if (mode === 'versus' && conn === 'connected' && isHost) {
-                            try {
-                              netRef.current?.send({ type: 'settings', settings: next })
-                            } catch {
-                              /* noop */
-                            }
-                          }
-                        }}
-                        disabled={mode === 'versus' && conn === 'connected' && !isHost}
-                        title={
-                          mode === 'versus' && conn === 'connected' && !isHost
-                            ? 'Locked in multiplayer'
-                            : undefined
-                        }
-                        data-active={
-                          (settings.passThroughEdges ? 'wrap' : 'walls') === lab || undefined
-                        }
-                      >
-                        {lab}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            )}
-            {activeSideTab === 'room' && (
-              <div className="snake-side-body">
-                {/* The lobby. The `multiStep !== 'landing'` guard it used to carry is gone: the
-                    panel around it already only exists past the landing step, and TypeScript
-                    pointed out the comparison could no longer be false. */}
-                {mode === 'versus' && (
-                  <div
-                    className="card"
-                    style={{
-                      marginTop: 8,
-                      padding: 10,
-                      maxHeight: 190,
-                      overflowY: 'auto',
-                      minHeight: 90,
-                    }}
-                  >
-                    <div className="muted" style={{ fontWeight: 600, marginBottom: 6 }}>
-                      {multiStep === 'lobby' ? (
-                        <>
-                          Lobby — <span style={{ color: 'var(--text)' }}>{room || '—'}</span>{' '}
-                          <span className="muted" style={{ fontWeight: 400 }}>
-                            (connected players: {presence})
-                          </span>
-                        </>
-                      ) : (
-                        <>Available lobbies</>
-                      )}
                     </div>
-                    {(multiStep === 'join' || multiStep === 'create') && (
-                      <div style={{ display: 'grid', gap: 8 }}>
-                        {rooms.length > 0 ? (
-                          <div
-                            style={{
-                              display: 'grid',
-                              gridTemplateColumns: 'repeat(auto-fill, minmax(180px,1fr))',
-                              gap: 8,
-                            }}
-                          >
-                            {rooms.map((r) => (
-                              <div key={r.id} className="card" style={{ padding: 8 }}>
-                                <div className="muted" style={{ fontWeight: 600 }}>
-                                  {r.name || r.id}
-                                </div>
-                                <div className="muted" style={{ fontSize: 12 }}>
-                                  ID: {r.id}
-                                </div>
-                                <div className="muted">Players: {r.count}</div>
-                                <div style={{ marginTop: 6 }}>
-                                  <button
-                                    className="btn"
-                                    disabled={joining || conn === 'connecting'}
-                                    onClick={() => {
-                                      if (joining) return
-                                      const rid = r.id
-                                      if (room !== rid) setRoom(rid)
-                                      setMultiStep('lobby')
-                                      if (conn === 'connected') {
-                                        netRef.current?.disconnect()
-                                        setConn('disconnected')
-                                        setJoining(true)
-                                        setTimeout(() => connectVs(rid), 50)
-                                      } else if (conn === 'disconnected') connectVs(rid)
-                                    }}
-                                  >
-                                    Join
-                                  </button>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        ) : (
-                          <div className="muted">No lobbies yet — click Browse to refresh.</div>
-                        )}
+                  )}
+                  {/* Round results UI */}
+                  {mode === 'versus' &&
+                    showResults &&
+                    roundResults &&
+                    roundResults.items.length > 0 && (
+                      <div className="card" style={{ marginTop: 8, padding: 10 }}>
+                        <div className="muted" style={{ fontWeight: 600, marginBottom: 6 }}>
+                          Round results
+                        </div>
+                        {(() => {
+                          const items = roundResults.items
+                          // Group by place ascending (1, then next occupied place, etc.)
+                          const byPlace = new Map<number, typeof items>()
+                          for (const it of items) {
+                            if (!byPlace.has(it.place)) byPlace.set(it.place, [])
+                            byPlace.get(it.place)!.push(it)
+                          }
+                          const placesSorted = Array.from(byPlace.keys()).sort((a, b) => a - b)
+                          const g1 =
+                            placesSorted.length > 0 ? byPlace.get(placesSorted[0]) || [] : []
+                          const g2 =
+                            placesSorted.length > 1 ? byPlace.get(placesSorted[1]) || [] : []
+                          const g3 =
+                            placesSorted.length > 2 ? byPlace.get(placesSorted[2]) || [] : []
+                          const medals = new Map<string, string>()
+                          const participantCount = items.length
+                          if (participantCount >= 2) {
+                            for (const it of g1) medals.set(it.id, '🥇')
+                          }
+                          if (participantCount >= 3) {
+                            if (g1.length > 1) {
+                              const aliveNonGold = items.filter((x) => x.place !== 1 && x.score > 0)
+                              if (aliveNonGold.length >= 2)
+                                for (const it of g2) medals.set(it.id, '🥈')
+                            } else {
+                              for (const it of g2) medals.set(it.id, '🥈')
+                              if (participantCount >= 4 && g2.length === 1)
+                                for (const it of g3) medals.set(it.id, '🥉')
+                            }
+                          }
+                          return (
+                            <ol style={{ margin: 0, paddingLeft: '1.25rem' }}>
+                              {items.map((it) => (
+                                <li key={it.id} className="muted">
+                                  <strong style={{ color: 'var(--text)' }}>
+                                    {profanityFilter.clean(it.name)}
+                                  </strong>{' '}
+                                  — {it.score} {medals.get(it.id) || ''}
+                                </li>
+                              ))}
+                            </ol>
+                          )
+                        })()}
+                        <div className="muted" style={{ marginTop: 6, fontSize: 12 }}>
+                          {isHost
+                            ? 'Waiting for all players to Ready… or use Force start to begin now.'
+                            : 'Waiting for the host to start the next round…'}
+                        </div>
                       </div>
                     )}
-                    {multiStep === 'lobby' && (
-                      <div style={{ display: 'grid', gap: 6 }}>
-                        {myId && (
-                          <div
-                            className="muted"
-                            style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}
+                </div>
+              )}
+
+              {activeSideTab === 'settings' && (
+                <div className="snake-side-body">
+                  {/* The game settings used to sit in the toolbar above everything, in a row
+                    with the mode switch and the play button. That was fine for two settings
+                    and would not have survived speed, win conditions and per-mode rules — a
+                    toolbar grows sideways until it wraps into a wall. Here they have a column
+                    to grow down, next to the board they affect. */}
+                  <div className="controls-group snake-side-settings">
+                    {/* Race is a multiplayer rule, so it only appears where it can apply. The host
+                      owns it: the relay takes settings from whoever is running the room, and two
+                      players disagreeing about whether apples are shared is not a game. */}
+                    {mode === 'versus' && (
+                      <>
+                        <div className="controls-row">
+                          <div className="muted group-label">Mode</div>
+                          <button
+                            className="btn"
+                            data-active={!settings.race || undefined}
+                            onClick={() => applySettings({ race: false })}
+                            title="Everyone runs the same course separately"
                           >
-                            <span>
-                              {(players[myId]?.name || playerName || 'You').trim()}{' '}
-                              {isHost ? <em>(Host)</em> : null}
-                            </span>
-                            <span style={{ marginLeft: 12 }}>
-                              {spectate ? 'Spectator' : ready ? 'Ready ✓' : 'Not ready'}
-                            </span>
+                            classic
+                          </button>
+                          <button
+                            className="btn"
+                            data-active={settings.race || undefined}
+                            onClick={() =>
+                              applySettings({ race: true, raceTarget: settings.raceTarget ?? 25 })
+                            }
+                            title="Apples are shared — eat one and it's gone for everyone"
+                          >
+                            race
+                          </button>
+                        </div>
+                        <div className="controls-row">
+                          <div className="muted group-label">Others</div>
+                          <button
+                            className="btn"
+                            data-active={settings.ghosts !== false || undefined}
+                            onClick={() => applySettings({ ghosts: true })}
+                            title="See everyone else on your board — you pass through them"
+                          >
+                            ghosts
+                          </button>
+                          <button
+                            className="btn"
+                            data-active={settings.ghosts === false || undefined}
+                            onClick={() => applySettings({ ghosts: false })}
+                            title="Just your own snake"
+                          >
+                            hidden
+                          </button>
+                        </div>
+                        {settings.race && (
+                          <div className="controls-row">
+                            <div className="muted group-label">First to</div>
+                            {[10, 25, 50, 100].map((n) => (
+                              <button
+                                key={n}
+                                className="btn"
+                                data-active={(settings.raceTarget ?? 25) === n || undefined}
+                                onClick={() => applySettings({ raceTarget: n })}
+                              >
+                                {n}
+                              </button>
+                            ))}
                           </div>
                         )}
-                        {(() => {
-                          const items: Array<{ id: string; name: string; ready?: boolean }> = []
-                          for (const [id, p] of Object.entries(players)) {
-                            if (id === myId) continue
-                            const nameRaw = (p.name || 'Player').trim()
-                            items.push({ id, name: nameRaw, ready: p.ready })
+                      </>
+                    )}
+                    <div className="controls-row">
+                      <div className="muted group-label">Apples</div>
+                      {[1, 2, 3, 4].map((n) => (
+                        <button
+                          key={n}
+                          className="btn apple-btn"
+                          aria-pressed={settings.apples === n}
+                          onClick={() => {
+                            const next = { ...settings, apples: n }
+                            if (
+                              mode === 'versus' &&
+                              conn === 'connected' &&
+                              (roundActiveRef.current ||
+                                countdown != null ||
+                                seedCountdownRef.current)
+                            ) {
+                              setToast('Settings locked during countdown/round')
+                              if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current)
+                              toastTimerRef.current = window.setTimeout(
+                                () => setToast(null),
+                                1500,
+                              ) as unknown as number
+                              return
+                            }
+                            setSettings(next)
+                            lastSettingsChangeRef.current = Date.now()
+                            if (mode === 'versus' && conn === 'connected' && isHost) {
+                              try {
+                                netRef.current?.send({ type: 'settings', settings: next })
+                              } catch {
+                                /* noop */
+                              }
+                            }
+                          }}
+                          disabled={mode === 'versus' && conn === 'connected' && !isHost}
+                          title={
+                            mode === 'versus' && conn === 'connected' && !isHost
+                              ? 'Locked in multiplayer'
+                              : undefined
                           }
-                          return items.map(({ id, name, ready }) => (
+                          data-active={settings.apples === n || undefined}
+                        >
+                          {n}
+                        </button>
+                      ))}
+                      <div className="muted group-label">Edges</div>
+                      {['wrap', 'walls'].map((lab) => (
+                        <button
+                          key={lab}
+                          className="btn"
+                          aria-pressed={(settings.passThroughEdges ? 'wrap' : 'walls') === lab}
+                          onClick={() => {
+                            const nextVal = lab === 'wrap'
+                            const next = { ...settings, passThroughEdges: nextVal }
+                            if (
+                              mode === 'versus' &&
+                              conn === 'connected' &&
+                              (roundActiveRef.current ||
+                                countdown != null ||
+                                seedCountdownRef.current)
+                            ) {
+                              setToast('Settings locked during countdown/round')
+                              if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current)
+                              toastTimerRef.current = window.setTimeout(
+                                () => setToast(null),
+                                1500,
+                              ) as unknown as number
+                              return
+                            }
+                            setSettings(next)
+                            lastSettingsChangeRef.current = Date.now()
+                            if (mode === 'versus' && conn === 'connected' && isHost) {
+                              try {
+                                netRef.current?.send({ type: 'settings', settings: next })
+                              } catch {
+                                /* noop */
+                              }
+                            }
+                          }}
+                          disabled={mode === 'versus' && conn === 'connected' && !isHost}
+                          title={
+                            mode === 'versus' && conn === 'connected' && !isHost
+                              ? 'Locked in multiplayer'
+                              : undefined
+                          }
+                          data-active={
+                            (settings.passThroughEdges ? 'wrap' : 'walls') === lab || undefined
+                          }
+                        >
+                          {lab}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+              {activeSideTab === 'room' && (
+                <div className="snake-side-body">
+                  {/* The lobby. The `multiStep !== 'landing'` guard it used to carry is gone: the
+                    panel around it already only exists past the landing step, and TypeScript
+                    pointed out the comparison could no longer be false. */}
+                  {mode === 'versus' && (
+                    <div
+                      className="card"
+                      style={{
+                        marginTop: 8,
+                        padding: 10,
+                        maxHeight: 190,
+                        overflowY: 'auto',
+                        minHeight: 90,
+                      }}
+                    >
+                      <div className="muted" style={{ fontWeight: 600, marginBottom: 6 }}>
+                        {multiStep === 'lobby' ? (
+                          <>
+                            Lobby — <span style={{ color: 'var(--text)' }}>{room || '—'}</span>{' '}
+                            <span className="muted" style={{ fontWeight: 400 }}>
+                              (connected players: {presence})
+                            </span>
+                          </>
+                        ) : (
+                          <>Available lobbies</>
+                        )}
+                      </div>
+                      {(multiStep === 'join' || multiStep === 'create') && (
+                        <div style={{ display: 'grid', gap: 8 }}>
+                          {rooms.length > 0 ? (
                             <div
-                              key={id}
+                              style={{
+                                display: 'grid',
+                                gridTemplateColumns: 'repeat(auto-fill, minmax(180px,1fr))',
+                                gap: 8,
+                              }}
+                            >
+                              {rooms.map((r) => (
+                                <div key={r.id} className="card" style={{ padding: 8 }}>
+                                  <div className="muted" style={{ fontWeight: 600 }}>
+                                    {r.name || r.id}
+                                  </div>
+                                  <div className="muted" style={{ fontSize: 12 }}>
+                                    ID: {r.id}
+                                  </div>
+                                  <div className="muted">Players: {r.count}</div>
+                                  <div style={{ marginTop: 6 }}>
+                                    <button
+                                      className="btn"
+                                      disabled={joining || conn === 'connecting'}
+                                      onClick={() => {
+                                        if (joining) return
+                                        const rid = r.id
+                                        if (room !== rid) setRoom(rid)
+                                        setMultiStep('lobby')
+                                        if (conn === 'connected') {
+                                          netRef.current?.disconnect()
+                                          setConn('disconnected')
+                                          setJoining(true)
+                                          setTimeout(() => connectVs(rid), 50)
+                                        } else if (conn === 'disconnected') connectVs(rid)
+                                      }}
+                                    >
+                                      Join
+                                    </button>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <div className="muted">No lobbies yet — click Browse to refresh.</div>
+                          )}
+                        </div>
+                      )}
+                      {multiStep === 'lobby' && (
+                        <div style={{ display: 'grid', gap: 6 }}>
+                          {myId && (
+                            <div
                               className="muted"
                               style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}
                             >
                               <span>
-                                {name} {hostId === id ? <em>(Host)</em> : null}
+                                {(players[myId]?.name || playerName || 'You').trim()}{' '}
+                                {isHost ? <em>(Host)</em> : null}
                               </span>
                               <span style={{ marginLeft: 12 }}>
-                                {players[id]?.spectate
-                                  ? 'Spectator'
-                                  : ready
-                                    ? 'Ready ✓'
-                                    : 'Not ready'}
+                                {spectate ? 'Spectator' : ready ? 'Ready ✓' : 'Not ready'}
                               </span>
                             </div>
-                          ))
-                        })()}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
-          </aside>
-        )}
+                          )}
+                          {(() => {
+                            const items: Array<{ id: string; name: string; ready?: boolean }> = []
+                            for (const [id, p] of Object.entries(players)) {
+                              if (id === myId) continue
+                              const nameRaw = (p.name || 'Player').trim()
+                              items.push({ id, name: nameRaw, ready: p.ready })
+                            }
+                            return items.map(({ id, name, ready }) => (
+                              <div
+                                key={id}
+                                className="muted"
+                                style={{
+                                  display: 'flex',
+                                  justifyContent: 'space-between',
+                                  gap: 12,
+                                }}
+                              >
+                                <span>
+                                  {name} {hostId === id ? <em>(Host)</em> : null}
+                                </span>
+                                <span style={{ marginLeft: 12 }}>
+                                  {players[id]?.spectate
+                                    ? 'Spectator'
+                                    : ready
+                                      ? 'Ready ✓'
+                                      : 'Not ready'}
+                                </span>
+                              </div>
+                            ))
+                          })()}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+            </aside>
+          )}
+        </div>
       </div>
 
       {/* Leaderboard */}
