@@ -984,9 +984,10 @@ export function GameManager({
         // which is the point — starving should hurt before it kills.
         if (st.losingTail && !ate) engineRef.current?.shrink(1)
       }
-      // Tron: every move is a claim. The relay decides whether the cell was free, so this goes
-      // out the moment the head lands rather than waiting for the eat/die events below.
-      if (settings.tron && state.alive && !tronCrashedRef.current) {
+      // Every move is a claim when anything shared can be in the way — a tron trail, or another
+      // player's body. The relay decides; this goes out the moment the head lands rather than
+      // waiting for the eat/die events below.
+      if ((settings.tron || settings.solidBodies) && state.alive && !tronCrashedRef.current) {
         const head = state.snake[0]
         if (head) {
           try {
@@ -3493,6 +3494,27 @@ export function GameManager({
                             </button>
                           </div>
                         )}
+                        {/* Sits with Others because it decides what those outlines MEAN:
+                            scenery, or something that can end your run. */}
+                        <div className="controls-row">
+                          <div className="muted group-label">Bump into</div>
+                          <button
+                            className="btn"
+                            data-active={!settings.solidBodies || undefined}
+                            onClick={() => applySettings({ solidBodies: false })}
+                            title="Pass straight through other snakes"
+                          >
+                            pass through
+                          </button>
+                          <button
+                            className="btn"
+                            data-active={settings.solidBodies || undefined}
+                            onClick={() => applySettings({ solidBodies: true })}
+                            title="Run into another snake and you're out"
+                          >
+                            crash
+                          </button>
+                        </div>
                         <div className="controls-row">
                           <div className="muted group-label">Others</div>
                           <button

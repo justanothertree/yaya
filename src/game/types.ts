@@ -26,6 +26,17 @@ export type Settings = {
   /** tron: are OTHER riders' trails lethal, or only your own? Defaults to lethal. */
   tronRivals?: boolean
   /**
+   * Solid bodies: run into another player's snake and you're out.
+   *
+   * Not the same as tron. A trail is permanent and turns the board into a maze; a body moves and
+   * its tail vacates, so this is about the snakes themselves rather than where they've been.
+   * Ghosts are drawn either way — this decides whether they're scenery or a hazard.
+   *
+   * Opt-in because it has an honest cost: the relay judges against each player's LAST reported
+   * body, so its picture can be up to a tick stale and you can die to where someone was.
+   */
+  solidBodies?: boolean
+  /**
    * Hungry: a meter that drains with time and refills when you eat.
    *
    * Deliberately not "eat or die". It degrades in stages — a nudge, then a shove, then real

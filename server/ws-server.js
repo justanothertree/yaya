@@ -150,6 +150,7 @@ function makeSeed(room) {
   }
   // Tron's board is empty at the start by definition — the trails ARE the round — so there is
   // nothing to send with the seed, only state to clear.
+  if (settings.solidBodies) room.crashed = new Set()
   if (settings.tron) {
     startTron(room)
     seedData.starts = tronStarts(room)
@@ -170,6 +171,7 @@ function sanitizeSettings(input, prev) {
   if (typeof s.race === 'boolean') next.race = s.race
   if (typeof s.tron === 'boolean') next.tron = s.tron
   if (typeof s.tronRivals === 'boolean') next.tronRivals = s.tronRivals
+  if (typeof s.solidBodies === 'boolean') next.solidBodies = s.solidBodies
   if (typeof s.ghosts === 'boolean') next.ghosts = s.ghosts
   if (typeof s.raceTarget === 'number' && s.raceTarget >= 5 && s.raceTarget <= 500) {
     next.raceTarget = Math.floor(s.raceTarget)
@@ -581,8 +583,12 @@ wss.on('connection', (ws) => {
         break
       }
       case 'claim': {
-        // Tron only. The client is entering a cell and wants to know if it survives.
-        if (!(room.settings || DEFAULT_SETTINGS).tron || !room.trail) break
+        // The client is entering a cell and wants to know whether it survives it. Two things can
+        // be in the way: a tron trail (permanent) or another player's body (moving).
+        const cfg = room.settings || DEFAULT_SETTINGS
+        if (!cfg.tron && !cfg.solidBodies) break
+        if (cfg.tron && !room.trail) break
+        if (!room.crashed) room.crashed = new Set()
         if (room.crashed.has(id)) break
         const grid = (room.settings || DEFAULT_SETTINGS).grid || 30
         const x = Math.floor(Number(msg.x))
@@ -590,6 +596,38 @@ wss.on('connection', (ws) => {
         if (!Number.isFinite(x) || !Number.isFinite(y)) break
         if (x < 0 || y < 0 || x >= grid || y >= grid) break
         const key = cellKey(x, y)
+        /**
+         * Somebody else's snake, right now. Their body is as of their last preview, so this
+         * picture can be up to a tick stale — which is the honest cost of solid bodies and why
+         * they are opt-in. At ~32ms round trip against ~110ms a tick that window is small, but
+         * it is not zero: you can die to where someone WAS.
+         */
+        if (cfg.solidBodies) {
+          for (const [pid, pst] of room.state) {
+            if (pid === id || !pst.body || pst.spectate) continue
+            if (room.crashed.has(pid)) continue
+            if (pst.body.includes(key)) {
+              room.crashed.add(id)
+              send(ws, { type: 'crash', x, y })
+              const alive = Array.from(room.clients.keys()).filter(
+                (p2) => !room.crashed.has(p2) && !(room.state.get(p2) || {}).spectate,
+              )
+              if (alive.length <= 1) {
+                const winnerId = alive[0]
+                broadcast(room, {
+                  type: 'tron',
+                  over: true,
+                  ...(winnerId
+                    ? { winner: { id: winnerId, name: (room.state.get(winnerId) || {}).name } }
+                    : {}),
+                })
+              }
+              break
+            }
+          }
+          if (room.crashed.has(id)) break
+        }
+        if (!cfg.tron) break
         const owner = room.trail.get(key)
         // `tronRivals: false` means only your own line is deadly — you ride through everyone
         // else's. Their trails are still drawn, so the board fills up and still reads as a maze;
@@ -693,6 +731,19 @@ wss.on('connection', (ws) => {
       case 'preview': {
         const st = room.state.get(id) || {}
         if (typeof msg.score === 'number') st.lastScore = Number(msg.score)
+        /**
+         * Remember where this snake actually IS.
+         *
+         * The relay only forwarded previews before; solid bodies need it to hold them, because
+         * "did I just run into someone" can only be answered by whoever knows where everyone
+         * is. A body is not a trail: it moves and the tail vacates, so this is the CURRENT
+         * occupancy, replaced every preview, not a set that grows all round.
+         */
+        if (msg.state && Array.isArray(msg.state.snake)) {
+          st.body = msg.state.snake
+            .slice(0, 4096)
+            .map((p) => cellKey(Math.floor(p.x), Math.floor(p.y)))
+        }
         room.state.set(id, st)
         // Only relay known fields – never spread the full client message to prevent
         // arbitrary field injection from being forwarded to other clients.
