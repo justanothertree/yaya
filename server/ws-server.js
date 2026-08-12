@@ -134,7 +134,21 @@ function makeSeed(room) {
   room.seed = Math.floor(Math.random() * 1e9)
   const settings = room.settings || DEFAULT_SETTINGS
   const roundId = room.roundId || uuid() // fallback (should already exist post-restart)
-  return { type: 'seed', roundId, seedData: { seed: room.seed, settings } }
+  const seedData = { seed: room.seed, settings }
+  /**
+   * Race apples ride ALONG WITH the seed rather than in a message after it.
+   *
+   * They used to be a separate broadcast, and the board started empty for a second or two:
+   * the seed makes the client throw its engine away and build a new one, so an apple list that
+   * arrives around the same moment lands on whichever engine happens to exist right then.
+   * Carrying them in the seed makes the round and its apples one atomic thing — there is no
+   * ordering left to get wrong.
+   */
+  if (settings.race) {
+    startRace(room)
+    seedData.apples = room.apples
+  }
+  return { type: 'seed', roundId, seedData }
 }
 
 function sanitizeSettings(input, prev) {
@@ -713,11 +727,9 @@ wss.on('connection', (ws) => {
           } catch {}
         }
         broadcast(room, seedPayload)
-        // A race round's apples belong to the room, so they're built here from the same seed the
-        // clients just got — and sent AFTER it, because the seed is what resets their boards.
+        // The apples themselves went out inside the seed above; this is just the empty
+        // scoreboard, so everyone starts the round showing zeroes rather than last round's.
         if ((room.settings || DEFAULT_SETTINGS).race) {
-          startRace(room)
-          broadcast(room, { type: 'apples', apples: room.apples, roundId: room.roundId })
           broadcast(room, raceScorePayload(room))
         }
         // Explicit ack back to the sender so client can verify path

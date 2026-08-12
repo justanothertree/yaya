@@ -54,7 +54,12 @@ export type Mode = 'solo' | 'versus'
 export type NetMessage =
   | { type: 'hello'; room: string; clientId?: string; create?: boolean }
   | { type: 'welcome'; id: string; visitor?: number }
-  | { type: 'seed'; roundId: string; seedData: { seed: number; settings: Settings } }
+  | {
+      type: 'seed'
+      roundId: string
+      /** `apples` only in race, where the relay owns them and sends them WITH the round */
+      seedData: { seed: number; settings: Settings; apples?: Apple[] }
+    }
   | { type: 'settings'; settings: Settings }
   | { type: 'host'; hostId: string }
   | { type: 'restart'; roundId?: string }

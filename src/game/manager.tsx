@@ -233,6 +233,8 @@ export function GameManager({
    * before the apples — without this the new engine starts bare.
    */
   const serverApplesRef = useRef<Point[]>([])
+  /** set when the relay declares a winner, so the tick loop stops instead of circling forever */
+  const raceOverRef = useRef(false)
   /** which view the panel beside the board is showing */
   const [sideTab, setSideTab] = useState<SideTab>('players')
 
@@ -969,9 +971,13 @@ export function GameManager({
           }
         }
         const sp = speedFor(applesEaten)
-        timer = window.setTimeout(() => {
-          if (epoch === sessionEpochRef.current) loop()
-        }, sp)
+        // A decided race stops here. The snake is still alive and steerable right up to this
+        // point, so the last moment of the round plays out normally rather than freezing.
+        if (!raceOverRef.current) {
+          timer = window.setTimeout(() => {
+            if (epoch === sessionEpochRef.current) loop()
+          }, sp)
+        }
       } else {
         const token = ++deathAnimTokenRef.current
         const modeAtDeath = mode
@@ -1421,7 +1427,11 @@ export function GameManager({
             // reset with it. Leaving it at last round's total would make the first few apples of
             // the next round look like a score that had gone DOWN, and growth would never apply.
             raceMineRef.current = 0
-            serverApplesRef.current = []
+            // Apples ride inside the seed now, so the round and its board arrive together and
+            // there is no window where the engine exists but the fruit does not.
+            serverApplesRef.current = Array.isArray(msg.seedData.apples) ? msg.seedData.apples : []
+            raceOverRef.current = false
+            setApplesEaten(0)
             setRaceScores([])
             setRaceWinner(null)
             // New round seed: clear any buffered turns so the next round starts clean
@@ -1607,7 +1617,37 @@ export function GameManager({
             const delta = mine - raceMineRef.current
             if (delta > 0) engineRef.current?.grow(delta)
             raceMineRef.current = mine
-            if (msg.winner) setApplesEaten(mine)
+            /**
+             * The authoritative score IS your score — it has to reach everything, not just the
+             * new panel. `applesEaten` feeds the counter above the board, the score formula and
+             * the speed ramp, and updating it only on a win meant the counter sat at zero all
+             * round and then everyone lurched to full speed the instant somebody won, because
+             * speedFor() saw the number jump from 0 to the target in one go.
+             */
+            setApplesEaten(mine)
+            if (msg.winner && !raceOverRef.current) {
+              /**
+               * Someone won: the round is over for everybody, including whoever is still alive
+               * and circling. Without this the relay simply stopped awarding points, so play
+               * continued with apples that could never be scored — moving, but pointless.
+               *
+               * Reported as a finish rather than a death, with the authoritative score, so the
+               * round results match the race instead of a local count that raced its own way.
+               */
+              raceOverRef.current = true
+              const finalScore = scoreFormula(mine)
+              setScore(finalScore)
+              if (myIdRef.current) {
+                roundScoresRef.current[myIdRef.current] = finalScore
+                try {
+                  netRef.current?.send({ type: 'over', reason: 'quit', score: finalScore })
+                } catch {
+                  /* noop */
+                }
+                registerFinish(myIdRef.current)
+              }
+              setAlive(false)
+            }
           } else if (msg.type === 'chat') {
             // The relay excludes the sender, so everything arriving here is someone else's.
             // Name comes off the message, not out of `players` — reading component state from
