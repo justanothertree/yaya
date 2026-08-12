@@ -23,7 +23,7 @@ import { ChallengeFriend } from './ChallengeFriend'
 import { SpectatorView } from './SpectatorView'
 
 /** The panel beside the board. Room is the lobby; Players is who's here and how they're doing. */
-type SideTab = 'players' | 'room'
+type SideTab = 'players' | 'settings' | 'room'
 
 const GRID = 30
 const BASE_SPEED = 110
@@ -217,6 +217,7 @@ export function GameManager({
   const [watching, setWatching] = useState<string | null>(null)
   /** which view the panel beside the board is showing */
   const [sideTab, setSideTab] = useState<SideTab>('players')
+
   const chatSeqRef = useRef(0)
   const chatInputRef = useRef<HTMLInputElement | null>(null)
   const chatLogRef = useRef<HTMLDivElement | null>(null)
@@ -267,6 +268,24 @@ export function GameManager({
     }
   })
   const [multiStep, setMultiStep] = useState<'landing' | 'create' | 'join' | 'lobby'>('landing')
+  /**
+   * The panel exists in both modes but shows different things: solo has no room and no other
+   * players, so it's settings only. `activeSideTab` resolves the stored choice against what's
+   * actually available — without it, switching to Players in versus and then back to solo left
+   * the panel showing a tab that renders nothing.
+   */
+  // Always present: settings belong to solo and to versus-before-you-join just as much as to a
+  // live room. Only the room-specific tabs come and go.
+  const showSide = true
+  const inRoom = mode === 'versus' && multiStep !== 'landing'
+  const sideTabs: Array<[SideTab, string]> = inRoom
+    ? [
+        ['players', 'Players'],
+        ['settings', 'Settings'],
+        ['room', 'Room'],
+      ]
+    : [['settings', 'Settings']]
+  const activeSideTab: SideTab = sideTabs.some(([k]) => k === sideTab) ? sideTab : sideTabs[0][0]
   const [spectate, setSpectate] = useState(false)
   const lastSpectateAnnounceRef = useRef<number>(0)
   const wsUrl = useMemo(() => {
@@ -2359,94 +2378,6 @@ export function GameManager({
                 {mode === 'versus' ? 'Force start' : 'Restart'}
               </button>
             </div>
-
-            <div className="controls-row">
-              <div className="muted group-label">Apples</div>
-              {[1, 2, 3, 4].map((n) => (
-                <button
-                  key={n}
-                  className="btn apple-btn"
-                  aria-pressed={settings.apples === n}
-                  onClick={() => {
-                    const next = { ...settings, apples: n }
-                    if (
-                      mode === 'versus' &&
-                      conn === 'connected' &&
-                      (roundActiveRef.current || countdown != null || seedCountdownRef.current)
-                    ) {
-                      setToast('Settings locked during countdown/round')
-                      if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current)
-                      toastTimerRef.current = window.setTimeout(
-                        () => setToast(null),
-                        1500,
-                      ) as unknown as number
-                      return
-                    }
-                    setSettings(next)
-                    lastSettingsChangeRef.current = Date.now()
-                    if (mode === 'versus' && conn === 'connected' && isHost) {
-                      try {
-                        netRef.current?.send({ type: 'settings', settings: next })
-                      } catch {
-                        /* noop */
-                      }
-                    }
-                  }}
-                  disabled={mode === 'versus' && conn === 'connected' && !isHost}
-                  title={
-                    mode === 'versus' && conn === 'connected' && !isHost
-                      ? 'Locked in multiplayer'
-                      : undefined
-                  }
-                  data-active={settings.apples === n || undefined}
-                >
-                  {n}
-                </button>
-              ))}
-              <div className="muted group-label">Edges</div>
-              {['wrap', 'walls'].map((lab) => (
-                <button
-                  key={lab}
-                  className="btn"
-                  aria-pressed={(settings.passThroughEdges ? 'wrap' : 'walls') === lab}
-                  onClick={() => {
-                    const nextVal = lab === 'wrap'
-                    const next = { ...settings, passThroughEdges: nextVal }
-                    if (
-                      mode === 'versus' &&
-                      conn === 'connected' &&
-                      (roundActiveRef.current || countdown != null || seedCountdownRef.current)
-                    ) {
-                      setToast('Settings locked during countdown/round')
-                      if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current)
-                      toastTimerRef.current = window.setTimeout(
-                        () => setToast(null),
-                        1500,
-                      ) as unknown as number
-                      return
-                    }
-                    setSettings(next)
-                    lastSettingsChangeRef.current = Date.now()
-                    if (mode === 'versus' && conn === 'connected' && isHost) {
-                      try {
-                        netRef.current?.send({ type: 'settings', settings: next })
-                      } catch {
-                        /* noop */
-                      }
-                    }
-                  }}
-                  disabled={mode === 'versus' && conn === 'connected' && !isHost}
-                  title={
-                    mode === 'versus' && conn === 'connected' && !isHost
-                      ? 'Locked in multiplayer'
-                      : undefined
-                  }
-                  data-active={(settings.passThroughEdges ? 'wrap' : 'walls') === lab || undefined}
-                >
-                  {lab}
-                </button>
-              ))}
-            </div>
           </div>
 
           {/* RIGHT: Name input (always shown) + Multiplayer controls */}
@@ -2858,7 +2789,7 @@ export function GameManager({
           views. Before this, a round pushed the board up the page as panels appeared and
           grew, and every new setting or mode would have added another card to that stack.
           Now there is somewhere for them to go. */}
-      <div className="snake-stage" data-versus={mode === 'versus' || undefined}>
+      <div className="snake-stage" data-versus={showSide || undefined}>
         <div className="snake-stage-board">
           {/* Watching someone, full size. Costs nothing extra on the wire — the preview message
               already carries their whole game state; this just draws it big. */}
@@ -2980,20 +2911,18 @@ export function GameManager({
           </div>
         </div>
 
-        {mode === 'versus' && multiStep !== 'landing' && (
+        {/* The panel is there in solo too, holding just the settings. Moving them out of the
+            toolbar and into a versus-only panel would have taken the apple count and the edge
+            rule away from single player entirely. */}
+        {showSide && (
           <aside className="snake-stage-side">
             <div className="snake-side-tabs" role="tablist">
-              {(
-                [
-                  ['players', 'Players'],
-                  ['room', 'Room'],
-                ] as Array<[SideTab, string]>
-              ).map(([k, label]) => (
+              {sideTabs.map(([k, label]) => (
                 <button
                   key={k}
-                  className={'snake-side-tab' + (sideTab === k ? ' is-on' : '')}
+                  className={'snake-side-tab' + (activeSideTab === k ? ' is-on' : '')}
                   role="tab"
-                  aria-selected={sideTab === k}
+                  aria-selected={activeSideTab === k}
                   onClick={() => setSideTab(k)}
                 >
                   {label}
@@ -3001,7 +2930,7 @@ export function GameManager({
               ))}
             </div>
 
-            {sideTab === 'players' && (
+            {activeSideTab === 'players' && (
               <div className="snake-side-body">
                 {/* Live previews directly under the game (kept visible to avoid layout shift) */}
                 {mode === 'versus' && multiStep === 'lobby' && (
@@ -3110,7 +3039,111 @@ export function GameManager({
               </div>
             )}
 
-            {sideTab === 'room' && (
+            {activeSideTab === 'settings' && (
+              <div className="snake-side-body">
+                {/* The game settings used to sit in the toolbar above everything, in a row
+                    with the mode switch and the play button. That was fine for two settings
+                    and would not have survived speed, win conditions and per-mode rules — a
+                    toolbar grows sideways until it wraps into a wall. Here they have a column
+                    to grow down, next to the board they affect. */}
+                <div className="controls-group snake-side-settings">
+                  <div className="controls-row">
+                    <div className="muted group-label">Apples</div>
+                    {[1, 2, 3, 4].map((n) => (
+                      <button
+                        key={n}
+                        className="btn apple-btn"
+                        aria-pressed={settings.apples === n}
+                        onClick={() => {
+                          const next = { ...settings, apples: n }
+                          if (
+                            mode === 'versus' &&
+                            conn === 'connected' &&
+                            (roundActiveRef.current ||
+                              countdown != null ||
+                              seedCountdownRef.current)
+                          ) {
+                            setToast('Settings locked during countdown/round')
+                            if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current)
+                            toastTimerRef.current = window.setTimeout(
+                              () => setToast(null),
+                              1500,
+                            ) as unknown as number
+                            return
+                          }
+                          setSettings(next)
+                          lastSettingsChangeRef.current = Date.now()
+                          if (mode === 'versus' && conn === 'connected' && isHost) {
+                            try {
+                              netRef.current?.send({ type: 'settings', settings: next })
+                            } catch {
+                              /* noop */
+                            }
+                          }
+                        }}
+                        disabled={mode === 'versus' && conn === 'connected' && !isHost}
+                        title={
+                          mode === 'versus' && conn === 'connected' && !isHost
+                            ? 'Locked in multiplayer'
+                            : undefined
+                        }
+                        data-active={settings.apples === n || undefined}
+                      >
+                        {n}
+                      </button>
+                    ))}
+                    <div className="muted group-label">Edges</div>
+                    {['wrap', 'walls'].map((lab) => (
+                      <button
+                        key={lab}
+                        className="btn"
+                        aria-pressed={(settings.passThroughEdges ? 'wrap' : 'walls') === lab}
+                        onClick={() => {
+                          const nextVal = lab === 'wrap'
+                          const next = { ...settings, passThroughEdges: nextVal }
+                          if (
+                            mode === 'versus' &&
+                            conn === 'connected' &&
+                            (roundActiveRef.current ||
+                              countdown != null ||
+                              seedCountdownRef.current)
+                          ) {
+                            setToast('Settings locked during countdown/round')
+                            if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current)
+                            toastTimerRef.current = window.setTimeout(
+                              () => setToast(null),
+                              1500,
+                            ) as unknown as number
+                            return
+                          }
+                          setSettings(next)
+                          lastSettingsChangeRef.current = Date.now()
+                          if (mode === 'versus' && conn === 'connected' && isHost) {
+                            try {
+                              netRef.current?.send({ type: 'settings', settings: next })
+                            } catch {
+                              /* noop */
+                            }
+                          }
+                        }}
+                        disabled={mode === 'versus' && conn === 'connected' && !isHost}
+                        title={
+                          mode === 'versus' && conn === 'connected' && !isHost
+                            ? 'Locked in multiplayer'
+                            : undefined
+                        }
+                        data-active={
+                          (settings.passThroughEdges ? 'wrap' : 'walls') === lab || undefined
+                        }
+                      >
+                        {lab}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+            {activeSideTab === 'room' && (
               <div className="snake-side-body">
                 {/* The lobby. The `multiStep !== 'landing'` guard it used to carry is gone: the
                     panel around it already only exists past the landing step, and TypeScript
