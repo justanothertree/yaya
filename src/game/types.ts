@@ -23,6 +23,18 @@ export type Settings = {
    * the trail and arbitrate every cell, which is why it's a mode rather than a toggle.
    */
   tron?: boolean
+  /** tron: are OTHER riders' trails lethal, or only your own? Defaults to lethal. */
+  tronRivals?: boolean
+  /**
+   * Hungry: a meter that drains with time and refills when you eat.
+   *
+   * Deliberately not "eat or die". It degrades in stages — a nudge, then a shove, then real
+   * damage — so the pressure is legible and you always have a moment to do something about it.
+   * Entirely per-player, so unlike race and tron it needs nothing from the relay.
+   */
+  hunger?: boolean
+  /** seconds of full meter; how long you can go between apples before it starts to hurt */
+  hungerSeconds?: number
   /** milliseconds per tick; lower is faster. Undefined keeps the historical default. */
   speedMs?: number
   /**

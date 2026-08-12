@@ -726,3 +726,60 @@
   font-family: var(--mono);
   text-align: right;
 }
+
+/* ── the hunger meter ───────────────────────────────────────────────────────
+   Next to the score, where you already look. Colour AND a word: colour alone says nothing to
+   someone glancing down, and says nothing at all to a colourblind player. */
+.snake-hunger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.78rem;
+}
+.snake-hunger-bar {
+  display: block;
+  width: 5rem;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--border);
+  overflow: hidden;
+}
+.snake-hunger-bar i {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.2s linear;
+}
+.snake-hunger-word {
+  color: var(--muted);
+}
+/* Stages escalate visually as well as mechanically, so the trouble is visible before it bites */
+.snake-hunger.is-hungry .snake-hunger-bar i {
+  background: var(--ylw, #f5c060);
+}
+.snake-hunger.is-hungry .snake-hunger-word {
+  color: var(--ylw, #f5c060);
+}
+.snake-hunger.is-starving .snake-hunger-bar i,
+.snake-hunger.is-dying .snake-hunger-bar i {
+  background: var(--red, #ff5566);
+}
+.snake-hunger.is-starving .snake-hunger-word,
+.snake-hunger.is-dying .snake-hunger-word {
+  color: var(--red, #ff5566);
+  font-weight: 700;
+}
+/* only the last stage pulses — an alarm that runs all game stops being an alarm */
+.snake-hunger.is-dying {
+  animation: hungerpulse 0.7s ease-in-out infinite;
+}
+@keyframes hungerpulse {
+  50% {
+    opacity: 0.45;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .snake-hunger.is-dying {
+    animation: none;
+  }
+}

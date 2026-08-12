@@ -21,6 +21,7 @@ import {
 import type { LeaderboardEntry, Mode, Point, Settings, TrophyCounts } from './types'
 import { ChallengeFriend } from './ChallengeFriend'
 import { SpectatorView } from './SpectatorView'
+import { drainFor, hungerLabel, stageFor, type HungerState } from './hunger'
 
 /** The panel beside the board. Room is the lobby; Players is who's here and how they're doing. */
 type SideTab = 'players' | 'settings' | 'room'
@@ -240,6 +241,23 @@ export function GameManager({
   } | null>(null)
   /** my last confirmed score, so growth can be applied as a difference rather than a total */
   const raceMineRef = useRef(0)
+  /**
+   * The pace everyone in a race runs at: the LEADER's score, not your own.
+   *
+   * Speed rising with your personal score snowballs — the player ahead gets faster, which wins
+   * them more apples, which makes them faster still, and the race is decided long before anyone
+   * catches up. Pacing off the round's progress keeps the pressure building (a slow race with no
+   * threat of your own tail is just a long one) while leaving everybody on equal terms.
+   */
+  const racePaceRef = useRef(0)
+  /**
+   * The hunger meter. Held in a ref AND mirrored to state: the loop reads and writes it every
+   * tick, which must not cost a re-render, but the HUD has to see it change.
+   */
+  /** the interval the last tick actually used, so hunger drains in game time not wall time */
+  const lastTickMsRef = useRef(110)
+  const hungerRef = useRef(1)
+  const [hunger, setHunger] = useState<HungerState>(() => stageFor(1))
   /**
    * The relay's apples, kept outside React so a rebuilt engine can be handed them again. The
    * engine is recreated whenever settings or the seed change, and the seed always arrives just
@@ -946,6 +964,26 @@ export function GameManager({
       rendererRef.current!.draw(state)
       let ateThisTick = 0
       let diedThisTick = false
+      /**
+       * Hunger drains per tick rather than on a wall-clock timer, so it stays in step with the
+       * game even when the tab is throttled or the speed setting changes mid-round. Eating
+       * refills it — that's the whole loop: the apple you wanted anyway is also the thing
+       * keeping you alive.
+       */
+      if (settings.hunger && state.alive) {
+        const ate = events.some((e) => e.type === 'eat')
+        const next = ate
+          ? 1
+          : Math.max(0, hungerRef.current - drainFor(lastTickMsRef.current, settings.hungerSeconds))
+        hungerRef.current = next
+        const st = stageFor(next)
+        setHunger((prev) =>
+          prev.stage === st.stage && Math.abs(prev.level - next) < 0.02 ? prev : st,
+        )
+        // Empty: start shedding. Losing your tail is a real cost that still leaves you playing,
+        // which is the point — starving should hurt before it kills.
+        if (st.losingTail && !ate) engineRef.current?.shrink(1)
+      }
       // Tron: every move is a claim. The relay decides whether the cell was free, so this goes
       // out the moment the head lands rather than waiting for the eat/die events below.
       if (settings.tron && state.alive && !tronCrashedRef.current) {
@@ -1019,7 +1057,20 @@ export function GameManager({
             /* noop */
           }
         }
-        const sp = speedFor(applesEaten, settings.speedMs)
+        // Race paces off the leader so nobody outruns the field; everywhere else your own
+        // score is the right dial.
+        const pace = settings.race ? racePaceRef.current : applesEaten
+        // Starving speeds you UP. It reads as a punishment because it takes control away — the
+        // board stops being something you can plan around.
+        const sp = Math.round(
+          speedFor(pace, settings.speedMs) *
+            (settings.hunger
+              ? hungerRef.current <= 0.5
+                ? stageFor(hungerRef.current).speedScale
+                : 1
+              : 1),
+        )
+        lastTickMsRef.current = sp
         // A decided race stops here. The snake is still alive and steerable right up to this
         // point, so the last moment of the round plays out normally rather than freezing.
         if (!raceOverRef.current && !tronCrashedRef.current) {
@@ -1476,6 +1527,9 @@ export function GameManager({
             // reset with it. Leaving it at last round's total would make the first few apples of
             // the next round look like a score that had gone DOWN, and growth would never apply.
             raceMineRef.current = 0
+            racePaceRef.current = 0
+            hungerRef.current = 1
+            setHunger(stageFor(1))
             // Apples ride inside the seed now, so the round and its board arrive together and
             // there is no window where the engine exists but the fruit does not.
             serverApplesRef.current = Array.isArray(msg.seedData.apples) ? msg.seedData.apples : []
@@ -1706,6 +1760,7 @@ export function GameManager({
              * round and then everyone lurched to full speed the instant somebody won, because
              * speedFor() saw the number jump from 0 to the target in one go.
              */
+            racePaceRef.current = rows.reduce((hi, r) => Math.max(hi, r.score), 0)
             setApplesEaten(mine)
             if (msg.winner && !raceOverRef.current) {
               /**
@@ -3091,6 +3146,17 @@ export function GameManager({
               <div className="muted">
                 Score: <span style={{ color: 'var(--text)' }}>{score}</span>
               </div>
+              {/* The meter belongs next to the score, in the one place you already look. A bar
+                  plus the word: the bar shows how long you have, the word tells you what to do
+                  about it, and a bar alone would say neither to someone glancing down. */}
+              {settings.hunger && (
+                <div className={'snake-hunger is-' + hunger.stage} title="Eat to refill">
+                  <span className="snake-hunger-bar" aria-hidden>
+                    <i style={{ width: `${Math.round(hunger.level * 100)}%` }} />
+                  </span>
+                  <span className="snake-hunger-word">{hungerLabel(hunger.stage)}</span>
+                </div>
+              )}
               {paused && <div className="muted">Paused</div>}
               {mode === 'versus' && spectate && <div className="muted">Spectating</div>}
               {mode === 'versus' && countdown != null && (
@@ -3406,6 +3472,27 @@ export function GameManager({
                             tron
                           </button>
                         </div>
+                        {settings.tron && (
+                          <div className="controls-row">
+                            <div className="muted group-label">Trails kill</div>
+                            <button
+                              className="btn"
+                              data-active={settings.tronRivals !== false || undefined}
+                              onClick={() => applySettings({ tronRivals: true })}
+                              title="Every line is lethal, including other riders'"
+                            >
+                              everyone's
+                            </button>
+                            <button
+                              className="btn"
+                              data-active={settings.tronRivals === false || undefined}
+                              onClick={() => applySettings({ tronRivals: false })}
+                              title="Only your own line kills you — ride through everyone else's"
+                            >
+                              just mine
+                            </button>
+                          </div>
+                        )}
                         <div className="controls-row">
                           <div className="muted group-label">Others</div>
                           <button
@@ -3442,6 +3529,44 @@ export function GameManager({
                         )}
                       </>
                     )}
+                    {/* Hunger is per-player and needs nothing from the relay, so unlike race
+                        and tron it works in solo exactly as it does in a room. */}
+                    <div className="controls-row">
+                      <div className="muted group-label">Hunger</div>
+                      <button
+                        className="btn"
+                        data-active={!settings.hunger || undefined}
+                        onClick={() => applySettings({ hunger: false })}
+                        title="No hunger meter"
+                      >
+                        off
+                      </button>
+                      <button
+                        className="btn"
+                        data-active={settings.hunger || undefined}
+                        onClick={() =>
+                          applySettings({
+                            hunger: true,
+                            hungerSeconds: settings.hungerSeconds ?? 20,
+                          })
+                        }
+                        title="A meter that drains over time — eat to refill it"
+                      >
+                        on
+                      </button>
+                      {settings.hunger &&
+                        [10, 20, 35].map((sec) => (
+                          <button
+                            key={sec}
+                            className="btn"
+                            data-active={(settings.hungerSeconds ?? 20) === sec || undefined}
+                            onClick={() => applySettings({ hungerSeconds: sec })}
+                            title={`${sec} seconds from full to empty`}
+                          >
+                            {sec}s
+                          </button>
+                        ))}
+                    </div>
                     {/* Speed sets where the game STARTS; it still accelerates as you score.
                         Named rather than numbered, because "110ms per tick" is not something
                         anyone wants to reason about mid-game. */}

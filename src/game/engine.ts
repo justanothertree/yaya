@@ -38,6 +38,21 @@ export class GameEngine {
   }
 
   /**
+   * Starving: drop `n` segments off the tail. Kept here rather than done by splicing the
+   * snapshot outside, because the snapshot is a copy — mutating it changes nothing. A snake
+   * cannot shrink below its head; at that point hunger has to kill rather than erase.
+   */
+  shrink(n: number) {
+    for (let i = 0; i < n; i++) {
+      if (this.state.snake.length <= 1) {
+        this.state.alive = false
+        return
+      }
+      this.state.snake.pop()
+    }
+  }
+
+  /**
    * Race only: the relay confirmed `n` apples were yours, so grow by that much. Called with the
    * DIFFERENCE in your authoritative score, which is what keeps length and score in lockstep
    * even if a message is missed — a dropped `race` broadcast just means the next one owes two.

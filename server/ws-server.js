@@ -169,6 +169,7 @@ function sanitizeSettings(input, prev) {
   }
   if (typeof s.race === 'boolean') next.race = s.race
   if (typeof s.tron === 'boolean') next.tron = s.tron
+  if (typeof s.tronRivals === 'boolean') next.tronRivals = s.tronRivals
   if (typeof s.ghosts === 'boolean') next.ghosts = s.ghosts
   if (typeof s.raceTarget === 'number' && s.raceTarget >= 5 && s.raceTarget <= 500) {
     next.raceTarget = Math.floor(s.raceTarget)
@@ -228,7 +229,10 @@ function spawnApples(room) {
  */
 
 function startTron(room) {
-  room.trail = new Set()
+  // A Map, not a Set: the cell has to remember WHOSE line it is, because whether a rival's
+  // trail is lethal is a setting. Without an owner the relay can only answer "is this taken",
+  // which is the wrong question when only your own line kills you.
+  room.trail = new Map()
   room.crashed = new Set()
 }
 
@@ -586,7 +590,13 @@ wss.on('connection', (ws) => {
         if (!Number.isFinite(x) || !Number.isFinite(y)) break
         if (x < 0 || y < 0 || x >= grid || y >= grid) break
         const key = cellKey(x, y)
-        if (room.trail.has(key)) {
+        const owner = room.trail.get(key)
+        // `tronRivals: false` means only your own line is deadly — you ride through everyone
+        // else's. Their trails are still drawn, so the board fills up and still reads as a maze;
+        // it just isn't a lethal one.
+        const rivalsAreSolid = (room.settings || DEFAULT_SETTINGS).tronRivals !== false
+        const deadly = owner !== undefined && (owner === id || rivalsAreSolid)
+        if (deadly) {
           // Taken. Told only to the player who hit it — everyone else finds out because their
           // ghost stops moving, which is the same information without a broadcast per death.
           room.crashed.add(id)
@@ -607,7 +617,7 @@ wss.on('connection', (ws) => {
           }
           break
         }
-        room.trail.add(key)
+        room.trail.set(key, id)
         // Just the new cell. Sending the whole trail every move would grow with the round —
         // exactly the thing that makes a long game get heavier the longer it goes.
         broadcast(room, { type: 'trail', x, y, from: id })
