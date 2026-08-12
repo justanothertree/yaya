@@ -584,11 +584,34 @@
   background: var(--card2, rgba(127, 127, 127, 0.06));
   overflow: hidden;
 }
-@media (min-width: 60rem) {
-  /* only once there's genuinely room — below this the panel would squeeze the board, and the
-     board is what you're here for */
+@media (min-width: 80rem) {
+  /* 80rem (1280px), not 60: the gutter and the panel take 640px between them, and the board's
+     canvas caps at 560. Below that the middle column collapses under the canvas and the board
+     overflows onto the panel — measured at both 1000px and 1220px before this was raised.
+     Under 1280 it simply stacks, which keeps the board full width and centred at every size.
+
+     Three columns, not two: an EMPTY gutter mirrors the panel so the board stays centred on the
+     page. With two columns the panel pushed the board left of centre, which is exactly what you
+     notice when the board is the thing you're looking at.
+
+     And the stage widens past its container here, because paying for the gutter out of the
+     board's width would just make the board smaller instead of off-centre. `margin-inline`
+     against 50% of the parent is what re-centres something wider than its parent. */
+  /* px, NOT rem, for the columns. This site's root font-size is fluid (clamp on <html>), so
+     `20rem` measured 352px here rather than 320 — the middle column lost 64px, dropped below the
+     canvas's own width, and the board overflowed its column onto the panel. The canvas is sized
+     in px by the renderer, so the column that holds it has to be reasoned about in px too.
+     Media-query lengths are exempt: those resolve against the initial 16px, so 80rem is 1280px. */
   .snake-stage[data-versus] {
-    grid-template-columns: minmax(0, 1fr) 20rem;
+    grid-template-columns: 320px minmax(0, 1fr) 320px;
+    width: min(96vw, 1320px);
+    margin-inline: calc(50% - min(48vw, 660px));
+  }
+  .snake-stage[data-versus] .snake-stage-board {
+    grid-column: 2;
+  }
+  .snake-stage[data-versus] .snake-stage-side {
+    grid-column: 3;
   }
   .snake-stage-side {
     position: sticky;
