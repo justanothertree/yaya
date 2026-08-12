@@ -26,18 +26,29 @@
   margin-top: 6px;
 }
 
-/* New stable 2-column layout for Snake controls */
+/* Two columns for the Snake controls — when there is room for two.
+   `minmax(320px, 380px)` is a HARD floor, and the media query that collapsed it asked the
+   VIEWPORT. In canvas mode the page is a ~440px floating pane on a 1400px screen, so the query
+   said "plenty of room" while the grid demanded 320 + a flexible column inside 437 — the panel
+   burst its pane and the whole thing scrolled sideways. Same mistake as the stage made, in the
+   control bar rather than the board.
+   `auto-fit` with `min(20rem, 100%)` asks the container instead: the floor can never exceed the
+   space available, so it drops to one column exactly when two stop fitting, at any width and in
+   any pane. */
 .snake-layout {
   display: grid;
-  grid-template-columns: 1fr minmax(320px, 380px);
+  /* 240px, and px not rem: this file's rem is fluid, so 20rem measured 352 and two columns
+     could no longer fit the ~554px the toolbar actually gets on a desktop — it stacked there
+     instead, which is the opposite mistake to the one being fixed. 240 keeps two columns at
+     554 and still collapses to one in a ~437px canvas pane. */
+  grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr));
   gap: 12px;
   align-items: start;
   width: 100%;
+  min-width: 0;
 }
-@media (max-width: 900px) {
-  .snake-layout {
-    grid-template-columns: 1fr;
-  }
+.snake-layout > * {
+  min-width: 0;
 }
 .controls-group,
 .mp-group {
@@ -268,7 +279,12 @@
   .snake-toolbar .controls-row {
     gap: 5px;
   }
-  .snake-toolbar .btn {
+  /* The side panel gets these too. This rule was scoped to .snake-toolbar, and when the
+     settings moved into the panel the phone tap targets quietly shrank from 40px to 36px —
+     the same trap as the selected-state styling, and the second time this file has caught me
+     with a .snake-toolbar-scoped rule outliving the controls it was written for. */
+  .snake-toolbar .btn,
+  .snake-side-settings .btn {
     /* Solo+Multiplayer+Play+Restart needed 289px in a 288px row and wrapped to a second
        line by ONE pixel. Tighter horizontal padding buys ~20px of slack so it stays one
        row on a 375px phone instead of silently doubling the toolbar's height. */
@@ -277,7 +293,8 @@
   }
   /* the single-digit apple buttons shrank to 23px with the tighter padding; the Edges row
      has ~65px of slack, so widen just these back to a comfortable target */
-  .snake-toolbar .apple-btn {
+  .snake-toolbar .apple-btn,
+  .snake-side-settings .apple-btn {
     /* only THESE get a min-width. Applying one to every toolbar button re-wrapped the
        control rows and grew the toolbar from 149px back to 245px; the Edges row has ~65px
        of slack, so the single digits can afford it. */
