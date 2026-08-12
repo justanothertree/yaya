@@ -266,6 +266,27 @@ function tronStarts(room) {
 
 const cellKey = (x, y) => x + ',' + y
 
+/**
+ * Who is still riding.
+ *
+ * Two things this must NOT do. It must not count people who merely have the page open: a round's
+ * participants are frozen at the start, so somebody sitting in the lobby or who joined midway
+ * would otherwise keep the round alive forever because they can never crash. And it must not
+ * count people who have gone: room.state is deliberately never deleted on disconnect, so a
+ * departed player would linger as an eternal survivor.
+ */
+function stillRiding(room) {
+  const r = room.round
+  const pool =
+    r && r.active && r.participants && r.participants.size
+      ? Array.from(r.participants)
+      : Array.from(room.clients.keys())
+  return pool.filter(
+    (pid) =>
+      room.clients.has(pid) && !room.crashed.has(pid) && !(room.state.get(pid) || {}).spectate,
+  )
+}
+
 /** Start a race round: fresh apples, scores back to zero. */
 function startRace(room) {
   room.rand = makeRand(room.seed || 1)
@@ -605,13 +626,14 @@ wss.on('connection', (ws) => {
         if (cfg.solidBodies) {
           for (const [pid, pst] of room.state) {
             if (pid === id || !pst.body || pst.spectate) continue
-            if (room.crashed.has(pid)) continue
+            // Gone, or already out. room.state is never deleted on disconnect — by design, so
+            // scores survive finalization — which means without this check a player who closed
+            // their tab would leave their last body behind as a wall nobody can see.
+            if (!room.clients.has(pid) || room.crashed.has(pid)) continue
             if (pst.body.includes(key)) {
               room.crashed.add(id)
               send(ws, { type: 'crash', x, y })
-              const alive = Array.from(room.clients.keys()).filter(
-                (p2) => !room.crashed.has(p2) && !(room.state.get(p2) || {}).spectate,
-              )
+              const alive = stillRiding(room)
               if (alive.length <= 1) {
                 const winnerId = alive[0]
                 broadcast(room, {
@@ -639,9 +661,7 @@ wss.on('connection', (ws) => {
           // ghost stops moving, which is the same information without a broadcast per death.
           room.crashed.add(id)
           send(ws, { type: 'crash', x, y })
-          const alive = Array.from(room.clients.keys()).filter(
-            (pid) => !room.crashed.has(pid) && !(room.state.get(pid) || {}).spectate,
-          )
+          const alive = stillRiding(room)
           // Last one standing, or nobody: the round is decided.
           if (alive.length <= 1) {
             const winnerId = alive[0]
