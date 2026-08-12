@@ -19,6 +19,12 @@ export type Settings = {
   raceTarget?: number
   /** milliseconds per tick; lower is faster. Undefined keeps the historical default. */
   speedMs?: number
+  /**
+   * Show the other players on your own board as outlines you pass straight through. Without
+   * them a race is you staring at your own snake and inferring everyone else from a scoreboard.
+   * They are deliberately non-solid — see GameRenderer.setGhosts. Defaults to on.
+   */
+  ghosts?: boolean
 }
 
 export type Apple = Point

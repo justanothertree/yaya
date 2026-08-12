@@ -259,6 +259,33 @@ export function GameManager({
    * down mid-scroll while they read back through the round is worse than a missed line, so a
    * deliberate scroll up stops the auto-follow until they return.
    */
+  /**
+   * Everyone else, drawn on your board as outlines you pass through.
+   *
+   * No new traffic: `preview` already carries each player's whole snake, which is the same data
+   * the spectator view and the tiles use. Excludes you — you're already drawn solid — and
+   * excludes spectators, who have no snake worth showing.
+   *
+   * The renderer holds these outside React because the game loop redraws far more often than
+   * React renders; pushing them through state would mean a re-render per preview per player.
+   */
+  useEffect(() => {
+    const r = rendererRef.current
+    if (!r) return
+    const show = mode === 'versus' && settings.ghosts !== false
+    r.setGhosts(
+      show
+        ? Object.entries(previews)
+            .filter(([id]) => id !== myId && !players[id]?.spectate)
+            .map(([, p]) => ({ snake: p.state.snake, name: p.name }))
+        : [],
+    )
+    // Repaint immediately so a ghost moves when THEY move, not when you next tick — at a slow
+    // speed that difference is the whole illusion of watching someone race you.
+    const snap = engineRef.current?.snapshot()
+    if (snap) r.draw(snap)
+  }, [previews, myId, players, mode, settings.ghosts])
+
   const chatStickRef = useRef(true)
   const onChatScroll = useCallback(() => {
     const el = chatLogRef.current
@@ -3154,6 +3181,25 @@ export function GameManager({
                           title="Apples are shared — eat one and it's gone for everyone"
                         >
                           race
+                        </button>
+                      </div>
+                      <div className="controls-row">
+                        <div className="muted group-label">Others</div>
+                        <button
+                          className="btn"
+                          data-active={settings.ghosts !== false || undefined}
+                          onClick={() => setSettings((s) => ({ ...s, ghosts: true }))}
+                          title="See everyone else on your board — you pass through them"
+                        >
+                          ghosts
+                        </button>
+                        <button
+                          className="btn"
+                          data-active={settings.ghosts === false || undefined}
+                          onClick={() => setSettings((s) => ({ ...s, ghosts: false }))}
+                          title="Just your own snake"
+                        >
+                          hidden
                         </button>
                       </div>
                       {settings.race && (

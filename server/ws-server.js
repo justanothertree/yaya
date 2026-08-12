@@ -148,6 +148,7 @@ function sanitizeSettings(input, prev) {
     next.canvasSize = s.canvasSize
   }
   if (typeof s.race === 'boolean') next.race = s.race
+  if (typeof s.ghosts === 'boolean') next.ghosts = s.ghosts
   if (typeof s.raceTarget === 'number' && s.raceTarget >= 5 && s.raceTarget <= 500) {
     next.raceTarget = Math.floor(s.raceTarget)
   }

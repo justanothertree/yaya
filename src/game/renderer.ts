@@ -1,4 +1,4 @@
-import type { GameState, ThemeColors } from './types'
+import type { GameState, Point, ThemeColors } from './types'
 
 export class GameRenderer {
   private ctx: CanvasRenderingContext2D
@@ -6,6 +6,8 @@ export class GameRenderer {
   private grid: number
   private cell = 16
   private colors: ThemeColors
+  /** other players, drawn as pass-through outlines — see setGhosts */
+  private ghosts: Array<{ snake: Point[]; name?: string }> = []
 
   constructor(canvas: HTMLCanvasElement, grid: number) {
     const ctx = canvas.getContext('2d')
@@ -37,6 +39,19 @@ export class GameRenderer {
     this.colors = this.readTheme()
   }
 
+  /**
+   * The other players, drawn on YOUR board as outlines you pass straight through.
+   *
+   * This is what makes a race read as a race: without it you're staring at your own snake and
+   * inferring everyone else from a scoreboard. They're ghosts on purpose — the engine never
+   * hears about them, so they can't be collided with, and that's not a shortcut. Making them
+   * solid would mean the relay arbitrating every body cell of every player on every tick, and
+   * a phantom death from someone else's lag is a far worse feeling than passing through.
+   */
+  setGhosts(ghosts: Array<{ snake: Point[]; name?: string }>) {
+    this.ghosts = ghosts
+  }
+
   draw(state: GameState) {
     const { ctx, cell } = this
     // Refresh theme each frame to reflect runtime theme toggles
@@ -48,6 +63,33 @@ export class GameRenderer {
     ctx.fillStyle = this.colors.apple
     for (const a of state.apples) {
       ctx.fillRect(a.x * cell, a.y * cell, cell, cell)
+    }
+    // Ghosts UNDER your own snake: when you overlap, you should still see yourself clearly —
+    // you're the one being steered.
+    if (this.ghosts.length) {
+      const inset = Math.max(1, Math.floor(cell * 0.16))
+      ctx.lineWidth = Math.max(1, Math.floor(cell * 0.14))
+      for (const g of this.ghosts) {
+        ctx.strokeStyle = this.colors.snake
+        ctx.globalAlpha = 0.38
+        for (let i = 0; i < g.snake.length; i++) {
+          const p = g.snake[i]
+          ctx.strokeRect(p.x * cell + inset, p.y * cell + inset, cell - inset * 2, cell - inset * 2)
+        }
+        // the head filled, so at a glance you can tell which way they're going
+        const head = g.snake[0]
+        if (head) {
+          ctx.globalAlpha = 0.55
+          ctx.fillStyle = this.colors.snake
+          ctx.fillRect(
+            head.x * cell + inset,
+            head.y * cell + inset,
+            cell - inset * 2,
+            cell - inset * 2,
+          )
+        }
+      }
+      ctx.globalAlpha = 1
     }
     // snake
     ctx.fillStyle = this.colors.snake
