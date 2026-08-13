@@ -97,6 +97,35 @@ export async function getNextPlayerIdNumber(): Promise<number | null> {
 }
 
 // Insert into score_history and update leaderboard if new high
+/**
+ * Which board a run belongs on.
+ *
+ * `game_mode` has been in the schema from the start and every write hardcoded 'survival' —
+ * because when the board was built, survival was the only mode there was, and the column existed
+ * precisely so future modes wouldn't be compared against it. Now that they exist, race and tron
+ * and hungry runs were all landing on the classic board, where a race score (everyone stops the
+ * moment somebody hits the target) sits next to a survival run that ended when the player did.
+ * Not comparable, which is the whole reason for the column.
+ *
+ * Only MODE-defining settings are in the key. Apples, speed and edges deliberately are not: a key
+ * per combination would shatter one board into dozens with a single entry each, and the original
+ * survival board already mixed those.
+ */
+export function modeKeyFor(settings?: {
+  race?: boolean
+  tron?: boolean
+  hunger?: boolean
+  solidBodies?: boolean
+}): string {
+  if (!settings) return 'survival'
+  const parts: string[] = []
+  if (settings.tron) parts.push('tron')
+  else if (settings.race) parts.push('race')
+  if (settings.hunger) parts.push('hungry')
+  if (settings.solidBodies) parts.push('contact')
+  return parts.length ? parts.join('+') : 'survival'
+}
+
 export async function submitScore(
   entry: LeaderboardEntry & {
     gameMode?: string

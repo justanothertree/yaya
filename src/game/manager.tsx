@@ -13,6 +13,7 @@ import {
   fetchFriendNames,
   fetchRankForScore,
   subscribeToLeaderboard,
+  modeKeyFor,
   type LeaderboardPeriod,
   fetchTrophiesFor,
   getNextPlayerIdNumber,
@@ -270,6 +271,12 @@ export function GameManager({
   const raceOverRef = useRef(false)
   /** tron trails from the relay, keyed "x,y" — solid, and the reason you can die in tron */
   /** applesEaten, readable from socket handlers that close over a stale render */
+  /** current settings, readable from callbacks that were created once and would otherwise
+   *  capture whatever the settings were on first render */
+  const settingsRef = useRef(settings)
+  useEffect(() => {
+    settingsRef.current = settings
+  }, [settings])
   const applesEatenRef = useRef(0)
   const trailRef = useRef<Set<string>>(new Set())
   /** the relay told us we hit something; the loop stops and the snake is out */
@@ -460,7 +467,14 @@ export function GameManager({
   /** file a score under a given name, then refresh the board */
   const saveScoreAs = useCallback(async (nm: string, sc: number) => {
     try {
-      await submitScore({ username: nm, score: sc, date: new Date().toISOString() })
+      // Tag the run with the mode it was actually played in, so a race or a tron round stops
+      // being filed onto the classic board alongside runs it can't be compared with.
+      await submitScore({
+        username: nm,
+        score: sc,
+        date: new Date().toISOString(),
+        gameMode: modeKeyFor(settingsRef.current),
+      })
       const [top, rank] = await Promise.all([
         fetchLeaderboard(periodRef.current, 15),
         fetchRankForScore(sc, periodRef.current),
