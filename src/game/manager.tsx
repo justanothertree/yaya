@@ -713,9 +713,10 @@ export function GameManager({
     if (settings.race && serverApplesRef.current.length) {
       engine.setApples(serverApplesRef.current)
     }
-    // Tron: take the starting cell the relay handed out. Every engine spawns on the middle
-    // square, which is fine when boards are private but puts every rider on one cell here.
-    if (settings.tron && tronStartRef.current) {
+    // Take the starting cell the relay handed out, for tron OR solid bodies. Every engine
+    // spawns on the middle square facing right — fine when boards are private, a pile-up the
+    // moment snakes can hit each other, which is what "we started in the same direction" was.
+    if ((settings.tron || settings.solidBodies) && tronStartRef.current) {
       const st = tronStartRef.current
       engine.loadSnapshot({
         snake: [{ x: st.x, y: st.y }],

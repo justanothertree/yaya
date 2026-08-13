@@ -150,11 +150,18 @@ function makeSeed(room) {
   }
   // Tron's board is empty at the start by definition — the trails ARE the round — so there is
   // nothing to send with the seed, only state to clear.
+  /**
+   * Distinct starting cells whenever snakes can collide with each other — which is tron OR
+   * solid bodies, not tron alone.
+   *
+   * Every engine spawns on the middle square facing right. That is invisible while boards are
+   * private, and fatal the moment they aren't: with crash on, every player begins stacked on one
+   * cell travelling the same way, so a race ended in a pile-up before anyone had turned. Tron got
+   * starts when it was built; solid bodies arrived later and inherited the bug.
+   */
   if (settings.solidBodies) room.crashed = new Set()
-  if (settings.tron) {
-    startTron(room)
-    seedData.starts = tronStarts(room)
-  }
+  if (settings.tron) startTron(room)
+  if (settings.tron || settings.solidBodies) seedData.starts = tronStarts(room)
   return { type: 'seed', roundId, seedData }
 }
 
@@ -250,7 +257,7 @@ function startTron(room) {
 }
 
 /**
- * Where each rider starts.
+ * Where each player starts when snakes can hit each other.
  *
  * Every snake is spawned on the middle cell, which is fine when boards are private — in classic
  * and race you each have your own copy of the grid. Tron shares one board, so identical starts
@@ -268,9 +275,19 @@ function tronStarts(room) {
     const a = (i / Math.max(1, ids.length)) * Math.PI * 2
     const x = Math.min(grid - 1, Math.max(0, Math.round(mid + Math.cos(a) * r)))
     const y = Math.min(grid - 1, Math.max(0, Math.round(mid + Math.sin(a) * r)))
-    // tangent to the circle: everyone sets off the same way round, so the opening seconds are
-    // a chase rather than a head-on
-    starts[pid] = { x, y, dir: { x: Math.round(-Math.sin(a)), y: Math.round(Math.cos(a)) } }
+    /**
+     * Tangent to the circle, SNAPPED TO ONE AXIS: everyone sets off the same way round, so the
+     * opening is a chase rather than a head-on.
+     *
+     * Rounding both components independently produced diagonals — a start of (1,-1) came out of
+     * the very first test — and a snake has no diagonal. Taking whichever component is larger
+     * gives the nearest legal heading.
+     */
+    const tx = -Math.sin(a)
+    const ty = Math.cos(a)
+    const dir =
+      Math.abs(tx) >= Math.abs(ty) ? { x: tx >= 0 ? 1 : -1, y: 0 } : { x: 0, y: ty >= 0 ? 1 : -1 }
+    starts[pid] = { x, y, dir }
   })
   return starts
 }
