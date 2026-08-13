@@ -3454,12 +3454,14 @@ export function GameManager({
                       <>
                         <div className="controls-row">
                           <div className="muted group-label">Mode</div>
-                          {/* One mode at a time: each turns the others off, because race and
-                              tron each hand a different piece of the board to the relay and
-                              running both would mean two owners of one round. */}
+                          {/* Tron was removed after playtesting — permanent light-cycle walls
+                              turned out to be a different game from Snake, and the thing actually
+                              wanted was solid bodies, which is its own switch below. Both modes
+                              still send `tron: false` so any room left on the old setting is
+                              turned off rather than stuck. */}
                           <button
                             className="btn"
-                            data-active={(!settings.race && !settings.tron) || undefined}
+                            data-active={!settings.race || undefined}
                             onClick={() => applySettings({ race: false, tron: false })}
                             title="Everyone runs the same course separately"
                           >
@@ -3479,36 +3481,7 @@ export function GameManager({
                           >
                             race
                           </button>
-                          <button
-                            className="btn"
-                            data-active={settings.tron || undefined}
-                            onClick={() => applySettings({ tron: true, race: false })}
-                            title="Every snake leaves a solid trail — last one riding wins"
-                          >
-                            tron
-                          </button>
                         </div>
-                        {settings.tron && (
-                          <div className="controls-row">
-                            <div className="muted group-label">Trails kill</div>
-                            <button
-                              className="btn"
-                              data-active={settings.tronRivals !== false || undefined}
-                              onClick={() => applySettings({ tronRivals: true })}
-                              title="Every line is lethal, including other riders'"
-                            >
-                              everyone's
-                            </button>
-                            <button
-                              className="btn"
-                              data-active={settings.tronRivals === false || undefined}
-                              onClick={() => applySettings({ tronRivals: false })}
-                              title="Only your own line kills you — ride through everyone else's"
-                            >
-                              just mine
-                            </button>
-                          </div>
-                        )}
                         {/* Sits with Others because it decides what those outlines MEAN:
                             scenery, or something that can end your run. */}
                         <div className="controls-row">
