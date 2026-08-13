@@ -1068,7 +1068,14 @@ export function GameManager({
           registerFinish(myId)
         }
       }
-      if (state.alive) {
+      /**
+       * `state` is the snapshot tick() returned, taken BEFORE hunger had its turn. Starving to
+       * death happens after that, so this said "still alive" and scheduled another tick — the
+       * run carried on with a dead engine, and the round sat there never ending or resetting.
+       * Ask the engine what it thinks NOW, not what it thought a few lines ago.
+       */
+      const stillAlive = state.alive && engineRef.current?.snapshot().alive !== false
+      if (stillAlive) {
         if (startRef.current == null) startRef.current = performance.now()
         const nextScore = scoreFormula(applesEaten + ateThisTick)
         setScore(nextScore)
