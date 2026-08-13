@@ -19,7 +19,7 @@ import {
   getNextPlayerIdNumber,
   supabaseEnvStatus,
 } from './leaderboard'
-import type { LeaderboardEntry, Mode, Point, Settings, TrophyCounts } from './types'
+import type { CanvasSize, LeaderboardEntry, Mode, Point, Settings, TrophyCounts } from './types'
 import { ChallengeFriend } from './ChallengeFriend'
 import { SpectatorView } from './SpectatorView'
 import { drainFor, hungerLabel, stageFor, type HungerState } from './hunger'
@@ -277,6 +277,37 @@ export function GameManager({
   useEffect(() => {
     settingsRef.current = settings
   }, [settings])
+  /**
+   * How big the board is drawn ON YOUR SCREEN. Personal, not a room rule.
+   *
+   * `settings.canvasSize` exists but rides in the synced settings, so putting a control on it
+   * would let the host resize everyone else's board — and a non-host could never change their
+   * own, because the next seed would overwrite it. Display preferences belong to the person
+   * looking at the screen, so this lives outside the settings entirely and persists locally.
+   */
+  const [viewSize, setViewSize] = useState<CanvasSize>(() => {
+    try {
+      const v = localStorage.getItem('snake.viewSize.v1')
+      return v === 'small' || v === 'medium' || v === 'large' ? v : 'medium'
+    } catch {
+      return 'medium'
+    }
+  })
+  useEffect(() => {
+    try {
+      localStorage.setItem('snake.viewSize.v1', viewSize)
+    } catch {
+      /* ignore */
+    }
+    // resize on change so the board follows the choice immediately
+    const wrap = wrapRef.current
+    if (wrap && rendererRef.current) {
+      rendererRef.current.resize(wrap, viewSize)
+      const snap = engineRef.current?.snapshot()
+      if (snap) rendererRef.current.draw(snap)
+    }
+  }, [viewSize])
+
   const applesEatenRef = useRef(0)
   const trailRef = useRef<Set<string>>(new Set())
   /** the relay told us we hit something; the loop stops and the snake is out */
@@ -736,7 +767,7 @@ export function GameManager({
     }
     const renderer = new GameRenderer(canvas, settings.grid)
     rendererRef.current = renderer
-    renderer.resize(wrap, settings.canvasSize)
+    renderer.resize(wrap, viewSize)
     renderer.draw(engine.snapshot())
     // In multiplayer, keep gameplay paused on settings changes until a countdown starts
     if (mode === 'versus') setPaused(true)
@@ -792,7 +823,7 @@ export function GameManager({
       const h = Math.round(r.height)
       const last = lastWrapSizeRef.current
       if (!last || Math.abs(w - last.w) > 12 || Math.abs(h - last.h) > 12) {
-        renderer.resize(wrap, settings.canvasSize)
+        renderer.resize(wrap, viewSize)
         lastWrapSizeRef.current = { w, h }
       }
     }
@@ -3657,6 +3688,28 @@ export function GameManager({
                           onClick={() => applySettings({ grid: g })}
                           disabled={mode === 'versus' && conn === 'connected' && !isHost}
                           title={`${g} by ${g} squares`}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                    {/* Map is how many squares; this is how big they're drawn for YOU. Not
+                        host-locked and not synced — everyone sets their own. */}
+                    <div className="controls-row">
+                      <div className="muted group-label">On screen</div>
+                      {(
+                        [
+                          ['Small', 'small'],
+                          ['Medium', 'medium'],
+                          ['Large', 'large'],
+                        ] as Array<[string, CanvasSize]>
+                      ).map(([label, v]) => (
+                        <button
+                          key={v}
+                          className="btn"
+                          data-active={viewSize === v || undefined}
+                          onClick={() => setViewSize(v)}
+                          title="How big the board is drawn on your screen — just for you"
                         >
                           {label}
                         </button>
