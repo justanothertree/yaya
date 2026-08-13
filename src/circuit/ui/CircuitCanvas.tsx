@@ -332,8 +332,25 @@ export function CircuitCanvas({
     setPanState({ ...panRef.current })
   }, [onPanMove])
   function onPanStart(e: React.PointerEvent) {
-    // only empty canvas pans - windows, links and buttons keep their own gestures
-    if ((e.target as HTMLElement).closest('[data-czid], a, button')) return
+    /**
+     * Only EMPTY canvas pans. Everything you can operate keeps its own gesture.
+     *
+     * This used to list `[data-czid], a, button` — panes, links, buttons — which quietly assumed
+     * every control lives inside a pane. Ratings' slider and number field don't: they render
+     * outside any `[data-czid]`, so a pointerdown on them fell through to here and PANNED THE
+     * CANVAS. The control looked dead while the background slid around behind it.
+     *
+     * Listing form controls by tag rather than by where they happen to sit is the fix that
+     * doesn't depend on markup staying put. The ARIA roles are here for the same reason — a
+     * custom slider or spinner built from divs is still something you drag.
+     */
+    if (
+      (e.target as HTMLElement).closest(
+        '[data-czid], a, button, input, select, textarea, label,' +
+          ' [contenteditable="true"], [role="slider"], [role="spinbutton"], [role="textbox"]',
+      )
+    )
+      return
     setSelId(null)
     selRef.current = null
     panDrag.current = { sx: e.clientX, sy: e.clientY, ox: panRef.current.x, oy: panRef.current.y }
