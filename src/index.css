@@ -2394,6 +2394,22 @@ section[id] {
   display: grid;
   place-items: center;
 }
+/**
+ * The stage must STRETCH, not shrink to fit.
+ *
+ * `place-items: center` above centres the heading and the blurb, which is what we want for
+ * them — but it also applied to the stage, and a shrink-to-fit grid item takes its width from
+ * its contents. The contents are the canvas, and the canvas sizes itself by measuring this
+ * element: a loop with only one solution, the size it already was. The board could not grow,
+ * Medium and Large both landed on whatever width the canvas happened to have, and the stage's
+ * container query never saw the ~860px it needs for the three-column layout.
+ *
+ * Only the stage is exempted, so the text above it stays centred.
+ */
+.snake-wrap > .snake-stage-wrap {
+  justify-self: stretch;
+  width: 100%;
+}
 .dpad {
   display: none;
   gap: 8px;
