@@ -25,6 +25,32 @@ export type PaletteSeed = {
 export const DEFAULT_SEED: PaletteSeed = { bg: '#08080f', text: '#eeeef8', accent: '#22c55e' }
 
 const KEY = 'theme.custom.v1'
+const SAVED_KEY = 'theme.custom.saved.v1'
+
+/** A palette the user made and kept, under a name they chose. */
+export type SavedPalette = { name: string; seed: PaletteSeed }
+
+export function loadSavedPalettes(): SavedPalette[] {
+  try {
+    const raw = localStorage.getItem(SAVED_KEY)
+    const list = raw ? (JSON.parse(raw) as SavedPalette[]) : []
+    return Array.isArray(list)
+      ? list
+          .filter((p) => p && typeof p.name === 'string' && parseHex(p.seed?.bg ?? ''))
+          .slice(0, 24)
+      : []
+  } catch {
+    return []
+  }
+}
+
+export function writeSavedPalettes(list: SavedPalette[]) {
+  try {
+    localStorage.setItem(SAVED_KEY, JSON.stringify(list.slice(0, 24)))
+  } catch {
+    /* private mode — it just won't persist */
+  }
+}
 
 /* ── colour maths ───────────────────────────────────────────────────────── */
 

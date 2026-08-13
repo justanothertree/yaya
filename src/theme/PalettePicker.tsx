@@ -1,13 +1,17 @@
 import { useEffect, useState } from 'react'
 import {
   type PaletteSeed,
+  type SavedPalette,
   DEFAULT_SEED,
   applyPalette,
   contrast,
   derivePalette,
   loadPalette,
+  loadSavedPalettes,
   rate,
+  readableOn,
   savePalette,
+  writeSavedPalettes,
 } from './customTheme'
 import { ColorRow, ShadePad } from './ColorField'
 import { SnakePreview } from './SnakePreview'
@@ -80,6 +84,22 @@ export function PalettePicker({
   onActiveChange: (on: boolean) => void
 }) {
   const [seed, setSeed] = useState<PaletteSeed>(() => loadPalette() ?? DEFAULT_SEED)
+  const [saved, setSaved] = useState<SavedPalette[]>(() => loadSavedPalettes())
+  const [newName, setNewName] = useState('')
+
+  /**
+   * Opening the editor turns it on. The checkbox asked a question the act of opening had already
+   * answered — you clicked the palette button, so of course you want your colors — and until you
+   * found it, dragging changed nothing and the whole thing looked broken.
+   */
+  useEffect(() => {
+    if (!active) {
+      onActiveChange(true)
+      applyPalette(seed)
+    }
+    // deliberately once, on mount: this is "opening implies on", not "never allow off"
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
   /** which colour the shade pad is editing — the pad itself never goes away */
   const [field, setField] = useState<keyof PaletteSeed>('accent')
 
@@ -108,19 +128,6 @@ export function PalettePicker({
       {/* Two columns on a desktop: controls here, the preview parked beside them, so the thing
           you're adjusting a colour FOR stays on screen while you adjust it. */}
       <div className="pal-controls">
-        <label className="pal-toggle">
-          <input
-            type="checkbox"
-            checked={active}
-            onChange={(e) => {
-              const on = e.target.checked
-              onActiveChange(on)
-              applyPalette(on ? seed : null)
-            }}
-          />
-          <span>Use my own colours</span>
-        </label>
-
         <div className="pal-seeds">
           {SEEDS.map(([k, label]) => (
             <ColorRow
@@ -202,15 +209,87 @@ export function PalettePicker({
         </div>
         {/* One button, so this doesn't need a bar of its own along the bottom obscuring the
             presets. Everything else saves itself. */}
+        {/* Your own palettes. The presets are conversation starters; these are the ones you
+            actually landed on, and losing them to the next experiment was the obvious gap. */}
+        <div className="pal-saved">
+          <span className="pal-check-label">My palettes</span>
+          <div className="pal-saved-row">
+            {saved.map((p) => (
+              <span key={p.name} className="pal-saved-item">
+                <button
+                  className="pal-preset"
+                  onClick={() => setSeed(p.seed)}
+                  title={`Use ${p.name}`}
+                >
+                  <span className="pal-preset-chips" aria-hidden>
+                    <i style={{ background: p.seed.bg }} />
+                    <i style={{ background: p.seed.text }} />
+                    <i style={{ background: p.seed.accent }} />
+                  </span>
+                  <span className="pal-preset-name">{p.name}</span>
+                </button>
+                <button
+                  className="pal-saved-x"
+                  onClick={() => {
+                    const next = saved.filter((x) => x.name !== p.name)
+                    setSaved(next)
+                    writeSavedPalettes(next)
+                  }}
+                  aria-label={`Delete ${p.name}`}
+                  title={`Delete ${p.name}`}
+                >
+                  ✕
+                </button>
+              </span>
+            ))}
+            {saved.length === 0 && <span className="muted pal-saved-empty">None kept yet.</span>}
+          </div>
+          <form
+            className="pal-saved-add"
+            onSubmit={(e) => {
+              e.preventDefault()
+              const name = newName.trim().slice(0, 24)
+              if (!name) return
+              // same name replaces, rather than growing a pile of near-duplicates
+              const next = [...saved.filter((x) => x.name !== name), { name, seed }]
+              setSaved(next)
+              writeSavedPalettes(next)
+              setNewName('')
+            }}
+          >
+            <input
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              placeholder="Name this palette"
+              aria-label="Name for this palette"
+              maxLength={24}
+            />
+            <button className="btn" type="submit" disabled={!newName.trim()}>
+              Keep
+            </button>
+          </form>
+        </div>
+
+        {/*
+          Reset has to stay readable no matter what the palette does, because it is the way OUT
+          of a palette — and the moment you need it most is exactly when you have made everything
+          unreadable. So it does not inherit: its colours are computed from the current background
+          with readableOn(), which is the same guarantee the accent button gets.
+        */}
         <button
           className="btn pal-reset"
+          style={{
+            background: readableOn(seed.bg) === '#ffffff' ? '#ffffff' : '#0b0f19',
+            color: readableOn(seed.bg) === '#ffffff' ? '#0b0f19' : '#ffffff',
+            borderColor: readableOn(seed.bg),
+          }}
           onClick={() => {
             setSeed(DEFAULT_SEED)
             savePalette(null)
             onActiveChange(false)
             applyPalette(null)
           }}
-          title="Forget my colours and go back to the built-in themes"
+          title="Forget my colors and go back to the built-in themes"
         >
           Reset to built-in themes
         </button>

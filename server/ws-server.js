@@ -173,6 +173,17 @@ function sanitizeSettings(input, prev) {
   if (typeof s.tronRivals === 'boolean') next.tronRivals = s.tronRivals
   if (typeof s.solidBodies === 'boolean') next.solidBodies = s.solidBodies
   if (typeof s.ghosts === 'boolean') next.ghosts = s.ghosts
+  /**
+   * Hunger was missing here, and the symptom was baffling: toggling it on in a room flickered
+   * and the seconds options never appeared. This list is an ALLOWLIST — anything absent is
+   * dropped — so the client set hunger, sent it, and the relay echoed the room's settings back
+   * without it, undoing the click. A setting that isn't here doesn't half-work, it silently
+   * reverts. Add new ones here at the same time as the client control.
+   */
+  if (typeof s.hunger === 'boolean') next.hunger = s.hunger
+  if (typeof s.hungerSeconds === 'number' && s.hungerSeconds >= 5 && s.hungerSeconds <= 120) {
+    next.hungerSeconds = Math.floor(s.hungerSeconds)
+  }
   if (typeof s.raceTarget === 'number' && s.raceTarget >= 5 && s.raceTarget <= 500) {
     next.raceTarget = Math.floor(s.raceTarget)
   }

@@ -3000,6 +3000,51 @@ select {
 /* Reset sits under the preview rather than in a bar along the bottom: that bar reserved dead
    space and, being sticky, floated over the last row of presets. Nothing else needs a footer —
    every edit saves itself. */
+.pal-saved {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: var(--sp-2, 0.5rem);
+}
+.pal-saved-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.pal-saved-item {
+  display: inline-flex;
+  align-items: stretch;
+}
+.pal-saved-item .pal-preset {
+  border-radius: var(--r-sm, 8px) 0 0 var(--r-sm, 8px);
+}
+.pal-saved-x {
+  padding: 0 6px;
+  border: 1px solid var(--border);
+  border-left: 0;
+  border-radius: 0 var(--r-sm, 8px) var(--r-sm, 8px) 0;
+  background: var(--control-bg, rgba(127, 127, 127, 0.08));
+  color: var(--muted);
+  font-size: 0.7rem;
+  cursor: pointer;
+}
+.pal-saved-x:hover {
+  color: var(--red, #ff5566);
+}
+.pal-saved-empty {
+  font-size: 0.75rem;
+}
+.pal-saved-add {
+  display: flex;
+  gap: 6px;
+  margin-top: 2px;
+}
+.pal-saved-add input {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.78rem;
+  padding: 0.3rem 0.45rem;
+}
 .pal-reset {
   width: 100%;
   margin-top: var(--sp-2, 0.5rem);
