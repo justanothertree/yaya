@@ -800,3 +800,12 @@
     animation: none;
   }
 }
+
+/* typed apple count, sat among the preset buttons */
+.apple-count {
+  width: 3.4rem;
+  min-height: 34px;
+  padding: 4px 6px;
+  font-family: var(--mono);
+  font-size: 0.8rem;
+}

@@ -997,7 +997,22 @@ export function GameManager({
         )
         // Empty: start shedding. Losing your tail is a real cost that still leaves you playing,
         // which is the point — starving should hurt before it kills.
-        if (st.losingTail && !ate) engineRef.current?.shrink(1)
+        if (st.losingTail && !ate) {
+          engineRef.current?.shrink(1)
+          /**
+           * Starving to death has to LOOK like any other death.
+           *
+           * shrink() sets alive = false when the last segment goes, but it emits no event — and
+           * the whole round-end path hangs off a 'die' event: it is what sends `over`, registers
+           * the finish and lets the relay finalize. Without it a starved player was quietly dead
+           * while the room still waited on them, so rounds never restarted. That is the "rounds
+           * aren't resetting, I think because of hungry" report.
+           */
+          const after = engineRef.current?.snapshot()
+          if (after && !after.alive) {
+            events.push({ type: 'die', at: after.snake[0] ?? { x: 0, y: 0 } })
+          }
+        }
       }
       // Every move is a claim when anything shared can be in the way — a tron trail, or another
       // player's body. The relay decides; this goes out the moment the head lands rather than
@@ -3565,11 +3580,11 @@ export function GameManager({
                         on
                       </button>
                       {settings.hunger &&
-                        [10, 20, 35].map((sec) => (
+                        [5, 8, 12, 20].map((sec) => (
                           <button
                             key={sec}
                             className="btn"
-                            data-active={(settings.hungerSeconds ?? 20) === sec || undefined}
+                            data-active={(settings.hungerSeconds ?? 8) === sec || undefined}
                             onClick={() => applySettings({ hungerSeconds: sec })}
                             title={`${sec} seconds from full to empty`}
                           >
@@ -3601,6 +3616,30 @@ export function GameManager({
                               ? 'Only the host sets the room’s speed'
                               : `Start at ${label.toLowerCase()} pace`
                           }
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                    {/* Map size. The grid is already a setting the relay validates (10–60), it
+                        just had no control — so a room could only ever play on 30. */}
+                    <div className="controls-row">
+                      <div className="muted group-label">Map</div>
+                      {(
+                        [
+                          ['Small', 16],
+                          ['Medium', 24],
+                          ['Large', 34],
+                          ['Huge', 48],
+                        ] as Array<[string, number]>
+                      ).map(([label, g]) => (
+                        <button
+                          key={label}
+                          className="btn"
+                          data-active={(settings.grid ?? 30) === g || undefined}
+                          onClick={() => applySettings({ grid: g })}
+                          disabled={mode === 'versus' && conn === 'connected' && !isHost}
+                          title={`${g} by ${g} squares`}
                         >
                           {label}
                         </button>
@@ -3651,6 +3690,24 @@ export function GameManager({
                           {n}
                         </button>
                       ))}
+                      {/* Typed, for when four isn't the number you want. Presets stay because
+                          most of the time you just want "a few" and shouldn't have to type. */}
+                      <input
+                        className="apple-count"
+                        type="number"
+                        min={1}
+                        max={40}
+                        value={settings.apples}
+                        onChange={(e) => {
+                          const n = Math.max(
+                            1,
+                            Math.min(40, Math.floor(Number(e.target.value) || 1)),
+                          )
+                          applySettings({ apples: n })
+                        }}
+                        disabled={mode === 'versus' && conn === 'connected' && !isHost}
+                        aria-label="Number of apples"
+                      />
                       <div className="muted group-label">Edges</div>
                       {['wrap', 'walls'].map((lab) => (
                         <button

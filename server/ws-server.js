@@ -169,7 +169,11 @@ function sanitizeSettings(input, prev) {
   const next = { ...(prev || DEFAULT_SETTINGS) }
   if (!input || typeof input !== 'object') return next
   const s = input
-  if (typeof s.apples === 'number' && s.apples >= 1 && s.apples <= 4) next.apples = s.apples
+  // Ceiling raised from 4 so the count can be typed rather than only picked. Still bounded:
+  // apples are spawned in a loop against free cells, so an unbounded number would spin.
+  if (typeof s.apples === 'number' && s.apples >= 1 && s.apples <= 40) {
+    next.apples = Math.floor(s.apples)
+  }
   if (typeof s.passThroughEdges === 'boolean') next.passThroughEdges = s.passThroughEdges
   if (typeof s.grid === 'number' && s.grid >= 10 && s.grid <= 60) next.grid = s.grid
   if (typeof s.canvasSize === 'string' && ['small', 'medium', 'large'].includes(s.canvasSize)) {
