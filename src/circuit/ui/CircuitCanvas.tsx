@@ -344,7 +344,15 @@ export function CircuitCanvas({
      * doesn't depend on markup staying put. The ARIA roles are here for the same reason — a
      * custom slider or spinner built from divs is still something you drag.
      */
+    /**
+     * The middle button pans from ANYWHERE — over a pane, over a control, over the plane. It is
+     * the one gesture that means "move the view" and nothing else, so it doesn't have to hunt
+     * for empty space the way a left-drag does. Chrome's default for middle-down is autoscroll,
+     * which is why it used to smear a selection instead; preventDefault below suppresses it.
+     */
+    const middle = e.button === 1
     if (
+      !middle &&
       (e.target as HTMLElement).closest(
         '[data-czid], a, button, input, select, textarea, label,' +
           ' [contenteditable="true"], [role="slider"], [role="spinbutton"], [role="textbox"]',
@@ -1254,6 +1262,15 @@ export function CircuitCanvas({
         <div
           ref={hostRef}
           onPointerDown={onPanStart}
+          // Chrome opens its autoscroll widget on middle-button mousedown, before pointerdown's
+          // preventDefault can stop it. Suppressing it here is what makes middle-drag a pan
+          // rather than a smeared selection with a scroll compass stuck to the page.
+          onMouseDown={(e) => {
+            if (e.button === 1) e.preventDefault()
+          }}
+          onAuxClick={(e) => {
+            if (e.button === 1) e.preventDefault()
+          }}
           style={{
             position: 'relative',
             flex: 1,
