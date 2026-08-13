@@ -3768,9 +3768,13 @@ export function GameManager({
                         min={1}
                         value={settings.apples}
                         onChange={(e) => {
+                          // Bounded by the BOARD, not by an arbitrary number. The old cap of 40
+                          // was left here when the relay's was removed, so "no limit" stopped at
+                          // 40 with no explanation. One cell has to stay free for the snake.
+                          const cells = settings.grid * settings.grid - 1
                           const n = Math.max(
                             1,
-                            Math.min(40, Math.floor(Number(e.target.value) || 1)),
+                            Math.min(cells, Math.floor(Number(e.target.value) || 1)),
                           )
                           applySettings({ apples: n })
                         }}

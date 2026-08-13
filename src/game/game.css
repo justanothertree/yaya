@@ -625,9 +625,12 @@
      onto the panel. cqw for the breakout, so widening past the container is also measured
      against the container rather than the window. */
   .snake-stage[data-versus] {
-    grid-template-columns: 320px minmax(0, 1fr) 320px;
-    width: min(140cqw, 1320px);
-    margin-inline: calc(50% - min(70cqw, 660px));
+    /* Wider than it looks like it needs to be, because the middle column is the board and the
+       two 320px columns come out of it: at 1320 the board could never exceed ~660 however big
+       you asked for. The margin stays exactly half the width so the breakout stays centred. */
+    grid-template-columns: 300px minmax(0, 1fr) 300px;
+    width: min(150cqw, 1560px);
+    margin-inline: calc(50% - min(75cqw, 780px));
   }
   .snake-stage[data-versus] .snake-stage-board {
     grid-column: 2;

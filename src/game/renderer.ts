@@ -55,8 +55,18 @@ export class GameRenderer {
           )
         : Math.max(240, Math.floor(window.innerHeight - wrapRect.top - 24))
     const availW = Math.floor(container.clientWidth)
-    const cap = canvasSize === 'large' ? 720 : canvasSize === 'medium' ? 560 : 420
-    const square = Math.max(240, Math.min(availW, availH, cap))
+    /**
+     * The size you PICKED wins. This used to be `min(availW, availH, cap)`, which meant the
+     * viewport height decided the board and the caps never got a say: availH is what's left
+     * below the nav, the heading and the toolbar, so on a laptop it lands near 340 and every
+     * size setting collapsed to roughly the same small square.
+     *
+     * Fitting above the fold is only worth honouring for the smaller sizes. Large is a
+     * deliberate "I want a big board" — the page scrolls, so let it, and let width lead.
+     */
+    const cap = canvasSize === 'large' ? 1100 : canvasSize === 'medium' ? 640 : 420
+    const heightLimit = canvasSize === 'large' ? Math.max(availH, 900) : availH
+    const square = Math.max(240, Math.min(availW, heightLimit, cap))
     this.cell = Math.max(8, Math.floor(square / this.grid))
     const logical = this.grid * this.cell
     this.canvas.style.width = logical + 'px'
