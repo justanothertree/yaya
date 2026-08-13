@@ -27,7 +27,33 @@ export class GameRenderer {
   resize(container: HTMLElement, canvasSize: 'small' | 'medium' | 'large') {
     const dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1))
     const wrapRect = container.getBoundingClientRect()
-    const availH = Math.max(240, Math.floor(window.innerHeight - wrapRect.top - 24))
+    /**
+     * Height comes from whatever actually scrolls around us — the pane in canvas mode, the
+     * window on a normal page.
+     *
+     * This read window.innerHeight unconditionally, so a board inside a small floating pane took
+     * its height budget from the whole screen: it could never settle, and fit-to-content fought
+     * it, because fit measures the content while the content is sizing itself from a completely
+     * different number. Whichever won last got overwritten.
+     *
+     * Found by walking up for a real scroll container rather than naming the canvas's class, so
+     * this holds for any future surface that puts the board in a box.
+     */
+    let scroller: HTMLElement | null = container.parentElement
+    while (scroller && scroller !== document.body) {
+      const ov = getComputedStyle(scroller).overflowY
+      if (ov === 'auto' || ov === 'scroll') break
+      scroller = scroller.parentElement
+    }
+    const availH =
+      scroller && scroller !== document.body
+        ? Math.max(
+            240,
+            Math.floor(
+              scroller.clientHeight - (wrapRect.top - scroller.getBoundingClientRect().top) - 24,
+            ),
+          )
+        : Math.max(240, Math.floor(window.innerHeight - wrapRect.top - 24))
     const availW = Math.floor(container.clientWidth)
     const cap = canvasSize === 'large' ? 720 : canvasSize === 'medium' ? 560 : 420
     const square = Math.max(240, Math.min(availW, availH, cap))
