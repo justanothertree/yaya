@@ -1926,6 +1926,16 @@ export function GameManager({
 
   const doRestart = () => {
     setEngineSeed(Math.floor(Math.random() * 1e9))
+    /**
+     * A new round starts you FULL.
+     *
+     * Hunger was only reset when a multiplayer `seed` arrived, so every other way of starting a
+     * round — the Restart button, space after dying, solo entirely — began with the meter
+     * wherever the last round left it. Which is empty, because that is usually what ended it: you
+     * respawned starving and died again, and the round looked like it never reset.
+     */
+    hungerRef.current = 1
+    setHunger(stageFor(1))
     setPaused(true)
     deathAnimatedRef.current = false
     try {
@@ -3580,11 +3590,11 @@ export function GameManager({
                         on
                       </button>
                       {settings.hunger &&
-                        [5, 8, 12, 20].map((sec) => (
+                        [3, 5, 8, 12].map((sec) => (
                           <button
                             key={sec}
                             className="btn"
-                            data-active={(settings.hungerSeconds ?? 8) === sec || undefined}
+                            data-active={(settings.hungerSeconds ?? 5) === sec || undefined}
                             onClick={() => applySettings({ hungerSeconds: sec })}
                             title={`${sec} seconds from full to empty`}
                           >
@@ -3696,7 +3706,6 @@ export function GameManager({
                         className="apple-count"
                         type="number"
                         min={1}
-                        max={40}
                         value={settings.apples}
                         onChange={(e) => {
                           const n = Math.max(

@@ -171,9 +171,9 @@ function sanitizeSettings(input, prev) {
   const s = input
   // Ceiling raised from 4 so the count can be typed rather than only picked. Still bounded:
   // apples are spawned in a loop against free cells, so an unbounded number would spin.
-  if (typeof s.apples === 'number' && s.apples >= 1 && s.apples <= 40) {
-    next.apples = Math.floor(s.apples)
-  }
+  // No upper bound by request. Spawning loops against free cells and is guarded, so a silly
+  // number fills the board instead of hanging; the floor of 1 is what actually matters.
+  if (typeof s.apples === 'number' && s.apples >= 1) next.apples = Math.floor(s.apples)
   if (typeof s.passThroughEdges === 'boolean') next.passThroughEdges = s.passThroughEdges
   if (typeof s.grid === 'number' && s.grid >= 10 && s.grid <= 60) next.grid = s.grid
   if (typeof s.canvasSize === 'string' && ['small', 'medium', 'large'].includes(s.canvasSize)) {
@@ -192,7 +192,7 @@ function sanitizeSettings(input, prev) {
    * reverts. Add new ones here at the same time as the client control.
    */
   if (typeof s.hunger === 'boolean') next.hunger = s.hunger
-  if (typeof s.hungerSeconds === 'number' && s.hungerSeconds >= 5 && s.hungerSeconds <= 120) {
+  if (typeof s.hungerSeconds === 'number' && s.hungerSeconds >= 2 && s.hungerSeconds <= 120) {
     next.hungerSeconds = Math.floor(s.hungerSeconds)
   }
   if (typeof s.raceTarget === 'number' && s.raceTarget >= 5 && s.raceTarget <= 500) {

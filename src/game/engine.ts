@@ -184,7 +184,16 @@ export class GameEngine {
     const collides = (p: Point) =>
       s.snake.some((q) => q.x === p.x && q.y === p.y) ||
       s.apples.some((q) => q.x === p.x && q.y === p.y)
-    while (s.apples.length < n) {
+    /**
+     * BOUNDED. `while (apples < n)` with no guard hangs the tab outright the moment n exceeds
+     * the free cells — asking for 200 apples on a 12x12 board never terminates, because the
+     * loop keeps drawing random cells that are all taken. The relay's copy of this always had a
+     * guard; this one did not, and removing the apple cap turned that into a freeze.
+     *
+     * The board simply fills as far as it can and play continues.
+     */
+    let guard = grid * grid * 4
+    while (s.apples.length < n && guard-- > 0) {
       const p = { x: randInt(this.rand, grid), y: randInt(this.rand, grid) }
       if (!collides(p)) s.apples.push(p)
     }
