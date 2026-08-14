@@ -3114,3 +3114,85 @@ select {
     display: none;
   }
 }
+
+/* Window launcher — the canvas's own control, so it is fixed to the viewport and sits above
+   the floating windows. Bottom-left keeps it clear of the nav and of the windows' title bars,
+   which cluster at the top. */
+.winlauncher {
+  position: fixed;
+  left: 1rem;
+  bottom: 1rem;
+  z-index: 240;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+.winlauncher-btn {
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.28);
+}
+.winlauncher-count {
+  margin-left: 0.4rem;
+  padding: 0 0.4rem;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--btn-text, #fff);
+  font-size: 0.78em;
+}
+.winlauncher-panel {
+  width: min(18rem, calc(100vw - 2rem));
+  max-height: min(60vh, 28rem);
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md, 12px);
+  background: var(--card, var(--bg));
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+  overflow: hidden;
+}
+.winlauncher-search {
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+  padding: 0.6rem 0.75rem;
+  font: inherit;
+}
+.winlauncher-search:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+.winlauncher-list {
+  overflow-y: auto;
+  padding: 0.25rem;
+}
+.winlauncher-row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.5rem 0.6rem;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.winlauncher-row:hover:not(:disabled) {
+  background: var(--card2, rgba(127, 127, 127, 0.12));
+}
+.winlauncher-row:disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+.winlauncher-why {
+  font-size: 0.82em;
+  white-space: nowrap;
+}
+.winlauncher-empty {
+  padding: 0.75rem;
+  font-size: 0.9em;
+}

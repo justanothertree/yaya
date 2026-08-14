@@ -8,6 +8,7 @@ import { SettingsMenu } from './components/SettingsMenu'
 import { MobileNav } from './components/MobileNav'
 import { AmbientBackdrop } from './components/AmbientBackdrop'
 import { installClickFx, setClickFxEnabled } from './ui/clickFx'
+import { WindowLauncher, type LaunchableWindow } from './components/WindowLauncher'
 import { CallDock } from './voice/CallDock'
 import { useReveal } from './hooks/useReveal'
 import { useNotifications } from './hooks/useNotifications'
@@ -821,9 +822,15 @@ export default function App() {
     people: '🧑‍🤝‍🧑 People',
     profile: '🪪 Profile',
   }
-  // the inner content for whichever single-window tab is active (mirrors the section body)
-  const singleCanvasNode = () => {
-    switch (active) {
+  /**
+   * The inner content for a single-window tab (mirrors the section body).
+   *
+   * Takes the section rather than reading `active`, which is what lets a window be summoned
+   * from anywhere. Building a workspace used to mean visiting every tab in turn and pinning
+   * each one, purely because this function could only ever build the tab you were already on.
+   */
+  const canvasNodeFor = (sec: Section) => {
+    switch (sec) {
       case 'investments':
         return isFinanceAuthed && canFinance === true ? (
           <Investments />
@@ -900,6 +907,37 @@ export default function App() {
   // so the page that owns them hands back fresh ones when what they render changes.
   const refreshPinned = (fresh: CanvasPane[]) =>
     setPinned((prev) => prev.map((p) => fresh.find((f) => f.id === p.id) ?? p))
+
+  /**
+   * Every window that can go on the canvas, for the launcher. Built from the same list and the
+   * same node factory the tabs use, so a window can never appear here and fail to open.
+   */
+  const launchableWindows = (): LaunchableWindow[] =>
+    singleCanvasTabs
+      .filter((sec) => (sec === 'admin' ? isAdmin : sec === 'signin' ? !isFinanceAuthed : true))
+      .map((sec) => ({
+        id: sec,
+        title: canvasTitleFor[sec] ?? sec,
+        // Snake holds a live relay connection; floating a second copy mid-round is the one
+        // case the canvas has always refused, so the launcher refuses it in the same words.
+        disabled:
+          sec === active && inGenericCanvas
+            ? 'this tab'
+            : sec === 'snake' && snakeLive
+              ? 'in a live round'
+              : undefined,
+      }))
+
+  /** Toggle a window on the canvas from the launcher — the same pin the title bar toggles. */
+  const toggleWindow = (id: string) => {
+    const sec = id as Section
+    const existing = pinned.find((p) => p.id === id)
+    if (existing) {
+      togglePin(existing)
+      return
+    }
+    togglePin({ id, title: canvasTitleFor[sec] ?? id, node: canvasNodeFor(sec) })
+  }
 
   const withPinned = (tabPanes: CanvasPane[]) => [
     ...tabPanes,
@@ -1139,6 +1177,15 @@ export default function App() {
             </span>
           </div>
         )}
+        {/* One place to choose windows, shown whenever the canvas is. The Circuit runs its own
+            canvas with its own panes, so it keeps its own controls. */}
+        {desktop && canvasOpen && (inGenericCanvas || active === 'home') && (
+          <WindowLauncher
+            windows={launchableWindows()}
+            openIds={[...pinnedIds, ...(inGenericCanvas ? [active] : [])]}
+            onToggle={toggleWindow}
+          />
+        )}
         {inGenericCanvas && (
           <Suspense
             fallback={
@@ -1153,7 +1200,11 @@ export default function App() {
               // between two single-window tabs left the canvas empty
               key={active}
               panes={withPinned([
-                { id: active, title: canvasTitleFor[active] ?? active, node: singleCanvasNode() },
+                {
+                  id: active,
+                  title: canvasTitleFor[active] ?? active,
+                  node: canvasNodeFor(active),
+                },
               ])}
               pinnedIds={pinnedIds}
               onTogglePin={togglePin}
