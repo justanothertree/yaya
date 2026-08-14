@@ -286,7 +286,18 @@ export function Circuit({
    * whether a window follows you to other tabs, hiding decides whether it exists here.
    */
   const hiddenIds = useHiddenWindows()
-  registerWindows(canvasPanes.map((p) => ({ id: p.id, title: p.title })))
+  /**
+   * Published in an effect, NOT during render. Registering notifies the launcher's store, which
+   * lives in App — so doing it inline meant setting state on one component while rendering
+   * another, which React warns about and is free to tear in a concurrent render.
+   *
+   * No dependency array on purpose: this runs after every render, and `registerWindows` returns
+   * early when the names are unchanged. That guard is what keeps it cheap, and it also means a
+   * dependency list would be a second, driftable copy of the same "has anything changed?" test.
+   */
+  useEffect(() => {
+    registerWindows(canvasPanes.map((p) => ({ id: p.id, title: p.title })))
+  })
   const shownCanvasPanes = canvasPanes.filter((p) => !hiddenIds.includes(p.id))
 
   // App pins the pane OBJECTS (it has to — they must outlive this component when you
