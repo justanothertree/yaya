@@ -3081,3 +3081,36 @@ select {
     padding-bottom: calc(var(--card-pad, 1.1rem) + env(safe-area-inset-bottom, 0px));
   }
 }
+
+/* Click sparks. The layer is inert by construction — fixed, full-viewport and pointer-events:
+   none — so it can never intercept a click or move the page under one. */
+#click-fx-layer {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 9999;
+  overflow: hidden;
+}
+#click-fx-layer > i {
+  position: absolute;
+  display: block;
+  border-radius: 50%;
+  will-change: transform, opacity;
+}
+.click-fx-spark {
+  width: 6px;
+  height: 6px;
+}
+.click-fx-ring {
+  width: 44px;
+  height: 44px;
+  border: 2px solid currentColor;
+  background: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  /* belt and braces: the script already declines to install, but if it ever runs anyway
+     nothing should move */
+  #click-fx-layer {
+    display: none;
+  }
+}

@@ -30,6 +30,8 @@ export function SettingsMenu({
   desktop,
   ambientOn,
   onToggleAmbient,
+  sparksOn,
+  onToggleSparks,
   customPalette,
   onCustomPalette,
   authed,
@@ -53,6 +55,8 @@ export function SettingsMenu({
   desktop: boolean
   ambientOn: boolean
   onToggleAmbient: () => void
+  sparksOn: boolean
+  onToggleSparks: () => void
   /** true when the user's own palette is overriding the built-in theme */
   customPalette: boolean
   onCustomPalette: (on: boolean) => void
@@ -243,6 +247,17 @@ export function SettingsMenu({
           >
             <span>✨ Ambient glow</span>
             <span className={'nav-menu-switch' + (ambientOn ? ' is-on' : '')} aria-hidden />
+          </button>
+
+          <button
+            className="nav-menu-row"
+            role="menuitemcheckbox"
+            aria-checked={sparksOn}
+            onClick={onToggleSparks}
+            title="A small burst of light wherever you click"
+          >
+            <span>⁕ Click sparks</span>
+            <span className={'nav-menu-switch' + (sparksOn ? ' is-on' : '')} aria-hidden />
           </button>
 
           {desktop && (

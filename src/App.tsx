@@ -7,6 +7,7 @@ import { IconGitHub, IconLinkedIn } from './components/Icons'
 import { SettingsMenu } from './components/SettingsMenu'
 import { MobileNav } from './components/MobileNav'
 import { AmbientBackdrop } from './components/AmbientBackdrop'
+import { installClickFx, setClickFxEnabled } from './ui/clickFx'
 import { CallDock } from './voice/CallDock'
 import { useReveal } from './hooks/useReveal'
 import { useNotifications } from './hooks/useNotifications'
@@ -206,6 +207,21 @@ export default function App() {
   const [ambientOn, setAmbientOn] = useState(
     () => typeof window === 'undefined' || localStorage.getItem('ambient_v1') !== '0',
   )
+  /** click sparks — same shape as the ambient glow: pure taste, remembered, on by default */
+  const [sparksOn, setSparksOn] = useState(
+    () => typeof window === 'undefined' || localStorage.getItem('click_fx_v1') !== '0',
+  )
+  useEffect(() => installClickFx(), [])
+  useEffect(() => {
+    setClickFxEnabled(sparksOn)
+    try {
+      localStorage.setItem('click_fx_v1', sparksOn ? '1' : '0')
+    } catch {
+      /* ignore */
+    }
+  }, [sparksOn])
+  const toggleSparks = () => setSparksOn((v) => !v)
+
   const toggleAmbient = () => {
     setAmbientOn((v) => {
       try {
@@ -1061,6 +1077,8 @@ export default function App() {
               isAdmin={isAdmin}
               ambientOn={ambientOn}
               onToggleAmbient={toggleAmbient}
+              sparksOn={sparksOn}
+              onToggleSparks={toggleSparks}
               customPalette={customPalette}
               onCustomPalette={setCustomPalette}
               name={me.name}
