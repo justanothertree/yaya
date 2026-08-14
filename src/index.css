@@ -2404,11 +2404,14 @@ section[id] {
  * Medium and Large both landed on whatever width the canvas happened to have, and the stage's
  * container query never saw the ~860px it needs for the three-column layout.
  *
- * Only the stage is exempted, so the text above it stays centred.
+ * Only the game is exempted, so the caption below it stays centred. Note this must name
+ * the GAME's root, not the stage: the stage sits a level deeper, so a child selector aimed at
+ * it silently matches nothing and the shrink-to-fit box survives.
  */
-.snake-wrap > .snake-stage-wrap {
+.snake-wrap > .snake-manager {
   justify-self: stretch;
   width: 100%;
+  min-width: 0;
 }
 .dpad {
   display: none;

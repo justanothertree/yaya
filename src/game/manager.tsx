@@ -2533,7 +2533,9 @@ export function GameManager({
   }, [showDebug])
 
   return (
-    <div>
+    // named so the page can stop it shrink-wrapping — .snake-wrap centres its grid items, and
+    // a shrink-to-fit box around the board caps the board at whatever width it already had
+    <div className="snake-manager">
       {/* Toast notification */}
       {pendingScore != null && (
         <div className="snake-name-prompt" role="dialog" aria-label="Name your score">
