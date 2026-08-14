@@ -64,7 +64,12 @@ function burst(x: number, y: number) {
         { transform: 'translate(-50%, -50%) scale(0.2)', opacity: 0.9 },
         { transform: 'translate(-50%, -50%) scale(1)', opacity: 0 },
       ],
-      { duration: 420, easing: 'cubic-bezier(0.2, 0.8, 0.3, 1)' },
+      // fill: 'forwards' matters. Without it an element snaps back to its BASE style the moment
+      // its own animation ends — fully opaque, back at the click point — and sits there until
+      // every other animation in the burst has finished and the nodes are removed together.
+      // The ring is the shortest of them, so it was the most visible: a circle and a dot left
+      // behind after the sparks had gone.
+      { duration: 420, easing: 'cubic-bezier(0.2, 0.8, 0.3, 1)', fill: 'forwards' },
     ),
   )
 
@@ -90,7 +95,11 @@ function burst(x: number, y: number) {
             opacity: 0,
           },
         ],
-        { duration: 380 + Math.random() * 260, easing: 'cubic-bezier(0.15, 0.7, 0.2, 1)' },
+        {
+          duration: 380 + Math.random() * 260,
+          easing: 'cubic-bezier(0.15, 0.7, 0.2, 1)',
+          fill: 'forwards',
+        },
       ),
     )
   }
