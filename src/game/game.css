@@ -629,8 +629,13 @@
        two 320px columns come out of it: at 1320 the board could never exceed ~660 however big
        you asked for. The margin stays exactly half the width so the breakout stays centred. */
     grid-template-columns: 300px minmax(0, 1fr) 300px;
-    width: min(150cqw, 1560px);
-    margin-inline: calc(50% - min(75cqw, 780px));
+    /* No fixed ceiling. 1560px here meant the board stopped at ~930 whatever the slider said —
+       1560 less the two panels and the gaps — which is just the old hard-coded cap wearing a
+       different hat. The breakout now runs to the window, so the board's limit is the screen.
+       `100vw` includes the scrollbar, hence the 2rem inset; the margin stays exactly half the
+       width so it remains centred on the content column. */
+    width: min(150cqw, calc(100vw - 2rem));
+    margin-inline: calc(50% - min(75cqw, calc(50vw - 1rem)));
   }
   .snake-stage[data-versus] .snake-stage-board {
     grid-column: 2;
