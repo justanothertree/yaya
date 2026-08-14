@@ -15,16 +15,6 @@
   border-bottom: 1px solid var(--border);
   flex-direction: column; /* stack into logical rows */
 }
-.snake-toolbar .toolbar-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-}
-.snake-toolbar .toolbar-row + .toolbar-row {
-  margin-top: 6px;
-}
 
 /* Two columns for the Snake controls — when there is room for two.
    `minmax(320px, 380px)` is a HARD floor, and the media query that collapsed it asked the
@@ -89,11 +79,6 @@
   min-width: 96px;
 }
 
-/* Versus inline controls container (desktop/tablet) */
-.snake-toolbar .vs-inline {
-  flex-wrap: wrap;
-}
-
 .snake-grid {
   display: grid;
   gap: 12px;
@@ -120,20 +105,6 @@
   border-color: var(--accent);
   box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent), transparent 70%);
 }
-.snake-canvas--opp {
-  border-style: dashed;
-  opacity: 0.8;
-}
-
-.snake-hud {
-  display: flex;
-  gap: 12px;
-  align-items: center;
-  margin-top: 8px;
-}
-.snake-hud .hud-paused {
-  min-width: 6ch; /* reserve space for the word "Paused" */
-}
 
 /* Touch controls overlay */
 .snake-canvas-wrap {
@@ -149,18 +120,6 @@
   z-index: 2;
   padding: 4px 10px;
   opacity: 0.9;
-}
-.snake-fab--left {
-  display: none;
-}
-.snake-joystick {
-  display: none;
-}
-.snake-joystick .ring {
-  display: none;
-}
-.snake-joystick .knob {
-  display: none;
 }
 .snake-hint {
   position: absolute;
@@ -182,12 +141,6 @@
 .snake-hint[data-show] {
   opacity: 1;
 }
-.snake-touch {
-  display: none;
-}
-.snake-touch .row {
-  display: none;
-}
 
 /* Stable status row to avoid toolbar reflow */
 .snake-status {
@@ -197,35 +150,6 @@
   justify-content: center; /* center score/paused/countdown */
   margin: 8px 0;
   flex-wrap: wrap;
-}
-.snake-touch button {
-  display: none;
-}
-
-/* Simple desktop tab bar for panels */
-.snake-tabs {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  border-bottom: 1px solid var(--border);
-  margin-top: 8px;
-}
-.snake-tabs .tab {
-  appearance: none;
-  background: transparent;
-  border: none;
-  color: var(--text-muted);
-  padding: 8px 10px;
-  cursor: pointer;
-  border-bottom: 2px solid transparent;
-  font-weight: 500;
-}
-.snake-tabs .tab:hover {
-  color: var(--text);
-}
-.snake-tabs .tab[data-active] {
-  color: var(--text);
-  border-bottom-color: var(--accent);
 }
 
 @media (max-width: 640px) {
@@ -241,36 +165,12 @@
   .snake-toolbar .btn--stable {
     min-width: 80px;
   }
-  /* Stack versus controls into two columns, let input span full width */
-  .snake-toolbar .vs-inline {
-    display: grid !important;
-    grid-template-columns: 1fr 1fr;
-    gap: 6px;
-    width: 100%;
-  }
-  .snake-toolbar .vs-inline input {
-    grid-column: 1 / -1;
-    min-width: 0;
-    width: 100%;
-  }
-  .snake-toolbar .vs-inline .btn {
-    min-width: auto;
-  }
-  .snake-toolbar .vs-inline .vs-metric {
-    display: none; /* hide verbose metrics on phones */
-  }
   .snake-grid[data-versus] {
     grid-template-columns: 1fr; /* stack canvases */
     gap: 8px;
   }
   .snake-canvas {
     margin-top: 0.5rem;
-  }
-  .snake-canvas--opp {
-    display: none; /* hide opponent canvas placeholder on phones */
-  }
-  .previews-section {
-    display: none; /* hide previews on phones to reduce clutter */
   }
   /* Compact the settings toolbar so it stops burying the game. With the "Mode:" label
      now hidden (group-label) and buttons tightened, each controls-row fits one line
