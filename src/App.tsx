@@ -912,12 +912,21 @@ export default function App() {
    * Every window that can go on the canvas, for the launcher. Built from the same list and the
    * same node factory the tabs use, so a window can never appear here and fail to open.
    */
-  const launchableWindows = (): LaunchableWindow[] =>
-    singleCanvasTabs
+  const launchableWindows = (): LaunchableWindow[] => [
+    // Home's cards are windows in their own right — they were missing from the first pass, so
+    // the one page that is ALREADY several windows was the one you couldn't compose from.
+    ...homePanes().map((p) => ({
+      id: p.id,
+      title: p.title,
+      group: 'Home',
+      disabled: active === 'home' && canvasOpen ? 'this tab' : undefined,
+    })),
+    ...singleCanvasTabs
       .filter((sec) => (sec === 'admin' ? isAdmin : sec === 'signin' ? !isFinanceAuthed : true))
       .map((sec) => ({
         id: sec,
         title: canvasTitleFor[sec] ?? sec,
+        group: 'Pages',
         // Snake holds a live relay connection; floating a second copy mid-round is the one
         // case the canvas has always refused, so the launcher refuses it in the same words.
         disabled:
@@ -926,16 +935,26 @@ export default function App() {
             : sec === 'snake' && snakeLive
               ? 'in a live round'
               : undefined,
-      }))
+      })),
+  ]
 
   /** Toggle a window on the canvas from the launcher — the same pin the title bar toggles. */
   const toggleWindow = (id: string) => {
-    const sec = id as Section
+    // The tab you're on owns its window; it isn't pinned, so "toggling" it would ADD a second
+    // copy rather than close it. Restoring a saved layout walks every id, so this guard is what
+    // stops a layout that omits the current tab from pinning it instead of leaving it alone.
+    if (id === active && inGenericCanvas) return
     const existing = pinned.find((p) => p.id === id)
     if (existing) {
       togglePin(existing)
       return
     }
+    const home = id.startsWith('home:') ? homePanes().find((p) => p.id === id) : null
+    if (home) {
+      togglePin(home)
+      return
+    }
+    const sec = id as Section
     togglePin({ id, title: canvasTitleFor[sec] ?? id, node: canvasNodeFor(sec) })
   }
 
@@ -1179,13 +1198,15 @@ export default function App() {
         )}
         {/* One place to choose windows, shown whenever the canvas is. The Circuit runs its own
             canvas with its own panes, so it keeps its own controls. */}
-        {desktop && canvasOpen && (inGenericCanvas || active === 'home') && (
-          <WindowLauncher
-            windows={launchableWindows()}
-            openIds={[...pinnedIds, ...(inGenericCanvas ? [active] : [])]}
-            onToggle={toggleWindow}
-          />
-        )}
+        {desktop &&
+          canvasOpen &&
+          (inGenericCanvas || active === 'home' || active === 'circuit') && (
+            <WindowLauncher
+              windows={launchableWindows()}
+              openIds={[...pinnedIds, ...(inGenericCanvas ? [active] : [])]}
+              onToggle={toggleWindow}
+            />
+          )}
         {inGenericCanvas && (
           <Suspense
             fallback={

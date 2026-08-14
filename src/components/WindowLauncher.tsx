@@ -4,8 +4,22 @@ import { createPortal } from 'react-dom'
 export type LaunchableWindow = {
   id: string
   title: string
+  /** heading this window is listed under */
+  group?: string
   /** why it can't be added right now — shown, and the row is disabled */
   disabled?: string
+}
+
+type Workspace = { name: string; ids: string[] }
+const WORKSPACES = 'canvas_workspaces_v1'
+
+const loadWorkspaces = (): Workspace[] => {
+  try {
+    const raw = JSON.parse(localStorage.getItem(WORKSPACES) || '[]')
+    return Array.isArray(raw) ? raw.filter((w) => w && typeof w.name === 'string') : []
+  } catch {
+    return []
+  }
 }
 
 /**
@@ -30,6 +44,7 @@ export function WindowLauncher({
 }) {
   const [open, setOpen] = useState(false)
   const [q, setQ] = useState('')
+  const [spaces, setSpaces] = useState<Workspace[]>(loadWorkspaces)
   const panelRef = useRef<HTMLDivElement | null>(null)
   const searchRef = useRef<HTMLInputElement | null>(null)
 
@@ -60,6 +75,43 @@ export function WindowLauncher({
 
   const count = openIds.length
 
+  const persist = (next: Workspace[]) => {
+    setSpaces(next)
+    try {
+      localStorage.setItem(WORKSPACES, JSON.stringify(next))
+    } catch {
+      /* ignore */
+    }
+  }
+
+  /**
+   * Save the windows that are open right now under a name.
+   *
+   * Only the IDS are stored, never the boxes: the canvas already persists a box per window and
+   * keeps it across tabs, so restoring a set of ids brings the arrangement back with it. Storing
+   * positions here as well would be a second copy of the truth, free to drift from the first.
+   */
+  const saveCurrent = () => {
+    const name = window.prompt('Name this layout')?.trim()
+    if (!name) return
+    persist([...spaces.filter((w) => w.name !== name), { name, ids: [...openIds] }])
+  }
+
+  /** Make the canvas match a saved layout: add what's missing, remove what isn't in it. */
+  const restore = (w: Workspace) => {
+    const want = new Set(w.ids)
+    for (const id of openIds) if (!want.has(id)) onToggle(id)
+    for (const id of w.ids) if (!openIds.includes(id)) onToggle(id)
+  }
+
+  const groups = shown.reduce<Array<[string, LaunchableWindow[]]>>((acc, w) => {
+    const g = w.group ?? ''
+    const row = acc.find(([name]) => name === g)
+    if (row) row[1].push(w)
+    else acc.push([g, [w]])
+    return acc
+  }, [])
+
   /**
    * Portalled to <body>. Anything with a transform, filter or will-change between here and the
    * viewport becomes the containing block for `position: fixed` — the nav does exactly that —
@@ -79,28 +131,57 @@ export function WindowLauncher({
             aria-label="Filter windows"
           />
           <div className="winlauncher-list">
-            {shown.map((w) => {
-              const on = openIds.includes(w.id)
-              return (
-                <button
-                  key={w.id}
-                  className="winlauncher-row"
-                  role="menuitemcheckbox"
-                  aria-checked={on}
-                  disabled={!!w.disabled}
-                  title={w.disabled}
-                  onClick={() => onToggle(w.id)}
-                >
-                  <span>{w.title}</span>
-                  {w.disabled ? (
-                    <span className="muted winlauncher-why">{w.disabled}</span>
-                  ) : (
-                    <span className={'nav-menu-switch' + (on ? ' is-on' : '')} aria-hidden />
-                  )}
-                </button>
-              )
-            })}
+            {groups.map(([group, items]) => (
+              <div key={group || 'all'}>
+                {group && <div className="winlauncher-group">{group}</div>}
+                {items.map((w) => {
+                  const on = openIds.includes(w.id)
+                  return (
+                    <button
+                      key={w.id}
+                      className="winlauncher-row"
+                      role="menuitemcheckbox"
+                      aria-checked={on}
+                      disabled={!!w.disabled}
+                      title={w.disabled}
+                      onClick={() => onToggle(w.id)}
+                    >
+                      <span>{w.title}</span>
+                      {w.disabled ? (
+                        <span className="muted winlauncher-why">{w.disabled}</span>
+                      ) : (
+                        <span className={'nav-menu-switch' + (on ? ' is-on' : '')} aria-hidden />
+                      )}
+                    </button>
+                  )
+                })}
+              </div>
+            ))}
             {!shown.length && <div className="muted winlauncher-empty">Nothing matches.</div>}
+          </div>
+          {/* Layouts last: you build a set first, then keep it. */}
+          <div className="winlauncher-spaces">
+            {spaces.map((w) => (
+              <span className="winlauncher-space" key={w.name}>
+                <button
+                  className="btn"
+                  onClick={() => restore(w)}
+                  title={`${w.ids.length} windows`}
+                >
+                  {w.name}
+                </button>
+                <button
+                  className="btn winlauncher-x"
+                  onClick={() => persist(spaces.filter((x) => x.name !== w.name))}
+                  aria-label={`Forget ${w.name}`}
+                >
+                  ✕
+                </button>
+              </span>
+            ))}
+            <button className="btn" onClick={saveCurrent} disabled={!count}>
+              ＋ Save layout
+            </button>
           </div>
         </div>
       )}
