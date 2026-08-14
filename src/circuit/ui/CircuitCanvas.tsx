@@ -170,6 +170,10 @@ export function CircuitCanvas({
     typeof document !== 'undefined' ? document.body : null,
   )
   const [wins, setWins] = useState<Layout>({})
+  // a live mirror, so the camera can read the CURRENT boxes without being a dependency of
+  // every callback that might want to move it
+  const winsRef = useRef<Layout>({})
+  winsRef.current = wins
   // ── wheel zoom: scroll out to EXPAND the canvas area (view shrinks, world grows);
   // scrolling back in caps at the default 1.0 — never closer than natural size ──
   const [view, setView] = useState(1)
@@ -615,10 +619,52 @@ export function CircuitCanvas({
     }
   }, [])
 
+  /**
+   * Bring a window into view, gliding rather than jumping.
+   *
+   * Focusing used to only raise the z-order, which is invisible when the window is somewhere
+   * else on the plane: you clicked a tab and, as far as the screen was concerned, nothing
+   * happened. The camera moves now — but ONLY when the window isn't already fully on screen,
+   * because re-centring something you are already looking at is its own kind of jarring.
+   */
+  const panToWindow = useCallback(
+    (id: string) => {
+      const host = hostRef.current
+      const w = winsRef.current[id]
+      if (!host || !w) return
+      const v = viewRef.current
+      const vw = host.clientWidth / v
+      const vh = host.clientHeight / v
+      const from = { ...panRef.current }
+      const visible =
+        w.x >= from.x && w.y >= from.y && w.x + w.w <= from.x + vw && w.y + w.h <= from.y + vh
+      if (visible) return
+      const to = clampPan({ x: w.x + w.w / 2 - vw / 2, y: w.y + w.h / 2 - vh / 2 })
+      if (Math.abs(to.x - from.x) < 1 && Math.abs(to.y - from.y) < 1) return
+      const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+      const start = performance.now()
+      const dur = reduce ? 0 : 320
+      const step = (t: number) => {
+        const k = dur ? Math.min(1, (t - start) / dur) : 1
+        const e = 1 - Math.pow(1 - k, 3) // ease-out cubic
+        const pn = { x: from.x + (to.x - from.x) * e, y: from.y + (to.y - from.y) * e }
+        panRef.current = pn
+        if (worldRef.current) worldRef.current.style.transform = worldTransform(pn, viewRef.current)
+        pokeMap()
+        if (k < 1) requestAnimationFrame(step)
+        else setPanState(pn) // commit once at the end; the ref drove every frame
+      }
+      requestAnimationFrame(step)
+    },
+    [clampPan, pokeMap],
+  )
+
   // ── external focus request (e.g. Board's "log today" summons the Log window) ──
   useEffect(() => {
     if (!focusPane) return
     focus(focusPane.id)
+    // after the un-minimise below has a frame to land, so the box we measure is the real one
+    requestAnimationFrame(() => panToWindow(focusPane.id))
     setWins((prev) =>
       prev[focusPane.id]
         ? { ...prev, [focusPane.id]: { ...prev[focusPane.id], min: false } }
@@ -1141,8 +1187,13 @@ export function CircuitCanvas({
     if (w.min) {
       setWins((prev) => ({ ...prev, [id]: { ...prev[id], min: false } }))
       focus(id)
+      // a frame later: un-minimising changes the box, and panning to the old one lands wrong
+      requestAnimationFrame(() => panToWindow(id))
     } else if (id !== topId) {
       focus(id)
+      // raising the z-order does nothing you can SEE when the window is off in another part
+      // of the plane — which is what made clicking a tab feel like it had missed
+      panToWindow(id)
     } else {
       setWins((prev) => ({ ...prev, [id]: { ...prev[id], min: true } }))
     }
