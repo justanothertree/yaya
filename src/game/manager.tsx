@@ -84,6 +84,8 @@ const LS_APPLES_BUMP_KEY = 'snake.apples.v2'
  * available at draw time, so the far end of the slider means "as big as it can be" rather than
  * a number anyone has to get right.
  */
+/** idle sync when the game loop isn't ticking (lobby, paused, dead) */
+const HEARTBEAT_MS = 500
 const VIEW_MIN = 280
 const VIEW_MAX = 1600
 
@@ -1144,6 +1146,9 @@ export function GameManager({
         ) {
           try {
             netRef.current.send({ type: 'tick', n: state.ticks, score: nextScore })
+            // one body per tick, so other players' snakes advance a cell at a time exactly as
+            // yours does, instead of teleporting between timer beats
+            sendPreviewRef.current()
           } catch {
             /* noop */
           }
@@ -2305,6 +2310,13 @@ export function GameManager({
     spectate,
   ])
 
+  /**
+   * Always the freshest preview sender. The game loop calls this every tick, and the loop is a
+   * long-lived closure — reaching for `send` directly would capture whichever render created
+   * the loop and freeze the score and name inside it.
+   */
+  const sendPreviewRef = useRef<() => void>(() => {})
+
   // Send lightweight preview of our current state periodically while running in versus
   useEffect(() => {
     if (!(mode === 'versus' && conn === 'connected' && myId)) return
@@ -2334,9 +2346,18 @@ export function GameManager({
       } catch {
         /* noop */
       }
-      raf = window.setTimeout(send, 250) as unknown as number
+      raf = window.setTimeout(send, HEARTBEAT_MS) as unknown as number
     }
-    raf = window.setTimeout(send, 250) as unknown as number
+    /**
+     * The tick loop drives this now; the timer is only a HEARTBEAT for when no tick is running
+     * — the lobby, a pause, after you die — so scores, names and spectator state still flow.
+     *
+     * It used to be the only sender, on a 250ms timer against a ~110ms tick, so a ghost jumped
+     * two or three cells at a time and read as stuttering. Nothing was dropping the data; the
+     * send rate simply had nothing to do with the simulation rate.
+     */
+    sendPreviewRef.current = send
+    raf = window.setTimeout(send, HEARTBEAT_MS) as unknown as number
     return () => {
       if (raf) window.clearTimeout(raf)
     }
