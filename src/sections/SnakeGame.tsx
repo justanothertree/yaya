@@ -26,8 +26,8 @@ export function SnakeGame(props: {
       />
       <p className="muted" style={{ marginTop: '0.75rem' }}>
         Click or tap the canvas to capture controls. Use Arrow keys or WASD to move; Space to
-        pause/play; swipe on the canvas to control on touch devices. Adjust apples and edge behavior
-        in the toolbar.
+        pause/play; swipe on the canvas to control on touch devices. Apples, edges and the rest live
+        under Settings in the panel beside the board.
       </p>
     </section>
   )
