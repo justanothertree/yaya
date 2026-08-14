@@ -637,6 +637,21 @@
     width: min(150cqw, calc(100vw - 2rem));
     margin-inline: calc(50% - min(75cqw, calc(50vw - 1rem)));
   }
+  /**
+   * NO BREAKOUT INSIDE A CANVAS PANE.
+   *
+   * Breaking out spends the page's side gutters, and a pane has none — it is the whole surface.
+   * `100vw` is the window even in a pane, so the stage grew past the pane's edge and took the
+   * settings panel with it, off to the right.
+   *
+   * This rule could not have fired before today: the container query never saw 860px while the
+   * stage was shrink-wrapped, so fixing that turned the breakout on in places it had never
+   * applied. Inside a pane the stage simply fills it.
+   */
+  [data-czid] .snake-stage[data-versus] {
+    width: auto;
+    margin-inline: 0;
+  }
   .snake-stage[data-versus] .snake-stage-board {
     grid-column: 2;
   }
