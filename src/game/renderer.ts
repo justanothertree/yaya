@@ -24,7 +24,7 @@ export class GameRenderer {
     this.grid = grid
   }
 
-  resize(container: HTMLElement, canvasSize: 'small' | 'medium' | 'large') {
+  resize(container: HTMLElement, target: number) {
     const dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1))
     const wrapRect = container.getBoundingClientRect()
     /**
@@ -45,28 +45,37 @@ export class GameRenderer {
       if (ov === 'auto' || ov === 'scroll') break
       scroller = scroller.parentElement
     }
-    const availH =
-      scroller && scroller !== document.body
-        ? Math.max(
-            240,
-            Math.floor(
-              scroller.clientHeight - (wrapRect.top - scroller.getBoundingClientRect().top) - 24,
-            ),
-          )
-        : Math.max(240, Math.floor(window.innerHeight - wrapRect.top - 24))
+    const pane = scroller && scroller !== document.body ? scroller : null
+    const inPane = !!pane
+    const availH = pane
+      ? Math.max(
+          240,
+          Math.floor(pane.clientHeight - (wrapRect.top - pane.getBoundingClientRect().top) - 24),
+        )
+      : Math.max(240, Math.floor(window.innerHeight - wrapRect.top - 24))
     const availW = Math.floor(container.clientWidth)
     /**
-     * The size you PICKED wins. This used to be `min(availW, availH, cap)`, which meant the
-     * viewport height decided the board and the caps never got a say: availH is what's left
-     * below the nav, the heading and the toolbar, so on a laptop it lands near 340 and every
-     * size setting collapsed to roughly the same small square.
+     * `target` is the size the player asked for, in px, and it is honoured as far as the room
+     * allows. Only the WIDTH is a hard limit — going wider than the container overflows the
+     * layout, while going taller than the viewport just means the page scrolls, which is a
+     * perfectly ordinary thing for a page to do and is what "make it big" has to mean on a
+     * short window.
      *
-     * Fitting above the fold is only worth honouring for the smaller sizes. Large is a
-     * deliberate "I want a big board" — the page scrolls, so let it, and let width lead.
+     * `availH` is therefore only a floor-setter: it stops a board from being pointlessly
+     * cropped when the player has NOT asked for something large.
      */
-    const cap = canvasSize === 'large' ? 1100 : canvasSize === 'medium' ? 640 : 420
-    const heightLimit = canvasSize === 'large' ? Math.max(availH, 900) : availH
-    const square = Math.max(240, Math.min(availW, heightLimit, cap))
+    /**
+     * Width is the only hard limit on a normal page: wider than the container overflows the
+     * layout, but TALLER than the viewport simply means the page scrolls, which is what "make
+     * it bigger" has to be allowed to mean on a short window. Clamping to the space above the
+     * fold is what made the old presets indistinguishable — the fold decided, not the setting.
+     *
+     * Inside a pane it's different: the pane sizes itself to its content, so an unbounded board
+     * and fit-to-content chase each other. There, height still bounds the board.
+     */
+    const square = inPane
+      ? Math.max(240, Math.min(availW, availH, target))
+      : Math.max(240, Math.min(availW, target))
     this.cell = Math.max(8, Math.floor(square / this.grid))
     const logical = this.grid * this.cell
     this.canvas.style.width = logical + 'px'
@@ -75,6 +84,9 @@ export class GameRenderer {
     this.canvas.height = Math.floor(logical * dpr)
     this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
     this.colors = this.readTheme()
+    // the size actually achieved, which is what the slider reports — it can be smaller than
+    // asked for when the container is narrow, and saying so beats a number that quietly lies
+    return logical
   }
 
   /**

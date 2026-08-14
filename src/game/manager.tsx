@@ -19,7 +19,7 @@ import {
   getNextPlayerIdNumber,
   supabaseEnvStatus,
 } from './leaderboard'
-import type { CanvasSize, LeaderboardEntry, Mode, Point, Settings, TrophyCounts } from './types'
+import type { LeaderboardEntry, Mode, Point, Settings, TrophyCounts } from './types'
 import { ChallengeFriend } from './ChallengeFriend'
 import { SpectatorView } from './SpectatorView'
 import { drainFor, hungerLabel, stageFor, type HungerState } from './hunger'
@@ -72,6 +72,20 @@ const LS_PLAYER_NAME_KEY = 'snake.playerName'
 const LS_PLAYER_NAME_SOURCE_KEY = 'snake.playerName.source' // 'auto' | 'custom'
 // one-time marker for the 2 -> 4 apple default bump (see the settings initializer)
 const LS_APPLES_BUMP_KEY = 'snake.apples.v2'
+
+/**
+ * Board size on screen, in px, as a straight slider.
+ *
+ * This was three presets with hard-coded caps, and the caps were the wrong control: the right
+ * number depends on the screen, the zoom and how much of the page you want the board to take,
+ * none of which this code can see. Dragging until it looks right needs no guessing.
+ *
+ * The MAX is deliberately larger than most screens — it is clamped to the space actually
+ * available at draw time, so the far end of the slider means "as big as it can be" rather than
+ * a number anyone has to get right.
+ */
+const VIEW_MIN = 280
+const VIEW_MAX = 1600
 
 export function GameManager({
   autoFocus,
@@ -285,28 +299,36 @@ export function GameManager({
    * own, because the next seed would overwrite it. Display preferences belong to the person
    * looking at the screen, so this lives outside the settings entirely and persists locally.
    */
-  const [viewSize, setViewSize] = useState<CanvasSize>(() => {
+  const [viewSize, setViewSize] = useState<number>(() => {
     try {
-      const v = localStorage.getItem('snake.viewSize.v1')
-      return v === 'small' || v === 'medium' || v === 'large' ? v : 'medium'
+      const raw = localStorage.getItem('snake.viewPx.v1')
+      const n = Number(raw)
+      if (n >= VIEW_MIN && n <= VIEW_MAX) return n
+      // migrate the old three-preset value
+      const old = localStorage.getItem('snake.viewSize.v1')
+      if (old === 'small') return 420
+      if (old === 'large') return 900
     } catch {
-      return 'medium'
+      /* ignore */
     }
+    return 640
   })
   useEffect(() => {
     try {
-      localStorage.setItem('snake.viewSize.v1', viewSize)
+      localStorage.setItem('snake.viewPx.v1', String(viewSize))
     } catch {
       /* ignore */
     }
     // resize on change so the board follows the choice immediately
     const wrap = wrapRef.current
     if (wrap && rendererRef.current) {
-      rendererRef.current.resize(wrap, viewSize)
+      setBoardPx(rendererRef.current.resize(wrap, viewSize))
       const snap = engineRef.current?.snapshot()
       if (snap) rendererRef.current.draw(snap)
     }
   }, [viewSize])
+  /** what the board actually came out as, so the slider can show the truth when it's clamped */
+  const [boardPx, setBoardPx] = useState(0)
 
   const applesEatenRef = useRef(0)
   const trailRef = useRef<Set<string>>(new Set())
@@ -3697,23 +3719,18 @@ export function GameManager({
                         host-locked and not synced — everyone sets their own. */}
                     <div className="controls-row">
                       <div className="muted group-label">On screen</div>
-                      {(
-                        [
-                          ['Small', 'small'],
-                          ['Medium', 'medium'],
-                          ['Large', 'large'],
-                        ] as Array<[string, CanvasSize]>
-                      ).map(([label, v]) => (
-                        <button
-                          key={v}
-                          className="btn"
-                          data-active={viewSize === v || undefined}
-                          onClick={() => setViewSize(v)}
-                          title="How big the board is drawn on your screen — just for you"
-                        >
-                          {label}
-                        </button>
-                      ))}
+                      <input
+                        className="view-size-range"
+                        type="range"
+                        min={VIEW_MIN}
+                        max={VIEW_MAX}
+                        step={20}
+                        value={viewSize}
+                        onChange={(e) => setViewSize(Number(e.target.value))}
+                        aria-label="Board size on screen"
+                        title="How big the board is drawn on your screen — just for you"
+                      />
+                      <span className="muted view-size-value">{boardPx || viewSize}px</span>
                     </div>
                     <div className="controls-row">
                       <div className="muted group-label">Apples</div>
