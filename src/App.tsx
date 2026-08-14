@@ -9,6 +9,12 @@ import { MobileNav } from './components/MobileNav'
 import { AmbientBackdrop } from './components/AmbientBackdrop'
 import { installClickFx, setClickFxEnabled } from './ui/clickFx'
 import { WindowLauncher, type LaunchableWindow } from './components/WindowLauncher'
+import {
+  isRegistered,
+  toggleHidden,
+  useHiddenWindows,
+  useRegisteredWindows,
+} from './circuit/ui/canvasWindows'
 import { CallDock } from './voice/CallDock'
 import { useReveal } from './hooks/useReveal'
 import { useNotifications } from './hooks/useNotifications'
@@ -912,7 +918,14 @@ export default function App() {
    * Every window that can go on the canvas, for the launcher. Built from the same list and the
    * same node factory the tabs use, so a window can never appear here and fail to open.
    */
+  // windows owned by another surface (the Circuit's own panes) — see canvasWindows.ts
+  const registeredWindows = useRegisteredWindows()
+  const hiddenWindows = useHiddenWindows()
+
   const launchableWindows = (): LaunchableWindow[] => [
+    ...(active === 'circuit'
+      ? registeredWindows.map((w) => ({ id: w.id, title: w.title, group: 'This canvas' }))
+      : []),
     // Home's cards are windows in their own right — they were missing from the first pass, so
     // the one page that is ALREADY several windows was the one you couldn't compose from.
     ...homePanes().map((p) => ({
@@ -940,6 +953,11 @@ export default function App() {
 
   /** Toggle a window on the canvas from the launcher — the same pin the title bar toggles. */
   const toggleWindow = (id: string) => {
+    // A window another surface owns is shown or hidden there, not pinned here.
+    if (isRegistered(id)) {
+      toggleHidden(id)
+      return
+    }
     // The tab you're on owns its window; it isn't pinned, so "toggling" it would ADD a second
     // copy rather than close it. Restoring a saved layout walks every id, so this guard is what
     // stops a layout that omits the current tab from pinning it instead of leaving it alone.
@@ -1203,7 +1221,12 @@ export default function App() {
           (inGenericCanvas || active === 'home' || active === 'circuit') && (
             <WindowLauncher
               windows={launchableWindows()}
-              openIds={[...pinnedIds, ...(inGenericCanvas ? [active] : [])]}
+              openIds={[
+                ...pinnedIds,
+                ...(inGenericCanvas ? [active] : []),
+                // registered windows are "open" unless hidden — they exist by default
+                ...registeredWindows.filter((w) => !hiddenWindows.includes(w.id)).map((w) => w.id),
+              ]}
               onToggle={toggleWindow}
             />
           )}

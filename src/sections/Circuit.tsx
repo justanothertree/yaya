@@ -12,6 +12,7 @@ import { Movies } from '../circuit/ui/Movies'
 import { Watchlist } from '../circuit/ui/Watchlist'
 import { Toast } from '../circuit/ui/Toast'
 import { CircuitCanvas, type CanvasPane } from '../circuit/ui/CircuitCanvas'
+import { registerWindows, useHiddenWindows } from '../circuit/ui/canvasWindows'
 import { CircuitsPanel } from '../circuit/ui/CircuitsPanel'
 import { Chat } from '../circuit/ui/Chat'
 import { onLogIntent, requestLog, requestLogToday, takePendingLog } from '../circuit/logIntent'
@@ -279,6 +280,15 @@ export function Circuit({
         ]),
   ]
 
+  /**
+   * The Circuit's own windows, minus any the user hid from the launcher, and the names published
+   * so the launcher can list them at all. Hiding is separate from PINNING: pinning decides
+   * whether a window follows you to other tabs, hiding decides whether it exists here.
+   */
+  const hiddenIds = useHiddenWindows()
+  registerWindows(canvasPanes.map((p) => ({ id: p.id, title: p.title })))
+  const shownCanvasPanes = canvasPanes.filter((p) => !hiddenIds.includes(p.id))
+
   // App pins the pane OBJECTS (it has to — they must outlive this component when you
   // navigate away), which means they freeze whatever they were built with. Change the
   // circuit filter and a pinned Board would still be showing the circuit you pinned it
@@ -347,8 +357,8 @@ export function Circuit({
           <CircuitCanvas
             toolbar={groupPicker || undefined}
             panes={[
-              ...canvasPanes,
-              ...pinnedPanes.filter((p) => !canvasPanes.some((c) => c.id === p.id)),
+              ...shownCanvasPanes,
+              ...pinnedPanes.filter((p) => !shownCanvasPanes.some((c) => c.id === p.id)),
             ]}
             focusPane={focusPane}
             pinnedIds={pinnedIds}
