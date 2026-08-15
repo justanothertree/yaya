@@ -445,7 +445,15 @@ export function Chat({ authed = false }: { authed?: boolean }) {
 
             {/* Voice only makes sense with a real session — the DEV harness has no peers. */}
             {!previewMember && sb && me && (
-              <VoiceBar roomId={room.id} roomName={room.name} meId={me} myName={myName} />
+              <VoiceBar
+                roomId={room.id}
+                roomName={room.name}
+                meId={me}
+                myName={myName}
+                // presence is already loaded for the room list — it is the only count of who
+                // is in a call, since nothing server-side keeps a tally
+                occupancy={voiceIn[room.id]?.length ?? 0}
+              />
             )}
 
             <div className="cz-chat-log">

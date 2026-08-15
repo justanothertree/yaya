@@ -3225,3 +3225,8 @@ select {
     width: 40vw;
   }
 }
+
+.call-dock-crowded {
+  font-size: 0.8rem;
+  white-space: nowrap;
+}

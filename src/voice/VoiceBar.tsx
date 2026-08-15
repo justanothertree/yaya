@@ -23,11 +23,14 @@ export function VoiceBar({
   roomName,
   meId,
   myName,
+  occupancy,
 }: {
   roomId: string
   roomName: string
   meId: string
   myName: string
+  /** how many are already in this room's call, from voice presence */
+  occupancy?: number
 }) {
   const v = useVoiceSession()
   const [showAudio, setShowAudio] = useState(false)
@@ -39,7 +42,7 @@ export function VoiceBar({
       <div className="voice-bar">
         <button
           className="btn"
-          onClick={() => void v.join(roomId, roomName, meId, myName)}
+          onClick={() => void v.join(roomId, roomName, meId, myName, occupancy)}
           title={
             v.inCall
               ? `Leave ${v.roomName} and join this call instead`

@@ -67,6 +67,8 @@ export type VoiceState = {
   shareMode: ShareMode
   /** why a share attempt was refused, e.g. too many viewers for a mesh. Cleared on success. */
   shareError: string | null
+  /** the call is big enough that a mesh may start to struggle — see CALL_SOFT_LIMIT */
+  crowded: boolean
 }
 
 const THRESH_KEY = 'voice.threshold.v1'
@@ -123,6 +125,22 @@ const SHARE_MODES = {
 }
 export type ShareMode = keyof typeof SHARE_MODES
 
+/**
+ * How many people a mesh call can hold.
+ *
+ * Same shape of limit as MAX_SHARE_VIEWERS and the same cause: everyone sends their voice to
+ * everyone, so an N-person call is N-1 uploads and N-1 decodes PER PERSON. Voice is cheap
+ * (~40kbps) so this ceiling is far higher than the screen-share one — but it is a ceiling, and
+ * past it calls get choppy for everybody rather than failing cleanly for one person.
+ *
+ * THESE NUMBERS ARE ESTIMATES, NOT MEASUREMENTS. Nobody has stress-tested a big call on this
+ * platform yet. SOFT is where the UI starts telling the truth about what's happening; HARD is
+ * where it stops letting more people in. Lower them once real calls show where it actually
+ * falls over — that is the whole reason the warning exists.
+ */
+const CALL_SOFT_LIMIT = 6
+const CALL_HARD_LIMIT = 12
+
 const ICE: RTCConfiguration = {
   iceServers: [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] }],
 }
@@ -147,6 +165,7 @@ const IDLE: VoiceState = {
   sharing: false,
   shareMode: 'motion',
   shareError: null,
+  crowded: false,
 }
 
 let state: VoiceState = IDLE
@@ -196,6 +215,10 @@ const isPolite = (peerId: string) => (meId ?? '') < peerId
 /** Replace the snapshot so useSyncExternalStore sees a new reference only on real change. */
 function set(patch: Partial<VoiceState>) {
   state = { ...state, ...patch }
+  // derived here rather than at every call site, so it cannot be forgotten in one of them.
+  // +1 for us: `peers` is everyone ELSE.
+  const size = state.inCall ? state.peers.length + 1 : 0
+  state.crowded = size > CALL_SOFT_LIMIT
   listeners.forEach((l) => l())
 }
 
@@ -503,7 +526,17 @@ export const voiceSession = {
     return () => listeners.delete(fn)
   },
 
-  async join(roomId: string, roomName: string, userId: string, displayName: string) {
+  /** the caller's presence count for the room, so a full call can be refused before it starts */
+  callLimits: { soft: CALL_SOFT_LIMIT, hard: CALL_HARD_LIMIT },
+
+  async join(
+    roomId: string,
+    roomName: string,
+    userId: string,
+    displayName: string,
+    /** how many are already in that call, from voice presence. Unknown means don't guess. */
+    occupancy?: number,
+  ) {
     // Already here — nothing to do.
     if (state.inCall && state.roomId === roomId) return
     // Calling a different room switches to it. It used to refuse until you'd left the old
@@ -514,6 +547,18 @@ export const voiceSession = {
     // Silent: the join chime that follows is the sound of the switch.
     if (state.inCall) voiceSession.leave(true)
     set({ error: null })
+    /**
+     * Refused BEFORE the microphone is opened, so a full call never costs a permission prompt.
+     * Presence is the only count available — there is no server keeping a tally — so two people
+     * joining in the same instant can still slip past. That is a fair trade for a soft cap:
+     * the failure is one extra person in a crowded call, not a broken one.
+     */
+    if (typeof occupancy === 'number' && occupancy >= CALL_HARD_LIMIT) {
+      set({
+        error: `This call is full (${occupancy}). Calls are peer-to-peer, so everyone sends their voice to everyone — past about ${CALL_HARD_LIMIT} that stops working well for the people already in it.`,
+      })
+      return
+    }
     if (!navigator.mediaDevices?.getUserMedia || typeof RTCPeerConnection === 'undefined') {
       set({ error: 'This browser can’t do voice calls. Try Chrome, Edge, Safari or Firefox.' })
       return

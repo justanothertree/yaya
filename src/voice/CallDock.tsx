@@ -75,6 +75,7 @@ export function CallDock() {
     sharing,
     shareError,
     shareMode,
+    crowded,
     startShare,
     stopShare,
     setShareMode,
@@ -154,6 +155,17 @@ export function CallDock() {
           aria-label="Call volume"
         />
       </label>
+      {/* Says the size and why it matters, rather than just going choppy and leaving people
+          to guess. This is also the instrument for finding the real ceiling: when a call of
+          this size genuinely struggles, CALL_SOFT_LIMIT is the number to bring down. */}
+      {crowded && (
+        <span
+          className="muted call-dock-crowded"
+          title={`Everyone sends their voice to everyone, so each person is handling ${peers.length} streams. Big calls can get choppy.`}
+        >
+          ⚠ {peers.length + 1} in call
+        </span>
+      )}
       {/* Beside mute, because sharing your screen is the same KIND of decision: what of mine
           is going out to the room. */}
       {/* Only while sharing: a mode switch with nothing to switch is just clutter. One button
