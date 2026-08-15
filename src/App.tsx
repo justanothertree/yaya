@@ -10,6 +10,7 @@ import { AmbientBackdrop } from './components/AmbientBackdrop'
 import { installClickFx, setClickFxEnabled } from './ui/clickFx'
 import { WindowLauncher, type LaunchableWindow } from './components/WindowLauncher'
 import { ShareStage } from './voice/ShareStage'
+import { voiceSession } from './voice/voiceSession'
 import {
   isRegistered,
   toggleHidden,
@@ -220,6 +221,9 @@ export default function App() {
     () => typeof window === 'undefined' || localStorage.getItem('click_fx_v1') !== '0',
   )
   useEffect(() => installClickFx(), [])
+  // Wake the call relay early: it sleeps when idle, and the first call of the day should not
+  // be the one that pays for the cold start. One request, on load, then never again.
+  useEffect(() => voiceSession.pingRelay(), [])
   useEffect(() => {
     setClickFxEnabled(sparksOn)
     try {

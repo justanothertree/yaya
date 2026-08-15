@@ -155,6 +155,7 @@ const ICE: RTCConfiguration = {
   iceServers: [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] }],
 }
 
+let pinged = false
 /** resolved once per session and reused; refreshed on the next join after it expires */
 let iceConfig: RTCConfiguration = ICE
 let iceFetchedAt = 0
@@ -922,6 +923,28 @@ export const voiceSession = {
    */
   warmIce() {
     void loadIce()
+  },
+
+  /**
+   * Poke the relay awake without asking it for anything.
+   *
+   * Called on page load, by everyone, whether or not they will ever make a call. The relay
+   * sleeps after a quiet spell and takes most of a minute to boot, and that boot has to happen
+   * SOMETIME — far better during someone idly loading the home page than in the middle of the
+   * handshake that needs it.
+   *
+   * Deliberately not `/ice`: waking it is the whole job, and minting credentials for a visitor
+   * who never calls is work nobody asked for. `no-cors` because we don't read the reply — the
+   * request arriving is the entire point — and it keeps a CORS error out of the console.
+   */
+  pingRelay() {
+    // once per page load: StrictMode mounts effects twice in dev, and a remount shouldn't
+    // re-poke a server that is already awake
+    if (pinged) return
+    pinged = true
+    const base = relayHttpBase()
+    if (!base) return
+    void fetch(base + '/', { mode: 'no-cors', cache: 'no-store' }).catch(() => {})
   },
 
   /** Whether we actually hold a relay. Distinguishes "no TURN" from "TURN didn't help". */
