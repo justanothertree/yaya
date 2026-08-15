@@ -169,30 +169,52 @@ function relayHttpBase(): string | null {
   }
 }
 
+/** true once the servers we hold actually include a relay, not just STUN */
+let haveTurn = false
+let icePending: Promise<RTCConfiguration> | null = null
+
 /**
- * Ask the relay for ICE servers. Deliberately best-effort and time-boxed: a slow or missing
- * relay must delay joining a call by a moment at most, never block it.
+ * Ask the relay for ICE servers.
+ *
+ * THE TIMEOUT IS THE WHOLE PROBLEM HERE. The relay sleeps on a free tier and takes 30-50s to
+ * wake, and nothing else in a voice call wakes it — so a short deadline meant the very first
+ * call after an idle period silently fell back to STUN and failed for exactly the people TURN
+ * exists to help. It has to outlast a cold start, so it does.
+ *
+ * Still best-effort: if it genuinely cannot be reached we keep STUN and carry on, because most
+ * connections never needed a relay.
  */
 async function loadIce(): Promise<RTCConfiguration> {
   // half an hour, comfortably inside the relay's TTL
-  if (Date.now() - iceFetchedAt < 30 * 60_000) return iceConfig
+  if (haveTurn && Date.now() - iceFetchedAt < 30 * 60_000) return iceConfig
+  // one flight at a time: warming and joining must not each start their own cold start
+  if (icePending) return icePending
   const base = relayHttpBase()
   if (!base) return ICE
-  try {
-    const ctl = new AbortController()
-    const t = setTimeout(() => ctl.abort(), 4000)
-    const r = await fetch(`${base}/ice`, { signal: ctl.signal })
-    clearTimeout(t)
-    if (!r.ok) throw new Error(String(r.status))
-    const data = (await r.json()) as { iceServers?: RTCIceServer[] }
-    if (Array.isArray(data.iceServers) && data.iceServers.length) {
-      iceConfig = { iceServers: data.iceServers }
-      iceFetchedAt = Date.now()
+  icePending = (async () => {
+    try {
+      const ctl = new AbortController()
+      // long enough for a cold Render dyno to boot and answer
+      const t = setTimeout(() => ctl.abort(), 60_000)
+      const r = await fetch(`${base}/ice`, { signal: ctl.signal })
+      clearTimeout(t)
+      if (!r.ok) throw new Error(String(r.status))
+      const data = (await r.json()) as { iceServers?: RTCIceServer[] }
+      if (Array.isArray(data.iceServers) && data.iceServers.length) {
+        iceConfig = { iceServers: data.iceServers }
+        iceFetchedAt = Date.now()
+        haveTurn = data.iceServers.some((s) =>
+          [s.urls].flat().some((u) => String(u).startsWith('turn')),
+        )
+      }
+    } catch {
+      /* keep whatever we had — STUN-only still connects for most people */
+    } finally {
+      icePending = null
     }
-  } catch {
-    /* keep whatever we had — STUN-only still connects for most people */
-  }
-  return iceConfig
+    return iceConfig
+  })()
+  return icePending
 }
 
 type Signal =
@@ -557,9 +579,15 @@ function makePc(peerId: string, peerName: string) {
         upsertPeer(peerId, { status: 'reconnecting' })
         break
       case 'failed':
-        // Usually a network that can't do peer-to-peer and has no relay to fall back on.
-        // Keep the row so the UI can say WHY nobody can be heard.
+        // Usually a network that can't do peer-to-peer. WHICH failure it is matters: with no
+        // relay it is expected, with one it means the relay was reached and still didn't help.
         upsertPeer(peerId, { status: 'failed', stream: null })
+        if (!haveTurn) {
+          set({
+            error:
+              'Couldn’t connect directly, and the call relay wasn’t reachable. Wait a few seconds and try again — the relay may have been asleep.',
+          })
+        }
         break
       case 'closed':
         dropPeer(peerId)
@@ -885,6 +913,19 @@ export const voiceSession = {
     share = null
     set({ sharing: false })
   },
+
+  /**
+   * Start fetching ICE before anyone presses Call.
+   *
+   * Called when the call UI appears, so the relay's cold start overlaps with the user reading
+   * the page instead of with the handshake that needs the result.
+   */
+  warmIce() {
+    void loadIce()
+  },
+
+  /** Whether we actually hold a relay. Distinguishes "no TURN" from "TURN didn't help". */
+  hasTurn: () => haveTurn,
 
   /** Our own screen, for the local preview. Not in the snapshot — it never changes identity. */
   getLocalShare: () => share,

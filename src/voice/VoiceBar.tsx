@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useVoiceSession } from './useVoiceSession'
 import { callWord, callHelp, peerWord, speakingNames } from './callWords'
 import { MicMeter } from './MicMeter'
@@ -34,6 +34,19 @@ export function VoiceBar({
 }) {
   const v = useVoiceSession()
   const [showAudio, setShowAudio] = useState(false)
+  /**
+   * Wake the relay as soon as a call button is on screen, not when it's pressed.
+   *
+   * The relay sleeps when idle and takes the better part of a minute to wake. Doing this at
+   * mount means that cold start runs while you're reading the conversation, so the credentials
+   * are already in hand by the time anyone joins — instead of the first call of the day being
+   * the one that has to wait for it, or give up on it.
+   */
+  useEffect(() => {
+    v.warmIce()
+    // once per mount; the session caches the result
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
   const [sounds, setSounds] = useState(soundsEnabled)
   const mine = v.inCall && v.roomId === roomId
 
