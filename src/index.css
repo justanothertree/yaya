@@ -3165,3 +3165,63 @@ select {
   border-left: 0;
   padding-inline: 0.4rem;
 }
+
+/* Screen share stage. Fixed and centred above the page, below the nav's z-layer so the site's
+   own chrome stays reachable while you watch. */
+.sharestage {
+  position: fixed;
+  left: 50%;
+  top: calc(var(--nav-h, 54px) + 0.5rem);
+  transform: translateX(-50%);
+  z-index: 220;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  justify-content: center;
+  max-width: min(96vw, 1400px);
+  pointer-events: none; /* the page keeps working around it */
+}
+.sharestage-item,
+.sharestage-mine {
+  pointer-events: auto; /* ...but the video and its controls are still usable */
+}
+.sharestage-item {
+  margin: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md, 12px);
+  background: #000;
+  overflow: hidden;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+}
+.sharestage-item video {
+  display: block;
+  width: min(70vw, 900px);
+  max-height: 60vh;
+  /* contain, never cover: cropping someone's game to fill a box hides the part they're
+     talking about */
+  object-fit: contain;
+  background: #000;
+}
+.sharestage-item figcaption {
+  padding: 0.3rem 0.6rem;
+  font-size: 0.82rem;
+}
+/* your own preview is a check that you're sharing the right thing, not something to watch */
+.sharestage-mine {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.4rem;
+}
+.sharestage-mine .sharestage-item video {
+  width: min(28vw, 320px);
+  max-height: 30vh;
+}
+@media (max-width: 700px) {
+  .sharestage-item video {
+    width: 92vw;
+  }
+  .sharestage-mine .sharestage-item video {
+    width: 40vw;
+  }
+}

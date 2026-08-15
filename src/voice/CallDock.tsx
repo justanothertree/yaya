@@ -72,6 +72,10 @@ export function CallDock() {
     peerVolume,
     setMaster,
     usesWebAudio,
+    sharing,
+    shareError,
+    startShare,
+    stopShare,
   } = useVoiceSession()
   const [volume, setVolume] = useState(readVol)
 
@@ -148,6 +152,18 @@ export function CallDock() {
           aria-label="Call volume"
         />
       </label>
+      {/* Beside mute, because sharing your screen is the same KIND of decision: what of mine
+          is going out to the room. */}
+      <button
+        className={'btn' + (sharing ? ' is-on' : '')}
+        onClick={() => (sharing ? stopShare() : void startShare())}
+        aria-pressed={sharing}
+        title={
+          shareError ?? (sharing ? 'Stop sharing your screen' : 'Share your screen with the call')
+        }
+      >
+        {sharing ? '🖥️' : '🖵'}
+      </button>
       <button
         className={'btn' + (muted ? ' is-muted' : '')}
         onClick={toggleMute}

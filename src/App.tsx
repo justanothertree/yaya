@@ -9,6 +9,7 @@ import { MobileNav } from './components/MobileNav'
 import { AmbientBackdrop } from './components/AmbientBackdrop'
 import { installClickFx, setClickFxEnabled } from './ui/clickFx'
 import { WindowLauncher, type LaunchableWindow } from './components/WindowLauncher'
+import { ShareStage } from './voice/ShareStage'
 import {
   isRegistered,
   toggleHidden,
@@ -993,6 +994,7 @@ export default function App() {
       {/* A call outlives the screen it started on, so its controls and its audio live at app
           level — otherwise you'd navigate away and be stuck in a call you can't hear or end. */}
       <CallDock />
+      <ShareStage />
       <a href="#content" className="skip-link">
         Skip to content
       </a>

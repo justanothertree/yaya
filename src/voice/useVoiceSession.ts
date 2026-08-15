@@ -24,5 +24,8 @@ export function useVoiceSession() {
     getMicLevel: voiceSession.getMicLevel,
     isOpen: voiceSession.isOpen,
     usesWebAudio: voiceSession.usesWebAudio,
+    startShare: voiceSession.startShare,
+    stopShare: voiceSession.stopShare,
+    getLocalShare: voiceSession.getLocalShare,
   }
 }

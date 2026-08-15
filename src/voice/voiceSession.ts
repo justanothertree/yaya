@@ -32,6 +32,8 @@ export type VoicePeer = {
   status: 'connecting' | 'connected' | 'reconnecting' | 'failed'
   /** currently making noise — drives the Discord-style "who's talking" highlight */
   speaking: boolean
+  /** their screen, when they're sharing one. Separate from `stream`, which is voice. */
+  share: MediaStream | null
 }
 
 /**
@@ -59,6 +61,10 @@ export type VoiceState = {
   threshold: number
   /** per-person listening level, 0–1, keyed by peer id. Missing means 1. */
   peerVolume: Record<string, number>
+  /** true while WE are sharing a screen */
+  sharing: boolean
+  /** why a share attempt was refused, e.g. too many viewers for a mesh. Cleared on success. */
+  shareError: string | null
 }
 
 const THRESH_KEY = 'voice.threshold.v1'
@@ -71,6 +77,20 @@ function readThreshold(): number {
     return 0
   }
 }
+
+/**
+ * How many people can watch a screen share.
+ *
+ * THIS IS THE MESH, NOT A POLICY. Every viewer gets their own encoded copy from the sharer's
+ * uplink, so N viewers costs N x the bitrate UP: ~2 Mbps each, against a typical home upload of
+ * 10-20 Mbps. Three is the honest ceiling. Going beyond it needs an SFU, where the sharer
+ * uploads once and a server fans it out — a different transport, and a bill.
+ *
+ * Refusing with a clear reason beats accepting and delivering a slideshow to everyone.
+ */
+const MAX_SHARE_VIEWERS = 3
+/** Cap per viewer. Left uncapped, the encoder will happily try to use everything you have. */
+const SHARE_MAX_BITRATE = 2_500_000
 
 const ICE: RTCConfiguration = {
   iceServers: [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] }],
@@ -93,6 +113,8 @@ const IDLE: VoiceState = {
   error: null,
   threshold: readThreshold(),
   peerVolume: {},
+  sharing: false,
+  shareError: null,
 }
 
 let state: VoiceState = IDLE
@@ -119,6 +141,25 @@ let meId: string | null = null
 let myName = 'You'
 const pcs = new Map<string, RTCPeerConnection>()
 const names = new Map<string, string>()
+/** our screen capture while sharing, kept so it can be stopped and re-added to new peers */
+let share: MediaStream | null = null
+/**
+ * Perfect-negotiation bookkeeping, one entry per peer.
+ *
+ * The original design had no glare: whoever was already in the room offered to the newcomer,
+ * once, and nobody ever renegotiated. Screen sharing breaks that — adding a track mid-call
+ * means a second round of offers, and two people starting one at the same moment collide.
+ * Politeness is decided by comparing ids so both sides always reach the same verdict without
+ * having to agree on anything at runtime.
+ */
+const nego = new Map<string, { making: boolean; ignore: boolean }>()
+const negoFor = (id: string) => {
+  let n = nego.get(id)
+  if (!n) nego.set(id, (n = { making: false, ignore: false }))
+  return n
+}
+/** deterministic and opposite on the two ends, which is all perfect negotiation requires */
+const isPolite = (peerId: string) => (meId ?? '') < peerId
 
 /** Replace the snapshot so useSyncExternalStore sees a new reference only on real change. */
 function set(patch: Partial<VoiceState>) {
@@ -293,10 +334,48 @@ function upsertPeer(id: string, patch: Partial<VoicePeer>) {
             id,
             name: names.get(id) ?? 'Someone',
             stream: null,
+            share: null,
             status: 'connecting',
             ...patch,
           } as VoicePeer,
         ],
+  })
+}
+
+/**
+ * Attach our screen to one peer, capped.
+ *
+ * The bitrate cap is not politeness — an uncapped screen encoder will use whatever the link
+ * appears to offer, and in a mesh that estimate is made per-connection with no idea that two
+ * other copies are going out of the same uplink. Three unaware encoders will happily agree to
+ * oversubscribe the link and then all stutter together.
+ *
+ * `contentHint = 'motion'` tells the encoder this is a game, not a spreadsheet: keep the frame
+ * rate and let sharpness go, which is the right trade for watching someone play.
+ */
+function addShareTo(pc: RTCPeerConnection) {
+  if (!share) return
+  for (const track of share.getTracks()) {
+    if (track.kind === 'video') track.contentHint = 'motion'
+    const sender = pc.addTrack(track, share)
+    if (track.kind !== 'video') continue
+    try {
+      const params = sender.getParameters()
+      if (!params.encodings || !params.encodings.length) params.encodings = [{}]
+      params.encodings[0].maxBitrate = SHARE_MAX_BITRATE
+      void sender.setParameters(params)
+    } catch {
+      /* older browsers ignore encoding parameters; the share still works, just uncapped */
+    }
+  }
+}
+
+/** Take our screen back off every connection. Renegotiation fires from onnegotiationneeded. */
+function removeShareFromAll() {
+  pcs.forEach((pc) => {
+    pc.getSenders().forEach((sender) => {
+      if (sender.track && share?.getTracks().includes(sender.track)) pc.removeTrack(sender)
+    })
   })
 }
 
@@ -307,6 +386,8 @@ function makePc(peerId: string, peerName: string) {
   pcs.set(peerId, pc)
   names.set(peerId, peerName)
   local?.getTracks().forEach((t) => pc.addTrack(t, local!))
+  // Someone joining mid-share should see it, not wait for the next one.
+  if (share) addShareTo(pc)
   // On screen from the first handshake, not from the first audio packet. Otherwise a peer
   // that never connects is invisible and the room just looks empty.
   upsertPeer(peerId, { name: peerName, status: 'connecting' })
@@ -316,9 +397,44 @@ function makePc(peerId: string, peerName: string) {
       send({ kind: 'ice', from: meId, to: peerId, candidate: e.candidate.toJSON() })
     }
   }
+  /**
+   * Renegotiate whenever the set of tracks changes — starting or stopping a share.
+   *
+   * `making` guards the window where our own offer is in flight, so an offer arriving in the
+   * middle is recognised as a collision rather than treated as a fresh conversation.
+   */
+  pc.onnegotiationneeded = () => {
+    void (async () => {
+      const n = negoFor(peerId)
+      try {
+        n.making = true
+        await pc.setLocalDescription()
+        if (meId && pc.localDescription) {
+          send({ kind: 'offer', from: meId, to: peerId, sdp: pc.localDescription })
+        }
+      } catch {
+        /* the connection went away mid-offer; the state change handler deals with it */
+      } finally {
+        n.making = false
+      }
+    })()
+  }
   pc.ontrack = (e) => {
     const stream = e.streams[0]
     if (!stream) return
+    /**
+     * Video is a screen share; audio is a voice. They are routed completely differently —
+     * voice goes through the per-person gain graph, a share goes to a <video> element — so
+     * sending a share into attachOutput would try to play a picture through the mixer.
+     */
+    if (e.track.kind === 'video') {
+      upsertPeer(peerId, { share: stream, name: names.get(peerId) ?? 'Someone' })
+      // "They stopped sharing" arrives as the track ending, not as a message we have to send.
+      e.track.onended = () => upsertPeer(peerId, { share: null })
+      e.track.onmute = () => upsertPeer(peerId, { share: null })
+      stream.onremovetrack = () => upsertPeer(peerId, { share: null })
+      return
+    }
     upsertPeer(peerId, { stream, name: names.get(peerId) ?? 'Someone' })
     attachOutput(peerId, stream)
   }
@@ -434,10 +550,30 @@ export const voiceSession = {
           case 'offer': {
             if (m.to !== meId) return
             const pc = makePc(m.from, names.get(m.from) ?? 'Someone')
-            await pc.setRemoteDescription(new RTCSessionDescription(m.sdp))
-            const answer = await pc.createAnswer()
-            await pc.setLocalDescription(answer)
-            send({ kind: 'answer', from: meId!, to: m.from, sdp: answer })
+            const n = negoFor(m.from)
+            /**
+             * Collision: an offer arrived while ours was in flight. Both sides cannot win, and
+             * both must reach the SAME verdict without talking about it — so the polite peer
+             * (lower id) drops its own offer and accepts theirs, and the impolite one ignores
+             * theirs and lets its own stand. Without this, two people sharing at once leave
+             * both connections stuck in have-local-offer and the call goes silent.
+             */
+            const collision = n.making || pc.signalingState !== 'stable'
+            n.ignore = collision && !isPolite(m.from)
+            if (n.ignore) break
+            if (collision) {
+              // rolls our half-finished offer back so their offer applies cleanly
+              await Promise.all([
+                pc.setLocalDescription({ type: 'rollback' } as RTCLocalSessionDescriptionInit),
+                pc.setRemoteDescription(new RTCSessionDescription(m.sdp)),
+              ])
+            } else {
+              await pc.setRemoteDescription(new RTCSessionDescription(m.sdp))
+            }
+            await pc.setLocalDescription()
+            if (pc.localDescription) {
+              send({ kind: 'answer', from: meId!, to: m.from, sdp: pc.localDescription })
+            }
             break
           }
           case 'answer': {
@@ -447,10 +583,15 @@ export const voiceSession = {
           }
           case 'ice': {
             if (m.to !== meId) return
-            await pcs
-              .get(m.from)
-              ?.addIceCandidate(new RTCIceCandidate(m.candidate))
-              .catch(() => {})
+            try {
+              await pcs.get(m.from)?.addIceCandidate(new RTCIceCandidate(m.candidate))
+            } catch {
+              // Candidates for an offer we deliberately ignored will fail to apply, and that
+              // is expected rather than an error worth surfacing.
+              if (!negoFor(m.from).ignore) {
+                /* a real failure, but nothing useful to do about one candidate */
+              }
+            }
             break
           }
           case 'bye':
@@ -505,6 +646,9 @@ export const voiceSession = {
     pcs.forEach((pc) => pc.close())
     pcs.clear()
     names.clear()
+    nego.clear()
+    share?.getTracks().forEach((t) => t.stop())
+    share = null
     teardownGate()
     outs.forEach((_, id) => detachOutput(id))
     outs.clear()
@@ -521,6 +665,65 @@ export const voiceSession = {
     state = { ...IDLE, threshold: state.threshold }
     listeners.forEach((l) => l())
   },
+
+  /**
+   * Share your screen with the call.
+   *
+   * THE SEAM: callers ask for "share my screen" and read `peer.share`. That the transport
+   * underneath is a mesh — and that a mesh is what forces MAX_SHARE_VIEWERS — lives entirely
+   * in here. Moving to an SFU later replaces this function's insides and nothing else.
+   */
+  async startShare() {
+    if (!state.inCall) return
+    set({ shareError: null })
+    if (!navigator.mediaDevices?.getDisplayMedia) {
+      set({ shareError: 'This browser can’t share a screen. Try Chrome, Edge or Firefox.' })
+      return
+    }
+    // Refuse BEFORE the picker: making someone choose a window and then telling them no is
+    // a worse experience than telling them up front.
+    const viewers = state.peers.length
+    if (viewers > MAX_SHARE_VIEWERS) {
+      set({
+        shareError: `Too many people to share to (${viewers}). Screen sharing works for up to ${MAX_SHARE_VIEWERS} others — everyone gets their own copy from your connection.`,
+      })
+      return
+    }
+    let media: MediaStream
+    try {
+      media = await navigator.mediaDevices.getDisplayMedia({
+        video: { frameRate: { ideal: 30, max: 30 } },
+        // The game's sound, not just the picture. This is also the only legitimate way to get
+        // an analyser onto audio the page doesn't own — see the visualiser plans.
+        audio: true,
+      })
+    } catch (e) {
+      // Cancelling the picker is not an error worth shouting about.
+      if ((e as DOMException)?.name !== 'NotAllowedError') {
+        set({ shareError: 'Couldn’t start the screen share.' })
+      }
+      return
+    }
+    share = media
+    // Chrome's own "Stop sharing" bar ends the track without telling us — treat that as a stop
+    // so the UI can't sit there claiming you're still sharing.
+    media.getVideoTracks().forEach((t) => {
+      t.onended = () => voiceSession.stopShare()
+    })
+    pcs.forEach((pc) => addShareTo(pc))
+    set({ sharing: true })
+  },
+
+  stopShare() {
+    if (!share) return
+    removeShareFromAll()
+    share.getTracks().forEach((t) => t.stop())
+    share = null
+    set({ sharing: false })
+  },
+
+  /** Our own screen, for the local preview. Not in the snapshot — it never changes identity. */
+  getLocalShare: () => share,
 
   toggleMute() {
     const next = !state.muted
