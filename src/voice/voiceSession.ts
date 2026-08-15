@@ -692,9 +692,28 @@ export const voiceSession = {
     let media: MediaStream
     try {
       media = await navigator.mediaDevices.getDisplayMedia({
-        video: { frameRate: { ideal: 30, max: 30 } },
-        // The game's sound, not just the picture. This is also the only legitimate way to get
-        // an analyser onto audio the page doesn't own — see the visualiser plans.
+        video: {
+          frameRate: { ideal: 30, max: 30 },
+          /**
+           * Capped, because the capture defaults to the SOURCE resolution — a 1440p or 4K
+           * monitor would be encoded at full size. That matters more here than in most apps:
+           * in a mesh each viewer has their own encoder, so three viewers means encoding the
+           * screen three times over, on the same machine that is running the game. Capping
+           * the frame the encoders are handed is the cheapest way to protect the sharer's
+           * frame rate.
+           */
+          width: { max: 1920 },
+          height: { max: 1080 },
+        },
+        /**
+         * The game's sound, not just the picture — and the only legitimate route to an
+         * analyser on audio the page doesn't own (see the visualiser plans).
+         *
+         * Asking is not getting: the browser decides what audio a source can carry. On Windows
+         * Chrome, "Entire screen" offers a Share system audio tick-box and a single WINDOW
+         * offers no audio at all. So sharing a game window silently means no game sound, and
+         * the fix is to share the screen instead — which is also what most people mean.
+         */
         audio: true,
       })
     } catch (e) {
