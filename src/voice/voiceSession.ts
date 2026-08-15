@@ -141,8 +141,58 @@ export type ShareMode = keyof typeof SHARE_MODES
 const CALL_SOFT_LIMIT = 6
 const CALL_HARD_LIMIT = 12
 
+/**
+ * STUN alone only tells you your own public address — it cannot help two networks that both
+ * refuse direct connections, which is what produces "Some networks block direct calls". A TURN
+ * relay forwards the media instead, and is the only fix for that case.
+ *
+ * Credentials are short-lived and minted by the relay (`/ice`), because the API token behind
+ * them must never reach a browser. Everything here degrades: no relay, a relay that is down, or
+ * a relay with no Cloudflare configured all fall back to this STUN list, which is exactly how
+ * calls behaved before TURN existed.
+ */
 const ICE: RTCConfiguration = {
   iceServers: [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] }],
+}
+
+/** resolved once per session and reused; refreshed on the next join after it expires */
+let iceConfig: RTCConfiguration = ICE
+let iceFetchedAt = 0
+
+function relayHttpBase(): string | null {
+  try {
+    const raw = (import.meta as unknown as { env?: Record<string, string> }).env?.VITE_WS_URL
+    const ws = raw || `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}`
+    return ws.replace(/^ws:/, 'http:').replace(/^wss:/, 'https:').replace(/\/$/, '')
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Ask the relay for ICE servers. Deliberately best-effort and time-boxed: a slow or missing
+ * relay must delay joining a call by a moment at most, never block it.
+ */
+async function loadIce(): Promise<RTCConfiguration> {
+  // half an hour, comfortably inside the relay's TTL
+  if (Date.now() - iceFetchedAt < 30 * 60_000) return iceConfig
+  const base = relayHttpBase()
+  if (!base) return ICE
+  try {
+    const ctl = new AbortController()
+    const t = setTimeout(() => ctl.abort(), 4000)
+    const r = await fetch(`${base}/ice`, { signal: ctl.signal })
+    clearTimeout(t)
+    if (!r.ok) throw new Error(String(r.status))
+    const data = (await r.json()) as { iceServers?: RTCIceServer[] }
+    if (Array.isArray(data.iceServers) && data.iceServers.length) {
+      iceConfig = { iceServers: data.iceServers }
+      iceFetchedAt = Date.now()
+    }
+  } catch {
+    /* keep whatever we had — STUN-only still connects for most people */
+  }
+  return iceConfig
 }
 
 type Signal =
@@ -437,7 +487,7 @@ function removeShareFromAll() {
 function makePc(peerId: string, peerName: string) {
   const existing = pcs.get(peerId)
   if (existing) return existing
-  const pc = new RTCPeerConnection(ICE)
+  const pc = new RTCPeerConnection(iceConfig)
   pcs.set(peerId, pc)
   names.set(peerId, peerName)
   local?.getTracks().forEach((t) => pc.addTrack(t, local!))
@@ -595,6 +645,10 @@ export const voiceSession = {
     rawMic = mic
     // peers receive the gated stream, never the raw mic
     local = buildGate(mic)
+    // Before signalling starts, so the very first handshake already has the relay available.
+    // Awaited rather than fired off, because a peer connection built with the STUN-only config
+    // keeps it for its whole life — ICE servers cannot be swapped in later.
+    await loadIce()
     meId = userId
     myName = displayName
 

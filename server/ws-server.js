@@ -480,7 +480,80 @@ setInterval(() => {
   void sweepStuckRounds()
 }, STUCK_SWEEP_MS).unref?.()
 
+/**
+ * Short-lived TURN credentials, minted here because the API token cannot go in the browser.
+ *
+ * WHY TURN AT ALL: without a relay, two people whose networks both refuse direct connections
+ * simply never connect — the call reports "Some networks block direct calls", which is honest
+ * but unfixable from the client. TURN forwards their media through Cloudflare instead. Only the
+ * minority of connections that cannot go peer-to-peer ever use it.
+ *
+ * Credentials are short-lived by design: they are handed to the browser, so a long-lived one is
+ * a long-lived secret sitting in someone's dev tools. The API token itself never leaves here.
+ *
+ * Unconfigured is not an error. Without the env vars this returns the plain STUN list and calls
+ * work exactly as they did before — which keeps the relay deployable without a Cloudflare
+ * account at all.
+ */
+const TURN_KEY_ID = process.env.CF_TURN_KEY_ID || ''
+const TURN_API_TOKEN = process.env.CF_TURN_API_TOKEN || ''
+/** an hour is plenty for a call and short enough that a leaked credential is worth little */
+const TURN_TTL = Number(process.env.CF_TURN_TTL || 3600)
+const FALLBACK_ICE = [{ urls: ['stun:stun.cloudflare.com:3478', 'stun:stun.l.google.com:19302'] }]
+
+/** cached because every joiner asks, and the credentials are valid for the whole TTL anyway */
+let iceCache = { at: 0, servers: null }
+
+async function iceServers() {
+  if (!TURN_KEY_ID || !TURN_API_TOKEN) return FALLBACK_ICE
+  // re-mint at half life, so nobody is ever handed one that expires mid-call
+  if (iceCache.servers && Date.now() - iceCache.at < (TURN_TTL * 1000) / 2) return iceCache.servers
+  try {
+    const r = await fetch(
+      `https://rtc.live.cloudflare.com/v1/turn/keys/${TURN_KEY_ID}/credentials/generate-ice-servers`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${TURN_API_TOKEN}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ ttl: TURN_TTL }),
+      },
+    )
+    if (!r.ok) throw new Error(`turn ${r.status}`)
+    const data = await r.json()
+    const servers = Array.isArray(data?.iceServers)
+      ? data.iceServers
+      : data?.iceServers
+        ? [data.iceServers]
+        : null
+    if (!servers) throw new Error('turn: unexpected shape')
+    iceCache = { at: Date.now(), servers }
+    return servers
+  } catch (err) {
+    // A relay we cannot reach must not take calls down with it: fall back to STUN, which is
+    // exactly the behaviour before TURN existed.
+    console.error('[ice] falling back to STUN:', err?.message || err)
+    return FALLBACK_ICE
+  }
+}
+
 const server = createServer((req, res) => {
+  const url = (req.url || '').split('?')[0]
+  if (url === '/ice') {
+    // the browser fetches this cross-origin from the site
+    res.setHeader('Access-Control-Allow-Origin', '*')
+    if (req.method === 'OPTIONS') {
+      res.writeHead(204)
+      res.end()
+      return
+    }
+    void iceServers().then((servers) => {
+      res.writeHead(200, { 'Content-Type': 'application/json' })
+      res.end(JSON.stringify({ iceServers: servers }))
+    })
+    return
+  }
   res.writeHead(200, { 'Content-Type': 'text/plain' })
   res.end('ok')
 })
