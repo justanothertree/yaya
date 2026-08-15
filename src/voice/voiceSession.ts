@@ -63,6 +63,8 @@ export type VoiceState = {
   peerVolume: Record<string, number>
   /** true while WE are sharing a screen */
   sharing: boolean
+  /** what the share is optimised for; switchable live, mid-share */
+  shareMode: ShareMode
   /** why a share attempt was refused, e.g. too many viewers for a mesh. Cleared on success. */
   shareError: string | null
 }
@@ -92,6 +94,35 @@ const MAX_SHARE_VIEWERS = 3
 /** Cap per viewer. Left uncapped, the encoder will happily try to use everything you have. */
 const SHARE_MAX_BITRATE = 2_500_000
 
+/**
+ * Sharpness or smoothness — you cannot have both, and which one you want depends entirely on
+ * what is on the screen.
+ *
+ * A fixed bitrate buys a fixed number of pixels per second, so it can be spent on MORE pixels
+ * or on MORE often, never both. A game needs the frame rate and can afford soft detail; showing
+ * code or a website needs the resolution and barely moves, so 5fps is plenty and every spare bit
+ * goes into text that is actually readable. Downscaling a big monitor to 1080p is exactly what
+ * makes text mushy, so detail mode stops downscaling as hard and pays for it in frame rate.
+ *
+ * `contentHint` tells the encoder the same thing in its own language: given a hard choice, keep
+ * the frames ('motion') or keep the pixels ('detail').
+ */
+const SHARE_MODES = {
+  motion: {
+    label: 'Game',
+    hint: 'motion' as const,
+    video: { frameRate: { ideal: 30, max: 30 }, width: { max: 1920 }, height: { max: 1080 } },
+  },
+  detail: {
+    label: 'Text',
+    hint: 'detail' as const,
+    // 1440p rather than the full panel: even at a few frames a second, three encoders running
+    // beside a game is real work, and 4K is where that stops being free.
+    video: { frameRate: { ideal: 5, max: 10 }, width: { max: 2560 }, height: { max: 1440 } },
+  },
+}
+export type ShareMode = keyof typeof SHARE_MODES
+
 const ICE: RTCConfiguration = {
   iceServers: [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] }],
 }
@@ -114,6 +145,7 @@ const IDLE: VoiceState = {
   threshold: readThreshold(),
   peerVolume: {},
   sharing: false,
+  shareMode: 'motion',
   shareError: null,
 }
 
@@ -356,7 +388,7 @@ function upsertPeer(id: string, patch: Partial<VoicePeer>) {
 function addShareTo(pc: RTCPeerConnection) {
   if (!share) return
   for (const track of share.getTracks()) {
-    if (track.kind === 'video') track.contentHint = 'motion'
+    if (track.kind === 'video') track.contentHint = SHARE_MODES[state.shareMode].hint
     const sender = pc.addTrack(track, share)
     if (track.kind !== 'video') continue
     try {
@@ -692,19 +724,13 @@ export const voiceSession = {
     let media: MediaStream
     try {
       media = await navigator.mediaDevices.getDisplayMedia({
-        video: {
-          frameRate: { ideal: 30, max: 30 },
-          /**
-           * Capped, because the capture defaults to the SOURCE resolution — a 1440p or 4K
-           * monitor would be encoded at full size. That matters more here than in most apps:
-           * in a mesh each viewer has their own encoder, so three viewers means encoding the
-           * screen three times over, on the same machine that is running the game. Capping
-           * the frame the encoders are handed is the cheapest way to protect the sharer's
-           * frame rate.
-           */
-          width: { max: 1920 },
-          height: { max: 1080 },
-        },
+        /**
+         * Capped, because capture defaults to the SOURCE resolution — a 1440p or 4K monitor
+         * would otherwise be encoded at full size. That matters more here than in most apps:
+         * in a mesh each viewer has their own encoder, so three viewers means encoding the
+         * screen three times over, on the machine running the game.
+         */
+        video: SHARE_MODES[state.shareMode].video,
         /**
          * The game's sound, not just the picture — and the only legitimate route to an
          * analyser on audio the page doesn't own (see the visualiser plans).
@@ -731,6 +757,26 @@ export const voiceSession = {
     })
     pcs.forEach((pc) => addShareTo(pc))
     set({ sharing: true })
+  },
+
+  /**
+   * Switch between smooth and sharp WITHOUT restarting the share.
+   *
+   * `applyConstraints` retunes the live track and `contentHint` retunes the encoder, so nothing
+   * renegotiates and nobody sees a black frame. Restarting the capture would mean re-opening
+   * the picker and choosing the screen again — which is the part of doing this in Discord that
+   * makes it a chore, and the reason people just put up with the wrong mode.
+   */
+  async setShareMode(mode: ShareMode) {
+    set({ shareMode: mode })
+    const track = share?.getVideoTracks()[0]
+    if (!track) return
+    track.contentHint = SHARE_MODES[mode].hint
+    try {
+      await track.applyConstraints(SHARE_MODES[mode].video)
+    } catch {
+      /* the source may refuse a size; the hint alone still shifts the encoder's priorities */
+    }
   },
 
   stopShare() {

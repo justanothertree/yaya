@@ -74,8 +74,10 @@ export function CallDock() {
     usesWebAudio,
     sharing,
     shareError,
+    shareMode,
     startShare,
     stopShare,
+    setShareMode,
   } = useVoiceSession()
   const [volume, setVolume] = useState(readVol)
 
@@ -154,6 +156,21 @@ export function CallDock() {
       </label>
       {/* Beside mute, because sharing your screen is the same KIND of decision: what of mine
           is going out to the room. */}
+      {/* Only while sharing: a mode switch with nothing to switch is just clutter. One button
+          that names what you'd be GOING to, so it reads as an action rather than a status. */}
+      {sharing && (
+        <button
+          className="btn"
+          onClick={() => void setShareMode(shareMode === 'motion' ? 'detail' : 'motion')}
+          title={
+            shareMode === 'motion'
+              ? 'Sharing smoothly for games. Switch to sharp text for showing work.'
+              : 'Sharing sharp for text. Switch to smooth for games.'
+          }
+        >
+          {shareMode === 'motion' ? '🎮' : '🔤'}
+        </button>
+      )}
       <button
         className={'btn' + (sharing ? ' is-on' : '')}
         onClick={() => (sharing ? stopShare() : void startShare())}

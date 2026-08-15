@@ -27,5 +27,6 @@ export function useVoiceSession() {
     startShare: voiceSession.startShare,
     stopShare: voiceSession.stopShare,
     getLocalShare: voiceSession.getLocalShare,
+    setShareMode: voiceSession.setShareMode,
   }
 }
