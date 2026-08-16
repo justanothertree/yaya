@@ -30,5 +30,18 @@
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
     <!-- deploy: supabase env wired -->
+    <!--
+      Cloudflare Web Analytics: page views without cookies, fingerprinting or personal data, so
+      it needs no consent banner and doesn't conflict with keeping visitors' data private.
+
+      The token is PUBLIC by design — it ships inside this page to every visitor, and is not a
+      credential. It identifies which site is reporting, nothing more; the account-reading token
+      is a different thing entirely and stays on the relay.
+    -->
+    <script
+      type="module"
+      src="https://static.cloudflareinsights.com/beacon.min.js"
+      data-cf-beacon='{"token": "ca7ac2095efe4ad1b1f6b2ea747192d6"}'
+    ></script>
   </body>
 </html>
