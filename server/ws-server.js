@@ -353,11 +353,29 @@ async function finalizeRoundOnSupabase(roomId, roundId, gameMode, baseItems) {
     p_players: baseItems.map((row) => ({ id: String(row.id), name: row.name })),
   }
   try {
+    /**
+     * Called with the SERVICE ROLE key, not the anon key.
+     *
+     * This function writes the leaderboard, the trophies AND `player_registry`, which is where
+     * names are reserved — so an anonymous caller could forge results and squat nicknames that
+     * belong to real people. The anon key is public by design, so "only the relay calls this"
+     * was a convention, not a rule.
+     *
+     * Using the service key lets EXECUTE be revoked from anon and authenticated, which turns it
+     * into a rule. Falls back to anon so a relay without the key keeps working — but that is a
+     * misconfiguration worth shouting about, because the revoke will make it fail.
+     */
+    if (!SUPABASE_SERVICE_ROLE_KEY) {
+      console.warn(
+        '[ws] finalize_round_rpc falling back to the ANON key — set SUPABASE_SERVICE_ROLE_KEY',
+      )
+    }
+    const finalizeKey = SUPABASE_SERVICE_ROLE_KEY || SUPABASE_ANON_KEY
     const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/finalize_round_rpc`, {
       method: 'POST',
       headers: {
-        apikey: SUPABASE_ANON_KEY,
-        Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+        apikey: finalizeKey,
+        Authorization: `Bearer ${finalizeKey}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(payload),
