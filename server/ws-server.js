@@ -552,6 +552,68 @@ async function iceServers() {
  * Needs a token with the Account Analytics permission — NOT the TURN key token, which can only
  * mint credentials. Unset means the endpoint politely says so and the UI falls back.
  */
+/**
+ * Who is asking?
+ *
+ * Both endpoints below were wide open when written, and neither should be:
+ *  - `/ice` HANDS OUT TURN CREDENTIALS. Anyone who could curl it could relay their own traffic
+ *    through this Cloudflare account, on our quota and eventually our bill.
+ *  - `/usage` reports what the account has spent, which is nobody else's business.
+ *
+ * Verified against Supabase rather than with a shared secret, because the browser already holds
+ * a session and a secret shipped to the browser is not a secret. Cached briefly so a busy call
+ * doesn't re-verify the same token on every request.
+ */
+const tokenCache = new Map()
+const TOKEN_TTL = 60_000
+
+function bearer(req) {
+  const raw = req.headers?.authorization || ''
+  return raw.startsWith('Bearer ') ? raw.slice(7) : ''
+}
+
+async function verifyUser(req) {
+  const token = bearer(req)
+  if (!token || !SUPABASE_URL || !SUPABASE_ANON_KEY) return null
+  const hit = tokenCache.get(token)
+  if (hit && Date.now() - hit.at < TOKEN_TTL) return hit.user
+  try {
+    const r = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
+      headers: { Authorization: `Bearer ${token}`, apikey: SUPABASE_ANON_KEY },
+    })
+    if (!r.ok) return null
+    const user = await r.json()
+    const ok = user?.id ? user : null
+    tokenCache.set(token, { at: Date.now(), user: ok })
+    // the cache is per-token and unbounded otherwise; a call has a handful of tokens at most
+    if (tokenCache.size > 200) tokenCache.clear()
+    return ok
+  } catch {
+    return null
+  }
+}
+
+/** Admin per the database's own rule (is_admin -> admin_users), never a copy of it here. */
+async function isAdmin(req) {
+  const token = bearer(req)
+  if (!token || !SUPABASE_URL || !SUPABASE_ANON_KEY) return false
+  try {
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/rpc/is_admin`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        apikey: SUPABASE_ANON_KEY,
+        'Content-Type': 'application/json',
+      },
+      body: '{}',
+    })
+    if (!r.ok) return false
+    return (await r.json()) === true
+  } catch {
+    return false
+  }
+}
+
 const CF_ACCOUNT_ID = process.env.CF_ACCOUNT_ID || ''
 const CF_ANALYTICS_TOKEN = process.env.CF_ANALYTICS_TOKEN || ''
 const USAGE_QUERY = `query turnUsage($accountId: String!, $from: Date!, $to: Date!) {
@@ -610,12 +672,20 @@ const server = createServer((req, res) => {
   const url = (req.url || '').split('?')[0]
   if (url === '/usage') {
     res.setHeader('Access-Control-Allow-Origin', '*')
+    res.setHeader('Access-Control-Allow-Headers', 'authorization, content-type')
     if (req.method === 'OPTIONS') {
       res.writeHead(204)
       res.end()
       return
     }
-    void turnUsage().then((body) => {
+    // What the account has spent is the operator's business and nobody else's.
+    void isAdmin(req).then(async (ok) => {
+      if (!ok) {
+        res.writeHead(403, { 'Content-Type': 'application/json' })
+        res.end(JSON.stringify({ error: 'admin only' }))
+        return
+      }
+      const body = await turnUsage()
       res.writeHead(200, { 'Content-Type': 'application/json' })
       res.end(JSON.stringify(body))
     })
@@ -624,14 +694,23 @@ const server = createServer((req, res) => {
   if (url === '/ice') {
     // the browser fetches this cross-origin from the site
     res.setHeader('Access-Control-Allow-Origin', '*')
+    res.setHeader('Access-Control-Allow-Headers', 'authorization, content-type')
     if (req.method === 'OPTIONS') {
       res.writeHead(204)
       res.end()
       return
     }
-    void iceServers().then((servers) => {
+    /**
+     * Signed in gets the relay; everyone else still gets STUN.
+     *
+     * Deliberately not a 401: refusing outright would break calls for anyone whose session had
+     * expired, to protect a resource they may not even need. Falling back to STUN costs a
+     * stranger nothing that was ours and still connects the majority of calls.
+     */
+    void verifyUser(req).then(async (user) => {
+      const servers = user ? await iceServers() : FALLBACK_ICE
       res.writeHead(200, { 'Content-Type': 'application/json' })
-      res.end(JSON.stringify({ iceServers: servers }))
+      res.end(JSON.stringify({ iceServers: servers, relay: !!user }))
     })
     return
   }

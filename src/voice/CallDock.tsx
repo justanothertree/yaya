@@ -166,6 +166,13 @@ export function CallDock() {
           ⚠ {peers.length + 1} in call
         </span>
       )}
+      {/* A refusal has to be SEEN. This lived only in the button's tooltip, so hitting share
+          with too many people in the call looked like the button was broken. */}
+      {shareError && (
+        <span className="call-dock-shareerr" role="status" title={shareError}>
+          {shareError}
+        </span>
+      )}
       {/* Beside mute, because sharing your screen is the same KIND of decision: what of mine
           is going out to the room. */}
       {/* Only while sharing: a mode switch with nothing to switch is just clutter. One button

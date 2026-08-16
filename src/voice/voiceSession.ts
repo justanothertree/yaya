@@ -122,7 +122,7 @@ const SHARE_MAX_BITRATE = 2_500_000
 
 /** what each viewer's stream may use right now, given how many there are */
 function shareBitrate() {
-  const viewers = Math.max(1, state.peers.length)
+  const viewers = Math.max(1, state.peers.filter((p) => p.status !== 'failed').length)
   return Math.max(SHARE_MIN_BITRATE, Math.min(SHARE_MAX_BITRATE, SHARE_UPLOAD_BUDGET / viewers))
 }
 
@@ -316,7 +316,17 @@ async function loadIce(): Promise<RTCConfiguration> {
       const ctl = new AbortController()
       // long enough for a cold Render dyno to boot and answer
       const t = setTimeout(() => ctl.abort(), 60_000)
-      const r = await fetch(`${base}/ice`, { signal: ctl.signal })
+      /**
+       * The session token is what earns the TURN credentials: the relay hands the plain STUN
+       * list to anyone, and the relay only to someone signed in — otherwise a stranger could
+       * mint credentials and spend this account's quota.
+       */
+      const { data: sess } = await getSupabaseClient().auth.getSession()
+      const token = sess.session?.access_token
+      const r = await fetch(`${base}/ice`, {
+        signal: ctl.signal,
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      })
       clearTimeout(t)
       if (!r.ok) throw new Error(String(r.status))
       const data = (await r.json()) as { iceServers?: RTCIceServer[] }
@@ -567,6 +577,10 @@ function dropPeer(id: string) {
   // Only chime if we'd actually connected to them. A peer that never got past the handshake
   // "leaving" isn't a departure, and shouldn't sound like one.
   const wasConnected = state.peers.find((p) => p.id === id)?.status === 'connected'
+  // the per-peer bookkeeping has to go too, or a reconnecting peer inherits a stale
+  // negotiation state and a byte counter that makes their first sample look like new traffic
+  nego.delete(id)
+  seenBytes.delete(id)
   set({ peers: state.peers.filter((p) => p.id !== id) })
   if (wasConnected && state.inCall) callSounds.peerLeave()
 }
@@ -752,9 +766,6 @@ export const voiceSession = {
     listeners.add(fn)
     return () => listeners.delete(fn)
   },
-
-  /** the caller's presence count for the room, so a full call can be refused before it starts */
-  callLimits: { soft: CALL_SOFT_LIMIT, hard: CALL_HARD_LIMIT },
 
   async join(
     roomId: string,
@@ -1001,7 +1012,9 @@ export const voiceSession = {
     }
     // Refuse BEFORE the picker: making someone choose a window and then telling them no is
     // a worse experience than telling them up front.
-    const viewers = state.peers.length
+    // Someone who never connected isn't a viewer: counting them refused shares that would
+    // have been fine, and they are exactly the people already visible as "couldn't connect".
+    const viewers = state.peers.filter((p) => p.status !== 'failed').length
     if (viewers > MAX_SHARE_VIEWERS) {
       set({
         shareError: `Too many people to share to (${viewers}). Screen sharing works for up to ${MAX_SHARE_VIEWERS} others — everyone gets their own copy from your connection.`,

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { getSupabaseClient } from '../finance/client'
 import { voiceSession } from '../voice/voiceSession'
 
 /**
@@ -40,9 +41,14 @@ function useAccountUsage() {
       try {
         const base = voiceSession.relayBase()
         if (!base) throw new Error('no relay configured')
-        const r = await fetch(`${base}/usage`)
+        // admin-gated on the relay, so it needs the caller's session to prove who's asking
+        const { data: sess } = await getSupabaseClient().auth.getSession()
+        const token = sess.session?.access_token
+        const r = await fetch(`${base}/usage`, {
+          headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        })
         const body = (await r.json()) as Account
-        if (live) setData(body)
+        if (live) setData(r.ok ? body : { configured: true, error: 'not permitted' })
       } catch {
         if (live) setData(null)
       } finally {

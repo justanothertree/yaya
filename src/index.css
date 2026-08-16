@@ -3291,3 +3291,12 @@ select {
   border-bottom: 1px solid var(--border);
   padding-bottom: 0.15rem;
 }
+
+.call-dock-shareerr {
+  font-size: 0.78rem;
+  color: var(--warn, #e0a33e);
+  max-width: 22ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
