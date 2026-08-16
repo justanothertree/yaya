@@ -24,7 +24,8 @@ export function peerWord(p: VoicePeer): string {
     case 'failed':
       return `${p.name} — couldn’t connect`
     default:
-      return p.name
+      // Says WHY it's relayed, not just that it is — "relayed" alone reads like a fault.
+      return p.relayed ? `${p.name} — relayed (their network blocks direct connections)` : p.name
   }
 }
 

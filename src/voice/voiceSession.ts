@@ -34,6 +34,12 @@ export type VoicePeer = {
   speaking: boolean
   /** their screen, when they're sharing one. Separate from `stream`, which is voice. */
   share: MediaStream | null
+  /**
+   * True when this connection is going through the TURN relay rather than straight to them.
+   * Relay is ICE's LAST resort — lowest priority of the three candidate types — so this is
+   * false for anyone whose network could be reached directly, which is most people.
+   */
+  relayed: boolean
 }
 
 /**
@@ -249,6 +255,12 @@ async function sampleRelayUsage(peerId: string, pc: RTCPeerConnection) {
       if (local?.candidateType !== 'relay' && remote?.candidateType !== 'relay') return
       relayed += (pair.bytesSent || 0) + (pair.bytesReceived || 0)
     })
+    // Surfaced per peer: "is this call costing me anything" should be answerable by looking,
+    // not by trusting an explanation.
+    const isRelayed = relayed > 0
+    if (state.peers.find((p) => p.id === peerId)?.relayed !== isRelayed) {
+      upsertPeer(peerId, { relayed: isRelayed })
+    }
     const key = peerId
     const prev = seenBytes.get(key) ?? 0
     // a counter that went BACKWARDS means the connection restarted, so start from it
@@ -572,6 +584,7 @@ function upsertPeer(id: string, patch: Partial<VoicePeer>) {
             name: names.get(id) ?? 'Someone',
             stream: null,
             share: null,
+            relayed: false,
             status: 'connecting',
             ...patch,
           } as VoicePeer,

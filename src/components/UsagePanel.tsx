@@ -121,7 +121,9 @@ export function UsagePanel() {
       {/* Being straight about what this number is and isn't beats a precise-looking wrong one. */}
       <p className="muted usage-caveat">
         Counts only calls that couldn’t connect directly and had to be relayed — most don’t, so a
-        small number here is the healthy result rather than a broken meter.
+        small number here is the healthy result rather than a broken meter. Relaying is the lowest
+        priority route there is, so a call only uses it once every direct option has failed. In a
+        call, hover someone’s name to see whether theirs is one of them.
       </p>
     </div>
   )
