@@ -93,8 +93,32 @@ function readThreshold(): number {
  * Refusing with a clear reason beats accepting and delivering a slideshow to everyone.
  */
 const MAX_SHARE_VIEWERS = 3
-/** Cap per viewer. Left uncapped, the encoder will happily try to use everything you have. */
+/**
+ * TOTAL upload budget for a screen share, split across everyone watching.
+ *
+ * This used to be a PER-VIEWER cap, which quietly multiplied: two viewers meant 5 Mbps leaving
+ * your machine, three meant 7.5, against a home uplink that is often 10 and sometimes less —
+ * and that is before you also receive everyone else's audio and any share of their own. The
+ * encoders never knew about each other, so each one cheerfully believed it had room.
+ *
+ * Congestion does not look like stutter here, it looks like BLUR: `contentHint: 'motion'` tells
+ * the encoder to protect the frame rate and spend resolution, so an oversubscribed link goes
+ * soft rather than choppy. Two people sharing at once was enough to do it; one of them stopping
+ * made the other sharp again.
+ *
+ * Budgeting the total and dividing it keeps the sum honest no matter how many are watching.
+ */
+const SHARE_UPLOAD_BUDGET = 4_000_000
+/** below this a share is too mushy to be worth watching; better to refuse than to pretend */
+const SHARE_MIN_BITRATE = 700_000
+/** no single viewer needs more than this, however few of them there are */
 const SHARE_MAX_BITRATE = 2_500_000
+
+/** what each viewer's stream may use right now, given how many there are */
+function shareBitrate() {
+  const viewers = Math.max(1, state.peers.length)
+  return Math.max(SHARE_MIN_BITRATE, Math.min(SHARE_MAX_BITRATE, SHARE_UPLOAD_BUDGET / viewers))
+}
 
 /**
  * Sharpness or smoothness — you cannot have both, and which one you want depends entirely on
@@ -292,6 +316,8 @@ function set(patch: Partial<VoiceState>) {
   // +1 for us: `peers` is everyone ELSE.
   const size = state.inCall ? state.peers.length + 1 : 0
   state.crowded = size > CALL_SOFT_LIMIT
+  // the audience decides each viewer's slice of the upload budget
+  if (patch.peers && share) retuneShareBitrate()
   listeners.forEach((l) => l())
 }
 
@@ -490,12 +516,38 @@ function addShareTo(pc: RTCPeerConnection) {
     try {
       const params = sender.getParameters()
       if (!params.encodings || !params.encodings.length) params.encodings = [{}]
-      params.encodings[0].maxBitrate = SHARE_MAX_BITRATE
+      params.encodings[0].maxBitrate = shareBitrate()
       void sender.setParameters(params)
     } catch {
       /* older browsers ignore encoding parameters; the share still works, just uncapped */
     }
   }
+}
+
+/**
+ * Re-divide the budget across whoever is watching NOW.
+ *
+ * Someone joining mid-share shrinks everyone's slice, and someone leaving gives it back. Without
+ * this the split is frozen at whatever the audience was when the share started, so the fourth
+ * person to arrive is the one who makes it blurry for everybody and nothing ever recovers.
+ */
+function retuneShareBitrate() {
+  if (!share) return
+  const target = shareBitrate()
+  pcs.forEach((pc) => {
+    pc.getSenders().forEach((sender) => {
+      if (!sender.track || sender.track.kind !== 'video') return
+      if (!share?.getTracks().includes(sender.track)) return
+      try {
+        const params = sender.getParameters()
+        if (!params.encodings || !params.encodings.length) params.encodings = [{}]
+        params.encodings[0].maxBitrate = target
+        void sender.setParameters(params)
+      } catch {
+        /* nothing to do for one sender that refuses */
+      }
+    })
+  })
 }
 
 /** Take our screen back off every connection. Renegotiation fires from onnegotiationneeded. */

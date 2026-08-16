@@ -3166,24 +3166,31 @@ select {
   padding-inline: 0.4rem;
 }
 
-/* Screen share stage. Fixed and centred above the page, below the nav's z-layer so the site's
-   own chrome stays reachable while you watch. */
+/* Screen share stage. Docked bottom-right: a shared screen is something you watch WHILE doing
+   something else, so it must not sit on top of the something else. */
 .sharestage {
   position: fixed;
-  left: 50%;
-  top: calc(var(--nav-h, 54px) + 0.5rem);
-  transform: translateX(-50%);
+  right: 1rem;
+  bottom: 1rem;
   z-index: 220;
   display: flex;
-  flex-wrap: wrap;
-  gap: 0.6rem;
-  justify-content: center;
-  max-width: min(96vw, 1400px);
-  pointer-events: none; /* the page keeps working around it */
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.5rem;
+  max-width: min(96vw, 1200px);
+  max-height: calc(100dvh - var(--nav-h, 54px) - 2rem);
+  overflow-y: auto;
 }
-.sharestage-item,
-.sharestage-mine {
-  pointer-events: auto; /* ...but the video and its controls are still usable */
+.sharestage-bar {
+  display: flex;
+  justify-content: flex-end;
+}
+.sharestage-restore {
+  position: fixed;
+  right: 1rem;
+  bottom: 1rem;
+  z-index: 220;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
 }
 .sharestage-item {
   margin: 0;
@@ -3195,34 +3202,55 @@ select {
 }
 .sharestage-item video {
   display: block;
-  width: min(70vw, 900px);
-  max-height: 60vh;
-  /* contain, never cover: cropping someone's game to fill a box hides the part they're
-     talking about */
+  width: min(46vw, 560px);
+  max-height: 45vh;
+  /* contain, never cover: cropping someone's game hides the part they're talking about */
   object-fit: contain;
   background: #000;
 }
-.sharestage-item figcaption {
-  padding: 0.3rem 0.6rem;
-  font-size: 0.82rem;
+.sharestage-item.is-big video {
+  width: min(88vw, 1200px);
+  max-height: 78vh;
 }
-/* your own preview is a check that you're sharing the right thing, not something to watch */
-.sharestage-mine {
+/* fullscreen targets the figure, so the video must fill it rather than keep its docked size */
+.sharestage-item:fullscreen {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: 0.4rem;
+  justify-content: center;
+  background: #000;
 }
-.sharestage-mine .sharestage-item video {
-  width: min(28vw, 320px);
-  max-height: 30vh;
+.sharestage-item:fullscreen video {
+  width: 100vw;
+  max-height: 100vh;
+}
+.sharestage-item figcaption {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.3rem 0.4rem;
+  background: var(--card, rgba(0, 0, 0, 0.6));
+}
+.sharestage-label {
+  font-size: 0.82rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sharestage-controls {
+  display: flex;
+  gap: 0.25rem;
+  flex-shrink: 0;
+}
+.sharestage-controls .btn {
+  padding: 0.15rem 0.4rem;
+  font-size: 0.9rem;
+  line-height: 1.4;
 }
 @media (max-width: 700px) {
-  .sharestage-item video {
+  .sharestage-item video,
+  .sharestage-item.is-big video {
     width: 92vw;
-  }
-  .sharestage-mine .sharestage-item video {
-    width: 40vw;
   }
 }
 
