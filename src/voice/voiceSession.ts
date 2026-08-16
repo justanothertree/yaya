@@ -1099,6 +1099,9 @@ export const voiceSession = {
    */
   turnUsage: () => readUsage(),
 
+  /** where the relay lives, for callers that need its other endpoints */
+  relayBase: () => relayHttpBase(),
+
   /** Whether we actually hold a relay. Distinguishes "no TURN" from "TURN didn't help". */
   hasTurn: () => haveTurn,
 

@@ -538,8 +538,89 @@ async function iceServers() {
   }
 }
 
+/**
+ * Account-wide TURN usage, straight from Cloudflare.
+ *
+ * The client can measure its OWN relayed bytes from getStats, but that is one device's view of
+ * a bill that covers everyone. This is Cloudflare's own accounting — the same numbers they
+ * charge from — so it is both account-wide and authoritative.
+ *
+ * Costs nothing per call: it is one query, made only when someone opens the usage panel, and
+ * cached for a quarter of an hour on top of that. Nothing is added to the call path, which is
+ * the part that must stay cheap.
+ *
+ * Needs a token with the Account Analytics permission — NOT the TURN key token, which can only
+ * mint credentials. Unset means the endpoint politely says so and the UI falls back.
+ */
+const CF_ACCOUNT_ID = process.env.CF_ACCOUNT_ID || ''
+const CF_ANALYTICS_TOKEN = process.env.CF_ANALYTICS_TOKEN || ''
+const USAGE_QUERY = `query turnUsage($accountId: String!, $from: Date!, $to: Date!) {
+  viewer {
+    accounts(filter: { accountTag: $accountId }) {
+      callsTurnUsageAdaptiveGroups(limit: 1000, filter: { date_geq: $from, date_leq: $to }) {
+        sum { egressBytes ingressBytes }
+      }
+    }
+  }
+}`
+
+let usageCache = { at: 0, body: null }
+
+async function turnUsage() {
+  if (!CF_ACCOUNT_ID || !CF_ANALYTICS_TOKEN) {
+    return { configured: false, reason: 'CF_ACCOUNT_ID / CF_ANALYTICS_TOKEN not set' }
+  }
+  if (usageCache.body && Date.now() - usageCache.at < 15 * 60_000) return usageCache.body
+  const now = new Date()
+  const from = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1))
+    .toISOString()
+    .slice(0, 10)
+  const to = now.toISOString().slice(0, 10)
+  try {
+    const r = await fetch('https://api.cloudflare.com/client/v4/graphql', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${CF_ANALYTICS_TOKEN}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        query: USAGE_QUERY,
+        variables: { accountId: CF_ACCOUNT_ID, from, to },
+      }),
+    })
+    const data = await r.json()
+    if (data?.errors?.length) throw new Error(data.errors[0]?.message || 'graphql error')
+    const groups = data?.data?.viewer?.accounts?.[0]?.callsTurnUsageAdaptiveGroups ?? []
+    let egress = 0
+    let ingress = 0
+    for (const g of groups) {
+      egress += Number(g?.sum?.egressBytes || 0)
+      ingress += Number(g?.sum?.ingressBytes || 0)
+    }
+    // Billed on the total moved through the relay, so report the sum and its parts.
+    const body = { configured: true, from, to, egressBytes: egress, ingressBytes: ingress }
+    usageCache = { at: Date.now(), body }
+    return body
+  } catch (err) {
+    return { configured: true, error: String(err?.message || err) }
+  }
+}
+
 const server = createServer((req, res) => {
   const url = (req.url || '').split('?')[0]
+  if (url === '/usage') {
+    res.setHeader('Access-Control-Allow-Origin', '*')
+    if (req.method === 'OPTIONS') {
+      res.writeHead(204)
+      res.end()
+      return
+    }
+    void turnUsage().then((body) => {
+      res.writeHead(200, { 'Content-Type': 'application/json' })
+      res.end(JSON.stringify(body))
+    })
+    return
+  }
   if (url === '/ice') {
     // the browser fetches this cross-origin from the site
     res.setHeader('Access-Control-Allow-Origin', '*')

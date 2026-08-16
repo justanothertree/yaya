@@ -10,6 +10,7 @@ import { AmbientBackdrop } from './components/AmbientBackdrop'
 import { installClickFx, setClickFxEnabled } from './ui/clickFx'
 import { WindowLauncher, type LaunchableWindow } from './components/WindowLauncher'
 import { ShareStage } from './voice/ShareStage'
+import { UsagePanel } from './components/UsagePanel'
 import { voiceSession } from './voice/voiceSession'
 import {
   isRegistered,
@@ -149,6 +150,14 @@ function writeNavFlags(patch: Partial<NavFlags> & { uid: string }) {
 
 // remembers whether this visitor chose canvas mode last time
 const CANVAS_PREF = 'canvas_mode_v1'
+/**
+ * Dev-only preview of admin surfaces, read at MODULE LOAD.
+ *
+ * Reading it during render was too late: the router normalises an unrecognised hash on mount,
+ * so `#dev-usage` had already been cleared by the time the component looked. Module scope runs
+ * before React does.
+ */
+const DEV_PREVIEW = typeof window === 'undefined' ? '' : window.location.hash.replace(/^#dev-/, '')
 
 export default function App() {
   const initialSection: Section = (() => {
@@ -224,6 +233,7 @@ export default function App() {
   // Wake the call relay early: it sleeps when idle, and the first call of the day should not
   // be the one that pays for the cold start. One request, on load, then never again.
   useEffect(() => voiceSession.pingRelay(), [])
+
   useEffect(() => {
     setClickFxEnabled(sparksOn)
     try {
@@ -1219,6 +1229,21 @@ export default function App() {
               </span>
             </span>
           </div>
+        )}
+        {/**
+         * Dev-only preview of admin surfaces.
+         *
+         * Anything behind the admin gate can't be checked without signing in, so it shipped
+         * unverified. `import.meta.env.DEV` means this never exists in a production build — a
+         * workbench, not a back door.
+         */}
+        {import.meta.env.DEV && DEV_PREVIEW === 'usage' && (
+          <section className="card">
+            <p className="muted" style={{ marginTop: 0, fontSize: '0.8rem' }}>
+              dev preview — #dev-usage
+            </p>
+            <UsagePanel />
+          </section>
         )}
         {/* One place to choose windows, shown whenever the canvas is. The Circuit runs its own
             canvas with its own panes, so it keeps its own controls. */}
