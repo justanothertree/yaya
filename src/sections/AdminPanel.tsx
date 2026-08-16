@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { getSupabaseClient } from '../finance/client'
+import { UsagePanel } from '../components/UsagePanel'
 
 type Invite = {
   id: string
@@ -39,7 +40,7 @@ const inviteLink = (token: string) => `${SITE_URL}/#invite?token=${token}`
 
 export function AdminPanel() {
   const sb = getSupabaseClient()
-  const [tab, setTab] = useState<'invites' | 'members'>('invites')
+  const [tab, setTab] = useState<'invites' | 'members' | 'usage'>('invites')
   const [invites, setInvites] = useState<Invite[]>([])
   const [members, setMembers] = useState<Member[]>([])
   const [loading, setLoading] = useState(true)
@@ -243,7 +244,12 @@ export function AdminPanel() {
       <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.25rem', flexWrap: 'wrap' }}>
         {tabBtn('invites', `Invites (${pending.length} pending)`)}
         {tabBtn('members', `Members (${members.length})`)}
+        {/* Operational, not social — what the paid services are costing, in the one place
+            that already requires being the operator to see. */}
+        {tabBtn('usage', 'Usage')}
       </div>
+
+      {tab === 'usage' && <UsagePanel />}
 
       {tab === 'invites' && (
         <div>

@@ -179,6 +179,89 @@ const ICE: RTCConfiguration = {
   iceServers: [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] }],
 }
 
+/**
+ * TURN usage, measured rather than looked up.
+ *
+ * Cloudflare bills TURN by the gigabyte relayed, and `getStats()` knows exactly which
+ * connections are relayed: a candidate pair whose local or remote candidate has
+ * `candidateType === 'relay'` is going through TURN, and its byte counters are the bill. Most
+ * calls never touch it, so this is usually zero — which is itself the useful thing to see.
+ *
+ * Counted from DELTAS per connection, because the counters restart when a connection does, and
+ * treating a reset as fresh traffic would inflate the total exactly when a call was struggling.
+ *
+ * Stored per month in localStorage. That makes it THIS DEVICE's usage, not the account's —
+ * an honest limitation, and still the number that answers "am I about to be charged", because
+ * the free tier is 1000GB and one person's calls are nowhere near it.
+ */
+const USAGE_KEY = 'voice.turnUsage.v1'
+const seenBytes = new Map<string, number>()
+
+const monthKey = () => new Date().toISOString().slice(0, 7)
+
+function readUsage(): Record<string, number> {
+  try {
+    const raw = JSON.parse(localStorage.getItem(USAGE_KEY) || '{}')
+    return raw && typeof raw === 'object' ? raw : {}
+  } catch {
+    return {}
+  }
+}
+
+function addRelayedBytes(n: number) {
+  if (n <= 0) return
+  const all = readUsage()
+  const k = monthKey()
+  all[k] = (all[k] || 0) + n
+  // keep a year, drop the rest — this is a running check, not an archive
+  const keys = Object.keys(all).sort().slice(-12)
+  const trimmed: Record<string, number> = {}
+  for (const key of keys) trimmed[key] = all[key]
+  try {
+    localStorage.setItem(USAGE_KEY, JSON.stringify(trimmed))
+  } catch {
+    /* private mode: the meter just won't persist */
+  }
+}
+
+/** Walk one connection's stats and bank any bytes that went through a relay. */
+async function sampleRelayUsage(peerId: string, pc: RTCPeerConnection) {
+  try {
+    const stats = await pc.getStats()
+    const byId = new Map<string, RTCStats>()
+    stats.forEach((r) => byId.set(r.id, r))
+    let relayed = 0
+    stats.forEach((r) => {
+      const pair = r as RTCStats & {
+        type: string
+        state?: string
+        nominated?: boolean
+        localCandidateId?: string
+        remoteCandidateId?: string
+        bytesSent?: number
+        bytesReceived?: number
+      }
+      if (pair.type !== 'candidate-pair' || pair.state !== 'succeeded') return
+      const local = byId.get(pair.localCandidateId || '') as { candidateType?: string } | undefined
+      const remote = byId.get(pair.remoteCandidateId || '') as
+        | { candidateType?: string }
+        | undefined
+      if (local?.candidateType !== 'relay' && remote?.candidateType !== 'relay') return
+      relayed += (pair.bytesSent || 0) + (pair.bytesReceived || 0)
+    })
+    const key = peerId
+    const prev = seenBytes.get(key) ?? 0
+    // a counter that went BACKWARDS means the connection restarted, so start from it
+    const delta = relayed >= prev ? relayed - prev : relayed
+    seenBytes.set(key, relayed)
+    addRelayedBytes(delta)
+  } catch {
+    /* stats are best-effort; a missed sample only loses one interval */
+  }
+}
+
+let usageTimer = 0
+
 let pinged = false
 /** resolved once per session and reused; refreshed on the next join after it expires */
 let iceConfig: RTCConfiguration = ICE
@@ -814,6 +897,12 @@ export const voiceSession = {
     })
 
     set({ inCall: true, roomId, roomName, muted: false, peers: [] })
+    // Sampled rather than summed at the end, so a call that crashes or a tab that closes still
+    // accounts for the traffic it already used.
+    clearInterval(usageTimer)
+    usageTimer = window.setInterval(() => {
+      pcs.forEach((pc, id) => void sampleRelayUsage(id, pc))
+    }, 20_000) as unknown as number
 
     let joined = false
     ch.subscribe((status, err) => {
@@ -855,6 +944,11 @@ export const voiceSession = {
   leave(silent = false) {
     if (state.inCall && !silent) callSounds.leave()
     if (meId) send({ kind: 'bye', from: meId })
+    // one last sample before the connections go, or the final stretch of a call is lost
+    pcs.forEach((pc, id) => void sampleRelayUsage(id, pc))
+    clearInterval(usageTimer)
+    usageTimer = 0
+    seenBytes.clear()
     pcs.forEach((pc) => pc.close())
     pcs.clear()
     names.clear()
@@ -998,6 +1092,12 @@ export const voiceSession = {
     if (!base) return
     void fetch(base + '/', { mode: 'no-cors', cache: 'no-store' }).catch(() => {})
   },
+
+  /**
+   * Relayed bytes per month, newest last. Only traffic that actually went through TURN — the
+   * bytes Cloudflare would bill for — not total call traffic.
+   */
+  turnUsage: () => readUsage(),
 
   /** Whether we actually hold a relay. Distinguishes "no TURN" from "TURN didn't help". */
   hasTurn: () => haveTurn,

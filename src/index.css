@@ -3258,3 +3258,36 @@ select {
   font-size: 0.8rem;
   white-space: nowrap;
 }
+
+/* Usage panel — one number that matters, detail underneath. */
+.usage-panel h3 {
+  margin: 0 0 0.5rem;
+}
+.usage-hero {
+  margin: 0;
+  font-size: 1.4rem;
+}
+.usage-note,
+.usage-caveat {
+  margin: 0.35rem 0 0;
+  font-size: 0.85rem;
+}
+.usage-caveat {
+  font-size: 0.78rem;
+  max-width: 46ch;
+}
+.usage-months {
+  list-style: none;
+  padding: 0;
+  margin: 0.75rem 0 0;
+  display: grid;
+  gap: 0.2rem;
+  max-width: 18rem;
+  font-size: 0.85rem;
+}
+.usage-months li {
+  display: flex;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 0.15rem;
+}
