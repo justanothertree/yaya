@@ -990,10 +990,31 @@
   display: flex;
   flex-direction: column;
   min-width: 0;
+  /**
+   * Takes the slack and gives it back, so the buttons never move.
+   *
+   * The second line swaps between "3 in call" and "🗣 Alice, Bob" as people talk, and without
+   * `flex: 1` + hidden overflow that width change pushed every control sideways — so the
+   * mute button moved under your cursor exactly when someone started speaking, which is
+   * precisely when you are most likely to be reaching for it.
+   */
+  flex: 1 1 auto;
+  overflow: hidden;
   line-height: 1.2;
   /* it's a link back to the conversation, but it shouldn't shout like one */
   color: inherit;
   text-decoration: none;
+}
+.call-dock-who > * {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* controls keep their size no matter what the text does */
+.call-dock > .btn,
+.call-dock .call-vol,
+.call-dock-shareerr {
+  flex-shrink: 0;
 }
 .call-dock-who:hover strong {
   text-decoration: underline;
@@ -3213,15 +3234,29 @@ select {
   max-height: 78vh;
 }
 /* fullscreen targets the figure, so the video must fill it rather than keep its docked size */
+/* In fullscreen the figure IS the screen, so the caption has to float over the video rather
+   than sit after it — stacked, it was pushed past the bottom edge and the controls went with
+   it, which is where the "buttons slightly offscreen" came from. */
 .sharestage-item:fullscreen {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
+  position: relative;
+  display: grid;
+  place-items: center;
   background: #000;
 }
 .sharestage-item:fullscreen video {
   width: 100vw;
+  height: 100vh;
   max-height: 100vh;
+  object-fit: contain;
+}
+.sharestage-item:fullscreen figcaption {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.6);
+  /* clear of the OS taskbar and of any browser fullscreen hint */
+  padding-bottom: max(0.5rem, env(safe-area-inset-bottom));
 }
 .sharestage-item figcaption {
   display: flex;

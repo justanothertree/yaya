@@ -669,7 +669,41 @@ function removeShareFromAll() {
   })
 }
 
-function makePc(peerId: string, peerName: string) {
+/**
+ * Drop everything we hold for a peer without removing them from the UI.
+ *
+ * Used when someone rejoins: they are still the same person, so the row should stay, but every
+ * piece of connection state belongs to a session that no longer exists.
+ */
+function resetPeerConnection(peerId: string) {
+  const pc = pcs.get(peerId)
+  if (pc) {
+    try {
+      pc.onicecandidate = null
+      pc.ontrack = null
+      pc.onconnectionstatechange = null
+      pc.onnegotiationneeded = null
+      pc.close()
+    } catch {
+      /* already gone */
+    }
+  }
+  pcs.delete(peerId)
+  nego.delete(peerId)
+  seenBytes.delete(peerId)
+  detachOutput(peerId)
+}
+
+function makePc(peerId: string, peerName: string, fresh = false) {
+  /**
+   * `fresh` is what makes rejoining work.
+   *
+   * Reusing whatever connection we already had was fine while people only ever joined once. But
+   * someone who leaves and comes straight back sends a new `hello` under the SAME id, and we'd
+   * hand back their dead connection — so no offer was made, no media flowed, and they sat
+   * looking at "waiting for someone to join" while presence cheerfully showed everyone there.
+   */
+  if (fresh) resetPeerConnection(peerId)
   const existing = pcs.get(peerId)
   if (existing) return existing
   const pc = new RTCPeerConnection(iceConfig)
@@ -734,6 +768,9 @@ function makePc(peerId: string, peerName: string) {
         // chime only on the first connect, not on every recovery from a blip
         const first = state.peers.find((p) => p.id === peerId)?.status !== 'connected'
         upsertPeer(peerId, { status: 'connected' })
+        // A stale "couldn't connect" is worse than no message: it was still on screen while the
+        // call worked, and it named whoever failed FIRST rather than who was actually failing.
+        if (state.error) set({ error: null })
         if (first) callSounds.peerJoin()
         break
       }
@@ -742,9 +779,25 @@ function makePc(peerId: string, peerName: string) {
         upsertPeer(peerId, { status: 'reconnecting' })
         break
       case 'failed':
-        // Usually a network that can't do peer-to-peer. WHICH failure it is matters: with no
-        // relay it is expected, with one it means the relay was reached and still didn't help.
-        upsertPeer(peerId, { status: 'failed', stream: null })
+        /**
+         * Try once to recover before calling it dead.
+         *
+         * `failed` is not always terminal — a network change or a candidate that went stale can
+         * produce it, and an ICE restart re-gathers and often reconnects. Declaring failure
+         * immediately is what put "couldn't connect" on screen for someone who was in the call.
+         */
+        upsertPeer(peerId, { status: 'reconnecting', stream: null })
+        try {
+          pc.restartIce()
+        } catch {
+          /* older browsers: fall through to the failed state below */
+        }
+        // give the restart a chance; if it is still failed after this, it really has failed
+        window.setTimeout(() => {
+          if (pcs.get(peerId) !== pc) return
+          if (pc.connectionState !== 'failed') return
+          upsertPeer(peerId, { status: 'failed', stream: null })
+        }, 6000)
         if (!haveTurn) {
           set({
             error:
@@ -857,7 +910,8 @@ export const voiceSession = {
           case 'hello': {
             // Whoever was already here offers to the newcomer — no glare, no tie-break rule.
             send({ kind: 'here', from: meId!, name: myName, to: m.from })
-            const pc = makePc(m.from, m.name)
+            // a hello is always the START of a session, so never reuse an older one
+            const pc = makePc(m.from, m.name, true)
             const offer = await pc.createOffer()
             await pc.setLocalDescription(offer)
             send({ kind: 'offer', from: meId!, to: m.from, sdp: offer })
@@ -1022,8 +1076,19 @@ export const voiceSession = {
       return
     }
     let media: MediaStream
-    try {
-      media = await navigator.mediaDevices.getDisplayMedia({
+    /**
+     * Audio first, then a retry WITHOUT it.
+     *
+     * Asking for `audio: true` can make the whole request fail on a browser that cannot capture
+     * system audio — Firefox most notably — so one person gets a picker and another gets nothing
+     * at all, sharing the same game on the same call. That asymmetry looks like the site is
+     * broken for them personally, and it is only ever the audio track's fault.
+     *
+     * A silent share is worth far more than no share, so a failure is retried video-only and the
+     * player is told what they lost rather than left guessing.
+     */
+    const capture = async (withAudio: boolean) =>
+      navigator.mediaDevices.getDisplayMedia({
         /**
          * Capped, because capture defaults to the SOURCE resolution — a 1440p or 4K monitor
          * would otherwise be encoded at full size. That matters more here than in most apps:
@@ -1040,14 +1105,34 @@ export const voiceSession = {
          * offers no audio at all. So sharing a game window silently means no game sound, and
          * the fix is to share the screen instead — which is also what most people mean.
          */
-        audio: true,
+        audio: withAudio,
       })
+    try {
+      media = await capture(true)
     } catch (e) {
-      // Cancelling the picker is not an error worth shouting about.
-      if ((e as DOMException)?.name !== 'NotAllowedError') {
-        set({ shareError: 'Couldn’t start the screen share.' })
+      const name = (e as DOMException)?.name
+      // Cancelling the picker is a decision, not a failure.
+      if (name === 'NotAllowedError') return
+      try {
+        media = await capture(false)
+        set({
+          shareError: 'Sharing without sound — this browser can’t capture system audio.',
+        })
+      } catch (e2) {
+        if ((e2 as DOMException)?.name === 'NotAllowedError') return
+        set({
+          shareError:
+            'Couldn’t start the screen share. Try Chrome or Edge, and pick a screen rather than a window.',
+        })
+        return
       }
-      return
+    }
+    // Asked for audio and got a picture only: on Windows that is the "Share system audio"
+    // tick-box left unticked, which is silent in every sense until someone says so.
+    if (!media.getAudioTracks().length) {
+      set({
+        shareError: 'No sound is being shared — tick “Share system audio” in the picker.',
+      })
     }
     share = media
     // Chrome's own "Stop sharing" bar ends the track without telling us — treat that as a stop
