@@ -12,13 +12,13 @@
  * eat a click or shift the page — the effect is structurally incapable of interfering with the
  * thing you clicked, no matter which style is picked.
  *
- * Fourteen styles, deliberately differentiated by SHAPE and MOTION rather than just palette —
+ * Twelve styles, deliberately differentiated by SHAPE and MOTION rather than just palette —
  * radiating dots (sparks), expanding rings (sonar), falling paper (pop), a two-stage launch+burst
  * (rocket), twinkling glyphs (stars, glitter), upward drift (hearts, bubbles), an implosion isn't
- * here but an orbit is, straight rays (beam), angular shards (shatter), soft splats (ink), stepped
- * retro motion (pixels), and a flickering strobe (zap). A style that only changed color on top of
- * the same dots-flying-outward motion as another one was cut or reworked — that's what made the
- * original ripple/confetti/fireworks trio feel thin next to sparks.
+ * here but an orbit is, straight rays (beam), angular shards (shatter), soft splats (ink). A style
+ * that only changed color on top of the same dots-flying-outward motion as another one was cut or
+ * reworked — that's what made the original ripple/confetti/fireworks trio feel thin next to
+ * sparks, and it's also why pixels/zap didn't survive their own tryout.
  */
 
 export type FxStyle =
@@ -32,10 +32,8 @@ export type FxStyle =
   | 'glitter'
   | 'shatter'
   | 'ink'
-  | 'pixels'
   | 'orbit'
   | 'beam'
-  | 'zap'
 
 const LAYER_ID = 'click-fx-layer'
 /** Concurrent bursts to allow. A fast clicker shouldn't be able to pile up hundreds of nodes. */
@@ -487,35 +485,6 @@ function ink(host: HTMLElement, x: number, y: number) {
   track(host, nodes, anims)
 }
 
-/** Small hard-edged squares that move in visible STEPS instead of easing smoothly — the stepped
- * timing is what gives it a blocky, retro feel; every other style here interpolates continuously. */
-function pixels(host: HTMLElement, x: number, y: number) {
-  const colors = palette()
-  const N = 9
-  const nodes: HTMLElement[] = []
-  const anims: Animation[] = []
-  for (let i = 0; i < N; i++) {
-    const angle = (i / N) * Math.PI * 2
-    const dist = 22 + Math.random() * 26
-    const p = mk('click-fx-pixel', x, y)
-    p.style.background = colors[i % colors.length]
-    nodes.push(p)
-    anims.push(
-      p.animate(
-        [
-          { transform: 'translate(-50%, -50%) translate(0, 0)', opacity: 1 },
-          {
-            transform: `translate(-50%, -50%) translate(${Math.cos(angle) * dist}px, ${Math.sin(angle) * dist}px)`,
-            opacity: 0,
-          },
-        ],
-        { duration: 360, easing: 'steps(6, end)', fill: 'forwards' },
-      ),
-    )
-  }
-  track(host, nodes, anims)
-}
-
 /** Dots sweep around the click point on a circular path instead of flying away from it — the
  * only style here where the motion is rotation around a fixed radius rather than radiating
  * outward or drifting in one direction. Built from an explicit keyframe list because a curved
@@ -578,44 +547,6 @@ function beam(host: HTMLElement, x: number, y: number) {
   track(host, nodes, anims)
 }
 
-/** A quick, jittery FLICKER rather than a smooth fade — opacity snaps between keyframes instead
- * of easing, which is what makes it read as electric rather than just fast. */
-function zap(host: HTMLElement, x: number, y: number) {
-  const N = 5
-  const nodes: HTMLElement[] = []
-  const anims: Animation[] = []
-  for (let i = 0; i < N; i++) {
-    const angle = (i / N) * Math.PI * 2 + (Math.random() - 0.5) * 0.6
-    const dist = 20 + Math.random() * 32
-    const p = mkGlyph('⚡', x, y, 12 + Math.random() * 6)
-    p.style.color = '#facc15'
-    nodes.push(p)
-    anims.push(
-      p.animate(
-        [
-          { transform: 'translate(-50%, -50%) translate(0, 0) scale(1)', opacity: 1 },
-          {
-            transform: 'translate(-50%, -50%) translate(0, 0) scale(1)',
-            opacity: 0.15,
-            offset: 0.2,
-          },
-          {
-            transform: `translate(-50%, -50%) translate(${Math.cos(angle) * dist * 0.5}px, ${Math.sin(angle) * dist * 0.5}px) scale(1.1)`,
-            opacity: 1,
-            offset: 0.4,
-          },
-          {
-            transform: `translate(-50%, -50%) translate(${Math.cos(angle) * dist}px, ${Math.sin(angle) * dist}px) scale(0.7)`,
-            opacity: 0,
-          },
-        ],
-        { duration: 260 + Math.random() * 120, easing: 'steps(1, jump-end)', fill: 'forwards' },
-      ),
-    )
-  }
-  track(host, nodes, anims)
-}
-
 const BUILDERS: Record<FxStyle, (host: HTMLElement, x: number, y: number) => void> = {
   sparks,
   sonar,
@@ -627,10 +558,8 @@ const BUILDERS: Record<FxStyle, (host: HTMLElement, x: number, y: number) => voi
   glitter,
   shatter,
   ink,
-  pixels,
   orbit,
   beam,
-  zap,
 }
 
 function burst(x: number, y: number) {

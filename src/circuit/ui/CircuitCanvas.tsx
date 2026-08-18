@@ -147,12 +147,17 @@ export function CircuitCanvas({
   onTogglePin,
   toolbar,
   extraToolbar,
+  ambientOn = true,
 }: {
   panes: CanvasPane[]
   focusPane?: { id: string; nonce: number } | null
   /** ids of panes the user pinned — they follow them across tabs */
   pinnedIds?: string[]
   onTogglePin?: (pane: CanvasPane) => void
+  /** the same cog toggle that drives the page's own ambient glow — read as a prop, not a
+   * second localStorage read, so switching it while canvas is already open takes effect
+   * immediately instead of only on the next remount */
+  ambientOn?: boolean
   /**
    * Page-specific controls that belong to the canvas chrome. The surface is a fixed
    * full-viewport panel, so anything the page renders behind it is invisible — the
@@ -205,6 +210,48 @@ export function CircuitCanvas({
   const [portalTarget] = useState<HTMLElement | null>(() =>
     typeof document !== 'undefined' ? document.body : null,
   )
+  /**
+   * The open-panes taskbar used to be a strip of chip buttons you scrolled sideways through —
+   * fine at three panes, a real annoyance once pinned windows piled up. One button that opens a
+   * dropdown never needs a scrollbar no matter how many panes are open, at the cost of an extra
+   * click to reach a tab that isn't front-most. Same anchored-portal pattern as the Windows
+   * launcher right next to it.
+   */
+  const [tabsOpen, setTabsOpen] = useState(false)
+  const [tabsAnchor, setTabsAnchor] = useState<{ left: number; top: number } | null>(null)
+  const tabsBtnRef = useRef<HTMLButtonElement | null>(null)
+  const tabsPanelRef = useRef<HTMLDivElement | null>(null)
+  useEffect(() => {
+    if (!tabsOpen) return
+    const onDown = (e: PointerEvent) => {
+      const t = e.target as Node
+      if (tabsBtnRef.current?.contains(t)) return
+      if (tabsPanelRef.current && !tabsPanelRef.current.contains(t)) setTabsOpen(false)
+    }
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setTabsOpen(false)
+    }
+    window.addEventListener('pointerdown', onDown)
+    window.addEventListener('keydown', onKey)
+    return () => {
+      window.removeEventListener('pointerdown', onDown)
+      window.removeEventListener('keydown', onKey)
+    }
+  }, [tabsOpen])
+  useEffect(() => {
+    if (!tabsOpen) return
+    const measure = () => {
+      const r = tabsBtnRef.current?.getBoundingClientRect()
+      if (r) setTabsAnchor({ left: Math.round(r.left), top: Math.round(r.bottom) })
+    }
+    measure()
+    window.addEventListener('resize', measure)
+    window.addEventListener('scroll', measure, true)
+    return () => {
+      window.removeEventListener('resize', measure)
+      window.removeEventListener('scroll', measure, true)
+    }
+  }, [tabsOpen])
   const [wins, setWins] = useState<Layout>({})
   // a live mirror, so the camera can read the CURRENT boxes without being a dependency of
   // every callback that might want to move it
@@ -235,10 +282,6 @@ export function CircuitCanvas({
   // plane size multiplier (>= WORLD); fit-all raises it when the mosaic needs the space
   const [worldMul, setWorldMul] = useState(WORLD)
   const worldMulRef = useRef(WORLD)
-  // the canvas wallpaper honours the same cog toggle as the page glow
-  const [ambientOn] = useState(
-    () => typeof localStorage === 'undefined' || localStorage.getItem('ambient_v1') !== '0',
-  )
   const [snap, setSnap] = useState<{ x: number; y: number; w: number; h: number } | null>(null)
   const drag = useRef<{
     id: string
@@ -441,16 +484,24 @@ export function CircuitCanvas({
 
   // Tile to fill the whole canvas: pick a column count for the width, then size
   // rows/cols so the grid uses all the available space (no dead gaps).
+  //
+  // Windows you've deliberately minimized are left alone, not tiled back open. Tiling used to
+  // force `min: false` on every pane unconditionally, so a taskbar tab you'd minimized on
+  // purpose popped back onto the canvas the moment you tiled or fit anything else -- minimizing
+  // never actually stuck. Only the still-visible panes take part in the grid; the column count
+  // is based on how many of THOSE there are, so minimizing something frees its space for the rest
+  // rather than leaving a gap.
   const defaultTile = useCallback(
     (list: CanvasPane[] = panes): Layout => {
       const b = hostBox()
-      const n = list.length
+      const visible = list.filter((p) => !wins[p.id]?.min)
+      const n = visible.length
       const cols = b.w >= 1180 ? 3 : b.w >= 680 ? 2 : 1
       const rows = Math.ceil(n / cols)
       const colW = Math.floor((b.w - (cols - 1) * GAP) / cols)
       const rowH = Math.floor((b.h - (rows - 1) * GAP) / rows)
       const next: Layout = {}
-      list.forEach((p, i) => {
+      visible.forEach((p, i) => {
         const col = i % cols
         const row = Math.floor(i / cols)
         next[p.id] = {
@@ -463,9 +514,12 @@ export function CircuitCanvas({
           z: ++maxZ.current,
         }
       })
+      for (const p of list) {
+        if (wins[p.id]?.min) next[p.id] = wins[p.id]
+      }
       return next
     },
-    [hostBox, panes],
+    [hostBox, panes, wins],
   )
 
   // Fit every window to the current canvas: maximized ones re-take the full surface,
@@ -1090,18 +1144,24 @@ export function CircuitCanvas({
 
   // ▣ Fit all: every window at its fitted size, packed around the plane's centre —
   // the whole site laid out as a mosaic you pan through.
+  //
+  // Minimized panes sit out of the mosaic entirely, same reasoning as defaultTile above: fitting
+  // used to force `min: false` on everything, so Fit all popped back open anything you'd
+  // deliberately minimized. `setWins` below only merges `next`, so simply never writing an entry
+  // for a minimized pane leaves its existing (minimized) box untouched.
   function fitTile() {
+    const visible = panes.filter((p) => !wins[p.id]?.min)
     const sizes: Record<string, { w: number; h: number }> = {}
-    panes.forEach((p) => {
+    visible.forEach((p) => {
       const m = measureFit(p.id)
       if (m) sizes[p.id] = m
     })
-    // every pane joins the mosaic — an unmeasured one gets the default box rather than
-    // staying behind to overlap the others
-    panes.forEach((p) => {
+    // every visible pane joins the mosaic — an unmeasured one gets the default box rather
+    // than staying behind to overlap the others
+    visible.forEach((p) => {
       if (!sizes[p.id]) sizes[p.id] = { w: IDEAL_W, h: IDEAL_H }
     })
-    const ids = panes.map((p) => p.id)
+    const ids = visible.map((p) => p.id)
     if (!ids.length) return
     ids.sort((a2, b2) => sizes[b2].h - sizes[a2].h)
     const totalArea = ids.reduce((acc, id) => acc + (sizes[id].w + GAP) * (sizes[id].h + GAP), 0)
@@ -1324,39 +1384,73 @@ export function CircuitCanvas({
       </strong>
       {toolbar && <span className="cz-menu-tool">{toolbar}</span>}
       {/**
-       * Room tabs used to be plain siblings in a WRAPPING row, alongside Tile/Fit all/the
-       * launcher — enough of them (or the window narrow enough) and the whole row spilled onto
-       * a second line, PUSHING THE ACTUAL CANVAS DOWN by however many extra rows that took.
-       * More windows meant less room to see them in, which is backwards.
-       *
-       * Scrolling horizontally instead keeps the toolbar's height constant no matter how many
-       * panes are open — the tabs you can't see are a swipe away, not a growing wall above the
-       * thing you're trying to look at.
+       * Room tabs used to be plain siblings in a WRAPPING row (spilled to a second line and
+       * pushed the canvas down as more opened), then a horizontally-scrolling chip strip (fixed
+       * the wrapping, but "scroll sideways to find a tab" didn't feel any better). One button
+       * that opens a dropdown avoids both: the toolbar's height and width are both constant no
+       * matter how many panes are open, same anchored-portal pattern as the Windows launcher.
        */}
-      <div className="cz-menu-chips">
-        {panes.map((p) => {
-          const w = wins[p.id]
-          const min = !!w?.min
-          const front = p.id === topId && !min
-          return (
-            <button
-              key={p.id}
-              className={'btn' + (min ? ' is-min' : '')}
-              aria-pressed={front}
-              onClick={() => onTab(p.id)}
-              title={
-                min ? `Restore ${p.title}` : front ? `Hide ${p.title}` : `Bring ${p.title} to front`
-              }
-            >
-              <span aria-hidden style={{ fontSize: '0.7rem' }}>
-                {min ? '▫' : '▪'}
-              </span>{' '}
-              {pinnedIds.includes(p.id) ? '📌 ' : ''}
-              {p.title}
-            </button>
-          )
-        })}
-      </div>
+      <button
+        ref={tabsBtnRef}
+        className="btn"
+        aria-expanded={tabsOpen}
+        aria-haspopup="menu"
+        onClick={() => setTabsOpen((v) => !v)}
+        title="Switch between open windows"
+      >
+        🗂 {topId ? (panes.find((p) => p.id === topId)?.title ?? 'Windows') : 'Windows'}
+        {panes.length > 1 && <span className="muted"> · {panes.length}</span>}
+      </button>
+      {tabsOpen &&
+        tabsAnchor &&
+        portalTarget &&
+        createPortal(
+          <div
+            className="winlauncher-panel"
+            ref={tabsPanelRef}
+            role="menu"
+            aria-label="Open windows"
+            style={{ position: 'fixed', top: tabsAnchor.top + 6, left: tabsAnchor.left }}
+          >
+            <div className="winlauncher-list">
+              {panes.map((p) => {
+                const w = wins[p.id]
+                const min = !!w?.min
+                const front = p.id === topId && !min
+                return (
+                  <button
+                    key={p.id}
+                    className="winlauncher-row"
+                    role="menuitem"
+                    onClick={() => {
+                      onTab(p.id)
+                      setTabsOpen(false)
+                    }}
+                    title={
+                      min
+                        ? `Restore ${p.title}`
+                        : front
+                          ? `Hide ${p.title}`
+                          : `Bring ${p.title} to front`
+                    }
+                  >
+                    <span>
+                      <span aria-hidden style={{ fontSize: '0.7rem' }}>
+                        {min ? '▫' : '▪'}
+                      </span>{' '}
+                      {pinnedIds.includes(p.id) ? '📌 ' : ''}
+                      {p.title}
+                    </span>
+                    <span className="muted winlauncher-why">
+                      {min ? 'minimized' : front ? 'front' : ''}
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
+          </div>,
+          portalTarget,
+        )}
       <input
         type="range"
         min={50}

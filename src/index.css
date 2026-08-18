@@ -2330,33 +2330,17 @@ section[id] {
   display: flex;
   align-items: center;
   gap: 0.35rem;
-  /* never wraps -- the room-tab chips are the one thing allowed to overflow (into their own
-     horizontally-scrolling strip below), so this row's height stays constant regardless of
-     how many panes are open */
+  /* every child is a fixed-size button now (the room-tab strip became one dropdown button --
+     see the Tabs button in CircuitCanvas.tsx), so this never has anything left to wrap */
   flex-wrap: nowrap;
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: var(--r-md, 10px);
   padding: 0.32rem 0.45rem;
 }
-/* everything in the row except the chip strip keeps its natural size and is never squeezed --
-   these are the controls you always need reachable (zoom, tile, fit all, windows) */
-.cz-menu > *:not(.cz-menu-chips) {
-  flex-shrink: 0;
-}
-.cz-menu-chips {
-  display: flex;
-  align-items: center;
-  gap: 0.35rem;
-  flex: 1 1 auto;
-  min-width: 3rem;
-  overflow-x: auto;
-  overflow-y: hidden;
-  /* thin, unobtrusive scrollbar -- this strip is meant to read as "more chips, swipe/scroll",
-     not as a prominent scroll region competing with the canvas itself */
-  scrollbar-width: thin;
-}
-.cz-menu-chips .btn {
+/* nothing in this row is ever squeezed -- these are the controls you always need reachable
+   (zoom, tile, fit all, windows, tabs) */
+.cz-menu > * {
   flex-shrink: 0;
 }
 .cz-menu-label {
@@ -3139,11 +3123,6 @@ select {
   border-radius: 50%;
   filter: blur(1px);
 }
-.click-fx-pixel {
-  width: 6px;
-  height: 6px;
-  border-radius: 0;
-}
 .click-fx-beam {
   width: 3px;
   border-radius: 2px;
@@ -3564,26 +3543,31 @@ select {
   border-bottom: 1px solid var(--border);
 }
 
-/* Click-flair style picker — small preview buttons, each playing its own effect on click so
-   choosing a style doubles as trying it. A grid rather than the single row this started as:
-   fourteen styles wrap to several rows of the same tile size instead of squeezing narrower. */
+/* Click-flair style picker — lives in its own dialog (.fx-sheet), same pattern as the palette
+   editor's .pal-sheet, instead of inline in the cog menu: a dozen tiles there meant scrolling
+   the whole account menu every time flair was on. Narrower than .pal-sheet since a grid of small
+   square tiles doesn't need the palette editor's side-by-side room. */
+.fx-sheet {
+  width: min(26rem, 100%);
+  max-height: min(85vh, 32rem);
+}
 .fx-style-row {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(3.4rem, 1fr));
-  gap: 0.3rem;
+  grid-template-columns: repeat(auto-fill, minmax(4.6rem, 1fr));
+  gap: 0.4rem;
   padding-block: 0.3rem;
 }
 .fx-style-btn {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 0.1rem;
-  padding: 0.3rem 0.15rem;
+  gap: 0.15rem;
+  padding: 0.5rem 0.3rem;
   border: 1px solid var(--border);
   border-radius: 8px;
   background: transparent;
   color: var(--text);
-  font-size: 0.9rem;
+  font-size: 1.1rem;
   cursor: pointer;
 }
 .fx-style-btn.is-on {
@@ -3591,6 +3575,6 @@ select {
   background: color-mix(in oklab, var(--accent), transparent 88%);
 }
 .fx-style-label {
-  font-size: 0.68rem;
+  font-size: 0.72rem;
   opacity: 0.75;
 }

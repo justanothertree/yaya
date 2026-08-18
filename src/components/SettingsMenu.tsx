@@ -5,6 +5,21 @@ import { previewClickFx, type FxStyle } from '../ui/clickFx'
 
 export type Theme = 'light' | 'dark' | 'alt'
 
+const FX_STYLE_OPTIONS: Array<[FxStyle, string, string]> = [
+  ['sparks', '✨', 'Sparks'],
+  ['sonar', '◎', 'Sonar'],
+  ['pop', '🎊', 'Pop'],
+  ['rocket', '🚀', 'Rocket'],
+  ['stars', '★', 'Stars'],
+  ['hearts', '❤', 'Hearts'],
+  ['bubbles', '🫧', 'Bubbles'],
+  ['glitter', '✦', 'Glitter'],
+  ['shatter', '△', 'Shatter'],
+  ['ink', '💧', 'Ink'],
+  ['orbit', '⟳', 'Orbit'],
+  ['beam', '☀', 'Beam'],
+]
+
 /**
  * The cog: one control for everything that makes the site *yours* — who you are, and how
  * it looks. It replaces four separate nav controls (the A−/100%/A+ cluster, the theme
@@ -79,6 +94,9 @@ export function SettingsMenu({
   const [open, setOpen] = useState(false)
   /** the palette editor is collapsed by default — it's the one control here with real depth */
   const [palOpen, setPalOpen] = useState(false)
+  /** same reasoning as palOpen: a dozen style tiles inline turned the whole cog menu into a
+   * scroll every time flair was on, so picking a style opens its own dialog instead */
+  const [styleOpen, setStyleOpen] = useState(false)
   const wrapRef = useRef<HTMLDivElement>(null)
   const cogRef = useRef<HTMLButtonElement>(null)
 
@@ -112,6 +130,17 @@ export function SettingsMenu({
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [palOpen])
+
+  // Same as above, its own listener for the same reason: the style dialog outlives the dropdown
+  // that opened it.
+  useEffect(() => {
+    if (!styleOpen) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setStyleOpen(false)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [styleOpen])
 
   const pct = Math.round(uiScale * 100)
   // prefer the name; the email is only a stand-in until the profile arrives
@@ -264,46 +293,25 @@ export function SettingsMenu({
             <span>⁕ Click flair</span>
             <span className={'nav-menu-switch' + (sparksOn ? ' is-on' : '')} aria-hidden />
           </button>
-          {/* Only when there's something to pick between showing -- four dead style buttons
-              under an OFF toggle would just be clutter. Each button plays its own effect at
-              its own centre on click, so choosing a style IS trying it, no separate preview
-              area needed. */}
+          {/* Only when there's something to pick showing -- a row under an OFF toggle would just
+              be clutter. This used to be all twelve style tiles inline, which made the whole cog
+              menu a scroll every time flair was on; now it's one row that opens its own dialog,
+              same pattern as the palette editor below. */}
           {sparksOn && (
-            <div className="nav-menu-row is-static fx-style-row">
-              {(
-                [
-                  ['sparks', '✨', 'Sparks'],
-                  ['sonar', '◎', 'Sonar'],
-                  ['pop', '🎊', 'Pop'],
-                  ['rocket', '🚀', 'Rocket'],
-                  ['stars', '★', 'Stars'],
-                  ['hearts', '❤', 'Hearts'],
-                  ['bubbles', '🫧', 'Bubbles'],
-                  ['glitter', '✦', 'Glitter'],
-                  ['shatter', '△', 'Shatter'],
-                  ['ink', '💧', 'Ink'],
-                  ['pixels', '▦', 'Pixels'],
-                  ['orbit', '⟳', 'Orbit'],
-                  ['beam', '☀', 'Beam'],
-                  ['zap', '⚡', 'Zap'],
-                ] as Array<[FxStyle, string, string]>
-              ).map(([id, icon, label]) => (
-                <button
-                  key={id}
-                  className={'fx-style-btn' + (sparksStyle === id ? ' is-on' : '')}
-                  aria-pressed={sparksStyle === id}
-                  title={label}
-                  onClick={(e) => {
-                    onSparksStyle(id)
-                    const r = e.currentTarget.getBoundingClientRect()
-                    previewClickFx(id, r.left + r.width / 2, r.top + r.height / 2)
-                  }}
-                >
-                  <span aria-hidden>{icon}</span>
-                  <span className="fx-style-label">{label}</span>
-                </button>
-              ))}
-            </div>
+            <button
+              className="nav-menu-row"
+              role="menuitem"
+              onClick={() => {
+                setStyleOpen(true)
+                setOpen(false)
+              }}
+            >
+              <span>
+                {FX_STYLE_OPTIONS.find(([id]) => id === sparksStyle)?.[1]} Style:{' '}
+                {FX_STYLE_OPTIONS.find(([id]) => id === sparksStyle)?.[2]}
+              </span>
+              <span className="muted">›</span>
+            </button>
           )}
 
           {desktop && (
@@ -370,6 +378,51 @@ export function SettingsMenu({
                 </button>
               </div>
               <PalettePicker active={customPalette} onActiveChange={onCustomPalette} />
+            </div>
+          </div>,
+          document.body,
+        )}
+
+      {/* Same reasoning and the same containing-block trap as the palette dialog above -- a
+          dozen tiles is real depth, not a menu row, and this has to portal to <body> for the
+          same reason that one does. Each tile plays its own effect at its own centre on click,
+          so choosing a style IS trying it, no separate preview area needed. */}
+      {styleOpen &&
+        createPortal(
+          <div
+            className="pal-scrim"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Choose a click flair style"
+            onPointerDown={(e) => {
+              if (e.target === e.currentTarget) setStyleOpen(false)
+            }}
+          >
+            <div className="pal-sheet fx-sheet">
+              <div className="pal-sheet-head">
+                <strong>Click flair style</strong>
+                <button className="btn" onClick={() => setStyleOpen(false)} aria-label="Close">
+                  ✕
+                </button>
+              </div>
+              <div className="fx-style-row">
+                {FX_STYLE_OPTIONS.map(([id, icon, label]) => (
+                  <button
+                    key={id}
+                    className={'fx-style-btn' + (sparksStyle === id ? ' is-on' : '')}
+                    aria-pressed={sparksStyle === id}
+                    title={label}
+                    onClick={(e) => {
+                      onSparksStyle(id)
+                      const r = e.currentTarget.getBoundingClientRect()
+                      previewClickFx(id, r.left + r.width / 2, r.top + r.height / 2)
+                    }}
+                  >
+                    <span aria-hidden>{icon}</span>
+                    <span className="fx-style-label">{label}</span>
+                  </button>
+                ))}
+              </div>
             </div>
           </div>,
           document.body,

@@ -20,10 +20,8 @@ const FX_STYLES: FxStyle[] = [
   'glitter',
   'shatter',
   'ink',
-  'pixels',
   'orbit',
   'beam',
-  'zap',
 ]
 import { WindowLauncher, type LaunchableWindow } from './components/WindowLauncher'
 import { ShareStage } from './voice/ShareStage'
@@ -1301,6 +1299,7 @@ export default function App() {
               ])}
               pinnedIds={pinnedIds}
               onTogglePin={togglePin}
+              ambientOn={ambientOn}
               extraToolbar={
                 <WindowLauncher
                   windows={launchableWindows()}
@@ -1325,6 +1324,7 @@ export default function App() {
                 panes={withPinned(homePanes())}
                 pinnedIds={pinnedIds}
                 onTogglePin={togglePin}
+                ambientOn={ambientOn}
                 extraToolbar={
                   <WindowLauncher
                     windows={launchableWindows()}
@@ -1368,6 +1368,7 @@ export default function App() {
                     .map((w) => w.id),
                 ]}
                 onToggleLauncherWindow={toggleWindow}
+                ambientOn={ambientOn}
               />
             </Suspense>
           </section>

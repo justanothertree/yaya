@@ -64,6 +64,7 @@ export function Circuit({
   launcherWindows = [],
   launcherOpenIds = [],
   onToggleLauncherWindow,
+  ambientOn = true,
 }: {
   authed?: boolean
   // App owns canvas state now (one launcher, persists across tabs); the Circuit reflects it
@@ -79,6 +80,8 @@ export function Circuit({
   launcherWindows?: LaunchableWindow[]
   launcherOpenIds?: string[]
   onToggleLauncherWindow?: (id: string) => void
+  /** App owns the cog's ambient-glow toggle; the canvas wallpaper is meant to follow it */
+  ambientOn?: boolean
 } = {}) {
   const [tab, setTabRaw] = useState<Tab>(() => initialTab(authed))
   const setTab = (t: Tab) => {
@@ -383,6 +386,7 @@ export function Circuit({
             focusPane={focusPane}
             pinnedIds={pinnedIds}
             onTogglePin={onTogglePin}
+            ambientOn={ambientOn}
             extraToolbar={
               onToggleLauncherWindow && (
                 <WindowLauncher
