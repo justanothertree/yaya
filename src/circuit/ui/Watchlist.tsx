@@ -10,16 +10,19 @@ import { watchlistInGroup } from '../groupFilter'
 import { MV_PIDS } from './movieMeta'
 import { REVIEW_KINDS, kindEmoji, kindsPresent } from '../reviewKinds'
 import { Modal } from './Modal'
-import type { WatchlistItem } from '../types'
+import type { CircuitGroup, WatchlistItem } from '../types'
 
 type SortW = 'votes' | 'alpha' | 'rt'
 
 export function Watchlist({
   onWatched,
   viewGroup = '',
+  groups = [],
 }: {
   onWatched?: (title: string, rt?: string) => void
+  /** the circuit filter you're currently looking at — '' means "all circuits" */
   viewGroup?: string
+  groups?: CircuitGroup[]
 } = {}) {
   const { watchlist: allWatchlist, people } = useCircuit()
   const inGroup = useMemo(
@@ -32,6 +35,9 @@ export function Watchlist({
   const [newTitle, setNewTitle] = useState('')
   const [newRt, setNewRt] = useState('')
   const [newKind, setNewKind] = useState('movie')
+  // See AddMovie.tsx for the full reasoning -- same fix, same shape: default to whatever
+  // circuit you're actually looking at, only ask when there's more than one to choose from.
+  const [newGroup, setNewGroup] = useState<string | undefined>(() => viewGroup || defaultGroup())
   /** the current pick, kept so it can be re-rolled or accepted */
   const [picked, setPicked] = useState<WatchlistItem | null>(null)
 
@@ -114,7 +120,7 @@ export function Watchlist({
       rt: newRt.trim() ? newRt.trim() + '%' : undefined,
       votes: [],
       kind: newKind,
-      groupId: defaultGroup(),
+      groupId: newGroup,
     })
     setNewTitle('')
     setNewRt('')
@@ -333,6 +339,26 @@ export function Watchlist({
             </>
           }
         >
+          {groups.length > 1 && (
+            <label style={{ display: 'grid', gap: 4, marginBottom: '0.7rem' }}>
+              <span className="muted" style={{ fontSize: '0.82rem' }}>
+                Circuit
+              </span>
+              <select
+                value={newGroup ?? ''}
+                onChange={(e) => setNewGroup(e.target.value || undefined)}
+              >
+                {groups.map((g) => (
+                  <option key={g.id} value={g.id}>
+                    {g.name}
+                  </option>
+                ))}
+              </select>
+              <span className="muted" style={{ fontSize: '0.78rem' }}>
+                Only people in this circuit will see it.
+              </span>
+            </label>
+          )}
           <div style={{ display: 'flex', gap: '0.3rem', flexWrap: 'wrap', marginBottom: '0.7rem' }}>
             {REVIEW_KINDS.map((k) => (
               <button

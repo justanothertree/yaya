@@ -2,7 +2,7 @@
 // A review is any rated thing — a movie, a meal, a beer, a restaurant — tagged by kind.
 import { useState } from 'react'
 import { circuitStore } from '../store'
-import type { Movie } from '../types'
+import type { CircuitGroup, Movie } from '../types'
 import { REVIEW_KINDS, kindOf } from '../reviewKinds'
 import { Modal } from './Modal'
 
@@ -10,7 +10,8 @@ import { Modal } from './Modal'
 // members (RLS scopes by group membership). Default to wherever the collection already
 // lives — the group most existing movies belong to — falling back to the user's first
 // group. This is what a movie added with no group silently broke: it siloed in a private
-// group and friends couldn't see it.
+// group and friends couldn't see it. Now just the STARTING point for the picker below,
+// not the final word — see the comment on the picker itself for why that changed.
 function defaultMovieGroup(): string | undefined {
   const st = circuitStore.getState()
   const counts = new Map<string, number>()
@@ -28,9 +29,14 @@ function defaultMovieGroup(): string | undefined {
 export function AddMovie({
   onClose,
   onAdded,
+  viewGroup = '',
+  groups = [],
 }: {
   onClose: () => void
   onAdded?: (m: Movie) => void
+  /** the circuit filter you're currently looking at — '' means "all circuits" */
+  viewGroup?: string
+  groups?: CircuitGroup[]
 }) {
   const [kind, setKind] = useState('movie')
   // true once the visitor chooses to name their own category
@@ -41,6 +47,16 @@ export function AddMovie({
   const [rt, setRt] = useState('')
   const k = kindOf(kind)
   const isMovie = kind === 'movie'
+  /**
+   * Which circuit a new review joins used to be entirely invisible — silently whichever one
+   * already had the most reviews, with no indication on screen, which is exactly what read as
+   * "confusing" about adding one while looking at 'All circuits': there IS no current circuit
+   * in that view, so the silent default could land somewhere you didn't expect. If you're
+   * looking at a SPECIFIC circuit, that's obviously where a new review should join — so that's
+   * the default now, edited here only if you deliberately change it. Only shown at all when
+   * there's more than one circuit to choose between.
+   */
+  const [group, setGroup] = useState(() => viewGroup || defaultMovieGroup())
 
   const save = () => {
     const t = title.trim()
@@ -53,7 +69,7 @@ export function AddMovie({
       date: date || undefined,
       rt: isMovie ? rt.trim() || undefined : undefined,
       ratings: {},
-      groupId: defaultMovieGroup(),
+      groupId: group,
     }
     void circuitStore.saveMovie(movie)
     onAdded?.(movie)
@@ -92,6 +108,25 @@ export function AddMovie({
         </>
       }
     >
+      {groups.length > 1 && (
+        <label style={{ ...label, marginTop: 0 }}>
+          Circuit
+          <select
+            value={group ?? ''}
+            onChange={(e) => setGroup(e.target.value || undefined)}
+            style={field}
+          >
+            {groups.map((g) => (
+              <option key={g.id} value={g.id}>
+                {g.name}
+              </option>
+            ))}
+          </select>
+          <span className="muted" style={{ fontSize: '0.78rem', fontWeight: 400 }}>
+            Only people in this circuit will see it.
+          </span>
+        </label>
+      )}
       <span style={label}>What is it?</span>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', marginTop: 4 }}>
         {REVIEW_KINDS.map((rk) => (

@@ -284,8 +284,16 @@ export function Circuit({
     ...(authed
       ? [{ id: 'chat', title: '💬 Chat', node: <Chat authed /> }]
       : [
-          { id: 'movies', title: '📝 Reviews', node: <Movies viewGroup={activeGroup} /> },
-          { id: 'watchlist', title: '🎲 Pool', node: <Watchlist viewGroup={activeGroup} /> },
+          {
+            id: 'movies',
+            title: '📝 Reviews',
+            node: <Movies viewGroup={activeGroup} groups={groups} />,
+          },
+          {
+            id: 'watchlist',
+            title: '🎲 Pool',
+            node: <Watchlist viewGroup={activeGroup} groups={groups} />,
+          },
         ]),
   ]
 
@@ -439,8 +447,8 @@ export function Circuit({
             )}
             {tab === 'charts' && <Charts onDayClick={requestLog} viewGroup={activeGroup} />}
             {tab === 'chat' && <Chat authed={authed} />}
-            {tab === 'movies' && <Movies viewGroup={activeGroup} />}
-            {tab === 'watchlist' && <Watchlist viewGroup={activeGroup} />}
+            {tab === 'movies' && <Movies viewGroup={activeGroup} groups={groups} />}
+            {tab === 'watchlist' && <Watchlist viewGroup={activeGroup} groups={groups} />}
             {tab === 'circuits' && <CircuitsPanel />}
           </div>
         </section>

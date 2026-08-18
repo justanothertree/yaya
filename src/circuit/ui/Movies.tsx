@@ -5,7 +5,7 @@
 import { useMemo, useState } from 'react'
 import { circuitStore, useCircuit } from '../store'
 import { moviesInGroup } from '../groupFilter'
-import type { Movie, Person } from '../types'
+import type { CircuitGroup, Movie, Person } from '../types'
 import { MovieRate } from './MovieRate'
 import { AddMovie } from './AddMovie'
 import { MoviePersonProfile } from './MoviePersonProfile'
@@ -32,7 +32,13 @@ const stickyTh: React.CSSProperties = {
   zIndex: 1,
 }
 
-export function Movies({ viewGroup = '' }: { viewGroup?: string } = {}) {
+export function Movies({
+  viewGroup = '',
+  groups = [],
+}: {
+  viewGroup?: string
+  groups?: CircuitGroup[]
+} = {}) {
   const state = useCircuit()
   const [rate, setRate] = useState<{ movie: Movie; person: Person } | null>(null)
   const [adding, setAdding] = useState(false)
@@ -168,7 +174,9 @@ export function Movies({ viewGroup = '' }: { viewGroup?: string } = {}) {
           {viewGroup ? 'Nothing rated in this circuit yet.' : 'Nothing rated yet.'} Rate a movie, a
           meal, a beer — anything you want to compare.
         </p>
-        {adding && <AddMovie onClose={() => setAdding(false)} />}
+        {adding && (
+          <AddMovie onClose={() => setAdding(false)} viewGroup={viewGroup} groups={groups} />
+        )}
       </div>
     )
 
