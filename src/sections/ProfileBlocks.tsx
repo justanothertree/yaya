@@ -43,6 +43,23 @@ const BLOCK_LABEL: Record<ProfileBlock['block_type'], string> = {
   links: '🔗 Links',
 }
 
+/**
+ * A link block's `url` is whatever the profile owner typed — including another member typing it
+ * about THEMSELVES, which is the case that matters here. `javascript:` and `data:` both parse as
+ * valid URLs and were rendering straight into a real `<a href>`; a `javascript:` one runs in the
+ * VIEWER'S session the moment they click it, as if they'd typed it into their own address bar
+ * while signed in. Restricting to http/https closes that off entirely rather than trying to
+ * blocklist dangerous schemes one at a time.
+ */
+function safeHref(url: string): string | null {
+  try {
+    const u = new URL(url)
+    return u.protocol === 'http:' || u.protocol === 'https:' ? url : null
+  } catch {
+    return null
+  }
+}
+
 function activityLine(a: ActivityItem): string {
   const when = new Date(a.at).toLocaleDateString()
   if (a.kind === 'circuit_log') return 'Logged a workout in ' + a.detail + ' · ' + when
@@ -131,11 +148,15 @@ function BlockView({
         <div className={'card profile-block is-' + block.size}>
           <h3 style={{ marginTop: 0 }}>🔗 Links</h3>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
-            {items.map((l, i) => (
-              <a key={i} className="btn" href={l.url} target="_blank" rel="noreferrer">
-                {l.label || l.url}
-              </a>
-            ))}
+            {items.map((l, i) => {
+              const href = safeHref(l.url)
+              if (!href) return null
+              return (
+                <a key={i} className="btn" href={href} target="_blank" rel="noreferrer">
+                  {l.label || l.url}
+                </a>
+              )
+            })}
           </div>
         </div>
       )
@@ -328,7 +349,19 @@ export function ProfileBlocksEditor({
   const addBlock = (type: ProfileBlock['block_type']) =>
     setBlocks((b) => [
       ...b,
-      { block_type: type, size: 'medium', config: {}, visibility: 'members' },
+      {
+        block_type: type,
+        size: 'medium',
+        config: {},
+        // 'members' means anyone with ANY account on the site -- fine for a bio or a links
+        // list, but activity/stats surface circuit-flavored detail (workout logs, trophies) to
+        // people who may have signed up for an unrelated module and have no context for it.
+        // 'friends' at least requires an accepted mutual friendship first. The circuit_log rows
+        // themselves are separately restricted to viewers who actually share that circuit
+        // (get_member_activity checks membership per row) -- this default is about avoiding an
+        // accidentally-broad START, not a gap in what the row-level check already covers.
+        visibility: type === 'activity' || type === 'stats' ? 'friends' : 'members',
+      },
     ])
   const move = (i: number, dir: -1 | 1) =>
     setBlocks((b) => {
