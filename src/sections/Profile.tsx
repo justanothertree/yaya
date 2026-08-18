@@ -1,5 +1,11 @@
 import { useEffect, useState } from 'react'
 import { getSupabaseClient } from '../finance/client'
+import {
+  ProfileBlocksEditor,
+  ProfileBlocksView,
+  type ActivityItem,
+  type ProfileBlock,
+} from './ProfileBlocks'
 
 /**
  * A member's profile — the page behind every name on the site.
@@ -36,6 +42,12 @@ export function Profile({ authed }: { authed: boolean }) {
     | { kind: 'error'; msg: string }
     | { kind: 'ok'; p: ProfileData }
   >({ kind: 'loading' })
+  // blocks + activity load ALONGSIDE the profile, not gated behind it -- an empty array here
+  // just means "no blocks yet", which is the common case and shouldn't hold up the rest of
+  // the page rendering
+  const [blocks, setBlocks] = useState<ProfileBlock[]>([])
+  const [activity, setActivity] = useState<ActivityItem[]>([])
+  const [editing, setEditing] = useState(false)
 
   // moving between profiles changes only the ?u= — the section stays 'profile', so App
   // won't remount us; track the hash ourselves
@@ -44,6 +56,25 @@ export function Profile({ authed }: { authed: boolean }) {
     window.addEventListener('hashchange', onHash)
     return () => window.removeEventListener('hashchange', onHash)
   }, [])
+
+  // blocks + activity, alongside the main profile fetch below. Reset (not left stale) on every
+  // navigation between profiles, and dropped when leaving edit mode isn't required -- editing
+  // resets itself because it's keyed off `u` too, below.
+  useEffect(() => {
+    if (!authed || !u) return
+    let live = true
+    setEditing(false)
+    const sb = getSupabaseClient()
+    void sb.rpc('get_profile_blocks', { p_username: u }).then(({ data }) => {
+      if (live && data) setBlocks(data as ProfileBlock[])
+    })
+    void sb.rpc('get_member_activity', { p_username: u, p_limit: 20 }).then(({ data }) => {
+      if (live && data) setActivity(data as ActivityItem[])
+    })
+    return () => {
+      live = false
+    }
+  }, [u, authed])
 
   useEffect(() => {
     if (!authed || !u) return
@@ -171,6 +202,15 @@ export function Profile({ authed }: { authed: boolean }) {
             @{p.username} · member since {p.member_since}
           </p>
         </div>
+        {p.is_me && (
+          <button
+            className="btn"
+            style={{ marginLeft: 'auto', flexShrink: 0 }}
+            onClick={() => setEditing((v) => !v)}
+          >
+            {editing ? 'Done editing' : '🎨 Customize page'}
+          </button>
+        )}
         {!p.is_me && (
           <span style={{ marginLeft: 'auto', display: 'flex', gap: '0.4rem', flexShrink: 0 }}>
             {p.friend_status === 'friends' && (
@@ -219,6 +259,22 @@ export function Profile({ authed }: { authed: boolean }) {
           </span>
         )}
       </div>
+
+      {/* Optional customization -- only exists on the page at all once there's something to
+          show. The editor and the read view are never both mounted: editing shows the working
+          copy being arranged, done-editing shows what was actually saved. */}
+      {p.is_me && editing ? (
+        <ProfileBlocksEditor
+          initial={blocks}
+          username={p.username}
+          onSaved={(saved) => {
+            setBlocks(saved)
+            setEditing(false)
+          }}
+        />
+      ) : (
+        <ProfileBlocksView blocks={blocks} activity={activity} snakeBest={p.snake_best} />
+      )}
 
       <div
         style={{
