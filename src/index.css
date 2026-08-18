@@ -3118,7 +3118,11 @@ select {
    * collision for another. Top-right is the one corner nothing else claims.
    */
   right: 1rem;
-  top: calc(var(--nav-h, 54px) + 0.5rem);
+  /* --cz-menu-h is the canvas toolbar's REAL height (CircuitCanvas.tsx), which grows past one
+     row once Tile/Fit-all/room-tabs wrap -- without it this sat at exactly where the toolbar
+     STARTS, landing on top of whichever controls the wrap pushed down. 0px when no canvas is
+     open, so this is unaffected outside canvas mode. */
+  top: calc(var(--nav-h, 54px) + var(--cz-menu-h, 0px) + 0.5rem);
   z-index: 900030;
   display: flex;
   flex-direction: column;

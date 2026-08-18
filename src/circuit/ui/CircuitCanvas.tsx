@@ -163,6 +163,32 @@ export function CircuitCanvas({
   const hostRef = useRef<HTMLDivElement>(null)
   const winRefs = useRef<Record<string, HTMLDivElement | null>>({})
   const maxZ = useRef(10)
+  /**
+   * Measures the canvas toolbar's REAL height and publishes it as --cz-menu-h, the same way
+   * App.tsx already publishes --nav-h for the real nav bar.
+   *
+   * The toolbar wraps (room tabs + zoom slider + Tile + Fit all easily exceed one row on a
+   * normal window width), and anything anchored "just below the nav" using --nav-h alone was
+   * really anchored to where the toolbar STARTS, not where it actually ends once wrapped —
+   * that's what put the Windows button on top of Tile/Fit-all. A callback ref, not a plain one:
+   * this component has several early `return null`s above where the bar renders, so a plain
+   * useEffect could not safely assume the node exists by the time it runs.
+   */
+  const menuBarRoRef = useRef<ResizeObserver | null>(null)
+  const menuBarRef = useCallback((el: HTMLDivElement | null) => {
+    menuBarRoRef.current?.disconnect()
+    menuBarRoRef.current = null
+    if (!el) {
+      document.documentElement.style.setProperty('--cz-menu-h', '0px')
+      return
+    }
+    const ro = new ResizeObserver(() => {
+      document.documentElement.style.setProperty('--cz-menu-h', el.offsetHeight + 'px')
+    })
+    ro.observe(el)
+    menuBarRoRef.current = ro
+    document.documentElement.style.setProperty('--cz-menu-h', el.offsetHeight + 'px')
+  }, [])
   // portal target captured once at first render (this is a browser-only SPA, so body is
   // always present) — evaluating document.body per-render tripped an intermittent
   // "target container is not a DOM element" during error-boundary recovery / HMR
@@ -1223,7 +1249,7 @@ export function CircuitCanvas({
   // sizing, same accent for the active item (see .cz-menu in index.css). Two menus, one
   // design — rather than one bar doing two jobs.
   const bar = (
-    <div className="cz-menu">
+    <div className="cz-menu" ref={menuBarRef}>
       <strong
         className="cz-menu-label"
         title="Drag a title bar to move (press against an edge to snap) · drag any edge or corner to resize · ▭ fit to content · ⛶ full screen · － hide"
