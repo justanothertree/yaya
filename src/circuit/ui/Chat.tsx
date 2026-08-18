@@ -73,6 +73,14 @@ export function Chat({ authed = false }: { authed?: boolean }) {
   // friends showed as "You, You", and the presence count never rose above 1 because they
   // all shared one identity. A real name per person fixes all three.
   const [myName, setMyName] = useState<string>(previewMember ? 'Preview You' : 'You')
+  /**
+   * What OTHER Lounge members see you as — deliberately separate from `myName`.
+   *
+   * The Lounge is the one room open to every opted-in account rather than to friends or
+   * circuit-mates, which is why joining it asks for a name at all. Publishing `myName` in its
+   * presence strip would hand back the real identity that name exists to keep out of it.
+   */
+  const [myLoungeName, setMyLoungeName] = useState<string | null>(null)
   // The Lounge is opt-in: nobody is placed in a room with every other account by
   // default. null = not looked up yet, so the invite card doesn't flash on load.
   const [loungeIn, setLoungeIn] = useState<boolean | null>(previewMember ? PREVIEW_LOUNGE_IN : null)
@@ -85,7 +93,8 @@ export function Chat({ authed = false }: { authed?: boolean }) {
   const loungeNames = useRoomPresence(
     !previewMember && room?.kind === 'lounge' ? room.id : null,
     me,
-    myName,
+    // the Lounge name, never the real one — see myLoungeName above
+    myLoungeName ?? myName,
   )
   const [loungeBusy, setLoungeBusy] = useState(false)
   // Voice rides the room you're already in: a DM is a 1:1 call, a circuit room a small
@@ -147,6 +156,12 @@ export function Chat({ authed = false }: { authed?: boolean }) {
       if (live && n) setMyName(n)
     })
     void sb.rpc('my_lounge_opt_in').then(({ data }) => live && setLoungeIn(data === true))
+    // What to announce yourself as in the Lounge specifically. Falls back to the same chain as
+    // `myName` server-side when no Lounge name was chosen, so this is only ever different when
+    // the person deliberately picked one.
+    void sb
+      .rpc('my_lounge_display_name')
+      .then(({ data }) => live && typeof data === 'string' && data && setMyLoungeName(data))
     void sb.rpc('list_chat_overview').then(({ data }) => {
       if (!live || !data) return
       const rs = data as Overview[]
@@ -320,6 +335,9 @@ export function Chat({ authed = false }: { authed?: boolean }) {
     const { error } = await sb.rpc('set_lounge_opt_in', { p_on: on })
     if (!error && on && name) {
       await sb.rpc('set_lounge_display_name', { p_name: name })
+      // locally too, so the presence strip announces the chosen name on this visit rather than
+      // the real one until the next reload
+      setMyLoungeName(name)
     }
     if (error) {
       setErr(error.message)
