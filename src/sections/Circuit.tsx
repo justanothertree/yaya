@@ -1,6 +1,7 @@
 // The Circuit — in-site module shell. Sub-tabs mirror the standalone app.
 // Backed by the shared store (localStorage now → Supabase realtime later, no UI change).
 import { useEffect, useState } from 'react'
+import type { ReactNode } from 'react'
 import { connectCircuit } from '../circuit/connect'
 import { circuitStore, useCircuit, useCircuitHistory } from '../circuit/store'
 import { showToast } from '../circuit/toast'
@@ -11,8 +12,7 @@ import { Charts } from '../circuit/ui/Charts'
 import { Movies } from '../circuit/ui/Movies'
 import { Watchlist } from '../circuit/ui/Watchlist'
 import { Toast } from '../circuit/ui/Toast'
-import { CircuitCanvas, type CanvasPane, type LaunchableWindow } from '../circuit/ui/CircuitCanvas'
-import { registerWindows, useHiddenWindows } from '../circuit/ui/canvasWindows'
+import type { CanvasPane } from '../circuit/ui/CircuitCanvas'
 import { CircuitsPanel } from '../circuit/ui/CircuitsPanel'
 import { Chat } from '../circuit/ui/Chat'
 import { onLogIntent, requestLog, requestLogToday, takePendingLog } from '../circuit/logIntent'
@@ -56,31 +56,25 @@ function initialTab(authed: boolean): Tab {
 export function Circuit({
   authed = false,
   canvasMode = false,
-  pinnedPanes = [],
-  pinnedIds = [],
-  onTogglePin,
-  onRefreshPinned,
-  launcherWindows = [],
-  launcherOpenIds = [],
-  onToggleLauncherWindow,
-  ambientOn = true,
+  isActiveTab = true,
+  onCanvasPanesChange,
+  onOpenCanvasPane,
 }: {
   authed?: boolean
-  // App owns canvas state now (one launcher, persists across tabs); the Circuit reflects it
+  // App owns canvas state now (one shared canvas, persists across every page); Circuit reflects
+  // it and, when it's on, reports its own sub-tab windows up rather than rendering a canvas of
+  // its own.
   canvasMode?: boolean
-  // windows pinned on other tabs ride along into this canvas too
-  pinnedPanes?: CanvasPane[]
-  pinnedIds?: string[]
-  onTogglePin?: (pane: CanvasPane) => void
-  /** hand App fresh copies of our pinned panes when what they render changes */
-  onRefreshPinned?: (panes: CanvasPane[]) => void
-  /** the site-wide window launcher's data — the Circuit's own canvas shows it too, in its
-      own toolbar row, next to Tile/Fit all rather than as a separate floating control */
-  launcherWindows?: LaunchableWindow[]
-  launcherOpenIds?: string[]
-  onToggleLauncherWindow?: (id: string) => void
-  /** App owns the cog's ambient-glow toggle; the canvas wallpaper is meant to follow it */
-  ambientOn?: boolean
+  /** whether Circuit is the page nav/the URL is actually pointing at right now, as opposed to
+   * just staying mounted in the background (see App.tsx's render condition) so its windows
+   * keep reporting into the shared canvas's catalog while you're elsewhere */
+  isActiveTab?: boolean
+  /** hand the shared canvas fresh copies of every sub-tab pane, and the circuit-filter picker
+   * to show in its toolbar, whenever what they'd render changes */
+  onCanvasPanesChange?: (panes: CanvasPane[], toolbar: ReactNode | null) => void
+  /** ensure a specific pane (Board, on becoming the active tab; Log, on "Log today") is open on
+   * the shared canvas and bring it to front */
+  onOpenCanvasPane?: (pane: CanvasPane) => void
 } = {}) {
   const [tab, setTabRaw] = useState<Tab>(() => initialTab(authed))
   const setTab = (t: Tab) => {
@@ -117,7 +111,6 @@ export function Circuit({
   const tabsRef = useScrollFade<HTMLSpanElement>()
 
   const [logTarget, setLogTarget] = useState<{ personId: string; date: string } | null>(null)
-  const [focusPane, setFocusPane] = useState<{ id: string; nonce: number } | null>(null)
   const [desktop, setDesktop] = useState(isDesktop())
   const { canUndo, canRedo } = useCircuitHistory()
   const canvas = canvasMode && desktop
@@ -204,8 +197,13 @@ export function Circuit({
 
   function handleLog(personId: string, date: string) {
     setLogTarget({ personId, date })
-    if (canvas) setFocusPane({ id: 'log', nonce: Date.now() })
-    else setTab('log')
+    if (canvas) {
+      // `canvasPanes` is declared further down in this same function body -- fine, since
+      // handleLog is only ever CALLED later (from the intent listener below), by which point
+      // this render's canvasPanes has already been assigned.
+      const log = canvasPanes.find((p) => p.id === 'log')
+      if (log) onOpenCanvasPane?.(log)
+    } else setTab('log')
   }
 
   // Panes hand out `requestLog` (a module function) rather than this closure, so a pinned
@@ -291,39 +289,6 @@ export function Circuit({
         ]),
   ]
 
-  /**
-   * The Circuit's own windows, minus any the user hid from the launcher, and the names published
-   * so the launcher can list them at all. Hiding is separate from PINNING: pinning decides
-   * whether a window follows you to other tabs, hiding decides whether it exists here.
-   */
-  const hiddenIds = useHiddenWindows()
-  /**
-   * Published in an effect, NOT during render. Registering notifies the launcher's store, which
-   * lives in App — so doing it inline meant setting state on one component while rendering
-   * another, which React warns about and is free to tear in a concurrent render.
-   *
-   * No dependency array on purpose: this runs after every render, and `registerWindows` returns
-   * early when the names are unchanged. That guard is what keeps it cheap, and it also means a
-   * dependency list would be a second, driftable copy of the same "has anything changed?" test.
-   */
-  useEffect(() => {
-    registerWindows(canvasPanes.map((p) => ({ id: p.id, title: p.title })))
-  })
-  const shownCanvasPanes = canvasPanes.filter((p) => !hiddenIds.includes(p.id))
-
-  // App pins the pane OBJECTS (it has to — they must outlive this component when you
-  // navigate away), which means they freeze whatever they were built with. Change the
-  // circuit filter and a pinned Board would still be showing the circuit you pinned it
-  // from — the wrong numbers, silently. So re-hand App fresh copies whenever the inputs
-  // behind them change. Keyed on those inputs and not on every render, so App's setState
-  // can't bounce straight back into another publish.
-  useEffect(() => {
-    if (!onRefreshPinned || !pinnedIds.length) return
-    const mine = canvasPanes.filter((p) => pinnedIds.includes(p.id))
-    if (mine.length) onRefreshPinned(mine)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeGroup, authed, logTarget, pinnedIds.join(',')])
-
   // shared circuit picker — shown in the toolbar and above the canvas when you're in 2+
   const groupPicker = groups.length > 1 && (
     <label
@@ -347,52 +312,69 @@ export function Circuit({
     </label>
   )
 
+  /**
+   * Hand the shared canvas fresh copies of every sub-tab pane, and the toolbar to show
+   * alongside them, whenever what they'd render changes.
+   *
+   * This is the ONE thing that makes these windows exist for the shared canvas at all now --
+   * there's no separate "registered windows" store any more (that used to be a second,
+   * parallel way of tracking "does this window exist" alongside pinning; folding it into the
+   * same reporting channel App already used for refreshing pinned panes removed the second
+   * system rather than keeping both in sync). App decides what to actually DO with the full
+   * list (refresh whichever are already open, offer the rest in the Windows menu) -- this
+   * effect's only job is keeping App's copy current.
+   *
+   * Runs whenever what the panes would render changes, same inputs the old refresh-only
+   * version used -- not on every render, so App's setState here can't bounce into another
+   * publish.
+   */
+  useEffect(() => {
+    onCanvasPanesChange?.(canvasPanes, groupPicker || null)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeGroup, authed, logTarget])
+
+  // Becoming the active tab while the shared canvas is on is Circuit's version of nav's
+  // open-or-focus effect in App.tsx -- App can't do this one itself, because it needs Circuit's
+  // OWN pane data, which isn't there yet on the very first frame Circuit mounts.
+  useEffect(() => {
+    if (!canvas || !isActiveTab) return
+    const board = canvasPanes.find((p) => p.id === 'board')
+    if (board) onOpenCanvasPane?.(board)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canvas, isActiveTab])
+
+  // The shared canvas itself is owned and rendered by App now — Circuit doesn't render one of
+  // its own any more. While `canvas` is on, Circuit renders NOTHING visible at all (not even
+  // this section wrapper): its whole job at that point is staying mounted so the effects above
+  // keep reporting fresh panes, not showing anything itself. `<Toast/>` is the one exception,
+  // kept outside this condition since a toast (e.g. "Logged") can fire from a Board window
+  // that's open while you're looking at a completely different page.
   return (
-    <div className={`cz-tab-${tab}`}>
-      <div
-        className="cz-head"
-        style={{ display: 'flex', alignItems: 'baseline', gap: '0.75rem', flexWrap: 'wrap' }}
-      >
-        <h2 className="section-title" style={{ margin: 0 }}>
-          The Circuit
-        </h2>
-        <span className="muted cz-subtitle" style={{ fontSize: '0.85rem' }}>
-          {authed ? 'fitness + movies, synced for you and friends' : 'fitness + movies tracker'}
-        </span>
-        {/* the circuit filter rides up here on the title line rather than taking a row of
-            its own below the tabs — and because it lives in the header it now shows on
-            every tab, including the Log, instead of appearing and vanishing */}
-        {groupPicker && (
-          <span className="cz-head-filter" style={{ marginLeft: 'auto' }}>
-            {groupPicker}
-          </span>
-        )}
-      </div>
+    <>
+      {!canvas && (
+        <section id="circuit" className={`card reveal cz-tab-${tab}`}>
+          <div
+            className="cz-head"
+            style={{ display: 'flex', alignItems: 'baseline', gap: '0.75rem', flexWrap: 'wrap' }}
+          >
+            <h2 className="section-title" style={{ margin: 0 }}>
+              The Circuit
+            </h2>
+            <span className="muted cz-subtitle" style={{ fontSize: '0.85rem' }}>
+              {authed ? 'fitness + movies, synced for you and friends' : 'fitness + movies tracker'}
+            </span>
+            {/* the circuit filter rides up here on the title line rather than taking a row of
+                its own below the tabs — and because it lives in the header it now shows on
+                every tab, including the Log, instead of appearing and vanishing */}
+            {groupPicker && (
+              <span className="cz-head-filter" style={{ marginLeft: 'auto' }}>
+                {groupPicker}
+              </span>
+            )}
+          </div>
 
-      {!authed && <DemoBanner />}
+          {!authed && <DemoBanner />}
 
-      {canvas ? (
-        <div style={{ marginTop: '0.9rem' }}>
-          {/* the picker used to render here, behind the canvas's fixed full-viewport
-              surface — present in the DOM, invisible on screen. It goes into the canvas
-              menu instead, which is the only chrome you can actually reach in canvas mode. */}
-          <CircuitCanvas
-            toolbar={groupPicker || undefined}
-            panes={[
-              ...shownCanvasPanes,
-              ...pinnedPanes.filter((p) => !shownCanvasPanes.some((c) => c.id === p.id)),
-            ]}
-            focusPane={focusPane}
-            pinnedIds={pinnedIds}
-            onTogglePin={onTogglePin}
-            ambientOn={ambientOn}
-            launchableWindows={launcherWindows}
-            launcherOpenIds={launcherOpenIds}
-            onToggleWindow={onToggleLauncherWindow}
-          />
-        </div>
-      ) : (
-        <>
           <div
             className="cz-toolbar"
             style={{
@@ -461,11 +443,11 @@ export function Circuit({
             {tab === 'watchlist' && <Watchlist viewGroup={activeGroup} />}
             {tab === 'circuits' && <CircuitsPanel />}
           </div>
-        </>
+        </section>
       )}
 
       <Toast />
-    </div>
+    </>
   )
 }
 

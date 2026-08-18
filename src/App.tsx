@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, lazy, Suspense } from 'react'
+import type { ReactNode } from 'react'
 import { ContactForm } from './sections/ContactForm'
 import { EvanCook, homePanes } from './sections/EvanCook'
 import { SnakeGame } from './sections/SnakeGame'
@@ -26,12 +27,6 @@ const FX_STYLES: FxStyle[] = [
 import { ShareStage } from './voice/ShareStage'
 import { UsagePanel } from './components/UsagePanel'
 import { voiceSession } from './voice/voiceSession'
-import {
-  isRegistered,
-  toggleHidden,
-  useHiddenWindows,
-  useRegisteredWindows,
-} from './circuit/ui/canvasWindows'
 import { CallDock } from './voice/CallDock'
 import { useReveal } from './hooks/useReveal'
 import { useNotifications } from './hooks/useNotifications'
@@ -240,6 +235,16 @@ export default function App() {
   // bumps whenever nav should bring a specific pane to the front of the shared canvas
   // (see the effect below) — same shape/mechanism Circuit already uses for "Log today"
   const [focusPane, setFocusPane] = useState<{ id: string; nonce: number } | null>(null)
+  /**
+   * The Circuit's own sub-tab windows (Board/Log/Feed/...), reported up by <Circuit> itself
+   * whenever what they'd render changes. Circuit stays mounted (see its render condition below)
+   * whenever the shared canvas is on, even on a different page, specifically so these stay
+   * available to open from anywhere — same as the 10 single-page windows already are, just
+   * sourced from a component instead of a static factory since they need Circuit's own live
+   * data (which circuit filter, which log entry, etc).
+   */
+  const [circuitCanvasPanes, setCircuitCanvasPanes] = useState<CanvasPane[]>([])
+  const [circuitToolbar, setCircuitToolbar] = useState<ReactNode | null>(null)
   // the ambient glow behind the page — on by default, but it's a taste thing, so the
   // cog remembers whoever turns it off
   const [ambientOn, setAmbientOn] = useState(
@@ -868,14 +873,15 @@ export default function App() {
     !(active === 'snake' && snakeLive)
   /**
    * True whenever the ONE shared canvas is covering the normal page for whatever `active`
-   * currently is — every page except Circuit (which still owns a separate canvas of its own
-   * for now — folding it into this one is the next step) and `invite`, which was never
-   * canvas-capable at all. Replaces the old per-page `inGenericCanvas` now that there's a
-   * single instance instead of three: Home used to get its own dedicated mount, and every
-   * other single-window page unmounted-and-remounted a fresh one on every tab switch.
+   * currently is — every page except `invite`, which was never canvas-capable at all. Replaces
+   * the old per-page `inGenericCanvas` now that there's a single instance instead of three:
+   * Home used to get its own dedicated mount, Circuit had a wholly separate canvas of its own,
+   * and every other single-window page unmounted-and-remounted a fresh one on every tab switch.
    */
   const sharedCanvasShowing =
-    desktop && canvasOpen && (active === 'home' || singleCanvasTabs.includes(active))
+    desktop &&
+    canvasOpen &&
+    (active === 'home' || active === 'circuit' || singleCanvasTabs.includes(active))
   const canvasTitleFor: Partial<Record<Section, string>> = {
     investments: '📈 Investments',
     'account-settings': '👤 Account',
@@ -978,14 +984,11 @@ export default function App() {
    * Every window that can go on the canvas, for the launcher. Built from the same list and the
    * same node factory the tabs use, so a window can never appear here and fail to open.
    */
-  // windows owned by another surface (the Circuit's own panes) — see canvasWindows.ts
-  const registeredWindows = useRegisteredWindows()
-  const hiddenWindows = useHiddenWindows()
-
   const launchableWindows = (): LaunchableWindow[] => [
-    ...(active === 'circuit'
-      ? registeredWindows.map((w) => ({ id: w.id, title: w.title, group: 'This canvas' }))
-      : []),
+    // The Circuit's own sub-tabs, reported by <Circuit> itself (see circuitCanvasPanes above) --
+    // always included now, not just while active === 'circuit'. Circuit stays mounted whenever
+    // the shared canvas is on specifically so this list stays populated from anywhere.
+    ...circuitCanvasPanes.map((p) => ({ id: p.id, title: p.title, group: 'The Circuit' })),
     // Home's cards are windows in their own right — they were missing from the first pass, so
     // the one page that is ALREADY several windows was the one you couldn't compose from.
     ...homePanes().map((p) => ({
@@ -1009,11 +1012,6 @@ export default function App() {
 
   /** Toggle a window on the canvas from the launcher — the same pin the title bar toggles. */
   const toggleWindow = (id: string) => {
-    // A window another surface owns is shown or hidden there, not pinned here.
-    if (isRegistered(id)) {
-      toggleHidden(id)
-      return
-    }
     const existing = pinned.find((p) => p.id === id)
     if (existing) {
       togglePin(existing)
@@ -1024,8 +1022,21 @@ export default function App() {
       togglePin(home)
       return
     }
+    const circuitPane = circuitCanvasPanes.find((p) => p.id === id)
+    if (circuitPane) {
+      togglePin(circuitPane)
+      return
+    }
     const sec = id as Section
     togglePin({ id, title: canvasTitleFor[sec] ?? id, node: canvasNodeFor(sec) })
+  }
+
+  /** Ensure a specific pane is open (adding it if it wasn't) and bring it to front. Nav uses
+   * this for "go to this page"; Circuit uses the same function (passed down as a prop) for its
+   * own "open Board" / "Log today" moments, so there's one add-and-focus behaviour, not two. */
+  const openAndFocus = (pane: CanvasPane) => {
+    setPinned((prev) => (prev.some((p) => p.id === pane.id) ? prev : [...prev, pane]))
+    setFocusPane({ id: pane.id, nonce: Date.now() })
   }
 
   /**
@@ -1035,8 +1046,9 @@ export default function App() {
    * — nav is the fast path for the pages people actually navigate to; the Windows menu is the
    * full catalog + search for everything else.
    *
-   * Circuit is excluded (it still owns a separate canvas for now — that's the next step) and so
-   * is `invite`, which was never canvas-capable at all.
+   * Circuit is excluded — it drives its own "open Board" moment internally (see
+   * onOpenCanvasPane below), since it needs its OWN pane data, which isn't ready here the first
+   * frame Circuit mounts. `invite` is excluded because it was never canvas-capable at all.
    */
   useEffect(() => {
     if (!desktop || !canvasOpen) return
@@ -1049,15 +1061,11 @@ export default function App() {
       })
       setFocusPane({ id: 'home:hero', nonce: Date.now() })
     } else if (singleCanvasTabs.includes(active)) {
-      setPinned((prev) =>
-        prev.some((p) => p.id === active)
-          ? prev
-          : [
-              ...prev,
-              { id: active, title: canvasTitleFor[active] ?? active, node: canvasNodeFor(active) },
-            ],
-      )
-      setFocusPane({ id: active, nonce: Date.now() })
+      openAndFocus({
+        id: active,
+        title: canvasTitleFor[active] ?? active,
+        node: canvasNodeFor(active),
+      })
     }
     // deliberately just [active, desktop, canvasOpen] -- homePanes/canvasNodeFor/canvasTitleFor
     // are recreated every render and this only needs to react to actual navigation
@@ -1335,11 +1343,9 @@ export default function App() {
               onTogglePin={togglePin}
               ambientOn={ambientOn}
               focusPane={focusPane}
+              toolbar={circuitToolbar}
               launchableWindows={launchableWindows()}
-              launcherOpenIds={[
-                ...pinnedIds,
-                ...registeredWindows.filter((w) => !hiddenWindows.includes(w.id)).map((w) => w.id),
-              ]}
+              launcherOpenIds={pinnedIds}
               onToggleWindow={toggleWindow}
             />
           </Suspense>
@@ -1349,34 +1355,35 @@ export default function App() {
             <EvanCook />
           </section>
         )}
-        {active === 'circuit' && (
-          <section id="circuit" className="card reveal">
-            <Suspense
-              fallback={
+        {/* Circuit stays mounted whenever the shared canvas is on, even on another page --
+            not to show anything (it renders its own tabbed page only when it's the active tab
+            AND the canvas is off), but so its sub-tab windows keep reporting into
+            circuitCanvasPanes/circuitToolbar and stay openable from anywhere, the same way
+            Home's cards and the 10 single-page windows already are. The Suspense fallback only
+            shows while actually viewing Circuit -- background-loading its chunk from another
+            page shouldn't flash a loading card on screen. */}
+        {(active === 'circuit' || (canvasOpen && desktop)) && (
+          <Suspense
+            fallback={
+              active === 'circuit' ? (
                 <div className="card" aria-busy>
                   Loading Circuit…
                 </div>
-              }
-            >
-              <Circuit
-                authed={isFinanceAuthed || !hasFinanceSupabaseEnv()}
-                canvasMode={canvasOpen && desktop}
-                pinnedPanes={pinned}
-                pinnedIds={pinnedIds}
-                onTogglePin={togglePin}
-                onRefreshPinned={refreshPinned}
-                launcherWindows={launchableWindows()}
-                launcherOpenIds={[
-                  ...pinnedIds,
-                  ...registeredWindows
-                    .filter((w) => !hiddenWindows.includes(w.id))
-                    .map((w) => w.id),
-                ]}
-                onToggleLauncherWindow={toggleWindow}
-                ambientOn={ambientOn}
-              />
-            </Suspense>
-          </section>
+              ) : null
+            }
+          >
+            <Circuit
+              authed={isFinanceAuthed || !hasFinanceSupabaseEnv()}
+              canvasMode={canvasOpen && desktop}
+              isActiveTab={active === 'circuit'}
+              onCanvasPanesChange={(panes, toolbar) => {
+                setCircuitCanvasPanes(panes)
+                setCircuitToolbar(toolbar)
+                refreshPinned(panes)
+              }}
+              onOpenCanvasPane={openAndFocus}
+            />
+          </Suspense>
         )}
         {!sharedCanvasShowing && active === 'people' && (
           <section id="people" className="card reveal">
