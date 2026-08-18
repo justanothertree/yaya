@@ -485,6 +485,37 @@ export function CircuitCanvas({
     [worldBox, snapGeom],
   )
 
+  /**
+   * `clampAll` keeps every window at a VALID position within the whole plane; it says nothing
+   * about whether any of them fall inside the slice of the plane the current pan is actually
+   * showing. Reported bug: arrange windows at one viewport size (or with the toolbar wrapped to
+   * fewer rows), come back at a meaningfully different one, and the pan can be left pointing at
+   * empty space — every window individually fine, nothing visible. Used both right after
+   * restoring a saved layout and on every live resize, so a shrinking browser window is caught
+   * the same way a fresh reload at a different size is.
+   */
+  const recentreIfNothingVisible = useCallback(
+    (layout: Layout) => {
+      const boxes = Object.values(layout)
+      if (!boxes.length) return
+      const vp = hostBox()
+      const visible = boxes.some(
+        (w) => w.x < vp.x + vp.w && w.x + w.w > vp.x && w.y < vp.y + vp.h && w.y + w.h > vp.y,
+      )
+      if (visible) return
+      const bx0 = Math.min(...boxes.map((w) => w.x))
+      const by0 = Math.min(...boxes.map((w) => w.y))
+      const bx1 = Math.max(...boxes.map((w) => w.x + w.w))
+      const by1 = Math.max(...boxes.map((w) => w.y + w.h))
+      const centred = clampPan({ x: (bx0 + bx1) / 2 - vp.w / 2, y: (by0 + by1) / 2 - vp.h / 2 })
+      panRef.current = centred
+      setPanState(centred)
+      if (worldRef.current)
+        worldRef.current.style.transform = worldTransform(centred, viewRef.current)
+    },
+    [hostBox, clampPan],
+  )
+
   // Wheel on empty canvas zooms the view; wheel INSIDE a window still scrolls that
   // window. Non-passive listener because we must preventDefault the page.
   useEffect(() => {
@@ -569,6 +600,9 @@ export function CircuitCanvas({
       if (w.z > maxZ.current) maxZ.current = w.z
     })
     setWins(fitted)
+    // "Come back where you left off" trusted the saved pan blindly -- fine for the common case,
+    // broken when the viewport has meaningfully changed since. See recentreIfNothingVisible.
+    recentreIfNothingVisible(fitted)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -628,21 +662,28 @@ export function CircuitCanvas({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [wins, panes, pinnedIds.join(',')])
 
-  // canvas resized (browser window, devtools, zoom) → keep every window fitting
+  // canvas resized (browser window, devtools, zoom, the toolbar wrapping to more/fewer rows)
+  // → keep every window fitting, and if that shrink left nothing in view, come back to it
   useEffect(() => {
     const host = hostRef.current
     if (!host || typeof ResizeObserver === 'undefined') return
     let raf = 0
     const ro = new ResizeObserver(() => {
       cancelAnimationFrame(raf)
-      raf = requestAnimationFrame(() => setWins((prev) => clampAll(prev)))
+      raf = requestAnimationFrame(() => {
+        setWins((prev) => {
+          const next = clampAll(prev)
+          recentreIfNothingVisible(next)
+          return next
+        })
+      })
     })
     ro.observe(host)
     return () => {
       cancelAnimationFrame(raf)
       ro.disconnect()
     }
-  }, [clampAll])
+  }, [clampAll, recentreIfNothingVisible])
 
   // lock background scroll while the full-width canvas overlay is open, and tell the
   // app shell a canvas is active (it suspends the global zoom, which otherwise fights
