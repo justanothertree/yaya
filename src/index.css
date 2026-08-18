@@ -987,7 +987,10 @@
   /* sits directly above whatever else is pinned down there — no breakpoint needed, because
      --mnav-h is simply 0 when there's no bottom bar */
   bottom: calc(var(--bottom-guard) + var(--kb) + var(--pin-gap));
-  z-index: 60;
+  /* Well above anything reachable, not just above today's canvas windows -- their z-index
+     counter has no ceiling and climbs by 1 per focus, so a long canvas session could
+     eventually out-climb a small fixed number here. */
+  z-index: 900000;
   display: flex;
   align-items: center;
   gap: var(--sp-2, 0.5rem);
@@ -3103,7 +3106,7 @@ select {
    */
   right: 1rem;
   top: calc(var(--nav-h, 54px) + 0.5rem);
-  z-index: 240;
+  z-index: 900030;
   display: flex;
   flex-direction: column;
   align-items: flex-end;
@@ -3212,7 +3215,7 @@ select {
   position: fixed;
   right: 1rem;
   bottom: 1rem;
-  z-index: 220;
+  z-index: 900020;
   display: flex;
   flex-direction: column;
   align-items: flex-end;
@@ -3229,7 +3232,7 @@ select {
   position: fixed;
   right: 1rem;
   bottom: 1rem;
-  z-index: 220;
+  z-index: 900020;
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
 }
 .sharestage-item {
@@ -3306,6 +3309,15 @@ select {
   .sharestage-item.is-big video {
     width: 92vw;
   }
+  /* Icon-only buttons at 0.15rem padding measure under 24px tall -- fine with a mouse pointer,
+     a real miss target with a thumb. Same 40px floor this codebase already uses for the Snake
+     toolbar and the mobile nav. */
+  .sharestage-controls .btn,
+  .callroster-actions .btn,
+  .profile-editrow-actions .btn {
+    min-width: 40px;
+    min-height: 40px;
+  }
 }
 
 .call-dock-crowded {
@@ -3362,7 +3374,7 @@ select {
   left: 50%;
   transform: translateX(-50%);
   bottom: calc(var(--bottom-guard) + var(--kb) + var(--pin-gap) + 3.2rem);
-  z-index: 61;
+  z-index: 900010;
   width: min(90vw, 20rem);
   max-height: 60vh;
   display: flex;
