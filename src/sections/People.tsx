@@ -9,9 +9,13 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { notificationsChanged } from '../hooks/notifySignal'
 import { getSupabaseClient } from '../finance/client'
 import { previewMember, PREVIEW_PEOPLE, type PreviewPerson } from '../dev/previewMember'
+import { usePresence } from '../hooks/usePresence'
 
 type Rel = 'none' | 'in' | 'out' | 'friend'
-type Person = { username: string; name: string; rel: Rel }
+// user_id is present for anyone from the DIRECTORY (list_member_directory), which is exactly
+// presence's own audience -- optional because handle lookup (find_member_by_username) can
+// surface someone OUTSIDE that audience, and presence must not extend there
+type Person = { user_id?: string; username: string; name: string; rel: Rel }
 
 /** directory + friendships, folded into one row per person */
 async function loadPeople(): Promise<Person[]> {
@@ -28,7 +32,8 @@ async function loadPeople(): Promise<Person[]> {
   }[]) {
     rel.set(f.username, f.status === 'accepted' ? 'friend' : f.direction === 'in' ? 'in' : 'out')
   }
-  return ((dir.data ?? []) as { username: string; name: string }[]).map((p) => ({
+  return ((dir.data ?? []) as { user_id: string; username: string; name: string }[]).map((p) => ({
+    user_id: p.user_id,
     username: p.username,
     name: p.name,
     rel: rel.get(p.username) ?? 'none',
@@ -37,6 +42,23 @@ async function loadPeople(): Promise<Person[]> {
 
 export function People({ authed = false }: { authed?: boolean }) {
   const [people, setPeople] = useState<Person[]>([])
+  const [meId, setMeId] = useState<string | null>(null)
+  useEffect(() => {
+    if (previewMember || !authed) return
+    let live = true
+    void getSupabaseClient()
+      .auth.getSession()
+      .then(({ data }) => live && setMeId(data.session?.user.id ?? null))
+    return () => {
+      live = false
+    }
+  }, [authed])
+  // Friends-or-circuit is exactly this page's own audience (list_member_directory), so
+  // presence for everyone shown here is a single hook call, not a per-row subscription.
+  const online = usePresence(
+    meId,
+    people.map((p) => p.user_id).filter((id): id is string => !!id),
+  )
   const [q, setQ] = useState('')
   const [busy, setBusy] = useState<string | null>(null)
   const [err, setErr] = useState<string | null>(null)
@@ -159,6 +181,9 @@ export function People({ authed = false }: { authed?: boolean }) {
       >
         <span className="cz-person-av" aria-hidden>
           {(p.name[0] ?? '★').toUpperCase()}
+          {!!p.user_id && online[p.user_id] && (
+            <span className="cz-person-online" title="Online now" />
+          )}
         </span>
         <span className="cz-person-text">
           <span className="cz-person-name">{p.name}</span>

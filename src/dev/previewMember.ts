@@ -38,17 +38,19 @@ export const PREVIEW_GROUPS = [
 
 /** stand-in member directory + friendships, so the People screen can be exercised */
 export type PreviewPerson = {
+  /** placeholder only -- preview mode never has a real session, so presence never subscribes */
+  user_id: string
   username: string
   name: string
   /** none = not connected, in/out = pending request, friend = accepted */
   rel: 'none' | 'in' | 'out' | 'friend'
 }
 export const PREVIEW_PEOPLE: PreviewPerson[] = [
-  { username: 'jordan_b', name: 'Jordan', rel: 'friend' },
-  { username: 'Riley', name: 'Riley', rel: 'out' },
-  { username: 'Alex', name: 'Alex', rel: 'in' },
-  { username: 'Sam', name: 'Sam', rel: 'none' },
-  { username: 'casey_m', name: 'Casey', rel: 'none' },
+  { user_id: 'preview-jordan', username: 'jordan_b', name: 'Jordan', rel: 'friend' },
+  { user_id: 'preview-riley', username: 'Riley', name: 'Riley', rel: 'out' },
+  { user_id: 'preview-alex', username: 'Alex', name: 'Alex', rel: 'in' },
+  { user_id: 'preview-sam', username: 'Sam', name: 'Sam', rel: 'none' },
+  { user_id: 'preview-casey', username: 'casey_m', name: 'Casey', rel: 'none' },
 ]
 
 /** stand-in activity notices (kudos / comments / joins) for the bell */

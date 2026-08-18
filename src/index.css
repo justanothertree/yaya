@@ -708,6 +708,7 @@
   text-decoration: none;
 }
 .cz-person-av {
+  position: relative;
   flex: 0 0 auto;
   width: 34px;
   height: 34px;
@@ -719,6 +720,18 @@
   font-size: 0.9rem;
   background: var(--b2, rgba(127, 127, 127, 0.25));
   color: var(--text, #eeeef8);
+}
+/* the dot needs a border in the PAGE's background, not the avatar's, so it reads as a badge
+   sitting on top rather than a bite taken out of the circle */
+.cz-person-online {
+  position: absolute;
+  right: -1px;
+  bottom: -1px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--accent, #22c55e);
+  border: 2px solid var(--bg, #0b0f19);
 }
 .cz-person-text {
   display: flex;
@@ -3468,4 +3481,10 @@ select {
   margin-top: 0.75rem;
   padding-top: 0.75rem;
   border-top: 1px solid var(--border);
+}
+
+.cz-lounge-whos-here {
+  padding: 0.3rem 0.75rem;
+  font-size: 0.8rem;
+  border-bottom: 1px solid var(--border);
 }

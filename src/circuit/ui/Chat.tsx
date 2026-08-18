@@ -75,6 +75,22 @@ export function Chat({ authed = false }: { authed?: boolean }) {
   // The Lounge is opt-in: nobody is placed in a room with every other account by
   // default. null = not looked up yet, so the invite card doesn't flash on load.
   const [loungeIn, setLoungeIn] = useState<boolean | null>(previewMember ? PREVIEW_LOUNGE_IN : null)
+  const [loungeNames, setLoungeNames] = useState<string[]>([])
+  // Refetched each time the lounge thread opens -- who's opted in changes independently of
+  // anything else this component already tracks, so there is no existing signal to piggyback on.
+  useEffect(() => {
+    if (previewMember || room?.kind !== 'lounge' || !sb) {
+      setLoungeNames([])
+      return
+    }
+    let live = true
+    void sb.rpc('get_lounge_names').then(({ data }) => {
+      if (live && data) setLoungeNames((data as { name: string }[]).map((r) => r.name))
+    })
+    return () => {
+      live = false
+    }
+  }, [room?.kind, room?.id, sb])
   const [loungeBusy, setLoungeBusy] = useState(false)
   // Voice rides the room you're already in: a DM is a 1:1 call, a circuit room a small
   // group one. The call lives in voiceSession, not here, so it survives navigating away or
@@ -289,9 +305,26 @@ export function Chat({ authed = false }: { authed?: boolean }) {
   // or vanishes from list_chat_overview on the next load — no local splicing needed.
   async function setLounge(on: boolean) {
     if (!sb || loungeBusy) return
+    /**
+     * Asked ONCE, at join -- the Lounge is the one room broader than friends/circuit, so this
+     * is the one place a chosen name matters. Friends/circuit-mates elsewhere already know who
+     * you are; a room open to every opted-in member is different, and the name asked for here
+     * is what OTHER lounge members see, not your real name.
+     */
+    let name: string | undefined
+    if (on) {
+      const raw = window.prompt(
+        'What name should other Lounge members see you as? Leave blank to use your usual name.',
+      )
+      if (raw === null) return // cancelled -- do not opt in
+      name = raw.trim()
+    }
     setLoungeBusy(true)
     setErr(null)
     const { error } = await sb.rpc('set_lounge_opt_in', { p_on: on })
+    if (!error && on && name) {
+      await sb.rpc('set_lounge_display_name', { p_name: name })
+    }
     if (error) {
       setErr(error.message)
     } else {
@@ -442,6 +475,14 @@ export function Chat({ authed = false }: { authed?: boolean }) {
                 </button>
               )}
             </div>
+            {/* Plain text, deliberately NOT links to a profile. Someone chose a name here
+                specifically so the Lounge wouldn't reveal who they really are -- turning that
+                name into a click-through to their real profile would undo the entire point. */}
+            {room.kind === 'lounge' && loungeNames.length > 0 && (
+              <div className="cz-lounge-whos-here muted">
+                {loungeNames.length} here: {loungeNames.join(', ')}
+              </div>
+            )}
 
             {/* Voice only makes sense with a real session — the DEV harness has no peers. */}
             {!previewMember && sb && me && (
