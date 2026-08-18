@@ -232,8 +232,14 @@ export default function App() {
       window.innerWidth >= 820 &&
       localStorage.getItem(CANVAS_PREF) === '1',
   )
-  // windows the user pinned — they ride along onto every tab's canvas
+  // windows the user pinned — they ride along onto every tab's canvas. In the merged
+  // single-canvas model this doubles as "the open set": everything visible on the shared
+  // canvas is, definitionally, persistent across navigation, so there's no more separate
+  // "this tab's own transient panes" concept to track alongside it.
   const [pinned, setPinned] = useState<CanvasPane[]>([])
+  // bumps whenever nav should bring a specific pane to the front of the shared canvas
+  // (see the effect below) — same shape/mechanism Circuit already uses for "Log today"
+  const [focusPane, setFocusPane] = useState<{ id: string; nonce: number } | null>(null)
   // the ambient glow behind the page — on by default, but it's a taste thing, so the
   // cog remembers whoever turns it off
   const [ambientOn, setAmbientOn] = useState(
@@ -836,11 +842,12 @@ export default function App() {
   // (Auto-hide removed)
 
   // ── canvas on every tab ──
-  // Home splits into its own multi-pane layout; the Circuit has its own internal canvas
-  // (the nav button routes to it by event). Every other content tab floats as a single
-  // window. signin / invite (auth flows) don't get canvas.
+  // Home shows as several panes at once on the shared canvas; the Circuit still has its own
+  // separate canvas for now (folding it into this one is the next step). Every other content
+  // tab floats as a single window. signin / invite (auth flows) don't get canvas -- invite
+  // never has.
   // NOTE: this list, canvasTitleFor and singleCanvasNode below must all gain an entry
-  // together, and the section's normal render must be guarded with !inGenericCanvas or it
+  // together, and the section's normal render must be guarded with !sharedCanvasShowing or it
   // draws twice. chat/ratings/people/profile arrived with the mobile restructure and were
   // missed here, so the canvas button did nothing on them.
   const singleCanvasTabs: Section[] = [
@@ -859,7 +866,16 @@ export default function App() {
     (active === 'home' || active === 'circuit' || singleCanvasTabs.includes(active)) &&
     // …except Snake while a multiplayer room is connected — see snakeLive above.
     !(active === 'snake' && snakeLive)
-  const inGenericCanvas = desktop && canvasOpen && singleCanvasTabs.includes(active)
+  /**
+   * True whenever the ONE shared canvas is covering the normal page for whatever `active`
+   * currently is — every page except Circuit (which still owns a separate canvas of its own
+   * for now — folding it into this one is the next step) and `invite`, which was never
+   * canvas-capable at all. Replaces the old per-page `inGenericCanvas` now that there's a
+   * single instance instead of three: Home used to get its own dedicated mount, and every
+   * other single-window page unmounted-and-remounted a fresh one on every tab switch.
+   */
+  const sharedCanvasShowing =
+    desktop && canvasOpen && (active === 'home' || singleCanvasTabs.includes(active))
   const canvasTitleFor: Partial<Record<Section, string>> = {
     investments: '📈 Investments',
     'account-settings': '👤 Account',
@@ -976,7 +992,6 @@ export default function App() {
       id: p.id,
       title: p.title,
       group: 'Home',
-      disabled: active === 'home' && canvasOpen ? 'this tab' : undefined,
     })),
     ...singleCanvasTabs
       .filter((sec) => (sec === 'admin' ? isAdmin : sec === 'signin' ? !isFinanceAuthed : true))
@@ -986,12 +1001,9 @@ export default function App() {
         group: 'Pages',
         // Snake holds a live relay connection; floating a second copy mid-round is the one
         // case the canvas has always refused, so the launcher refuses it in the same words.
-        disabled:
-          sec === active && inGenericCanvas
-            ? 'this tab'
-            : sec === 'snake' && snakeLive
-              ? 'in a live round'
-              : undefined,
+        // (No more "this tab" disabled reason: on the one shared canvas, closing the page
+        // you're nominally "on" is just closing a window, same as any other.)
+        disabled: sec === 'snake' && snakeLive ? 'in a live round' : undefined,
       })),
   ]
 
@@ -1002,10 +1014,6 @@ export default function App() {
       toggleHidden(id)
       return
     }
-    // The tab you're on owns its window; it isn't pinned, so "toggling" it would ADD a second
-    // copy rather than close it. Restoring a saved layout walks every id, so this guard is what
-    // stops a layout that omits the current tab from pinning it instead of leaving it alone.
-    if (id === active && inGenericCanvas) return
     const existing = pinned.find((p) => p.id === id)
     if (existing) {
       togglePin(existing)
@@ -1020,10 +1028,41 @@ export default function App() {
     togglePin({ id, title: canvasTitleFor[sec] ?? id, node: canvasNodeFor(sec) })
   }
 
-  const withPinned = (tabPanes: CanvasPane[]) => [
-    ...tabPanes,
-    ...pinned.filter((p) => !tabPanes.some((t) => t.id === p.id)),
-  ]
+  /**
+   * Nav's remaining job on the shared canvas: clicking a link (or a deep link landing) opens
+   * that page's window if it isn't already there, and brings it to front either way. This is
+   * what makes nav still mean something once the Windows menu can open anything from anywhere
+   * — nav is the fast path for the pages people actually navigate to; the Windows menu is the
+   * full catalog + search for everything else.
+   *
+   * Circuit is excluded (it still owns a separate canvas for now — that's the next step) and so
+   * is `invite`, which was never canvas-capable at all.
+   */
+  useEffect(() => {
+    if (!desktop || !canvasOpen) return
+    if (active === 'circuit' || active === 'invite') return
+    if (active === 'home') {
+      const fresh = homePanes()
+      setPinned((prev) => {
+        const missing = fresh.filter((p) => !prev.some((x) => x.id === p.id))
+        return missing.length ? [...prev, ...missing] : prev
+      })
+      setFocusPane({ id: 'home:hero', nonce: Date.now() })
+    } else if (singleCanvasTabs.includes(active)) {
+      setPinned((prev) =>
+        prev.some((p) => p.id === active)
+          ? prev
+          : [
+              ...prev,
+              { id: active, title: canvasTitleFor[active] ?? active, node: canvasNodeFor(active) },
+            ],
+      )
+      setFocusPane({ id: active, nonce: Date.now() })
+    }
+    // deliberately just [active, desktop, canvasOpen] -- homePanes/canvasNodeFor/canvasTitleFor
+    // are recreated every render and this only needs to react to actual navigation
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active, desktop, canvasOpen])
 
   return (
     <div data-theme={customPalette ? 'custom' : theme} data-page={active}>
@@ -1276,7 +1315,13 @@ export default function App() {
             <UsagePanel />
           </section>
         )}
-        {inGenericCanvas && (
+        {/* ONE shared canvas instance — mounted whenever desktop+canvas are on, for every page
+            except Circuit (still separate, see the next step) and invite (never canvas-capable).
+            No more `key={active}`: there's nothing to remount between pages any more, that was
+            only ever needed because three separate mount points meant three separate instances.
+            What's actually open (`pinned`) and which one is in front (`focusPane`) are both
+            driven by the nav effect above, not by which page happens to be `active`. */}
+        {sharedCanvasShowing && (
           <Suspense
             fallback={
               <div className="card" aria-busy>
@@ -1285,54 +1330,25 @@ export default function App() {
             }
           >
             <PageCanvas
-              // key by tab so the window manager re-tiles fresh for each tab's pane
-              // (it initialises its layout once per mount) — without this, navigating
-              // between two single-window tabs left the canvas empty
-              key={active}
-              panes={withPinned([
-                {
-                  id: active,
-                  title: canvasTitleFor[active] ?? active,
-                  node: canvasNodeFor(active),
-                },
-              ])}
+              panes={pinned}
               pinnedIds={pinnedIds}
               onTogglePin={togglePin}
               ambientOn={ambientOn}
+              focusPane={focusPane}
               launchableWindows={launchableWindows()}
               launcherOpenIds={[
                 ...pinnedIds,
-                active,
                 ...registeredWindows.filter((w) => !hiddenWindows.includes(w.id)).map((w) => w.id),
               ]}
               onToggleWindow={toggleWindow}
             />
           </Suspense>
         )}
-        {!inGenericCanvas &&
-          active === 'home' &&
-          (canvasOpen && desktop ? (
-            <Suspense fallback={<EvanCook />}>
-              <PageCanvas
-                panes={withPinned(homePanes())}
-                pinnedIds={pinnedIds}
-                onTogglePin={togglePin}
-                ambientOn={ambientOn}
-                launchableWindows={launchableWindows()}
-                launcherOpenIds={[
-                  ...pinnedIds,
-                  ...registeredWindows
-                    .filter((w) => !hiddenWindows.includes(w.id))
-                    .map((w) => w.id),
-                ]}
-                onToggleWindow={toggleWindow}
-              />
-            </Suspense>
-          ) : (
-            <section id="home">
-              <EvanCook />
-            </section>
-          ))}
+        {active === 'home' && !sharedCanvasShowing && (
+          <section id="home">
+            <EvanCook />
+          </section>
+        )}
         {active === 'circuit' && (
           <section id="circuit" className="card reveal">
             <Suspense
@@ -1362,7 +1378,7 @@ export default function App() {
             </Suspense>
           </section>
         )}
-        {!inGenericCanvas && active === 'people' && (
+        {!sharedCanvasShowing && active === 'people' && (
           <section id="people" className="card reveal">
             <Suspense
               fallback={
@@ -1375,7 +1391,7 @@ export default function App() {
             </Suspense>
           </section>
         )}
-        {!inGenericCanvas && active === 'chat' && (
+        {!sharedCanvasShowing && active === 'chat' && (
           <section id="chat" className="card reveal">
             <Suspense
               fallback={
@@ -1388,7 +1404,7 @@ export default function App() {
             </Suspense>
           </section>
         )}
-        {!inGenericCanvas && active === 'ratings' && (
+        {!sharedCanvasShowing && active === 'ratings' && (
           <section id="ratings" className="card reveal">
             <Suspense
               fallback={
@@ -1401,7 +1417,7 @@ export default function App() {
             </Suspense>
           </section>
         )}
-        {!inGenericCanvas && active === 'signin' && (
+        {!sharedCanvasShowing && active === 'signin' && (
           <section id="signin" className="card reveal">
             <Suspense
               fallback={
@@ -1414,7 +1430,7 @@ export default function App() {
             </Suspense>
           </section>
         )}
-        {!inGenericCanvas && active === 'investments' && (
+        {!sharedCanvasShowing && active === 'investments' && (
           <section id="investments" className="card reveal">
             {isFinanceAuthed && canFinance === true ? (
               <Suspense
@@ -1448,7 +1464,7 @@ export default function App() {
             )}
           </section>
         )}
-        {!inGenericCanvas && active === 'account-settings' && (
+        {!sharedCanvasShowing && active === 'account-settings' && (
           <section id="account-settings" className="card reveal">
             {isFinanceAuthed ? (
               <Suspense
@@ -1472,7 +1488,7 @@ export default function App() {
             )}
           </section>
         )}
-        {!inGenericCanvas && active === 'admin' && (
+        {!sharedCanvasShowing && active === 'admin' && (
           <section id="admin" className="card reveal">
             {isAdmin ? (
               <Suspense
@@ -1502,7 +1518,7 @@ export default function App() {
             </Suspense>
           </section>
         )}
-        {!inGenericCanvas && active === 'profile' && (
+        {!sharedCanvasShowing && active === 'profile' && (
           <section id="profile" className="reveal">
             <Suspense
               fallback={
@@ -1515,12 +1531,12 @@ export default function App() {
             </Suspense>
           </section>
         )}
-        {!inGenericCanvas && active === 'snake' && (
+        {!sharedCanvasShowing && active === 'snake' && (
           <section id="snake" className="card reveal show-dpad">
             <SnakeGame onControlChange={setSnakeHasControl} onLiveChange={setSnakeLive} autoFocus />
           </section>
         )}
-        {!inGenericCanvas && active === 'contact' && (
+        {!sharedCanvasShowing && active === 'contact' && (
           <section id="contact" className="card reveal">
             <ContactForm />
           </section>
