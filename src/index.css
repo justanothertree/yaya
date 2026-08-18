@@ -3143,13 +3143,16 @@ select {
   }
 }
 
-/* Window launcher — a normal button inside the canvas toolbar now (CircuitCanvas.tsx renders it
-   via `extraToolbar`, in the same row as Tile/Fit all), not a floating overlay. It used to be
-   `position: fixed`, and every corner it was ever moved to eventually collided with something
-   else that also wanted a corner — the minimap, the share stage, a maximized window's own
-   title-bar controls, the toolbar wrapping to another row and moving the "safe" spot out from
-   under it. A normal flex child in an existing row can't collide with anything; it just takes
-   its own space. Only the dropdown panel still floats, positioned against the button itself. */
+/* The Windows menu — one combined list (open-panes taskbar + site-wide add/remove catalog,
+   see CircuitCanvas.tsx) behind a normal button inside the canvas toolbar, same row as
+   Tile/Fit all — not a floating overlay. That button used to be `position: fixed`, and every
+   corner it was ever moved to eventually collided with something else that also wanted a corner
+   — the minimap, the share stage, a maximized window's own title-bar controls, the toolbar
+   wrapping to another row and moving the "safe" spot out from under it. A normal flex child in
+   an existing row can't collide with anything; it just takes its own space. Only the dropdown
+   panel still floats, positioned against the button itself. (Class names kept their old
+   `winlauncher-*` prefix even though the standalone WindowLauncher component they came from is
+   gone — renaming every class was a bigger diff for no behavior change.) */
 .winlauncher-count {
   margin-left: 0.4rem;
   padding: 0 0.4rem;
@@ -3186,8 +3189,19 @@ select {
   overflow-y: auto;
   padding: 0.25rem;
 }
+/* A row is now TWO controls, not one -- the title click jumps to (or opens) the window, the
+   switch on the end adds/removes it entirely. They used to be the same button doing double duty,
+   which meant "jump to this" and "close this" were the same click with no way to ask for one
+   without the other. */
 .winlauncher-row {
   width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 0.15rem;
+}
+.winlauncher-row-main {
+  flex: 1 1 auto;
+  min-width: 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -3201,12 +3215,23 @@ select {
   text-align: left;
   cursor: pointer;
 }
-.winlauncher-row:hover:not(:disabled) {
+.winlauncher-row-main:hover:not(:disabled) {
   background: var(--card2, rgba(127, 127, 127, 0.12));
 }
-.winlauncher-row:disabled {
+.winlauncher-row-main:disabled {
   cursor: default;
   opacity: 0.7;
+}
+.winlauncher-row-switch {
+  flex-shrink: 0;
+  padding: 0.5rem 0.4rem;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  cursor: pointer;
+}
+.winlauncher-row-switch:hover {
+  background: var(--card2, rgba(127, 127, 127, 0.12));
 }
 .winlauncher-why {
   font-size: 0.82em;

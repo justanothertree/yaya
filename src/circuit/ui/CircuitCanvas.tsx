@@ -11,6 +11,26 @@ import { AmbientBackdrop } from '../../components/AmbientBackdrop'
 
 export type CanvasPane = { id: string; title: string; node: ReactNode }
 
+export type LaunchableWindow = {
+  id: string
+  title: string
+  /** heading this window is listed under */
+  group?: string
+  /** why it can't be added right now — shown, and the row is disabled */
+  disabled?: string
+}
+
+type Workspace = { name: string; ids: string[] }
+const WORKSPACES_KEY = 'canvas_workspaces_v1'
+const loadWorkspaces = (): Workspace[] => {
+  try {
+    const raw = JSON.parse(localStorage.getItem(WORKSPACES_KEY) || '[]')
+    return Array.isArray(raw) ? raw.filter((w) => w && typeof w.name === 'string') : []
+  } catch {
+    return []
+  }
+}
+
 type WinBox = {
   x: number
   y: number
@@ -146,8 +166,10 @@ export function CircuitCanvas({
   pinnedIds = [],
   onTogglePin,
   toolbar,
-  extraToolbar,
   ambientOn = true,
+  launchableWindows = [],
+  launcherOpenIds = [],
+  onToggleWindow,
 }: {
   panes: CanvasPane[]
   focusPane?: { id: string; nonce: number } | null
@@ -166,14 +188,21 @@ export function CircuitCanvas({
    */
   toolbar?: React.ReactNode
   /**
-   * Site-level controls (currently just the window launcher) that belong in the SAME row as
-   * Tile/Fit all, not layered as a floating overlay above the canvas. A floating corner button
-   * was on a permanent collision course with everything else that also wants a corner — the
-   * minimap, the share stage, a maximized window's own right-aligned title-bar controls, the
-   * toolbar wrapping to another row. A normal flex child in this row can't collide with
-   * anything; it just takes its own space like every other button here already does.
+   * The site-wide catalog — every window that could go on SOME canvas, not just this one — and
+   * the ids currently pinned/showing from it. Used to build the "add a window" half of the
+   * combined Windows menu below.
+   *
+   * This used to be a whole separate `<WindowLauncher>` component, handed in pre-built via an
+   * `extraToolbar` slot, sitting next to a SECOND menu (the open-panes taskbar) that only this
+   * component could build, because only it has `wins`/`topId`/minimize state. Two menus
+   * answering two halves of "what's on my canvas" was exactly the kind of thing that made canvas
+   * mode feel like a scavenger hunt. Passing the catalog in as data instead lets this component
+   * merge both halves into the one list a person actually wants: everything, with a switch for
+   * on/off and a click to jump to whatever's already open.
    */
-  extraToolbar?: React.ReactNode
+  launchableWindows?: LaunchableWindow[]
+  launcherOpenIds?: string[]
+  onToggleWindow?: (id: string) => void
 }) {
   const hostRef = useRef<HTMLDivElement>(null)
   const winRefs = useRef<Record<string, HTMLDivElement | null>>({})
@@ -211,25 +240,28 @@ export function CircuitCanvas({
     typeof document !== 'undefined' ? document.body : null,
   )
   /**
-   * The open-panes taskbar used to be a strip of chip buttons you scrolled sideways through —
-   * fine at three panes, a real annoyance once pinned windows piled up. One button that opens a
-   * dropdown never needs a scrollbar no matter how many panes are open, at the cost of an extra
-   * click to reach a tab that isn't front-most. Same anchored-portal pattern as the Windows
-   * launcher right next to it.
+   * The Windows menu — one list for both halves of "what's on my canvas": every window you
+   * COULD add (the site-wide catalog), and, for whichever of those are actually open right now,
+   * whether it's front, behind, or minimized. Click a row's title to jump to it (or open it, if
+   * it wasn't); the switch on the right adds or fully removes it, independent of that.
    */
-  const [tabsOpen, setTabsOpen] = useState(false)
-  const [tabsAnchor, setTabsAnchor] = useState<{ left: number; top: number } | null>(null)
-  const tabsBtnRef = useRef<HTMLButtonElement | null>(null)
-  const tabsPanelRef = useRef<HTMLDivElement | null>(null)
+  const [winMenuOpen, setWinMenuOpen] = useState(false)
+  const [winMenuAnchor, setWinMenuAnchor] = useState<{ left: number; top: number } | null>(null)
+  const [winMenuQuery, setWinMenuQuery] = useState('')
+  const [winMenuSpaces, setWinMenuSpaces] = useState<Workspace[]>(loadWorkspaces)
+  const winMenuBtnRef = useRef<HTMLButtonElement | null>(null)
+  const winMenuPanelRef = useRef<HTMLDivElement | null>(null)
+  const winMenuSearchRef = useRef<HTMLInputElement | null>(null)
   useEffect(() => {
-    if (!tabsOpen) return
+    if (!winMenuOpen) return
+    winMenuSearchRef.current?.focus()
     const onDown = (e: PointerEvent) => {
       const t = e.target as Node
-      if (tabsBtnRef.current?.contains(t)) return
-      if (tabsPanelRef.current && !tabsPanelRef.current.contains(t)) setTabsOpen(false)
+      if (winMenuBtnRef.current?.contains(t)) return
+      if (winMenuPanelRef.current && !winMenuPanelRef.current.contains(t)) setWinMenuOpen(false)
     }
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setTabsOpen(false)
+      if (e.key === 'Escape') setWinMenuOpen(false)
     }
     window.addEventListener('pointerdown', onDown)
     window.addEventListener('keydown', onKey)
@@ -237,12 +269,12 @@ export function CircuitCanvas({
       window.removeEventListener('pointerdown', onDown)
       window.removeEventListener('keydown', onKey)
     }
-  }, [tabsOpen])
+  }, [winMenuOpen])
   useEffect(() => {
-    if (!tabsOpen) return
+    if (!winMenuOpen) return
     const measure = () => {
-      const r = tabsBtnRef.current?.getBoundingClientRect()
-      if (r) setTabsAnchor({ left: Math.round(r.left), top: Math.round(r.bottom) })
+      const r = winMenuBtnRef.current?.getBoundingClientRect()
+      if (r) setWinMenuAnchor({ left: Math.round(r.left), top: Math.round(r.bottom) })
     }
     measure()
     window.addEventListener('resize', measure)
@@ -251,7 +283,7 @@ export function CircuitCanvas({
       window.removeEventListener('resize', measure)
       window.removeEventListener('scroll', measure, true)
     }
-  }, [tabsOpen])
+  }, [winMenuOpen])
   const [wins, setWins] = useState<Layout>({})
   // a live mirror, so the camera can read the CURRENT boxes without being a dependency of
   // every callback that might want to move it
@@ -1362,6 +1394,50 @@ export function CircuitCanvas({
     }
   })
 
+  // The Windows menu's rows: the site-wide catalog first, then anything already open on THIS
+  // canvas that the catalog doesn't otherwise know about — so nothing that's actually on screen
+  // can ever be missing from "everything", regardless of whether the two lists are perfectly in
+  // sync (they're maintained independently, by different components).
+  const winMenuCatalog = new Map<string, LaunchableWindow>()
+  for (const w of launchableWindows) winMenuCatalog.set(w.id, w)
+  for (const p of panes) {
+    if (!winMenuCatalog.has(p.id)) winMenuCatalog.set(p.id, { id: p.id, title: p.title })
+  }
+  const winMenuNeedle = winMenuQuery.trim().toLowerCase()
+  const winMenuShown = Array.from(winMenuCatalog.values()).filter(
+    (w) => !winMenuNeedle || w.title.toLowerCase().includes(winMenuNeedle),
+  )
+  const winMenuGroups = winMenuShown.reduce<Array<[string, LaunchableWindow[]]>>((acc, w) => {
+    const g = w.group ?? ''
+    const row = acc.find(([name]) => name === g)
+    if (row) row[1].push(w)
+    else acc.push([g, [w]])
+    return acc
+  }, [])
+  const persistWinMenuSpaces = (next: Workspace[]) => {
+    setWinMenuSpaces(next)
+    try {
+      localStorage.setItem(WORKSPACES_KEY, JSON.stringify(next))
+    } catch {
+      /* ignore */
+    }
+  }
+  /** Save the windows pinned/showing right now (the site-wide set, not this tab's own default
+   * panes) under a name. Only ids, never boxes — the canvas already persists a box per window. */
+  const saveWinMenuSpace = () => {
+    const name = window.prompt('Name this layout')?.trim()
+    if (!name) return
+    persistWinMenuSpaces([
+      ...winMenuSpaces.filter((w) => w.name !== name),
+      { name, ids: [...launcherOpenIds] },
+    ])
+  }
+  const restoreWinMenuSpace = (w: Workspace) => {
+    const want = new Set(w.ids)
+    for (const id of launcherOpenIds) if (!want.has(id)) onToggleWindow?.(id)
+    for (const id of w.ids) if (!launcherOpenIds.includes(id)) onToggleWindow?.(id)
+  }
+
   const host = hostRef.current?.getBoundingClientRect()
 
   if (!portalTarget) return null
@@ -1384,69 +1460,139 @@ export function CircuitCanvas({
       </strong>
       {toolbar && <span className="cz-menu-tool">{toolbar}</span>}
       {/**
-       * Room tabs used to be plain siblings in a WRAPPING row (spilled to a second line and
-       * pushed the canvas down as more opened), then a horizontally-scrolling chip strip (fixed
-       * the wrapping, but "scroll sideways to find a tab" didn't feel any better). One button
-       * that opens a dropdown avoids both: the toolbar's height and width are both constant no
-       * matter how many panes are open, same anchored-portal pattern as the Windows launcher.
+       * ONE menu for "what's on my canvas", not two. This used to be a room-tab strip (wrapped,
+       * then scrolled sideways — neither felt good) PLUS a completely separate Windows launcher
+       * for adding/removing anything else, each answering half of the same question. Now a
+       * single button opens a single list: every window you could add, with a switch for on/off,
+       * and — for whichever are already open — whether it's front, behind, or minimized, click
+       * to jump to it.
        */}
       <button
-        ref={tabsBtnRef}
+        ref={winMenuBtnRef}
         className="btn"
-        aria-expanded={tabsOpen}
+        aria-expanded={winMenuOpen}
         aria-haspopup="menu"
-        onClick={() => setTabsOpen((v) => !v)}
-        title="Switch between open windows"
+        onClick={() => setWinMenuOpen((v) => !v)}
+        title="Add, remove, or switch between windows"
       >
-        🗂 {topId ? (panes.find((p) => p.id === topId)?.title ?? 'Windows') : 'Windows'}
+        ⊞ {topId ? (panes.find((p) => p.id === topId)?.title ?? 'Windows') : 'Windows'}
         {panes.length > 1 && <span className="muted"> · {panes.length}</span>}
       </button>
-      {tabsOpen &&
-        tabsAnchor &&
+      {winMenuOpen &&
+        winMenuAnchor &&
         portalTarget &&
         createPortal(
           <div
             className="winlauncher-panel"
-            ref={tabsPanelRef}
-            role="menu"
-            aria-label="Open windows"
-            style={{ position: 'fixed', top: tabsAnchor.top + 6, left: tabsAnchor.left }}
+            ref={winMenuPanelRef}
+            role="dialog"
+            aria-label="Windows"
+            style={{ position: 'fixed', top: winMenuAnchor.top + 6, left: winMenuAnchor.left }}
           >
+            <input
+              ref={winMenuSearchRef}
+              className="winlauncher-search"
+              type="search"
+              placeholder="Filter windows…"
+              value={winMenuQuery}
+              onChange={(e) => setWinMenuQuery(e.target.value)}
+              aria-label="Filter windows"
+            />
             <div className="winlauncher-list">
-              {panes.map((p) => {
-                const w = wins[p.id]
-                const min = !!w?.min
-                const front = p.id === topId && !min
-                return (
+              {winMenuGroups.map(([group, items]) => (
+                <div key={group || 'all'}>
+                  {group && <div className="winlauncher-group">{group}</div>}
+                  {items.map((w) => {
+                    const win = wins[w.id]
+                    const isOpen = panes.some((p) => p.id === w.id)
+                    const min = !!win?.min
+                    const front = isOpen && w.id === topId && !min
+                    const pinned = launcherOpenIds.includes(w.id)
+                    return (
+                      <div key={w.id} className="winlauncher-row">
+                        <button
+                          className="winlauncher-row-main"
+                          role="menuitem"
+                          disabled={!!w.disabled}
+                          onClick={() => (isOpen ? onTab(w.id) : onToggleWindow?.(w.id))}
+                          title={
+                            w.disabled ??
+                            (!isOpen
+                              ? `Open ${w.title}`
+                              : min
+                                ? `Restore ${w.title}`
+                                : front
+                                  ? `Minimize ${w.title}`
+                                  : `Bring ${w.title} to front`)
+                          }
+                        >
+                          <span>
+                            {isOpen && (
+                              <span aria-hidden style={{ fontSize: '0.7rem' }}>
+                                {min ? '▫' : '▪'}
+                              </span>
+                            )}{' '}
+                            {w.title}
+                          </span>
+                          {w.disabled ? (
+                            <span className="muted winlauncher-why">{w.disabled}</span>
+                          ) : (
+                            isOpen && (
+                              <span className="muted winlauncher-why">
+                                {min ? 'minimized' : front ? 'front' : ''}
+                              </span>
+                            )
+                          )}
+                        </button>
+                        {!w.disabled && onToggleWindow && (
+                          <button
+                            className="winlauncher-row-switch"
+                            role="menuitemcheckbox"
+                            aria-checked={pinned}
+                            aria-label={pinned ? `Remove ${w.title}` : `Add ${w.title}`}
+                            title={pinned ? `Remove ${w.title}` : `Add ${w.title}`}
+                            onClick={() => onToggleWindow(w.id)}
+                          >
+                            <span
+                              className={'nav-menu-switch' + (pinned ? ' is-on' : '')}
+                              aria-hidden
+                            />
+                          </button>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              ))}
+              {!winMenuShown.length && (
+                <div className="muted winlauncher-empty">Nothing matches.</div>
+              )}
+            </div>
+            {/* Layouts last: you build a set first, then keep it. */}
+            <div className="winlauncher-spaces">
+              {winMenuSpaces.map((w) => (
+                <span className="winlauncher-space" key={w.name}>
                   <button
-                    key={p.id}
-                    className="winlauncher-row"
-                    role="menuitem"
-                    onClick={() => {
-                      onTab(p.id)
-                      setTabsOpen(false)
-                    }}
-                    title={
-                      min
-                        ? `Restore ${p.title}`
-                        : front
-                          ? `Hide ${p.title}`
-                          : `Bring ${p.title} to front`
-                    }
+                    className="btn"
+                    onClick={() => restoreWinMenuSpace(w)}
+                    title={`${w.ids.length} windows`}
                   >
-                    <span>
-                      <span aria-hidden style={{ fontSize: '0.7rem' }}>
-                        {min ? '▫' : '▪'}
-                      </span>{' '}
-                      {pinnedIds.includes(p.id) ? '📌 ' : ''}
-                      {p.title}
-                    </span>
-                    <span className="muted winlauncher-why">
-                      {min ? 'minimized' : front ? 'front' : ''}
-                    </span>
+                    {w.name}
                   </button>
-                )
-              })}
+                  <button
+                    className="btn winlauncher-x"
+                    onClick={() =>
+                      persistWinMenuSpaces(winMenuSpaces.filter((x) => x.name !== w.name))
+                    }
+                    aria-label={`Forget ${w.name}`}
+                  >
+                    ✕
+                  </button>
+                </span>
+              ))}
+              <button className="btn" onClick={saveWinMenuSpace} disabled={!launcherOpenIds.length}>
+                ＋ Save layout
+              </button>
             </div>
           </div>,
           portalTarget,
@@ -1477,7 +1623,6 @@ export function CircuitCanvas({
       >
         ▣ Fit all
       </button>
-      {extraToolbar}
     </div>
   )
 

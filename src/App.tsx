@@ -23,7 +23,6 @@ const FX_STYLES: FxStyle[] = [
   'orbit',
   'beam',
 ]
-import { WindowLauncher, type LaunchableWindow } from './components/WindowLauncher'
 import { ShareStage } from './voice/ShareStage'
 import { UsagePanel } from './components/UsagePanel'
 import { voiceSession } from './voice/voiceSession'
@@ -56,7 +55,7 @@ const Circuit = lazy(() => import('./sections/Circuit').then((m) => ({ default: 
 const PageCanvas = lazy(() =>
   import('./circuit/ui/CircuitCanvas').then((m) => ({ default: m.CircuitCanvas })),
 )
-import type { CanvasPane } from './circuit/ui/CircuitCanvas'
+import type { CanvasPane, LaunchableWindow } from './circuit/ui/CircuitCanvas'
 import { applyPalette, loadPalette } from './theme/customTheme'
 const AdminPanel = lazy(() =>
   import('./sections/AdminPanel').then((m) => ({ default: m.AdminPanel })),
@@ -1300,19 +1299,13 @@ export default function App() {
               pinnedIds={pinnedIds}
               onTogglePin={togglePin}
               ambientOn={ambientOn}
-              extraToolbar={
-                <WindowLauncher
-                  windows={launchableWindows()}
-                  openIds={[
-                    ...pinnedIds,
-                    active,
-                    ...registeredWindows
-                      .filter((w) => !hiddenWindows.includes(w.id))
-                      .map((w) => w.id),
-                  ]}
-                  onToggle={toggleWindow}
-                />
-              }
+              launchableWindows={launchableWindows()}
+              launcherOpenIds={[
+                ...pinnedIds,
+                active,
+                ...registeredWindows.filter((w) => !hiddenWindows.includes(w.id)).map((w) => w.id),
+              ]}
+              onToggleWindow={toggleWindow}
             />
           </Suspense>
         )}
@@ -1325,18 +1318,14 @@ export default function App() {
                 pinnedIds={pinnedIds}
                 onTogglePin={togglePin}
                 ambientOn={ambientOn}
-                extraToolbar={
-                  <WindowLauncher
-                    windows={launchableWindows()}
-                    openIds={[
-                      ...pinnedIds,
-                      ...registeredWindows
-                        .filter((w) => !hiddenWindows.includes(w.id))
-                        .map((w) => w.id),
-                    ]}
-                    onToggle={toggleWindow}
-                  />
-                }
+                launchableWindows={launchableWindows()}
+                launcherOpenIds={[
+                  ...pinnedIds,
+                  ...registeredWindows
+                    .filter((w) => !hiddenWindows.includes(w.id))
+                    .map((w) => w.id),
+                ]}
+                onToggleWindow={toggleWindow}
               />
             </Suspense>
           ) : (

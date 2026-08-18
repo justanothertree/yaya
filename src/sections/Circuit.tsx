@@ -11,8 +11,7 @@ import { Charts } from '../circuit/ui/Charts'
 import { Movies } from '../circuit/ui/Movies'
 import { Watchlist } from '../circuit/ui/Watchlist'
 import { Toast } from '../circuit/ui/Toast'
-import { CircuitCanvas, type CanvasPane } from '../circuit/ui/CircuitCanvas'
-import { WindowLauncher, type LaunchableWindow } from '../components/WindowLauncher'
+import { CircuitCanvas, type CanvasPane, type LaunchableWindow } from '../circuit/ui/CircuitCanvas'
 import { registerWindows, useHiddenWindows } from '../circuit/ui/canvasWindows'
 import { CircuitsPanel } from '../circuit/ui/CircuitsPanel'
 import { Chat } from '../circuit/ui/Chat'
@@ -387,15 +386,9 @@ export function Circuit({
             pinnedIds={pinnedIds}
             onTogglePin={onTogglePin}
             ambientOn={ambientOn}
-            extraToolbar={
-              onToggleLauncherWindow && (
-                <WindowLauncher
-                  windows={launcherWindows}
-                  openIds={launcherOpenIds}
-                  onToggle={onToggleLauncherWindow}
-                />
-              )
-            }
+            launchableWindows={launcherWindows}
+            launcherOpenIds={launcherOpenIds}
+            onToggleWindow={onToggleLauncherWindow}
           />
         </div>
       ) : (
