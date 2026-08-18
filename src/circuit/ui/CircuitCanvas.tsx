@@ -815,7 +815,22 @@ export function CircuitCanvas({
     setSelId(id)
     selRef.current = id
     maxZ.current++
-    setWins((prev) => (prev[id] ? { ...prev, [id]: { ...prev[id], z: maxZ.current } } : prev))
+    setWins((prev) => {
+      const w = prev[id]
+      if (!w) return prev
+      // A maximized window is supposed to always fill the CURRENT viewport, but its box is a
+      // snapshot taken at the moment it was maximized -- nothing re-takes it if the view pans
+      // in the meantime, because panning isn't a "resize" (the resize-observer re-snap never
+      // fires for it). Reported bug: maximize a window, switch to something elsewhere on the
+      // plane (which pans the view to reach it), switch back -- the maximized window renders
+      // wherever the OLD pan put it, which can clip its title bar -- and the full-screen
+      // button on it -- behind the toolbar. Re-snapping on every focus keeps the invariant
+      // true whenever you actually look at the window, not just when the browser itself resizes.
+      const next = w.max
+        ? { ...w, ...snapGeom('max')!, z: maxZ.current }
+        : { ...w, z: maxZ.current }
+      return { ...prev, [id]: next }
+    })
   }
 
   // ── drag (title bar) ──
