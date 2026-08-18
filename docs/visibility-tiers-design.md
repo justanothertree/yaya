@@ -3,15 +3,18 @@
 **Status: ✅ complete.** All five steps applied and verified. `is_public` is gone; `visibility` is
 the only source of truth. Two bugs found in review are fixed — see `visibility-step3b-bugfixes.sql`.
 
-**Still outstanding, deliberately:** chat's per-room setting. `chat_rooms.visibility` is backfilled
-but `chat_room_member()` doesn't read it yet, because that function also carries the lounge opt-in
-— flip both together.
+**~~Still outstanding: chat's per-room setting.~~ RESOLVED 2026-08-18 — by REMOVING it, not by
+wiring it up.** `chat_rooms.visibility` was added in step 1 and backfilled in step 2, but no policy
+or function ever read it: real chat access control is `chat_room_member()`, which gates on room
+`kind` (circuit → group membership, lounge → opt-in, dm → an explicit `chat_room_members` row) and
+is already correct for every room. The four tiers don't describe chat rooms well anyway — the same
+reason the Circuit keeps group sharing as a separate axis (see §1). Column dropped
+(`drop_unused_chat_rooms_visibility`) rather than left as scaffolding that looks load-bearing and
+isn't. **Don't re-add it expecting to find unfinished work here.**
 
 Step 4 shipped `set_person_visibility`, `my_snake_handles` and `set_my_snake_visibility`, plus a
 shared `<VisibilityPicker>` wired into the Circuits panel (replacing the old public/private
-toggle) and Account settings (Snake handles). **Chat's per-room setting is still pending**: the
-column is backfilled but `chat_room_member()` doesn't read it yet, because that function is also
-touched by the lounge opt-in. Flip both together.
+toggle) and Account settings (Snake handles).
 
 **Goal:** replace four hand-rolled privacy mechanisms with one. Today "who can see this row?"
 is answered differently in four places — `circuit_people.is_public`, circuit group membership,

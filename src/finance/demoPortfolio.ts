@@ -5,7 +5,16 @@
 import type { AccountPortfolio } from './portfolio'
 
 const START = '2026-01-01'
-const PRICED = '2026-07-01'
+/**
+ * Yesterday, not a fixed date.
+ *
+ * The demo is meant to show the fund WORKING, and the real dashboard now says so when prices
+ * stop arriving (see `pricesStale` in Investments.tsx). A hardcoded date drifts further out of
+ * date every day the site is up, so a fixed value would eventually — and then permanently —
+ * make the public demo advertise a broken price feed. Yesterday keeps it inside the freshness
+ * window forever without pretending the sweep ran in the last minute.
+ */
+const PRICED = new Date(Date.now() - 86_400_000).toISOString()
 
 export const DEMO_PORTFOLIO: AccountPortfolio[] = [
   {

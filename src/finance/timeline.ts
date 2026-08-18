@@ -187,8 +187,17 @@ function mulberry32(seed: number) {
 
 export function demoTimeline(): Timeline {
   const start = Date.parse('2026-01-02T00:00:00Z')
-  const end = Date.parse('2026-07-01T00:00:00Z')
-  const weeks = 26
+  /**
+   * Runs to TODAY, not a fixed date.
+   *
+   * This was pinned to 2026-07-01, so the public demo's chart stopped dead at that point and the
+   * gap widened every day the site stayed up — by mid-August it was advertising a fund that
+   * hadn't moved in seven weeks, over a caption reading "prices through Jul 1". The start stays
+   * fixed because the whole story is "$1/day since Jan 1"; only the end should follow the clock.
+   * `weeks` is derived rather than hardcoded so the buy events keep spanning the real range.
+   */
+  const end = Date.now()
+  const weeks = Math.max(1, Math.round((end - start) / (7 * DAY)))
 
   // aggregate demo holdings by symbol
   const totals = new Map<string, { units: number; cost: number; price: number }>()

@@ -854,6 +854,23 @@ function AccountCard({
     (acc, h) => (h.priceAt && (!acc || h.priceAt > acc) ? h.priceAt : acc),
     null,
   )
+  /**
+   * How old the newest price is, and whether that's old enough to say so out loud.
+   *
+   * "Worth today" is stated as fact, so when the prices behind it have stopped arriving the
+   * number quietly becomes a lie — and nothing said so. The sweep failed for two days in
+   * August 2026 (the cron's legacy key stopped being accepted) and the only clue anywhere in
+   * the UI was a date tucked inside the collapsed ⓘ panel, phrased as neutral detail rather
+   * than a problem. This is the same silent-staleness shape as the Lounge's write-only name:
+   * data that exists but never reaches the person who needs it.
+   *
+   * Two days, not one: the sweep captures daily including weekends (crypto trades 24/7), so a
+   * single missed run is worth tolerating quietly, while two in a row means something broke.
+   */
+  const priceAgeDays = pricedAsOf
+    ? (Date.now() - new Date(pricedAsOf).getTime()) / 86_400_000
+    : null
+  const pricesStale = priceAgeDays != null && priceAgeDays >= 2
 
   const toggleSym = (symbol: string) => setOpenSym((cur) => (cur === symbol ? null : symbol))
 
@@ -900,7 +917,10 @@ function AccountCard({
           <span className="cz-num" style={{ fontWeight: 800, fontSize: '2rem', lineHeight: 1 }}>
             {usd(total)}
           </span>
-          {dayChange != null && Math.abs(dayChange) >= 0.005 && (
+          {/* "today" is really "between the last two price captures", so once the feed stops it
+              is labelling a days-old move as today's. Hide it rather than caption it: a wrong
+              number with a footnote is still a wrong number. */}
+          {!pricesStale && dayChange != null && Math.abs(dayChange) >= 0.005 && (
             <span
               className="cz-num"
               style={{ fontWeight: 700, color: dayChange >= 0 ? '#22cc78' : '#f46b6b' }}
@@ -910,6 +930,28 @@ function AccountCard({
             </span>
           )}
         </div>
+        {/* Sits under the number it qualifies, not behind the ⓘ — a stale "worth today" is
+            something you need told, not something you have to go asking about. */}
+        {pricesStale && pricedAsOf && (
+          <span
+            style={{
+              fontSize: '0.76rem',
+              fontWeight: 600,
+              color: '#e0a33e',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '0.3rem',
+            }}
+            title="The price feed hasn't refreshed. The value above is from the date shown, not right now."
+          >
+            <span aria-hidden>⚠</span>
+            Prices haven’t updated since{' '}
+            {new Date(pricedAsOf).toLocaleDateString(undefined, {
+              month: 'short',
+              day: 'numeric',
+            })}
+          </span>
+        )}
         {(gain || ab != null) && (
           <div className="cz-num" style={{ fontSize: '0.84rem' }}>
             {gain && (
