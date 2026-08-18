@@ -119,6 +119,17 @@ export function WindowLauncher({
    */
   return createPortal(
     <div className="winlauncher" ref={panelRef}>
+      {/* Button first in DOM: the panel now opens BELOW it (the container is anchored to the
+          top-right, not the bottom-right as before), and flex-direction: column always stacks
+          in DOM order regardless of which edge the container is pinned to. */}
+      <button
+        className="btn winlauncher-btn"
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+        title="Choose which windows are on your canvas"
+      >
+        ⊞ Windows{count ? <span className="winlauncher-count">{count}</span> : null}
+      </button>
       {open && (
         <div className="winlauncher-panel" role="dialog" aria-label="Choose windows">
           <input
@@ -185,14 +196,6 @@ export function WindowLauncher({
           </div>
         </div>
       )}
-      <button
-        className="btn winlauncher-btn"
-        aria-expanded={open}
-        onClick={() => setOpen((v) => !v)}
-        title="Choose which windows are on your canvas"
-      >
-        ⊞ Windows{count ? <span className="winlauncher-count">{count}</span> : null}
-      </button>
     </div>,
     document.body,
   )
