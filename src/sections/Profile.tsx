@@ -5,7 +5,17 @@ import {
   ProfileBlocksView,
   type ActivityItem,
   type ProfileBlock,
+  type Tier,
 } from './ProfileBlocks'
+
+// duplicated from ProfileBlocks.tsx's own (unexported) copy -- kept local rather than shared,
+// since exporting a plain constant alongside components there breaks Fast Refresh
+const TIER_LABEL: Record<Tier, string> = {
+  public: 'Anyone',
+  friends: 'Friends',
+  members: 'Members',
+  private: 'Only me',
+}
 
 /**
  * A member's profile — the page behind every name on the site.
@@ -26,6 +36,7 @@ type ProfileData = {
   shared_circuits: { name: string; people: string[] }[]
   movies_rated: number
   snake_best: { score: number; game_mode: string | null; achieved: string } | null
+  activity_visibility: Tier
 }
 
 const userFromHash = () =>
@@ -203,13 +214,29 @@ export function Profile({ authed }: { authed: boolean }) {
           </p>
         </div>
         {p.is_me && (
-          <button
-            className="btn"
-            style={{ marginLeft: 'auto', flexShrink: 0 }}
-            onClick={() => setEditing((v) => !v)}
-          >
-            {editing ? 'Done editing' : '🎨 Customize page'}
-          </button>
+          <span style={{ marginLeft: 'auto', display: 'flex', gap: '0.4rem', flexShrink: 0 }}>
+            <select
+              className="btn"
+              value={p.activity_visibility}
+              title="Who can see your circuits, ratings, snake results and activity"
+              onChange={async (e) => {
+                const tier = e.target.value as Tier
+                const { error } = await getSupabaseClient().rpc('set_my_activity_visibility', {
+                  p_tier: tier,
+                })
+                if (!error) setState({ kind: 'ok', p: { ...p, activity_visibility: tier } })
+              }}
+            >
+              {(Object.keys(TIER_LABEL) as Tier[]).map((t) => (
+                <option key={t} value={t}>
+                  Activity: {TIER_LABEL[t]}
+                </option>
+              ))}
+            </select>
+            <button className="btn" onClick={() => setEditing((v) => !v)}>
+              {editing ? 'Done editing' : '🎨 Customize page'}
+            </button>
+          </span>
         )}
         {!p.is_me && (
           <span style={{ marginLeft: 'auto', display: 'flex', gap: '0.4rem', flexShrink: 0 }}>

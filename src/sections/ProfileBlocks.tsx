@@ -11,11 +11,21 @@ import { getSupabaseClient } from '../finance/client'
  * (circuits, snake, movies) is unchanged — customizing only ever adds to it.
  */
 
+export type Tier = 'public' | 'friends' | 'members' | 'private'
+
 export type ProfileBlock = {
   id?: string
   block_type: 'bio' | 'banner' | 'stats' | 'activity' | 'links'
   size: 'small' | 'medium' | 'large'
   config: Record<string, unknown>
+  visibility: Tier
+}
+
+const TIER_LABEL: Record<Tier, string> = {
+  public: 'Anyone',
+  friends: 'Friends',
+  members: 'Members',
+  private: 'Only me',
 }
 
 export type ActivityItem = {
@@ -191,6 +201,18 @@ function BlockEditRow({
           <button className="btn" onClick={cycleSize} title="Cycle size">
             {block.size}
           </button>
+          <select
+            className="btn"
+            value={block.visibility}
+            onChange={(e) => onChange({ ...block, visibility: e.target.value as Tier })}
+            title="Who can see this block"
+          >
+            {(Object.keys(TIER_LABEL) as Tier[]).map((t) => (
+              <option key={t} value={t}>
+                {TIER_LABEL[t]}
+              </option>
+            ))}
+          </select>
           <button className="btn" onClick={onRemove} title="Remove">
             ✕
           </button>
@@ -304,7 +326,10 @@ export function ProfileBlocksEditor({
   const [err, setErr] = useState<string | null>(null)
 
   const addBlock = (type: ProfileBlock['block_type']) =>
-    setBlocks((b) => [...b, { block_type: type, size: 'medium', config: {} }])
+    setBlocks((b) => [
+      ...b,
+      { block_type: type, size: 'medium', config: {}, visibility: 'members' },
+    ])
   const move = (i: number, dir: -1 | 1) =>
     setBlocks((b) => {
       const j = i + dir
@@ -318,7 +343,12 @@ export function ProfileBlocksEditor({
     setSaving(true)
     setErr(null)
     const { error } = await getSupabaseClient().rpc('save_my_profile_blocks', {
-      p_blocks: blocks.map(({ block_type, size, config }) => ({ block_type, size, config })),
+      p_blocks: blocks.map(({ block_type, size, config, visibility }) => ({
+        block_type,
+        size,
+        config,
+        visibility,
+      })),
     })
     setSaving(false)
     if (error) setErr(error.message)
