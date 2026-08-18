@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 
 export type LaunchableWindow = {
@@ -117,12 +117,35 @@ export function WindowLauncher({
    * viewport becomes the containing block for `position: fixed` — the nav does exactly that —
    * and this has to sit against the viewport to stay put over the canvas.
    */
+  /**
+   * Publishes the button's real width as --winlauncher-w, so CircuitCanvas can reserve that
+   * strip when sizing a maximized window -- otherwise a maximized window's own title-bar
+   * controls (also right-aligned) end up in the exact corner this button occupies. Measured
+   * rather than hardcoded because the count badge changes the button's width.
+   */
+  const btnRoRef = useRef<ResizeObserver | null>(null)
+  const btnRef = useCallback((el: HTMLButtonElement | null) => {
+    btnRoRef.current?.disconnect()
+    btnRoRef.current = null
+    if (!el) {
+      document.documentElement.style.setProperty('--winlauncher-w', '0px')
+      return
+    }
+    const ro = new ResizeObserver(() => {
+      document.documentElement.style.setProperty('--winlauncher-w', el.offsetWidth + 'px')
+    })
+    ro.observe(el)
+    btnRoRef.current = ro
+    document.documentElement.style.setProperty('--winlauncher-w', el.offsetWidth + 'px')
+  }, [])
+
   return createPortal(
     <div className="winlauncher" ref={panelRef}>
       {/* Button first in DOM: the panel now opens BELOW it (the container is anchored to the
           top-right, not the bottom-right as before), and flex-direction: column always stacks
           in DOM order regardless of which edge the container is pinned to. */}
       <button
+        ref={btnRef}
         className="btn winlauncher-btn"
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}

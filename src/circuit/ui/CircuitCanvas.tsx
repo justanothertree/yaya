@@ -287,10 +287,22 @@ export function CircuitCanvas({
     const padT = parseFloat(cs.paddingTop) || 0
     const padB = parseFloat(cs.paddingBottom) || 0
     const v = viewRef.current
+    /**
+     * The window launcher (App.tsx) floats over this same viewport, top-right. Reserved here
+     * rather than patched into `snapGeom('max')` alone: a maximized window's own title-bar
+     * controls are also right-aligned, so they landed exactly on the launcher button — and
+     * Tile/Fit-all pack right up to whatever width hostBox reports, so they'd have hit the same
+     * corner too. One reservation, read from a live-measured CSS var (0 when the launcher isn't
+     * mounted at all), covers every layout operation that uses hostBox instead of re-deriving
+     * "how much room is actually free" in each one separately.
+     */
+    const reserveR =
+      parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--winlauncher-w')) ||
+      0
     return {
       x: panRef.current.x,
       y: panRef.current.y,
-      w: (host.clientWidth - padL - padR) / v,
+      w: (host.clientWidth - padL - padR - (reserveR ? reserveR + 12 : 0)) / v,
       h: (host.clientHeight - padT - padB) / v,
     }
   }, [])
@@ -1013,7 +1025,12 @@ export function CircuitCanvas({
       // a scrolling candidate only wins if nothing fits — and then the LEAST overflow
       // wins, not the least area (least area picked narrow towers that scrolled forever)
       const score = rawH > b.h ? 1e9 + rawH : cw * ch
-      if (!best || score <= best.score * 1.05) best = { w: cw, h: ch, score }
+      // The "nudge toward wide" was real but too timid: a 5% area budget rarely covers the
+      // jump from one candidate width to the next, so the algorithm almost always locked
+      // onto the FIRST (narrowest) non-scrolling candidate — which is exactly what read as
+      // skinny. 20% spends noticeably more area to buy a visibly wider window, while still
+      // refusing a candidate so wide it's mostly empty margin.
+      if (!best || score <= best.score * 1.2) best = { w: cw, h: ch, score }
     }
     body.style.zoom = sZoom
     body.style.width = sBodyW
