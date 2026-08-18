@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useVoiceSession } from './useVoiceSession'
 import type { VoicePeer } from './voiceSession'
 import { callWord, peerWord, speakingNames } from './callWords'
+import { CallRoster } from './CallRoster'
 
 /**
  * A call now outlives the screen it started on, which is what makes it usable — but a call
@@ -61,6 +62,7 @@ function PeerAudio({
 }
 
 export function CallDock() {
+  const [rosterOpen, setRosterOpen] = useState(false)
   const {
     inCall,
     roomId,
@@ -166,6 +168,17 @@ export function CallDock() {
           ⚠ {peers.length + 1} in call
         </span>
       )}
+      {/* One roster button, showing the headcount at a glance — the same information the
+          talking-names line already implies, but as a stable count you can click through. */}
+      <button
+        className={'btn' + (rosterOpen ? ' is-on' : '')}
+        onClick={() => setRosterOpen((v) => !v)}
+        aria-pressed={rosterOpen}
+        title="Who's in this call"
+      >
+        👥 {peers.length + 1}
+      </button>
+      {rosterOpen && <CallRoster onClose={() => setRosterOpen(false)} />}
       {/* A refusal has to be SEEN. This lived only in the button's tooltip, so hitting share
           with too many people in the call looked like the button was broken. */}
       {shareError && (

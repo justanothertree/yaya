@@ -3335,3 +3335,81 @@ select {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* Call roster — a panel you open to look someone up, not a status strip like the dock. Anchored
+   near the dock so opening it doesn't feel like it came from nowhere. */
+.callroster {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: calc(var(--bottom-guard) + var(--kb) + var(--pin-gap) + 3.2rem);
+  z-index: 61;
+  width: min(90vw, 20rem);
+  max-height: 60vh;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md, 12px);
+  background: var(--card, var(--bg));
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+  overflow: hidden;
+}
+.callroster-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem 0.7rem;
+  border-bottom: 1px solid var(--border);
+}
+.callroster-list {
+  list-style: none;
+  margin: 0;
+  padding: 0.25rem;
+  overflow-y: auto;
+}
+.callroster-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0.5rem;
+  border-radius: 8px;
+}
+.callroster-row:hover {
+  background: var(--card2, rgba(127, 127, 127, 0.1));
+}
+.callroster-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--muted, #8a8a8a);
+}
+.callroster-dot.is-connected {
+  background: var(--accent, #22c55e);
+}
+.callroster-dot.is-speaking {
+  background: var(--accent, #22c55e);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent, #22c55e), transparent 70%);
+}
+.callroster-name {
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.callroster-status {
+  font-size: 0.78rem;
+  flex-shrink: 0;
+}
+.callroster-actions {
+  display: flex;
+  gap: 0.25rem;
+  flex-shrink: 0;
+}
+.callroster-actions .btn {
+  padding: 0.15rem 0.4rem;
+}
+.callroster-empty {
+  padding: 0.6rem;
+  font-size: 0.9em;
+}
