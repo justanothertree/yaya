@@ -5,17 +5,20 @@ import { getSupabaseClient } from '../finance/client'
  * Optional, block-based profile customization.
  *
  * Deliberately NOT freeform HTML — every block is a fixed shape the CLIENT renders, and
- * `config` is just that block's data (a bio string, an image URL, a links list). There is no
+ * `config` is just that block's data (a bio string, an image URL, an activity limit). There is no
  * path from one person's config to another person's rendered markup, which is what keeps this
  * safe without a sanitizer. "Optional" is structural: zero blocks means the page underneath
  * (circuits, snake, movies) is unchanged — customizing only ever adds to it.
+ *
+ * No block type sends a viewer OFF the site (a "Links" block used to, and was cut) — the content
+ * itself belongs in the block, not a button pointing somewhere else.
  */
 
 export type Tier = 'public' | 'friends' | 'members' | 'private'
 
 export type ProfileBlock = {
   id?: string
-  block_type: 'bio' | 'banner' | 'stats' | 'activity' | 'links'
+  block_type: 'bio' | 'banner' | 'stats' | 'activity'
   size: 'small' | 'medium' | 'large'
   config: Record<string, unknown>
   visibility: Tier
@@ -40,24 +43,6 @@ const BLOCK_LABEL: Record<ProfileBlock['block_type'], string> = {
   banner: '🖼️ Banner',
   stats: '📊 Stats',
   activity: '🕓 Activity',
-  links: '🔗 Links',
-}
-
-/**
- * A link block's `url` is whatever the profile owner typed — including another member typing it
- * about THEMSELVES, which is the case that matters here. `javascript:` and `data:` both parse as
- * valid URLs and were rendering straight into a real `<a href>`; a `javascript:` one runs in the
- * VIEWER'S session the moment they click it, as if they'd typed it into their own address bar
- * while signed in. Restricting to http/https closes that off entirely rather than trying to
- * blocklist dangerous schemes one at a time.
- */
-function safeHref(url: string): string | null {
-  try {
-    const u = new URL(url)
-    return u.protocol === 'http:' || u.protocol === 'https:' ? url : null
-  } catch {
-    return null
-  }
 }
 
 function activityLine(a: ActivityItem): string {
@@ -138,26 +123,6 @@ function BlockView({
               Nothing to show yet.
             </p>
           )}
-        </div>
-      )
-    }
-    case 'links': {
-      const items = Array.isArray(cfg.items) ? (cfg.items as { label: string; url: string }[]) : []
-      if (!items.length) return null
-      return (
-        <div className={'card profile-block is-' + block.size}>
-          <h3 style={{ marginTop: 0 }}>🔗 Links</h3>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
-            {items.map((l, i) => {
-              const href = safeHref(l.url)
-              if (!href) return null
-              return (
-                <a key={i} className="btn" href={href} target="_blank" rel="noreferrer">
-                  {l.label || l.url}
-                </a>
-              )
-            })}
-          </div>
         </div>
       )
     }
@@ -272,62 +237,11 @@ function BlockEditRow({
           items
         </label>
       )}
-      {block.block_type === 'links' && (
-        <LinksEditor
-          items={
-            Array.isArray(block.config.items)
-              ? (block.config.items as { label: string; url: string }[])
-              : []
-          }
-          onChange={(items) => setCfg({ items })}
-        />
-      )}
       {block.block_type === 'stats' && (
         <p className="muted" style={{ margin: 0 }}>
           Fills in automatically from your Snake results — nothing to set here.
         </p>
       )}
-    </div>
-  )
-}
-
-function LinksEditor({
-  items,
-  onChange,
-}: {
-  items: { label: string; url: string }[]
-  onChange: (items: { label: string; url: string }[]) => void
-}) {
-  const update = (i: number, patch: Partial<{ label: string; url: string }>) =>
-    onChange(items.map((it, idx) => (idx === i ? { ...it, ...patch } : it)))
-  return (
-    <div style={{ display: 'grid', gap: '0.35rem' }}>
-      {items.map((it, i) => (
-        <div key={i} style={{ display: 'flex', gap: '0.3rem' }}>
-          <input
-            placeholder="Label"
-            value={it.label}
-            onChange={(e) => update(i, { label: e.target.value })}
-            style={{ width: '8rem' }}
-          />
-          <input
-            placeholder="https://…"
-            value={it.url}
-            onChange={(e) => update(i, { url: e.target.value })}
-            style={{ flex: 1 }}
-          />
-          <button className="btn" onClick={() => onChange(items.filter((_, idx) => idx !== i))}>
-            ✕
-          </button>
-        </div>
-      ))}
-      <button
-        className="btn"
-        onClick={() => onChange([...items, { label: '', url: '' }])}
-        disabled={items.length >= 10}
-      >
-        + Add link
-      </button>
     </div>
   )
 }
