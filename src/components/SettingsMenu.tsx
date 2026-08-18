@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { PalettePicker } from '../theme/PalettePicker'
+import { previewClickFx, type FxStyle } from '../ui/clickFx'
 
 export type Theme = 'light' | 'dark' | 'alt'
 
@@ -32,6 +33,8 @@ export function SettingsMenu({
   onToggleAmbient,
   sparksOn,
   onToggleSparks,
+  sparksStyle,
+  onSparksStyle,
   customPalette,
   onCustomPalette,
   authed,
@@ -57,6 +60,8 @@ export function SettingsMenu({
   onToggleAmbient: () => void
   sparksOn: boolean
   onToggleSparks: () => void
+  sparksStyle: FxStyle
+  onSparksStyle: (style: FxStyle) => void
   /** true when the user's own palette is overriding the built-in theme */
   customPalette: boolean
   onCustomPalette: (on: boolean) => void
@@ -256,9 +261,40 @@ export function SettingsMenu({
             onClick={onToggleSparks}
             title="A small burst of light wherever you click"
           >
-            <span>⁕ Click sparks</span>
+            <span>⁕ Click flair</span>
             <span className={'nav-menu-switch' + (sparksOn ? ' is-on' : '')} aria-hidden />
           </button>
+          {/* Only when there's something to pick between showing -- four dead style buttons
+              under an OFF toggle would just be clutter. Each button plays its own effect at
+              its own centre on click, so choosing a style IS trying it, no separate preview
+              area needed. */}
+          {sparksOn && (
+            <div className="nav-menu-row is-static fx-style-row">
+              {(
+                [
+                  ['sparks', '✨', 'Sparks'],
+                  ['ripple', '◌', 'Ripple'],
+                  ['confetti', '▤', 'Confetti'],
+                  ['fireworks', '🎆', 'Fireworks'],
+                ] as Array<[FxStyle, string, string]>
+              ).map(([id, icon, label]) => (
+                <button
+                  key={id}
+                  className={'fx-style-btn' + (sparksStyle === id ? ' is-on' : '')}
+                  aria-pressed={sparksStyle === id}
+                  title={label}
+                  onClick={(e) => {
+                    onSparksStyle(id)
+                    const r = e.currentTarget.getBoundingClientRect()
+                    previewClickFx(id, r.left + r.width / 2, r.top + r.height / 2)
+                  }}
+                >
+                  <span aria-hidden>{icon}</span>
+                  <span className="fx-style-label">{label}</span>
+                </button>
+              ))}
+            </div>
+          )}
 
           {desktop && (
             <button

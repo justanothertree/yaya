@@ -7,7 +7,7 @@ import { IconGitHub, IconLinkedIn } from './components/Icons'
 import { SettingsMenu } from './components/SettingsMenu'
 import { MobileNav } from './components/MobileNav'
 import { AmbientBackdrop } from './components/AmbientBackdrop'
-import { installClickFx, setClickFxEnabled } from './ui/clickFx'
+import { installClickFx, setClickFxEnabled, setClickFxStyle, type FxStyle } from './ui/clickFx'
 import { WindowLauncher, type LaunchableWindow } from './components/WindowLauncher'
 import { ShareStage } from './voice/ShareStage'
 import { UsagePanel } from './components/UsagePanel'
@@ -225,10 +225,15 @@ export default function App() {
   const [ambientOn, setAmbientOn] = useState(
     () => typeof window === 'undefined' || localStorage.getItem('ambient_v1') !== '0',
   )
-  /** click sparks — same shape as the ambient glow: pure taste, remembered, on by default */
+  /** click flair — same shape as the ambient glow: pure taste, remembered, on by default */
   const [sparksOn, setSparksOn] = useState(
     () => typeof window === 'undefined' || localStorage.getItem('click_fx_v1') !== '0',
   )
+  const [sparksStyle, setSparksStyle] = useState<FxStyle>(() => {
+    if (typeof window === 'undefined') return 'sparks'
+    const v = localStorage.getItem('click_fx_style_v1')
+    return v === 'sparks' || v === 'ripple' || v === 'confetti' || v === 'fireworks' ? v : 'sparks'
+  })
   useEffect(() => installClickFx(), [])
   // Wake the call relay early: it sleeps when idle, and the first call of the day should not
   // be the one that pays for the cold start. One request, on load, then never again.
@@ -243,6 +248,14 @@ export default function App() {
     }
   }, [sparksOn])
   const toggleSparks = () => setSparksOn((v) => !v)
+  useEffect(() => {
+    setClickFxStyle(sparksStyle)
+    try {
+      localStorage.setItem('click_fx_style_v1', sparksStyle)
+    } catch {
+      /* ignore */
+    }
+  }, [sparksStyle])
 
   const toggleAmbient = () => {
     setAmbientOn((v) => {
@@ -1170,6 +1183,8 @@ export default function App() {
               onToggleAmbient={toggleAmbient}
               sparksOn={sparksOn}
               onToggleSparks={toggleSparks}
+              sparksStyle={sparksStyle}
+              onSparksStyle={setSparksStyle}
               customPalette={customPalette}
               onCustomPalette={setCustomPalette}
               name={me.name}

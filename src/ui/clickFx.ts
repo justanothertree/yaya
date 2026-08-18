@@ -1,23 +1,27 @@
 /**
- * Click sparks — a small burst of light where you click.
+ * Click flair — a small effect where you click, in one of several styles.
  *
- * Deliberately built on the Web Animations API rather than CSS keyframes: each burst wants its
- * own random angle, distance and duration, and doing that in CSS means either writing the
- * particles' end positions into inline styles anyway or shipping a stylesheet of near-identical
- * keyframes. `element.animate()` takes the numbers directly and hands back a `finished` promise,
- * which is also how the nodes get cleaned up without a timer to keep in sync.
+ * Built on the Web Animations API rather than CSS keyframes: each burst wants its own random
+ * angle, distance, rotation and duration per particle, and doing that in CSS means either
+ * writing every particle's end position into an inline style anyway or shipping a stylesheet of
+ * near-identical keyframes for numbers that were only ever going to be randomised at runtime.
+ * `element.animate()` takes the numbers directly and hands back a `finished` promise, which is
+ * also how the nodes get cleaned up without a timer to keep in sync with the animation.
  *
- * Everything is drawn in a fixed, `pointer-events: none` layer, so nothing here can ever eat a
- * click or shift the page — the effect is incapable of interfering with the thing you clicked.
+ * Everything is drawn in a single fixed, `pointer-events: none` layer, so nothing here can ever
+ * eat a click or shift the page — the effect is structurally incapable of interfering with the
+ * thing you clicked, no matter which style is picked.
  */
+
+export type FxStyle = 'sparks' | 'ripple' | 'confetti' | 'fireworks'
 
 const LAYER_ID = 'click-fx-layer'
 /** Concurrent bursts to allow. A fast clicker shouldn't be able to pile up hundreds of nodes. */
 const MAX_BURSTS = 6
-const SPARKS = 8
 
 let installed = false
 let enabled = true
+let style: FxStyle = 'sparks'
 let live = 0
 
 function layer(): HTMLElement {
@@ -32,31 +36,49 @@ function layer(): HTMLElement {
 }
 
 /**
- * Read the accent straight off the document so sparks follow the active palette — including a
- * custom one — without this module knowing anything about themes.
+ * Read colours straight off the document so every style follows the active palette — including
+ * a custom one — without this module knowing anything about themes. `--warn`/`--danger` are read
+ * too, for confetti's extra colour, and fall back to the accent pair when a theme doesn't define
+ * them rather than rendering a broken swatch.
  */
-function accents(): [string, string] {
+function palette(): string[] {
   const s = getComputedStyle(document.documentElement)
-  const a = s.getPropertyValue('--accent').trim() || '#22c55e'
-  const b = s.getPropertyValue('--accent-2').trim() || a
-  return [a, b]
+  const get = (name: string, fallback: string) => s.getPropertyValue(name).trim() || fallback
+  const a = get('--accent', '#22c55e')
+  const b = get('--accent-2', a)
+  return [a, b, get('--warn', a), get('--danger', b)]
 }
 
-function burst(x: number, y: number) {
-  if (live >= MAX_BURSTS) return
+/**
+ * Track a set of animations and remove their nodes once every one finishes. Shared by every
+ * style below rather than each reimplementing the same cleanup.
+ */
+function track(host: HTMLElement, nodes: HTMLElement[], anims: Animation[]) {
   live++
-  const host = layer()
-  const [a, b] = accents()
-  const nodes: HTMLElement[] = []
-  const anims: Array<Animation> = []
+  for (const n of nodes) host.appendChild(n)
+  Promise.allSettled(anims.map((an) => an.finished)).then(() => {
+    for (const n of nodes) n.remove()
+    live--
+  })
+}
 
-  // the ring: a quick expanding outline that reads as "that registered"
-  const ring = document.createElement('i')
-  ring.className = 'click-fx-ring'
-  ring.style.left = x + 'px'
-  ring.style.top = y + 'px'
+function mk(cls: string, x: number, y: number) {
+  const el = document.createElement('i')
+  el.className = cls
+  el.style.left = x + 'px'
+  el.style.top = y + 'px'
+  return el
+}
+
+/** The original: a ring plus 8 radiating dots. Reads as a clean, energetic "that registered". */
+function sparks(host: HTMLElement, x: number, y: number) {
+  const [a, b] = palette()
+  const N = 8
+  const nodes: HTMLElement[] = []
+  const anims: Animation[] = []
+
+  const ring = mk('click-fx-ring', x, y)
   ring.style.borderColor = a
-  host.appendChild(ring)
   nodes.push(ring)
   anims.push(
     ring.animate(
@@ -64,34 +86,26 @@ function burst(x: number, y: number) {
         { transform: 'translate(-50%, -50%) scale(0.2)', opacity: 0.9 },
         { transform: 'translate(-50%, -50%) scale(1)', opacity: 0 },
       ],
-      // fill: 'forwards' matters. Without it an element snaps back to its BASE style the moment
-      // its own animation ends — fully opaque, back at the click point — and sits there until
-      // every other animation in the burst has finished and the nodes are removed together.
-      // The ring is the shortest of them, so it was the most visible: a circle and a dot left
-      // behind after the sparks had gone.
+      // fill: 'forwards' matters everywhere in this file: without it an element snaps back to
+      // its base style the moment its OWN animation ends, and sits there fully visible until
+      // every other animation in the burst finishes and the nodes are removed together.
       { duration: 420, easing: 'cubic-bezier(0.2, 0.8, 0.3, 1)', fill: 'forwards' },
     ),
   )
 
-  for (let i = 0; i < SPARKS; i++) {
+  for (let i = 0; i < N; i++) {
     // spread evenly, then jitter — evenly-spaced alone looks mechanical, fully random clumps
-    const angle = (i / SPARKS) * Math.PI * 2 + (Math.random() - 0.5) * 0.6
+    const angle = (i / N) * Math.PI * 2 + (Math.random() - 0.5) * 0.6
     const dist = 18 + Math.random() * 26
-    const p = document.createElement('i')
-    p.className = 'click-fx-spark'
-    p.style.left = x + 'px'
-    p.style.top = y + 'px'
+    const p = mk('click-fx-spark', x, y)
     p.style.background = i % 3 === 0 ? b : a
-    host.appendChild(p)
     nodes.push(p)
     anims.push(
       p.animate(
         [
           { transform: 'translate(-50%, -50%) translate(0, 0) scale(1)', opacity: 1 },
           {
-            transform: `translate(-50%, -50%) translate(${Math.cos(angle) * dist}px, ${
-              Math.sin(angle) * dist
-            }px) scale(0.2)`,
+            transform: `translate(-50%, -50%) translate(${Math.cos(angle) * dist}px, ${Math.sin(angle) * dist}px) scale(0.2)`,
             opacity: 0,
           },
         ],
@@ -103,11 +117,124 @@ function burst(x: number, y: number) {
       ),
     )
   }
+  track(host, nodes, anims)
+}
 
-  Promise.allSettled(anims.map((an) => an.finished)).then(() => {
-    for (const n of nodes) n.remove()
-    live--
-  })
+/** The minimal end of the range: one expanding ring, nothing else. A quiet acknowledgement. */
+function ripple(host: HTMLElement, x: number, y: number) {
+  const [a] = palette()
+  const ring = mk('click-fx-ripple', x, y)
+  ring.style.borderColor = a
+  const anim = ring.animate(
+    [
+      { transform: 'translate(-50%, -50%) scale(0.15)', opacity: 0.6 },
+      { transform: 'translate(-50%, -50%) scale(1)', opacity: 0 },
+    ],
+    { duration: 520, easing: 'ease-out', fill: 'forwards' },
+  )
+  track(host, [ring], [anim])
+}
+
+/** The playful end: small rotating rectangles that pop out and tumble under light gravity. */
+function confetti(host: HTMLElement, x: number, y: number) {
+  const colors = palette()
+  const N = 10
+  const nodes: HTMLElement[] = []
+  const anims: Animation[] = []
+  for (let i = 0; i < N; i++) {
+    const angle = Math.random() * Math.PI * 2
+    const dist = 22 + Math.random() * 34
+    // gravity: the flight arcs downward regardless of launch angle, which is what makes
+    // scattered rectangles read as confetti falling rather than a symmetric burst
+    const dx = Math.cos(angle) * dist
+    const dy = Math.sin(angle) * dist * 0.6 + 24
+    const spin = (Math.random() - 0.5) * 540
+    const p = mk('click-fx-confetti', x, y)
+    p.style.background = colors[i % colors.length]
+    nodes.push(p)
+    anims.push(
+      p.animate(
+        [
+          { transform: 'translate(-50%, -50%) translate(0, 0) rotate(0deg)', opacity: 1 },
+          {
+            transform: `translate(-50%, -50%) translate(${dx * 0.5}px, ${dy * 0.4}px) rotate(${spin * 0.5}deg)`,
+            opacity: 1,
+            offset: 0.5,
+          },
+          {
+            transform: `translate(-50%, -50%) translate(${dx}px, ${dy}px) rotate(${spin}deg)`,
+            opacity: 0,
+          },
+        ],
+        { duration: 620 + Math.random() * 260, easing: 'ease-in', fill: 'forwards' },
+      ),
+    )
+  }
+  track(host, nodes, anims)
+}
+
+/** The dramatic end: a ring plus two waves of sparks at different speeds, wider and busier. */
+function fireworks(host: HTMLElement, x: number, y: number) {
+  const colors = palette()
+  const nodes: HTMLElement[] = []
+  const anims: Animation[] = []
+
+  const ring = mk('click-fx-ring', x, y)
+  ring.style.borderColor = colors[0]
+  ring.style.width = '54px'
+  ring.style.height = '54px'
+  nodes.push(ring)
+  anims.push(
+    ring.animate(
+      [
+        { transform: 'translate(-50%, -50%) scale(0.15)', opacity: 0.85 },
+        { transform: 'translate(-50%, -50%) scale(1)', opacity: 0 },
+      ],
+      { duration: 500, easing: 'cubic-bezier(0.2, 0.8, 0.3, 1)', fill: 'forwards' },
+    ),
+  )
+
+  const N = 16
+  for (let i = 0; i < N; i++) {
+    const angle = (i / N) * Math.PI * 2 + (Math.random() - 0.5) * 0.3
+    const dist = 30 + Math.random() * 46
+    const p = mk('click-fx-spark', x, y)
+    p.style.background = colors[i % colors.length]
+    // slightly bigger than the plain sparks style, so a busier burst still reads as sparks
+    // rather than dust
+    p.style.width = '7px'
+    p.style.height = '7px'
+    nodes.push(p)
+    anims.push(
+      p.animate(
+        [
+          { transform: 'translate(-50%, -50%) translate(0, 0) scale(1)', opacity: 1 },
+          {
+            transform: `translate(-50%, -50%) translate(${Math.cos(angle) * dist}px, ${Math.sin(angle) * dist}px) scale(0.15)`,
+            opacity: 0,
+          },
+        ],
+        {
+          duration: 460 + Math.random() * 340,
+          easing: 'cubic-bezier(0.1, 0.6, 0.15, 1)',
+          fill: 'forwards',
+        },
+      ),
+    )
+  }
+  track(host, nodes, anims)
+}
+
+const BUILDERS: Record<FxStyle, (host: HTMLElement, x: number, y: number) => void> = {
+  sparks,
+  ripple,
+  confetti,
+  fireworks,
+}
+
+function burst(x: number, y: number) {
+  if (live >= MAX_BURSTS) return
+  BUILDERS[style](layer(), x, y)
 }
 
 function onPointerDown(e: PointerEvent) {
@@ -118,10 +245,24 @@ function onPointerDown(e: PointerEvent) {
   burst(e.clientX, e.clientY)
 }
 
-/** Turn sparks on or off at runtime. Persisted by the caller, not here. */
+/** Turn flair on or off at runtime. Persisted by the caller, not here. */
 export function setClickFxEnabled(on: boolean) {
   enabled = on
   if (!on) document.getElementById(LAYER_ID)?.replaceChildren()
+}
+
+/** Switch which style plays. Takes effect on the next click — nothing needs to restart. */
+export function setClickFxStyle(next: FxStyle) {
+  style = next
+}
+
+/**
+ * Play one burst on demand, at a fixed point — used by the style picker's preview buttons so
+ * choosing a style shows what it looks like immediately, without needing a real click.
+ */
+export function previewClickFx(fxStyle: FxStyle, x: number, y: number) {
+  if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return
+  BUILDERS[fxStyle](layer(), x, y)
 }
 
 /**
