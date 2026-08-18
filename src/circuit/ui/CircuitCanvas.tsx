@@ -43,19 +43,12 @@ type WinBox = {
 }
 type Layout = Record<string, WinBox>
 
-// v4: layouts are stored per canvas (home vs circuit have different panes — one shared
-// key made each page clobber the other's layout and re-tile every visit).
-// PINNED panes are excluded from the key and from the per-tab layout: they're the same
-// window following you between tabs, so their box lives in the shared pin store below.
-// Keeping them out also means pinning/unpinning no longer changes a tab's key — which
-// used to invalidate its saved layout and re-tile everything.
-const storeKey = (panes: CanvasPane[], pinnedIds: string[]) =>
-  'canvas_v4:' +
-  panes
-    .filter((p) => !pinnedIds.includes(p.id))
-    .map((p) => p.id)
-    .sort()
-    .join(',')
+// There's one shared canvas now (see App.tsx), not one per page, so there's no more per-page
+// pane SET to key a layout by — every window that's open is, by construction, in `pinnedIds`
+// (the caller always passes `panes === pinned`), so it always belongs in the one shared box
+// store below rather than a page-scoped one. `VIEW_KEY` is a fixed string rather than a
+// per-page hash for the same reason: one canvas, one remembered pan/zoom.
+const VIEW_KEY = 'canvas_v4:'
 const GAP = 12
 const MAP_W = 120
 // the canvas plane extends 2x the screen in each direction - room to park windows off-view
@@ -644,7 +637,7 @@ export function CircuitCanvas({
     const ex = hostEl ? (hostEl.clientWidth * (WORLD - 1)) / 2 : 0
     const ey = hostEl ? (hostEl.clientHeight * (WORLD - 1)) / 2 : 0
     // come back where you left off; the centre is only the first-visit default
-    const sv = loadView(storeKey(panes, pinnedIds))
+    const sv = loadView(VIEW_KEY)
     if (sv?.m && sv.m > WORLD) {
       worldMulRef.current = Math.min(MAX_WORLD, sv.m)
       setWorldMul(worldMulRef.current)
@@ -656,27 +649,18 @@ export function CircuitCanvas({
     }
     panRef.current = p0
     setPanState(p0)
-    // only this tab's OWN panes come from its layout; pinned ones carry their box with them
-    const own = panes.filter((p) => !pinnedIds.includes(p.id))
-    const saved = loadLayout(storeKey(panes, pinnedIds))
-    const valid = saved && own.every((p) => saved[p.id])
-    const base = valid ? saved! : defaultTile(own)
-    // layouts saved before the plane existed live in the top-left quadrant — carry them
-    // to the centre once (post-shift coords fail this test, so it can't double-apply)
-    if (valid && hostEl) {
-      const legacy = own.every((pn) => {
-        const b0 = base[pn.id]
-        return b0.x + b0.w <= hostEl.clientWidth + 8 && b0.y + b0.h <= hostEl.clientHeight + 8
-      })
-      if (legacy)
-        own.forEach((pn) => {
-          base[pn.id] = { ...base[pn.id], x: base[pn.id].x + ex, y: base[pn.id].y + ey }
-        })
-    }
+    // every pane either already has a box in the shared store (it's been open before, on
+    // this canvas or another page's, back when there was such a thing) or it doesn't (first
+    // time it's ever been opened) -- the latter get tiled together into a nice grid rather
+    // than left to the cascade the late-arriving-panes effect below would otherwise give them
+    // one at a time, which is the right call for a handful of new windows appearing at once
+    // but reads as messy for a first-ever "here's your canvas" moment.
     const pins = loadPins()
+    const unpositioned = panes.filter((p) => !pins[p.id])
+    const base = defaultTile(unpositioned)
     const next: Layout = {}
     for (const p of panes) {
-      const box = pinnedIds.includes(p.id) ? pins[p.id] || base[p.id] : base[p.id]
+      const box = pins[p.id] || base[p.id]
       if (box) next[p.id] = box
     }
     const fitted = clampAll(next)
@@ -727,24 +711,15 @@ export function CircuitCanvas({
 
   // remember where the view sits, so the next mount opens on your arrangement
   useEffect(() => {
-    saveView(storeKey(panes, pinnedIds), { x: pan.x, y: pan.y, v: view, m: worldMul })
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    saveView(VIEW_KEY, { x: pan.x, y: pan.y, v: view, m: worldMul })
   }, [pan, view, worldMul])
 
-  // Persist whenever layout settles — this tab's own windows to its layout, pinned ones to
-  // the shared pin store so wherever you drop a pinned window is where the next tab shows it.
+  // Persist whenever layout settles — every window's box goes to the one shared store, so
+  // wherever you drop it is where it shows up next time, on this canvas or the next visit.
   useEffect(() => {
     if (!Object.keys(wins).length) return
-    const own: Layout = {}
-    const pins: Layout = {}
-    for (const [id, w] of Object.entries(wins)) {
-      if (pinnedIds.includes(id)) pins[id] = w
-      else own[id] = w
-    }
-    if (Object.keys(own).length) saveLayout(storeKey(panes, pinnedIds), own)
-    if (Object.keys(pins).length) savePins(pins)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [wins, panes, pinnedIds.join(',')])
+    savePins(wins)
+  }, [wins])
 
   // canvas resized (browser window, devtools, zoom, the toolbar wrapping to more/fewer rows)
   // → keep every window fitting, and if that shrink left nothing in view, come back to it
