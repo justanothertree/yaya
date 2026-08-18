@@ -1526,20 +1526,19 @@ export function CircuitCanvas({
                                   : `Bring ${w.title} to front`)
                           }
                         >
-                          <span>
-                            {isOpen && (
-                              <span aria-hidden style={{ fontSize: '0.7rem' }}>
-                                {min ? '▫' : '▪'}
-                              </span>
-                            )}{' '}
-                            {w.title}
-                          </span>
+                          {isOpen && (
+                            <span
+                              className={'winlauncher-dot' + (min ? ' is-min' : '')}
+                              aria-hidden
+                            />
+                          )}
+                          <span className="winlauncher-row-title">{w.title}</span>
                           {w.disabled ? (
-                            <span className="muted winlauncher-why">{w.disabled}</span>
+                            <span className="winlauncher-why">{w.disabled}</span>
                           ) : (
                             isOpen && (
-                              <span className="muted winlauncher-why">
-                                {min ? 'minimized' : front ? 'front' : ''}
+                              <span className={'winlauncher-why' + (front ? ' is-front' : '')}>
+                                {min ? 'minimized' : front ? 'front' : 'open'}
                               </span>
                             )
                           )}
