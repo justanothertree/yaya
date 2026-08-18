@@ -1,7 +1,7 @@
 // Free canvas — turns the Circuit panes into draggable / resizable floating windows
 // (Aero-style edge snapping, minimize / maximize / fit, z-order focus, persisted layout).
 // Ported from the standalone's "operating system" mode. Desktop-only.
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { showToast } from '../toast'
@@ -104,6 +104,24 @@ const IDEAL_H = 560
 const scaleFor = (w: number) => Math.min(1, Math.max(0.6, Math.round(w / IDEAL_W / 0.05) * 0.05))
 
 // fit one window fully inside the canvas (shared by the restore paths and clampAll)
+/**
+ * Screen pixels to keep clear on the right for the window launcher (App.tsx), which floats
+ * over this same viewport. Was computed independently in `hostBox` (for POSITIONING windows)
+ * and `measureFit` (for SIZING their content) -- two numbers that are supposed to describe the
+ * same real strip of screen, kept in sync by hand. They drifted the moment one of them changed:
+ * a window could be MEASURED as fitting the old, wider space and then POSITIONED against the
+ * new, narrower one, and corner/centre placement math (`b.x + b.w - w`) goes negative the
+ * instant fitted content is wider than the box it's being placed into -- a window landing
+ * partly off-screen to the left. One function, called from both, so there is only one number
+ * to ever be wrong.
+ */
+function reservedRightPx(): number {
+  const px = parseFloat(
+    getComputedStyle(document.documentElement).getPropertyValue('--winlauncher-w'),
+  )
+  return px ? px + 12 : 0
+}
+
 function clampBox(w: WinBox, b: { w: number; h: number }): WinBox {
   const cw = Math.max(MIN_W, Math.min(w.w, b.w))
   const ch = Math.max(MIN_H, Math.min(w.h, b.h))
@@ -287,22 +305,10 @@ export function CircuitCanvas({
     const padT = parseFloat(cs.paddingTop) || 0
     const padB = parseFloat(cs.paddingBottom) || 0
     const v = viewRef.current
-    /**
-     * The window launcher (App.tsx) floats over this same viewport, top-right. Reserved here
-     * rather than patched into `snapGeom('max')` alone: a maximized window's own title-bar
-     * controls are also right-aligned, so they landed exactly on the launcher button — and
-     * Tile/Fit-all pack right up to whatever width hostBox reports, so they'd have hit the same
-     * corner too. One reservation, read from a live-measured CSS var (0 when the launcher isn't
-     * mounted at all), covers every layout operation that uses hostBox instead of re-deriving
-     * "how much room is actually free" in each one separately.
-     */
-    const reserveR =
-      parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--winlauncher-w')) ||
-      0
     return {
       x: panRef.current.x,
       y: panRef.current.y,
-      w: (host.clientWidth - padL - padR - (reserveR ? reserveR + 12 : 0)) / v,
+      w: (host.clientWidth - padL - padR - reservedRightPx()) / v,
       h: (host.clientHeight - padT - padB) / v,
     }
   }, [])
@@ -1033,7 +1039,7 @@ export function CircuitCanvas({
     // fits target the 100%-zoom view — Evan's ideal is navigating and organizing at
     // 100% — NOT the current-zoom viewport, which balloons when zoomed out and made
     // fitted windows bigger than a screen
-    const b = { w: host.clientWidth - 8, h: host.clientHeight - 8 }
+    const b = { w: host.clientWidth - 8 - reservedRightPx(), h: host.clientHeight - 8 }
     const bar = el.querySelector<HTMLElement>('.cz-bar')
     const barH = Math.ceil(bar?.getBoundingClientRect().height ?? 38)
     const sZoom = body.style.zoom
@@ -1600,7 +1606,21 @@ export function CircuitCanvas({
                     className="cz-body"
                     style={{ flex: 1, overflow: 'auto', padding: 12, zoom: bodyScale }}
                   >
-                    {p.node}
+                    {/**
+                     * Every page a window can hold is lazy-loaded, and `p.node` used to render
+                     * with no Suspense boundary of its own — so it fell back to whatever wraps
+                     * the WHOLE canvas surface (App.tsx). The first time a not-yet-fetched page
+                     * type is toggled on, that shared boundary suspends, and every OTHER
+                     * already-open window unmounts along with it until the new chunk arrives —
+                     * the entire canvas blanking for one component that hadn't loaded yet. Read
+                     * as "toggling a window on for the first time flashes/stutters", which is
+                     * exactly what it did: not just the new window, everything.
+                     *
+                     * A boundary per pane contains that suspension to the one window that's
+                     * actually waiting, and only on first load — the chunk is cached forever
+                     * after, so a window closed and reopened never suspends again.
+                     */}
+                    <Suspense fallback={<span className="muted">Loading…</span>}>{p.node}</Suspense>
                   </div>
                   {/* resize handles on every edge + corner — available even when maximized,
                   so dragging an edge inward shrinks it back out of full-screen */}
