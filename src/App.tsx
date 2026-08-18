@@ -8,6 +8,23 @@ import { SettingsMenu } from './components/SettingsMenu'
 import { MobileNav } from './components/MobileNav'
 import { AmbientBackdrop } from './components/AmbientBackdrop'
 import { installClickFx, setClickFxEnabled, setClickFxStyle, type FxStyle } from './ui/clickFx'
+
+const FX_STYLES: FxStyle[] = [
+  'sparks',
+  'sonar',
+  'pop',
+  'rocket',
+  'stars',
+  'hearts',
+  'bubbles',
+  'glitter',
+  'shatter',
+  'ink',
+  'pixels',
+  'orbit',
+  'beam',
+  'zap',
+]
 import { WindowLauncher, type LaunchableWindow } from './components/WindowLauncher'
 import { ShareStage } from './voice/ShareStage'
 import { UsagePanel } from './components/UsagePanel'
@@ -232,7 +249,9 @@ export default function App() {
   const [sparksStyle, setSparksStyle] = useState<FxStyle>(() => {
     if (typeof window === 'undefined') return 'sparks'
     const v = localStorage.getItem('click_fx_style_v1')
-    return v === 'sparks' || v === 'ripple' || v === 'confetti' || v === 'fireworks' ? v : 'sparks'
+    // A stored 'ripple'/'confetti'/'fireworks' from before those styles were reworked falls
+    // through to the default rather than erroring — those ids just don't exist any more.
+    return (FX_STYLES as string[]).includes(v ?? '') ? (v as FxStyle) : 'sparks'
   })
   useEffect(() => installClickFx(), [])
   // Wake the call relay early: it sleeps when idle, and the first call of the day should not

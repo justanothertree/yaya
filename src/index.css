@@ -2175,6 +2175,10 @@ section[id] {
   right: 0;
   z-index: 120;
   min-width: 15rem;
+  /* the flair style grid alone can run to 5+ rows on a short viewport -- without a cap the
+     menu ran off the bottom of the screen with no way to scroll to Sign out */
+  max-height: min(85vh, 34rem);
+  overflow-y: auto;
   padding: 0.4rem;
   display: flex;
   flex-direction: column;
@@ -3108,18 +3112,49 @@ select {
   border: 2px solid currentColor;
   background: none;
 }
-.click-fx-ripple {
-  width: 36px;
-  height: 36px;
+.click-fx-sonar {
+  width: 40px;
+  height: 40px;
   border: 1.5px solid currentColor;
   background: none;
 }
-.click-fx-confetti {
-  /* the shared `> i` rule above makes every flair element a circle by default; confetti is the
-     one style that needs to override it back to a rectangle */
+.click-fx-pop {
+  /* the shared `> i` rule above makes every flair element a circle by default; a handful of
+     styles need it back to a rectangle */
   width: 7px;
   height: 10px;
   border-radius: 2px;
+}
+.click-fx-bubble {
+  border: 1.5px solid currentColor;
+  background: color-mix(in oklab, currentColor, transparent 82%);
+}
+.click-fx-shard {
+  width: 8px;
+  height: 8px;
+  border-radius: 0;
+  clip-path: polygon(50% 0%, 0% 100%, 100% 100%);
+}
+.click-fx-ink {
+  border-radius: 50%;
+  filter: blur(1px);
+}
+.click-fx-pixel {
+  width: 6px;
+  height: 6px;
+  border-radius: 0;
+}
+.click-fx-beam {
+  width: 3px;
+  border-radius: 2px;
+}
+.click-fx-glyph {
+  /* text content sizes the box itself (shrink-to-fit under absolute positioning), so no
+     width/height here — only the shared `> i` rule's border-radius/background need undoing */
+  border-radius: 0;
+  background: none;
+  line-height: 1;
+  white-space: nowrap;
 }
 @media (prefers-reduced-motion: reduce) {
   /* belt and braces: the script already declines to install, but if it ever runs anyway
@@ -3529,26 +3564,26 @@ select {
   border-bottom: 1px solid var(--border);
 }
 
-/* Click-flair style picker — four small preview buttons, each playing its own effect on click
-   so choosing a style doubles as trying it. */
+/* Click-flair style picker — small preview buttons, each playing its own effect on click so
+   choosing a style doubles as trying it. A grid rather than the single row this started as:
+   fourteen styles wrap to several rows of the same tile size instead of squeezing narrower. */
 .fx-style-row {
-  display: flex;
-  gap: 0.35rem;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(3.4rem, 1fr));
+  gap: 0.3rem;
   padding-block: 0.3rem;
-  justify-content: space-between;
 }
 .fx-style-btn {
-  flex: 1 1 0;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 0.15rem;
-  padding: 0.4rem 0.2rem;
+  gap: 0.1rem;
+  padding: 0.3rem 0.15rem;
   border: 1px solid var(--border);
   border-radius: 8px;
   background: transparent;
   color: var(--text);
-  font-size: 1rem;
+  font-size: 0.9rem;
   cursor: pointer;
 }
 .fx-style-btn.is-on {

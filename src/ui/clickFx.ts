@@ -11,9 +11,31 @@
  * Everything is drawn in a single fixed, `pointer-events: none` layer, so nothing here can ever
  * eat a click or shift the page — the effect is structurally incapable of interfering with the
  * thing you clicked, no matter which style is picked.
+ *
+ * Fourteen styles, deliberately differentiated by SHAPE and MOTION rather than just palette —
+ * radiating dots (sparks), expanding rings (sonar), falling paper (pop), a two-stage launch+burst
+ * (rocket), twinkling glyphs (stars, glitter), upward drift (hearts, bubbles), an implosion isn't
+ * here but an orbit is, straight rays (beam), angular shards (shatter), soft splats (ink), stepped
+ * retro motion (pixels), and a flickering strobe (zap). A style that only changed color on top of
+ * the same dots-flying-outward motion as another one was cut or reworked — that's what made the
+ * original ripple/confetti/fireworks trio feel thin next to sparks.
  */
 
-export type FxStyle = 'sparks' | 'ripple' | 'confetti' | 'fireworks'
+export type FxStyle =
+  | 'sparks'
+  | 'sonar'
+  | 'pop'
+  | 'rocket'
+  | 'stars'
+  | 'hearts'
+  | 'bubbles'
+  | 'glitter'
+  | 'shatter'
+  | 'ink'
+  | 'pixels'
+  | 'orbit'
+  | 'beam'
+  | 'zap'
 
 const LAYER_ID = 'click-fx-layer'
 /** Concurrent bursts to allow. A fast clicker shouldn't be able to pile up hundreds of nodes. */
@@ -38,8 +60,8 @@ function layer(): HTMLElement {
 /**
  * Read colours straight off the document so every style follows the active palette — including
  * a custom one — without this module knowing anything about themes. `--warn`/`--danger` are read
- * too, for confetti's extra colour, and fall back to the accent pair when a theme doesn't define
- * them rather than rendering a broken swatch.
+ * too, for the styles with a wider palette, and fall back to the accent pair when a theme doesn't
+ * define them rather than rendering a broken swatch.
  */
 function palette(): string[] {
   const s = getComputedStyle(document.documentElement)
@@ -67,6 +89,16 @@ function mk(cls: string, x: number, y: number) {
   el.className = cls
   el.style.left = x + 'px'
   el.style.top = y + 'px'
+  return el
+}
+
+/** A dot-shaped particle rendered as a text glyph instead — same positioning, a character
+ * instead of a coloured box, for styles where the SHAPE itself (star, heart, bolt) is the point. */
+function mkGlyph(char: string, x: number, y: number, size: number, color?: string) {
+  const el = mk('click-fx-glyph', x, y)
+  el.textContent = char
+  el.style.fontSize = size + 'px'
+  if (color) el.style.color = color
   return el
 }
 
@@ -120,36 +152,49 @@ function sparks(host: HTMLElement, x: number, y: number) {
   track(host, nodes, anims)
 }
 
-/** The minimal end of the range: one expanding ring, nothing else. A quiet acknowledgement. */
-function ripple(host: HTMLElement, x: number, y: number) {
+/** Ripple's replacement: three rings pinging outward in sequence, like sonar, instead of one
+ * plain ring — the staggered layering is what makes it read as more than "a flash" while
+ * staying the calm, quiet option in the set. */
+function sonar(host: HTMLElement, x: number, y: number) {
   const [a] = palette()
-  const ring = mk('click-fx-ripple', x, y)
-  ring.style.borderColor = a
-  const anim = ring.animate(
-    [
-      { transform: 'translate(-50%, -50%) scale(0.15)', opacity: 0.6 },
-      { transform: 'translate(-50%, -50%) scale(1)', opacity: 0 },
-    ],
-    { duration: 520, easing: 'ease-out', fill: 'forwards' },
-  )
-  track(host, [ring], [anim])
+  const nodes: HTMLElement[] = []
+  const anims: Animation[] = []
+  for (let i = 0; i < 3; i++) {
+    const ring = mk('click-fx-sonar', x, y)
+    ring.style.borderColor = a
+    nodes.push(ring)
+    anims.push(
+      ring.animate(
+        [
+          { transform: 'translate(-50%, -50%) scale(0.1)', opacity: 0.55 },
+          { transform: 'translate(-50%, -50%) scale(1)', opacity: 0 },
+        ],
+        // fill: 'both' (not just 'forwards') so the ring holds its FIRST keyframe during its own
+        // delay too — without it, a delayed animation shows the element's un-animated base state
+        // until its delay elapses, which here would be a flash at full size before shrinking back
+        // to start.
+        { duration: 620, delay: i * 140, easing: 'ease-out', fill: 'both' },
+      ),
+    )
+  }
+  track(host, nodes, anims)
 }
 
-/** The playful end: small rotating rectangles that pop out and tumble under light gravity. */
-function confetti(host: HTMLElement, x: number, y: number) {
-  const colors = palette()
-  const N = 10
+/** Confetti's replacement: faster, brighter, and biased upward before gravity takes it — actual
+ * flutter comes from the spin reversing direction partway through the fall instead of one clean
+ * spin the whole way, which is what paper falling actually looks like. */
+function pop(host: HTMLElement, x: number, y: number) {
+  const colors = [...palette(), '#fff']
+  const N = 14
   const nodes: HTMLElement[] = []
   const anims: Animation[] = []
   for (let i = 0; i < N; i++) {
-    const angle = Math.random() * Math.PI * 2
-    const dist = 22 + Math.random() * 34
-    // gravity: the flight arcs downward regardless of launch angle, which is what makes
-    // scattered rectangles read as confetti falling rather than a symmetric burst
+    const angle = -Math.PI / 2 + (Math.random() - 0.5) * Math.PI * 1.4
+    const dist = 26 + Math.random() * 40
     const dx = Math.cos(angle) * dist
-    const dy = Math.sin(angle) * dist * 0.6 + 24
-    const spin = (Math.random() - 0.5) * 540
-    const p = mk('click-fx-confetti', x, y)
+    const dy = Math.sin(angle) * dist
+    const spin = 220 + Math.random() * 260
+    const p = mk('click-fx-pop', x, y)
     p.style.background = colors[i % colors.length]
     nodes.push(p)
     anims.push(
@@ -157,66 +202,18 @@ function confetti(host: HTMLElement, x: number, y: number) {
         [
           { transform: 'translate(-50%, -50%) translate(0, 0) rotate(0deg)', opacity: 1 },
           {
-            transform: `translate(-50%, -50%) translate(${dx * 0.5}px, ${dy * 0.4}px) rotate(${spin * 0.5}deg)`,
+            transform: `translate(-50%, -50%) translate(${dx * 0.55}px, ${dy * 0.4 - 10}px) rotate(${spin}deg)`,
             opacity: 1,
-            offset: 0.5,
+            offset: 0.4,
           },
           {
-            transform: `translate(-50%, -50%) translate(${dx}px, ${dy}px) rotate(${spin}deg)`,
-            opacity: 0,
-          },
-        ],
-        { duration: 620 + Math.random() * 260, easing: 'ease-in', fill: 'forwards' },
-      ),
-    )
-  }
-  track(host, nodes, anims)
-}
-
-/** The dramatic end: a ring plus two waves of sparks at different speeds, wider and busier. */
-function fireworks(host: HTMLElement, x: number, y: number) {
-  const colors = palette()
-  const nodes: HTMLElement[] = []
-  const anims: Animation[] = []
-
-  const ring = mk('click-fx-ring', x, y)
-  ring.style.borderColor = colors[0]
-  ring.style.width = '54px'
-  ring.style.height = '54px'
-  nodes.push(ring)
-  anims.push(
-    ring.animate(
-      [
-        { transform: 'translate(-50%, -50%) scale(0.15)', opacity: 0.85 },
-        { transform: 'translate(-50%, -50%) scale(1)', opacity: 0 },
-      ],
-      { duration: 500, easing: 'cubic-bezier(0.2, 0.8, 0.3, 1)', fill: 'forwards' },
-    ),
-  )
-
-  const N = 16
-  for (let i = 0; i < N; i++) {
-    const angle = (i / N) * Math.PI * 2 + (Math.random() - 0.5) * 0.3
-    const dist = 30 + Math.random() * 46
-    const p = mk('click-fx-spark', x, y)
-    p.style.background = colors[i % colors.length]
-    // slightly bigger than the plain sparks style, so a busier burst still reads as sparks
-    // rather than dust
-    p.style.width = '7px'
-    p.style.height = '7px'
-    nodes.push(p)
-    anims.push(
-      p.animate(
-        [
-          { transform: 'translate(-50%, -50%) translate(0, 0) scale(1)', opacity: 1 },
-          {
-            transform: `translate(-50%, -50%) translate(${Math.cos(angle) * dist}px, ${Math.sin(angle) * dist}px) scale(0.15)`,
+            transform: `translate(-50%, -50%) translate(${dx}px, ${dy + 46}px) rotate(${spin - 160}deg)`,
             opacity: 0,
           },
         ],
         {
-          duration: 460 + Math.random() * 340,
-          easing: 'cubic-bezier(0.1, 0.6, 0.15, 1)',
+          duration: 520 + Math.random() * 220,
+          easing: 'cubic-bezier(0.15, 0.7, 0.3, 1)',
           fill: 'forwards',
         },
       ),
@@ -225,11 +222,415 @@ function fireworks(host: HTMLElement, x: number, y: number) {
   track(host, nodes, anims)
 }
 
+/** Fireworks' replacement: an actual two-stage rocket — a dot climbs from the click point, THEN
+ * bursts at its peak. The old version was just a busier version of sparks at the same spot,
+ * which is exactly why it read as "too similar"; this one moves before it explodes. */
+function rocket(host: HTMLElement, x: number, y: number) {
+  const [a] = palette()
+  const rise = 70 + Math.random() * 30
+  const dot = mk('click-fx-spark', x, y)
+  dot.style.background = a
+  dot.style.width = '5px'
+  dot.style.height = '5px'
+  const climb = dot.animate(
+    [
+      { transform: 'translate(-50%, -50%) translate(0, 0)', opacity: 1 },
+      {
+        transform: `translate(-50%, -50%) translate(${(Math.random() - 0.5) * 20}px, ${-rise}px)`,
+        opacity: 1,
+      },
+    ],
+    { duration: 260, easing: 'cubic-bezier(0.3, 0, 0.6, 1)', fill: 'forwards' },
+  )
+  track(host, [dot], [climb])
+
+  // The burst is a SEPARATE track() call, kicked off once the climb's own finished promise
+  // resolves — .catch() swallows the case where the climb gets cancelled instead (a reduced-
+  // motion toggle or unmount mid-flight), so that never surfaces as an unhandled rejection.
+  climb.finished
+    .then(() => {
+      const peakY = y - rise
+      const colors = palette()
+      const N = 14
+      const nodes: HTMLElement[] = []
+      const anims: Animation[] = []
+      for (let i = 0; i < N; i++) {
+        const angle = (i / N) * Math.PI * 2 + (Math.random() - 0.5) * 0.3
+        const dist = 26 + Math.random() * 40
+        const p = mk('click-fx-spark', x, peakY)
+        p.style.background = colors[i % colors.length]
+        nodes.push(p)
+        anims.push(
+          p.animate(
+            [
+              { transform: 'translate(-50%, -50%) translate(0, 0) scale(1)', opacity: 1 },
+              {
+                transform: `translate(-50%, -50%) translate(${Math.cos(angle) * dist}px, ${Math.sin(angle) * dist + 14}px) scale(0.15)`,
+                opacity: 0,
+              },
+            ],
+            {
+              duration: 420 + Math.random() * 260,
+              easing: 'cubic-bezier(0.1, 0.6, 0.15, 1)',
+              fill: 'forwards',
+            },
+          ),
+        )
+      }
+      track(host, nodes, anims)
+    })
+    .catch(() => {})
+}
+
+/** Stars radiate out AND twinkle (a scale pulse mid-flight, not just shrinking) — the twinkle is
+ * what reads as "star" rather than "dot with a star drawn on it". */
+function stars(host: HTMLElement, x: number, y: number) {
+  const colors = palette()
+  const N = 7
+  const nodes: HTMLElement[] = []
+  const anims: Animation[] = []
+  for (let i = 0; i < N; i++) {
+    const angle = (i / N) * Math.PI * 2 + (Math.random() - 0.5) * 0.5
+    const dist = 24 + Math.random() * 36
+    const p = mkGlyph('★', x, y, 12 + Math.random() * 6, colors[i % colors.length])
+    nodes.push(p)
+    anims.push(
+      p.animate(
+        [
+          {
+            transform: 'translate(-50%, -50%) translate(0, 0) scale(0.4) rotate(0deg)',
+            opacity: 1,
+          },
+          {
+            transform: `translate(-50%, -50%) translate(${Math.cos(angle) * dist * 0.6}px, ${Math.sin(angle) * dist * 0.6}px) scale(1.15) rotate(60deg)`,
+            opacity: 1,
+            offset: 0.5,
+          },
+          {
+            transform: `translate(-50%, -50%) translate(${Math.cos(angle) * dist}px, ${Math.sin(angle) * dist}px) scale(0.3) rotate(120deg)`,
+            opacity: 0,
+          },
+        ],
+        { duration: 520 + Math.random() * 280, easing: 'ease-out', fill: 'forwards' },
+      ),
+    )
+  }
+  track(host, nodes, anims)
+}
+
+/** Hearts drift straight UP with a gentle side-to-side sway, unlike everything else here which
+ * flies outward from the click — the upward-only motion is what makes it read as "released"
+ * rather than "exploded". Fixed red rather than the theme palette: a heart reads as itself only
+ * in that color family. */
+function hearts(host: HTMLElement, x: number, y: number) {
+  const N = 6
+  const nodes: HTMLElement[] = []
+  const anims: Animation[] = []
+  for (let i = 0; i < N; i++) {
+    const rise = 50 + Math.random() * 40
+    const sway = (Math.random() - 0.5) * 30
+    const p = mkGlyph('❤', x + (Math.random() - 0.5) * 16, y, 13 + Math.random() * 5)
+    p.style.color = i % 2 ? '#f43f5e' : '#fb7185'
+    nodes.push(p)
+    anims.push(
+      p.animate(
+        [
+          { transform: 'translate(-50%, -50%) translate(0, 0) scale(0.6)', opacity: 1 },
+          {
+            transform: `translate(-50%, -50%) translate(${sway}px, ${-rise * 0.6}px) scale(1)`,
+            opacity: 1,
+            offset: 0.5,
+          },
+          {
+            transform: `translate(-50%, -50%) translate(${sway * 1.6}px, ${-rise}px) scale(0.8)`,
+            opacity: 0,
+          },
+        ],
+        { duration: 620 + Math.random() * 260, easing: 'ease-out', fill: 'forwards' },
+      ),
+    )
+  }
+  track(host, nodes, anims)
+}
+
+/** Translucent circles drift upward with a wobble and POP (a quick scale-up right before they
+ * vanish, not a plain fade) — the pop at the top is what sells "bubble" over "dot that floats". */
+function bubbles(host: HTMLElement, x: number, y: number) {
+  const [a, b] = palette()
+  const N = 8
+  const nodes: HTMLElement[] = []
+  const anims: Animation[] = []
+  for (let i = 0; i < N; i++) {
+    const rise = 60 + Math.random() * 60
+    const sway = (Math.random() - 0.5) * 40
+    const size = 6 + Math.random() * 10
+    const p = mk('click-fx-bubble', x + (Math.random() - 0.5) * 18, y)
+    p.style.width = size + 'px'
+    p.style.height = size + 'px'
+    p.style.color = i % 2 ? a : b
+    nodes.push(p)
+    anims.push(
+      p.animate(
+        [
+          { transform: 'translate(-50%, -50%) translate(0, 0) scale(0.5)', opacity: 0.8 },
+          {
+            transform: `translate(-50%, -50%) translate(${sway}px, ${-rise}px) scale(1)`,
+            opacity: 0.7,
+            offset: 0.75,
+          },
+          {
+            transform: `translate(-50%, -50%) translate(${sway * 1.1}px, ${-rise - 10}px) scale(1.6)`,
+            opacity: 0,
+          },
+        ],
+        { duration: 680 + Math.random() * 260, easing: 'ease-out', fill: 'forwards' },
+      ),
+    )
+  }
+  track(host, nodes, anims)
+}
+
+/** Tiny points of light that barely move and blink in and out at slightly different times — this
+ * is the genuinely subtle option now. Sonar still travels outward in rings; this mostly just
+ * twinkles in place near the click. */
+function glitter(host: HTMLElement, x: number, y: number) {
+  const colors = palette()
+  const N = 9
+  const nodes: HTMLElement[] = []
+  const anims: Animation[] = []
+  for (let i = 0; i < N; i++) {
+    const dist = 6 + Math.random() * 22
+    const angle = Math.random() * Math.PI * 2
+    const px = x + Math.cos(angle) * dist
+    const py = y + Math.sin(angle) * dist
+    const p = mkGlyph('✦', px, py, 8 + Math.random() * 6, colors[i % colors.length])
+    nodes.push(p)
+    anims.push(
+      p.animate(
+        [
+          { transform: 'translate(-50%, -50%) scale(0)', opacity: 0 },
+          { transform: 'translate(-50%, -50%) scale(1.2)', opacity: 1, offset: 0.4 },
+          { transform: 'translate(-50%, -50%) scale(0)', opacity: 0 },
+        ],
+        {
+          duration: 420 + Math.random() * 200,
+          delay: Math.random() * 180,
+          easing: 'ease-in-out',
+          fill: 'both',
+        },
+      ),
+    )
+  }
+  track(host, nodes, anims)
+}
+
+/** Angular shards instead of round dots or soft rectangles, flying fast and stopping short with
+ * no lingering drift — the only style built to look like something broke rather than dissolved. */
+function shatter(host: HTMLElement, x: number, y: number) {
+  const colors = palette()
+  const N = 10
+  const nodes: HTMLElement[] = []
+  const anims: Animation[] = []
+  for (let i = 0; i < N; i++) {
+    const angle = (i / N) * Math.PI * 2 + (Math.random() - 0.5) * 0.4
+    const dist = 20 + Math.random() * 34
+    const spin = (Math.random() - 0.5) * 360
+    const p = mk('click-fx-shard', x, y)
+    p.style.background = colors[i % colors.length]
+    nodes.push(p)
+    anims.push(
+      p.animate(
+        [
+          { transform: 'translate(-50%, -50%) translate(0, 0) rotate(0deg) scale(1)', opacity: 1 },
+          {
+            transform: `translate(-50%, -50%) translate(${Math.cos(angle) * dist}px, ${Math.sin(angle) * dist}px) rotate(${spin}deg) scale(0.4)`,
+            opacity: 0,
+          },
+        ],
+        {
+          duration: 280 + Math.random() * 160,
+          easing: 'cubic-bezier(0.1, 0.8, 0.2, 1)',
+          fill: 'forwards',
+        },
+      ),
+    )
+  }
+  track(host, nodes, anims)
+}
+
+/** A handful of overlapping filled, blurred blobs instead of dots or rings — reads as a splash
+ * landing, not a burst radiating evenly. */
+function ink(host: HTMLElement, x: number, y: number) {
+  const [a, b] = palette()
+  const N = 5
+  const nodes: HTMLElement[] = []
+  const anims: Animation[] = []
+  for (let i = 0; i < N; i++) {
+    const angle = Math.random() * Math.PI * 2
+    const dist = Math.random() * 14
+    const size = 14 + Math.random() * 22
+    const p = mk('click-fx-ink', x + Math.cos(angle) * dist, y + Math.sin(angle) * dist)
+    p.style.width = size + 'px'
+    p.style.height = size + 'px'
+    p.style.background = i % 2 ? a : b
+    nodes.push(p)
+    anims.push(
+      p.animate(
+        [
+          { transform: 'translate(-50%, -50%) scale(0.1)', opacity: 0.5 },
+          { transform: 'translate(-50%, -50%) scale(1)', opacity: 0 },
+        ],
+        { duration: 500 + Math.random() * 220, easing: 'ease-out', fill: 'forwards' },
+      ),
+    )
+  }
+  track(host, nodes, anims)
+}
+
+/** Small hard-edged squares that move in visible STEPS instead of easing smoothly — the stepped
+ * timing is what gives it a blocky, retro feel; every other style here interpolates continuously. */
+function pixels(host: HTMLElement, x: number, y: number) {
+  const colors = palette()
+  const N = 9
+  const nodes: HTMLElement[] = []
+  const anims: Animation[] = []
+  for (let i = 0; i < N; i++) {
+    const angle = (i / N) * Math.PI * 2
+    const dist = 22 + Math.random() * 26
+    const p = mk('click-fx-pixel', x, y)
+    p.style.background = colors[i % colors.length]
+    nodes.push(p)
+    anims.push(
+      p.animate(
+        [
+          { transform: 'translate(-50%, -50%) translate(0, 0)', opacity: 1 },
+          {
+            transform: `translate(-50%, -50%) translate(${Math.cos(angle) * dist}px, ${Math.sin(angle) * dist}px)`,
+            opacity: 0,
+          },
+        ],
+        { duration: 360, easing: 'steps(6, end)', fill: 'forwards' },
+      ),
+    )
+  }
+  track(host, nodes, anims)
+}
+
+/** Dots sweep around the click point on a circular path instead of flying away from it — the
+ * only style here where the motion is rotation around a fixed radius rather than radiating
+ * outward or drifting in one direction. Built from an explicit keyframe list because a curved
+ * path isn't expressible as a start/end pair of transforms. */
+function orbit(host: HTMLElement, x: number, y: number) {
+  const colors = palette()
+  const N = 5
+  const nodes: HTMLElement[] = []
+  const anims: Animation[] = []
+  for (let i = 0; i < N; i++) {
+    const r = 20 + i * 6
+    const start = (i / N) * Math.PI * 2
+    const dir = i % 2 ? -1 : 1
+    const steps = 10
+    const kf: Keyframe[] = []
+    for (let s = 0; s <= steps; s++) {
+      const t = s / steps
+      const ang = start + dir * t * Math.PI * 1.6
+      kf.push({
+        transform: `translate(-50%, -50%) translate(${Math.cos(ang) * r}px, ${Math.sin(ang) * r}px) scale(${1 - t * 0.7})`,
+        opacity: 1 - t,
+      })
+    }
+    const p = mk('click-fx-spark', x, y)
+    p.style.background = colors[i % colors.length]
+    nodes.push(p)
+    anims.push(p.animate(kf, { duration: 560 + i * 40, easing: 'ease-out', fill: 'forwards' }))
+  }
+  track(host, nodes, anims)
+}
+
+/** Thin rays instead of dots — a sunburst / camera-flash silhouette, the only style here built
+ * from lines rather than points. Each ray's rotation is set directly on the element (not
+ * animated) so `transform-origin: top center` keeps every ray pivoting on the exact click point
+ * while `.animate()` only grows and shrinks its height. */
+function beam(host: HTMLElement, x: number, y: number) {
+  const [a, b] = palette()
+  const N = 8
+  const nodes: HTMLElement[] = []
+  const anims: Animation[] = []
+  for (let i = 0; i < N; i++) {
+    const angle = (i / N) * 360 + (Math.random() - 0.5) * 8
+    const len = 26 + Math.random() * 26
+    const p = mk('click-fx-beam', x, y)
+    p.style.background = i % 2 ? a : b
+    p.style.transformOrigin = 'top center'
+    p.style.transform = `translate(-50%, 0) rotate(${angle}deg)`
+    nodes.push(p)
+    anims.push(
+      p.animate(
+        [
+          { height: '0px', opacity: 0.9 },
+          { height: len + 'px', opacity: 0.5, offset: 0.5 },
+          { height: '0px', opacity: 0 },
+        ],
+        { duration: 380 + Math.random() * 160, easing: 'ease-out', fill: 'forwards' },
+      ),
+    )
+  }
+  track(host, nodes, anims)
+}
+
+/** A quick, jittery FLICKER rather than a smooth fade — opacity snaps between keyframes instead
+ * of easing, which is what makes it read as electric rather than just fast. */
+function zap(host: HTMLElement, x: number, y: number) {
+  const N = 5
+  const nodes: HTMLElement[] = []
+  const anims: Animation[] = []
+  for (let i = 0; i < N; i++) {
+    const angle = (i / N) * Math.PI * 2 + (Math.random() - 0.5) * 0.6
+    const dist = 20 + Math.random() * 32
+    const p = mkGlyph('⚡', x, y, 12 + Math.random() * 6)
+    p.style.color = '#facc15'
+    nodes.push(p)
+    anims.push(
+      p.animate(
+        [
+          { transform: 'translate(-50%, -50%) translate(0, 0) scale(1)', opacity: 1 },
+          {
+            transform: 'translate(-50%, -50%) translate(0, 0) scale(1)',
+            opacity: 0.15,
+            offset: 0.2,
+          },
+          {
+            transform: `translate(-50%, -50%) translate(${Math.cos(angle) * dist * 0.5}px, ${Math.sin(angle) * dist * 0.5}px) scale(1.1)`,
+            opacity: 1,
+            offset: 0.4,
+          },
+          {
+            transform: `translate(-50%, -50%) translate(${Math.cos(angle) * dist}px, ${Math.sin(angle) * dist}px) scale(0.7)`,
+            opacity: 0,
+          },
+        ],
+        { duration: 260 + Math.random() * 120, easing: 'steps(1, jump-end)', fill: 'forwards' },
+      ),
+    )
+  }
+  track(host, nodes, anims)
+}
+
 const BUILDERS: Record<FxStyle, (host: HTMLElement, x: number, y: number) => void> = {
   sparks,
-  ripple,
-  confetti,
-  fireworks,
+  sonar,
+  pop,
+  rocket,
+  stars,
+  hearts,
+  bubbles,
+  glitter,
+  shatter,
+  ink,
+  pixels,
+  orbit,
+  beam,
+  zap,
 }
 
 function burst(x: number, y: number) {

@@ -273,9 +273,19 @@ export function SettingsMenu({
               {(
                 [
                   ['sparks', '✨', 'Sparks'],
-                  ['ripple', '◌', 'Ripple'],
-                  ['confetti', '▤', 'Confetti'],
-                  ['fireworks', '🎆', 'Fireworks'],
+                  ['sonar', '◎', 'Sonar'],
+                  ['pop', '🎊', 'Pop'],
+                  ['rocket', '🚀', 'Rocket'],
+                  ['stars', '★', 'Stars'],
+                  ['hearts', '❤', 'Hearts'],
+                  ['bubbles', '🫧', 'Bubbles'],
+                  ['glitter', '✦', 'Glitter'],
+                  ['shatter', '△', 'Shatter'],
+                  ['ink', '💧', 'Ink'],
+                  ['pixels', '▦', 'Pixels'],
+                  ['orbit', '⟳', 'Orbit'],
+                  ['beam', '☀', 'Beam'],
+                  ['zap', '⚡', 'Zap'],
                 ] as Array<[FxStyle, string, string]>
               ).map(([id, icon, label]) => (
                 <button
