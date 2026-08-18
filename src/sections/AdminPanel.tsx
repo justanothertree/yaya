@@ -35,14 +35,34 @@ type MemberDetail = {
   suspended: boolean
 }
 
+/**
+ * A Snake handle that has real play behind it — the operator's view of who owns which scores.
+ *
+ * `registry_name` is the reserved name; `board_names` is what those scores actually RENDER as on
+ * the public board. They're usually the same, and when they aren't, the board name is the one a
+ * person recognises as theirs — which is exactly the case self-service claiming can't settle on
+ * its own, so it lands here.
+ */
+type SnakeHandle = {
+  registry_id: number
+  registry_name: string | null
+  board_names: string | null
+  best_score: number | null
+  runs: number
+  owner_user_id: string | null
+  owner_username: string | null
+}
+
 const SITE_URL = 'https://evancook.dev'
 const inviteLink = (token: string) => `${SITE_URL}/#invite?token=${token}`
 
 export function AdminPanel() {
   const sb = getSupabaseClient()
-  const [tab, setTab] = useState<'invites' | 'members' | 'usage'>('invites')
+  const [tab, setTab] = useState<'invites' | 'members' | 'snake' | 'usage'>('invites')
   const [invites, setInvites] = useState<Invite[]>([])
   const [members, setMembers] = useState<Member[]>([])
+  const [handles, setHandles] = useState<SnakeHandle[]>([])
+  const [linking, setLinking] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
@@ -62,11 +82,46 @@ export function AdminPanel() {
   const [deletingMember, setDeletingMember] = useState(false)
 
   async function loadAll() {
-    const [invRes, memRes] = await Promise.all([sb.rpc('list_invites'), sb.rpc('list_members')])
+    const [invRes, memRes, snakeRes] = await Promise.all([
+      sb.rpc('list_invites'),
+      sb.rpc('list_members'),
+      sb.rpc('admin_list_snake_handles'),
+    ])
     if (invRes.error) throw invRes.error
     if (memRes.error) throw memRes.error
     setInvites((invRes.data as Invite[]) ?? [])
     setMembers((memRes.data as Member[]) ?? [])
+    // Deliberately NOT fatal, unlike the two above: invites and members are what this panel is
+    // for, and letting the newest/least critical query take the whole page down with it would
+    // mean one bad RPC costs you member management too. An empty tab is a much better failure.
+    setHandles(snakeRes.error ? [] : ((snakeRes.data as SnakeHandle[]) ?? []))
+  }
+
+  /**
+   * Attach a Snake handle to a member, or detach it (userId null).
+   *
+   * This is the other half of `claim_snake_name`'s refusal message. Self-service claiming
+   * deliberately only accepts a handle that matches one of your OWN names — that's what stops
+   * anyone taking someone else's scores — so a handle nobody can prove is theirs (a one-off
+   * gamertag, a typo'd name, a handle that renders differently on the board than it's stored)
+   * has always needed a human decision. Until now there was no way to make that decision except
+   * hand-written SQL against production.
+   */
+  async function linkHandle(registryId: number, userId: string | null) {
+    setLinking(registryId)
+    setError(null)
+    try {
+      const { error } = await sb.rpc('admin_link_snake_handle', {
+        p_registry_id: registryId,
+        p_user_id: userId,
+      })
+      if (error) throw error
+      await loadAll()
+    } catch (e: unknown) {
+      setError(String((e as { message?: string })?.message ?? e))
+    } finally {
+      setLinking(null)
+    }
   }
 
   useEffect(() => {
@@ -244,12 +299,120 @@ export function AdminPanel() {
       <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.25rem', flexWrap: 'wrap' }}>
         {tabBtn('invites', `Invites (${pending.length} pending)`)}
         {tabBtn('members', `Members (${members.length})`)}
+        {tabBtn(
+          'snake',
+          `Snake names (${handles.filter((h) => !h.owner_user_id).length} unclaimed)`,
+        )}
         {/* Operational, not social — what the paid services are costing, in the one place
             that already requires being the operator to see. */}
         {tabBtn('usage', 'Usage')}
       </div>
 
       {tab === 'usage' && <UsagePanel />}
+
+      {tab === 'snake' && (
+        <div>
+          <p className="muted" style={{ marginTop: 0, fontSize: '0.85rem' }}>
+            Every Snake handle with scores behind it. People can claim a handle themselves only when
+            it matches one of their own names — that&apos;s what stops anyone taking someone
+            else&apos;s scores. Anything else lands here for you to decide.
+          </p>
+          {(['unclaimed', 'claimed'] as const).map((bucket) => {
+            const group = handles.filter((h) =>
+              bucket === 'unclaimed' ? !h.owner_user_id : !!h.owner_user_id,
+            )
+            if (!group.length) return null
+            return (
+              <div key={bucket} style={{ marginBottom: '1.25rem' }}>
+                <div
+                  className="muted"
+                  style={{
+                    fontSize: '0.72rem',
+                    fontWeight: 700,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.05em',
+                    marginBottom: '0.4rem',
+                  }}
+                >
+                  {bucket} ({group.length})
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                  {group.map((h) => {
+                    // the board name is what a person actually recognises; show it as the
+                    // headline and only mention the stored name when they differ
+                    const board = h.board_names ?? h.registry_name ?? '—'
+                    const differs = !!h.registry_name && h.registry_name !== h.board_names
+                    return (
+                      <div
+                        key={h.registry_id}
+                        className="admin-member-row"
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '0.6rem',
+                          flexWrap: 'wrap',
+                          padding: '0.4rem 0.65rem',
+                          background: 'var(--b1,rgba(127,127,127,0.07))',
+                          borderRadius: 8,
+                        }}
+                      >
+                        <span style={{ fontSize: '0.85rem', fontWeight: 700 }}>{board}</span>
+                        {differs && (
+                          <span className="muted" style={{ fontSize: '0.75rem' }}>
+                            stored as “{h.registry_name}”
+                          </span>
+                        )}
+                        <span className="muted" style={{ fontSize: '0.75rem' }}>
+                          best {h.best_score ?? '—'} · {h.runs} run{h.runs === 1 ? '' : 's'}
+                        </span>
+                        <span style={{ marginLeft: 'auto', display: 'flex', gap: '0.4rem' }}>
+                          {h.owner_user_id ? (
+                            <>
+                              <span style={{ fontSize: '0.8rem' }}>
+                                @{h.owner_username ?? h.owner_user_id.slice(0, 8)}
+                              </span>
+                              <button
+                                className="btn"
+                                disabled={linking === h.registry_id}
+                                onClick={() => void linkHandle(h.registry_id, null)}
+                                title="Detach this handle from that account"
+                              >
+                                {linking === h.registry_id ? '…' : 'Unlink'}
+                              </button>
+                            </>
+                          ) : (
+                            <select
+                              value=""
+                              disabled={linking === h.registry_id}
+                              onChange={(e) =>
+                                e.target.value && void linkHandle(h.registry_id, e.target.value)
+                              }
+                              aria-label={`Link ${board} to a member`}
+                              style={{ padding: '0.25rem 0.4rem', fontSize: '0.8rem' }}
+                            >
+                              <option value="">Link to…</option>
+                              {members.map((m) => (
+                                <option key={m.user_id} value={m.user_id}>
+                                  {m.username ? `@${m.username}` : (m.display_name ?? m.user_id)}
+                                </option>
+                              ))}
+                            </select>
+                          )}
+                        </span>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )
+          })}
+          {!handles.length && (
+            <p className="muted" style={{ fontSize: '0.85rem' }}>
+              No Snake handles with scores yet.
+            </p>
+          )}
+        </div>
+      )}
 
       {tab === 'invites' && (
         <div>

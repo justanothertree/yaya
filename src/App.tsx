@@ -1323,6 +1323,20 @@ export default function App() {
             <UsagePanel />
           </section>
         )}
+        {/* The whole panel, not one card: its tabs (invites / members / snake names) are the
+            part that can't otherwise be seen without an admin session. The RPCs behind it still
+            enforce `is_admin()` server-side, so this renders empty rather than privileged data
+            unless the viewer really is an admin — it's a layout workbench, not an access grant. */}
+        {import.meta.env.DEV && DEV_PREVIEW === 'admin' && (
+          <section className="card">
+            <p className="muted" style={{ marginTop: 0, fontSize: '0.8rem' }}>
+              dev preview — #dev-admin
+            </p>
+            <Suspense fallback={<div aria-busy>Loading…</div>}>
+              <AdminPanel />
+            </Suspense>
+          </section>
+        )}
         {/* ONE shared canvas instance — mounted whenever desktop+canvas are on, for every page
             except Circuit (still separate, see the next step) and invite (never canvas-capable).
             No more `key={active}`: there's nothing to remount between pages any more, that was
