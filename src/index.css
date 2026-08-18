@@ -2326,11 +2326,34 @@ section[id] {
   display: flex;
   align-items: center;
   gap: 0.35rem;
-  flex-wrap: wrap;
+  /* never wraps -- the room-tab chips are the one thing allowed to overflow (into their own
+     horizontally-scrolling strip below), so this row's height stays constant regardless of
+     how many panes are open */
+  flex-wrap: nowrap;
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: var(--r-md, 10px);
   padding: 0.32rem 0.45rem;
+}
+/* everything in the row except the chip strip keeps its natural size and is never squeezed --
+   these are the controls you always need reachable (zoom, tile, fit all, windows) */
+.cz-menu > *:not(.cz-menu-chips) {
+  flex-shrink: 0;
+}
+.cz-menu-chips {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex: 1 1 auto;
+  min-width: 3rem;
+  overflow-x: auto;
+  overflow-y: hidden;
+  /* thin, unobtrusive scrollbar -- this strip is meant to read as "more chips, swipe/scroll",
+     not as a prominent scroll region competing with the canvas itself */
+  scrollbar-width: thin;
+}
+.cz-menu-chips .btn {
+  flex-shrink: 0;
 }
 .cz-menu-label {
   font-size: 0.88rem;
@@ -3106,32 +3129,13 @@ select {
   }
 }
 
-/* Window launcher — the canvas's own control, so it is fixed to the viewport and sits above
-   the floating windows. Bottom-left keeps it clear of the nav and of the windows' title bars,
-   which cluster at the top. */
-.winlauncher {
-  position: fixed;
-  /**
-   * Top-right, below the nav -- every OTHER bottom-anchored corner on this page is already
-   * spoken for: the canvas's own minimap sits bottom-left inside its host, and the screen-share
-   * stage sits bottom-right. Putting this at bottom-right too (its first fix) traded one
-   * collision for another. Top-right is the one corner nothing else claims.
-   */
-  right: 1rem;
-  /* --cz-menu-h is the canvas toolbar's REAL height (CircuitCanvas.tsx), which grows past one
-     row once Tile/Fit-all/room-tabs wrap -- without it this sat at exactly where the toolbar
-     STARTS, landing on top of whichever controls the wrap pushed down. 0px when no canvas is
-     open, so this is unaffected outside canvas mode. */
-  top: calc(var(--nav-h, 54px) + var(--cz-menu-h, 0px) + 0.5rem);
-  z-index: 900030;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 0.5rem;
-}
-.winlauncher-btn {
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.28);
-}
+/* Window launcher — a normal button inside the canvas toolbar now (CircuitCanvas.tsx renders it
+   via `extraToolbar`, in the same row as Tile/Fit all), not a floating overlay. It used to be
+   `position: fixed`, and every corner it was ever moved to eventually collided with something
+   else that also wanted a corner — the minimap, the share stage, a maximized window's own
+   title-bar controls, the toolbar wrapping to another row and moving the "safe" spot out from
+   under it. A normal flex child in an existing row can't collide with anything; it just takes
+   its own space. Only the dropdown panel still floats, positioned against the button itself. */
 .winlauncher-count {
   margin-left: 0.4rem;
   padding: 0 0.4rem;
@@ -3141,6 +3145,7 @@ select {
   font-size: 0.78em;
 }
 .winlauncher-panel {
+  z-index: 900030;
   width: min(18rem, calc(100vw - 2rem));
   max-height: min(60vh, 28rem);
   display: flex;

@@ -11,6 +11,7 @@ import {
 import { notificationsChanged } from '../../hooks/notifySignal'
 import { useVoiceSession } from '../../voice/useVoiceSession'
 import { useVoicePresence } from '../../voice/useVoicePresence'
+import { useRoomPresence } from '../../voice/useRoomPresence'
 import { VoiceBar } from '../../voice/VoiceBar'
 import { challengeRoomOf, challengeText } from '../../game/challenge'
 
@@ -75,22 +76,17 @@ export function Chat({ authed = false }: { authed?: boolean }) {
   // The Lounge is opt-in: nobody is placed in a room with every other account by
   // default. null = not looked up yet, so the invite card doesn't flash on load.
   const [loungeIn, setLoungeIn] = useState<boolean | null>(previewMember ? PREVIEW_LOUNGE_IN : null)
-  const [loungeNames, setLoungeNames] = useState<string[]>([])
-  // Refetched each time the lounge thread opens -- who's opted in changes independently of
-  // anything else this component already tracks, so there is no existing signal to piggyback on.
-  useEffect(() => {
-    if (previewMember || room?.kind !== 'lounge' || !sb) {
-      setLoungeNames([])
-      return
-    }
-    let live = true
-    void sb.rpc('get_lounge_names').then(({ data }) => {
-      if (live && data) setLoungeNames((data as { name: string }[]).map((r) => r.name))
-    })
-    return () => {
-      live = false
-    }
-  }, [room?.kind, room?.id, sb])
+  /**
+   * "N here" now means CURRENTLY VIEWING the Lounge, not "has ever opted in" -- the earlier
+   * version (get_lounge_names) answered the second question while the label claimed the
+   * first, which is how it ended up saying "5 here" to an empty room. Real-time presence,
+   * tracked only while this thread is actually the one open.
+   */
+  const loungeNames = useRoomPresence(
+    !previewMember && room?.kind === 'lounge' ? room.id : null,
+    me,
+    myName,
+  )
   const [loungeBusy, setLoungeBusy] = useState(false)
   // Voice rides the room you're already in: a DM is a 1:1 call, a circuit room a small
   // group one. The call lives in voiceSession, not here, so it survives navigating away or

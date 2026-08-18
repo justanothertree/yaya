@@ -104,24 +104,6 @@ const IDEAL_H = 560
 const scaleFor = (w: number) => Math.min(1, Math.max(0.6, Math.round(w / IDEAL_W / 0.05) * 0.05))
 
 // fit one window fully inside the canvas (shared by the restore paths and clampAll)
-/**
- * Screen pixels to keep clear on the right for the window launcher (App.tsx), which floats
- * over this same viewport. Was computed independently in `hostBox` (for POSITIONING windows)
- * and `measureFit` (for SIZING their content) -- two numbers that are supposed to describe the
- * same real strip of screen, kept in sync by hand. They drifted the moment one of them changed:
- * a window could be MEASURED as fitting the old, wider space and then POSITIONED against the
- * new, narrower one, and corner/centre placement math (`b.x + b.w - w`) goes negative the
- * instant fitted content is wider than the box it's being placed into -- a window landing
- * partly off-screen to the left. One function, called from both, so there is only one number
- * to ever be wrong.
- */
-function reservedRightPx(): number {
-  const px = parseFloat(
-    getComputedStyle(document.documentElement).getPropertyValue('--winlauncher-w'),
-  )
-  return px ? px + 12 : 0
-}
-
 function clampBox(w: WinBox, b: { w: number; h: number }): WinBox {
   const cw = Math.max(MIN_W, Math.min(w.w, b.w))
   const ch = Math.max(MIN_H, Math.min(w.h, b.h))
@@ -164,6 +146,7 @@ export function CircuitCanvas({
   pinnedIds = [],
   onTogglePin,
   toolbar,
+  extraToolbar,
 }: {
   panes: CanvasPane[]
   focusPane?: { id: string; nonce: number } | null
@@ -177,6 +160,15 @@ export function CircuitCanvas({
    * Whatever the page still needs to reach has to come in here.
    */
   toolbar?: React.ReactNode
+  /**
+   * Site-level controls (currently just the window launcher) that belong in the SAME row as
+   * Tile/Fit all, not layered as a floating overlay above the canvas. A floating corner button
+   * was on a permanent collision course with everything else that also wants a corner — the
+   * minimap, the share stage, a maximized window's own right-aligned title-bar controls, the
+   * toolbar wrapping to another row. A normal flex child in this row can't collide with
+   * anything; it just takes its own space like every other button here already does.
+   */
+  extraToolbar?: React.ReactNode
 }) {
   const hostRef = useRef<HTMLDivElement>(null)
   const winRefs = useRef<Record<string, HTMLDivElement | null>>({})
@@ -308,7 +300,7 @@ export function CircuitCanvas({
     return {
       x: panRef.current.x,
       y: panRef.current.y,
-      w: (host.clientWidth - padL - padR - reservedRightPx()) / v,
+      w: (host.clientWidth - padL - padR) / v,
       h: (host.clientHeight - padT - padB) / v,
     }
   }, [])
@@ -768,6 +760,11 @@ export function CircuitCanvas({
   // ── drag (title bar) ──
   function onWinPointerDown(e: React.PointerEvent, id: string) {
     if ((e.target as HTMLElement).closest('.cz-btn')) return
+    // Middle button always means "pan", everywhere, including over a title bar -- onPanStart
+    // already knows that, but this handler fires FIRST (the bar is the closer target) and had
+    // no button check at all, so it started a window drag before the pan logic ever got a say.
+    // Returning without handling it lets the pointerdown bubble up to hostRef's own listener.
+    if (e.button === 1) return
     focus(id)
     const w = wins[id]
     if (!w) return
@@ -994,6 +991,11 @@ export function CircuitCanvas({
   }, [onResizeMove])
 
   function onResizeStart(e: React.PointerEvent, id: string, dir: Dir) {
+    // Middle button always means "pan". The resize handles sit right on a window's border --
+    // exactly where "the top edge" is -- and this used to stopPropagation unconditionally,
+    // which doesn't just start a resize instead of a pan, it makes the pan IMPOSSIBLE: a
+    // stopped event never reaches hostRef's listener at all.
+    if (e.button === 1) return
     e.stopPropagation()
     e.preventDefault()
     focus(id)
@@ -1039,7 +1041,7 @@ export function CircuitCanvas({
     // fits target the 100%-zoom view — Evan's ideal is navigating and organizing at
     // 100% — NOT the current-zoom viewport, which balloons when zoomed out and made
     // fitted windows bigger than a screen
-    const b = { w: host.clientWidth - 8 - reservedRightPx(), h: host.clientHeight - 8 }
+    const b = { w: host.clientWidth - 8, h: host.clientHeight - 8 }
     const bar = el.querySelector<HTMLElement>('.cz-bar')
     const barH = Math.ceil(bar?.getBoundingClientRect().height ?? 38)
     const sZoom = body.style.zoom
@@ -1321,28 +1323,40 @@ export function CircuitCanvas({
         ⛶ Canvas <span className="muted">ⓘ</span>
       </strong>
       {toolbar && <span className="cz-menu-tool">{toolbar}</span>}
-      {panes.map((p) => {
-        const w = wins[p.id]
-        const min = !!w?.min
-        const front = p.id === topId && !min
-        return (
-          <button
-            key={p.id}
-            className={'btn' + (min ? ' is-min' : '')}
-            aria-pressed={front}
-            onClick={() => onTab(p.id)}
-            title={
-              min ? `Restore ${p.title}` : front ? `Hide ${p.title}` : `Bring ${p.title} to front`
-            }
-          >
-            <span aria-hidden style={{ fontSize: '0.7rem' }}>
-              {min ? '▫' : '▪'}
-            </span>{' '}
-            {pinnedIds.includes(p.id) ? '📌 ' : ''}
-            {p.title}
-          </button>
-        )
-      })}
+      {/**
+       * Room tabs used to be plain siblings in a WRAPPING row, alongside Tile/Fit all/the
+       * launcher — enough of them (or the window narrow enough) and the whole row spilled onto
+       * a second line, PUSHING THE ACTUAL CANVAS DOWN by however many extra rows that took.
+       * More windows meant less room to see them in, which is backwards.
+       *
+       * Scrolling horizontally instead keeps the toolbar's height constant no matter how many
+       * panes are open — the tabs you can't see are a swipe away, not a growing wall above the
+       * thing you're trying to look at.
+       */}
+      <div className="cz-menu-chips">
+        {panes.map((p) => {
+          const w = wins[p.id]
+          const min = !!w?.min
+          const front = p.id === topId && !min
+          return (
+            <button
+              key={p.id}
+              className={'btn' + (min ? ' is-min' : '')}
+              aria-pressed={front}
+              onClick={() => onTab(p.id)}
+              title={
+                min ? `Restore ${p.title}` : front ? `Hide ${p.title}` : `Bring ${p.title} to front`
+              }
+            >
+              <span aria-hidden style={{ fontSize: '0.7rem' }}>
+                {min ? '▫' : '▪'}
+              </span>{' '}
+              {pinnedIds.includes(p.id) ? '📌 ' : ''}
+              {p.title}
+            </button>
+          )
+        })}
+      </div>
       <input
         type="range"
         min={50}
@@ -1369,6 +1383,7 @@ export function CircuitCanvas({
       >
         ▣ Fit all
       </button>
+      {extraToolbar}
     </div>
   )
 

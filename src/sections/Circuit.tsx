@@ -12,6 +12,7 @@ import { Movies } from '../circuit/ui/Movies'
 import { Watchlist } from '../circuit/ui/Watchlist'
 import { Toast } from '../circuit/ui/Toast'
 import { CircuitCanvas, type CanvasPane } from '../circuit/ui/CircuitCanvas'
+import { WindowLauncher, type LaunchableWindow } from '../components/WindowLauncher'
 import { registerWindows, useHiddenWindows } from '../circuit/ui/canvasWindows'
 import { CircuitsPanel } from '../circuit/ui/CircuitsPanel'
 import { Chat } from '../circuit/ui/Chat'
@@ -60,6 +61,9 @@ export function Circuit({
   pinnedIds = [],
   onTogglePin,
   onRefreshPinned,
+  launcherWindows = [],
+  launcherOpenIds = [],
+  onToggleLauncherWindow,
 }: {
   authed?: boolean
   // App owns canvas state now (one launcher, persists across tabs); the Circuit reflects it
@@ -70,6 +74,11 @@ export function Circuit({
   onTogglePin?: (pane: CanvasPane) => void
   /** hand App fresh copies of our pinned panes when what they render changes */
   onRefreshPinned?: (panes: CanvasPane[]) => void
+  /** the site-wide window launcher's data — the Circuit's own canvas shows it too, in its
+      own toolbar row, next to Tile/Fit all rather than as a separate floating control */
+  launcherWindows?: LaunchableWindow[]
+  launcherOpenIds?: string[]
+  onToggleLauncherWindow?: (id: string) => void
 } = {}) {
   const [tab, setTabRaw] = useState<Tab>(() => initialTab(authed))
   const setTab = (t: Tab) => {
@@ -374,6 +383,15 @@ export function Circuit({
             focusPane={focusPane}
             pinnedIds={pinnedIds}
             onTogglePin={onTogglePin}
+            extraToolbar={
+              onToggleLauncherWindow && (
+                <WindowLauncher
+                  windows={launcherWindows}
+                  openIds={launcherOpenIds}
+                  onToggle={onToggleLauncherWindow}
+                />
+              )
+            }
           />
         </div>
       ) : (

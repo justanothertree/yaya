@@ -66,7 +66,11 @@ export function VoiceBar({
               moves you now, so the button says which it's about to do. */}
           {v.inCall ? '🎙 Switch to this call' : '🎙 Call'}
         </button>
-        {v.inCall && <span className="voice-status muted">In a call in {v.roomName}</span>}
+        {/* This describes where YOU are, not this room -- it renders on every OTHER room's
+            bar while you're in a call anywhere, and "In a call in Josh" under the Circuit
+            row read as if the Circuit had an active call rather than as a note about
+            somewhere else entirely. Made unambiguous instead. */}
+        {v.inCall && <span className="voice-status muted">You're in a call in {v.roomName}</span>}
         {v.error && <span className="voice-err">{v.error}</span>}
       </div>
     )

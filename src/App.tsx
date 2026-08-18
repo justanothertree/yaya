@@ -1260,22 +1260,6 @@ export default function App() {
             <UsagePanel />
           </section>
         )}
-        {/* One place to choose windows, shown whenever the canvas is. The Circuit runs its own
-            canvas with its own panes, so it keeps its own controls. */}
-        {desktop &&
-          canvasOpen &&
-          (inGenericCanvas || active === 'home' || active === 'circuit') && (
-            <WindowLauncher
-              windows={launchableWindows()}
-              openIds={[
-                ...pinnedIds,
-                ...(inGenericCanvas ? [active] : []),
-                // registered windows are "open" unless hidden — they exist by default
-                ...registeredWindows.filter((w) => !hiddenWindows.includes(w.id)).map((w) => w.id),
-              ]}
-              onToggle={toggleWindow}
-            />
-          )}
         {inGenericCanvas && (
           <Suspense
             fallback={
@@ -1298,6 +1282,19 @@ export default function App() {
               ])}
               pinnedIds={pinnedIds}
               onTogglePin={togglePin}
+              extraToolbar={
+                <WindowLauncher
+                  windows={launchableWindows()}
+                  openIds={[
+                    ...pinnedIds,
+                    active,
+                    ...registeredWindows
+                      .filter((w) => !hiddenWindows.includes(w.id))
+                      .map((w) => w.id),
+                  ]}
+                  onToggle={toggleWindow}
+                />
+              }
             />
           </Suspense>
         )}
@@ -1309,6 +1306,18 @@ export default function App() {
                 panes={withPinned(homePanes())}
                 pinnedIds={pinnedIds}
                 onTogglePin={togglePin}
+                extraToolbar={
+                  <WindowLauncher
+                    windows={launchableWindows()}
+                    openIds={[
+                      ...pinnedIds,
+                      ...registeredWindows
+                        .filter((w) => !hiddenWindows.includes(w.id))
+                        .map((w) => w.id),
+                    ]}
+                    onToggle={toggleWindow}
+                  />
+                }
               />
             </Suspense>
           ) : (
@@ -1332,6 +1341,14 @@ export default function App() {
                 pinnedIds={pinnedIds}
                 onTogglePin={togglePin}
                 onRefreshPinned={refreshPinned}
+                launcherWindows={launchableWindows()}
+                launcherOpenIds={[
+                  ...pinnedIds,
+                  ...registeredWindows
+                    .filter((w) => !hiddenWindows.includes(w.id))
+                    .map((w) => w.id),
+                ]}
+                onToggleLauncherWindow={toggleWindow}
               />
             </Suspense>
           </section>

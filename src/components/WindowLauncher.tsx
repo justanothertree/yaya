@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 
 export type LaunchableWindow = {
@@ -32,6 +32,19 @@ const loadWorkspaces = (): Workspace[] => {
  *
  * It is deliberately the same `pinned` state underneath: pinning already meant "keep this on my
  * canvas wherever I am", which is exactly what choosing a window means. No second concept.
+ *
+ * ⚠️ THE BUTTON RENDERS INLINE, NOT AS A FLOATING OVERLAY — this used to be its own
+ * fixed-position corner element, which meant every OTHER thing that also wants a corner of the
+ * canvas (the minimap, the screen-share stage, a maximized window's own title-bar controls, the
+ * toolbar wrapping to more rows) was on a collision course with it, and every fix was another
+ * patch to keep two independently-floating things apart. Rendering it as a normal button inside
+ * the canvas toolbar — the same row as Tile and Fit all — removes the corner-fight entirely:
+ * it takes its natural space in a flex row like everything else there, "full screen" goes back
+ * to meaning the whole viewport because nothing needs to be reserved for it, and there's no
+ * empty margin left behind when it isn't the thing occupying that space.
+ *
+ * Only the DROPDOWN (search + list) still portals to <body> — a real floating panel, positioned
+ * against the button's own on-screen position so it opens under it wherever the toolbar put it.
  */
 export function WindowLauncher({
   windows,
@@ -45,6 +58,8 @@ export function WindowLauncher({
   const [open, setOpen] = useState(false)
   const [q, setQ] = useState('')
   const [spaces, setSpaces] = useState<Workspace[]>(loadWorkspaces)
+  const [anchor, setAnchor] = useState<{ left: number; top: number; right: number } | null>(null)
+  const btnRef = useRef<HTMLButtonElement | null>(null)
   const panelRef = useRef<HTMLDivElement | null>(null)
   const searchRef = useRef<HTMLInputElement | null>(null)
 
@@ -54,9 +69,13 @@ export function WindowLauncher({
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') setOpen(false)
     }
-    // pointerdown, not click: a click that starts inside and drifts out shouldn't close it
+    // pointerdown, not click: a click that starts inside and drifts out shouldn't close it.
+    // The button itself is EXCLUDED from this check on purpose -- its own onClick already
+    // toggles `open`, so without the exclusion a click to CLOSE the panel would also fire this
+    // listener and immediately reopen it.
     const onDown = (e: PointerEvent) => {
       const t = e.target as Node
+      if (btnRef.current?.contains(t)) return
       if (panelRef.current && !panelRef.current.contains(t)) setOpen(false)
     }
     window.addEventListener('keydown', onKey)
@@ -64,6 +83,28 @@ export function WindowLauncher({
     return () => {
       window.removeEventListener('keydown', onKey)
       window.removeEventListener('pointerdown', onDown)
+    }
+  }, [open])
+
+  // Re-measure whenever the panel opens, and track scroll/resize while it's open so a canvas
+  // pan or a window resize doesn't leave the panel pointing at empty air.
+  useEffect(() => {
+    if (!open) return
+    const measure = () => {
+      const r = btnRef.current?.getBoundingClientRect()
+      if (r)
+        setAnchor({
+          left: Math.round(r.left),
+          top: Math.round(r.bottom),
+          right: Math.round(window.innerWidth - r.right),
+        })
+    }
+    measure()
+    window.addEventListener('resize', measure)
+    window.addEventListener('scroll', measure, true)
+    return () => {
+      window.removeEventListener('resize', measure)
+      window.removeEventListener('scroll', measure, true)
     }
   }, [open])
 
@@ -112,114 +153,96 @@ export function WindowLauncher({
     return acc
   }, [])
 
-  /**
-   * Portalled to <body>. Anything with a transform, filter or will-change between here and the
-   * viewport becomes the containing block for `position: fixed` — the nav does exactly that —
-   * and this has to sit against the viewport to stay put over the canvas.
-   */
-  /**
-   * Publishes the button's real width as --winlauncher-w, so CircuitCanvas can reserve that
-   * strip when sizing a maximized window -- otherwise a maximized window's own title-bar
-   * controls (also right-aligned) end up in the exact corner this button occupies. Measured
-   * rather than hardcoded because the count badge changes the button's width.
-   */
-  const btnRoRef = useRef<ResizeObserver | null>(null)
-  const btnRef = useCallback((el: HTMLButtonElement | null) => {
-    btnRoRef.current?.disconnect()
-    btnRoRef.current = null
-    if (!el) {
-      document.documentElement.style.setProperty('--winlauncher-w', '0px')
-      return
-    }
-    const ro = new ResizeObserver(() => {
-      document.documentElement.style.setProperty('--winlauncher-w', el.offsetWidth + 'px')
-    })
-    ro.observe(el)
-    btnRoRef.current = ro
-    document.documentElement.style.setProperty('--winlauncher-w', el.offsetWidth + 'px')
-  }, [])
-
-  return createPortal(
-    <div className="winlauncher" ref={panelRef}>
-      {/* Button first in DOM: the panel now opens BELOW it (the container is anchored to the
-          top-right, not the bottom-right as before), and flex-direction: column always stacks
-          in DOM order regardless of which edge the container is pinned to. */}
+  return (
+    <>
       <button
         ref={btnRef}
-        className="btn winlauncher-btn"
+        className={'btn' + (open ? ' is-on' : '')}
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
         title="Choose which windows are on your canvas"
       >
         ⊞ Windows{count ? <span className="winlauncher-count">{count}</span> : null}
       </button>
-      {open && (
-        <div className="winlauncher-panel" role="dialog" aria-label="Choose windows">
-          <input
-            ref={searchRef}
-            className="winlauncher-search"
-            type="search"
-            placeholder="Filter windows…"
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            aria-label="Filter windows"
-          />
-          <div className="winlauncher-list">
-            {groups.map(([group, items]) => (
-              <div key={group || 'all'}>
-                {group && <div className="winlauncher-group">{group}</div>}
-                {items.map((w) => {
-                  const on = openIds.includes(w.id)
-                  return (
-                    <button
-                      key={w.id}
-                      className="winlauncher-row"
-                      role="menuitemcheckbox"
-                      aria-checked={on}
-                      disabled={!!w.disabled}
-                      title={w.disabled}
-                      onClick={() => onToggle(w.id)}
-                    >
-                      <span>{w.title}</span>
-                      {w.disabled ? (
-                        <span className="muted winlauncher-why">{w.disabled}</span>
-                      ) : (
-                        <span className={'nav-menu-switch' + (on ? ' is-on' : '')} aria-hidden />
-                      )}
-                    </button>
-                  )
-                })}
-              </div>
-            ))}
-            {!shown.length && <div className="muted winlauncher-empty">Nothing matches.</div>}
-          </div>
-          {/* Layouts last: you build a set first, then keep it. */}
-          <div className="winlauncher-spaces">
-            {spaces.map((w) => (
-              <span className="winlauncher-space" key={w.name}>
-                <button
-                  className="btn"
-                  onClick={() => restore(w)}
-                  title={`${w.ids.length} windows`}
-                >
-                  {w.name}
-                </button>
-                <button
-                  className="btn winlauncher-x"
-                  onClick={() => persist(spaces.filter((x) => x.name !== w.name))}
-                  aria-label={`Forget ${w.name}`}
-                >
-                  ✕
-                </button>
-              </span>
-            ))}
-            <button className="btn" onClick={saveCurrent} disabled={!count}>
-              ＋ Save layout
-            </button>
-          </div>
-        </div>
-      )}
-    </div>,
-    document.body,
+      {open &&
+        anchor &&
+        createPortal(
+          /* Portalled to <body>, same reason it always was: anything with a transform, filter
+             or will-change between here and the viewport becomes a containing block for
+             `position: fixed` (the nav does exactly that), and this has to sit against the
+             true viewport to land under the button rather than under whatever ancestor. */
+          <div
+            className="winlauncher-panel"
+            ref={panelRef}
+            role="dialog"
+            aria-label="Choose windows"
+            style={{ position: 'fixed', top: anchor.top + 6, right: anchor.right }}
+          >
+            <input
+              ref={searchRef}
+              className="winlauncher-search"
+              type="search"
+              placeholder="Filter windows…"
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              aria-label="Filter windows"
+            />
+            <div className="winlauncher-list">
+              {groups.map(([group, items]) => (
+                <div key={group || 'all'}>
+                  {group && <div className="winlauncher-group">{group}</div>}
+                  {items.map((w) => {
+                    const on = openIds.includes(w.id)
+                    return (
+                      <button
+                        key={w.id}
+                        className="winlauncher-row"
+                        role="menuitemcheckbox"
+                        aria-checked={on}
+                        disabled={!!w.disabled}
+                        title={w.disabled}
+                        onClick={() => onToggle(w.id)}
+                      >
+                        <span>{w.title}</span>
+                        {w.disabled ? (
+                          <span className="muted winlauncher-why">{w.disabled}</span>
+                        ) : (
+                          <span className={'nav-menu-switch' + (on ? ' is-on' : '')} aria-hidden />
+                        )}
+                      </button>
+                    )
+                  })}
+                </div>
+              ))}
+              {!shown.length && <div className="muted winlauncher-empty">Nothing matches.</div>}
+            </div>
+            {/* Layouts last: you build a set first, then keep it. */}
+            <div className="winlauncher-spaces">
+              {spaces.map((w) => (
+                <span className="winlauncher-space" key={w.name}>
+                  <button
+                    className="btn"
+                    onClick={() => restore(w)}
+                    title={`${w.ids.length} windows`}
+                  >
+                    {w.name}
+                  </button>
+                  <button
+                    className="btn winlauncher-x"
+                    onClick={() => persist(spaces.filter((x) => x.name !== w.name))}
+                    aria-label={`Forget ${w.name}`}
+                  >
+                    ✕
+                  </button>
+                </span>
+              ))}
+              <button className="btn" onClick={saveCurrent} disabled={!count}>
+                ＋ Save layout
+              </button>
+            </div>
+          </div>,
+          document.body,
+        )}
+    </>
   )
 }
