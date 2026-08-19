@@ -21,6 +21,8 @@ import {
 } from './leaderboard'
 import type { LeaderboardEntry, Mode, Point, Settings, TrophyCounts } from './types'
 import { ChallengeFriend } from './ChallengeFriend'
+import { beatMessage, beatTargetOf } from './challenge'
+import { getSupabaseClient } from '../finance/client'
 import { SpectatorView } from './SpectatorView'
 import { drainFor, hungerLabel, stageFor, type HungerState } from './hunger'
 
@@ -1193,6 +1195,12 @@ export function GameManager({
                   // Auto-submit solo score to leaderboard if possible
                   const nm = (playerNameRef.current || '').trim() || 'Player'
                   const sc = scoreRef.current
+                  // Came here from someone's profile to beat their best — did you?
+                  const bt = beatTargetRef.current
+                  if (bt && sc > bt.score) {
+                    setBeatWon({ mine: sc, theirs: bt.score, who: bt.who })
+                    beatTargetRef.current = null // one celebration per challenge, not per run
+                  }
                   if (sc > 0) {
                     if (nameSourceRef.current === 'auto') {
                       // never picked a name — offer one before the score is filed
@@ -2154,6 +2162,46 @@ export function GameManager({
     }
   }, [mode])
 
+  /**
+   * "Beat my best", arrived at from someone's profile (#snake?beat=812&by=Josh).
+   *
+   * Read once on mount, like the room deep-link below it. Kept in a ref as well because the
+   * death handler runs inside a closure created when the run started, and reading the target
+   * from state there would capture whatever it was at that moment.
+   */
+  const [beatTarget, setBeatTarget] = useState<{ score: number; who: string } | null>(null)
+  const beatTargetRef = useRef<{ score: number; who: string } | null>(null)
+  /** set when a run actually beats it, so the celebration can offer to tell them */
+  const [beatWon, setBeatWon] = useState<{ mine: number; theirs: number; who: string } | null>(null)
+  const [beatTold, setBeatTold] = useState(false)
+  useEffect(() => {
+    const t = beatTargetOf(window.location.hash || '')
+    if (t) {
+      setBeatTarget(t)
+      beatTargetRef.current = t
+    }
+  }, [])
+
+  /**
+   * Tell them you beat it — a button, never automatic.
+   *
+   * Firing a message the instant someone beats a score would make the site something that
+   * messages your friends on your behalf, which is exactly the kind of thing this site is
+   * deliberately not. Reuses the paths a challenge already takes, so it can only reach people
+   * you could already message.
+   */
+  const tellThem = useCallback(async () => {
+    if (!beatWon) return
+    const sb = getSupabaseClient()
+    const dm = await sb.rpc('open_dm', { p_username: beatWon.who })
+    if (dm.error || !dm.data) return
+    await sb.rpc('send_chat_message', {
+      p_room: dm.data as string,
+      p_body: beatMessage(beatWon.theirs, beatWon.mine),
+    })
+    setBeatTold(true)
+  }, [beatWon])
+
   // Parse room from hash (e.g., #snake?room=abc123) on mount
   useEffect(() => {
     try {
@@ -2637,6 +2685,46 @@ export function GameManager({
               {toast}
             </div>
           </div>
+        </div>
+      )}
+      {/* You came here from someone's profile to beat their score. Stays up while it stands, so
+          the number you're chasing is on screen rather than remembered. */}
+      {beatTarget && !beatWon && (
+        <div className="snake-beat-banner">
+          ⚔️ Beating <strong>{beatTarget.who}</strong>&apos;s <strong>{beatTarget.score}</strong>
+          <button
+            className="btn snake-beat-x"
+            onClick={() => {
+              setBeatTarget(null)
+              beatTargetRef.current = null
+            }}
+            title="Stop chasing this score"
+            aria-label="Stop chasing this score"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+      {beatWon && (
+        <div className="snake-beat-banner is-won">
+          🎉 You beat <strong>{beatWon.who}</strong>&apos;s {beatWon.theirs} with{' '}
+          <strong>{beatWon.mine}</strong>
+          {/* Telling them is a BUTTON. A site that messages your friends for you is a different
+              kind of site than this one. */}
+          {beatTold ? (
+            <span className="muted"> · told them ✓</span>
+          ) : (
+            <button className="btn" onClick={() => void tellThem()} title={`Tell ${beatWon.who}`}>
+              Tell them
+            </button>
+          )}
+          <button
+            className="btn snake-beat-x"
+            onClick={() => setBeatWon(null)}
+            aria-label="Dismiss"
+          >
+            ✕
+          </button>
         </div>
       )}
       {/* Settings & Mode */}

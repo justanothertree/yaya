@@ -3,6 +3,7 @@ import { getSupabaseClient } from '../finance/client'
 import { avatarStyle } from '../profile/look'
 import { derivePalette, type PaletteSeed } from '../theme/customTheme'
 import { previewClickFx, setClickFxStyle, type FxStyle } from '../ui/clickFx'
+import { beatLink } from '../game/challenge'
 import {
   ProfileBlocksEditor,
   ProfileBlocksView,
@@ -462,13 +463,29 @@ export function Profile({ authed }: { authed: boolean }) {
         <div className="card">
           <h3 style={{ marginTop: 0 }}>🐍 Snake</h3>
           {p.snake_best ? (
-            <p style={{ margin: 0 }}>
-              <strong style={{ fontSize: '1.6rem' }}>{p.snake_best.score}</strong>{' '}
-              <span className="muted">
-                personal best{p.snake_best.game_mode ? ` · ${p.snake_best.game_mode}` : ''} ·{' '}
-                {p.snake_best.achieved}
-              </span>
-            </p>
+            <>
+              <p style={{ margin: 0 }}>
+                <strong style={{ fontSize: '1.6rem' }}>{p.snake_best.score}</strong>{' '}
+                <span className="muted">
+                  personal best{p.snake_best.game_mode ? ` · ${p.snake_best.game_mode}` : ''} ·{' '}
+                  {p.snake_best.achieved}
+                </span>
+              </p>
+              {/* The challenge a PROFILE can make. Inviting someone to a room needs you both
+                  online at once; a score is sitting here either way, so this works whether
+                  they're around or not — and it turns a number you were only reading into
+                  something you can answer. Not on your own page: you can't race yourself. */}
+              {!p.is_me && (
+                <a
+                  className="btn"
+                  href={beatLink(p.snake_best.score, display)}
+                  style={{ marginTop: '0.6rem', display: 'inline-block' }}
+                  title={`Play Snake trying to beat ${p.snake_best.score}`}
+                >
+                  ⚔️ Beat {p.snake_best.score}
+                </a>
+              )}
+            </>
           ) : (
             <p className="muted" style={{ margin: 0 }}>
               No score on the board under their name{p.is_me ? ' — go set one!' : ' yet.'}

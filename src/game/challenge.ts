@@ -34,6 +34,40 @@ export function challengeMessage(roomId: string, roomLabel?: string): string {
   return `🎮 Snake challenge! Join my game${where}:\n${challengeLink(roomId)}`
 }
 
+/* ── beating someone's best ─────────────────────────────────────────────── */
+
+/**
+ * The OTHER kind of challenge: not "join my room now", but "beat what I already did".
+ *
+ * A room invite needs both of you online at the same moment. A score doesn't — it's sitting on
+ * their profile whether they're around or not, which makes it the challenge a profile can
+ * actually offer. Same shape as the room link so both are one glance to recognise.
+ */
+export function beatLink(score: number, who: string): string {
+  return `${location.origin}${location.pathname}#snake?beat=${score}&by=${encodeURIComponent(who)}`
+}
+
+/** Their target from a hash, or null. `by` is a display name, so it's read loosely. */
+export function beatTargetOf(hash: string): { score: number; who: string } | null {
+  const s = /[?&]beat=(\d{1,9})\b/.exec(hash)
+  if (!s) return null
+  const w = /[?&]by=([^&]+)/.exec(hash)
+  let who = 'them'
+  if (w) {
+    try {
+      who = decodeURIComponent(w[1])
+    } catch {
+      who = w[1]
+    }
+  }
+  return { score: Number(s[1]), who: who.slice(0, 40) }
+}
+
+/** What gets sent when you actually beat it. Plain English, and never automatic — see Snake. */
+export function beatMessage(theirScore: number, myScore: number): string {
+  return `🐍 Beat your ${theirScore} — I got ${myScore}.`
+}
+
 /** The room id inside a message, or null if this isn't a challenge. */
 export function challengeRoomOf(body: string): string | null {
   const m = ROOM_RE.exec(body)
