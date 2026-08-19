@@ -40,6 +40,8 @@ type ProfileData = {
   shared_circuits: { name: string; people: string[] }[]
   movies_rated: number
   snake_best: { score: number; game_mode: string | null; achieved: string } | null
+  /** the VIEWER's own best, so a profile can show you vs them without a second round trip */
+  viewer_snake_best?: { score: number } | null
   activity_visibility: Tier
   /** the theme + flair this person actually uses on the site — see set_my_profile_look */
   look?: {
@@ -475,6 +477,34 @@ export function Profile({ authed }: { authed: boolean }) {
                   online at once; a score is sitting here either way, so this works whether
                   they're around or not — and it turns a number you were only reading into
                   something you can answer. Not on your own page: you can't race yourself. */}
+              {/* You vs them, stated plainly. Only when you HAVE a score — telling someone who
+                  has never played that they're behind by 310 is discouraging, not competitive,
+                  and the Beat button below already invites them in. */}
+              {!p.is_me && p.viewer_snake_best && (
+                <p className="profile-h2h" style={{ margin: '0.5rem 0 0' }}>
+                  {p.viewer_snake_best.score > p.snake_best.score ? (
+                    <>
+                      <strong>You lead</strong>{' '}
+                      <span className="muted">
+                        {p.viewer_snake_best.score} to {p.snake_best.score}
+                      </span>
+                    </>
+                  ) : p.viewer_snake_best.score === p.snake_best.score ? (
+                    <>
+                      <strong>Dead even</strong>{' '}
+                      <span className="muted">at {p.snake_best.score}</span>
+                    </>
+                  ) : (
+                    <>
+                      <strong>They lead</strong>{' '}
+                      <span className="muted">
+                        {p.snake_best.score} to {p.viewer_snake_best.score} — you need{' '}
+                        {p.snake_best.score - p.viewer_snake_best.score + 1} more
+                      </span>
+                    </>
+                  )}
+                </p>
+              )}
               {!p.is_me && (
                 <a
                   className="btn"

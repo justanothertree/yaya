@@ -33,6 +33,24 @@ const SAMPLE_BLOCKS: ProfileBlock[] = [
   // no session here, so its RPCs fail — which is exactly what should be checked: the block must
   // render its empty state rather than blowing up the page around it
   { block_type: 'guestbook', size: 'large', config: {}, visibility: 'friends' },
+  {
+    block_type: 'status',
+    size: 'medium',
+    config: { emoji: '🎮', text: 'chasing a 310' },
+    visibility: 'members',
+  },
+  { block_type: 'trophies', size: 'medium', config: {}, visibility: 'friends' },
+]
+
+// stand-in trophies, so the block can be seen with content rather than only its empty state
+const SAMPLE_ACTIVITY = [
+  { kind: 'snake_trophy' as const, at: '2026-08-01T00:00:00Z', detail: 'Round winner', score: 210 },
+  {
+    kind: 'snake_trophy' as const,
+    at: '2026-07-14T00:00:00Z',
+    detail: 'Longest snake',
+    score: 188,
+  },
 ]
 
 export function ProfileLookPreview() {
@@ -161,7 +179,7 @@ export function ProfileLookPreview() {
       ) : (
         <ProfileBlocksView
           blocks={blocks}
-          activity={[]}
+          activity={SAMPLE_ACTIVITY}
           snakeBest={{ score: 812, game_mode: 'classic' }}
           username={who}
         />

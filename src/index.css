@@ -3669,6 +3669,52 @@ select {
   border: 2px solid rgba(0, 0, 0, 0.45);
   cursor: pointer;
 }
+/* A status is the sentence, so it gets the room a heading would have taken. */
+.profile-status {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-size: 1.05rem;
+}
+.profile-status-emoji {
+  font-size: 1.6rem;
+  line-height: 1;
+  flex-shrink: 0;
+}
+.profile-mood-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+.profile-mood {
+  font-size: 1.15rem;
+  line-height: 1;
+  padding: 0.25rem 0.35rem;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  cursor: pointer;
+}
+.profile-mood.is-on {
+  border-color: var(--accent);
+  background: color-mix(in oklab, var(--accent), transparent 86%);
+}
+.profile-trophies {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+.profile-trophy {
+  padding: 0.2rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.82rem;
+  background: color-mix(in oklab, #f5b73d, transparent 84%);
+  border: 1px solid color-mix(in oklab, #f5b73d, transparent 58%);
+}
+.profile-h2h {
+  font-size: 0.9rem;
+}
+
 /* Guestbook notes: a note is from a person to a person, so the author leads and nothing
    competes with the words. No counts, no reactions — see the block's comment for why. */
 .profile-note {

@@ -19,7 +19,7 @@ export type Tier = 'public' | 'friends' | 'members' | 'private'
 
 export type ProfileBlock = {
   id?: string
-  block_type: 'bio' | 'banner' | 'stats' | 'activity' | 'guestbook'
+  block_type: 'bio' | 'banner' | 'stats' | 'activity' | 'guestbook' | 'status' | 'trophies'
   size: 'small' | 'medium' | 'large'
   config: Record<string, unknown>
   visibility: Tier
@@ -54,7 +54,18 @@ const BLOCK_LABEL: Record<ProfileBlock['block_type'], string> = {
   stats: '📊 Stats',
   activity: '🕓 Activity',
   guestbook: '💬 Guestbook',
+  status: '💭 Status',
+  trophies: '🏆 Trophies',
 }
+
+/**
+ * The mood set for a status.
+ *
+ * PICKED, not typed — the standing ceiling on this whole system is "no full HTML/CSS editor",
+ * and the same logic applies at small scale: an emoji field you type into has a wrong-input
+ * state, a row of moods to click does not.
+ */
+const MOODS = ['💭', '🎮', '💪', '🔥', '😴', '🎬', '🎧', '🍕', '🧠', '😤', '🥳', '🫠'] as const
 
 function activityLine(a: ActivityItem): string {
   const when = new Date(a.at).toLocaleDateString()
@@ -123,6 +134,49 @@ function BlockView({
           </p>
         </div>
       )
+    case 'status': {
+      const text = typeof cfg.text === 'string' ? cfg.text.trim() : ''
+      const emoji = typeof cfg.emoji === 'string' && cfg.emoji ? cfg.emoji : '💭'
+      if (!text) return null
+      // One line, big, no heading — a status IS the sentence, and a "Status" label above it
+      // would just be a word taking up the space the sentence should have.
+      return (
+        <div className={'card profile-block profile-status is-' + block.size}>
+          <span className="profile-status-emoji" aria-hidden>
+            {emoji}
+          </span>
+          <p style={{ margin: 0 }}>{text}</p>
+        </div>
+      )
+    }
+    case 'trophies': {
+      // Snake trophies already existed and were only ever COUNTED (the stats block says "3
+      // trophies"). Naming them is the difference between a number and something worth showing.
+      const won = activity.filter((a) => a.kind === 'snake_trophy')
+      return (
+        <div className={'card profile-block is-' + block.size}>
+          <h3 style={{ marginTop: 0 }}>🏆 Trophies</h3>
+          {won.length ? (
+            <div className="profile-trophies">
+              {won.map((a, i) => (
+                <span
+                  key={i}
+                  className="profile-trophy"
+                  title={new Date(a.at).toLocaleDateString()}
+                >
+                  🏆 {a.detail}
+                  {a.score != null && <span className="muted"> · {a.score}</span>}
+                </span>
+              ))}
+            </div>
+          ) : (
+            <p className="muted" style={{ margin: 0 }}>
+              {isMe ? 'No trophies yet — go win a round.' : 'None yet.'}
+            </p>
+          )}
+        </div>
+      )
+    }
     case 'guestbook':
       return <Guestbook username={username} isMe={isMe} />
     case 'activity': {
@@ -432,6 +486,33 @@ function BlockEditRow({
       {block.block_type === 'stats' && (
         <p className="muted" style={{ margin: 0 }}>
           Fills in automatically from your Snake results — nothing to set here.
+        </p>
+      )}
+      {block.block_type === 'status' && (
+        <div style={{ display: 'grid', gap: '0.4rem' }}>
+          <div className="profile-mood-row">
+            {MOODS.map((m) => (
+              <button
+                key={m}
+                className={'profile-mood' + ((block.config.emoji ?? '💭') === m ? ' is-on' : '')}
+                onClick={() => setCfg({ emoji: m })}
+                aria-pressed={(block.config.emoji ?? '💭') === m}
+                title={`Use ${m}`}
+              >
+                {m}
+              </button>
+            ))}
+          </div>
+          <input
+            placeholder="What are you up to?"
+            value={typeof block.config.text === 'string' ? block.config.text : ''}
+            onChange={(e) => setCfg({ text: e.target.value.slice(0, 120) })}
+          />
+        </div>
+      )}
+      {block.block_type === 'trophies' && (
+        <p className="muted" style={{ margin: 0 }}>
+          Fills in from the Snake rounds you&apos;ve won — nothing to set here.
         </p>
       )}
       {block.block_type === 'guestbook' && (
