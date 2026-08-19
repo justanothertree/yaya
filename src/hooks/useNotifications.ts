@@ -18,7 +18,7 @@ import { onNotificationsChanged } from './notifySignal'
 
 export type Notice = {
   id: string
-  kind: 'chat' | 'friend' | 'kudos' | 'comment' | 'join'
+  kind: 'chat' | 'friend' | 'kudos' | 'comment' | 'join' | 'guestbook'
   text: string
   detail?: string
   /** where tapping it should take you */
@@ -37,27 +37,38 @@ export type Notifications = {
 }
 
 type ActivityRow = {
-  kind: 'kudos' | 'comment' | 'join'
+  kind: 'kudos' | 'comment' | 'join' | 'guestbook'
   actor: string
   subject: string
   detail: string | null
   at?: string
 }
 
-/** one activity row -> a bell entry. Kudos/comments point at the feed, joins at the circuit. */
+/**
+ * One activity row -> a bell entry. Kudos/comments point at the feed, joins at the circuit, and
+ * a guestbook note at the page it was written on — `subject` carries your own username for
+ * exactly that, so tapping the notice lands where the note actually is.
+ */
 function activityNotice(a: ActivityRow, i: number): Notice {
   const text =
     a.kind === 'kudos'
       ? `${a.actor} cheered your ${a.subject} log`
       : a.kind === 'comment'
         ? `${a.actor} commented on your ${a.subject} log`
-        : `${a.actor} joined ${a.subject}`
+        : a.kind === 'guestbook'
+          ? `${a.actor} wrote on your page`
+          : `${a.actor} joined ${a.subject}`
   return {
     id: `${a.kind}-${a.actor}-${a.subject}-${i}`,
     kind: a.kind,
     text,
     detail: a.detail ?? undefined,
-    href: a.kind === 'join' ? '#circuit?tab=circuits' : '#circuit?tab=feed',
+    href:
+      a.kind === 'join'
+        ? '#circuit?tab=circuits'
+        : a.kind === 'guestbook'
+          ? '#profile?u=' + encodeURIComponent(a.subject)
+          : '#circuit?tab=feed',
   }
 }
 
@@ -220,10 +231,11 @@ export function useNotifications(authed: boolean): Notifications {
 
   const unreadChats = items.filter((i) => i.kind === 'chat').reduce((n, i) => n + (i.count ?? 0), 0)
   const friendRequests = items.filter((i) => i.kind === 'friend').length
-  // kudos/comments/joins count until the bell has been opened
-  const activity = seen
-    ? 0
-    : items.filter((i) => i.kind === 'kudos' || i.kind === 'comment' || i.kind === 'join').length
+  // everything that isn't a chat or a friend request counts until the bell has been opened.
+  // Written as "not chat/friend" rather than a list of activity kinds on purpose: the old
+  // version enumerated kudos/comment/join, so adding a kind meant it rendered in the panel but
+  // was silently missing from the badge — a new notice type would arrive already half-wired.
+  const activity = seen ? 0 : items.filter((i) => i.kind !== 'chat' && i.kind !== 'friend').length
   return {
     items,
     total: unreadChats + friendRequests + activity,

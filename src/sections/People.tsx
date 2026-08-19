@@ -10,6 +10,7 @@ import { notificationsChanged } from '../hooks/notifySignal'
 import { getSupabaseClient } from '../finance/client'
 import { previewMember, PREVIEW_PEOPLE, type PreviewPerson } from '../dev/previewMember'
 import { usePresence } from '../hooks/usePresence'
+import { avatarStyle } from '../profile/look'
 
 type Rel = 'none' | 'in' | 'out' | 'friend'
 // user_id is present for anyone from the DIRECTORY (list_member_directory), which is exactly
@@ -179,7 +180,10 @@ export function People({ authed = false }: { authed?: boolean }) {
         href={'#profile?u=' + encodeURIComponent(p.username)}
         title={`See ${p.name}'s profile`}
       >
-        <span className="cz-person-av" aria-hidden>
+        {/* Their own colour, the same one their profile opens in — so the directory reads as
+            a row of people rather than a list of identical initials, and someone you've been
+            to is recognisable before you've read the name. */}
+        <span className="cz-person-av" aria-hidden style={avatarStyle(p.username)}>
           {(p.name[0] ?? '★').toUpperCase()}
           {!!p.user_id && online[p.user_id] && (
             <span className="cz-person-online" title="Online now" />

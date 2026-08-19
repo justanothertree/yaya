@@ -74,7 +74,9 @@ export function NotificationBell({ notifications }: { notifications: Notificatio
                         ? '👏'
                         : n.kind === 'comment'
                           ? '💭'
-                          : '🎉'}
+                          : n.kind === 'guestbook'
+                            ? '✍️'
+                            : '🎉'}
                 </span>
                 <span className="notif-text">
                   <span className="notif-title">{n.text}</span>
