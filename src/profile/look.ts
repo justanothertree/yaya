@@ -141,8 +141,9 @@ export const BANNER_STYLES = {
 
 export type BannerStyle = keyof typeof BANNER_STYLES
 
-export const isBannerStyle = (v: unknown): v is BannerStyle =>
-  typeof v === 'string' && v in BANNER_STYLES
+/** Not exported: the only thing that should ever read a raw config is bannerBackground below,
+ *  which is what everything else calls. */
+const isBannerStyle = (v: unknown): v is BannerStyle => typeof v === 'string' && v in BANNER_STYLES
 
 /**
  * Resolve a banner block's saved config into a background.

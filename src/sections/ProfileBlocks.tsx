@@ -25,7 +25,10 @@ export type ProfileBlock = {
   visibility: Tier
 }
 
-export type ProfileNote = {
+/** Shape of one guestbook note as list_profile_notes returns it. Local — only the Guestbook
+ *  below consumes it, and exporting it invited a second reader that would then need keeping
+ *  in step with the RPC. */
+type ProfileNote = {
   id: string
   body: string
   at: string
