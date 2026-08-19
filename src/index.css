@@ -27,6 +27,34 @@
   --icon-border-hover: rgba(255, 255, 255, 0.16);
 }
 
+/* Dark is the :root default, so it had no selector of its own — which meant it could not be
+   applied to a SUBTREE, only to the whole document. A profile rendered in its owner's look
+   needs exactly that, so dark gets an explicit block mirroring the defaults above. Same values,
+   addressable. */
+[data-theme='dark'] {
+  --bg: #08080f;
+  --panel: #1a1a28;
+  --text: #eeeef8;
+  --muted: #9090b0;
+  --accent: #22c55e;
+  --accent-2: #ef4444;
+  --btn-text: #052e16;
+  --bg-grad1: #11111c;
+  --surface: linear-gradient(180deg, rgba(255, 255, 255, 0.025), rgba(255, 255, 255, 0));
+  --border: rgba(255, 255, 255, 0.1);
+  --border-strong: rgba(255, 255, 255, 0.17);
+  --b1: #272738;
+  --b2: #32324a;
+  --card2: #20202e;
+  --nav-bg: rgba(17, 17, 28, 0.72);
+  --nav-current-bg: rgba(255, 255, 255, 0.08);
+  --control-bg: rgba(255, 255, 255, 0.06);
+  --icon-bg: rgba(255, 255, 255, 0.06);
+  --icon-bg-hover: rgba(255, 255, 255, 0.1);
+  --icon-border: rgba(255, 255, 255, 0.09);
+  --icon-border-hover: rgba(255, 255, 255, 0.16);
+}
+
 [data-theme='light'] {
   --bg: #ffffff;
   --panel: #f7fafc;

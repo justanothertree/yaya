@@ -5,6 +5,7 @@ import {
   type ProfileBlock,
 } from '../sections/ProfileBlocks'
 import { avatarStyle, BANNER_STYLES, type BannerStyle } from '../profile/look'
+import { derivePalette, type PaletteSeed } from '../theme/customTheme'
 
 /**
  * DEV-only workbench for how a profile LOOKS.
@@ -87,6 +88,55 @@ export function ProfileLookPreview() {
               style={{ background: BANNER_STYLES[k].css(200) }}
             >
               <span>{BANNER_STYLES[k].label}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* The scoped look: each card below wears a DIFFERENT person's theme, side by side on one
+          page. If scoping leaks, they'd all match — which is the thing to look for here. */}
+      <div className="card">
+        <h3 style={{ marginTop: 0 }}>Scoped looks, side by side</h3>
+        <div
+          style={{
+            display: 'grid',
+            gap: '0.6rem',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(12rem, 1fr))',
+          }}
+        >
+          {[
+            { who: 'ada', theme: 'light' as const, palette: null },
+            { who: 'bo', theme: 'dark' as const, palette: null },
+            { who: 'cleo', theme: 'alt' as const, palette: null },
+            {
+              who: 'juno',
+              theme: null,
+              palette: { bg: '#1b1024', text: '#ffe9f7', accent: '#ff5da8' } as PaletteSeed,
+            },
+          ].map((m) => (
+            <div
+              key={m.who}
+              data-theme={m.palette ? undefined : m.theme}
+              style={{
+                ...(m.palette ? (derivePalette(m.palette) as React.CSSProperties) : {}),
+                background: 'var(--bg)',
+                color: 'var(--text)',
+                border: '1px solid var(--border)',
+                borderRadius: 10,
+                padding: '0.75rem',
+              }}
+              data-look-probe={m.who}
+            >
+              <strong>{m.who}</strong>
+              <p className="muted" style={{ margin: '0.25rem 0 0.5rem', fontSize: '0.8rem' }}>
+                {m.palette ? 'custom palette' : m.theme}
+              </p>
+              <button
+                className="btn"
+                style={{ background: 'var(--accent)', color: 'var(--btn-text)' }}
+              >
+                Accent
+              </button>
             </div>
           ))}
         </div>

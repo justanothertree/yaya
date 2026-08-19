@@ -312,6 +312,13 @@ export default function App() {
   const [customPalette, setCustomPalette] = useState(
     () => typeof window !== 'undefined' && localStorage.getItem('theme.custom.on') === '1',
   )
+  // bumped by PalettePicker's 'yaya:palette' event — see the publish effect below for why
+  const [paletteTick, setPaletteTick] = useState(0)
+  useEffect(() => {
+    const onPalette = () => setPaletteTick((n) => n + 1)
+    window.addEventListener('yaya:palette', onPalette)
+    return () => window.removeEventListener('yaya:palette', onPalette)
+  }, [])
   useEffect(() => {
     try {
       localStorage.setItem('theme.custom.on', customPalette ? '1' : '0')
@@ -322,6 +329,32 @@ export default function App() {
     // anywhere puts the built-in theme straight back.
     applyPalette(customPalette ? loadPalette() : null)
   }, [customPalette])
+
+  /**
+   * Publish the look you actually use, so your profile can wear it.
+   *
+   * Deliberately NOT a settings screen. Evan's ask was that a profile carry "the theme and flair
+   * that they use for the site" — which is a thing you've already chosen, so asking you to choose
+   * it a second time (and keep the two in step forever) would be the wrong shape entirely. This
+   * mirrors the existing choices up whenever they change.
+   *
+   * `paletteTick` exists because the palette itself lives in localStorage, not in React state:
+   * `customPalette` only says whether it's ON, so editing the colours while it's already on
+   * changes nothing this effect can see. PalettePicker bumps the tick when it writes.
+   */
+  useEffect(() => {
+    if (!isFinanceAuthed) return
+    const t = setTimeout(() => {
+      void getSupabaseClient()
+        .rpc('set_my_profile_look', {
+          p_theme: theme,
+          p_palette: customPalette ? loadPalette() : null,
+          p_flair: sparksOn ? sparksStyle : null,
+        })
+        .then(() => {})
+    }, 600) // dragging a colour picker shouldn't be one write per frame
+    return () => clearTimeout(t)
+  }, [isFinanceAuthed, theme, customPalette, paletteTick, sparksOn, sparksStyle])
 
   // Who the cog menu greets. The email is peeked from the LOCAL session so it paints
   // instantly and can never flash or gate anything; the real name follows from the profile

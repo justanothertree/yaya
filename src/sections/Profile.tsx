@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { getSupabaseClient } from '../finance/client'
 import { avatarStyle } from '../profile/look'
+import { derivePalette, type PaletteSeed } from '../theme/customTheme'
+import { previewClickFx, setClickFxStyle, type FxStyle } from '../ui/clickFx'
 import {
   ProfileBlocksEditor,
   ProfileBlocksView,
@@ -38,6 +40,12 @@ type ProfileData = {
   movies_rated: number
   snake_best: { score: number; game_mode: string | null; achieved: string } | null
   activity_visibility: Tier
+  /** the theme + flair this person actually uses on the site — see set_my_profile_look */
+  look?: {
+    theme: 'light' | 'dark' | 'alt' | null
+    palette: PaletteSeed | null
+    flair: string | null
+  } | null
 }
 
 const userFromHash = () =>
@@ -104,6 +112,28 @@ export function Profile({ authed }: { authed: boolean }) {
       live = false
     }
   }, [u, authed])
+
+  /**
+   * Wear their click flair while their page is open, and put yours back on the way out.
+   *
+   * The flair is part of how the site feels to them, so showing their colours without it is half
+   * a picture. Restoring reads the viewer's own choice from the same key App persists it to,
+   * which keeps this self-contained — Profile never needs to be handed the visitor's settings.
+   */
+  const theirFlair = state.kind === 'ok' ? (state.p.look?.flair ?? null) : null
+  useEffect(() => {
+    if (!theirFlair) return
+    setClickFxStyle(theirFlair as FxStyle)
+    return () => {
+      let mine = 'sparks'
+      try {
+        mine = localStorage.getItem('click_fx_style_v1') || 'sparks'
+      } catch {
+        /* private mode — the default is right anyway */
+      }
+      setClickFxStyle(mine as FxStyle)
+    }
+  }, [theirFlair])
 
   // the People list — how you find everyone else's page
   useEffect(() => {
@@ -179,8 +209,23 @@ export function Profile({ authed }: { authed: boolean }) {
   const display = p.first_name || p.username
   const initial = display[0]?.toUpperCase() ?? '★'
 
+  /**
+   * Their look, applied to THIS PAGE ONLY.
+   *
+   * Scoped rather than global on purpose: browsing to someone's profile should show you their
+   * taste, not silently repaint the site around you and leave you wondering what you changed.
+   * A custom palette becomes inline tokens (derivePalette is pure, so it works on any element,
+   * not just <html>); a built-in theme becomes a nested data-theme, which works because those
+   * are plain attribute selectors — dark needed an explicit block added for the same reason.
+   */
+  const look = p.look ?? null
+  const lookVars = look?.palette ? (derivePalette(look.palette) as React.CSSProperties) : undefined
+
   return (
-    <div style={{ display: 'grid', gap: 'var(--sp-3, 1rem)' }}>
+    <div
+      data-theme={look?.palette ? undefined : (look?.theme ?? undefined)}
+      style={{ display: 'grid', gap: 'var(--sp-3, 1rem)', ...lookVars }}
+    >
       {/* identity header */}
       <div className="card" style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
         {/* Their colour, not the site's. This used to be var(--accent) for everyone, so all
@@ -214,6 +259,33 @@ export function Profile({ authed }: { authed: boolean }) {
           <p className="muted" style={{ margin: 0, fontSize: '0.85rem' }}>
             @{p.username} · member since {p.member_since}
           </p>
+          {/* Says whose taste you're looking at, so their colours read as theirs rather than as
+              the site behaving oddly. The button fires their effect on demand — otherwise the
+              flair is invisible until you happen to click something. */}
+          {look && (look.theme || look.palette || look.flair) && (
+            <p className="muted" style={{ margin: '0.15rem 0 0', fontSize: '0.75rem' }}>
+              {p.is_me ? 'Your look' : `${display}'s look`}
+              {look.flair && (
+                <>
+                  {' · '}
+                  <button
+                    className="btn"
+                    style={{ padding: '0 0.4rem', fontSize: '0.72rem' }}
+                    onClick={(e) => {
+                      const r = e.currentTarget.getBoundingClientRect()
+                      previewClickFx(
+                        look.flair as FxStyle,
+                        r.left + r.width / 2,
+                        r.top + r.height / 2,
+                      )
+                    }}
+                  >
+                    ✨ {look.flair}
+                  </button>
+                </>
+              )}
+            </p>
+          )}
         </div>
         {p.is_me && (
           <span style={{ marginLeft: 'auto', display: 'flex', gap: '0.4rem', flexShrink: 0 }}>
