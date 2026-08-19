@@ -379,6 +379,7 @@ export function Profile({ authed }: { authed: boolean }) {
           activity={activity}
           snakeBest={p.snake_best}
           username={p.username}
+          isMe={p.is_me}
         />
       )}
 

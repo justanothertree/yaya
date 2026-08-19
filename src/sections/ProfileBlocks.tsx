@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { getSupabaseClient } from '../finance/client'
 import { BANNER_STYLES, bannerBackground, type BannerStyle } from '../profile/look'
 
@@ -19,10 +19,19 @@ export type Tier = 'public' | 'friends' | 'members' | 'private'
 
 export type ProfileBlock = {
   id?: string
-  block_type: 'bio' | 'banner' | 'stats' | 'activity'
+  block_type: 'bio' | 'banner' | 'stats' | 'activity' | 'guestbook'
   size: 'small' | 'medium' | 'large'
   config: Record<string, unknown>
   visibility: Tier
+}
+
+export type ProfileNote = {
+  id: string
+  body: string
+  at: string
+  author: string
+  author_username: string
+  can_delete: boolean
 }
 
 const TIER_LABEL: Record<Tier, string> = {
@@ -44,6 +53,7 @@ const BLOCK_LABEL: Record<ProfileBlock['block_type'], string> = {
   banner: '🖼️ Banner',
   stats: '📊 Stats',
   activity: '🕓 Activity',
+  guestbook: '💬 Guestbook',
 }
 
 function activityLine(a: ActivityItem): string {
@@ -60,12 +70,15 @@ function BlockView({
   activity,
   snakeBest,
   username,
+  isMe,
 }: {
   block: ProfileBlock
   activity: ActivityItem[]
   snakeBest: { score: number; game_mode: string | null } | null
   /** whose page this is — a banner with no colour picked falls back to their own */
   username: string
+  /** the guestbook's compose box addresses you differently on your own page */
+  isMe: boolean
 }) {
   const cfg = block.config
   switch (block.block_type) {
@@ -110,6 +123,8 @@ function BlockView({
           </p>
         </div>
       )
+    case 'guestbook':
+      return <Guestbook username={username} isMe={isMe} />
     case 'activity': {
       const limit = typeof cfg.limit === 'number' ? cfg.limit : 10
       const items = activity.slice(0, limit)
@@ -139,11 +154,13 @@ export function ProfileBlocksView({
   activity,
   snakeBest,
   username,
+  isMe = false,
 }: {
   blocks: ProfileBlock[]
   activity: ActivityItem[]
   snakeBest: { score: number; game_mode: string | null } | null
   username: string
+  isMe?: boolean
 }) {
   if (!blocks.length) return null
   return (
@@ -155,8 +172,121 @@ export function ProfileBlocksView({
           activity={activity}
           snakeBest={snakeBest}
           username={username}
+          isMe={isMe}
         />
       ))}
+    </div>
+  )
+}
+
+/**
+ * The guestbook: friends leave a note on your page.
+ *
+ * Fetches its own notes rather than riding along in the profile payload — they change on their
+ * own schedule (someone else writes one), and a note posted here should appear without reloading
+ * the whole profile.
+ *
+ * Deliberately plain. No likes, no counts, no sorting but newest-first: a number beside a note
+ * only ever changes what people are willing to write, which is precisely the "corporate fluff"
+ * this site exists without.
+ */
+function Guestbook({ username, isMe }: { username: string; isMe: boolean }) {
+  const [notes, setNotes] = useState<ProfileNote[]>([])
+  const [draft, setDraft] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+  const [loaded, setLoaded] = useState(false)
+
+  const load = useCallback(async () => {
+    const { data, error } = await getSupabaseClient().rpc('list_profile_notes', {
+      p_username: username,
+    })
+    if (!error) setNotes((data as ProfileNote[]) ?? [])
+    setLoaded(true)
+  }, [username])
+
+  useEffect(() => {
+    setLoaded(false)
+    void load()
+  }, [load])
+
+  const post = async () => {
+    const body = draft.trim()
+    if (!body || busy) return
+    setBusy(true)
+    setErr(null)
+    const { error } = await getSupabaseClient().rpc('post_profile_note', {
+      p_username: username,
+      p_body: body,
+    })
+    setBusy(false)
+    if (error) {
+      setErr(error.message)
+      return
+    }
+    setDraft('')
+    await load()
+  }
+
+  const remove = async (id: string) => {
+    const { error } = await getSupabaseClient().rpc('delete_profile_note', { p_id: id })
+    if (error) setErr(error.message)
+    else await load()
+  }
+
+  return (
+    <div className="card profile-block is-large">
+      <h3 style={{ marginTop: 0 }}>💬 Guestbook</h3>
+      {/* Writing on your own page is allowed — it's your page, and a first note stops a new
+          guestbook from looking broken. */}
+      <div style={{ display: 'flex', gap: '0.4rem', marginBottom: '0.6rem' }}>
+        <input
+          value={draft}
+          onChange={(e) => setDraft(e.target.value.slice(0, 500))}
+          onKeyDown={(e) => e.key === 'Enter' && void post()}
+          placeholder={isMe ? 'Leave a note on your own page…' : `Say something to ${username}…`}
+          aria-label="Write a note"
+          style={{ flex: 1 }}
+        />
+        <button className="btn" onClick={() => void post()} disabled={!draft.trim() || busy}>
+          {busy ? '…' : 'Post'}
+        </button>
+      </div>
+      {err && <p style={{ color: '#f46b6b', margin: '0 0 0.5rem', fontSize: '0.82rem' }}>{err}</p>}
+      {notes.length === 0 && loaded && (
+        <p className="muted" style={{ margin: 0, fontSize: '0.88rem' }}>
+          {isMe ? 'Nothing yet — your friends can write here.' : 'Be the first to write something.'}
+        </p>
+      )}
+      <div style={{ display: 'grid', gap: '0.5rem' }}>
+        {notes.map((n) => (
+          <div key={n.id} className="profile-note">
+            <div className="profile-note-head">
+              <a
+                className="profile-note-author"
+                href={'#profile?u=' + encodeURIComponent(n.author_username)}
+              >
+                {n.author}
+              </a>
+              <span className="muted profile-note-when">
+                {new Date(n.at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+              </span>
+              {n.can_delete && (
+                <button
+                  className="btn profile-note-x"
+                  onClick={() => void remove(n.id)}
+                  title="Remove this note"
+                  aria-label="Remove this note"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+            {/* plain text, never markup — same rule as the bio */}
+            <p style={{ margin: 0, whiteSpace: 'pre-wrap' }}>{n.body}</p>
+          </div>
+        ))}
+      </div>
     </div>
   )
 }
@@ -302,6 +432,12 @@ function BlockEditRow({
       {block.block_type === 'stats' && (
         <p className="muted" style={{ margin: 0 }}>
           Fills in automatically from your Snake results — nothing to set here.
+        </p>
+      )}
+      {block.block_type === 'guestbook' && (
+        <p className="muted" style={{ margin: 0 }}>
+          Friends can leave notes on your page. Whoever this block is visible to can write in it —
+          you can remove anything left here.
         </p>
       )}
     </div>

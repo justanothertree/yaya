@@ -3669,6 +3669,40 @@ select {
   border: 2px solid rgba(0, 0, 0, 0.45);
   cursor: pointer;
 }
+/* Guestbook notes: a note is from a person to a person, so the author leads and nothing
+   competes with the words. No counts, no reactions — see the block's comment for why. */
+.profile-note {
+  padding: 0.5rem 0.6rem;
+  border-radius: 8px;
+  background: var(--card2, rgba(127, 127, 127, 0.08));
+  border: 1px solid var(--border);
+}
+.profile-note-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.2rem;
+}
+.profile-note-author {
+  font-weight: 700;
+  font-size: 0.86rem;
+  color: var(--accent);
+  text-decoration: none;
+}
+.profile-note-when {
+  font-size: 0.74rem;
+}
+/* only shows for notes you're allowed to remove, so it sits quietly at the end */
+.profile-note-x {
+  margin-left: auto;
+  padding: 0 0.35rem;
+  font-size: 0.7rem;
+  opacity: 0.6;
+}
+.profile-note-x:hover {
+  opacity: 1;
+}
+
 /* a person chip carries their colour, so the directory reads as faces not rows */
 .profile-person-chip {
   display: inline-flex;

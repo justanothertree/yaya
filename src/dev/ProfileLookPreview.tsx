@@ -30,6 +30,9 @@ const SAMPLE_BLOCKS: ProfileBlock[] = [
     visibility: 'members',
   },
   { block_type: 'stats', size: 'small', config: {}, visibility: 'friends' },
+  // no session here, so its RPCs fail — which is exactly what should be checked: the block must
+  // render its empty state rather than blowing up the page around it
+  { block_type: 'guestbook', size: 'large', config: {}, visibility: 'friends' },
 ]
 
 export function ProfileLookPreview() {
