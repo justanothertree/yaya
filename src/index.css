@@ -476,7 +476,9 @@
      so the circuit filter (which lives up there now) stays put instead of vanishing on this
      one tab. With no filter to show, the empty row collapses to nothing anyway. */
   .cz-tab-log .cz-head .section-title,
-  .cz-tab-log .cz-head .cz-subtitle {
+  .cz-tab-log .cz-head .cz-subtitle,
+  #circuit[data-tab='log'] .cz-head .section-title,
+  #circuit[data-tab='log'] .cz-head .cz-subtitle {
     display: none !important;
   }
   /* sheet header holds only the ＋ Column editing button on a phone (the hint is
@@ -3669,6 +3671,61 @@ select {
   border: 2px solid rgba(0, 0, 0, 0.45);
   cursor: pointer;
 }
+/* You vs them, in the Circuit's person modal. One bar split between two people's own colours,
+   so who's ahead reads before any number does. */
+.cz-vs {
+  margin-top: 0.9rem;
+  padding: 0.6rem 0.7rem;
+  border-radius: 10px;
+  background: var(--b1, rgba(127, 127, 127, 0.07));
+}
+.cz-vs-head {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  justify-content: center;
+  font-weight: 800;
+  font-size: 0.82rem;
+  margin-bottom: 0.45rem;
+}
+.cz-vs-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.3rem;
+}
+.cz-vs-label {
+  width: 5.5rem;
+  font-size: 0.7rem;
+  flex-shrink: 0;
+}
+.cz-vs-num {
+  width: 3.2rem;
+  font-size: 0.8rem;
+  text-align: right;
+  flex-shrink: 0;
+}
+.cz-vs-right {
+  text-align: left;
+}
+.cz-vs-bar {
+  flex: 1;
+  display: flex;
+  height: 10px;
+  border-radius: 6px;
+  overflow: hidden;
+  min-width: 3rem;
+}
+.cz-vs-bar > span {
+  display: block;
+  height: 100%;
+}
+.cz-vs-note {
+  margin: 0.45rem 0 0;
+  font-size: 0.72rem;
+  text-align: center;
+}
+
 /* A status is the sentence, so it gets the room a heading would have taken. */
 .profile-status {
   display: flex;

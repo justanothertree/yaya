@@ -1,11 +1,37 @@
 // A participant's fitness profile: month total, avg/day, goal-days, streak, all-time total,
-// category breakdown, and personal records (best single-day per exercise).
+// category breakdown, personal records (best single-day per exercise) — and, when you're looking
+// at someone else, how you compare.
 import { useMemo } from 'react'
 import { useCircuit } from '../store'
 import { Modal } from './Modal'
 import { currentStreak, dayTotal, logPoints, monthLabel } from '../scoring'
 import { catColor } from '../catColors'
-import type { Person } from '../types'
+import { peekPersistedUserId } from '../../finance/auth'
+import type { DayLog, Person } from '../types'
+
+/**
+ * Points for one person over a whole month, and all-time.
+ *
+ * Pulled out of the big useMemo below so the SAME computation runs for you and for them —
+ * comparing two numbers produced by two different code paths is how a head-to-head quietly
+ * starts lying. Everything routes through the shared scoring module for the same reason: the
+ * multipliers are per-person, so there is exactly one correct way to turn a log into points.
+ */
+function totalsFor(p: Person, logs: DayLog[], ym: string) {
+  const [y, m] = ym.split('-').map(Number)
+  const daysInMonth = new Date(y, m, 0).getDate()
+  let month = 0
+  for (let d = 1; d <= daysInMonth; d++) {
+    month += dayTotal(p, logs, `${ym}-${String(d).padStart(2, '0')}`)
+  }
+  const mine = logs.filter((l) => l.personId === p.id)
+  return {
+    month,
+    allTime: mine.reduce((acc, l) => acc + logPoints(p, l), 0),
+    streak: currentStreak(p, logs),
+    lastLogged: mine.reduce<string | null>((a, l) => (!a || l.date > a ? l.date : a), null),
+  }
+}
 
 function Tile({ label, value, color }: { label: string; value: string; color?: string }) {
   return (
@@ -36,7 +62,29 @@ export function CircuitPersonProfile({
   ym: string
   onClose: () => void
 }) {
-  const { logs } = useCircuit()
+  const { logs, people } = useCircuit()
+  /**
+   * Who "you" are, read straight from the persisted session rather than passed down.
+   *
+   * Synchronous on purpose — this is local knowledge, so the comparison paints with the rest of
+   * the modal instead of appearing a beat later. Threading it from App through Circuit and Board
+   * would also have meant three components carrying a value only this one uses.
+   */
+  const meUserId = peekPersistedUserId()
+
+  /**
+   * You vs them — only when there is a real "you" to compare with.
+   *
+   * Deliberately quiet when it can't say something true: no signed-in user, you own no board in
+   * this circuit, or you're looking at your own page. A comparison that falls back to zero for
+   * one side isn't a comparison, it's just a discouraging number pointed at somebody.
+   */
+  const vs = useMemo(() => {
+    if (!meUserId) return null
+    const me = people.find((p) => p.ownerUserId === meUserId)
+    if (!me || me.id === person.id) return null
+    return { me, mine: totalsFor(me, logs, ym), theirs: totalsFor(person, logs, ym) }
+  }, [meUserId, people, person, logs, ym])
 
   const s = useMemo(() => {
     const goal = person.goal ?? 100
@@ -115,6 +163,53 @@ export function CircuitPersonProfile({
         <Tile label="Streak" value={s.streak > 0 ? `🔥${s.streak}` : '—'} />
         <Tile label="All-time" value={s.allTime.toLocaleString()} />
       </div>
+
+      {/* You vs them. Month AND all-time on purpose: a month is the live contest, all-time is
+          the one that still means something when somebody hasn't logged in a while — and most
+          of a crew is dormant most of the time. */}
+      {vs && (
+        <div className="cz-vs">
+          <div className="cz-vs-head">
+            <span style={{ color: vs.me.color }}>{vs.me.name}</span>
+            <span className="muted">vs</span>
+            <span style={{ color: person.color }}>{person.name}</span>
+          </div>
+          {(
+            [
+              { label: monthLabel(ym), a: vs.mine.month, b: vs.theirs.month },
+              { label: 'All-time', a: vs.mine.allTime, b: vs.theirs.allTime },
+            ] as const
+          ).map((row) => {
+            const total = row.a + row.b
+            // an empty row would render a full bar for whoever has zero, which reads as a win
+            const pct = total > 0 ? (row.a / total) * 100 : 50
+            return (
+              <div key={row.label} className="cz-vs-row">
+                <span className="cz-vs-label muted">{row.label}</span>
+                <strong className="cz-vs-num">{Math.round(row.a).toLocaleString()}</strong>
+                <span className="cz-vs-bar" aria-hidden>
+                  <span style={{ width: `${pct}%`, background: vs.me.color }} />
+                  <span style={{ width: `${100 - pct}%`, background: person.color }} />
+                </span>
+                <strong className="cz-vs-num cz-vs-right">
+                  {Math.round(row.b).toLocaleString()}
+                </strong>
+              </div>
+            )
+          })}
+          {/* Says WHY their month is zero instead of leaving it looking like a thrashing. */}
+          {vs.theirs.month === 0 && vs.theirs.lastLogged && (
+            <p className="muted cz-vs-note">
+              {person.name} hasn&apos;t logged this month — last was{' '}
+              {new Date(vs.theirs.lastLogged + 'T00:00:00').toLocaleDateString(undefined, {
+                month: 'short',
+                day: 'numeric',
+              })}
+              .
+            </p>
+          )}
+        </div>
+      )}
 
       {/* category breakdown */}
       {s.catList.length > 0 && (
