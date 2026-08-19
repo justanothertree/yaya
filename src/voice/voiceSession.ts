@@ -1,5 +1,16 @@
 import { getSupabaseClient } from '../finance/client'
 import { callSounds } from './callSounds'
+/**
+ * RNNoise — the same family of ML denoiser Krisp is built on, as open source (Xiph), compiled
+ * to WASM and run in an AudioWorklet. This is the answer to "we hear each other's keyboards":
+ * a level gate can't stop a keyboard, because clacks are LOUD — they open any gate that speech
+ * can open. A denoiser removes them from the signal itself, and putting the gate AFTER it means
+ * clacks no longer even count toward opening the gate.
+ */
+import { RnnoiseWorkletNode, loadRnnoise } from '@sapphi-red/web-noise-suppressor'
+import rnnoiseWorkletPath from '@sapphi-red/web-noise-suppressor/rnnoiseWorklet.js?url'
+import rnnoiseWasmPath from '@sapphi-red/web-noise-suppressor/rnnoise.wasm?url'
+import rnnoiseWasmSimdPath from '@sapphi-red/web-noise-suppressor/rnnoise_simd.wasm?url'
 
 /**
  * The live call, owned by the module rather than by a component.
@@ -70,6 +81,10 @@ export type VoiceState = {
   threshold: number
   /** per-person listening level, 0–1, keyed by peer id. Missing means 1. */
   peerVolume: Record<string, number>
+  /** noise removal preference — RNNoise on the mic. Persisted; on by default. */
+  denoise: boolean
+  /** true when this browser can't run the denoiser (no AudioWorklet / wasm failed to load) */
+  denoiseUnavailable: boolean
   /** true while WE are sharing a screen */
   sharing: boolean
   /** what the share is optimised for; switchable live, mid-share */
@@ -81,6 +96,16 @@ export type VoiceState = {
 }
 
 const THRESH_KEY = 'voice.threshold.v1'
+const DENOISE_KEY = 'voice.denoise.v1'
+
+/** on unless explicitly turned off — the keyboard problem is the default problem */
+function readDenoise(): boolean {
+  try {
+    return localStorage.getItem(DENOISE_KEY) !== '0'
+  } catch {
+    return true
+  }
+}
 
 function readThreshold(): number {
   try {
@@ -368,6 +393,8 @@ const IDLE: VoiceState = {
   error: null,
   threshold: readThreshold(),
   peerVolume: {},
+  denoise: readDenoise(),
+  denoiseUnavailable: false,
   sharing: false,
   shareMode: 'motion',
   shareError: null,
@@ -384,6 +411,11 @@ let rawMic: MediaStream | null = null
 let audioCtx: AudioContext | null = null
 let analyser: AnalyserNode | null = null
 let gate: GainNode | null = null
+/** the mic's source node + the RNNoise worklet, kept so the chain can be rewired live */
+let micSrc: MediaStreamAudioSourceNode | null = null
+let denoiser: AudioWorkletNode | null = null
+/** the wasm binary, fetched once per page — every call reuses it */
+let rnnoiseBinary: ArrayBuffer | null = null
 let gateTimer = 0
 let micLevel = 0
 let openUntil = 0
@@ -471,6 +503,34 @@ function send(msg: Signal) {
 }
 
 /**
+ * Connect the mic chain in whichever shape is currently right:
+ * denoise on and ready:  mic → RNNoise → analyser + gate
+ * otherwise:             mic → analyser + gate
+ *
+ * One function owns the topology so the async worklet arrival and the ⚙ toggle can't each
+ * wire half of it. disconnect() without arguments is deliberate — it detaches everything the
+ * node feeds, which makes this idempotent instead of throwing on a not-currently-connected
+ * pair.
+ */
+function wireMic() {
+  if (!micSrc || !analyser || !gate) return
+  try {
+    micSrc.disconnect()
+    denoiser?.disconnect()
+    if (state.denoise && denoiser) {
+      micSrc.connect(denoiser)
+      denoiser.connect(analyser)
+      denoiser.connect(gate)
+    } else {
+      micSrc.connect(analyser)
+      micSrc.connect(gate)
+    }
+  } catch {
+    /* a node from a torn-down context — the next join rebuilds everything anyway */
+  }
+}
+
+/**
  * Route the mic through a gate so a quiet room transmits nothing.
  *
  * This is Discord's "input sensitivity", and it exists because an always-open mic broadcasts
@@ -481,17 +541,55 @@ function send(msg: Signal) {
  */
 function buildGate(mic: MediaStream): MediaStream {
   try {
-    audioCtx = new AudioContext()
+    // 48kHz is RNNoise's native rate; asking for it up front means the denoiser never has to
+    // work on resampled-in-flight audio. Browsers resample the mic to the context rate anyway.
+    audioCtx = new AudioContext({ sampleRate: 48000 })
     const src = audioCtx.createMediaStreamSource(mic)
+    micSrc = src
     analyser = audioCtx.createAnalyser()
     analyser.fftSize = 512
     gate = audioCtx.createGain()
     const dest = audioCtx.createMediaStreamDestination()
-    // measure off the source, gate on the way out
+    // measure off the source, gate on the way out — rewired to run through RNNoise once the
+    // worklet is ready (see below); this direct chain is also the no-denoise fallback
     src.connect(analyser)
     src.connect(gate)
     gate.connect(dest)
     gate.gain.value = 1
+
+    /**
+     * Upgrade the chain to mic → RNNoise → (analyser + gate) once the worklet loads.
+     *
+     * Async on purpose: the call must not wait on a wasm fetch to start, so the first beat of
+     * a call runs the plain chain and the denoiser splices itself in when ready — the same
+     * "paint from local knowledge, verify in the background" shape used everywhere else here.
+     *
+     * The ORDER is the point, not just the cleanup: the analyser (which decides the gate and
+     * the mic meter) listens to the DENOISED signal, so a keyboard clack that RNNoise removes
+     * no longer even counts toward opening the gate. Gate + denoiser compose; either alone
+     * lets keyboards through.
+     */
+    const ctxAtBuild = audioCtx
+    void (async () => {
+      try {
+        rnnoiseBinary ??= await loadRnnoise({
+          url: rnnoiseWasmPath,
+          simdUrl: rnnoiseWasmSimdPath,
+        })
+        await ctxAtBuild.audioWorklet.addModule(rnnoiseWorkletPath)
+        // the call may have ended (or restarted) while the wasm was loading
+        if (audioCtx !== ctxAtBuild) return
+        denoiser = new RnnoiseWorkletNode(ctxAtBuild, {
+          wasmBinary: rnnoiseBinary,
+          maxChannels: 2,
+        })
+        wireMic()
+      } catch {
+        // No AudioWorklet / wasm blocked — calls work exactly as before, and the ⚙ panel
+        // says why the toggle is disabled instead of leaving a dead switch.
+        if (audioCtx === ctxAtBuild) set({ denoiseUnavailable: true })
+      }
+    })()
 
     const buf = new Float32Array(analyser.fftSize)
     const tick = () => {
@@ -602,6 +700,8 @@ function teardownGate() {
   gateTimer = 0
   analyser = null
   gate = null
+  micSrc = null
+  denoiser = null
   micLevel = 0
   openUntil = 0
   void audioCtx?.close().catch(() => {})
@@ -935,6 +1035,10 @@ export const voiceSession = {
           echoCancellation: true,
           noiseSuppression: true,
           autoGainControl: true,
+          // Platform-level ML voice isolation (macOS Voice Isolation, some Windows devices)
+          // where the browser exposes it. Not in TS's lib yet; unknown constraints are
+          // ignored by spec, so this is free everywhere it isn't supported.
+          ...({ voiceIsolation: true } as MediaTrackConstraints),
         },
         video: false,
       })
@@ -1138,7 +1242,7 @@ export const voiceSession = {
     chan = null
     meId = null
     // keep the settings, drop the call
-    state = { ...IDLE, threshold: state.threshold }
+    state = { ...IDLE, threshold: state.threshold, denoise: state.denoise }
     listeners.forEach((l) => l())
   },
 
@@ -1219,11 +1323,16 @@ export const voiceSession = {
         return
       }
     }
-    // Asked for audio and got a picture only: on Windows that is the "Share system audio"
-    // tick-box left unticked, which is silent in every sense until someone says so.
+    // Asked for audio and got a picture only. On Chrome/Edge that is the "Share system audio"
+    // tick-box left unticked — but Firefox has NO such tick-box (it cannot capture system
+    // audio at all, and quietly returns video-only instead of failing), so telling a Firefox
+    // user to go find the checkbox sent them hunting for something that does not exist.
     if (!media.getAudioTracks().length) {
+      const firefox = /firefox/i.test(navigator.userAgent)
       set({
-        shareError: 'No sound is being shared — tick “Share system audio” in the picker.',
+        shareError: firefox
+          ? 'Firefox can’t share your screen’s sound — the stream is video-only. Use Chrome or Edge if the sound matters.'
+          : 'No sound is being shared — tick “Share system audio” in the picker.',
       })
     }
     share = media
@@ -1360,6 +1469,17 @@ export const voiceSession = {
       /* private mode — it just won't persist */
     }
     set({ threshold: t })
+  },
+
+  /** Noise removal on/off — takes effect immediately on a live call (the chain rewires). */
+  setDenoise(on: boolean) {
+    try {
+      localStorage.setItem(DENOISE_KEY, on ? '1' : '0')
+    } catch {
+      /* private mode — it just won't persist */
+    }
+    set({ denoise: on })
+    wireMic()
   },
 
   setPeerVolume(peerId: string, v: number) {

@@ -137,6 +137,22 @@ export function VoiceBar({
               {v.threshold === 0 ? 'always on' : `${Math.round((v.threshold / 0.6) * 100)}%`}
             </span>
           </label>
+          {/* The Krisp gap: keyboards blow straight through a level gate because clacks are
+              loud. This is RNNoise (the open-source ML denoiser) in the mic chain, with the
+              gate listening to the CLEANED signal — so a removed clack doesn't even open it. */}
+          <label className="voice-row">
+            <span className="voice-row-label">
+              Remove background noise
+              {v.denoiseUnavailable && <span className="muted"> (not in this browser)</span>}
+            </span>
+            <input
+              type="checkbox"
+              checked={v.denoise && !v.denoiseUnavailable}
+              disabled={v.denoiseUnavailable}
+              onChange={(e) => v.setDenoise(e.target.checked)}
+              aria-label="Remove keyboard and background noise from your microphone"
+            />
+          </label>
           <label className="voice-row">
             <span className="voice-row-label">Join / leave sounds</span>
             <input

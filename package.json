@@ -17,6 +17,7 @@
     "ws-server": "node --enable-source-maps server/ws-server.js"
   },
   "dependencies": {
+    "@sapphi-red/web-noise-suppressor": "^0.4.0",
     "@supabase/supabase-js": "^2.107.0",
     "bad-words": "^4.0.0",
     "react": "^19.1.1",

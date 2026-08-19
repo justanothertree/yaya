@@ -18,6 +18,7 @@ export function useVoiceSession() {
     leave: voiceSession.leave,
     toggleMute: voiceSession.toggleMute,
     setThreshold: voiceSession.setThreshold,
+    setDenoise: voiceSession.setDenoise,
     setPeerVolume: voiceSession.setPeerVolume,
     setMaster: voiceSession.setMaster,
     // not part of the snapshot on purpose — see voiceSession.getMicLevel
