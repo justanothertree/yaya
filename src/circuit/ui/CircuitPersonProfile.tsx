@@ -4,7 +4,7 @@
 import { useMemo } from 'react'
 import { useCircuit } from '../store'
 import { Modal } from './Modal'
-import { currentStreak, dayTotal, logPoints, monthLabel } from '../scoring'
+import { currentStreak, dayTotal, logPoints, monthLabel, monthTotal } from '../scoring'
 import { catColor } from '../catColors'
 import { peekPersistedUserId } from '../../finance/auth'
 import type { DayLog, Person } from '../types'
@@ -18,15 +18,9 @@ import type { DayLog, Person } from '../types'
  * multipliers are per-person, so there is exactly one correct way to turn a log into points.
  */
 function totalsFor(p: Person, logs: DayLog[], ym: string) {
-  const [y, m] = ym.split('-').map(Number)
-  const daysInMonth = new Date(y, m, 0).getDate()
-  let month = 0
-  for (let d = 1; d <= daysInMonth; d++) {
-    month += dayTotal(p, logs, `${ym}-${String(d).padStart(2, '0')}`)
-  }
   const mine = logs.filter((l) => l.personId === p.id)
   return {
-    month,
+    month: monthTotal(p, logs, ym),
     allTime: mine.reduce((acc, l) => acc + logPoints(p, l), 0),
     streak: currentStreak(p, logs),
     lastLogged: mine.reduce<string | null>((a, l) => (!a || l.date > a ? l.date : a), null),
