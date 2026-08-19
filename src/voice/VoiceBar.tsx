@@ -55,6 +55,7 @@ export function VoiceBar({
       <div className="voice-bar">
         <button
           className="btn"
+          disabled={v.joining}
           onClick={() => void v.join(roomId, roomName, meId, myName, occupancy)}
           title={
             v.inCall
@@ -63,8 +64,10 @@ export function VoiceBar({
           }
         >
           {/* Switching used to be blocked until you'd left the other call first. It just
-              moves you now, so the button says which it's about to do. */}
-          {v.inCall ? '🎙 Switch to this call' : '🎙 Call'}
+              moves you now, so the button says which it's about to do. "Connecting…" exists
+              because a cold call relay can hold this up for most of a minute, and a button
+              that does nothing that long reads as broken — and gets pressed again. */}
+          {v.joining ? '⏳ Connecting…' : v.inCall ? '🎙 Switch to this call' : '🎙 Call'}
         </button>
         {/* This describes where YOU are, not this room -- it renders on every OTHER room's
             bar while you're in a call anywhere, and "In a call in Josh" under the Circuit
@@ -149,6 +152,13 @@ export function VoiceBar({
           <p className="voice-hint muted">
             Speak normally and watch the bar. Put the marker just below where it reaches, and quiet
             rooms stop being broadcast. Leave it at 0 to always send.
+          </p>
+          {/* The layer under the UI, for bug reports: whether the relay is held, each
+              connection's real state, and signalling counters both ways. "In the call" via
+              presence while the connection sits in `connecting` is invisible everywhere else,
+              and that gap is exactly what a remote "we can't see each other's shares" needs. */}
+          <p className="voice-hint muted" style={{ userSelect: 'all', fontSize: '0.68rem' }}>
+            {v.debugSnapshot()}
           </p>
 
           {v.peers.length > 0 && (

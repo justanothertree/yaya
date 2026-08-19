@@ -60,6 +60,9 @@ export type VoiceState = {
   roomId: string | null
   roomName: string
   inCall: boolean
+  /** true from pressing Call until the room accepts (or refuses) us — the button says so,
+   *  and a second press while it's set is ignored rather than double-opening the mic */
+  joining: boolean
   muted: boolean
   peers: VoicePeer[]
   error: string | null
@@ -359,6 +362,7 @@ const IDLE: VoiceState = {
   roomId: null,
   roomName: '',
   inCall: false,
+  joining: false,
   muted: false,
   peers: [],
   error: null,
@@ -405,6 +409,39 @@ let share: MediaStream | null = null
  * Politeness is decided by comparing ids so both sides always reach the same verdict without
  * having to agree on anything at runtime.
  */
+/**
+ * Which remote stream is a peer's SCREEN, so its audio can be told apart from their voice.
+ *
+ * A share can carry system audio, and that track used to fall into the generic audio branch of
+ * ontrack — which routed the GAME's sound into the per-person voice mixer, replacing the actual
+ * voice, while the share's <video> element played the same audio a second time. The stream id is
+ * recorded when the share's video arrives (the sharer sends video first, so it always does
+ * arrive first) and consulted before any audio is treated as voice.
+ */
+const peerShareStreamId = new Map<string, string>()
+
+/**
+ * Live per-call signalling counters, for the ⚙ panel's diagnostic line.
+ *
+ * This exists because a two-person share failure could not be diagnosed from either end: every
+ * layer that can be checked from outside (negotiation logic, channel authorization, the deploy,
+ * the relay) verified healthy, and what was missing was any view of what THIS call actually did.
+ * Counting offers/answers/ice both ways splits the question cleanly: counters moving with no
+ * media means the connection itself is failing; counters at zero means signalling never left.
+ */
+const diag = {
+  offersSent: 0,
+  offersRecv: 0,
+  answersSent: 0,
+  answersRecv: 0,
+  iceSent: 0,
+  iceRecv: 0,
+}
+const resetDiag = () => {
+  diag.offersSent = diag.offersRecv = diag.answersSent = diag.answersRecv = 0
+  diag.iceSent = diag.iceRecv = 0
+}
+
 const nego = new Map<string, { making: boolean; ignore: boolean }>()
 const negoFor = (id: string) => {
   let n = nego.get(id)
@@ -427,6 +464,9 @@ function set(patch: Partial<VoiceState>) {
 }
 
 function send(msg: Signal) {
+  if (msg.kind === 'offer') diag.offersSent++
+  else if (msg.kind === 'answer') diag.answersSent++
+  else if (msg.kind === 'ice') diag.iceSent++
   void chan?.send({ type: 'broadcast', event: 'voice', payload: msg })
 }
 
@@ -581,6 +621,7 @@ function dropPeer(id: string) {
   // negotiation state and a byte counter that makes their first sample look like new traffic
   nego.delete(id)
   seenBytes.delete(id)
+  peerShareStreamId.delete(id)
   set({ peers: state.peers.filter((p) => p.id !== id) })
   if (wasConnected && state.inCall) callSounds.peerLeave()
 }
@@ -619,7 +660,14 @@ function upsertPeer(id: string, patch: Partial<VoicePeer>) {
  */
 function addShareTo(pc: RTCPeerConnection) {
   if (!share) return
-  for (const track of share.getTracks()) {
+  // Video FIRST, always: the receiver tells share audio from voice by the stream id it
+  // recorded when the share's VIDEO arrived, so the video track must be first in the SDP —
+  // which follows addTrack order, not luck. getDisplayMedia usually lists video first
+  // anyway; sorting makes it a guarantee instead of a usually.
+  const tracks = [...share.getTracks()].sort((a, b) =>
+    a.kind === b.kind ? 0 : a.kind === 'video' ? -1 : 1,
+  )
+  for (const track of tracks) {
     if (track.kind === 'video') track.contentHint = SHARE_MODES[state.shareMode].hint
     const sender = pc.addTrack(track, share)
     if (track.kind !== 'video') continue
@@ -691,6 +739,7 @@ function resetPeerConnection(peerId: string) {
   pcs.delete(peerId)
   nego.delete(peerId)
   seenBytes.delete(peerId)
+  peerShareStreamId.delete(peerId)
   detachOutput(peerId)
 }
 
@@ -752,13 +801,25 @@ function makePc(peerId: string, peerName: string, fresh = false) {
      * sending a share into attachOutput would try to play a picture through the mixer.
      */
     if (e.track.kind === 'video') {
+      peerShareStreamId.set(peerId, stream.id)
       upsertPeer(peerId, { share: stream, name: names.get(peerId) ?? 'Someone' })
       // "They stopped sharing" arrives as the track ending, not as a message we have to send.
       e.track.onended = () => upsertPeer(peerId, { share: null })
       e.track.onmute = () => upsertPeer(peerId, { share: null })
+      // Mute is also just "no RTP right now" — a game hitching, a static screen between
+      // frames. Without restoring on unmute, one transient gap dismissed the stage for good
+      // and the share looked ended to everyone but the person still sending it.
+      e.track.onunmute = () => upsertPeer(peerId, { share: stream })
       stream.onremovetrack = () => upsertPeer(peerId, { share: null })
       return
     }
+    /**
+     * Audio is only VOICE when it isn't the share's system audio. A share's audio track
+     * arrives in the share's own stream (the sharer adds video first, so the id is already
+     * recorded above); routing it into the voice mixer replaced the person's voice with
+     * their game's sound — and doubled it, since the share's <video> plays its own audio.
+     */
+    if (peerShareStreamId.get(peerId) === stream.id || stream.getVideoTracks().length > 0) return
     upsertPeer(peerId, { stream, name: names.get(peerId) ?? 'Someone' })
     attachOutput(peerId, stream)
   }
@@ -830,6 +891,10 @@ export const voiceSession = {
   ) {
     // Already here — nothing to do.
     if (state.inCall && state.roomId === roomId) return
+    // A join can take a while (a cold relay adds up to a minute before the UI flips), and a
+    // second press during that window used to start a SECOND join — another mic grab,
+    // another channel. One at a time; the button shows "Connecting…" meanwhile.
+    if (state.joining) return
     // Calling a different room switches to it. It used to refuse until you'd left the old
     // one first, which is a step nobody should have to think about; every app that has
     // rooms just moves you.
@@ -837,7 +902,7 @@ export const voiceSession = {
     // references (the hook hands them straight to components), so `this` isn't reliable.
     // Silent: the join chime that follows is the sound of the switch.
     if (state.inCall) voiceSession.leave(true)
-    set({ error: null })
+    set({ error: null, joining: true })
     /**
      * Refused BEFORE the microphone is opened, so a full call never costs a permission prompt.
      * Presence is the only count available — there is no server keeping a tally — so two people
@@ -846,12 +911,16 @@ export const voiceSession = {
      */
     if (typeof occupancy === 'number' && occupancy >= CALL_HARD_LIMIT) {
       set({
+        joining: false,
         error: `This call is full (${occupancy}). Calls are peer-to-peer, so everyone sends their voice to everyone — past about ${CALL_HARD_LIMIT} that stops working well for the people already in it.`,
       })
       return
     }
     if (!navigator.mediaDevices?.getUserMedia || typeof RTCPeerConnection === 'undefined') {
-      set({ error: 'This browser can’t do voice calls. Try Chrome, Edge, Safari or Firefox.' })
+      set({
+        joining: false,
+        error: 'This browser can’t do voice calls. Try Chrome, Edge, Safari or Firefox.',
+      })
       return
     }
     let mic: MediaStream
@@ -874,6 +943,7 @@ export const voiceSession = {
       // check their permissions sends them somewhere that can't help.
       const name = (e as DOMException)?.name
       set({
+        joining: false,
         error:
           name === 'NotFoundError' || name === 'OverconstrainedError'
             ? 'No microphone found. Plug one in or check your system sound settings.'
@@ -894,6 +964,23 @@ export const voiceSession = {
     myName = displayName
 
     const sb = getSupabaseClient()
+    /**
+     * ⚠️ Free the topic BEFORE creating the channel — this is what makes leave-then-rejoin work.
+     *
+     * leave() removes its channel fire-and-forget, and realtime-js dedupes channels BY TOPIC:
+     * ask for `voice:<room>` while the old channel is still mid-teardown and it hands back that
+     * same dying instance — whose subscribe() then THROWS ("tried to subscribe multiple times"),
+     * after `inCall` was already set. Net effect: leave, rejoin quickly, and the UI sat in a
+     * call where nothing would ever arrive, until a full restart of the join. Awaiting the
+     * removal makes the rejoin start from a genuinely fresh channel every time.
+     */
+    for (const old of sb.getChannels().filter((c) => c.topic === `realtime:voice:${roomId}`)) {
+      try {
+        await sb.removeChannel(old)
+      } catch {
+        /* already torn down */
+      }
+    }
     // `private: true` routes the join through the realtime.messages policies, which gate the
     // topic on room membership. Public channels skip authorization, which is why signalling
     // used to be protected by nothing but the room UUID being hard to guess.
@@ -905,6 +992,9 @@ export const voiceSession = {
     ch.on('broadcast', { event: 'voice' }, ({ payload }) => {
       const m = payload as Signal
       if (!meId || m.from === meId) return
+      if (m.kind === 'offer') diag.offersRecv++
+      else if (m.kind === 'answer') diag.answersRecv++
+      else if (m.kind === 'ice') diag.iceRecv++
       void (async () => {
         switch (m.kind) {
           case 'hello': {
@@ -974,6 +1064,7 @@ export const voiceSession = {
       })()
     })
 
+    resetDiag()
     set({ inCall: true, roomId, roomName, muted: false, peers: [] })
     // Sampled rather than summed at the end, so a call that crashes or a tab that closes still
     // accounts for the traffic it already used.
@@ -986,6 +1077,7 @@ export const voiceSession = {
     ch.subscribe((status, err) => {
       if (status === 'SUBSCRIBED') {
         joined = true
+        set({ joining: false })
         if (meId) send({ kind: 'hello', from: meId, name: myName })
         // Chime only once the room actually accepted us. It used to fire unconditionally, so a
         // refused join sounded exactly like a successful one.
@@ -1180,6 +1272,25 @@ export const voiceSession = {
    */
   warmIce() {
     void loadIce()
+  },
+
+  /**
+   * One line of truth about what this call is actually doing, for the ⚙ panel.
+   *
+   * Reads the live connections directly rather than the React snapshot, because the whole
+   * point is to see the layer UNDER the UI: a peer can look "in the call" via presence while
+   * its RTCPeerConnection never left `connecting`, and that difference is exactly what a
+   * remote bug report ("we can't see each other's shares") cannot convey on its own.
+   */
+  debugSnapshot(): string {
+    const peers = [...pcs.entries()]
+      .map(([id, pc]) => {
+        const nm = names.get(id) ?? id.slice(0, 6)
+        return `${nm}: ${pc.connectionState}/${pc.iceConnectionState}/${pc.signalingState}`
+      })
+      .join(' · ')
+    const d = `offers ${diag.offersSent}↑${diag.offersRecv}↓ answers ${diag.answersSent}↑${diag.answersRecv}↓ ice ${diag.iceSent}↑${diag.iceRecv}↓`
+    return `${haveTurn ? 'relay ready' : 'no relay'} · ${peers || 'no connections'} · ${d}`
   },
 
   /**

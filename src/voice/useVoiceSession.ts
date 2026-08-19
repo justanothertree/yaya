@@ -30,5 +30,6 @@ export function useVoiceSession() {
     setShareMode: voiceSession.setShareMode,
     warmIce: voiceSession.warmIce,
     hasTurn: voiceSession.hasTurn,
+    debugSnapshot: voiceSession.debugSnapshot,
   }
 }

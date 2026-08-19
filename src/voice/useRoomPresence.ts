@@ -30,19 +30,41 @@ export function useRoomPresence(
       return
     }
     const sb = getSupabaseClient()
-    const ch = sb.channel(`room:${roomId}`, {
-      config: { presence: { key: myId }, private: true },
-    })
-    ch.on('presence', { event: 'sync' }, () => {
-      const state = ch.presenceState() as Record<string, Array<{ name?: string }>>
-      setNames(Object.entries(state).map(([, metas]) => metas[0]?.name || 'Someone'))
-    })
-    ch.subscribe((status) => {
-      if (status === 'SUBSCRIBED') void ch.track({ name: myName })
-    })
+    let ch: ReturnType<typeof sb.channel> | null = null
+    let gone = false
+    void (async () => {
+      /**
+       * Leave-then-return to the same thread races the previous effect's fire-and-forget
+       * removeChannel: realtime-js dedupes channels BY TOPIC, so asking again while the old
+       * one is mid-teardown hands back that dying instance, whose subscribe() throws — and
+       * presence for this room just silently never comes back. Same bug, same fix as the
+       * voice channel in voiceSession.join(): free the topic first.
+       */
+      for (const old of sb.getChannels().filter((c) => c.topic === `realtime:room:${roomId}`)) {
+        try {
+          await sb.removeChannel(old)
+        } catch {
+          /* already torn down */
+        }
+      }
+      if (gone) return // unmounted while we waited — don't subscribe a channel nobody owns
+      ch = sb.channel(`room:${roomId}`, {
+        config: { presence: { key: myId }, private: true },
+      })
+      ch.on('presence', { event: 'sync' }, () => {
+        const state = ch!.presenceState() as Record<string, Array<{ name?: string }>>
+        setNames(Object.entries(state).map(([, metas]) => metas[0]?.name || 'Someone'))
+      })
+      ch.subscribe((status) => {
+        if (status === 'SUBSCRIBED') void ch!.track({ name: myName })
+      })
+    })()
     return () => {
-      void ch.untrack().catch(() => {})
-      void sb.removeChannel(ch)
+      gone = true
+      if (ch) {
+        void ch.untrack().catch(() => {})
+        void sb.removeChannel(ch)
+      }
     }
   }, [roomId, myId, myName])
 
