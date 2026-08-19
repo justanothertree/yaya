@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { getSupabaseClient } from '../finance/client'
+import { BANNER_STYLES, bannerBackground, type BannerStyle } from '../profile/look'
 
 /**
  * Optional, block-based profile customization.
@@ -58,10 +59,13 @@ function BlockView({
   block,
   activity,
   snakeBest,
+  username,
 }: {
   block: ProfileBlock
   activity: ActivityItem[]
   snakeBest: { score: number; game_mode: string | null } | null
+  /** whose page this is — a banner with no colour picked falls back to their own */
+  username: string
 }) {
   const cfg = block.config
   switch (block.block_type) {
@@ -76,14 +80,14 @@ function BlockView({
       )
     }
     case 'banner': {
-      const url = typeof cfg.url === 'string' ? cfg.url : ''
-      if (!url.trim()) return null
+      // Always renders: a banner is a chosen LOOK now, not a URL that might be blank or broken.
+      const { background } = bannerBackground(cfg, username)
       return (
         <div
           className={'card profile-block is-' + block.size}
           style={{ padding: 0, overflow: 'hidden' }}
         >
-          <img src={url} alt="" className="profile-banner-img" />
+          <div className="profile-banner-art" style={{ background }} aria-hidden />
         </div>
       )
     }
@@ -134,24 +138,86 @@ export function ProfileBlocksView({
   blocks,
   activity,
   snakeBest,
+  username,
 }: {
   blocks: ProfileBlock[]
   activity: ActivityItem[]
   snakeBest: { score: number; game_mode: string | null } | null
+  username: string
 }) {
   if (!blocks.length) return null
   return (
     <div className="profile-blocks-grid">
       {blocks.map((b, i) => (
-        <BlockView key={b.id ?? i} block={b} activity={activity} snakeBest={snakeBest} />
+        <BlockView
+          key={b.id ?? i}
+          block={b}
+          activity={activity}
+          snakeBest={snakeBest}
+          username={username}
+        />
       ))}
     </div>
   )
 }
 
 /** One editable row in the arrange-your-page panel. */
+/**
+ * Pick a banner by looking at it.
+ *
+ * Every swatch is the REAL background at the currently-chosen colour, so the choice is made by
+ * eye rather than by reading eight names and guessing. That is the whole difference from the URL
+ * field this replaces: nothing here can be typed wrong, and there is no state where you've filled
+ * it in and still can't tell what you'll get.
+ */
+function BannerPicker({
+  config,
+  username,
+  onChange,
+}: {
+  config: Record<string, unknown>
+  username: string
+  onChange: (patch: Record<string, unknown>) => void
+}) {
+  const { style, hue } = bannerBackground(config, username)
+  return (
+    <div style={{ display: 'grid', gap: '0.5rem' }}>
+      <div className="profile-banner-styles">
+        {(Object.keys(BANNER_STYLES) as BannerStyle[]).map((k) => (
+          <button
+            key={k}
+            className={'profile-banner-swatch' + (k === style ? ' is-on' : '')}
+            style={{ background: BANNER_STYLES[k].css(hue) }}
+            onClick={() => onChange({ style: k, hue })}
+            aria-pressed={k === style}
+            title={BANNER_STYLES[k].label}
+          >
+            <span>{BANNER_STYLES[k].label}</span>
+          </button>
+        ))}
+      </div>
+      <label style={{ display: 'grid', gap: 4 }}>
+        <span className="muted" style={{ fontSize: '0.8rem' }}>
+          Colour
+        </span>
+        {/* The full spectrum as the track, so the slider shows what it does. */}
+        <input
+          type="range"
+          min={0}
+          max={359}
+          value={hue}
+          onChange={(e) => onChange({ style, hue: Number(e.target.value) })}
+          aria-label="Banner colour"
+          className="profile-hue"
+        />
+      </label>
+    </div>
+  )
+}
+
 function BlockEditRow({
   block,
+  username,
   onChange,
   onRemove,
   onMove,
@@ -159,6 +225,7 @@ function BlockEditRow({
   isLast,
 }: {
   block: ProfileBlock
+  username: string
   onChange: (next: ProfileBlock) => void
   onRemove: () => void
   onMove: (dir: -1 | 1) => void
@@ -214,12 +281,7 @@ function BlockEditRow({
         />
       )}
       {block.block_type === 'banner' && (
-        <input
-          type="url"
-          placeholder="https://…"
-          value={typeof block.config.url === 'string' ? block.config.url : ''}
-          onChange={(e) => setCfg({ url: e.target.value })}
-        />
+        <BannerPicker config={block.config} username={username} onChange={setCfg} />
       )}
       {block.block_type === 'activity' && (
         <label className="muted" style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
@@ -310,6 +372,7 @@ export function ProfileBlocksEditor({
           <BlockEditRow
             key={i}
             block={b}
+            username={username}
             onChange={(next) => setBlocks((all) => all.map((x, idx) => (idx === i ? next : x)))}
             onRemove={() => setBlocks((all) => all.filter((_, idx) => idx !== i))}
             onMove={(dir) => move(i, dir)}

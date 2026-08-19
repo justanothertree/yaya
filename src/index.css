@@ -3568,11 +3568,95 @@ select {
     grid-column: span 1;
   }
 }
-.profile-banner-img {
+/* The banner is generated CSS now, not an <img> of a URL someone pasted — see
+   src/profile/look.ts for why. Sized by aspect-ratio so it's a banner at every width
+   without a fixed height guessing at one. */
+.profile-banner-art {
   display: block;
   width: 100%;
-  max-height: 16rem;
-  object-fit: cover;
+  aspect-ratio: 4 / 1;
+  min-height: 7rem;
+}
+/* Picked by eye: each swatch IS the real background at the chosen colour. */
+.profile-banner-styles {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(5.5rem, 1fr));
+  gap: 0.4rem;
+}
+.profile-banner-swatch {
+  position: relative;
+  height: 3.4rem;
+  border: 2px solid transparent;
+  border-radius: 8px;
+  cursor: pointer;
+  overflow: hidden;
+  padding: 0;
+}
+.profile-banner-swatch.is-on {
+  border-color: var(--text);
+  box-shadow: 0 0 0 2px var(--bg);
+}
+/* The label rides on the art, so the swatch stays all preview and no chrome. */
+.profile-banner-swatch span {
+  position: absolute;
+  inset: auto 0 0 0;
+  padding: 0.15rem 0.3rem;
+  font-size: 0.66rem;
+  font-weight: 600;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.42);
+}
+/* the track shows the whole spectrum, so the slider explains itself */
+.profile-hue {
+  width: 100%;
+  accent-color: var(--accent);
+  background: linear-gradient(
+    90deg,
+    hsl(0 80% 55%),
+    hsl(60 80% 55%),
+    hsl(120 80% 55%),
+    hsl(180 80% 55%),
+    hsl(240 80% 55%),
+    hsl(300 80% 55%),
+    hsl(359 80% 55%)
+  );
+  border-radius: 999px;
+  height: 0.6rem;
+  appearance: none;
+}
+.profile-hue::-webkit-slider-thumb {
+  appearance: none;
+  width: 1rem;
+  height: 1rem;
+  border-radius: 50%;
+  background: #fff;
+  border: 2px solid rgba(0, 0, 0, 0.45);
+  cursor: pointer;
+}
+.profile-hue::-moz-range-thumb {
+  width: 1rem;
+  height: 1rem;
+  border-radius: 50%;
+  background: #fff;
+  border: 2px solid rgba(0, 0, 0, 0.45);
+  cursor: pointer;
+}
+/* a person chip carries their colour, so the directory reads as faces not rows */
+.profile-person-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+.profile-person-dot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.3rem;
+  height: 1.3rem;
+  border-radius: 50%;
+  font-size: 0.7rem;
+  font-weight: 700;
+  flex-shrink: 0;
 }
 .profile-editrow-head {
   display: flex;

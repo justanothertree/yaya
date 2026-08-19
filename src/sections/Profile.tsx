@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { getSupabaseClient } from '../finance/client'
+import { avatarStyle } from '../profile/look'
 import {
   ProfileBlocksEditor,
   ProfileBlocksView,
@@ -182,6 +183,8 @@ export function Profile({ authed }: { authed: boolean }) {
     <div style={{ display: 'grid', gap: 'var(--sp-3, 1rem)' }}>
       {/* identity header */}
       <div className="card" style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+        {/* Their colour, not the site's. This used to be var(--accent) for everyone, so all
+            thirty-odd profiles opened looking like the same page with a different letter. */}
         <span
           aria-hidden
           style={{
@@ -191,11 +194,10 @@ export function Profile({ authed }: { authed: boolean }) {
             width: '3.4rem',
             height: '3.4rem',
             borderRadius: '50%',
-            background: 'var(--accent)',
-            color: 'var(--btn-text, #fff)',
             fontSize: '1.5rem',
             fontWeight: 700,
             flexShrink: 0,
+            ...avatarStyle(p.username),
           }}
         >
           {initial}
@@ -300,7 +302,12 @@ export function Profile({ authed }: { authed: boolean }) {
           }}
         />
       ) : (
-        <ProfileBlocksView blocks={blocks} activity={activity} snakeBest={p.snake_best} />
+        <ProfileBlocksView
+          blocks={blocks}
+          activity={activity}
+          snakeBest={p.snake_best}
+          username={p.username}
+        />
       )}
 
       <div
@@ -356,12 +363,22 @@ export function Profile({ authed }: { authed: boolean }) {
                 .map((m) => (
                   <a
                     key={m.username}
-                    className="cz-chip"
+                    className="cz-chip profile-person-chip"
                     href={'#profile?u=' + encodeURIComponent(m.username)}
                     style={{ textDecoration: 'none' }}
                     title={m.is_friend ? 'Friend' : 'View profile'}
                   >
-                    {m.is_friend ? '⭐' : '👤'} {m.name}
+                    {/* the same colour their page opens in, so the list is recognisable at a
+                        glance rather than a wall of identical chips */}
+                    <span
+                      className="profile-person-dot"
+                      style={avatarStyle(m.username)}
+                      aria-hidden
+                    >
+                      {(m.name[0] ?? '★').toUpperCase()}
+                    </span>
+                    {m.name}
+                    {m.is_friend && <span aria-label="Friend"> ⭐</span>}
                   </a>
                 ))}
             </div>

@@ -55,6 +55,14 @@ import { applyPalette, loadPalette } from './theme/customTheme'
 const AdminPanel = lazy(() =>
   import('./sections/AdminPanel').then((m) => ({ default: m.AdminPanel })),
 )
+/**
+ * DEV-only workbench. The conditional wraps the dynamic import itself, not just the render:
+ * `import.meta.env.DEV` is substituted with `false` at build time, so the whole branch — and the
+ * chunk it would have pulled in — is eliminated rather than shipped as an orphan nobody fetches.
+ */
+const ProfileLookPreview = import.meta.env.DEV
+  ? lazy(() => import('./dev/ProfileLookPreview').then((m) => ({ default: m.ProfileLookPreview })))
+  : null
 const AcceptInvite = lazy(() =>
   import('./sections/AcceptInvite').then((m) => ({ default: m.AcceptInvite })),
 )
@@ -1336,6 +1344,14 @@ export default function App() {
               <AdminPanel />
             </Suspense>
           </section>
+        )}
+        {/* How a profile LOOKS can't be seen without a session (the page needs one, and the
+            customiser needs it to be YOUR page on top of that). Same workbench reasoning as
+            #dev-admin — invented people, real components. */}
+        {ProfileLookPreview && DEV_PREVIEW === 'profile' && (
+          <Suspense fallback={<div aria-busy>Loading…</div>}>
+            <ProfileLookPreview />
+          </Suspense>
         )}
         {/* ONE shared canvas instance — mounted whenever desktop+canvas are on, for every page
             except Circuit (still separate, see the next step) and invite (never canvas-capable).
