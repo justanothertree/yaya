@@ -360,7 +360,11 @@ export function Circuit({
   return (
     <>
       {!canvas && (
-        <section id="circuit" className={`card reveal cz-tab-${tab}`}>
+        <section id="circuit" className="card reveal" data-tab={tab}>
+          {/* ⚠️ the sub-tab above goes on a data attribute, NOT into className. React rewrites
+              the whole class attribute whenever the className string changes, which silently
+              wiped the `reveal-in` added by useReveal — so every tab click faded this section
+              to opacity 0 and left it there. */}
           <div
             className="cz-head"
             style={{ display: 'flex', alignItems: 'baseline', gap: '0.75rem', flexWrap: 'wrap' }}
