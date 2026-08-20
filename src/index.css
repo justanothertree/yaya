@@ -3893,3 +3893,23 @@ select {
   font-size: 0.72rem;
   opacity: 0.75;
 }
+/* A chat author's name is a way to them — the same move as a row in the directory. Styled as
+   text rather than a link so a conversation doesn't turn into a wall of blue: the affordance
+   shows up on hover, where you're already pointing. */
+.cz-msg-author {
+  display: block;
+  font-size: 0.72rem;
+  font-weight: 700;
+  opacity: 0.85;
+  color: inherit;
+  text-decoration: none;
+}
+a.cz-msg-author:hover,
+a.cz-msg-author:focus-visible {
+  text-decoration: underline;
+  opacity: 1;
+}
+/* the Lounge: a name with nowhere to go, so it must not look clickable */
+.cz-msg-author-plain {
+  cursor: default;
+}

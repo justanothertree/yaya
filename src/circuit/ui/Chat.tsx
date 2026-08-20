@@ -4,6 +4,7 @@ import {
   previewMember,
   PREVIEW_ME,
   PREVIEW_MSGS,
+  PREVIEW_PEOPLE,
   PREVIEW_UNREAD,
   previewOverview,
   PREVIEW_LOUNGE_IN,
@@ -37,8 +38,12 @@ type Overview = Room & {
 type Msg = {
   id: string
   room_id: string
-  user_id: string
+  /** null in the Lounge — see list_room_messages. Never read it to decide "is this mine". */
+  author_user_id: string | null
   author_name: string
+  /** present only when the author's identity is theirs to show; null makes the name unlinkable */
+  author_username: string | null
+  mine: boolean
   body: string
   created_at: string
 }
@@ -240,27 +245,41 @@ export function Chat({ authed = false }: { authed?: boolean }) {
   useEffect(() => {
     if (previewMember) {
       if (room) {
-        setMsgs(PREVIEW_MSGS[room.id] ?? [])
+        // Mirror what list_room_messages does server-side, so the harness exercises the real
+        // rule: identity everywhere except the lounge, where the name stays unlinkable.
+        setMsgs(
+          (PREVIEW_MSGS[room.id] ?? []).map((m) => ({
+            id: m.id,
+            room_id: m.room_id,
+            author_user_id: room.kind === 'lounge' ? null : m.user_id,
+            author_name: m.author_name,
+            author_username:
+              room.kind === 'lounge'
+                ? null
+                : (PREVIEW_PEOPLE.find((p) => p.name === m.author_name)?.username ?? null),
+            mine: m.user_id === PREVIEW_ME.id,
+            body: m.body,
+            created_at: m.created_at,
+          })),
+        )
         setTimeout(scrollDown, 60)
       }
       return
     }
     if (!sb || !room) return
     let live = true
-    void sb
-      .from('chat_messages')
-      .select('*')
-      .eq('room_id', room.id)
-      .order('created_at', { ascending: false })
-      .limit(50)
-      .then(({ data, error }) => {
-        if (!live) return
-        if (error) setErr(error.message)
-        else {
-          setMsgs(((data as Msg[]) ?? []).reverse())
-          setTimeout(scrollDown, 60)
-        }
-      })
+    // ⚠️ Through the RPC, not `from('chat_messages').select('*')`. The raw row carries the
+    // author's real user_id, which in the Lounge is exactly the thing the pseudonym exists to
+    // hide — one join against the member directory and the alias is gone. The RPC returns an
+    // identity only where it's the author's to show.
+    void sb.rpc('list_room_messages', { p_room: room.id, p_limit: 50 }).then(({ data, error }) => {
+      if (!live) return
+      if (error) setErr(error.message)
+      else {
+        setMsgs(((data as Msg[]) ?? []).reverse())
+        setTimeout(scrollDown, 60)
+      }
+    })
     const ch = sb
       // private: gated on being in this room, so a non-member can't even hold the subscription
       // open. The row payloads were already filtered by chat_messages' RLS — this is depth.
@@ -274,13 +293,38 @@ export function Chat({ authed = false }: { authed?: boolean }) {
           filter: `room_id=eq.${room.id}`,
         },
         (payload) => {
-          const m = payload.new as Msg
-          setMsgs((prev) => (prev.some((x) => x.id === m.id) ? prev : [...prev, m]))
+          const row = payload.new as {
+            id: string
+            room_id: string
+            user_id: string
+            author_name: string
+            body: string
+            created_at: string
+          }
+          setMsgs((prev) => {
+            if (prev.some((x) => x.id === row.id)) return prev
+            // The realtime payload is the raw row, so resolve the username the same way the
+            // RPC did rather than trusting anything in it: look the author up among messages
+            // already loaded for THIS room. In the lounge that map is empty by construction,
+            // so a live message is no more linkable than a loaded one.
+            const known = prev.find((x) => x.author_user_id === row.user_id)
+            const m: Msg = {
+              id: row.id,
+              room_id: row.room_id,
+              author_user_id: known ? row.user_id : null,
+              author_name: row.author_name,
+              author_username: known?.author_username ?? null,
+              mine: row.user_id === me,
+              body: row.body,
+              created_at: row.created_at,
+            }
+            return [...prev, m]
+          })
           setTimeout(scrollDown, 60)
           // We're looking at it, so keep it read. The bell reloads off this same INSERT,
           // so without announcing after the write lands it races us and badges a room
           // you are actively reading — with nothing left to re-read and clear it.
-          void sb.rpc('mark_room_read', { p_room: m.room_id }).then(() => notificationsChanged())
+          void sb.rpc('mark_room_read', { p_room: row.room_id }).then(() => notificationsChanged())
         },
       )
       .subscribe()
@@ -356,7 +400,7 @@ export function Chat({ authed = false }: { authed?: boolean }) {
     e.preventDefault()
     if (!room || !draft.trim() || sending) return
     if (previewMember) {
-      const m: Msg = {
+      const fixture = {
         id: 'pv' + Date.now(),
         room_id: room.id,
         user_id: PREVIEW_ME.id,
@@ -364,8 +408,11 @@ export function Chat({ authed = false }: { authed?: boolean }) {
         body: draft.trim(),
         created_at: new Date().toISOString(),
       }
-      setMsgs((prev) => [...prev, m])
-      PREVIEW_MSGS[room.id] = [...(PREVIEW_MSGS[room.id] ?? []), m]
+      setMsgs((prev) => [
+        ...prev,
+        { ...fixture, author_user_id: fixture.user_id, author_username: null, mine: true },
+      ])
+      PREVIEW_MSGS[room.id] = [...(PREVIEW_MSGS[room.id] ?? []), fixture]
       setDraft('')
       setTimeout(scrollDown, 60)
       return
@@ -518,7 +565,7 @@ export function Chat({ authed = false }: { authed?: boolean }) {
                 </p>
               )}
               {msgs.map((m, i) => {
-                const mine = m.user_id === me
+                const mine = m.mine
                 const newDay = i === 0 || dayOf(m.created_at) !== dayOf(msgs[i - 1].created_at)
                 return (
                   <div key={m.id}>
@@ -542,11 +589,20 @@ export function Chat({ authed = false }: { authed?: boolean }) {
                         color: mine ? 'var(--btn-text, #fff)' : 'var(--text, #eeeef8)',
                       }}
                     >
-                      {!mine && (
-                        <div style={{ fontSize: '0.72rem', fontWeight: 700, opacity: 0.85 }}>
-                          {m.author_name}
-                        </div>
-                      )}
+                      {!mine &&
+                        (m.author_username ? (
+                          <a
+                            className="cz-msg-author"
+                            href={'#profile?u=' + encodeURIComponent(m.author_username)}
+                            title={`See ${m.author_name}'s profile`}
+                          >
+                            {m.author_name}
+                          </a>
+                        ) : (
+                          // no username means the server withheld it (the Lounge): a name with
+                          // nowhere to go, which is the whole point of the pseudonym
+                          <div className="cz-msg-author cz-msg-author-plain">{m.author_name}</div>
+                        ))}
                       {/* A Snake challenge is an ordinary message with a room link in it. Shown
                           as a card with a Join button rather than a URL to squint at — and it
                           still falls back to the plain text if the link is malformed. */}
