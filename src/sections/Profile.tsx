@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
 import { getSupabaseClient } from '../finance/client'
 import { avatarStyle } from '../profile/look'
-import { derivePalette, type PaletteSeed } from '../theme/customTheme'
+import type { ProfileData } from '../profile/profileData'
+import { previewMember, PREVIEW_PROFILES } from '../dev/previewMember'
+import { derivePalette } from '../theme/customTheme'
 import { previewClickFx, setClickFxStyle, type FxStyle } from '../ui/clickFx'
 import { beatLink } from '../game/challenge'
 import {
@@ -31,30 +33,13 @@ const TIER_LABEL: Record<Tier, string> = {
  * visibility tiers (public / friends / members / private) layer on top of this later.
  */
 
-type ProfileData = {
-  username: string
-  first_name: string | null
-  member_since: string
-  is_me: boolean
-  friend_status: 'friends' | 'pending_out' | 'pending_in' | null
-  shared_circuits: { name: string; people: string[] }[]
-  movies_rated: number
-  snake_best: { score: number; game_mode: string | null; achieved: string } | null
-  /** the VIEWER's own best, so a profile can show you vs them without a second round trip */
-  viewer_snake_best?: { score: number } | null
-  activity_visibility: Tier
-  /** the theme + flair this person actually uses on the site — see set_my_profile_look */
-  look?: {
-    theme: 'light' | 'dark' | 'alt' | null
-    palette: PaletteSeed | null
-    flair: string | null
-  } | null
-}
-
 const userFromHash = () =>
   new URLSearchParams(window.location.hash.split('?')[1] ?? '').get('u') ?? ''
 
 type Person = { username: string; name: string; is_friend: boolean }
+
+/** viewer's choice: do other people's themes apply on their pages */
+const LOOK_KEY = 'profile_wear_their_look_v1'
 
 export function Profile({ authed }: { authed: boolean }) {
   const [u, setU] = useState(userFromHash)
@@ -71,6 +56,30 @@ export function Profile({ authed }: { authed: boolean }) {
   const [blocks, setBlocks] = useState<ProfileBlock[]>([])
   const [activity, setActivity] = useState<ActivityItem[]>([])
   const [editing, setEditing] = useState(false)
+  /**
+   * Whether to wear other people's looks at all.
+   *
+   * Someone else's palette and flair are the point of a profile, but they're also a stranger's
+   * taste landing on your screen unasked — and not everyone wants that, especially anyone who
+   * picked a high-contrast or quiet theme deliberately. Off means their page renders in YOUR
+   * theme; their avatar colour stays either way, since that's how you recognise whose page
+   * you're on rather than a style choice.
+   */
+  const [wearTheirLook, setWearTheirLook] = useState(() => {
+    try {
+      return localStorage.getItem(LOOK_KEY) !== '0'
+    } catch {
+      return true
+    }
+  })
+  const setWear = (on: boolean) => {
+    setWearTheirLook(on)
+    try {
+      localStorage.setItem(LOOK_KEY, on ? '1' : '0')
+    } catch {
+      /* private mode — it just won't stick */
+    }
+  }
 
   // moving between profiles changes only the ?u= — the section stays 'profile', so App
   // won't remount us; track the hash ourselves
@@ -103,6 +112,11 @@ export function Profile({ authed }: { authed: boolean }) {
     if (!authed || !u) return
     let live = true
     setState({ kind: 'loading' })
+    if (previewMember) {
+      const hit = PREVIEW_PROFILES[u]
+      setState(hit ? { kind: 'ok', p: hit } : { kind: 'missing' })
+      return
+    }
     getSupabaseClient()
       .rpc('get_member_profile', { p_username: u })
       .then(({ data, error }) => {
@@ -123,7 +137,8 @@ export function Profile({ authed }: { authed: boolean }) {
    * a picture. Restoring reads the viewer's own choice from the same key App persists it to,
    * which keeps this self-contained — Profile never needs to be handed the visitor's settings.
    */
-  const theirFlair = state.kind === 'ok' ? (state.p.look?.flair ?? null) : null
+  const theirFlair =
+    state.kind === 'ok' && (wearTheirLook || state.p.is_me) ? (state.p.look?.flair ?? null) : null
   useEffect(() => {
     if (!theirFlair) return
     setClickFxStyle(theirFlair as FxStyle)
@@ -222,11 +237,15 @@ export function Profile({ authed }: { authed: boolean }) {
    * are plain attribute selectors — dark needed an explicit block added for the same reason.
    */
   const look = p.look ?? null
-  const lookVars = look?.palette ? (derivePalette(look.palette) as React.CSSProperties) : undefined
+  // your own page always renders in your own look, so the toggle can't make it look wrong to you
+  const wearing = look && (wearTheirLook || p.is_me) ? look : null
+  const lookVars = wearing?.palette
+    ? (derivePalette(wearing.palette) as React.CSSProperties)
+    : undefined
 
   return (
     <div
-      data-theme={look?.palette ? undefined : (look?.theme ?? undefined)}
+      data-theme={wearing?.palette ? undefined : (wearing?.theme ?? undefined)}
       style={{ display: 'grid', gap: 'var(--sp-3, 1rem)', ...lookVars }}
     >
       {/* identity header */}
@@ -268,7 +287,27 @@ export function Profile({ authed }: { authed: boolean }) {
           {look && (look.theme || look.palette || look.flair) && (
             <p className="muted" style={{ margin: '0.15rem 0 0', fontSize: '0.75rem' }}>
               {p.is_me ? 'Your look' : `${display}'s look`}
-              {look.flair && (
+              {/* Lives here rather than in the cog: this is where you notice the page looks
+                  different, so it's where the way out belongs. */}
+              {!p.is_me && (
+                <>
+                  {' · '}
+                  <button
+                    className="btn"
+                    style={{ padding: '0 0.4rem', fontSize: '0.72rem' }}
+                    aria-pressed={wearTheirLook}
+                    onClick={() => setWear(!wearTheirLook)}
+                    title={
+                      wearTheirLook
+                        ? 'Show every profile in your own theme instead'
+                        : 'Let profiles show their own theme again'
+                    }
+                  >
+                    {wearTheirLook ? '🎨 Their theme' : '🎨 My theme'}
+                  </button>
+                </>
+              )}
+              {wearing?.flair && (
                 <>
                   {' · '}
                   <button
@@ -277,13 +316,13 @@ export function Profile({ authed }: { authed: boolean }) {
                     onClick={(e) => {
                       const r = e.currentTarget.getBoundingClientRect()
                       previewClickFx(
-                        look.flair as FxStyle,
+                        wearing.flair as FxStyle,
                         r.left + r.width / 2,
                         r.top + r.height / 2,
                       )
                     }}
                   >
-                    ✨ {look.flair}
+                    ✨ {wearing.flair}
                   </button>
                 </>
               )}

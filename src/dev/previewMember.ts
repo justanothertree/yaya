@@ -1,3 +1,5 @@
+import type { ProfileData } from '../profile/profileData'
+
 // ── DEV-ONLY member preview harness ──────────────────────────────────────────
 // Renders the signed-in, members-only UI (chat, DMs, gated nav) using FAKE local data
 // so those screens can be inspected in the preview without ever signing in.
@@ -202,4 +204,71 @@ export const PREVIEW_MSGS: Record<string, PreviewMsg[]> = {
       created_at: t(38),
     },
   ],
+}
+
+/**
+ * Stand-in profiles, so the profile page (looks, blocks, guestbook) can be inspected without a
+ * session. Every person here is invented — see the note at the top of this file.
+ *
+ * The looks are deliberately loud and different from each other: the whole question a preview
+ * has to answer is "does someone else's theme actually land on their page, and can I get out
+ * of it", and two tasteful near-identical palettes prove nothing.
+ */
+export const PREVIEW_PROFILES: Record<string, ProfileData> = {
+  Alex: {
+    username: 'Alex',
+    first_name: 'Alex',
+    member_since: 'Mar 2025',
+    is_me: false,
+    friend_status: 'pending_in',
+    shared_circuits: [{ name: 'The Crew', people: ['Alex', 'Riley', PREVIEW_ME.name] }],
+    movies_rated: 12,
+    snake_best: { score: 180, game_mode: 'race', achieved: '2026-07-02' },
+    viewer_snake_best: { score: 225 },
+    activity_visibility: 'friends',
+    look: { theme: 'light', palette: null, flair: 'hearts' },
+  },
+  Riley: {
+    username: 'Riley',
+    first_name: 'Riley',
+    member_since: 'Jan 2025',
+    is_me: false,
+    friend_status: 'pending_out',
+    shared_circuits: [{ name: 'The Crew', people: ['Alex', 'Riley', PREVIEW_ME.name] }],
+    movies_rated: 3,
+    snake_best: null,
+    activity_visibility: 'members',
+    // a custom palette rather than a built-in theme, so both code paths get exercised
+    look: {
+      theme: null,
+      palette: { bg: '#1a0f2e', text: '#f4e9ff', accent: '#ff7ab8' },
+      flair: 'orbit',
+    },
+  },
+  jordan_b: {
+    username: 'jordan_b',
+    first_name: 'Jordan',
+    member_since: 'Feb 2025',
+    is_me: false,
+    friend_status: 'friends',
+    shared_circuits: [],
+    movies_rated: 0,
+    snake_best: null,
+    activity_visibility: 'friends',
+    // no look set: their page should render exactly like the rest of the site
+    look: null,
+  },
+  preview: {
+    username: 'preview',
+    first_name: PREVIEW_ME.name,
+    member_since: 'Jan 2025',
+    is_me: true,
+    friend_status: null,
+    shared_circuits: [{ name: 'The Crew', people: ['Alex', 'Riley', PREVIEW_ME.name] }],
+    movies_rated: 7,
+    snake_best: { score: 225, game_mode: 'solid', achieved: '2026-08-01' },
+    activity_visibility: 'friends',
+    // your own page: always your look, whatever the viewer toggle says
+    look: { theme: 'alt', palette: null, flair: 'sparks' },
+  },
 }
