@@ -114,8 +114,8 @@ $function$;
 --   (a) accept it -- this is the approved design working as intended
 --   (b) join the circuit properly:
 --         insert into circuit_group_members (group_id, user_id, role)
---         values ('f66f8ef8-949e-4f4d-8cda-0d0766280dba',
---                 'e7f2eec5-f4cb-4b1b-bf94-09e4ec1751f7', 'member');
+--         values ('<a-circuit-group-uuid>',
+--                 '<your-user-uuid>', 'member');
 --       (this also fixes the asymmetry, since Colin can already see Evan)
 --   (c) ask Colin to set his board to 'friends' -- Evan is admin, so the
 --       override applies above 'private'

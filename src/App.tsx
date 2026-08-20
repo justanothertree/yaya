@@ -373,8 +373,8 @@ export default function App() {
 
   // Who the cog menu greets. The email is peeked from the LOCAL session so it paints
   // instantly and can never flash or gate anything; the real name follows from the profile
-  // a moment later. An address is not a name — "cvaneook@outlook.com" made the avatar a
-  // "C" for a man called Evan.
+  // a moment later. An address is not a name — an address starting with an initial made the
+  // avatar the wrong letter for the person it belonged to.
   const [me, setMe] = useState<{
     name: string | null
     email: string | null

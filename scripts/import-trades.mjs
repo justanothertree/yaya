@@ -375,7 +375,13 @@ if (!committing) {
 // only symbols you haven't toggled to Personal get split across the fund.
 const url = process.env.SUPABASE_URL || 'https://lcpyatpktpkiybocyoij.supabase.co'
 const key = process.env.SUPABASE_SERVICE_ROLE_KEY
-const owner = process.env.FUND_OWNER_UID || 'e7f2eec5-f4cb-4b1b-bf94-09e4ec1751f7'
+// No hardcoded default: this repo is public, and an account uuid in it is a ready-made target
+// for anyone crafting calls against a specific account. Pass FUND_OWNER_UID in the environment.
+const owner = process.env.FUND_OWNER_UID
+if (!owner) {
+  console.error('\nSet FUND_OWNER_UID in your environment (the account to import trades for). Aborting.')
+  process.exit(1)
+}
 if (!key) {
   console.error('\n--commit needs SUPABASE_SERVICE_ROLE_KEY in your environment. Aborting (nothing written).')
   process.exit(1)

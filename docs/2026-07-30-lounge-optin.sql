@@ -90,7 +90,7 @@ grant execute on function public.my_lounge_opt_in() to authenticated;
 
 -- OPTIONAL — opt yourself in (there is no button yet):
 -- update public.profiles set lounge_opt_in = true
---  where user_id = 'e7f2eec5-f4cb-4b1b-bf94-09e4ec1751f7';
+--  where user_id = '<your-user-uuid>';
 
 
 -- ============================================================================

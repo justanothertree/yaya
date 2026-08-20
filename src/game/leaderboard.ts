@@ -126,19 +126,31 @@ export function modeKeyFor(settings?: {
   return parts.length ? parts.join('+') : 'survival'
 }
 
+/**
+ * What became of a submitted score.
+ *
+ * `claimed` is the one that needs saying out loud: the name belongs to a member, and only they
+ * can post under it. Signed-out play on an unclaimed name still saves normally.
+ */
+export type SubmitResult = 'saved' | 'claimed' | 'local'
+
 export async function submitScore(
   entry: LeaderboardEntry & {
     gameMode?: string
     applesEaten?: number
     timeElapsed?: number
   },
-): Promise<void> {
+): Promise<SubmitResult> {
   const { url, anon } = envs()
   const client = getClient()
   const name = (entry.username || '').trim()
   // Server-authoritative: every score goes through the submit_score RPC (direct table writes are
   // locked down). It finds-or-creates the player, records history, and keeps only each player's
   // best — so no one can tamper with or clear the board through the REST API.
+  //
+  // ⚠️ The RPC REFUSES BY RETURNING NULL, not by raising — a claimed handle is only writable by
+  // the member who claimed it. So `!error` is not success: checking only the error meant a
+  // refused score looked saved and then quietly wasn't there.
   const params = {
     p_name: name,
     p_score: entry.score,
@@ -149,8 +161,9 @@ export async function submitScore(
   }
   if (name && client && url && anon) {
     try {
-      const { error } = await client.rpc('submit_score', params)
-      if (!error) return
+      const { data, error } = await client.rpc('submit_score', params)
+      if (!error && data != null) return 'saved'
+      if (!error) return 'claimed'
     } catch {
       // fall through to REST / local
     }
@@ -159,10 +172,15 @@ export async function submitScore(
     try {
       const res = await fetch(`${url}/rest/v1/rpc/submit_score`, {
         method: 'POST',
-        headers: sbHeaders(anon, { Prefer: 'return=minimal' }),
+        headers: sbHeaders(anon),
         body: JSON.stringify(params),
       })
-      if (res.ok) return
+      if (res.ok) {
+        const body = (await res.text()).trim()
+        // same contract over REST: a bare `null` body is a refusal, not a save
+        if (body && body !== 'null') return 'saved'
+        return 'claimed'
+      }
     } catch {
       /* ignore */
     }
@@ -182,6 +200,7 @@ export async function submitScore(
   } catch {
     /* ignore */
   }
+  return 'local'
 }
 
 export async function fetchLeaderboard(

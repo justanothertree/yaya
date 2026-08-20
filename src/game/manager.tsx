@@ -526,7 +526,7 @@ export function GameManager({
     try {
       // Tag the run with the mode it was actually played in, so a race or a tron round stops
       // being filed onto the classic board alongside runs it can't be compared with.
-      await submitScore({
+      const outcome = await submitScore({
         username: nm,
         score: sc,
         date: new Date().toISOString(),
@@ -538,9 +538,20 @@ export function GameManager({
       ])
       setLeaders(top)
       setMyRank(rank)
-      setToast('Score saved!')
+      // A claimed name belongs to whoever claimed it — say so rather than showing "Score saved!"
+      // over a score the server refused. Silence here is how a forged-score fix turns into
+      // "the game lost my run".
+      setToast(
+        outcome === 'claimed'
+          ? `"${nm}" belongs to a member — sign in as them to post under it.`
+          : 'Score saved!',
+      )
       if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current)
-      toastTimerRef.current = window.setTimeout(() => setToast(null), 2000) as unknown as number
+      // "your run wasn't recorded" needs longer on screen than "saved!" does
+      toastTimerRef.current = window.setTimeout(
+        () => setToast(null),
+        outcome === 'claimed' ? 5000 : 2000,
+      ) as unknown as number
     } catch {
       /* ignore */
     }
