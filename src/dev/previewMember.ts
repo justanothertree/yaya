@@ -272,3 +272,15 @@ export const PREVIEW_PROFILES: Record<string, ProfileData> = {
     look: { theme: 'alt', palette: null, flair: 'sparks' },
   },
 }
+
+/**
+ * A call in progress, for the preview.
+ *
+ * Voice presence is live realtime state with no session behind it in preview mode, so
+ * without this the "someone is calling you" notice has nothing to render from and cannot be
+ * looked at without two real people and two browsers.
+ */
+export const PREVIEW_VOICE_IN: Record<string, string[]> = {
+  'pv-dm': ['Alex'],
+  'pv-crew': ['Riley', 'Casey'],
+}

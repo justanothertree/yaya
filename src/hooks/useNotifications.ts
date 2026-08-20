@@ -18,7 +18,7 @@ import { onNotificationsChanged } from './notifySignal'
 
 export type Notice = {
   id: string
-  kind: 'chat' | 'friend' | 'kudos' | 'comment' | 'join' | 'guestbook'
+  kind: 'chat' | 'friend' | 'kudos' | 'comment' | 'join' | 'guestbook' | 'call'
   text: string
   detail?: string
   /** where tapping it should take you */
@@ -26,8 +26,19 @@ export type Notice = {
   count?: number
 }
 
+/** just enough about a conversation for someone else to notice a call happening in it */
+export type NotifRoom = { id: string; name: string; kind: string }
+
 export type Notifications = {
   items: Notice[]
+  /**
+   * Every conversation you can see, not only the ones with something waiting.
+   *
+   * Exposed because this hook is the one place that's always mounted AND knows your room
+   * list, which is exactly what a site-wide "someone is in a call" watch needs. Live call
+   * presence itself deliberately stays out of here — see App, where it's subscribed once.
+   */
+  rooms: NotifRoom[]
   total: number
   unreadChats: number
   friendRequests: number
@@ -74,6 +85,7 @@ function activityNotice(a: ActivityRow, i: number): Notice {
 
 export function useNotifications(authed: boolean): Notifications {
   const [items, setItems] = useState<Notice[]>([])
+  const [rooms, setAllRooms] = useState<NotifRoom[]>([])
   // set once the bell has been opened, so activity drops out of the count immediately while
   // the panel you're reading still shows it
   const seenRef = useRef(false)
@@ -81,6 +93,7 @@ export function useNotifications(authed: boolean): Notifications {
 
   const load = useCallback(async () => {
     if (previewMember) {
+      setAllRooms(previewOverview().map((r) => ({ id: r.id, name: r.name, kind: r.kind })))
       const rooms = previewOverview().filter((r) => (PREVIEW_UNREAD[r.id] ?? 0) > 0)
       const reqs = PREVIEW_PEOPLE.filter((p) => p.rel === 'in')
       setItems([
@@ -105,6 +118,7 @@ export function useNotifications(authed: boolean): Notifications {
     }
     if (!authed) {
       setItems([])
+      setAllRooms([])
       return
     }
     const sb = getSupabaseClient()
@@ -113,14 +127,15 @@ export function useNotifications(authed: boolean): Notifications {
       sb.rpc('list_friends'),
       sb.rpc('list_activity_notices'),
     ])
-    const rooms = (
-      (chat.data ?? []) as {
-        id: string
-        name: string
-        unread: number
-        last_body: string | null
-      }[]
-    ).filter((r) => r.unread > 0)
+    const overview = (chat.data ?? []) as {
+      id: string
+      name: string
+      kind: string
+      unread: number
+      last_body: string | null
+    }[]
+    setAllRooms(overview.map((r) => ({ id: r.id, name: r.name, kind: r.kind })))
+    const rooms = overview.filter((r) => r.unread > 0)
     const reqs = (
       (friends.data ?? []) as {
         username: string
@@ -238,6 +253,7 @@ export function useNotifications(authed: boolean): Notifications {
   const activity = seen ? 0 : items.filter((i) => i.kind !== 'chat' && i.kind !== 'friend').length
   return {
     items,
+    rooms,
     total: unreadChats + friendRequests + activity,
     unreadChats,
     friendRequests,

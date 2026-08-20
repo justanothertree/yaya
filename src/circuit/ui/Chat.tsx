@@ -10,8 +10,6 @@ import {
   PREVIEW_LOUNGE_IN,
 } from '../../dev/previewMember'
 import { notificationsChanged } from '../../hooks/notifySignal'
-import { useVoiceSession } from '../../voice/useVoiceSession'
-import { useVoicePresence } from '../../voice/useVoicePresence'
 import { useRoomPresence } from '../../voice/useRoomPresence'
 import { VoiceBar } from '../../voice/VoiceBar'
 import { challengeRoomOf, challengeText } from '../../game/challenge'
@@ -62,7 +60,14 @@ function whenLabel(iso: string | null): string {
   return d.toLocaleDateString([], { month: 'numeric', day: 'numeric' })
 }
 
-export function Chat({ authed = false }: { authed?: boolean }) {
+export function Chat({
+  authed = false,
+  voiceIn = {},
+}: {
+  authed?: boolean
+  /** who is in each room's call, subscribed once in App — see useVoicePresence */
+  voiceIn?: Record<string, string[]>
+}) {
   // DEV member preview: render with fake rooms/messages, no Supabase session (see previewMember)
   const sb = authed && !previewMember ? getSupabaseClient() : null
   const [rooms, setRooms] = useState<Overview[]>([])
@@ -102,20 +107,11 @@ export function Chat({ authed = false }: { authed?: boolean }) {
     myLoungeName ?? myName,
   )
   const [loungeBusy, setLoungeBusy] = useState(false)
-  // Voice rides the room you're already in: a DM is a 1:1 call, a circuit room a small
-  // group one. The call lives in voiceSession, not here, so it survives navigating away or
-  // toggling canvas — this component only reads and controls it.
-  const voice = useVoiceSession()
-  // Live occupancy for every conversation you can see, so a call in progress is visible
-  // from the list without opening it — the thing that makes people join.
-  const voiceIn = useVoicePresence(
-    previewMember || !sb ? [] : rooms.map((r) => r.id),
-    me,
-    myName,
-    // the room the CALL is in, which is no longer necessarily the one you're looking at —
-    // you can browse other conversations without leaving the call
-    voice.inCall ? voice.roomId : null,
-  )
+  // Live occupancy for every conversation you can see, so a call in progress is visible from
+  // the list without opening it. ⚠️ Handed down rather than subscribed here: the bell needs
+  // the same presence to notify you about a call while you're on another page, and two
+  // subscribers to one `vp:<room>` topic is not two channels — realtime-js dedupes by topic,
+  // so whichever one tears down first takes the other's subscription with it.
 
   const loadOverview = useCallback(async () => {
     if (previewMember) {

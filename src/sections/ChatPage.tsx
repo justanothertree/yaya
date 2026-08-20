@@ -4,7 +4,14 @@
 // mobile treatment the chat already had as a Circuit tab.
 import { Chat } from '../circuit/ui/Chat'
 
-export function ChatPage({ authed = false }: { authed?: boolean }) {
+export function ChatPage({
+  authed = false,
+  voiceIn,
+}: {
+  authed?: boolean
+  /** who is in each room's call — subscribed once in App, see useVoicePresence */
+  voiceIn?: Record<string, string[]>
+}) {
   return (
     <div className="cz-tab-chat">
       <div
@@ -18,7 +25,7 @@ export function ChatPage({ authed = false }: { authed?: boolean }) {
           your circles, your crew, your DMs
         </span>
       </div>
-      <Chat authed={authed} />
+      <Chat authed={authed} voiceIn={voiceIn} />
     </div>
   )
 }

@@ -58,6 +58,7 @@ export function Circuit({
   canvasMode = false,
   isActiveTab = true,
   focusPing = 0,
+  voiceIn,
   onCanvasPanesChange,
   onOpenCanvasPane,
 }: {
@@ -73,6 +74,8 @@ export function Circuit({
   /** bumped on every nav click, including one on the tab you're already on — see App's navPing.
    *  Without it, clicking Circuit while already on Circuit couldn't pan the camera back. */
   focusPing?: number
+  /** who is in each room's call — subscribed once in App, see useVoicePresence */
+  voiceIn?: Record<string, string[]>
   /** hand the shared canvas fresh copies of every sub-tab pane, and the circuit-filter picker
    * to show in its toolbar, whenever what they'd render changes */
   onCanvasPanesChange?: (panes: CanvasPane[], toolbar: ReactNode | null) => void
@@ -286,7 +289,7 @@ export function Circuit({
       node: <Charts onDayClick={requestLog} viewGroup={activeGroup} />,
     },
     ...(authed
-      ? [{ id: 'chat', title: '💬 Chat', node: <Chat authed /> }]
+      ? [{ id: 'chat', title: '💬 Chat', node: <Chat authed voiceIn={voiceIn} /> }]
       : [
           {
             id: 'movies',
@@ -454,7 +457,7 @@ export function Circuit({
               <Feed onOpenLog={requestLog} authed={authed} viewGroup={activeGroup} />
             )}
             {tab === 'charts' && <Charts onDayClick={requestLog} viewGroup={activeGroup} />}
-            {tab === 'chat' && <Chat authed={authed} />}
+            {tab === 'chat' && <Chat authed={authed} voiceIn={voiceIn} />}
             {tab === 'movies' && <Movies viewGroup={activeGroup} groups={groups} />}
             {tab === 'watchlist' && <Watchlist viewGroup={activeGroup} groups={groups} />}
             {tab === 'circuits' && <CircuitsPanel />}

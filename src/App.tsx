@@ -29,12 +29,14 @@ import { UsagePanel } from './components/UsagePanel'
 import { voiceSession } from './voice/voiceSession'
 import { CallDock } from './voice/CallDock'
 import { useReveal } from './hooks/useReveal'
-import { useNotifications } from './hooks/useNotifications'
+import { useNotifications, type Notice } from './hooks/useNotifications'
+import { useVoicePresence } from './voice/useVoicePresence'
+import { useVoiceSession } from './voice/useVoiceSession'
 import { NotificationBell } from './components/NotificationBell'
 import { hasFinanceSupabaseEnv } from './finance/env'
 import { getSessionUser, onAuthStateChange, peekPersistedUserId, signOut } from './finance/auth'
 import { getSupabaseClient } from './finance/client'
-import { previewMember, PREVIEW_ME } from './dev/previewMember'
+import { previewMember, PREVIEW_ME, PREVIEW_VOICE_IN } from './dev/previewMember'
 
 // Lazy-load heavier sections (declared at module scope so they don't remount on each App render)
 const SignIn = lazy(() => import('./sections/SignIn').then((m) => ({ default: m.SignIn })))
@@ -415,6 +417,53 @@ export default function App() {
   // used to push a "full screen" window past the viewport (scroll to see it all).
   const [canvasMounted, setCanvasMounted] = useState(false)
   const notifications = useNotifications(isFinanceAuthed || previewMember)
+
+  /**
+   * Who is in a call, anywhere you can see — subscribed ONCE, here, for the whole site.
+   *
+   * It used to live inside Chat, which meant the only way to find out somebody was calling
+   * you was to already be looking at the conversation. It can't simply be subscribed in both
+   * places either: realtime-js dedupes channels by topic, so a second `vp:<room>` isn't a
+   * second channel, and whichever consumer unmounts first tears down the other's
+   * subscription. One owner, handed down to everything that needs it.
+   */
+  const voice = useVoiceSession()
+  const livePresence = useVoicePresence(
+    previewMember ? [] : notifications.rooms.map((r) => r.id),
+    peekPersistedUserId(),
+    me.name ?? 'Someone',
+    // the room the CALL is in, which is not necessarily the one on screen — you can browse
+    // other conversations, or other pages entirely, without leaving the call
+    voice.inCall ? voice.roomId : null,
+  )
+  const voiceIn = previewMember ? PREVIEW_VOICE_IN : livePresence
+  /**
+   * "Someone is in a call you can join" as a bell notice.
+   *
+   * Built here rather than inside useNotifications because it's live presence, not something
+   * fetched: it appears and disappears on its own, so it must NOT be silenced by the bell's
+   * seen-marker the way an activity notice is. A call you're already in is left out — you
+   * don't need telling about the room you're sitting in.
+   */
+  const callNotices: Notice[] = notifications.rooms
+    .filter((r) => (voiceIn[r.id]?.length ?? 0) > 0 && !(voice.inCall && voice.roomId === r.id))
+    .map((r) => {
+      const who = voiceIn[r.id]
+      return {
+        id: 'call-' + r.id,
+        kind: 'call' as const,
+        // a DM has exactly one other person in it, so it really is them calling YOU
+        text:
+          r.kind === 'dm' ? `${who[0]} is calling you` : `${who.length} in the call in ${r.name}`,
+        detail: who.join(', '),
+        href: '#chat?room=' + r.id,
+      }
+    })
+  const withCalls = {
+    ...notifications,
+    items: [...callNotices, ...notifications.items],
+    total: notifications.total + callNotices.length,
+  }
 
   // Drives the root font-size (see index.css). Canvas mode opts out: it positions windows
   // in its own coordinate space and a scaled root fights it.
@@ -982,7 +1031,7 @@ export default function App() {
       case 'signin':
         return <SignIn />
       case 'chat':
-        return <ChatPage authed={isFinanceAuthed || previewMember} />
+        return <ChatPage authed={isFinanceAuthed || previewMember} voiceIn={voiceIn} />
       case 'ratings':
         return <Ratings authed={isFinanceAuthed || previewMember} />
       case 'people':
@@ -1272,7 +1321,7 @@ export default function App() {
               </button>
             </div>
             {(isFinanceAuthed || previewMember) && !suspended && (
-              <NotificationBell notifications={notifications} />
+              <NotificationBell notifications={withCalls} />
             )}
             <SettingsMenu
               theme={theme}
@@ -1454,6 +1503,7 @@ export default function App() {
               isActiveTab={active === 'circuit'}
               // re-clicking Circuit in the nav pans back to its Board, same as every other tab
               focusPing={navPing}
+              voiceIn={voiceIn}
               onCanvasPanesChange={(panes, toolbar) => {
                 setCircuitCanvasPanes(panes)
                 setCircuitToolbar(toolbar)
@@ -1485,7 +1535,7 @@ export default function App() {
                 </div>
               }
             >
-              <ChatPage authed={isFinanceAuthed || previewMember} />
+              <ChatPage authed={isFinanceAuthed || previewMember} voiceIn={voiceIn} />
             </Suspense>
           </section>
         )}
