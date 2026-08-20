@@ -1,0 +1,71 @@
+-- ============================================================================
+-- ✅ RELAY SECURITY SWEEP, 2026-08-20. Migration: finalize_round_bounds_the_score_it_is_handed
+--
+-- The Render WebSocket relay (server/ws-server.js, wss://yaya-e2rw.onrender.com) was the last
+-- unaudited surface — it sits outside Postgres, so none of the RLS work protects it, and it
+-- holds SUPABASE_SERVICE_ROLE_KEY, which bypasses every policy.
+--
+-- ── FOUND: an unauthenticated stranger can write the Snake leaderboard ──────
+-- The chain, every link verified in the source:
+--   1. `new WebSocketServer({ server })` with NO verifyClient and NO origin check — the socket
+--      accepts anyone on the internet.
+--   2. The display name is self-declared on join, and the score is client-declared:
+--      `st.lastScore = Number(msg.score)` straight off the wire, validated only as `typeof
+--      === 'number'`.
+--   3. When the round ends the relay calls finalize_round_rpc WITH THE SERVICE ROLE KEY.
+--   4. That function did `INSERT INTO player_registry(player_name) ... ON CONFLICT DO NOTHING`
+--      then selected the row BY NAME and wrote leaderboard + score_history + trophies to it.
+--
+-- So: pick a member's claimed handle as your name, report any score, finish the round. This is
+-- a confused deputy — the relay's privilege used on behalf of an unauthenticated party — and it
+-- BYPASSES the ownership rule submit_score got on 2026-08-19.
+--
+-- ── FIXED HERE (what is reachable from the database alone) ─────────────────
+--   * the score is capped at 1,000,000, the same ceiling submit_score uses. There was no upper
+--     bound at all, only `DELETE ... WHERE score < 0`, so 2,000,000,000 was writable.
+--     Verified: a forged 2e9 round now writes 1000000.
+--     Kept as a CAP not a DELETE, so dropping a row can't silently change who came second.
+--   * EXECUTE re-revoked from public/anon/authenticated, granted to service_role only.
+--     Verified: anon false, authenticated false, service_role true.
+--   * Regression-checked: a normal 2-player round still ranks correctly, and replaying a
+--     finalized round still returns the ORIGINAL results (a 999999 replay did not overwrite).
+--
+-- ── STILL OPEN: the name is still trusted ─────────────────────────────────
+-- Capping bounds the damage; it does not stop forgery. A forged round can still write up to
+-- 1,000,000 under a handle somebody has claimed.
+--
+-- Closing it needs verified identity to reach this function, which is a RELAY + CLIENT change
+-- and a separate Render deploy:
+--   1. the client sends its Supabase access token on WS join (it has one whenever signed in);
+--   2. the relay verifies it — it ALREADY has this machinery, `verifyUser()`, used today for
+--      the /ice TURN endpoint — and binds the socket to a user id;
+--   3. finalize passes that verified id per player;
+--   4. this function then refuses to write to a claimed handle unless the verified id matches
+--      player_registry.user_id for it.
+-- Signed-out players keep playing on unclaimed names, which is the point of public Snake.
+--
+-- Rollout order matters: step 4 must ship AFTER the relay starts sending ids, or every
+-- multiplayer score under a claimed handle silently stops recording in the gap.
+--
+-- ── VERIFIED CLEAN in the relay ───────────────────────────────────────────
+--   * service-role usage is only two paths: run_due_scheduled_trades (timer-driven, takes only
+--     a batch size from env — NO client input reaches it) and finalize_round_rpc above.
+--   * HTTP routes are properly gated: /usage is admin-only and asks the DATABASE's own
+--     is_admin() rather than keeping a copy of the rule; /ice mints TURN credentials only for
+--     a verified user and falls back to STUN otherwise, so an expired session degrades instead
+--     of breaking calls. The Cloudflare TURN API token never leaves the server.
+--   * DoS basics are present: 32 KB max message, name truncation at 64, chat capped at 300
+--     chars with a 5-per-4s burst limit, room ids capped at 64.
+--   * the token cache is per-token with a TTL and is cleared past 200 entries, so it cannot
+--     grow unbounded.
+--
+-- ── STILL NOT SWEPT ───────────────────────────────────────────────────────
+--   * WS connection rate/volume limiting (a stranger can still open sockets and create rooms)
+--   * whether Render's own env/secret handling is as expected — outside this repo
+-- ============================================================================
+
+-- the change itself is the `least(..., v_max_score)` on the way into tmp_items, plus:
+-- revoke all on function public.finalize_round_rpc(text, text, text, jsonb, jsonb)
+--   from public, anon, authenticated;
+-- grant execute on function public.finalize_round_rpc(text, text, text, jsonb, jsonb)
+--   to service_role;
