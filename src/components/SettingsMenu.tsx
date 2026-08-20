@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { PalettePicker } from '../theme/PalettePicker'
 import { previewClickFx, type FxStyle } from '../ui/clickFx'
+import { playCallSound, ringtoneEnabled, setRingtoneEnabled } from '../voice/ringtone'
 
 export type Theme = 'light' | 'dark' | 'alt'
 
@@ -97,6 +98,7 @@ export function SettingsMenu({
   /** same reasoning as palOpen: a dozen style tiles inline turned the whole cog menu into a
    * scroll every time flair was on, so picking a style opens its own dialog instead */
   const [styleOpen, setStyleOpen] = useState(false)
+  const [callSound, setCallSound] = useState(ringtoneEnabled)
   const currentFx = FX_STYLE_OPTIONS.find(([id]) => id === sparksStyle)
   const wrapRef = useRef<HTMLDivElement>(null)
   const cogRef = useRef<HTMLButtonElement>(null)
@@ -301,6 +303,26 @@ export function SettingsMenu({
               <span className="muted"> · {sparksOn ? currentFx?.[2] : 'None'}</span>
             </span>
             <span className="muted">›</span>
+          </button>
+
+          {/* Local to this menu rather than lifted into App: nothing else needs to know, and the
+              sound module reads the same key it writes. Clicking it also PLAYS the sound — a
+              switch for something you can't hear is a switch you can't judge, and the click
+              itself is the gesture that unblocks audio in the first place. */}
+          <button
+            className="nav-menu-row"
+            role="menuitemcheckbox"
+            aria-checked={callSound}
+            onClick={() => {
+              const next = !callSound
+              setCallSound(next)
+              setRingtoneEnabled(next)
+              if (next) playCallSound('ring')
+            }}
+            title="Play a sound when someone starts a call you can join"
+          >
+            <span>🔔 Call sound</span>
+            <span className={'nav-menu-switch' + (callSound ? ' is-on' : '')} aria-hidden />
           </button>
 
           {desktop && (

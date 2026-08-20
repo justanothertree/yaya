@@ -31,6 +31,7 @@ import { CallDock } from './voice/CallDock'
 import { useReveal } from './hooks/useReveal'
 import { useNotifications, type Notice } from './hooks/useNotifications'
 import { useVoicePresence } from './voice/useVoicePresence'
+import { armRingtone, playCallSound } from './voice/ringtone'
 import { useVoiceSession } from './voice/useVoiceSession'
 import { NotificationBell } from './components/NotificationBell'
 import { hasFinanceSupabaseEnv } from './finance/env'
@@ -445,25 +446,54 @@ export default function App() {
    * seen-marker the way an activity notice is. A call you're already in is left out — you
    * don't need telling about the room you're sitting in.
    */
-  const callNotices: Notice[] = notifications.rooms
-    .filter((r) => (voiceIn[r.id]?.length ?? 0) > 0 && !(voice.inCall && voice.roomId === r.id))
-    .map((r) => {
-      const who = voiceIn[r.id]
-      return {
-        id: 'call-' + r.id,
-        kind: 'call' as const,
-        // a DM has exactly one other person in it, so it really is them calling YOU
-        text:
-          r.kind === 'dm' ? `${who[0]} is calling you` : `${who.length} in the call in ${r.name}`,
-        detail: who.join(', '),
-        href: '#chat?room=' + r.id,
-      }
-    })
+  const liveCalls = notifications.rooms.filter(
+    (r) => (voiceIn[r.id]?.length ?? 0) > 0 && !(voice.inCall && voice.roomId === r.id),
+  )
+  /** room id -> which sound it deserves, so the ring effect never has to read the copy */
+  const callKinds: Record<string, 'ring' | 'joined'> = Object.fromEntries(
+    liveCalls.map((r) => ['call-' + r.id, r.kind === 'dm' ? 'ring' : 'joined']),
+  )
+  const callNotices: Notice[] = liveCalls.map((r) => {
+    const who = voiceIn[r.id]
+    return {
+      id: 'call-' + r.id,
+      kind: 'call' as const,
+      // a DM has exactly one other person in it, so it really is them calling YOU
+      text: r.kind === 'dm' ? `${who[0]} is calling you` : `${who.length} in the call in ${r.name}`,
+      detail: who.join(', '),
+      href: '#chat?room=' + r.id,
+    }
+  })
   const withCalls = {
     ...notifications,
     items: [...callNotices, ...notifications.items],
     total: notifications.total + callNotices.length,
   }
+
+  /**
+   * Make a noise when a call STARTS being joinable — the rising edge only.
+   *
+   * callNotices is derived every render from live presence, so reacting to its contents would
+   * ring on every re-render for as long as anyone stayed in the room. Keyed on room id in a ref:
+   * a room rings once when it appears and can only ring again after it has gone quiet.
+   *
+   * A DM gets the phone-like ring because that is someone calling YOU; a group call gets one
+   * soft note, because "three people are chatting in General" is news, not a summons.
+   */
+  const rangFor = useRef<Set<string>>(new Set())
+  useEffect(() => armRingtone(), [])
+  useEffect(() => {
+    const live = new Set(callNotices.map((n) => n.id))
+    for (const n of callNotices) {
+      if (rangFor.current.has(n.id)) continue
+      rangFor.current.add(n.id)
+      playCallSound(callKinds[n.id] ?? 'joined')
+    }
+    // forget rooms that emptied, so the next call there rings again
+    for (const id of [...rangFor.current]) if (!live.has(id)) rangFor.current.delete(id)
+    // callNotices is rebuilt each render; its ids are the stable part
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [callNotices.map((n) => n.id).join('|')])
 
   // Drives the root font-size (see index.css). Canvas mode opts out: it positions windows
   // in its own coordinate space and a scaled root fights it.
