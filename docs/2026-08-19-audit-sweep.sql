@@ -1,0 +1,88 @@
+-- ============================================================================
+-- ✅ EXTENSIVE SECURITY SWEEP, 2026-08-19. Migration:
+--    submit_score_cannot_post_under_someone_elses_handle
+--
+-- Follows three fixes found the same day (Lounge author id, Snake handle link, circuit
+-- self-join). This pass covered every remaining layer. Findings first, then the clean list.
+--
+-- ── FOUND: score forgery under a claimed handle ─────────────────────────────
+-- submit_score matches player_registry BY NAME. Anyone could post a score under a handle a
+-- member had already claimed, and that best score surfaces on their profile via the linked
+-- handle. Measured: a real member's best went 225 -> 999999 from an anonymous call.
+--
+-- Half fixed: a SIGNED-IN member submitting under someone else's claimed handle is now refused
+-- outright — there is no honest reason to do it. Verified: impostor REFUSED, owner still OK.
+--
+-- ⚠️ STILL OPEN, DELIBERATELY, PENDING A PRODUCT CALL: an ANONYMOUS submission to a claimed
+-- handle is still accepted, because Snake is playable signed out and rejecting it means a
+-- member playing logged-out silently loses their score. To close it, change the guard in
+-- submit_score to:
+--     if v_owner is not null and auth.uid() is distinct from v_owner then return null; end if;
+-- Cost: "sign in to post as this name". Evan's call.
+--
+-- ── COMPOUNDING NOTE ON THE CIRCUIT SELF-JOIN (fixed earlier today) ─────────
+-- voice_topic_member -> chat_room_member -> circuit_group_members. So the self-join hole also
+-- granted access to that circuit's LIVE CALL SIGNALLING channel and voice presence, not just
+-- chat and logs. Verified post-fix: a non-member gets false for voice:, vp: and chat: on that
+-- room, and the anchored regex rejects both a traversal attempt and a suffix attempt.
+--
+-- ── VERIFIED CLEAN ─────────────────────────────────────────────────────────
+-- realtime channel authorization
+--   chat_topic_member / voice_topic_member / presence_topic_member all anchor '^name:<uuid>$',
+--   fail closed on no match, and delegate to a real membership check. Good pattern.
+--   presence_audience_ok = self OR friend OR shares a circuit.
+--   Topics open to anon (scores-changes, circuit-sync, circuit-social) carry postgres_changes,
+--   not broadcast — so rows are RLS-filtered per subscriber, and anon is denied ALL eight
+--   circuit tables at the grant level. Confirmed table by table.
+--
+-- admin surface — all 20 admin_* functions verified to block a non-admin
+--   17 raise 'admin required'/'admin only'; admin_even_split_trades and admin_import_trades
+--   raise in another form; admin_list_snake_handles uses the FILTER form (`where is_admin()`)
+--   and returns 0 rows. All six of the most dangerous were also tested live:
+--   admin_get_portfolios, admin_get_timeline, admin_list_positions, admin_set_price,
+--   admin_set_suspended, admin_delete_member.
+--
+-- finance schema
+--   allocations / executed_trades / family_accounts / user_preferences: own-row only.
+--   cost_basis_overrides / price_history / symbol_designations: RLS on, NO policies (RPC-only).
+--   price_cache: SELECT true — market data, not personal; writes have no policy so are denied.
+--   NOTE (cosmetic, not security): allocations/executed_trades/family_accounts each carry
+--   duplicate overlapping policies saying the same thing. Policies are OR'd so it is safe,
+--   but it is noise worth tidying.
+--
+-- anon-callable surface (the whole allowlist)
+--   circuit_public()  returns only visibility='public' people, and filters the jsonb rating
+--                     and vote keys so a private person cannot ride along inside a public
+--                     movie row. Live check: 1 public person, 222 logs — Evan only, as
+--                     intended.
+--   get_invite_by_token  needs a uuid (2^122 to guess) and returns only label + is_used.
+--   complete_member_signup  requires auth.uid() AND an unused invite; profiles.username is
+--                     UNIQUE on citext (8 profiles, 8 distinct) so it cannot take a name.
+--   submit_score      see above.
+--
+-- client
+--   Zero XSS sinks: no dangerouslySetInnerHTML, innerHTML, outerHTML, document.write, eval,
+--   or new Function anywhere in src (excluding src/dev). Every href is a config constant or an
+--   internal '#' route built with encodeURIComponent.
+--
+-- infrastructure
+--   storage: ZERO buckets — nothing to secure.
+--   edge functions: one, refresh-prices, verify_jwt = true. Secure. (This is also why the
+--     price cron fails with UNAUTHORIZED_LEGACY_JWT — broken, not open. Still needs Evan's
+--     key decision.)
+--   profiles PII (email, phone, address, birthday, venmo, cashapp, zelle): own-row-or-admin.
+--
+-- standing audits after the batch: anon-executable outside allowlist = none;
+-- SECURITY DEFINER without pinned search_path = none.
+--
+-- ── STILL NOT SWEPT ────────────────────────────────────────────────────────
+--   * auth settings beyond the linter (leaked-password protection is OFF — dashboard only)
+--   * the Render WebSocket relay (wss://yaya-e2rw.onrender.com) — outside Postgres entirely
+--   * rate limiting / abuse volume on the anon RPCs
+-- ============================================================================
+
+-- (the submit_score body lives in the migration named at the top; the guard added is:)
+--   select id, user_id into v_player_id, v_owner from player_registry where player_name = v_name;
+--   if v_owner is not null and auth.uid() is not null and auth.uid() <> v_owner then
+--     return null;
+--   end if;
