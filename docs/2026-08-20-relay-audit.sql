@@ -30,7 +30,40 @@
 --   * Regression-checked: a normal 2-player round still ranks correctly, and replaying a
 --     finalized round still returns the ORIGINAL results (a 999999 replay did not overwrite).
 --
--- ── STILL OPEN: the name is still trusted ─────────────────────────────────
+-- ── CLOSED 2026-08-20 (follow-up): the account is now protected ───────────
+-- Migrations: finalize_round_will_not_touch_a_claimed_account,
+--             finalize_round_is_callable_twice_in_one_transaction
+--
+-- Evan's steer: "snake scores are not a priority except the accounts and information tied to
+-- them." That inverts the trade-off. Measured before choosing: only EIGHT multiplayer rounds
+-- have ever been finalized. Plumbing a verified id through client + relay + a Render deploy to
+-- preserve a path used eight times, for score recording that is explicitly not the priority,
+-- is poor value — so the rule lives in the database and needs no deploy at all.
+--
+-- A CLAIMED handle (player_registry.user_id is not null) is not written unless the caller
+-- supplies that owner's id in p_players[].userId. Unclaimed names are untouched, so casual and
+-- signed-out multiplayer records exactly as before. The player still appears in the returned
+-- placements — the round result stays honest about who played and who won; only the persistent
+-- writes against somebody's account are withheld.
+--
+-- Verified on live data, all in one transaction and rolled back:
+--   forged round, claimed handle, no vouch -> best stayed 225, history stayed 92 (NOTHING written)
+--   same round WITH the owner's userId     -> best 999999, history 93 (vouched writes land)
+--   an unclaimed casual name               -> recorded 42 normally
+--   placements                             -> the skipped player is still listed, place 1
+--
+-- Forward compatible: nothing sends userId today. If the relay ever verifies tokens on join
+-- (it already has verifyUser() for /ice), passing the id through restores claimed-handle
+-- recording with no further database change. That is now a convenience upgrade, not a
+-- security requirement.
+--
+-- ── ALSO FIXED: the function was not re-entrant ───────────────────────────
+-- `CREATE TEMP TABLE ... ON COMMIT DROP` drops at COMMIT, not at function exit, so a second
+-- call in the SAME transaction failed with "relation tmp_items already exists". Production
+-- never saw it — the relay calls this once per HTTP request — but it cost me a test and would
+-- cost anyone batching or retrying inside a transaction far more. Each call now drops first.
+--
+-- ── SUPERSEDED: the note below described the state before that follow-up ──
 -- Capping bounds the damage; it does not stop forgery. A forged round can still write up to
 -- 1,000,000 under a handle somebody has claimed.
 --
