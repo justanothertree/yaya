@@ -1,0 +1,76 @@
+-- ============================================================================
+-- ✅ APPLIED 2026-08-19. Migration: player_registry_stops_handing_out_the_account_link
+--
+-- The Snake handle -> account link was public. Same bug as the Lounge, different table.
+-- Found by sweeping for the shape rather than by a report.
+--
+-- THE HOLE
+-- player_registry carries `user_id` (the account behind a handle) AND `visibility` (who is
+-- allowed to learn that) — and its policy was `player_registry_select USING true`, with SELECT
+-- granted to anon. So the tier was enforced in exactly one place and bypassed everywhere else:
+--
+--   * snake_friend_names() is careful: `where can_see(r.user_id, r.visibility)`.
+--     Measured — a non-friend gets 0 rows for a friends-only handle. Correct.
+--   * reading the table directly returns the same mapping with no check at all.
+--     Measured — anon saw 10 friends-only handles resolving to 7 distinct accounts.
+--   * a signed-in member could then call snake_display_name(uuid) — ungated and
+--     authenticated-executable — and turn that uuid into the member's NAME.
+--     Verified end to end with a real non-friend pair: gated path 0 rows, raw path 1.
+--
+-- So 7 people who chose "friends only" were linkable to their account by the public internet,
+-- and to their name by any signed-in member.
+--
+-- THE FIX
+-- The link genuinely has to exist, and stays queryable by the SECURITY DEFINER functions
+-- allowed to use it. It stops being SELECTable from outside them.
+--
+-- Written as an explicit column ALLOWLIST rather than `revoke select (user_id, visibility)`,
+-- so the failure mode inverts: a column added to this table later is denied by default instead
+-- of being published the moment it exists. That is the property the original grant lacked, and
+-- it is the same reason the Lounge fix moved data out of the readable table rather than
+-- trusting a policy expression to keep holding.
+--
+-- WHY NOT THE LOUNGE'S SIDE-TABLE TREATMENT
+-- Nine-plus definer functions legitimately read player_registry.user_id (claim_snake_name,
+-- claim_my_reserved_snake_name, my_snake_handles, set_my_snake_visibility, snake_friend_names,
+-- admin_link_snake_handle, admin_list_snake_handles, link_snake_names_to_accounts, and the
+-- profile's best-score resolution). Moving the column would touch every one of them — a lot of
+-- surface for the same end state. Revisit if that surface ever shrinks.
+--
+-- BLAST RADIUS CHECKED
+--   * the client only ever reads `id` from this table (getNextPlayerIdNumber,
+--     src/game/leaderboard.ts). Verified still works: max_id resolves as anon.
+--   * player_name stays readable — it is already public on the leaderboard (116 handles).
+--   * leaderboard.player_id and score_history.player_id are BIGINTs pointing at
+--     player_registry.id, not accounts, so closing this breaks the chain rather than moving it.
+--   * definer RPCs are unaffected by column grants (they run as owner). Spot-checked
+--     my_snake_handles, set_my_snake_visibility, get_member_profile: all OK.
+--   * snake_friend_names still returns a member's real friends' handles (4 rows).
+--
+-- VERIFIED AFTER: anon and a non-friend member both get "permission denied for table
+-- player_registry" on user_id and on visibility; anon-executable audit returns none.
+-- ============================================================================
+
+revoke select on public.player_registry from anon, authenticated;
+grant  select (id, player_name, created_at) on public.player_registry to anon, authenticated;
+
+-- ----------------------------------------------------------------------------
+-- Swept at the same time, no action needed — recorded so the next sweep is cheaper:
+--   profiles            own-row-or-admin; list_members/admin_get_member genuinely raise
+--                       "admin required" for a non-admin (tested). Holds email, phone,
+--                       address, birthday, venmo, cashapp, zelle — the crown jewels, tight.
+--   profile_blocks,
+--   profile_notes       RLS on, NO select policy => RPC-only. Correct.
+--   activity_reads, admin_users, chat_reads, user_roles, account_features
+--                       own-row only (`user_id = auth.uid()`).
+--   circuit_people      `circuit_can_see_person` calls can_see(owner_user_id, visibility)
+--                       INSIDE the RLS policy, so the row is hidden at the data layer.
+--                       This is the pattern player_registry should have used.
+--   leaderboard,
+--   score_history       world-readable by design; player_id is a registry bigint, not an
+--                       account.
+--
+-- Supabase advisor, same date: 96 "authenticated_security_definer_function_executable" WARNs
+-- are the definer-RPC architecture itself, and the 4 anon ones are exactly the allowlist.
+-- One real item it found that is NOT fixable in SQL: auth_leaked_password_protection is OFF
+-- (dashboard: Authentication > Policies). Worth turning on; it is free.
