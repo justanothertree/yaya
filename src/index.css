@@ -3864,7 +3864,23 @@ select {
    square tiles doesn't need the palette editor's side-by-side room. */
 .fx-sheet {
   width: min(26rem, 100%);
-  max-height: min(85vh, 32rem);
+  max-height: min(88vh, 38rem);
+}
+/* Open room to test a burst in. Tall enough that an effect which throws pieces outward has
+   somewhere to land — judging flair from a spark half-hidden behind the next tile is the
+   thing this fixes. */
+.fx-testpad {
+  display: grid;
+  place-items: center;
+  min-height: 7.5rem;
+  margin-top: 0.5rem;
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+  background: var(--card2, rgba(127, 127, 127, 0.06));
+  font-size: 0.78rem;
+  /* the point is to click INTO it, so nothing here should look hittable */
+  cursor: crosshair;
+  user-select: none;
 }
 .fx-style-row {
   display: grid;

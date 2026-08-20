@@ -97,6 +97,7 @@ export function SettingsMenu({
   /** same reasoning as palOpen: a dozen style tiles inline turned the whole cog menu into a
    * scroll every time flair was on, so picking a style opens its own dialog instead */
   const [styleOpen, setStyleOpen] = useState(false)
+  const currentFx = FX_STYLE_OPTIONS.find(([id]) => id === sparksStyle)
   const wrapRef = useRef<HTMLDivElement>(null)
   const cogRef = useRef<HTMLButtonElement>(null)
 
@@ -283,36 +284,24 @@ export function SettingsMenu({
             <span className={'nav-menu-switch' + (ambientOn ? ' is-on' : '')} aria-hidden />
           </button>
 
+          {/* ONE row, not a toggle plus a conditional style row. Off is now a look you pick
+              ("None") rather than a separate switch, so there's nowhere to strand yourself:
+              turning flair off used to hide the very row that leads back to the picker. */}
           <button
             className="nav-menu-row"
-            role="menuitemcheckbox"
-            aria-checked={sparksOn}
-            onClick={onToggleSparks}
+            role="menuitem"
+            onClick={() => {
+              setStyleOpen(true)
+              setOpen(false)
+            }}
             title="A small burst of light wherever you click"
           >
-            <span>⁕ Click flair</span>
-            <span className={'nav-menu-switch' + (sparksOn ? ' is-on' : '')} aria-hidden />
+            <span>
+              ⁕ Click flair
+              <span className="muted"> · {sparksOn ? currentFx?.[2] : 'None'}</span>
+            </span>
+            <span className="muted">›</span>
           </button>
-          {/* Only when there's something to pick showing -- a row under an OFF toggle would just
-              be clutter. This used to be all twelve style tiles inline, which made the whole cog
-              menu a scroll every time flair was on; now it's one row that opens its own dialog,
-              same pattern as the palette editor below. */}
-          {sparksOn && (
-            <button
-              className="nav-menu-row"
-              role="menuitem"
-              onClick={() => {
-                setStyleOpen(true)
-                setOpen(false)
-              }}
-            >
-              <span>
-                {FX_STYLE_OPTIONS.find(([id]) => id === sparksStyle)?.[1]} Style:{' '}
-                {FX_STYLE_OPTIONS.find(([id]) => id === sparksStyle)?.[2]}
-              </span>
-              <span className="muted">›</span>
-            </button>
-          )}
 
           {desktop && (
             <button
@@ -406,14 +395,30 @@ export function SettingsMenu({
                 </button>
               </div>
               <div className="fx-style-row">
+                {/* "None" belongs in the list of looks, not only on the toggle two menus back:
+                    when you're standing in the picker deciding you'd rather have nothing, the
+                    answer should be here. It drives the same switch the toggle does. */}
+                <button
+                  className={'fx-style-btn' + (!sparksOn ? ' is-on' : '')}
+                  aria-pressed={!sparksOn}
+                  title="No flair"
+                  onClick={() => {
+                    if (sparksOn) onToggleSparks()
+                  }}
+                >
+                  <span aria-hidden>∅</span>
+                  <span className="fx-style-label">None</span>
+                </button>
                 {FX_STYLE_OPTIONS.map(([id, icon, label]) => (
                   <button
                     key={id}
-                    className={'fx-style-btn' + (sparksStyle === id ? ' is-on' : '')}
-                    aria-pressed={sparksStyle === id}
+                    className={'fx-style-btn' + (sparksOn && sparksStyle === id ? ' is-on' : '')}
+                    aria-pressed={sparksOn && sparksStyle === id}
                     title={label}
                     onClick={(e) => {
                       onSparksStyle(id)
+                      // picking a look from None is also how you turn flair back on
+                      if (!sparksOn) onToggleSparks()
                       const r = e.currentTarget.getBoundingClientRect()
                       previewClickFx(id, r.left + r.width / 2, r.top + r.height / 2)
                     }}
@@ -422,6 +427,16 @@ export function SettingsMenu({
                     <span className="fx-style-label">{label}</span>
                   </button>
                 ))}
+              </div>
+              {/* Somewhere to actually try it. The effect already fires anywhere you click, but
+                  the tiles are small and packed, so the burst you're judging lands half behind
+                  the next button. This is just open room with nothing to hit — deliberately
+                  WITHOUT a handler of its own, since the global one already covers it and two
+                  would fire two bursts from one click. */}
+              <div className="fx-testpad">
+                <span className="muted">
+                  {sparksOn ? 'Click around in here to try it' : 'Flair is off'}
+                </span>
               </div>
             </div>
           </div>,
