@@ -264,10 +264,10 @@ export function Chat({
     }
     if (!sb || !room) return
     let live = true
-    // ⚠️ Through the RPC, not `from('chat_messages').select('*')`. The raw row carries the
-    // author's real user_id, which in the Lounge is exactly the thing the pseudonym exists to
-    // hide — one join against the member directory and the alias is gone. The RPC returns an
-    // identity only where it's the author's to show.
+    // ⚠️ Through the RPC, not `from('chat_messages').select('*')`. The RPC returns an identity
+    // only where it's the author's to show. The table itself no longer holds one for the
+    // Lounge at all — see the lounge_message_authors migration — so neither this read nor the
+    // realtime payload below can carry the alias away, whichever way someone reaches for it.
     void sb.rpc('list_room_messages', { p_room: room.id, p_limit: 50 }).then(({ data, error }) => {
       if (!live) return
       if (error) setErr(error.message)
@@ -289,28 +289,33 @@ export function Chat({
           filter: `room_id=eq.${room.id}`,
         },
         (payload) => {
+          // The raw table row. `user_id` is null for every lounge message now — the column
+          // holds nothing there, so this payload cannot carry the alias away with it.
           const row = payload.new as {
             id: string
             room_id: string
-            user_id: string
+            user_id: string | null
             author_name: string
             body: string
             created_at: string
           }
           setMsgs((prev) => {
             if (prev.some((x) => x.id === row.id)) return prev
-            // The realtime payload is the raw row, so resolve the username the same way the
-            // RPC did rather than trusting anything in it: look the author up among messages
-            // already loaded for THIS room. In the lounge that map is empty by construction,
-            // so a live message is no more linkable than a loaded one.
-            const known = prev.find((x) => x.author_user_id === row.user_id)
+            // Resolve the username the way the RPC would, from authors already loaded for THIS
+            // room, rather than trusting anything in the payload. Guarded on a non-null id:
+            // matching null against null would pair a lounge message with the first other
+            // lounge message in the list, which is the exact link this is meant to prevent.
+            const known = row.user_id ? prev.find((x) => x.author_user_id === row.user_id) : null
             const m: Msg = {
               id: row.id,
               room_id: row.room_id,
               author_user_id: known ? row.user_id : null,
               author_name: row.author_name,
               author_username: known?.author_username ?? null,
-              mine: row.user_id === me,
+              // A lounge echo of your OWN message has no id to match, so it can't be
+              // recognised as yours here — the optimistic append in send() already added it
+              // with mine:true, and this dedupes against that by id.
+              mine: !!row.user_id && row.user_id === me,
               body: row.body,
               created_at: row.created_at,
             }
@@ -426,7 +431,12 @@ export function Chat({
       return
     }
     setDraft('')
-    const m = data as unknown as Msg
+    // ⚠️ send_chat_message returns a SET now, so this is an array — and it returns the same
+    // shape list_room_messages does rather than the raw row. That shape is the fix for two
+    // things at once: the raw row had no `mine` flag (so your own message rendered as
+    // somebody else's until a reload), and in the lounge it no longer says who wrote it even
+    // to the person who did.
+    const m = (data as unknown as Msg[] | null)?.[0]
     if (m?.id) setMsgs((prev) => (prev.some((x) => x.id === m.id) ? prev : [...prev, m]))
     setTimeout(scrollDown, 60)
   }
