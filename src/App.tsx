@@ -244,6 +244,19 @@ export default function App() {
   // (see the effect below) — same shape/mechanism Circuit already uses for "Log today"
   const [focusPane, setFocusPane] = useState<{ id: string; nonce: number } | null>(null)
   /**
+   * Bumped on every nav click, INCLUDING a click on the tab you're already on.
+   *
+   * On the canvas, "go to Chat" means "pan the camera to the Chat window". Once you're on
+   * Chat and have panned away, clicking Chat again is the obvious way back — but `active`
+   * never changes, so nothing downstream re-ran and the click did nothing at all. This is the
+   * signal that a navigation was REQUESTED, as opposed to the destination having changed.
+   */
+  const [navPing, setNavPing] = useState(0)
+  const goTo = (s: Section) => {
+    setActive(s)
+    setNavPing((n) => n + 1)
+  }
+  /**
    * The Circuit's own sub-tab windows (Board/Log/Feed/...), reported up by <Circuit> itself
    * whenever what they'd render changes. Circuit stays mounted (see its render condition below)
    * whenever the shared canvas is on, even on a different page, specifically so these stay
@@ -1108,10 +1121,10 @@ export default function App() {
         node: canvasNodeFor(active),
       })
     }
-    // deliberately just [active, desktop, canvasOpen] -- homePanes/canvasNodeFor/canvasTitleFor
-    // are recreated every render and this only needs to react to actual navigation
+    // navPing is in here so re-clicking the tab you're already on pans back to its window;
+    // homePanes/canvasNodeFor/canvasTitleFor are recreated every render and deliberately left out
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [active, desktop, canvasOpen])
+  }, [active, desktop, canvasOpen, navPing])
 
   return (
     <div data-theme={customPalette ? 'custom' : theme} data-page={active}>
@@ -1156,7 +1169,7 @@ export default function App() {
               <div className="nav-links" ref={navLinksRef}>
                 <a
                   href="#home"
-                  onClick={() => setActive('home')}
+                  onClick={() => goTo('home')}
                   aria-current={active === 'home' ? 'page' : undefined}
                 >
                   Home
@@ -1164,7 +1177,7 @@ export default function App() {
                 {isFinanceAuthed && !suspended && (
                   <a
                     href="#circuit"
-                    onClick={() => setActive('circuit')}
+                    onClick={() => goTo('circuit')}
                     aria-current={active === 'circuit' ? 'page' : undefined}
                   >
                     Circuit
@@ -1173,7 +1186,7 @@ export default function App() {
                 {isFinanceAuthed && !suspended && (
                   <a
                     href="#ratings"
-                    onClick={() => setActive('ratings')}
+                    onClick={() => goTo('ratings')}
                     aria-current={active === 'ratings' ? 'page' : undefined}
                   >
                     Ratings
@@ -1182,7 +1195,7 @@ export default function App() {
                 {isFinanceAuthed && !suspended && (
                   <a
                     href="#chat"
-                    onClick={() => setActive('chat')}
+                    onClick={() => goTo('chat')}
                     aria-current={active === 'chat' ? 'page' : undefined}
                   >
                     Chat
@@ -1191,7 +1204,7 @@ export default function App() {
                 {isFinanceAuthed && !suspended && (
                   <a
                     href="#people"
-                    onClick={() => setActive('people')}
+                    onClick={() => goTo('people')}
                     aria-current={active === 'people' ? 'page' : undefined}
                   >
                     People
@@ -1200,7 +1213,7 @@ export default function App() {
                 {hasFinanceSupabaseEnv() && !isFinanceAuthed && (
                   <a
                     href="#signin"
-                    onClick={() => setActive('signin')}
+                    onClick={() => goTo('signin')}
                     aria-current={active === 'signin' ? 'page' : undefined}
                   >
                     Sign in
@@ -1209,7 +1222,7 @@ export default function App() {
                 {isFinanceAuthed && canFinance === true && !suspended && (
                   <a
                     href="#investments"
-                    onClick={() => setActive('investments')}
+                    onClick={() => goTo('investments')}
                     aria-current={active === 'investments' ? 'page' : undefined}
                   >
                     Investments
@@ -1218,7 +1231,7 @@ export default function App() {
                 {isFinanceAuthed && !suspended && (
                   <a
                     href="#account-settings"
-                    onClick={() => setActive('account-settings')}
+                    onClick={() => goTo('account-settings')}
                     aria-current={active === 'account-settings' ? 'page' : undefined}
                   >
                     Account
@@ -1227,7 +1240,7 @@ export default function App() {
                 {isAdmin && (
                   <a
                     href="#admin"
-                    onClick={() => setActive('admin')}
+                    onClick={() => goTo('admin')}
                     aria-current={active === 'admin' ? 'page' : undefined}
                   >
                     Admin
@@ -1235,14 +1248,14 @@ export default function App() {
                 )}
                 <a
                   href="#snake"
-                  onClick={() => setActive('snake')}
+                  onClick={() => goTo('snake')}
                   aria-current={active === 'snake' ? 'page' : undefined}
                 >
                   Snake
                 </a>
                 <a
                   href="#contact"
-                  onClick={() => setActive('contact')}
+                  onClick={() => goTo('contact')}
                   aria-current={active === 'contact' ? 'page' : undefined}
                 >
                   Contact
@@ -1293,16 +1306,16 @@ export default function App() {
               onCustomPalette={setCustomPalette}
               name={me.name}
               email={me.email}
-              onAccount={() => setActive('account-settings')}
+              onAccount={() => goTo('account-settings')}
               onProfile={
                 me.username
                   ? () => {
                       window.location.hash = '#profile?u=' + encodeURIComponent(me.username!)
-                      setActive('profile')
+                      goTo('profile')
                     }
                   : undefined
               }
-              onSignIn={() => setActive('signin')}
+              onSignIn={() => goTo('signin')}
               onSignOut={() => {
                 void signOut().catch(() => {
                   /* ignore */
@@ -1439,6 +1452,8 @@ export default function App() {
               authed={isFinanceAuthed || !hasFinanceSupabaseEnv()}
               canvasMode={canvasOpen && desktop}
               isActiveTab={active === 'circuit'}
+              // re-clicking Circuit in the nav pans back to its Board, same as every other tab
+              focusPing={navPing}
               onCanvasPanesChange={(panes, toolbar) => {
                 setCircuitCanvasPanes(panes)
                 setCircuitToolbar(toolbar)
@@ -1709,7 +1724,7 @@ export default function App() {
             me.username
               ? () => {
                   window.location.hash = '#profile?u=' + encodeURIComponent(me.username!)
-                  setActive('profile')
+                  goTo('profile')
                 }
               : undefined
           }

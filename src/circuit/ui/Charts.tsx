@@ -1,6 +1,6 @@
 // Charts — cumulative "race" line through the month + per-person category donuts.
 // Ported flavor of the standalone's Charts tab; reads from the shared store.
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useCircuit } from '../store'
 import { peopleInGroup } from '../groupFilter'
 import { dayTotal, monthLabel, monthTotal } from '../scoring'
@@ -15,13 +15,36 @@ export function Charts({
   viewGroup = '',
 }: { onDayClick?: (personId: string, date: string) => void; viewGroup?: string } = {}) {
   const state = useCircuit()
+  /**
+   * ⚠️ Measures THIS CHART, not the browser window.
+   *
+   * The narrow layout exists because a 720-unit viewBox squeezed into a small box shrinks
+   * everything by the same factor — at phone width the axis labels landed about five pixels
+   * tall. It used to key off window.innerWidth, which is right on a phone and wrong in a canvas
+   * window: a 300px-wide chart on a 1400px screen got the DESKTOP proportions (9-unit axis text,
+   * 38-unit padding) and then shrank them anyway. What matters is the width the chart is drawn
+   * into, so that's what gets measured.
+   */
+  const boxRef = useRef<HTMLDivElement | null>(null)
   const [narrow, setNarrow] = useState(
     () => typeof window !== 'undefined' && window.innerWidth <= 640,
   )
   useEffect(() => {
-    const onResize = () => setNarrow(window.innerWidth <= 640)
-    window.addEventListener('resize', onResize)
-    return () => window.removeEventListener('resize', onResize)
+    const el = boxRef.current
+    if (!el) return
+    // 520, not the old 640: that number was a WINDOW breakpoint, and a chart is always
+    // narrower than the window holding it, so reusing it here would flip a mid-size canvas
+    // window into the phone layout it doesn't need.
+    const measure = () => setNarrow(el.clientWidth <= 520)
+    measure()
+    if (typeof ResizeObserver === 'undefined') {
+      window.addEventListener('resize', measure)
+      return () => window.removeEventListener('resize', measure)
+    }
+    // fires on canvas window resizes too, which no window-level resize event ever reports
+    const ro = new ResizeObserver(measure)
+    ro.observe(el)
+    return () => ro.disconnect()
   }, [])
   // people scoped to the viewed circuit (shared filter)
   const people = useMemo(() => peopleInGroup(state.people, viewGroup), [state.people, viewGroup])
@@ -111,7 +134,7 @@ export function Charts({
   const yy = (v: number) => VH - PB - (v / maxY) * (VH - PT - PB)
 
   return (
-    <div>
+    <div ref={boxRef}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
         <h3 style={{ margin: 0 }}>Charts</h3>
         <span
@@ -343,7 +366,10 @@ export function Charts({
                       fontSize: '0.78rem',
                       pointerEvents: onDayClick ? 'auto' : 'none',
                       zIndex: 10,
-                      whiteSpace: 'nowrap',
+                      // In a narrow canvas window a nowrap tooltip is wider than the chart it
+                      // belongs to and runs out past the window edge, so let it wrap there.
+                      maxWidth: '100%',
+                      whiteSpace: narrow ? 'normal' : 'nowrap',
                       boxShadow: '0 4px 16px rgba(0,0,0,0.45)',
                     }}
                   >

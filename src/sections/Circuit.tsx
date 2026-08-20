@@ -57,6 +57,7 @@ export function Circuit({
   authed = false,
   canvasMode = false,
   isActiveTab = true,
+  focusPing = 0,
   onCanvasPanesChange,
   onOpenCanvasPane,
 }: {
@@ -69,6 +70,9 @@ export function Circuit({
    * just staying mounted in the background (see App.tsx's render condition) so its windows
    * keep reporting into the shared canvas's catalog while you're elsewhere */
   isActiveTab?: boolean
+  /** bumped on every nav click, including one on the tab you're already on — see App's navPing.
+   *  Without it, clicking Circuit while already on Circuit couldn't pan the camera back. */
+  focusPing?: number
   /** hand the shared canvas fresh copies of every sub-tab pane, and the circuit-filter picker
    * to show in its toolbar, whenever what they'd render changes */
   onCanvasPanesChange?: (panes: CanvasPane[], toolbar: ReactNode | null) => void
@@ -349,7 +353,7 @@ export function Circuit({
     const board = canvasPanes.find((p) => p.id === 'board')
     if (board) onOpenCanvasPane?.(board)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [canvas, isActiveTab])
+  }, [canvas, isActiveTab, focusPing])
 
   // The shared canvas itself is owned and rendered by App now — Circuit doesn't render one of
   // its own any more. While `canvas` is on, Circuit renders NOTHING visible at all (not even

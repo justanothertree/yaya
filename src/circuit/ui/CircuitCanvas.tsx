@@ -1140,22 +1140,38 @@ export function CircuitCanvas({
         ),
       ),
     ).sort((c1, c2) => c1 - c2)
-    let best: { w: number; h: number; score: number } | null = null
+    const measured: { w: number; h: number; rawH: number }[] = []
     for (const cw of cands) {
       const sc = scaleFor(cw)
       el.style.width = cw + 'px'
       body.style.zoom = String(sc)
       const rawH = Math.ceil(body.scrollHeight * sc) + barH + 2
-      const ch = Math.min(b.h, Math.max(MIN_H, rawH))
-      // a scrolling candidate only wins if nothing fits — and then the LEAST overflow
-      // wins, not the least area (least area picked narrow towers that scrolled forever)
-      const score = rawH > b.h ? 1e9 + rawH : cw * ch
-      // The "nudge toward wide" was real but too timid: a 5% area budget rarely covers the
-      // jump from one candidate width to the next, so the algorithm almost always locked
-      // onto the FIRST (narrowest) non-scrolling candidate — which is exactly what read as
-      // skinny. 20% spends noticeably more area to buy a visibly wider window, while still
-      // refusing a candidate so wide it's mostly empty margin.
-      if (!best || score <= best.score * 1.2) best = { w: cw, h: ch, score }
+      measured.push({ w: cw, h: Math.min(b.h, Math.max(MIN_H, rawH)), rawH })
+    }
+    /**
+     * Pick the NARROWEST width that doesn't cost the content another line.
+     *
+     * This used to score candidates by area with a 20% budget, comparing each one against the
+     * running best — which compounds: every step of 20% was measured from the previous accepted
+     * step, not from the minimum, so any ladder of candidates each within 20% of the last
+     * ratcheted all the way to the widest one. That's the "way wider than it needs to be".
+     *
+     * Height is the honest signal. Narrowing a window only hurts when text reflows and the
+     * window gets taller, so: find the shortest a window can be, then take the skinniest width
+     * that stays within about one line of it. `cands` is sorted ascending, so the first match
+     * IS the skinniest. Content that can't reflow (a table, a chart) has the same height at
+     * every width, so this lands on its natural width instead of padding it out.
+     */
+    const LINE = 24
+    const fits = measured.filter((m) => m.rawH <= b.h)
+    let best: { w: number; h: number } | null
+    if (fits.length) {
+      const minH = Math.min(...fits.map((m) => m.h))
+      best = fits.find((m) => m.h <= minH + LINE) ?? fits[0]
+    } else {
+      // nothing fits the plane: least overflow wins, not least area — least area picked
+      // narrow towers that scrolled forever
+      best = measured.reduce((a, m) => (m.rawH < a.rawH ? m : a), measured[0]) ?? null
     }
     body.style.zoom = sZoom
     body.style.width = sBodyW
