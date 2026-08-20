@@ -35,7 +35,14 @@ export function Charts({
     // 520, not the old 640: that number was a WINDOW breakpoint, and a chart is always
     // narrower than the window holding it, so reusing it here would flip a mid-size canvas
     // window into the phone layout it doesn't need.
-    const measure = () => setNarrow(el.clientWidth <= 520)
+    //
+    // ⚠️ getBoundingClientRect().width, NOT clientWidth. A canvas window scales its body with
+    // CSS `zoom`, and clientWidth reports PRE-ZOOM layout pixels: measured directly, a chart
+    // rendered 300px wide inside zoom:0.6 reports 500. So the chart believed it was desktop-
+    // width while being drawn at phone width — desktop axis proportions, and a nowrap tooltip
+    // wider than the chart it belongs to. The rect is the only one of the two that reflects
+    // what is actually on screen.
+    const measure = () => setNarrow(el.getBoundingClientRect().width <= 520)
     measure()
     if (typeof ResizeObserver === 'undefined') {
       window.addEventListener('resize', measure)
