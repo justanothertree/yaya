@@ -88,15 +88,24 @@ src/
   main.tsx           # entry point
   index.css          # global styles + design tokens
   sections/          # one module per nav section (EvanCook, Circuit, Ratings, SnakeGame,
-                     #   Investments, SignIn, AccountSettings, AdminPanel, AcceptInvite, ContactForm)
-  components/        # shared shell pieces (MobileNav, SettingsMenu, AmbientBackdrop, Icons)
+                     #   Investments, Profile, People, ChatPage, SignIn, AccountSettings,
+                     #   AdminPanel, AcceptInvite, ContactForm)
+  components/        # shared shell pieces (MobileNav, SettingsMenu, AmbientBackdrop, Icons,
+                     #   NotificationBell, UsagePanel, FundPanel, VisibilityPicker)
   circuit/           # The Circuit: store, adapters, scoring, social, seeds, and ui/
   finance/           # Supabase client, auth, and the investments data layer (RPC-backed)
   game/              # Snake engine, renderer, net client, leaderboard
+  voice/             # WebRTC calls and screen sharing: session, presence, RNNoise, ringtone
+  theme/             # the three built-in themes plus the custom-palette system
+  profile/           # per-member look: derived identity colour and banner styles
+  hooks/             # cross-cutting hooks (notifications, reveal-on-scroll, scroll fade)
+  ui/                # click flair and other small UI behaviours
+  dev/               # DEV-only preview harness; tree-shaken out of production
   config/site.ts     # site metadata
 scripts/             # maintenance CLIs (broker CSV trade import, public-seed generator)
+  fixtures/          #   invented-data broker exports for exercising the importer
 server/              # Node.js WebSocket relay for multiplayer Snake
-docs/                # Supabase schema / RPC / trigger reference
+docs/                # Supabase contract, RPC inventory, and a dated note per schema change
 public/              # static assets, CNAME, web manifest, sitemap
 .github/workflows/   # build, lint, and GitHub Pages deploy
 ```
