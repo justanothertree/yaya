@@ -3964,3 +3964,9 @@ a.cz-msg-author:focus-visible {
   outline-offset: 2px;
   border-radius: 4px;
 }
+/* <main> is focused programmatically on every route change so keyboard and screen-reader users
+   land on the new page. That should not draw a focus ring — nobody tabbed to it. A real Tab to
+   it (via the skip link) still shows one, which is the whole point of :focus-visible. */
+#content:focus:not(:focus-visible) {
+  outline: none;
+}

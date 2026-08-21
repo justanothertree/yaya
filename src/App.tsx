@@ -870,6 +870,44 @@ export default function App() {
     document.title = active === 'home' ? site.title : `${SECTION_TITLES[active]} · ${site.name}`
   }, [active])
 
+  /**
+   * Move focus to the new page when the route changes.
+   *
+   * Without this, navigating left focus on the nav link you clicked — measured: #contact and
+   * #home both kept it there, #circuit dropped it to <body>. Either way a keyboard or
+   * screen-reader user was never taken to the content they asked for; they had to Tab back
+   * across the whole header to reach it, with no announcement that the page had changed.
+   * <main> already carried tabIndex={-1} for the skip link, so it was always the right target.
+   *
+   * ⚠️ Skips the FIRST render. Stealing focus on load fights deep links and is startling when
+   * nobody navigated. And it yields to sections that focus something themselves — Snake's
+   * canvas has autoFocus — by checking first whether focus already landed inside the content.
+   */
+  const prevActive = useRef<Section | null>(null)
+  useEffect(() => {
+    const prev = prevActive.current
+    prevActive.current = active
+    /**
+     * ⚠️ Compares the PREVIOUS route rather than tracking "have I run before".
+     *
+     * A boolean first-render flag looks equivalent and isn't: StrictMode double-invokes
+     * effects in development, so the first run sets the flag and the second sails straight
+     * past it and steals focus on arrival. Measured — a fresh load of #circuit put focus on
+     * <main> before the visitor had done anything.
+     *
+     * Comparing values is immune to being run twice: the second invocation sees prev ===
+     * active and does nothing, while a real navigation still differs.
+     */
+    if (prev === null || prev === active) return
+    // Synchronous on purpose. React applies a child's autoFocus during commit, which is
+    // BEFORE passive effects run — so by now Snake's canvas has already taken focus and the
+    // check below sees it. Deferring a frame to "let autoFocus win" was solving a race that
+    // does not exist, and requestAnimationFrame does not fire at all while the tab is hidden.
+    const main = document.getElementById('content')
+    if (!main || main.contains(document.activeElement)) return
+    main.focus({ preventScroll: true })
+  }, [active])
+
   // Apply reveal-on-scroll to tagged elements
   // canvas exit re-mounts the page's sections without changing tabs — they need a
   // fresh reveal pass too, or they mount opacity-0 and stay invisible
