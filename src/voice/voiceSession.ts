@@ -381,6 +381,11 @@ type Signal =
   | { kind: 'offer'; from: string; to: string; sdp: RTCSessionDescriptionInit }
   | { kind: 'answer'; from: string; to: string; sdp: RTCSessionDescriptionInit }
   | { kind: 'ice'; from: string; to: string; candidate: RTCIceCandidateInit }
+  /**
+   * "Whatever we had between us is dead — start over." Targeted at one peer rather than
+   * broadcast like `hello`, so a call that is working for everyone else is left alone.
+   */
+  | { kind: 'again'; from: string; to: string }
   | { kind: 'bye'; from: string }
 
 const IDLE: VoiceState = {
@@ -482,6 +487,62 @@ const negoFor = (id: string) => {
 }
 /** deterministic and opposite on the two ends, which is all perfect negotiation requires */
 const isPolite = (peerId: string) => (meId ?? '') < peerId
+
+/**
+ * Candidates that arrived before there was anywhere to put them.
+ *
+ * `addIceCandidate` REJECTS while `remoteDescription` is null, and a rejected candidate is gone
+ * — there is no retry and no second copy. The other side starts trickling the moment it sets
+ * its local description, which is strictly before its offer has crossed the wire and been
+ * applied here, so the first candidates always land in that gap. Losing them usually still
+ * connects, because the later ones are enough; when it doesn't, ICE simply never pairs and the
+ * call goes connecting → reconnecting → failed while the network is perfectly fine. Retrying
+ * "fixes" it by rolling the timing dice again, which is exactly what it looked like.
+ */
+const pendingIce = new Map<string, RTCIceCandidateInit[]>()
+
+/**
+ * When we last threw a peer's connection away and built a new one. Kept OUTSIDE the per-peer
+ * bookkeeping on purpose — resetPeerConnection clears that, so a flag living there would be
+ * gone by the time it needed to stop the next rebuild, and one failing peer would loop.
+ */
+const rebuiltAt = new Map<string, number>()
+const REBUILD_COOLDOWN_MS = 25_000
+
+/**
+ * One signalling message at a time, per peer.
+ *
+ * Each broadcast used to start its own detached async task, so an `ice` or `answer` could be
+ * processed while the `offer` before it was still awaiting setRemoteDescription. Ordered
+ * delivery over the socket bought nothing once the handlers themselves interleaved.
+ */
+const signalQueue = new Map<string, Promise<void>>()
+
+/** Apply a candidate, or hold it until there is a remote description to attach it to. */
+async function acceptIce(peerId: string, candidate: RTCIceCandidateInit) {
+  const pc = pcs.get(peerId)
+  if (!pc || !pc.remoteDescription) {
+    const q = pendingIce.get(peerId) ?? []
+    // Bounded: a peer that never completes a handshake must not grow this forever.
+    if (q.length < 128) q.push(candidate)
+    pendingIce.set(peerId, q)
+    return
+  }
+  try {
+    await pc.addIceCandidate(new RTCIceCandidate(candidate))
+  } catch {
+    // Candidates for an offer we deliberately ignored will fail to apply, and that is
+    // expected rather than an error worth surfacing.
+  }
+}
+
+/** Called the moment a remote description lands, which is the moment the held ones can apply. */
+async function flushIce(peerId: string) {
+  const q = pendingIce.get(peerId)
+  if (!q?.length) return
+  pendingIce.delete(peerId)
+  for (const c of q) await acceptIce(peerId, c)
+}
 
 /** Replace the snapshot so useSyncExternalStore sees a new reference only on real change. */
 function set(patch: Partial<VoiceState>) {
@@ -720,6 +781,9 @@ function dropPeer(id: string) {
   // the per-peer bookkeeping has to go too, or a reconnecting peer inherits a stale
   // negotiation state and a byte counter that makes their first sample look like new traffic
   nego.delete(id)
+  pendingIce.delete(id)
+  signalQueue.delete(id)
+  rebuiltAt.delete(id)
   seenBytes.delete(id)
   peerShareStreamId.delete(id)
   set({ peers: state.peers.filter((p) => p.id !== id) })
@@ -838,6 +902,9 @@ function resetPeerConnection(peerId: string) {
   }
   pcs.delete(peerId)
   nego.delete(peerId)
+  // The connection these were waiting for no longer exists; holding them would apply a dead
+  // session's candidates to the fresh one.
+  pendingIce.delete(peerId)
   seenBytes.delete(peerId)
   peerShareStreamId.delete(peerId)
   detachOutput(peerId)
@@ -953,10 +1020,25 @@ function makePc(peerId: string, peerName: string, fresh = false) {
         } catch {
           /* older browsers: fall through to the failed state below */
         }
-        // give the restart a chance; if it is still failed after this, it really has failed
+        // give the restart a chance; if it is still failed after this, try once more properly
         window.setTimeout(() => {
           if (pcs.get(peerId) !== pc) return
           if (pc.connectionState !== 'failed') return
+          /**
+           * An ICE restart REUSES the connection. What actually recovered this in practice was
+           * the other person hanging up and calling again — which builds a brand new one — and
+           * needing a human on the far end to know to do that is not a recovery path. Do it
+           * ourselves, once, before showing a dead end.
+           */
+          const lastTry = rebuiltAt.get(peerId) ?? 0
+          if (meId && Date.now() - lastTry > REBUILD_COOLDOWN_MS) {
+            rebuiltAt.set(peerId, Date.now())
+            const nm = names.get(peerId) ?? 'Someone'
+            resetPeerConnection(peerId)
+            upsertPeer(peerId, { name: nm, status: 'connecting', stream: null })
+            send({ kind: 'again', from: meId, to: peerId })
+            return
+          }
           upsertPeer(peerId, { status: 'failed', stream: null })
         }, 6000)
         if (!haveTurn) {
@@ -1099,7 +1181,12 @@ export const voiceSession = {
       if (m.kind === 'offer') diag.offersRecv++
       else if (m.kind === 'answer') diag.answersRecv++
       else if (m.kind === 'ice') diag.iceRecv++
-      void (async () => {
+      /**
+       * Strictly in order, per peer. The switch below awaits, so running these detached let a
+       * candidate overtake the offer it belonged to.
+       */
+      const prev = signalQueue.get(m.from) ?? Promise.resolve()
+      const run = prev.then(async () => {
         switch (m.kind) {
           case 'hello': {
             // Whoever was already here offers to the newcomer — no glare, no tie-break rule.
@@ -1137,6 +1224,8 @@ export const voiceSession = {
             } else {
               await pc.setRemoteDescription(new RTCSessionDescription(m.sdp))
             }
+            // There is somewhere to put candidates now.
+            await flushIce(m.from)
             await pc.setLocalDescription()
             if (pc.localDescription) {
               send({ kind: 'answer', from: meId!, to: m.from, sdp: pc.localDescription })
@@ -1145,27 +1234,41 @@ export const voiceSession = {
           }
           case 'answer': {
             if (m.to !== meId) return
-            await pcs.get(m.from)?.setRemoteDescription(new RTCSessionDescription(m.sdp))
+            const pc = pcs.get(m.from)
+            if (!pc) return
+            await pc.setRemoteDescription(new RTCSessionDescription(m.sdp))
+            await flushIce(m.from)
             break
           }
           case 'ice': {
             if (m.to !== meId) return
-            try {
-              await pcs.get(m.from)?.addIceCandidate(new RTCIceCandidate(m.candidate))
-            } catch {
-              // Candidates for an offer we deliberately ignored will fail to apply, and that
-              // is expected rather than an error worth surfacing.
-              if (!negoFor(m.from).ignore) {
-                /* a real failure, but nothing useful to do about one candidate */
-              }
-            }
+            await acceptIce(m.from, m.candidate)
+            break
+          }
+          case 'again': {
+            if (m.to !== meId) return
+            // Same path as a fresh hello: our half is dead too, so throw it away and offer
+            // them a brand new connection rather than patching the corpse.
+            const nm = names.get(m.from) ?? 'Someone'
+            const pc = makePc(m.from, nm, true)
+            const offer = await pc.createOffer()
+            await pc.setLocalDescription(offer)
+            send({ kind: 'offer', from: meId!, to: m.from, sdp: offer })
             break
           }
           case 'bye':
             dropPeer(m.from)
             break
         }
-      })()
+      })
+      // The link that is STORED must never reject: the next message chains off it, so a single
+      // throw would wedge this peer's queue for the rest of the call.
+      const link = run.catch(() => {})
+      signalQueue.set(m.from, link)
+      void link.then(() => {
+        // Don't leave an entry per peer behind once their queue has drained.
+        if (signalQueue.get(m.from) === link) signalQueue.delete(m.from)
+      })
     })
 
     resetDiag()
@@ -1227,6 +1330,9 @@ export const voiceSession = {
     pcs.clear()
     names.clear()
     nego.clear()
+    pendingIce.clear()
+    signalQueue.clear()
+    rebuiltAt.clear()
     share?.getTracks().forEach((t) => t.stop())
     share = null
     teardownGate()
