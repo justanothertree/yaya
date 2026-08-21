@@ -2,7 +2,6 @@ import { useEffect, useRef, useState, lazy, Suspense } from 'react'
 import type { ReactNode } from 'react'
 import { ContactForm } from './sections/ContactForm'
 import { EvanCook, homePanes } from './sections/EvanCook'
-import { SnakeGame } from './sections/SnakeGame'
 import { site } from './config/site'
 import { IconGitHub, IconLinkedIn } from './components/Icons'
 import { SettingsMenu } from './components/SettingsMenu'
@@ -40,6 +39,13 @@ import { getSupabaseClient } from './finance/client'
 import { previewMember, PREVIEW_ME, PREVIEW_VOICE_IN } from './dev/previewMember'
 
 // Lazy-load heavier sections (declared at module scope so they don't remount on each App render)
+/**
+ * Snake was the site's first feature and stayed an EAGER import while every other section became
+ * lazy — so a 4,000-line game manager, its Supabase leaderboard client and the `bad-words` list
+ * all rode in the main bundle that every visitor downloads, including the ones who never open it.
+ * Both render sites are gated on `active === 'snake'`, so there was nothing keeping it there.
+ */
+const SnakeGame = lazy(() => import('./sections/SnakeGame').then((m) => ({ default: m.SnakeGame })))
 const SignIn = lazy(() => import('./sections/SignIn').then((m) => ({ default: m.SignIn })))
 const Investments = lazy(() =>
   import('./sections/Investments').then((m) => ({ default: m.Investments })),
@@ -1698,7 +1704,15 @@ export default function App() {
         )}
         {!sharedCanvasShowing && active === 'snake' && (
           <section id="snake" className="card reveal show-dpad">
-            <SnakeGame onControlChange={setSnakeHasControl} onLiveChange={setSnakeLive} autoFocus />
+            {/* Its own boundary, not the page-wide one: a shared fallback would blank whatever
+                else is mounted while the game chunk arrives. */}
+            <Suspense fallback={<div aria-busy>Loading the game…</div>}>
+              <SnakeGame
+                onControlChange={setSnakeHasControl}
+                onLiveChange={setSnakeLive}
+                autoFocus
+              />
+            </Suspense>
           </section>
         )}
         {!sharedCanvasShowing && active === 'contact' && (
