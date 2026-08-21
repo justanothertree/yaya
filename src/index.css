@@ -87,7 +87,12 @@
   --muted: #a3a9c7;
   --accent: #7c3aed;
   --accent-2: #22d3ee;
-  --btn-text: #0b0f19;
+  /* ⚠️ White, not near-black. theme/customTheme.ts says, of the value it computes:
+     "Picking it by eye is how the alt theme ended up at 3.36:1 — below the 4.5:1 that normal
+     text needs... That failure mode is now unreachable." That fixed the CUSTOM palette path.
+     The alt theme it was warning about was never corrected, and still measured exactly the
+     3.36:1 quoted. readableOn('#7c3aed') returns #ffffff, at 5.70:1. */
+  --btn-text: #ffffff;
   --bg-grad1: #15152a;
   --surface: linear-gradient(180deg, rgba(230, 233, 255, 0.06), rgba(230, 233, 255, 0));
   --border: rgba(230, 233, 255, 0.16);
