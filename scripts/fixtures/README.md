@@ -57,3 +57,30 @@ Expected: 3 rows, 1 kept, ⚠️ 2 collapsed / $40.00 not imported.
 ⚠️ Fixing this properly means adding an occurrence ordinal to the key — which changes the key of
 every Robinhood row **already imported**, so the next run would insert a second copy of the whole
 Robinhood history. That needs a migration, not a patch. Until then the warning is the safeguard.
+
+**`overlap-a.csv` / `overlap-b.csv`** — the property the whole "just re-upload your statement"
+idea rests on: **import keys are content-stable**, so re-importing a wider export adds only the
+genuinely new rows.
+
+`overlap-b` contains both of `overlap-a`'s rows plus two more. Parse both and the two shared rows
+must produce identical `importKey` values:
+
+```bash
+node scripts/import-trades.mjs scripts/fixtures/overlap-a.csv
+node scripts/import-trades.mjs scripts/fixtures/overlap-b.csv
+node -e "const a=require('./scripts/fixtures/overlap-a.parsed.json'),b=require('./scripts/fixtures/overlap-b.parsed.json');const ka=new Set(a.map(t=>t.importKey));console.log('shared:',b.filter(t=>ka.has(t.importKey)).length,'of',a.length)"
+```
+
+Expected: `shared: 2 of 2`. Anything less means a re-import would duplicate rows already in the
+database, and `import_key`'s unique index would not save you — a changed key is a new row.
+
+**`rh-corporate.csv`** — the Robinhood transaction codes that are not buys or sells.
+
+- `SXCH` symbol-change pair (`10S` out of OLDCO, `10` into NEWCO) → adjustments
+- `SDIV` share dividend → kept, and flagged as a reinvestment
+- `ZZZZ`, an unknown code → skipped **by name**, with the raw row printed. Unknown codes surface
+  rather than disappearing, which is how a new export format gets noticed.
+
+Expected: 5 rows, 4 kept incl 1 reinvestment, 3 adjustments, 1 skipped as `ZZZZ`.
+
+A header-only file (no data rows) parses to 0 and does not crash — worth keeping true.

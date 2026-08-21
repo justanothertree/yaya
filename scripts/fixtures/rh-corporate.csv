@@ -1,0 +1,6 @@
+"Activity Date","Process Date","Settle Date","Instrument","Description","Trans Code","Quantity","Price","Amount"
+"6/1/2026","6/1/2026","6/2/2026","OLDCO","Old Co Inc.","Buy","10","$4.00","($40.00)"
+"6/10/2026","6/10/2026","6/10/2026","OLDCO","Name change to New Co","SXCH","10S","","$0.00"
+"6/10/2026","6/10/2026","6/10/2026","NEWCO","Name change from Old Co","SXCH","10","","$0.00"
+"6/15/2026","6/15/2026","6/15/2026","NEWCO","Share dividend","SDIV","0.5","","$0.00"
+"6/20/2026","6/20/2026","6/20/2026","NEWCO","Mystery event","ZZZZ","1","","$0.00"

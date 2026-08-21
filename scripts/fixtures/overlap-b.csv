@@ -1,0 +1,5 @@
+"Activity Date","Process Date","Settle Date","Instrument","Description","Trans Code","Quantity","Price","Amount"
+"4/28/2026","4/28/2026","4/29/2026","WIDG","Widget Co","Buy","5","$10.00","($50.00)"
+"5/1/2026","5/1/2026","5/2/2026","WIDG","Widget Co","Buy","1","$11.00","($11.00)"
+"5/2/2026","5/2/2026","5/3/2026","WIDG","Widget Co","Buy","2","$12.00","($24.00)"
+"5/3/2026","5/3/2026","5/4/2026","WIDG","Widget Co","Buy","3","$13.00","($39.00)"
