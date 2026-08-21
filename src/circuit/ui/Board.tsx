@@ -178,14 +178,20 @@ export function Board({
                 >
                   {i < 3 ? ['🥇', '🥈', '🥉'][i] : i + 1}
                 </span>
-                <span
+                {/* A real button, not a clickable span: this is the only way into someone's
+                    Circuit profile, and as a span there was no keyboard route to it at all —
+                    not focusable, no Enter, invisible to anything driving the page by
+                    keyboard. Styled back down to look exactly like the text it was. */}
+                <button
+                  type="button"
                   className="cz-board-name"
                   onClick={() => setProfile(r.p)}
                   title={`${r.p.name}'s stats`}
+                  aria-label={`${r.p.name} — open stats`}
                   style={{ width: '6rem', fontWeight: 700, color: r.p.color, cursor: 'pointer' }}
                 >
                   {r.p.name}
-                </span>
+                </button>
                 <span
                   className="cz-board-bar"
                   style={{
