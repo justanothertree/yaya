@@ -80,6 +80,27 @@ function headerLookup(header) {
   return (name) => map[name.toLowerCase()]
 }
 
+/**
+ * Which of the four things this row actually is.
+ *
+ * The parser already knows — it sets `reinvestment` for DRIPs and emits corporate actions with
+ * no money on either side — but until now that knowledge died at the database boundary, and a
+ * dividend-bought share was indistinguishable from one Evan paid for.
+ *
+ * ⚠️ `reinvestment` is tested FIRST, before the no-money check. A Robinhood SDIV is a dividend
+ * paid in shares: it moves units with zero dollars, so it looks exactly like a split — but it is
+ * a DRIP. The holding earned it. Calling it an adjustment gives the right answer for "what did
+ * Evan contribute" by luck (neither counts) and the wrong one for "what have dividends earned
+ * me", which is a question worth being able to ask later.
+ *
+ * A real corporate action is what's left: units move, no money, and nothing earned it.
+ */
+function classify(t) {
+  if (t.reinvestment) return 'drip'
+  if (t.dollars === 0 && t.units !== 0) return 'adjustment'
+  return t.dollars < 0 ? 'sell' : 'buy'
+}
+
 function makeTrade(t, externalId) {
   // Stable key for de-duping across re-imports. Cash App rows carry a Transaction ID —
   // use it so two genuinely identical buys (same day/price/amount, e.g. recurring
@@ -91,7 +112,9 @@ function makeTrade(t, externalId) {
         : [t.platform, t.date, t.symbol, t.units, t.price, t.dollars].join('|'),
     )
     .digest('hex')
-  return { ...t, importKey }
+  // `kind` is NOT part of importKey — it describes the row, it doesn't identify it. Folding it
+  // in would change the key of everything already imported and make re-imports insert copies.
+  return { ...t, kind: classify(t), importKey }
 }
 
 // Shared per-file bookkeeping: skip counts, one raw sample row per skip reason (for
