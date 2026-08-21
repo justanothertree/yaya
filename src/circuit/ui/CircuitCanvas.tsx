@@ -419,6 +419,28 @@ export function CircuitCanvas({
     },
     [clampPan, pokeMap],
   )
+  /**
+   * Undo whatever window-level pointer listeners a drag put up, whoever put them there.
+   *
+   * Pan, window-drag and window-resize each attach `pointermove` + `pointerup` to WINDOW on
+   * pointerdown and remove them again in their own pointerup handler. That is fine right up
+   * until the component unmounts mid-drag — toggle the canvas off while still holding a window
+   * and the listeners stay attached to window forever, running drag logic against a dead
+   * component every time the mouse moves.
+   *
+   * A cleanup using the CURRENT handler identities would not work: these are useCallbacks whose
+   * deps include hostBox, so they are re-created on resize and the identity attached earlier is
+   * gone. So the teardown is captured at attach time, when the identities are known.
+   */
+  const pointerTeardown = useRef<(() => void) | null>(null)
+  useEffect(
+    () => () => {
+      pointerTeardown.current?.()
+      pointerTeardown.current = null
+    },
+    [],
+  )
+
   const onPanMove = useCallback(
     (e: PointerEvent) => {
       const d = panDrag.current
@@ -474,6 +496,10 @@ export function CircuitCanvas({
     e.preventDefault()
     window.addEventListener('pointermove', onPanMove)
     window.addEventListener('pointerup', onPanUp)
+    pointerTeardown.current = () => {
+      window.removeEventListener('pointermove', onPanMove)
+      window.removeEventListener('pointerup', onPanUp)
+    }
   }
 
   const snapGeom = useCallback(
@@ -888,6 +914,10 @@ export function CircuitCanvas({
     e.preventDefault()
     window.addEventListener('pointermove', onDragMove)
     window.addEventListener('pointerup', onDragUp)
+    pointerTeardown.current = () => {
+      window.removeEventListener('pointermove', onDragMove)
+      window.removeEventListener('pointerup', onDragUp)
+    }
   }
 
   // Snap only when the pointer is pressed right against an edge (12px) — the old 36px
@@ -1080,6 +1110,10 @@ export function CircuitCanvas({
     resz.current = { id, dir, sx: e.clientX, sy: e.clientY, ox: w.x, oy: w.y, ow: w.w, oh: w.h }
     window.addEventListener('pointermove', onResizeMove)
     window.addEventListener('pointerup', onResizeUp)
+    pointerTeardown.current = () => {
+      window.removeEventListener('pointermove', onResizeMove)
+      window.removeEventListener('pointerup', onResizeUp)
+    }
   }
 
   // ── window controls ──
