@@ -99,6 +99,30 @@ type Section =
   | 'invite'
   | 'profile'
 
+/**
+ * What each page is called, for the browser tab and for the page's own <h1>.
+ *
+ * Both were missing. The tab title came from index.html and never changed, so every history
+ * entry and bookmark read identically and a screen reader announced the same title after every
+ * navigation. And only the home page had an <h1> at all — every other route's top heading was an
+ * <h2>, so heading-based navigation found no page title to land on.
+ */
+const SECTION_TITLES: Record<Section, string> = {
+  home: 'Home',
+  circuit: 'The Circuit',
+  ratings: 'Ratings',
+  chat: 'Chat',
+  people: 'People',
+  signin: 'Sign in',
+  investments: 'Investments',
+  'account-settings': 'Account settings',
+  snake: 'Snake',
+  contact: 'Contact',
+  admin: 'Admin',
+  invite: 'Accept invite',
+  profile: 'Profile',
+}
+
 // Every routable section — the single source of truth for hash validation (initial load +
 // hashchange). Keep in sync with the Section type above; a missing entry silently routes home.
 const ALL_SECTIONS: Section[] = [
@@ -840,6 +864,12 @@ export default function App() {
     return () => window.removeEventListener('keydown', onKey)
   }, [active, snakeHasControl, isFinanceAuthed, isAdmin, canFinance])
 
+  // Keep the tab in step with the route. Home keeps the full descriptive title (it is what gets
+  // shared and indexed); everywhere else is prefixed so history and bookmarks are told apart.
+  useEffect(() => {
+    document.title = active === 'home' ? site.title : `${SECTION_TITLES[active]} · ${site.name}`
+  }, [active])
+
   // Apply reveal-on-scroll to tagged elements
   // canvas exit re-mounts the page's sections without changing tabs — they need a
   // fresh reveal pass too, or they mount opacity-0 and stay invisible
@@ -1423,6 +1453,12 @@ export default function App() {
           paddingBottom: !desktop ? '1rem' : 'env(safe-area-inset-bottom)',
         }}
       >
+        {/* The page's heading, for anyone navigating by headings. Home already renders a real
+            visible <h1>, so adding one here would give that route two. Everywhere else the top
+            heading is an <h2> and there was no <h1> at all. Visually hidden rather than shown:
+            the visible design already names the page, and this is about the accessibility tree
+            rather than the layout. */}
+        {active !== 'home' && <h1 className="sr-only">{SECTION_TITLES[active]}</h1>}
         {suspended && (
           <div
             role="status"

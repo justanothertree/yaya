@@ -3929,3 +3929,18 @@ a.cz-msg-author:focus-visible {
 .cz-msg-author-plain {
   cursor: default;
 }
+/* Visually hidden, still in the accessibility tree. For text that the visible design already
+   conveys by other means — a page heading the layout expresses through position and styling —
+   but which a screen reader has no other way to reach. Not `display:none`, which would remove it
+   from that tree entirely and defeat the point. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
