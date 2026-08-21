@@ -252,6 +252,14 @@ export function SettingsMenu({
                   key={t}
                   className={'btn' + (theme === t && !customPalette ? ' is-on' : '')}
                   aria-pressed={theme === t && !customPalette}
+                  /* The glyph is the whole label, and "☀" is not a word — a screen reader
+                     reads it as "sun" at best and nothing at all at worst, so the three
+                     buttons were indistinguishable. The name says which theme; aria-pressed
+                     already says which one you are on. */
+                  aria-label={
+                    t === 'light' ? 'Light theme' : t === 'dark' ? 'Dark theme' : 'Alt theme'
+                  }
+                  title={t === 'light' ? 'Light theme' : t === 'dark' ? 'Dark theme' : 'Alt theme'}
                   onClick={() => onTheme(t)}
                 >
                   {t === 'light' ? '☀' : t === 'dark' ? '☾' : '✦'}
@@ -263,6 +271,7 @@ export function SettingsMenu({
                 className={'btn' + (customPalette ? ' is-on' : '')}
                 aria-pressed={customPalette}
                 aria-expanded={palOpen}
+                aria-label="Make your own palette"
                 onClick={() => {
                   // close the dropdown as the dialog opens, so it isn't sitting behind it
                   setPalOpen(true)
