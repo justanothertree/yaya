@@ -816,18 +816,18 @@ export default function App() {
     }
   }, [active, isFinanceAuthed, canFinance, suspended])
 
-  // Keyboard shortcuts: numeric keys jump to sections
+  /**
+   * Arrow keys move between sections.
+   *
+   * There were number keys too — 1-5 jumped straight to a section. Removed: the map was written
+   * when there were five tabs and never grew with chat, ratings, people or profile, and it
+   * renumbered itself depending on whether you were signed in and whether you had Investments,
+   * so the same key went somewhere different for different people and for the same person on
+   * different days. Nobody was reaching for them on purpose; the only time they fired was by
+   * accident, and an accident that teleports you off the page you were reading is worse than
+   * no shortcut at all.
+   */
   useEffect(() => {
-    const map: Record<string, Section> = {
-      '1': 'home',
-      ...(hasFinanceSupabaseEnv()
-        ? isFinanceAuthed
-          ? canFinance === true
-            ? { '2': 'circuit', '3': 'investments', '4': 'snake', '5': 'contact' }
-            : { '2': 'circuit', '3': 'snake', '4': 'contact' }
-          : { '2': 'signin', '3': 'snake', '4': 'contact' }
-        : { '2': 'snake', '3': 'contact' }),
-    }
     const onKey = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null
       const tag = target?.tagName?.toLowerCase()
@@ -835,11 +835,6 @@ export default function App() {
         tag === 'input' || tag === 'textarea' || (target as HTMLElement)?.isContentEditable
       if (isTyping || e.altKey || e.ctrlKey || e.metaKey) return
       const key = e.key
-      if (map[key]) {
-        setActive(map[key])
-        e.preventDefault()
-        return
-      }
       // Arrow navigation across sections — but never while the snake game has control.
       // The game can live anywhere now (its page, or a pinned canvas window over any
       // tab), so the guard follows the GAME, not the page.
@@ -1064,6 +1059,11 @@ export default function App() {
   // together, and the section's normal render must be guarded with !sharedCanvasShowing or it
   // draws twice. chat/ratings/people/profile arrived with the mobile restructure and were
   // missed here, so the canvas button did nothing on them.
+  /**
+   * Pages that have nothing to show a signed-out visitor but a sign-in prompt. Kept next to
+   * singleCanvasTabs because the two have to be read together — see the launcher filter below.
+   */
+  const MEMBER_ONLY_TABS: Section[] = ['account-settings', 'chat', 'ratings', 'people', 'profile']
   const singleCanvasTabs: Section[] = [
     'investments',
     'account-settings',
@@ -1183,6 +1183,21 @@ export default function App() {
     setPinned((prev) =>
       prev.some((p) => p.id === pane.id) ? prev.filter((p) => p.id !== pane.id) : [...prev, pane],
     )
+  /**
+   * Page windows have their content rebuilt EVERY RENDER rather than kept from the moment they
+   * were opened.
+   *
+   * A pane carries a React ELEMENT, so a window opened while signed out held
+   * `<ChatPage authed={false} />` for good: sign in, and every one of those windows still said
+   * "Sign in to…" while the header showed you already had. Home's cards and the Circuit's panes
+   * are handed back fresh by the pages that own them (refreshPinned below); nothing owned these,
+   * because the page they came from had unmounted. Same element type in the same position, so
+   * React updates props rather than remounting — whatever is on screen keeps its state.
+   */
+  const livePanes = pinned.map((p) =>
+    singleCanvasTabs.includes(p.id as Section) ? { ...p, node: canvasNodeFor(p.id as Section) } : p,
+  )
+
   /** this tab's panes plus any pinned ones it doesn't already own */
   // A tab's own panes are rebuilt every render, but pinned copies are frozen at pin time —
   // so the page that owns them hands back fresh ones when what they render changes.
@@ -1206,7 +1221,25 @@ export default function App() {
       group: 'Home',
     })),
     ...singleCanvasTabs
-      .filter((sec) => (sec === 'admin' ? isAdmin : sec === 'signin' ? !isFinanceAuthed : true))
+      .filter((sec) =>
+        sec === 'admin'
+          ? isAdmin
+          : sec === 'signin'
+            ? !isFinanceAuthed
+            : /**
+               * Member pages are hidden from signed-out visitors, the same way the nav hides
+               * them. They were all listed, so opening the canvas signed out revealed the whole
+               * members area as a row of windows whose only content was "sign in to…". Nothing
+               * leaked — but the launcher and the nav disagreeing about what exists is the bug,
+               * and a window that can only turn you away is not worth offering.
+               *
+               * Investments stays: signed out it shows the sample dashboard, which is a real
+               * thing to look at rather than a locked door.
+               */
+              MEMBER_ONLY_TABS.includes(sec)
+              ? isFinanceAuthed || previewMember
+              : true,
+      )
       .map((sec) => ({
         id: sec,
         title: canvasTitleFor[sec] ?? sec,
@@ -1575,7 +1608,7 @@ export default function App() {
             }
           >
             <PageCanvas
-              panes={pinned}
+              panes={livePanes}
               pinnedIds={pinnedIds}
               onTogglePin={togglePin}
               ambientOn={ambientOn}
@@ -1926,7 +1959,6 @@ export default function App() {
               Keyboard shortcuts
             </h2>
             <ul style={{ margin: 0, paddingLeft: '1rem' }}>
-              <li>1–5: Jump to sections</li>
               <li>Arrow Left/Right: Previous/Next section</li>
               <li>Snake: Arrow keys, swipe, or on-screen controls</li>
               <li>?: Open this help, Esc: Close</li>
