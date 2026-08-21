@@ -20,13 +20,27 @@ Frontend (Vite):
 
 ### player_registry
 
-Purpose: stable registry of player identities (currently name-based; no auth yet)
+Purpose: stable registry of player identities. A handle may be CLAIMED by an account, which is
+what links Snake scores to a member's profile.
 
 Columns:
 
 - id (bigint, PK)
 - player_name (citext, UNIQUE)
 - created_at (timestamptz, default now())
+- user_id (uuid, nullable) — the account that claimed this handle, null if unclaimed
+- visibility (visibility_tier) — who may learn WHICH member is behind the handle
+
+⚠️ SELECT is granted COLUMN BY COLUMN, not on the table (2026-08-19):
+
+    grant select (id, player_name, created_at) on public.player_registry to anon, authenticated;
+
+`user_id` and `visibility` are deliberately NOT selectable. The policy is `USING true`, so before
+this, anyone — including anon — could read the handle→account mapping directly and defeat the
+visibility tier that `snake_friend_names()` carefully enforces. Written as an allowlist so a
+column added later is denied by default rather than published the moment it exists. The SECURITY
+DEFINER functions that legitimately need `user_id` are unaffected.
+See `docs/2026-08-19-snake-handle-link.sql`.
 
 Relationships:
 
@@ -117,7 +131,8 @@ Inputs:
   - name (player name)
   - score (integer)
   - finishIdx (integer)
-- p_players: JSON array (optional); if present used for name mapping / metadata
+- p_players: JSON array (optional); used for name mapping / metadata, and may carry an
+  optional `userId` per entry — see the ownership rule below
 
 Return:
 
@@ -132,6 +147,38 @@ Important invariants:
 
 - Must be safe to call multiple times for same (room_id, round_id) (idempotent)
 - Results ordering must be deterministic (place asc; tie-breakers consistent)
+- Callable more than once inside ONE transaction. Its temp tables are `ON COMMIT DROP`, which
+  drops at commit rather than at function exit, so each call drops them first. (2026-08-21)
+
+Integrity rules added 2026-08-20 — the relay's WebSocket accepts anyone, the display name is
+self-declared and the score is client-declared, and this runs with the SERVICE ROLE key:
+
+- **Score is capped at 1,000,000**, matching submit_score. There was no upper bound at all, only
+  a delete of negatives, so 2,000,000,000 was writable.
+- **A CLAIMED handle is not written unless the caller vouches for its owner** — that is, an entry
+  in `p_players` with a matching `userId`. Without it, leaderboard/score_history/trophies are all
+  skipped for that player, though they still appear in the returned placements so the round stays
+  honest about who played. This is why multiplayer scores under a claimed handle currently do not
+  record: the relay does not yet send a verified id.
+- EXECUTE is granted to `service_role` only.
+
+See `docs/2026-08-20-relay-audit.sql`.
+
+### submit_score(p_name text, p_score integer, p_game_mode text, p_apples integer, p_time integer, p_created_at timestamptz) -> bigint
+
+Purpose: record a single-player run. Anon-executable by design — Snake is playable signed out.
+
+Bounds and rules:
+
+- score must be > 0 and <= 1,000,000; `created_at` is clamped to <= now() and >= 2024-01-01
+- **a CLAIMED handle (player_registry.user_id is not null) is only writable by that owner.**
+  Returns NULL otherwise. Unclaimed handles are unaffected, so signed-out play still records.
+  Uses `auth.uid() is distinct from v_owner` — `<>` would be NULL for anon and let exactly the
+  case being blocked slip through. (2026-08-20)
+
+⚠️ It refuses by RETURNING NULL, not by raising. A caller checking only `error` will think a
+refused score was saved. `src/game/leaderboard.ts` returns 'saved' | 'claimed' | 'local' for
+this reason.
 
 ### enforce_best_score() -> trigger
 
@@ -200,26 +247,59 @@ Important invariants:
 
 See `db-schema-summary.sql` for full column/constraint details.
 
-- **finance.family_accounts** — one row per family member investment account (display_name)
-- **finance.executed_trades** — immutable trade log (asset_symbol, price, units_acquired, dollar_amount, fee, execution_time)
-- **finance.allocations** — per-account fractional unit allocation for each trade (family_account_id, executed_trade_id, units_allocated)
-- **finance.scheduled_trades** — future trade queue processed by cron/server (payload, schedule_at, status)
+Verified against the live database 2026-08-21.
+
+- **finance.family_accounts** — one row per family member investment account (display_name,
+  dollar_per_day, start_date)
+- **finance.executed_trades** — trade log (asset_symbol, price, units_acquired, dollar_amount,
+  fee, execution_time, `import_key`, `kind`). `kind` is 'buy' | 'sell' | 'drip' | 'adjustment',
+  nullable for rows imported before it existed — see `docs/2026-08-21-trade-kind.sql`.
+  `import_key` has a UNIQUE partial index, which is what makes re-importing a statement safe.
+- **finance.allocations** — per-account fractional unit allocation for each trade
+- **finance.family_contributions** — what was actually set aside for the family, DECLARED rather
+  than derived. The fund is commingled with personal trading, so this number exists nowhere else.
+  RLS on, no policies, no grants — RPC-only. See `docs/2026-08-20-family-contributions.sql`.
+- **finance.price_cache**, **finance.price_history** — market prices
+- **finance.symbol_designations** — which (symbol, platform) pairs belong to the family fund
+- **finance.cost_basis_overrides**, **finance.user_preferences**
+
+⚠️ **finance.scheduled_trades DOES NOT EXIST** and appears never to have shipped. It was
+documented here and the relay polls for its drain function every 30 seconds; that tick now
+disables itself on discovering the function is absent.
 
 ### Finance RPCs (all in `public` schema)
 
 See `supabase-rpcs.sql` for full SQL definitions.
 
-| RPC                                      | Purpose                                                         |
-| ---------------------------------------- | --------------------------------------------------------------- |
-| `get_family_accounts(uid)`               | Fetch all family accounts for the signed-in user                |
-| `insert_family_account(payload)`         | Create a new family account; `display_name` required            |
-| `delete_family_account(uid, account_id)` | Delete a family account by id                                   |
-| `get_executed_trades(uid)`               | Fetch all trades for the signed-in user                         |
-| `insert_executed_trade(payload)`         | Insert a single trade without allocating                        |
-| `insert_trade_even_split(payload)`       | Insert trade + auto-create even allocations across all accounts |
-| `schedule_trade_even_split(payload)`     | Queue a future even-split trade (`schedule_at` required)        |
-| `run_due_scheduled_trades(limit_count)`  | Process pending scheduled trades (called by cron/server)        |
-| `get_allocations(uid)`                   | Fetch all allocations for the signed-in user                    |
+⚠️ **Checked against the live database 2026-08-21: seven of the nine RPCs this table used to
+list do not exist.** They were dropped as dead (see `docs/removed-rpcs-2026-07-30.sql`) and the
+contract was never updated, so it was sending readers after functions that had been gone for
+weeks. Only the two below survived.
+
+| RPC                        | Purpose                                      |
+| -------------------------- | -------------------------------------------- |
+| `get_executed_trades(uid)` | Fetch all trades for the signed-in user      |
+| `get_allocations(uid)`     | Fetch all allocations for the signed-in user |
+
+⚠️ Both are called through a VARIABLE (`sb.rpc(fn, { uid })`) with paging past PostgREST's
+1000-row cap, so a grep for `rpc('get_allocations')` finds nothing and they look dead. They are
+not.
+
+The finance surface that actually exists today:
+
+| RPC                                                                          | Purpose                                                       |
+| ---------------------------------------------------------------------------- | ------------------------------------------------------------- |
+| `get_my_portfolio()`                                                         | Member view: their accounts, holdings, `contributed`, `ready` |
+| `my_fund_status()` / `admin_fund_status()`                                   | Promised vs contributed, per-account and fund-wide            |
+| `admin_add_contribution(amount, on, note)`                                   | Record money set aside; admin only                            |
+| `admin_list_contributions()` / `admin_delete_contribution(id)`               | Manage those entries                                          |
+| `admin_import_trades(user_id, trades)`                                       | Bulk trade import; honours an optional `kind`                 |
+| `admin_even_split_trades(user_id)`                                           | Spread unallocated family trades across accounts              |
+| `admin_get_portfolios()` / `admin_get_timeline()` / `admin_list_positions()` | Admin views                                                   |
+| `upsert_prices(prices)` / `list_fund_symbols()`                              | Used by the `refresh-prices` edge function                    |
+
+Deliberately not exhaustive — `pg_proc` is the source of truth. This table exists so nobody
+trusts a list that has been wrong for two months again.
 
 ## Client expectations (must stay true)
 

@@ -51,13 +51,50 @@ function createSupabaseServiceClient() {
   })
 }
 
+/**
+ * ⚠️ `run_due_scheduled_trades` DOES NOT EXIST in the database, and neither does the
+ * `finance.scheduled_trades` table it was meant to drain. Checked across every schema on
+ * 2026-08-21: no such function, no such table. The feature was documented in
+ * docs/supabase-contract.md and wired up here, but never actually shipped server-side.
+ *
+ * Left running, this fired every 30 seconds forever — roughly 2,880 failed service-role calls a
+ * day, each logging an error line. That is Render CPU and log volume spent on nothing, and a
+ * steady drip of noise that would bury a real error.
+ *
+ * So the tick DISABLES ITSELF the first time the function turns out to be missing, rather than
+ * being deleted: if the feature is ever built, a restart picks it straight back up. Any other
+ * error still just logs, because a transient failure should not switch the scheduler off.
+ */
+let schedulerTimer = null
+let schedulerOff = false
+
+function isMissingFunction(error) {
+  const code = String(error?.code || '')
+  const msg = String(error?.message || error || '')
+  // PostgREST: PGRST202 = no matching function; Postgres: 42883 = undefined_function
+  return (
+    code === 'PGRST202' ||
+    code === '42883' ||
+    /could not find the function|does not exist/i.test(msg)
+  )
+}
+
 async function runDueScheduledTradesTick(sb) {
-  if (!sb) return
+  if (!sb || schedulerOff) return
   try {
     const { data, error } = await sb.rpc('run_due_scheduled_trades', {
       limit_count: SCHEDULE_BATCH_SIZE,
     })
     if (error) {
+      if (isMissingFunction(error)) {
+        schedulerOff = true
+        if (schedulerTimer) clearInterval(schedulerTimer)
+        console.warn(
+          '[ws][scheduler] run_due_scheduled_trades does not exist — scheduler stopped. ' +
+            'Build the function and restart to re-enable.',
+        )
+        return
+      }
       console.error('[ws][scheduler] run_due_scheduled_trades failed', error.message || error)
       return
     }
@@ -738,12 +775,13 @@ const server = createServer((req, res) => {
 
 const schedulerClient = createSupabaseServiceClient()
 if (schedulerClient) {
-  setInterval(
+  schedulerTimer = setInterval(
     () => {
       void runDueScheduledTradesTick(schedulerClient)
     },
     Math.max(5000, SCHED_INTERVAL_MS),
   )
+  // the first tick is what discovers the function is missing and switches the rest off
   void runDueScheduledTradesTick(schedulerClient)
 } else {
   console.warn('[ws][scheduler] disabled: missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY')
