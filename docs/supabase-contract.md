@@ -194,52 +194,45 @@ Purpose:
   Return:
 - void (null)
 
-### insert_trade_even_split(payload jsonb) -> jsonb
+### insert_trade_even_split(payload jsonb) -> jsonb — ⚠️ REMOVED
 
-Purpose:
+This function **no longer exists**. Verified against the live database 2026-08-21. It was dropped
+as dead (see `docs/removed-rpcs-2026-07-30.sql`) and this section survived it, describing inputs
+and ownership rules for something you cannot call.
 
-- Insert one executed trade for the signed-in user and automatically create equal unit allocations across all of that user's family accounts.
+Trade import is now two steps, both admin-only:
 
-Inputs (payload JSON):
+- `admin_import_trades(p_user_id uuid, p_trades jsonb)` — insert trades, deduplicated on
+  `import_key`, honouring an optional `kind` of 'buy' | 'sell' | 'drip' | 'adjustment'
+- `admin_even_split_trades(p_user_id uuid, p_only_active boolean)` — spread family-designated
+  trades evenly across the active accounts
 
-- Required: `asset_symbol` (text)
-- Required: `price` (numeric > 0)
-- Required: `units_acquired` (numeric > 0)
-- Optional: `asset_type` (text)
-- Optional: `platform` (text)
-- Optional: `execution_time` (timestamptz; defaults to now)
-- Optional: `fee` (numeric >= 0; defaults to 0)
-- Optional: `dollar_amount` (numeric > 0; defaults to `(price * units_acquired) + fee`)
-
-Security / ownership:
-
-- Requires auth (`auth.uid()` must exist)
-- Ownership is always derived from `auth.uid()`; caller cannot set another `user_id`
-- Fails if no `finance.family_accounts` rows exist for the current user
-
-Return (jsonb):
-
-- `trade_id`
-- `asset_symbol`
-- `execution_time`
-- `units_acquired`
-- `dollar_amount`
-- `account_count`
-- `units_per_account`
-- `allocation_count`
-
-Important invariants:
-
-- Total allocated units equals trade `units_acquired`
-- Allocations are distributed evenly by units across all family accounts (last row absorbs rounding residue)
+`scripts/import-trades.mjs` calls both, in that order.
 
 ## Security / RLS notes (current)
 
+Checked against the live database 2026-08-21.
+
 - Auth is enforced: all finance operations require a valid Supabase JWT (`auth.uid()`).
 - The anon key is used browser-side (safe to ship); no service-role key in the frontend.
-- RLS policies on all finance tables gate rows to `user_id = auth.uid()`.
-- All finance writes go through public._ RPC proxies (never direct `finance._` table access).
+  ✅ Verified: every `SUPABASE_SERVICE_ROLE_KEY` reference in the repo is a `process.env` read,
+  never a literal, and no key or `.env` has ever been committed anywhere in history.
+- ⚠️ **"RLS policies on all finance tables gate rows to `user_id = auth.uid()`" is not accurate.**
+  Three different shapes are in use, and the difference matters:
+  - own-row (`user_id = auth.uid()`): `allocations`, `executed_trades`, `family_accounts`,
+    `user_preferences`
+  - **RLS on with NO policies — denies everything, reachable only through SECURITY DEFINER
+    functions**: `cost_basis_overrides`, `price_history`, `symbol_designations`,
+    `family_contributions`
+  - `SELECT true`: `price_cache`. Market prices are not personal data, and writes have no policy
+    so they are denied.
+- The `finance` schema is not exposed by PostgREST, so all access goes through `public` RPC
+  proxies rather than direct `finance.*` table reads.
 - Do not expose the service-role key in the browser — it bypasses RLS entirely.
+- Each finance table carried SEVEN overlapping policies saying the same thing in three
+  vocabularies until 2026-08-20; they were consolidated to one per-command set. Permissive
+  policies are OR'd, so the effective permission never changed — but duplicates are how a future
+  tightening gets silently undone. See `docs/2026-08-20-policy-and-guard-cleanup.sql`.
 
 ## Finance schema
 
@@ -307,5 +300,8 @@ trusts a list that has been wrong for two months again.
 ## Client expectations (must stay true)
 
 - multiplayer: round_id must come from ws-server.js and match what is written into round_results
-- spectators: must never write to Supabase (no score_history/leaderboard/trophies inserts)
+- spectators: must never write to Supabase (no score_history/leaderboard/trophies inserts).
+  ✅ Verified 2026-08-21: the relay builds a round's `participants` set with
+  `.filter(st.ready && !st.spectate)` and freezes it for the round, and `tryFinalize` iterates
+  only that set — so a spectator never reaches `finalize_round_rpc`'s items.
 - do not rename tables/columns/functions without updating this contract AND the code references
