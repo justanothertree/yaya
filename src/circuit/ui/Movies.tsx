@@ -225,7 +225,7 @@ export function Movies({
             className={'cz-chip' + (kindFilter === '' ? ' cz-on' : '')}
             style={
               kindFilter === ''
-                ? { background: 'var(--accent, #7c6af7)', color: '#fff' }
+                ? { background: 'var(--accent, #7c6af7)', color: 'var(--btn-text)' }
                 : undefined
             }
             onClick={() => setKindFilter('')}
@@ -240,7 +240,7 @@ export function Movies({
                 className={'cz-chip' + (kindFilter === rk.id ? ' cz-on' : '')}
                 style={
                   kindFilter === rk.id
-                    ? { background: 'var(--accent, #7c6af7)', color: '#fff' }
+                    ? { background: 'var(--accent, #7c6af7)', color: 'var(--btn-text)' }
                     : undefined
                 }
                 onClick={() => setKindFilter(rk.id)}

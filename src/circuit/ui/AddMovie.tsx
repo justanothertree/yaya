@@ -135,7 +135,9 @@ export function AddMovie({
             type="button"
             className={'cz-chip' + (kind === rk.id ? ' cz-on' : '')}
             style={
-              kind === rk.id ? { background: 'var(--accent, #7c6af7)', color: '#fff' } : undefined
+              kind === rk.id
+                ? { background: 'var(--accent, #7c6af7)', color: 'var(--btn-text)' }
+                : undefined
             }
             onClick={() => setKind(rk.id)}
           >

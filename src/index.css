@@ -110,7 +110,15 @@
 #circuit {
   --accent: #7c6af7;
   --accent-2: #ff5566;
-  --btn-text: #ffffff;
+  /* ⚠️ NOT white. Measured, white on this purple is 3.99:1 — under the 4.5:1 normal text
+     needs — and it applied to every control that sits on the accent: the active tab, the
+     primary buttons, today's marker on the board. #0b0f19 gives 4.95:1 and is exactly what
+     readableOn('#7c6af7') in theme/customTheme.ts returns, so the hand-picked value and the
+     computed one now agree. That file's own note calls a hand-picked --btn-text "how the alt
+     theme ended up at 3.36:1"; this was the same mistake, one module over.
+     The purple itself is untouched — it is the Circuit's brand and only the text on top of it
+     changes. */
+  --btn-text: #0b0f19;
 }
 /* ...but not when someone has set their own colours. The purple holds against the three
    built-in themes because it's brand; a custom palette is the user saying "use MY colours",

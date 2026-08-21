@@ -140,7 +140,11 @@ export function Watchlist({
       onClick={() => setSort(k)}
       style={
         sort === k
-          ? { background: 'var(--accent,#7c6af7)', color: '#fff', borderColor: 'transparent' }
+          ? {
+              background: 'var(--accent,#7c6af7)',
+              color: 'var(--btn-text)',
+              borderColor: 'transparent',
+            }
           : {}
       }
     >
@@ -220,7 +224,11 @@ export function Watchlist({
         <div style={{ display: 'flex', gap: '0.3rem', flexWrap: 'wrap', marginBottom: '0.7rem' }}>
           <button
             className={'cz-chip' + (kindFilter === '' ? ' cz-on' : '')}
-            style={kindFilter === '' ? { background: 'var(--accent,#7c6af7)', color: '#fff' } : {}}
+            style={
+              kindFilter === ''
+                ? { background: 'var(--accent,#7c6af7)', color: 'var(--btn-text)' }
+                : {}
+            }
             onClick={() => setKindFilter('')}
           >
             All {inGroup.length}
@@ -232,7 +240,9 @@ export function Watchlist({
                 key={k.id}
                 className={'cz-chip' + (kindFilter === k.id ? ' cz-on' : '')}
                 style={
-                  kindFilter === k.id ? { background: 'var(--accent,#7c6af7)', color: '#fff' } : {}
+                  kindFilter === k.id
+                    ? { background: 'var(--accent,#7c6af7)', color: 'var(--btn-text)' }
+                    : {}
                 }
                 onClick={() => setKindFilter(k.id)}
               >
@@ -365,7 +375,9 @@ export function Watchlist({
                 key={k.id}
                 className={'cz-chip' + (newKind === k.id ? ' cz-on' : '')}
                 style={
-                  newKind === k.id ? { background: 'var(--accent,#7c6af7)', color: '#fff' } : {}
+                  newKind === k.id
+                    ? { background: 'var(--accent,#7c6af7)', color: 'var(--btn-text)' }
+                    : {}
                 }
                 onClick={() => setNewKind(k.id)}
               >

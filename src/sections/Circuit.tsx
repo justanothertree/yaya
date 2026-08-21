@@ -515,7 +515,11 @@ function DemoBanner() {
         <a
           href="#signin"
           className="btn"
-          style={{ background: 'var(--accent, #7c6af7)', color: '#fff', fontSize: '0.85rem' }}
+          style={{
+            background: 'var(--accent, #7c6af7)',
+            color: 'var(--btn-text)',
+            fontSize: '0.85rem',
+          }}
         >
           Sign in
         </a>

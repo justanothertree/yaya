@@ -720,7 +720,11 @@ function AccountForm({
           className="btn"
           type="submit"
           disabled={busy || !name.trim() || (!isEdit && !ownerUid)}
-          style={{ background: 'var(--accent,#7c6af7)', color: '#fff', borderColor: 'transparent' }}
+          style={{
+            background: 'var(--accent,#7c6af7)',
+            color: 'var(--btn-text)',
+            borderColor: 'transparent',
+          }}
         >
           {busy ? 'Saving…' : isEdit ? 'Save changes' : 'Create account'}
         </button>

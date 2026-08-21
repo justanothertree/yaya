@@ -153,7 +153,8 @@ export function Board({
                     borderRadius: 4,
                     overflow: 'hidden',
                     fontWeight: isToday ? 800 : 500,
-                    color: isToday ? '#fff' : 'var(--ink2, rgba(127,127,127,0.75))',
+                    // on the accent, so it takes the accent's computed text colour
+                    color: isToday ? 'var(--btn-text)' : 'var(--ink2, rgba(127,127,127,0.75))',
                     background: isToday ? 'var(--accent, #7c6af7)' : 'transparent',
                   }}
                 >

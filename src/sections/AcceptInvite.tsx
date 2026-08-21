@@ -177,7 +177,11 @@ export function AcceptInvite() {
             window.location.hash = 'circuit'
           }}
           className="btn"
-          style={{ background: 'var(--accent,#7c6af7)', color: '#fff', borderColor: 'transparent' }}
+          style={{
+            background: 'var(--accent,#7c6af7)',
+            color: 'var(--btn-text)',
+            borderColor: 'transparent',
+          }}
         >
           Go to The Circuit
         </a>

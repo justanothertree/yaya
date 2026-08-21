@@ -279,7 +279,11 @@ export function AdminPanel() {
       onClick={() => setTab(t)}
       style={
         tab === t
-          ? { background: 'var(--accent,#7c6af7)', color: '#fff', borderColor: 'transparent' }
+          ? {
+              background: 'var(--accent,#7c6af7)',
+              color: 'var(--btn-text)',
+              borderColor: 'transparent',
+            }
           : {}
       }
     >

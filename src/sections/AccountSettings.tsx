@@ -220,7 +220,11 @@ function MemberProfileCard() {
         className="btn"
         type="submit"
         disabled={saving}
-        style={{ background: 'var(--accent,#7c6af7)', color: '#fff', borderColor: 'transparent' }}
+        style={{
+          background: 'var(--accent,#7c6af7)',
+          color: 'var(--btn-text)',
+          borderColor: 'transparent',
+        }}
       >
         {saving ? 'Saving…' : 'Save your info'}
       </button>
