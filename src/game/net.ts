@@ -1,4 +1,4 @@
-import type { NetMessage } from './types'
+import type { NetMessage, Settings } from './types'
 
 type Handlers = {
   onOpen?: () => void
@@ -18,7 +18,7 @@ export class NetClient {
     this.handlers = handlers
   }
 
-  connect(room: string, opts?: { create?: boolean }) {
+  connect(room: string, opts?: { create?: boolean; settings?: Settings }) {
     if (this.connecting) return
     this.disconnect()
     this.connecting = true
@@ -39,7 +39,16 @@ export class NetClient {
         } catch {
           // ignore
         }
-        this.send({ type: 'hello', room, clientId: cid, create: opts?.create })
+        // Settings ride along with the hello rather than following it. A room created at
+        // defaults and corrected a moment later is a room that can be seeded, joined or
+        // started in between; born correct has no such window.
+        this.send({
+          type: 'hello',
+          room,
+          clientId: cid,
+          create: opts?.create,
+          ...(opts?.create && opts.settings ? { settings: opts.settings } : {}),
+        })
       }
       ws.onmessage = (ev) => {
         try {

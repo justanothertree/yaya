@@ -81,7 +81,11 @@ export type TrophyCounts = { gold: number; silver: number; bronze: number }
 export type Mode = 'solo' | 'versus'
 
 export type NetMessage =
-  | { type: 'hello'; room: string; clientId?: string; create?: boolean }
+  /**
+   * `settings` is only read when `create` is true and the room does not exist yet — it is what
+   * the room is BORN with. A joiner cannot use it to rewrite rules that are already in force.
+   */
+  | { type: 'hello'; room: string; clientId?: string; create?: boolean; settings?: Settings }
   | { type: 'welcome'; id: string; visitor?: number }
   | {
       type: 'seed'

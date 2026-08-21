@@ -1497,7 +1497,7 @@ export function GameManager({
             const delay = 400 * createAttempts
             window.setTimeout(() => {
               setConn('connecting')
-              net.connect(roomOverride ?? room, { create })
+              net.connect(roomOverride ?? room, { create, settings: settingsRef.current })
             }, delay)
             return
           }
@@ -2003,7 +2003,7 @@ export function GameManager({
       })
       netRef.current = net
       setConn('connecting')
-      net.connect(roomOverride ?? room, { create })
+      net.connect(roomOverride ?? room, { create, settings: settingsRef.current })
     },
     // 'countdown' removed from deps (not referenced inside connectVs) to satisfy lint
     [

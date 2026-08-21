@@ -863,7 +863,20 @@ wss.on('connection', (ws) => {
         room = {
           clients: new Map(),
           hostId: null,
-          settings: { ...DEFAULT_SETTINGS },
+          /**
+           * A new room takes the CREATOR'S settings, not the defaults.
+           *
+           * You pick apples, board size, speed and edges in solo — that is the only place the
+           * controls are usable before a room exists — then open a room to play with a friend,
+           * and every one of those choices was thrown away: the room was born at DEFAULT_SETTINGS
+           * and the panel kept showing yours until the first seed arrived and snapped it back.
+           * The reset looked like a bug in the panel; it was the room never having been told.
+           *
+           * Safe to take from the client because sanitizeSettings is a bounded allowlist, and
+           * this branch only runs when the room does not exist — a joiner cannot use it to
+           * rewrite rules that are already in force.
+           */
+          settings: sanitizeSettings(msg.settings, DEFAULT_SETTINGS),
           seed: 0,
           roundId: null,
           visitorCounter: 0,
@@ -908,6 +921,13 @@ wss.on('connection', (ws) => {
       // Emit presence count
       broadcast(room, { type: 'presence', count: room.clients.size })
       send(ws, { type: 'presence', count: room.clients.size })
+      /**
+       * The room's rules, on arrival. Without this a guest sat in the lobby looking at their OWN
+       * saved settings — editable-looking, and wrong — until the first seed replaced them mid
+       * countdown. The settings broadcast only fires when the host CHANGES something, so a host
+       * who was already happy with the room never sent one.
+       */
+      send(ws, { type: 'settings', settings: room.settings })
       return
     }
 
