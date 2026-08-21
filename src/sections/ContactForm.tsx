@@ -3,6 +3,8 @@ import { site } from '../config/site'
 
 export function ContactForm() {
   const [status, setStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle')
+  /** what the form service said went wrong, when it said anything */
+  const [why, setWhy] = useState('')
   const formRef = useRef<HTMLFormElement>(null)
   // When focusing fields on mobile, ensure the field is visible above keyboard
   useEffect(() => {
@@ -22,6 +24,7 @@ export function ContactForm() {
   async function onSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault()
     setStatus('sending')
+    setWhy('')
     const data = new FormData(e.currentTarget)
     try {
       const endpoint = 'https://formspree.io/f/xeorpelp'
@@ -45,6 +48,31 @@ export function ContactForm() {
        * what to revisit.
        */
       if (!res.ok) {
+        /**
+         * Say WHY, in Formspree's own words.
+         *
+         * Every failure used to read the same — "that didn't send, try again in a moment" —
+         * which is the right advice for a blip and the wrong advice for the two things that
+         * actually happen: the free plan's monthly submission cap, and a submission blocked
+         * as spam. Both of those will still be true in a moment, so "try again" makes the
+         * form look simply broken while hiding a fixable cause. Their JSON says which it is.
+         */
+        let msg = ''
+        try {
+          const body = (await res.json()) as {
+            error?: string
+            errors?: Array<{ message?: string }>
+          }
+          msg =
+            body.error ||
+            (body.errors ?? [])
+              .map((x) => x?.message)
+              .filter(Boolean)
+              .join('; ')
+        } catch {
+          /* not JSON — the status code is all there is to go on */
+        }
+        setWhy(msg || `The form service answered ${res.status}.`)
         setStatus('error')
         return
       }
@@ -63,6 +91,7 @@ export function ContactForm() {
       // sent is how a message disappears with nobody any the wiser. The form is deliberately
       // NOT reset, so what they typed is still there to send again.
       console.warn('Contact form submit failed:', err)
+      setWhy('The request never reached the form service — check your connection.')
       setStatus('error')
     }
   }
@@ -132,8 +161,14 @@ export function ContactForm() {
             end here means the message is simply lost. */}
         {status === 'error' && (
           <div aria-live="polite" style={{ fontSize: '0.88rem' }}>
-            That didn&apos;t send — nothing has been lost, your message is still in the form. Try
-            again in a moment, or reach me on{' '}
+            That didn&apos;t send — nothing has been lost, your message is still in the form.
+            {why && (
+              <>
+                {' '}
+                <span className="muted">({why})</span>
+              </>
+            )}{' '}
+            Try again in a moment, or reach me on{' '}
             <a href={site.socials.linkedin} target="_blank" rel="noreferrer">
               LinkedIn
             </a>

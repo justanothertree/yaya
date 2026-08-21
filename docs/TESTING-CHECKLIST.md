@@ -56,9 +56,9 @@ reverts; say so rather than living with them.
 - [ ] Charts → hover a point on **points-per-day**. The tooltip should size sensibly, especially in
       a narrow canvas window.
 - [ ] Canvas mode: drag a window, resize it, "Fit to content", "Tile", "Fit all".
-- [ ] ⚠️ **Canvas edge case I fixed but could only test synthetically**: start dragging a window
-      and, _without releasing the mouse_, toggle Canvas off in the cog menu. Nothing should break
-      or feel stuck afterwards.
+- [x] ~~Drag a window and toggle Canvas off mid-drag~~ - Evan: not physically possible, the cog
+      menu can't be reached with the mouse already down. The guard stays (it costs nothing and
+      covers a stray pointercancel), but there is nothing to test by hand.
 
 ## 4. Chat and calls
 
@@ -69,10 +69,7 @@ reverts; say so rather than living with them.
 - [ ] Send a message. It appears, and your own message renders as yours (right-aligned), not as
       someone else's.
 - [ ] Unread badges still count correctly, including for the Lounge.
-- [ ] 🔔 **Call sound**: cog menu → toggle "Call sound" on. It should play a ring when you switch
-      it on. Then have someone start a call and check you hear it. ⚠️ I tuned this blind — I can
-      only confirm it produces clean audio, not that it sounds good. Frequencies are four numbers
-      at the bottom of `src/voice/ringtone.ts`.
+- [x] ~~Call sound~~ - confirmed working 2026-08-21.
 - [ ] A real call still connects, with audio and screen share.
 
 ## 5. Snake
@@ -94,6 +91,7 @@ reverts; say so rather than living with them.
 - [ ] With the sheet open, Tab repeatedly — focus should stay **inside** the dialog.
 - [ ] Press Escape → sheet closes and focus returns to the name you opened it from.
 - [ ] Navigate between pages; the browser tab title should change ("Investments · Evan Cook").
+- [ ] Number keys should do NOTHING now. They used to jump between sections.
 
 ## 7. Admin
 
@@ -116,6 +114,43 @@ Recorded so you do not spend time re-checking:
 - 🔒 A forged Snake round cannot write to a claimed account; an unclaimed name still records.
 - 🔒 No secrets are committed, and none ever were anywhere in git history.
 - All 10 routes render; every route has exactly one `<h1>`; zero contrast failures in dark theme.
+
+## 8b. Second round — from your 2026-08-21 testing
+
+- [ ] ⚠️ **Joining a call somebody else started.** The one that failed: connecting → reconnecting
+      → failed, stuck until your friend cancelled and re-called. Two changes — ICE candidates
+      that arrive before the offer they belong to are now held instead of discarded, and
+      signalling messages are handled strictly in order per peer. **I could not reproduce your
+      exact failure**, so this is the defect I found and proved, not a certainty that it was the
+      one that bit you.
+- [ ] If a call fails again: it should now rebuild itself once, about six seconds in — the row
+      goes back to "connecting" with nobody hanging up. That is what your friend was doing by
+      hand. Tell me if it still needs a human.
+- [ ] 🆕 **Circuit invite over DM.** Circuit → Circuits → "✉️ Invite a friend" on a circuit you
+      own → pick someone. They get a card in your DM saying "🏆 Join the circuit"; tapping it
+      joins them and says so. Only accepted friends are listed — same rule as the Snake
+      challenge, so this reaches nobody you couldn't already message.
+- [ ] Open one of those links while **signed out**: it should say "Sign in and you'll join that
+      circuit", then actually join once you do. Either way the code should disappear from the
+      address bar.
+- [ ] ⚠️ **Snake's "Challenge a friend" still works and still looks right.** Its popover styling
+      moved out of `game.css` into `components/InviteFriends.css` so the Circuit could share it.
+      If that panel looks unstyled, the move is why.
+- [ ] **Sign in with canvas windows already open.** They should stop saying "sign in" the moment
+      you do. ⚠️ The fix I am least able to check — driving a real sign-in needs a session I do
+      not hold.
+- [ ] Open the canvas **signed out**: Chat / Ratings / People / Profile / Account are no longer
+      offered in the Windows menu. Investments still is — it has a real demo to show rather than
+      a locked door. (Verified in the dev preview, both signed in and out.)
+- [ ] **Number keys 1–5 no longer jump between sections.** Arrow Left/Right still do; the `?`
+      help card should no longer mention numbers.
+- [ ] **Contact form**: a failure now says what the form service said, in brackets. If it
+      mentions a limit, that is Formspree's free monthly cap rather than a bug — which would
+      also explain "some emails but maybe not all of them".
+- [ ] **Snake settings carry into a room.** Set a game up in solo, then create a room: it should
+      be born with those settings instead of snapping back to 30 / 4 apples at the countdown.
+      ⚠️ Needs the Render redeploy to take effect.
+- [ ] **Apples in race + crash.** Should be there now, and in classic + crash too.
 
 ## 9. Still waiting on a decision
 
