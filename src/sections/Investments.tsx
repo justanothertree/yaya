@@ -603,24 +603,47 @@ function AccountForm({
   const [busy, setBusy] = useState(false)
   const [confirmDel, setConfirmDel] = useState(false)
   const [err, setErr] = useState<string | null>(null)
+  // non-fatal problems: the save worked, something alongside it did not
+  const [warn, setWarn] = useState<string | null>(null)
 
   async function save(e: React.FormEvent) {
+    /**
+     * Turning the Investments feature on for the new owner is deliberately NON-FATAL — the account
+     * itself is the point, and failing the whole save because a flag did not flip would be worse.
+     *
+     * But it used to be `.catch(() => {})`, which is different from non-fatal: it was SILENT. The
+     * member ends up owning an account they cannot see, and the person who handed it over gets no
+     * hint why. That is a bad trade when 33 accounts are about to be handed out one at a time.
+     *
+     * So the save still succeeds, and says what did not happen.
+     */
+    async function enableFinanceOrWarn(uid: string) {
+      try {
+        await adminEnableFinance(uid)
+      } catch (e) {
+        setWarn(
+          `Account saved, but Investments could not be switched on for them` +
+            `${e instanceof Error ? ` (${e.message})` : ''}. ` +
+            `They will not see the page until it is enabled from Admin → Members.`,
+        )
+      }
+    }
+
     e.preventDefault()
     setBusy(true)
     setErr(null)
+    setWarn(null)
     try {
       if (isEdit) {
         await adminUpdateAccount(account.id, name, Number(dpd) || 0, start || null)
         // owner changed → hand the account (holdings and all) to the new member
         if (ownerUid && ownerUid !== (account.ownerUserId ?? '')) {
           await adminReassignAccount(account.id, ownerUid)
-          await adminEnableFinance(ownerUid).catch(() => {})
+          await enableFinanceOrWarn(ownerUid)
         }
       } else {
         await adminCreateAccount(ownerUid, name, Number(dpd) || 0, start || null)
-        // creating a member's fund account should let them see it — best-effort, since the
-        // account itself is the important part (the Admin feature toggle is the fallback).
-        await adminEnableFinance(ownerUid).catch(() => {})
+        await enableFinanceOrWarn(ownerUid)
       }
       await onSaved()
     } catch (e2: unknown) {
@@ -715,6 +738,11 @@ function AccountForm({
         </label>
       </div>
       {err && <p style={{ margin: 0, color: 'var(--accent-2)', fontSize: '0.82rem' }}>{err}</p>}
+      {warn && (
+        <p className="muted" style={{ margin: 0, fontSize: '0.82rem' }}>
+          ⚠️ {warn}
+        </p>
+      )}
       <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
         <button
           className="btn"
