@@ -324,10 +324,28 @@ function parseFile(file) {
   const s = source === 'robinhood' ? fromRobinhood(rows, since) : fromCashApp(rows, since)
 
   // de-dupe within the file
+  //
+  // ⚠️ COLLAPSED ROWS CAN BE REAL MONEY. Cash App rows carry a Transaction ID, so two genuinely
+  // separate identical buys stay distinct. ROBINHOOD ROWS DO NOT — their key is a hash of
+  // (date, symbol, units, price, dollars) and Activity Date has no time on it, so three real
+  // $20 purchases of the same stock on the same day at the same price are indistinguishable
+  // from one row listed three times, and collapse to a single $20 trade. Two thirds of the
+  // money disappears silently.
+  //
+  // Not "fixed" here on purpose: the obvious repair is to add an occurrence ordinal to the key,
+  // but that CHANGES THE KEY OF EVERY ROBINHOOD ROW ALREADY IMPORTED. Since import_key is what
+  // makes re-imports idempotent, the next run would treat all of them as new and insert a
+  // second copy of the entire Robinhood history. That decision needs a migration, not a patch.
+  //
+  // What this does instead: refuses to let a collapse be a quiet parenthetical.
   const seenKeys = new Set()
   const unique = []
+  const collapsed = []
   for (const t of s.trades) {
-    if (seenKeys.has(t.importKey)) continue
+    if (seenKeys.has(t.importKey)) {
+      collapsed.push(t)
+      continue
+    }
     seenKeys.add(t.importKey)
     unique.push(t)
   }
@@ -341,7 +359,21 @@ function parseFile(file) {
 
   console.log(`\n=== ${source} — ${file}${committing ? '' : ' (DRY RUN)'} ===`)
   console.log(`Rows in file   : ${s.dataRows}${since ? `   (only ${since} and later)` : ''}`)
-  console.log(`Kept           : ${unique.length} buys+sells${s.trades.length - unique.length ? ` (after removing ${s.trades.length - unique.length} in-file dupes)` : ''}${reinv ? `, incl ${reinv} dividend reinvestments` : ''}`)
+  console.log(`Kept           : ${unique.length} buys+sells${reinv ? `, incl ${reinv} dividend reinvestments` : ''}`)
+  if (collapsed.length) {
+    const dollars = collapsed.reduce((acc, t) => acc + Math.abs(t.dollars), 0)
+    console.log(`⚠️  COLLAPSED    : ${collapsed.length} row${collapsed.length === 1 ? '' : 's'} identical to an earlier one — $${dollars.toFixed(2)} NOT imported`)
+    if (source === 'robinhood') {
+      console.log(`                 Robinhood rows have no transaction id and Activity Date has no time,`)
+      console.log(`                 so a genuine second purchase of the same stock, same day, same price`)
+      console.log(`                 is indistinguishable from a repeated row. CHECK THESE AGAINST YOUR`)
+      console.log(`                 STATEMENT before trusting the totals:`)
+    }
+    for (const t of collapsed.slice(0, 10)) {
+      console.log(`                 ${t.date} ${t.symbol} ${t.units} @ ${t.price} = ${t.dollars}`)
+    }
+    if (collapsed.length > 10) console.log(`                 …and ${collapsed.length - 10} more`)
+  }
   if (s.sells.count > 0) {
     console.log(`Sells          : ${s.sells.count} (−$${s.sells.dollars.toFixed(2)}) — netted against buys`)
   }
