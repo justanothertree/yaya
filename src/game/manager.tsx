@@ -789,7 +789,12 @@ export function GameManager({
       engine.loadSnapshot({
         snake: [{ x: st.x, y: st.y }],
         dir: st.dir,
-        apples: [],
+        // Whatever is already on the board. This used to be an empty array, which threw away
+        // the relay's apples set four lines above: race owns its apples remotely and the
+        // engine spawns none of its own, so race + crash came up bare and STAYED bare —
+        // no apple to reach means no eat message, and the relay only re-broadcasts the list
+        // when somebody eats one. Classic + crash lost its locally-spawned apples the same way.
+        apples: engine.snapshot().apples,
         alive: true,
         ticks: 0,
       })
@@ -809,9 +814,16 @@ export function GameManager({
     // In multiplayer, keep gameplay paused on settings changes until a countdown starts
     if (mode === 'versus') setPaused(true)
     deathAnimatedRef.current = false
-    // Attempt to restore a persisted paused state
+    /**
+     * Attempt to restore a persisted paused state.
+     *
+     * Solo only. This is the "you wandered off mid-game, here it is again" convenience, and it
+     * loads a whole board — snake position AND apples. Letting it fire in a room overwrote the
+     * starting cell the relay had just handed out and replaced the round's apples with a solo
+     * game's, on the first round after any paused solo run.
+     */
     let restoredOk = false
-    if (!restoredRef.current) {
+    if (!restoredRef.current && mode !== 'versus') {
       try {
         const raw = localStorage.getItem(LS_PERSIST_KEY)
         if (raw) {
@@ -870,6 +882,9 @@ export function GameManager({
   // Persist paused state when navigating away or unmounting
   useEffect(() => {
     const saveState = () => {
+      // Nothing from a room is worth keeping: the round belongs to the relay, and restoring it
+      // into a solo game later would drop a race snake onto a private board.
+      if (mode === 'versus') return
       const snap = engineRef.current?.snapshot()
       if (!snap || !snap.alive) return
       try {
@@ -891,7 +906,7 @@ export function GameManager({
       window.removeEventListener('pagehide', saveState)
       document.removeEventListener('visibilitychange', onVis)
     }
-  }, [settings, applesEaten, score])
+  }, [settings, applesEaten, score, mode])
 
   // Persist player name when changed (user edits); announce to room if connected
   useEffect(() => {
