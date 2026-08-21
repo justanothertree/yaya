@@ -578,7 +578,10 @@ function AllAccounts({
   )
 }
 
-// Create or edit a family account. Create mode shows a member picker; edit mode keeps the owner.
+// Create or edit a family account. BOTH modes show the member picker — in edit mode, changing it
+// hands the account over (holdings and all) via adminReassignAccount and enables finance for the
+// new owner. The comment here used to say edit mode kept the owner, which was wrong and would
+// send you hunting for a feature that already exists.
 function AccountForm({
   account,
   members,
