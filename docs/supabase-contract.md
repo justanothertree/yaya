@@ -245,7 +245,9 @@ Important invariants:
 
 ### Tables
 
-See `db-schema-summary.sql` for full column/constraint details.
+⚠️ `db-schema-summary.sql` is ARCHIVED and predates several tables and columns — see its own
+banner. For the current function surface use `docs/rpc-inventory.md`; for anything else query
+`information_schema` directly.
 
 Verified against the live database 2026-08-21.
 
@@ -269,7 +271,8 @@ disables itself on discovering the function is absent.
 
 ### Finance RPCs (all in `public` schema)
 
-See `supabase-rpcs.sql` for full SQL definitions.
+⚠️ `supabase-rpcs.sql` is ARCHIVED — 11 of the 17 functions it defines no longer exist. Current
+inventory: `docs/rpc-inventory.md`.
 
 ⚠️ **Checked against the live database 2026-08-21: seven of the nine RPCs this table used to
 list do not exist.** They were dropped as dead (see `docs/removed-rpcs-2026-07-30.sql`) and the

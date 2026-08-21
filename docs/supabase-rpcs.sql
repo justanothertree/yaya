@@ -1,3 +1,16 @@
+-- ⚠️ ARCHIVED — DO NOT TRUST AS CURRENT (checked 2026-08-21)
+--
+-- This file has not been updated since 2026-06-07. Verified against the live database on
+-- 2026-08-21: of the 17 functions defined below, ELEVEN NO LONGER EXIST, and the public schema
+-- actually contains 116. So it describes about 5% of the surface, and two thirds of what it does
+-- describe is gone.
+--
+-- It previously called itself "authoritative", which is how it came to mislead. Kept only for
+-- the historical bodies.
+--
+-- Current inventory:  docs/rpc-inventory.md
+-- Real source of truth: pg_proc / information_schema in the database itself.
+--
 -- =====================================================
 -- supabase-rpcs.sql
 -- =====================================================

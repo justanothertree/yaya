@@ -1,3 +1,16 @@
+-- ⚠️ ARCHIVED — DO NOT TRUST AS CURRENT (checked 2026-08-21)
+--
+-- Not updated since 2026-06-07. It predates, at least: finance.family_contributions,
+-- executed_trades.kind, executed_trades.import_key and its UNIQUE partial index,
+-- public.lounge_message_authors, and the column-level SELECT grant on player_registry that
+-- withholds user_id and visibility.
+--
+-- It previously called itself "source of truth for development & Copilot context", which is how
+-- it came to mislead — a stale schema file is worse than no schema file, because it is trusted.
+--
+-- Current function inventory: docs/rpc-inventory.md
+-- Real source of truth:       information_schema / pg_catalog in the database itself.
+--
 -- =====================================================
 -- db-schema-summary.sql
 -- =====================================================
