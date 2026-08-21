@@ -2682,22 +2682,29 @@ export function GameManager({
           </div>
         </div>
       )}
-      {toast && (
-        <div
-          style={{
-            position: 'fixed',
-            top: 12,
-            right: 12,
-            zIndex: 400,
-          }}
-        >
+      {/* Live region stays mounted; only the card inside comes and goes. Assistive tech watches
+          an EXISTING region for changes — one that appears already-populated is usually missed,
+          which is what would have happened here. These messages are worth hearing: "Score
+          saved!", the name-belongs-to-a-member refusal, and both "continuing solo" warnings. */}
+      <div
+        role="status"
+        aria-live="polite"
+        style={{
+          position: 'fixed',
+          top: 12,
+          right: 12,
+          zIndex: 400,
+          pointerEvents: 'none',
+        }}
+      >
+        {toast && (
           <div className="card" style={{ padding: '6px 10px' }}>
             <div className="muted" style={{ fontWeight: 600 }}>
               {toast}
             </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
       {/* You came here from someone's profile to beat their score. Stays up while it stands, so
           the number you're chasing is on screen rather than remembered. */}
       {beatTarget && !beatWon && (

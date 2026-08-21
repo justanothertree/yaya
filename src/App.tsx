@@ -769,8 +769,10 @@ export default function App() {
 
   // Announce section and sync hash when active changes
   useEffect(() => {
-    const label = active.charAt(0).toUpperCase() + active.slice(1)
-    if (liveRef.current) liveRef.current.textContent = `Section: ${label}`
+    // The real page name, not a capitalised route id — this is read aloud, and "Signin" and
+    // "Account-settings" are not words. SECTION_TITLES already holds what each page is called
+    // for the tab title and its <h1>, so all three now agree.
+    if (liveRef.current) liveRef.current.textContent = `Section: ${SECTION_TITLES[active]}`
     const raw = (window.location.hash || '#').replace('#', '')
     const [base, query] = raw.split('?')
     if (base !== active) {
