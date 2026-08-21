@@ -6,6 +6,7 @@ import { useState, type ReactNode } from 'react'
 import { site } from '../config/site'
 import { IconGitHub, IconLinkedIn } from '../components/Icons'
 import { projects, skills, type Project, type Shot } from './work'
+import { readableOn } from '../theme/customTheme'
 
 const STATUS_LABEL: Record<Project['status'], string> = {
   live: 'Live',
@@ -258,7 +259,11 @@ function ProjectCard({ project }: { project: Project }) {
                     rel="noreferrer"
                     style={
                       l.primary
-                        ? { background: project.accent, color: '#fff', borderColor: 'transparent' }
+                        ? {
+                            background: project.accent,
+                            color: readableOn(project.accent),
+                            borderColor: 'transparent',
+                          }
                         : undefined
                     }
                   >
@@ -271,7 +276,11 @@ function ProjectCard({ project }: { project: Project }) {
                     href={l.href}
                     style={
                       l.primary
-                        ? { background: project.accent, color: '#fff', borderColor: 'transparent' }
+                        ? {
+                            background: project.accent,
+                            color: readableOn(project.accent),
+                            borderColor: 'transparent',
+                          }
                         : undefined
                     }
                   >
