@@ -18,6 +18,7 @@ import { Chat } from '../circuit/ui/Chat'
 import { onLogIntent, requestLog, requestLogToday, takePendingLog } from '../circuit/logIntent'
 import { useScrollFade } from '../hooks/useScrollFade'
 import { previewMember, PREVIEW_GROUPS } from '../dev/previewMember'
+import { hasJoinCodeInUrl, parkJoinCode } from '../circuit/inviteLink'
 
 type Tab = 'board' | 'log' | 'feed' | 'charts' | 'movies' | 'watchlist' | 'chat' | 'circuits'
 
@@ -40,6 +41,9 @@ function initialTab(authed: boolean): Tab {
   const q = new URLSearchParams(window.location.hash.split('?')[1] ?? '')
   const fromLink = q.get('tab') as Tab | null
   if (fromLink && valid.includes(fromLink)) return fromLink
+  // Followed a circuit invite from a DM: open where the join actually happens and is reported,
+  // rather than dropping them on the Log with a circuit they can't tell they joined.
+  if (authed && hasJoinCodeInUrl()) return 'circuits'
   // Members land on the Log: logging is the daily reason to open the Circuit, and now that
   // the bottom bar carries Ratings instead of a Log shortcut, this IS the quick-log path.
   // (The signed-out demo still opens on the Board — a visitor wants the story, not a form.)
@@ -97,6 +101,20 @@ export function Circuit({
       /* ignore */
     }
   }
+  /**
+   * A circuit invite tapped while signed out.
+   *
+   * The invite arrives by DM, but the device it gets opened on may not have a session. Parking
+   * the code now — out of the URL, into the session — means signing in and coming back still
+   * joins, instead of the invite quietly expiring on the sign-in screen. When they ARE signed
+   * in, CircuitsPanel spends it instead; this branch deliberately does nothing then.
+   */
+  useEffect(() => {
+    if (authed || !hasJoinCodeInUrl()) return
+    parkJoinCode()
+    showToast('Sign in and you’ll join that circuit.')
+  }, [authed])
+
   // A #circuit?tab=… deep link (the mobile quick-action buttons) can arrive while the
   // Circuit is already mounted — switch the sub-tab live instead of only reading on mount.
   useEffect(() => {

@@ -13,6 +13,7 @@ import { notificationsChanged } from '../../hooks/notifySignal'
 import { useRoomPresence } from '../../voice/useRoomPresence'
 import { VoiceBar } from '../../voice/VoiceBar'
 import { challengeRoomOf, challengeText } from '../../game/challenge'
+import { circuitInviteText, circuitJoinCodeOf } from '../inviteLink'
 
 /**
  * Chat — a real messaging screen, not a row of room chips. You land on a list of
@@ -632,6 +633,20 @@ export function Chat({
                             href={`#snake?room=${encodeURIComponent(challengeRoomOf(m.body)!)}`}
                           >
                             🎮 Join the game
+                          </a>
+                        </div>
+                      ) : circuitJoinCodeOf(m.body) ? (
+                        /* A circuit invite is the same idea with a different link — see
+                           src/circuit/inviteLink.ts. Same card so both read alike. */
+                        <div className="cz-challenge">
+                          {circuitInviteText(m.body) && (
+                            <div className="cz-challenge-say">{circuitInviteText(m.body)}</div>
+                          )}
+                          <a
+                            className="btn cz-challenge-join"
+                            href={`#circuit?join=${encodeURIComponent(circuitJoinCodeOf(m.body)!)}`}
+                          >
+                            🏆 Join the circuit
                           </a>
                         </div>
                       ) : (

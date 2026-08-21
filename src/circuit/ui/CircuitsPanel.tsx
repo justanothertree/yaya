@@ -10,6 +10,8 @@ import { showToast } from '../toast'
 import { VisibilityPicker } from '../../components/VisibilityPicker'
 import { TIER_LABEL } from '../../components/visibilityLabels'
 import type { VisibilityTier } from '../types'
+import { InviteFriends } from '../../components/InviteFriends'
+import { circuitInviteMessage, takeJoinCode } from '../inviteLink'
 
 type CircuitRow = {
   id: string
@@ -52,6 +54,25 @@ export function CircuitsPanel() {
   useEffect(() => {
     void sb.auth.getUser().then(({ data }) => setUid(data.user?.id ?? null))
   }, [sb])
+
+  /**
+   * Someone tapped a circuit invite in their messages and landed here.
+   *
+   * takeJoinCode() takes the code out of the URL FIRST and hands it back exactly once, which is
+   * what makes this safe under StrictMode's double mount — the second run finds nothing rather
+   * than joining twice — and stops a refresh re-running the join.
+   */
+  useEffect(() => {
+    const code = takeJoinCode()
+    if (!code) return
+    void (async () => {
+      const { error } = await sb.rpc('join_circuit', { p_code: code })
+      // Already a member is the common "failure" here and is not worth an error: they followed
+      // an invite to somewhere they already are, which from their side worked.
+      showToast(error ? error.message : 'Joined circuit')
+      if (!error) await refresh()
+    })()
+  }, [sb, refresh])
 
   const run = async (fn: () => PromiseLike<{ error: { message: string } | null }>, ok: string) => {
     setBusy(true)
@@ -238,14 +259,27 @@ export function CircuitsPanel() {
                       </button>
                     )}
                     {c.is_owner && c.join_code && (
-                      <button
-                        className="btn btn-ghost"
-                        onClick={() => copyCode(c.join_code!)}
-                        style={{ fontSize: '0.78rem' }}
-                        title="Copy the join code to invite friends"
-                      >
-                        🔗 Invite ({c.join_code})
-                      </button>
+                      <>
+                        <button
+                          className="btn btn-ghost"
+                          onClick={() => copyCode(c.join_code!)}
+                          style={{ fontSize: '0.78rem' }}
+                          title="Copy the join code to invite friends"
+                        >
+                          🔗 Copy code ({c.join_code})
+                        </button>
+                        {/* The same code, but delivered — copying it still leaves you to find
+                            somewhere to paste it. Same gesture as Snake's challenge, and it can
+                            only reach people you could already message. */}
+                        <InviteFriends
+                          body={circuitInviteMessage(c.join_code, c.name)}
+                          label="✉️ Invite a friend"
+                          title="Send a friend an invite to this circuit"
+                          verb="invite"
+                          emptyHint="No friends yet — add someone on the People page and you can invite them here."
+                          hint="They’ll get it in your messages, with a button that puts them straight into this circuit."
+                        />
+                      </>
                     )}
                     {!c.is_owner && (
                       <button

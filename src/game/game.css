@@ -281,14 +281,10 @@
   background: var(--control-bg);
 }
 
-/* ── challenge a friend ─────────────────────────────────────────────────────
-   A small popover off the room panel. `position: relative` on the wrapper is what anchors it;
-   the panel itself is absolute so opening it doesn't reflow the row of room buttons and shove
-   Copy link / Leave sideways under your thumb. */
-.snake-challenge {
-  position: relative;
-  display: inline-flex;
-}
+/* Challenge-a-friend's styling now lives in src/components/InviteFriends.css — it is shared
+   with the Circuit's invite, and a rule that only ships with the Snake chunk is missing on
+   every page that never opens the game. */
+
 /* The score you arrived chasing, from someone's profile. Sits above the board rather than in a
    corner: it's the reason you're here, not a status detail. */
 .snake-beat-banner {
@@ -314,47 +310,6 @@
 }
 .snake-beat-x:hover {
   opacity: 1;
-}
-
-.snake-challenge-panel {
-  position: absolute;
-  bottom: calc(100% + 6px);
-  left: 0;
-  /* above the page, still below the banner's z-index 100 — the panel flips downward rather
-     than trying to out-stack the nav, so it never needs to cover it */
-  z-index: 45;
-  min-width: 15rem;
-  max-width: min(20rem, 90vw);
-  max-height: 16rem;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 8px;
-  border-radius: var(--r-md, 12px);
-  background: var(--panel, #1a1a28);
-  border: 1px solid var(--border, rgba(127, 127, 127, 0.25));
-  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.4);
-}
-/* not enough room above: open downward instead of sliding under the fixed banner */
-.snake-challenge-panel.is-down {
-  bottom: auto;
-  top: calc(100% + 6px);
-}
-.snake-challenge-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  width: 100%;
-  text-align: left;
-}
-.snake-challenge-row.is-sent {
-  opacity: 0.65;
-}
-.snake-challenge-hint {
-  margin: 4px 0 0;
-  font-size: 0.75rem;
 }
 
 /* ── in-match chat, as a HUD ────────────────────────────────────────────────
