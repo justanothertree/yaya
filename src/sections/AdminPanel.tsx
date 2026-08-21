@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { getSupabaseClient } from '../finance/client'
 import { UsagePanel } from '../components/UsagePanel'
+import { FundPanel } from '../components/FundPanel'
 
 type Invite = {
   id: string
@@ -58,7 +59,7 @@ const inviteLink = (token: string) => `${SITE_URL}/#invite?token=${token}`
 
 export function AdminPanel() {
   const sb = getSupabaseClient()
-  const [tab, setTab] = useState<'invites' | 'members' | 'snake' | 'usage'>('invites')
+  const [tab, setTab] = useState<'invites' | 'members' | 'snake' | 'fund' | 'usage'>('invites')
   const [invites, setInvites] = useState<Invite[]>([])
   const [members, setMembers] = useState<Member[]>([])
   const [handles, setHandles] = useState<SnakeHandle[]>([])
@@ -303,10 +304,14 @@ export function AdminPanel() {
           'snake',
           `Snake names (${handles.filter((h) => !h.owner_user_id).length} unclaimed)`,
         )}
+        {/* The one number the family actually sees, and the only input it needs. */}
+        {tabBtn('fund', 'Fund')}
         {/* Operational, not social — what the paid services are costing, in the one place
             that already requires being the operator to see. */}
         {tabBtn('usage', 'Usage')}
       </div>
+
+      {tab === 'fund' && <FundPanel />}
 
       {tab === 'usage' && <UsagePanel />}
 

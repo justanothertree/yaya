@@ -1217,10 +1217,26 @@ function ScheduleSummary({ accounts }: { accounts: AccountPortfolio[] }) {
   if (t.tracked === 0) return null
   const ahead = t.aheadBehind >= 0
   const days = runwayDays(t.aheadBehind, t.dailyRate)
+
+  /* Nothing has been declared as set aside yet, so there is no honest ahead/behind to show.
+     The fund is commingled, so it cannot be inferred from the trades either — saying so is the
+     accurate answer, and better than showing somebody's family a confident wrong number. */
+  if (!t.ready)
+    return (
+      <article className="card" style={{ display: 'grid', gap: '0.5rem' }}>
+        <strong>Still being set up</strong>
+        <p className="muted" style={{ margin: 0, fontSize: '0.85rem' }}>
+          Everyone&apos;s promised {usd(t.dailyRate / Math.max(1, t.tracked))} a day — that part is
+          already tracked. What&apos;s been set aside so far is still being recorded, so there
+          isn&apos;t an ahead-or-behind figure to show yet.
+        </p>
+      </article>
+    )
+
   return (
     <article className="card" style={{ display: 'grid', gap: '0.7rem' }}>
       <div style={{ display: 'flex', gap: '1.6rem', flexWrap: 'wrap' }}>
-        <Stat label="Worth today" value={usd(t.invested)} big />
+        <Stat label="Set aside" value={usd(t.invested)} big />
         <Stat
           label={ahead ? 'Ahead of plan' : 'Behind plan'}
           value={`${ahead ? '+' : '−'}${usd(Math.abs(t.aheadBehind))}`}
@@ -1236,8 +1252,9 @@ function ScheduleSummary({ accounts }: { accounts: AccountPortfolio[] }) {
         )}
       </div>
       <p className="muted" style={{ margin: 0, fontSize: '0.8rem' }}>
-        Everyone’s promised {usd(t.dailyRate / Math.max(1, t.tracked))} a day. “Worth today” is what
-        the family holdings are worth now — ahead means that’s more than promised so far.
+        Everyone’s promised {usd(t.dailyRate / Math.max(1, t.tracked))} a day. “Set aside” is what
+        has actually been put in for the family so far — ahead means that’s more than promised to
+        date.
       </p>
     </article>
   )

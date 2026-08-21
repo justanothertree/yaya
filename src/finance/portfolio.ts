@@ -21,6 +21,11 @@ export type AccountPortfolio = {
   name: string | null
   dollarPerDay: number
   startDate: string | null
+  /** Dollars actually declared as set aside for this account. The fund is commingled, so this
+   *  is the ONLY true measure of what was contributed — it cannot be derived from trades. */
+  contributed?: number
+  /** false until at least one contribution exists anywhere; suppresses ahead/behind entirely */
+  ready?: boolean
   holdings: Holding[]
   /** Owner info — only present in the admin (all-accounts) view. */
   ownerUserId?: string | null
@@ -34,6 +39,8 @@ function mapAccount(a: Record<string, unknown>): AccountPortfolio {
     name: (a.name as string | null) ?? null,
     dollarPerDay: Number(a.dollarPerDay ?? 0),
     startDate: (a.startDate as string | null) ?? null,
+    contributed: a.contributed == null ? undefined : Number(a.contributed),
+    ready: a.ready == null ? undefined : Boolean(a.ready),
     ownerUserId: (a.ownerUserId as string | null) ?? null,
     ownerName: (a.ownerName as string | null) ?? null,
     ownerUsername: (a.ownerUsername as string | null) ?? null,
@@ -356,10 +363,24 @@ export function promisedToDate(a: AccountPortfolio): number | null {
 
 /** Ahead/behind schedule = reserved value minus promised-to-date. Positive = more value is
  *  reserved than promised so far; negative = owe more. Null when there's no promise to compare. */
+/**
+ * ⚠️ Measured against what was DECLARED as set aside, not against the market value of whichever
+ * trades happened to get designated family.
+ *
+ * The fund is commingled with personal trading, so designation is guesswork and any figure
+ * derived from it is guesswork too. Three derivations over the same trades gave "behind
+ * $8,376", "ahead $41,313" and "$770 invested" — not competing answers, all noise from a
+ * missing input.
+ *
+ * Returns null when nothing has been declared yet, which the UI must render as "still being set
+ * up" rather than a confident zero.
+ */
 export function aheadBehind(a: AccountPortfolio): number | null {
   const promised = promisedToDate(a)
   if (promised == null) return null
-  return accountReserved(a) - promised
+  if (a.ready === false) return null
+  if (a.contributed == null) return accountReserved(a) - promised
+  return a.contributed - promised
 }
 
 /** Roll up invested / promised / ahead-behind across a set of accounts (only those with a promise). */
@@ -370,20 +391,26 @@ export function portfolioTotals(accounts: AccountPortfolio[]): {
   tracked: number
   /** Combined $/day promise across the tracked accounts (for the runway figure). */
   dailyRate: number
+  /** false when nothing has been declared yet — show "being set up", not a number */
+  ready: boolean
 } {
   let invested = 0
   let promised = 0
   let tracked = 0
   let dailyRate = 0
+  // Same rule as aheadBehind(): declared contributions are the truth where they exist, and
+  // nothing is claimed at all until something has been declared.
+  let ready = true
   for (const a of accounts) {
     const p = promisedToDate(a)
     if (p == null) continue
+    if (a.ready === false) ready = false
     tracked++
-    invested += accountReserved(a)
+    invested += a.contributed ?? accountReserved(a)
     promised += p
     dailyRate += a.dollarPerDay
   }
-  return { invested, promised, aheadBehind: invested - promised, tracked, dailyRate }
+  return { invested, promised, aheadBehind: invested - promised, tracked, dailyRate, ready }
 }
 
 /** How many days ahead of / behind the dollar-a-day plan you are = |ahead$| ÷ daily rate.
