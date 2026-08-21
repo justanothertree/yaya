@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState, type FormEvent, type CSSProperties } from 'react'
+import { site } from '../config/site'
 
 export function ContactForm() {
-  const [status, setStatus] = useState<'idle' | 'sending' | 'sent'>('idle')
+  const [status, setStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle')
   const formRef = useRef<HTMLFormElement>(null)
   // When focusing fields on mobile, ensure the field is visible above keyboard
   useEffect(() => {
@@ -24,13 +25,29 @@ export function ContactForm() {
     const data = new FormData(e.currentTarget)
     try {
       const endpoint = 'https://formspree.io/f/xeorpelp'
-      await fetch(endpoint, {
+      const res = await fetch(endpoint, {
         method: 'POST',
         body: data,
         headers: { Accept: 'application/json' },
         redirect: 'follow',
       })
-      // Treat any completed request as success; Formspree is sending emails successfully.
+      /**
+       * ⚠️ This used to treat ANY completed request as success, and the catch below treated a
+       * thrown network error as success too — so the form could not fail. The comment explaining
+       * it said "no generic error message to avoid false negatives", which trades a POSSIBLE
+       * false negative for a GUARANTEED silent true one: if Formspree is down or over its free
+       * monthly quota, the sender is told the message arrived and it did not. On a page whose
+       * job is letting people reach Evan, that is the expensive direction to be wrong in.
+       *
+       * `res.ok` is meaningful here because of the `Accept: application/json` header — that is
+       * Formspree's documented AJAX mode, which answers with CORS headers and a real status
+       * rather than an opaque redirect. If false failures ever DO appear, that assumption is
+       * what to revisit.
+       */
+      if (!res.ok) {
+        setStatus('error')
+        return
+      }
       setStatus('sent')
       e.currentTarget.reset()
       // Blur to close mobile keyboard after sending
@@ -42,17 +59,11 @@ export function ContactForm() {
         }
       }
     } catch (err) {
-      // Even if the network layer complains (opaque redirects/CORS), we've observed emails still arriving.
-      console.warn('Form submit encountered a non-fatal issue but will be treated as success:', err)
-      setStatus('sent')
-      e.currentTarget.reset()
-      if (document.activeElement && 'blur' in document.activeElement) {
-        try {
-          ;(document.activeElement as HTMLElement).blur()
-        } catch {
-          /* noop */
-        }
-      }
+      // A throw here means the request never completed — no server saw it. Reporting that as
+      // sent is how a message disappears with nobody any the wiser. The form is deliberately
+      // NOT reset, so what they typed is still there to send again.
+      console.warn('Contact form submit failed:', err)
+      setStatus('error')
     }
   }
 
@@ -104,15 +115,31 @@ export function ContactForm() {
             style={fieldStyle}
           />
         </label>
-        <button className="btn" disabled={status !== 'idle'} style={{ minHeight: 44 }}>
+        <button
+          className="btn"
+          // only 'sending' and 'sent' lock the button; after an error you must be able to retry
+          disabled={status === 'sending' || status === 'sent'}
+          style={{ minHeight: 44 }}
+        >
           {status === 'sending' ? 'Sending…' : status === 'sent' ? 'Sent' : 'Send'}
         </button>
         {status === 'sent' && (
-          <div style={{ color: '#22c55e' }} aria-live="polite">
+          <div style={{ color: 'var(--accent)' }} aria-live="polite">
             Thanks! I will get back to you.
           </div>
         )}
-        {/* No generic error message to avoid false negatives. */}
+        {/* Says it did not send, keeps what they typed, and gives another way through — a dead
+            end here means the message is simply lost. */}
+        {status === 'error' && (
+          <div aria-live="polite" style={{ fontSize: '0.88rem' }}>
+            That didn&apos;t send — nothing has been lost, your message is still in the form. Try
+            again in a moment, or reach me on{' '}
+            <a href={site.socials.linkedin} target="_blank" rel="noreferrer">
+              LinkedIn
+            </a>
+            .
+          </div>
+        )}
       </form>
     </section>
   )
