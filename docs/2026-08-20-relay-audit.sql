@@ -63,22 +63,23 @@
 -- never saw it — the relay calls this once per HTTP request — but it cost me a test and would
 -- cost anyone batching or retrying inside a transaction far more. Each call now drops first.
 --
--- ── SUPERSEDED: the note below described the state before that follow-up ──
--- Capping bounds the damage; it does not stop forgery. A forged round can still write up to
--- 1,000,000 under a handle somebody has claimed.
+-- ── WHAT IS ACTUALLY LEFT ─────────────────────────────────────────────────
+-- The database half is DONE. finalize_round_rpc already refuses to write to a claimed handle
+-- unless the caller supplies that owner's id in p_players[].userId, and it already accepts that
+-- field. So of the original four steps, 3 and 4 are complete.
 --
--- Closing it needs verified identity to reach this function, which is a RELAY + CLIENT change
--- and a separate Render deploy:
+-- Only the relay/client half remains, and it is now a CONVENIENCE upgrade, not a security fix:
 --   1. the client sends its Supabase access token on WS join (it has one whenever signed in);
 --   2. the relay verifies it — it ALREADY has this machinery, `verifyUser()`, used today for
---      the /ice TURN endpoint — and binds the socket to a user id;
---   3. finalize passes that verified id per player;
---   4. this function then refuses to write to a claimed handle unless the verified id matches
---      player_registry.user_id for it.
--- Signed-out players keep playing on unclaimed names, which is the point of public Snake.
+--      the /ice TURN endpoint — binds the socket to a user id, and passes that id through.
 --
--- Rollout order matters: step 4 must ship AFTER the relay starts sending ids, or every
--- multiplayer score under a claimed handle silently stops recording in the gap.
+-- Doing it RESTORES something rather than protecting anything: today a member playing
+-- multiplayer under their own claimed handle has that round's score declined, because nobody
+-- vouches for them. Worth it only if multiplayer scoring starts mattering — it has run eight
+-- times ever.
+--
+-- No rollout ordering hazard any more. The enforcement already shipped, and it fails safe: a
+-- payload without userId simply declines claimed handles rather than trusting them.
 --
 -- ── VERIFIED CLEAN in the relay ───────────────────────────────────────────
 --   * service-role usage is only two paths: run_due_scheduled_trades (timer-driven, takes only
