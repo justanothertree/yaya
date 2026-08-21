@@ -1,6 +1,6 @@
 // The Circuit — in-site module shell. Sub-tabs mirror the standalone app.
 // Backed by the shared store (localStorage now → Supabase realtime later, no UI change).
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import type { ReactNode } from 'react'
 import { connectCircuit } from '../circuit/connect'
 import { circuitStore, useCircuit, useCircuitHistory } from '../circuit/store'
@@ -125,7 +125,18 @@ export function Circuit({
   // '' = all circuits you can see. Persisted so it sticks across visits.
   const state = useCircuit()
   // the DEV harness supplies stand-in circuits so the filter can be exercised
-  const groups = state.groups?.length ? state.groups : previewMember ? PREVIEW_GROUPS : []
+  /**
+   * Memoised so the fallback isn't a fresh [] on every render.
+   *
+   * The effect below depends on `groups`, and an array literal is a new reference each time —
+   * so for anyone without circuits (every signed-out visitor, and members until their groups
+   * load) that effect re-ran on EVERY render. Harmless in what it does, needless in how often
+   * it did it.
+   */
+  const groups = useMemo(
+    () => (state.groups?.length ? state.groups : previewMember ? PREVIEW_GROUPS : []),
+    [state.groups],
+  )
   const [viewGroup, setViewGroup] = useState<string>(() => {
     try {
       return localStorage.getItem('circuit_view_group') ?? ''

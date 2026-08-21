@@ -1,7 +1,7 @@
 // Ratings — the standalone home for shared experience ratings: Reviews (movies, food, beer,
 // anything) + the Watchlist of things to try. Pulled out of the Circuit so the Circuit can be
 // fitness-only; both boards stay group/circuit-scoped and synced through the same shared store.
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { connectCircuit } from '../circuit/connect'
 import { useCircuit } from '../circuit/store'
 import { Movies } from '../circuit/ui/Movies'
@@ -28,7 +28,18 @@ function initialTab(): RTab {
 
 export function Ratings({ authed = false }: { authed?: boolean }) {
   const state = useCircuit()
-  const groups = state.groups?.length ? state.groups : previewMember ? PREVIEW_GROUPS : []
+  /**
+   * Memoised so the fallback isn't a fresh [] on every render.
+   *
+   * The effect below depends on `groups`, and an array literal is a new reference each time —
+   * so for anyone without circuits (every signed-out visitor, and members until their groups
+   * load) that effect re-ran on EVERY render. Harmless in what it does, needless in how often
+   * it did it.
+   */
+  const groups = useMemo(
+    () => (state.groups?.length ? state.groups : previewMember ? PREVIEW_GROUPS : []),
+    [state.groups],
+  )
   const tabsRef = useScrollFade<HTMLSpanElement>()
 
   const [tab, setTabRaw] = useState<RTab>(() => initialTab())
