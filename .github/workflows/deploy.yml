@@ -22,7 +22,18 @@ jobs:
         with:
           node-version: '20'
           cache: 'npm'
-      - run: npm ci || npm i
+      # ⚠️ Plain `npm ci`, NOT `npm ci || npm i`.
+      #
+      # `npm ci` exists to verify that package-lock.json still matches package.json, and it is
+      # the only thing checking that. Falling back to `npm i` turns that check into a shrug: on
+      # lockfile drift it silently resolves different versions, rewrites the lock in CI, and
+      # DEPLOYS the result. The one workflow that publishes to production was the one not
+      # enforcing it, while build.yml — which ships nothing — used strict `npm ci`.
+      #
+      # Verified before removing: the lockfile is in sync (deps and devDeps both match), `npm ci`
+      # succeeds locally, and build.yml already proves plain `npm ci` works in this CI. So the
+      # fallback was dead weight that could only ever fire in the case worth knowing about.
+      - run: npm ci
       - run: npm run build
         env:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
