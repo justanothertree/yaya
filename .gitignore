@@ -41,3 +41,6 @@ src/circuit/seed.ts
 
 # Visual Studio local IDE state — machine-specific, never useful to anyone else
 .vs/
+
+# import dry-run output, written next to whatever CSV you point it at
+*.parsed.json

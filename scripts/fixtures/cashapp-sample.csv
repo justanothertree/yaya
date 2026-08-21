@@ -1,0 +1,6 @@
+Date,Transaction Type,Asset Type,Notes,Asset Amount,Asset Price,Net Amount,Amount,Fee,Transaction ID
+2026-03-04 10:12:00 EDT,Bitcoin Buy,BTC,recurring buy,0.00250000,$40000.00,$100.00,$100.00,$0.00,TXN-1001
+2026-03-06 09:30:00 EDT,Stock Buy,WIDG,,4.00000000,$25.00,$100.00,$100.00,$0.00,TXN-1002
+2026-03-11 14:02:00 EDT,Stock Sell,WIDG,,-1.00000000,$30.00,$30.00,$30.00,$0.00,TXN-1003
+2026-03-18 08:00:00 EDT,Stock Dividends,WIDG,dividend reinvested,0.04000000,$25.00,$1.00,$1.00,$0.00,TXN-1004
+2026-03-19 08:00:00 EDT,Stock Dividends,WIDG,Dividend from Widget Co,0.00000000,$0.00,$0.90,$0.90,$0.00,TXN-1005

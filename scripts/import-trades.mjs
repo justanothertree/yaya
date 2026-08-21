@@ -243,7 +243,12 @@ function fromCashApp(rows, since) {
     }
 
     // units: the Asset Amount column, else the note ("… BTC 0.00244915")
-    let units = num(row[at('Asset Amount')])
+    // ⚠️ MAGNITUDE ONLY. Direction comes from Transaction Type (see `sell` below, which negates
+    // it) — so a negative Asset Amount is the same trade written differently. Taking the raw
+    // value meant the `units <= 0` guard below rejected such a row as "unparsed", and a sell
+    // would vanish into a one-line skip count. Verified against all three shapes a sell arrives
+    // in: positive units, negative net amount, and negative units.
+    let units = Math.abs(num(row[at('Asset Amount')]))
     if (units <= 0) {
       const m = note.match(/\b(?:BTC|of)\s+([\d.]+)\s*$/i)
       if (m) units = num(m[1])
@@ -378,12 +383,17 @@ const key = process.env.SUPABASE_SERVICE_ROLE_KEY
 // No hardcoded default: this repo is public, and an account uuid in it is a ready-made target
 // for anyone crafting calls against a specific account. Pass FUND_OWNER_UID in the environment.
 const owner = process.env.FUND_OWNER_UID
-if (!owner) {
-  console.error('\nSet FUND_OWNER_UID in your environment (the account to import trades for). Aborting.')
-  process.exit(1)
-}
-if (!key) {
-  console.error('\n--commit needs SUPABASE_SERVICE_ROLE_KEY in your environment. Aborting (nothing written).')
+// Report EVERYTHING missing at once. Checking one at a time means you set the first, re-run,
+// and get told about the second — two round trips at exactly the moment you are already annoyed
+// the import did not just work.
+const missing = [
+  !owner && 'FUND_OWNER_UID (the account to import trades for)',
+  !key && 'SUPABASE_SERVICE_ROLE_KEY',
+].filter(Boolean)
+if (missing.length) {
+  console.error('\n--commit needs these in your environment. Aborting, nothing written:')
+  for (const m of missing) console.error(`  - ${m}`)
+  console.error('')
   process.exit(1)
 }
 

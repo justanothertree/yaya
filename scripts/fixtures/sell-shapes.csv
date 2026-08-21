@@ -1,0 +1,4 @@
+Date,Transaction Type,Asset Type,Notes,Asset Amount,Asset Price,Net Amount,Amount,Fee,Transaction ID
+2026-03-11 14:02:00 EDT,Stock Sell,WIDG,negative units,-1.00000000,$30.00,$30.00,$30.00,$0.00,TXN-A
+2026-03-12 14:02:00 EDT,Stock Sell,WIDG,positive units,1.00000000,$30.00,$30.00,$30.00,$0.00,TXN-B
+2026-03-13 14:02:00 EDT,Stock Sell,WIDG,negative net,1.00000000,$30.00,-$30.00,-$30.00,$0.00,TXN-C
