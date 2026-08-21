@@ -705,6 +705,22 @@ async function turnUsage() {
         variables: { accountId: CF_ACCOUNT_ID, from, to },
       }),
     })
+    /**
+     * ⚠️ Check the HTTP status BEFORE trusting the body.
+     *
+     * GraphQL errors were handled, but a transport-level failure was not: a 401 or 403 from a
+     * stale CF_ANALYTICS_TOKEN can answer with a body that has no `errors` array, in which case
+     * `groups` falls through to [] and this reports egressBytes: 0 — "you have used nothing" —
+     * and caches that for 15 minutes.
+     *
+     * Reporting zero usage when the real answer is unknown is the worst possible failure for
+     * this endpoint, because its entire purpose is to answer "am I about to be charged". An
+     * error says "go and look"; a confident zero says "no need".
+     */
+    if (!r.ok) {
+      const detail = (await r.text().catch(() => '')).slice(0, 200)
+      throw new Error(`cloudflare http ${r.status}${detail ? ` — ${detail}` : ''}`)
+    }
     const data = await r.json()
     if (data?.errors?.length) throw new Error(data.errors[0]?.message || 'graphql error')
     const groups = data?.data?.viewer?.accounts?.[0]?.callsTurnUsageAdaptiveGroups ?? []
