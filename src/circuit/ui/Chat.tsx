@@ -197,7 +197,12 @@ export function Chat({
         { event: 'INSERT', schema: 'public', table: 'chat_messages' },
         () => void loadOverview(),
       )
-      .subscribe()
+      .subscribe((status, err) => {
+        if (status !== 'SUBSCRIBED' && status !== 'CLOSED')
+          console.warn(
+            `[realtime] chat:overview: ${status}${err ? ` — ${err.message}` : ''} (not live)`,
+          )
+      })
     return () => {
       void sb.removeChannel(ch)
     }
@@ -328,7 +333,12 @@ export function Chat({
           void sb.rpc('mark_room_read', { p_room: row.room_id }).then(() => notificationsChanged())
         },
       )
-      .subscribe()
+      .subscribe((status, err) => {
+        if (status !== 'SUBSCRIBED' && status !== 'CLOSED')
+          console.warn(
+            `[realtime] chat:<room>: ${status}${err ? ` — ${err.message}` : ''} (not live)`,
+          )
+      })
     return () => {
       live = false
       void sb.removeChannel(ch)

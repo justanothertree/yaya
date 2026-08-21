@@ -66,7 +66,12 @@ export function useFeedSocial(enabled: boolean): FeedSocial {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'circuit_log_comments' }, () =>
         load(),
       )
-      .subscribe()
+      .subscribe((status, err) => {
+        if (status !== 'SUBSCRIBED' && status !== 'CLOSED')
+          console.warn(
+            `[realtime] circuit-social: ${status}${err ? ` — ${err.message}` : ''} (not live)`,
+          )
+      })
     return () => {
       void sb.removeChannel(ch)
     }

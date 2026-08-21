@@ -432,7 +432,12 @@ export function subscribeToLeaderboard(onChange: () => void): (() => void) | nul
     .on('postgres_changes', { event: '*', schema: 'public', table: leaderboardTable }, () =>
       onChange(),
     )
-    .subscribe()
+    .subscribe((status, err) => {
+      if (status !== 'SUBSCRIBED' && status !== 'CLOSED')
+        console.warn(
+          `[realtime] scores-changes: ${status}${err ? ` — ${err.message}` : ''} (not live)`,
+        )
+    })
   return () => {
     try {
       void client.removeChannel(channel)

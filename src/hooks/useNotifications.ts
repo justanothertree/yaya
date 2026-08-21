@@ -190,7 +190,12 @@ export function useNotifications(authed: boolean): Notifications {
         { event: 'INSERT', schema: 'public', table: 'chat_messages' },
         () => void load(),
       )
-      .subscribe()
+      .subscribe((status, err) => {
+        if (status !== 'SUBSCRIBED' && status !== 'CLOSED')
+          console.warn(
+            `[realtime] notif:chat: ${status}${err ? ` — ${err.message}` : ''} (not live)`,
+          )
+      })
     return () => {
       void sb.removeChannel(ch)
     }

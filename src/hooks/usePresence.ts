@@ -33,7 +33,10 @@ export function usePresence(myId: string | null, ids: string[]): Record<string, 
       })
       // Just listening -- announcing happens once, below, on `mine`. Being unable to join
       // simply leaves this id absent from `online`, which the default `false` already covers.
-      ch.subscribe()
+      ch.subscribe((status, err) => {
+        if (status !== 'SUBSCRIBED' && status !== 'CLOSED')
+          console.warn(`[realtime] presence: ${status}${err ? ` — ${err.message}` : ''} (not live)`)
+      })
       return ch
     })
 

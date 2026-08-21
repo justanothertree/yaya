@@ -3,7 +3,7 @@
 // app's existing singleton Supabase client (Auth JWT + RLS).
 import type { CircuitAdapter } from './adapter'
 import type { CircuitState, DayLog, Movie, MovieRating, Person, WatchlistItem, ID } from './types'
-import { getSupabaseClient } from '../finance/client'
+import { getSupabaseClient, subscribeLogged } from '../finance/client'
 
 const TABLES = ['circuit_people', 'circuit_logs', 'circuit_movies', 'circuit_watchlist'] as const
 
@@ -250,7 +250,7 @@ export function createSupabaseAdapter(): CircuitAdapter {
           })
         })
       }
-      ch.subscribe()
+      subscribeLogged(ch, 'circuit-sync')
       return () => {
         emitExternal = null
         void sb.removeChannel(ch)
