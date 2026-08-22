@@ -1,0 +1,27 @@
+-- get_member_activity: say what the workout was.  2026-08-21
+-- Migration: member_activity_says_what_the_workout_was
+--
+-- WHAT. Each circuit log now carries its entries resolved against that person's own exercise
+-- definitions (name, unit, value, points) plus the day's total, so a profile reads
+-- "2.5 mi Miles walked · 40 pts" rather than "Logged a workout". The resolution happens in SQL
+-- because the definitions live on circuit_people.exercises as jsonb, keyed by the eid each
+-- entry references. `__total__` is the imported-history escape hatch: its value IS the points,
+-- so it is never multiplied.
+--
+-- WHO. The old rule was "only if the viewer is in that circuit", which ignored the person's own
+-- visibility setting entirely — someone set to public was still invisible to anyone outside
+-- their circuits. Now: shared circuit OR public.can_see(owner, circuit_people.visibility).
+--
+-- ⚠️ The circuit NAME is deliberately NOT covered by that. A group name is the one part of this
+-- that is not only about the person whose page it is, so it still requires shared membership
+-- and comes back null otherwise. You see what they did; you see where only if you were already
+-- there.
+--
+-- Also fixes a duplicate: a person in two circuits produced the same log twice, once per group,
+-- because the group join multiplied the rows. Names are aggregated now, so one log is one row.
+--
+-- Verified with simulated sessions:
+--   own page      -> items resolved, detail "No Bully, The Crew"
+--   a stranger    -> same items and points, detail NULL   (Evan is set to public)
+--   can_see(stranger) -> public=true, members=false, friends=false, private=false
+--     i.e. the left half of that OR can genuinely say no, which is the whole point of checking.
