@@ -4029,6 +4029,19 @@ select {
   resize: vertical;
   font: inherit;
 }
+/* Where the Save button used to be. Quiet by default — it is a status, not a call to act. */
+.profile-editor-status {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  margin-top: 0.75rem;
+  font-size: 0.82rem;
+  min-height: 1.6rem;
+}
+.profile-editor-err {
+  color: #f46b6b;
+}
 .profile-editor-add {
   display: flex;
   flex-wrap: wrap;

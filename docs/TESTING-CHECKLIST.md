@@ -214,6 +214,28 @@ Measured on a 375px viewport, before -> after:
 - [ ] Desktop unchanged - verified at 1280: compact rows, Width control present, one-line
       headers.
 
+## 8f. The bio that wasn't saving
+
+**It was saving.** Your bio is in the database and always was - "yaya?!", plus a status, a
+banner on Rings/hue 220, stats, activity, guestbook and trophies. Seven blocks, positions 1-7,
+all intact. What was broken is that the Save button sat at the very BOTTOM of a 2011px panel on
+a phone, under seven "+ block" buttons. You typed at the top and never reached it.
+
+So there is no Save button any more.
+
+- [ ] **Type in a bio and just stop.** It saves itself about three quarters of a second later.
+      The line where the button was says "Saving..." then "Saved" - and if it fails it says so
+      in the service's own words rather than going quiet.
+- [ ] **Type and immediately tap "Done editing"** (inside that three quarters of a second). It
+      should still save, AND the page behind should show the new text rather than the old.
+      That was the same bug waiting to be reintroduced, so it is worth actually trying.
+- [ ] **Remove a block** - the one action that can lose something, so it is the one that keeps
+      an explicit step: "Undo removing X" appears where the button used to be. Tapping it puts
+      the block back where it was.
+- [ ] Drag the banner colour slider around. One save, not two hundred - the debounce coalesces
+      it. (Check the network tab if you care to.)
+- [ ] Everything else - reorder, add, who-can-see - saves the same way, no button.
+
 ## 9. Still waiting on a decision
 
 See `docs/OPEN-DECISIONS.md` — the price feed key, person colours in light theme, and the

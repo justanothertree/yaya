@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { getSupabaseClient } from '../finance/client'
 import { BANNER_STYLES, bannerBackground, type BannerStyle } from '../profile/look'
 
@@ -611,8 +611,10 @@ export function ProfileBlocksEditor({
   onSaved: (blocks: ProfileBlock[]) => void
 }) {
   const [blocks, setBlocks] = useState<ProfileBlock[]>(initial)
-  const [saving, setSaving] = useState(false)
   const [err, setErr] = useState<string | null>(null)
+  const [status, setStatus] = useState<'idle' | 'saving' | 'saved'>('idle')
+  /** the block you just removed, and the list it came from, so it can come straight back */
+  const [undo, setUndo] = useState<{ blocks: ProfileBlock[]; label: string } | null>(null)
   /** which block is open for editing; null means the list is a list. One at a time. */
   const [openIdx, setOpenIdx] = useState<number | null>(null)
   /** the add-a-block palette, which is seven buttons you are mostly not pressing */
@@ -651,26 +653,108 @@ export function ProfileBlocksEditor({
       return next
     })
   }
+  /**
+   * Removing is the one thing here that can lose work, and it now persists on its own — so it
+   * is the one thing that keeps an explicit way back rather than an explicit way forward.
+   */
   const removeAt = (i: number) => {
+    const gone = blocks[i]
+    setUndo({ blocks, label: BLOCK_LABEL[gone.block_type] })
     setOpenIdx((cur) => (cur === i ? null : cur != null && cur > i ? cur - 1 : cur))
     setBlocks((all) => all.filter((_, idx) => idx !== i))
   }
-
-  const save = async () => {
-    setSaving(true)
-    setErr(null)
-    const { error } = await getSupabaseClient().rpc('save_my_profile_blocks', {
-      p_blocks: blocks.map(({ block_type, size, config, visibility }) => ({
-        block_type,
-        size,
-        config,
-        visibility,
-      })),
-    })
-    setSaving(false)
-    if (error) setErr(error.message)
-    else onSaved(blocks)
+  const undoRemove = () => {
+    if (!undo) return
+    setBlocks(undo.blocks)
+    setUndo(null)
   }
+
+  /**
+   * It saves itself.
+   *
+   * There was a Save button at the very bottom of the panel — and on a phone the panel was
+   * 2011px tall with seven "+ block" buttons above it, so you typed a bio at the top and never
+   * reached the thing that kept it. "My bio isn't saving" was the button being unreachable,
+   * not the save being broken.
+   *
+   * Debounced rather than per-keystroke: 700ms also coalesces a hue slider drag, which would
+   * otherwise post a couple of hundred times.
+   */
+  const payloadOf = (list: ProfileBlock[]) =>
+    list.map(({ block_type, size, config, visibility }) => ({
+      block_type,
+      size,
+      config,
+      visibility,
+    }))
+
+  /**
+   * ⚠️ Compares VALUES, not "have I run yet".
+   *
+   * StrictMode double-invokes effects, so a boolean first-run guard is defeated — and here the
+   * cost of getting it wrong is a write. Holding the JSON of what is actually stored means the
+   * second invocation sees no difference and does nothing, and so does a re-render that changed
+   * something other than the blocks.
+   */
+  const savedJsonRef = useRef(JSON.stringify(payloadOf(initial)))
+  /** the newest unsaved payload, for the unmount flush below */
+  const pendingRef = useRef<{
+    json: string
+    payload: ReturnType<typeof payloadOf>
+    blocks: ProfileBlock[]
+  } | null>(null)
+  const onSavedRef = useRef(onSaved)
+  useEffect(() => {
+    onSavedRef.current = onSaved
+  }, [onSaved])
+
+  useEffect(() => {
+    const payload = payloadOf(blocks)
+    const json = JSON.stringify(payload)
+    if (json === savedJsonRef.current) return
+    pendingRef.current = { json, payload, blocks }
+    const t = window.setTimeout(() => {
+      setStatus('saving')
+      void getSupabaseClient()
+        .rpc('save_my_profile_blocks', { p_blocks: payload })
+        .then(({ error }) => {
+          if (error) {
+            setErr(error.message)
+            setStatus('idle')
+            return
+          }
+          savedJsonRef.current = json
+          pendingRef.current = null
+          setErr(null)
+          setStatus('saved')
+          onSavedRef.current(blocks)
+        })
+    }, 700)
+    return () => window.clearTimeout(t)
+  }, [blocks])
+
+  /**
+   * Leaving mid-debounce must not lose the last thing you typed.
+   *
+   * Tapping "Done editing" unmounts this, which clears the timer above — reintroducing exactly
+   * the bug being fixed for anyone who types and leaves inside 700ms. Fire-and-forget, because
+   * cleanup cannot await.
+   */
+  useEffect(
+    () => () => {
+      const p = pendingRef.current
+      if (!p || p.json === savedJsonRef.current) return
+      void getSupabaseClient()
+        .rpc('save_my_profile_blocks', { p_blocks: p.payload })
+        .then(({ error }) => {
+          // The PARENT is still mounted — only the editor went away — so telling it what landed
+          // is both safe and necessary: without this, typing and immediately tapping "Done
+          // editing" stored the new text and then showed you the old one until a reload.
+          if (!error) onSavedRef.current(p.blocks)
+        })
+    },
+    [],
+  )
 
   return (
     <div className="card profile-editor" data-username={username}>
@@ -721,11 +805,24 @@ export function ProfileBlocksEditor({
           </button>
         )}
       </div>
-      {err && <p style={{ color: '#f46b6b', margin: '0.5rem 0 0' }}>{err}</p>}
-      <div style={{ marginTop: '0.6rem' }}>
-        <button className="btn" onClick={() => void save()} disabled={saving}>
-          {saving ? 'Saving…' : 'Save'}
-        </button>
+      {/* Where the Save button was. It says what happened instead of asking you to make it
+          happen — and carries the one undo, because removing a block is the only action here
+          that can lose something. */}
+      <div className="profile-editor-status" aria-live="polite">
+        <span className={err ? 'profile-editor-err' : 'muted'}>
+          {err
+            ? `Couldn’t save — ${err}`
+            : status === 'saving'
+              ? 'Saving…'
+              : status === 'saved'
+                ? 'Saved ✓'
+                : 'Changes save themselves.'}
+        </span>
+        {undo && (
+          <button className="btn btn-ghost" onClick={undoRemove}>
+            Undo removing {undo.label}
+          </button>
+        )}
       </div>
     </div>
   )
