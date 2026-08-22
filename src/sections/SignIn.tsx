@@ -1,5 +1,11 @@
 import { useEffect, useState } from 'react'
-import { getUser, onAuthStateChange, signInWithPassword, signOut } from '../finance/auth'
+import {
+  getUser,
+  onAuthStateChange,
+  sendPasswordReset,
+  signInWithPassword,
+  signOut,
+} from '../finance/auth'
 import { hasFinanceSupabaseEnv } from '../finance/env'
 
 export function SignIn() {
@@ -56,6 +62,37 @@ export function SignIn() {
       await signInWithPassword(email.trim(), password)
       setPassword('')
     } catch (err) {
+      setError(String((err as { message?: string } | null)?.message || err))
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  /**
+   * Forgotten password.
+   *
+   * ⚠️ The same sentence whatever happens, because the alternative — "no account with that
+   * email" — turns this form into a membership check. The people here are one person's friends
+   * and family, so "is <name> in this circle?" is exactly the question a stranger should not be
+   * able to ask a login box.
+   *
+   * The link Supabase sends signs them in and lands them on Account, where the change-password
+   * form already lives, so there is no second screen to build or maintain.
+   */
+  const [resetSent, setResetSent] = useState(false)
+  async function handleReset() {
+    setError(null)
+    if (!financeEnabled) return
+    if (!email.trim()) {
+      setError('Enter your email address first, then press this again.')
+      return
+    }
+    setLoading(true)
+    try {
+      await sendPasswordReset(email.trim())
+      setResetSent(true)
+    } catch (err) {
+      // Only real faults reach here — rate limits, misconfiguration. Not "who is this".
       setError(String((err as { message?: string } | null)?.message || err))
     } finally {
       setLoading(false)
@@ -134,6 +171,23 @@ export function SignIn() {
           <button className="btn" type="submit" disabled={loading}>
             {loading ? 'Signing in…' : 'Sign in'}
           </button>
+          {resetSent ? (
+            <p className="muted" style={{ margin: 0, fontSize: '0.88rem' }}>
+              If that address has an account here, a reset link is on its way. It signs you in and
+              drops you on your Account page, where you can set a new password. Check spam — and if
+              nothing arrives, message Evan and he&apos;ll sort it out.
+            </p>
+          ) : (
+            <button
+              type="button"
+              className="btn btn-ghost"
+              onClick={() => void handleReset()}
+              disabled={loading}
+              style={{ fontSize: '0.85rem' }}
+            >
+              Forgot your password?
+            </button>
+          )}
           {error && (
             <p className="muted" style={{ margin: 0, color: 'var(--accent-2)' }}>
               {error}

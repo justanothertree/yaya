@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent, type CSSProperties } from 'react'
 import { site } from '../config/site'
+import { getSupabaseClient } from '../finance/client'
 
 export function ContactForm() {
   const [status, setStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle')
@@ -26,6 +27,55 @@ export function ContactForm() {
     setStatus('sending')
     setWhy('')
     const data = new FormData(e.currentTarget)
+    const form = e.currentTarget
+    /**
+     * ⚠️ THE MESSAGE LANDS IN OUR OWN DATABASE FIRST, AND THAT IS WHAT DECIDES WHAT WE SAY.
+     *
+     * It used to go only to Formspree, so "did this reach Evan?" was entirely a question about
+     * somebody else's free tier — 50 submissions a month, spam filtering, and an outage nobody
+     * here would ever hear about. That is a poor thing to hang a stranger's first impression on,
+     * and it is why some test messages arrived and others didn't.
+     *
+     * Now: store it, then ping the inbox. If the ping fails the message is already safe, so the
+     * sender is told it arrived — because it did. If the STORE fails, that is a real failure and
+     * gets said plainly.
+     */
+    try {
+      const { error } = await getSupabaseClient().rpc('submit_contact_message', {
+        p_name: String(data.get('name') ?? ''),
+        p_email: String(data.get('email') ?? ''),
+        p_body: String(data.get('message') ?? ''),
+      })
+      if (error) {
+        setWhy(error.message)
+        setStatus('error')
+        return
+      }
+    } catch (err) {
+      console.warn('Contact store failed:', err)
+      setWhy('The request never reached the site — check your connection.')
+      setStatus('error')
+      return
+    }
+
+    setStatus('sent')
+    form.reset()
+    // Blur to close mobile keyboard after sending
+    if (document.activeElement && 'blur' in document.activeElement) {
+      try {
+        ;(document.activeElement as HTMLElement).blur()
+      } catch {
+        /* noop */
+      }
+    }
+
+    /**
+     * The email ping, best-effort and deliberately AFTER the answer.
+     *
+     * Nothing below this line may change what the sender was told: the message is stored, so it
+     * arrived whatever Formspree thinks. Kept because an email is how Evan actually finds out
+     * quickly; the Admin inbox is the record.
+     */
     try {
       const endpoint = 'https://formspree.io/f/xeorpelp'
       const res = await fetch(endpoint, {
@@ -34,65 +84,10 @@ export function ContactForm() {
         headers: { Accept: 'application/json' },
         redirect: 'follow',
       })
-      /**
-       * ⚠️ This used to treat ANY completed request as success, and the catch below treated a
-       * thrown network error as success too — so the form could not fail. The comment explaining
-       * it said "no generic error message to avoid false negatives", which trades a POSSIBLE
-       * false negative for a GUARANTEED silent true one: if Formspree is down or over its free
-       * monthly quota, the sender is told the message arrived and it did not. On a page whose
-       * job is letting people reach Evan, that is the expensive direction to be wrong in.
-       *
-       * `res.ok` is meaningful here because of the `Accept: application/json` header — that is
-       * Formspree's documented AJAX mode, which answers with CORS headers and a real status
-       * rather than an opaque redirect. If false failures ever DO appear, that assumption is
-       * what to revisit.
-       */
-      if (!res.ok) {
-        /**
-         * Say WHY, in Formspree's own words.
-         *
-         * Every failure used to read the same — "that didn't send, try again in a moment" —
-         * which is the right advice for a blip and the wrong advice for the two things that
-         * actually happen: the free plan's monthly submission cap, and a submission blocked
-         * as spam. Both of those will still be true in a moment, so "try again" makes the
-         * form look simply broken while hiding a fixable cause. Their JSON says which it is.
-         */
-        let msg = ''
-        try {
-          const body = (await res.json()) as {
-            error?: string
-            errors?: Array<{ message?: string }>
-          }
-          msg =
-            body.error ||
-            (body.errors ?? [])
-              .map((x) => x?.message)
-              .filter(Boolean)
-              .join('; ')
-        } catch {
-          /* not JSON — the status code is all there is to go on */
-        }
-        setWhy(msg || `The form service answered ${res.status}.`)
-        setStatus('error')
-        return
-      }
-      setStatus('sent')
-      e.currentTarget.reset()
-      // Blur to close mobile keyboard after sending
-      if (document.activeElement && 'blur' in document.activeElement) {
-        try {
-          ;(document.activeElement as HTMLElement).blur()
-        } catch {
-          /* noop */
-        }
-      }
+      if (!res.ok) console.warn('Contact notification not sent:', res.status)
     } catch (err) {
-      // A throw here means the request never completed — no server saw it. Reporting that as
-      // sent is how a message disappears with nobody any the wiser. The form is deliberately
-      // NOT reset, so what they typed is still there to send again.
-      console.warn('Contact form submit failed:', err)
-      setWhy('The request never reached the form service — check your connection.')
-      setStatus('error')
+      // The notification, not the message. Nothing to tell the sender about.
+      console.warn('Contact notification failed:', err)
     }
   }
 

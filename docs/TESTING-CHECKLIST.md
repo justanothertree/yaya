@@ -257,6 +257,24 @@ So there is no Save button any more.
 - [ ] A person in two circuits used to appear TWICE per workout (once per group). Now once, with
       the shared circuit names joined.
 
+## 8h. Contact form, and forgotten passwords
+
+- [ ] **Send yourself a real message through the contact form.** It should say sent, and appear
+      under **Admin -> Messages** whether or not the email arrives. That is the point: the
+      message is stored here first now, and Formspree is only the ping.
+- [ ] Check the email still turns up too. If it doesn't, the message is still in Admin - tell me
+      and we can drop Formspree entirely or point the ping somewhere else.
+- [ ] In Admin -> Messages, "Mark done" moves one to the Done list. Nothing is ever deleted.
+- [ ] 🔒 **Forgot your password?** on the sign-in page. Put YOUR email in, press it, and follow
+      the link - it should sign you in and land you on Account, where the change-password form
+      already is. ⚠️ I did not test the actual send: firing a reset email is not something to do
+      on someone's behalf without asking.
+- [ ] Press it with the email box empty - it should ask you to fill it in rather than doing
+      anything.
+- [ ] 🔒 Note it says the SAME thing whether or not the address has an account. That is
+      deliberate - otherwise the login box answers "is this person a member here?" for anyone
+      who asks, and your members are your friends and family.
+
 ## 9. Still waiting on a decision
 
 See `docs/OPEN-DECISIONS.md` — the price feed key, person colours in light theme, and the

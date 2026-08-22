@@ -1,0 +1,46 @@
+-- Contact messages land in our own database.  2026-08-21
+-- Migration: contact_messages_land_here_first
+--
+-- The form posted straight to Formspree and NOWHERE ELSE, so "did this reach Evan?" was entirely
+-- a question about somebody else's free tier: 50 submissions a month, spam filtering, and an
+-- outage nobody here would ever hear about. That is what "it doesn't work 100% of the time"
+-- was — and a stranger's first impression of the site should not hang on it.
+--
+-- Now the message is stored here FIRST and that is what decides what the sender is told.
+-- Formspree stays, demoted to what it is good at: pinging an inbox. If the ping fails the
+-- message is already safe, so the sender is told it arrived, because it did. If the STORE
+-- fails, that is a real failure and gets said plainly.
+--
+--   public.contact_messages        RLS on, NO policies, revoked from anon+authenticated.
+--                                  Reachable only through the functions below.
+--   submit_contact_message(...)    ⚠️ joins the anon-executable allowlist on purpose — a
+--                                  contact form nobody can use is not a contact form. Bounded
+--                                  in every direction that costs something: name<=200,
+--                                  email<=320, body<=5000, email shape checked, and at most 20
+--                                  messages an hour across the whole site (global rather than
+--                                  per-sender because there is no trustworthy sender identity
+--                                  here, and a real person sends one message).
+--   admin_list_contact_messages()  admin only, RAISES rather than returning an empty list.
+--   admin_set_contact_handled()    admin only. Marks read; never deletes.
+--
+-- Verified as anon, in a rolled-back transaction:
+--   submit OK · blank name refused · bad email refused ·
+--   cannot read the inbox · cannot select the table
+-- And end-to-end through the real form with an over-long body: the server's refusal reaches the
+-- visitor in its own words, the typed message is kept, nothing is stored.
+--
+-- Advisors after: the anon-executable list is the previous four plus this one, as intended.
+--
+-- ── the other half: forgotten passwords ────────────────────────────────────────────────────
+-- No SQL. Sign-in now has "Forgot your password?" -> supabase.auth.resetPasswordForEmail with
+-- redirectTo #account-settings, which already has a change-password form; the link creates a
+-- session on arrival, so there is no second screen to build.
+--
+-- ⚠️ It says the same sentence whether or not the address exists. Confirming it would turn the
+-- login box into a membership test — "is <name> in this circle?" — which for a site whose
+-- members are one person's friends and family is a real leak, not a theoretical one.
+--
+-- Resetting someone else's password: do it from the Supabase dashboard (Authentication -> Users
+-- -> the user -> send a recovery link). Deliberately NOT built into the app: it needs the
+-- service-role key, and that key must never be anywhere a browser can reach.
+-- A forgotten EMAIL is Admin -> Members, which lists them.

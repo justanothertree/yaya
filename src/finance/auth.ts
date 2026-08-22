@@ -91,6 +91,26 @@ export async function updateUserPassword(password: string): Promise<User> {
   return data.user
 }
 
+/**
+ * Send a password-reset email.
+ *
+ * ⚠️ Deliberately says nothing about whether the address exists. Answering that turns the sign-in
+ * page into a way to test whether someone is a member here, which for a site whose members are
+ * one person's friends and family is a real leak — "is <name> in this circle?" — not a
+ * theoretical one. The caller shows the same sentence either way.
+ *
+ * `redirectTo` lands them on Account, which already has the change-password form; Supabase turns
+ * the link into a session on arrival, so they're signed in by the time they get there.
+ */
+export async function sendPasswordReset(email: string): Promise<void> {
+  const sb = getSupabaseClient()
+  const redirectTo = `${window.location.origin}${window.location.pathname}#account-settings`
+  const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo })
+  // Rate limiting and genuinely broken configuration are worth surfacing; "no such user" is not,
+  // and Supabase does not report it here anyway.
+  if (error) throw error
+}
+
 export function onAuthStateChange(callback: (event: string, session: Session | null) => void) {
   const sb = getSupabaseClient()
   return sb.auth.onAuthStateChange((event, session) => callback(event, session))
