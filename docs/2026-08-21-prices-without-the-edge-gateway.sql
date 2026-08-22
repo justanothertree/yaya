@@ -1,0 +1,85 @@
+-- The price feed, moved out of the edge function and into Postgres.  2026-08-21
+--
+-- Applied as three migrations:
+--   prices_refresh_without_the_edge_gateway
+--   refresh_prices_reads_the_trades_not_the_gated_wrapper
+--   refresh_prices_writes_the_cache_itself
+--
+-- ── why ──────────────────────────────────────────────────────────────────────
+-- Four cron jobs POSTed to the `refresh-prices` edge function carrying the legacy anon JWT, and
+-- Supabase's edge gateway refuses those outright:  {"code":"UNAUTHORIZED_LEGACY_JWT"}.  The
+-- project has no modern publishable key to swap in, so the auth could not be fixed from this
+-- side of the wire.  Prices sat frozen at 2026-08-16 across 175 symbols while every nightly run
+-- reported success.
+--
+-- So the gateway came out of the path.  The cron already runs INSIDE Postgres; if it fetches the
+-- quotes itself there is no Supabase function call to authenticate, and nothing publicly
+-- reachable to protect — unlike verify_jwt=false, which would have left an open endpoint anyone
+-- could spam to burn the Finnhub free tier.
+--
+-- `http` (pgsql-http) rather than `pg_net`, deliberately: pg_net only QUEUES, so the caller never
+-- learns the outcome.  That is exactly how this hid for five days behind a cron log full of
+-- successes.  A synchronous call means the job's own record is the truth.
+--
+-- ── the two bugs found on the way ────────────────────────────────────────────
+-- Both the same shape, and both worth remembering:
+--
+--   1. `list_fund_symbols` gated on `is_admin() OR jwt role = service_role` and returned ZERO
+--      ROWS to anyone else.  A cron tick is neither, so the refresher asked for the work list,
+--      got an empty one, priced nothing, and reported ok:true.  A check that answers "nothing"
+--      where it means "not allowed" is indistinguishable from an empty fund.
+--
+--   2. `upsert_prices` has the same gate — but RAISES.  That is the only reason bug 2 took one
+--      query to find and bug 1 took a puzzled re-read.  upsert_prices was left exactly as it is.
+--
+-- The lesson for next time: a privileged job must not borrow a wrapper written to gate a
+-- BROWSER.  It inherits that wrapper's idea of who is asking, and a cron tick is nobody.
+-- list_fund_symbols now raises like the rest; the refresher reads the trades directly.
+--
+-- ── state ────────────────────────────────────────────────────────────────────
+-- Crypto works now — verified live, five coins written from CoinGecko.
+-- Stocks wait on ONE thing: a Finnhub key in Vault, named `finnhub_api_key`.  Put it there from
+-- the dashboard (Project Settings -> Vault) so it never passes through a chat, a cron command,
+-- a function body or this repo.  Until then the summary reports have_finnhub_key:false and every
+-- stock is listed as skipped, which is a normal state rather than an error.
+--
+-- Verified after applying:
+--   * finance.refresh_prices() -> {"ok":true,"crypto":5,"written":5,"have_finnhub_key":false}
+--   * five rows in finance.price_cache with fresh updated_at
+--   * a non-admin calling public.admin_refresh_prices() is refused: "admin only"
+--   * no new anon-executable function (advisors still list only the four on the allowlist)
+--
+-- The edge function is left deployed and untouched.  Nothing calls it now; it stays as the
+-- fallback if a modern publishable key ever exists.
+
+-- ── the objects, for reference ───────────────────────────────────────────────
+
+create extension if not exists http with schema extensions;
+
+-- Which coin is which on CoinGecko.  A table rather than a map buried in code, so adding a coin
+-- is a row and not a deploy — it was hardcoded in the edge function, which is why an unmapped
+-- symbol could only ever be reported as "skipped" with nothing anyone could do about it.
+-- RLS on with no policies: reached only through the definer function, never directly.
+--
+--   finance.coingecko_ids (symbol pk, coingecko_id)
+
+-- finance.refresh_prices() -> jsonb
+--   Reads finance.executed_trades directly for the symbol list, stalest price first (that
+--   ordering is load-bearing: it is what lets a 55-a-run cap cycle through everything without
+--   tripping Finnhub's 60-calls-a-minute free tier).
+--   Crypto via CoinGecko (keyless).  Stocks via Finnhub, key from vault.decrypted_secrets.
+--   RAISES when the symbol list is empty, or when nothing at all was priced — a partial run is
+--   a normal day, silence is not.
+--   Revoked from public, anon, authenticated.  Called by the four cron jobs.
+
+-- finance.store_prices(jsonb) -> int
+--   The same two writes upsert_prices makes (price_cache + price_history), minus the browser
+--   gate.  Revoked from everyone; finance.refresh_prices is the only caller.
+
+-- public.admin_refresh_prices() -> jsonb
+--   is_admin() or raise, then calls the above.  Gives a "refresh now" without opening SQL.
+
+-- The four jobs, repointed:
+--   select cron.alter_job(jobid, command := 'select finance.refresh_prices();')
+--     from cron.job where jobname like 'refresh-fund-prices%';
+--   -- 21:10, 21:12, 21:14, 21:16 daily, unchanged.

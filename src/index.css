@@ -2930,7 +2930,7 @@ select {
 }
 .pal-preset-row {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(6.5rem, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(6.5rem, 100%), 1fr));
   gap: 6px;
 }
 .pal-preset {
@@ -3590,12 +3590,53 @@ select {
   font-size: 0.9em;
 }
 
+/* The identity header was one flex row that never wrapped: avatar | name | actions, with the
+   actions set flex-shrink: 0. On a 375px phone that left about 60px for the name and the
+   "@handle · member since" line — the one thing the page is about, squeezed into a sliver
+   while two buttons kept their full width. Let the actions drop to their own line. */
+.profile-head {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+.profile-head-who {
+  min-width: 0;
+  /* a real basis, so the row wraps when the name would be crushed rather than after */
+  flex: 1 1 10rem;
+}
+.profile-head-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 0.4rem;
+  flex-shrink: 0;
+}
+@media (max-width: 700px) {
+  .profile-head-actions {
+    /* full width once wrapped, rather than two buttons stranded against the right edge */
+    margin-left: 0;
+    width: 100%;
+  }
+  /* 38px measured — under the 40px floor this codebase already uses everywhere a thumb has
+     to land. Sharing the width also stops "Message" and "Friends" being different sizes. */
+  .profile-head-actions > .btn {
+    flex: 1 1 auto;
+    min-height: 40px;
+  }
+}
+
 /* Profile blocks -- optional customization. Sizes are relative spans in a fluid grid, not fixed
    pixel boxes, so the page still reflows sensibly on a phone regardless of what anyone picked. */
 .profile-blocks-grid {
   display: grid;
   gap: var(--sp-3, 1rem);
-  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+  /* ⚠️ `min(...)` is load-bearing, not decoration. The root font here is FLUID
+     (clamp(1rem, 0.925rem + 0.22vw, 1.25rem)), so 15rem is not 240px — measured at 356.9px
+     inside a 343px column on a 375px phone. minmax's first argument is a hard FLOOR, so the
+     track simply refused to shrink and ran off the right edge, where `html { overflow-x:
+     hidden }` clipped it with no way to scroll to what was cut off. min(_, 100%) lets the
+     track fall back to the container when the rem value is too big for it. */
+  grid-template-columns: repeat(auto-fit, minmax(min(15rem, 100%), 1fr));
 }
 .profile-block.is-small {
   grid-column: span 1;
@@ -3617,13 +3658,28 @@ select {
 .profile-banner-art {
   display: block;
   width: 100%;
-  aspect-ratio: 4 / 1;
-  min-height: 7rem;
+  /* Was 4/1 with a 7rem floor, which on a phone is a ~110px strip.
+     Most of the looks are built from shapes anchored BELOW the box — rays fanning from
+     50% 120%, rings centred at 30% 120%, ember's glow at 50% 130% — or from fixed-pixel
+     repeats. In a short wide strip you see a sliver of something much bigger, which is
+     exactly the "cut off" look. Give them height, most of all where width is scarce. */
+  aspect-ratio: 5 / 2;
+  min-height: 9rem;
+  /* And fill the block rather than dictating to it: with `height: 100%` the aspect ratio
+     still decides when the row is content-sized, but a row stretched by a taller neighbour
+     gets a full banner instead of art floating above dead space in a padding-less card. */
+  height: 100%;
+}
+@media (min-width: 700px) {
+  /* Width is no longer scarce, so the banner can be a banner again. */
+  .profile-banner-art {
+    aspect-ratio: 7 / 2;
+  }
 }
 /* Picked by eye: each swatch IS the real background at the chosen colour. */
 .profile-banner-styles {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(5.5rem, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(5.5rem, 100%), 1fr));
   gap: 0.4rem;
 }
 .profile-banner-swatch {
@@ -3897,7 +3953,7 @@ select {
 }
 .fx-style-row {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(4.6rem, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(4.6rem, 100%), 1fr));
   gap: 0.4rem;
   padding-block: 0.3rem;
 }

@@ -152,6 +152,25 @@ Recorded so you do not spend time re-checking:
       ⚠️ Needs the Render redeploy to take effect.
 - [ ] **Apples in race + crash.** Should be there now, and in classic + crash too.
 
+## 8c. Third round - prices, profile, banner
+
+- [ ] **Investments prices move again** (crypto only until the Finnhub key is in Vault). BTC,
+      ETH, DOGE, XRP and ZORA are live as of 2026-08-21; the ~170 stock symbols still show their
+      2026-08-16 prices, so any figure mixing the two is part fresh and part stale until the key
+      lands. Put it in: Supabase dashboard -> Project Settings -> Vault -> New secret, named
+      exactly `finnhub_api_key`. Nothing else to do; the next nightly run picks it up.
+- [ ] **Profile page on a phone.** The identity header used to give the name about 60px while
+      two buttons kept their full width; the action buttons now wrap onto their own line and
+      share it. Check it reads right and that nothing looks stranded.
+- [ ] **Nothing runs off the right edge any more.** The cards below the header were overflowing
+      by ~14px and being clipped with no way to scroll to them - measured, then fixed. Worth a
+      look on your actual phone, which is the size I cannot emulate honestly.
+- [ ] **The banner has room now.** Taller on narrow screens (5:2, min 9rem) and 7:2 once there
+      is width, and it fills its card rather than floating in it. Several of the looks - Rays,
+      Rings, Ember - are built from shapes anchored below the box, which is why a short strip
+      showed a sliver of something bigger. If any style still reads as cropped, say which one:
+      they are eight separate recipes in `src/profile/look.ts` and can be tuned one at a time.
+
 ## 9. Still waiting on a decision
 
 See `docs/OPEN-DECISIONS.md` — the price feed key, person colours in light theme, and the

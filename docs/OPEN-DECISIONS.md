@@ -7,28 +7,28 @@ Last reviewed: 2026-08-21.
 
 ---
 
-## 1. The price feed has been dead since 2026-08-16
+## 1. The price feed — fixed, except for one key
 
-**What's wrong.** Four `pg_cron` jobs POST to the `refresh-prices` edge function using the legacy
-anon JWT, and Supabase's edge gateway now rejects those outright:
-`{"code":"UNAUTHORIZED_LEGACY_JWT"}`. Every investments figure is priced from a stale cache.
+**Status 2026-08-21: crypto is live again. Stocks wait on a Finnhub key in Vault.**
 
-**Why it looks fine.** `cron.job_run_details` reports **success** regardless — `net.http_post`
-only queues the request, so the failure never reaches the job record. The real answer is in
-`net._http_response`. Anything that trusts the cron log will keep saying this works.
+The four cron jobs POSTed to the `refresh-prices` edge function carrying the legacy anon JWT,
+and Supabase's edge gateway refuses those: `{"code":"UNAUTHORIZED_LEGACY_JWT"}`. There is no
+modern publishable key to swap in, so that was not fixable from this side.
 
-**The decision.** The project has only a legacy key (`get_publishable_keys` returns no
-`sb_publishable_…`) and Vault is empty. Three ways out:
+Fixed by taking the gateway out of the path entirely — the cron already runs inside Postgres,
+so it now fetches the quotes itself and there is nothing to authenticate. See
+`docs/2026-08-21-prices-without-the-edge-gateway.sql`, including the two silent-gate bugs found
+on the way.
 
-- create a modern publishable key and use that;
-- put a key in Vault and have the cron read it via `decrypted_secret` — **recommended**, since
-  nothing sensitive then sits in the job body;
-- set `verify_jwt=false` on the function. It takes no input and only refreshes prices, but an
-  open endpoint can be spammed to burn the Finnhub free tier.
+**The one thing left, and it needs Evan.** Put the Finnhub API key in Vault, from the dashboard:
+Project Settings → Vault → New secret, named exactly `finnhub_api_key`. That way it never passes
+through a chat, a cron command, a function body or this repo. Nothing else needs doing — the
+next nightly run picks it up.
 
-⚠️ Whatever is chosen, do not hand-embed a secret in the cron command.
-
-**Cost of waiting:** prices drift further from reality every day.
+**Until then:** crypto prices are current; the ~170 stock symbols keep their 2026-08-16 prices
+and the run summary reports `have_finnhub_key: false` with every one listed as skipped. That is
+a normal state now rather than a silent failure — and a run that prices _nothing_ raises, so the
+cron log tells the truth from here on.
 
 ---
 

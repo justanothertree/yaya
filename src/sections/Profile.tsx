@@ -249,7 +249,7 @@ export function Profile({ authed }: { authed: boolean }) {
       style={{ display: 'grid', gap: 'var(--sp-3, 1rem)', ...lookVars }}
     >
       {/* identity header */}
-      <div className="card" style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+      <div className="card profile-head">
         {/* Their colour, not the site's. This used to be var(--accent) for everyone, so all
             thirty-odd profiles opened looking like the same page with a different letter. */}
         <span
@@ -269,7 +269,7 @@ export function Profile({ authed }: { authed: boolean }) {
         >
           {initial}
         </span>
-        <div style={{ minWidth: 0 }}>
+        <div className="profile-head-who">
           <h2 className="section-title" style={{ margin: 0 }}>
             {display}{' '}
             {p.is_me && (
@@ -330,7 +330,7 @@ export function Profile({ authed }: { authed: boolean }) {
           )}
         </div>
         {p.is_me && (
-          <span style={{ marginLeft: 'auto', display: 'flex', gap: '0.4rem', flexShrink: 0 }}>
+          <span className="profile-head-actions">
             <select
               className="btn"
               value={p.activity_visibility}
@@ -355,7 +355,7 @@ export function Profile({ authed }: { authed: boolean }) {
           </span>
         )}
         {!p.is_me && (
-          <span style={{ marginLeft: 'auto', display: 'flex', gap: '0.4rem', flexShrink: 0 }}>
+          <span className="profile-head-actions">
             {p.friend_status === 'friends' && (
               <>
                 <button className="btn" onClick={() => void message()}>
@@ -429,7 +429,11 @@ export function Profile({ authed }: { authed: boolean }) {
         style={{
           display: 'grid',
           gap: 'var(--sp-3, 1rem)',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(15rem, 1fr))',
+          // min() is load-bearing: the root font is fluid, so 15rem measured 356.9px inside a
+          // 343px column on a phone — and minmax's first argument is a hard floor, so the
+          // track ran off the right edge where overflow-x: hidden clipped it. See
+          // .profile-blocks-grid in index.css, which had exactly the same bug.
+          gridTemplateColumns: 'repeat(auto-fit, minmax(min(15rem, 100%), 1fr))',
         }}
       >
         {/* circuits you share */}
