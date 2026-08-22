@@ -171,6 +171,21 @@ Recorded so you do not spend time re-checking:
       showed a sliver of something bigger. If any style still reads as cropped, say which one:
       they are eight separate recipes in `src/profile/look.ts` and can be tuned one at a time.
 
+## 8d. Customize-your-page editor, on a phone
+
+- [ ] **Profile -> Customize page, on your actual phone.** Each block's row header used to be one
+      unwrapping line: the label beside five controls (up, down, size, who-can-see, remove) that
+      measured 277-297px against a ~311px content box. The label always lost, so you were
+      arranging blocks you could no longer tell apart. The controls now drop to their own line
+      and the who-can-see dropdown takes the slack.
+- [ ] **The mood emoji picker** (on a Status block) - 13 buttons that were 38x28. Now 40x40.
+- [ ] **The banner colour slider** - was a 10px-tall track. Now ~26px of grab area with a bigger
+      handle. Still under 40px, deliberately: the track IS the colour spectrum and a fat bar
+      reads worse. Tell me if it's still fiddly and I'll go taller.
+- [ ] **"+ Bio" / "+ Banner" etc and Save** were 34-36px, now 40.
+- [ ] Desktop is unchanged - verified at 1280: label and controls still share one line, slider
+      and emoji back to their smaller sizes.
+
 ## 9. Still waiting on a decision
 
 See `docs/OPEN-DECISIONS.md` — the price feed key, person colours in light theme, and the

@@ -3463,6 +3463,37 @@ select {
     min-width: 40px;
     min-height: 40px;
   }
+
+  /* ── the customize-your-page editor, on a phone ──────────────────────────
+     Everything here is something you tap repeatedly while arranging a page, and all of it was
+     built at mouse sizes. */
+
+  /* Once the head row wraps, the controls get the whole line rather than huddling right. */
+  .profile-editrow-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+  /* The visibility select is the only control carrying words, so it takes the slack; the four
+     icon buttons stay square. */
+  .profile-editrow-actions select.btn {
+    flex: 1 1 8rem;
+    min-width: 0;
+    min-height: 40px;
+  }
+  /* 13 emoji at 38x28 in a wrapping row is a miss every time. */
+  .profile-mood {
+    min-width: 40px;
+    min-height: 40px;
+    font-size: 1.3rem;
+  }
+  /* "+ 📝 Bio" and friends measured 36px. */
+  .profile-editor-add .btn {
+    min-height: 40px;
+  }
+  /* Everything in the editor you tap. Save measured 34px. */
+  .profile-editor .btn {
+    min-height: 40px;
+  }
 }
 
 .call-dock-crowded {
@@ -3740,6 +3771,27 @@ select {
   border: 2px solid rgba(0, 0, 0, 0.45);
   cursor: pointer;
 }
+
+/* ⚠️ Placed AFTER the base rules above, not in the mobile block up at line ~3460: same
+   specificity, so whichever comes later in the file wins — and an override written earlier
+   silently lost. A 0.6rem track is a thumb's worth of nothing. The TRACK stays slim (it is the
+   colour spectrum and should read as one), but the control gets a real hit area around it via
+   padding, and the grab handle grows with it. */
+@media (max-width: 700px) {
+  .profile-hue {
+    height: 1.6rem;
+    padding-block: 0.5rem;
+    background-clip: content-box;
+  }
+  .profile-hue::-webkit-slider-thumb {
+    width: 1.5rem;
+    height: 1.5rem;
+  }
+  .profile-hue::-moz-range-thumb {
+    width: 1.5rem;
+    height: 1.5rem;
+  }
+}
 /* You vs them, in the Circuit's person modal. One bar split between two people's own colours,
    so who's ahead reads before any number does. */
 .cz-vs {
@@ -3892,16 +3944,22 @@ select {
   font-weight: 700;
   flex-shrink: 0;
 }
+/* One row per block, and it never wrapped: the label sat beside five controls — up, down,
+   size, WHO CAN SEE THIS, remove — measuring 277-297px of actions against a ~311px content box
+   on a phone. Something had to give, and it was always the label, so you were left arranging
+   blocks you could no longer tell apart. Let it wrap. */
 .profile-editrow-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 0.5rem;
   margin-bottom: 0.5rem;
+  flex-wrap: wrap;
 }
 .profile-editrow-actions {
   display: flex;
   gap: 0.25rem;
+  flex-wrap: wrap;
 }
 .profile-editrow-actions .btn {
   padding: 0.15rem 0.45rem;
