@@ -47,8 +47,11 @@ const TIER_LABEL: Record<Tier, string> = {
 export type ActivityItem = {
   kind: 'circuit_log' | 'snake_score' | 'snake_trophy'
   at: string
+  /** for a circuit log this is the circuits you SHARE, and null when you share none */
   detail: string | null
   score: number | null
+  /** circuit logs only: what was actually done, resolved against their own exercise list */
+  items?: Array<{ name: string; unit: string | null; val: number; points: number }> | null
 }
 
 const BLOCK_LABEL: Record<ProfileBlock['block_type'], string> = {
@@ -70,9 +73,27 @@ const BLOCK_LABEL: Record<ProfileBlock['block_type'], string> = {
  */
 const MOODS = ['💭', '🎮', '💪', '🔥', '😴', '🎬', '🎧', '🍕', '🧠', '😤', '🥳', '🫠'] as const
 
+/** 2.5 -> "2.5", 40 -> "40" — a rep count should not read as 40.0 */
+const num = (n: number) => (Number.isInteger(n) ? String(n) : String(Math.round(n * 100) / 100))
+
 function activityLine(a: ActivityItem): string {
   const when = new Date(a.at).toLocaleDateString()
-  if (a.kind === 'circuit_log') return 'Logged a workout in ' + a.detail + ' · ' + when
+  if (a.kind === 'circuit_log') {
+    /**
+     * "Logged a workout in The Crew" is the fact that activity happened, not the activity. The
+     * circuit feed says what was done, and so does this now.
+     *
+     * `detail` is the circuits you SHARE with them and is null when you share none — the person
+     * decides who sees their activity, but a group's NAME involves people other than them, so
+     * you get the what without the where.
+     */
+    const did = (a.items ?? [])
+      .map((it) => `${num(it.val)}${it.unit ? ' ' + it.unit : ''} ${it.name}`)
+      .join(', ')
+    const pts = a.score ? ` · ${a.score} pts` : ''
+    const where = a.detail ? ` · ${a.detail}` : ''
+    return (did || 'Logged a workout') + pts + where + ' · ' + when
+  }
   if (a.kind === 'snake_trophy')
     return 'Won ' + a.detail + ' in Snake (score ' + a.score + ') · ' + when
   return 'Scored ' + a.score + (a.detail ? ' · ' + a.detail : '') + ' · ' + when
@@ -408,6 +429,14 @@ function BannerPicker({
  * A list of seven labels is not a page you can recognise — the point of collapsing is that you
  * can still see WHICH bio and WHICH status without opening each one.
  */
+/** The blocks BlockView renders as nothing, so the editor can say so instead of showing a gap. */
+function isBlockEmpty(block: ProfileBlock): boolean {
+  const txt = typeof block.config.text === 'string' ? block.config.text.trim() : ''
+  if (block.block_type === 'bio') return !txt
+  if (block.block_type === 'status') return !txt
+  return false
+}
+
 function blockSummary(block: ProfileBlock): string {
   const txt = typeof block.config.text === 'string' ? block.config.text.trim() : ''
   switch (block.block_type) {
@@ -429,6 +458,8 @@ function blockSummary(block: ProfileBlock): string {
 function BlockEditRow({
   block,
   username,
+  activity,
+  snakeBest,
   open,
   onToggle,
   onChange,
@@ -439,6 +470,9 @@ function BlockEditRow({
 }: {
   block: ProfileBlock
   username: string
+  /** the same data the reader's page gets, because the preview below IS the reader's page */
+  activity: ActivityItem[]
+  snakeBest: { score: number; game_mode: string | null } | null
   open: boolean
   onToggle: () => void
   onChange: (next: ProfileBlock) => void
@@ -477,7 +511,7 @@ function BlockEditRow({
             {open ? '▾' : '▸'}
           </span>
           <strong>{BLOCK_LABEL[block.block_type]}</strong>
-          {!open && <span className="muted profile-editrow-sum">{blockSummary(block)}</span>}
+          <span className="muted profile-editrow-sum">{blockSummary(block)}</span>
         </button>
         <span className="profile-editrow-actions">
           <button className="btn" disabled={isFirst} onClick={() => onMove(-1)} title="Move up">
@@ -490,6 +524,29 @@ function BlockEditRow({
             ✕
           </button>
         </span>
+      </div>
+      {/**
+       * The block itself, exactly as a reader sees it — same component, same props.
+       *
+       * The editor used to REPLACE the page with a list of labelled rows, so arranging your
+       * profile meant reasoning about it rather than looking at it ("too divorced from the
+       * actual page, hard to understand what's going on"). Now the page is what you edit; the
+       * controls sit around it.
+       */}
+      <div className="profile-editrow-preview">
+        {isBlockEmpty(block) ? (
+          <p className="muted" style={{ margin: 0, fontSize: '0.85rem' }}>
+            Nothing in this one yet — {open ? 'fill it in below' : 'tap to fill it in'}.
+          </p>
+        ) : (
+          <BlockView
+            block={block}
+            activity={activity}
+            snakeBest={snakeBest}
+            username={username}
+            isMe
+          />
+        )}
       </div>
       {!open ? null : (
         <>
@@ -584,13 +641,19 @@ function BlockEditRow({
                 ))}
               </select>
             </label>
-            {/* Hidden on a phone: every size renders as one full-width column there (see
-                .profile-block.is-large under the 700px breakpoint), so the control provably
-                does nothing on the device you'd be tapping it with. */}
+            {/* Hidden on a phone: every width renders as one full-width column there (see
+                .profile-block under the 700px breakpoint), so the control provably does nothing
+                on the device you'd be tapping it with.
+                Named by what they DO, because "small / medium / large" described nothing you
+                could see — and until today two of them were the same rule. */}
             <label className="profile-editrow-size">
-              <span className="muted">Width</span>
-              <button className="btn" onClick={cycleSize} title="Cycle size">
-                {block.size}
+              <span className="muted">Width on a wide screen</span>
+              <button className="btn" onClick={cycleSize} title="Cycle width">
+                {block.size === 'small'
+                  ? 'one column'
+                  : block.size === 'medium'
+                    ? 'two columns'
+                    : 'full width'}
               </button>
             </label>
           </div>
@@ -604,10 +667,15 @@ function BlockEditRow({
 export function ProfileBlocksEditor({
   initial,
   username,
+  activity,
+  snakeBest,
   onSaved,
 }: {
   initial: ProfileBlock[]
   username: string
+  /** passed straight through to the previews, so editing shows the page and not a description */
+  activity: ActivityItem[]
+  snakeBest: { score: number; game_mode: string | null } | null
   onSaved: (blocks: ProfileBlock[]) => void
 }) {
   const [blocks, setBlocks] = useState<ProfileBlock[]>(initial)
@@ -758,13 +826,18 @@ export function ProfileBlocksEditor({
 
   return (
     <div className="card profile-editor" data-username={username}>
-      <h3 style={{ marginTop: 0 }}>Arrange your page</h3>
+      <h3 style={{ marginTop: 0 }}>Your page</h3>
+      <p className="muted" style={{ margin: '0 0 0.75rem', fontSize: '0.82rem' }}>
+        This is what people see, in order. Tap a block to change it.
+      </p>
       <div style={{ display: 'grid', gap: '0.5rem' }}>
         {blocks.map((b, i) => (
           <BlockEditRow
             key={i}
             block={b}
             username={username}
+            activity={activity}
+            snakeBest={snakeBest}
             open={openIdx === i}
             onToggle={() => setOpenIdx((cur) => (cur === i ? null : i))}
             onChange={(next) => setBlocks((all) => all.map((x, idx) => (idx === i ? next : x)))}

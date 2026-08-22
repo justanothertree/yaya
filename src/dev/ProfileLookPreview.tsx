@@ -40,10 +40,32 @@ const SAMPLE_BLOCKS: ProfileBlock[] = [
     visibility: 'members',
   },
   { block_type: 'trophies', size: 'medium', config: {}, visibility: 'friends' },
+  // the block whose whole point is the detail it shows — see SAMPLE_ACTIVITY
+  { block_type: 'activity', size: 'medium', config: { limit: 4 }, visibility: 'friends' },
 ]
 
 // stand-in trophies, so the block can be seen with content rather than only its empty state
 const SAMPLE_ACTIVITY = [
+  // A circuit log the way the RPC returns it now: what was done, what it scored, and the
+  // circuits you SHARE — plus one with detail: null, which is what someone who shares no
+  // circuit with this person sees. Both shapes need to render.
+  {
+    kind: 'circuit_log' as const,
+    at: '2026-08-21T00:00:00Z',
+    detail: 'The Crew',
+    score: 40,
+    items: [{ name: 'Miles walked', unit: 'mi', val: 2.5, points: 40 }],
+  },
+  {
+    kind: 'circuit_log' as const,
+    at: '2026-08-20T00:00:00Z',
+    detail: null,
+    score: 68,
+    items: [
+      { name: 'Pushups', unit: 'reps', val: 40, points: 40 },
+      { name: 'Plank', unit: 'min', val: 2.8, points: 28 },
+    ],
+  },
   { kind: 'snake_trophy' as const, at: '2026-08-01T00:00:00Z', detail: 'Round winner', score: 210 },
   {
     kind: 'snake_trophy' as const,
@@ -175,7 +197,13 @@ export function ProfileLookPreview() {
       </div>
 
       {editing ? (
-        <ProfileBlocksEditor initial={blocks} username={who} onSaved={setBlocks} />
+        <ProfileBlocksEditor
+          initial={blocks}
+          username={who}
+          activity={SAMPLE_ACTIVITY}
+          snakeBest={{ score: 812, game_mode: 'classic' }}
+          onSaved={setBlocks}
+        />
       ) : (
         <ProfileBlocksView
           blocks={blocks}

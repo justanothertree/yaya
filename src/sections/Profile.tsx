@@ -417,6 +417,8 @@ export function Profile({ authed }: { authed: boolean }) {
         <ProfileBlocksEditor
           initial={blocks}
           username={p.username}
+          activity={activity}
+          snakeBest={p.snake_best}
           /* Called after every autosave now, not once at the end — so leaving edit mode shows
              what is actually stored. It no longer closes the editor: you are done when you say
              you are done, not when the last keystroke lands. */

@@ -3683,17 +3683,35 @@ select {
      hidden }` clipped it with no way to scroll to what was cut off. min(_, 100%) lets the
      track fall back to the container when the rem value is too big for it. */
   grid-template-columns: repeat(auto-fit, minmax(min(15rem, 100%), 1fr));
+  /**
+   * ⚠️ `start`, not the default `stretch`.
+   *
+   * Grid items stretch to the tallest in their row, so a one-line Status sitting beside a
+   * Guestbook was rendered as tall as the Guestbook — which is exactly the "sizes are
+   * inheriting neighbouring sizes" report. Each block is now its own height and only its
+   * WIDTH is a setting.
+   */
+  align-items: start;
 }
+/**
+ * ⚠️ These were `span 1`, `span 1`, `span 2` — small and medium were the SAME RULE, so two of
+ * the three choices did nothing whatsoever and the third looked arbitrary because a 2-of-3-column
+ * block leaves a gap the next block flows into. One column, two columns, the whole row.
+ */
 .profile-block.is-small {
   grid-column: span 1;
 }
 .profile-block.is-medium {
-  grid-column: span 1;
-}
-.profile-block.is-large {
   grid-column: span 2;
 }
+.profile-block.is-large {
+  /* the full row whatever the column count, rather than a span that guesses at it */
+  grid-column: 1 / -1;
+}
 @media (max-width: 700px) {
+  /* one column down here, so every width is the same width — see the editor, which stops
+     offering the control rather than pretending it does something */
+  .profile-block.is-medium,
   .profile-block.is-large {
     grid-column: span 1;
   }
@@ -4029,6 +4047,30 @@ select {
   resize: vertical;
   font: inherit;
 }
+/**
+ * The live preview inside an edit row.
+ *
+ * BlockView renders each block as a `.card`, which nested inside the row's own card reads as a
+ * box in a box. Strip the inner chrome and let the row be the frame — the point is that what
+ * you see here is what a reader sees, not a smaller copy of it. Width is neutralised too: a
+ * row is one column wide whatever the block's grid span is.
+ */
+.profile-editrow-preview {
+  margin-top: 0.15rem;
+}
+.profile-editrow-preview > .profile-block {
+  background: none;
+  border: 0;
+  box-shadow: none;
+  padding: 0;
+  grid-column: auto;
+}
+/* …except the banner, which IS a filled box and would otherwise lose its own edges. */
+.profile-editrow-preview > .profile-block:has(.profile-banner-art) {
+  border-radius: var(--r-md, 12px);
+  overflow: hidden;
+}
+
 /* Where the Save button used to be. Quiet by default — it is a status, not a call to act. */
 .profile-editor-status {
   display: flex;

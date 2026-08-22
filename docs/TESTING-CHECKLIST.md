@@ -236,6 +236,27 @@ So there is no Save button any more.
       it. (Check the network tab if you care to.)
 - [ ] Everything else - reorder, add, who-can-see - saves the same way, no button.
 
+## 8g. Editing shows the page; sizes actually differ; activity says what you did
+
+- [ ] **Customize page now shows your real blocks**, not a list of labels. Each row is the block
+      exactly as a reader sees it - same component, same data - with the controls around it.
+      Tap one to open its settings underneath.
+- [ ] **The three widths were two.** `small` and `medium` were literally the same CSS rule
+      (`span 1`), so two of the three choices did nothing. Now: one column / two columns / full
+      width, and the button says that instead of "small". Check on desktop.
+- [ ] **Blocks no longer inherit their neighbour's height.** Grid items stretch to the tallest
+      in the row by default, so a one-line Status beside a Guestbook was rendered Guestbook-tall.
+      Measured at 1280: blocks sharing a row are now 70px and 156px rather than both 156px.
+- [ ] **The activity feed says what you did.** Was "Logged a workout in The Crew". Now
+      "2.5 mi Miles walked - 40 pts - The Crew - 8/21/2026", resolved against your own exercise
+      list and points.
+- [ ] 🔒 **Check what a non-member sees.** You are set to public, so a signed-in stranger DOES
+      see the workouts - that is what you asked for - but the circuit NAME comes back null for
+      them. A group name involves people other than you, so it needs shared membership. Verified
+      both directions with simulated sessions. Tell me if you want it stricter or looser.
+- [ ] A person in two circuits used to appear TWICE per workout (once per group). Now once, with
+      the shared circuit names joined.
+
 ## 9. Still waiting on a decision
 
 See `docs/OPEN-DECISIONS.md` — the price feed key, person colours in light theme, and the
