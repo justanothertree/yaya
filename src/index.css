@@ -3449,6 +3449,18 @@ select {
   font-size: 0.9rem;
   line-height: 1.4;
 }
+/**
+ * ⚠️ THIS BLOCK SITS ABOVE MOST OF THE COMPONENT CSS IN THIS FILE.
+ *
+ * Media queries add no specificity. Anything here written as a single class is beaten by the
+ * same single class defined further down (the profile, circuit and snake sections all live
+ * below line 3600) — and it fails SILENTLY, which has now cost two rounds: a slider override
+ * that did nothing, then a hidden control that stayed visible.
+ *
+ * So: when overriding a class defined later in this file, give the selector an extra step
+ * (`.parent .child`) rather than trusting order. Where an override reads better next to what it
+ * overrides, put it there instead — see .profile-hue's own media query further down.
+ */
 @media (max-width: 700px) {
   .sharestage-item video,
   .sharestage-item.is-big video {
@@ -3468,16 +3480,19 @@ select {
      Everything here is something you tap repeatedly while arranging a page, and all of it was
      built at mouse sizes. */
 
-  /* Once the head row wraps, the controls get the whole line rather than huddling right. */
-  .profile-editrow-actions {
-    width: 100%;
-    justify-content: flex-start;
+  /* Every size renders as one full-width column below this breakpoint (see .profile-block
+     .is-large just under it), so the width control provably does nothing on the device you
+     would be tapping it with. Don't offer it.
+     Two-part selector on purpose — see the warning at the top of this block. */
+  .profile-editrow-settings .profile-editrow-size {
+    display: none;
   }
-  /* The visibility select is the only control carrying words, so it takes the slack; the four
-     icon buttons stay square. */
-  .profile-editrow-actions select.btn {
-    flex: 1 1 8rem;
-    min-width: 0;
+  .profile-editrow-settings select.btn {
+    min-height: 40px;
+  }
+  /* The row header is the primary target now — the whole label opens the block — and it
+     measured 32px. Two-part selector for the same reason as above. */
+  .profile-editrow-head .profile-editrow-toggle {
     min-height: 40px;
   }
   /* 13 emoji at 38x28 in a wrapping row is a miss every time. */
@@ -3944,22 +3959,66 @@ select {
   font-weight: 700;
   flex-shrink: 0;
 }
-/* One row per block, and it never wrapped: the label sat beside five controls — up, down,
-   size, WHO CAN SEE THIS, remove — measuring 277-297px of actions against a ~311px content box
-   on a phone. Something had to give, and it was always the label, so you were left arranging
-   blocks you could no longer tell apart. Let it wrap. */
+/* One row per block. It used to carry five controls permanently — up, down, size, who-can-see,
+   remove — which measured 113px of chrome per block, 678px across six, and took 2.5 phone
+   screens to arrange a page whose list you could never actually see. The header is now the
+   three things you do while SCANNING; everything you do while EDITING is inside the block you
+   opened. A collapsed row still says which one it is (see blockSummary). */
 .profile-editrow-head {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 0.5rem;
+}
+/* The label IS the toggle: a whole-row target beats a caret you have to hit. */
+.profile-editrow-toggle {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.35rem 0;
+  background: none;
+  border: 0;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.profile-editrow-caret {
+  opacity: 0.6;
+  font-size: 0.8em;
+}
+/* One line, ellipsised — a preview that wraps would defeat the point of collapsing. */
+.profile-editrow-sum {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.82rem;
+}
+.profile-editrow[data-open] .profile-editrow-head {
   margin-bottom: 0.5rem;
-  flex-wrap: wrap;
 }
 .profile-editrow-actions {
   display: flex;
   gap: 0.25rem;
+  flex-shrink: 0;
+}
+/* Once-per-block settings, named. They were two nameless controls in the toolbar: a button that
+   said "medium" and a dropdown that said "Friends". */
+.profile-editrow-settings {
+  display: flex;
   flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: end;
+  margin-top: 0.75rem;
+  padding-top: 0.6rem;
+  border-top: 1px solid var(--border);
+}
+.profile-editrow-settings label {
+  display: grid;
+  gap: 3px;
+  font-size: 0.78rem;
 }
 .profile-editrow-actions .btn {
   padding: 0.15rem 0.45rem;

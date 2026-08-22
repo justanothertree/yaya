@@ -402,9 +402,35 @@ function BannerPicker({
   )
 }
 
+/**
+ * What a collapsed row says about itself.
+ *
+ * A list of seven labels is not a page you can recognise — the point of collapsing is that you
+ * can still see WHICH bio and WHICH status without opening each one.
+ */
+function blockSummary(block: ProfileBlock): string {
+  const txt = typeof block.config.text === 'string' ? block.config.text.trim() : ''
+  switch (block.block_type) {
+    case 'bio':
+      return txt ? txt.replace(/\s+/g, ' ').slice(0, 48) : 'nothing written yet'
+    case 'status':
+      return txt ? `${(block.config.emoji as string) ?? '💭'} ${txt.slice(0, 36)}` : 'no status set'
+    case 'banner': {
+      const style = typeof block.config.style === 'string' ? block.config.style : 'aurora'
+      return BANNER_STYLES[style as BannerStyle]?.label ?? 'Aurora'
+    }
+    case 'activity':
+      return `last ${typeof block.config.limit === 'number' ? block.config.limit : 10}`
+    default:
+      return 'fills in on its own'
+  }
+}
+
 function BlockEditRow({
   block,
   username,
+  open,
+  onToggle,
   onChange,
   onRemove,
   onMove,
@@ -413,6 +439,8 @@ function BlockEditRow({
 }: {
   block: ProfileBlock
   username: string
+  open: boolean
+  onToggle: () => void
   onChange: (next: ProfileBlock) => void
   onRemove: () => void
   onMove: (dir: -1 | 1) => void
@@ -427,10 +455,30 @@ function BlockEditRow({
       size: block.size === 'small' ? 'medium' : block.size === 'medium' ? 'large' : 'small',
     })
 
+  /**
+   * Collapsed by default, one open at a time.
+   *
+   * Every block used to carry its whole toolbar permanently: five controls that measured 113px
+   * of chrome per block, 678px across six of them, and 2.5 phone screens to arrange a page.
+   * The list was the one thing you could not see. So the header is now the three things you do
+   * while SCANNING — move up, move down, remove — and everything you do while EDITING lives
+   * inside the block you opened.
+   */
   return (
-    <div className="card profile-editrow">
+    <div className="card profile-editrow" data-open={open || undefined}>
       <div className="profile-editrow-head">
-        <strong>{BLOCK_LABEL[block.block_type]}</strong>
+        <button
+          type="button"
+          className="profile-editrow-toggle"
+          aria-expanded={open}
+          onClick={onToggle}
+        >
+          <span className="profile-editrow-caret" aria-hidden>
+            {open ? '▾' : '▸'}
+          </span>
+          <strong>{BLOCK_LABEL[block.block_type]}</strong>
+          {!open && <span className="muted profile-editrow-sum">{blockSummary(block)}</span>}
+        </button>
         <span className="profile-editrow-actions">
           <button className="btn" disabled={isFirst} onClick={() => onMove(-1)} title="Move up">
             ↑
@@ -438,91 +486,115 @@ function BlockEditRow({
           <button className="btn" disabled={isLast} onClick={() => onMove(1)} title="Move down">
             ↓
           </button>
-          <button className="btn" onClick={cycleSize} title="Cycle size">
-            {block.size}
-          </button>
-          <select
-            className="btn"
-            value={block.visibility}
-            onChange={(e) => onChange({ ...block, visibility: e.target.value as Tier })}
-            title="Who can see this block"
-          >
-            {(Object.keys(TIER_LABEL) as Tier[]).map((t) => (
-              <option key={t} value={t}>
-                {TIER_LABEL[t]}
-              </option>
-            ))}
-          </select>
           <button className="btn" onClick={onRemove} title="Remove">
             ✕
           </button>
         </span>
       </div>
-      {block.block_type === 'bio' && (
-        <textarea
-          className="profile-editrow-textarea"
-          placeholder="Say something about yourself…"
-          value={typeof block.config.text === 'string' ? block.config.text : ''}
-          onChange={(e) => setCfg({ text: e.target.value.slice(0, 2000) })}
-          rows={4}
-        />
-      )}
-      {block.block_type === 'banner' && (
-        <BannerPicker config={block.config} username={username} onChange={setCfg} />
-      )}
-      {block.block_type === 'activity' && (
-        <label className="muted" style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
-          Show
-          <input
-            type="number"
-            min={1}
-            max={20}
-            style={{ width: '4rem' }}
-            value={typeof block.config.limit === 'number' ? block.config.limit : 10}
-            onChange={(e) =>
-              setCfg({ limit: Math.min(20, Math.max(1, Number(e.target.value) || 10)) })
-            }
-          />
-          items
-        </label>
-      )}
-      {block.block_type === 'stats' && (
-        <p className="muted" style={{ margin: 0 }}>
-          Fills in automatically from your Snake results — nothing to set here.
-        </p>
-      )}
-      {block.block_type === 'status' && (
-        <div style={{ display: 'grid', gap: '0.4rem' }}>
-          <div className="profile-mood-row">
-            {MOODS.map((m) => (
-              <button
-                key={m}
-                className={'profile-mood' + ((block.config.emoji ?? '💭') === m ? ' is-on' : '')}
-                onClick={() => setCfg({ emoji: m })}
-                aria-pressed={(block.config.emoji ?? '💭') === m}
-                title={`Use ${m}`}
+      {!open ? null : (
+        <>
+          {block.block_type === 'bio' && (
+            <textarea
+              className="profile-editrow-textarea"
+              placeholder="Say something about yourself…"
+              value={typeof block.config.text === 'string' ? block.config.text : ''}
+              onChange={(e) => setCfg({ text: e.target.value.slice(0, 2000) })}
+              rows={4}
+            />
+          )}
+          {block.block_type === 'banner' && (
+            <BannerPicker config={block.config} username={username} onChange={setCfg} />
+          )}
+          {block.block_type === 'activity' && (
+            <label
+              className="muted"
+              style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}
+            >
+              Show
+              <input
+                type="number"
+                min={1}
+                max={20}
+                style={{ width: '4rem' }}
+                value={typeof block.config.limit === 'number' ? block.config.limit : 10}
+                onChange={(e) =>
+                  setCfg({ limit: Math.min(20, Math.max(1, Number(e.target.value) || 10)) })
+                }
+              />
+              items
+            </label>
+          )}
+          {block.block_type === 'stats' && (
+            <p className="muted" style={{ margin: 0 }}>
+              Fills in automatically from your Snake results — nothing to set here.
+            </p>
+          )}
+          {block.block_type === 'status' && (
+            <div style={{ display: 'grid', gap: '0.4rem' }}>
+              <div className="profile-mood-row">
+                {MOODS.map((m) => (
+                  <button
+                    key={m}
+                    className={
+                      'profile-mood' + ((block.config.emoji ?? '💭') === m ? ' is-on' : '')
+                    }
+                    onClick={() => setCfg({ emoji: m })}
+                    aria-pressed={(block.config.emoji ?? '💭') === m}
+                    title={`Use ${m}`}
+                  >
+                    {m}
+                  </button>
+                ))}
+              </div>
+              <input
+                placeholder="What are you up to?"
+                value={typeof block.config.text === 'string' ? block.config.text : ''}
+                onChange={(e) => setCfg({ text: e.target.value.slice(0, 120) })}
+              />
+            </div>
+          )}
+          {block.block_type === 'trophies' && (
+            <p className="muted" style={{ margin: 0 }}>
+              Fills in from the Snake rounds you&apos;ve won — nothing to set here.
+            </p>
+          )}
+          {block.block_type === 'guestbook' && (
+            <p className="muted" style={{ margin: 0 }}>
+              Friends can leave notes on your page. Whoever this block is visible to can write in it
+              — you can remove anything left here.
+            </p>
+          )}
+
+          {/* Settings, in words. These used to be two nameless controls in the toolbar: a button
+              that said "medium" and a dropdown that said "Friends", neither of which told you
+              what it was for. They are used once per block, so they belong down here with a
+              label rather than up there taking the room the block's own name needed. */}
+          <div className="profile-editrow-settings">
+            <label>
+              <span className="muted">Who can see this</span>
+              <select
+                className="btn"
+                value={block.visibility}
+                onChange={(e) => onChange({ ...block, visibility: e.target.value as Tier })}
               >
-                {m}
+                {(Object.keys(TIER_LABEL) as Tier[]).map((t) => (
+                  <option key={t} value={t}>
+                    {TIER_LABEL[t]}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {/* Hidden on a phone: every size renders as one full-width column there (see
+                .profile-block.is-large under the 700px breakpoint), so the control provably
+                does nothing on the device you'd be tapping it with. */}
+            <label className="profile-editrow-size">
+              <span className="muted">Width</span>
+              <button className="btn" onClick={cycleSize} title="Cycle size">
+                {block.size}
               </button>
-            ))}
+            </label>
           </div>
-          <input
-            placeholder="What are you up to?"
-            value={typeof block.config.text === 'string' ? block.config.text : ''}
-            onChange={(e) => setCfg({ text: e.target.value.slice(0, 120) })}
-          />
-        </div>
-      )}
-      {block.block_type === 'trophies' && (
-        <p className="muted" style={{ margin: 0 }}>
-          Fills in from the Snake rounds you&apos;ve won — nothing to set here.
-        </p>
-      )}
-      {block.block_type === 'guestbook' && (
-        <p className="muted" style={{ margin: 0 }}>
-          Friends can leave notes on your page. Whoever this block is visible to can write in it —
-          you can remove anything left here.
-        </p>
+        </>
       )}
     </div>
   )
@@ -541,8 +613,15 @@ export function ProfileBlocksEditor({
   const [blocks, setBlocks] = useState<ProfileBlock[]>(initial)
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState<string | null>(null)
+  /** which block is open for editing; null means the list is a list. One at a time. */
+  const [openIdx, setOpenIdx] = useState<number | null>(null)
+  /** the add-a-block palette, which is seven buttons you are mostly not pressing */
+  const [adding, setAdding] = useState(false)
 
-  const addBlock = (type: ProfileBlock['block_type']) =>
+  const addBlock = (type: ProfileBlock['block_type']) => {
+    // Straight into editing it: you added a block because you have something to put in it.
+    setOpenIdx(blocks.length)
+    setAdding(false)
     setBlocks((b) => [
       ...b,
       {
@@ -559,14 +638,23 @@ export function ProfileBlocksEditor({
         visibility: type === 'activity' || type === 'stats' ? 'friends' : 'members',
       },
     ])
-  const move = (i: number, dir: -1 | 1) =>
+  }
+  const move = (i: number, dir: -1 | 1) => {
+    const j = i + dir
+    if (j < 0 || j >= blocks.length) return
+    // The open block travels with its content. Rows are keyed by position, so without this
+    // moving a block would leave the panel open on whatever swapped into its old slot.
+    setOpenIdx((cur) => (cur === i ? j : cur === j ? i : cur))
     setBlocks((b) => {
-      const j = i + dir
-      if (j < 0 || j >= b.length) return b
       const next = [...b]
       ;[next[i], next[j]] = [next[j], next[i]]
       return next
     })
+  }
+  const removeAt = (i: number) => {
+    setOpenIdx((cur) => (cur === i ? null : cur != null && cur > i ? cur - 1 : cur))
+    setBlocks((all) => all.filter((_, idx) => idx !== i))
+  }
 
   const save = async () => {
     setSaving(true)
@@ -593,25 +681,45 @@ export function ProfileBlocksEditor({
             key={i}
             block={b}
             username={username}
+            open={openIdx === i}
+            onToggle={() => setOpenIdx((cur) => (cur === i ? null : i))}
             onChange={(next) => setBlocks((all) => all.map((x, idx) => (idx === i ? next : x)))}
-            onRemove={() => setBlocks((all) => all.filter((_, idx) => idx !== i))}
+            onRemove={() => removeAt(i)}
             onMove={(dir) => move(i, dir)}
             isFirst={i === 0}
             isLast={i === blocks.length - 1}
           />
         ))}
       </div>
+      {/* Seven "+ block" buttons sat here permanently, 192px of a phone screen spent on things
+          you are not adding. Behind one word now. */}
       <div className="profile-editor-add">
-        {(Object.keys(BLOCK_LABEL) as Array<ProfileBlock['block_type']>).map((t) => (
+        {adding ? (
+          <>
+            {(Object.keys(BLOCK_LABEL) as Array<ProfileBlock['block_type']>).map((t) => (
+              <button
+                key={t}
+                className="btn"
+                onClick={() => addBlock(t)}
+                disabled={blocks.length >= 20}
+              >
+                + {BLOCK_LABEL[t]}
+              </button>
+            ))}
+            <button className="btn btn-ghost" onClick={() => setAdding(false)}>
+              Cancel
+            </button>
+          </>
+        ) : (
           <button
-            key={t}
             className="btn"
-            onClick={() => addBlock(t)}
+            onClick={() => setAdding(true)}
             disabled={blocks.length >= 20}
+            aria-expanded={false}
           >
-            + {BLOCK_LABEL[t]}
+            + Add a block
           </button>
-        ))}
+        )}
       </div>
       {err && <p style={{ color: '#f46b6b', margin: '0.5rem 0 0' }}>{err}</p>}
       <div style={{ marginTop: '0.6rem' }}>

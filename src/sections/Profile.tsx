@@ -243,6 +243,13 @@ export function Profile({ authed }: { authed: boolean }) {
     ? (derivePalette(wearing.palette) as React.CSSProperties)
     : undefined
 
+  /** what this profile has nothing of, in the words each case deserves */
+  const nothingYet = [
+    p.shared_circuits.length === 0 && (p.is_me ? 'no circuits yet' : 'no circuits together'),
+    p.movies_rated === 0 && (p.is_me ? 'no ratings yet' : 'no ratings you can see'),
+    !p.snake_best && (p.is_me ? 'no Snake score — go set one' : 'no Snake score'),
+  ].filter((x): x is string => typeof x === 'string')
+
   return (
     <div
       data-theme={wearing?.palette ? undefined : (wearing?.theme ?? undefined)}
@@ -437,9 +444,9 @@ export function Profile({ authed }: { authed: boolean }) {
         }}
       >
         {/* circuits you share */}
-        <div className="card">
-          <h3 style={{ marginTop: 0 }}>🏆 Circuits together</h3>
-          {p.shared_circuits.length ? (
+        {p.shared_circuits.length > 0 && (
+          <div className="card">
+            <h3 style={{ marginTop: 0 }}>🏆 Circuits together</h3>
             <ul style={{ margin: 0, paddingLeft: '1.1rem' }}>
               {p.shared_circuits.map((g) => (
                 <li key={g.name}>
@@ -450,27 +457,19 @@ export function Profile({ authed }: { authed: boolean }) {
                 </li>
               ))}
             </ul>
-          ) : (
-            <p className="muted" style={{ margin: 0 }}>
-              {p.is_me ? 'You’re not in any circuits yet.' : 'No circuits together yet.'}
-            </p>
-          )}
-        </div>
+          </div>
+        )}
 
         {/* movies */}
-        <div className="card">
-          <h3 style={{ marginTop: 0 }}>🎬 Movies</h3>
-          {p.movies_rated > 0 ? (
+        {p.movies_rated > 0 && (
+          <div className="card">
+            <h3 style={{ marginTop: 0 }}>🎬 Movies</h3>
             <p style={{ margin: 0 }}>
               <strong style={{ fontSize: '1.6rem' }}>{p.movies_rated}</strong>{' '}
               <span className="muted">movies rated in your shared circuits</span>
             </p>
-          ) : (
-            <p className="muted" style={{ margin: 0 }}>
-              No ratings where you can see them.
-            </p>
-          )}
-        </div>
+          </div>
+        )}
 
         {/* everyone else — the door to their pages */}
         {people.length > 0 && (
@@ -505,9 +504,9 @@ export function Profile({ authed }: { authed: boolean }) {
         )}
 
         {/* snake */}
-        <div className="card">
-          <h3 style={{ marginTop: 0 }}>🐍 Snake</h3>
-          {p.snake_best ? (
+        {p.snake_best && (
+          <div className="card">
+            <h3 style={{ marginTop: 0 }}>🐍 Snake</h3>
             <>
               <p style={{ margin: 0 }}>
                 <strong style={{ fontSize: '1.6rem' }}>{p.snake_best.score}</strong>{' '}
@@ -559,13 +558,24 @@ export function Profile({ authed }: { authed: boolean }) {
                 </a>
               )}
             </>
-          ) : (
-            <p className="muted" style={{ margin: 0 }}>
-              No score on the board under their name{p.is_me ? ' — go set one!' : ' yet.'}
-            </p>
-          )}
-        </div>
+          </div>
+        )}
       </div>
+
+      {/**
+       * The nothings, as one line.
+       *
+       * Circuits, Movies and Snake used to render as three headed cards whatever the answer, so
+       * a profile with nothing shared was 309px of a 524px page spent saying "no", "no" and
+       * "no" in three separate boxes. A card is for something worth looking at; an absence is a
+       * sentence. Cards that DO have something are untouched above.
+       */}
+      {nothingYet.length > 0 && (
+        <p className="muted" style={{ margin: 0, fontSize: '0.88rem' }}>
+          {p.is_me ? 'Nothing on your page yet — ' : 'Nothing in common yet — '}
+          {nothingYet.join(', ')}.
+        </p>
+      )}
     </div>
   )
 }

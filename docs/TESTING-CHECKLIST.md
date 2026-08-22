@@ -186,6 +186,34 @@ Recorded so you do not spend time re-checking:
 - [ ] Desktop is unchanged - verified at 1280: label and controls still share one line, slider
       and emoji back to their smaller sizes.
 
+## 8e. Profile + editor, second pass (the design one)
+
+Measured on a 375px viewport, before -> after:
+
+|                               | before               | after                 |
+| ----------------------------- | -------------------- | --------------------- |
+| Customize editor, 6 blocks    | 2011px (2.5 screens) | 680px (0.84)          |
+| Per-block chrome              | 113px x 6 = 678px    | one 71-84px line each |
+| "add a block" row             | 192px of 7 buttons   | 53px, one button      |
+| A profile with nothing shared | 524px, 3 empty cards | 242px, one sentence   |
+
+- [ ] **Customize page, on your phone.** Blocks are a collapsed LIST now - tap one to open it,
+      one at a time. A collapsed row shows what it holds ("Aurora", the first words of your bio,
+      your status), so the list is scannable instead of six identical toolbars.
+- [ ] Reorder with the up/down arrows while blocks are collapsed - the open one should travel
+      with its content, not stay open on whatever moved into its slot.
+- [ ] "+ Add a block" opens the seven choices; picking one adds it AND opens it for editing.
+- [ ] Inside an open block: **"Who can see this"** is now a named setting rather than a bare
+      dropdown in the toolbar. **"Width" is hidden on a phone** - every size renders as one
+      full-width column below 700px, so the control provably did nothing there.
+- [ ] **A profile with nothing in common** (a new member, say) should read as one line:
+      "Nothing in common yet - no circuits together, no ratings you can see, no Snake score."
+      It used to be three headed cards each saying no.
+- [ ] **A profile WITH things** should be unchanged: real cards for circuits, movies and Snake,
+      the head-to-head line and the Beat button. Verified, but worth your eyes.
+- [ ] Desktop unchanged - verified at 1280: compact rows, Width control present, one-line
+      headers.
+
 ## 9. Still waiting on a decision
 
 See `docs/OPEN-DECISIONS.md` — the price feed key, person colours in light theme, and the
