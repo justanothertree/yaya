@@ -275,6 +275,29 @@ So there is no Save button any more.
       deliberate - otherwise the login box answers "is this person a member here?" for anyone
       who asks, and your members are your friends and family.
 
+## 8i. Import from the site; activity defaults to private
+
+- [ ] **Admin -> Import.** Pick your Cash App CSV. It should read the file and show you a summary
+      WITHOUT writing anything - source, rows, kept, sells, skipped, net invested, date range.
+      Compare it to the terminal output you already have; the numbers should be identical,
+      because it is literally the same parser.
+- [ ] Expand "Show a raw example of each skipped kind" and check nothing real is being thrown
+      away. That is the cheapest catch there is.
+- [ ] ⚠️ **If a ⚠️ collapsed block appears, read it before pressing Import.** Those are rows the
+      parser refused to guess about - in a Robinhood file they can be a genuine second purchase,
+      because their rows carry no transaction id and no time of day.
+- [ ] Press **Import these N trades**. It should report "X new, Y already present" plus the
+      even-split across your active accounts. Re-running the same file should then report
+      everything as already present, not a second copy.
+- [ ] Try a CSV that isn't a broker export - it should say so plainly rather than failing oddly.
+- [ ] 🔒 No service-role key anywhere in this flow. Being signed in as admin is the credential,
+      and the relay holds the key. Verified: the endpoint returns 403 to an unauthenticated
+      request, on the live relay.
+- [ ] 🔒 **activity_visibility now defaults to private** for anyone new. Your 7 existing members
+      were deliberately NOT changed - a default governs someone who hasn't decided, and rewriting
+      the people already here would take away sharing they may be relying on. If you'd rather
+      move them too, say so and I will.
+
 ## 9. Still waiting on a decision
 
 See `docs/OPEN-DECISIONS.md` — the price feed key, person colours in light theme, and the
