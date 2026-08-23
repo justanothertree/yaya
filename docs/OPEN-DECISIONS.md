@@ -3,32 +3,19 @@
 Things that are blocked on Evan rather than on code. Each one names what is already built, what
 is actually being asked, and what happens if it keeps waiting.
 
-Last reviewed: 2026-08-21.
+Last reviewed: 2026-08-23.
 
 ---
 
-## 1. The price feed — fixed, except for one key
+## 1. ~~The price feed~~ — DONE 2026-08-23
 
-**Status 2026-08-21: crypto is live again. Stocks wait on a Finnhub key in Vault.**
+Evan put `finnhub_api_key` in Vault. Verified: `have_finnhub_key: true`, 97 of 175 symbols
+refreshed within hours, the rest cycling through the nightly staggered runs. The rate-limit path
+also ran for real for the first time and behaved — stopped asking, said so, still wrote crypto.
 
-The four cron jobs POSTed to the `refresh-prices` edge function carrying the legacy anon JWT,
-and Supabase's edge gateway refuses those: `{"code":"UNAUTHORIZED_LEGACY_JWT"}`. There is no
-modern publishable key to swap in, so that was not fixable from this side.
-
-Fixed by taking the gateway out of the path entirely — the cron already runs inside Postgres,
-so it now fetches the quotes itself and there is nothing to authenticate. See
-`docs/2026-08-21-prices-without-the-edge-gateway.sql`, including the two silent-gate bugs found
-on the way.
-
-**The one thing left, and it needs Evan.** Put the Finnhub API key in Vault, from the dashboard:
-Project Settings → Vault → New secret, named exactly `finnhub_api_key`. That way it never passes
-through a chat, a cron command, a function body or this repo. Nothing else needs doing — the
-next nightly run picks it up.
-
-**Until then:** crypto prices are current; the ~170 stock symbols keep their 2026-08-16 prices
-and the run summary reports `have_finnhub_key: false` with every one listed as skipped. That is
-a normal state now rather than a silent failure — and a run that prices _nothing_ raises, so the
-cron log tells the truth from here on.
+Nine symbols will never price from Finnhub — `HEXO, SNCY, RMO, ABLC, CCIV, WOLF.OLD, WBA,
+LSXMK, SIRI.OLD` — delisted or renamed. `admin_set_price` carries a manual value if any of them
+matter.
 
 ---
 
@@ -101,6 +88,16 @@ not a security fix, and that path has run eight times ever. See
 
 ---
 
+## 7. Not swept, and outside what can be checked from here
+
+- **Rate limiting on the anon RPCs.** `submit_score`, `get_invite_by_token` and
+  `complete_member_signup` are reachable by anyone; nothing bounds call volume.
+- **Render's own env/secret handling** — outside this repo.
+- **Auth settings beyond the linter.** Note that leaked-password protection is **paywalled** on
+  the current plan, so the advisor will keep flagging it; that one is not actionable.
+
+---
+
 ## 8. Importing trades is too cumbersome to be a habit
 
 Raised 2026-08-23, after doing it once end to end.
@@ -134,11 +131,3 @@ you look at before pressing Import.
 stretch shows up as wrong numbers on pages the family is meant to trust.
 
 ---
-
-## 7. Not swept, and outside what can be checked from here
-
-- **Rate limiting on the anon RPCs.** `submit_score`, `get_invite_by_token` and
-  `complete_member_signup` are reachable by anyone; nothing bounds call volume.
-- **Render's own env/secret handling** — outside this repo.
-- **Auth settings beyond the linter.** Note that leaked-password protection is **paywalled** on
-  the current plan, so the advisor will keep flagging it; that one is not actionable.
