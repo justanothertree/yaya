@@ -742,7 +742,17 @@ async function turnUsage() {
 }
 
 const server = createServer((req, res) => {
-  const url = (req.url || '').split('?')[0]
+  /**
+   * ⚠️ TWO VALUES, ON PURPOSE. `url` is the PATH, for routing; `rawUrl` still has the query
+   * string, for anything that needs to read one.
+   *
+   * There used to be only the stripped one, and /import-trades read its `commit=1` flag off it —
+   * a flag that could therefore never be true. Pressing Import parsed the file, reported a
+   * dry-run summary and wrote nothing, which looks identical to a successful import that had
+   * nothing to add. It cost an evening and a wrong accusation about a missing key.
+   */
+  const rawUrl = req.url || ''
+  const url = rawUrl.split('?')[0]
   if (url === '/usage') {
     res.setHeader('Access-Control-Allow-Origin', '*')
     res.setHeader('Access-Control-Allow-Headers', 'authorization, content-type')
@@ -847,7 +857,8 @@ const server = createServer((req, res) => {
     return
   }
 
-  if (url === '/import-trades' || url.startsWith('/import-trades?')) {
+  // `url` is already the path, so no need to test for a query suffix that cannot be there.
+  if (url === '/import-trades') {
     res.setHeader('Access-Control-Allow-Origin', '*')
     res.setHeader('Access-Control-Allow-Headers', 'authorization, content-type')
     if (req.method === 'OPTIONS') {
@@ -860,7 +871,7 @@ const server = createServer((req, res) => {
       res.end(JSON.stringify({ error: 'POST a CSV' }))
       return
     }
-    void handleImport(req, res, url)
+    void handleImport(req, res, rawUrl)
     return
   }
 
@@ -891,7 +902,7 @@ function readBody(req, limit) {
   })
 }
 
-async function handleImport(req, res, url) {
+async function handleImport(req, res, rawUrl) {
   const say = (code, body) => {
     res.writeHead(code, { 'Content-Type': 'application/json' })
     res.end(JSON.stringify(body))
@@ -942,7 +953,7 @@ async function handleImport(req, res, url) {
 
   // Exact: `commit=10` is not `commit=1`, and this one boolean decides whether anything
   // is written at all.
-  const commit = /[?&]commit=1(&|$)/.test(url)
+  const commit = /[?&]commit=1(&|$)/.test(rawUrl)
   if (!commit) return say(200, { name, committed: false, ...parsed.summary })
 
   // Checked HERE and not earlier: a dry run writes nothing, so it has no business needing a
