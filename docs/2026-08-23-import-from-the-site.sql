@@ -1,0 +1,29 @@
+-- Importing broker CSVs from Admin.  2026-08-23   (no migration — relay + client only)
+--
+-- Admin -> Import replaces the CLI for the common case. shared parser lives at
+-- server/lib/parseTrades.mjs and is used by BOTH the relay endpoint and scripts/import-trades.mjs,
+-- so the screen and the terminal cannot disagree about what a file contains.
+--
+--   POST /import-trades           parse only, writes nothing
+--   POST /import-trades?commit=1  parse, then admin_import_trades + admin_even_split_trades
+--   GET  /relay-config            admin only, booleans only, "what is this relay configured with"
+--   GET  /health                  ⚠️ RENDER'S PROBE. Unauthenticated, 2xx, do not gate it.
+--
+-- ── the two bugs, because both cost hours and both will recur ────────────────────────────────
+--
+-- 1. THE COMMIT FLAG NEVER FIRED. The router does `const url = (req.url||'').split('?')[0]`, and
+--    the endpoint tested `commit=1` against that stripped path. Pressing Import parsed the file,
+--    reported a dry-run summary and wrote nothing — no Supabase call, no error. Indistinguishable
+--    from a successful import with nothing to add. Fixed by keeping `rawUrl` for query parsing.
+--
+-- 2. AN ADMIN-GATED /health FAILED EVERY DEPLOY. Render probes /health after each deploy and
+--    waits for a success code before switching traffic. A 403 there meant the deploy timed out
+--    and Render kept serving the PREVIOUS build — so builds "succeeded", nothing changed, and a
+--    route that worked locally did not exist in production. Diagnostics moved to /relay-config.
+--
+-- Both are the same family as the rest of this codebase's worst bugs: a check that could not
+-- report failure. `commit` defaulted to "don't", and doing nothing looks exactly like having
+-- nothing to do.
+--
+-- Verified end to end on the real export: 49 new, 1328 already present, 1485 allocations across
+-- 33 accounts; finance.executed_trades cashapp 1349 -> 1398 rows, newest 2026-06-30 -> 2026-08-21.
