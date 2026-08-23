@@ -26,7 +26,7 @@
 
 import { readFileSync, writeFileSync } from 'node:fs'
 // One parser, shared with the relay's /import-trades endpoint — see the note in that file.
-import { parseTrades } from '../shared/parseTrades.mjs'
+import { parseTrades } from '../server/lib/parseTrades.mjs'
 
 // ── main: the sync ──────────────────────────────────────────────────────────
 // One command, now and forever: download fresh exports, run with --commit, done.

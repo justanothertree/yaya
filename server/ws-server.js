@@ -13,7 +13,7 @@ import { WebSocketServer } from 'ws'
 import crypto from 'crypto'
 import { createClient } from '@supabase/supabase-js'
 // The SAME parser the CLI uses — see the note in that file.
-import { parseTrades } from '../shared/parseTrades.mjs'
+import { parseTrades } from './lib/parseTrades.mjs'
 
 const PORT = process.env.PORT ? Number(process.env.PORT) : 8080
 const WS_DEBUG = process.env.WS_DEBUG === '1' || process.env.WS_DEBUG === 'true'

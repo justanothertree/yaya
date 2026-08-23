@@ -3,6 +3,13 @@ import { createHash } from 'node:crypto'
 /**
  * Parsing broker exports into normalized family-fund trades.
  *
+ * ⚠️ LIVES UNDER server/ FOR A DEPLOYMENT REASON, not a tidiness one. Render's root directory
+ * is `server` — it has its own package.json, lockfile and node_modules, and starts with
+ * `node ws-server.js` — so anything outside that folder simply does not exist at runtime. This
+ * sat in a top-level shared/ for about ten minutes, which would have taken the relay down on the
+ * next deploy, calls and all. The CLI reaches in from ../server/lib/, which is safe because it
+ * only ever runs from a full checkout.
+ *
  * ⚠️ ONE COPY, ON PURPOSE. This is imported by BOTH the CLI (scripts/import-trades.mjs) and the
  * relay's /import-trades endpoint (server/ws-server.js). Two implementations of "what counts as
  * a buy" would drift, and the entire value of this module is that the numbers can be trusted —
