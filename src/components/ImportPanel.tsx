@@ -68,8 +68,11 @@ export function ImportPanel() {
    * Ask the relay what it is configured with, before anything is attempted.
    *
    * ⚠️ This is here rather than as something to curl because a browser tab sends no
-   * Authorization header — /health is admin-only, so opening it directly can only ever refuse
-   * you. The panel has the session token; the address bar does not.
+   * Authorization header — /relay-config is admin-only, so opening it directly can only ever
+   * refuse you. The panel has the session token; the address bar does not.
+   *
+   * ⚠️ And it is NOT /health: Render probes that path after every deploy and needs a 2xx from an
+   * unauthenticated request. Putting this behind /health failed every deploy for an evening.
    *
    * 'old' means the relay answered but has no /health route, i.e. it is running a build from
    * before this existed. Worth distinguishing: "the relay is misconfigured" and "the relay has
@@ -82,7 +85,7 @@ export function ImportPanel() {
         const { data } = await getSupabaseClient().auth.getSession()
         const token = data.session?.access_token
         if (!token) return
-        const r = await fetch(`${relayBase()}/health`, {
+        const r = await fetch(`${relayBase()}/relay-config`, {
           headers: { Authorization: `Bearer ${token}` },
         })
         const text = await r.text()

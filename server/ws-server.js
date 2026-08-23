@@ -815,15 +815,36 @@ const server = createServer((req, res) => {
    * POST /import-trades?commit=1 -> parse, then insert + even-split via the admin RPCs.
    */
   /**
+   * ⚠️⚠️ RENDER'S HEALTH CHECK POINTS AT THIS PATH. IT MUST STAY UNAUTHENTICATED AND RETURN 2xx.
+   *
+   * This is not a preference. Render probes `/health` after every deploy and waits for a success
+   * code before switching traffic to the new instance. An admin-gated route here answered its
+   * probe with 403, so every deploy "succeeded" at build time and then FAILED at the health
+   * check, and Render quietly kept serving the previous build. That is the whole reason a string
+   * of pushes appeared to deploy and did nothing — including the fix for the import bug they
+   * were meant to carry.
+   *
+   * Explicitly routed rather than left to the catch-all below, so that changing the catch-all
+   * later cannot silently break deployment again.
+   */
+  if (url === '/health') {
+    res.writeHead(200, { 'Content-Type': 'application/json' })
+    res.end(JSON.stringify({ ok: true }))
+    return
+  }
+
+  /**
    * What this relay is actually configured with. Admin only, and BOOLEANS ONLY — never a value,
    * not even a prefix.
+   *
+   * Deliberately NOT on /health, for the reason directly above.
    *
    * Added because "I pressed the button and I can't tell if it worked" had no answerable form:
    * a missing env var on Render looks identical from the outside to a bug in the code, and the
    * only way to tell them apart was to guess. A check that can distinguish them is worth more
    * than another round of guessing.
    */
-  if (url === '/health') {
+  if (url === '/relay-config') {
     res.setHeader('Access-Control-Allow-Origin', '*')
     res.setHeader('Access-Control-Allow-Headers', 'authorization, content-type')
     if (req.method === 'OPTIONS') {
