@@ -42,7 +42,23 @@ const LINES = [
 type LineKey = (typeof LINES)[number]['key']
 
 const compact = (n: number) =>
-  n >= 1000 ? `$${(n / 1000).toLocaleString(undefined, { maximumFractionDigits: 1 })}k` : usd(n)
+  Math.abs(n) >= 1000
+    ? `${n < 0 ? '−' : ''}$${(Math.abs(n) / 1000).toLocaleString(undefined, { maximumFractionDigits: 1 })}k`
+    : usd(n)
+
+/**
+ * The nearest "round" step at or above a target: 1, 2, 2.5 or 5 times a power of ten.
+ *
+ * This is what turns an axis into something readable — every tick lands on a number somebody
+ * would actually say, so $0 / $10k / $20k rather than −$850.45 / $7.2k / $15.3k.
+ */
+function niceStep(target: number): number {
+  if (!(target > 0)) return 1
+  const mag = Math.pow(10, Math.floor(Math.log10(target)))
+  const norm = target / mag
+  const step = norm <= 1 ? 1 : norm <= 2 ? 2 : norm <= 2.5 ? 2.5 : norm <= 5 ? 5 : 10
+  return step * mag
+}
 
 export function PortfolioChart({ timeline, title }: { timeline: Timeline; title?: string }) {
   const [range, setRange] = useState<RangeKey>('1M')
@@ -96,9 +112,21 @@ export function PortfolioChart({ timeline, title }: { timeline: Timeline; title?
       hi = 1
     }
     if (hi - lo < 1) hi = lo + 1
-    const pad = (hi - lo) * 0.08
-    const yMin = Math.min(0, lo - pad)
-    const yMax = hi + pad
+    /**
+     * Round the axis to numbers a person would say out loud.
+     *
+     * It used to be raw data bounds plus 8% padding, which produced labels like
+     * "−$850.45 / $7.2k / $15.3k" — three arbitrary figures that tell you nothing and make the
+     * chart look like it is hiding a decimal. Snapping to a 1 / 2 / 2.5 / 5 × 10ⁿ step gives
+     * ticks that land on round money, so the gridlines mean something at a glance.
+     */
+    // Four intervals' worth of step, then snap. No extra padding: rounding UP to the next round
+    // number already leaves headroom, and padding first only pushes it a whole step further —
+    // which is how a $14k chart ended up with a $20k ceiling and half the height unused.
+    const step = niceStep((hi - Math.min(0, lo)) / 4)
+    // Don't invent negative space. The floor is 0 unless something actually goes below it.
+    const yMin = lo >= 0 ? 0 : Math.floor(lo / step) * step
+    const yMax = Math.max(Math.ceil(hi / step) * step, yMin + step)
     const innerW = W - PAD.left - PAD.right
     const innerH = H - PAD.top - PAD.bottom
     const xFor = (i: number) =>

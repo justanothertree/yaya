@@ -80,7 +80,19 @@ export function buildDailySeries(t: Timeline, fromISO: string, toISO: string): S
   }
 
   const units = new Map<string, number>()
+  /**
+   * ⚠️ Same rule as finance.account_ledger, and it has to stay that way.
+   *
+   * This line is labelled "Net in" on the chart and sat directly under a summary saying "Put
+   * in" — two numbers for the same idea, $2,206.73 against $9,397.74, on one screen. It was a
+   * running sum of cost including negative sells, i.e. netting their profit back out as though
+   * Evan had taken it.
+   *
+   * A sale puts proceeds into their CASH; a purchase spends that cash before Evan's money, and
+   * only the shortfall is a fresh contribution.
+   */
   let invested = 0
+  let cash = 0
   let ei = 0
   const pi = new Map<string, number>() // per-symbol pointer into its price list
   const lastPrice = new Map<string, number>()
@@ -89,7 +101,13 @@ export function buildDailySeries(t: Timeline, fromISO: string, toISO: string): S
   const advance = (dayISO: string) => {
     while (ei < events.length && events[ei].date <= dayISO) {
       const e = events[ei++]
-      invested += e.cost
+      if (e.cost < 0) {
+        cash += -e.cost
+      } else {
+        const draw = Math.min(cash, e.cost)
+        cash -= draw
+        invested += e.cost - draw
+      }
       units.set(e.symbol, (units.get(e.symbol) ?? 0) + e.units)
     }
     for (const [sym, list] of pricesBySymbol) {
@@ -123,6 +141,9 @@ export function buildDailySeries(t: Timeline, fromISO: string, toISO: string): S
       if (p == null || u <= 0) continue
       value = (value ?? 0) + u * p
     }
+    // Cash counts. Without it the "Worth" line dropped by the whole position every time
+    // something was sold, which is the same money-disappearing bug the accounts had.
+    if (cash > 0) value = (value ?? 0) + cash
 
     out.push({ date: dayISO, invested, promised, value })
   }
