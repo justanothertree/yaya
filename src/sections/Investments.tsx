@@ -1268,14 +1268,50 @@ function ScheduleSummary({ accounts }: { accounts: AccountPortfolio[] }) {
       </article>
     )
 
+  const up = t.gain >= 0
+  const pct =
+    t.gainPercent == null ? null : `${up ? '+' : '−'}${Math.abs(t.gainPercent).toFixed(1)}%`
+
+  /**
+   * A sentence first, in plain words, then the numbers.
+   *
+   * Most of the people reading this have never read a chart or traded anything, and Evan asked
+   * for the whole site to lead with the answer rather than the evidence. So: what it is worth,
+   * whether the promise is being kept, and whether it has grown — as one line anyone can read
+   * without knowing what a cost basis is. The detail below is for whoever wants it.
+   */
   return (
     <article className="card" style={{ display: 'grid', gap: '0.7rem' }}>
+      <p style={{ margin: 0, fontSize: '1.05rem', lineHeight: 1.5 }}>
+        There&apos;s <strong>{usd(t.value)}</strong> set aside for {t.tracked}{' '}
+        {t.tracked === 1 ? 'person' : 'people'} right now
+        {pct && (
+          <>
+            {' '}
+            — that&apos;s{' '}
+            <strong style={{ color: up ? '#22cc78' : '#f46b6b' }}>
+              {pct} {up ? 'more' : 'less'}
+            </strong>{' '}
+            than the {usd(t.invested)} put in
+          </>
+        )}
+        .{' '}
+        {ahead
+          ? `The dollar-a-day promise is being kept, and then some.`
+          : `That's ${usd(Math.abs(t.aheadBehind))} short of the dollar-a-day promise so far.`}
+      </p>
+
       <div style={{ display: 'flex', gap: '1.6rem', flexWrap: 'wrap' }}>
-        <Stat label="Set aside" value={usd(t.invested)} big />
+        <Stat label="Worth today" value={usd(t.value)} big />
+        <Stat label="Put in" value={usd(t.invested)} />
         <Stat
-          label={ahead ? 'Ahead of plan' : 'Behind plan'}
+          label={up ? 'Gain' : 'Loss'}
+          value={`${up ? '+' : '−'}${usd(Math.abs(t.gain))}${pct ? ` (${pct})` : ''}`}
+          color={up ? '#22cc78' : '#f46b6b'}
+        />
+        <Stat
+          label={ahead ? 'Ahead of the promise' : 'Behind the promise'}
           value={`${ahead ? '+' : '−'}${usd(Math.abs(t.aheadBehind))}`}
-          big
           color={ahead ? '#22cc78' : '#f46b6b'}
         />
         {days != null && (
@@ -1286,10 +1322,11 @@ function ScheduleSummary({ accounts }: { accounts: AccountPortfolio[] }) {
           />
         )}
       </div>
+
       <p className="muted" style={{ margin: 0, fontSize: '0.8rem' }}>
-        Everyone’s promised {usd(t.dailyRate / Math.max(1, t.tracked))} a day. “Set aside” is what
-        has actually been put in for the family so far — ahead means that’s more than promised to
-        date.
+        Everyone’s promised {usd(t.dailyRate / Math.max(1, t.tracked))} a day. “Put in” is money
+        actually contributed — ahead or behind compares that to the promise, and never the value. A
+        holding going up or down is a gain or a loss, not a broken promise.
       </p>
     </article>
   )

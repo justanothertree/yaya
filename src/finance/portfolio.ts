@@ -21,10 +21,25 @@ export type AccountPortfolio = {
   name: string | null
   dollarPerDay: number
   startDate: string | null
-  /** Dollars actually declared as set aside for this account. The fund is commingled, so this
-   *  is the ONLY true measure of what was contributed — it cannot be derived from trades. */
+  /**
+   * Fresh money Evan put in for this account, derived from the trades — see
+   * finance.account_ledger. A purchase funded by their OWN sale proceeds is not a contribution,
+   * so rotating a position never inflates this.
+   *
+   * (It used to come from a typed ledger on the theory that a commingled fund made it
+   * underivable. That was true until family/personal was designated per symbol; once each trade
+   * is marked, the walk is exact — and a number nobody has to remember to type is a number that
+   * stays right.)
+   */
   contributed?: number
-  /** false until at least one contribution exists anywhere; suppresses ahead/behind entirely */
+  /**
+   * Proceeds from selling THEIR shares. Still theirs, waiting to be reinvested.
+   *
+   * Without this an account was shares and nothing else, so a sale made it shrink and the money
+   * disappeared — the opposite of "they keep their own profits".
+   */
+  cash?: number
+  /** false while an account has no allocated trades at all; suppresses ahead/behind entirely */
   ready?: boolean
   holdings: Holding[]
   /** Owner info — only present in the admin (all-accounts) view. */
@@ -40,6 +55,7 @@ function mapAccount(a: Record<string, unknown>): AccountPortfolio {
     dollarPerDay: Number(a.dollarPerDay ?? 0),
     startDate: (a.startDate as string | null) ?? null,
     contributed: a.contributed == null ? undefined : Number(a.contributed),
+    cash: a.cash == null ? undefined : Number(a.cash),
     ready: a.ready == null ? undefined : Boolean(a.ready),
     ownerUserId: (a.ownerUserId as string | null) ?? null,
     ownerName: (a.ownerName as string | null) ?? null,
@@ -361,6 +377,30 @@ export function promisedToDate(a: AccountPortfolio): number | null {
   return a.dollarPerDay * days
 }
 
+/**
+ * What this account is worth today: shares at market PLUS their uninvested cash.
+ *
+ * ⚠️ Cash is not a rounding detail here. Selling their shares converts value into cash without
+ * changing what they own, so leaving it out made every sale look like a loss of the whole
+ * position.
+ */
+export const accountValue = (a: AccountPortfolio): number => accountReserved(a) + (a.cash ?? 0)
+
+/**
+ * Gain or loss: what it is worth now against what Evan actually put in.
+ *
+ * Null when nothing has been contributed — a percentage of zero is not a fact, and "+∞%" on a
+ * family member's page would be worse than showing nothing.
+ */
+export function accountGain(
+  a: AccountPortfolio,
+): { dollars: number; percent: number | null } | null {
+  const put = a.contributed
+  if (put == null) return null
+  const dollars = accountValue(a) - put
+  return { dollars, percent: put > 0 ? (dollars / put) * 100 : null }
+}
+
 /** Ahead/behind schedule = reserved value minus promised-to-date. Positive = more value is
  *  reserved than promised so far; negative = owe more. Null when there's no promise to compare. */
 /**
@@ -375,11 +415,23 @@ export function promisedToDate(a: AccountPortfolio): number | null {
  * Returns null when nothing has been declared yet, which the UI must render as "still being set
  * up" rather than a confident zero.
  */
+/**
+ * Ahead or behind the dollar-a-day promise = MONEY PUT IN minus money promised.
+ *
+ * ⚠️ Never market value. Evan's rule, in his words: they are only behind if the initial
+ * investment did not meet the dollar-a-day promise — not if it met it and then depreciated. A
+ * holding that falls in value is a loss, shown as a loss; it is not a broken promise, and
+ * conflating the two would tell someone they were short-changed when they were not.
+ *
+ * There used to be a fallback here that used reserved VALUE when no contribution was known.
+ * That was exactly the conflation above, so it now returns null instead: no answer beats a
+ * wrong one.
+ */
 export function aheadBehind(a: AccountPortfolio): number | null {
   const promised = promisedToDate(a)
   if (promised == null) return null
   if (a.ready === false) return null
-  if (a.contributed == null) return accountReserved(a) - promised
+  if (a.contributed == null) return null
   return a.contributed - promised
 }
 
@@ -391,26 +443,43 @@ export function portfolioTotals(accounts: AccountPortfolio[]): {
   tracked: number
   /** Combined $/day promise across the tracked accounts (for the runway figure). */
   dailyRate: number
-  /** false when nothing has been declared yet — show "being set up", not a number */
+  /** what it is all worth today: shares at market plus uninvested cash */
+  value: number
+  /** value minus invested, and the same as a percentage (null when nothing was invested) */
+  gain: number
+  gainPercent: number | null
+  /** false when no account has any allocated trades — show "being set up", not a number */
   ready: boolean
 } {
   let invested = 0
   let promised = 0
   let tracked = 0
   let dailyRate = 0
-  // Same rule as aheadBehind(): declared contributions are the truth where they exist, and
-  // nothing is claimed at all until something has been declared.
+  let value = 0
+  // Same rule as aheadBehind(): money IN versus money promised, never market value.
   let ready = true
   for (const a of accounts) {
     const p = promisedToDate(a)
     if (p == null) continue
     if (a.ready === false) ready = false
     tracked++
-    invested += a.contributed ?? accountReserved(a)
+    invested += a.contributed ?? 0
+    value += accountValue(a)
     promised += p
     dailyRate += a.dollarPerDay
   }
-  return { invested, promised, aheadBehind: invested - promised, tracked, dailyRate, ready }
+  const gain = value - invested
+  return {
+    invested,
+    promised,
+    aheadBehind: invested - promised,
+    value,
+    gain,
+    gainPercent: invested > 0 ? (gain / invested) * 100 : null,
+    tracked,
+    dailyRate,
+    ready,
+  }
 }
 
 /** How many days ahead of / behind the dollar-a-day plan you are = |ahead$| ÷ daily rate.

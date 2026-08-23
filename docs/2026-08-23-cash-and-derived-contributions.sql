@@ -1,0 +1,41 @@
+-- Family accounts hold cash, and contributions are derived.  2026-08-23
+-- Migrations: family_accounts_hold_cash_not_just_shares
+--             portfolio_reports_cash_and_derived_contributions
+--
+-- ── the rule, in Evan's words ────────────────────────────────────────────────
+-- "any profits of a sale [are] cash for them to be reinvested, and if it's a sell at a loss then
+--  I want them to see a loss" ... "I still have to give them a dollar a day".
+--
+-- So: a sale does not reduce the promise being kept, and it does not take their money away. It
+-- changes the SHAPE of what they hold, from shares into cash.
+--
+-- ── how it is computed (finance.account_ledger) ──────────────────────────────
+-- Walk one account's allocated trades in DATE ORDER:
+--   a SELL -> proceeds land in their CASH
+--   a BUY  -> draws from their cash FIRST; only the shortfall is new money from Evan
+--
+-- That last line is the load-bearing one. Reinvesting their own proceeds is not a fresh
+-- contribution — the dollars were already theirs — so:
+--   * counting GROSS buys would credit the same dollar twice on every rotation
+--   * NETTING sells against buys (the old behaviour) treated their profit as if Evan took it back
+--
+-- Everything else falls out:
+--   value = holdings at market + cash
+--   gain  = value - contributed        (a sale at a loss shows, because cash < cost basis)
+--   ahead = contributed - promised     (⚠️ money in vs promise. NEVER value.)
+--
+-- ⚠️ The value-based fallback in aheadBehind() is gone. It said someone was "behind" when their
+-- holdings had merely depreciated, which is the exact conflation Evan asked to avoid: a loss is
+-- a loss, not a broken promise. It returns null now — no answer beats a wrong one.
+--
+-- ── what changed, in numbers ─────────────────────────────────────────────────
+--   before (declared ledger, one $33 entry):   $8,712 BEHIND     <- wrong, and alarming
+--   before (netting sells against buys):          $611 behind    <- wrong the other way
+--   now (derived, cash-aware):                    $653 AHEAD
+--
+--   contributed  $9,397.74    cash $7,191.03    holdings $14,219.09
+--   value       $21,410.12    promised $8,745.00
+--
+-- finance.family_contributions is LEFT IN PLACE and untouched. It remains the right home for
+-- money set aside but not yet invested, which the trades cannot know about; wiring it back in is
+-- additive when that case arises.
