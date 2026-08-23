@@ -7,13 +7,22 @@
 // database yet — the --commit path (insert + even-split allocation) lands next.
 //
 // Usage:
-//   node scripts/import-trades.mjs <export.csv> [--source robinhood|cashapp]
-//                                  [--commit] [--allocate-even]
-// Source is auto-detected from the header row when --source is omitted.
-// DRY RUN unless --commit is passed. --commit reads SUPABASE_SERVICE_ROLE_KEY
-// (and optional SUPABASE_URL / FUND_OWNER_UID) from your environment — those stay
-// local and are never printed. --allocate-even additionally splits each imported
-// trade evenly across your active family accounts.
+//   node scripts/import-trades.mjs <export.csv> [more.csv…] [--source robinhood|cashapp]
+//                                  [--commit] [--since YYYY-MM-DD]
+// Pass BOTH broker exports at once — the source is auto-detected per file from its header row,
+// so a Robinhood and a Cash App CSV can share one command.
+//
+// DRY RUN unless --commit is passed; a dry run writes <input>.parsed.json to read before you
+// trust it. --commit reads SUPABASE_SERVICE_ROLE_KEY (and optional SUPABASE_URL /
+// FUND_OWNER_UID) from your environment — those stay local and are never printed.
+//
+// Re-running is safe: rows are keyed by import_key and an existing one is reported as "already
+// present" rather than inserted again. ⚠️ Which also means a re-run does NOT backfill columns
+// added since a row was first imported (`kind`, for one) — skipped is skipped.
+//
+// The even split across active family accounts happens automatically after every --commit;
+// there is no flag for it. (There was a --allocate-even once. It is gone, and this comment
+// claimed otherwise for a while.)
 
 import { readFileSync, writeFileSync } from 'node:fs'
 import { createHash } from 'node:crypto'
@@ -31,16 +40,28 @@ function parseCSV(text) {
     const c = text[i]
     if (inQuotes) {
       if (c === '"') {
-        if (text[i + 1] === '"') { field += '"'; i++ } else inQuotes = false
+        if (text[i + 1] === '"') {
+          field += '"'
+          i++
+        } else inQuotes = false
       } else field += c
       continue
     }
     if (c === '"') inQuotes = true
-    else if (c === ',') { row.push(field); field = '' }
-    else if (c === '\n') { row.push(field); rows.push(row); row = []; field = '' }
-    else if (c !== '\r') field += c
+    else if (c === ',') {
+      row.push(field)
+      field = ''
+    } else if (c === '\n') {
+      row.push(field)
+      rows.push(row)
+      row = []
+      field = ''
+    } else if (c !== '\r') field += c
   }
-  if (field !== '' || row.length) { row.push(field); rows.push(row) }
+  if (field !== '' || row.length) {
+    row.push(field)
+    rows.push(row)
+  }
   return rows
 }
 
@@ -50,9 +71,15 @@ function money(s) {
   let t = String(s).trim()
   if (!t) return 0
   let neg = false
-  if (t.startsWith('(') && t.endsWith(')')) { neg = true; t = t.slice(1, -1) }
+  if (t.startsWith('(') && t.endsWith(')')) {
+    neg = true
+    t = t.slice(1, -1)
+  }
   t = t.replace(/[$,\s]/g, '')
-  if (t.startsWith('-')) { neg = true; t = t.slice(1) }
+  if (t.startsWith('-')) {
+    neg = true
+    t = t.slice(1)
+  }
   if (t.startsWith('+')) t = t.slice(1)
   const n = parseFloat(t)
   return Number.isNaN(n) ? 0 : neg ? -n : n
@@ -76,7 +103,9 @@ function toISODate(s, source) {
 
 function headerLookup(header) {
   const map = {}
-  header.forEach((h, i) => { map[h.trim().toLowerCase()] = i })
+  header.forEach((h, i) => {
+    map[h.trim().toLowerCase()] = i
+  })
   return (name) => map[name.toLowerCase()]
 }
 
@@ -154,18 +183,20 @@ function fromRobinhood(rows, since) {
     if (code === 'Sell' && symbol && units > 0) {
       s.sells.count++
       s.sells.dollars += Math.abs(money(row[at('Amount')]))
-      s.trades.push(makeTrade({
-        platform: 'robinhood',
-        date,
-        symbol,
-        assetType: 'stock',
-        units: -units,
-        price: money(row[at('Price')]),
-        dollars: -Math.abs(money(row[at('Amount')])),
-        fee: 0,
-        reinvestment: false,
-        note: (row[at('Description')] || '').replace(/\s+/g, ' ').trim(),
-      }))
+      s.trades.push(
+        makeTrade({
+          platform: 'robinhood',
+          date,
+          symbol,
+          assetType: 'stock',
+          units: -units,
+          price: money(row[at('Price')]),
+          dollars: -Math.abs(money(row[at('Amount')])),
+          fee: 0,
+          reinvestment: false,
+          note: (row[at('Description')] || '').replace(/\s+/g, ' ').trim(),
+        }),
+      )
       continue
     }
     // unit-only share events (no cash): SPR/SXCH splits & symbol changes arrive as pairs —
@@ -177,47 +208,57 @@ function fromRobinhood(rows, since) {
       const qty = m ? num(m[1]) : 0
       if (qty > 0) {
         s.adjustments++
-        s.trades.push(makeTrade({
-          platform: 'robinhood',
-          date,
-          symbol,
-          assetType: 'stock',
-          units: m[2] ? -qty : qty,
-          price: 0,
-          dollars: 0,
-          fee: 0,
-          reinvestment: code === 'SDIV',
-          note:
-            (row[at('Description')] || '').replace(/\s+/g, ' ').trim() +
-            (code === 'SPR' ? ' [stock split]' : code === 'SDIV' ? ' [share dividend]' : ' [symbol change]'),
-        }))
+        s.trades.push(
+          makeTrade({
+            platform: 'robinhood',
+            date,
+            symbol,
+            assetType: 'stock',
+            units: m[2] ? -qty : qty,
+            price: 0,
+            dollars: 0,
+            fee: 0,
+            reinvestment: code === 'SDIV',
+            note:
+              (row[at('Description')] || '').replace(/\s+/g, ' ').trim() +
+              (code === 'SPR'
+                ? ' [stock split]'
+                : code === 'SDIV'
+                  ? ' [share dividend]'
+                  : ' [symbol change]'),
+          }),
+        )
       } else {
         skip(s, `${code} (unparsed)`, row)
       }
       continue
     }
     if (code !== 'Buy' || !symbol || units <= 0) {
-      const reason =
-        ['OEXP', 'BTO', 'STO', 'STC', 'BTC', 'OASGN', 'OCA'].includes(code) ? 'option'
-        : code === 'CDIV' ? 'cash dividend'
-        : code === 'ACH' ? 'deposit'
-        : code || 'other'
+      const reason = ['OEXP', 'BTO', 'STO', 'STC', 'BTC', 'OASGN', 'OCA'].includes(code)
+        ? 'option'
+        : code === 'CDIV'
+          ? 'cash dividend'
+          : code === 'ACH'
+            ? 'deposit'
+            : code || 'other'
       skip(s, reason, row)
       continue
     }
     const note = (row[at('Description')] || '').replace(/\s+/g, ' ').trim()
-    s.trades.push(makeTrade({
-      platform: 'robinhood',
-      date,
-      symbol,
-      assetType: 'stock',
-      units,
-      price: money(row[at('Price')]),
-      dollars: Math.abs(money(row[at('Amount')])),
-      fee: 0,
-      reinvestment: /reinvest/i.test(note),
-      note,
-    }))
+    s.trades.push(
+      makeTrade({
+        platform: 'robinhood',
+        date,
+        symbol,
+        assetType: 'stock',
+        units,
+        price: money(row[at('Price')]),
+        dollars: Math.abs(money(row[at('Amount')])),
+        fee: 0,
+        reinvestment: /reinvest/i.test(note),
+        note,
+      }),
+    )
   }
   return s
 }
@@ -249,17 +290,21 @@ function fromCashApp(rows, since) {
       skip(s, 'cash dividend', row)
       continue
     }
-    const isBitcoin = /bitcoin|btc/i.test(type) || /\bBTC\b/.test((row[at('Asset Type')] || ''))
+    const isBitcoin = /bitcoin|btc/i.test(type) || /\bBTC\b/.test(row[at('Asset Type')] || '')
     const symbol = (row[at('Asset Type')] || '').trim() || (isBitcoin ? 'BTC' : '')
 
     // classify: labeled buys/sells/DRIPs, or unlabeled rows identified by their note
-    const kind =
-      /sell/i.test(type) ? 'sell'
-      : /buy/i.test(type) ? 'buy'
-      : /stock dividends/i.test(type) ? 'buy'
-      : !type && /sale of/i.test(note) ? 'sell'
-      : !type && /purchase of/i.test(note) ? 'buy'
-      : null
+    const kind = /sell/i.test(type)
+      ? 'sell'
+      : /buy/i.test(type)
+        ? 'buy'
+        : /stock dividends/i.test(type)
+          ? 'buy'
+          : !type && /sale of/i.test(note)
+            ? 'sell'
+            : !type && /purchase of/i.test(note)
+              ? 'buy'
+              : null
     if (!kind || !symbol) {
       skip(s, type.toLowerCase() || 'unlabeled', row)
       continue
@@ -295,18 +340,23 @@ function fromCashApp(rows, since) {
       s.sells.count++
       s.sells.dollars += dollars
     }
-    s.trades.push(makeTrade({
-      platform: 'cashapp',
-      date,
-      symbol,
-      assetType: isBitcoin || symbol.toUpperCase() === 'BTC' ? 'crypto' : 'stock',
-      units: sell ? -units : units,
-      price,
-      dollars: sell ? -dollars : dollars,
-      fee: Math.abs(money(row[at('Fee')])),
-      reinvestment: /dividend reinvested/i.test(note) || /stock dividends/i.test(type),
-      note,
-    }, externalId))
+    s.trades.push(
+      makeTrade(
+        {
+          platform: 'cashapp',
+          date,
+          symbol,
+          assetType: isBitcoin || symbol.toUpperCase() === 'BTC' ? 'crypto' : 'stock',
+          units: sell ? -units : units,
+          price,
+          dollars: sell ? -dollars : dollars,
+          fee: Math.abs(money(row[at('Fee')])),
+          reinvestment: /dividend reinvested/i.test(note) || /stock dividends/i.test(type),
+          note,
+        },
+        externalId,
+      ),
+    )
   }
   return s
 }
@@ -316,14 +366,18 @@ function fromCashApp(rows, since) {
 // Full history by default (dedupe makes re-runs safe); family/personal is decided
 // by the position toggles on the site, not by import flags.
 const args = process.argv.slice(2)
-const files = args.filter((a, i) => !a.startsWith('--') && args[i - 1] !== '--source' && args[i - 1] !== '--since')
+const files = args.filter(
+  (a, i) => !a.startsWith('--') && args[i - 1] !== '--source' && args[i - 1] !== '--since',
+)
 if (files.length === 0) {
   console.error(
     'usage: node scripts/import-trades.mjs <export.csv> [more.csv…] [--commit] [--since YYYY-MM-DD]',
   )
   process.exit(1)
 }
-const forcedSource = (args.includes('--source') ? args[args.indexOf('--source') + 1] : '').toLowerCase()
+const forcedSource = (
+  args.includes('--source') ? args[args.indexOf('--source') + 1] : ''
+).toLowerCase()
 // Optional: only trades on/after this date (rarely needed — the sync imports everything).
 const since = args.includes('--since') ? args[args.indexOf('--since') + 1] : null
 if (since && !/^\d{4}-\d{2}-\d{2}$/.test(since)) {
@@ -337,8 +391,11 @@ function parseFile(file) {
   let source = forcedSource
   if (!source) {
     const header = rows[0].map((h) => h.trim().toLowerCase()).join(',')
-    source = header.includes('activity date') ? 'robinhood'
-      : header.includes('transaction type') ? 'cashapp' : ''
+    source = header.includes('activity date')
+      ? 'robinhood'
+      : header.includes('transaction type')
+        ? 'cashapp'
+        : ''
   }
   if (source !== 'robinhood' && source !== 'cashapp') {
     console.error(`Could not detect source for ${file} — pass --source robinhood|cashapp`)
@@ -376,20 +433,33 @@ function parseFile(file) {
   const total = unique.reduce((acc, t) => acc + t.dollars, 0)
   const reinv = unique.filter((t) => t.reinvestment).length
   const skippedTotal = Object.values(s.skips).reduce((acc, n) => acc + n, 0)
-  const dates = unique.map((t) => t.date).filter(Boolean).sort()
+  const dates = unique
+    .map((t) => t.date)
+    .filter(Boolean)
+    .sort()
   const bySymbol = {}
   for (const t of unique) bySymbol[t.symbol] = (bySymbol[t.symbol] || 0) + t.dollars
 
   console.log(`\n=== ${source} — ${file}${committing ? '' : ' (DRY RUN)'} ===`)
   console.log(`Rows in file   : ${s.dataRows}${since ? `   (only ${since} and later)` : ''}`)
-  console.log(`Kept           : ${unique.length} buys+sells${reinv ? `, incl ${reinv} dividend reinvestments` : ''}`)
+  console.log(
+    `Kept           : ${unique.length} buys+sells${reinv ? `, incl ${reinv} dividend reinvestments` : ''}`,
+  )
   if (collapsed.length) {
     const dollars = collapsed.reduce((acc, t) => acc + Math.abs(t.dollars), 0)
-    console.log(`⚠️  COLLAPSED    : ${collapsed.length} row${collapsed.length === 1 ? '' : 's'} identical to an earlier one — $${dollars.toFixed(2)} NOT imported`)
+    console.log(
+      `⚠️  COLLAPSED    : ${collapsed.length} row${collapsed.length === 1 ? '' : 's'} identical to an earlier one — $${dollars.toFixed(2)} NOT imported`,
+    )
     if (source === 'robinhood') {
-      console.log(`                 Robinhood rows have no transaction id and Activity Date has no time,`)
-      console.log(`                 so a genuine second purchase of the same stock, same day, same price`)
-      console.log(`                 is indistinguishable from a repeated row. CHECK THESE AGAINST YOUR`)
+      console.log(
+        `                 Robinhood rows have no transaction id and Activity Date has no time,`,
+      )
+      console.log(
+        `                 so a genuine second purchase of the same stock, same day, same price`,
+      )
+      console.log(
+        `                 is indistinguishable from a repeated row. CHECK THESE AGAINST YOUR`,
+      )
       console.log(`                 STATEMENT before trusting the totals:`)
     }
     for (const t of collapsed.slice(0, 10)) {
@@ -398,13 +468,16 @@ function parseFile(file) {
     if (collapsed.length > 10) console.log(`                 …and ${collapsed.length - 10} more`)
   }
   if (s.sells.count > 0) {
-    console.log(`Sells          : ${s.sells.count} (−$${s.sells.dollars.toFixed(2)}) — netted against buys`)
+    console.log(
+      `Sells          : ${s.sells.count} (−$${s.sells.dollars.toFixed(2)}) — netted against buys`,
+    )
   }
   if (s.adjustments > 0) {
     console.log(`Adjustments    : ${s.adjustments} split/symbol-change unit corrections`)
   }
   console.log(`Skipped        : ${skippedTotal}`)
-  for (const [k, v] of Object.entries(s.skips).sort((a, b) => b[1] - a[1])) console.log(`   - ${k}: ${v}`)
+  for (const [k, v] of Object.entries(s.skips).sort((a, b) => b[1] - a[1]))
+    console.log(`   - ${k}: ${v}`)
   console.log(`Net invested   : $${total.toFixed(2)} (buys minus sells)`)
   console.log(`Date range     : ${dates[0] || '—'} → ${dates[dates.length - 1] || '—'}`)
   console.log(`Symbols        : ${Object.keys(bySymbol).length}`)
@@ -464,10 +537,14 @@ for (let i = 0; i < files.length; i++) {
     console.error(`Import failed for ${files[i]}:`, impErr.message)
     process.exit(1)
   }
-  console.log(`\n${files[i]} → inserted ${imp.inserted}, already present ${imp.skipped} of ${imp.total}.`)
+  console.log(
+    `\n${files[i]} → inserted ${imp.inserted}, already present ${imp.skipped} of ${imp.total}.`,
+  )
 }
 
-const { data: alloc, error: allocErr } = await sb.rpc('admin_even_split_trades', { p_user_id: owner })
+const { data: alloc, error: allocErr } = await sb.rpc('admin_even_split_trades', {
+  p_user_id: owner,
+})
 if (allocErr) {
   console.error('Allocation failed:', allocErr.message)
   process.exit(1)
