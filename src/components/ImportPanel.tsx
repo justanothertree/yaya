@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { getSupabaseClient } from '../finance/client'
 
 /**
@@ -49,12 +49,57 @@ const relayBase = () => {
 const usd = (n: number) =>
   n.toLocaleString(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 2 })
 
+type Health = {
+  node: string
+  uptimeSeconds: number
+  has: Record<string, boolean>
+  canImport: boolean
+}
+
 export function ImportPanel() {
   const [csv, setCsv] = useState<{ name: string; text: string } | null>(null)
   const [summary, setSummary] = useState<Summary | null>(null)
   const [busy, setBusy] = useState<'reading' | 'parsing' | 'importing' | null>(null)
   const [err, setErr] = useState<string | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
+  const [health, setHealth] = useState<Health | 'old' | null>(null)
+
+  /**
+   * Ask the relay what it is configured with, before anything is attempted.
+   *
+   * ⚠️ This is here rather than as something to curl because a browser tab sends no
+   * Authorization header — /health is admin-only, so opening it directly can only ever refuse
+   * you. The panel has the session token; the address bar does not.
+   *
+   * 'old' means the relay answered but has no /health route, i.e. it is running a build from
+   * before this existed. Worth distinguishing: "the relay is misconfigured" and "the relay has
+   * not redeployed yet" are different problems with different fixes.
+   */
+  useEffect(() => {
+    let alive = true
+    void (async () => {
+      try {
+        const { data } = await getSupabaseClient().auth.getSession()
+        const token = data.session?.access_token
+        if (!token) return
+        const r = await fetch(`${relayBase()}/health`, {
+          headers: { Authorization: `Bearer ${token}` },
+        })
+        const text = await r.text()
+        if (!alive) return
+        if (text.trim() === 'ok') {
+          setHealth('old')
+          return
+        }
+        setHealth(JSON.parse(text) as Health)
+      } catch {
+        /* the relay may be asleep; the import itself will report properly if so */
+      }
+    })()
+    return () => {
+      alive = false
+    }
+  }, [])
 
   async function post(text: string, name: string, commit: boolean) {
     const { data } = await getSupabaseClient().auth.getSession()
@@ -135,6 +180,25 @@ export function ImportPanel() {
         Drop a Robinhood or Cash App export here. Nothing is written until you say so — the first
         step only reads the file and tells you what&apos;s in it.
       </p>
+
+      {health === 'old' && (
+        <p className="muted" style={{ fontSize: '0.82rem' }}>
+          The relay is running a build from before this screen existed, so it can&apos;t report its
+          configuration yet. It redeploys on push — try again in a minute.
+        </p>
+      )}
+      {health && health !== 'old' && !health.canImport && (
+        <div className="import-fail">
+          <strong>This relay can read a file but cannot write to the database.</strong>
+          <p style={{ margin: '0.3rem 0 0' }}>
+            {health.has.SUPABASE_SERVICE_ROLE_KEY
+              ? 'SUPABASE_URL is missing from its environment.'
+              : 'SUPABASE_SERVICE_ROLE_KEY is missing from its environment.'}{' '}
+            Add it in the Render dashboard under the service&apos;s Environment tab, then let it
+            restart. No code change needed.
+          </p>
+        </div>
+      )}
 
       <div className="import-drop">
         <input
