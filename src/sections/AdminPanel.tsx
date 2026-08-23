@@ -3,6 +3,7 @@ import { getSupabaseClient } from '../finance/client'
 import { UsagePanel } from '../components/UsagePanel'
 import { FundPanel } from '../components/FundPanel'
 import { MessagesPanel } from '../components/MessagesPanel'
+import { ImportPanel } from '../components/ImportPanel'
 
 type Invite = {
   id: string
@@ -60,9 +61,9 @@ const inviteLink = (token: string) => `${SITE_URL}/#invite?token=${token}`
 
 export function AdminPanel() {
   const sb = getSupabaseClient()
-  const [tab, setTab] = useState<'invites' | 'members' | 'snake' | 'fund' | 'messages' | 'usage'>(
-    'invites',
-  )
+  const [tab, setTab] = useState<
+    'invites' | 'members' | 'snake' | 'fund' | 'import' | 'messages' | 'usage'
+  >('invites')
   const [invites, setInvites] = useState<Invite[]>([])
   const [members, setMembers] = useState<Member[]>([])
   const [handles, setHandles] = useState<SnakeHandle[]>([])
@@ -313,6 +314,8 @@ export function AdminPanel() {
         )}
         {/* The one number the family actually sees, and the only input it needs. */}
         {tabBtn('fund', 'Fund')}
+        {/* Broker CSVs, without a terminal or a service-role key on a command line. */}
+        {tabBtn('import', 'Import')}
         {/* The contact form's actual record. The email is a ping; this is what arrived. */}
         {tabBtn('messages', 'Messages')}
         {/* Operational, not social — what the paid services are costing, in the one place
@@ -321,6 +324,8 @@ export function AdminPanel() {
       </div>
 
       {tab === 'fund' && <FundPanel />}
+
+      {tab === 'import' && <ImportPanel />}
 
       {tab === 'messages' && <MessagesPanel />}
 

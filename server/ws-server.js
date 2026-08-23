@@ -12,6 +12,8 @@ import { createServer } from 'http'
 import { WebSocketServer } from 'ws'
 import crypto from 'crypto'
 import { createClient } from '@supabase/supabase-js'
+// The SAME parser the CLI uses — see the note in that file.
+import { parseTrades } from '../shared/parseTrades.mjs'
 
 const PORT = process.env.PORT ? Number(process.env.PORT) : 8080
 const WS_DEBUG = process.env.WS_DEBUG === '1' || process.env.WS_DEBUG === 'true'
@@ -785,9 +787,164 @@ const server = createServer((req, res) => {
     })
     return
   }
+  /**
+   * Importing broker CSVs without a terminal.
+   *
+   * The whole reason this exists: doing it from the command line means downloading a file,
+   * finding it, and putting a SERVICE-ROLE KEY on a command line — a step that can fail four
+   * ways and reports the same message for all of them. A process with that many steps does not
+   * become a monthly habit, and that is how the trades and the prices both went months stale.
+   *
+   * Here, being signed in as an admin IS the credential. The service key never leaves this
+   * process, and the browser never sees one.
+   *
+   * ⚠️ Parsing is shared/parseTrades.mjs — the SAME module the CLI uses. A second parser would
+   * be a second set of answers about somebody's money.
+   *
+   * POST /import-trades          -> parse only, return the summary. Writes nothing.
+   * POST /import-trades?commit=1 -> parse, then insert + even-split via the admin RPCs.
+   */
+  if (url === '/import-trades' || url.startsWith('/import-trades?')) {
+    res.setHeader('Access-Control-Allow-Origin', '*')
+    res.setHeader('Access-Control-Allow-Headers', 'authorization, content-type')
+    if (req.method === 'OPTIONS') {
+      res.writeHead(204)
+      res.end()
+      return
+    }
+    if (req.method !== 'POST') {
+      res.writeHead(405, { 'Content-Type': 'application/json' })
+      res.end(JSON.stringify({ error: 'POST a CSV' }))
+      return
+    }
+    void handleImport(req, res, url)
+    return
+  }
+
   res.writeHead(200, { 'Content-Type': 'text/plain' })
   res.end('ok')
 })
+
+/** A broker export is a few hundred KB at most; anything larger is not one. */
+const MAX_CSV_BYTES = 8 * 1024 * 1024
+
+function readBody(req, limit) {
+  return new Promise((resolve, reject) => {
+    let size = 0
+    const chunks = []
+    req.on('data', (c) => {
+      size += c.length
+      // Stop READING rather than checking at the end — the point of a limit is not to hold the
+      // thing you are refusing.
+      if (size > limit) {
+        reject(new Error('too large'))
+        req.destroy()
+        return
+      }
+      chunks.push(c)
+    })
+    req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')))
+    req.on('error', reject)
+  })
+}
+
+async function handleImport(req, res, url) {
+  const say = (code, body) => {
+    res.writeHead(code, { 'Content-Type': 'application/json' })
+    res.end(JSON.stringify(body))
+  }
+  if (!(await isAdmin(req))) return say(403, { error: 'admin only' })
+
+  /**
+   * Refuse on the declared size BEFORE reading a byte.
+   *
+   * The streaming guard below destroys the socket, which is correct for a lying or absent
+   * Content-Length — but a destroyed connection reaches the browser as a network error rather
+   * than a sentence, and "something went wrong" is the worst possible answer to "your file is
+   * too big". Answering first costs one header read.
+   */
+  const declared = Number(req.headers['content-length'] || 0)
+  if (declared > MAX_CSV_BYTES) {
+    return say(413, {
+      error: `That file is ${(declared / 1048576).toFixed(1)} MB. Broker exports are a fraction of that — is it definitely the activity CSV?`,
+    })
+  }
+
+  let payload
+  try {
+    payload = JSON.parse(await readBody(req, MAX_CSV_BYTES))
+  } catch (err) {
+    return say(400, {
+      error:
+        err?.message === 'too large'
+          ? 'that file is too big to be a broker export'
+          : 'bad request body',
+    })
+  }
+
+  const csv = typeof payload?.csv === 'string' ? payload.csv : ''
+  const name = typeof payload?.name === 'string' ? payload.name.slice(0, 200) : 'upload.csv'
+  const since =
+    typeof payload?.since === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(payload.since)
+      ? payload.since
+      : null
+  if (!csv.trim()) return say(400, { error: 'no CSV content' })
+
+  let parsed
+  try {
+    parsed = parseTrades(csv, { source: payload?.source || null, since })
+  } catch (err) {
+    return say(400, { error: String(err?.message || err) })
+  }
+
+  // Exact: `commit=10` is not `commit=1`, and this one boolean decides whether anything
+  // is written at all.
+  const commit = /[?&]commit=1(&|$)/.test(url)
+  if (!commit) return say(200, { name, committed: false, ...parsed.summary })
+
+  // Checked HERE and not earlier: a dry run writes nothing, so it has no business needing a
+  // service key. Gating the preview on one meant a relay missing the key couldn't even show you
+  // what was in your file — refusing to read because it might later be asked to write.
+  if (!SUPABASE_SERVICE_ROLE_KEY) {
+    return say(500, {
+      error: 'the relay has no service key configured, so it cannot write',
+      ...parsed.summary,
+      committed: false,
+    })
+  }
+
+  // ── the write half ────────────────────────────────────────────────────────
+  // Same two RPCs the CLI calls, in the same order. The owner is the signed-in admin rather
+  // than an environment variable, which is one fewer thing to get wrong.
+  const me = await verifyUser(req)
+  if (!me?.id) return say(403, { error: 'admin only' })
+
+  const rpc = async (fn, body) => {
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/rpc/${fn}`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+        apikey: SUPABASE_SERVICE_ROLE_KEY,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    })
+    const text = await r.text()
+    if (!r.ok) throw new Error(`${fn}: ${text.slice(0, 300)}`)
+    return text ? JSON.parse(text) : null
+  }
+
+  try {
+    const imported = await rpc('admin_import_trades', {
+      p_user_id: me.id,
+      p_trades: parsed.trades,
+    })
+    const split = await rpc('admin_even_split_trades', { p_user_id: me.id })
+    say(200, { name, committed: true, ...parsed.summary, imported, split })
+  } catch (err) {
+    say(502, { error: String(err?.message || err), ...parsed.summary, committed: false })
+  }
+}
 
 const schedulerClient = createSupabaseServiceClient()
 if (schedulerClient) {
