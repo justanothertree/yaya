@@ -101,6 +101,40 @@ not a security fix, and that path has run eight times ever. See
 
 ---
 
+## 8. Importing trades is too cumbersome to be a habit
+
+Raised 2026-08-23, after doing it once end to end.
+
+**What it takes today:** download two broker CSVs by hand, find them, open a terminal, set a
+service-role key in the environment, run a dry run, read the summary, run it again with
+`--commit`. That is a lot of steps standing between Evan and a number that should be current,
+and a process with that many steps does not get done monthly — which is exactly how prices and
+trades both ended up months stale.
+
+Getting the key onto the command line is the worst of it: it is the one step that can fail four
+different ways (wrong key, JWT secret instead, placeholder pasted verbatim, shell syntax), and
+all four report the same "Invalid API key".
+
+**The idea:** upload the CSV from the site instead. Admin → a drop zone; the parsing already
+exists in `scripts/import-trades.mjs` and would move server-side. No key to handle — being
+signed in as an admin IS the credential — no terminal, and the dry-run summary becomes a screen
+you look at before pressing Import.
+
+**What it needs deciding:**
+
+- Where the parse runs. The Render relay already holds the service-role key and is the natural
+  home; an edge function is the alternative, but see decision 1 for how that has gone.
+- Whether the dry-run summary stays a wall of text or becomes a real review screen — the
+  ⚠️ COLLAPSED warning and the skipped-kind spot-checks are the parts worth keeping visible,
+  because they are how you catch money that did not import.
+- Broker exports still have to be downloaded by hand either way. Neither Robinhood nor Cash App
+  offers an API on these accounts, so this removes the terminal, not the download.
+
+**Cost of waiting:** the data goes stale between the imports that do happen, and every stale
+stretch shows up as wrong numbers on pages the family is meant to trust.
+
+---
+
 ## 7. Not swept, and outside what can be checked from here
 
 - **Rate limiting on the anon RPCs.** `submit_score`, `get_invite_by_token` and
