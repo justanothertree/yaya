@@ -65,9 +65,39 @@ export function ImportPanel() {
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ csv: text, name }),
     })
-    const body = (await r.json()) as Summary & { error?: string }
-    if (!r.ok) throw new Error(body.error || `The relay answered ${r.status}.`)
+    let body: (Summary & { error?: string }) | null = null
+    try {
+      body = (await r.json()) as Summary & { error?: string }
+    } catch {
+      /* a proxy or a cold start can answer with something that isn't JSON */
+    }
+    if (!r.ok) throw new Error(body?.error || `The relay answered ${r.status} with no explanation.`)
+    if (!body) throw new Error('The relay answered, but not with anything readable.')
     return body
+  }
+
+  /**
+   * ⚠️ Whether a commit actually wrote anything is decided HERE, by the numbers, not by the
+   * request having completed.
+   *
+   * "I pressed the button and I can't tell if it worked" is the failure this is fixing. A 200
+   * that inserted nothing looks exactly like a 200 that inserted everything unless something
+   * says which.
+   */
+  const outcome = (m: Summary) => {
+    if (!m.committed) return null
+    const inserted = m.imported?.inserted ?? 0
+    const already = m.imported?.skipped ?? 0
+    if (inserted > 0) return { ok: true as const, line: `${inserted} new trades imported.` }
+    if (already > 0)
+      return {
+        ok: true as const,
+        line: `Nothing new — all ${already} were already imported. Re-running a file is safe and this is what it looks like.`,
+      }
+    return {
+      ok: false as const,
+      line: 'The import reported success but wrote nothing at all. That is not a normal result — tell me before trusting it.',
+    }
   }
 
   async function onPick(file: File) {
@@ -127,10 +157,16 @@ export function ImportPanel() {
         )}
       </div>
 
+      {/* Loud, and it says what to do next. A red sentence you can scroll past is how a failed
+          import gets mistaken for a quiet success. */}
       {err && (
-        <p className="import-err" style={{ fontSize: '0.88rem' }}>
-          {err}
-        </p>
+        <div className="import-fail">
+          <strong>That didn&apos;t import.</strong>
+          <p style={{ margin: '0.3rem 0 0' }}>{err}</p>
+          <p className="muted" style={{ margin: '0.3rem 0 0', fontSize: '0.82rem' }}>
+            Nothing was written. The file is still loaded — press Import again to retry.
+          </p>
+        </div>
       )}
 
       {summary && (
@@ -236,19 +272,15 @@ export function ImportPanel() {
           )}
 
           {summary.committed ? (
-            <p style={{ margin: '0.6rem 0 0' }}>
-              <strong>
-                {summary.imported?.inserted ?? 0} new, {summary.imported?.skipped ?? 0} already
-                present
-              </strong>
-              {summary.split && (
-                <span className="muted">
-                  {' '}
-                  · split {summary.split.tradesAllocated} trades across {summary.split.accounts}{' '}
-                  accounts ({summary.split.allocationsCreated} allocations)
-                </span>
-              )}
-            </p>
+            <div className={outcome(summary)?.ok ? 'import-done' : 'import-fail'}>
+              <strong>{outcome(summary)?.line}</strong>
+              <p className="muted" style={{ margin: '0.3rem 0 0', fontSize: '0.84rem' }}>
+                {summary.imported?.inserted ?? 0} new · {summary.imported?.skipped ?? 0} already
+                present · {summary.imported?.total ?? 0} in the file
+                {summary.split &&
+                  ` · split ${summary.split.tradesAllocated} trades across ${summary.split.accounts} accounts (${summary.split.allocationsCreated} allocations)`}
+              </p>
+            </div>
           ) : (
             <div style={{ marginTop: '0.6rem' }}>
               <button className="btn" onClick={() => void doImport()} disabled={!!busy}>

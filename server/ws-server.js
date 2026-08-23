@@ -804,6 +804,49 @@ const server = createServer((req, res) => {
    * POST /import-trades          -> parse only, return the summary. Writes nothing.
    * POST /import-trades?commit=1 -> parse, then insert + even-split via the admin RPCs.
    */
+  /**
+   * What this relay is actually configured with. Admin only, and BOOLEANS ONLY — never a value,
+   * not even a prefix.
+   *
+   * Added because "I pressed the button and I can't tell if it worked" had no answerable form:
+   * a missing env var on Render looks identical from the outside to a bug in the code, and the
+   * only way to tell them apart was to guess. A check that can distinguish them is worth more
+   * than another round of guessing.
+   */
+  if (url === '/health') {
+    res.setHeader('Access-Control-Allow-Origin', '*')
+    res.setHeader('Access-Control-Allow-Headers', 'authorization, content-type')
+    if (req.method === 'OPTIONS') {
+      res.writeHead(204)
+      res.end()
+      return
+    }
+    void isAdmin(req).then((ok) => {
+      if (!ok) {
+        res.writeHead(403, { 'Content-Type': 'application/json' })
+        res.end(JSON.stringify({ error: 'admin only' }))
+        return
+      }
+      res.writeHead(200, { 'Content-Type': 'application/json' })
+      res.end(
+        JSON.stringify({
+          node: process.version,
+          uptimeSeconds: Math.round(process.uptime()),
+          has: {
+            SUPABASE_URL: !!SUPABASE_URL,
+            SUPABASE_ANON_KEY: !!SUPABASE_ANON_KEY,
+            SUPABASE_SERVICE_ROLE_KEY: !!SUPABASE_SERVICE_ROLE_KEY,
+            CF_TURN_KEY_ID: !!TURN_KEY_ID,
+            CF_TURN_API_TOKEN: !!TURN_API_TOKEN,
+          },
+          // the one that decides whether Admin -> Import can write anything at all
+          canImport: !!SUPABASE_SERVICE_ROLE_KEY && !!SUPABASE_URL,
+        }),
+      )
+    })
+    return
+  }
+
   if (url === '/import-trades' || url.startsWith('/import-trades?')) {
     res.setHeader('Access-Control-Allow-Origin', '*')
     res.setHeader('Access-Control-Allow-Headers', 'authorization, content-type')

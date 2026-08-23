@@ -4081,6 +4081,23 @@ select {
 .import-err {
   color: #f46b6b;
 }
+/* An outcome you cannot scroll past. Both states are boxes rather than a line of text, because
+   the whole failure being fixed here was "I pressed the button and I can't tell if it worked". */
+.import-fail,
+.import-done {
+  margin: 0.6rem 0;
+  padding: 0.6rem 0.75rem;
+  border-radius: 10px;
+  font-size: 0.88rem;
+}
+.import-fail {
+  background: color-mix(in oklab, #f46b6b, transparent 88%);
+  border: 1px solid color-mix(in oklab, #f46b6b, transparent 55%);
+}
+.import-done {
+  background: color-mix(in oklab, var(--accent, #22c55e), transparent 88%);
+  border: 1px solid color-mix(in oklab, var(--accent, #22c55e), transparent 55%);
+}
 /* Loud on purpose: these are rows the parser refused to guess about, and in a Robinhood file
    they can be a real second purchase. A number in a list would be easy to scroll past. */
 .import-warn {
