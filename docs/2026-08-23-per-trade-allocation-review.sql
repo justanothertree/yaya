@@ -1,0 +1,42 @@
+-- Deciding, per trade, how much was for the family.  2026-08-23
+-- Migrations: decide_allocations_per_trade_after_an_import
+--             unallocated_trades_can_be_scoped_to_this_import
+--
+-- Evan: "it would be cool if after i've imported a csv it allows me to allocate the new trades.
+-- maybe i can try to upload csvs once a week."
+--
+-- ── why this is the fix and not a nicety ─────────────────────────────────────
+-- Symbol-level designation is all-or-nothing and timeless, and EVERY allocation error found so
+-- far came from exactly that:
+--   * five years of Evan's own pre-fund trading in a family symbol
+--   * a reverse split applied whole to a position the family only partly owned (OLOX)
+--   * an LCID buy that was 80% theirs, which had to be entered by hand
+--
+-- A trade is where the intent actually lives — he knows, at the moment he buys, who it was for.
+-- Asking weekly while he still remembers beats reconstructing it months later from timestamps,
+-- which is what the last two sessions were.
+--
+--   admin_unallocated_trades(limit, imported_since)  what still needs deciding
+--   admin_set_trade_allocation(trade, fraction)      0 = mine, 1 = all theirs, 0.8 = 80%
+--
+-- ⚠️ Scoped on created_at (when it was IMPORTED), not execution_time. A broker export routinely
+-- carries months of history, so a weekly upload can add a trade from last March; what makes it
+-- need a decision is that it is new HERE. Unfiltered the list is 500 rows — his whole personal
+-- history — which is noise, not a review.
+--
+-- ⚠️ Setting a fraction DELETES that trade's existing allocations first, so changing your mind
+-- replaces the answer instead of adding to it. And accounts that did not exist on the trade date
+-- are skipped, same rule as the even split.
+--
+-- Verified on a real trade, rolled back:
+--   all theirs -> 33 rows summing to exactly the trade's 4.460040 units
+--   changed to 25% -> still 33 rows, sum 1.115010   (replaced, not added)
+--   back to mine -> 0 rows
+--   fraction 1.5 -> refused
+--   a non-admin -> "admin only" on both the list and the write
+--
+-- ── the UI ───────────────────────────────────────────────────────────────────
+-- Three plain answers per row: Mine / All theirs / Part… Evan said of the partial idea that he
+-- "didn't fully understand it and I would be the one using it", so the two common cases are one
+-- tap and the fiddly one only appears when asked for — and Part… asks in DOLLARS, which is how
+-- he thinks about it, not units or percentages.

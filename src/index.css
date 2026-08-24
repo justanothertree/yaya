@@ -4089,6 +4089,38 @@ select {
 .import-err {
   color: #f46b6b;
 }
+/* The post-import review: one row per trade that nothing decided for you. */
+.import-review {
+  margin-top: 0.8rem;
+  padding-top: 0.7rem;
+  border-top: 1px solid var(--border);
+}
+.import-review-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  padding: 0.4rem 0;
+  border-bottom: 1px solid var(--b1, rgba(127, 127, 127, 0.12));
+  font-size: 0.86rem;
+}
+.import-review-actions {
+  display: flex;
+  gap: 0.3rem;
+  margin-left: auto;
+}
+@media (max-width: 700px) {
+  /* the three answers get their own line and share it, rather than crushing against the symbol */
+  .import-review-actions {
+    margin-left: 0;
+    width: 100%;
+  }
+  .import-review-actions .btn {
+    flex: 1 1 auto;
+    min-height: 40px;
+  }
+}
+
 /* An outcome you cannot scroll past. Both states are boxes rather than a line of text, because
    the whole failure being fixed here was "I pressed the button and I can't tell if it worked". */
 .import-fail,

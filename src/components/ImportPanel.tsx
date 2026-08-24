@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { getSupabaseClient } from '../finance/client'
 
 /**
@@ -49,6 +49,18 @@ const relayBase = () => {
 const usd = (n: number) =>
   n.toLocaleString(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 2 })
 
+/** One trade still waiting on "was this for the family?" */
+type Undecided = {
+  id: string
+  date: string
+  symbol: string
+  platform: string
+  dollars: number
+  units: number
+  isFamilySymbol: boolean
+  alreadyHeld: number
+}
+
 type Health = {
   node: string
   uptimeSeconds: number
@@ -63,6 +75,43 @@ export function ImportPanel() {
   const [err, setErr] = useState<string | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
   const [health, setHealth] = useState<Health | 'old' | null>(null)
+  /**
+   * The review step. Symbol-level designation is all-or-nothing and timeless, and every
+   * allocation error so far came from that: pre-fund history in a family symbol, a split on a
+   * partly-owned position, an LCID buy that was 80% theirs. The trade is where the intent
+   * actually lives — and right after an import is when Evan still remembers it.
+   */
+  const [undecided, setUndecided] = useState<Undecided[] | null>(null)
+  const [decided, setDecided] = useState<Record<string, number>>({})
+  const [reviewErr, setReviewErr] = useState<string | null>(null)
+  /** what "this import" means: only trades that arrived after the button was pressed */
+  const importedAt = useRef<string | null>(null)
+
+  const loadUndecided = useCallback(async () => {
+    if (!importedAt.current) return
+    const { data, error } = await getSupabaseClient().rpc('admin_unallocated_trades', {
+      p_limit: 200,
+      p_imported_since: importedAt.current,
+    })
+    if (error) {
+      setReviewErr(error.message)
+      return
+    }
+    setUndecided((data ?? []) as Undecided[])
+  }, [])
+
+  async function decide(t: Undecided, fraction: number) {
+    setReviewErr(null)
+    const { error } = await getSupabaseClient().rpc('admin_set_trade_allocation', {
+      p_trade: t.id,
+      p_fraction: fraction,
+    })
+    if (error) {
+      setReviewErr(error.message)
+      return
+    }
+    setDecided((d) => ({ ...d, [t.id]: fraction }))
+  }
 
   /**
    * Ask the relay what it is configured with, before anything is attempted.
@@ -168,8 +217,12 @@ export function ImportPanel() {
     if (!csv) return
     setErr(null)
     setBusy('importing')
+    // stamped BEFORE the request, so "what this import added" cannot miss a row that landed
+    // while it was running
+    importedAt.current = new Date(Date.now() - 60_000).toISOString()
     try {
       setSummary(await post(csv.text, csv.name, true))
+      await loadUndecided()
     } catch (e) {
       setErr(String((e as Error)?.message || e))
     } finally {
@@ -336,6 +389,80 @@ export function ImportPanel() {
                 ))}
               </div>
             </details>
+          )}
+
+          {/**
+           * The review step, only after a real import.
+           *
+           * Deliberately three plain answers rather than a number box: "not theirs", "all
+           * theirs", "part". Evan said of the partial tool that he didn't fully understand it
+           * and he'd be the one using it — so the common two cases are one tap, and the fiddly
+           * one only appears when he asks for it.
+           */}
+          {summary.committed && undecided && undecided.length > 0 && (
+            <div className="import-review">
+              <strong>
+                {undecided.length} new trade{undecided.length === 1 ? '' : 's'} — was any of this
+                for the family?
+              </strong>
+              <p className="muted" style={{ margin: '0.2rem 0 0.6rem', fontSize: '0.82rem' }}>
+                Anything in a symbol you&apos;ve already marked family was split automatically.
+                These are the ones nothing decided for you. Leaving them alone keeps them yours.
+              </p>
+              {reviewErr && <p className="import-err">{reviewErr}</p>}
+              {undecided.map((t) => {
+                const done = decided[t.id]
+                return (
+                  <div key={t.id} className="import-review-row">
+                    <span>
+                      <strong>{t.symbol}</strong>{' '}
+                      <span className="muted">
+                        {t.date} · {usd(t.dollars)} · {t.units.toFixed(4)} units
+                        {t.alreadyHeld > 0 && ' · they already hold some'}
+                      </span>
+                    </span>
+                    {done == null ? (
+                      <span className="import-review-actions">
+                        <button className="btn btn-ghost" onClick={() => void decide(t, 0)}>
+                          Mine
+                        </button>
+                        <button className="btn" onClick={() => void decide(t, 1)}>
+                          All theirs
+                        </button>
+                        <button
+                          className="btn btn-ghost"
+                          onClick={() => {
+                            const raw = window.prompt(
+                              `How many dollars of this ${usd(t.dollars)} ${t.symbol} trade were for the family?`,
+                              '',
+                            )
+                            if (raw == null) return
+                            const part = Number(raw.replace(/[^0-9.]/g, ''))
+                            if (!Number.isFinite(part) || part <= 0 || part > Math.abs(t.dollars)) {
+                              setReviewErr(
+                                `Enter an amount between 0 and ${usd(Math.abs(t.dollars))}.`,
+                              )
+                              return
+                            }
+                            void decide(t, part / Math.abs(t.dollars))
+                          }}
+                        >
+                          Part…
+                        </button>
+                      </span>
+                    ) : (
+                      <span className="muted" style={{ fontSize: '0.82rem' }}>
+                        {done === 0
+                          ? 'kept yours'
+                          : done === 1
+                            ? 'all theirs ✓'
+                            : `${(done * 100).toFixed(0)}% theirs ✓`}
+                      </span>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
           )}
 
           {summary.committed ? (
