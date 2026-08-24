@@ -68,6 +68,28 @@ export function ReconcilePanel() {
   const problems = report.checks.filter((c) => c.count > 0)
   const rows = report.symbols.filter((r) => !onlyFamily || r.familyUnits > 0.000001)
 
+  /**
+   * Totals across whatever is currently listed.
+   *
+   * The per-symbol rows are for hunting a specific discrepancy; this row is the one you tick
+   * against a broker's home screen. Only priced positions count toward it — an unpriced holding
+   * would otherwise quietly drag the total down as if it were worth nothing, which is exactly
+   * the sort of confident wrong number this whole screen exists to catch.
+   */
+  const totals = rows.reduce(
+    (a, r) => {
+      if (r.price == null) {
+        a.unpriced += 1
+        return a
+      }
+      a.family += r.familyUnits * r.price
+      a.personal += r.personalUnits * r.price
+      a.whole += r.wholeUnits * r.price
+      return a
+    },
+    { family: 0, personal: 0, whole: 0, unpriced: 0 },
+  )
+
   return (
     <div>
       <p className="muted" style={{ marginTop: 0, fontSize: '0.85rem' }}>
@@ -173,13 +195,35 @@ export function ReconcilePanel() {
               </tr>
             ))}
           </tbody>
+          <tfoot>
+            <tr className="reconcile-total">
+              <td>
+                <strong>{onlyFamily ? 'Family total' : 'Everything total'}</strong>
+                {totals.unpriced > 0 && (
+                  <span className="muted" style={{ fontSize: '0.72rem' }}>
+                    {' '}
+                    · {totals.unpriced} unpriced, left out
+                  </span>
+                )}
+              </td>
+              <td className="num" />
+              <td className="num" />
+              <td className="num">{usd(totals.family)}</td>
+              <td className="num">{usd(totals.personal)}</td>
+              <td className="num">
+                <strong>{usd(totals.whole)}</strong>
+              </td>
+            </tr>
+          </tfoot>
         </table>
       </div>
 
       <p className="muted" style={{ marginTop: '0.6rem', fontSize: '0.78rem' }}>
-        Checked {new Date(report.generatedAt).toLocaleString()}. Average cost is what the family
-        paid for the shares they still hold, so it should match your broker&apos;s average for a
-        position that is entirely theirs — and sit between your two averages where it is shared.
+        The bottom row is in dollars, not units — switch to &ldquo;everything you hold&rdquo; and
+        its last figure is what your brokers add up to between them. Checked{' '}
+        {new Date(report.generatedAt).toLocaleString()}. Average cost is what the family paid for
+        the shares they still hold, so it should match your broker&apos;s average for a position
+        that is entirely theirs — and sit between your two averages where it is shared.
       </p>
     </div>
   )

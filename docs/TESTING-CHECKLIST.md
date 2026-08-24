@@ -298,6 +298,22 @@ So there is no Save button any more.
       the people already here would take away sharing they may be relying on. If you'd rather
       move them too, say so and I will.
 
+## 8j. Reconcile — checking it yourself
+
+- [ ] **Admin -> Reconcile.** Should open on "All 6 checks clear". Those are the integrity tests
+      I ran by hand on 2026-08-23, now standing: over-allocation, negative holdings, allocations
+      predating their account, uneven splits, unpriced holdings, stale prices.
+- [ ] **Tick a few rows against Robinhood and Cash App.** Avg cost is what the family paid for
+      what they still hold, so it should match your broker's average on a position that is
+      entirely theirs. WEN is the one to start with: it should read $8.02.
+- [ ] 🔒 **The real check is the last three columns**: theirs + yours = the whole position. If
+      those add up, the split is right by construction. Verified in the database at
+      $13,749.54 + $6,731.14 = $20,480.68, to the cent.
+- [ ] Toggle "Show everything you hold" - the bottom row's last figure is then what your two
+      brokers add up to between them. Worth checking against their home screens.
+- [ ] A **red number in the "Yours" column** means more was allocated than you hold. That is
+      always a bug, never a fact - tell me if one ever appears.
+
 ## 9. Still waiting on a decision
 
 See `docs/OPEN-DECISIONS.md` — the price feed key, person colours in light theme, and the

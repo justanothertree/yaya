@@ -4126,6 +4126,16 @@ table.reconcile .num {
 table.reconcile tr:last-child td {
   border-bottom: 0;
 }
+/* The row you tick against a broker's home screen — pinned to the bottom while the list above
+   scrolls, so it stays readable on a long position list. */
+table.reconcile tfoot .reconcile-total td {
+  position: sticky;
+  bottom: 0;
+  background: var(--card, var(--bg));
+  border-top: 2px solid var(--border);
+  border-bottom: 0;
+  padding-top: 0.5rem;
+}
 .reconcile-bad {
   color: #f46b6b;
   font-weight: 700;
