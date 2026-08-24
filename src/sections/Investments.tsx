@@ -1301,12 +1301,20 @@ function ScheduleSummary({ accounts }: { accounts: AccountPortfolio[] }) {
           : `That's ${usd(Math.abs(t.aheadBehind))} short of the dollar-a-day promise so far.`}
       </p>
 
-      <div style={{ display: 'flex', gap: '1.6rem', flexWrap: 'wrap' }}>
-        <Stat label="Worth today" value={usd(t.value)} big />
-        <Stat label="Put in" value={usd(t.invested)} />
+      {/**
+       * ⚠️ Only what the sentence above DOESN'T already say.
+       *
+       * This row repeated worth, money-in and the percentage — all three already in the first
+       * line — so the card said everything twice and turned back into the stat wall it was meant
+       * to replace. A summary that needs a summary beneath it is not one.
+       *
+       * Grid rather than a wrapping flex row: at two-per-row a lone third item stranded itself
+       * beside half a row of empty space and read as three unrelated blocks.
+       */}
+      <div className="fund-stats">
         <Stat
           label={up ? 'Gain' : 'Loss'}
-          value={`${up ? '+' : '−'}${usd(Math.abs(t.gain))}${pct ? ` (${pct})` : ''}`}
+          value={`${up ? '+' : '−'}${usd(Math.abs(t.gain))}`}
           color={up ? '#22cc78' : '#f46b6b'}
         />
         <Stat
@@ -1324,9 +1332,9 @@ function ScheduleSummary({ accounts }: { accounts: AccountPortfolio[] }) {
       </div>
 
       <p className="muted" style={{ margin: 0, fontSize: '0.8rem' }}>
-        Everyone’s promised {usd(t.dailyRate / Math.max(1, t.tracked))} a day. “Put in” is money
-        actually contributed — ahead or behind compares that to the promise, and never the value. A
-        holding going up or down is a gain or a loss, not a broken promise.
+        Everyone’s promised {usd(t.dailyRate / Math.max(1, t.tracked))} a day. Ahead or behind
+        compares what has been put in against that promise — never the value. A holding going up or
+        down is a gain or a loss, not a broken promise.
       </p>
     </article>
   )

@@ -4071,6 +4071,14 @@ select {
   overflow: hidden;
 }
 
+/* The dollar-a-day summary's figures. Equal columns so nothing strands itself next to empty
+   space, and two-up on a phone rather than one long ladder. */
+.fund-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(9rem, 100%), 1fr));
+  gap: 0.9rem 1.4rem;
+}
+
 /* ── Admin: importing a broker CSV ─────────────────────────────────────────── */
 .import-drop {
   display: flex;

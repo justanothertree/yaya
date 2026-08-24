@@ -56,7 +56,9 @@ function niceStep(target: number): number {
   if (!(target > 0)) return 1
   const mag = Math.pow(10, Math.floor(Math.log10(target)))
   const norm = target / mag
-  const step = norm <= 1 ? 1 : norm <= 2 ? 2 : norm <= 2.5 ? 2.5 : norm <= 5 ? 5 : 10
+  // 1 / 2 / 5 / 10 only. 2.5 was on this ladder and produced mid-ticks like $6.25 — round in
+  // the arithmetic sense, not in the sense of a number anybody says.
+  const step = norm <= 1 ? 1 : norm <= 2 ? 2 : norm <= 5 ? 5 : 10
   return step * mag
 }
 
@@ -123,7 +125,10 @@ export function PortfolioChart({ timeline, title }: { timeline: Timeline; title?
     // Four intervals' worth of step, then snap. No extra padding: rounding UP to the next round
     // number already leaves headroom, and padding first only pushes it a whole step further —
     // which is how a $14k chart ended up with a $20k ceiling and half the height unused.
-    const step = niceStep((hi - Math.min(0, lo)) / 4)
+    // Five intervals, not four: at four, a $21.4k fund asked for a 5.4k step, rounded to 10k, and
+    // drew a $30k ceiling with 29% of the height empty. Five asks for 4.3k, rounds to 5k, and
+    // lands at $25k.
+    const step = niceStep((hi - Math.min(0, lo)) / 5)
     // Don't invent negative space. The floor is 0 unless something actually goes below it.
     const yMin = lo >= 0 ? 0 : Math.floor(lo / step) * step
     const yMax = Math.max(Math.ceil(hi / step) * step, yMin + step)
