@@ -1283,19 +1283,26 @@ function ScheduleSummary({ accounts }: { accounts: AccountPortfolio[] }) {
   return (
     <article className="card" style={{ display: 'grid', gap: '0.7rem' }}>
       <p style={{ margin: 0, fontSize: '1.05rem', lineHeight: 1.5 }}>
-        There&apos;s <strong>{usd(t.value)}</strong> set aside for {t.tracked}{' '}
+        There&apos;s <strong>{usd(t.value)}</strong> invested for {t.tracked}{' '}
         {t.tracked === 1 ? 'person' : 'people'} right now
         {pct && (
           <>
             {' '}
-            — that&apos;s{' '}
+            — those shares are{' '}
             <strong style={{ color: up ? '#22cc78' : '#f46b6b' }}>
-              {pct} {up ? 'more' : 'less'}
+              {pct} {up ? 'up' : 'down'}
             </strong>{' '}
-            than the {usd(t.invested)} put in
+            on the {usd(t.basis)} they cost
           </>
         )}
-        .{' '}
+        .
+        {t.cash > 0.005 && (
+          <>
+            {' '}
+            Another <strong>{usd(t.cash)}</strong> is sitting in cash from sales, still to be
+            invested.
+          </>
+        )}{' '}
         {ahead
           ? `The dollar-a-day promise is being kept, and then some.`
           : `That's ${usd(Math.abs(t.aheadBehind))} short of the dollar-a-day promise so far.`}
@@ -1313,7 +1320,7 @@ function ScheduleSummary({ accounts }: { accounts: AccountPortfolio[] }) {
        */}
       <div className="fund-stats">
         <Stat
-          label={up ? 'Gain' : 'Loss'}
+          label={up ? 'Gain on holdings' : 'Loss on holdings'}
           value={`${up ? '+' : '−'}${usd(Math.abs(t.gain))}`}
           color={up ? '#22cc78' : '#f46b6b'}
         />
@@ -1333,8 +1340,9 @@ function ScheduleSummary({ accounts }: { accounts: AccountPortfolio[] }) {
 
       <p className="muted" style={{ margin: 0, fontSize: '0.8rem' }}>
         Everyone’s promised {usd(t.dailyRate / Math.max(1, t.tracked))} a day. Ahead or behind
-        compares what has been put in against that promise — never the value. A holding going up or
-        down is a gain or a loss, not a broken promise.
+        compares what has been put in against that promise — never the value. Gain and loss compare
+        the shares held against what they cost, so buying and selling the same money over and over
+        can&apos;t flatter the figure.
       </p>
     </article>
   )

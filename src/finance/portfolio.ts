@@ -39,6 +39,13 @@ export type AccountPortfolio = {
    * disappeared — the opposite of "they keep their own profits".
    */
   cash?: number
+  /**
+   * What the shares STILL HELD cost, at average basis — the broker's measure.
+   *
+   * ⚠️ Not the sum of `cost` across holdings: that is net cash (buys minus sells) and for a
+   * churned symbol it can be negative while real shares are still held.
+   */
+  heldBasis?: number
   /** false while an account has no allocated trades at all; suppresses ahead/behind entirely */
   ready?: boolean
   holdings: Holding[]
@@ -56,6 +63,7 @@ function mapAccount(a: Record<string, unknown>): AccountPortfolio {
     startDate: (a.startDate as string | null) ?? null,
     contributed: a.contributed == null ? undefined : Number(a.contributed),
     cash: a.cash == null ? undefined : Number(a.cash),
+    heldBasis: a.heldBasis == null ? undefined : Number(a.heldBasis),
     ready: a.ready == null ? undefined : Boolean(a.ready),
     ownerUserId: (a.ownerUserId as string | null) ?? null,
     ownerName: (a.ownerName as string | null) ?? null,
@@ -378,27 +386,31 @@ export function promisedToDate(a: AccountPortfolio): number | null {
 }
 
 /**
- * What this account is worth today: shares at market PLUS their uninvested cash.
+ * What this account is worth today: the shares, at market. NOT including cash.
  *
- * ⚠️ Cash is not a rounding detail here. Selling their shares converts value into cash without
- * changing what they own, so leaving it out made every sale look like a loss of the whole
- * position.
+ * ⚠️ Cash from sales is deliberately kept OUT of the headline and shown beside it as "still to
+ * be invested". Folding it in asserts money is theirs that may since have been spent — the fund
+ * is commingled, and $7,191 of assumed cash is a large thing to claim on a page family read.
+ * Conservative on purpose: never overstate what somebody has.
  */
-export const accountValue = (a: AccountPortfolio): number => accountReserved(a) + (a.cash ?? 0)
+export const accountValue = (a: AccountPortfolio): number => accountReserved(a)
 
 /**
- * Gain or loss: what it is worth now against what Evan actually put in.
+ * Gain or loss on the shares actually held, against what those shares cost.
  *
- * Null when nothing has been contributed — a percentage of zero is not a fact, and "+∞%" on a
- * family member's page would be worse than showing nothing.
+ * ⚠️ Against heldBasis, never against money-in. Against money-in this fund read "+127.8%" while
+ * its holdings were down 11.9% — six years of recycling the same dollars ($51,428 bought,
+ * $49,221 sold, only $2,207 genuinely new) shrinks the denominator until the percentage
+ * describes the churn instead of the investment. Against basis, churn cannot distort it: the
+ * question becomes "are these shares up or down", which is what anyone is actually asking.
  */
 export function accountGain(
   a: AccountPortfolio,
 ): { dollars: number; percent: number | null } | null {
-  const put = a.contributed
-  if (put == null) return null
-  const dollars = accountValue(a) - put
-  return { dollars, percent: put > 0 ? (dollars / put) * 100 : null }
+  const basis = a.heldBasis
+  if (basis == null) return null
+  const dollars = accountValue(a) - basis
+  return { dollars, percent: basis > 0 ? (dollars / basis) * 100 : null }
 }
 
 /** Ahead/behind schedule = reserved value minus promised-to-date. Positive = more value is
@@ -443,9 +455,13 @@ export function portfolioTotals(accounts: AccountPortfolio[]): {
   tracked: number
   /** Combined $/day promise across the tracked accounts (for the runway figure). */
   dailyRate: number
-  /** what it is all worth today: shares at market plus uninvested cash */
+  /** what the shares are worth today, at market. Cash is reported separately. */
   value: number
-  /** value minus invested, and the same as a percentage (null when nothing was invested) */
+  /** proceeds from sales not yet reinvested — theirs, but not yet invested */
+  cash: number
+  /** what the held shares cost, at average basis */
+  basis: number
+  /** value minus basis, and the same as a percentage (null when nothing is held) */
   gain: number
   gainPercent: number | null
   /** false when no account has any allocated trades — show "being set up", not a number */
@@ -456,6 +472,8 @@ export function portfolioTotals(accounts: AccountPortfolio[]): {
   let tracked = 0
   let dailyRate = 0
   let value = 0
+  let cash = 0
+  let basis = 0
   // Same rule as aheadBehind(): money IN versus money promised, never market value.
   let ready = true
   for (const a of accounts) {
@@ -465,17 +483,21 @@ export function portfolioTotals(accounts: AccountPortfolio[]): {
     tracked++
     invested += a.contributed ?? 0
     value += accountValue(a)
+    cash += a.cash ?? 0
+    basis += a.heldBasis ?? 0
     promised += p
     dailyRate += a.dollarPerDay
   }
-  const gain = value - invested
+  const gain = value - basis
   return {
     invested,
     promised,
     aheadBehind: invested - promised,
     value,
+    cash,
+    basis,
     gain,
-    gainPercent: invested > 0 ? (gain / invested) * 100 : null,
+    gainPercent: basis > 0 ? (gain / basis) * 100 : null,
     tracked,
     dailyRate,
     ready,
