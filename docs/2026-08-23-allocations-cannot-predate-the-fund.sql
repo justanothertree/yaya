@@ -1,0 +1,49 @@
+-- An account was being allocated trades from before it existed.  2026-08-23
+-- Migration: allocations_cannot_predate_the_account
+--
+-- ── what was wrong ───────────────────────────────────────────────────────────
+-- admin_even_split_trades allocates every trade in a family-designated SYMBOL, and a symbol has
+-- no sense of time. So five years of Evan's own trading in SPCE, BTC, FHTX and OLOX — 109 trades
+-- back to 2020-07-09, $36,847.95 bought and $43,531.04 sold — was attributed to a fund that
+-- started 2025-12-01.
+--
+-- That churn is where every strange number came from. "Net new money $2,206" was his personal
+-- position rotation netting out. "+127.8% gain" was that tiny denominator. Then measuring
+-- against held basis flipped it to "-11.9%", which was equally wrong for the same reason: both
+-- were computed over the wrong set of trades.
+--
+-- Evan caught it by comparing against his brokers and saying what he actually knew to be true:
+-- the family should only have "profits from this past year + some in december trades that I
+-- bought for them", the only sales being LCID at a loss and about half the MDLN. The post-
+-- December data says exactly that. The pre-December data was never theirs.
+--
+-- ── the fix ──────────────────────────────────────────────────────────────────
+-- An allocation is only valid for a trade on or after THAT ACCOUNT'S start_date. Applied in two
+-- places, because either alone is useless: the even-split now filters per account when it
+-- inserts, and the existing bad rows were deleted.
+--
+-- Per account rather than per fund on purpose. All 33 currently start on the same day; this must
+-- not quietly depend on that staying true when someone joins later.
+--
+-- ── before and after ─────────────────────────────────────────────────────────
+--   allocations   16,599 -> 12,936      (3,663 removed; 111 pre-fund trades x 33 accounts)
+--   trades           503 -> 392         (all now on or after 2025-12-01)
+--
+--                     before        after
+--   contributed    $9,397.74     $8,889.87
+--   cash           $7,191.03         $0.00   <- every sale's proceeds had in fact been reinvested
+--   held basis    $16,136.01    $13,360.38
+--   market value  $14,219.09    $17,854.46
+--   gain          -$1,916.92    +$4,494.08
+--   gain %             -11.9%        +33.6%
+--   promised       $8,745.00     $8,778.00
+--   ahead/behind     +$652.74      +$111.87   <- essentially exactly on schedule
+--
+-- ⚠️ STILL NOT REPRESENTED: options. The importer skips them entirely (33 rows skipped in the
+-- last Robinhood file), so the -$2,818.70 Robinhood reports for options all-time is invisible
+-- here. Fine while no options were bought for the family; a real gap if any ever are.
+--
+-- ⚠️ AND SYMBOL-LEVEL DESIGNATION STILL CANNOT SPLIT A SYMBOL BY INTENT. SPCE shows $4,916
+-- bought and $4,670 sold since December; if some of that was Evan trading for himself in a
+-- symbol he also holds for the family, it is still being counted as theirs. The per-trade
+-- assignment UI (Investments -> Trades -> expand a trade) is the tool for that.
