@@ -1,0 +1,42 @@
+-- The fund starts 2025-12-10, not 2025-12-01.  2026-08-23
+-- Migration: fund_starts_2025_12_10_the_day_the_dollar_a_day_began
+--
+-- Evan: "it was sometime mid december when I first started the family fund idea and I'm pretty
+-- sure I had sold all of my previously held SPCE, and picked it as the starting baseline so that
+-- now all the SPCE I currently have has been slowly built for them and I don't think I've sold
+-- any since."
+--
+-- The trades say precisely that:
+--   2025-12-08  SELL -$2,500.00  (-565.46 units)   ← closing out his own position
+--   2025-12-09  SELL -$2,170.65  (-574.20 units)
+--   2025-12-10  BUY     +$30.00                    ← and every weekday since
+--
+-- With the start date at Dec 1, those two sells plus a 2,360-unit zero-dollar split of his OLD
+-- position sat inside the fund's window and were split across 33 accounts — which is why the
+-- site showed $4,670 of SPCE sales he knew he had never made.
+--
+-- ⚠️ THE LESSON: a start date is not paperwork. It decides which half of a commingled history
+-- belongs to somebody else. Nine days of it moved every headline number on the page.
+--
+-- Verified after: SPCE sells on/after 2025-12-10 = 0, and the ONLY family-designated sale in the
+-- entire period is MDLN — the half of the Medline he says he sold. Data and account agree.
+--
+--                    Dec 1 start    Dec 10 start
+--   trades allocated         392             351
+--   contributed        $8,889.87      $13,444.86   ← the Dec 8-9 proceeds were never theirs to
+--   cash                   $0.00           $0.00      reinvest, so later buys are fresh money
+--   held basis        $13,360.38      $13,244.55
+--   market value      $17,854.46      $13,740.11
+--   gain              +$4,494.08        +$495.56
+--   gain %                 +33.6%           +3.7%
+--   promised           $8,778.00       $8,481.00
+--   ahead                +$111.87      +$4,963.86   ← matches "I probably have over purchased"
+--
+-- Also confirmed, and needing no change: only BTC/cashapp is designated family crypto (no
+-- Robinhood crypto), and no options are family — so the -$2,818.70 options result Robinhood
+-- reports is correctly absent rather than missing.
+--
+-- ⚠️ OPEN: LCID is NOT designated family (is_family = false) and its first sale was 2021-09-21,
+-- long before the fund. Evan mentioned selling LCID "that I had planned to hold for them" at a
+-- loss. Either that intent predates the fund and personal is right, or a designation needs
+-- changing. His call.
