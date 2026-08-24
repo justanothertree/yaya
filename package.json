@@ -18,7 +18,7 @@
   },
   "dependencies": {
     "@sapphi-red/web-noise-suppressor": "^0.4.0",
-    "@supabase/supabase-js": "^2.107.0",
+    "@supabase/supabase-js": "^2.112.3",
     "bad-words": "^4.0.0",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
