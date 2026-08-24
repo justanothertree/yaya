@@ -102,8 +102,18 @@ export function Investments({ demo = false }: { demo?: boolean }) {
           </h2>
           {isAdmin && (
             <span style={{ display: 'inline-flex', gap: '0.35rem', marginLeft: 'auto' }}>
+              {/**
+               * ⚠️ "My portfolio" for an admin who owns every account is the SAME LIST as "All
+               * accounts", which is exactly how it was reported: "my portfolio isn't showing my
+               * portfolio and it has its own 'set aside' which I don't understand". It never
+               * meant his own investments — it means "family accounts assigned to me", and
+               * while nothing has been handed over that is all of them.
+               *
+               * Named for what it holds. A member never sees these tabs at all (they are inside
+               * the isAdmin gate), so nobody else is affected by the wording.
+               */}
               <ModeBtn active={mode === 'mine'} onClick={() => setMode('mine')}>
-                My portfolio
+                Accounts you hold{mine ? ` (${mine.length})` : ''}
               </ModeBtn>
               <ModeBtn active={mode === 'all'} onClick={() => setMode('all')}>
                 All accounts{all ? ` (${all.length})` : ''}
@@ -121,7 +131,9 @@ export function Investments({ demo = false }: { demo?: boolean }) {
               ? 'Every family account — expand one to see exactly what that member sees.'
               : mode === 'trades'
                 ? 'Every trade you’ve made — what’s allocated to the family fund and what’s still yours. Expand a trade to assign shares.'
-                : 'Your dollar-a-day portfolio — what’s been invested for you, what it’s worth now, and how it’s allocated.'}
+                : isAdmin
+                  ? 'The family accounts assigned to you. While none have been handed over, that is every one of them — this is not your own personal investing, which lives in Admin → Reconcile.'
+                  : 'Your dollar-a-day portfolio — what’s been invested for you, what it’s worth now, and how it’s allocated.'}
         </p>
       </header>
 
