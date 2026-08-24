@@ -300,9 +300,10 @@ So there is no Save button any more.
 
 ## 8j. Reconcile — checking it yourself
 
-- [ ] **Admin -> Reconcile.** Should open on "All 6 checks clear". Those are the integrity tests
+- [ ] **Admin -> Reconcile.** Should open on "All 7 checks clear". Those are the integrity tests
       I ran by hand on 2026-08-23, now standing: over-allocation, negative holdings, allocations
-      predating their account, uneven splits, unpriced holdings, stale prices.
+      predating their account, uneven splits, unpriced holdings, stale prices, and — added
+      2026-08-24 — the family being credited with more of a position than you still hold.
 - [ ] **Tick a few rows against Robinhood and Cash App.** Avg cost is what the family paid for
       what they still hold, so it should match your broker's average on a position that is
       entirely theirs. WEN is the one to start with: it should read $8.02.
@@ -313,6 +314,14 @@ So there is no Save button any more.
       brokers add up to between them. Worth checking against their home screens.
 - [ ] A **red number in the "Yours" column** means more was allocated than you hold. That is
       always a bug, never a fact - tell me if one ever appears.
+- [ ] ⚠️ **Small negatives in "Yours" are normal and are NOT red.** 23 positions sit a few
+      ten-thousandths of a unit below zero from rounding — 56 cents across all of them, 13 cents
+      at worst. Before 2026-08-24 the column flagged those, so opening this tab showed 23 red
+      numbers for half a dollar. It now reds past a dollar per position, the same threshold
+      check #7 uses, so the badge and the column always agree.
+- [ ] What check #7 is really for: **selling out of something they part-own without splitting
+      the sale.** You keep the money, they keep shares you no longer have, and all six of the
+      other checks still pass — only the total gives it away.
 
 ## 8k. The review that stays put
 

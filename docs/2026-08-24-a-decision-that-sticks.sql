@@ -79,3 +79,29 @@
 -- public.admin_unallocated_trades(int, timestamptz)        -- now reads trades_needing_review
 -- public.admin_reconciliation()                            -- now reads integrity_checks
 -- dropped: public.admin_integrity_alarm()
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Later the same day: the check a red column was making on its own
+--   migration: the_check_that_a_red_column_was_making_on_its_own
+--
+-- The Reconcile table has always painted a negative "Yours" red, and none of the six checks
+-- counted it.  So the one number on that screen that is always a bug rather than a fact could
+-- not reach the badge built above — the alarm would have stayed silent on the case it exists for.
+--
+-- It catches selling out of a position the family part-owns without splitting the sale: Evan
+-- keeps the proceeds, the family keeps units he no longer holds, and every other check passes.
+-- Per-trade allocation is fine, family units stay positive, the split is even.  Only the
+-- aggregate gives it away.
+--
+-- ⚠️ And measuring it first turned up a live false alarm.  23 symbols are already fractionally
+-- over — 0.0001 to 0.005 units each, $0.56 across all of them, $0.13 at worst — rounding dust
+-- from allocations taken against unit figures that later moved a hair (Robinhood reports 14.39
+-- where the split was computed on 14.394765).  The panel's `personalUnits < -0.000001` rule was
+-- therefore drawing 23 red numbers for 56 cents, every time he opened the tab.
+--
+-- Both now use $1 per position: far above today's worst case, far below any real unsplit sale.
+-- The threshold lives in two places because one of them is a browser, so they are commented as
+-- a pair — src/components/ReconcilePanel.tsx `OVERHANG_DOLLARS`.
+--
+-- Verified: all 7 checks return 0; admin_attention still {"messages": 2, "integrity": 0,
+-- "undecided": 106}.

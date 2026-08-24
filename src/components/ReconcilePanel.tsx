@@ -44,6 +44,17 @@ const usd = (n: number | null) =>
 const units = (n: number) =>
   Math.abs(n) < 1e-9 ? '0' : n.toLocaleString(undefined, { maximumFractionDigits: 4 })
 
+/**
+ * More is allocated to the family than Evan actually holds, by enough to matter.
+ *
+ * Mirrors integrity check #7 exactly — a dollar of shortfall, not a unit of it. Without a price
+ * there are no dollars to judge, so it falls back to a hundredth of a unit, which is still two
+ * orders of magnitude above the rounding dust that made the old zero-threshold version useless.
+ */
+const OVERHANG_DOLLARS = 1
+const personallyShort = (r: Row) =>
+  r.price == null ? r.personalUnits < -0.01 : r.personalUnits * r.price < -OVERHANG_DOLLARS
+
 export function ReconcilePanel() {
   const [report, setReport] = useState<Report | null>(null)
   const [err, setErr] = useState<string | null>(null)
@@ -104,7 +115,8 @@ export function ReconcilePanel() {
           <strong>All {report.checks.length} checks clear.</strong>
           <p className="muted" style={{ margin: '0.3rem 0 0', fontSize: '0.84rem' }}>
             No over-allocation, no negative holdings, nothing dated before the account it belongs
-            to, every trade split evenly, every family holding priced and current.
+            to, every trade split evenly, every family holding priced and current, and nothing
+            credited to them that you have since sold.
           </p>
         </div>
       ) : (
@@ -179,8 +191,15 @@ export function ReconcilePanel() {
                 <td className="num">{usd(r.price)}</td>
                 <td className="num">{units(r.familyUnits)}</td>
                 {/* A negative personal share means more was allocated than you hold — the one
-                    number here that is always a bug rather than a fact. */}
-                <td className={'num' + (r.personalUnits < -0.000001 ? ' reconcile-bad' : '')}>
+                    number here that is always a bug rather than a fact.
+
+                    ⚠️ In DOLLARS, over a dollar, not in units over zero. 23 symbols are already
+                    a few ten-thousandths of a unit over from rounding — $0.56 across all of
+                    them, $0.13 at worst — and flagging those painted 23 rows red for 56 cents.
+                    A screen that cries wolf on its own dust is worse than one with no colour on
+                    it at all. Same $1 threshold as integrity check #7, deliberately: the badge
+                    and this column must agree about what counts as wrong. */}
+                <td className={'num' + (personallyShort(r) ? ' reconcile-bad' : '')}>
                   {units(r.personalUnits)}
                 </td>
                 <td className="num">
@@ -224,6 +243,12 @@ export function ReconcilePanel() {
         {new Date(report.generatedAt).toLocaleString()}. Average cost is what the family paid for
         the shares they still hold, so it should match your broker&apos;s average for a position
         that is entirely theirs — and sit between your two averages where it is shared.
+      </p>
+      <p className="muted" style={{ marginTop: '0.4rem', fontSize: '0.78rem' }}>
+        A &ldquo;yours&rdquo; figure a few ten-thousandths below zero is rounding, not a mistake —
+        23 positions are, worth 56 cents between them. The number only turns red once more than a
+        dollar of a position is credited to them than you actually hold, which is what an unsplit
+        sale would look like.
       </p>
     </div>
   )
