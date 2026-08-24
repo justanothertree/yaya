@@ -13,6 +13,7 @@ import {
   adminReassignAccount,
   adminEnableFinance,
   accountReserved,
+  accountGain,
   aheadBehind,
   portfolioTotals,
   runwayDays,
@@ -827,7 +828,16 @@ function AccountForm({
   )
 }
 
-function AccountCard({
+/**
+ * ⚠️ Exported for the DEV-only workbench at `#dev-investments`, nothing else imports it.
+ *
+ * This is the component a family member actually reads, and it is the hardest one on the site
+ * to look at: it needs a real member session, and it only renders on the ONE-account path that
+ * Evan's own admin view never takes. Two family-facing bugs survived in here for exactly that
+ * reason — a member's cash balance appearing nowhere, and an info panel saying ahead/behind
+ * compared the value. Both were minutes of work once they could be seen.
+ */
+export function AccountCard({
   account,
   timeline,
 }: {
@@ -884,8 +894,34 @@ function AccountCard({
     return { avgCost: ac, pct: ((h.price - ac) / ac) * 100, dollars: (h.price - ac) * h.units }
   }
 
-  // Account-wide gain since bought = value − cost, over holdings with a known basis.
+  /**
+   * Account-wide gain since bought.
+   *
+   * ⚠️ THE SERVER'S BASIS IS THE AUTHORITY. `accountGain()` measures against `heldBasis` — the
+   * average-cost walk over this account's allocations — and it exists specifically because
+   * measuring against money-in reported this fund as "+127.8%" while its holdings were down
+   * 11.9%. It was exported, documented at length, and then imported by nothing: this card rolled
+   * its own basis from client-side timeline events instead.
+   *
+   * That is two answers to one question again, and the local one is the weaker of the two. It
+   * silently yields NULL whenever the timeline carries no events for these symbols, so the
+   * member's card simply omitted whether they were up or down — no error, no empty state, just
+   * a missing line. `#dev-investments` renders with an empty event list and that is exactly what
+   * it showed.
+   *
+   * The per-holding `plFor()` below still uses the timeline: a per-symbol percentage is a
+   * different job from the account headline, and it has its own "not enough cost history" state.
+   *
+   * The event walk stays as a fallback for the case the server sent no basis at all.
+   *
+   * ⚠️ Known and disclosed: `accountGain` compares PRICED value against the basis of everything
+   * held, so an unpriced holding drags it down. The ⓘ panel says how many are unpriced.
+   */
   const gain = (() => {
+    const authoritative = accountGain(account)
+    if (authoritative != null) {
+      return { dollars: authoritative.dollars, pct: authoritative.percent }
+    }
     let basis = 0
     let val = 0
     for (const h of holdings) {
@@ -895,7 +931,9 @@ function AccountCard({
         val += h.units * h.price
       }
     }
-    return basis > 0 ? { dollars: val - basis, pct: ((val - basis) / basis) * 100 } : null
+    return basis > 0
+      ? { dollars: val - basis, pct: (((val - basis) / basis) * 100) as number | null }
+      : null
   })()
   const pricedAsOf = account.holdings.reduce<string | null>(
     (acc, h) => (h.priceAt && (!acc || h.priceAt > acc) ? h.priceAt : acc),
@@ -1026,7 +1064,9 @@ function AccountCard({
             {gain && (
               <span style={{ fontWeight: 700, color: gain.dollars >= 0 ? '#22cc78' : '#f46b6b' }}>
                 {gain.dollars >= 0 ? '▲ +' : '▼ −'}
-                {usd(Math.abs(gain.dollars))} ({Math.abs(gain.pct).toFixed(1)}%)
+                {usd(Math.abs(gain.dollars))}
+                {/* no percentage when the basis is zero — "up ∞%" helps nobody */}
+                {gain.pct != null && ` (${Math.abs(gain.pct).toFixed(1)}%)`}
               </span>
             )}
             {gain && <span className="muted"> since bought</span>}

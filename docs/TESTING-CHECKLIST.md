@@ -415,6 +415,29 @@ So there is no Save button any more.
       "it" was the value — the exact thing you said ahead/behind must never be about.
 - [ ] With no cash the line does not appear at all.
 
+## 8p. A window into what a family member sees
+
+- [ ] 🆕 **`#dev-investments`** (dev only — `npm run dev`, then that hash). Seven versions of
+      the real card a member gets, with invented people: an ordinary day, after you sell
+      something of theirs, down on the shares, behind the promise while up on the shares, an
+      account nobody has funded, a dead price feed, and a holding with no price.
+- [ ] ⚠️ **Why this exists.** That card needs a member session AND the one-account path your own
+      view never takes — you own 33 accounts, so you always go through the list. Three
+      family-facing bugs have now hidden in that gap. It is tree-shaken out of production; I
+      checked the built files carry no trace of it.
+- [ ] ⚠️ **It found one immediately: a member could not see whether they were up or down.**
+      The card computed its own cost basis from the chart's events instead of calling
+      `accountGain()` — the function written for exactly this, measuring against the server's
+      held basis, exported and used by nothing. When those events were missing it returned null
+      and the line just **wasn't there**. No error, no empty state.
+- [ ] Check the "Down on the shares" card reads **▼ −$135.46 (33.5%) since bought**. Before this
+      it showed no gain or loss at all.
+- [ ] Check "Behind the promise, but up on the shares" shows **both** at once — ▲ +$16.34 up and
+      $110.00 behind. That pair is the thing you most want family to understand, and it is the
+      pair that would confuse someone if either went missing.
+- [ ] The gain now comes from the same basis as the fund summary and Admin -> Reconcile, so a
+      member's percentage and your percentage cannot disagree about the same shares.
+
 ## 9. Still waiting on a decision
 
 See `docs/OPEN-DECISIONS.md` — person colours in light theme, the LCID designation, and the

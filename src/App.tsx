@@ -72,6 +72,15 @@ const AdminPanel = lazy(() =>
 const ProfileLookPreview = import.meta.env.DEV
   ? lazy(() => import('./dev/ProfileLookPreview').then((m) => ({ default: m.ProfileLookPreview })))
   : null
+
+/** The one-account path a family member takes — see the file header for why it needs a route. */
+const InvestmentsMemberPreview = import.meta.env.DEV
+  ? lazy(() =>
+      import('./dev/InvestmentsMemberPreview').then((m) => ({
+        default: m.InvestmentsMemberPreview,
+      })),
+    )
+  : null
 const AcceptInvite = lazy(() =>
   import('./sections/AcceptInvite').then((m) => ({ default: m.AcceptInvite })),
 )
@@ -1591,6 +1600,13 @@ export default function App() {
         {ProfileLookPreview && DEV_PREVIEW === 'profile' && (
           <Suspense fallback={<div aria-busy>Loading…</div>}>
             <ProfileLookPreview />
+          </Suspense>
+        )}
+        {/* The family member's own card. Same workbench reasoning as #dev-profile, and the same
+            privacy rule: every person in it is invented. */}
+        {InvestmentsMemberPreview && DEV_PREVIEW === 'investments' && (
+          <Suspense fallback={<div aria-busy>Loading…</div>}>
+            <InvestmentsMemberPreview />
           </Suspense>
         )}
         {/* ONE shared canvas instance — mounted whenever desktop+canvas are on, for every page
