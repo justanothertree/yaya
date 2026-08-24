@@ -3,7 +3,7 @@
 Things that are blocked on Evan rather than on code. Each one names what is already built, what
 is actually being asked, and what happens if it keeps waiting.
 
-Last reviewed: 2026-08-23.
+Last reviewed: 2026-08-23 (second pass).
 
 ---
 
@@ -19,20 +19,15 @@ matter.
 
 ---
 
-## 2. Contributions have never been recorded
+## 2. ~~Contributions have never been recorded~~ — SUPERSEDED 2026-08-23
 
-**Already built and waiting.** Admin → **Fund**: amount, date, optional note. It backdates, shows
-the per-person split as you type, and lists entries so a mistake can be removed.
+They are derived from the trades now, not typed. `finance.account_ledger` walks each account's
+allocated trades in date order: a sale becomes their cash, a purchase spends their cash before
+Evan's, and only the shortfall is a fresh contribution. Nothing to remember to enter.
 
-**Why it matters.** The dollar-a-day promise is about money _entering_ the fund, and that number
-exists nowhere else — the fund is commingled with personal trading, so no export contains it and
-no derivation over trades recovers it. Three derivations over the same trades give "behind
-$8,376", "ahead $41,313" and "$770 invested". They are not competing answers; they are noise from
-a missing input.
-
-**Cost of waiting:** nobody is shown an ahead-or-behind figure at all. Their page says it is still
-being set up, which is deliberate — a confident zero would be a wrong answer rather than an
-honest blank.
+`finance.family_contributions` is left in place and still holds one $33 test row. It remains the
+right home for money set aside but NOT yet invested, which the trades cannot know about — nothing
+reads it today, so the test row is inert.
 
 ---
 
@@ -60,14 +55,15 @@ look, which is a design decision rather than a defect, so it has not been done.
 
 ---
 
-## 5. Should `activity_visibility` default to `members`?
+## 5. ~~Should `activity_visibility` default to `members`?~~ — DONE 2026-08-23
 
-`profiles.activity_visibility` defaults to `'members'` — it shares by default. Its sibling,
-`circuit_people.visibility`, defaults to `'private'`.
+Default is now `private`, matching `circuit_people.visibility`. New members share nothing until
+they choose to.
 
-All 7 non-public members are sitting on that default, meaning none of them has ever chosen it.
-Worth deciding deliberately, given the standing rule that data should only be shared where
-someone chose to share it.
+⚠️ **Still open, deliberately:** the 7 existing members are untouched and remain on the old
+`members` default, which none of them ever chose. A default governs someone who has not decided;
+rewriting the people already here would silently take away sharing they may be relying on. Evan's
+call whether to move them.
 
 ---
 
