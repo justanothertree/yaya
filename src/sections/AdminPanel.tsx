@@ -84,19 +84,44 @@ export function AdminPanel() {
   }>({ first_name: '', email: '', role: 'friend' })
   const [savingMember, setSavingMember] = useState(false)
   const [features, setFeatures] = useState<Record<string, boolean>>({})
+  /**
+   * What is waiting on him, asked once when the panel opens.
+   *
+   * Every accuracy problem so far was found because he happened to look at a number and said
+   * "that's not right". That works, and it is also the only thing standing between a broken
+   * figure and a family member reading it. These three counts are the same checks made
+   * unmissable: they sit on the tab that fixes them, so nothing waits on him remembering to go
+   * and look.
+   *
+   * ⚠️ Counts only — the tab itself is the explanation. A badge that tried to summarise WHAT is
+   * wrong would be a second copy of rules that live in the database, and it would drift.
+   */
+  const [attention, setAttention] = useState<{
+    integrity: number
+    messages: number
+    undecided: number
+  } | null>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [deletingMember, setDeletingMember] = useState(false)
 
   async function loadAll() {
-    const [invRes, memRes, snakeRes] = await Promise.all([
+    const [invRes, memRes, snakeRes, attnRes] = await Promise.all([
       sb.rpc('list_invites'),
       sb.rpc('list_members'),
       sb.rpc('admin_list_snake_handles'),
+      sb.rpc('admin_attention'),
     ])
     if (invRes.error) throw invRes.error
     if (memRes.error) throw memRes.error
     setInvites((invRes.data as Invite[]) ?? [])
     setMembers((memRes.data as Member[]) ?? [])
+    // Same reasoning as the handles below: a badge is a convenience, and losing the whole panel
+    // over one is a worse outcome than an unbadged tab.
+    setAttention(
+      attnRes.error
+        ? null
+        : (attnRes.data as { integrity: number; messages: number; undecided: number }),
+    )
     // Deliberately NOT fatal, unlike the two above: invites and members are what this panel is
     // for, and letting the newest/least critical query take the whole page down with it would
     // mean one bad RPC costs you member management too. An empty tab is a much better failure.
@@ -315,12 +340,25 @@ export function AdminPanel() {
         )}
         {/* The one number the family actually sees, and the only input it needs. */}
         {tabBtn('fund', 'Fund')}
-        {/* Broker CSVs, without a terminal or a service-role key on a command line. */}
-        {tabBtn('import', 'Import')}
-        {/* Verifying the numbers against the brokers, without needing anyone else. */}
-        {tabBtn('reconcile', 'Reconcile')}
+        {/* Broker CSVs, without a terminal or a service-role key on a command line.
+            The count is trades since the fund started that nobody has said yes or no to yet —
+            left alone they silently count as yours, which is a decision by default. */}
+        {tabBtn(
+          'import',
+          `Import${attention?.undecided ? ` (${attention.undecided} to sort)` : ''}`,
+        )}
+        {/* Verifying the numbers against the brokers, without needing anyone else.
+            ⚠️ The only badge that is a warning rather than a workload: a failing check means a
+            figure on the family's screen is currently wrong. */}
+        {tabBtn(
+          'reconcile',
+          attention?.integrity ? `⚠️ Reconcile (${attention.integrity})` : 'Reconcile',
+        )}
         {/* The contact form's actual record. The email is a ping; this is what arrived. */}
-        {tabBtn('messages', 'Messages')}
+        {tabBtn(
+          'messages',
+          `Messages${attention?.messages ? ` (${attention.messages} unread)` : ''}`,
+        )}
         {/* Operational, not social — what the paid services are costing, in the one place
             that already requires being the operator to see. */}
         {tabBtn('usage', 'Usage')}

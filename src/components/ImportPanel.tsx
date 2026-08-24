@@ -49,6 +49,9 @@ const relayBase = () => {
 const usd = (n: number) =>
   n.toLocaleString(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 2 })
 
+/** How many review rows are shown before "show more". */
+const REVIEW_WINDOW = 12
+
 /** One trade still waiting on "was this for the family?" */
 type Undecided = {
   id: string
@@ -84,14 +87,26 @@ export function ImportPanel() {
   const [undecided, setUndecided] = useState<Undecided[] | null>(null)
   const [decided, setDecided] = useState<Record<string, number>>({})
   const [reviewErr, setReviewErr] = useState<string | null>(null)
-  /** what "this import" means: only trades that arrived after the button was pressed */
-  const importedAt = useRef<string | null>(null)
+  /** A dozen at a time — see `visibleReview` for why the whole backlog is not on screen. */
+  const [reviewLimit, setReviewLimit] = useState(REVIEW_WINDOW)
 
+  /**
+   * ⚠️ Not gated on having just imported, and deliberately NOT narrowed to one import.
+   *
+   * It used to return early unless a commit had happened in this session, and then ask only for
+   * that import's rows. So the review existed for about two minutes and covered only what had
+   * just arrived — anything left unanswered in that window became unreachable, and 106 of them
+   * had piled up going back to the day the fund started.
+   *
+   * Asking for the whole backlog every time means the list has ONE meaning, whether or not a CSV
+   * was just pressed. A narrowed variant would have to be described differently on screen from
+   * the standing one, and two descriptions of the same list is how a screen starts lying. The
+   * sort is newest first, so a fresh import lands at the top regardless.
+   */
   const loadUndecided = useCallback(async () => {
-    if (!importedAt.current) return
     const { data, error } = await getSupabaseClient().rpc('admin_unallocated_trades', {
       p_limit: 200,
-      p_imported_since: importedAt.current,
+      p_imported_since: null,
     })
     if (error) {
       setReviewErr(error.message)
@@ -99,6 +114,10 @@ export function ImportPanel() {
     }
     setUndecided((data ?? []) as Undecided[])
   }, [])
+
+  useEffect(() => {
+    void loadUndecided()
+  }, [loadUndecided])
 
   async function decide(t: Undecided, fraction: number) {
     setReviewErr(null)
@@ -219,7 +238,6 @@ export function ImportPanel() {
     setBusy('importing')
     // stamped BEFORE the request, so "what this import added" cannot miss a row that landed
     // while it was running
-    importedAt.current = new Date(Date.now() - 60_000).toISOString()
     try {
       setSummary(await post(csv.text, csv.name, true))
       await loadUndecided()
@@ -229,6 +247,19 @@ export function ImportPanel() {
       setBusy(null)
     }
   }
+
+  /**
+   * Still unanswered right now. Ones just decided stay on screen with a ✓ — the confirmation is
+   * the point — but they stop counting toward the heading, so it ticks down as he works.
+   */
+  const pendingReview = (undecided ?? []).filter((t) => decided[t.id] == null)
+  /**
+   * How much of the backlog is on screen. Ones already decided this session stay inside the
+   * window with their ✓ rather than vanishing — a row that disappears the instant you tap it
+   * gives you nothing to check your own answer against.
+   */
+  const visibleReview = (undecided ?? []).slice(0, reviewLimit)
+  const reviewRemaining = (undecided?.length ?? 0) - visibleReview.length
 
   return (
     <div>
@@ -391,80 +422,6 @@ export function ImportPanel() {
             </details>
           )}
 
-          {/**
-           * The review step, only after a real import.
-           *
-           * Deliberately three plain answers rather than a number box: "not theirs", "all
-           * theirs", "part". Evan said of the partial tool that he didn't fully understand it
-           * and he'd be the one using it — so the common two cases are one tap, and the fiddly
-           * one only appears when he asks for it.
-           */}
-          {summary.committed && undecided && undecided.length > 0 && (
-            <div className="import-review">
-              <strong>
-                {undecided.length} new trade{undecided.length === 1 ? '' : 's'} — was any of this
-                for the family?
-              </strong>
-              <p className="muted" style={{ margin: '0.2rem 0 0.6rem', fontSize: '0.82rem' }}>
-                Anything in a symbol you&apos;ve already marked family was split automatically.
-                These are the ones nothing decided for you. Leaving them alone keeps them yours.
-              </p>
-              {reviewErr && <p className="import-err">{reviewErr}</p>}
-              {undecided.map((t) => {
-                const done = decided[t.id]
-                return (
-                  <div key={t.id} className="import-review-row">
-                    <span>
-                      <strong>{t.symbol}</strong>{' '}
-                      <span className="muted">
-                        {t.date} · {usd(t.dollars)} · {t.units.toFixed(4)} units
-                        {t.alreadyHeld > 0 && ' · they already hold some'}
-                      </span>
-                    </span>
-                    {done == null ? (
-                      <span className="import-review-actions">
-                        <button className="btn btn-ghost" onClick={() => void decide(t, 0)}>
-                          Mine
-                        </button>
-                        <button className="btn" onClick={() => void decide(t, 1)}>
-                          All theirs
-                        </button>
-                        <button
-                          className="btn btn-ghost"
-                          onClick={() => {
-                            const raw = window.prompt(
-                              `How many dollars of this ${usd(t.dollars)} ${t.symbol} trade were for the family?`,
-                              '',
-                            )
-                            if (raw == null) return
-                            const part = Number(raw.replace(/[^0-9.]/g, ''))
-                            if (!Number.isFinite(part) || part <= 0 || part > Math.abs(t.dollars)) {
-                              setReviewErr(
-                                `Enter an amount between 0 and ${usd(Math.abs(t.dollars))}.`,
-                              )
-                              return
-                            }
-                            void decide(t, part / Math.abs(t.dollars))
-                          }}
-                        >
-                          Part…
-                        </button>
-                      </span>
-                    ) : (
-                      <span className="muted" style={{ fontSize: '0.82rem' }}>
-                        {done === 0
-                          ? 'kept yours'
-                          : done === 1
-                            ? 'all theirs ✓'
-                            : `${(done * 100).toFixed(0)}% theirs ✓`}
-                      </span>
-                    )}
-                  </div>
-                )
-              })}
-            </div>
-          )}
-
           {summary.committed ? (
             <div className={outcome(summary)?.ok ? 'import-done' : 'import-fail'}>
               <strong>{outcome(summary)?.line}</strong>
@@ -485,6 +442,98 @@ export function ImportPanel() {
                 present&rdquo; rather than a second copy.
               </p>
             </div>
+          )}
+        </div>
+      )}
+
+      {/**
+       * The review step — a standing list, not a moment.
+       *
+       * ⚠️ Deliberately OUTSIDE the summary block. It used to hang off `summary.committed`, so it
+       * existed only in the minutes after an import and only for that import's rows. A weekly
+       * habit doesn't survive that: miss the window and the question is gone, while the trade
+       * quietly counts as yours forever.
+       *
+       * Deliberately three plain answers rather than a number box: "not theirs", "all theirs",
+       * "part". Evan said of the partial tool that he didn't fully understand it and he'd be the
+       * one using it — so the common two cases are one tap, and the fiddly one only appears when
+       * he asks for it.
+       */}
+      {pendingReview.length > 0 && (
+        <div className="card import-review">
+          <strong>
+            {pendingReview.length} trade{pendingReview.length === 1 ? '' : 's'} — was any of this
+            for the family?
+          </strong>
+          <p className="muted" style={{ margin: '0.2rem 0 0.6rem', fontSize: '0.82rem' }}>
+            Everything since the fund started on a symbol you haven&apos;t already settled one way
+            or the other. Anything in a symbol you&apos;ve marked family was split automatically;
+            these are the ones nothing decided for you. Answering &ldquo;mine&rdquo; is a real
+            answer — it won&apos;t be asked again.
+          </p>
+          {reviewErr && <p className="import-err">{reviewErr}</p>}
+          {/* ⚠️ A window, not the whole backlog. There are 106 of these on day one and they go
+              back to December — dropping all of them onto the tab he opens to import a CSV is a
+              wall, and a wall gets scrolled past rather than answered. Newest first, a dozen at
+              a time, and the count above already told him how deep it goes. */}
+          {visibleReview.map((t) => {
+            const done = decided[t.id]
+            return (
+              <div key={t.id} className="import-review-row">
+                <span>
+                  <strong>{t.symbol}</strong>{' '}
+                  <span className="muted">
+                    {t.date} · {usd(t.dollars)} · {t.units.toFixed(4)} units
+                    {t.alreadyHeld > 0 && ' · they already hold some'}
+                  </span>
+                </span>
+                {done == null ? (
+                  <span className="import-review-actions">
+                    <button className="btn btn-ghost" onClick={() => void decide(t, 0)}>
+                      Mine
+                    </button>
+                    <button className="btn" onClick={() => void decide(t, 1)}>
+                      All theirs
+                    </button>
+                    <button
+                      className="btn btn-ghost"
+                      onClick={() => {
+                        const raw = window.prompt(
+                          `How many dollars of this ${usd(t.dollars)} ${t.symbol} trade were for the family?`,
+                          '',
+                        )
+                        if (raw == null) return
+                        const part = Number(raw.replace(/[^0-9.]/g, ''))
+                        if (!Number.isFinite(part) || part <= 0 || part > Math.abs(t.dollars)) {
+                          setReviewErr(`Enter an amount between 0 and ${usd(Math.abs(t.dollars))}.`)
+                          return
+                        }
+                        void decide(t, part / Math.abs(t.dollars))
+                      }}
+                    >
+                      Part…
+                    </button>
+                  </span>
+                ) : (
+                  <span className="muted" style={{ fontSize: '0.82rem' }}>
+                    {done === 0
+                      ? 'kept yours'
+                      : done === 1
+                        ? 'all theirs ✓'
+                        : `${(done * 100).toFixed(0)}% theirs ✓`}
+                  </span>
+                )}
+              </div>
+            )
+          })}
+          {reviewRemaining > 0 && (
+            <button
+              className="btn btn-ghost"
+              style={{ marginTop: '0.5rem', fontSize: '0.8rem' }}
+              onClick={() => setReviewLimit((n) => n + REVIEW_WINDOW)}
+            >
+              Show {Math.min(REVIEW_WINDOW, reviewRemaining)} more · {reviewRemaining} still to sort
+            </button>
           )}
         </div>
       )}

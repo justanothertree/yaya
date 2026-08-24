@@ -1,0 +1,81 @@
+-- "Mine" was never an answer, and nothing ever told him.   2026-08-24
+--
+-- Applied as two migrations:
+--   integrity_checks_get_their_own_function_and_an_alarm
+--   a_trade_can_be_answered_mine_and_stay_answered
+--
+-- ── the bug ──────────────────────────────────────────────────────────────────
+-- The per-trade review offers three answers: "Mine", "All theirs", "Part…".  "Mine" called
+-- admin_set_trade_allocation(trade, 0), which deleted any allocations for that trade and
+-- returned.  That leaves the trade in EXACTLY the state it was in before the tap: unallocated.
+--
+-- The review list is "unallocated trades".  So a trade he had answered was indistinguishable
+-- from one he had never seen, and would be asked again next week, and the week after.  The plan
+-- was to import a CSV weekly; the plan would have produced a permanently growing pile of
+-- questions he had already answered.  Nothing about it would look broken — just tiring.
+--
+-- finance.executed_trades.reviewed_at is the missing fact: THAT a human decided, kept separate
+-- from WHAT they decided.  Set for every fraction, including 0, and set BEFORE the fraction=0
+-- early return — which is the line the whole bug lived on.
+--
+-- ── the second bug, found while fixing the first ─────────────────────────────
+-- The review was rendered under `summary.committed &&`, and its loader returned early unless an
+-- import had happened in this browser session.  So the review existed for about two minutes
+-- after pressing Import, covering only that import's rows.  Anything not answered inside that
+-- window was unreachable — there is no other route to it in the UI.
+--
+-- 106 trades were sitting in that state, across 45 symbols, from 2025-12-10 to 2026-08-20.  Each
+-- one is currently counted as Evan's own by omission.  If any of them were meant for the family,
+-- the family's numbers are understated by exactly that much.
+--
+-- ── what "needs a decision" means, once ──────────────────────────────────────
+-- finance.trades_needing_review(user) is the single definition, used by the review list AND by
+-- the badge that points at it.  Two copies would drift, and a badge that disagrees with the
+-- screen it points at is worse than no badge.
+--
+--   reviewed_at is null      -- he hasn't answered it
+--   no allocations           -- nothing answered it for him (family symbols auto-split on import)
+--   on/after the fund start  -- before 2025-12-10 there was no family to allocate to, and
+--                               admin_set_trade_allocation would refuse the trade anyway.  A 2021
+--                               Robinhood row is not a question, it is a trap.
+--   not designated personal  -- a symbol already marked his own is already answered
+--
+-- ⚠️ Deliberately NOT "imported in the last N days".  A window like that empties itself: an
+-- unanswered trade would silently stop being counted, which is the same failure as list_fund_
+-- symbols returning zero rows where it meant "not allowed".  This definition only reaches zero
+-- when every trade has actually been answered.
+--
+-- ── telling him, instead of waiting to be asked ──────────────────────────────
+-- Every accuracy problem so far was caught because Evan looked at a figure and said "that's not
+-- right".  That has worked, and it is also the only thing standing between a wrong number and a
+-- family member reading it.  admin_attention() is those checks made unmissable.
+--
+-- public.admin_attention() -> jsonb   {integrity, messages, undecided}
+--   is_admin() or raise.  Cheap on purpose — the admin panel asks on every load, and
+--   admin_reconciliation()'s 97-row position table with a basis walk per symbol is far too much
+--   work just to decide whether to draw a number.  Each count badges the tab that fixes it.
+--
+-- finance.integrity_checks() -> jsonb
+--   The six checks, lifted out of admin_reconciliation so the badge and the screen cannot
+--   disagree.  admin_reconciliation() now calls it and adds the positions table.
+--   Replaced the short-lived admin_integrity_alarm(), which only covered a third of this.
+--
+-- ── verified after applying ──────────────────────────────────────────────────
+--   * badge and screen agree: alarm 0 failing / screen 0 failing, 6 checks, 97 symbols
+--   * admin_attention -> {"messages": 2, "integrity": 0, "undecided": 106}
+--     and admin_unallocated_trades(500, null) returns exactly 106 — same number, same rule
+--   * round trip, rolled back: "Mine" on a real trade took undecided 106 -> 105 and removed it
+--     from the list.  Before this change it would have stayed on both.
+--   * a signed-in non-admin gets "admin only"; anon gets "permission denied for function
+--     admin_attention"
+--   * prices are healthy: 178 of 180 symbols refreshed within two days, newest 2026-08-23 21:16Z
+--
+-- ── the objects ──────────────────────────────────────────────────────────────
+-- finance.executed_trades.reviewed_at  timestamptz null
+-- finance.trades_needing_review(uuid) returns setof uuid   -- revoked from public/anon/authenticated
+-- finance.integrity_checks() returns jsonb                 -- revoked from public/anon/authenticated
+-- public.admin_attention() returns jsonb                   -- authenticated, is_admin() gated
+-- public.admin_set_trade_allocation(uuid, numeric)         -- now stamps reviewed_at
+-- public.admin_unallocated_trades(int, timestamptz)        -- now reads trades_needing_review
+-- public.admin_reconciliation()                            -- now reads integrity_checks
+-- dropped: public.admin_integrity_alarm()

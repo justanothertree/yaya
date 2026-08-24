@@ -4152,10 +4152,11 @@ table.reconcile tfoot .reconcile-total td {
   color: #f46b6b;
 }
 /* The post-import review: one row per trade that nothing decided for you. */
+/* ⚠️ This used to be a section INSIDE the import card, which is what the hairline separated it
+   from. It is a card of its own now — it stands alone whether or not anything has been imported —
+   so a border-top would draw a stray rule just under the card's own edge. */
 .import-review {
-  margin-top: 0.8rem;
-  padding-top: 0.7rem;
-  border-top: 1px solid var(--border);
+  margin-top: 0.75rem;
 }
 .import-review-row {
   display: flex;

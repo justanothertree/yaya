@@ -314,10 +314,37 @@ So there is no Save button any more.
 - [ ] A **red number in the "Yours" column** means more was allocated than you hold. That is
       always a bug, never a fact - tell me if one ever appears.
 
+## 8k. The review that stays put
+
+- [ ] ⚠️ **Admin → Import now opens with a list of trades to sort** — 106 of them on the first
+      visit, across 45 symbols, dated 2025-12-10 to 2026-08-20. They have always existed; there
+      was simply no way to reach them. Until each is answered it counts as yours by default, so
+      if any of them were meant for the family, the family's numbers are low by that much.
+- [ ] The tab bar says **Import (106 to sort)** before you open it. That count and the list are
+      computed from the same rule in the database, so if they ever disagree, tell me.
+- [ ] ⚠️ **"Mine" is now a real answer.** It used to write nothing, which left the trade
+      looking exactly like one you had never seen — so it would have come back at you every
+      week forever. Tap "Mine" on one, reload the page, and it should be gone for good.
+- [ ] "All theirs" and "Part…" behave as before. All three now stamp the trade as decided.
+- [ ] Twelve at a time, with **"Show 12 more · N still to sort"** at the bottom. 106 rows at
+      once is a wall rather than a list.
+- [ ] **Only trades from 2025-12-10 onward are ever offered.** Anything older cannot be the
+      family's — no account existed to allocate it to — and the database would refuse it. Your
+      2021 Robinhood history is not a pile of questions.
+- [ ] **Messages (2 unread)** on the tab bar, and **⚠️ Reconcile (n)** if a check ever fails.
+      Reconcile has no number today because all six pass.
+- [ ] 🔒 The badge only exists for you: a non-admin asking gets "admin only", signed-out gets
+      "permission denied". Verified in the database, and the panel still loads with no badges
+      when the call is refused.
+- [ ] ⚠️ **The one thing I could not check myself**: how the review card actually looks with
+      real rows in it, since it needs your admin session. The styling and mobile widths are
+      verified (no sideways scroll at 375px), the content is not.
+
 ## 9. Still waiting on a decision
 
-See `docs/OPEN-DECISIONS.md` — the price feed key, person colours in light theme, and the
-`activity_visibility` default.
+See `docs/OPEN-DECISIONS.md` — person colours in light theme, the LCID designation, and the
+`activity_visibility` default for the seven existing members.
 
-⚠️ **The price feed is the one with a running cost**: prices have been stale since 2026-08-16 and
-drift further every day, so every investments figure is priced from an old cache.
+✅ **The price feed is healthy again** — 178 of 180 symbols refreshed within the last two days,
+most recently 2026-08-23 21:16 UTC. It had been stale since 2026-08-16; the Vault key and the
+move into Postgres fixed it. Check #6 on the Reconcile tab is what will tell you if it stops.
