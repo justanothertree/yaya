@@ -1,0 +1,35 @@
+-- A trade that held Evan's money AND theirs.  2026-08-23
+-- Migration: lcid_carried_family_money_record_their_share
+--
+-- Evan, confirmed: "all of their medline cash went into it". The trades line up to the day:
+--   2026-06-12  MDLN SELL  -$1,019.59   (family, allocated)
+--   2026-06-12  LCID BUY   +$1,278.00   248.155339 units   (robinhood, NOT designated family)
+--   2026-07-14  LCID SELL    -$817.12   -253 units         (the loss)
+--
+-- $1,019.59 of the $1,278.00 was theirs = 79.7801% = 197.978640 units. The position closed at
+-- $3.22962/unit, so their share returned $639.42 — a realised loss of $380.17, about -37%.
+--
+-- ⚠️ ALLOCATED BY THE UNITS THEY OWNED, NOT 80% OF THE UNITS SOLD. He sold 253.784 units that
+-- day, more than the 248.155 bought on the 12th, because a sliver of an older position went with
+-- it. Taking 79.7801% of what was SOLD hands them 202.47 units — more than they ever owned — and
+-- leaves the account short four and a half shares of a stock it had exited. Verified after:
+-- family LCID units = 0.000000 exactly.
+--
+-- Neither alternative was acceptable: designating LCID family gives them 100% of a position that
+-- was 80% theirs; leaving it alone credits them with money that actually went into LCID and lost
+-- 37%.
+--
+--   contributed  $13,444.86 -> $13,825.02   (+$380.16, exactly the loss)
+--   held basis   unchanged, market unchanged, gain unchanged  (the position is closed)
+--   ahead        +$4,963.86 -> +$5,344.02
+--
+-- The loss surfaces as EVAN CONTRIBUTING MORE, not as their balance falling — which is right
+-- under his own rule. Their money went MDLN -> cash -> LCID -> lost 37% -> $639 back -> into
+-- later SPCE buys. The $380 that evaporated is $380 more of his own money needed to keep the
+-- dollar-a-day promise on track. The promise is unaffected by losses; he absorbs them.
+--
+-- ⚠️ NOT RECORDED, and cannot be: a "plasma" crypto sold at a loss around the same time, which
+-- Evan cannot remember was his or partly theirs. It does not appear in the data at all —
+-- Robinhood crypto barely imports (BTC/DOGE/ETH/XRP/ZORA each have one zero-dollar unit
+-- adjustment and nothing else), which is also why Robinhood's -$1,655.82 crypto result is
+-- invisible. Since only BTC/cashapp is family crypto, the family's numbers are unaffected.
