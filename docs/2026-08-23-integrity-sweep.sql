@@ -1,0 +1,47 @@
+-- Accuracy sweep of the family allocations.  2026-08-23
+-- Migration: splits_allocate_in_proportion_to_what_the_family_holds
+--
+-- Prompted by Evan: "i want the numbers to be pretty darn close and the allocations to be
+-- accurate as to not mislead or confuse anyone." Three bugs that day had been the same shape —
+-- a family figure computed from unfiltered data — so rather than wait for the fourth, this
+-- swept for the class.
+--
+-- ── the sweep ────────────────────────────────────────────────────────────────
+-- Every function reading executed_trades, checked for whether it also reads allocations:
+--   refresh_prices, admin_import_trades, get_executed_trades, list_fund_symbols  -> correct,
+--     these are about ALL of Evan's trades by design
+--   admin_list_positions -> correct: it is the screen where he sorts personal vs family, so it
+--     must show whole positions. (Worth ADDING the family's share beside it one day.)
+--   everything else already reads allocations.
+--
+-- ── what it found ────────────────────────────────────────────────────────────
+-- The family "owned" MINUS 1.5 shares of OLOX:
+--
+--   2025-11-20  BUY  $44.95   5 units    Evan's, pre-fund, correctly NOT allocated
+--   2026-03-02  BUY  $28.95  30 units    family, allocated
+--   2026-05-08  adj   $0.00  -35 units   a 10:1 reverse split of the WHOLE 35-unit position
+--   2026-05-08  adj   $0.00  +3.5 units
+--
+--   30 - 35 + 3.5 = -1.5
+--
+-- ⚠️ A ZERO-DOLLAR ADJUSTMENT IS NOT A TRADE. A buy or sell is an event with its own size, so
+-- splitting it evenly across accounts is right. A split is a RESTATEMENT of a position somebody
+-- already holds, so it must follow ownership: the family's share of a split is their share of
+-- the position at that moment.
+--
+-- All 19 allocated zero-dollar rows were surveyed before changing anything. OLOX is the ONLY one
+-- where the family held less than the whole position (30 of 35). BJDX, BKYI, CXAI, LNKS, NXDT,
+-- QNCX and SMSI were 100% family-held, so allocating the whole split was correct and they are
+-- untouched. NXDT is off by 0.004 units on a 60-unit position — a rounding sliver, ignored.
+--
+-- Fixed: OLOX allocations scaled by 30/35, leaving the family with 3.0 units, which is what a
+-- 10:1 reverse split of their 30 shares should give. And admin_even_split_trades now allocates
+-- zero-dollar rows proportionally, skipping them entirely where the family holds none.
+--
+-- ── the standing checks (re-runnable) ────────────────────────────────────────
+--   over-allocated (family given more units than a trade held)     0
+--   allocated on a symbol not designated family                    1  (LCID, by hand, expected)
+--   family holding with negative units                             0
+--   allocation older than the account it belongs to                0
+--   trade split unevenly across the 33 accounts                    0
+--   family holding with no price                                   0
