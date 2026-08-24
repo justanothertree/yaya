@@ -371,6 +371,20 @@ So there is no Save button any more.
       what you contributed. Those are different numbers and the old sentence used one word for
       both.
 
+## 8m. The contact form
+
+- [ ] **Send yourself a test message.** It should arrive as before, and appear in Admin ->
+      Messages.
+- [ ] Send **four in a row from the same address**. The fourth should be refused with "your
+      earlier messages did arrive — this address has sent three within the hour". That wording
+      matters: the first three DID reach you.
+- [ ] ⚠️ **Then send one from a different address — it must still work.** That is the whole
+      point of the change. The old limit was 20 an hour counted across _everybody_, so one
+      spammer could silence the form for every real visitor for an hour, and this is the only
+      public way to reach you.
+- [ ] The refusal appears in brackets inside "That didn't send — nothing has been lost, your
+      message is still in the form."
+
 ## 9. Still waiting on a decision
 
 See `docs/OPEN-DECISIONS.md` — person colours in light theme, the LCID designation, and the

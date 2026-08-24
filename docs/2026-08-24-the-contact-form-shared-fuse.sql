@@ -1,0 +1,40 @@
+-- The contact form's rate limit was a shared fuse.   2026-08-24
+--   migration: the_contact_form_limit_stops_being_a_shared_fuse
+--
+-- ── the flaw ─────────────────────────────────────────────────────────────────
+-- submit_contact_message counted messages GLOBALLY: 20 in the last hour, from everybody
+-- together, then refuse.  So the protection and the attack were the same action.  One person
+-- sending 20 messages takes the form down for every real visitor for the next hour, and the only
+-- symptom those visitors get is "too many messages just now" for something they did not do.
+--
+-- This is the site's ONLY public way to reach Evan, and he has already said it "gives the
+-- impression it just doesn't work".  A limit whose failure mode is silencing strangers is the
+-- wrong shape for that.
+--
+-- (It was NOT the cause of his Formspree complaint — total messages ever: 2.  He never came
+-- close to the ceiling.  The flaw is real, it just had not fired yet.)
+--
+-- ── the shape it should have ─────────────────────────────────────────────────
+--   per sender: 3 an hour, matched case-insensitively on the email
+--   global:     60 an hour, kept only as a backstop against a spread-out flood, and raised high
+--               enough that one determined person hits their own limit long before it
+--
+-- ⚠️ The two refusals say DIFFERENT things on purpose.  "Your earlier messages did arrive — this
+-- address has sent three within the hour" is actionable and reassuring; "the form is unusually
+-- busy" is not the sender's fault.  Collapsing them into one message is how a working rate limit
+-- starts looking like a broken form.  Both surface verbatim: ContactForm.tsx renders
+-- `error.message` in brackets after "That didn't send".
+--
+-- ⚠️ Per-email is trivially bypassed by typing a different address, and that is fine — this is a
+-- spam speed bump on a personal site, not an identity check.  Per-IP was considered and rejected:
+-- it needs `request.headers`, which is populated under PostgREST and NULL everywhere else, so it
+-- would silently degrade to no limit at all with nothing to show for it.  See the memory note
+-- "signals that cannot fail" — this codebase has produced enough of those.
+--
+-- ── verified ─────────────────────────────────────────────────────────────────
+-- In a rolled-back transaction, as `anon`:
+--   * three messages from flood@example.invalid accepted
+--   * a fourth from FLOOD@Example.Invalid REFUSED (case-insensitive match works)
+--   * a message from a different address accepted while that sender was blocked
+--     — the exact case the old global limit failed
+--   * contact_messages unchanged afterwards (2 rows, as before)
