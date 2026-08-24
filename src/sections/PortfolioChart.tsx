@@ -23,7 +23,10 @@ const LINES = [
   {
     key: 'value' as const,
     label: 'Worth',
-    hint: 'What the holdings are worth at each day’s prices',
+    // ⚠️ "plus cash" is not a detail. The hint used to stop at "at each day's prices", which
+    // stopped being true when cash was folded into this line — and the summary card above the
+    // chart excludes cash from its own worth figure on purpose.
+    hint: 'What the holdings are worth at each day’s prices, plus cash from any sales',
     color: '#22cc78',
   },
   {
@@ -265,6 +268,14 @@ export function PortfolioChart({ timeline, title }: { timeline: Timeline; title?
               <span className="muted">{fullDate(p.date)}</span>
               {show.value && p.value != null && (
                 <span style={{ color: LINES[0].color, fontWeight: 700 }}>Worth {usd(p.value)}</span>
+              )}
+              {/* Only when there IS cash — otherwise this is a breakdown of one number into
+                  itself. With cash, it is the line that reconciles this chart against the card
+                  above it, which counts the shares only. */}
+              {show.value && p.value != null && p.cash > 0.005 && (
+                <span className="muted" style={{ fontSize: '0.78rem' }}>
+                  {usd(p.shares ?? 0)} in shares + {usd(p.cash)} cash
+                </span>
               )}
               {show.invested && (
                 <span style={{ color: LINES[1].color, fontWeight: 700 }}>

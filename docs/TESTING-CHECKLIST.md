@@ -385,6 +385,20 @@ So there is no Save button any more.
 - [ ] The refusal appears in brackets inside "That didn't send — nothing has been lost, your
       message is still in the form."
 
+## 8n. The chart and the sentence above it
+
+- [ ] ⚠️ **This one only shows up after you sell something for the family.** The chart's "Worth"
+      line includes cash from sales; the sentence above it counts only the shares, on purpose
+      ("never overstate what somebody has"). Both are deliberate — but both were called "Worth",
+      so the day you sell, the chart sits above the card with nothing explaining the gap. Sell 4
+      of 10 shares at cost and the chart would say $120 where the card says $60.
+- [ ] **Hover the chart after any sale**: under "Worth $X" there should now be a quieter line
+      reading "$Y in shares + $Z cash". Those two add to $X, and $Y is what the card above says.
+- [ ] With no cash (which is today — family cash is $0.00) that breakdown line should NOT
+      appear. Verified on the demo.
+- [ ] The legend hint for the green line now says "…plus cash from any sales". It used to claim
+      the line was holdings only, which stopped being true a while ago.
+
 ## 9. Still waiting on a decision
 
 See `docs/OPEN-DECISIONS.md` — person colours in light theme, the LCID designation, and the

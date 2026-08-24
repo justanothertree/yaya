@@ -58,8 +58,22 @@ export type SeriesPoint = {
   date: string
   invested: number
   promised: number
-  /** Market value that day — null before any price history exists. */
+  /**
+   * Everything theirs that day: shares at that day's prices PLUS uninvested cash — null before
+   * any price history exists.
+   *
+   * ⚠️ This is a DIFFERENT rule from `accountValue()` in portfolio.ts, which excludes cash on
+   * purpose ("never overstate what somebody has"). Both choices are deliberate and both are
+   * right for their own job — a headline should be conservative, a time series must not drop by
+   * the whole position the day something is sold. But they were both labelled "Worth", so the
+   * moment there is any cash the chart sits above the sentence above it with nothing to explain
+   * the gap. `shares` and `cash` are carried separately so the chart can show its working.
+   */
   value: number | null
+  /** The share half of `value`. */
+  shares: number | null
+  /** The cash half — proceeds of sales not yet reinvested. */
+  cash: number
 }
 
 const DAY = 86_400_000
@@ -135,17 +149,19 @@ export function buildDailySeries(t: Timeline, fromISO: string, toISO: string): S
       if (days > 0) promised += a.dollarPerDay * days
     }
 
-    let value: number | null = null
+    let shares: number | null = null
     for (const [sym, u] of units) {
       const p = lastPrice.get(sym)
       if (p == null || u <= 0) continue
-      value = (value ?? 0) + u * p
+      shares = (shares ?? 0) + u * p
     }
-    // Cash counts. Without it the "Worth" line dropped by the whole position every time
-    // something was sold, which is the same money-disappearing bug the accounts had.
-    if (cash > 0) value = (value ?? 0) + cash
+    // Cash counts toward the plotted line. Without it the "Worth" line dropped by the whole
+    // position every time something was sold, which is the same money-disappearing bug the
+    // accounts had. It is kept as its own field too, so the tooltip can say where the total
+    // came from rather than leaving it to disagree silently with the summary card.
+    const value = shares == null && cash <= 0 ? null : (shares ?? 0) + cash
 
-    out.push({ date: dayISO, invested, promised, value })
+    out.push({ date: dayISO, invested, promised, value, shares, cash })
   }
   return out
 }
