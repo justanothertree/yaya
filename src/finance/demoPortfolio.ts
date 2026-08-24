@@ -16,7 +16,7 @@ const START = '2026-01-01'
  */
 const PRICED = new Date(Date.now() - 86_400_000).toISOString()
 
-export const DEMO_PORTFOLIO: AccountPortfolio[] = [
+const DEMO_ACCOUNTS: AccountPortfolio[] = [
   {
     id: 'demo-1',
     name: 'Mom',
@@ -83,3 +83,26 @@ export const DEMO_PORTFOLIO: AccountPortfolio[] = [
     ],
   },
 ]
+
+/**
+ * ⚠️ The money-in figures are DERIVED from the holdings, never typed alongside them.
+ *
+ * Without them the demo was showing a family "behind the promise by $940.00" — the entire
+ * promise — beside its own chart reading "Net in $783.00, Promised $940.00", which is $157. And
+ * a "Gain on holdings" of +$803.85, exactly the portfolio's whole value, because a missing cost
+ * basis was being read as a basis of zero. Two contradictory answers and an impossible one, on
+ * the first screen anybody sees, about the numbers Evan most needs people to trust.
+ *
+ * The cause was `contributed ?? 0` in portfolioTotals (fixed there too). The cause of it going
+ * unnoticed is this file: it predates contributed/cash/heldBasis and nothing made it keep up.
+ *
+ * Deriving from `cost` is what stops that recurring. `demoTimeline()` builds the chart's "Net
+ * in" line by summing exactly these same `cost` values, so the sentence and the chart cannot
+ * disagree no matter how the sample holdings are edited later. There are no sells in the demo
+ * timeline, so contributed == basis and cash is zero — the same identity the real ledger would
+ * produce from the same events.
+ */
+export const DEMO_PORTFOLIO: AccountPortfolio[] = DEMO_ACCOUNTS.map((a) => {
+  const cost = a.holdings.reduce((sum, h) => sum + h.cost, 0)
+  return { ...a, contributed: cost, heldBasis: cost, cash: 0, ready: true }
+})

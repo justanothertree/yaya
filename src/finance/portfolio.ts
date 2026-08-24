@@ -447,11 +447,30 @@ export function aheadBehind(a: AccountPortfolio): number | null {
   return a.contributed - promised
 }
 
-/** Roll up invested / promised / ahead-behind across a set of accounts (only those with a promise). */
+/**
+ * Roll up invested / promised / ahead-behind across a set of accounts (only those with a promise).
+ *
+ * ⚠️ AN UNKNOWN IS NOT A ZERO. This used to add `a.contributed ?? 0` and `a.heldBasis ?? 0`,
+ * which quietly turned "we don't know what was put in" into "nothing was put in". The
+ * single-account `aheadBehind()` three functions up refuses to answer in exactly that case —
+ * the rollup answered anyway, and answered wrong in the most alarming possible direction:
+ * behind by the ENTIRE promise, plus a gain equal to the entire portfolio (value minus a basis
+ * of zero). The signed-out demo showed exactly that, contradicting its own chart on the same
+ * screen.
+ *
+ * The same drift has now bitten this module twice — get_my_portfolio vs admin_get_portfolios,
+ * and now aheadBehind vs portfolioTotals. Two functions answering one question must agree about
+ * what they don't know, not just about what they do.
+ *
+ * So the derived figures are nullable, and null means "not knowable", which the UI must render
+ * as a sentence rather than a number.
+ */
 export function portfolioTotals(accounts: AccountPortfolio[]): {
-  invested: number
+  /** null when any tracked account has no contribution figure — see above */
+  invested: number | null
   promised: number
-  aheadBehind: number
+  /** null when `invested` is */
+  aheadBehind: number | null
   tracked: number
   /** Combined $/day promise across the tracked accounts (for the runway figure). */
   dailyRate: number
@@ -459,10 +478,10 @@ export function portfolioTotals(accounts: AccountPortfolio[]): {
   value: number
   /** proceeds from sales not yet reinvested — theirs, but not yet invested */
   cash: number
-  /** what the held shares cost, at average basis */
-  basis: number
-  /** value minus basis, and the same as a percentage (null when nothing is held) */
-  gain: number
+  /** what the held shares cost, at average basis; null when any account's basis is unknown */
+  basis: number | null
+  /** value minus basis, and the same as a percentage (null when either is unknown) */
+  gain: number | null
   gainPercent: number | null
   /** false when no account has any allocated trades — show "being set up", not a number */
   ready: boolean
@@ -474,6 +493,8 @@ export function portfolioTotals(accounts: AccountPortfolio[]): {
   let value = 0
   let cash = 0
   let basis = 0
+  let knowContributed = true
+  let knowBasis = true
   // Same rule as aheadBehind(): money IN versus money promised, never market value.
   let ready = true
   for (const a of accounts) {
@@ -481,23 +502,28 @@ export function portfolioTotals(accounts: AccountPortfolio[]): {
     if (p == null) continue
     if (a.ready === false) ready = false
     tracked++
-    invested += a.contributed ?? 0
+    if (a.contributed == null) knowContributed = false
+    else invested += a.contributed
+    if (a.heldBasis == null) knowBasis = false
+    else basis += a.heldBasis
     value += accountValue(a)
     cash += a.cash ?? 0
-    basis += a.heldBasis ?? 0
     promised += p
     dailyRate += a.dollarPerDay
   }
-  const gain = value - basis
+  const investedOrNull = knowContributed ? invested : null
+  const basisOrNull = knowBasis ? basis : null
+  const gain = basisOrNull == null ? null : value - basisOrNull
   return {
-    invested,
+    invested: investedOrNull,
     promised,
-    aheadBehind: invested - promised,
+    aheadBehind: investedOrNull == null ? null : investedOrNull - promised,
     value,
     cash,
-    basis,
+    basis: basisOrNull,
     gain,
-    gainPercent: basis > 0 ? (gain / basis) * 100 : null,
+    gainPercent:
+      gain != null && basisOrNull != null && basisOrNull > 0 ? (gain / basisOrNull) * 100 : null,
     tracked,
     dailyRate,
     ready,

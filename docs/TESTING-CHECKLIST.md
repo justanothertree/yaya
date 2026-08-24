@@ -349,6 +349,28 @@ So there is no Save button any more.
       real rows in it, since it needs your admin session. The styling and mobile widths are
       verified (no sideways scroll at 375px), the content is not.
 
+## 8l. The demo was lying, and so was the rollup
+
+- [ ] ⚠️ **Open Investments signed out** (or in a private window). It should now read:
+      "There's $803.85 in the fund for 4 people right now — those shares are +2.7% up on the
+      $783.00 they cost. The money put in so far is $157.00 short of the dollar-a-day promise."
+      **Before today it said "gain +$803.85" and "behind the promise −$940.00"** — a gain equal
+      to the whole portfolio and a shortfall equal to the whole promise, sitting above its own
+      chart which said $783 in and $940 promised.
+- [ ] Check the three tiles against the chart yourself: 803.85 − 783.00 = 20.85, 940 − 783 = 157,
+      157 ÷ 4 = 39 days. Every number on that screen should reconcile with every other one.
+- [ ] Expand the four demo people: −$24, −$85, −$53, +$5. Those add to −$157.
+- [ ] 🔒 **The real fix is behind the demo.** `portfolioTotals` was adding `contributed ?? 0`,
+      so an account whose contribution isn't known counted as having had nothing put in. Any
+      real account in that state would have dragged the family total to "behind by everything".
+      It now refuses to answer instead, and the page says "Still being set up".
+- [ ] ⚠️ If you ever see **"Still being set up"** on your own signed-in view, that is this new
+      refusal firing — it means one of your accounts has no contribution figure, not that
+      something is broken. Tell me and I will find which one.
+- [ ] The wording changed: it says "in the fund" for what it's worth and "the money put in" for
+      what you contributed. Those are different numbers and the old sentence used one word for
+      both.
+
 ## 9. Still waiting on a decision
 
 See `docs/OPEN-DECISIONS.md` — person colours in light theme, the LCID designation, and the

@@ -1262,13 +1262,14 @@ function Stat({
 function ScheduleSummary({ accounts }: { accounts: AccountPortfolio[] }) {
   const t = portfolioTotals(accounts)
   if (t.tracked === 0) return null
-  const ahead = t.aheadBehind >= 0
-  const days = runwayDays(t.aheadBehind, t.dailyRate)
-
   /* Nothing has been declared as set aside yet, so there is no honest ahead/behind to show.
      The fund is commingled, so it cannot be inferred from the trades either — saying so is the
-     accurate answer, and better than showing somebody's family a confident wrong number. */
-  if (!t.ready)
+     accurate answer, and better than showing somebody's family a confident wrong number.
+
+     ⚠️ `aheadBehind == null` belongs in this condition too: an account that simply never
+     reported a contribution is the same situation as one the server marked "not ready", and
+     before this it fell through to the numbers below and rendered as behind-by-everything. */
+  if (!t.ready || t.aheadBehind == null)
     return (
       <article className="card" style={{ display: 'grid', gap: '0.5rem' }}>
         <strong>Still being set up</strong>
@@ -1280,7 +1281,11 @@ function ScheduleSummary({ accounts }: { accounts: AccountPortfolio[] }) {
       </article>
     )
 
-  const up = t.gain >= 0
+  /* Computed AFTER the guard above, so these are plain numbers rather than maybe-nulls. */
+  const behindBy = t.aheadBehind
+  const ahead = behindBy >= 0
+  const days = runwayDays(behindBy, t.dailyRate)
+  const up = (t.gain ?? 0) >= 0
   const pct =
     t.gainPercent == null ? null : `${up ? '+' : '−'}${Math.abs(t.gainPercent).toFixed(1)}%`
 
@@ -1295,9 +1300,12 @@ function ScheduleSummary({ accounts }: { accounts: AccountPortfolio[] }) {
   return (
     <article className="card" style={{ display: 'grid', gap: '0.7rem' }}>
       <p style={{ margin: 0, fontSize: '1.05rem', lineHeight: 1.5 }}>
-        There&apos;s <strong>{usd(t.value)}</strong> invested for {t.tracked}{' '}
+        {/* "in the fund", not "invested" — the next clause talks about money PUT IN, which is a
+            different figure, and using one word for both is what made the two halves of this
+            sentence look like they contradicted each other. */}
+        There&apos;s <strong>{usd(t.value)}</strong> in the fund for {t.tracked}{' '}
         {t.tracked === 1 ? 'person' : 'people'} right now
-        {pct && (
+        {pct && t.basis != null && (
           <>
             {' '}
             — those shares are{' '}
@@ -1317,7 +1325,10 @@ function ScheduleSummary({ accounts }: { accounts: AccountPortfolio[] }) {
         )}{' '}
         {ahead
           ? `The dollar-a-day promise is being kept, and then some.`
-          : `That's ${usd(Math.abs(t.aheadBehind))} short of the dollar-a-day promise so far.`}
+          : /* ⚠️ Names the quantity. "That's $157 short" after a sentence whose only figure was
+                $803.85 of worth invites the reader to subtract the wrong pair of numbers and get
+                $136.15 — the promise is measured against money put in, never against value. */
+            `The money put in so far is ${usd(Math.abs(behindBy))} short of the dollar-a-day promise.`}
       </p>
 
       {/**
@@ -1331,14 +1342,19 @@ function ScheduleSummary({ accounts }: { accounts: AccountPortfolio[] }) {
        * beside half a row of empty space and read as three unrelated blocks.
        */}
       <div className="fund-stats">
-        <Stat
-          label={up ? 'Gain on holdings' : 'Loss on holdings'}
-          value={`${up ? '+' : '−'}${usd(Math.abs(t.gain))}`}
-          color={up ? '#22cc78' : '#f46b6b'}
-        />
+        {/* Only when the basis is actually known. A "gain" measured against a missing basis
+            is just the portfolio's whole value wearing a plus sign — which is precisely what
+            the signed-out demo was showing. */}
+        {t.gain != null && (
+          <Stat
+            label={up ? 'Gain on holdings' : 'Loss on holdings'}
+            value={`${up ? '+' : '−'}${usd(Math.abs(t.gain))}`}
+            color={up ? '#22cc78' : '#f46b6b'}
+          />
+        )}
         <Stat
           label={ahead ? 'Ahead of the promise' : 'Behind the promise'}
-          value={`${ahead ? '+' : '−'}${usd(Math.abs(t.aheadBehind))}`}
+          value={`${ahead ? '+' : '−'}${usd(Math.abs(behindBy))}`}
           color={ahead ? '#22cc78' : '#f46b6b'}
         />
         {days != null && (
