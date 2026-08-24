@@ -1,0 +1,44 @@
+-- The two portfolio RPCs stop being copies of each other.   2026-08-24
+--   migration: one_account_payload_for_the_member_and_the_admin
+--
+-- ── the duplication ──────────────────────────────────────────────────────────
+-- public.get_my_portfolio() and public.admin_get_portfolios() carried the SAME ~30 lines of
+-- account payload, character for character: 'ready', 'contributed', 'cash', 'heldBasis', and the
+-- entire holdings subquery down to the `having abs(...) > 0.000001`.  The only real differences
+-- were the three owner fields, which accounts are selected, and the sort.
+--
+-- That is not theoretical debt.  It has DRIFTED TWICE, and both times the symptom was a
+-- family-facing figure reading "Put in $0.00" — a field added to one sibling and forgotten in the
+-- other.  The member-facing one is the copy nobody looks at, so it is the one that goes wrong.
+--
+-- Same shape as two findings in the frontend the same day:
+--   * portfolioTotals summed `contributed ?? 0` while aheadBehind() three lines above returned
+--     null for the same unknown;
+--   * AccountCard computed its own cost basis while accountGain() — written for exactly that,
+--     exported, documented — had no callers at all.
+-- Two answers to one question, every time.
+--
+-- ── the shape now ────────────────────────────────────────────────────────────
+-- finance.account_payload(uuid) is the single definition.  Revoked from everyone; reached only
+-- through the two public wrappers, which keep their own gates:
+--
+--   get_my_portfolio()     -> auth.uid() or raise, then `where fa.user_id = v_uid`
+--   admin_get_portfolios() -> auth.uid() and is_admin() or raise, every account
+--
+-- ⚠️ The admin version MERGES the owner fields on top with `||` rather than restating the
+-- object.  That is the whole point: a field added to account_payload reaches both callers by
+-- construction, and there is no second object to forget to update.
+--
+-- ── verified ─────────────────────────────────────────────────────────────────
+-- Behaviour-preserving, proved rather than assumed — md5 of each function's ENTIRE output,
+-- captured before the migration and again after:
+--
+--   get_my_portfolio      2cb9eef995708393623730c6aaa5a04a -> 2cb9eef995708393623730c6aaa5a04a
+--   admin_get_portfolios  1eb690c5be090059439b673287d97f7f -> 1eb690c5be090059439b673287d97f7f
+--
+-- 33 accounts each, byte-identical including key order and row order.
+--
+-- Gates re-checked after the rewrite:
+--   * a signed-in non-admin calling admin_get_portfolios -> "admin only"
+--   * that same non-admin calling get_my_portfolio -> 0 accounts (not an error, not a leak)
+--   * anon calling get_my_portfolio -> "permission denied for function get_my_portfolio"

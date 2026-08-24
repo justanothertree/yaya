@@ -438,6 +438,24 @@ So there is no Save button any more.
 - [ ] The gain now comes from the same basis as the fund summary and Admin -> Reconcile, so a
       member's percentage and your percentage cannot disagree about the same shares.
 
+## 8q. Two copies that kept drifting, now one
+
+- [ ] ⚠️ **Nothing should look different.** `get_my_portfolio` (what a family member gets) and
+      `admin_get_portfolios` (what you get) held the same 30 lines of account payload, character
+      for character. They have drifted twice, and both times you saw "Put in $0.00" — a field
+      added to one and forgotten in the other. They now share one definition, and the admin one
+      merges the owner fields on top rather than restating the object.
+- [ ] I proved this changed nothing rather than assuming it: the md5 of each function's entire
+      output, captured before and after, is identical across all 33 accounts — same values, same
+      key order, same row order.
+- [ ] Open Investments and confirm your figures are exactly as they were. Anything that moved is
+      a bug in my refactor, not a correction.
+- [ ] 🔒 Gates re-checked: a non-admin gets "admin only" from the admin one and an empty list
+      (not an error) from their own; signed-out gets "permission denied".
+- [ ] Also removed: two dead helpers in `portfolio.ts` that computed gain against net cash — the
+      formula behind the old "+127.8%". Nothing called them. Bodies kept in
+      `docs/2026-08-24-dead-exports-in-the-money-math.md`.
+
 ## 9. Still waiting on a decision
 
 See `docs/OPEN-DECISIONS.md` — person colours in light theme, the LCID designation, and the
