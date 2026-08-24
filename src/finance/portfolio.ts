@@ -340,34 +340,17 @@ export async function adminSetPrice(symbol: string, price: number): Promise<void
   if (error) throw error
 }
 
-/** Market value + gain/loss across an account's PRICED holdings. Null until any price is
- *  cached. Deliberately separate from the ahead/behind schedule, which stays cost-vs-promised. */
-export function accountMarket(a: AccountPortfolio): {
-  value: number
-  gain: number
-  priced: number
-  unpriced: number
-} | null {
-  let value = 0
-  let cost = 0
-  let priced = 0
-  let unpriced = 0
-  for (const h of a.holdings) {
-    if (h.price == null) {
-      unpriced++
-      continue
-    }
-    priced++
-    value += h.units * h.price
-    cost += h.cost
-  }
-  if (priced === 0) return null
-  return { value, gain: value - cost, priced, unpriced }
-}
-
-/** Total dollars invested (at cost) across an account's holdings. */
-export const accountTotalCost = (a: AccountPortfolio): number =>
-  a.holdings.reduce((s, h) => s + h.cost, 0)
+// ⚠️ REMOVED 2026-08-24: accountMarket() and accountTotalCost(). Both were dead — no caller
+// anywhere in src, server or scripts — and both summed `h.cost` across holdings, which is NET
+// CASH (buys minus sells). `heldBasis` six lines up says in as many words why that is the wrong
+// quantity: for a churned symbol it can be negative while real shares are still held.
+//
+// accountMarket() went further and returned `gain: value - cost` from it — the superseded
+// formula that reported this fund as "+127.8%" while its holdings were down 11.9%.
+//
+// Left in place they were a loaded gun sitting beside the right answer, with a docstring
+// advertising themselves as "market value + gain/loss". Use accountValue() and accountGain().
+// docs/2026-08-24-dead-exports-in-the-money-math.md has the full bodies if either is ever wanted.
 
 /** Current worth of what's reserved for this account = units × price (priced holdings only).
  *  This is the family fund's basis instead of at-cost: a churned symbol (bought and sold over
