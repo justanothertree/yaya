@@ -111,3 +111,46 @@ removed the terminal, not the download.
 
 ⚠️ Two bugs found doing it, both worth remembering — see the relay notes in
 `docs/2026-08-23-import-from-the-site.sql`.
+
+---
+
+## 9. Tax-aware selling — the motivation Evan hadn't named until now
+
+Raised 2026-08-23. **"Since I'm the one buying and selling I'm the one paying the taxes, so
+ideally I would rotate trades over time and only sell family fund positions if they've been held
+long enough — unless I would make a lot of money in a short term sell that would cover any taxes
+easily."**
+
+This changes what the Investments page is FOR. It is not only a report for the family; it is a
+decision tool for Evan, and the decision is _when may I sell without it costing me_.
+
+**Where things stand today**, computed from the allocations:
+
+|                           |                            |
+| ------------------------- | -------------------------- |
+| family lots held          | 316                        |
+| earliest purchase         | 2025-12-10                 |
+| cost basis, long-term     | **$0.00**                  |
+| cost basis, short-term    | **$15,483.88 — all of it** |
+| first lots turn long-term | **2026-12-11** (109 days)  |
+
+Every family share is short-term. Selling anything today is taxed as ordinary income, not at
+capital-gains rates. That is worth knowing before the next temptation — and it retroactively
+justifies not selling SPCE in June at +170%, which would have been a short-term gain.
+
+**What to build.** Per holding: how much is already long-term, how much isn't, and the date the
+next tranche crosses over. A "sellable without a tax penalty" figure alongside "worth today".
+Lot-level detail exists already — every allocation carries its trade's date.
+
+**Open questions:**
+
+- Wash sales. Selling at a loss and rebuying the same symbol within 30 days disallows the loss.
+  The daily dollar-a-day buying makes this near-guaranteed on any family symbol he sells at a
+  loss. Worth flagging in the UI, at minimum.
+- The exception he named — a short-term gain big enough to cover its own tax — needs his marginal
+  rate to compute, which is personal information the site does not have and arguably should not
+  store. A rate he can type per-session, or a simple "assume X%", may be enough.
+- Lot selection (FIFO vs specific-lot) changes the answer, and brokers differ in what they allow.
+
+**Cost of waiting:** he keeps making sell decisions without the one number that decides whether
+they cost him money.
