@@ -481,6 +481,29 @@ function BlockEditRow({
   isFirst: boolean
   isLast: boolean
 }) {
+  /**
+   * Bring the row you just opened into view.
+   *
+   * The list is long enough that the row you tap can be off-screen entirely by the time it
+   * expands — and a control you cannot see is a control that does not work.
+   */
+  const rowRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!open) return
+    const el = rowRef.current
+    if (!el) return
+    const r = el.getBoundingClientRect()
+    if (r.top >= 0 && r.top < window.innerHeight * 0.5) return // already comfortably in view
+    /**
+     * ⚠️ 'auto', not 'smooth'. Smooth scrolling is an animation, and an animation that does not
+     * run leaves you exactly where you were — measured here doing nothing at all while 'auto'
+     * moved 1260px. Same family as requestAnimationFrame never firing in a hidden tab. This is
+     * the fix for "editing doesn't work", so it has to be the version that can be verified,
+     * not the prettier one. And it answers a tap, where instant reads as responsive anyway.
+     */
+    el.scrollIntoView({ block: 'start', behavior: 'auto' })
+  }, [open])
+
   const setCfg = (patch: Record<string, unknown>) =>
     onChange({ ...block, config: { ...block.config, ...patch } })
   const cycleSize = () =>
@@ -499,7 +522,7 @@ function BlockEditRow({
    * inside the block you opened.
    */
   return (
-    <div className="card profile-editrow" data-open={open || undefined}>
+    <div className="card profile-editrow" data-open={open || undefined} ref={rowRef}>
       <div className="profile-editrow-head">
         <button
           type="button"
@@ -524,29 +547,6 @@ function BlockEditRow({
             ✕
           </button>
         </span>
-      </div>
-      {/**
-       * The block itself, exactly as a reader sees it — same component, same props.
-       *
-       * The editor used to REPLACE the page with a list of labelled rows, so arranging your
-       * profile meant reasoning about it rather than looking at it ("too divorced from the
-       * actual page, hard to understand what's going on"). Now the page is what you edit; the
-       * controls sit around it.
-       */}
-      <div className="profile-editrow-preview">
-        {isBlockEmpty(block) ? (
-          <p className="muted" style={{ margin: 0, fontSize: '0.85rem' }}>
-            Nothing in this one yet — {open ? 'fill it in below' : 'tap to fill it in'}.
-          </p>
-        ) : (
-          <BlockView
-            block={block}
-            activity={activity}
-            snakeBest={snakeBest}
-            username={username}
-            isMe
-          />
-        )}
       </div>
       {!open ? null : (
         <>
@@ -659,6 +659,37 @@ function BlockEditRow({
           </div>
         </>
       )}
+
+      {/**
+       * The block as a reader sees it — same component, same props.
+       *
+       * ⚠️ BELOW the controls, not above them. It used to sit between the header and the editor,
+       * which put the controls 152px further down: on a phone you tapped a block and NOTHING
+       * VISIBLY CHANGED, because everything that opened was below the fold. That reads as
+       * "editing doesn't work, I can only add blocks and rearrange", which is exactly what it
+       * was reported as.
+       *
+       * Underneath is the better place regardless: you change a setting and watch the result
+       * move directly beneath your finger.
+       */}
+      <div className="profile-editrow-preview">
+        {open && (
+          <div className="muted profile-editrow-previewlabel">How it looks on your page</div>
+        )}
+        {isBlockEmpty(block) ? (
+          <p className="muted" style={{ margin: 0, fontSize: '0.85rem' }}>
+            Nothing in this one yet — {open ? 'fill it in above' : 'tap to fill it in'}.
+          </p>
+        ) : (
+          <BlockView
+            block={block}
+            activity={activity}
+            snakeBest={snakeBest}
+            username={username}
+            isMe
+          />
+        )}
+      </div>
     </div>
   )
 }

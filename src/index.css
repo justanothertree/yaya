@@ -4058,6 +4058,15 @@ select {
 .profile-editrow-preview {
   margin-top: 0.15rem;
 }
+/* Only while open: says what the thing below it IS, now that controls come first. */
+.profile-editrow-previewlabel {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin: 0.6rem 0 0.3rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--b1, rgba(127, 127, 127, 0.12));
+}
 .profile-editrow-preview > .profile-block {
   background: none;
   border: 0;
