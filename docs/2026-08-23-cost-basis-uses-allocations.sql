@@ -1,0 +1,28 @@
+-- WEN said $4.28 average cost. Robinhood says $8.02. Robinhood was right.  2026-08-23
+-- Migration: held_avg_costs_uses_the_family_allocations
+--
+-- finance._held_avg_costs() computes the FAMILY's cost basis — every caller joins it to
+-- symbol_designations ... is_family — but it walked `executed_trades` UNFILTERED, i.e. Evan's
+-- whole personal history in that symbol. WEN carries a zero-dollar row dated 2025-12-01, an
+-- import unit-correction on his own pre-fund holding, and the replay treats zero-dollar rows as
+-- "split: units only":
+--
+--   allocated to family   $275.25 / 34.307375 units  ->  $8.0231   ← Robinhood agrees
+--   plus that adjustment  $275.25 / 64.310000 units  ->  $4.2800   ← what the page showed
+--
+-- 30 free units, no cost, average halved, gain doubled: it claimed +110.5% on a holding that is
+-- really +12.3%. Confident and specific and wrong, on a page built to be trusted.
+--
+-- ⚠️ THE RULE, AGAIN: anything describing the family's money reads the ALLOCATIONS, never the raw
+-- trades. executed_trades is Evan's whole life; allocations are the part that is theirs. This is
+-- the same mistake as allocations predating the fund, in a different function — third time this
+-- week that a family figure was computed from an unfiltered table.
+--
+-- A genuine split of a position the family holds still behaves: it arrives as a zero-dollar row
+-- that IS allocated, so it adds units without cost, exactly as intended.
+--
+-- After, checked against the broker:
+--   WEN   avg $8.0231  price $9.01   +12.3%   (Evan: "up like 12 percent", Robinhood avg $8.02)
+--   BTC   avg $71,921  price $77,658  +8.0%
+--   MDLN  avg $37.22   price $34.26   -8.0%
+--   SPCE  avg $2.9257  price $3.08    +5.3%
