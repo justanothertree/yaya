@@ -999,6 +999,28 @@ function AccountCard({
             })}
           </span>
         )}
+        {/**
+         * ⚠️ Cash, on the card a family member actually looks at.
+         *
+         * "Worth today" is the SHARES only — accountValue() leaves cash out on purpose so the
+         * headline never overstates what somebody has. That is the right call, but it means
+         * that when Evan sells something of theirs, this number drops by the whole position and
+         * nothing on this card says where the money went.
+         *
+         * The fund-level summary does explain it — and a family member never sees the fund-level
+         * summary: it only renders for someone with more than one account, and they have one.
+         * So for the exact person this page exists for, their own cash was invisible.
+         *
+         * Evan's rule, in his words: "i want any profits of a sale to be cash for them to be
+         * reinvested" and "i want them to keep their own profits". Money that silently vanishes
+         * from the only screen they read is the opposite of that.
+         */}
+        {(account.cash ?? 0) > 0.005 && (
+          <span style={{ fontSize: '0.84rem' }}>
+            Plus <strong>{usd(account.cash ?? 0)}</strong> in cash from sales —{' '}
+            <span className="muted">still yours, waiting to be invested.</span>
+          </span>
+        )}
         {(gain || ab != null) && (
           <div className="cz-num" style={{ fontSize: '0.84rem' }}>
             {gain && (
@@ -1026,8 +1048,12 @@ function AccountCard({
             ? ` (updated ${new Date(pricedAsOf).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })})`
             : ''}
           . <strong>Since bought</strong> compares that to what was paid for them.{' '}
-          <strong>Ahead / behind</strong> compares it to the {usd(account.dollarPerDay)}/day you’re
-          promised — ahead means more is saved up than promised so far.
+          <strong>Ahead / behind</strong> compares what has been put in for you to the{' '}
+          {usd(account.dollarPerDay)}/day you’re promised — ahead means more has been put in than
+          promised so far. It is never about the value going up or down.
+          {(account.cash ?? 0) > 0.005 &&
+            ` Cash from sales is counted separately from “worth today”, because it isn’t in shares
+             right now — it is still yours either way.`}
           {unpriced > 0 &&
             ` A few holdings aren’t priced yet (${holdings.length - unpriced} of ${holdings.length} shown).`}
         </p>

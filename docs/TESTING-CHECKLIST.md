@@ -399,6 +399,22 @@ So there is no Save button any more.
 - [ ] The legend hint for the green line now says "…plus cash from any sales". It used to claim
       the line was holdings only, which stopped being true a while ago.
 
+## 8o. Cash, on the card a family member actually reads
+
+- [ ] ⚠️ **The one that mattered most.** "Worth today" on a person's own card is the SHARES
+      only — cash from sales is deliberately left out so the headline never overstates what
+      somebody has. The fund-level card did explain the cash… and **a family member never sees
+      the fund-level card**: it only renders for someone with more than one account, and they
+      have exactly one. So when you sold something of theirs, their number dropped by the whole
+      position and nothing anywhere told them where the money went.
+- [ ] After any sale, their card should now read **"Plus $X in cash from sales — still yours,
+      waiting to be invested."** directly under the big number. Verified rendering at 375px and
+      1280px with a temporary $42.50 (reverted).
+- [ ] The ⓘ panel now says ahead/behind compares **what has been put in**, not the value, and
+      explains why cash sits outside "worth today". The old wording said "compares it", where
+      "it" was the value — the exact thing you said ahead/behind must never be about.
+- [ ] With no cash the line does not appear at all.
+
 ## 9. Still waiting on a decision
 
 See `docs/OPEN-DECISIONS.md` — person colours in light theme, the LCID designation, and the
