@@ -4,6 +4,7 @@ import { UsagePanel } from '../components/UsagePanel'
 import { FundPanel } from '../components/FundPanel'
 import { MessagesPanel } from '../components/MessagesPanel'
 import { ImportPanel } from '../components/ImportPanel'
+import { ReconcilePanel } from '../components/ReconcilePanel'
 
 type Invite = {
   id: string
@@ -62,7 +63,7 @@ const inviteLink = (token: string) => `${SITE_URL}/#invite?token=${token}`
 export function AdminPanel() {
   const sb = getSupabaseClient()
   const [tab, setTab] = useState<
-    'invites' | 'members' | 'snake' | 'fund' | 'import' | 'messages' | 'usage'
+    'invites' | 'members' | 'snake' | 'fund' | 'import' | 'reconcile' | 'messages' | 'usage'
   >('invites')
   const [invites, setInvites] = useState<Invite[]>([])
   const [members, setMembers] = useState<Member[]>([])
@@ -316,6 +317,8 @@ export function AdminPanel() {
         {tabBtn('fund', 'Fund')}
         {/* Broker CSVs, without a terminal or a service-role key on a command line. */}
         {tabBtn('import', 'Import')}
+        {/* Verifying the numbers against the brokers, without needing anyone else. */}
+        {tabBtn('reconcile', 'Reconcile')}
         {/* The contact form's actual record. The email is a ping; this is what arrived. */}
         {tabBtn('messages', 'Messages')}
         {/* Operational, not social — what the paid services are costing, in the one place
@@ -326,6 +329,8 @@ export function AdminPanel() {
       {tab === 'fund' && <FundPanel />}
 
       {tab === 'import' && <ImportPanel />}
+
+      {tab === 'reconcile' && <ReconcilePanel />}
 
       {tab === 'messages' && <MessagesPanel />}
 

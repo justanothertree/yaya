@@ -4088,6 +4088,49 @@ select {
   gap: 0.9rem 1.4rem;
 }
 
+/* ── Admin: reconciling against the brokers ────────────────────────────────── */
+/* The table is wide by nature — six columns of figures. It scrolls INSIDE this box so the page
+   itself never scrolls sideways, which is the rule everywhere else on the site too. */
+.reconcile-scroll {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+table.reconcile {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 0.84rem;
+  white-space: nowrap;
+}
+table.reconcile th,
+table.reconcile td {
+  padding: 0.4rem 0.6rem;
+  text-align: left;
+  border-bottom: 1px solid var(--b1, rgba(127, 127, 127, 0.12));
+}
+table.reconcile th {
+  color: var(--muted);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  position: sticky;
+  top: 0;
+  background: var(--card, var(--bg));
+}
+/* Figures line up only if they share a width per digit — otherwise comparing a column against a
+   broker's screen is guesswork. */
+table.reconcile .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+table.reconcile tr:last-child td {
+  border-bottom: 0;
+}
+.reconcile-bad {
+  color: #f46b6b;
+  font-weight: 700;
+}
+
 /* ── Admin: importing a broker CSV ─────────────────────────────────────────── */
 .import-drop {
   display: flex;

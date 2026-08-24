@@ -1,0 +1,35 @@
+-- Checking the numbers against the brokers, without needing me.  2026-08-23
+-- Migration: reconciliation_check_the_numbers_against_the_brokers
+--
+-- Evan: "until i am confident in the working system and continued accuracy of the investments i
+-- do not want to introduce it to any family member and i think i can solo test until then."
+--
+-- Every accuracy problem so far was caught the same way: he looked at a figure, said "that's not
+-- right", and a one-off query went hunting. WEN's average cost. The SPCE sales he knew he had
+-- never made. The +127.8% that was measuring churn. That worked, but it depends on him spotting
+-- something, and it does not scale to a weekly import. Admin -> Reconcile makes the check his,
+-- repeatable, and about two minutes.
+--
+-- ── two halves ───────────────────────────────────────────────────────────────
+--
+-- checks   the six integrity tests run by hand during the 2026-08-23 sweep, now standing. Each
+--          returns a count that should be zero AND says what a non-zero would mean, so a finding
+--          is actionable rather than alarming:
+--            1 family given more units than a trade held
+--            2 a family holding with negative units          (the OLOX bug)
+--            3 allocation older than the account it belongs to (the pre-fund bug)
+--            4 trade split unevenly across accounts
+--            5 family holding with no price
+--            6 price older than three days
+--
+-- symbols  family units / personal units / whole position, per symbol, with the family's average
+--          cost beside the current price.
+--
+-- ⚠️ THE LAST THREE COLUMNS ARE THE POINT. The whole position is what the broker shows him. If
+-- family + personal equals it, the allocation is right BY CONSTRUCTION — the strongest check
+-- available, and it needs no family member to be involved. A NEGATIVE personal share is the one
+-- number on the screen that is always a bug rather than a fact, so it renders in red.
+--
+-- Verified: all six checks return 0; 97 positions; SPCE reads whole 1701.262180, family
+-- 1680.257279, personal 21.004901, avg cost $2.9257. A non-admin gets "admin only"; anon gets
+-- "permission denied".
