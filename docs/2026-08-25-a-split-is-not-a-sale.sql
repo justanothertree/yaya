@@ -1,0 +1,61 @@
+-- A reverse split was eating the cost basis, and a uuid decided how much.  2026-08-25
+-- Migration: account_basis_a_split_is_not_a_sale
+--
+-- ── what was wrong ───────────────────────────────────────────────────────────
+-- finance.account_basis() -- the function behind the `heldBasis` on the Investments page --
+-- decided what a row MEANT from its units alone:
+--
+--   if r.units > 0 then  ...buy...
+--   elsif r.units < 0 then  ...sale: drop the cost at the average...
+--
+-- A reverse split imports as a zero-dollar PAIR on one day (QNCX 2026-04-13: -300 units, then
+-- +30 units, both $0.00). The negative leg has negative units, so it was processed as a sale and
+-- took the position's cost with it. The positive leg then re-added the shares for free. Basis to
+-- zero, gain inflated by exactly the basis.
+--
+-- finance._held_avg_costs() has had the correct three-way branch all along -- buy / sell /
+-- "split: units only" -- which is why the two functions disagreed by $174.85 on a $13k book and
+-- nobody could see which was right. This is the same lesson as 76ddd16 ("a split is a
+-- restatement, not a trade"), which fixed ALLOCATION and left basis alone.
+--
+-- ⚠️ AND IT WAS NOT EVEN CONSISTENTLY WRONG. The two legs are separate trades on the same day,
+-- so `order by et.execution_time, et.id` broke the tie on a random uuid. Where the negative leg
+-- sorted first the basis went to exactly $0.00; where the positive leg sorted first a sliver
+-- survived the pro-rata. Seven positions, three different wrong answers, chosen by coin flip:
+--
+--                page said   should be     lost
+--   QNCX           $0.00       $30.72     $30.72
+--   SMSI           $6.03       $36.18     $30.15
+--   CXAI           $0.00       $27.38     $27.38
+--   OLOX           $2.63       $28.95     $26.32
+--   BJDX           $0.00       $25.30     $25.30
+--   BKYI           $0.00       $22.40     $22.40
+--   LNKS           $0.05       $12.71     $12.66
+--                                        -------
+--                                        $174.93
+--
+-- ── the fix ──────────────────────────────────────────────────────────────────
+-- The branch now matches _held_avg_costs() exactly: a row is a sale only if it took money OUT
+-- (dollars < 0 AND units < 0). A zero-dollar unit change restates what is already held -- units
+-- move, dollars stand -- which also makes the result independent of the uuid tie-break.
+--
+-- Deliberately NO clamp in the split branch. The legs arrive separately, so units pass through
+-- zero between them; zeroing the cost there would throw the basis away exactly as the old sale
+-- branch did.
+--
+-- ── verified ─────────────────────────────────────────────────────────────────
+--   fund held basis   $13,247.19 -> $13,422.09   (+$174.90)
+--
+-- Predicted $174.93 by hand from the table above; the 3c is 33 accounts each rounding to 2dp.
+--
+-- Cross-checked against a wholly independent path -- sum over symbols of
+-- (units held x _held_avg_costs.avg_cost), which never goes near account_basis:
+--
+--   symbol-level   $13,422.04
+--   account-level  $13,422.09
+--   gap                 $0.05      (was $174.85)
+--
+-- Two implementations, five cents apart, both rounding.
+--
+-- ⚠️ The numbers on the page MOVE: held basis +$174.93, and gain -$174.93 with it, because gain
+-- is value minus basis. Toward what Robinhood says, not away from it.

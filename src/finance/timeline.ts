@@ -183,13 +183,29 @@ export function avgCostBySymbol(t: Timeline): Map<string, number> {
       const avg = s.units > 0 ? s.cost / s.units : 0
       s.units += e.units
       s.cost += avg * e.units
+      /**
+       * ⚠️ THIS CLAMP BELONGS TO THE SELL BRANCH AND NOWHERE ELSE.
+       *
+       * It used to sit outside the if/else, so it ran after the restatement branch too — and
+       * the two legs of a reverse split arrive as separate events, so units pass through zero
+       * between them. Zeroing the cost there throws the basis away, which is exactly the bug
+       * docs/2026-08-25-a-split-is-not-a-sale.sql fixed in finance.account_basis().
+       *
+       * Masked until now because _fund_timeline supplies a costBasis override for every
+       * family symbol and the loop below lets it win. It stops being masked the moment a
+       * trade is allocated on a symbol carrying no family designation: that symbol appears in
+       * the events list and not in costBasis, and this replay becomes the live answer for its
+       * per-holding profit and loss.
+       */
+      if (s.units <= 1e-9) {
+        s.units = Math.max(0, s.units)
+        s.cost = 0
+      }
     } else {
-      // split / correction: units move, dollars don't
+      // split / correction: units move, dollars don't — and what was already bought still
+      // cost what it cost, however the share count is restated
       s.units += e.units
-    }
-    if (s.units <= 1e-9) {
-      s.units = Math.max(0, s.units)
-      s.cost = 0
+      if (s.units < 0) s.units = 0
     }
     state.set(e.symbol, s)
   }
