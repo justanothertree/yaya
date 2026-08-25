@@ -30,10 +30,15 @@ the reasoning behind individual changes.
 
 ## The standing rule this table exists to check
 
-Only these six may be executed by `anon`:
+Only these seven may be executed by `anon`:
 
 `circuit_public`, `get_invite_by_token`, `complete_member_signup`, `submit_score`,
-`finalize_round_rpc`, `is_admin`
+`finalize_round_rpc`, `is_admin`, `submit_contact_message`
+
+⚠️ `submit_contact_message` was added 2026-08-24 (the contact form has to work for a stranger)
+and this list was not updated with it, so the audit below returned one row from that day on. A
+standing check that always reports a finding is a standing check nobody reads. Re-verified
+2026-08-25: with it added, the query returns zero rows.
 
 Anything else showing `anon+auth` below is a finding. After any migration, re-run the standing
 audit — it must return zero rows:
@@ -42,7 +47,8 @@ audit — it must return zero rows:
 select p.proname from pg_proc p join pg_namespace n on n.oid = p.pronamespace
 where n.nspname = 'public' and has_function_privilege('anon', p.oid, 'execute')
   and p.proname not in ('circuit_public','get_invite_by_token','complete_member_signup',
-                        'submit_score','finalize_round_rpc','is_admin');
+                        'submit_score','finalize_round_rpc','is_admin',
+                        'submit_contact_message');
 ```
 
 ⚠️ `finalize_round_rpc` shows `service_role` below, not `anon` — it was tightened on 2026-08-20.
