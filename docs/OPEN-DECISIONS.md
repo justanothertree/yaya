@@ -121,6 +121,31 @@ removed the terminal, not the download.
 
 ---
 
+## 9. ~~Tax-aware selling~~ — BUILT 2026-08-25
+
+Investments → **Tax** (admin only): what is long-term, what is not, the month-by-month crossing
+calendar, a wash-sale flag per holding, and — with a marginal rate typed in, kept in memory and
+sent nowhere — what selling the short-term half today costs over waiting.
+
+Two of the three open questions below turned out to be answerable rather than decidable:
+
+- **Lot selection was never a choice.** Robinhood's default is FIFO and it offers no per-lot
+  selection at sale time. Cash App's method is not publicly documented, but its two positions
+  (SPCE, BTC — two-thirds of the money) have never had a sale, so no method distinguishes them.
+- **Wash sales** are flagged from the data. SPCE was bought 20 times in the last 30 days, so a
+  loss on it today is disallowed outright. BTC is the only family crypto and the rule does not
+  currently reach digital assets; the copy says so as a statement about today's law, not a
+  promise.
+- **The marginal rate** stays out of the database entirely — typed per session, gone on refresh.
+
+Found along the way: `finance.account_basis()` was destroying the cost basis of any position that
+had had a reverse split — seven of them, $174.93 — see
+`docs/2026-08-25-a-split-is-not-a-sale.sql`.
+
+Still true as of 2026-08-25: **every family share is short-term.** First crossing 2026-12-11.
+
+<details><summary>the original entry</summary>
+
 ## 9. Tax-aware selling — the motivation Evan hadn't named until now
 
 Raised 2026-08-23. **"Since I'm the one buying and selling I'm the one paying the taxes, so
@@ -161,3 +186,5 @@ Lot-level detail exists already — every allocation carries its trade's date.
 
 **Cost of waiting:** he keeps making sell decisions without the one number that decides whether
 they cost him money.
+
+</details>
