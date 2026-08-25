@@ -77,6 +77,7 @@ The allowlist above is the historical one; it is deliberately wider than reality
 | `admin_set_price(p_symbol text, p_price numeric)`                                                                                                                                             | definer  | authenticated |
 | `admin_set_suspended(p_user_id uuid, p_suspended boolean)`                                                                                                                                    | definer  | authenticated |
 | `admin_set_symbol_designation(p_symbol text, p_platform text, p_family boolean)`                                                                                                              | definer  | authenticated |
+| `admin_tax_status()`                                                                                                                                                                          | definer  | authenticated |
 | `admin_update_family_account(p_account uuid, p_name text, p_dollar_per_day numeric, p_start_date date)`                                                                                       | definer  | authenticated |
 | `admin_update_member(p_user_id uuid, p_first_name text, p_email text, p_role text)`                                                                                                           | definer  | authenticated |
 | `are_friends(u1 uuid, u2 uuid)`                                                                                                                                                               | definer  | authenticated |
@@ -178,3 +179,6 @@ The allowlist above is the historical one; it is deliberately wider than reality
   (`sb.rpc(fn, { uid })`) with paging past PostgREST's 1000-row cap. A grep for
   `rpc('get_allocations')` finds nothing and they look dead. They are not.
 - `insert_allocation` exists in two overloads; both are `invoker`, so RLS applies normally.
+- **`admin_tax_status()` (added 2026-08-25)** reads `finance.holding_periods()`, which is revoked
+  from `anon` AND `authenticated` — it is reachable only through this definer wrapper, and only
+  after `is_admin()`. Verified: a signed-in non-admin gets "admin only".

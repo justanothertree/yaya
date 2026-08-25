@@ -1,0 +1,88 @@
+-- When may I sell without it costing me.  2026-08-25
+--   migrations: holding_periods_split_aware_fifo_lots
+--               admin_tax_status_when_may_i_sell
+--
+-- Closes OPEN-DECISIONS #9, raised 2026-08-23: "since I'm the one buying and selling I'm the one
+-- paying the taxes, so ideally I would rotate trades over time and only sell family fund
+-- positions if they've been held long enough."
+--
+-- ── the shape of the answer ──────────────────────────────────────────────────
+-- Two functions, and the split between them is the whole design:
+--
+--   finance._held_avg_costs()   what a unit COST     (already existed, unchanged)
+--   finance.holding_periods()   which units are still held, and WHEN each was bought
+--
+-- The tax view multiplies one by the other. So longBasis + shortBasis === the heldBasis already
+-- on the page, by construction -- they are the same dollars split by date, not a second opinion
+-- about the dollars. This repo has been bitten three times by two functions answering one
+-- question (get_my_portfolio vs admin_get_portfolios, aheadBehind vs portfolioTotals,
+-- AccountCard vs accountGain); this is the shape that makes it impossible rather than unlikely.
+--
+-- `fifo_basis` IS returned, because the broker's 1099 will use FIFO and on the ten positions
+-- that have had a sale it differs (MDLN: $1,226.09 FIFO against $1,191.14 average). It is
+-- displayed where it differs and used for nothing. The page and the tax form disagreeing is
+-- fine; disagreeing in silence is not.
+--
+-- ── the trap, found before it shipped ────────────────────────────────────────
+-- A naive FIFO walk returns QNCX as $0.00 of basis acquired 2026-07-13. The truth is $30.72
+-- acquired 2026-03-30 -- a four-month holding-period error AND a total basis loss, on the one
+-- position where lot tracking is hardest. Cause: the reverse split's negative leg looks like a
+-- sale that consumes the only real lot, leaving free shares dated the day of the split. A split
+-- resets neither the holding period nor the basis.
+--
+-- So same-day zero-dollar rows are NETTED into one factor and SCALE the open lots; dates and
+-- dollars are untouched. QNCX now reports 2 units, $30.72, oldest lot 2026-03-30.
+--
+-- (This is also how the account_basis bug in docs/2026-08-25-a-split-is-not-a-sale.sql was
+-- found -- the same walk, one function over.)
+--
+-- ── FIFO is not a preference ─────────────────────────────────────────────────
+-- OPEN-DECISIONS #9 listed lot selection as an open question. Robinhood's own documentation says
+-- the default is first-in-first-out and offers no per-lot choice at sale time, so for everything
+-- on Robinhood FIFO is simply what happens. Cash App's method is not documented publicly; that
+-- stays an unknown rather than an assumption. SPCE and BTC -- the two cashapp positions and
+-- two-thirds of the money -- have never had a sale, so no method distinguishes them anyway.
+--
+-- ── where things stand, 2026-08-25 ───────────────────────────────────────────
+--   positions               75
+--   basis           $13,422.04     value $13,592.57      unrealized +$170.53
+--   long-term            $0.00     <- every share, still
+--   short-term      $13,422.04
+--   first crossing  2026-12-11     108 days
+--
+--   crossing calendar, cumulative long-term basis:
+--     2026-12   $1,838.46
+--     2027-01   $3,795.66
+--     2027-03   $5,842.06
+--     2027-06  $10,194.39
+--     2027-08  $13,422.05
+--
+-- ── wash sales ───────────────────────────────────────────────────────────────
+-- Returned as FACTS (days since the last buy, buys in the 30/61-day windows, asset type), never
+-- as a verdict -- the wording lives in src/finance/tax.ts, one place, same reasoning as
+-- voice/callWords.ts.
+--
+-- The dollar-a-day drip makes this real rather than theoretical: SPCE was bought 20 times in the
+-- last 30 days, so a loss taken on it today is disallowed outright.
+--
+-- ⚠️ BTC is different and the UI says so carefully. The rule covers "stocks or securities" and
+-- digital assets are currently treated as property, so it does not reach crypto today -- that is
+-- a statement about the law as it stands, extending it has been proposed more than once, and the
+-- copy is worded so it does not become a lie if that changes. BTC/cashapp is the only family
+-- crypto there is.
+--
+-- ── the marginal rate ────────────────────────────────────────────────────────
+-- Needed for the exception Evan named -- a short-term gain large enough to cover its own tax --
+-- and it is a personal financial fact this site has no business holding. So it is typed into the
+-- Tax view, kept in React state, sent nowhere and gone on refresh. No column, no localStorage.
+--
+-- ── gates ────────────────────────────────────────────────────────────────────
+--   finance.holding_periods()   revoked from anon AND authenticated; definer-only
+--   public.admin_tax_status()   authenticated + is_admin(), anon has no execute
+--   verified: signed-in non-admin -> "admin only"; anon -> no execute privilege
+--
+-- ⚠️ A false alarm worth recording. The first non-admin test was
+--     with t as (select public.admin_tax_status() r) select 'LEAK' from t;
+-- and it printed LEAK. The gate was fine -- nothing references `r`, so the planner pruned the
+-- column and never called the function. A test that cannot fail is not a test. Referencing the
+-- value raises "admin only" as it should.

@@ -41,13 +41,14 @@ import {
   type Timeline,
 } from '../finance/timeline'
 import { PortfolioChart } from './PortfolioChart'
+import { TaxView } from './TaxView'
 
 export function Investments({ demo = false }: { demo?: boolean }) {
   const [mine, setMine] = useState<AccountPortfolio[] | null>(null)
   const [all, setAll] = useState<AccountPortfolio[] | null>(null)
   const [members, setMembers] = useState<Member[]>([])
   const [isAdmin, setIsAdmin] = useState(false)
-  const [mode, setMode] = useState<'mine' | 'all' | 'trades'>('mine')
+  const [mode, setMode] = useState<'mine' | 'all' | 'trades' | 'tax'>('mine')
   const [error, setError] = useState<string | null>(null)
   const [tl, setTl] = useState<Timeline | null>(null)
   const [tlAll, setTlAll] = useState<Timeline | null>(null)
@@ -122,19 +123,26 @@ export function Investments({ demo = false }: { demo?: boolean }) {
               <ModeBtn active={mode === 'trades'} onClick={() => setMode('trades')}>
                 Trades
               </ModeBtn>
+              {/* Yours, not theirs. You pay the tax on every family sale, so this asks the one
+                  question the rest of the page cannot: what would selling cost ME. */}
+              <ModeBtn active={mode === 'tax'} onClick={() => setMode('tax')}>
+                Tax
+              </ModeBtn>
             </span>
           )}
         </div>
         <p className="muted" style={{ margin: 0 }}>
           {demo
             ? 'A sample of the dollar-a-day fund — each account gets $1/day, invested and split across holdings. This is example data.'
-            : mode === 'all'
-              ? 'Every family account — expand one to see exactly what that member sees.'
-              : mode === 'trades'
-                ? 'Every trade you’ve made — what’s allocated to the family fund and what’s still yours. Expand a trade to assign shares.'
-                : isAdmin
-                  ? 'The family accounts assigned to you. While none have been handed over, that is every one of them — this is not your own personal investing, which lives in Admin → Reconcile.'
-                  : 'Your dollar-a-day portfolio — what’s been invested for you, what it’s worth now, and how it’s allocated.'}
+            : mode === 'tax'
+              ? 'What is long-term, what is not, and what selling today would cost you. Yours alone — a member never sees this.'
+              : mode === 'all'
+                ? 'Every family account — expand one to see exactly what that member sees.'
+                : mode === 'trades'
+                  ? 'Every trade you’ve made — what’s allocated to the family fund and what’s still yours. Expand a trade to assign shares.'
+                  : isAdmin
+                    ? 'The family accounts assigned to you. While none have been handed over, that is every one of them — this is not your own personal investing, which lives in Admin → Reconcile.'
+                    : 'Your dollar-a-day portfolio — what’s been invested for you, what it’s worth now, and how it’s allocated.'}
         </p>
       </header>
 
@@ -187,6 +195,8 @@ export function Investments({ demo = false }: { demo?: boolean }) {
         </>
       ) : mode === 'trades' ? (
         <TradesLedger accounts={all} />
+      ) : mode === 'tax' ? (
+        <TaxView />
       ) : (
         <>
           {all && all.length > 0 && <ScheduleSummary accounts={all} />}
