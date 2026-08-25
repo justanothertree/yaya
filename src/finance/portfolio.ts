@@ -272,9 +272,20 @@ export type Position = {
   dollars: number
   trades: number
   price: number | null
-  /** Current market value (units × cached price), null until priced. */
+  /** Current market value of the WHOLE position (units × cached price), null until priced. */
   value: number | null
+  /** Symbol-level designation. ⚠️ NOT ownership — see familyUnits. */
   isFamily: boolean
+  /**
+   * Units the family actually owns, from the allocations.
+   *
+   * ⚠️ `isFamily` is a decision about a SYMBOL; this is what they hold. They diverge whenever
+   * a position carries pre-fund history (correctly never allocated), or was only partly bought
+   * for them. Summing `value` for isFamily positions overstated the fund by $461.87.
+   */
+  familyUnits: number
+  /** familyUnits × price — null when unpriced, never zero. */
+  familyValue: number | null
 }
 
 /** Admin: every holding (per broker) with totals and its family/personal designation. */
@@ -291,6 +302,8 @@ export async function fetchPositions(): Promise<Position[]> {
     price: p.price == null ? null : Number(p.price),
     value: p.value == null ? null : Number(p.value),
     isFamily: p.isFamily !== false,
+    familyUnits: Number(p.familyUnits ?? 0),
+    familyValue: p.familyValue == null ? null : Number(p.familyValue),
   }))
 }
 

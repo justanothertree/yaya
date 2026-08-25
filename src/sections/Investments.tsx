@@ -1518,9 +1518,28 @@ function TradesLedger({ accounts }: { accounts: AccountPortfolio[] | null }) {
     allocs.filter((a) => a.executedTradeId === tradeId).reduce((s, a) => s + a.unitsAllocated, 0)
 
   const fmtU = (n: number) => n.toLocaleString(undefined, { maximumFractionDigits: 6 })
-  const portfolioValue = positions.reduce((sum, p) => sum + (p.value ?? 0), 0)
-  const familyValue = positions.reduce((sum, p) => sum + (p.isFamily ? (p.value ?? 0) : 0), 0)
-  const pricedCount = positions.filter((p) => p.value != null).length
+  /**
+   * ⚠️ THE FAMILY OWNS UNITS, NOT SYMBOLS.
+   *
+   * This used to sum the WHOLE market value of every family-DESIGNATED position. Designation
+   * is all-or-nothing and timeless; ownership is the allocations. SPCE is designated family
+   * and 1.2% Evan's, WEN is 46.7% his, and OLOX and FHTX carry pre-fund history that was
+   * correctly never allocated — so the hero number read $14,054.46 against a true $13,592.59.
+   * $461.87 of Evan's own money, on the screen labelled "Family fund".
+   *
+   * It was also a fourth answer to a question three other places already answered:
+   * accountReserved(), portfolioTotals().value and ReconcilePanel's family total. It agrees
+   * with all of them now.
+   *
+   * ⚠️ AND UNPRICED IS NOT ZERO. `?? 0` booked an unpriced holding as worth nothing inside a
+   * 1.6rem hero stat — ReconcilePanel has handled this correctly all along and says so on
+   * screen. These sum only what is priced and disclose the rest.
+   */
+  const priced = positions.filter((p) => p.value != null)
+  const portfolioValue = priced.reduce((sum, p) => sum + (p.value ?? 0), 0)
+  const familyValue = priced.reduce((sum, p) => sum + (p.familyValue ?? 0), 0)
+  const pricedCount = priced.length
+  const unpricedCount = positions.length - pricedCount
   const familyCount = positions.filter((p) => p.isFamily).length
   const brokerLabel = (pl: string) =>
     pl === 'cashapp' ? 'Cash App' : pl === 'robinhood' ? 'Robinhood' : pl
@@ -1545,13 +1564,17 @@ function TradesLedger({ accounts }: { accounts: AccountPortfolio[] | null }) {
       <article className="card" style={{ display: 'grid', gap: '0.7rem' }}>
         <div style={{ display: 'flex', gap: '1.6rem', flexWrap: 'wrap' }}>
           <Stat label="Family fund (worth)" value={usd(familyValue)} big color="#22cc78" />
-          <Stat
-            label="Still yours (worth)"
-            value={usd(Math.max(0, portfolioValue - familyValue))}
-            big
-          />
+          {/* no Math.max here: a negative would mean the allocations claim more than you hold,
+              which integrity check 7 exists to catch — clamping it just hid the sign. */}
+          <Stat label="Still yours (worth)" value={usd(portfolioValue - familyValue)} big />
           <Stat label="Trades on record" value={String(trades.length)} />
         </div>
+        {unpricedCount > 0 && (
+          <p className="muted" style={{ margin: 0, fontSize: '0.76rem' }}>
+            ⚠️ {unpricedCount} {unpricedCount === 1 ? 'holding has' : 'holdings have'} no price yet
+            and are left out of both figures above, rather than counted as worth nothing.
+          </p>
+        )}
         <p className="muted" style={{ margin: 0, fontSize: '0.76rem' }}>
           This tab is your control room: mark each holding Family or Personal below, fix any wrong
           share count with ✏️, and dig into the raw trade history at the bottom if you ever need to
