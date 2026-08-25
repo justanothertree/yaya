@@ -1,0 +1,72 @@
+-- Four functions allocate trades to the family. One of them knew the rules.  2026-08-25
+--   migrations: one_rule_for_who_owns_a_restatement
+--               designation_reports_its_own_symbol_and_correction_counts_plainly
+--
+-- Found by an audit of every function touching finance.allocations, after account_basis turned
+-- out to be mishandling reverse splits (docs/2026-08-25-a-split-is-not-a-sale.sql).
+--
+-- ── the rules, and who had them ──────────────────────────────────────────────
+-- Two rules govern allocating a trade, both learned the hard way:
+--   A. an allocation may not predate its account's start_date
+--      (docs/2026-08-23-allocations-cannot-predate-the-fund.sql)
+--   B. a zero-dollar restatement is scaled by the share the family actually owns
+--      ("Allocating all of it to a partly-owned position is how OLOX ended up at minus one and
+--      a half shares")
+--
+--   admin_even_split_trades       A ✓  B ✓
+--   admin_set_symbol_designation  A ✗  B ✗   <- and it is a button in the admin UI
+--   admin_set_trade_allocation    A ✓  B ✗   <- ditto
+--   admin_correct_position        A ✗  B ✗   <- ditto
+--
+-- ── what one click could do ──────────────────────────────────────────────────
+-- admin_set_symbol_designation had its own allocation loop with neither guard, so marking a
+-- symbol "family" inserted its ENTIRE history:
+--
+--   unallocated pre-fund trades   1,180   across 148 symbols
+--   worst single symbol           U/cashapp: 127 trades, $172,701 bought, $177,739 sold
+--
+-- One click on U was 127 x 33 = 4,191 allocations dated back to 2020 — the exact state the
+-- 2026-08-23 migration had to delete 3,663 rows to undo, and the state that reported
+-- "+127.8% gain" and "net new money $2,206".
+--
+-- admin_correct_position computed its delta from UNFILTERED executed_trades (correct: the broker
+-- shows the whole position) and then allocated 100% of it (wrong). WEN is 53.3% family and 46.7%
+-- Evan's; correcting it handed the family a delta over shares half of which were never theirs.
+-- Fourth instance of the rule in docs/2026-08-23-cost-basis-uses-allocations.sql.
+--
+-- admin_set_trade_allocation is the per-trade review button. Answering "all of it" on a reverse
+-- split of a position the family owns 86% of would have credited them 3.5 units of a 3.0-unit
+-- position. OLOX is the only partly-owned split in the data and it is correct — because the even
+-- split created it, not this button.
+--
+-- ── the shape now ────────────────────────────────────────────────────────────
+-- finance.family_share_at(symbol, platform, at) is the ownership rule, once. All four callers
+-- read it; admin_set_symbol_designation stopped having a loop at all and delegates to the even
+-- split, which is the same call the importer already makes.
+--
+-- ⚠️ That delegation is wider than the button: the even split allocates every unallocated
+-- family-designated trade, not only this symbol's. Measured before changing anything — all 150
+-- such trades are pre-fund, so rule A blocks every one and today's blast radius is zero rows.
+-- The count returned is scoped to this symbol so the number the admin reads is about the button
+-- they pressed.
+--
+-- ── also in these migrations ─────────────────────────────────────────────────
+-- * finance._held_avg_costs() was EXECUTE-granted to PUBLIC — the only one of the nine finance.*
+--   functions that was. SECURITY DEFINER, so it runs as owner and bypasses RLS: 75 rows of the
+--   fund's cost basis to any role that can reach the schema. anon was stopped only by lacking
+--   USAGE on `finance`, which is one setting away from not being true. Revoked; every caller is
+--   a definer function running as owner and needs no grant.
+--
+-- * finance.account_ledger() broke same-instant ties on et.id. 66 (account, timestamp) pairs
+--   carry a buy and a sale at the identical instant, and the order decides the answer: a sale
+--   settled first funds the buy from their own cash, a buy settled first spends fresh money. It
+--   agrees today only because every account winds down to exactly $0.00 cash — a property of the
+--   data, not of the code. Sales settle first now, deterministically.
+--
+-- ── verified, before and after ───────────────────────────────────────────────
+--   allocations                 11,649  ->  11,649   (unchanged)
+--   per-symbol allocation md5   c63ff32…  ->  c63ff32…   (unchanged)
+--   fund held basis             $13,422.09  ->  $13,422.09
+--   contributed                 $13,825.02  ->  $13,825.02
+--   cash                             $0.00  ->       $0.00
+--   family_share_at('WEN')      0.5335   family_share_at('SPCE')  0.9877
