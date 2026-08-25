@@ -1056,6 +1056,12 @@ const wss = new WebSocketServer({ server })
 wss.on('connection', (ws) => {
   const id = uuid().slice(0, 12)
   let joinedRoomId = null
+  // see the heartbeat below — a half-open socket answers no pong and gets terminated,
+  // which runs this connection's normal close handler and frees its room
+  ws.isAlive = true
+  ws.on('pong', () => {
+    ws.isAlive = true
+  })
   const handleMessage = (data) => {
     // Reject oversized messages before parsing to prevent DoS.
     if (data.length > MAX_MSG_BYTES) {
@@ -1662,6 +1668,42 @@ wss.on('connection', (ws) => {
     }
   })
 })
+
+/**
+ * ⚠️ A SOCKET THAT DIED WITHOUT SAYING SO STILL HOLDS ITS ROOM.
+ *
+ * TCP does not necessarily tell you when a peer vanishes — a laptop lid, a dropped mobile
+ * connection, a NAT timeout — so ws never fires 'close' and the client stays in room.clients
+ * forever. clients.size can then never reach 0, so the room is never deleted. That is the same
+ * end state as the room leak fixed in the hello handler, arrived at with nobody doing anything
+ * wrong.
+ *
+ * The standard ws remedy: mark every connection dead, ping, and let a pong revive it. Anything
+ * still dead on the next sweep is terminated, which runs its close handler and frees the room
+ * properly rather than just dropping the reference.
+ */
+const HEARTBEAT_MS = Number(process.env.HEARTBEAT_MS || 30000)
+const heartbeat = setInterval(() => {
+  wss.clients.forEach((ws) => {
+    if (ws.isAlive === false) {
+      try {
+        ws.terminate()
+      } catch {
+        /* already gone */
+      }
+      return
+    }
+    ws.isAlive = false
+    try {
+      ws.ping()
+    } catch {
+      /* the next sweep will terminate it */
+    }
+  })
+}, HEARTBEAT_MS)
+// unref so the interval never keeps the process alive on its own during a shutdown
+heartbeat.unref?.()
+wss.on('close', () => clearInterval(heartbeat))
 
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`[ws-server] listening on :${PORT}`)
