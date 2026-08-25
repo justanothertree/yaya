@@ -8,8 +8,16 @@ export type Holding = {
   symbol: string
   assetType: string | null
   units: number
-  /** Dollars allocated to this account for this asset (cost basis). */
-  cost: number
+  /**
+   * Buys minus sells for this asset, in dollars. ⚠️ NOT A COST BASIS, whatever it looks like:
+   * for a symbol bought and sold over years it can be negative while real shares are still
+   * held. It was called `cost` until 2026-08-25, which is how two exports came to sum it and
+   * report this fund at +127.8% while its holdings were down 11.9%. Summed across the fund it
+   * gives $13,444.86 against a true basis of $13,422.09.
+   *
+   * The cost basis is `heldBasis` on the account, from the average-cost replay.
+   */
+  netCash: number
   /** Latest cached market price (null until the price sweep has seen this symbol). */
   price?: number | null
   /** When that price was cached. */
@@ -72,7 +80,7 @@ function mapAccount(a: Record<string, unknown>): AccountPortfolio {
       symbol: String(h.symbol ?? ''),
       assetType: (h.assetType as string | null) ?? null,
       units: Number(h.units ?? 0),
-      cost: Number(h.cost ?? 0),
+      netCash: Number(h.netCash ?? 0),
       price: h.price == null ? null : Number(h.price),
       priceAt: (h.priceAt as string | null) ?? null,
     })),

@@ -61,13 +61,14 @@ const TIMELINE: Timeline = {
 }
 
 const holdings = (priceAt: string = FRESH) => [
-  { symbol: 'VOO', assetType: 'stock', units: 0.22, cost: 120, price: 588, priceAt },
-  { symbol: 'AAPL', assetType: 'stock', units: 0.42, cost: 92, price: 245.5, priceAt },
-  { symbol: 'BTC', assetType: 'crypto', units: 0.0006, cost: 41, price: 61444, priceAt },
+  { symbol: 'VOO', assetType: 'stock', units: 0.22, netCash: 120, price: 588, priceAt },
+  { symbol: 'AAPL', assetType: 'stock', units: 0.42, netCash: 92, price: 245.5, priceAt },
+  { symbol: 'BTC', assetType: 'crypto', units: 0.0006, netCash: 41, price: 61444, priceAt },
 ]
 
-/** cost of the holdings above — 253, kept derived so edits above can't desync the cases */
-const COST = holdings().reduce((s, h) => s + h.cost, 0)
+/** basis of the holdings above — 253, kept derived so edits above cannot desync the cases.
+ *  Sound here only because these fixtures have no sells, so netCash and basis coincide. */
+const COST = holdings().reduce((s, h) => s + h.netCash, 0)
 
 const base: Omit<AccountPortfolio, 'id' | 'name'> = {
   dollarPerDay: 1,
@@ -128,7 +129,7 @@ const CASES: Case[] = [
       name: 'Ash',
       holdings: [
         ...holdings(),
-        { symbol: 'PRIV', assetType: 'stock', units: 3, cost: 60, price: null, priceAt: null },
+        { symbol: 'PRIV', assetType: 'stock', units: 3, netCash: 60, price: null, priceAt: null },
       ],
     },
   },

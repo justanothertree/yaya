@@ -242,7 +242,9 @@ export function demoTimeline(): Timeline {
     for (const h of acct.holdings) {
       const cur = totals.get(h.symbol) ?? { units: 0, cost: 0, price: h.price ?? 0 }
       cur.units += h.units
-      cur.cost += h.cost
+      // the demo holdings have no sells, so netCash and cost coincide here — see
+      // demoPortfolio.ts for why this is derived rather than typed
+      cur.cost += h.netCash
       if (h.price != null) cur.price = h.price
       totals.set(h.symbol, cur)
     }

@@ -23,13 +23,20 @@ const DEMO_ACCOUNTS: AccountPortfolio[] = [
     dollarPerDay: 1,
     startDate: START,
     holdings: [
-      { symbol: 'AAPL', assetType: 'stock', units: 0.42, cost: 92, price: 245.5, priceAt: PRICED },
-      { symbol: 'VOO', assetType: 'stock', units: 0.15, cost: 78, price: 588, priceAt: PRICED },
+      {
+        symbol: 'AAPL',
+        assetType: 'stock',
+        units: 0.42,
+        netCash: 92,
+        price: 245.5,
+        priceAt: PRICED,
+      },
+      { symbol: 'VOO', assetType: 'stock', units: 0.15, netCash: 78, price: 588, priceAt: PRICED },
       {
         symbol: 'BTC',
         assetType: 'crypto',
         units: 0.0006,
-        cost: 41,
+        netCash: 41,
         price: 61444,
         priceAt: PRICED,
       },
@@ -41,9 +48,9 @@ const DEMO_ACCOUNTS: AccountPortfolio[] = [
     dollarPerDay: 1,
     startDate: START,
     holdings: [
-      { symbol: 'MSFT', assetType: 'stock', units: 0.16, cost: 71, price: 512, priceAt: PRICED },
-      { symbol: 'NVDA', assetType: 'stock', units: 0.38, cost: 52, price: 118, priceAt: PRICED },
-      { symbol: 'VOO', assetType: 'stock', units: 0.05, cost: 27, price: 588, priceAt: PRICED },
+      { symbol: 'MSFT', assetType: 'stock', units: 0.16, netCash: 71, price: 512, priceAt: PRICED },
+      { symbol: 'NVDA', assetType: 'stock', units: 0.38, netCash: 52, price: 118, priceAt: PRICED },
+      { symbol: 'VOO', assetType: 'stock', units: 0.05, netCash: 27, price: 588, priceAt: PRICED },
     ],
   },
   {
@@ -52,16 +59,23 @@ const DEMO_ACCOUNTS: AccountPortfolio[] = [
     dollarPerDay: 1,
     startDate: START,
     holdings: [
-      { symbol: 'AAPL', assetType: 'stock', units: 0.27, cost: 60, price: 245.5, priceAt: PRICED },
+      {
+        symbol: 'AAPL',
+        assetType: 'stock',
+        units: 0.27,
+        netCash: 60,
+        price: 245.5,
+        priceAt: PRICED,
+      },
       {
         symbol: 'BTC',
         assetType: 'crypto',
         units: 0.0009,
-        cost: 62,
+        netCash: 62,
         price: 61444,
         priceAt: PRICED,
       },
-      { symbol: 'MSFT', assetType: 'stock', units: 0.13, cost: 60, price: 512, priceAt: PRICED },
+      { symbol: 'MSFT', assetType: 'stock', units: 0.13, netCash: 60, price: 512, priceAt: PRICED },
     ],
   },
   {
@@ -70,13 +84,13 @@ const DEMO_ACCOUNTS: AccountPortfolio[] = [
     dollarPerDay: 1,
     startDate: START,
     holdings: [
-      { symbol: 'VOO', assetType: 'stock', units: 0.22, cost: 120, price: 588, priceAt: PRICED },
-      { symbol: 'NVDA', assetType: 'stock', units: 0.5, cost: 70, price: 118, priceAt: PRICED },
+      { symbol: 'VOO', assetType: 'stock', units: 0.22, netCash: 120, price: 588, priceAt: PRICED },
+      { symbol: 'NVDA', assetType: 'stock', units: 0.5, netCash: 70, price: 118, priceAt: PRICED },
       {
         symbol: 'BTC',
         assetType: 'crypto',
         units: 0.0007,
-        cost: 50,
+        netCash: 50,
         price: 61444,
         priceAt: PRICED,
       },
@@ -103,6 +117,9 @@ const DEMO_ACCOUNTS: AccountPortfolio[] = [
  * produce from the same events.
  */
 export const DEMO_PORTFOLIO: AccountPortfolio[] = DEMO_ACCOUNTS.map((a) => {
-  const cost = a.holdings.reduce((sum, h) => sum + h.cost, 0)
+  // ⚠️ netCash is buys-minus-sells, not a basis — but the demo holdings have no sells, so
+  // here the two are the same number and deriving from it is what keeps the sample sentence
+  // and the sample chart from drifting apart. Do not copy this identity onto real data.
+  const cost = a.holdings.reduce((sum, h) => sum + h.netCash, 0)
   return { ...a, contributed: cost, heldBasis: cost, cash: 0, ready: true }
 })
