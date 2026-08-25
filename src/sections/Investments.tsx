@@ -1497,7 +1497,17 @@ function TradesLedger({ accounts }: { accounts: AccountPortfolio[] | null }) {
     void load().catch((e: unknown) => setErr(e instanceof Error ? e.message : String(e)))
   }, [])
 
-  if (err) {
+  /**
+   * ⚠️ ONLY WHEN THE FIRST LOAD FAILED.
+   *
+   * `err` is also set by toggleDesignation and saveCorrection — actions taken after the page
+   * is up. Returning early on those replaced the whole tab with one red sentence: the
+   * positions, the 1,500-row trade history, the filters and the scroll position, all gone
+   * because a designation click hit an expired token. There was no retry and no dismiss; the
+   * only way back was to switch tabs and remount. An action that failed is a message, not a
+   * new page — it renders as a banner over the list below.
+   */
+  if (err && trades === null) {
     return (
       <article className="card">
         <p style={{ margin: 0, color: 'var(--accent-2)' }}>{err}</p>
@@ -1561,6 +1571,23 @@ function TradesLedger({ accounts }: { accounts: AccountPortfolio[] | null }) {
 
   return (
     <>
+      {err && (
+        <article
+          className="card"
+          role="status"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.6rem',
+            borderColor: 'var(--accent-2)',
+          }}
+        >
+          <span style={{ color: 'var(--accent-2)' }}>⚠️ {err}</span>
+          <button className="btn" style={{ marginLeft: 'auto' }} onClick={() => setErr(null)}>
+            Dismiss
+          </button>
+        </article>
+      )}
       <article className="card" style={{ display: 'grid', gap: '0.7rem' }}>
         <div style={{ display: 'flex', gap: '1.6rem', flexWrap: 'wrap' }}>
           <Stat label="Family fund (worth)" value={usd(familyValue)} big color="#22cc78" />
