@@ -1146,9 +1146,21 @@ export function AccountCard({
               const pl = plFor(h)
               return (
                 <div key={h.symbol}>
+                  {/* ⚠️ The only role="button" in the codebase — every other control here is a
+                      real <button> — and it shipped without tabIndex or a key handler, so a
+                      keyboard or screen-reader user could not open a single holding row on the
+                      card this file calls "the component a family member actually reads".
+                      Units, average cost, price and gain were all unreachable. */}
                   <div
                     onClick={() => toggleSym(h.symbol)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault()
+                        toggleSym(h.symbol)
+                      }
+                    }}
                     role="button"
+                    tabIndex={0}
                     aria-expanded={isOpen}
                     style={{
                       display: 'flex',
