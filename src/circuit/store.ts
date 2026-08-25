@@ -7,6 +7,7 @@
 // since the base state shifted underneath us.
 import { useSyncExternalStore } from 'react'
 import type { CircuitAdapter } from './adapter'
+import { showToast } from './toast'
 import type { CircuitState, DayLog, Movie, Person, WatchlistItem, ID } from './types'
 import { emptyCircuitState } from './types'
 
@@ -104,6 +105,28 @@ function createCircuitStore(): CircuitStore {
     if (!adapter) throw new Error('circuit store not initialized')
     return adapter
   }
+  /**
+   * ⚠️ A WRITE THAT FAILED USED TO LOOK EXACTLY LIKE ONE THAT WORKED.
+   *
+   * State is applied optimistically and was never rolled back, the rejection went to the
+   * console, and the promise resolved successfully — so a member logging their day offline,
+   * or after their token expired, saw the entry appear, the undo stack advance, and no
+   * error. It was gone on the next reload with nothing to explain it.
+   *
+   * Same shape as the mark_activity_seen bug already fixed in useNotifications ("do not let
+   * the bell claim it cleared"). Reloading discards the edit, which is the point: what is on
+   * screen should be what actually exists. Saying so is the part that was missing.
+   */
+  const persistFailed = (what: string, err: unknown) => {
+    console.error(`[circuit] ${what} failed`, err)
+    showToast('Not saved — check your connection')
+    const a = adapter
+    if (a)
+      void a
+        .load()
+        .then(replaceState)
+        .catch(() => undefined)
+  }
   const clearHistory = () => {
     undoStack.length = 0
     redoStack.length = 0
@@ -126,9 +149,7 @@ function createCircuitStore(): CircuitStore {
     }
     refreshHist()
     emit()
-    return persistOp(need(), op).catch((err) => {
-      console.error('[circuit] persist failed', err)
-    })
+    return persistOp(need(), op).catch((err) => persistFailed('save', err))
   }
 
   return {
@@ -175,9 +196,7 @@ function createCircuitStore(): CircuitStore {
       redoStack.push(entry)
       refreshHist()
       emit()
-      return persistOp(need(), entry.undo).catch((err) => {
-        console.error('[circuit] undo persist failed', err)
-      })
+      return persistOp(need(), entry.undo).catch((err) => persistFailed('undo', err))
     },
     redo() {
       const entry = redoStack.pop()
@@ -187,9 +206,7 @@ function createCircuitStore(): CircuitStore {
       undoStack.push(entry)
       refreshHist()
       emit()
-      return persistOp(need(), entry.do).catch((err) => {
-        console.error('[circuit] redo persist failed', err)
-      })
+      return persistOp(need(), entry.do).catch((err) => persistFailed('redo', err))
     },
     savePerson: (p) => dispatch({ kind: 'save', coll: 'people', item: p }, true),
     deletePerson: (id) => dispatch({ kind: 'delete', coll: 'people', id }, true),
