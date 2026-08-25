@@ -58,24 +58,44 @@ function parseCSV(text) {
   return rows
 }
 
-// "$1,234.56" / "($0.62)" / "-$30.00" → signed number (parens = negative)
-function money(s) {
-  if (s == null) return 0
+/**
+ * The same parse, but it can say NO.
+ *
+ * ⚠️ money() returning 0 for something it could not read is how a buy became free shares.
+ * A Robinhood row whose Amount is unreadable came back as 0, and classify() reads zero
+ * dollars with non-zero units as a corporate action — so the row imported as an adjustment,
+ * at zero cost basis, counted as neither a trade nor a skip. Callers handling money must use
+ * this one and decide for themselves what an unreadable figure means.
+ *
+ * ⚠️ AND THE $ COMES OFF BEFORE THE PARENTHESES ARE TESTED. "$(50.00)" is how more than one
+ * export writes negative fifty dollars; testing for the parens first missed it, and what
+ * reached parseFloat was "(50.00)" — NaN, i.e. zero, i.e. the bug above.
+ */
+function moneyOrNull(s) {
+  if (s == null) return null
   let t = String(s).trim()
-  if (!t) return 0
+  if (!t) return null
   let neg = false
+  t = t.replace(/[$,\s]/g, '')
   if (t.startsWith('(') && t.endsWith(')')) {
     neg = true
     t = t.slice(1, -1)
   }
-  t = t.replace(/[$,\s]/g, '')
   if (t.startsWith('-')) {
     neg = true
     t = t.slice(1)
   }
   if (t.startsWith('+')) t = t.slice(1)
+  if (!/^\d*\.?\d+$/.test(t)) return null
   const n = parseFloat(t)
-  return Number.isNaN(n) ? 0 : neg ? -n : n
+  return Number.isNaN(n) ? null : neg ? -n : n
+}
+
+// "$1,234.56" / "($0.62)" / "-$30.00" → signed number. Zero when unreadable, which is fine
+// for a fee or a display figure and NOT fine for the amount of a trade — see moneyOrNull.
+function money(s) {
+  const n = moneyOrNull(s)
+  return n == null ? 0 : n
 }
 
 function num(s) {
@@ -146,8 +166,9 @@ function makeStats() {
     trades: [],
     skips: {},
     samples: {},
-    sells: { count: 0, dollars: 0 },
-    adjustments: 0,
+    // ⚠️ no running sells/adjustments counters here on purpose: they were incremented inside
+    // the row loop while kept/netInvested were measured after de-duplication, so one summary
+    // described two different imports. Both are derived from `trades` at the end now.
     dataRows: 0,
   }
 }
@@ -166,7 +187,22 @@ function fromRobinhood(rows, since) {
     if (!row || row.every((c) => c.trim() === '')) continue
     s.dataRows++
     const date = toISODate(row[at('Activity Date')], 'robinhood')
-    if (since && date && date < since) {
+    /**
+     * ⚠️ AN UNPARSEABLE DATE IS A SKIP, NOT A PASS.
+     *
+     * The --since filter was written `if (since && date && date < since)`, so a null date fell
+     * through it as though it had been checked — a "just the new rows" run imported undated
+     * history the operator believed was excluded. And the row that landed had date: null, which
+     * poisons every date-dependent answer built on it: the holding-period and wash-sale work,
+     * account_ledger walking a date order, the crossing calendar. importKey folds the date in
+     * with .join(), which stringifies null to empty, so undated rows also collapse against each
+     * other on symbol/units/price alone.
+     */
+    if (!date) {
+      skip(s, 'unreadable date', row)
+      continue
+    }
+    if (since && date < since) {
       s.skips[`before ${since}`] = (s.skips[`before ${since}`] || 0) + 1
       continue
     }
@@ -174,8 +210,13 @@ function fromRobinhood(rows, since) {
     const symbol = (row[at('Instrument')] || '').trim()
     const units = num(row[at('Quantity')])
     if (code === 'Sell' && symbol && units > 0) {
-      s.sells.count++
-      s.sells.dollars += Math.abs(money(row[at('Amount')]))
+      const amount = moneyOrNull(row[at('Amount')])
+      if (amount == null || Math.abs(amount) <= 0) {
+        skip(s, 'sell with unreadable amount', row)
+        continue
+      }
+      let sellPrice = moneyOrNull(row[at('Price')])
+      if (sellPrice == null || sellPrice <= 0) sellPrice = Math.abs(amount) / units
       s.trades.push(
         makeTrade({
           platform: 'robinhood',
@@ -183,8 +224,8 @@ function fromRobinhood(rows, since) {
           symbol,
           assetType: 'stock',
           units: -units,
-          price: money(row[at('Price')]),
-          dollars: -Math.abs(money(row[at('Amount')])),
+          price: sellPrice,
+          dollars: -Math.abs(amount),
           fee: 0,
           reinvestment: false,
           note: (row[at('Description')] || '').replace(/\s+/g, ' ').trim(),
@@ -200,7 +241,6 @@ function fromRobinhood(rows, since) {
       const m = symbol ? qRaw.match(/^([\d.]+)(S?)$/i) : null
       const qty = m ? num(m[1]) : 0
       if (qty > 0) {
-        s.adjustments++
         s.trades.push(
           makeTrade({
             platform: 'robinhood',
@@ -238,6 +278,21 @@ function fromRobinhood(rows, since) {
       continue
     }
     const note = (row[at('Description')] || '').replace(/\s+/g, ' ').trim()
+    /**
+     * ⚠️ THE MONEY IS CHECKED, not just the code, the symbol and the quantity.
+     *
+     * Cash App has had this guard all along (see `unparsed ${kind}` below); Robinhood did not,
+     * so a Buy whose Amount would not parse — "$(50.00)", an empty cell, "-USD 50.00" — became
+     * units at zero dollars, which classify() reads as a corporate action. Ten shares of
+     * nothing entered the fund at zero cost basis, reported as neither a trade nor a skip.
+     */
+    const amount = moneyOrNull(row[at('Amount')])
+    if (amount == null || Math.abs(amount) <= 0) {
+      skip(s, 'buy with unreadable amount', row)
+      continue
+    }
+    let buyPrice = moneyOrNull(row[at('Price')])
+    if (buyPrice == null || buyPrice <= 0) buyPrice = Math.abs(amount) / units
     s.trades.push(
       makeTrade({
         platform: 'robinhood',
@@ -245,8 +300,8 @@ function fromRobinhood(rows, since) {
         symbol,
         assetType: 'stock',
         units,
-        price: money(row[at('Price')]),
-        dollars: Math.abs(money(row[at('Amount')])),
+        price: buyPrice,
+        dollars: Math.abs(amount),
         fee: 0,
         reinvestment: /reinvest/i.test(note),
         note,
@@ -272,7 +327,12 @@ function fromCashApp(rows, since) {
     s.dataRows++
     const rawTs = (row[at('Date')] || '').trim()
     const date = toISODate(rawTs, 'cashapp')
-    if (since && date && date < since) {
+    // an unreadable date is a skip, not a pass — see fromRobinhood for the full reasoning
+    if (!date) {
+      skip(s, 'unreadable date', row)
+      continue
+    }
+    if (since && date < since) {
       s.skips[`before ${since}`] = (s.skips[`before ${since}`] || 0) + 1
       continue
     }
@@ -329,10 +389,6 @@ function fromCashApp(rows, since) {
     const externalId =
       (row[at('Transaction ID')] || '').trim() || `${rawTs}|${symbol}|${units}|${dollars}`
     const sell = kind === 'sell'
-    if (sell) {
-      s.sells.count++
-      s.sells.dollars += dollars
-    }
     s.trades.push(
       makeTrade(
         {
@@ -423,8 +479,21 @@ export function parseTrades(text, { source: forcedSource = null, since = null } 
       dataRows: s.dataRows,
       kept: trades.length,
       reinvestments: trades.filter((t) => t.reinvestment).length,
-      sells: s.sells,
-      adjustments: s.adjustments,
+      /**
+       * ⚠️ COUNTED AFTER DE-DUPLICATION, like everything else here.
+       *
+       * These were incremented inside the row loop while `kept` and `netInvested` were
+       * measured afterwards, so one summary reported two different imports. Three identical
+       * same-day Robinhood sells printed "Sells: 3 (-$33.00)" over a $11 net — the exact
+       * collapse the block below exists to make loud, contradicted by the line above it.
+       */
+      sells: {
+        count: trades.filter((t) => t.kind === 'sell').length,
+        dollars: trades
+          .filter((t) => t.kind === 'sell')
+          .reduce((acc, t) => acc + Math.abs(t.dollars), 0),
+      },
+      adjustments: trades.filter((t) => t.dollars === 0 && t.units !== 0).length,
       skips: s.skips,
       skippedTotal: Object.values(s.skips).reduce((acc, n) => acc + n, 0),
       netInvested: trades.reduce((acc, t) => acc + t.dollars, 0),
