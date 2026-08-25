@@ -169,7 +169,7 @@ export function Investments({ demo = false }: { demo?: boolean }) {
               marginLeft: 'auto',
               fontSize: '0.82rem',
               background: 'var(--accent,#7c6af7)',
-              color: '#fff',
+              color: 'var(--btn-text)',
               borderColor: 'transparent',
             }}
           >
@@ -227,7 +227,7 @@ function ModeBtn({
       style={{
         fontSize: '0.82rem',
         background: active ? 'var(--accent,#7c6af7)' : 'transparent',
-        color: active ? '#fff' : 'inherit',
+        color: active ? 'var(--btn-text)' : 'inherit',
         borderColor: active ? 'transparent' : undefined,
       }}
     >
@@ -464,7 +464,7 @@ function AllAccounts({
             disabled={bulkBusy || !bulkVal || !Number.isFinite(Number(bulkVal))}
             style={{
               background: 'var(--accent,#7c6af7)',
-              color: '#fff',
+              color: 'var(--btn-text)',
               borderColor: 'transparent',
             }}
           >
@@ -2056,7 +2056,7 @@ function AssignForm({
         style={{
           fontSize: '0.8rem',
           background: 'var(--accent,#7c6af7)',
-          color: '#fff',
+          color: 'var(--btn-text)',
           borderColor: 'transparent',
         }}
       >
