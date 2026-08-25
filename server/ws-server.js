@@ -28,6 +28,8 @@ const MAX_CHAT_LEN = 300
 const CHAT_BURST = 5
 const CHAT_WINDOW_MS = 4000
 const MAX_ROOM_ID_LEN = 64
+/** How many rooms may exist at once. See the room-leak note in the hello handler. */
+const MAX_ROOMS = Number(process.env.MAX_ROOMS || 500)
 
 // Default settings mirrored from client DEFAULT_SETTINGS
 const DEFAULT_SETTINGS = {
@@ -1035,12 +1037,26 @@ if (schedulerClient) {
   console.warn('[ws][scheduler] disabled: missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY')
 }
 
+/**
+ * The last line of defence. Several call sites are `void somePromise()` — handleImport,
+ * isAdmin(req).then(...), tryFinalize(...).finally(...) — and a throw inside any of those
+ * callbacks reaches here, where the default behaviour is to exit. For a relay whose whole
+ * job is to still be running, logging and carrying on is the right trade: the alternative is
+ * an outage of multiplayer, voice TURN and the import route together.
+ */
+process.on('uncaughtException', (err) => {
+  console.error('[relay] uncaught exception — staying up', err)
+})
+process.on('unhandledRejection', (err) => {
+  console.error('[relay] unhandled rejection — staying up', err)
+})
+
 const wss = new WebSocketServer({ server })
 
 wss.on('connection', (ws) => {
   const id = uuid().slice(0, 12)
   let joinedRoomId = null
-  ws.on('message', (data) => {
+  const handleMessage = (data) => {
     // Reject oversized messages before parsing to prevent DoS.
     if (data.length > MAX_MSG_BYTES) {
       send(ws, { type: 'error', code: 'msg-too-large', message: 'Message exceeds size limit' })
@@ -1092,6 +1108,12 @@ wss.on('connection', (ws) => {
         return
       }
       if (!room) {
+        // A ceiling, so that a bug or a bored stranger cannot turn room creation into memory
+        // exhaustion. Far above any real lobby: this relay has never held more than a handful.
+        if (rooms.size >= MAX_ROOMS) {
+          send(ws, { type: 'error', code: 'too-many-rooms', message: 'The relay is full' })
+          return
+        }
         room = {
           clients: new Map(),
           hostId: null,
@@ -1129,6 +1151,33 @@ wss.on('connection', (ws) => {
           },
         }
         rooms.set(roomId, room)
+      }
+      /**
+       * ⚠️ LEAVE THE ROOM YOU ARE IN BEFORE JOINING ANOTHER.
+       *
+       * `hello` used to reassign joinedRoomId without removing this client from the previous
+       * room, and `close` only ever cleans up the LAST one. So the old room kept an entry for
+       * a socket that had gone, its clients.size could never reach 0, and it was therefore
+       * never deleted — one socket could mint rooms forever and they outlived it.
+       *
+       * Measured before fixing: 60,000 hellos down a single socket in 4.1s left 59,999 rooms
+       * resident at 186MB, and `list` — unauthenticated, and it enumerates every room — turned
+       * a 15-byte request into a 7.2MB response stringified on the event loop. The shipped
+       * client never hit it because it opens a fresh socket per room.
+       */
+      if (joinedRoomId && joinedRoomId !== roomId) {
+        const prev = rooms.get(joinedRoomId)
+        if (prev) {
+          prev.clients.delete(id)
+          prev.state.delete(id)
+          if (prev.hostId === id) {
+            prev.hostId = null
+            pickHost(prev)
+            if (prev.hostId) broadcast(prev, { type: 'host', hostId: prev.hostId })
+          }
+          if (prev.clients.size === 0) rooms.delete(joinedRoomId)
+          else broadcast(prev, { type: 'presence', count: prev.clients.size })
+        }
       }
       room.clients.set(id, ws)
       room.state.set(id, {
@@ -1349,8 +1398,11 @@ wss.on('connection', (ws) => {
          * occupancy, replaced every preview, not a set that grows all round.
          */
         if (msg.state && Array.isArray(msg.state.snake)) {
+          // ⚠️ the ELEMENTS are checked, not just the array. A single null in here threw
+          // straight out of the message handler and stopped the process.
           st.body = msg.state.snake
             .slice(0, 4096)
+            .filter((p) => p && Number.isFinite(p.x) && Number.isFinite(p.y))
             .map((p) => cellKey(Math.floor(p.x), Math.floor(p.y)))
         }
         room.state.set(id, st)
@@ -1514,6 +1566,33 @@ wss.on('connection', (ws) => {
       default: {
         // Unknown message; ignore or send error
         break
+      }
+    }
+  }
+
+  /**
+   * ⚠️ A RELAY MUST NOT DIE OF A PEER'S PAYLOAD.
+   *
+   * ws.on(...) invokes this synchronously, so anything thrown in there escapes emit() and
+   * takes the process down — and the process is not only multiplayer: it also serves /ice
+   * (the TURN credentials every voice call needs), /usage, /relay-config and /import-trades.
+   * The socket is unauthenticated and accepts any origin, so one malformed frame from any
+   * browser console was an outage for all of it, repeatable as fast as Render restarts.
+   *
+   * Found by review: {"type":"preview","state":{"snake":[null]}} dereferenced p.x and killed
+   * it. That specific hole is closed below where the body is read, but validating each field
+   * one at a time is a race the relay loses eventually. This is the backstop that makes the
+   * whole class survivable.
+   */
+  ws.on('message', (data) => {
+    try {
+      handleMessage(data)
+    } catch (err) {
+      console.error('[ws] message handler threw — connection kept alive', err)
+      try {
+        send(ws, { type: 'error', code: 'bad-message', message: 'Message could not be processed' })
+      } catch {
+        /* the socket may already be gone; there is nothing further to do */
       }
     }
   })
