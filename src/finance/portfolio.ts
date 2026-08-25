@@ -367,13 +367,31 @@ export async function adminSetPrice(symbol: string, price: number): Promise<void
 export const accountReserved = (a: AccountPortfolio): number =>
   a.holdings.reduce((s, h) => (h.price != null ? s + h.units * h.price : s), 0)
 
+/**
+ * Whole days from an account's start date to a moment, both taken at UTC midnight.
+ *
+ * ⚠️ ONE DEFINITION, because there were two and they disagreed by a day. This function parsed
+ * the start at LOCAL midnight and measured to Date.now(); buildDailySeries in timeline.ts
+ * parses at UTC midnight and measures to a UTC-midnight day, and the chart's last point is
+ * taken from toISOString(). For a viewer west of UTC in the evening the two differed by one
+ * day — with 33 accounts at $1/day that is $33 between the chart's Promised line and the
+ * card's behind-the-promise figure, for no reason a reader could ever discover.
+ *
+ * UTC on both sides, because the server counts in UTC too (current_date) and the chart's day
+ * buckets already are.
+ */
+export function daysOnPlan(startDate: string, atMs: number = Date.now()): number {
+  const start = Date.parse(startDate + 'T00:00:00Z')
+  if (!Number.isFinite(start)) return 0
+  const at = Date.parse(new Date(atMs).toISOString().slice(0, 10) + 'T00:00:00Z')
+  if (!Number.isFinite(at)) return 0
+  return Math.max(0, Math.round((at - start) / 86_400_000))
+}
+
 /** Dollars promised to date = rate × days since the account's start date (null if unset). */
 export function promisedToDate(a: AccountPortfolio): number | null {
   if (!a.dollarPerDay || !a.startDate) return null
-  const start = new Date(a.startDate + 'T00:00:00').getTime()
-  if (Number.isNaN(start)) return null
-  const days = Math.max(0, Math.floor((Date.now() - start) / 86_400_000))
-  return a.dollarPerDay * days
+  return a.dollarPerDay * daysOnPlan(a.startDate)
 }
 
 /**

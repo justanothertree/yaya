@@ -3,6 +3,7 @@
 // invested / promised / value curves. Value only spans days a price is known for —
 // history accrues from the daily price sweep, so that line grows richer over time.
 import { getSupabaseClient } from './client'
+import { daysOnPlan } from './portfolio'
 
 export type TimelineAccount = { dollarPerDay: number; startDate: string | null }
 export type TimelineEvent = { date: string; symbol: string; units: number; cost: number }
@@ -143,10 +144,8 @@ export function buildDailySeries(t: Timeline, fromISO: string, toISO: string): S
     let promised = 0
     for (const a of t.accounts) {
       if (!a.dollarPerDay || !a.startDate) continue
-      const start = Date.parse(a.startDate + 'T00:00:00Z')
-      if (!Number.isFinite(start)) continue
-      const days = Math.floor((d - start) / DAY)
-      if (days > 0) promised += a.dollarPerDay * days
+      // the same day count the summary card uses — see daysOnPlan for why that matters
+      promised += a.dollarPerDay * daysOnPlan(a.startDate, d)
     }
 
     let shares: number | null = null
