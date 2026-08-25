@@ -2,20 +2,19 @@ import { useCallback, useEffect, useState } from 'react'
 import { getSupabaseClient } from '../finance/client'
 
 /**
- * What has actually been set aside for the family, and how that compares to what was promised.
+ * Money set aside for the family that has not been invested yet.
  *
- * ⚠️ WHY THIS IS TYPED IN RATHER THAN IMPORTED.
+ * ⚠️ THIS FILE USED TO ANSWER A BIGGER QUESTION, AND THE COMMENT EXPLAINING WHY OUTLIVED THE
+ * ANSWER. It said contributions could not be derived from the trades — true when it was
+ * written, because designation did not exist yet and three derivations over the same trades
+ * gave "behind $8,376", "ahead $41,313" and "$770 invested". Once every trade was marked
+ * family or personal the walk became exact, and docs/2026-08-23-cash-and-derived-contributions
+ * .sql moved contributions to finance.account_ledger. Nobody came back for this panel, so its
+ * hero number went on reading the typed table and disagreeing with the derived one by $13,792.
  *
- * The fund is commingled with Evan's own trading, and which shares were bought with the family
- * in mind was never recorded anywhere. So no broker export contains it, and nothing can be
- * derived from the trades either — three different derivations over the SAME trades give
- * "behind $8,376", "ahead $41,313" and "$770 invested". They aren't competing answers, they're
- * all noise from an input that doesn't exist. Those trades are $49,992 in and $49,221 out since
- * 2020, because money gets recycled through the same symbols and every rebuy looked like a
- * fresh contribution.
- *
- * Evan is the only source of the fact, so he states it. Everything else derives: promised is
- * exact arithmetic that never needs importing, and ahead/behind is contributed minus promised.
+ * What survives is the one thing the trades genuinely cannot know: money promised and set
+ * aside that has not reached the market. It is reported as a total, with no comparison to the
+ * promise — ahead-or-behind has exactly one home, portfolioTotals(), and it is not this.
  */
 
 type Status = {
@@ -104,46 +103,46 @@ export function FundPanel() {
     else await load()
   }
 
-  const behind = status ? status.promised - status.contributed : 0
   const perPerson = status && status.accounts > 0 ? status.contributed / status.accounts : 0
-  const promisedEach = status && status.accounts > 0 ? status.promised / status.accounts : 0
 
   return (
     <div>
       <p className="muted" style={{ marginTop: 0, fontSize: '0.85rem' }}>
-        What you&apos;ve actually set aside. Everything else on the dashboard is worked out from
-        this — the promise itself is just arithmetic and never needs updating.
+        Money set aside for the family that has <strong>not been invested yet</strong>. The trades
+        cannot know about it, so this is the one thing here that has to be typed.
       </p>
 
-      {status && !status.ready && (
+      {/**
+       * ⚠️ THIS PANEL NO LONGER ANSWERS "ARE WE KEEPING THE PROMISE".
+       *
+       * It used to, from finance.family_contributions — the TYPED ledger — and
+       * docs/2026-08-23-cash-and-derived-contributions.sql superseded that months ago:
+       * contributions are DERIVED from the trades now, by finance.account_ledger. Nobody
+       * removed the hero number, so the two answers were both on screen, two clicks apart:
+       *
+       *   Admin -> Fund          $33.00 set aside vs $8,514.00 promised  ->  "$8,481.00 behind"
+       *   Investments -> All     $13,825.02 put in vs $8,514.00 promised ->  "$5,311.02 ahead"
+       *
+       * Same question, opposite verdict, $13,792 apart. The $33 is the single test row that
+       * OPEN-DECISIONS §2 describes as inert because "nothing reads it today" — it was the
+       * input to a 1.6rem hero number.
+       *
+       * What the table IS still for, per that same entry, is money set aside but NOT YET
+       * INVESTED, which the trades genuinely cannot know. That is a real quantity and it is
+       * not comparable to the promise, so it is reported as a total and nothing else.
+       * Ahead-or-behind has exactly one home: portfolioTotals(), from the derived ledger.
+       */}
+      {status && (
         <div className="card" style={{ marginBottom: '1rem' }}>
-          <strong>Nothing recorded yet.</strong>
-          <p className="muted" style={{ margin: '0.35rem 0 0', fontSize: '0.85rem' }}>
-            Until there&apos;s at least one entry here, nobody is shown an ahead-or-behind figure —
-            their page says it&apos;s still being set up. That&apos;s deliberate: a confident zero
-            would be a wrong answer rather than an honest blank.
-          </p>
-        </div>
-      )}
-
-      {/* One hero number, in Evan's words: are we keeping the promise or not. */}
-      {status && status.ready && (
-        <div className="card" style={{ marginBottom: '1rem' }}>
-          <div
-            style={{
-              fontSize: '1.6rem',
-              fontWeight: 800,
-              color: behind > 0 ? undefined : 'var(--ok, #4ade80)',
-            }}
-          >
-            {behind > 0 ? `${money(behind)} behind` : `${money(-behind)} ahead`}
-          </div>
+          <div style={{ fontSize: '1.6rem', fontWeight: 800 }}>{money(status.contributed)}</div>
           <div className="muted" style={{ fontSize: '0.85rem' }}>
-            {money(status.contributed)} set aside against {money(status.promised)} promised ·{' '}
-            {status.accounts} {status.accounts === 1 ? 'person' : 'people'}
+            set aside and not yet invested · {status.accounts}{' '}
+            {status.accounts === 1 ? 'person' : 'people'}
+            {status.contributed > 0 && ` · ${money(perPerson)} each`}
           </div>
           <div className="muted" style={{ fontSize: '0.78rem', marginTop: '0.35rem' }}>
-            That&apos;s {money(perPerson)} each, against {money(promisedEach)} each promised.
+            Whether the dollar-a-day promise is being kept is worked out from the trades, on
+            Investments — not from this. Money here has not reached the market yet.
           </div>
         </div>
       )}

@@ -3,7 +3,7 @@
 Things that are blocked on Evan rather than on code. Each one names what is already built, what
 is actually being asked, and what happens if it keeps waiting.
 
-Last reviewed: 2026-08-23 (second pass).
+Last reviewed: 2026-08-25 (third pass).
 
 ---
 
@@ -26,8 +26,19 @@ allocated trades in date order: a sale becomes their cash, a purchase spends the
 Evan's, and only the shortfall is a fresh contribution. Nothing to remember to enter.
 
 `finance.family_contributions` is left in place and still holds one $33 test row. It remains the
-right home for money set aside but NOT yet invested, which the trades cannot know about — nothing
-reads it today, so the test row is inert.
+right home for money set aside but NOT yet invested, which the trades cannot know about.
+
+⚠️ **Corrected 2026-08-25: it was NOT inert.** Admin → Fund still rendered it as a hero
+ahead/behind figure, so the admin screen carried two opposite answers to the one question the
+module exists for:
+
+|                             | contributed | promised  | verdict              |
+| --------------------------- | ----------- | --------- | -------------------- |
+| Admin → Fund (typed)        | $33.00      | $8,514.00 | **$8,481.00 behind** |
+| Investments → All (derived) | $13,825.02  | $8,514.00 | **$5,311.02 ahead**  |
+
+$13,792 apart. The panel now reports the set-aside total and nothing else, and says in words
+that the promise is worked out on Investments. Ahead-or-behind has one home again.
 
 ---
 
