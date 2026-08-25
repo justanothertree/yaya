@@ -84,8 +84,18 @@ Deno.serve(async () => {
     summary.deferred = stocks.length - batch.length
     for (const s of batch) {
       try {
+        /**
+         * ⚠️ THE KEY GOES IN A HEADER, NOT THE URL.
+         *
+         * Deno's fetch rejects with a message that embeds the full request URL, and the
+         * catch below stringified that straight into `summary.errors`, which is spread into
+         * the 200 response body and into the logs. One DNS blip or connection reset and the
+         * Finnhub key was published to whoever called this. Finnhub accepts the token as a
+         * header, so the URL never carries it.
+         */
         const res = await fetch(
-          `https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(s.symbol)}&token=${key}`,
+          `https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(s.symbol)}`,
+          { headers: { 'X-Finnhub-Token': key } },
         )
         if (res.ok) {
           const q = (await res.json()) as { c?: number }
@@ -98,7 +108,9 @@ Deno.serve(async () => {
           break // let the next run pick these up
         } else summary.errors.push(`${s.symbol}: ${res.status}`)
       } catch (e) {
-        summary.errors.push(`${s.symbol}: ${String(e)}`)
+        // ⚠️ never the raw error: see the note above. A name is enough to debug with and
+        // cannot carry a URL, a header or a key.
+        summary.errors.push(`${s.symbol}: ${e instanceof Error ? e.name : 'fetch failed'}`)
       }
     }
   }
