@@ -350,7 +350,7 @@ export function CircuitsPanel() {
                       disabled={busy || !renameVal.trim()}
                       style={{
                         background: 'var(--accent,#7c6af7)',
-                        color: '#fff',
+                        color: 'var(--btn-text)',
                         borderColor: 'transparent',
                       }}
                     >
@@ -407,7 +407,7 @@ export function CircuitsPanel() {
                       disabled={busy || !addName.trim()}
                       style={{
                         background: 'var(--accent,#7c6af7)',
-                        color: '#fff',
+                        color: 'var(--btn-text)',
                         borderColor: 'transparent',
                       }}
                     >
@@ -440,7 +440,7 @@ export function CircuitsPanel() {
               disabled={busy || !newName.trim()}
               style={{
                 background: 'var(--accent,#7c6af7)',
-                color: '#fff',
+                color: 'var(--btn-text)',
                 borderColor: 'transparent',
               }}
             >

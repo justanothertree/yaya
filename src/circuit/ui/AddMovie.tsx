@@ -99,7 +99,7 @@ export function AddMovie({
             disabled={!title.trim()}
             style={{
               background: 'var(--accent, #7c6af7)',
-              color: '#fff',
+              color: 'var(--btn-text)',
               borderColor: 'transparent',
             }}
           >

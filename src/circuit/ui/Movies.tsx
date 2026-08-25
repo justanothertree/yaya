@@ -206,7 +206,7 @@ export function Movies({
                 view === k
                   ? {
                       background: 'var(--accent, #7c6af7)',
-                      color: '#fff',
+                      color: 'var(--btn-text)',
                       borderColor: 'transparent',
                     }
                   : undefined
@@ -325,7 +325,7 @@ export function Movies({
                 sort === k
                   ? {
                       background: 'var(--accent, #7c6af7)',
-                      color: '#fff',
+                      color: 'var(--btn-text)',
                       borderColor: 'transparent',
                     }
                   : undefined

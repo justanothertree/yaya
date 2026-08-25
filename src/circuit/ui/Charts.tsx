@@ -199,7 +199,7 @@ export function Charts({
                 mode === k
                   ? {
                       background: 'var(--accent, #7c6af7)',
-                      color: '#fff',
+                      color: 'var(--btn-text)',
                       borderColor: 'transparent',
                     }
                   : undefined

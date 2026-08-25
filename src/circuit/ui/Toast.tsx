@@ -49,7 +49,7 @@ export function Toast() {
         <div
           style={{
             background: 'var(--accent, #7c6af7)',
-            color: '#fff',
+            color: 'var(--btn-text)',
             padding: '0.45rem 1.25rem',
             borderRadius: 24,
             fontWeight: 600,

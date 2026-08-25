@@ -140,7 +140,7 @@ export function MovieRate({
             onClick={save}
             style={{
               background: 'var(--accent, #7c6af7)',
-              color: '#fff',
+              color: 'var(--btn-text)',
               borderColor: 'transparent',
             }}
           >

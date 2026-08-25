@@ -523,7 +523,7 @@ export function AdminPanel() {
               disabled={creating}
               style={{
                 background: 'var(--accent,#7c6af7)',
-                color: '#fff',
+                color: 'var(--btn-text)',
                 borderColor: 'transparent',
               }}
             >
@@ -903,7 +903,7 @@ export function AdminPanel() {
                                   disabled={savingMember}
                                   style={{
                                     background: 'var(--accent,#7c6af7)',
-                                    color: '#fff',
+                                    color: 'var(--btn-text)',
                                     borderColor: 'transparent',
                                   }}
                                 >

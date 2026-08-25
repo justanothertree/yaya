@@ -188,7 +188,7 @@ export function Watchlist({
           disabled={watchlist.length === 0}
           style={{
             background: 'var(--accent,#7c6af7)',
-            color: '#fff',
+            color: 'var(--btn-text)',
             borderColor: 'transparent',
             fontWeight: 700,
           }}
@@ -340,7 +340,7 @@ export function Watchlist({
                 disabled={!newTitle.trim()}
                 style={{
                   background: 'var(--accent,#7c6af7)',
-                  color: '#fff',
+                  color: 'var(--btn-text)',
                   borderColor: 'transparent',
                 }}
               >

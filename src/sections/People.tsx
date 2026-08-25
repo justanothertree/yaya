@@ -203,7 +203,7 @@ export function People({ authed = false }: { authed?: boolean }) {
               onClick={() => void act(p.username, 'accept')}
               style={{
                 background: 'var(--accent, #7c6af7)',
-                color: '#fff',
+                color: 'var(--btn-text)',
                 borderColor: 'transparent',
               }}
             >

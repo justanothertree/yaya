@@ -526,7 +526,7 @@ export function Log({
               onClick={addStarterSet}
               style={{
                 background: 'var(--accent,#7c6af7)',
-                color: '#fff',
+                color: 'var(--btn-text)',
                 borderColor: 'transparent',
               }}
             >
@@ -928,7 +928,7 @@ function ExerciseEditModal({
             onClick={onClose}
             style={{
               background: 'var(--accent, #7c6af7)',
-              color: '#fff',
+              color: 'var(--btn-text)',
               borderColor: 'transparent',
             }}
           >

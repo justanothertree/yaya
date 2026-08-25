@@ -279,7 +279,7 @@ export function AcceptInvite() {
           disabled={submitting || !username || !displayName || !email || !password || !confirm}
           style={{
             background: 'var(--accent,#7c6af7)',
-            color: '#fff',
+            color: 'var(--btn-text)',
             borderColor: 'transparent',
             marginTop: '0.25rem',
           }}
