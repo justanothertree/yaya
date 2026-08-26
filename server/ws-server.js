@@ -42,6 +42,8 @@ const MAX_ROOMS = Number(process.env.MAX_ROOMS || 500)
  * minute is far above anything a person produces and far below what a script needs.
  */
 const CONN_BURST = Number(process.env.CONN_BURST || 30)
+/** Total connections a minute, across everyone — the backstop for a forged address. */
+const CONN_BURST_GLOBAL = Number(process.env.CONN_BURST_GLOBAL || 240)
 const CONN_WINDOW_MS = Number(process.env.CONN_WINDOW_MS || 60000)
 const MAX_CLIENTS = Number(process.env.MAX_CLIENTS || 400)
 /** Whether x-forwarded-for can be believed. True on Render; false if exposed directly. */
@@ -881,6 +883,28 @@ const server = createServer((req, res) => {
         JSON.stringify({
           node: process.version,
           uptimeSeconds: Math.round(process.uptime()),
+          /**
+           * What the proxy in front of us actually sends, and what the rate limiter makes of it.
+           *
+           * Here because assuming the shape of this header already cost one silently dead rate
+           * limit: the ceiling keyed on the rightmost entry, which turned out to vary per
+           * connection on Render, so every caller got a fresh budget and nothing was ever
+           * refused. Admin-only, and it only ever reveals the caller's own chain.
+           */
+          xff: {
+            raw: req.headers['x-forwarded-for'] ?? null,
+            socket: req.socket?.remoteAddress ?? null,
+            trustProxy: TRUST_PROXY,
+            usedAsKey: clientAddr(req),
+          },
+          connections: {
+            perAddressPerWindow: CONN_BURST,
+            globalPerWindow: CONN_BURST_GLOBAL,
+            windowMs: CONN_WINDOW_MS,
+            addressesTracked: connLog.size,
+            inWindow: connLogAll.length,
+            open: wss.clients.size,
+          },
           has: {
             SUPABASE_URL: !!SUPABASE_URL,
             SUPABASE_ANON_KEY: !!SUPABASE_ANON_KEY,
@@ -1068,16 +1092,27 @@ process.on('unhandledRejection', (err) => {
 })
 
 /**
- * ⚠️ THE RIGHTMOST X-Forwarded-For ENTRY, NOT THE LEFTMOST.
+ * Which X-Forwarded-For entry identifies the caller.
  *
- * XFF is a list that each proxy APPENDS to, so a client that sends its own header gets the real
- * address added after theirs: `whatever-they-typed, <real client>`. Reading the leftmost entry —
- * which is the usual reflex, and what "the client IP" is normally taken to mean — would be
- * reading attacker-supplied text, and a limit keyed on attacker-supplied text is not a limit:
- * rotating a fake header would hand out a fresh budget per request.
+ * ⚠️ THIS READ THE RIGHTMOST ENTRY AND THE LIMIT SILENTLY DID NOTHING. The reasoning was sound
+ * in the abstract — XFF is a list each proxy APPENDS to, so a forged header arrives as
+ * `<their text>, <real client>`, and keying on the leftmost entry means keying on attacker
+ * input. The rightmost entry is the one our own proxy wrote, so it cannot be forged.
  *
- * The rightmost entry is the one our own proxy wrote. It is correct whether the proxy appends
- * or replaces, and it degrades to the socket address when there is no proxy at all.
+ * Measured against the real deployment, that is not what arrives. 35 connections from one
+ * machine were all accepted against a ceiling of 30, which can only happen if the key differs
+ * every time — so Render appends something per-connection, and the rightmost entry is
+ * effectively a random string. A per-address ceiling keyed on a random string is not a ceiling.
+ * It looked implemented, it passed a local test, and in production it did nothing at all.
+ *
+ * So: the LEFTMOST entry, which is the conventional client address and the one Render puts
+ * first. It is forgeable — a client that sends its own XFF prepends whatever it likes and gets
+ * a fresh budget per connection — and that is now handled by bounding the TOTAL rate as well,
+ * below. Best-effort identification with a real backstop beats perfect identification of the
+ * wrong thing.
+ *
+ * ⚠️ Do not "fix" this back to the rightmost entry without measuring the header first. That is
+ * what `xff` on the admin-only /relay-config is for.
  */
 function clientAddr(req) {
   // ⚠️ And only when something in front of us actually writes it. Render terminates TLS and
@@ -1089,7 +1124,7 @@ function clientAddr(req) {
       .split(',')
       .map((s) => s.trim())
       .filter(Boolean)
-    if (parts.length) return parts[parts.length - 1]
+    if (parts.length) return parts[0]
   }
   return req?.socket?.remoteAddress || 'unknown'
 }
@@ -1102,13 +1137,31 @@ function clientAddr(req) {
  * become the thing a flood grows.
  */
 const connLog = new Map()
+/**
+ * Every recent connection, regardless of who claimed to open it.
+ *
+ * ⚠️ The per-address ceiling is best-effort, because the address comes from a header the client
+ * can prepend to (see clientAddr). Anyone rotating a forged X-Forwarded-For gets a fresh
+ * per-address budget every time, so without this there is no bound on them at all.
+ *
+ * Deliberately far above real use — the busiest hour this relay has ever seen is one player
+ * finishing 13 rounds — because a global ceiling is a SHARED FUSE: whoever trips it locks
+ * everyone else out too. Same reasoning as the global backstop on submit_score. It exists to
+ * stop a flood from being unbounded, not to police normal traffic, and a single honest client
+ * hits its own per-address limit eight times over before it gets near this.
+ */
+const connLogAll = []
 
 function connectionAllowed(addr) {
   const now = Date.now()
   const recent = (connLog.get(addr) || []).filter((t) => now - t < CONN_WINDOW_MS)
   recent.push(now)
   connLog.set(addr, recent)
-  return recent.length <= CONN_BURST
+
+  while (connLogAll.length && now - connLogAll[0] >= CONN_WINDOW_MS) connLogAll.shift()
+  connLogAll.push(now)
+
+  return recent.length <= CONN_BURST && connLogAll.length <= CONN_BURST_GLOBAL
 }
 
 const wss = new WebSocketServer({ server })
