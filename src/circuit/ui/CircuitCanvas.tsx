@@ -8,6 +8,7 @@ import { showToast } from '../toast'
 import { site } from '../../config/site'
 import { IconGitHub, IconLinkedIn } from '../../components/Icons'
 import { AmbientBackdrop } from '../../components/AmbientBackdrop'
+import { GAP, SNAP_PX, snapAxis } from './snapping'
 
 export type CanvasPane = { id: string; title: string; node: ReactNode }
 
@@ -49,7 +50,6 @@ type Layout = Record<string, WinBox>
 // store below rather than a page-scoped one. `VIEW_KEY` is a fixed string rather than a
 // per-page hash for the same reason: one canvas, one remembered pan/zoom.
 const VIEW_KEY = 'canvas_v4:'
-const GAP = 12
 const MAP_W = 120
 // the canvas plane extends 2x the screen in each direction - room to park windows off-view
 const WORLD = 2
@@ -315,6 +315,17 @@ export function CircuitCanvas({
     ox: number
     oy: number
     zone: Zone | null
+    // Every OTHER visible window's box, frozen at grab time. Nothing else moves during a drag,
+    // so re-reading `wins` on every pointermove would buy nothing and would drag the whole
+    // layout into this callback's dependencies — which would change its identity mid-drag and
+    // break the removeEventListener-by-reference in onDragUp.
+    targets: Array<{ l: number; t: number; r: number; b: number }>
+    // Which axes were snapped on the last move. ⚠️ Release momentum is killed on exactly these:
+    // a thrown window glides for 110ms, which would carry it straight back off the edge it just
+    // locked onto. Per-axis rather than all-or-nothing, so snapping x and flicking downward
+    // still slides along the guide like a rail.
+    snapX: boolean
+    snapY: boolean
     // velocity tracking (px/ms, exponentially smoothed) — a released window keeps
     // its momentum instead of stopping dead under the cursor
     lx: number
@@ -323,6 +334,19 @@ export function CircuitCanvas({
     vx: number
     vy: number
   } | null>(null)
+  // The alignment guides currently showing. Held in a ref as well so the drag can decide whether
+  // anything CHANGED before touching state: the position itself goes straight to the DOM for
+  // smoothness, and re-rendering on every pointermove would undo that.
+  const [guides, setGuides] = useState<{ x: number | null; y: number | null } | null>(null)
+  const guidesRef = useRef<{ x: number | null; y: number | null } | null>(null)
+  const showGuides = useCallback((next: { x: number | null; y: number | null } | null) => {
+    const cur = guidesRef.current
+    const same =
+      cur === next || (cur != null && next != null && cur.x === next.x && cur.y === next.y)
+    if (same) return
+    guidesRef.current = next
+    setGuides(next)
+  }, [])
   // ── weight: programmatic box changes settle into place instead of teleporting ──
   const settleTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
   const reducedMotion =
@@ -902,6 +926,16 @@ export function CircuitCanvas({
       ox,
       oy,
       zone: null,
+      // minimized panes live in the taskbar, not on the plane — an invisible window must not
+      // pull on a visible one
+      targets: panes
+        .filter((p) => p.id !== id && wins[p.id] && !wins[p.id].min)
+        .map((p) => {
+          const o = wins[p.id]
+          return { l: o.x, t: o.y, r: o.x + o.w, b: o.y + o.h }
+        }),
+      snapX: false,
+      snapY: false,
       lx: e.clientX,
       ly: e.clientY,
       lt: performance.now(),
@@ -955,8 +989,52 @@ export function CircuitCanvas({
       const maxX = Math.max(0, b.w - el.offsetWidth)
       const maxY = Math.max(0, b.h - el.offsetHeight)
       const v = viewRef.current
-      const nx = Math.min(maxX, Math.max(0, d.ox + (e.clientX - d.sx) / v))
-      const ny = Math.min(maxY, Math.max(0, d.oy + (e.clientY - d.sy) / v))
+      let nx = Math.min(maxX, Math.max(0, d.ox + (e.clientX - d.sx) / v))
+      let ny = Math.min(maxY, Math.max(0, d.oy + (e.clientY - d.sy) / v))
+
+      /**
+       * Edge snapping against the other windows.
+       *
+       * ⚠️ Yields to the Aero zones. zoneFor() fires within 12px of the VIEWPORT edge, and a
+       * window dragged along that border would otherwise have two different snaps arguing over
+       * the same pointer — the half-screen preview showing while the box quietly latched onto a
+       * neighbour. One winner, and it is the one with the visible preview.
+       *
+       * ⚠️ Alt turns it off. A magnet you cannot defeat stops being help the first time you
+       * want a window one pixel off flush, and there is no other way to ask for that.
+       *
+       * The axes are resolved independently, or a window near-aligned on x and far away on y
+       * would refuse to snap at all — and if both hit, it lands on the corner.
+       */
+      const zone = zoneFor(e)
+      if (zone || e.altKey || d.targets.length === 0) {
+        d.snapX = false
+        d.snapY = false
+        showGuides(null)
+      } else {
+        const tol = SNAP_PX / v
+        const w = el.offsetWidth
+        const h = el.offsetHeight
+        const sx = snapAxis(
+          nx,
+          w,
+          d.targets.map((t) => ({ lo: t.l, hi: t.r })),
+          tol,
+        )
+        const sy = snapAxis(
+          ny,
+          h,
+          d.targets.map((t) => ({ lo: t.t, hi: t.b })),
+          tol,
+        )
+        // the clamp still wins: snapping may not push a window off the plane
+        if (sx) nx = Math.min(maxX, Math.max(0, sx.lo))
+        if (sy) ny = Math.min(maxY, Math.max(0, sy.lo))
+        d.snapX = !!sx
+        d.snapY = !!sy
+        showGuides(sx || sy ? { x: sx ? sx.guide : null, y: sy ? sy.guide : null } : null)
+      }
+
       // move via direct DOM for smoothness; commit to state on drop
       el.style.left = nx + 'px'
       el.style.top = ny + 'px'
@@ -969,11 +1047,10 @@ export function CircuitCanvas({
       d.lx = e.clientX
       d.ly = e.clientY
       d.lt = now
-      const zone = zoneFor(e)
       d.zone = zone
       setSnap(zone ? snapGeom(zone) : null)
     },
-    [hostBox, snapGeom, zoneFor],
+    [hostBox, snapGeom, zoneFor, showGuides],
   )
 
   const onDragUp = useCallback(() => {
@@ -981,6 +1058,7 @@ export function CircuitCanvas({
     window.removeEventListener('pointermove', onDragMove)
     window.removeEventListener('pointerup', onDragUp)
     setSnap(null)
+    showGuides(null)
     if (!d) return
     const el = winRefs.current[d.id]
     setWins((prev) => {
@@ -1003,8 +1081,9 @@ export function CircuitCanvas({
       // speed and the window flew off. Slow drops land exactly where the hand left them.
       const idle = performance.now() - d.lt
       const decay = Math.exp(-idle / 55)
-      const vx = d.vx * decay
-      const vy = d.vy * decay
+      // a snapped axis has no momentum left to spend — see snapX/snapY on the drag ref
+      const vx = d.snapX ? 0 : d.vx * decay
+      const vy = d.snapY ? 0 : d.vy * decay
       if (Math.hypot(vx, vy) > 0.3 && el && !reducedMotion) {
         const b = worldBox()
         const glide = 110 // ms worth of carried momentum
@@ -1023,7 +1102,7 @@ export function CircuitCanvas({
       return { ...prev, [d.id]: { ...w, x: nx, y: ny, max: false } }
     })
     drag.current = null
-  }, [onDragMove, snapGeom, settle, hostBox, reducedMotion])
+  }, [onDragMove, snapGeom, settle, hostBox, reducedMotion, showGuides])
 
   // ── resize from any edge / corner ──
   const onResizeMove = useCallback(
@@ -1929,6 +2008,41 @@ export function CircuitCanvas({
             })}
 
             {/* snap preview overlay — world coords, so it scales with the view */}
+            {/* Alignment guides: hairlines through the neighbour edge a drag has locked onto.
+                Deliberately quieter than the zone preview above — a zone is a commitment you
+                are about to make, a guide is a statement about where the box already is. No
+                transition on these: they appear and vanish at snap boundaries, and easing a
+                line that only ever teleports reads as lag. */}
+            {guides?.x != null && (
+              <div
+                style={{
+                  position: 'absolute',
+                  left: guides.x,
+                  top: 0,
+                  width: 1,
+                  height: '100%',
+                  background: 'var(--accent, #7c6af7)',
+                  opacity: 0.55,
+                  pointerEvents: 'none',
+                  zIndex: 9998,
+                }}
+              />
+            )}
+            {guides?.y != null && (
+              <div
+                style={{
+                  position: 'absolute',
+                  left: 0,
+                  top: guides.y,
+                  width: '100%',
+                  height: 1,
+                  background: 'var(--accent, #7c6af7)',
+                  opacity: 0.55,
+                  pointerEvents: 'none',
+                  zIndex: 9998,
+                }}
+              />
+            )}
             {snap && (
               <div
                 style={{
