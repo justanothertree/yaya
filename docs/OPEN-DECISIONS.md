@@ -97,8 +97,24 @@ not a security fix, and that path has run eight times ever. See
 
 ## 7. Not swept, and outside what can be checked from here
 
-- **Rate limiting on the anon RPCs.** `submit_score`, `get_invite_by_token` and
-  `complete_member_signup` are reachable by anyone; nothing bounds call volume.
+- ~~**Rate limiting on the anon RPCs.**~~ — DONE 2026-08-26, with one part deliberately left.
+
+  `submit_score` is bounded: 40 an hour per name, 200 globally as a backstop, sized against a
+  measured peak of 13. It counts a new `submitted_at` column rather than `created_at`, because
+  `created_at` is supplied by the caller — a limit reading it is one the flooder sets the clock
+  for. The relay gained a per-address connection ceiling in the same commit. See
+  `docs/2026-08-26-a-limit-the-caller-cannot-backdate.sql`.
+
+  `get_invite_by_token` was **left alone on purpose**: tokens are `gen_random_uuid()`, so
+  enumeration is not the threat, and the only ceiling worth having would be global — a shared
+  fuse whose failure mode is that nobody can accept an invite. `complete_member_signup` raises
+  `not authenticated` before touching anything, so it is not anon-reachable despite the grant.
+  ⚠️ Whether that grant is vestigial is a real question, still open.
+
+  ⚠️ Also found, still open: `submit_score` takes `p_created_at` from the caller, so anyone can
+  **backdate a leaderboard entry by up to two years**. That is scoring integrity, not rate
+  limiting, and changing it would rewrite how offline rounds sync. Evan's call.
+
 - **Render's own env/secret handling** — outside this repo.
 - **Auth settings beyond the linter.** Note that leaked-password protection is **paywalled** on
   the current plan, so the advisor will keep flagging it; that one is not actionable.

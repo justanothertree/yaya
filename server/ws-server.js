@@ -30,6 +30,22 @@ const CHAT_WINDOW_MS = 4000
 const MAX_ROOM_ID_LEN = 64
 /** How many rooms may exist at once. See the room-leak note in the hello handler. */
 const MAX_ROOMS = Number(process.env.MAX_ROOMS || 500)
+/**
+ * How fast one address may open sockets, and how many may be open at once.
+ *
+ * MAX_ROOMS bounds what a flood can allocate; it does nothing about the flood itself. Opening
+ * and dropping sockets costs a TLS handshake and an event-loop slot each, and every one of
+ * them is unauthenticated — so the ceiling has to sit in front of the handshake, not after it.
+ *
+ * Sized against real use, not a guess: the shipped client opens ONE socket per room join, and
+ * the busiest hour this relay has ever seen is a single player finishing 13 rounds. Thirty a
+ * minute is far above anything a person produces and far below what a script needs.
+ */
+const CONN_BURST = Number(process.env.CONN_BURST || 30)
+const CONN_WINDOW_MS = Number(process.env.CONN_WINDOW_MS || 60000)
+const MAX_CLIENTS = Number(process.env.MAX_CLIENTS || 400)
+/** Whether x-forwarded-for can be believed. True on Render; false if exposed directly. */
+const TRUST_PROXY = process.env.TRUST_PROXY !== 'false'
 
 // Default settings mirrored from client DEFAULT_SETTINGS
 const DEFAULT_SETTINGS = {
@@ -1051,9 +1067,77 @@ process.on('unhandledRejection', (err) => {
   console.error('[relay] unhandled rejection — staying up', err)
 })
 
+/**
+ * ⚠️ THE RIGHTMOST X-Forwarded-For ENTRY, NOT THE LEFTMOST.
+ *
+ * XFF is a list that each proxy APPENDS to, so a client that sends its own header gets the real
+ * address added after theirs: `whatever-they-typed, <real client>`. Reading the leftmost entry —
+ * which is the usual reflex, and what "the client IP" is normally taken to mean — would be
+ * reading attacker-supplied text, and a limit keyed on attacker-supplied text is not a limit:
+ * rotating a fake header would hand out a fresh budget per request.
+ *
+ * The rightmost entry is the one our own proxy wrote. It is correct whether the proxy appends
+ * or replaces, and it degrades to the socket address when there is no proxy at all.
+ */
+function clientAddr(req) {
+  // ⚠️ And only when something in front of us actually writes it. Render terminates TLS and
+  // proxies, so it does; a relay exposed directly would be reading a header the client typed,
+  // and should set TRUST_PROXY=false so the socket address is used instead.
+  const xff = TRUST_PROXY ? req?.headers?.['x-forwarded-for'] : null
+  if (typeof xff === 'string') {
+    const parts = xff
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean)
+    if (parts.length) return parts[parts.length - 1]
+  }
+  return req?.socket?.remoteAddress || 'unknown'
+}
+
+/**
+ * addr -> recent connection timestamps. Pruned by the heartbeat sweep below.
+ *
+ * ⚠️ This map is itself a leak if nothing empties it — one entry per address, forever, which is
+ * precisely the shape of the room leak fixed above. Do not let the thing that bounds a flood
+ * become the thing a flood grows.
+ */
+const connLog = new Map()
+
+function connectionAllowed(addr) {
+  const now = Date.now()
+  const recent = (connLog.get(addr) || []).filter((t) => now - t < CONN_WINDOW_MS)
+  recent.push(now)
+  connLog.set(addr, recent)
+  return recent.length <= CONN_BURST
+}
+
 const wss = new WebSocketServer({ server })
 
-wss.on('connection', (ws) => {
+wss.on('connection', (ws, req) => {
+  /**
+   * Refused before any state is allocated: no id, no room, no listeners. 4029 is the private-use
+   * close code for "too many requests" — the close itself is the whole message, deliberately.
+   * The chat limiter a few hundred lines down says nothing when it drops a line, on the grounds
+   * that telling a flooder they have been limited tells them how fast to go; a closed socket
+   * cannot be hidden the same way, so it carries a code a real client can act on and nothing
+   * that describes the budget.
+   */
+  if (wss.clients.size > MAX_CLIENTS) {
+    try {
+      ws.close(4029, 'too many connections')
+    } catch {
+      /* already gone */
+    }
+    return
+  }
+  if (!connectionAllowed(clientAddr(req))) {
+    try {
+      ws.close(4029, 'too many connections')
+    } catch {
+      /* already gone */
+    }
+    return
+  }
   const id = uuid().slice(0, 12)
   let joinedRoomId = null
   // see the heartbeat below — a half-open socket answers no pong and gets terminated,
@@ -1700,6 +1784,13 @@ const heartbeat = setInterval(() => {
       /* the next sweep will terminate it */
     }
   })
+  // and drop connection-rate entries that have aged out, so connLog cannot grow without bound
+  const now = Date.now()
+  for (const [addr, times] of connLog) {
+    const live = times.filter((t) => now - t < CONN_WINDOW_MS)
+    if (live.length) connLog.set(addr, live)
+    else connLog.delete(addr)
+  }
 }, HEARTBEAT_MS)
 // unref so the interval never keeps the process alive on its own during a shutdown
 heartbeat.unref?.()
