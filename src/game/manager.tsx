@@ -624,7 +624,7 @@ export function GameManager({
   const lastSeenRef = useRef<Record<string, number>>({})
   // Results UI state for the last completed round
   const [roundResults, setRoundResults] = useState<null | {
-    items: Array<{ id: string; name: string; score: number; place: number }>
+    items: Array<{ id: string; name: string; score: number; place: number; credited?: boolean }>
     total: number
     /**
      * Whether the relay actually got this round into the database.
@@ -1986,6 +1986,7 @@ export function GameManager({
                   name: string
                   score: number
                   place: number
+                  credited?: boolean
                 }>
                 setRoundResults({
                   items,
@@ -3655,6 +3656,30 @@ export function GameManager({
                             one — which is precisely why nobody noticed that every result played
                             under a claimed handle was going nowhere. A placement you can see is
                             not the same as a score that was kept. */}
+                        {/* ⚠️ "the round saved" and "YOUR score saved" are different answers.
+                            A claimed handle whose session the relay could not verify is skipped
+                            on purpose — that is what stops a stranger posting under your name —
+                            and the round still saves around you, so the banner above stays
+                            silent. The solo path has always said this out loud ("that name
+                            belongs to a member — sign in as them to post under it"); multiplayer
+                            had the identical rule and said nothing. */}
+                        {roundResults.awarded !== false &&
+                          myId &&
+                          roundResults.items.some(
+                            (it) => it.id === myId && it.credited === false,
+                          ) && (
+                            <div
+                              role="status"
+                              className="muted"
+                              style={{ fontSize: 12, marginBottom: 6, color: 'var(--accent-2)' }}
+                            >
+                              ⚠️ Your score wasn’t added to the leaderboard —{' '}
+                              <strong style={{ color: 'var(--text)' }}>
+                                {profanityFilter.clean((playerName || '').trim() || 'that name')}
+                              </strong>{' '}
+                              belongs to a member. Sign in as them to post under it.
+                            </div>
+                          )}
                         {roundResults.awarded === false && (
                           <div
                             role="status"

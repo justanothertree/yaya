@@ -159,7 +159,14 @@ export type NetMessage =
       type: 'results'
       roundId?: string
       total: number
-      items: Array<{ id: string; name: string; score: number; place: number }>
+      items: Array<{
+        id: string
+        name: string
+        score: number
+        place: number
+        /** whether this player's score reached the leaderboard; absent from older relays */
+        credited?: boolean
+      }>
       from?: string
       awarded?: boolean
       /** Why it was not saved, in a word — only present when awarded is false. */

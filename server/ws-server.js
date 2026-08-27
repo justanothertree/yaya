@@ -551,6 +551,11 @@ async function tryFinalize(room, roomId) {
       name: String(row.name || 'Player'),
       score: Number(row.score || 0),
       place: Number(row.place || 0) || 0,
+      // whether THIS player's score reached the leaderboard. A claimed handle whose session
+      // could not be verified is skipped by design, and the round still saves — so "the round
+      // was recorded" and "your score was kept" are different answers and must be reported
+      // separately. Older relays did not send it; the client treats absent as "no news".
+      credited: row.credited !== false,
     }))
     awarded = true
     awardedReason = null
