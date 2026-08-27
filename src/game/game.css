@@ -261,24 +261,49 @@
 
 /* "My runs" — your own history, so it reads as a compact list of scores + dates rather
    than a ranked board (rank is meaningless against yourself). */
+/* The scroller moved OUT to the wrapper so day headings scroll with their runs; the grid
+   itself now sizes to one day at a time. Tiles are narrower because they carry only a score —
+   the date lives on the heading above them instead of being repeated on every entry. */
+.snake-runs-scroll {
+  max-height: 46vh;
+  overflow-y: auto;
+  display: grid;
+  gap: 10px;
+}
+.snake-run-day-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 0.78rem;
+  opacity: 0.75;
+  margin-bottom: 3px;
+  position: sticky;
+  top: 0;
+  background: var(--card-bg, var(--bg));
+  padding: 2px 0;
+}
 .snake-my-runs {
   margin: 0;
   padding: 0;
   list-style: none;
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(88px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(58px, 1fr));
   gap: 4px;
-  max-height: 46vh;
-  overflow-y: auto;
   text-align: left;
 }
 .snake-my-runs li {
   display: flex;
   align-items: baseline;
-  gap: 6px;
-  padding: 4px 8px;
+  justify-content: center;
+  gap: 4px;
+  padding: 4px 6px;
   border-radius: 8px;
   background: var(--control-bg);
+}
+/* the one run worth finding in a list of two hundred */
+.snake-my-runs li.is-best {
+  outline: 1px solid var(--accent, #7c6af7);
 }
 
 /* Challenge-a-friend's styling now lives in src/components/InviteFriends.css — it is shared

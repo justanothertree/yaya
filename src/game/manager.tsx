@@ -19,6 +19,7 @@ import {
   type BoardMode,
   type LeaderboardPeriod,
   fetchTrophiesFor,
+  fetchMyTrophies,
   getNextPlayerIdNumber,
   supabaseEnvStatus,
 } from './leaderboard'
@@ -167,6 +168,7 @@ export function GameManager({
   // 'mine' isn't a server period — it's your own full history, which the Top 15 can't show
   const [showMine, setShowMine] = useState(false)
   const [myScores, setMyScores] = useState<LeaderboardEntry[]>([])
+  const [myTrophies, setMyTrophies] = useState<TrophyCounts | null>(null)
   // your standing when you're nowhere near the visible 15
   const [myStanding, setMyStanding] = useState<{ best: number; rank: number } | null>(null)
   // typed handle -> friend's name, for the "handle (Name)" reveal. Empty when signed out.
@@ -1012,6 +1014,9 @@ export function GameManager({
     let live = true
     void fetchMyScores((playerName || '').trim(), 200, board).then((rows) => {
       if (live) setMyScores(rows)
+    })
+    void fetchMyTrophies((playerName || '').trim(), board).then((t) => {
+      if (live) setMyTrophies(t)
     })
     return () => {
       live = false
@@ -4276,17 +4281,60 @@ export function GameManager({
                     most recent runs, so an older personal best sat outside it and the summary
                     under-reported it (225 shown as 98) */}
                 · best {Math.max(myStanding?.best ?? 0, ...myScores.map((m) => m.score))}
-              </div>
-              <ol className="snake-my-runs">
-                {myScores.map((m, i) => (
-                  <li key={typeof m.id === 'number' ? m.id : i} className="muted">
-                    <strong style={{ color: 'var(--text)' }}>{m.score}</strong>{' '}
-                    <span style={{ fontSize: '0.8rem' }}>
-                      {new Date(m.date).toLocaleDateString([], { month: 'short', day: 'numeric' })}
+                {myTrophies && myTrophies.gold + myTrophies.silver + myTrophies.bronze > 0 && (
+                  <>
+                    {' · '}
+                    <span title="Trophies on this board">
+                      {myTrophies.gold > 0 && `🥇${myTrophies.gold} `}
+                      {myTrophies.silver > 0 && `🥈${myTrophies.silver} `}
+                      {myTrophies.bronze > 0 && `🥉${myTrophies.bronze}`}
                     </span>
-                  </li>
-                ))}
-              </ol>
+                  </>
+                )}
+              </div>
+              {/* Grouped by day, and the date is on the HEADING rather than on every run.
+                  200 runs each carrying its own "Aug 26" was a wall of repeated dates with the
+                  scores lost inside it — the repetition was most of what made it unreadable.
+                  Personal best is marked so the eye has somewhere to land. */}
+              <div className="snake-runs-scroll">
+                {(() => {
+                  const best = Math.max(myStanding?.best ?? 0, ...myScores.map((m) => m.score))
+                  const byDay = new Map<string, LeaderboardEntry[]>()
+                  for (const m of myScores) {
+                    const key = new Date(m.date).toLocaleDateString([], {
+                      month: 'short',
+                      day: 'numeric',
+                      year: 'numeric',
+                    })
+                    const list = byDay.get(key)
+                    if (list) list.push(m)
+                    else byDay.set(key, [m])
+                  }
+                  return Array.from(byDay.entries()).map(([day, runs]) => (
+                    <div key={day} className="snake-run-day">
+                      <div className="snake-run-day-head">
+                        <span style={{ color: 'var(--text)' }}>{day}</span>
+                        <span>
+                          {runs.length} run{runs.length === 1 ? '' : 's'} · best{' '}
+                          {Math.max(...runs.map((r) => r.score))}
+                        </span>
+                      </div>
+                      <ol className="snake-my-runs">
+                        {runs.map((m, i) => (
+                          <li
+                            key={typeof m.id === 'number' ? m.id : day + i}
+                            className={'muted' + (m.score === best ? ' is-best' : '')}
+                            title={m.score === best ? 'Your best on this board' : undefined}
+                          >
+                            <strong style={{ color: 'var(--text)' }}>{m.score}</strong>
+                            {m.score === best && <span aria-label="personal best">⭐</span>}
+                          </li>
+                        ))}
+                      </ol>
+                    </div>
+                  ))
+                })()}
+              </div>
             </div>
           )
         ) : leaders.length === 0 ? (

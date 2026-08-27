@@ -1,0 +1,40 @@
+-- Your trophies were someone else's problem to find.   2026-08-26
+--   migration: member_activity_links_snake_by_account_not_name
+--
+-- Reported as "my profile says I don't have any trophies". It said that because it was looking
+-- for them under the wrong name.
+--
+-- ── the flaw ─────────────────────────────────────────────────────────────────
+-- get_member_activity matched snake history to a profile by NAME:
+--
+--   where lower(lb.player_name) in (lower(v_username), lower(coalesce(v_first, v_username)))
+--
+-- A member's snake handle is not their username, and there was never any reason it should be.
+-- Measured across the members who have claimed a handle:
+--
+--   handle            username     trophies   shown
+--   YAYA              evan            3         0
+--   Krazay            Josh            2         0
+--   big G             big_G           1         0
+--   Salty             Salty           1         1     <- only because the two happen to match
+--
+-- Six of the fifteen trophies awarded were invisible to the people who won them. The same
+-- clause governs snake_score, so the same member's 93 recorded runs showed as none: their
+-- profile reported no snake activity whatsoever.
+--
+-- ⚠️ This is the third bug today of exactly one shape: identity carried by a NAME rather than by
+-- the account link that already exists. finalize_round_rpc could not credit a claimed handle
+-- because the relay never sent a userId; the same function then threw away whole rounds because
+-- 'yaya' and 'YAYA' were compared case-sensitively; and this looked up a member's history by a
+-- username that was never the handle. player_registry.user_id has recorded the owner of a
+-- claimed handle all along.
+--
+-- ── the fix ──────────────────────────────────────────────────────────────────
+-- Join through player_registry and match on user_id. The name comparison stays as an OR, so
+-- nothing is lost for handles that were never claimed — this only ever adds rows a member
+-- should always have been able to see.
+--
+-- ── verified ─────────────────────────────────────────────────────────────────
+-- Against production, comparing the old clause with the new one for one member:
+--   trophies  0 -> 3
+--   runs      0 -> 93

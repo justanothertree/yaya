@@ -113,8 +113,16 @@ export async function getNextPlayerIdNumber(): Promise<number | null> {
  */
 export type BoardMode = 'survival' | 'race' | 'tron'
 
-/** The three boards, in the order they are offered. */
-export const BOARD_MODES: readonly BoardMode[] = ['survival', 'race', 'tron'] as const
+/**
+ * The boards actually offered, in order.
+ *
+ * ⚠️ 'tron' is a valid BoardMode and deliberately NOT here. Tron was removed from the game after
+ * playtesting — the settings panel now actively sends `tron: false` — so a Tron tab could only
+ * ever be an empty board inviting a click. modeKeyFor still maps it, so a round from a room left
+ * on the old setting is recorded honestly rather than mislabelled as survival; there is simply
+ * no tab for it, and there is no such data.
+ */
+export const BOARD_MODES: readonly BoardMode[] = ['survival', 'race'] as const
 
 export const BOARD_LABELS: Record<BoardMode, string> = {
   survival: 'Survival',
@@ -456,6 +464,39 @@ export function subscribeToLeaderboard(onChange: () => void): (() => void) | nul
     } catch {
       /* noop */
     }
+  }
+}
+
+/**
+ * Your gold/silver/bronze on one board.
+ *
+ * ⚠️ Trophies hang off the LEADERBOARD row, which is one per player per mode — not off
+ * individual runs. So "My runs" cannot show a trophy beside a given run, because that
+ * relationship does not exist in the data; what it can honestly show is the tally for the board
+ * you are looking at, which is what a trophy actually is.
+ *
+ * player_name is compared with eq: the column is case-insensitively collated, so a handle typed
+ * in any case still finds its row.
+ */
+export async function fetchMyTrophies(name: string, mode: BoardMode): Promise<TrophyCounts | null> {
+  const nm = (name || '').trim()
+  if (!nm) return null
+  const { url, anon, leaderboardTable } = envs()
+  if (!url || !anon) return null
+  try {
+    const res = await fetch(
+      `${url}/rest/v1/${leaderboardTable}?select=id` +
+        `&player_name=eq.${encodeURIComponent(nm)}` +
+        `&game_mode=eq.${encodeURIComponent(mode)}&limit=1`,
+      { headers: sbHeaders(anon) },
+    )
+    if (!res.ok) return null
+    const rows = (await res.json()) as Array<{ id: number }>
+    if (!rows.length) return null
+    const counts = await fetchTrophiesFor([rows[0].id])
+    return counts[rows[0].id] || { gold: 0, silver: 0, bronze: 0 }
+  } catch {
+    return null
   }
 }
 
