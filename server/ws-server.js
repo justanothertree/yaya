@@ -1151,6 +1151,8 @@ const connLog = new Map()
  * hits its own per-address limit eight times over before it gets near this.
  */
 const connLogAll = []
+/** How many connections still get to describe their address on the log. See the block below. */
+let addrDiag = Number(process.env.ADDR_DIAG || 6)
 
 function connectionAllowed(addr) {
   const now = Date.now()
@@ -1183,7 +1185,34 @@ wss.on('connection', (ws, req) => {
     }
     return
   }
-  if (!connectionAllowed(clientAddr(req))) {
+  const addr = clientAddr(req)
+  /**
+   * The first few connections after a restart say what the proxy actually sends.
+   *
+   * ⚠️ Not decoration. This ceiling has now been wrong TWICE — once keyed on the rightmost
+   * x-forwarded-for entry, once on the leftmost — and both times it deployed, refused nothing,
+   * and looked fine, because a local relay has no proxy in front of it and so cannot reproduce
+   * the only condition that matters. Reasoning about this header has a worse track record than
+   * reading it.
+   *
+   * `tracked` is the tell: if it climbs with every connection then each one is getting a unique
+   * key, which is exactly how a per-address ceiling ends up bounding nothing.
+   *
+   * Bounded to a handful per process so it can stay in permanently — a deploy prints them and
+   * then goes quiet.
+   */
+  if (addrDiag > 0) {
+    addrDiag--
+    console.log(
+      '[relay][addr] xff=%j socket=%j key=%j tracked=%d inWindow=%d',
+      req?.headers?.['x-forwarded-for'] ?? null,
+      req?.socket?.remoteAddress ?? null,
+      addr,
+      connLog.size,
+      connLogAll.length,
+    )
+  }
+  if (!connectionAllowed(addr)) {
     try {
       ws.close(4029, 'too many connections')
     } catch {
