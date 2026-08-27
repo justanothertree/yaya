@@ -1,11 +1,12 @@
-import { useEffect, useState } from 'react'
+import { useContext, useEffect, useRef, useState } from 'react'
 import { getSupabaseClient } from '../finance/client'
 import { avatarStyle } from '../profile/look'
 import type { ProfileData } from '../profile/profileData'
 import { previewMember, PREVIEW_PROFILES } from '../dev/previewMember'
-import { derivePalette } from '../theme/customTheme'
-import { previewClickFx, setClickFxStyle, type FxStyle } from '../ui/clickFx'
+import { applyPalette, derivePalette, loadPalette } from '../theme/customTheme'
+import { previewClickFx, setClickFxScope, setClickFxStyle, type FxStyle } from '../ui/clickFx'
 import { beatLink } from '../game/challenge'
+import { InCanvasWindow } from '../circuit/ui/canvasContext'
 import {
   ProfileBlocksEditor,
   ProfileBlocksView,
@@ -164,6 +165,13 @@ export function Profile({ authed }: { authed: boolean }) {
   // cannot sit below the loading / missing / error returns further down
   const theirLook =
     state.kind === 'ok' && (wearTheirLook || state.p.is_me) ? (state.p.look ?? null) : null
+  /**
+   * A profile is either the whole page or one window on the canvas, and their look belongs to
+   * whichever of those it is. As a page it repaints the page; as a window it repaints the
+   * window and leaves the rest of the canvas alone.
+   */
+  const inCanvasWindow = useContext(InCanvasWindow)
+  const lookRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
     if (!theirFlair) return
@@ -178,6 +186,50 @@ export function Profile({ authed }: { authed: boolean }) {
       setClickFxStyle(mine as FxStyle)
     }
   }, [theirFlair])
+
+  /**
+   * ⚠️ PAGE MODE ONLY. Standing on its own, a profile IS the page, so their palette goes where
+   * the site's own does: applyPalette writes inline custom properties on <html>, the same call
+   * the theme picker uses, and data-theme='custom' is deliberately a name no stylesheet block
+   * matches so the values inherit the whole way down. Nothing else can repaint the page from
+   * inside it — `.card` fills with `--surface`, a near-transparent overlay, so a wrapper that
+   * carries the tokens without drawing them leaves the page showing through underneath.
+   *
+   * In a canvas window this must NOT run: repainting <html> would put their colours on the nav,
+   * the launcher and every other open window, which is a takeover rather than a profile. There
+   * the wrapper paints the window instead.
+   *
+   * Put back on the way out, always — someone else's palette must not follow you off their page.
+   */
+  useEffect(() => {
+    if (!theirLook || inCanvasWindow) return
+    const root = document.documentElement
+    const prevTheme = root.getAttribute('data-theme')
+    if (theirLook.palette) {
+      applyPalette(theirLook.palette)
+      root.setAttribute('data-theme', 'custom')
+    } else if (theirLook.theme) {
+      root.setAttribute('data-theme', theirLook.theme)
+    }
+    return () => {
+      applyPalette(loadPalette())
+      if (prevTheme) root.setAttribute('data-theme', prevTheme)
+      else root.removeAttribute('data-theme')
+    }
+  }, [theirLook, inCanvasWindow])
+
+  /**
+   * Their flair plays inside their page and nowhere else.
+   *
+   * Wearing it used to fire their sparks on every click anywhere — the nav, the launcher, other
+   * windows — so their taste leaked off the page it belongs to. Scoped to the element that
+   * carries their look, which is the page in one mode and the window in the other.
+   */
+  useEffect(() => {
+    if (!theirLook) return
+    setClickFxScope(lookRef.current)
+    return () => setClickFxScope(null)
+  }, [theirLook])
 
   // the People list — how you find everyone else's page
   useEffect(() => {
@@ -291,8 +343,13 @@ export function Profile({ authed }: { authed: boolean }) {
      * page" rather than "your site, briefly theirs".
      */
     <div
+      ref={lookRef}
       data-theme={wearing?.palette ? undefined : (wearing?.theme ?? undefined)}
-      className={wearing ? 'profile-look-window' : undefined}
+      /* In a window it PAINTS — the window is the page here, so it fills the body edge to edge
+         with no border or extra padding, which is also why toggling cannot shift the layout.
+         As a standalone page the effect above has already repainted <html>, so it must not draw
+         a second panel on top of it. */
+      className={wearing && inCanvasWindow ? 'profile-look-window' : undefined}
       style={{ display: 'grid', gap: 'var(--sp-3, 1rem)', ...lookVars }}
     >
       {/* identity header */}

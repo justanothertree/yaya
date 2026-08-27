@@ -3,6 +3,7 @@
 // Ported from the standalone's "operating system" mode. Desktop-only.
 import { Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
+import { InCanvasWindow } from './canvasContext'
 import { createPortal } from 'react-dom'
 import { showToast } from '../toast'
 import { site } from '../../config/site'
@@ -1974,26 +1975,30 @@ export function CircuitCanvas({
                     </button>
                   </div>
                   {/* body — content scales with the window so a bigger window = bigger, clearer UI */}
-                  <div
-                    className="cz-body"
-                    style={{ flex: 1, overflow: 'auto', padding: 12, zoom: bodyScale }}
-                  >
-                    {/**
-                     * Every page a window can hold is lazy-loaded, and `p.node` used to render
-                     * with no Suspense boundary of its own — so it fell back to whatever wraps
-                     * the WHOLE canvas surface (App.tsx). The first time a not-yet-fetched page
-                     * type is toggled on, that shared boundary suspends, and every OTHER
-                     * already-open window unmounts along with it until the new chunk arrives —
-                     * the entire canvas blanking for one component that hadn't loaded yet. Read
-                     * as "toggling a window on for the first time flashes/stutters", which is
-                     * exactly what it did: not just the new window, everything.
-                     *
-                     * A boundary per pane contains that suspension to the one window that's
-                     * actually waiting, and only on first load — the chunk is cached forever
-                     * after, so a window closed and reopened never suspends again.
-                     */}
-                    <Suspense fallback={<span className="muted">Loading…</span>}>{p.node}</Suspense>
-                  </div>
+                  <InCanvasWindow.Provider value>
+                    <div
+                      className="cz-body"
+                      style={{ flex: 1, overflow: 'auto', padding: 12, zoom: bodyScale }}
+                    >
+                      {/**
+                       * Every page a window can hold is lazy-loaded, and `p.node` used to render
+                       * with no Suspense boundary of its own — so it fell back to whatever wraps
+                       * the WHOLE canvas surface (App.tsx). The first time a not-yet-fetched page
+                       * type is toggled on, that shared boundary suspends, and every OTHER
+                       * already-open window unmounts along with it until the new chunk arrives —
+                       * the entire canvas blanking for one component that hadn't loaded yet. Read
+                       * as "toggling a window on for the first time flashes/stutters", which is
+                       * exactly what it did: not just the new window, everything.
+                       *
+                       * A boundary per pane contains that suspension to the one window that's
+                       * actually waiting, and only on first load — the chunk is cached forever
+                       * after, so a window closed and reopened never suspends again.
+                       */}
+                      <Suspense fallback={<span className="muted">Loading…</span>}>
+                        {p.node}
+                      </Suspense>
+                    </div>
+                  </InCanvasWindow.Provider>
                   {/* resize handles on every edge + corner — available even when maximized,
                   so dragging an edge inward shrinks it back out of full-screen */}
                   {RESIZE_DIRS.map((dir) => (

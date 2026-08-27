@@ -3911,26 +3911,26 @@ select {
   background: color-mix(in oklab, var(--accent), transparent 86%);
 }
 /**
- * Their page, painted — and stopping at its own edges.
+ * Their look filling a canvas WINDOW.
  *
- * ⚠️ THIS ELEMENT MUST DRAW A BACKGROUND. `.card` fills with `--surface`, which is a
- * near-transparent overlay, so every card shows whatever is behind it. Set someone's palette on
- * a wrapper that paints nothing and their `--bg` is inherited correctly and never drawn: the
- * page shows through, and the only things that visibly change are the ones used directly — the
- * accent, and the cursor flair. That was the bug, twice.
+ * ⚠️ It must draw a background. `.card` fills with `--surface`, a near-transparent overlay, so
+ * cards show whatever is behind them; a wrapper carrying the palette but painting nothing left
+ * their `--bg` inherited and never drawn, and only the accent and cursor appeared to change.
  *
- * min-height so it reads as a PAGE rather than a card floating on the viewer's background;
- * their colours should reach the bottom of what you are looking at. It still ends at its own
- * border, which is the point — the nav, the launcher and every other window on the canvas stay
- * in your theme, because a profile is someone's page and not a takeover of the site.
+ * Bleeds out to the window's own padding rather than sitting inside it as a second panel: a
+ * nested box looked like chrome that wasn't there, and its border and padding made toggling the
+ * look shift everything by a few pixels. Negative margins undo `.cz-body`'s 12px so the colour
+ * reaches the window edges and the layout is identical whether the look is on or off.
+ *
+ * Page mode does not use this at all — there the palette goes on <html>, because nothing inside
+ * the page can repaint the page.
  */
 .profile-look-window {
   background: linear-gradient(180deg, var(--bg-grad1, var(--bg)), var(--bg));
   color: var(--text);
-  padding: var(--sp-3, 1rem);
-  border-radius: var(--r-lg, 14px);
-  border: 1px solid var(--border-strong);
-  min-height: min(70vh, 100%);
+  margin: -12px;
+  padding: 12px;
+  min-height: calc(100% + 24px);
   align-content: start;
 }
 

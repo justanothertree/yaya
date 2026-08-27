@@ -567,8 +567,23 @@ function burst(x: number, y: number) {
   BUILDERS[style](layer(), x, y)
 }
 
+/**
+ * When set, the effect only plays for clicks INSIDE this element.
+ *
+ * Wearing someone's flair used to mean their sparks fired anywhere you clicked, including the
+ * nav and every other window on the canvas — their taste leaking off their own page. Scoping it
+ * keeps the flair part of the thing you are looking at.
+ */
+let scopeEl: Element | null = null
+
+/** Confine the effect to one element, or pass null to let it play anywhere again. */
+export function setClickFxScope(el: Element | null) {
+  scopeEl = el
+}
+
 function onPointerDown(e: PointerEvent) {
   if (!enabled) return
+  if (scopeEl && !(e.target instanceof Node && scopeEl.contains(e.target))) return
   // Primary button only: a right-click opens a menu and a middle-click pans the canvas, and
   // neither is the kind of "I pressed this" moment the effect is acknowledging.
   if (e.button !== 0) return
