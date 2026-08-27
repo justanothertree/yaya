@@ -25,5 +25,7 @@ export type ProfileData = {
     theme: 'light' | 'dark' | 'alt' | null
     palette: PaletteSeed | null
     flair: string | null
+    /** id of their animated backdrop, or null for none — see profile/backdrops.ts */
+    backdrop?: string | null
   } | null
 }

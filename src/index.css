@@ -3983,6 +3983,37 @@ select {
   align-content: start;
 }
 
+/**
+ * The backdrop canvas: behind the page's content, inside whatever carries the look.
+ *
+ * inset:0 on the wrapper rather than a fixed layer, so in canvas mode it fills the WINDOW and
+ * stops there — a fixed backdrop would paint across the whole canvas surface and sit under every
+ * other window, which is the takeover problem the look scoping exists to avoid.
+ *
+ * pointer-events:none because it must never eat a click; the pointer interaction reads
+ * pointermove on the wrapper above it, which still receives events normally.
+ */
+.profile-backdrop {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 0;
+  border-radius: inherit;
+}
+.profile-backdrop canvas {
+  display: block;
+}
+/* the content has to sit above it, and a grid child needs a stacking context to do that */
+.profile-look-window > *:not(.profile-backdrop),
+.profile-has-backdrop > *:not(.profile-backdrop) {
+  position: relative;
+  z-index: 1;
+}
+.profile-has-backdrop {
+  position: relative;
+}
+
 /* The look editor. Wide rows rather than the cog's ~230px column: this is the one place there
    is room to show every flair at once instead of hiding them behind a dropdown. */
 .profile-look-editor {

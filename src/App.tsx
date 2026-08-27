@@ -56,6 +56,7 @@ import {
   onMotionChange,
   setMotionReduced,
 } from './ui/motion'
+import { isBackdropId, type BackdropId } from './profile/backdrops'
 const AdminPanel = lazy(() =>
   import('./sections/AdminPanel').then((m) => ({ default: m.AdminPanel })),
 )
@@ -392,6 +393,27 @@ export default function App() {
    * `customPalette` only says whether it's ON, so editing the colours while it's already on
    * changes nothing this effect can see. PalettePicker bumps the tick when it writes.
    */
+  /**
+   * Their animated backdrop. Local like the theme and flair, and mirrored up by the same effect —
+   * a profile's look is the look you use, not a second set of choices.
+   */
+  const [backdrop, setBackdrop] = useState<BackdropId>(() => {
+    try {
+      const v = localStorage.getItem('profile_backdrop_v1')
+      return isBackdropId(v) ? v : 'none'
+    } catch {
+      return 'none'
+    }
+  })
+  const chooseBackdrop = (b: BackdropId) => {
+    setBackdrop(b)
+    try {
+      localStorage.setItem('profile_backdrop_v1', b)
+    } catch {
+      /* private mode — applies for this visit */
+    }
+  }
+
   useEffect(() => {
     if (!isFinanceAuthed) return
     const t = setTimeout(() => {
@@ -400,11 +422,12 @@ export default function App() {
           p_theme: theme,
           p_palette: customPalette ? loadPalette() : null,
           p_flair: sparksOn ? sparksStyle : null,
+          p_backdrop: backdrop === 'none' ? null : backdrop,
         })
         .then(() => {})
     }, 600) // dragging a colour picker shouldn't be one write per frame
     return () => clearTimeout(t)
-  }, [isFinanceAuthed, theme, customPalette, paletteTick, sparksOn, sparksStyle])
+  }, [isFinanceAuthed, theme, customPalette, paletteTick, sparksOn, sparksStyle, backdrop])
 
   // Who the cog menu greets. The email is peeked from the LOCAL session so it paints
   // instantly and can never flash or gate anything; the real name follows from the profile
@@ -1174,6 +1197,8 @@ export default function App() {
               onSparksStyle: setSparksStyle,
               customPalette,
               onCustomPalette: setCustomPalette,
+              backdrop,
+              onBackdrop: chooseBackdrop,
             }}
           />
         )

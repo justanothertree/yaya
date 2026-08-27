@@ -1,0 +1,32 @@
+-- Animated profile backdrops.   2026-08-27
+--   migrations: profile_look_backdrop
+--               get_member_profile_returns_look_backdrop
+--
+-- Adds profiles.look_backdrop and carries it through the two functions that read and write a
+-- look, alongside the theme, palette and flair it belongs with.
+--
+-- ── shape ────────────────────────────────────────────────────────────────────
+-- A short id validated by pattern rather than an enum, exactly like look_flair:
+--
+--   if p_backdrop is not null and (length(p_backdrop) > 40 or p_backdrop !~ '^[a-z][a-z0-9_-]*$')
+--     then raise exception 'invalid backdrop';
+--
+-- So adding an effect is a client release rather than a migration, while the column still cannot
+-- hold free text. p_backdrop defaults to null, so the existing three-argument callers keep
+-- working unchanged.
+--
+-- ── the part that is not SQL ─────────────────────────────────────────────────
+-- ⚠️ The budget is the feature. A backdrop that makes a laptop fan spin is worse than none, and
+-- a phone is not a small desktop. The canvas host enforces:
+--   * particle counts scaled to AREA and capped, lower on coarse pointers
+--     — measured: bubbles gives 90 particles on a desktop page, 24 on a phone, 6 in a small
+--       canvas window, from the same code
+--   * devicePixelRatio capped at 2 — the number most likely to make a phone struggle
+--   * the loop stopped when the tab is hidden OR the canvas is scrolled out of view
+--   * dt clamped, so a tab resumed after a minute does not advance the world by a minute
+--   * pointer interaction only where there is a pointer
+--   * under reduce motion the canvas is NEVER CREATED — not paused, absent
+--
+-- ⚠️ And reduce motion had to exist first, which is why it shipped before this. Adding four
+-- animated backgrounds to a site whose only way to stop motion was an OS setting would have been
+-- the wrong order: the person who needs the switch is the one the backdrops would reach first.

@@ -1,6 +1,8 @@
 import { PalettePicker } from '../theme/PalettePicker'
 import { previewClickFx, type FxStyle } from '../ui/clickFx'
 import { FX_STYLE_OPTIONS } from '../ui/fxStyles'
+import { BACKDROPS, type BackdropId } from '../profile/backdrops'
+import { motionReduced } from '../ui/motion'
 import type { Theme } from '../components/SettingsMenu'
 
 /**
@@ -27,6 +29,8 @@ export type LookControls = {
   onSparksStyle: (s: FxStyle) => void
   customPalette: boolean
   onCustomPalette: (on: boolean) => void
+  backdrop: BackdropId
+  onBackdrop: (b: BackdropId) => void
 }
 
 const THEMES: Array<[Theme, string, string]> = [
@@ -82,6 +86,32 @@ export function ProfileLookEditor({ look }: { look: LookControls }) {
         <div className="profile-look-palette">
           <PalettePicker active={look.customPalette} onActiveChange={look.onCustomPalette} />
         </div>
+      )}
+
+      <div className="profile-look-row">
+        <span className="muted profile-look-label">Backdrop</span>
+        <div className="profile-look-choices">
+          {BACKDROPS.map(([id, icon, label]) => (
+            <button
+              key={id}
+              className="btn"
+              aria-pressed={look.backdrop === id}
+              data-active={look.backdrop === id || undefined}
+              onClick={() => look.onBackdrop(id)}
+            >
+              <span aria-hidden>{icon}</span> {label}
+            </button>
+          ))}
+        </div>
+      </div>
+      {/* ⚠️ Said plainly rather than left as a mystery. With reduce motion on, the backdrop is
+          not drawn at all — the canvas is never created — so a picker that looked live while
+          nothing happened would read as broken rather than as the setting working. */}
+      {motionReduced() && look.backdrop !== 'none' && (
+        <p className="muted" style={{ margin: 0, fontSize: '0.8rem' }}>
+          Reduce motion is on, so backdrops are not drawn. Your choice is saved and visitors without
+          it will see it.
+        </p>
       )}
 
       <div className="profile-look-row">
