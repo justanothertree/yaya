@@ -14,6 +14,9 @@ import {
   fetchRankForScore,
   subscribeToLeaderboard,
   modeKeyFor,
+  BOARD_MODES,
+  BOARD_LABELS,
+  type BoardMode,
   type LeaderboardPeriod,
   fetchTrophiesFor,
   getNextPlayerIdNumber,
@@ -149,6 +152,18 @@ export function GameManager({
   const [trophyMap, setTrophyMap] = useState<Record<number, TrophyCounts>>({})
   const [myRank, setMyRank] = useState<number | null>(null)
   const [period, setPeriod] = useState<LeaderboardPeriod>('all')
+  /**
+   * Which board is on screen. Race and tron are not comparable with survival — a race ends the
+   * moment somebody hits the target, so its scores are bounded by the target rather than by how
+   * long you stayed alive — and game_mode has been in the schema since the start precisely so
+   * they would not have to share a column. Until now every read hardcoded 'survival', so any run
+   * recorded under another mode was written to a board nothing displayed.
+   */
+  const [board, setBoard] = useState<BoardMode>('survival')
+  const boardRef = useRef<BoardMode>('survival')
+  useEffect(() => {
+    boardRef.current = board
+  }, [board])
   // 'mine' isn't a server period — it's your own full history, which the Top 15 can't show
   const [showMine, setShowMine] = useState(false)
   const [myScores, setMyScores] = useState<LeaderboardEntry[]>([])
@@ -533,8 +548,8 @@ export function GameManager({
         gameMode: modeKeyFor(settingsRef.current),
       })
       const [top, rank] = await Promise.all([
-        fetchLeaderboard(periodRef.current, 15),
-        fetchRankForScore(sc, periodRef.current),
+        fetchLeaderboard(periodRef.current, 15, boardRef.current),
+        fetchRankForScore(sc, periodRef.current, boardRef.current),
       ])
       setLeaders(top)
       setMyRank(rank)
@@ -983,25 +998,25 @@ export function GameManager({
   // your best + rank for the shown period, so being 40th still tells you something
   useEffect(() => {
     let live = true
-    void fetchMyBestAndRank((playerName || '').trim(), period).then((r) => {
+    void fetchMyBestAndRank((playerName || '').trim(), period, board).then((r) => {
       if (live) setMyStanding(r)
     })
     return () => {
       live = false
     }
-  }, [playerName, period, leaders])
+  }, [playerName, period, leaders, board])
 
   // load my own runs whenever that view is open (or the name changes under it)
   useEffect(() => {
     if (!showMine) return
     let live = true
-    void fetchMyScores((playerName || '').trim(), 200).then((rows) => {
+    void fetchMyScores((playerName || '').trim(), 200, board).then((rows) => {
       if (live) setMyScores(rows)
     })
     return () => {
       live = false
     }
-  }, [showMine, playerName])
+  }, [showMine, playerName, board])
 
   useEffect(() => {
     periodRef.current = period
@@ -1432,7 +1447,7 @@ export function GameManager({
   useEffect(() => {
     let disposed = false
     const refresh = () =>
-      fetchLeaderboard(period, 15)
+      fetchLeaderboard(period, 15, board)
         .then((d) => {
           if (!disposed) setLeaders(d)
         })
@@ -1448,7 +1463,7 @@ export function GameManager({
       if (unsub) unsub()
       if (poll) window.clearInterval(poll)
     }
-  }, [period])
+  }, [period, board])
 
   // Versus wiring
   const connectVs = useCallback(
@@ -1980,7 +1995,7 @@ export function GameManager({
                 // Ensure everyone refreshes leaderboard and trophies promptly
                 ;(async () => {
                   try {
-                    const top = await fetchLeaderboard(periodRef.current, 15)
+                    const top = await fetchLeaderboard(periodRef.current, 15, boardRef.current)
                     setLeaders(top)
                     const ids = top
                       .map((l) => l.id)
@@ -4163,6 +4178,27 @@ export function GameManager({
           <h3 className="section-title" style={{ margin: 0 }}>
             Top 15
           </h3>
+          {/* Which board. Survival, race and tron are not comparable — a race stops the moment
+              somebody reaches the target, so its scores are bounded by the target rather than by
+              how long anyone survived — and putting them in one column was the thing game_mode
+              existed to prevent. Hunger, apple count, grid and speed stay modifiers and do NOT
+              split the board: a key per combination shatters one leaderboard into dozens holding
+              a single entry each, which stops being a leaderboard. */}
+          {BOARD_MODES.map((m) => (
+            <button
+              key={m}
+              className="btn"
+              aria-pressed={board === m}
+              data-active={board === m || undefined}
+              onClick={() => setBoard(m)}
+              title={`${BOARD_LABELS[m]} scores`}
+            >
+              {BOARD_LABELS[m]}
+            </button>
+          ))}
+          <span aria-hidden style={{ opacity: 0.35 }}>
+            |
+          </span>
           {(
             [
               { k: 'all', label: 'All time' },

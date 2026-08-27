@@ -478,6 +478,26 @@ async function finalizeRoundOnSupabase(roomId, roundId, gameMode, baseItems) {
   }
 }
 
+/**
+ * Which board a round belongs on.
+ *
+ * ⚠️ Mirrors modeKeyFor in src/game/leaderboard.ts — change both together. It cannot be imported
+ * (that file is client TypeScript), and the two disagreeing would put multiplayer rounds on a
+ * different board from solo runs played under the same rules, which is worse than either choice
+ * alone.
+ *
+ * Only the rule-changing modes split the board. Hunger, apple count, grid and speed are
+ * modifiers: a key per combination shatters one leaderboard into dozens holding a single entry
+ * each. tron wins over race for the same reason it does on the client — a tron round can carry
+ * race scoring, but the trails are what decide how it is played.
+ */
+function boardModeFor(settings) {
+  const s = settings || {}
+  if (s.tron) return 'tron'
+  if (s.race) return 'race'
+  return 'survival'
+}
+
 async function tryFinalize(room, roomId) {
   const r = room.round
   if (!r || !r.active || !r.id) return
@@ -515,7 +535,14 @@ async function tryFinalize(room, roomId) {
   }
   let awarded = false
   // Attempt server-owned Supabase finalize_round_rpc; idempotent in DB
-  const finalizeOutcome = await finalizeRoundOnSupabase(roomId, r.id, 'survival', base)
+  // ⚠️ was hardcoded 'survival', so every race and tron round ever recorded was filed as a
+  // survival score and compared against runs it has nothing in common with
+  const finalizeOutcome = await finalizeRoundOnSupabase(
+    roomId,
+    r.id,
+    boardModeFor(room.settings),
+    base,
+  )
   const rpcResults = finalizeOutcome.items
   let awardedReason = finalizeOutcome.reason
   if (Array.isArray(rpcResults) && rpcResults.length) {

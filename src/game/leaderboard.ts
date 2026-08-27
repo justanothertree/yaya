@@ -111,19 +111,24 @@ export async function getNextPlayerIdNumber(): Promise<number | null> {
  * per combination would shatter one board into dozens with a single entry each, and the original
  * survival board already mixed those.
  */
-export function modeKeyFor(settings?: {
-  race?: boolean
-  tron?: boolean
-  hunger?: boolean
-  solidBodies?: boolean
-}): string {
+export type BoardMode = 'survival' | 'race' | 'tron'
+
+/** The three boards, in the order they are offered. */
+export const BOARD_MODES: readonly BoardMode[] = ['survival', 'race', 'tron'] as const
+
+export const BOARD_LABELS: Record<BoardMode, string> = {
+  survival: 'Survival',
+  race: 'Race',
+  tron: 'Tron',
+}
+
+export function modeKeyFor(settings?: { race?: boolean; tron?: boolean }): BoardMode {
   if (!settings) return 'survival'
-  const parts: string[] = []
-  if (settings.tron) parts.push('tron')
-  else if (settings.race) parts.push('race')
-  if (settings.hunger) parts.push('hungry')
-  if (settings.solidBodies) parts.push('contact')
-  return parts.length ? parts.join('+') : 'survival'
+  // tron before race: a tron round can have race scoring on top, but the trails are what
+  // decides how it is played and therefore which board it belongs on
+  if (settings.tron) return 'tron'
+  if (settings.race) return 'race'
+  return 'survival'
 }
 
 /**
@@ -206,10 +211,11 @@ export async function submitScore(
 export async function fetchLeaderboard(
   period: LeaderboardPeriod = 'all',
   limit = 15,
+  mode: BoardMode = 'survival',
 ): Promise<LeaderboardEntry[]> {
   const { url, anon, leaderboardTable, nameCol } = envs()
   const since = startIsoFor(period)
-  const MODE = 'survival'
+  const MODE = mode
   // NOTE: the board deliberately shows the TYPED handle, not the member's real name.
   // Snake is public — anyone, including strangers, can read it — and Evan's rule is that
   // friends' identities are not on display there. A friends-only "handle (Name)" variant is
@@ -305,13 +311,17 @@ export async function fetchFriendNames(): Promise<Record<string, string>> {
   return out
 }
 
-export async function fetchMyScores(name: string, limit = 50): Promise<LeaderboardEntry[]> {
+export async function fetchMyScores(
+  name: string,
+  limit = 50,
+  mode: BoardMode = 'survival',
+): Promise<LeaderboardEntry[]> {
   const nm = (name || '').trim()
   if (!nm) return []
   // score_history, NOT the leaderboard table: `leaderboard` holds one best row per player,
   // which is exactly why your own history was invisible. Every run lives in score_history.
   const { url, anon, scoreHistoryTable, nameCol } = envs()
-  const MODE = 'survival'
+  const MODE = mode
   if (url && anon) {
     try {
       const select = `id,username:${nameCol},score,created_at`
@@ -359,12 +369,13 @@ export async function fetchMyScores(name: string, limit = 50): Promise<Leaderboa
 export async function fetchMyBestAndRank(
   name: string,
   period: LeaderboardPeriod = 'all',
+  mode: BoardMode = 'survival',
 ): Promise<{ best: number; rank: number } | null> {
   const nm = (name || '').trim()
   if (!nm) return null
   const { url, anon, scoreHistoryTable, nameCol } = envs()
   const since = startIsoFor(period)
-  const MODE = 'survival'
+  const MODE = mode
   if (!url || !anon) return null
   try {
     const parts = [
@@ -391,6 +402,7 @@ export async function fetchMyBestAndRank(
 export async function fetchRankForScore(
   score: number,
   period: LeaderboardPeriod = 'all',
+  mode: BoardMode = 'survival',
 ): Promise<number | null> {
   const { url, anon, leaderboardTable } = envs()
   const since = startIsoFor(period)
@@ -399,7 +411,7 @@ export async function fetchRankForScore(
       const parts = [
         `${url}/rest/v1/${leaderboardTable}?select=score`,
         `score=gt.${encodeURIComponent(String(score))}`,
-        `game_mode=eq.survival`,
+        `game_mode=eq.${encodeURIComponent(mode)}`,
         `score=gt.0`,
       ]
       if (since) parts.push(`created_at=gte.${encodeURIComponent(since)}`)
