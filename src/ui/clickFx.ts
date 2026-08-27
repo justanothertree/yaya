@@ -562,32 +562,40 @@ const BUILDERS: Record<FxStyle, (host: HTMLElement, x: number, y: number) => voi
   beam,
 }
 
-function burst(x: number, y: number) {
+function burst(x: number, y: number, target: EventTarget | null) {
   if (live >= MAX_BURSTS) return
-  BUILDERS[style](layer(), x, y)
+  const inScope =
+    scopeEl != null && scopeStyle != null && target instanceof Node && scopeEl.contains(target)
+  BUILDERS[inScope ? scopeStyle! : style](layer(), x, y)
 }
 
 /**
- * When set, the effect only plays for clicks INSIDE this element.
+ * One element that plays a DIFFERENT style from the rest of the page.
  *
- * Wearing someone's flair used to mean their sparks fired anywhere you clicked, including the
- * nav and every other window on the canvas — their taste leaking off their own page. Scoping it
- * keeps the flair part of the thing you are looking at.
+ * Wearing someone's flair used to swap the site-wide style, so their sparks fired on every click
+ * anywhere — the nav, the launcher, other windows — their taste leaking off their own page.
+ * Suppressing clicks outside fixed the leak and replaced it with a worse bug: no flair at all
+ * out there, when what you want is your own.
+ *
+ * So this overrides rather than confines. Inside the element you get theirs, outside you get
+ * whatever you already had, and the site-wide style is never touched — which also means there is
+ * nothing to restore, and no way to strand a visitor wearing a stranger's flair.
  */
 let scopeEl: Element | null = null
+let scopeStyle: FxStyle | null = null
 
-/** Confine the effect to one element, or pass null to let it play anywhere again. */
-export function setClickFxScope(el: Element | null) {
+/** Give one element its own style. Pass (null, null) to drop the override. */
+export function setClickFxScope(el: Element | null, fxStyle: FxStyle | null) {
   scopeEl = el
+  scopeStyle = fxStyle
 }
 
 function onPointerDown(e: PointerEvent) {
   if (!enabled) return
-  if (scopeEl && !(e.target instanceof Node && scopeEl.contains(e.target))) return
   // Primary button only: a right-click opens a menu and a middle-click pans the canvas, and
   // neither is the kind of "I pressed this" moment the effect is acknowledging.
   if (e.button !== 0) return
-  burst(e.clientX, e.clientY)
+  burst(e.clientX, e.clientY, e.target)
 }
 
 /** Turn flair on or off at runtime. Persisted by the caller, not here. */

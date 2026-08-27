@@ -4,7 +4,7 @@ import { avatarStyle } from '../profile/look'
 import type { ProfileData } from '../profile/profileData'
 import { previewMember, PREVIEW_PROFILES } from '../dev/previewMember'
 import { applyPalette, derivePalette, loadPalette } from '../theme/customTheme'
-import { previewClickFx, setClickFxScope, setClickFxStyle, type FxStyle } from '../ui/clickFx'
+import { previewClickFx, setClickFxScope, type FxStyle } from '../ui/clickFx'
 import { beatLink } from '../game/challenge'
 import { InCanvasWindow } from '../circuit/ui/canvasContext'
 import {
@@ -173,18 +173,20 @@ export function Profile({ authed }: { authed: boolean }) {
   const inCanvasWindow = useContext(InCanvasWindow)
   const lookRef = useRef<HTMLDivElement | null>(null)
 
+  /**
+   * Their flair plays on their page. Yours still plays everywhere else.
+   *
+   * ⚠️ This used to swap the SITE-WIDE style and put yours back on the way out, so their sparks
+   * fired on the nav and every other window while their page happened to be open. Scoping it by
+   * suppressing outside clicks then traded that for no flair at all out there. An override does
+   * what was actually wanted: inside their page it is theirs, outside it is yours, and the
+   * site-wide setting is never touched — so there is nothing to restore and no way to leave a
+   * visitor wearing a stranger's flair.
+   */
   useEffect(() => {
     if (!theirFlair) return
-    setClickFxStyle(theirFlair as FxStyle)
-    return () => {
-      let mine = 'sparks'
-      try {
-        mine = localStorage.getItem('click_fx_style_v1') || 'sparks'
-      } catch {
-        /* private mode — the default is right anyway */
-      }
-      setClickFxStyle(mine as FxStyle)
-    }
+    setClickFxScope(lookRef.current, theirFlair as FxStyle)
+    return () => setClickFxScope(null, null)
   }, [theirFlair])
 
   /**
@@ -217,19 +219,6 @@ export function Profile({ authed }: { authed: boolean }) {
       else root.removeAttribute('data-theme')
     }
   }, [theirLook, inCanvasWindow])
-
-  /**
-   * Their flair plays inside their page and nowhere else.
-   *
-   * Wearing it used to fire their sparks on every click anywhere — the nav, the launcher, other
-   * windows — so their taste leaked off the page it belongs to. Scoped to the element that
-   * carries their look, which is the page in one mode and the window in the other.
-   */
-  useEffect(() => {
-    if (!theirLook) return
-    setClickFxScope(lookRef.current)
-    return () => setClickFxScope(null)
-  }, [theirLook])
 
   // the People list — how you find everyone else's page
   useEffect(() => {
