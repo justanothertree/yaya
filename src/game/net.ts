@@ -49,6 +49,32 @@ export class NetClient {
           create: opts?.create,
           ...(opts?.create && opts.settings ? { settings: opts.settings } : {}),
         })
+        /**
+         * Prove who we are, if we are anyone — so a round can actually be credited.
+         *
+         * ⚠️ finalize_round_rpc refuses to write a score against a handle that an account owns
+         * unless the relay vouches for the player using it, and until now the relay had nothing
+         * to vouch WITH. Two signed-in players could finish a full round and have it credited to
+         * neither of them, with nothing on screen to say so.
+         *
+         * Deliberately after the hello and deliberately not awaited: signing in is optional here
+         * and always has been. A signed-out player, an expired session or a failed lookup all
+         * end the same way they did before — the round still plays, the results still show, and
+         * only an unclaimed handle can be written to.
+         *
+         * The token is sent over wss and the relay checks it with Supabase rather than decoding
+         * it; the account id never comes from anything the client asserts.
+         */
+        void (async () => {
+          try {
+            const { getSupabaseClient } = await import('../finance/client')
+            const { data } = await getSupabaseClient().auth.getSession()
+            const token = data.session?.access_token
+            if (token) this.send({ type: 'auth', token })
+          } catch {
+            // not signed in, or auth unavailable — play on unauthenticated
+          }
+        })()
       }
       ws.onmessage = (ev) => {
         try {

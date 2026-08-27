@@ -609,6 +609,15 @@ export function GameManager({
   const [roundResults, setRoundResults] = useState<null | {
     items: Array<{ id: string; name: string; score: number; place: number }>
     total: number
+    /**
+     * Whether the relay actually got this round into the database.
+     *
+     * ⚠️ It arrived on the wire all along and went straight to a DEV-only console.info, so a
+     * round that was recorded and one that was silently discarded looked identical on screen.
+     * That is how every multiplayer result played under a claimed handle went missing without
+     * anyone noticing. undefined means an older relay that never said.
+     */
+    awarded?: boolean
   }>(null)
   const [showResults, setShowResults] = useState(false)
   // Throttle auto-seed requests to avoid duplicates
@@ -1957,7 +1966,7 @@ export function GameManager({
                   score: number
                   place: number
                 }>
-                setRoundResults({ items, total: msg.total as number })
+                setRoundResults({ items, total: msg.total as number, awarded: msg.awarded })
                 setShowResults(true)
                 // Round is finished from the UI perspective
                 roundActiveRef.current = false
@@ -3614,6 +3623,22 @@ export function GameManager({
                         <div className="muted" style={{ fontWeight: 600, marginBottom: 6 }}>
                           Round results
                         </div>
+                        {/* ⚠️ Say so when the round did not reach the leaderboard. The relay has
+                            always sent this flag and the client has always thrown it away into a
+                            DEV console line, so a discarded round looked exactly like a saved
+                            one — which is precisely why nobody noticed that every result played
+                            under a claimed handle was going nowhere. A placement you can see is
+                            not the same as a score that was kept. */}
+                        {roundResults.awarded === false && (
+                          <div
+                            role="status"
+                            className="muted"
+                            style={{ fontSize: 12, marginBottom: 6, color: 'var(--accent-2)' }}
+                          >
+                            ⚠️ Not saved to the leaderboard — these placements are for this round
+                            only.
+                          </div>
+                        )}
                         {(() => {
                           const items = roundResults.items
                           // Group by place ascending (1, then next occupied place, etc.)

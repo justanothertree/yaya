@@ -409,7 +409,17 @@ async function finalizeRoundOnSupabase(roomId, roundId, gameMode, baseItems) {
       score: Number(row.score || 0),
       finishIdx: Number(row.finishIdx ?? 9999),
     })),
-    p_players: baseItems.map((row) => ({ id: String(row.id), name: row.name })),
+    /**
+     * The vouching half of the contract. finalize_round_rpc reads these as tmp_claims and
+     * credits a claimed handle only when the id here matches the account that owns the name.
+     * Rows without a userId are still sent — an unclaimed handle needs no proof — and the RPC
+     * skips crediting anyone whose claim is absent, exactly as before.
+     */
+    p_players: baseItems.map((row) => ({
+      id: String(row.id),
+      name: row.name,
+      ...(row.userId ? { userId: String(row.userId) } : {}),
+    })),
   }
   try {
     /**
@@ -472,7 +482,8 @@ async function tryFinalize(room, roomId) {
     const name = (st.name || 'Player').trim()
     const score = Number(st.lastScore || 0)
     const idx = r.finishOrder.indexOf(pid)
-    return { id: pid, name, score, finishIdx: idx >= 0 ? idx : 9999 }
+    // userId is only ever present because this socket proved it — see the 'auth' handler
+    return { id: pid, name, score, finishIdx: idx >= 0 ? idx : 9999, userId: st.userId || null }
   })
   base.sort((a, b) => (b.score !== a.score ? b.score - a.score : a.finishIdx - b.finishIdx))
   // Default local placement (used if Supabase is unavailable)
@@ -649,8 +660,19 @@ function bearer(req) {
   return raw.startsWith('Bearer ') ? raw.slice(7) : ''
 }
 
-async function verifyUser(req) {
-  const token = bearer(req)
+/**
+ * Verify a bare access token and return the user it belongs to, or null.
+ *
+ * Split out of verifyUser so the WebSocket side can use it too: a socket has no Authorization
+ * header, but a signed-in player still needs to be able to prove who they are — without that,
+ * finalize_round_rpc refuses to credit any claimed handle and multiplayer results go nowhere.
+ *
+ * ⚠️ The token is checked against Supabase, never decoded and believed here, and the id it
+ * yields is never taken from the client's own message. That distinction is the whole point:
+ * accepting a userId the client typed would let anyone post scores to anyone's handle, which is
+ * exactly what the RPC's claimed-handle rule exists to prevent.
+ */
+async function verifyToken(token) {
   if (!token || !SUPABASE_URL || !SUPABASE_ANON_KEY) return null
   const hit = tokenCache.get(token)
   if (hit && Date.now() - hit.at < TOKEN_TTL) return hit.user
@@ -668,6 +690,10 @@ async function verifyUser(req) {
   } catch {
     return null
   }
+}
+
+async function verifyUser(req) {
+  return verifyToken(bearer(req))
 }
 
 /** Admin per the database's own rule (is_admin -> admin_users), never a copy of it here. */
@@ -1588,6 +1614,33 @@ wss.on('connection', (ws, req) => {
         // otherwise a sender could attribute a line to somebody else. Sender is excluded, same
         // as 'name' and 'ready'; the client shows its own line locally.
         broadcast(room, { type: 'chat', text, from: id, name: st.name }, id)
+        break
+      }
+      case 'auth': {
+        /**
+         * A signed-in player proving who they are, so their results can be credited.
+         *
+         * ⚠️ WITHOUT THIS, MULTIPLAYER SCORES GO NOWHERE FOR ANYONE WHO HAS CLAIMED A HANDLE.
+         * finalize_round_rpc skips any name owned by an account unless the caller vouches for
+         * the player using it, and the relay had no way to vouch — so YAYA and Krazay could
+         * play a full round and have it credited to neither of them, silently. That rule is
+         * right: a handle with an account behind it must not be writable by whoever types it.
+         * The missing half was the proof, and this is it.
+         *
+         * The id comes from Supabase's answer, never from the message — a client-supplied
+         * userId would hand anyone else's handle to anyone who asked.
+         *
+         * Never broadcast: peers learn names, never account ids.
+         */
+        if (typeof msg.token !== 'string' || msg.token.length > 4096) break
+        const token = msg.token
+        void verifyToken(token).then((user) => {
+          if (!user?.id) return
+          const st = room.state.get(id)
+          if (!st) return // left while we were checking
+          st.userId = user.id
+          room.state.set(id, st)
+        })
         break
       }
       case 'ready': {

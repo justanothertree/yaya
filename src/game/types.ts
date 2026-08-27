@@ -145,6 +145,12 @@ export type NetMessage =
       winner?: { id: string; name?: string; score: number }
     }
   | { type: 'roommeta'; name?: string; public?: boolean }
+  /**
+   * Client -> relay only, and never echoed to peers. Lets a signed-in player prove who they are
+   * so finalize_round_rpc will credit a handle their account owns; the relay checks the token
+   * with Supabase and takes the account id from that answer, never from this message.
+   */
+  | { type: 'auth'; token: string }
   | { type: 'list' }
   | { type: 'rooms'; items: Array<{ id: string; name: string; count: number }> }
   | { type: 'restart-ack'; roundId?: string }
