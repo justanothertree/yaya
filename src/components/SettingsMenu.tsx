@@ -1,28 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { PalettePicker } from '../theme/PalettePicker'
+import { FX_STYLE_OPTIONS } from '../ui/fxStyles'
 import { previewClickFx, type FxStyle } from '../ui/clickFx'
 import { playCallSound, ringtoneEnabled, setRingtoneEnabled } from '../voice/ringtone'
 
 export type Theme = 'light' | 'dark' | 'alt'
-
-const FX_STYLE_OPTIONS: Array<[FxStyle, string, string]> = [
-  ['sparks', '✨', 'Sparks'],
-  ['sonar', '◎', 'Sonar'],
-  ['pop', '🎊', 'Pop'],
-  ['rocket', '🚀', 'Rocket'],
-  ['stars', '★', 'Stars'],
-  ['hearts', '❤', 'Hearts'],
-  ['bubbles', '🫧', 'Bubbles'],
-  ['glitter', '✦', 'Glitter'],
-  ['shatter', '△', 'Shatter'],
-  ['ink', '💧', 'Ink'],
-  ['orbit', '⟳', 'Orbit'],
-  ['beam', '☀', 'Beam'],
-  ['glass', '🪟', 'Glass'],
-  ['splash', '💦', 'Splash'],
-  ['slash', '🗡', 'Slash'],
-]
 
 /**
  * The cog: one control for everything that makes the site *yours* — who you are, and how

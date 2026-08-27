@@ -6,6 +6,7 @@ import { previewMember, PREVIEW_PROFILES } from '../dev/previewMember'
 import { applyPalette, derivePalette, loadPalette } from '../theme/customTheme'
 import { previewClickFx, setClickFxScope, type FxStyle } from '../ui/clickFx'
 import { beatLink } from '../game/challenge'
+import { ProfileLookEditor, type LookControls } from './ProfileLookEditor'
 import { InCanvasWindow } from '../circuit/ui/canvasContext'
 import {
   ProfileBlocksEditor,
@@ -43,7 +44,13 @@ type Person = { username: string; name: string; is_friend: boolean }
 /** viewer's choice: do other people's themes apply on their pages */
 const LOOK_KEY = 'profile_wear_their_look_v1'
 
-export function Profile({ authed }: { authed: boolean }) {
+export function Profile({
+  authed,
+  lookControls,
+}: {
+  authed: boolean
+  lookControls?: LookControls
+}) {
   const [u, setU] = useState(userFromHash)
   const [people, setPeople] = useState<Person[]>([])
   const [state, setState] = useState<
@@ -502,6 +509,9 @@ export function Profile({ authed }: { authed: boolean }) {
       {/* Optional customization -- only exists on the page at all once there's something to
           show. The editor and the read view are never both mounted: editing shows the working
           copy being arranged, done-editing shows what was actually saved. */}
+      {/* Above the block arranger, because "how does my page look" is the question people
+          come here with; rearranging what is on it is the one they get to second. */}
+      {p.is_me && editing && lookControls && <ProfileLookEditor look={lookControls} />}
       {p.is_me && editing ? (
         <ProfileBlocksEditor
           initial={blocks}

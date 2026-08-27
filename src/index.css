@@ -3964,6 +3964,37 @@ select {
   align-content: start;
 }
 
+/* The look editor. Wide rows rather than the cog's ~230px column: this is the one place there
+   is room to show every flair at once instead of hiding them behind a dropdown. */
+.profile-look-editor {
+  display: grid;
+  gap: 0.6rem;
+}
+.profile-look-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+.profile-look-label {
+  font-size: 0.8rem;
+  min-width: 5.5rem;
+}
+.profile-look-choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+.profile-look-flairs {
+  /* an even grid so the eye can scan them; buttons of ragged width read as a paragraph */
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
+}
+.profile-look-palette {
+  border-top: 1px solid var(--border);
+  padding-top: 0.6rem;
+}
+
 .profile-trophies {
   display: flex;
   flex-wrap: wrap;

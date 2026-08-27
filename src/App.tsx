@@ -8,24 +8,8 @@ import { SettingsMenu } from './components/SettingsMenu'
 import { MobileNav } from './components/MobileNav'
 import { AmbientBackdrop } from './components/AmbientBackdrop'
 import { installClickFx, setClickFxEnabled, setClickFxStyle, type FxStyle } from './ui/clickFx'
+import { FX_STYLES } from './ui/fxStyles'
 
-const FX_STYLES: FxStyle[] = [
-  'sparks',
-  'sonar',
-  'pop',
-  'rocket',
-  'stars',
-  'hearts',
-  'bubbles',
-  'glitter',
-  'shatter',
-  'ink',
-  'orbit',
-  'beam',
-  'glass',
-  'splash',
-  'slash',
-]
 import { ShareStage } from './voice/ShareStage'
 import { UsagePanel } from './components/UsagePanel'
 import { voiceSession } from './voice/voiceSession'
@@ -1155,7 +1139,23 @@ export default function App() {
       case 'people':
         return <People authed={isFinanceAuthed || previewMember} />
       case 'profile':
-        return <Profile authed={isFinanceAuthed} />
+        return (
+          <Profile
+            authed={isFinanceAuthed}
+            /* the same values and the same setters the cog uses — your profile look IS your site
+               look, and giving the editor its own copy would be two sources of truth */
+            lookControls={{
+              theme,
+              onTheme: setTheme,
+              sparksOn,
+              onToggleSparks: () => setSparksOn((v) => !v),
+              sparksStyle,
+              onSparksStyle: setSparksStyle,
+              customPalette,
+              onCustomPalette: setCustomPalette,
+            }}
+          />
+        )
       default:
         return null
     }
