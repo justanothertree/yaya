@@ -3910,6 +3910,28 @@ select {
   border-color: var(--accent);
   background: color-mix(in oklab, var(--accent), transparent 86%);
 }
+/**
+ * The themed profile window.
+ *
+ * ⚠️ WITHOUT THIS, WEARING SOMEONE'S LOOK BARELY SHOWED. The scoped wrapper sets their whole
+ * palette as inline custom properties, but it painted no background of its own — and `.card`
+ * uses `--surface`, which is a near-transparent overlay, so every card showed the PAGE's
+ * background through it. The page is outside the wrapper and still in your theme, so the only
+ * visible changes were the things used directly: the accent, and the cursor flair. Their `--bg`
+ * was being set and then never drawn.
+ *
+ * Painting it here is also what makes it read as their WINDOW rather than as the site quietly
+ * changing colour around you — which is the behaviour the scoping was chosen for in the first
+ * place.
+ */
+.profile-look-window {
+  background: linear-gradient(180deg, var(--bg-grad1, var(--bg)), var(--bg));
+  color: var(--text);
+  padding: var(--sp-3, 1rem);
+  border-radius: var(--r-lg, 14px);
+  border: 1px solid var(--border-strong);
+}
+
 .profile-trophies {
   display: flex;
   flex-wrap: wrap;

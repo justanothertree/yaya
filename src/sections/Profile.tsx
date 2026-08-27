@@ -258,8 +258,11 @@ export function Profile({ authed }: { authed: boolean }) {
   ].filter((x): x is string => typeof x === 'string')
 
   return (
+    // profile-look-window only when a look is actually being worn: an unthemed profile should
+    // not gain a box, and your own page never wears one because `wearing` is null there.
     <div
       data-theme={wearing?.palette ? undefined : (wearing?.theme ?? undefined)}
+      className={wearing ? 'profile-look-window' : undefined}
       style={{ display: 'grid', gap: 'var(--sp-3, 1rem)', ...lookVars }}
     >
       {/* identity header */}
@@ -313,11 +316,14 @@ export function Profile({ authed }: { authed: boolean }) {
                     onClick={() => setWear(!wearTheirLook)}
                     title={
                       wearTheirLook
-                        ? 'Show every profile in your own theme instead'
-                        : 'Let profiles show their own theme again'
+                        ? 'Turn off — show profiles in your own theme instead. Remembered for every profile.'
+                        : 'Turn on — let profiles show their own theme. Remembered for every profile.'
                     }
                   >
-                    {wearTheirLook ? '🎨 Their theme' : '🎨 My theme'}
+                    {/* On/off for THIS window, not a mode swap. "Their theme / My theme" read as
+                        a picker between two options, so it was never obvious which one you were
+                        currently looking at — the label named the choice rather than the state. */}
+                    {wearTheirLook ? '🎨 Theme on' : '🎨 Theme off'}
                   </button>
                 </>
               )}
