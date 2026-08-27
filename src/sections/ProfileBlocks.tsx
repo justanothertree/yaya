@@ -109,7 +109,7 @@ function activityLine(a: ActivityItem): string {
 export type ProfileTrophy = {
   trophy_name: string
   at: string
-  score: number | null
+  /** which handle won it — a member can hold several, and the medals do not say */
   handle: string | null
   game_mode: string | null
 }
@@ -202,12 +202,21 @@ function BlockView({
               {won.map((a, i) => (
                 <span
                   key={i}
-                  className="profile-trophy"
+                  className={'profile-trophy is-' + a.trophy_name}
                   title={`${new Date(a.at).toLocaleDateString()}${a.handle ? ` · as ${a.handle}` : ''}`}
                 >
-                  {a.trophy_name === 'gold' ? '🥇' : a.trophy_name === 'silver' ? '🥈' : '🥉'}{' '}
-                  {a.trophy_name}
-                  {a.score != null && <span className="muted"> · {a.score}</span>}
+                  <span aria-hidden>
+                    {a.trophy_name === 'gold' ? '🥇' : a.trophy_name === 'silver' ? '🥈' : '🥉'}
+                  </span>{' '}
+                  {a.trophy_name.charAt(0).toUpperCase() + a.trophy_name.slice(1)}
+                  <span className="muted">
+                    {' · '}
+                    {new Date(a.at).toLocaleDateString(undefined, {
+                      month: 'short',
+                      day: 'numeric',
+                      year: 'numeric',
+                    })}
+                  </span>
                 </span>
               ))}
             </div>

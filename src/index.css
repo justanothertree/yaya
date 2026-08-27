@@ -3919,8 +3919,19 @@ select {
   padding: 0.2rem 0.5rem;
   border-radius: 999px;
   font-size: 0.82rem;
+  white-space: nowrap;
   background: color-mix(in oklab, #f5b73d, transparent 84%);
   border: 1px solid color-mix(in oklab, #f5b73d, transparent 58%);
+}
+/* every chip used to be gold-tinted whatever the medal, so a silver read as a gold that had
+   lost its emoji. The tint is the fastest thing the eye reads here — it should agree. */
+.profile-trophy.is-silver {
+  background: color-mix(in oklab, #c9ccd1, transparent 84%);
+  border-color: color-mix(in oklab, #c9ccd1, transparent 58%);
+}
+.profile-trophy.is-bronze {
+  background: color-mix(in oklab, #cd7f32, transparent 84%);
+  border-color: color-mix(in oklab, #cd7f32, transparent 58%);
 }
 .profile-h2h {
   font-size: 0.9rem;
