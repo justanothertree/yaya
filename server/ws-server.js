@@ -1152,7 +1152,7 @@ const connLog = new Map()
  */
 const connLogAll = []
 /** How many connections still get to describe their address on the log. See the block below. */
-let addrDiag = Number(process.env.ADDR_DIAG || 6)
+let addrDiag = Number(process.env.ADDR_DIAG || 45)
 
 function connectionAllowed(addr) {
   const now = Date.now()
@@ -1163,7 +1163,14 @@ function connectionAllowed(addr) {
   while (connLogAll.length && now - connLogAll[0] >= CONN_WINDOW_MS) connLogAll.shift()
   connLogAll.push(now)
 
-  return recent.length <= CONN_BURST && connLogAll.length <= CONN_BURST_GLOBAL
+  // returns the counts as well as the verdict, so the caller can say WHY on the log rather
+  // than leaving the next person to infer it from a connection that did or did not survive
+  return {
+    ok: recent.length <= CONN_BURST && connLogAll.length <= CONN_BURST_GLOBAL,
+    perAddr: recent.length,
+    global: connLogAll.length,
+    pid: process.pid,
+  }
 }
 
 const wss = new WebSocketServer({ server })
@@ -1201,18 +1208,32 @@ wss.on('connection', (ws, req) => {
    * Bounded to a handful per process so it can stay in permanently — a deploy prints them and
    * then goes quiet.
    */
-  if (addrDiag > 0) {
-    addrDiag--
+  const verdict = connectionAllowed(addr)
+  /**
+   * ⚠️ pid is on here for a reason. Everything else about this ceiling has checked out — the
+   * key is stable, the counters accumulate, the arithmetic is right — and yet 40 connections
+   * in one burst against a ceiling of 30 were all accepted in production. The remaining way
+   * that happens is that they were not all counted by the same process. If these lines show
+   * more than one pid, or perAddr resetting to 1, that is the answer: an in-memory counter
+   * cannot bound anything spread across instances, and the ceiling has to move somewhere
+   * shared or be replaced by the global one.
+   */
+  if (addrDiag > 0 || !verdict.ok) {
+    if (addrDiag > 0) addrDiag--
     console.log(
-      '[relay][addr] xff=%j socket=%j key=%j tracked=%d inWindow=%d',
+      '[relay][addr] pid=%d xff=%j key=%j perAddr=%d/%d global=%d/%d tracked=%d %s',
+      verdict.pid,
       req?.headers?.['x-forwarded-for'] ?? null,
-      req?.socket?.remoteAddress ?? null,
       addr,
+      verdict.perAddr,
+      CONN_BURST,
+      verdict.global,
+      CONN_BURST_GLOBAL,
       connLog.size,
-      connLogAll.length,
+      verdict.ok ? 'ACCEPT' : 'REFUSE',
     )
   }
-  if (!connectionAllowed(addr)) {
+  if (!verdict.ok) {
     try {
       ws.close(4029, 'too many connections')
     } catch {
