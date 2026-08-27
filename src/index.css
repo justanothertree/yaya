@@ -3910,6 +3910,30 @@ select {
   border-color: var(--accent);
   background: color-mix(in oklab, var(--accent), transparent 86%);
 }
+/**
+ * Their page, painted — and stopping at its own edges.
+ *
+ * ⚠️ THIS ELEMENT MUST DRAW A BACKGROUND. `.card` fills with `--surface`, which is a
+ * near-transparent overlay, so every card shows whatever is behind it. Set someone's palette on
+ * a wrapper that paints nothing and their `--bg` is inherited correctly and never drawn: the
+ * page shows through, and the only things that visibly change are the ones used directly — the
+ * accent, and the cursor flair. That was the bug, twice.
+ *
+ * min-height so it reads as a PAGE rather than a card floating on the viewer's background;
+ * their colours should reach the bottom of what you are looking at. It still ends at its own
+ * border, which is the point — the nav, the launcher and every other window on the canvas stay
+ * in your theme, because a profile is someone's page and not a takeover of the site.
+ */
+.profile-look-window {
+  background: linear-gradient(180deg, var(--bg-grad1, var(--bg)), var(--bg));
+  color: var(--text);
+  padding: var(--sp-3, 1rem);
+  border-radius: var(--r-lg, 14px);
+  border: 1px solid var(--border-strong);
+  min-height: min(70vh, 100%);
+  align-content: start;
+}
+
 .profile-trophies {
   display: flex;
   flex-wrap: wrap;

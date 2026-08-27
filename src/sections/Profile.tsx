@@ -3,7 +3,7 @@ import { getSupabaseClient } from '../finance/client'
 import { avatarStyle } from '../profile/look'
 import type { ProfileData } from '../profile/profileData'
 import { previewMember, PREVIEW_PROFILES } from '../dev/previewMember'
-import { applyPalette, derivePalette, loadPalette } from '../theme/customTheme'
+import { derivePalette } from '../theme/customTheme'
 import { previewClickFx, setClickFxStyle, type FxStyle } from '../ui/clickFx'
 import { beatLink } from '../game/challenge'
 import {
@@ -179,43 +179,6 @@ export function Profile({ authed }: { authed: boolean }) {
     }
   }, [theirFlair])
 
-  /**
-   * Their look, on the PAGE — not just on a box inside it.
-   *
-   * ⚠️ Scoping it to a wrapper looked right and did almost nothing. `.card` paints with
-   * `--surface`, which is a near-transparent overlay, so cards show whatever is behind them —
-   * and that is the page, painted from <html>, which the wrapper cannot reach. Setting their
-   * `--bg` on a descendant left it inherited-but-never-drawn: the only visible changes were the
-   * things used directly, the accent and the cursor flair.
-   *
-   * So it goes where the site's own theme goes. applyPalette writes inline custom properties on
-   * <html> — the same call the theme picker uses — and data-theme='custom' is deliberately a
-   * name no stylesheet block matches, so those inline values inherit the whole way down without
-   * anything re-declaring them. That reaches the page background AND a profile opened as a
-   * canvas window, because both are simply descendants of <html>.
-   *
-   * ⚠️ It is put back on the way out. Leaving a profile, closing the toggle, or unmounting
-   * restores the viewer's own palette from storage and their previous data-theme — otherwise
-   * someone else's colours would follow you around the site, which is the thing the original
-   * scoping was trying to avoid and is still worth avoiding.
-   */
-  useEffect(() => {
-    if (!theirLook) return
-    const root = document.documentElement
-    const prevTheme = root.getAttribute('data-theme')
-    if (theirLook.palette) {
-      applyPalette(theirLook.palette)
-      root.setAttribute('data-theme', 'custom')
-    } else if (theirLook.theme) {
-      root.setAttribute('data-theme', theirLook.theme)
-    }
-    return () => {
-      applyPalette(loadPalette())
-      if (prevTheme) root.setAttribute('data-theme', prevTheme)
-      else root.removeAttribute('data-theme')
-    }
-  }, [theirLook])
-
   // the People list — how you find everyone else's page
   useEffect(() => {
     if (!authed) return
@@ -314,11 +277,22 @@ export function Profile({ authed }: { authed: boolean }) {
   ].filter((x): x is string => typeof x === 'string')
 
   return (
-    // The wrapper keeps their tokens so the CONTENT is themed on the very first paint; the
-    // effect above then hands the same look to <html> a frame later, which is what reaches the
-    // page background. Without the wrapper there is a visible flash of the viewer's colours.
+    /**
+     * Their look lives on THIS ELEMENT and stops here.
+     *
+     * ⚠️ It has to PAINT, not merely hold the tokens. `.card` fills with `--surface`, a
+     * near-transparent overlay, so cards show whatever is behind them — and if this element
+     * draws nothing, that is the page, which is still the viewer's. Their `--bg` was set,
+     * inherited correctly, and never drawn, so only the accent and the cursor changed.
+     *
+     * Applying it to <html> instead would fix that by repainting the whole site around you,
+     * which is worse: you would be reading someone else's colours on the nav, the launcher and
+     * every other window on the canvas. Scoped and painted is the version that means "their
+     * page" rather than "your site, briefly theirs".
+     */
     <div
       data-theme={wearing?.palette ? undefined : (wearing?.theme ?? undefined)}
+      className={wearing ? 'profile-look-window' : undefined}
       style={{ display: 'grid', gap: 'var(--sp-3, 1rem)', ...lookVars }}
     >
       {/* identity header */}
@@ -379,7 +353,7 @@ export function Profile({ authed }: { authed: boolean }) {
                     {/* On/off for THIS window, not a mode swap. "Their theme / My theme" read as
                         a picker between two options, so it was never obvious which one you were
                         currently looking at — the label named the choice rather than the state. */}
-                    {wearTheirLook ? '🎨 Theme on' : '🎨 Theme off'}
+                    {wearTheirLook ? '🎨 Their theme on' : '🎨 Their theme off'}
                   </button>
                 </>
               )}
