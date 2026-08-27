@@ -397,8 +397,21 @@ function raceScorePayload(room) {
   return { type: 'race', scores, target, ...(room.raceWinner ? { winner: room.raceWinner } : {}) }
 }
 
+/**
+ * Returns { items, reason }. `items` is null when nothing was written, and `reason` always says
+ * why in a word.
+ *
+ * ⚠️ EVERY FAILURE PATH REPORTS. Two of them used to `return null` in silence — an unconfigured
+ * relay and a response that was not an array — so a round that vanished looked exactly like one
+ * that saved, from the log as well as the screen. The reason travels back to the client and is
+ * shown under the results, deliberately coarse: enough to tell a misconfiguration from a
+ * rejection without putting a status line from someone else's server into a game UI.
+ */
 async function finalizeRoundOnSupabase(roomId, roundId, gameMode, baseItems) {
-  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) return null
+  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+    console.error('[ws] finalize skipped — relay has no SUPABASE_URL / SUPABASE_ANON_KEY')
+    return { items: null, reason: 'relay-unconfigured' }
+  }
   const payload = {
     p_room_id: roomId,
     p_round_id: roundId,
@@ -451,14 +464,17 @@ async function finalizeRoundOnSupabase(roomId, roundId, gameMode, baseItems) {
     })
     if (!res.ok) {
       console.error('[ws] finalize_round_rpc HTTP error', res.status, await res.text())
-      return null
+      return { items: null, reason: `rejected-${res.status}` }
     }
     const data = await res.json()
-    if (!Array.isArray(data)) return null
-    return data
+    if (!Array.isArray(data)) {
+      console.error('[ws] finalize_round_rpc returned a non-array body', typeof data)
+      return { items: null, reason: 'bad-response' }
+    }
+    return { items: data, reason: null }
   } catch (err) {
-    console.error('[ws] finalize_round_rpc exception', err)
-    return null
+    console.error('[ws] finalize_round_rpc exception', err?.name || err)
+    return { items: null, reason: 'unreachable' }
   }
 }
 
@@ -499,7 +515,9 @@ async function tryFinalize(room, roomId) {
   }
   let awarded = false
   // Attempt server-owned Supabase finalize_round_rpc; idempotent in DB
-  const rpcResults = await finalizeRoundOnSupabase(roomId, r.id, 'survival', base)
+  const finalizeOutcome = await finalizeRoundOnSupabase(roomId, r.id, 'survival', base)
+  const rpcResults = finalizeOutcome.items
+  let awardedReason = finalizeOutcome.reason
   if (Array.isArray(rpcResults) && rpcResults.length) {
     items = rpcResults.map((row) => ({
       id: String(row.id),
@@ -508,12 +526,16 @@ async function tryFinalize(room, roomId) {
       place: Number(row.place || 0) || 0,
     }))
     awarded = true
+    awardedReason = null
+  } else if (!awardedReason) {
+    awardedReason = 'empty-result'
   }
   const payload = {
     type: 'results',
     roundId: r.id,
     total: items.length,
     awarded,
+    ...(awarded ? {} : { awardedReason }),
     items,
   }
   // Broadcast unified results to all clients

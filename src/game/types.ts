@@ -162,6 +162,8 @@ export type NetMessage =
       items: Array<{ id: string; name: string; score: number; place: number }>
       from?: string
       awarded?: boolean
+      /** Why it was not saved, in a word — only present when awarded is false. */
+      awardedReason?: string
     }
 
 export type ThemeColors = {

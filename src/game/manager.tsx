@@ -618,6 +618,7 @@ export function GameManager({
      * anyone noticing. undefined means an older relay that never said.
      */
     awarded?: boolean
+    awardedReason?: string
   }>(null)
   const [showResults, setShowResults] = useState(false)
   // Throttle auto-seed requests to avoid duplicates
@@ -1966,7 +1967,12 @@ export function GameManager({
                   score: number
                   place: number
                 }>
-                setRoundResults({ items, total: msg.total as number, awarded: msg.awarded })
+                setRoundResults({
+                  items,
+                  total: msg.total as number,
+                  awarded: msg.awarded,
+                  awardedReason: msg.awardedReason,
+                })
                 setShowResults(true)
                 // Round is finished from the UI perspective
                 roundActiveRef.current = false
@@ -3637,6 +3643,7 @@ export function GameManager({
                           >
                             ⚠️ Not saved to the leaderboard — these placements are for this round
                             only.
+                            {roundResults.awardedReason ? ` (${roundResults.awardedReason})` : ''}
                           </div>
                         )}
                         {(() => {
