@@ -1094,25 +1094,21 @@ process.on('unhandledRejection', (err) => {
 /**
  * Which X-Forwarded-For entry identifies the caller.
  *
- * ⚠️ THIS READ THE RIGHTMOST ENTRY AND THE LIMIT SILENTLY DID NOTHING. The reasoning was sound
- * in the abstract — XFF is a list each proxy APPENDS to, so a forged header arrives as
- * `<their text>, <real client>`, and keying on the leftmost entry means keying on attacker
- * input. The rightmost entry is the one our own proxy wrote, so it cannot be forged.
+ * MEASURED, not reasoned about: Render sends a SINGLE entry containing the client address and
+ * nothing else — no appended hops — with the socket address showing as 127.0.0.1 because the
+ * proxy reaches us over loopback. So on this deployment the leftmost and rightmost entries are
+ * the same value and the choice does not matter today.
  *
- * Measured against the real deployment, that is not what arrives. 35 connections from one
- * machine were all accepted against a ceiling of 30, which can only happen if the key differs
- * every time — so Render appends something per-connection, and the rightmost entry is
- * effectively a random string. A per-address ceiling keyed on a random string is not a ceiling.
- * It looked implemented, it passed a local test, and in production it did nothing at all.
+ * It is the leftmost here because that is the conventional client address, and because it stays
+ * correct if Render ever starts appending hops. The cost is that it is forgeable — a client
+ * that sends its own XFF prepends whatever it likes and gets a fresh budget per connection —
+ * which is why the TOTAL rate is bounded as well, below.
  *
- * So: the LEFTMOST entry, which is the conventional client address and the one Render puts
- * first. It is forgeable — a client that sends its own XFF prepends whatever it likes and gets
- * a fresh budget per connection — and that is now handled by bounding the TOTAL rate as well,
- * below. Best-effort identification with a real backstop beats perfect identification of the
- * wrong thing.
- *
- * ⚠️ Do not "fix" this back to the rightmost entry without measuring the header first. That is
- * what `xff` on the admin-only /relay-config is for.
+ * ⚠️ An earlier version of this comment claimed the rightmost entry varied per connection and
+ * that the ceiling was therefore doing nothing. That was wrong, and it was wrong because the
+ * ceiling was being verified from the CLIENT side; see the note over connectionAllowed. Do not
+ * change this line on reasoning alone — the `xff` block on the admin-only /relay-config and the
+ * [relay][addr] lines below both report what actually arrives.
  */
 function clientAddr(req) {
   // ⚠️ And only when something in front of us actually writes it. Render terminates TLS and
@@ -1152,7 +1148,7 @@ const connLog = new Map()
  */
 const connLogAll = []
 /** How many connections still get to describe their address on the log. See the block below. */
-let addrDiag = Number(process.env.ADDR_DIAG || 45)
+let addrDiag = Number(process.env.ADDR_DIAG || 8)
 
 function connectionAllowed(addr) {
   const now = Date.now()
@@ -1163,8 +1159,17 @@ function connectionAllowed(addr) {
   while (connLogAll.length && now - connLogAll[0] >= CONN_WINDOW_MS) connLogAll.shift()
   connLogAll.push(now)
 
-  // returns the counts as well as the verdict, so the caller can say WHY on the log rather
-  // than leaving the next person to infer it from a connection that did or did not survive
+  /**
+   * ⚠️ THIS CEILING CANNOT BE VERIFIED FROM THE CLIENT SIDE. Render's proxy completes the
+   * WebSocket handshake with the caller and does not pass our close through: a refused socket
+   * sees `open`, then no close frame and no error, for at least twelve seconds. Three deploys
+   * went into "fixing" a limiter that was working correctly the whole time, because the test
+   * counted close code 4029 and that code never left the building.
+   *
+   * The counts come back with the verdict so the SERVER can say what it decided. The
+   * [relay][addr] lines are the only sound way to check this — one line per decision, with the
+   * running totals and the pid that made them.
+   */
   return {
     ok: recent.length <= CONN_BURST && connLogAll.length <= CONN_BURST_GLOBAL,
     perAddr: recent.length,
@@ -1210,13 +1215,16 @@ wss.on('connection', (ws, req) => {
    */
   const verdict = connectionAllowed(addr)
   /**
-   * ⚠️ pid is on here for a reason. Everything else about this ceiling has checked out — the
-   * key is stable, the counters accumulate, the arithmetic is right — and yet 40 connections
-   * in one burst against a ceiling of 30 were all accepted in production. The remaining way
-   * that happens is that they were not all counted by the same process. If these lines show
-   * more than one pid, or perAddr resetting to 1, that is the answer: an in-memory counter
-   * cannot bound anything spread across instances, and the ceiling has to move somewhere
-   * shared or be replaced by the global one.
+   * The decision, on the log, where it can actually be read.
+   *
+   * Measured on the real deployment: one pid, perAddr climbing 1..40 against a ceiling of 30,
+   * ACCEPT through 30 and REFUSE from 31. The ceiling works. It could not be seen working from
+   * outside, because the close never reaches the caller — see connectionAllowed.
+   *
+   * pid stays on the line because an in-memory counter bounds nothing once there is more than
+   * one process: if this relay is ever scaled past a single instance, these lines will show it
+   * immediately as several pids each counting to 30, and the per-address ceiling will need to
+   * move to shared state or be dropped in favour of the global one.
    */
   if (addrDiag > 0 || !verdict.ok) {
     if (addrDiag > 0) addrDiag--
@@ -1234,6 +1242,26 @@ wss.on('connection', (ws, req) => {
     )
   }
   if (!verdict.ok) {
+    /**
+     * ⚠️ THE MESSAGE IS THE ONLY PART THE CALLER ACTUALLY RECEIVES.
+     *
+     * Close code 4029 was chosen as "a code a real client can act on", and through Render's
+     * proxy it never arrives — a refused socket sits there looking open. Ordinary data frames
+     * do get through (the whole relay runs on them), so the frame below is the only signal a
+     * legitimate client has that it should stop and back off.
+     *
+     * This reverses the earlier call to stay silent, which borrowed the chat limiter's logic
+     * that telling a flooder only tells them how fast to go. That trade is wrong here: a
+     * flooder learns nothing they could not measure from the connection dying anyway, while
+     * someone sharing an address — a household, an office — otherwise gets a socket that
+     * never works and never says why. The close still follows, for clients not behind a proxy
+     * that eats it.
+     */
+    try {
+      send(ws, { type: 'error', code: 'rate-limited', message: 'Too many connections — slow down' })
+    } catch {
+      /* the socket may already be gone */
+    }
     try {
       ws.close(4029, 'too many connections')
     } catch {
