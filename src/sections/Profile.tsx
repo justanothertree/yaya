@@ -10,6 +10,7 @@ import {
   ProfileBlocksEditor,
   ProfileBlocksView,
   type ActivityItem,
+  type ProfileTrophy,
   type ProfileBlock,
   type Tier,
 } from './ProfileBlocks'
@@ -55,6 +56,7 @@ export function Profile({ authed }: { authed: boolean }) {
   // the page rendering
   const [blocks, setBlocks] = useState<ProfileBlock[]>([])
   const [activity, setActivity] = useState<ActivityItem[]>([])
+  const [trophies, setTrophies] = useState<ProfileTrophy[]>([])
   const [editing, setEditing] = useState(false)
   /**
    * Whether to wear other people's looks at all.
@@ -102,6 +104,11 @@ export function Profile({ authed }: { authed: boolean }) {
     })
     void sb.rpc('get_member_activity', { p_username: u, p_limit: 20 }).then(({ data }) => {
       if (live && data) setActivity(data as ActivityItem[])
+    })
+    // ⚠️ Separate from the activity feed on purpose: that one is time-ordered and capped at 20,
+    // so trophies older than a member's last twenty events silently vanished from their profile.
+    void sb.rpc('get_member_trophies', { p_username: u }).then(({ data }) => {
+      if (live && data) setTrophies(data as ProfileTrophy[])
     })
     return () => {
       live = false
@@ -418,6 +425,7 @@ export function Profile({ authed }: { authed: boolean }) {
           initial={blocks}
           username={p.username}
           activity={activity}
+          trophies={trophies}
           snakeBest={p.snake_best}
           /* Called after every autosave now, not once at the end — so leaving edit mode shows
              what is actually stored. It no longer closes the editor: you are done when you say
@@ -428,6 +436,7 @@ export function Profile({ authed }: { authed: boolean }) {
         <ProfileBlocksView
           blocks={blocks}
           activity={activity}
+          trophies={trophies}
           snakeBest={p.snake_best}
           username={p.username}
           isMe={p.is_me}

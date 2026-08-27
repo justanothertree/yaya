@@ -99,16 +99,33 @@ function activityLine(a: ActivityItem): string {
   return 'Scored ' + a.score + (a.detail ? ' · ' + a.detail : '') + ' · ' + when
 }
 
+/**
+ * A trophy, from get_member_trophies — EVERY one of them.
+ *
+ * ⚠️ Not from the activity feed. Trophies used to be filtered out of `activity`, which is
+ * ordered by time and capped at 20 items, so a member with a lot of recent runs was told they
+ * had none: theirs were older than the window. A tally must not be a page of a timeline.
+ */
+export type ProfileTrophy = {
+  trophy_name: string
+  at: string
+  score: number | null
+  handle: string | null
+  game_mode: string | null
+}
+
 /** One block, rendered as a reader sees it — no edit controls here at all. */
 function BlockView({
   block,
   activity,
+  trophies,
   snakeBest,
   username,
   isMe,
 }: {
   block: ProfileBlock
   activity: ActivityItem[]
+  trophies: ProfileTrophy[]
   snakeBest: { score: number; game_mode: string | null } | null
   /** whose page this is — a banner with no colour picked falls back to their own */
   username: string
@@ -154,7 +171,7 @@ function BlockView({
             )}
           </p>
           <p className="muted" style={{ margin: '0.3rem 0 0' }}>
-            {activity.filter((a) => a.kind === 'snake_trophy').length} trophies
+            {trophies.length} trophies
           </p>
         </div>
       )
@@ -176,7 +193,7 @@ function BlockView({
     case 'trophies': {
       // Snake trophies already existed and were only ever COUNTED (the stats block says "3
       // trophies"). Naming them is the difference between a number and something worth showing.
-      const won = activity.filter((a) => a.kind === 'snake_trophy')
+      const won = trophies
       return (
         <div className={'card profile-block is-' + block.size}>
           <h3 style={{ marginTop: 0 }}>🏆 Trophies</h3>
@@ -186,9 +203,10 @@ function BlockView({
                 <span
                   key={i}
                   className="profile-trophy"
-                  title={new Date(a.at).toLocaleDateString()}
+                  title={`${new Date(a.at).toLocaleDateString()}${a.handle ? ` · as ${a.handle}` : ''}`}
                 >
-                  🏆 {a.detail}
+                  {a.trophy_name === 'gold' ? '🥇' : a.trophy_name === 'silver' ? '🥈' : '🥉'}{' '}
+                  {a.trophy_name}
                   {a.score != null && <span className="muted"> · {a.score}</span>}
                 </span>
               ))}
@@ -230,12 +248,14 @@ function BlockView({
 export function ProfileBlocksView({
   blocks,
   activity,
+  trophies,
   snakeBest,
   username,
   isMe = false,
 }: {
   blocks: ProfileBlock[]
   activity: ActivityItem[]
+  trophies: ProfileTrophy[]
   snakeBest: { score: number; game_mode: string | null } | null
   username: string
   isMe?: boolean
@@ -248,6 +268,7 @@ export function ProfileBlocksView({
           key={b.id ?? i}
           block={b}
           activity={activity}
+          trophies={trophies}
           snakeBest={snakeBest}
           username={username}
           isMe={isMe}
@@ -459,6 +480,7 @@ function BlockEditRow({
   block,
   username,
   activity,
+  trophies,
   snakeBest,
   open,
   onToggle,
@@ -472,6 +494,7 @@ function BlockEditRow({
   username: string
   /** the same data the reader's page gets, because the preview below IS the reader's page */
   activity: ActivityItem[]
+  trophies: ProfileTrophy[]
   snakeBest: { score: number; game_mode: string | null } | null
   open: boolean
   onToggle: () => void
@@ -684,6 +707,7 @@ function BlockEditRow({
           <BlockView
             block={block}
             activity={activity}
+            trophies={trophies}
             snakeBest={snakeBest}
             username={username}
             isMe
@@ -699,6 +723,7 @@ export function ProfileBlocksEditor({
   initial,
   username,
   activity,
+  trophies,
   snakeBest,
   onSaved,
 }: {
@@ -706,6 +731,7 @@ export function ProfileBlocksEditor({
   username: string
   /** passed straight through to the previews, so editing shows the page and not a description */
   activity: ActivityItem[]
+  trophies: ProfileTrophy[]
   snakeBest: { score: number; game_mode: string | null } | null
   onSaved: (blocks: ProfileBlock[]) => void
 }) {
@@ -868,6 +894,7 @@ export function ProfileBlocksEditor({
             block={b}
             username={username}
             activity={activity}
+            trophies={trophies}
             snakeBest={snakeBest}
             open={openIdx === i}
             onToggle={() => setOpenIdx((cur) => (cur === i ? null : i))}

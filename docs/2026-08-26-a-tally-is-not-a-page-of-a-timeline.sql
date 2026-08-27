@@ -1,0 +1,38 @@
+-- "My profile says 0 trophies" — after the fix that was supposed to show them.  2026-08-26
+--   migration: get_member_trophies_is_a_tally_not_a_feed_page
+--
+-- Follows member_activity_links_snake_by_account_not_name, which correctly linked snake history
+-- to the account rather than the username. The trophies still read zero, and the reason is a
+-- different mistake sitting underneath the first one.
+--
+-- ── the flaw ─────────────────────────────────────────────────────────────────
+-- Both profile blocks derived trophies by FILTERING THE ACTIVITY FEED:
+--
+--   activity.filter((a) => a.kind === 'snake_trophy')          -- the Trophies block
+--   activity.filter((a) => a.kind === 'snake_trophy').length   -- the "N trophies" stat
+--
+-- That feed is `get_member_activity(p_username, p_limit)`, ordered by time and called with a
+-- limit of 20. So the profile was not asking "how many trophies does this member have"; it was
+-- asking "how many of this member's last twenty EVENTS happen to be trophies".
+--
+-- For the member who reported it: three trophies, awarded 2026-01-10, 2026-01-28 and
+-- 2026-02-02. Their twenty most recent events are all runs from 2026-02-24 onward. The trophies
+-- sit about ninety events past the end of the window and can never appear in it.
+--
+-- ⚠️ AND THE PREVIOUS FIX MADE IT WORSE. Before it, the feed contained none of their snake
+-- history at all, so the window was mostly circuit logs and a trophy could in principle have
+-- surfaced. Adding their 93 runs — correctly — crowded the older trophies out for good. A right
+-- answer to one question exposed a wrong question next to it.
+--
+-- ── the fix ──────────────────────────────────────────────────────────────────
+-- get_member_trophies returns EVERY trophy for the member, with no limit and no time ordering
+-- imposed on the caller. A tally is a tally; deriving one from a page of a timeline is only
+-- correct while the page is bigger than the history, which is to say only at the start.
+--
+-- Same visibility gate as get_member_activity: authenticated caller, target found by username,
+-- can_see() honoured. Same account-first matching, with the name comparison kept as a fallback
+-- for handles that were never claimed.
+--
+-- ── verified ─────────────────────────────────────────────────────────────────
+-- The three trophies are held under the handle YAYA on the survival board, awarded in January
+-- and February, and none of them fall inside the member's twenty most recent events.

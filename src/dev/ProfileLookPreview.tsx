@@ -45,6 +45,23 @@ const SAMPLE_BLOCKS: ProfileBlock[] = [
 ]
 
 // stand-in trophies, so the block can be seen with content rather than only its empty state
+const SAMPLE_TROPHIES = [
+  {
+    trophy_name: 'gold',
+    at: '2026-01-28T01:16:26Z',
+    score: 210,
+    handle: 'YAYA',
+    game_mode: 'survival',
+  },
+  {
+    trophy_name: 'silver',
+    at: '2026-02-02T23:29:32Z',
+    score: 98,
+    handle: 'YAYA',
+    game_mode: 'survival',
+  },
+]
+
 const SAMPLE_ACTIVITY = [
   // A circuit log the way the RPC returns it now: what was done, what it scored, and the
   // circuits you SHARE — plus one with detail: null, which is what someone who shares no
@@ -201,6 +218,7 @@ export function ProfileLookPreview() {
           initial={blocks}
           username={who}
           activity={SAMPLE_ACTIVITY}
+          trophies={SAMPLE_TROPHIES}
           snakeBest={{ score: 812, game_mode: 'classic' }}
           onSaved={setBlocks}
         />
@@ -208,6 +226,7 @@ export function ProfileLookPreview() {
         <ProfileBlocksView
           blocks={blocks}
           activity={SAMPLE_ACTIVITY}
+          trophies={SAMPLE_TROPHIES}
           snakeBest={{ score: 812, game_mode: 'classic' }}
           username={who}
         />
