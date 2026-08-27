@@ -3170,6 +3170,36 @@ select {
   width: 3px;
   border-radius: 2px;
 }
+/* Cracks grow FROM the impact point, so the origin is the left edge rather than the centre —
+   that is what makes them propagate outward instead of sliding across. */
+.click-fx-crack {
+  height: 2px;
+  border-radius: 0;
+  transform-origin: 0 50%;
+  clip-path: polygon(0 0, 100% 40%, 100% 60%, 0 100%);
+}
+.click-fx-ripple {
+  width: 46px;
+  height: 46px;
+  border: 2px solid currentColor;
+  background: none;
+}
+.click-fx-drop {
+  width: 7px;
+  height: 7px;
+}
+/* The stroke is centred on the click and rotated, so unlike a crack its origin stays central. */
+.click-fx-cut {
+  height: 3px;
+  border-radius: 2px;
+  transform-origin: 50% 50%;
+}
+.click-fx-gash {
+  height: 1px;
+  border-radius: 1px;
+  transform-origin: 50% 50%;
+  opacity: 0.75;
+}
 .click-fx-glyph {
   /* text content sizes the box itself (shrink-to-fit under absolute positioning), so no
      width/height here — only the shared `> i` rule's border-radius/background need undoing */

@@ -19,6 +19,9 @@ const FX_STYLE_OPTIONS: Array<[FxStyle, string, string]> = [
   ['ink', '💧', 'Ink'],
   ['orbit', '⟳', 'Orbit'],
   ['beam', '☀', 'Beam'],
+  ['glass', '🪟', 'Glass'],
+  ['splash', '💦', 'Splash'],
+  ['slash', '🗡', 'Slash'],
 ]
 
 /**

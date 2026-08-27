@@ -22,6 +22,9 @@ const FX_STYLES: FxStyle[] = [
   'ink',
   'orbit',
   'beam',
+  'glass',
+  'splash',
+  'slash',
 ]
 import { ShareStage } from './voice/ShareStage'
 import { UsagePanel } from './components/UsagePanel'

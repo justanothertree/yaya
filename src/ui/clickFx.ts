@@ -12,13 +12,19 @@
  * eat a click or shift the page — the effect is structurally incapable of interfering with the
  * thing you clicked, no matter which style is picked.
  *
- * Twelve styles, deliberately differentiated by SHAPE and MOTION rather than just palette —
+ * Fifteen styles, deliberately differentiated by SHAPE and MOTION rather than just palette —
  * radiating dots (sparks), expanding rings (sonar), falling paper (pop), a two-stage launch+burst
  * (rocket), twinkling glyphs (stars, glitter), upward drift (hearts, bubbles), an implosion isn't
  * here but an orbit is, straight rays (beam), angular shards (shatter), soft splats (ink). A style
  * that only changed color on top of the same dots-flying-outward motion as another one was cut or
  * reworked — that's what made the original ripple/confetti/fireworks trio feel thin next to
  * sparks, and it's also why pixels/zap didn't survive their own tryout.
+ *
+ * The later three hold to the same bar. `glass` is not a recoloured `shatter`: that one throws
+ * triangles outward, this one propagates crack LINES from the impact and lets a few pieces fall.
+ * `splash` needed a three-keyframe arc, because two keyframes draw a straight line and would
+ * have been sparks in blue. `slash` is the only one that takes a direction — it aims along the
+ * way the pointer was actually travelling, which is the difference between a swing and a decal.
  */
 
 export type FxStyle =
@@ -34,10 +40,25 @@ export type FxStyle =
   | 'ink'
   | 'orbit'
   | 'beam'
+  | 'glass'
+  | 'splash'
+  | 'slash'
 
 const LAYER_ID = 'click-fx-layer'
 /** Concurrent bursts to allow. A fast clicker shouldn't be able to pile up hundreds of nodes. */
 const MAX_BURSTS = 6
+
+/**
+ * The direction the pointer was travelling, for `slash`.
+ *
+ * A cut has to go SOMEWHERE, and a fixed diagonal reads as a decal stamped on the page rather
+ * than a swing. Two numbers updated on pointermove is enough to aim it along the way your hand
+ * was actually moving; a click with no prior movement (a tap, a keyboard-driven click) falls
+ * back to a random angle so it never looks stuck.
+ */
+let lastMoveX = 0
+let lastMoveY = 0
+let swingAngle: number | null = null
 
 let installed = false
 let enabled = true
@@ -547,6 +568,200 @@ function beam(host: HTMLElement, x: number, y: number) {
   track(host, nodes, anims)
 }
 
+/**
+ * Broken glass: the CRACKS are the effect, the shards are the aftermath.
+ *
+ * Deliberately not a recoloured `shatter`. That one throws triangles outward and reads as
+ * confetti with corners; this one draws fracture lines that shoot out FROM the point of impact
+ * and stay put while a few pieces fall away, which is what actually says "something broke here".
+ * The lines grow from a transform-origin at the click rather than translating, so they behave
+ * like cracks propagating instead of sticks flying.
+ */
+function glass(host: HTMLElement, x: number, y: number) {
+  const [a, b] = palette()
+  const nodes: HTMLElement[] = []
+  const anims: Animation[] = []
+
+  const CRACKS = 6
+  for (let i = 0; i < CRACKS; i++) {
+    const angle = (i / CRACKS) * 360 + (Math.random() - 0.5) * 26
+    const len = 26 + Math.random() * 30
+    const c = mk('click-fx-crack', x, y)
+    c.style.width = len + 'px'
+    c.style.background = i % 2 ? b : a
+    c.style.transform = `rotate(${angle}deg)`
+    nodes.push(c)
+    anims.push(
+      c.animate(
+        [
+          { transform: `rotate(${angle}deg) scaleX(0)`, opacity: 1 },
+          { transform: `rotate(${angle}deg) scaleX(1)`, opacity: 1, offset: 0.25 },
+          { transform: `rotate(${angle}deg) scaleX(1)`, opacity: 0 },
+        ],
+        {
+          duration: 420 + Math.random() * 160,
+          easing: 'cubic-bezier(0.1, 0.9, 0.2, 1)',
+          fill: 'forwards',
+        },
+      ),
+    )
+  }
+
+  for (let i = 0; i < 5; i++) {
+    const angle = Math.random() * Math.PI * 2
+    const dist = 14 + Math.random() * 22
+    const p = mk('click-fx-shard', x, y)
+    p.style.background = i % 2 ? a : b
+    nodes.push(p)
+    anims.push(
+      p.animate(
+        [
+          { transform: 'translate(-50%, -50%) translate(0, 0) rotate(0deg)', opacity: 0.9 },
+          {
+            transform: `translate(-50%, -50%) translate(${Math.cos(angle) * dist}px, ${Math.sin(angle) * dist + 16}px) rotate(${(Math.random() - 0.5) * 320}deg)`,
+            opacity: 0,
+          },
+        ],
+        {
+          duration: 460 + Math.random() * 180,
+          easing: 'cubic-bezier(0.3, 0.6, 0.5, 1)',
+          fill: 'forwards',
+        },
+      ),
+    )
+  }
+  track(host, nodes, anims)
+}
+
+/**
+ * Water: droplets thrown up on arcs, and a ripple left behind.
+ *
+ * The arc is the whole point and it needs THREE keyframes — up fast, over, down slow — because
+ * two would draw a straight line and read as `sparks` in blue. Each droplet also stretches along
+ * its flight and relaxes at the top, which is what sells it as liquid rather than a dot.
+ */
+function splash(host: HTMLElement, x: number, y: number) {
+  const [a, b] = palette()
+  const nodes: HTMLElement[] = []
+  const anims: Animation[] = []
+
+  const ring = mk('click-fx-ripple', x, y)
+  ring.style.color = a
+  nodes.push(ring)
+  anims.push(
+    ring.animate(
+      [
+        { transform: 'translate(-50%, -50%) scale(0.2) scaleY(0.5)', opacity: 0.85 },
+        { transform: 'translate(-50%, -50%) scale(1.3) scaleY(0.5)', opacity: 0 },
+      ],
+      { duration: 520, easing: 'cubic-bezier(0.2, 0.7, 0.3, 1)', fill: 'forwards' },
+    ),
+  )
+
+  const N = 8
+  for (let i = 0; i < N; i++) {
+    const spread = (i / (N - 1) - 0.5) * 70
+    const rise = 20 + Math.random() * 22
+    const fall = rise + 16 + Math.random() * 18
+    const d = mk('click-fx-drop', x, y)
+    d.style.background = i % 3 === 0 ? b : a
+    nodes.push(d)
+    anims.push(
+      d.animate(
+        [
+          { transform: 'translate(-50%, -50%) translate(0, 0) scale(0.7, 1.4)', opacity: 1 },
+          {
+            transform: `translate(-50%, -50%) translate(${spread * 0.6}px, ${-rise}px) scale(1.1, 0.9)`,
+            opacity: 1,
+            offset: 0.45,
+          },
+          {
+            transform: `translate(-50%, -50%) translate(${spread}px, ${fall}px) scale(0.6, 1.5)`,
+            opacity: 0,
+          },
+        ],
+        {
+          duration: 560 + Math.random() * 200,
+          easing: 'cubic-bezier(0.3, 0.1, 0.7, 1)',
+          fill: 'forwards',
+        },
+      ),
+    )
+  }
+  track(host, nodes, anims)
+}
+
+/**
+ * A blade stroke, aimed along the way your hand was moving.
+ *
+ * ⚠️ The angle is the reason this works. A cut at a fixed diagonal reads as a decal stamped on
+ * the page; following the pointer's own direction makes it a swing you performed. swingAngle is
+ * whatever the last real pointer movement was, and a click with no movement behind it — a tap, a
+ * keyboard click — gets a random angle rather than always the same one.
+ *
+ * Two strokes, not one: a bright fast slash, and a thinner gash that lingers a beat longer
+ * underneath it. One line alone looks like a loading bar.
+ */
+function slash(host: HTMLElement, x: number, y: number) {
+  const [a, b] = palette()
+  const nodes: HTMLElement[] = []
+  const anims: Animation[] = []
+  const deg = ((swingAngle ?? Math.random() * Math.PI * 2) * 180) / Math.PI
+  const len = 64 + Math.random() * 26
+
+  for (const [i, colour] of [a, b].entries()) {
+    const cut = mk(i === 0 ? 'click-fx-cut' : 'click-fx-gash', x, y)
+    cut.style.width = len + 'px'
+    cut.style.background = colour
+    nodes.push(cut)
+    anims.push(
+      cut.animate(
+        [
+          { transform: `translate(-50%, -50%) rotate(${deg}deg) scaleX(0)`, opacity: 1 },
+          {
+            transform: `translate(-50%, -50%) rotate(${deg}deg) scaleX(1)`,
+            opacity: 1,
+            offset: 0.3,
+          },
+          { transform: `translate(-50%, -50%) rotate(${deg}deg) scaleX(1)`, opacity: 0 },
+        ],
+        {
+          duration: i === 0 ? 300 : 520,
+          easing: 'cubic-bezier(0.05, 0.9, 0.1, 1)',
+          fill: 'forwards',
+        },
+      ),
+    )
+  }
+
+  // a little spray off the edge of the stroke, thrown perpendicular to it
+  for (let i = 0; i < 5; i++) {
+    const off = (Math.random() - 0.5) * len * 0.8
+    const perp = deg + 90 + (Math.random() - 0.5) * 40
+    const dist = 10 + Math.random() * 18
+    const rad = (perp * Math.PI) / 180
+    const along = (deg * Math.PI) / 180
+    const px = x + Math.cos(along) * off
+    const py = y + Math.sin(along) * off
+    const p = mk('click-fx-spark', px, py)
+    p.style.background = b
+    nodes.push(p)
+    anims.push(
+      p.animate(
+        [
+          { transform: 'translate(-50%, -50%) translate(0, 0) scale(1)', opacity: 1 },
+          {
+            transform: `translate(-50%, -50%) translate(${Math.cos(rad) * dist}px, ${Math.sin(rad) * dist}px) scale(0.3)`,
+            opacity: 0,
+          },
+        ],
+        { duration: 320 + Math.random() * 160, easing: 'ease-out', fill: 'forwards' },
+      ),
+    )
+  }
+  track(host, nodes, anims)
+}
+
 const BUILDERS: Record<FxStyle, (host: HTMLElement, x: number, y: number) => void> = {
   sparks,
   sonar,
@@ -560,6 +775,18 @@ const BUILDERS: Record<FxStyle, (host: HTMLElement, x: number, y: number) => voi
   ink,
   orbit,
   beam,
+  glass,
+  splash,
+  slash,
+}
+
+function onPointerMove(e: PointerEvent) {
+  const dx = e.clientX - lastMoveX
+  const dy = e.clientY - lastMoveY
+  // ignore jitter: a couple of pixels is a resting hand, not a swing
+  if (dx * dx + dy * dy > 16) swingAngle = Math.atan2(dy, dx)
+  lastMoveX = e.clientX
+  lastMoveY = e.clientY
 }
 
 function burst(x: number, y: number, target: EventTarget | null) {
@@ -631,9 +858,11 @@ export function installClickFx(): () => void {
   if (typeof Element.prototype.animate !== 'function') return () => {}
   installed = true
   window.addEventListener('pointerdown', onPointerDown, { capture: true, passive: true })
+  window.addEventListener('pointermove', onPointerMove, { passive: true })
   return () => {
     installed = false
     window.removeEventListener('pointerdown', onPointerDown, { capture: true })
+    window.removeEventListener('pointermove', onPointerMove)
     document.getElementById(LAYER_ID)?.remove()
   }
 }
