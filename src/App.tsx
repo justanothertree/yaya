@@ -48,6 +48,14 @@ const PageCanvas = lazy(() =>
 )
 import type { CanvasPane, LaunchableWindow } from './circuit/ui/CircuitCanvas'
 import { applyPalette, loadPalette } from './theme/customTheme'
+import {
+  applyMotionAttr,
+  motionPreferenceStored,
+  motionReduced,
+  motionReducedBySystem,
+  onMotionChange,
+  setMotionReduced,
+} from './ui/motion'
 const AdminPanel = lazy(() =>
   import('./sections/AdminPanel').then((m) => ({ default: m.AdminPanel })),
 )
@@ -402,6 +410,19 @@ export default function App() {
   // instantly and can never flash or gate anything; the real name follows from the profile
   // a moment later. An address is not a name — an address starting with an initial made the
   // avatar the wrong letter for the person it belonged to.
+  /**
+   * Reduce motion, as a site setting.
+   *
+   * Effective = the OS asked, or you asked here. Kept in state as well as on <html> so the cog
+   * can show it, and re-read on change because the OS half can flip while the tab is open —
+   * someone turning the system setting on mid-visit is asking for it to stop NOW.
+   */
+  const [motionOff, setMotionOff] = useState(() => motionReduced())
+  useEffect(() => {
+    applyMotionAttr()
+    return onMotionChange(() => setMotionOff(motionReduced()))
+  }, [])
+
   const [me, setMe] = useState<{
     name: string | null
     email: string | null
@@ -1497,6 +1518,9 @@ export default function App() {
               authed={hasFinanceSupabaseEnv() && isFinanceAuthed}
               isAdmin={isAdmin}
               ambientOn={ambientOn}
+              motionOff={motionOff}
+              motionBySystem={motionReducedBySystem()}
+              onToggleMotion={() => setMotionReduced(!motionPreferenceStored())}
               onToggleAmbient={toggleAmbient}
               sparksOn={sparksOn}
               onToggleSparks={toggleSparks}

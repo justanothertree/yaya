@@ -1,4 +1,5 @@
 import { useEffect } from 'react'
+import { motionReduced } from '../ui/motion'
 
 /**
  * Fade-in-on-scroll for anything tagged `.reveal`.
@@ -21,7 +22,7 @@ import { useEffect } from 'react'
  */
 export function useReveal(selector = '.reveal', rerunToken?: unknown) {
   useEffect(() => {
-    const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    const prefersReduced = motionReduced()
     // no animation to stage: show everything the moment we see it
     const showAll = prefersReduced || typeof IntersectionObserver === 'undefined'
 

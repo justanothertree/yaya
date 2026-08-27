@@ -239,6 +239,25 @@
 .cz-pane {
   animation: czIn 0.18s ease both;
 }
+/**
+ * The site's own reduce-motion switch, for people whose OS setting is not set — usually because
+ * they do not know it exists. One blanket rule rather than a second copy of all nine
+ * prefers-reduced-motion blocks below: those would have to be kept in step forever, and the one
+ * that got forgotten would be the one still moving.
+ *
+ * Transitions are flattened to 1ms rather than `none` so anything waiting on transitionend still
+ * fires; a 0s transition never emits the event and can leave a menu that opens and never closes.
+ * Scroll behaviour goes too — a smooth-scrolled jump is motion whether or not it is an animation.
+ */
+:root[data-motion='reduce'] *,
+:root[data-motion='reduce'] *::before,
+:root[data-motion='reduce'] *::after {
+  animation-duration: 1ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 1ms !important;
+  scroll-behavior: auto !important;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .cz-pane {
     animation: none;

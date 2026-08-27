@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
+import { motionReduced } from '../ui/motion'
 
 /**
  * Atmosphere: the ground behind the page is alive even when nothing is happening.
@@ -93,7 +94,7 @@ export function AmbientBackdrop({
      */
     const coarse =
       window.matchMedia('(hover: none) and (pointer: coarse)').matches || innerWidth < 820
-    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches || coarse
+    const reduced = motionReduced() || coarse
     let raf = 0
     let frame = 0
     let running = true

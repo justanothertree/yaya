@@ -27,6 +27,8 @@
  * way the pointer was actually travelling, which is the difference between a swing and a decal.
  */
 
+import { motionReduced } from './motion'
+
 export type FxStyle =
   | 'sparks'
   | 'sonar'
@@ -819,6 +821,14 @@ export function setClickFxScope(el: Element | null, fxStyle: FxStyle | null) {
 
 function onPointerDown(e: PointerEvent) {
   if (!enabled) return
+  /**
+   * ⚠️ Checked HERE, not at install. It used to bail out of installing at all when the OS asked
+   * for reduced motion, which meant the site's own reduce-motion switch could never turn the
+   * effect back off once it was running — and could never let it run for someone who turned the
+   * switch off. Asking per click is free and always current: the answer can change while the tab
+   * is open, from the switch or from the OS.
+   */
+  if (motionReduced()) return
   // Primary button only: a right-click opens a menu and a middle-click pans the canvas, and
   // neither is the kind of "I pressed this" moment the effect is acknowledging.
   if (e.button !== 0) return
@@ -853,8 +863,6 @@ export function previewClickFx(fxStyle: FxStyle, x: number, y: number) {
  */
 export function installClickFx(): () => void {
   if (installed) return () => {}
-  // Someone who has asked for less motion has asked for exactly this kind of thing to stop.
-  if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return () => {}
   if (typeof Element.prototype.animate !== 'function') return () => {}
   installed = true
   window.addEventListener('pointerdown', onPointerDown, { capture: true, passive: true })

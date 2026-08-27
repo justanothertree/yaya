@@ -33,6 +33,9 @@ export function SettingsMenu({
   desktop,
   ambientOn,
   onToggleAmbient,
+  motionOff,
+  motionBySystem,
+  onToggleMotion,
   sparksOn,
   onToggleSparks,
   sparksStyle,
@@ -60,6 +63,11 @@ export function SettingsMenu({
   desktop: boolean
   ambientOn: boolean
   onToggleAmbient: () => void
+  /** the effective answer: the site switch, or the OS asking */
+  motionOff: boolean
+  /** true when the OS is the reason, in which case the switch is locked on */
+  motionBySystem: boolean
+  onToggleMotion: () => void
   sparksOn: boolean
   onToggleSparks: () => void
   sparksStyle: FxStyle
@@ -279,6 +287,33 @@ export function SettingsMenu({
           >
             <span>✨ Ambient glow</span>
             <span className={'nav-menu-switch' + (ambientOn ? ' is-on' : '')} aria-hidden />
+          </button>
+
+          {/**
+           * ⚠️ Not buried, and phrased as a plain statement of what it does.
+           *
+           * The site has honoured prefers-reduced-motion for a long time, and that was never the
+           * problem: it is an OS setting, and the people who most need it are the least likely to
+           * know it exists or where to find it. This is the same protection reachable by someone
+           * who just knows the page makes them feel unwell.
+           *
+           * Locked on when the system already asks for it — the switch can add reduction and
+           * must never be able to remove it — and it says why rather than looking broken.
+           */}
+          <button
+            className="nav-menu-row"
+            role="menuitemcheckbox"
+            aria-checked={motionOff}
+            disabled={motionBySystem}
+            onClick={onToggleMotion}
+            title={
+              motionBySystem
+                ? 'Your device is set to reduce motion, so this stays on'
+                : 'Stop animations: no drifting glow, no click effects, no movement as things appear'
+            }
+          >
+            <span>🧘 Reduce motion</span>
+            <span className={'nav-menu-switch' + (motionOff ? ' is-on' : '')} aria-hidden />
           </button>
 
           {/* ONE row, not a toggle plus a conditional style row. Off is now a look you pick
