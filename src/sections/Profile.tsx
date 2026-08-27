@@ -3,7 +3,7 @@ import { getSupabaseClient } from '../finance/client'
 import { avatarStyle } from '../profile/look'
 import type { ProfileData } from '../profile/profileData'
 import { previewMember, PREVIEW_PROFILES } from '../dev/previewMember'
-import { derivePalette } from '../theme/customTheme'
+import { applyPalette, derivePalette, loadPalette } from '../theme/customTheme'
 import { previewClickFx, setClickFxStyle, type FxStyle } from '../ui/clickFx'
 import { beatLink } from '../game/challenge'
 import {
@@ -74,14 +74,28 @@ export function Profile({ authed }: { authed: boolean }) {
       return true
     }
   })
-  const setWear = (on: boolean) => {
-    setWearTheirLook(on)
+  /**
+   * On/off for THE PAGE YOU ARE ON, not a site-wide mode.
+   *
+   * It used to write LOOK_KEY and govern every profile at once, which is why the button had to
+   * be labelled "Their theme / My theme" — it was describing a mode rather than a switch. Turning
+   * someone's colours off is nearly always about THAT person's colours, so the switch belongs to
+   * their page and resets when you leave it.
+   *
+   * LOOK_KEY still supplies the DEFAULT, so anyone who previously turned looks off stays opted
+   * out; it is no longer rewritten from here. A permanent "never wear anyone's look" belongs in
+   * settings rather than on one person's page, if it is ever wanted.
+   */
+  const setWear = (on: boolean) => setWearTheirLook(on)
+  // a fresh profile is a fresh page: back to the default rather than carrying the last
+  // person's decision onto someone who had nothing to do with it
+  useEffect(() => {
     try {
-      localStorage.setItem(LOOK_KEY, on ? '1' : '0')
+      setWearTheirLook(localStorage.getItem(LOOK_KEY) !== '0')
     } catch {
-      /* private mode — it just won't stick */
+      setWearTheirLook(true)
     }
-  }
+  }, [u])
 
   // moving between profiles changes only the ?u= — the section stays 'profile', so App
   // won't remount us; track the hash ourselves
@@ -146,6 +160,11 @@ export function Profile({ authed }: { authed: boolean }) {
    */
   const theirFlair =
     state.kind === 'ok' && (wearTheirLook || state.p.is_me) ? (state.p.look?.flair ?? null) : null
+  // derived up here beside the flair, and for the same reason: it drives a hook, and a hook
+  // cannot sit below the loading / missing / error returns further down
+  const theirLook =
+    state.kind === 'ok' && (wearTheirLook || state.p.is_me) ? (state.p.look ?? null) : null
+
   useEffect(() => {
     if (!theirFlair) return
     setClickFxStyle(theirFlair as FxStyle)
@@ -159,6 +178,43 @@ export function Profile({ authed }: { authed: boolean }) {
       setClickFxStyle(mine as FxStyle)
     }
   }, [theirFlair])
+
+  /**
+   * Their look, on the PAGE — not just on a box inside it.
+   *
+   * ⚠️ Scoping it to a wrapper looked right and did almost nothing. `.card` paints with
+   * `--surface`, which is a near-transparent overlay, so cards show whatever is behind them —
+   * and that is the page, painted from <html>, which the wrapper cannot reach. Setting their
+   * `--bg` on a descendant left it inherited-but-never-drawn: the only visible changes were the
+   * things used directly, the accent and the cursor flair.
+   *
+   * So it goes where the site's own theme goes. applyPalette writes inline custom properties on
+   * <html> — the same call the theme picker uses — and data-theme='custom' is deliberately a
+   * name no stylesheet block matches, so those inline values inherit the whole way down without
+   * anything re-declaring them. That reaches the page background AND a profile opened as a
+   * canvas window, because both are simply descendants of <html>.
+   *
+   * ⚠️ It is put back on the way out. Leaving a profile, closing the toggle, or unmounting
+   * restores the viewer's own palette from storage and their previous data-theme — otherwise
+   * someone else's colours would follow you around the site, which is the thing the original
+   * scoping was trying to avoid and is still worth avoiding.
+   */
+  useEffect(() => {
+    if (!theirLook) return
+    const root = document.documentElement
+    const prevTheme = root.getAttribute('data-theme')
+    if (theirLook.palette) {
+      applyPalette(theirLook.palette)
+      root.setAttribute('data-theme', 'custom')
+    } else if (theirLook.theme) {
+      root.setAttribute('data-theme', theirLook.theme)
+    }
+    return () => {
+      applyPalette(loadPalette())
+      if (prevTheme) root.setAttribute('data-theme', prevTheme)
+      else root.removeAttribute('data-theme')
+    }
+  }, [theirLook])
 
   // the People list — how you find everyone else's page
   useEffect(() => {
@@ -245,7 +301,7 @@ export function Profile({ authed }: { authed: boolean }) {
    */
   const look = p.look ?? null
   // your own page always renders in your own look, so the toggle can't make it look wrong to you
-  const wearing = look && (wearTheirLook || p.is_me) ? look : null
+  const wearing = theirLook
   const lookVars = wearing?.palette
     ? (derivePalette(wearing.palette) as React.CSSProperties)
     : undefined
@@ -258,11 +314,11 @@ export function Profile({ authed }: { authed: boolean }) {
   ].filter((x): x is string => typeof x === 'string')
 
   return (
-    // profile-look-window only when a look is actually being worn: an unthemed profile should
-    // not gain a box, and your own page never wears one because `wearing` is null there.
+    // The wrapper keeps their tokens so the CONTENT is themed on the very first paint; the
+    // effect above then hands the same look to <html> a frame later, which is what reaches the
+    // page background. Without the wrapper there is a visible flash of the viewer's colours.
     <div
       data-theme={wearing?.palette ? undefined : (wearing?.theme ?? undefined)}
-      className={wearing ? 'profile-look-window' : undefined}
       style={{ display: 'grid', gap: 'var(--sp-3, 1rem)', ...lookVars }}
     >
       {/* identity header */}
