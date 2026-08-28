@@ -1,6 +1,4 @@
 import { useEffect, useRef, useState } from 'react'
-import { createPortal } from 'react-dom'
-import { PalettePicker } from '../theme/PalettePicker'
 import { playCallSound, ringtoneEnabled, setRingtoneEnabled } from '../voice/ringtone'
 
 export type Theme = 'light' | 'dark' | 'alt'
@@ -33,7 +31,6 @@ export function SettingsMenu({
   motionBySystem,
   onToggleMotion,
   customPalette,
-  onCustomPalette,
   authed,
   isAdmin,
   name,
@@ -61,7 +58,6 @@ export function SettingsMenu({
   onToggleMotion: () => void
   /** true when the user's own palette is overriding the built-in theme */
   customPalette: boolean
-  onCustomPalette: (on: boolean) => void
   authed: boolean
   isAdmin: boolean
   /** their actual name, once the profile lands — an email address is not a name */
@@ -77,7 +73,6 @@ export function SettingsMenu({
 }) {
   const [open, setOpen] = useState(false)
   /** the palette editor is collapsed by default — it's the one control here with real depth */
-  const [palOpen, setPalOpen] = useState(false)
   /** same reasoning as palOpen: a dozen style tiles inline turned the whole cog menu into a
    * scroll every time flair was on, so picking a style opens its own dialog instead */
   const [styleOpen, setStyleOpen] = useState(false)
@@ -104,17 +99,6 @@ export function SettingsMenu({
       window.removeEventListener('keydown', onKey)
     }
   }, [open])
-
-  // Escape closes the palette dialog. Its own listener because the menu's one only knows about
-  // the dropdown, and the dialog outlives it now.
-  useEffect(() => {
-    if (!palOpen) return
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setPalOpen(false)
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [palOpen])
 
   // Same as above, its own listener for the same reason: the style dialog outlives the dropdown
   // that opened it.
@@ -247,41 +231,27 @@ export function SettingsMenu({
                   {t === 'light' ? '☀' : t === 'dark' ? '☾' : '✦'}
                 </button>
               ))}
-              {/* A fourth option beside the three, not buried on another page — it belongs
-                  where you already go to change how the site looks. */}
+              {/* ⚠️ THE WAY IN TO EVERYTHING, not a fourth theme.
+                  It sits beside the three built-in themes because that is where you already go
+                  to change how the site looks — and what it opens is now the whole Appearance
+                  dialog (colours, background, click, trail) rather than only the colour picker.
+                  A separate menu row for the same subject was one row too many: the umbrella
+                  belongs on the button people already reach for. */}
               <button
                 className={'btn' + (customPalette ? ' is-on' : '')}
                 aria-pressed={customPalette}
-                aria-expanded={palOpen}
-                aria-label="Make your own palette"
+                aria-label="Appearance: colours, background, click effect and mouse trail"
                 onClick={() => {
                   // close the dropdown as the dialog opens, so it isn't sitting behind it
-                  setPalOpen(true)
                   setOpen(false)
+                  onAppearance()
                 }}
-                title="Make your own palette"
+                title="Appearance — colours, background, click and trail"
               >
                 🎨
               </button>
             </span>
           </div>
-
-          {/* ⚠️ ONE row for four decisions. Colour, background, click and trail were four
-              rows opening four sheets — which grew the cog every time an effect was added, and
-              presented as unrelated four things that are obviously one subject. Nobody choosing a
-              look wants them on separate screens, because they have to live together. */}
-          <button
-            className="nav-menu-row"
-            role="menuitem"
-            onClick={() => {
-              setOpen(false)
-              onAppearance()
-            }}
-            title="Colours, background, click effect and mouse trail"
-          >
-            <span>🎨 Appearance</span>
-            <span className="muted">›</span>
-          </button>
 
           {/**
            * ⚠️ Not buried, and phrased as a plain statement of what it does.
@@ -365,39 +335,6 @@ export function SettingsMenu({
           )}
         </div>
       )}
-
-      {/* A dialog rather than another row inside the cog. The editor has three colour pickers,
-          three hex fields, a contrast readout and a preview — at the popover's ~230px that was
-          a column of slivers, and on a phone the popover is most of the screen already. */}
-      {/* Portalled to <body>, and it has to be. `.nav` sets `will-change: transform`, which
-          makes it a containing block for `position: fixed` — so a fixed scrim rendered in here
-          is positioned against the NAV's box, not the viewport. Measured before the portal: the
-          sheet didn't fit on screen and its colour swatch wasn't even hit-testable. This is the
-          same containing-block trap that has bitten the notification panel. */}
-      {palOpen &&
-        createPortal(
-          <div
-            className="pal-scrim"
-            role="dialog"
-            aria-modal="true"
-            aria-label="Make your own palette"
-            onPointerDown={(e) => {
-              // backdrop only — a pointerdown that started inside shouldn't close it
-              if (e.target === e.currentTarget) setPalOpen(false)
-            }}
-          >
-            <div className="pal-sheet">
-              <div className="pal-sheet-head">
-                <strong>Your colours</strong>
-                <button className="btn" onClick={() => setPalOpen(false)} aria-label="Close">
-                  ✕
-                </button>
-              </div>
-              <PalettePicker active={customPalette} onActiveChange={onCustomPalette} />
-            </div>
-          </div>,
-          document.body,
-        )}
     </div>
   )
 }

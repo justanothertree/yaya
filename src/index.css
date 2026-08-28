@@ -3232,8 +3232,12 @@ select {
 /* ── the Appearance dialog ──────────────────────────────────────────────────
    Wider than the palette sheet it borrows its shell from, because four tabs of tiles need the
    room — a two-across grid of sixty options is the cluttered thing this replaced. */
+/* ⚠️ No max-width here. It had one at 560px, which FOUGHT .pal-sheet's own `width: min(52rem,
+   100%)` and won — the dialog came out barely wider than the popover it replaced, which is the
+   one thing it existed to stop being. It inherits the sheet width, which was already chosen to
+   fit controls and a preview side by side. */
 .appearance-sheet {
-  max-width: min(560px, 92vw);
+  width: min(52rem, 100%);
 }
 .appearance-tabs {
   display: flex;
@@ -3284,6 +3288,25 @@ select {
   gap: 0.3rem;
   margin-left: auto;
 }
+/* the fine controls, under the three-step dial: size and speed as real numbers */
+.appearance-slider {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-size: 0.85rem;
+}
+.appearance-slider input[type='range'] {
+  flex: 1 1 8rem;
+  min-width: 6rem;
+  accent-color: var(--accent);
+}
+.appearance-slider-val {
+  min-width: 2.6rem;
+  text-align: right;
+  font-family: var(--mono);
+  font-size: 0.78rem;
+}
+
 .appearance-note {
   margin: 0;
   font-size: 0.8rem;
@@ -3292,39 +3315,43 @@ select {
 /* ── mouse trails ───────────────────────────────────────────────────────────
    They share the click-fx layer, so they inherit its fixed, pointer-events:none,
    never-eats-a-click guarantees. Only the shapes differ. */
+/* ⚠️ Deliberately bolder than a first pass would pick. These are meant to be fun to whip around,
+   and a 5px streak is polite — you only notice it if you are looking for it. Anyone who wants
+   restraint has Subtle and the size slider; nobody can slide their way UP to dramatic if the
+   ceiling is timid. */
 .trail-comet {
-  width: 14px;
-  height: 5px;
+  width: 22px;
+  height: 7px;
   border-radius: 999px;
   transform-origin: 50% 50%;
 }
 .trail-ribbon {
-  width: 26px;
-  height: 9px;
+  width: 38px;
+  height: 14px;
   border-radius: 999px;
   transform-origin: 50% 50%;
   filter: blur(1px);
 }
 .trail-mote {
-  width: 4px;
-  height: 4px;
+  width: 6px;
+  height: 6px;
 }
 .trail-ink {
   border-radius: 50%;
   filter: blur(1.5px);
 }
 .trail-spark {
-  width: 4px;
-  height: 4px;
+  width: 5px;
+  height: 5px;
 }
 .trail-petal {
-  width: 7px;
-  height: 12px;
+  width: 10px;
+  height: 17px;
   border-radius: 50% 50% 50% 50% / 60% 60% 40% 40%;
 }
 .trail-dash {
-  width: 16px;
-  height: 3px;
+  width: 24px;
+  height: 4px;
   border-radius: 2px;
   transform-origin: 50% 50%;
 }
@@ -3337,11 +3364,11 @@ select {
   filter: blur(4px);
 }
 .trail-chase {
-  width: 8px;
-  height: 8px;
+  width: 11px;
+  height: 11px;
 }
 .trail-thread {
-  height: 2px;
+  height: 3px;
   border-radius: 2px;
   transform-origin: 50% 50%;
 }

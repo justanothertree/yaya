@@ -94,3 +94,52 @@ export function amount(cat: EffectCategory, n: number): number {
 export function spacingFor(px: number): number {
   return Math.max(3, Math.round(px / FACTOR[current.trail]))
 }
+
+/**
+ * The two dials that are genuinely continuous: SIZE and SPEED.
+ *
+ * ⚠️ Sliders here and named steps for "how much", on purpose. How much of an effect is a choice
+ * you make once — three steps is enough and a slider would invite fiddling. Size and speed are
+ * different: they are the ones you actually want to nudge until a trail feels right under your
+ * own hand, and there is no set of three names that covers "slightly bigger".
+ *
+ * Both are multipliers around 1, so the stored default is the current behaviour exactly and an
+ * untouched setting can never change how anything already looks.
+ */
+const SCALE_KEY = { size: 'effect_size_v1', speed: 'effect_speed_v1' } as const
+export type ScaleKind = keyof typeof SCALE_KEY
+
+const scales: Record<ScaleKind, number> = { size: 1, speed: 1 }
+
+try {
+  for (const k of Object.keys(scales) as ScaleKind[]) {
+    const v = Number(localStorage.getItem(SCALE_KEY[k]))
+    if (Number.isFinite(v) && v >= 0.5 && v <= 2.5) scales[k] = v
+  }
+} catch {
+  /* private mode — the defaults are the old behaviour */
+}
+
+export function effectScale(kind: ScaleKind): number {
+  return scales[kind]
+}
+
+export function setEffectScale(kind: ScaleKind, v: number) {
+  scales[kind] = Math.min(2.5, Math.max(0.5, v))
+  try {
+    localStorage.setItem(SCALE_KEY[kind], String(scales[kind]))
+  } catch {
+    /* applies for this visit */
+  }
+  if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent(EVENT))
+}
+
+/** A duration, divided by the speed dial — faster means shorter, which is the intuitive direction. */
+export function dur(ms: number): number {
+  return Math.max(60, Math.round(ms / scales.speed))
+}
+
+/** A pixel size or distance, multiplied by the size dial. */
+export function px(n: number): number {
+  return n * scales.size
+}

@@ -19,7 +19,7 @@
  */
 
 import { motionReduced } from './motion'
-import { spacingFor } from './effectAmount'
+import { dur, px, spacingFor } from './effectAmount'
 
 export type TrailStyle =
   | 'none'
@@ -148,7 +148,7 @@ function drop(s: Exclude<TrailStyle, 'none'>, x: number, y: number, dx: number, 
           },
           { transform: `translate(-50%, -50%) rotate(${angle}deg) scaleX(0.2)`, opacity: 0 },
         ],
-        { duration: 420, easing: 'cubic-bezier(0.2, 0.7, 0.3, 1)', fill: 'forwards' },
+        { duration: dur(420), easing: 'cubic-bezier(0.2, 0.7, 0.3, 1)', fill: 'forwards' },
       )
       break
     }
@@ -162,13 +162,13 @@ function drop(s: Exclude<TrailStyle, 'none'>, x: number, y: number, dx: number, 
           { transform: `translate(-50%, -50%) rotate(${angle}deg) scale(1, 1)`, opacity: 0.55 },
           { transform: `translate(-50%, -50%) rotate(${angle}deg) scale(1.1, 0.1)`, opacity: 0 },
         ],
-        { duration: 520, easing: 'ease-out', fill: 'forwards' },
+        { duration: dur(520), easing: 'ease-out', fill: 'forwards' },
       )
       break
     }
     /** Sparse specks that drift off sideways and twinkle out. Quiet — for people who want almost nothing. */
     case 'motes': {
-      const off = (Math.random() - 0.5) * 26
+      const off = px((Math.random() - 0.5) * 40)
       const p = mk('trail-mote', x, y)
       p.style.background = Math.random() < 0.5 ? a : b
       emit(
@@ -180,14 +180,14 @@ function drop(s: Exclude<TrailStyle, 'none'>, x: number, y: number, dx: number, 
             opacity: 0,
           },
         ],
-        { duration: 900 + Math.random() * 400, easing: 'ease-out', fill: 'forwards' },
+        { duration: dur(900 + Math.random() * 400), easing: 'ease-out', fill: 'forwards' },
       )
       break
     }
     /** Wet blots that spread and sink in. Slower and heavier than the rest. */
     case 'ink': {
       const p = mk('trail-ink', x, y)
-      const size = 8 + Math.random() * 10
+      const size = px(9 + Math.random() * 13)
       p.style.width = size + 'px'
       p.style.height = size + 'px'
       p.style.background = a
@@ -197,14 +197,14 @@ function drop(s: Exclude<TrailStyle, 'none'>, x: number, y: number, dx: number, 
           { transform: 'translate(-50%, -50%) scale(0.4)', opacity: 0.45 },
           { transform: 'translate(-50%, -50%) scale(1.25)', opacity: 0 },
         ],
-        { duration: 780, easing: 'cubic-bezier(0.2, 0.6, 0.4, 1)', fill: 'forwards' },
+        { duration: dur(780), easing: 'cubic-bezier(0.2, 0.6, 0.4, 1)', fill: 'forwards' },
       )
       break
     }
     /** Thrown perpendicular to the direction of travel, like something being struck. */
     case 'spark': {
       const perp = ((angle + 90 + (Math.random() - 0.5) * 70) * Math.PI) / 180
-      const dist = 8 + Math.random() * 22 * (0.4 + speed)
+      const dist = px(12 + Math.random() * 34 * (0.4 + speed))
       const p = mk('trail-spark', x, y)
       p.style.background = Math.random() < 0.4 ? b : a
       emit(
@@ -216,7 +216,7 @@ function drop(s: Exclude<TrailStyle, 'none'>, x: number, y: number, dx: number, 
             opacity: 0,
           },
         ],
-        { duration: 320 + Math.random() * 160, easing: 'ease-out', fill: 'forwards' },
+        { duration: dur(320 + Math.random() * 160), easing: 'ease-out', fill: 'forwards' },
       )
       break
     }
@@ -235,7 +235,7 @@ function drop(s: Exclude<TrailStyle, 'none'>, x: number, y: number, dx: number, 
           },
         ],
         {
-          duration: 1100 + Math.random() * 500,
+          duration: dur(1100 + Math.random() * 500),
           easing: 'cubic-bezier(0.3, 0.5, 0.5, 1)',
           fill: 'forwards',
         },
@@ -249,7 +249,7 @@ function drop(s: Exclude<TrailStyle, 'none'>, x: number, y: number, dx: number, 
      * in place, so a slow drag leaves a row of little wheels rather than a line.
      */
     case 'orbit': {
-      const r = 10 + Math.random() * 10
+      const r = px(13 + Math.random() * 14)
       const from = Math.random() * 360
       const p = mk('trail-mote', x, y)
       p.style.background = Math.random() < 0.5 ? a : b
@@ -265,7 +265,7 @@ function drop(s: Exclude<TrailStyle, 'none'>, x: number, y: number, dx: number, 
             opacity: 0,
           },
         ],
-        { duration: 780, easing: 'linear', fill: 'forwards' },
+        { duration: dur(780), easing: 'linear', fill: 'forwards' },
       )
       break
     }
@@ -285,14 +285,14 @@ function drop(s: Exclude<TrailStyle, 'none'>, x: number, y: number, dx: number, 
             opacity: 0,
           },
         ],
-        { duration: 300, easing: 'ease-out', fill: 'forwards' },
+        { duration: dur(300), easing: 'ease-out', fill: 'forwards' },
       )
       break
     }
     /** Bubbles that lift off the path and wobble as they go, indifferent to which way you moved. */
     case 'rise': {
       const p = mk('trail-bubble', x, y)
-      const size = 5 + Math.random() * 9
+      const size = px(6 + Math.random() * 10)
       p.style.width = size + 'px'
       p.style.height = size + 'px'
       p.style.borderColor = Math.random() < 0.5 ? a : b
@@ -305,14 +305,14 @@ function drop(s: Exclude<TrailStyle, 'none'>, x: number, y: number, dx: number, 
             opacity: 0,
           },
         ],
-        { duration: 1100 + Math.random() * 500, easing: 'ease-out', fill: 'forwards' },
+        { duration: dur(1100 + Math.random() * 500), easing: 'ease-out', fill: 'forwards' },
       )
       break
     }
     /** Soft puffs that swell and thin out — the quietest of the set, and the only blurred one. */
     case 'smoke': {
       const p = mk('trail-smoke', x, y)
-      const size = 14 + Math.random() * 16
+      const size = px(16 + Math.random() * 20)
       p.style.width = size + 'px'
       p.style.height = size + 'px'
       p.style.background = a
@@ -325,7 +325,7 @@ function drop(s: Exclude<TrailStyle, 'none'>, x: number, y: number, dx: number, 
             opacity: 0,
           },
         ],
-        { duration: 1200 + Math.random() * 500, easing: 'ease-out', fill: 'forwards' },
+        { duration: dur(1200 + Math.random() * 500), easing: 'ease-out', fill: 'forwards' },
       )
       break
     }
@@ -355,7 +355,7 @@ function drop(s: Exclude<TrailStyle, 'none'>, x: number, y: number, dx: number, 
             opacity: 0,
           },
         ],
-        { duration: 560, easing: 'cubic-bezier(0.2, 0.8, 0.4, 1)', fill: 'forwards' },
+        { duration: dur(560), easing: 'cubic-bezier(0.2, 0.8, 0.4, 1)', fill: 'forwards' },
       )
       break
     }
@@ -377,7 +377,7 @@ function drop(s: Exclude<TrailStyle, 'none'>, x: number, y: number, dx: number, 
           { transform: `translate(-50%, -50%) rotate(${angle}deg) scaleY(1)`, opacity: 0.7 },
           { transform: `translate(-50%, -50%) rotate(${angle}deg) scaleY(0.2)`, opacity: 0 },
         ],
-        { duration: 480, easing: 'ease-out', fill: 'forwards' },
+        { duration: dur(480), easing: 'ease-out', fill: 'forwards' },
       )
       break
     }

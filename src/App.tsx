@@ -1596,7 +1596,6 @@ export default function App() {
               motionBySystem={motionReducedBySystem()}
               onToggleMotion={() => setMotionReduced(!motionPreferenceStored())}
               customPalette={customPalette}
-              onCustomPalette={setCustomPalette}
               name={me.name}
               email={me.email}
               onAppearance={() => setAppearanceOpen(true)}
