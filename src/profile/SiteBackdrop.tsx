@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import { makeEffect, type BackdropId, type Paint } from './backdrops'
 import { motionReduced, onMotionChange } from '../ui/motion'
 
@@ -22,12 +23,12 @@ import { motionReduced, onMotionChange } from '../ui/motion'
  *   - pointer only on a fine pointer. There is no hovering cursor on a phone, so the interactive
  *     half is a desktop thing by nature rather than something withheld.
  */
-export function ProfileBackdrop({ id }: { id: BackdropId }) {
+export function SiteBackdrop({ id }: { id: BackdropId }) {
   const ref = useRef<HTMLCanvasElement | null>(null)
   const holder = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
-    if (id === 'none') return
+    if (id === 'none' || id === 'glow') return
     if (motionReduced()) return
     const host = holder.current
     const cv = ref.current
@@ -155,10 +156,17 @@ export function ProfileBackdrop({ id }: { id: BackdropId }) {
     }
   }, [id])
 
-  if (id === 'none' || motionReduced()) return null
-  return (
-    <div ref={holder} className="profile-backdrop" aria-hidden>
+  // glow is the older AmbientBackdrop component, not a canvas effect from backdrops.ts
+  if (id === 'none' || id === 'glow' || motionReduced()) return null
+  /**
+   * Portalled to <body> as a fixed layer at z-index -1, exactly where the ambient glow sits.
+   * These two are alternatives for the same slot, so they must occupy the same one — a backdrop
+   * that painted inside the page would scroll with it and sit above the ground the glow uses.
+   */
+  return createPortal(
+    <div ref={holder} className="site-backdrop" aria-hidden>
       <canvas ref={ref} />
-    </div>
+    </div>,
+    document.body,
   )
 }

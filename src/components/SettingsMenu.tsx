@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { PalettePicker } from '../theme/PalettePicker'
 import { FX_STYLE_OPTIONS } from '../ui/fxStyles'
+import { BACKDROPS, type BackdropId } from '../profile/backdrops'
 import { previewClickFx, type FxStyle } from '../ui/clickFx'
 import { playCallSound, ringtoneEnabled, setRingtoneEnabled } from '../voice/ringtone'
 
@@ -31,8 +32,8 @@ export function SettingsMenu({
   canvasCapable,
   canvasReason,
   desktop,
-  ambientOn,
-  onToggleAmbient,
+  background,
+  onBackground,
   motionOff,
   motionBySystem,
   onToggleMotion,
@@ -48,7 +49,6 @@ export function SettingsMenu({
   email,
   onAccount,
   onProfile,
-  onProfileLook,
   onSignIn,
   onSignOut,
 }: {
@@ -62,8 +62,9 @@ export function SettingsMenu({
   /** why canvas is unavailable, when it is — a disabled control should say why */
   canvasReason?: string
   desktop: boolean
-  ambientOn: boolean
-  onToggleAmbient: () => void
+  /** which background is behind the page — glow is one of the options, not a separate switch */
+  background: BackdropId
+  onBackground: (b: BackdropId) => void
   /** the effective answer: the site switch, or the OS asking */
   motionOff: boolean
   /** true when the OS is the reason, in which case the switch is locked on */
@@ -84,8 +85,6 @@ export function SettingsMenu({
   onAccount: () => void
   /** opens their own profile page; absent until the username is known */
   onProfile?: () => void
-  /** jumps to your own profile with the look editor already open */
-  onProfileLook?: () => void
   onSignIn: () => void
   onSignOut: () => void
 }) {
@@ -97,6 +96,8 @@ export function SettingsMenu({
   const [styleOpen, setStyleOpen] = useState(false)
   const [callSound, setCallSound] = useState(ringtoneEnabled)
   const currentFx = FX_STYLE_OPTIONS.find(([id]) => id === sparksStyle)
+  const currentBg = BACKDROPS.find(([id]) => id === background)
+  const [bgOpen, setBgOpen] = useState(false)
   const wrapRef = useRef<HTMLDivElement>(null)
   const cogRef = useRef<HTMLButtonElement>(null)
 
@@ -281,15 +282,21 @@ export function SettingsMenu({
             </span>
           </div>
 
+          {/* ⚠️ A picker, not a toggle. The glow was its own switch beside everything else, which
+              made "what is behind the page" two controls that could disagree — glow on AND waves
+              on was reachable and drew two animated layers for one slot. One list, one answer,
+              and the same shape as the click flair row directly below it, because it is the same
+              kind of choice. */}
           <button
             className="nav-menu-row"
-            role="menuitemcheckbox"
-            aria-checked={ambientOn}
-            onClick={onToggleAmbient}
-            title="A soft glow behind the page that drifts and follows your cursor"
+            role="menuitem"
+            onClick={() => setBgOpen(true)}
+            title="What moves behind the page"
           >
-            <span>✨ Ambient glow</span>
-            <span className={'nav-menu-switch' + (ambientOn ? ' is-on' : '')} aria-hidden />
+            <span>🌌 Background</span>
+            <span className="muted" style={{ fontSize: '0.8rem' }}>
+              {currentBg?.[2] ?? 'None'}
+            </span>
           </button>
 
           {/**
@@ -318,20 +325,6 @@ export function SettingsMenu({
             <span>🧘 Reduce motion</span>
             <span className={'nav-menu-switch' + (motionOff ? ' is-on' : '')} aria-hidden />
           </button>
-
-          {/* ⚠️ A signpost, not a second copy of the controls.
-              The backdrop and the flair pickers belong on the profile — that is the page they
-              change, and watching it change as you pick is the whole point. But nobody looks for
-              a setting on a profile; they look in the cog. Duplicating the pickers here would be
-              two UIs to keep in step, so this links to the real one and lands you in it. */}
-          {authed && onProfileLook && (
-            <button className="nav-menu-row" role="menuitem" onClick={onProfileLook}>
-              <span>🖼 Profile look</span>
-              <span className="muted" style={{ fontSize: '0.8rem' }}>
-                backdrop, colours
-              </span>
-            </button>
-          )}
 
           {/* ONE row, not a toggle plus a conditional style row. Off is now a look you pick
               ("None") rather than a separate switch, so there's nowhere to strand yourself:
@@ -436,6 +429,47 @@ export function SettingsMenu({
                 </button>
               </div>
               <PalettePicker active={customPalette} onActiveChange={onCustomPalette} />
+            </div>
+          </div>,
+          document.body,
+        )}
+
+      {bgOpen &&
+        createPortal(
+          <div
+            className="pal-scrim"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Choose a background"
+            onPointerDown={(e) => {
+              if (e.target === e.currentTarget) setBgOpen(false)
+            }}
+          >
+            <div className="pal-sheet fx-sheet">
+              <div className="pal-sheet-head">
+                <strong>Background</strong>
+                <button className="btn" onClick={() => setBgOpen(false)} aria-label="Close">
+                  ✕
+                </button>
+              </div>
+              <div className="fx-style-row">
+                {BACKDROPS.map(([id, icon, label]) => (
+                  <button
+                    key={id}
+                    className={'fx-style-btn' + (background === id ? ' is-on' : '')}
+                    aria-pressed={background === id}
+                    title={label}
+                    onClick={() => onBackground(id)}
+                  >
+                    <span aria-hidden>{icon}</span>
+                    <span className="fx-style-label">{label}</span>
+                  </button>
+                ))}
+              </div>
+              <p className="muted" style={{ margin: '0.6rem 0 0', fontSize: '0.8rem' }}>
+                Applies everywhere, and visitors see it on your profile too. Stops entirely under
+                Reduce motion.
+              </p>
             </div>
           </div>,
           document.body,

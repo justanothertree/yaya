@@ -89,7 +89,7 @@ export function ProfileLookEditor({ look }: { look: LookControls }) {
       )}
 
       <div className="profile-look-row">
-        <span className="muted profile-look-label">Backdrop</span>
+        <span className="muted profile-look-label">Background</span>
         <div className="profile-look-choices">
           {BACKDROPS.map(([id, icon, label]) => (
             <button
@@ -109,8 +109,8 @@ export function ProfileLookEditor({ look }: { look: LookControls }) {
           nothing happened would read as broken rather than as the setting working. */}
       {motionReduced() && look.backdrop !== 'none' && (
         <p className="muted" style={{ margin: 0, fontSize: '0.8rem' }}>
-          Reduce motion is on, so backdrops are not drawn. Your choice is saved and visitors without
-          it will see it.
+          Reduce motion is on, so backgrounds are not drawn. Your choice is saved, and visitors
+          without it will see it.
         </p>
       )}
 

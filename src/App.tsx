@@ -56,7 +56,13 @@ import {
   onMotionChange,
   setMotionReduced,
 } from './ui/motion'
-import { isBackdropId, type BackdropId } from './profile/backdrops'
+import {
+  backdropOverride,
+  isBackdropId,
+  onBackdropOverrideChange,
+  type BackdropId,
+} from './profile/backdrops'
+import { SiteBackdrop } from './profile/SiteBackdrop'
 const AdminPanel = lazy(() =>
   import('./sections/AdminPanel').then((m) => ({ default: m.AdminPanel })),
 )
@@ -304,11 +310,38 @@ export default function App() {
    */
   const [circuitCanvasPanes, setCircuitCanvasPanes] = useState<CanvasPane[]>([])
   const [circuitToolbar, setCircuitToolbar] = useState<ReactNode | null>(null)
-  // the ambient glow behind the page — on by default, but it's a taste thing, so the
-  // cog remembers whoever turns it off
-  const [ambientOn, setAmbientOn] = useState(
-    () => typeof window === 'undefined' || localStorage.getItem('ambient_v1') !== '0',
-  )
+  /**
+   * The background behind the page: one setting, one answer.
+   *
+   * ⚠️ The ambient glow used to be its own on/off switch beside the backdrop picker, which meant
+   * "what is behind the page" had two controls that could disagree — glow on AND waves on was
+   * reachable, and drew two animated layers for one slot. Glow is an option in the list now.
+   *
+   * Migrated from ambient_v1 so nobody's existing choice is silently thrown away: the glow was
+   * on by default and stays on unless they had turned it off, in which case they get None.
+   */
+  const [background, setBackground] = useState<BackdropId>(() => {
+    if (typeof window === 'undefined') return 'glow'
+    try {
+      const saved = localStorage.getItem('background_v1')
+      if (isBackdropId(saved)) return saved
+      return localStorage.getItem('ambient_v1') === '0' ? 'none' : 'glow'
+    } catch {
+      return 'glow'
+    }
+  })
+  const chooseBackground = (b: BackdropId) => {
+    setBackground(b)
+    try {
+      localStorage.setItem('background_v1', b)
+    } catch {
+      /* private mode — applies for this visit */
+    }
+  }
+  // what is actually drawn: a profile being viewed in its owner's look takes the layer over
+  const [bgOverride, setBgOverride] = useState<BackdropId | null>(() => backdropOverride())
+  useEffect(() => onBackdropOverrideChange(() => setBgOverride(backdropOverride())), [])
+  const shownBackground = bgOverride ?? background
   /** click flair — same shape as the ambient glow: pure taste, remembered, on by default */
   const [sparksOn, setSparksOn] = useState(
     () => typeof window === 'undefined' || localStorage.getItem('click_fx_v1') !== '0',
@@ -343,16 +376,6 @@ export default function App() {
     }
   }, [sparksStyle])
 
-  const toggleAmbient = () => {
-    setAmbientOn((v) => {
-      try {
-        localStorage.setItem('ambient_v1', v ? '0' : '1')
-      } catch {
-        /* ignore */
-      }
-      return !v
-    })
-  }
   /**
    * The user's own palette, if they made one. Kept separate from `theme` rather than being a
    * fourth value of it: the palette is a set of inline custom properties on <html>, so it
@@ -393,27 +416,6 @@ export default function App() {
    * `customPalette` only says whether it's ON, so editing the colours while it's already on
    * changes nothing this effect can see. PalettePicker bumps the tick when it writes.
    */
-  /**
-   * Their animated backdrop. Local like the theme and flair, and mirrored up by the same effect —
-   * a profile's look is the look you use, not a second set of choices.
-   */
-  const [backdrop, setBackdrop] = useState<BackdropId>(() => {
-    try {
-      const v = localStorage.getItem('profile_backdrop_v1')
-      return isBackdropId(v) ? v : 'none'
-    } catch {
-      return 'none'
-    }
-  })
-  const chooseBackdrop = (b: BackdropId) => {
-    setBackdrop(b)
-    try {
-      localStorage.setItem('profile_backdrop_v1', b)
-    } catch {
-      /* private mode — applies for this visit */
-    }
-  }
-
   useEffect(() => {
     if (!isFinanceAuthed) return
     const t = setTimeout(() => {
@@ -422,12 +424,12 @@ export default function App() {
           p_theme: theme,
           p_palette: customPalette ? loadPalette() : null,
           p_flair: sparksOn ? sparksStyle : null,
-          p_backdrop: backdrop === 'none' ? null : backdrop,
+          p_backdrop: background === 'none' ? null : background,
         })
         .then(() => {})
     }, 600) // dragging a colour picker shouldn't be one write per frame
     return () => clearTimeout(t)
-  }, [isFinanceAuthed, theme, customPalette, paletteTick, sparksOn, sparksStyle, backdrop])
+  }, [isFinanceAuthed, theme, customPalette, paletteTick, sparksOn, sparksStyle, background])
 
   // Who the cog menu greets. The email is peeked from the LOCAL session so it paints
   // instantly and can never flash or gate anything; the real name follows from the profile
@@ -1197,8 +1199,8 @@ export default function App() {
               onSparksStyle: setSparksStyle,
               customPalette,
               onCustomPalette: setCustomPalette,
-              backdrop,
-              onBackdrop: chooseBackdrop,
+              backdrop: background,
+              onBackdrop: chooseBackground,
             }}
           />
         )
@@ -1379,8 +1381,10 @@ export default function App() {
       <AmbientBackdrop
         section={active}
         theme={customPalette ? 'custom' : theme}
-        enabled={ambientOn}
+        enabled={shownBackground === 'glow'}
       />
+      {/* the canvas effects — alternatives to the glow for the same slot, so only one can run */}
+      <SiteBackdrop id={shownBackground} />
       {/* A call outlives the screen it started on, so its controls and its audio live at app
           level — otherwise you'd navigate away and be stuck in a call you can't hear or end. */}
       <CallDock />
@@ -1542,11 +1546,11 @@ export default function App() {
               desktop={desktop}
               authed={hasFinanceSupabaseEnv() && isFinanceAuthed}
               isAdmin={isAdmin}
-              ambientOn={ambientOn}
               motionOff={motionOff}
               motionBySystem={motionReducedBySystem()}
               onToggleMotion={() => setMotionReduced(!motionPreferenceStored())}
-              onToggleAmbient={toggleAmbient}
+              background={background}
+              onBackground={chooseBackground}
               sparksOn={sparksOn}
               onToggleSparks={toggleSparks}
               sparksStyle={sparksStyle}
@@ -1560,15 +1564,6 @@ export default function App() {
                 me.username
                   ? () => {
                       window.location.hash = '#profile?u=' + encodeURIComponent(me.username!)
-                      goTo('profile')
-                    }
-                  : undefined
-              }
-              onProfileLook={
-                me.username
-                  ? () => {
-                      window.location.hash =
-                        '#profile?u=' + encodeURIComponent(me.username!) + '&edit=look'
                       goTo('profile')
                     }
                   : undefined
@@ -1688,7 +1683,7 @@ export default function App() {
               panes={livePanes}
               pinnedIds={pinnedIds}
               onTogglePin={togglePin}
-              ambientOn={ambientOn}
+              ambientOn={shownBackground !== 'none'}
               focusPane={focusPane}
               toolbar={circuitToolbar}
               launchableWindows={launchableWindows()}

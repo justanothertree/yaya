@@ -20,10 +20,19 @@
  * rather than being a fixed picture pasted behind them.
  */
 
-export type BackdropId = 'none' | 'waves' | 'bubbles' | 'flames' | 'leaves'
+export type BackdropId = 'none' | 'glow' | 'waves' | 'bubbles' | 'flames' | 'leaves'
 
 export const BACKDROPS: Array<[BackdropId, string, string]> = [
-  ['none', '—', 'None'],
+  ['none', '∅', 'None'],
+  /**
+   * The ambient glow, which predates the rest and used to be its own on/off switch.
+   *
+   * ⚠️ It belongs in this list, not beside it. It is a background effect — the same slot, the
+   * same question — and having one of them be a toggle while the others were a picker meant
+   * "background" had two controls that could disagree: glow on AND waves on was reachable, and
+   * meant two animated layers nobody asked for. One list, one answer, and None is in it.
+   */
+  ['glow', '🌫', 'Glow'],
   ['waves', '🌊', 'Waves'],
   ['bubbles', '🫧', 'Bubbles'],
   ['flames', '🔥', 'Flames'],
@@ -257,6 +266,33 @@ function leaves(): Effect {
       }
     },
   }
+}
+
+/**
+ * Which backdrop is on screen right now, allowing for a profile temporarily taking it over.
+ *
+ * Same shape as the click flair's scope override, and for the same reason: viewing someone's
+ * page in their look should show THEIR background, and the alternative — running a second canvas
+ * scoped to the profile while yours keeps going behind it — is two simulations painting at once
+ * for one visible result. The override swaps what the single site-wide layer draws, and clears
+ * when you leave.
+ */
+let override: BackdropId | null = null
+const OVERRIDE_EVENT = 'yaya:backdrop'
+
+export function setBackdropOverride(id: BackdropId | null) {
+  if (override === id) return
+  override = id
+  if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent(OVERRIDE_EVENT))
+}
+
+export function backdropOverride(): BackdropId | null {
+  return override
+}
+
+export function onBackdropOverrideChange(fn: () => void): () => void {
+  window.addEventListener(OVERRIDE_EVENT, fn)
+  return () => window.removeEventListener(OVERRIDE_EVENT, fn)
 }
 
 export function makeEffect(id: BackdropId): Effect | null {

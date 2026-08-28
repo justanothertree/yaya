@@ -7,8 +7,7 @@ import { applyPalette, derivePalette, loadPalette } from '../theme/customTheme'
 import { previewClickFx, setClickFxScope, type FxStyle } from '../ui/clickFx'
 import { beatLink } from '../game/challenge'
 import { ProfileLookEditor, type LookControls } from './ProfileLookEditor'
-import { ProfileBackdrop } from '../profile/ProfileBackdrop'
-import { isBackdropId } from '../profile/backdrops'
+import { isBackdropId, setBackdropOverride } from '../profile/backdrops'
 import { InCanvasWindow } from '../circuit/ui/canvasContext'
 import {
   ProfileBlocksEditor,
@@ -214,6 +213,21 @@ export function Profile({
   }, [theirFlair])
 
   /**
+   * Their background, on the one site-wide layer.
+   *
+   * ⚠️ Not a second canvas scoped to the profile. Running one behind the page and another inside
+   * it means two simulations painting at once for a single visible result — the thing the whole
+   * budget exists to avoid. The layer already exists and is already the right size; this only
+   * changes what it draws, and puts it back when you leave. Same shape as the click flair's
+   * override, for the same reason.
+   */
+  useEffect(() => {
+    if (!theirLook) return
+    setBackdropOverride(isBackdropId(theirLook.backdrop) ? theirLook.backdrop : 'none')
+    return () => setBackdropOverride(null)
+  }, [theirLook])
+
+  /**
    * ⚠️ PAGE MODE ONLY. Standing on its own, a profile IS the page, so their palette goes where
    * the site's own does: applyPalette writes inline custom properties on <html>, the same call
    * the theme picker uses, and data-theme='custom' is deliberately a name no stylesheet block
@@ -362,22 +376,9 @@ export function Profile({
          with no border or extra padding, which is also why toggling cannot shift the layout.
          As a standalone page the effect above has already repainted <html>, so it must not draw
          a second panel on top of it. */
-      className={
-        [
-          wearing && inCanvasWindow ? 'profile-look-window' : '',
-          // positioning context for the backdrop, which is absolute inside this element
-          wearing && isBackdropId(wearing.backdrop) && wearing.backdrop !== 'none'
-            ? 'profile-has-backdrop'
-            : '',
-        ]
-          .filter(Boolean)
-          .join(' ') || undefined
-      }
+      className={wearing && inCanvasWindow ? 'profile-look-window' : undefined}
       style={{ display: 'grid', gap: 'var(--sp-3, 1rem)', ...lookVars }}
     >
-      {/* Behind everything, and only when a look is being worn — someone who has turned their
-          theme off has turned the whole look off, backdrop included. */}
-      {wearing && isBackdropId(wearing.backdrop) && <ProfileBackdrop id={wearing.backdrop} />}
       {/* identity header */}
       <div className="card profile-head">
         {/* Their colour, not the site's. This used to be var(--accent) for everyone, so all
