@@ -58,8 +58,18 @@ type Person = { username: string; name: string; is_friend: boolean }
 /** viewer's choice: do other people's themes apply on their pages */
 const LOOK_KEY = 'profile_wear_their_look_v1'
 
-export function Profile({ authed }: { authed: boolean }) {
-  const [u, setU] = useState(userFromHash)
+/**
+ * `username` PINS this instance to one person, instead of following the hash.
+ *
+ * ⚠️ That distinction is what lets several profiles be open at once on the canvas. The hash can
+ * only ever name one person, so a second window reading it would show the same profile as the
+ * first and both would change subject together — which is exactly the behaviour that made
+ * "another profile window" impossible. A pinned window ignores the hash entirely; the page and
+ * the nav's own Profile window leave it off and keep following it as before.
+ */
+export function Profile({ authed, username }: { authed: boolean; username?: string }) {
+  const pinned = username != null
+  const [u, setU] = useState(() => username ?? userFromHash())
   const [people, setPeople] = useState<Person[]>([])
   const [state, setState] = useState<
     | { kind: 'loading' }
@@ -113,16 +123,24 @@ export function Profile({ authed }: { authed: boolean }) {
     }
   }, [u])
 
-  // moving between profiles changes only the ?u= — the section stays 'profile', so App
-  // won't remount us; track the hash ourselves
+  // a pinned window follows its prop instead of the hash — and the prop can change if the same
+  // window is reused for a different person
   useEffect(() => {
+    if (username != null) setU(username)
+  }, [username])
+
+  // moving between profiles changes only the ?u= — the section stays 'profile', so App
+  // won't remount us; track the hash ourselves. Pinned windows sit this out, or every open
+  // profile would jump to whoever you clicked last.
+  useEffect(() => {
+    if (pinned) return
     const onHash = () => {
       setU(userFromHash())
       if (editFromHash()) setEditing(true)
     }
     window.addEventListener('hashchange', onHash)
     return () => window.removeEventListener('hashchange', onHash)
-  }, [])
+  }, [pinned])
 
   // blocks + activity, alongside the main profile fetch below. Reset (not left stale) on every
   // navigation between profiles, and dropped when leaving edit mode isn't required -- editing

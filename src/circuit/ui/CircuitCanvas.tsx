@@ -175,12 +175,23 @@ export function CircuitCanvas({
   launchableWindows = [],
   launcherOpenIds = [],
   onToggleWindow,
+  onDropLink,
 }: {
   panes: CanvasPane[]
   focusPane?: { id: string; nonce: number } | null
   /** ids of panes the user pinned — they follow them across tabs */
   pinnedIds?: string[]
   onTogglePin?: (pane: CanvasPane) => void
+  /**
+   * Someone dragged a link onto the empty canvas.
+   *
+   * ⚠️ Deliberately a LINK, not a profile. The canvas has no business knowing what a profile is
+   * — it lays out windows. It reports the href and whoever owns the page decides whether that
+   * means anything. The happy consequence is that every profile link on the site is already a
+   * drag source, because an <a href> is draggable for free: the directory, a chat author's
+   * name, the call roster, a note's byline. Not one of them needed changing.
+   */
+  onDropLink?: (url: string) => void
   /** the same cog toggle that drives the page's own ambient glow — read as a prop, not a
    * second localStorage read, so switching it while canvas is already open takes effect
    * immediately instead of only on the next remount */
@@ -1507,6 +1518,10 @@ export function CircuitCanvas({
     showToast('⊞ Windows tiled')
   }
 
+  // whether a droppable link is currently over the surface — purely so the canvas can say it
+  // will accept it. A drop target that looks identical to a non-target is one nobody discovers.
+  const [dropHint, setDropHint] = useState(false)
+
   // taskbar tab toggle: restore+focus a minimized pane, focus a back one, or
   // minimize the one that's already on top.
   function onTab(id: string) {
@@ -1809,6 +1824,28 @@ export function CircuitCanvas({
           onAuxClick={(e) => {
             if (e.button === 1) e.preventDefault()
           }}
+          onDragOver={(e) => {
+            if (!onDropLink) return
+            // preventDefault is what MAKES this a drop target — without it the browser refuses
+            // the drop and the drag animates back to where it came from
+            e.preventDefault()
+            e.dataTransfer.dropEffect = 'copy'
+            if (!dropHint) setDropHint(true)
+          }}
+          onDragLeave={(e) => {
+            // only when the pointer actually leaves the surface: dragleave also fires when
+            // crossing onto a child, which would otherwise flicker the hint off and on
+            if (e.currentTarget.contains(e.relatedTarget as Node | null)) return
+            setDropHint(false)
+          }}
+          onDrop={(e) => {
+            if (!onDropLink) return
+            e.preventDefault()
+            setDropHint(false)
+            const url =
+              e.dataTransfer.getData('text/uri-list') || e.dataTransfer.getData('text/plain')
+            if (url) onDropLink(url.trim())
+          }}
           style={{
             position: 'relative',
             flex: 1,
@@ -1822,6 +1859,8 @@ export function CircuitCanvas({
             background:
               'repeating-linear-gradient(45deg, transparent, transparent 11px, rgba(127,127,127,0.025) 11px, rgba(127,127,127,0.025) 12px)',
             borderRadius: 10,
+            outline: dropHint ? '2px dashed var(--accent)' : undefined,
+            outlineOffset: dropHint ? '-6px' : undefined,
           }}
         >
           {background === 'glow' && <AmbientBackdrop inline section="home" theme="" enabled />}

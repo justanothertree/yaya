@@ -382,6 +382,20 @@ export function Circuit({
   // OWN pane data, which isn't there yet on the very first frame Circuit mounts.
   useEffect(() => {
     if (!canvas || !isActiveTab) return
+    /**
+     * ⚠️ EVERY pane, not just the Board.
+     *
+     * This opened Board alone, which made Circuit the odd one out: clicking Home lays out its
+     * whole set of windows, and clicking Circuit produced a single window with the rest hidden
+     * behind the Windows menu. Nothing about Circuit justified the difference — it was simply
+     * the one line written before Home's version existed.
+     *
+     * In list order, so the mosaic lays them out the way the tabs are ordered rather than the
+     * order they happened to be opened in. Board is re-asserted afterwards to leave it focused:
+     * onOpenCanvasPane is idempotent on the pinned list (it skips a pane that is already there)
+     * and only ever re-focuses, so the second call moves focus without moving the window.
+     */
+    for (const pane of canvasPanes) onOpenCanvasPane?.(pane)
     const board = canvasPanes.find((p) => p.id === 'board')
     if (board) onOpenCanvasPane?.(board)
     // eslint-disable-next-line react-hooks/exhaustive-deps

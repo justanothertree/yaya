@@ -1372,6 +1372,47 @@ export default function App() {
   }
 
   /**
+   * Somebody's profile as a window of its own, one per person.
+   *
+   * WARNING: keyed by username, NOT the single 'profile' id the nav uses. That one window
+   * follows the hash, and the hash can only ever name one person — so opening a second profile
+   * through it just changed the first, which is why several profiles side by side were
+   * impossible. These are pinned to their person and ignore the hash entirely (see Profile's
+   * `username` prop).
+   *
+   * Dropping the same person twice focuses the window they already have rather than stacking a
+   * duplicate on it: two identical windows is a bug, not a feature.
+   */
+  const openProfileWindow = (username: string) => {
+    const u = username.trim()
+    if (!u) return
+    openAndFocus({
+      id: 'profile:' + u.toLowerCase(),
+      title: '🪪 @' + u,
+      node: <Profile authed={isFinanceAuthed} username={u} />,
+    })
+  }
+
+  /**
+   * Is this dragged link one of ours, pointing at a profile?
+   *
+   * Same-origin only. A link dragged in from another site could carry any fragment at all, and
+   * "#profile?u=" in someone else's URL means nothing here — treating it as an instruction to
+   * open a window would be taking direction from a stranger's page.
+   */
+  const profileFromUrl = (url: string): string | null => {
+    try {
+      const abs = new URL(url, window.location.href)
+      if (abs.origin !== window.location.origin) return null
+      const hash = abs.hash.replace(/^#/, '')
+      if (!hash.startsWith('profile')) return null
+      return new URLSearchParams(hash.split('?')[1] ?? '').get('u')
+    } catch {
+      return null
+    }
+  }
+
+  /**
    * Nav's remaining job on the shared canvas: clicking a link (or a deep link landing) opens
    * that page's window if it isn't already there, and brings it to front either way. This is
    * what makes nav still mean something once the Windows menu can open anything from anywhere
@@ -1747,6 +1788,10 @@ export default function App() {
               launchableWindows={launchableWindows()}
               launcherOpenIds={pinnedIds}
               onToggleWindow={toggleWindow}
+              onDropLink={(url) => {
+                const u = profileFromUrl(url)
+                if (u) openProfileWindow(u)
+              }}
             />
           </Suspense>
         )}
