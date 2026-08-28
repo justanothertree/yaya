@@ -3189,14 +3189,6 @@ select {
   width: 3px;
   border-radius: 2px;
 }
-/* Cracks grow FROM the impact point, so the origin is the left edge rather than the centre —
-   that is what makes them propagate outward instead of sliding across. */
-.click-fx-crack {
-  height: 2px;
-  border-radius: 0;
-  transform-origin: 0 50%;
-  clip-path: polygon(0 0, 100% 40%, 100% 60%, 0 100%);
-}
 .click-fx-ripple {
   width: 46px;
   height: 46px;
@@ -3209,17 +3201,17 @@ select {
   height: 18px;
   border-width: 1px;
 }
-/* the impact point of broken glass — dark, so cracks radiate from something */
-.click-fx-hole {
+/* a petal: an ellipse rather than a circle, so a ring of them reads as a flower */
+.click-fx-petal {
   width: 9px;
-  height: 9px;
-  background: rgba(0, 0, 0, 0.55);
+  height: 20px;
+  border-radius: 50% 50% 50% 50% / 60% 60% 40% 40%;
+  transform-origin: 50% 100%;
 }
-/* a chord of the crack web: straight, thin, and rotated between two radials */
-.click-fx-chord {
-  height: 1.5px;
-  border-radius: 0;
-  transform-origin: 50% 50%;
+/* dust is the only soft-edged particle here — the blur IS the effect */
+.click-fx-dust {
+  filter: blur(3px);
+  opacity: 0.5;
 }
 .click-fx-drop {
   width: 7px;

@@ -12,7 +12,7 @@
  * eat a click or shift the page — the effect is structurally incapable of interfering with the
  * thing you clicked, no matter which style is picked.
  *
- * Fifteen styles, deliberately differentiated by SHAPE and MOTION rather than just palette —
+ * Seventeen styles, deliberately differentiated by SHAPE and MOTION rather than just palette —
  * radiating dots (sparks), expanding rings (sonar), falling paper (pop), a two-stage launch+burst
  * (rocket), twinkling glyphs (stars, glitter), upward drift (hearts, bubbles), an implosion isn't
  * here but an orbit is, straight rays (beam), angular shards (shatter), soft splats (ink). A style
@@ -20,11 +20,18 @@
  * reworked — that's what made the original ripple/confetti/fireworks trio feel thin next to
  * sparks, and it's also why pixels/zap didn't survive their own tryout.
  *
- * The later three hold to the same bar. `glass` is not a recoloured `shatter`: that one throws
- * triangles outward, this one propagates crack LINES from the impact and lets a few pieces fall.
- * `splash` needed a three-keyframe arc, because two keyframes draw a straight line and would
- * have been sparks in blue. `slash` is the only one that takes a direction — it aims along the
+ * `splash` leads with concentric rings rather than droplets, because droplets on arcs are `pop`
+ * however they are coloured. `slash` is the only one that takes a DIRECTION — it aims along the
  * way the pointer was actually travelling, which is the difference between a swing and a decal.
+ *
+ * ⚠️ `glass` was cut rather than fixed twice. Radial lines from a point is what `beam` already
+ * is, and the web of chords that would have made it read as broken glass never stopped looking
+ * like a diagram of one. A style that needs explaining before it lands has failed the bar in the
+ * paragraph above; the honest move was to drop it and spend the slot on something that works.
+ *
+ * `implode` fills the gap this header has named all along. `bloom` opens by rotating and scaling
+ * rather than travelling, which nothing else here does. `dust` is the only slow, soft-edged one —
+ * the single style you could leave on all day without noticing it.
  */
 
 import { motionReduced } from './motion'
@@ -42,9 +49,11 @@ export type FxStyle =
   | 'ink'
   | 'orbit'
   | 'beam'
-  | 'glass'
   | 'splash'
   | 'slash'
+  | 'implode'
+  | 'bloom'
+  | 'dust'
 
 const LAYER_ID = 'click-fx-layer'
 /** Concurrent bursts to allow. A fast clicker shouldn't be able to pile up hundreds of nodes. */
@@ -571,123 +580,105 @@ function beam(host: HTMLElement, x: number, y: number) {
 }
 
 /**
- * Broken glass — a bullet hole, not a starburst.
+ * Implode — everything rushes IN and vanishes into the point.
  *
- * ⚠️ The first version was radial lines only, and radial lines are what `beam` already is: same
- * shape, same motion, different name. What actually distinguishes cracked glass is the WEB —
- * short chords running between neighbouring cracks at a few radii, which is the thing your eye
- * reads as "this pane is broken" rather than "something is shining". So the chords are the
- * effect and the radials are the scaffolding they hang on.
+ * The file header has named this gap all along: "an implosion isn't here but an orbit is". Every
+ * other style pushes outward, so inward is the one motion the set genuinely lacked, and it reads
+ * completely differently for it — an outward burst says "that happened", an inward one says
+ * "that was taken".
  *
- * The impact point stays dark for a moment too. Real breakage has a hole at the centre; without
- * it the cracks look like they are radiating from nothing.
+ * Eased IN rather than out, so the particles accelerate toward the centre. A linear version just
+ * looks like sparks running backwards.
  */
-function glass(host: HTMLElement, x: number, y: number) {
-  const [a, b] = palette()
+function implode(host: HTMLElement, x: number, y: number) {
+  const colors = palette()
+  const N = 12
   const nodes: HTMLElement[] = []
   const anims: Animation[] = []
-
-  // the hole: a small dark core that lingers under everything else
-  const hole = mk('click-fx-hole', x, y)
-  nodes.push(hole)
-  anims.push(
-    hole.animate(
-      [
-        { transform: 'translate(-50%, -50%) scale(0.2)', opacity: 0.9 },
-        { transform: 'translate(-50%, -50%) scale(1)', opacity: 0.75, offset: 0.2 },
-        { transform: 'translate(-50%, -50%) scale(1.1)', opacity: 0 },
-      ],
-      { duration: 560, easing: 'ease-out', fill: 'forwards' },
-    ),
-  )
-
-  const RAYS = 7
-  const angles: number[] = []
-  for (let i = 0; i < RAYS; i++) {
-    const deg = (i / RAYS) * 360 + (Math.random() - 0.5) * 30
-    angles.push(deg)
-    const len = 24 + Math.random() * 30
-    const c = mk('click-fx-crack', x, y)
-    c.style.width = len + 'px'
-    c.style.background = i % 2 ? b : a
-    nodes.push(c)
+  for (let i = 0; i < N; i++) {
+    const angle = (i / N) * Math.PI * 2 + (Math.random() - 0.5) * 0.5
+    const dist = 34 + Math.random() * 26
+    const p = mk('click-fx-spark', x, y)
+    p.style.background = colors[i % colors.length]
+    nodes.push(p)
     anims.push(
-      c.animate(
+      p.animate(
         [
-          { transform: `rotate(${deg}deg) scaleX(0)`, opacity: 1 },
-          { transform: `rotate(${deg}deg) scaleX(1)`, opacity: 1, offset: 0.22 },
-          { transform: `rotate(${deg}deg) scaleX(1)`, opacity: 0 },
+          {
+            transform: `translate(-50%, -50%) translate(${Math.cos(angle) * dist}px, ${Math.sin(angle) * dist}px) scale(0.5)`,
+            opacity: 0,
+          },
+          {
+            transform: `translate(-50%, -50%) translate(${Math.cos(angle) * dist * 0.7}px, ${Math.sin(angle) * dist * 0.7}px) scale(1)`,
+            opacity: 1,
+            offset: 0.25,
+          },
+          { transform: 'translate(-50%, -50%) translate(0, 0) scale(0.2)', opacity: 0 },
         ],
         {
-          duration: 460 + Math.random() * 160,
-          easing: 'cubic-bezier(0.05, 0.9, 0.15, 1)',
+          duration: 380 + Math.random() * 120,
+          easing: 'cubic-bezier(0.7, 0, 0.9, 0.3)',
           fill: 'forwards',
         },
       ),
     )
   }
+  // a flash as they arrive, so the vanishing has a punctuation mark
+  const flash = mk('click-fx-ring', x, y)
+  flash.style.color = colors[0]
+  nodes.push(flash)
+  anims.push(
+    flash.animate(
+      [
+        { transform: 'translate(-50%, -50%) scale(0.05)', opacity: 0 },
+        { transform: 'translate(-50%, -50%) scale(0.05)', opacity: 0.9, offset: 0.72 },
+        { transform: 'translate(-50%, -50%) scale(0.5)', opacity: 0 },
+      ],
+      { duration: 520, easing: 'ease-out', fill: 'forwards' },
+    ),
+  )
+  track(host, nodes, anims)
+}
 
-  // the web: chords between neighbouring cracks, at two radii. This is the part that makes it
-  // glass rather than a starburst.
-  for (let ring = 0; ring < 2; ring++) {
-    const r = 13 + ring * 13
-    for (let i = 0; i < RAYS; i++) {
-      const d1 = (angles[i] * Math.PI) / 180
-      const d2 = (angles[(i + 1) % RAYS] * Math.PI) / 180
-      const x1 = x + Math.cos(d1) * r
-      const y1 = y + Math.sin(d1) * r
-      const x2 = x + Math.cos(d2) * r
-      const y2 = y + Math.sin(d2) * r
-      const mx = (x1 + x2) / 2
-      const my = (y1 + y2) / 2
-      const len = Math.hypot(x2 - x1, y2 - y1)
-      const deg = (Math.atan2(y2 - y1, x2 - x1) * 180) / Math.PI
-      const seg = mk('click-fx-chord', mx, my)
-      seg.style.width = len + 'px'
-      seg.style.background = a
-      nodes.push(seg)
-      anims.push(
-        seg.animate(
-          [
-            { transform: `translate(-50%, -50%) rotate(${deg}deg) scaleX(0)`, opacity: 0.85 },
-            {
-              transform: `translate(-50%, -50%) rotate(${deg}deg) scaleX(1)`,
-              opacity: 0.85,
-              offset: 0.35,
-            },
-            { transform: `translate(-50%, -50%) rotate(${deg}deg) scaleX(1)`, opacity: 0 },
-          ],
-          {
-            duration: 420 + Math.random() * 140,
-            // after the crack that carries it has arrived, so the web builds outward
-            delay: 40 + ring * 70,
-            easing: 'ease-out',
-            fill: 'forwards',
-          },
-        ),
-      )
-    }
-  }
-
-  for (let i = 0; i < 4; i++) {
-    const angle = Math.random() * Math.PI * 2
-    const dist = 12 + Math.random() * 20
-    const pcs = mk('click-fx-shard', x, y)
-    pcs.style.background = i % 2 ? a : b
-    nodes.push(pcs)
+/**
+ * Bloom — petals opening out of the point.
+ *
+ * The motion is ROTATION and SCALE rather than travel: each petal grows from nothing while
+ * turning, so the shape opens instead of flying apart. Nothing else in the set does that — every
+ * other style moves particles from A to B — which is what keeps it from being sparks with rounder
+ * dots.
+ */
+function bloom(host: HTMLElement, x: number, y: number) {
+  const [a, b] = palette()
+  const N = 6
+  const nodes: HTMLElement[] = []
+  const anims: Animation[] = []
+  const turn = Math.random() * 360
+  for (let i = 0; i < N; i++) {
+    const deg = turn + (i / N) * 360
+    const petal = mk('click-fx-petal', x, y)
+    petal.style.background = i % 2 ? a : b
+    nodes.push(petal)
     anims.push(
-      pcs.animate(
+      petal.animate(
         [
-          { transform: 'translate(-50%, -50%) translate(0, 0) rotate(0deg)', opacity: 0.9 },
           {
-            transform: `translate(-50%, -50%) translate(${Math.cos(angle) * dist}px, ${Math.sin(angle) * dist + 18}px) rotate(${(Math.random() - 0.5) * 320}deg)`,
+            transform: `translate(-50%, -50%) rotate(${deg}deg) translateY(0px) scale(0.2)`,
+            opacity: 0.95,
+          },
+          {
+            transform: `translate(-50%, -50%) rotate(${deg + 26}deg) translateY(-15px) scale(1)`,
+            opacity: 0.75,
+            offset: 0.55,
+          },
+          {
+            transform: `translate(-50%, -50%) rotate(${deg + 40}deg) translateY(-22px) scale(0.9)`,
             opacity: 0,
           },
         ],
         {
-          duration: 520 + Math.random() * 180,
-          delay: 90,
-          easing: 'cubic-bezier(0.3, 0.6, 0.5, 1)',
+          duration: 520 + Math.random() * 140,
+          easing: 'cubic-bezier(0.2, 0.8, 0.3, 1)',
           fill: 'forwards',
         },
       ),
@@ -697,36 +688,78 @@ function glass(host: HTMLElement, x: number, y: number) {
 }
 
 /**
- * Water — rings on a surface, with the droplets as garnish.
+ * Dust — a soft puff that spreads and lifts.
  *
- * ⚠️ The first version led with eight droplets on arcs, and eight things flying outward on arcs
- * is `pop` with rounder particles. What says WATER is the concentric rings: a drop hitting a
- * surface makes several, staggered, each expanding and flattening as it goes. So the rings are
- * the effect now and the droplets support them — fewer of them, and each one lands and makes a
- * small ring of its own, which is the detail that sells the surface as wet.
+ * Slow and diffuse where the rest of the set is quick and sharp: blurred, low opacity, drifting
+ * UPWARD as it expands, so it behaves like something disturbed rather than something emitted. The
+ * only style here you could leave on all day without noticing it.
+ */
+function dust(host: HTMLElement, x: number, y: number) {
+  const [a, b] = palette()
+  const N = 7
+  const nodes: HTMLElement[] = []
+  const anims: Animation[] = []
+  for (let i = 0; i < N; i++) {
+    const angle = Math.random() * Math.PI * 2
+    const dist = 10 + Math.random() * 26
+    const p = mk('click-fx-dust', x, y)
+    p.style.background = i % 3 === 0 ? b : a
+    const size = 10 + Math.random() * 16
+    p.style.width = size + 'px'
+    p.style.height = size + 'px'
+    nodes.push(p)
+    anims.push(
+      p.animate(
+        [
+          { transform: 'translate(-50%, -50%) translate(0, 0) scale(0.3)', opacity: 0.5 },
+          {
+            transform: `translate(-50%, -50%) translate(${Math.cos(angle) * dist}px, ${Math.sin(angle) * dist - 18}px) scale(1.5)`,
+            opacity: 0,
+          },
+        ],
+        {
+          duration: 900 + Math.random() * 300,
+          easing: 'cubic-bezier(0.2, 0.6, 0.4, 1)',
+          fill: 'forwards',
+        },
+      ),
+    )
+  }
+  track(host, nodes, anims)
+}
+
+/**
+ * Water — rings on a surface.
  *
- * Rings are flattened on Y because you are looking at the surface from an angle, not from
- * directly overhead; a perfect circle reads as `sonar`.
+ * ⚠️ The landing rings are gone. Each droplet used to leave a small ring where it came down,
+ * and because they all came down at the same height that was a ROW of circles across the click —
+ * a shape water never makes. The idea was right and the geometry was wrong. The rings that read
+ * as water are the concentric ones at the impact, so there are more of those instead, staggered
+ * and each nudged slightly off-centre so they overlap the way real ones do rather than sitting
+ * like a target.
+ *
+ * Flattened on Y because you are looking at the surface at an angle; a true circle reads as sonar.
  */
 function splash(host: HTMLElement, x: number, y: number) {
   const [a, b] = palette()
   const nodes: HTMLElement[] = []
   const anims: Animation[] = []
 
-  // three rings, staggered — one ring is a ping, several is a surface reacting
-  for (let i = 0; i < 3; i++) {
-    const ring = mk('click-fx-ripple', x, y)
+  for (let i = 0; i < 4; i++) {
+    const ox = (Math.random() - 0.5) * 10
+    const oy = (Math.random() - 0.5) * 5
+    const ring = mk('click-fx-ripple', x + ox, y + oy)
     ring.style.color = i === 1 ? b : a
     nodes.push(ring)
     anims.push(
       ring.animate(
         [
-          { transform: 'translate(-50%, -50%) scale(0.15) scaleY(0.45)', opacity: 0.9 },
-          { transform: `translate(-50%, -50%) scale(${0.9 + i * 0.45}) scaleY(0.45)`, opacity: 0 },
+          { transform: 'translate(-50%, -50%) scale(0.12) scaleY(0.42)', opacity: 0.85 },
+          { transform: `translate(-50%, -50%) scale(${0.8 + i * 0.4}) scaleY(0.42)`, opacity: 0 },
         ],
         {
-          duration: 620 + i * 160,
-          delay: i * 130,
+          duration: 620 + i * 150,
+          delay: i * 110,
           easing: 'cubic-bezier(0.15, 0.75, 0.3, 1)',
           fill: 'forwards',
         },
@@ -736,9 +769,8 @@ function splash(host: HTMLElement, x: number, y: number) {
 
   const N = 5
   for (let i = 0; i < N; i++) {
-    const spread = (i / (N - 1) - 0.5) * 62 + (Math.random() - 0.5) * 8
+    const spread = (i / (N - 1) - 0.5) * 58 + (Math.random() - 0.5) * 10
     const rise = 18 + Math.random() * 20
-    const flight = 520 + Math.random() * 160
     const d = mk('click-fx-drop', x, y)
     d.style.background = i % 2 ? b : a
     nodes.push(d)
@@ -752,25 +784,15 @@ function splash(host: HTMLElement, x: number, y: number) {
             offset: 0.45,
           },
           {
-            transform: `translate(-50%, -50%) translate(${spread}px, 0px) scale(0.5, 1.6)`,
+            transform: `translate(-50%, -50%) translate(${spread}px, 2px) scale(0.5, 1.6)`,
             opacity: 0,
           },
         ],
-        { duration: flight, easing: 'cubic-bezier(0.3, 0.1, 0.7, 1)', fill: 'forwards' },
-      ),
-    )
-
-    // where it comes back down, a small ring of its own — the bit that reads as a wet surface
-    const land = mk('click-fx-ripple click-fx-ripple-sm', x + spread, y)
-    land.style.color = a
-    nodes.push(land)
-    anims.push(
-      land.animate(
-        [
-          { transform: 'translate(-50%, -50%) scale(0.1) scaleY(0.4)', opacity: 0.7 },
-          { transform: 'translate(-50%, -50%) scale(1) scaleY(0.4)', opacity: 0 },
-        ],
-        { duration: 380, delay: flight * 0.92, easing: 'ease-out', fill: 'forwards' },
+        {
+          duration: 520 + Math.random() * 160,
+          easing: 'cubic-bezier(0.3, 0.1, 0.7, 1)',
+          fill: 'forwards',
+        },
       ),
     )
   }
@@ -861,9 +883,11 @@ const BUILDERS: Record<FxStyle, (host: HTMLElement, x: number, y: number) => voi
   ink,
   orbit,
   beam,
-  glass,
   splash,
   slash,
+  implode,
+  bloom,
+  dust,
 }
 
 function onPointerMove(e: PointerEvent) {

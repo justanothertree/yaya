@@ -25,9 +25,11 @@ export const FX_STYLE_OPTIONS: Array<[FxStyle, string, string]> = [
   ['ink', '💧', 'Ink'],
   ['orbit', '⟳', 'Orbit'],
   ['beam', '☀', 'Beam'],
-  ['glass', '🪟', 'Glass'],
   ['splash', '💦', 'Splash'],
   ['slash', '🗡', 'Slash'],
+  ['implode', '🕳', 'Implode'],
+  ['bloom', '🌸', 'Bloom'],
+  ['dust', '🌬', 'Dust'],
 ]
 
 /** The style ids alone, for anywhere that only needs to cycle or validate them. */
