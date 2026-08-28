@@ -2584,23 +2584,45 @@ section[id] {
 }
 
 /* ── audio visualiser ────────────────────────────────────────────────
-   The stage is sized in CSS and the canvas measures it — never the other way round. A canvas
-   with no CSS height collapses to its 150px default, and one that sizes its own box makes the
-   same measure-your-own-size loop the snake stage note above describes. */
+   ⚠️ The STAGE is sized here and the canvas measures it — never the other way round. A canvas
+   with no CSS height collapses to its 150px default, and one that sizes its own box creates the
+   measure-your-own-size loop the snake stage note describes. */
 .viz-wrap {
   display: flex;
   flex-direction: column;
   gap: 0.7rem;
   min-width: 0;
+  /* fills a canvas window; on a page the stage's own height leads */
+  height: 100%;
+  min-height: 0;
 }
 .viz-stage {
   position: relative;
-  /* tall enough for a spectrogram to read as one, short enough to sit in a canvas window */
-  height: clamp(9rem, 34vh, 18rem);
+  /* Tall on purpose: this is the thing you are here to look at. It was a 9–18rem strip under a
+     block of controls, which is the shape of a settings page. */
+  height: clamp(16rem, 62vh, 40rem);
+  flex: 1 1 auto;
+  min-height: 12rem;
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 12px;
   overflow: hidden;
   background: color-mix(in oklab, var(--text), transparent 96%);
+}
+/* with the panel hidden the picture takes everything going */
+.viz-wrap.is-bare .viz-stage {
+  height: clamp(20rem, 78vh, 56rem);
+}
+/* fullscreen: the browser paints the backdrop, so give it a real ground rather than a
+   see-through box, and drop the rounding that would show black corners */
+.viz-stage[data-full] {
+  height: 100%;
+  border-radius: 0;
+  border: none;
+  background: var(--bg);
+}
+.viz-surface {
+  position: absolute;
+  inset: 0;
 }
 .viz-canvas {
   display: block;
@@ -2619,17 +2641,47 @@ section[id] {
   font-size: 0.85rem;
   pointer-events: none;
 }
+/* floats over the picture, so hiding the panel gives the visuals the whole pane */
+.viz-float {
+  position: absolute;
+  right: 0.5rem;
+  bottom: 0.5rem;
+  display: flex;
+  gap: 0.3rem;
+  opacity: 0.35;
+  transition: opacity 0.18s ease;
+}
+.viz-stage:hover .viz-float,
+.viz-float:focus-within {
+  opacity: 1;
+}
+.viz-icon {
+  padding: 0.15rem 0.5rem;
+  font-size: 0.9rem;
+  line-height: 1.4;
+  backdrop-filter: blur(6px);
+}
 .viz-controls {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
+  flex: 0 0 auto;
+}
+/* sixteen modes and growing — a fixed grid that wraps, capped so it never eats the stage */
+.viz-modes {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(4.6rem, 100%), 1fr));
+  gap: 0.35rem;
+  max-height: 11rem;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
 }
 .viz-row {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(5.2rem, 100%), 1fr));
   gap: 0.4rem;
 }
-/* sensitivity, mic and ringtone sit on one line and wrap together on a narrow window */
 .viz-row-wide {
   display: flex;
   flex-wrap: wrap;
@@ -2638,6 +2690,17 @@ section[id] {
 }
 .viz-row-wide .appearance-slider {
   flex: 1 1 12rem;
+}
+.viz-tool-label {
+  font-size: 0.85rem;
+}
+.viz-mirrors {
+  display: flex;
+  gap: 0.25rem;
+}
+.viz-mirrors .btn {
+  padding: 0.2rem 0.5rem;
+  font-size: 0.8rem;
 }
 /* a source button reads label-first, so the live dot needs a row rather than the stacked
    icon-over-label of a style tile */

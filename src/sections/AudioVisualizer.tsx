@@ -11,29 +11,56 @@ import {
 } from '../audio/audioTap'
 import { localMicOn, monitorOn, setMonitor, startLocalMic, stopLocalMic } from '../audio/localMic'
 import { playCallSound } from '../voice/ringtone'
-import { VISUALS, clearsEachFrame, makeVisual, type Ink, type VisualId } from '../audio/visualModes'
+import {
+  VISUALS,
+  defaultTrail,
+  makeVisual,
+  ownsItsBuffer,
+  type Ink,
+  type VisualId,
+} from '../audio/visualModes'
+import { makeFeatureReader } from '../audio/audioFeatures'
 import { motionReduced, onMotionChange } from '../ui/motion'
 
 /**
  * A window that shows you the sound.
  *
- * Built like the Snake canvas — a section that is equally at home as a full page or as one window
- * on the circuit canvas, sizing itself to whatever box it is given rather than to the viewport.
- * That is the whole reason it observes its host instead of listening for window resizes.
+ * ⚠️ THE PICTURE IS THE POINT, so it gets the room. This started as a modest canvas over a block
+ * of controls, which is the shape of a settings page rather than of something you want to watch.
+ * The stage now takes the whole pane and the controls collapse out of the way entirely; there is
+ * a fullscreen button because the honest end state of "make the visuals the star" is nothing on
+ * screen but the visuals.
  *
- * ⚠️ It never opens an audio graph of its own except for the mic button, and that one is
- * explicitly asked for. Everything else is read from analysers the call and the ringtone already
- * had (see audioTap.ts) — so having this window open during a call costs a read per frame, not a
- * second copy of the audio pipeline.
+ * It never opens an audio graph of its own except for the mic button, which is explicitly asked
+ * for. Everything else is read from analysers the call and the ringtone already had — see
+ * audioTap.ts. Sources come and go on their own, and the picker subscribes rather than
+ * snapshotting, so a call starting mid-frame becomes selectable without a refresh.
  *
- * Sources come and go on their own: a call starting publishes two, hanging up removes them. The
- * picker subscribes rather than snapshotting, so a source appearing mid-frame becomes selectable
- * without a refresh — the failure this site has already been bitten by twice.
+ * TWO TOOLS APPLY TO EVERY MODE, which is what stops sixteen modes being sixteen private
+ * implementations of the same ideas:
+ *
+ *   · Trails. Modes draw into an offscreen buffer that is only PARTLY erased each frame, so a
+ *     line becomes a smear and a particle becomes a comet. Each mode ships a default, because the
+ *     right amount is a property of the drawing (Nebula is nothing without it; Bars is unreadable
+ *     with it) — but it is a dial, so any mode can be pushed somewhere its author didn't intend.
+ *   · Mirror. The buffer is composited into N kaleidoscope wedges. Sixteen modes times six
+ *     symmetries is a lot of pictures for one extra blit per wedge.
  */
 
 const MODE_KEY = 'viz_mode_v1'
 const SRC_KEY = 'viz_src_v1'
 const GAIN_KEY = 'viz_gain_v1'
+const PANEL_KEY = 'viz_panel_v1'
+const MIRROR_KEY = 'viz_mirror_v1'
+
+const MIRRORS: Array<[number, string]> = [
+  [1, 'Off'],
+  [2, '2'],
+  [3, '3'],
+  [4, '4'],
+  [6, '6'],
+  [8, '8'],
+]
 
 function readStored<T extends string>(key: string, allowed: readonly T[], fallback: T): T {
   try {
@@ -49,6 +76,7 @@ const TAP_IDS = TAPS.map((t) => t.id)
 
 export function AudioVisualizer() {
   const host = useRef<HTMLDivElement>(null)
+  const stage = useRef<HTMLDivElement>(null)
   const canvas = useRef<HTMLCanvasElement>(null)
 
   const [mode, setMode] = useState<VisualId>(() => readStored(MODE_KEY, VISUAL_IDS, 'bars'))
@@ -57,17 +85,26 @@ export function AudioVisualizer() {
     const v = Number(localStorage.getItem(GAIN_KEY))
     return Number.isFinite(v) && v >= 0.5 && v <= 4 ? v : 1.5
   })
+  const [trail, setTrail] = useState(() => defaultTrail(readStored(MODE_KEY, VISUAL_IDS, 'bars')))
+  const [mirror, setMirror] = useState(() => {
+    const v = Number(localStorage.getItem(MIRROR_KEY))
+    return MIRRORS.some(([n]) => n === v) ? v : 1
+  })
+  const [panel, setPanel] = useState(() => {
+    try {
+      return localStorage.getItem(PANEL_KEY) !== '0'
+    } catch {
+      return true
+    }
+  })
+  const [full, setFull] = useState(false)
   const [micBusy, setMicBusy] = useState(false)
-  // mirrored into state rather than read from the module during render: localMicOn() is not a
-  // store React can subscribe to, so a bare call would render the stale answer after a toggle
   const [micOn, setMicOn] = useState(localMicOn)
   const [micDenied, setMicDenied] = useState(false)
-  // ⚠️ Never restored from storage, unlike every other control on this page. A playback-of-your-
-  // own-mic setting that came back on by itself would greet somebody with feedback on load.
+  // ⚠️ Never restored from storage: a playback-of-your-own-mic setting that came back on by
+  // itself would greet somebody with feedback on load.
   const [hearing, setHearing] = useState(monitorOn)
 
-  // Which sources exist RIGHT NOW. A snapshot taken on mount would be wrong the moment a call
-  // starts, and the picker would offer nothing until you navigated away and back.
   const live = useSyncExternalStore(
     subscribeTaps,
     useCallback(() => liveTaps().join(','), []),
@@ -75,8 +112,6 @@ export function AudioVisualizer() {
   )
   const liveSet = live ? live.split(',') : []
 
-  // State, not a bare call: the switch has to reach a running canvas, and reading the preference
-  // once at mount is exactly why turning reduce-motion back off used to need a refresh.
   const [reduced, setReduced] = useState(motionReduced)
   useEffect(() => onMotionChange(() => setReduced(motionReduced())), [])
 
@@ -85,35 +120,57 @@ export function AudioVisualizer() {
       localStorage.setItem(MODE_KEY, mode)
       localStorage.setItem(SRC_KEY, src)
       localStorage.setItem(GAIN_KEY, String(gain))
+      localStorage.setItem(MIRROR_KEY, String(mirror))
+      localStorage.setItem(PANEL_KEY, panel ? '1' : '0')
     } catch {
-      /* private mode — the choice still holds for this visit */
+      /* private mode — the choices still hold for this visit */
     }
-  }, [mode, src, gain])
+  }, [mode, src, gain, mirror, panel])
 
-  // The mic is a device, not a render: it must survive re-renders and must be released when the
-  // window closes, or the browser's recording indicator stays on with nothing watching it.
-  useEffect(() => () => stopLocalMic(), [])
+  useEffect(
+    () => () => {
+      stopLocalMic()
+    },
+    [],
+  )
+
+  // fullscreen can also be left with Escape, which fires no click of ours — so track the browser
+  // rather than assuming our own button is the only way out
+  useEffect(() => {
+    const onFs = () => setFull(document.fullscreenElement === stage.current)
+    document.addEventListener('fullscreenchange', onFs)
+    return () => document.removeEventListener('fullscreenchange', onFs)
+  }, [])
 
   useEffect(() => {
     if (reduced) return
     const box = host.current
     const cv = canvas.current
     if (!box || !cv) return
-    const ctx = cv.getContext('2d')
+    const view = cv.getContext('2d')
+    if (!view) return
+
+    /**
+     * Modes draw HERE, not onto the visible canvas.
+     *
+     * ⚠️ The buffer is what makes trails and mirroring possible at all. Persistence needs a
+     * surface that survives the frame, and a kaleidoscope needs to composite the drawing several
+     * times — neither works if the mode paints straight onto the canvas the viewer sees.
+     */
+    const buf = document.createElement('canvas')
+    const ctx = buf.getContext('2d')
     if (!ctx) return
 
     const visual = makeVisual(mode)
-    const wipe = clearsEachFrame(mode)
+    const owns = ownsItsBuffer(mode)
+    const features = makeFeatureReader()
     let w = 0
     let h = 0
     let raf = 0
     let last = performance.now()
     let onScreen = true
     let visible = document.visibilityState === 'visible'
-    let smoothed = 0
 
-    // Allocated once per mount, not per frame. Sized for the largest analyser any source uses
-    // (2048 from the local mic), so a source switch never needs a new buffer.
     const spec = new Uint8Array(2048)
     const wav = new Uint8Array(2048)
 
@@ -132,8 +189,6 @@ export function AudioVisualizer() {
         ink: read('--text', [238, 238, 248]),
       }
     }
-    // read off the canvas rather than the document root, so a window wearing somebody else's
-    // look draws in THEIR colours
     let ink = readInk()
 
     const resize = () => {
@@ -141,10 +196,13 @@ export function AudioVisualizer() {
       const dpr = Math.min(window.devicePixelRatio || 1, 2)
       w = Math.max(1, Math.round(r.width))
       h = Math.max(1, Math.round(r.height))
-      cv.width = Math.round(w * dpr)
-      cv.height = Math.round(h * dpr)
+      for (const c of [cv, buf]) {
+        c.width = Math.round(w * dpr)
+        c.height = Math.round(h * dpr)
+      }
       cv.style.width = w + 'px'
       cv.style.height = h + 'px'
+      view.setTransform(dpr, 0, 0, dpr, 0, 0)
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
       ink = readInk()
       visual.init(w, h)
@@ -159,8 +217,6 @@ export function AudioVisualizer() {
       const gotWave = readWaveform(src, wav)
       if (!gotSpec) spec.fill(0)
       if (!gotWave) wav.fill(128)
-      // sensitivity is applied to the DATA, not to the drawing: a mode that scaled its own
-      // heights would have to be trusted to do it the same way as the other three
       if (gain !== 1 && gotSpec) {
         for (let i = 0; i < bins; i++) spec[i] = Math.min(255, spec[i] * gain)
       }
@@ -169,23 +225,31 @@ export function AudioVisualizer() {
           wav[i] = Math.max(0, Math.min(255, 128 + (wav[i] - 128) * gain))
         }
       }
-      /**
-       * Loudness measured from the buffer we already have.
-       *
-       * ⚠️ NOT readLevel(), which fills the buffer you hand it — calling it here would
-       * overwrite the sensitivity-scaled waveform a line above with raw samples, and the Wave
-       * mode would silently ignore its own slider. Same RMS, no second read.
-       */
+      // RMS from the buffer we already have — see the note in audioTap.readLevel about why this
+      // is not a second read
       let sum = 0
       for (let i = 0; i < waveN; i++) {
         const v = (wav[i] - 128) / 128
         sum += v * v
       }
-      const raw = Math.sqrt(sum / Math.max(1, waveN)) * 2.5
-      // one-pole smoothing so a single loud frame doesn't make the whole figure jump
-      smoothed += (Math.min(1, raw) - smoothed) * Math.min(1, dt * 8)
+      const rms = Math.sqrt(sum / Math.max(1, waveN)) * 2.5
+      const f = features.read(spec, Math.max(1, bins), rms, dt)
 
-      if (wipe) ctx.clearRect(0, 0, w, h)
+      /**
+       * Persistence: erase only PART of the last frame.
+       *
+       * destination-out with a partial alpha subtracts opacity rather than painting over, which
+       * keeps the buffer genuinely transparent. Filling with a background colour instead would
+       * look identical on a dark page and leave an opaque slab on a light one.
+       */
+      if (!owns) {
+        const fade = 1 - Math.max(0, Math.min(0.97, trail))
+        ctx.globalCompositeOperation = 'destination-out'
+        ctx.fillStyle = `rgba(0,0,0,${fade})`
+        ctx.fillRect(0, 0, w, h)
+        ctx.globalCompositeOperation = 'source-over'
+      }
+
       visual.draw({
         ctx,
         w,
@@ -195,9 +259,35 @@ export function AudioVisualizer() {
         bins: Math.max(1, bins),
         wave: wav,
         waveN: Math.max(2, waveN),
-        level: smoothed,
+        f,
         ink,
       })
+
+      view.clearRect(0, 0, w, h)
+      if (mirror <= 1) {
+        view.drawImage(buf, 0, 0, w, h)
+      } else {
+        // Kaleidoscope: clip to a wedge, draw the whole buffer through it, repeat around the
+        // circle. Alternate wedges are flipped so neighbouring edges meet rather than butting.
+        const cx = w / 2
+        const cy = h / 2
+        const seg = (Math.PI * 2) / mirror
+        const reach = Math.hypot(w, h)
+        for (let i = 0; i < mirror; i++) {
+          view.save()
+          view.translate(cx, cy)
+          view.rotate(i * seg)
+          if (i % 2) view.scale(1, -1)
+          view.beginPath()
+          view.moveTo(0, 0)
+          view.arc(0, 0, reach, -seg / 2, seg / 2)
+          view.closePath()
+          view.clip()
+          view.translate(-cx, -cy)
+          view.drawImage(buf, 0, 0, w, h)
+          view.restore()
+        }
+      }
       raf = requestAnimationFrame(frame)
     }
 
@@ -214,8 +304,6 @@ export function AudioVisualizer() {
 
     const ro = new ResizeObserver(() => resize())
     ro.observe(box)
-    // A visualiser scrolled off screen or on a hidden tab is a rAF loop reading an analyser for
-    // nobody. Both observers exist to make that cost zero rather than small.
     const io = new IntersectionObserver((es) => {
       onScreen = es.some((e) => e.isIntersecting)
       if (onScreen) start()
@@ -237,20 +325,37 @@ export function AudioVisualizer() {
       io.disconnect()
       document.removeEventListener('visibilitychange', onVis)
     }
-  }, [mode, src, gain, reduced])
+  }, [mode, src, gain, reduced, trail, mirror])
+
+  const pickMode = (id: VisualId) => {
+    setMode(id)
+    // each mode's own default, because the right amount of trail is a property of the drawing —
+    // and it stays a dial, so this is a starting point rather than a decision
+    setTrail(defaultTrail(id))
+  }
+
+  const goFull = () => {
+    const el = stage.current
+    if (!el) return
+    if (document.fullscreenElement) void document.exitFullscreen().catch(() => {})
+    else void el.requestFullscreen?.().catch(() => {})
+  }
+
+  const nothingOn = !liveSet.includes(src)
 
   return (
-    <section className="viz-wrap">
-      <div className="viz-stage" ref={host}>
-        <canvas ref={canvas} className="viz-canvas" aria-hidden />
+    <section className={'viz-wrap' + (panel ? '' : ' is-bare')}>
+      <div className="viz-stage" ref={stage} data-full={full || undefined}>
+        <div className="viz-surface" ref={host}>
+          <canvas ref={canvas} className="viz-canvas" aria-hidden />
+        </div>
+
         {reduced && (
           <p className="viz-still muted">
             Paused — animations are off. Turn Reduce motion off in the ⚙ menu to watch it move.
           </p>
         )}
-        {/* Not an error: no sound is the ordinary state, and the window should say what would
-            make something appear rather than sit there looking broken. */}
-        {!reduced && !liveSet.includes(src) && (
+        {!reduced && nothingOn && (
           <p className="viz-still muted">
             Nothing on <strong>{TAPS.find((t) => t.id === src)?.label}</strong> yet.
             {src === 'local'
@@ -260,126 +365,174 @@ export function AudioVisualizer() {
                 : ' Join a call and it will appear here.'}
           </p>
         )}
+
+        {/* Floating over the picture rather than below it, so hiding the panel gives the visuals
+            the whole pane instead of leaving a gap where the controls were. */}
+        <div className="viz-float">
+          <button
+            className="btn viz-icon"
+            onClick={() => setPanel((p) => !p)}
+            aria-expanded={panel}
+            title={panel ? 'Hide the controls' : 'Show the controls'}
+          >
+            {panel ? '▾' : '▴'}
+          </button>
+          <button
+            className="btn viz-icon"
+            onClick={goFull}
+            title={full ? 'Leave fullscreen' : 'Fullscreen'}
+          >
+            {full ? '⤡' : '⛶'}
+          </button>
+        </div>
       </div>
 
-      <div className="viz-controls">
-        <div className="viz-row" role="group" aria-label="Visual style">
-          {VISUALS.map(([id, icon, label]) => (
-            <button
-              key={id}
-              className={'fx-style-btn' + (mode === id ? ' is-on' : '')}
-              aria-pressed={mode === id}
-              onClick={() => setMode(id)}
-            >
-              <span aria-hidden>{icon}</span>
-              <span className="fx-style-label">{label}</span>
-            </button>
-          ))}
-        </div>
-
-        <div className="viz-row" role="group" aria-label="Sound source">
-          {TAPS.map((t) => {
-            const on = liveSet.includes(t.id)
-            return (
+      {panel && (
+        <div className="viz-controls">
+          <div className="viz-modes" role="group" aria-label="Visual style">
+            {VISUALS.map(([id, icon, label]) => (
               <button
-                key={t.id}
-                className={'fx-style-btn viz-src' + (src === t.id ? ' is-on' : '')}
-                aria-pressed={src === t.id}
-                onClick={() => setSrc(t.id)}
-                // a source with nothing on it stays clickable — picking it is how you say what
-                // you want to watch when it starts
-                title={on ? 'Live now' : 'Nothing playing'}
+                key={id}
+                className={'fx-style-btn' + (mode === id ? ' is-on' : '')}
+                aria-pressed={mode === id}
+                onClick={() => pickMode(id)}
               >
-                <span className={'viz-dot' + (on ? ' is-live' : '')} aria-hidden />
-                <span className="fx-style-label">{t.label}</span>
+                <span aria-hidden>{icon}</span>
+                <span className="fx-style-label">{label}</span>
               </button>
-            )
-          })}
-        </div>
+            ))}
+          </div>
 
-        <div className="viz-row viz-row-wide">
-          <label className="appearance-slider">
-            <span className="muted">Sensitivity</span>
-            <input
-              type="range"
-              min={0.5}
-              max={4}
-              step={0.1}
-              value={gain}
-              onChange={(e) => setGain(Number(e.target.value))}
-            />
-            <span className="appearance-slider-val">{gain.toFixed(1)}×</span>
-          </label>
+          <div className="viz-row" role="group" aria-label="Sound source">
+            {TAPS.map((t) => {
+              const on = liveSet.includes(t.id)
+              return (
+                <button
+                  key={t.id}
+                  className={'fx-style-btn viz-src' + (src === t.id ? ' is-on' : '')}
+                  aria-pressed={src === t.id}
+                  onClick={() => setSrc(t.id)}
+                  title={on ? 'Live now' : 'Nothing playing'}
+                >
+                  <span className={'viz-dot' + (on ? ' is-live' : '')} aria-hidden />
+                  <span className="fx-style-label">{t.label}</span>
+                </button>
+              )
+            })}
+          </div>
 
-          <button
-            className="btn"
-            aria-pressed={micOn}
-            disabled={micBusy}
-            onClick={async () => {
-              if (micOn) {
-                stopLocalMic()
-                setMicOn(false)
-                setHearing(false)
-                setMicDenied(false)
-                return
-              }
-              setMicBusy(true)
-              const ok = await startLocalMic()
-              setMicBusy(false)
-              setMicOn(ok)
-              setMicDenied(!ok)
-              if (ok) setSrc('local')
-            }}
-          >
-            {micOn ? '⏹ Stop mic' : micBusy ? 'Asking…' : '🎙 Use my mic'}
-          </button>
+          <div className="viz-row viz-row-wide">
+            <label className="appearance-slider">
+              <span className="muted">Sensitivity</span>
+              <input
+                type="range"
+                min={0.5}
+                max={4}
+                step={0.1}
+                value={gain}
+                onChange={(e) => setGain(Number(e.target.value))}
+              />
+              <span className="appearance-slider-val">{gain.toFixed(1)}×</span>
+            </label>
+            <label className="appearance-slider">
+              <span className="muted" title="How much of each frame lingers">
+                Trails
+              </span>
+              <input
+                type="range"
+                min={0}
+                max={0.97}
+                step={0.01}
+                value={trail}
+                onChange={(e) => setTrail(Number(e.target.value))}
+              />
+              <span className="appearance-slider-val">{Math.round(trail * 100)}%</span>
+            </label>
+          </div>
 
-          {/* Only once the mic is on: a playback toggle with nothing to play back is a control
-              that appears to be broken. */}
-          {micOn && (
+          <div className="viz-row viz-row-wide">
+            <span className="muted viz-tool-label">Mirror</span>
+            <div className="viz-mirrors">
+              {MIRRORS.map(([n, label]) => (
+                <button
+                  key={n}
+                  className={'btn' + (mirror === n ? ' is-on' : '')}
+                  aria-pressed={mirror === n}
+                  data-active={mirror === n || undefined}
+                  onClick={() => setMirror(n)}
+                  title={n === 1 ? 'No symmetry' : `${n}-fold kaleidoscope`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+
             <button
               className="btn"
-              aria-pressed={hearing}
-              onClick={() => {
-                const next = !hearing
-                setMonitor(next)
-                setHearing(next)
+              aria-pressed={micOn}
+              disabled={micBusy}
+              onClick={async () => {
+                if (micOn) {
+                  stopLocalMic()
+                  setMicOn(false)
+                  setHearing(false)
+                  setMicDenied(false)
+                  return
+                }
+                setMicBusy(true)
+                const ok = await startLocalMic()
+                setMicBusy(false)
+                setMicOn(ok)
+                setMicDenied(!ok)
+                if (ok) setSrc('local')
               }}
-              title={
-                hearing ? 'Stop playing your mic back' : 'Play your mic back so you can hear it'
-              }
             >
-              {hearing ? '🔇 Stop listening' : '🎧 Hear myself'}
+              {micOn ? '⏹ Stop mic' : micBusy ? 'Asking…' : '🎙 Use my mic'}
             </button>
+
+            {micOn && (
+              <button
+                className="btn"
+                aria-pressed={hearing}
+                onClick={() => {
+                  const next = !hearing
+                  setMonitor(next)
+                  setHearing(next)
+                }}
+                title={hearing ? 'Stop playing your mic back' : 'Play your mic back to hear it'}
+              >
+                {hearing ? '🔇 Stop listening' : '🎧 Hear myself'}
+              </button>
+            )}
+
+            <button
+              className="btn"
+              onClick={() => {
+                setSrc('ring')
+                playCallSound('ring')
+              }}
+            >
+              🔔 Ringtone
+            </button>
+          </div>
+
+          {hearing && (
+            <p className="muted viz-note viz-warn">
+              ⚠️ Headphones — on speakers your mic will hear itself and start to howl.
+            </p>
           )}
-
-          <button
-            className="btn"
-            onClick={() => {
-              setSrc('ring')
-              playCallSound('ring')
-            }}
-          >
-            🔔 Ringtone
-          </button>
-        </div>
-
-        {hearing && (
-          <p className="muted viz-note viz-warn">
-            ⚠️ Headphones — on speakers your mic will hear itself and start to howl.
-          </p>
-        )}
-        {micDenied && (
+          {micDenied && (
+            <p className="muted viz-note">
+              No microphone — the browser said no, or there isn’t one. Nothing was recorded either
+              way.
+            </p>
+          )}
           <p className="muted viz-note">
-            No microphone — the browser said no, or there isn’t one. Nothing was recorded either
-            way.
+            Nothing here is recorded or sent anywhere. The mic is read on this device and thrown
+            away frame by frame.
           </p>
-        )}
-        <p className="muted viz-note">
-          Nothing here is recorded or sent anywhere. The mic is read on this device and thrown away
-          frame by frame.
-        </p>
-      </div>
+        </div>
+      )}
     </section>
   )
 }
