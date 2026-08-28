@@ -4010,6 +4010,11 @@ select {
 .site-backdrop canvas {
   display: block;
 }
+/* inside the canvas surface, which paints its own ground above any fixed layer */
+.site-backdrop.is-inline {
+  position: absolute;
+  z-index: 0;
+}
 
 /* The look editor. Wide rows rather than the cog's ~230px column: this is the one place there
    is room to show every flair at once instead of hiding them behind a dropdown. */

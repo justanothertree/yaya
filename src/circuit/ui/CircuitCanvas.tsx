@@ -9,6 +9,8 @@ import { showToast } from '../toast'
 import { site } from '../../config/site'
 import { IconGitHub, IconLinkedIn } from '../../components/Icons'
 import { AmbientBackdrop } from '../../components/AmbientBackdrop'
+import { SiteBackdrop } from '../../profile/SiteBackdrop'
+import type { BackdropId } from '../../profile/backdrops'
 import { GAP, SNAP_PX, snapAxis } from './snapping'
 
 export type CanvasPane = { id: string; title: string; node: ReactNode }
@@ -160,7 +162,7 @@ export function CircuitCanvas({
   pinnedIds = [],
   onTogglePin,
   toolbar,
-  ambientOn = true,
+  background = 'glow',
   launchableWindows = [],
   launcherOpenIds = [],
   onToggleWindow,
@@ -173,7 +175,8 @@ export function CircuitCanvas({
   /** the same cog toggle that drives the page's own ambient glow — read as a prop, not a
    * second localStorage read, so switching it while canvas is already open takes effect
    * immediately instead of only on the next remount */
-  ambientOn?: boolean
+  /** which background the site is set to — the canvas has to draw it INSIDE its own surface */
+  background?: BackdropId
   /**
    * Page-specific controls that belong to the canvas chrome. The surface is a fixed
    * full-viewport panel, so anything the page renders behind it is invisible — the
@@ -1800,7 +1803,8 @@ export function CircuitCanvas({
             borderRadius: 10,
           }}
         >
-          {ambientOn && <AmbientBackdrop inline section="home" theme="" enabled />}
+          {background === 'glow' && <AmbientBackdrop inline section="home" theme="" enabled />}
+          <SiteBackdrop id={background} inline />
           {/* the site's signature, canvas edition — copyright, build and socials were the
               one thing full-screen canvas hid entirely. Bottom-right, under the windows. */}
           <div

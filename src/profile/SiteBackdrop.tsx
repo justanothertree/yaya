@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { makeEffect, type BackdropId, type Paint } from './backdrops'
 import { motionReduced, onMotionChange } from '../ui/motion'
@@ -23,13 +23,23 @@ import { motionReduced, onMotionChange } from '../ui/motion'
  *   - pointer only on a fine pointer. There is no hovering cursor on a phone, so the interactive
  *     half is a desktop thing by nature rather than something withheld.
  */
-export function SiteBackdrop({ id }: { id: BackdropId }) {
+export function SiteBackdrop({ id, inline = false }: { id: BackdropId; inline?: boolean }) {
   const ref = useRef<HTMLCanvasElement | null>(null)
   const holder = useRef<HTMLDivElement | null>(null)
+  /**
+   * ⚠️ Motion has to be STATE, not a function call read once.
+   *
+   * Both the render and the effect asked motionReduced() directly, so turning reduce motion back
+   * off did nothing until a reload: the render did produce the element again, but the effect's
+   * only dependency was `id`, which had not changed — so nothing ever started the loop. Watching
+   * it here re-renders AND re-runs the effect on the same change, which is what makes the switch
+   * take effect immediately in both directions.
+   */
+  const [reduced, setReduced] = useState(() => motionReduced())
+  useEffect(() => onMotionChange(() => setReduced(motionReduced())), [])
 
   useEffect(() => {
-    if (id === 'none' || id === 'glow') return
-    if (motionReduced()) return
+    if (id === 'none' || id === 'glow' || reduced) return
     const host = holder.current
     const cv = ref.current
     if (!host || !cv) return
@@ -133,10 +143,6 @@ export function SiteBackdrop({ id }: { id: BackdropId }) {
     }
 
     // the palette can change under us — the look editor is right there, changing it live
-    const offMotion = onMotionChange(() => {
-      if (motionReduced()) stop()
-      else start()
-    })
     const repaint = () => {
       colours = paint()
     }
@@ -152,21 +158,28 @@ export function SiteBackdrop({ id }: { id: BackdropId }) {
       host.removeEventListener('pointermove', onMove)
       host.removeEventListener('pointerleave', onLeave)
       window.removeEventListener('yaya:palette', repaint)
-      offMotion()
     }
-  }, [id])
+  }, [id, reduced])
 
   // glow is the older AmbientBackdrop component, not a canvas effect from backdrops.ts
-  if (id === 'none' || id === 'glow' || motionReduced()) return null
+  if (id === 'none' || id === 'glow' || reduced) return null
   /**
    * Portalled to <body> as a fixed layer at z-index -1, exactly where the ambient glow sits.
    * These two are alternatives for the same slot, so they must occupy the same one — a backdrop
    * that painted inside the page would scroll with it and sit above the ground the glow uses.
    */
-  return createPortal(
-    <div ref={holder} className="site-backdrop" aria-hidden>
+  const layer = (
+    <div ref={holder} className={'site-backdrop' + (inline ? ' is-inline' : '')} aria-hidden>
       <canvas ref={ref} />
-    </div>,
-    document.body,
+    </div>
   )
+  /**
+   * ⚠️ Inline inside the canvas, portalled everywhere else.
+   *
+   * The canvas overlay paints its own `--bg` at z-index 50 across the whole viewport, so a fixed
+   * layer at z-index -1 is simply behind it and invisible — which is exactly why backgrounds did
+   * nothing in canvas mode. The ambient glow already solved this with the same `inline` prop;
+   * this follows it rather than inventing a second answer.
+   */
+  return inline ? layer : createPortal(layer, document.body)
 }
