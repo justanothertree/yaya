@@ -795,6 +795,20 @@
   background: var(--accent, #22c55e);
   border: 2px solid var(--bg, #0b0f19);
 }
+/* Away is a HOLLOW dot, not just a different colour — the two states have to be tellable
+   apart by shape as well, or the only difference is a hue and that is invisible to a good
+   share of people. */
+.cz-person-online[data-status='away'] {
+  background: transparent;
+  box-shadow: inset 0 0 0 2px var(--accent, #22c55e);
+}
+/* the cog's footnote under the status picker */
+.nav-menu-note {
+  margin: 0.1rem 0 0.4rem;
+  padding: 0 0.15rem;
+  font-size: 0.72rem;
+  line-height: 1.35;
+}
 .cz-person-text {
   display: flex;
   flex-direction: column;

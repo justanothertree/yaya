@@ -20,6 +20,7 @@ import { useReveal } from './hooks/useReveal'
 import { useNotifications, type Notice } from './hooks/useNotifications'
 import { useVoicePresence } from './voice/useVoicePresence'
 import { armRingtone, playCallSound } from './voice/ringtone'
+import { startIdleWatch } from './hooks/presenceStatus'
 import { useVoiceSession } from './voice/useVoiceSession'
 import { NotificationBell } from './components/NotificationBell'
 import { hasFinanceSupabaseEnv } from './finance/env'
@@ -591,6 +592,9 @@ export default function App() {
    */
   const rangFor = useRef<Set<string>>(new Set())
   useEffect(() => armRingtone(), [])
+  // one idle watch for the whole app, so "away" happens on its own after a few quiet
+  // minutes rather than only when somebody remembers to set it
+  useEffect(() => startIdleWatch(), [])
   useEffect(() => {
     const live = new Set(callNotices.map((n) => n.id))
     for (const n of callNotices) {

@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { playCallSound, ringtoneEnabled, setRingtoneEnabled } from '../voice/ringtone'
 
+import { myStatus, setMyStatus, STATUS_OPTIONS, type MyStatus } from '../hooks/presenceStatus'
+
 export type Theme = 'light' | 'dark' | 'alt'
 
 /**
@@ -72,6 +74,8 @@ export function SettingsMenu({
   onSignOut: () => void
 }) {
   const [open, setOpen] = useState(false)
+  // mirrored into state so the row re-renders on a change; presenceStatus is the source of truth
+  const [status, setStatus] = useState<MyStatus>(myStatus)
   /** the palette editor is collapsed by default — it's the one control here with real depth */
   /** same reasoning as palOpen: a dozen style tiles inline turned the whole cog menu into a
    * scroll every time flair was on, so picking a style opens its own dialog instead */
@@ -209,6 +213,48 @@ export function SettingsMenu({
               </button>
             </span>
           </div>
+
+          {/**
+           * ⚠️ Only for people who HAVE an audience. Presence is broadcast to accepted friends
+           * and circuit-mates; a signed-out visitor announces nothing to anyone, so a control
+           * implying otherwise would be theatre.
+           */}
+          {authed && (
+            <div className="nav-menu-row is-static">
+              <span title="Who sees you as online — accepted friends and circuit-mates">
+                Status
+              </span>
+              <span className="nav-menu-steps">
+                {STATUS_OPTIONS.map(([id, icon, label]) => (
+                  <button
+                    key={id}
+                    className={'btn' + (status === id ? ' is-on' : '')}
+                    aria-pressed={status === id}
+                    aria-label={label}
+                    title={
+                      id === 'invisible'
+                        ? 'Appear offline. Nothing is broadcast at all — not hidden, not sent.'
+                        : id === 'away'
+                          ? 'Shown as away, even while you are here'
+                          : 'Shown as online (and as away after a few idle minutes)'
+                    }
+                    onClick={() => {
+                      setStatus(id)
+                      setMyStatus(id)
+                    }}
+                  >
+                    {icon}
+                  </button>
+                ))}
+              </span>
+            </div>
+          )}
+          {authed && status === 'invisible' && (
+            <p className="nav-menu-note muted">
+              Invisible on this device — nothing is broadcast from this browser at all. Other
+              devices you are signed in on announce themselves separately.
+            </p>
+          )}
 
           <div className="nav-menu-row is-static">
             <span>Theme</span>

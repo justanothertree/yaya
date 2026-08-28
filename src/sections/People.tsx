@@ -185,8 +185,15 @@ export function People({ authed = false }: { authed?: boolean }) {
             to is recognisable before you've read the name. */}
         <span className="cz-person-av" aria-hidden style={avatarStyle(p.username)}>
           {(p.name[0] ?? '★').toUpperCase()}
+          {/* A missing entry covers offline AND invisible with one answer, deliberately: if
+              those two rendered differently, invisible would be detectable and therefore
+              pointless. See usePresence. */}
           {!!p.user_id && online[p.user_id] && (
-            <span className="cz-person-online" title="Online now" />
+            <span
+              className="cz-person-online"
+              data-status={online[p.user_id]}
+              title={online[p.user_id] === 'away' ? 'Away' : 'Online now'}
+            />
           )}
         </span>
         <span className="cz-person-text">
