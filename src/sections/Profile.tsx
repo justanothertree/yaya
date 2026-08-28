@@ -10,6 +10,7 @@ import { isBackdropId, setBackdropOverride, type BackdropId } from '../profile/b
 import { SiteBackdrop } from '../profile/SiteBackdrop'
 import { InCanvasWindow } from '../circuit/ui/canvasContext'
 import { setPaneLook } from '../circuit/ui/paneLook'
+import { ProfileCall } from '../voice/ProfileCall'
 import {
   ProfileBlocksEditor,
   ProfileBlocksView,
@@ -605,6 +606,10 @@ export function Profile({ authed, username }: { authed: boolean; username?: stri
           </span>
         )}
       </div>
+
+      {/* A call that lives on this page. Renders nothing at all for a visitor with no call to
+          join — which is also, deliberately, what somebody excluded from a private one sees. */}
+      <ProfileCall username={p.username} displayName={display} isMe={p.is_me} />
 
       {/* Optional customization -- only exists on the page at all once there's something to
           show. The editor and the read view are never both mounted: editing shows the working

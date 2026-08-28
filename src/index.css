@@ -802,6 +802,63 @@
   background: transparent;
   box-shadow: inset 0 0 0 2px var(--accent, #22c55e);
 }
+/* ── a call on a profile ────────────────────────────────────────────── */
+.profile-call {
+  display: grid;
+  gap: 0.55rem;
+}
+.profile-call-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+/* the audience, stated plainly next to the title: who can hear this is the one thing you
+   should never have to go looking for */
+.profile-call-tier {
+  font-size: 0.78rem;
+}
+.profile-call-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+.profile-call-note {
+  margin: 0;
+  font-size: 0.82rem;
+}
+.profile-call-guests {
+  display: grid;
+  gap: 0.45rem;
+  border-top: 1px solid var(--border);
+  padding-top: 0.5rem;
+}
+.profile-call-invite {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+}
+.profile-call-invite input {
+  flex: 1 1 8rem;
+  min-width: 0;
+}
+.profile-call-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.3rem;
+}
+.profile-call-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  font-size: 0.88rem;
+}
+
 /* the cog's footnote under the status picker */
 .nav-menu-note {
   margin: 0.1rem 0 0.4rem;

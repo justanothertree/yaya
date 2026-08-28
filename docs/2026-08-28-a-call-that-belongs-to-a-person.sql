@@ -1,0 +1,92 @@
+-- 2026-08-28 — Voice channels that live on a profile.
+--
+-- The idea: your profile page can host a call. You open it either to everyone you have accepted
+-- as a friend, or to exactly the people you name.
+--
+--
+-- WHY NOT chat_rooms.kind = 'profile'
+--
+-- That was the shorter path and it would have leaked. list_chat_overview() returns every room
+-- where chat_room_member() is true, so every profile call would have turned up in people's DM
+-- list; chat_messages RLS keys off the same function, so each call would also have quietly become
+-- a text room nobody asked for. Overloading a table means auditing every consumer of that table
+-- and hoping you found them all. A separate table means the only thing that has to be right is
+-- the new gate — so that is what was built.
+--
+-- The realtime topic namespace is NOT separate, deliberately: voice:<uuid> still routes through
+-- voice_topic_member(), which now asks both room systems. The client has no idea two kinds of
+-- room exist, which keeps voiceSession out of the permission story entirely.
+--
+--
+-- THE GATE IS THE WHOLE THING
+--
+-- profile_room_member() decides everything, and it is what RLS calls on the realtime topic. That
+-- placement is the point: knowing a room's uuid must never be enough to join it, because the id
+-- is not a secret — it travels in the client and appears in a topic name. An uninvited person is
+-- refused by Postgres whether or not a Join button was ever rendered for them, and whether or not
+-- they are running our client at all. Deleting the entire UI would change nothing about who can
+-- hear whom.
+--
+-- Rules, in order:
+--   owner        — always, even while closed (you have to be able to get into your own room)
+--   closed       — nobody else, whatever the audience says
+--   'friends'    — accepted friendships only, never a pending request (same rule as presence,
+--                  see 2026-08-28-a-request-is-not-consent-to-be-watched.sql)
+--   'private'    — named invitees only
+--   an invite    — always works, whatever the audience is set to; it is an explicit grant
+--   suspended    — never, on either side
+--
+-- 'members' and 'public' are REFUSED by open_profile_room rather than clamped. Silently
+-- narrowing would tell you your call is more private than it is; silently allowing would be
+-- worse. Both failures are the kind you only notice after saying something.
+--
+--
+-- SILENCE FOR OUTSIDERS
+--
+-- get_profile_room() returns NO ROW when you may not join, rather than a row that says "there is
+-- a call here but you are not welcome". That sentence is itself the private fact: "she is on a
+-- private call right now" is information she did not choose to publish. An outsider's answer is
+-- byte-identical to "there is no call", which is the only version of that promise that can
+-- actually be kept.
+--
+-- The same reasoning governs the UI: for a visitor with nothing to join, the component renders
+-- nothing whatsoever — no greyed-out button, no "private call in progress" placeholder.
+--
+--
+-- CLOSING DROPS THE GUEST LIST
+--
+-- close_profile_room() deletes the invites and resets the audience to 'friends'. A guest list is
+-- for one evening. Leaving it in place would silently re-admit everyone the next time the room
+-- opened, which is exactly the sort of permission that outlives the reason for it.
+--
+--
+-- RLS: ENABLED, NO POLICIES
+--
+-- Both tables are deny-all, and every legitimate read and write goes through the SECURITY
+-- DEFINER functions. This keeps the audience rules in ONE place. The alternative — policies that
+-- restate the same logic — gives you two copies to keep in step, and they drift; that drift is
+-- precisely what caused the presence bug documented alongside this file.
+--
+--
+-- VERIFIED (adversarially, against real accounts)
+--
+--   friends call  · accepted friend        → in, and the realtime topic accepts them
+--   friends call  · stranger               → out, and get_profile_room returns zero rows
+--   private call  · accepted, uninvited    → out, and get_profile_room returns zero rows
+--   private call  · invited                → in
+--   closed        · previously invited     → out, and the realtime topic refuses them
+--
+-- Test rooms were deleted afterwards; the tables are empty.
+--
+--
+-- ONE FIX ALREADY APPLIED
+--
+-- profile_room_member() was created without an explicit grant, so it kept Postgres' default of
+-- EXECUTE to PUBLIC and PostgREST exposed it at /rest/v1/rpc/profile_room_member for `anon`.
+-- Every other gate here (chat_room_member, voice_topic_member, presence_topic_member) is
+-- authenticated-only. Now revoked to match — see the migration
+-- profile_room_member_is_a_gate_not_an_endpoint. The practical leak was small, since it only
+-- answers "may I join", but a gate reachable as an endpoint is a probe oracle by default.
+
+-- (Applied as migrations: profile_voice_rooms_owned_and_gated_server_side,
+--  profile_voice_room_rpcs, profile_room_member_is_a_gate_not_an_endpoint.)
