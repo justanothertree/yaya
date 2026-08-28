@@ -190,6 +190,19 @@ export function Profile({
   const theirLook =
     state.kind === 'ok' && (wearTheirLook || state.p.is_me) ? (state.p.look ?? null) : null
   /**
+   * ⚠️ YOUR OWN PAGE IS NOT SOMEONE ELSE'S LOOK.
+   *
+   * `theirLook` includes is_me, because your own profile should render in your own colours — but
+   * on your page that value is the copy the SERVER sent when the page loaded, and your live
+   * settings are the truth. Anything that overrides a live setting with it pins the page to a
+   * stale answer: changing your background from the look editor did nothing until a reload,
+   * because the override kept winning with the value from before you changed it.
+   *
+   * Nothing needs overriding on your own page anyway. Your palette is already on <html> and your
+   * background is already the one the site is drawing.
+   */
+  const isMyPage = state.kind === 'ok' && state.p.is_me
+  /**
    * A profile is either the whole page or one window on the canvas, and their look belongs to
    * whichever of those it is. As a page it repaints the page; as a window it repaints the
    * window and leaves the rest of the canvas alone.
@@ -223,10 +236,10 @@ export function Profile({
    * override, for the same reason.
    */
   useEffect(() => {
-    if (!theirLook) return
+    if (!theirLook || isMyPage) return
     setBackdropOverride(isBackdropId(theirLook.backdrop) ? theirLook.backdrop : 'none')
     return () => setBackdropOverride(null)
-  }, [theirLook])
+  }, [theirLook, isMyPage])
 
   /**
    * Hand the look up to the window, so the WHOLE window wears it.
@@ -238,7 +251,9 @@ export function Profile({
    */
   useEffect(() => {
     if (!inCanvasWindow || !paneId) return
-    if (!theirLook) {
+    // your own window already inherits your live palette from <html>; publishing the server's
+    // copy over it would freeze the window at whatever it was when the page loaded
+    if (!theirLook || isMyPage) {
       setPaneLook(paneId, null)
       return
     }
@@ -247,7 +262,7 @@ export function Profile({
       theme: theirLook.palette ? null : (theirLook.theme ?? null),
     })
     return () => setPaneLook(paneId, null)
-  }, [inCanvasWindow, paneId, theirLook])
+  }, [inCanvasWindow, paneId, theirLook, isMyPage])
 
   /**
    * ⚠️ PAGE MODE ONLY. Standing on its own, a profile IS the page, so their palette goes where
