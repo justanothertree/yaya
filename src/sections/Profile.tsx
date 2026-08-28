@@ -6,7 +6,6 @@ import { previewMember, PREVIEW_PROFILES } from '../dev/previewMember'
 import { applyPalette, derivePalette, loadPalette } from '../theme/customTheme'
 import { previewClickFx, setClickFxScope, type FxStyle } from '../ui/clickFx'
 import { beatLink } from '../game/challenge'
-import { ProfileLookEditor, type LookControls } from './ProfileLookEditor'
 import { isBackdropId, setBackdropOverride, type BackdropId } from '../profile/backdrops'
 import { SiteBackdrop } from '../profile/SiteBackdrop'
 import { InCanvasWindow } from '../circuit/ui/canvasContext'
@@ -59,13 +58,7 @@ type Person = { username: string; name: string; is_friend: boolean }
 /** viewer's choice: do other people's themes apply on their pages */
 const LOOK_KEY = 'profile_wear_their_look_v1'
 
-export function Profile({
-  authed,
-  lookControls,
-}: {
-  authed: boolean
-  lookControls?: LookControls
-}) {
+export function Profile({ authed }: { authed: boolean }) {
   const [u, setU] = useState(userFromHash)
   const [people, setPeople] = useState<Person[]>([])
   const [state, setState] = useState<
@@ -184,25 +177,22 @@ export function Profile({
    * a picture. Restoring reads the viewer's own choice from the same key App persists it to,
    * which keeps this self-contained — Profile never needs to be handed the visitor's settings.
    */
+  /**
+   * ⚠️ SOMEONE ELSE'S LOOK ONLY. Your own page used to be included here, on the reasoning that it
+   * should render in your own colours — but your colours are already on <html>, so it inherits
+   * them for free. What including yourself actually did was pin the page to the copy the SERVER
+   * sent at load: the wrapper wore a stale palette and the flair scope a stale style, so changing
+   * either while your profile was open did nothing until a refetch. In a canvas window, where the
+   * page never reloads on navigation, that meant a full refresh.
+   *
+   * Nothing to apply on your own page, and nothing to go stale.
+   */
   const theirFlair =
-    state.kind === 'ok' && (wearTheirLook || state.p.is_me) ? (state.p.look?.flair ?? null) : null
+    state.kind === 'ok' && !state.p.is_me && wearTheirLook ? (state.p.look?.flair ?? null) : null
   // derived up here beside the flair, and for the same reason: it drives a hook, and a hook
   // cannot sit below the loading / missing / error returns further down
   const theirLook =
-    state.kind === 'ok' && (wearTheirLook || state.p.is_me) ? (state.p.look ?? null) : null
-  /**
-   * ⚠️ YOUR OWN PAGE IS NOT SOMEONE ELSE'S LOOK.
-   *
-   * `theirLook` includes is_me, because your own profile should render in your own colours — but
-   * on your page that value is the copy the SERVER sent when the page loaded, and your live
-   * settings are the truth. Anything that overrides a live setting with it pins the page to a
-   * stale answer: changing your background from the look editor did nothing until a reload,
-   * because the override kept winning with the value from before you changed it.
-   *
-   * Nothing needs overriding on your own page anyway. Your palette is already on <html> and your
-   * background is already the one the site is drawing.
-   */
-  const isMyPage = state.kind === 'ok' && state.p.is_me
+    state.kind === 'ok' && !state.p.is_me && wearTheirLook ? (state.p.look ?? null) : null
   /**
    * A profile is either the whole page or one window on the canvas, and their look belongs to
    * whichever of those it is. As a page it repaints the page; as a window it repaints the
@@ -251,10 +241,10 @@ export function Profile({
   const theirBackdrop: BackdropId =
     theirLook && isBackdropId(theirLook.backdrop) ? theirLook.backdrop : 'none'
   useEffect(() => {
-    if (!theirLook || isMyPage || inCanvasWindow) return
+    if (!theirLook || inCanvasWindow) return
     setBackdropOverride(theirBackdrop)
     return () => setBackdropOverride(null)
-  }, [theirLook, isMyPage, inCanvasWindow, theirBackdrop])
+  }, [theirLook, inCanvasWindow, theirBackdrop])
 
   /**
    * Hand the look up to the window, so the WHOLE window wears it.
@@ -266,9 +256,7 @@ export function Profile({
    */
   useEffect(() => {
     if (!inCanvasWindow || !paneId) return
-    // your own window already inherits your live palette from <html>; publishing the server's
-    // copy over it would freeze the window at whatever it was when the page loaded
-    if (!theirLook || isMyPage) {
+    if (!theirLook) {
       setPaneLook(paneId, null)
       return
     }
@@ -277,7 +265,7 @@ export function Profile({
       theme: theirLook.palette ? null : (theirLook.theme ?? null),
     })
     return () => setPaneLook(paneId, null)
-  }, [inCanvasWindow, paneId, theirLook, isMyPage])
+  }, [inCanvasWindow, paneId, theirLook])
 
   /**
    * ⚠️ PAGE MODE ONLY. Standing on its own, a profile IS the page, so their palette goes where
@@ -603,9 +591,6 @@ export function Profile({
       {/* Optional customization -- only exists on the page at all once there's something to
           show. The editor and the read view are never both mounted: editing shows the working
           copy being arranged, done-editing shows what was actually saved. */}
-      {/* Above the block arranger, because "how does my page look" is the question people
-          come here with; rearranging what is on it is the one they get to second. */}
-      {p.is_me && editing && lookControls && <ProfileLookEditor look={lookControls} />}
       {p.is_me && editing ? (
         <ProfileBlocksEditor
           initial={blocks}

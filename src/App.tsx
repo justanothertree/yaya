@@ -1213,25 +1213,7 @@ export default function App() {
       case 'people':
         return <People authed={isFinanceAuthed || previewMember} />
       case 'profile':
-        return (
-          <Profile
-            authed={isFinanceAuthed}
-            /* the same values and the same setters the cog uses — your profile look IS your site
-               look, and giving the editor its own copy would be two sources of truth */
-            lookControls={{
-              theme,
-              onTheme: setTheme,
-              sparksOn,
-              onToggleSparks: () => setSparksOn((v) => !v),
-              sparksStyle,
-              onSparksStyle: setSparksStyle,
-              customPalette,
-              onCustomPalette: setCustomPalette,
-              backdrop: background,
-              onBackdrop: chooseBackground,
-            }}
-          />
-        )
+        return <Profile authed={isFinanceAuthed} />
       default:
         return null
     }
