@@ -3203,6 +3203,24 @@ select {
   border: 2px solid currentColor;
   background: none;
 }
+/* the little ring a droplet makes where it lands */
+.click-fx-ripple-sm {
+  width: 18px;
+  height: 18px;
+  border-width: 1px;
+}
+/* the impact point of broken glass — dark, so cracks radiate from something */
+.click-fx-hole {
+  width: 9px;
+  height: 9px;
+  background: rgba(0, 0, 0, 0.55);
+}
+/* a chord of the crack web: straight, thin, and rotated between two radials */
+.click-fx-chord {
+  height: 1.5px;
+  border-radius: 0;
+  transform-origin: 50% 50%;
+}
 .click-fx-drop {
   width: 7px;
   height: 7px;

@@ -41,6 +41,18 @@ const TIER_LABEL: Record<Tier, string> = {
 const userFromHash = () =>
   new URLSearchParams(window.location.hash.split('?')[1] ?? '').get('u') ?? ''
 
+/**
+ * `#profile?u=me&edit=look` opens straight into the look editor.
+ *
+ * The backdrop and flair pickers live behind "Customize page" on your own profile, which is the
+ * right home for them — they change that page and you watch it change. It is not, however, where
+ * anyone looks for a setting: the cog is. So the cog links here rather than growing a duplicate
+ * copy of the controls, and this is what makes that link land somewhere useful instead of on a
+ * page with a button you still have to find.
+ */
+const editFromHash = () =>
+  new URLSearchParams(window.location.hash.split('?')[1] ?? '').get('edit') === 'look'
+
 type Person = { username: string; name: string; is_friend: boolean }
 
 /** viewer's choice: do other people's themes apply on their pages */
@@ -67,7 +79,7 @@ export function Profile({
   const [blocks, setBlocks] = useState<ProfileBlock[]>([])
   const [activity, setActivity] = useState<ActivityItem[]>([])
   const [trophies, setTrophies] = useState<ProfileTrophy[]>([])
-  const [editing, setEditing] = useState(false)
+  const [editing, setEditing] = useState(editFromHash)
   /**
    * Whether to wear other people's looks at all.
    *
@@ -110,7 +122,10 @@ export function Profile({
   // moving between profiles changes only the ?u= — the section stays 'profile', so App
   // won't remount us; track the hash ourselves
   useEffect(() => {
-    const onHash = () => setU(userFromHash())
+    const onHash = () => {
+      setU(userFromHash())
+      if (editFromHash()) setEditing(true)
+    }
     window.addEventListener('hashchange', onHash)
     return () => window.removeEventListener('hashchange', onHash)
   }, [])

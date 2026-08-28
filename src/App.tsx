@@ -1564,6 +1564,15 @@ export default function App() {
                     }
                   : undefined
               }
+              onProfileLook={
+                me.username
+                  ? () => {
+                      window.location.hash =
+                        '#profile?u=' + encodeURIComponent(me.username!) + '&edit=look'
+                      goTo('profile')
+                    }
+                  : undefined
+              }
               onSignIn={() => goTo('signin')}
               onSignOut={() => {
                 void signOut().catch(() => {

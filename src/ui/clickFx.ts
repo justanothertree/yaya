@@ -571,61 +571,122 @@ function beam(host: HTMLElement, x: number, y: number) {
 }
 
 /**
- * Broken glass: the CRACKS are the effect, the shards are the aftermath.
+ * Broken glass — a bullet hole, not a starburst.
  *
- * Deliberately not a recoloured `shatter`. That one throws triangles outward and reads as
- * confetti with corners; this one draws fracture lines that shoot out FROM the point of impact
- * and stay put while a few pieces fall away, which is what actually says "something broke here".
- * The lines grow from a transform-origin at the click rather than translating, so they behave
- * like cracks propagating instead of sticks flying.
+ * ⚠️ The first version was radial lines only, and radial lines are what `beam` already is: same
+ * shape, same motion, different name. What actually distinguishes cracked glass is the WEB —
+ * short chords running between neighbouring cracks at a few radii, which is the thing your eye
+ * reads as "this pane is broken" rather than "something is shining". So the chords are the
+ * effect and the radials are the scaffolding they hang on.
+ *
+ * The impact point stays dark for a moment too. Real breakage has a hole at the centre; without
+ * it the cracks look like they are radiating from nothing.
  */
 function glass(host: HTMLElement, x: number, y: number) {
   const [a, b] = palette()
   const nodes: HTMLElement[] = []
   const anims: Animation[] = []
 
-  const CRACKS = 6
-  for (let i = 0; i < CRACKS; i++) {
-    const angle = (i / CRACKS) * 360 + (Math.random() - 0.5) * 26
-    const len = 26 + Math.random() * 30
+  // the hole: a small dark core that lingers under everything else
+  const hole = mk('click-fx-hole', x, y)
+  nodes.push(hole)
+  anims.push(
+    hole.animate(
+      [
+        { transform: 'translate(-50%, -50%) scale(0.2)', opacity: 0.9 },
+        { transform: 'translate(-50%, -50%) scale(1)', opacity: 0.75, offset: 0.2 },
+        { transform: 'translate(-50%, -50%) scale(1.1)', opacity: 0 },
+      ],
+      { duration: 560, easing: 'ease-out', fill: 'forwards' },
+    ),
+  )
+
+  const RAYS = 7
+  const angles: number[] = []
+  for (let i = 0; i < RAYS; i++) {
+    const deg = (i / RAYS) * 360 + (Math.random() - 0.5) * 30
+    angles.push(deg)
+    const len = 24 + Math.random() * 30
     const c = mk('click-fx-crack', x, y)
     c.style.width = len + 'px'
     c.style.background = i % 2 ? b : a
-    c.style.transform = `rotate(${angle}deg)`
     nodes.push(c)
     anims.push(
       c.animate(
         [
-          { transform: `rotate(${angle}deg) scaleX(0)`, opacity: 1 },
-          { transform: `rotate(${angle}deg) scaleX(1)`, opacity: 1, offset: 0.25 },
-          { transform: `rotate(${angle}deg) scaleX(1)`, opacity: 0 },
+          { transform: `rotate(${deg}deg) scaleX(0)`, opacity: 1 },
+          { transform: `rotate(${deg}deg) scaleX(1)`, opacity: 1, offset: 0.22 },
+          { transform: `rotate(${deg}deg) scaleX(1)`, opacity: 0 },
         ],
         {
-          duration: 420 + Math.random() * 160,
-          easing: 'cubic-bezier(0.1, 0.9, 0.2, 1)',
+          duration: 460 + Math.random() * 160,
+          easing: 'cubic-bezier(0.05, 0.9, 0.15, 1)',
           fill: 'forwards',
         },
       ),
     )
   }
 
-  for (let i = 0; i < 5; i++) {
+  // the web: chords between neighbouring cracks, at two radii. This is the part that makes it
+  // glass rather than a starburst.
+  for (let ring = 0; ring < 2; ring++) {
+    const r = 13 + ring * 13
+    for (let i = 0; i < RAYS; i++) {
+      const d1 = (angles[i] * Math.PI) / 180
+      const d2 = (angles[(i + 1) % RAYS] * Math.PI) / 180
+      const x1 = x + Math.cos(d1) * r
+      const y1 = y + Math.sin(d1) * r
+      const x2 = x + Math.cos(d2) * r
+      const y2 = y + Math.sin(d2) * r
+      const mx = (x1 + x2) / 2
+      const my = (y1 + y2) / 2
+      const len = Math.hypot(x2 - x1, y2 - y1)
+      const deg = (Math.atan2(y2 - y1, x2 - x1) * 180) / Math.PI
+      const seg = mk('click-fx-chord', mx, my)
+      seg.style.width = len + 'px'
+      seg.style.background = a
+      nodes.push(seg)
+      anims.push(
+        seg.animate(
+          [
+            { transform: `translate(-50%, -50%) rotate(${deg}deg) scaleX(0)`, opacity: 0.85 },
+            {
+              transform: `translate(-50%, -50%) rotate(${deg}deg) scaleX(1)`,
+              opacity: 0.85,
+              offset: 0.35,
+            },
+            { transform: `translate(-50%, -50%) rotate(${deg}deg) scaleX(1)`, opacity: 0 },
+          ],
+          {
+            duration: 420 + Math.random() * 140,
+            // after the crack that carries it has arrived, so the web builds outward
+            delay: 40 + ring * 70,
+            easing: 'ease-out',
+            fill: 'forwards',
+          },
+        ),
+      )
+    }
+  }
+
+  for (let i = 0; i < 4; i++) {
     const angle = Math.random() * Math.PI * 2
-    const dist = 14 + Math.random() * 22
-    const p = mk('click-fx-shard', x, y)
-    p.style.background = i % 2 ? a : b
-    nodes.push(p)
+    const dist = 12 + Math.random() * 20
+    const pcs = mk('click-fx-shard', x, y)
+    pcs.style.background = i % 2 ? a : b
+    nodes.push(pcs)
     anims.push(
-      p.animate(
+      pcs.animate(
         [
           { transform: 'translate(-50%, -50%) translate(0, 0) rotate(0deg)', opacity: 0.9 },
           {
-            transform: `translate(-50%, -50%) translate(${Math.cos(angle) * dist}px, ${Math.sin(angle) * dist + 16}px) rotate(${(Math.random() - 0.5) * 320}deg)`,
+            transform: `translate(-50%, -50%) translate(${Math.cos(angle) * dist}px, ${Math.sin(angle) * dist + 18}px) rotate(${(Math.random() - 0.5) * 320}deg)`,
             opacity: 0,
           },
         ],
         {
-          duration: 460 + Math.random() * 180,
+          duration: 520 + Math.random() * 180,
+          delay: 90,
           easing: 'cubic-bezier(0.3, 0.6, 0.5, 1)',
           fill: 'forwards',
         },
@@ -636,57 +697,80 @@ function glass(host: HTMLElement, x: number, y: number) {
 }
 
 /**
- * Water: droplets thrown up on arcs, and a ripple left behind.
+ * Water — rings on a surface, with the droplets as garnish.
  *
- * The arc is the whole point and it needs THREE keyframes — up fast, over, down slow — because
- * two would draw a straight line and read as `sparks` in blue. Each droplet also stretches along
- * its flight and relaxes at the top, which is what sells it as liquid rather than a dot.
+ * ⚠️ The first version led with eight droplets on arcs, and eight things flying outward on arcs
+ * is `pop` with rounder particles. What says WATER is the concentric rings: a drop hitting a
+ * surface makes several, staggered, each expanding and flattening as it goes. So the rings are
+ * the effect now and the droplets support them — fewer of them, and each one lands and makes a
+ * small ring of its own, which is the detail that sells the surface as wet.
+ *
+ * Rings are flattened on Y because you are looking at the surface from an angle, not from
+ * directly overhead; a perfect circle reads as `sonar`.
  */
 function splash(host: HTMLElement, x: number, y: number) {
   const [a, b] = palette()
   const nodes: HTMLElement[] = []
   const anims: Animation[] = []
 
-  const ring = mk('click-fx-ripple', x, y)
-  ring.style.color = a
-  nodes.push(ring)
-  anims.push(
-    ring.animate(
-      [
-        { transform: 'translate(-50%, -50%) scale(0.2) scaleY(0.5)', opacity: 0.85 },
-        { transform: 'translate(-50%, -50%) scale(1.3) scaleY(0.5)', opacity: 0 },
-      ],
-      { duration: 520, easing: 'cubic-bezier(0.2, 0.7, 0.3, 1)', fill: 'forwards' },
-    ),
-  )
+  // three rings, staggered — one ring is a ping, several is a surface reacting
+  for (let i = 0; i < 3; i++) {
+    const ring = mk('click-fx-ripple', x, y)
+    ring.style.color = i === 1 ? b : a
+    nodes.push(ring)
+    anims.push(
+      ring.animate(
+        [
+          { transform: 'translate(-50%, -50%) scale(0.15) scaleY(0.45)', opacity: 0.9 },
+          { transform: `translate(-50%, -50%) scale(${0.9 + i * 0.45}) scaleY(0.45)`, opacity: 0 },
+        ],
+        {
+          duration: 620 + i * 160,
+          delay: i * 130,
+          easing: 'cubic-bezier(0.15, 0.75, 0.3, 1)',
+          fill: 'forwards',
+        },
+      ),
+    )
+  }
 
-  const N = 8
+  const N = 5
   for (let i = 0; i < N; i++) {
-    const spread = (i / (N - 1) - 0.5) * 70
-    const rise = 20 + Math.random() * 22
-    const fall = rise + 16 + Math.random() * 18
+    const spread = (i / (N - 1) - 0.5) * 62 + (Math.random() - 0.5) * 8
+    const rise = 18 + Math.random() * 20
+    const flight = 520 + Math.random() * 160
     const d = mk('click-fx-drop', x, y)
-    d.style.background = i % 3 === 0 ? b : a
+    d.style.background = i % 2 ? b : a
     nodes.push(d)
     anims.push(
       d.animate(
         [
           { transform: 'translate(-50%, -50%) translate(0, 0) scale(0.7, 1.4)', opacity: 1 },
           {
-            transform: `translate(-50%, -50%) translate(${spread * 0.6}px, ${-rise}px) scale(1.1, 0.9)`,
+            transform: `translate(-50%, -50%) translate(${spread * 0.55}px, ${-rise}px) scale(1.1, 0.9)`,
             opacity: 1,
             offset: 0.45,
           },
           {
-            transform: `translate(-50%, -50%) translate(${spread}px, ${fall}px) scale(0.6, 1.5)`,
+            transform: `translate(-50%, -50%) translate(${spread}px, 0px) scale(0.5, 1.6)`,
             opacity: 0,
           },
         ],
-        {
-          duration: 560 + Math.random() * 200,
-          easing: 'cubic-bezier(0.3, 0.1, 0.7, 1)',
-          fill: 'forwards',
-        },
+        { duration: flight, easing: 'cubic-bezier(0.3, 0.1, 0.7, 1)', fill: 'forwards' },
+      ),
+    )
+
+    // where it comes back down, a small ring of its own — the bit that reads as a wet surface
+    const land = mk('click-fx-ripple click-fx-ripple-sm', x + spread, y)
+    land.style.color = a
+    nodes.push(land)
+    anims.push(
+      land.animate(
+        [
+          { transform: 'translate(-50%, -50%) scale(0.1) scaleY(0.4)', opacity: 0.7 },
+          { transform: 'translate(-50%, -50%) scale(1) scaleY(0.4)', opacity: 0 },
+        ],
+        { duration: 380, delay: flight * 0.92, easing: 'ease-out', fill: 'forwards' },
       ),
     )
   }

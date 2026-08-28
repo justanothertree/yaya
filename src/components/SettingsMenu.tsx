@@ -48,6 +48,7 @@ export function SettingsMenu({
   email,
   onAccount,
   onProfile,
+  onProfileLook,
   onSignIn,
   onSignOut,
 }: {
@@ -83,6 +84,8 @@ export function SettingsMenu({
   onAccount: () => void
   /** opens their own profile page; absent until the username is known */
   onProfile?: () => void
+  /** jumps to your own profile with the look editor already open */
+  onProfileLook?: () => void
   onSignIn: () => void
   onSignOut: () => void
 }) {
@@ -315,6 +318,20 @@ export function SettingsMenu({
             <span>🧘 Reduce motion</span>
             <span className={'nav-menu-switch' + (motionOff ? ' is-on' : '')} aria-hidden />
           </button>
+
+          {/* ⚠️ A signpost, not a second copy of the controls.
+              The backdrop and the flair pickers belong on the profile — that is the page they
+              change, and watching it change as you pick is the whole point. But nobody looks for
+              a setting on a profile; they look in the cog. Duplicating the pickers here would be
+              two UIs to keep in step, so this links to the real one and lands you in it. */}
+          {authed && onProfileLook && (
+            <button className="nav-menu-row" role="menuitem" onClick={onProfileLook}>
+              <span>🖼 Profile look</span>
+              <span className="muted" style={{ fontSize: '0.8rem' }}>
+                backdrop, colours
+              </span>
+            </button>
+          )}
 
           {/* ONE row, not a toggle plus a conditional style row. Off is now a look you pick
               ("None") rather than a separate switch, so there's nowhere to strand yourself:
