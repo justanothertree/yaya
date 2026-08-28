@@ -35,7 +35,11 @@
  */
 
 import { motionReduced } from './motion'
-import { amount, dur, px } from './effectAmount'
+import { amount, scalesFor } from './effectAmount'
+
+// bound once, read live: every px()/dur() below is now on the CLICK dial specifically, rather
+// than a single pair of sliders shared with trails and backgrounds
+const { dur, px } = scalesFor('click')
 
 export type FxStyle =
   | 'sparks'

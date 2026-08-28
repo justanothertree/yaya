@@ -106,40 +106,83 @@ export function spacingFor(px: number): number {
  * Both are multipliers around 1, so the stored default is the current behaviour exactly and an
  * untouched setting can never change how anything already looks.
  */
-const SCALE_KEY = { size: 'effect_size_v1', speed: 'effect_speed_v1' } as const
-export type ScaleKind = keyof typeof SCALE_KEY
+export type ScaleKind = 'size' | 'speed'
 
-const scales: Record<ScaleKind, number> = { size: 1, speed: 1 }
+/**
+ * ⚠️ ONE PAIR PER CATEGORY, not one pair for everything.
+ *
+ * These started shared, on the reasoning that somebody who wants things bigger wants everything
+ * bigger. That was wrong in practice: the three effects are different sizes of thing in different
+ * places. A trail wants to be big and slow enough to wave around; a click wants to be quick or it
+ * outstays the click; a background wants to be large and slow or it stops being a background. One
+ * slider for all three means every setting is a compromise nobody asked for.
+ *
+ * Both are multipliers around 1, so an untouched dial is exactly the old behaviour.
+ */
+const SCALE_KEY = (cat: EffectCategory, kind: ScaleKind) => `effect_${kind}_${cat}_v2`
+/** The shared keys these replaced. Read once, so an existing setting carries into all three. */
+const LEGACY_KEY: Record<ScaleKind, string> = {
+  size: 'effect_size_v1',
+  speed: 'effect_speed_v1',
+}
+
+const scales: Record<EffectCategory, Record<ScaleKind, number>> = {
+  click: { size: 1, speed: 1 },
+  background: { size: 1, speed: 1 },
+  trail: { size: 1, speed: 1 },
+}
+
+const okScale = (v: number) => Number.isFinite(v) && v >= 0.5 && v <= 2.5
 
 try {
-  for (const k of Object.keys(scales) as ScaleKind[]) {
-    const v = Number(localStorage.getItem(SCALE_KEY[k]))
-    if (Number.isFinite(v) && v >= 0.5 && v <= 2.5) scales[k] = v
+  // the old shared value first, so somebody who had set it keeps it everywhere…
+  const legacy: Partial<Record<ScaleKind, number>> = {}
+  for (const k of ['size', 'speed'] as ScaleKind[]) {
+    const v = Number(localStorage.getItem(LEGACY_KEY[k]))
+    if (okScale(v)) legacy[k] = v
+  }
+  for (const cat of Object.keys(scales) as EffectCategory[]) {
+    for (const k of ['size', 'speed'] as ScaleKind[]) {
+      // …then the per-category one on top, which is what they set since
+      const v = Number(localStorage.getItem(SCALE_KEY(cat, k)))
+      if (okScale(v)) scales[cat][k] = v
+      else if (legacy[k] != null) scales[cat][k] = legacy[k]!
+    }
   }
 } catch {
   /* private mode — the defaults are the old behaviour */
 }
 
-export function effectScale(kind: ScaleKind): number {
-  return scales[kind]
+export function effectScale(cat: EffectCategory, kind: ScaleKind): number {
+  return scales[cat][kind]
 }
 
-export function setEffectScale(kind: ScaleKind, v: number) {
-  scales[kind] = Math.min(2.5, Math.max(0.5, v))
+export function setEffectScale(cat: EffectCategory, kind: ScaleKind, v: number) {
+  scales[cat][kind] = Math.min(2.5, Math.max(0.5, v))
   try {
-    localStorage.setItem(SCALE_KEY[kind], String(scales[kind]))
+    localStorage.setItem(SCALE_KEY(cat, kind), String(scales[cat][kind]))
   } catch {
     /* applies for this visit */
   }
   if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent(EVENT))
 }
 
-/** A duration, divided by the speed dial — faster means shorter, which is the intuitive direction. */
-export function dur(ms: number): number {
-  return Math.max(60, Math.round(ms / scales.speed))
-}
-
-/** A pixel size or distance, multiplied by the size dial. */
-export function px(n: number): number {
-  return n * scales.size
+/**
+ * The size and duration helpers, bound to one category.
+ *
+ * Returned as closures rather than taking a category argument at every call site: clickFx and
+ * mouseTrail between them call px() and dur() about forty times, and threading a category through
+ * all of those is forty chances to pass the wrong one. Each module binds once at the top and its
+ * existing calls keep reading — but now they read that module's own dial.
+ *
+ * ⚠️ The closures read `scales` when CALLED, not when built. Capturing the number here instead
+ * would freeze every effect at whatever the dial said on page load.
+ */
+export function scalesFor(cat: EffectCategory) {
+  return {
+    /** A pixel size or distance, multiplied by this category's size dial. */
+    px: (n: number) => n * scales[cat].size,
+    /** A duration, divided by the speed dial — faster means shorter, the intuitive direction. */
+    dur: (ms: number) => Math.max(60, Math.round(ms / scales[cat].speed)),
+  }
 }

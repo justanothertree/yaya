@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { makeEffect, type BackdropId, type Paint } from './backdrops'
 import { motionReduced, onMotionChange } from '../ui/motion'
+import { amountLevel, onAmountChange } from '../ui/effectAmount'
 
 /**
  * The canvas a profile backdrop is drawn on, and the rules that keep it cheap.
@@ -148,6 +149,26 @@ export function SiteBackdrop({ id, inline = false }: { id: BackdropId; inline?: 
     }
     window.addEventListener('yaya:palette', repaint)
 
+    /**
+     * ⚠️ How busy is decided in init(), so it needs a re-init — a repaint is not enough.
+     *
+     * Size and speed are read every frame by the effects themselves, so those dials were already
+     * live. The particle COUNT is fixed when the effect is built, which is why subtle/normal/lots
+     * appeared to do nothing until a reload. resize() rebuilds at the current level.
+     *
+     * Gated on the background level actually changing, for two reasons: the event fires for click
+     * and trail changes too, and a re-init scatters every particle to a new starting position —
+     * a visible jump, which would land on every drag of an unrelated slider.
+     */
+    let lastLevel = amountLevel('background')
+    const onAmount = () => {
+      const now = amountLevel('background')
+      if (now === lastLevel) return
+      lastLevel = now
+      resize()
+    }
+    const offAmount = onAmountChange(onAmount)
+
     resize()
     start()
     return () => {
@@ -158,6 +179,7 @@ export function SiteBackdrop({ id, inline = false }: { id: BackdropId; inline?: 
       host.removeEventListener('pointermove', onMove)
       host.removeEventListener('pointerleave', onLeave)
       window.removeEventListener('yaya:palette', repaint)
+      offAmount()
     }
   }, [id, reduced])
 

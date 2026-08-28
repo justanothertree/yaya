@@ -19,7 +19,11 @@
  */
 
 import { motionReduced } from './motion'
-import { dur, px, spacingFor } from './effectAmount'
+import { scalesFor, spacingFor } from './effectAmount'
+
+// the trail's own size and speed — see scalesFor. A trail wants to be bigger and slower than
+// a click does, which is exactly why these stopped being shared.
+const { dur, px } = scalesFor('trail')
 
 export type TrailStyle =
   | 'none'

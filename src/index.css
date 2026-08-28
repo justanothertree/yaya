@@ -2591,6 +2591,12 @@ section[id] {
   margin: 0;
   font-size: 0.78rem;
 }
+/* the feedback warning has to read as a warning, not as another footnote */
+.viz-warn {
+  color: var(--text);
+  opacity: 0.9;
+  font-weight: 600;
+}
 
 .icon-link {
   display: inline-flex;
@@ -3345,9 +3351,26 @@ select {
   color: var(--text);
   border-bottom-color: var(--accent);
 }
+/**
+ * ⚠️ A FIXED FRAME, so the four tabs don't resize the dialog under your hand.
+ *
+ * The tabs hold very different amounts: four colour tiles against eighteen click styles. Sized to
+ * their contents, the sheet grew and shrank on every tab press, the tab strip itself moved, and
+ * the button you just pressed walked away from your pointer — which reads as the dialog flinching.
+ *
+ * So the body is one constant-height box that scrolls its own overflow, and only the CONTENT
+ * changes when you switch. The height is a min and a max of the same idea: tall enough that the
+ * biggest tab mostly fits, capped against the viewport so it can't outgrow a short window.
+ */
 .appearance-body {
   display: grid;
   gap: 0.7rem;
+  align-content: start;
+  height: min(26rem, 52vh);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  /* room for a scrollbar without the content jumping sideways when one appears */
+  scrollbar-gutter: stable;
 }
 .appearance-palette {
   border-top: 1px solid var(--border);

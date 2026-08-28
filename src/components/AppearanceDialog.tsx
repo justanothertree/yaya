@@ -104,11 +104,13 @@ function AmountRow({ cat, label }: { cat: EffectCategory; label: string }) {
  * until something feels right under your own hand, and no set of three words covers "slightly
  * bigger". Both are multipliers around 1, so leaving them alone is exactly the old behaviour.
  *
- * They are shared across all three effect kinds rather than duplicated per tab: a person who
- * wants everything a bit bigger wants everything a bit bigger.
+ * ⚠️ Per tab, NOT shared across all three. They were shared, on the reasoning that wanting things
+ * bigger means wanting everything bigger — but the three are different sizes of thing in
+ * different places, so one slider made every setting a compromise. A background wants to be large
+ * and slow or it stops being a background; a click wants to be quick or it outstays the click.
  */
-function ScaleRow({ kind, label }: { kind: ScaleKind; label: string }) {
-  const [v, setV] = useState(() => effectScale(kind))
+function ScaleRow({ cat, kind, label }: { cat: EffectCategory; kind: ScaleKind; label: string }) {
+  const [v, setV] = useState(() => effectScale(cat, kind))
   return (
     <label className="appearance-slider">
       <span className="muted">{label}</span>
@@ -121,7 +123,7 @@ function ScaleRow({ kind, label }: { kind: ScaleKind; label: string }) {
         onChange={(e) => {
           const next = Number(e.target.value)
           setV(next)
-          setEffectScale(kind, next)
+          setEffectScale(cat, kind, next)
         }}
       />
       <span className="appearance-slider-val">{v.toFixed(1)}×</span>
@@ -225,8 +227,8 @@ export function AppearanceDialog({
               ))}
             </div>
             <AmountRow cat="background" label="How busy" />
-            <ScaleRow kind="size" label="Size" />
-            <ScaleRow kind="speed" label="Speed" />
+            <ScaleRow cat="background" kind="size" label="Size" />
+            <ScaleRow cat="background" kind="speed" label="Speed" />
             <p className="muted appearance-note">
               Behind the whole site, and visitors see it on your profile. Off under Reduce motion.
             </p>
@@ -265,8 +267,8 @@ export function AppearanceDialog({
               ))}
             </div>
             <AmountRow cat="click" label="How much" />
-            <ScaleRow kind="size" label="Size" />
-            <ScaleRow kind="speed" label="Speed" />
+            <ScaleRow cat="click" kind="size" label="Size" />
+            <ScaleRow cat="click" kind="speed" label="Speed" />
             <p className="muted appearance-note">Click anywhere to try it.</p>
           </div>
         )}
@@ -292,8 +294,8 @@ export function AppearanceDialog({
               ))}
             </div>
             <AmountRow cat="trail" label="How dense" />
-            <ScaleRow kind="size" label="Size" />
-            <ScaleRow kind="speed" label="Speed" />
+            <ScaleRow cat="trail" kind="size" label="Size" />
+            <ScaleRow cat="trail" kind="speed" label="Speed" />
             <p className="muted appearance-note">
               Move the pointer to try it. Off under Reduce motion, and not on touch — there is no
               cursor to follow.

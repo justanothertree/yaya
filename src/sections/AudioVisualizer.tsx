@@ -9,7 +9,7 @@ import {
   subscribeTaps,
   type TapId,
 } from '../audio/audioTap'
-import { localMicOn, startLocalMic, stopLocalMic } from '../audio/localMic'
+import { localMicOn, monitorOn, setMonitor, startLocalMic, stopLocalMic } from '../audio/localMic'
 import { playCallSound } from '../voice/ringtone'
 import { VISUALS, clearsEachFrame, makeVisual, type Ink, type VisualId } from '../audio/visualModes'
 import { motionReduced, onMotionChange } from '../ui/motion'
@@ -62,6 +62,9 @@ export function AudioVisualizer() {
   // store React can subscribe to, so a bare call would render the stale answer after a toggle
   const [micOn, setMicOn] = useState(localMicOn)
   const [micDenied, setMicDenied] = useState(false)
+  // ⚠️ Never restored from storage, unlike every other control on this page. A playback-of-your-
+  // own-mic setting that came back on by itself would greet somebody with feedback on load.
+  const [hearing, setHearing] = useState(monitorOn)
 
   // Which sources exist RIGHT NOW. A snapshot taken on mount would be wrong the moment a call
   // starts, and the picker would offer nothing until you navigated away and back.
@@ -316,6 +319,7 @@ export function AudioVisualizer() {
               if (micOn) {
                 stopLocalMic()
                 setMicOn(false)
+                setHearing(false)
                 setMicDenied(false)
                 return
               }
@@ -330,6 +334,25 @@ export function AudioVisualizer() {
             {micOn ? '⏹ Stop mic' : micBusy ? 'Asking…' : '🎙 Use my mic'}
           </button>
 
+          {/* Only once the mic is on: a playback toggle with nothing to play back is a control
+              that appears to be broken. */}
+          {micOn && (
+            <button
+              className="btn"
+              aria-pressed={hearing}
+              onClick={() => {
+                const next = !hearing
+                setMonitor(next)
+                setHearing(next)
+              }}
+              title={
+                hearing ? 'Stop playing your mic back' : 'Play your mic back so you can hear it'
+              }
+            >
+              {hearing ? '🔇 Stop listening' : '🎧 Hear myself'}
+            </button>
+          )}
+
           <button
             className="btn"
             onClick={() => {
@@ -341,6 +364,11 @@ export function AudioVisualizer() {
           </button>
         </div>
 
+        {hearing && (
+          <p className="muted viz-note viz-warn">
+            ⚠️ Headphones — on speakers your mic will hear itself and start to howl.
+          </p>
+        )}
         {micDenied && (
           <p className="muted viz-note">
             No microphone — the browser said no, or there isn’t one. Nothing was recorded either

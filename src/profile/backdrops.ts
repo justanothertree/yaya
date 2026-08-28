@@ -84,8 +84,8 @@ const rgba = ([r, g, b]: [number, number, number], a: number) => `rgba(${r},${g}
  * dial only took effect when the canvas happened to be rebuilt, which is a resize or a mode
  * change. Reading two numbers a frame costs nothing next to the drawing.
  */
-const sizeScale = () => effectScale('size')
-const speedScale = () => effectScale('speed')
+const sizeScale = () => effectScale('background', 'size')
+const speedScale = () => effectScale('background', 'speed')
 
 /**
  * How many particles a canvas of this size gets.
