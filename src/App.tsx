@@ -1219,8 +1219,13 @@ export default function App() {
     }
   }
   const toggleCanvas = () => setCanvasChoice(!canvasOpen)
-  /** the canvas is actually on screen — the same test its own render uses */
-  const canvasShowing = active === 'circuit' || (canvasOpen && desktop)
+  /**
+   * Whether the Circuit section is mounted at all — on its own tab, or because the canvas is
+   * hosting its panes. ⚠️ NOT a test of whether the canvas overlay is up: that is
+   * sharedCanvasShowing, which also requires canvasOpen. Confusing the two meant the background
+   * layer was skipped on the Circuit tab with the canvas CLOSED, where nothing else draws it.
+   */
+  const circuitMounted = active === 'circuit' || (canvasOpen && desktop)
 
   // one navigator for the mobile bar/launcher — sets the hash (with an optional Circuit
   // sub-tab) and the active section, matching how the nav links move around
@@ -1383,7 +1388,7 @@ export default function App() {
       <AmbientBackdrop
         section={active}
         theme={customPalette ? 'custom' : theme}
-        enabled={shownBackground === 'glow' && !canvasShowing}
+        enabled={shownBackground === 'glow' && !sharedCanvasShowing}
       />
       {/**
        * ⚠️ Not while the canvas is up, because the canvas draws its own copy INSIDE its surface.
@@ -1391,7 +1396,7 @@ export default function App() {
        * invisible behind it AND still simulating — two loops for one visible result, which is
        * the thing the whole budget exists to prevent.
        */}
-      {!canvasShowing && <SiteBackdrop id={shownBackground} />}
+      {!sharedCanvasShowing && <SiteBackdrop id={shownBackground} />}
       {/* A call outlives the screen it started on, so its controls and its audio live at app
           level — otherwise you'd navigate away and be stuck in a call you can't hear or end. */}
       <CallDock />
@@ -1711,7 +1716,7 @@ export default function App() {
             Home's cards and the 10 single-page windows already are. The Suspense fallback only
             shows while actually viewing Circuit -- background-loading its chunk from another
             page shouldn't flash a loading card on screen. */}
-        {canvasShowing && (
+        {circuitMounted && (
           <Suspense
             fallback={
               active === 'circuit' ? (
