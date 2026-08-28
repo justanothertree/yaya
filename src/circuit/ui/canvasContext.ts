@@ -12,4 +12,14 @@ import { createContext } from 'react'
  * would pull the entire canvas — which is lazy-loaded precisely because it is large — into that
  * consumer's chunk.
  */
-export const InCanvasWindow = createContext(false)
+export type CanvasWindowInfo = {
+  /** true for anything rendered inside a canvas window */
+  inWindow: boolean
+  /**
+   * Which window it is in, so content can publish a look for that window's shell to wear.
+   * A plain string on purpose — see paneLook.ts for why the setter is not passed down here.
+   */
+  paneId: string | null
+}
+
+export const InCanvasWindow = createContext<CanvasWindowInfo>({ inWindow: false, paneId: null })

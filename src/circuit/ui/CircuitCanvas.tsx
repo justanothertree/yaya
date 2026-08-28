@@ -1,9 +1,18 @@
 // Free canvas — turns the Circuit panes into draggable / resizable floating windows
 // (Aero-style edge snapping, minimize / maximize / fit, z-order focus, persisted layout).
 // Ported from the standalone's "operating system" mode. Desktop-only.
-import { Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import {
+  Suspense,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from 'react'
 import type { ReactNode } from 'react'
 import { InCanvasWindow } from './canvasContext'
+import { paneLooksSnapshot, serverPaneLooksSnapshot, subscribePaneLooks } from './paneLook'
 import { createPortal } from 'react-dom'
 import { showToast } from '../toast'
 import { site } from '../../config/site'
@@ -311,6 +320,18 @@ export function CircuitCanvas({
   // plane size multiplier (>= WORLD); fit-all raises it when the mosaic needs the space
   const [worldMul, setWorldMul] = useState(WORLD)
   const worldMulRef = useRef(WORLD)
+  /**
+   * Looks published by window CONTENT, for the window shells to wear.
+   *
+   * ⚠️ The shell is an ancestor of its content, so a profile wearing someone's palette could
+   * never reach its own title bar or border — custom properties only inherit downward. The body
+   * ended up in their colours inside a frame still in yours, which reads as a rendering fault.
+   */
+  const paneLooks = useSyncExternalStore(
+    subscribePaneLooks,
+    paneLooksSnapshot,
+    serverPaneLooksSnapshot,
+  )
   const [snap, setSnap] = useState<{ x: number; y: number; w: number; h: number } | null>(null)
   const drag = useRef<{
     id: string
@@ -1871,6 +1892,7 @@ export function CircuitCanvas({
               const bodyScale = scaleFor(w.w)
               return (
                 <div
+                  data-theme={paneLooks.get(p.id)?.theme ?? undefined}
                   key={p.id}
                   ref={(el) => {
                     winRefs.current[p.id] = el
@@ -1886,6 +1908,8 @@ export function CircuitCanvas({
                     zIndex: w.z,
                     display: w.min ? 'none' : 'flex',
                     flexDirection: 'column',
+                    // their palette, applied to the WHOLE window rather than only its contents
+                    ...(paneLooks.get(p.id)?.vars ?? {}),
                     background: 'var(--panel, #141a2a)',
                     border:
                       p.id === selId
@@ -1979,7 +2003,7 @@ export function CircuitCanvas({
                     </button>
                   </div>
                   {/* body — content scales with the window so a bigger window = bigger, clearer UI */}
-                  <InCanvasWindow.Provider value>
+                  <InCanvasWindow.Provider value={{ inWindow: true, paneId: p.id }}>
                     <div
                       className="cz-body"
                       style={{ flex: 1, overflow: 'auto', padding: 12, zoom: bodyScale }}

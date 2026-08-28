@@ -9,6 +9,7 @@ import { beatLink } from '../game/challenge'
 import { ProfileLookEditor, type LookControls } from './ProfileLookEditor'
 import { isBackdropId, setBackdropOverride } from '../profile/backdrops'
 import { InCanvasWindow } from '../circuit/ui/canvasContext'
+import { setPaneLook } from '../circuit/ui/paneLook'
 import {
   ProfileBlocksEditor,
   ProfileBlocksView,
@@ -193,7 +194,7 @@ export function Profile({
    * whichever of those it is. As a page it repaints the page; as a window it repaints the
    * window and leaves the rest of the canvas alone.
    */
-  const inCanvasWindow = useContext(InCanvasWindow)
+  const { inWindow: inCanvasWindow, paneId } = useContext(InCanvasWindow)
   const lookRef = useRef<HTMLDivElement | null>(null)
 
   /**
@@ -226,6 +227,27 @@ export function Profile({
     setBackdropOverride(isBackdropId(theirLook.backdrop) ? theirLook.backdrop : 'none')
     return () => setBackdropOverride(null)
   }, [theirLook])
+
+  /**
+   * Hand the look up to the window, so the WHOLE window wears it.
+   *
+   * ⚠️ Setting it on this element can only ever reach this element's descendants — the title bar,
+   * the border and the shell are ancestors, so they kept the viewer's colours and the result read
+   * as a half-painted window rather than a theme. The shell subscribes and applies what is
+   * published here; cleared on the way out so the window goes back to yours.
+   */
+  useEffect(() => {
+    if (!inCanvasWindow || !paneId) return
+    if (!theirLook) {
+      setPaneLook(paneId, null)
+      return
+    }
+    setPaneLook(paneId, {
+      vars: theirLook.palette ? (derivePalette(theirLook.palette) as Record<string, string>) : {},
+      theme: theirLook.palette ? null : (theirLook.theme ?? null),
+    })
+    return () => setPaneLook(paneId, null)
+  }, [inCanvasWindow, paneId, theirLook])
 
   /**
    * ⚠️ PAGE MODE ONLY. Standing on its own, a profile IS the page, so their palette goes where
