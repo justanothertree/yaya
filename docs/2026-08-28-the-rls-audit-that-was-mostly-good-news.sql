@@ -1,0 +1,61 @@
+-- 2026-08-28 — Auditing the twelve "RLS enabled, no policy" tables.
+--
+-- The advisory sounds alarming and mostly is not. RLS on with NO policy is deny-all: Postgres
+-- rejects every row for every non-owner role. A table in that state is closed, not open. The
+-- shape actually worth hunting is the opposite one — a table in an API-exposed schema with RLS
+-- OFF, or a view that quietly bypasses it — so that is what was checked first.
+--
+--
+-- WHAT WAS CHECKED, AND WHAT CAME BACK
+--
+-- 1. Tables with RLS off, in `public` or `finance`:  NONE. Every table has it enabled.
+--
+-- 2. Views: exactly one, public.leaderboard_with_trophies, and it is `security_invoker = true`.
+--    That matters more than it looks. A view runs with its OWNER's rights by default, so a view
+--    over RLS-protected tables, owned by postgres, hands out everything underneath it — the
+--    classic Supabase leak. This one asks the CALLER's rights, which is correct.
+--
+-- 3. Actually reading the sensitive tables as a real signed-in member and as a signed-out
+--    visitor — contact_messages, profile_notes, profile_blocks, invites, profile_rooms,
+--    profile_room_invites, lounge_message_authors. All 14 combinations came back
+--    "permission denied", and denied at the PRIVILEGE layer, before RLS was even consulted:
+--    neither `anon` nor `authenticated` holds SELECT on any of them. Two independent locks.
+--
+--
+-- THE ONE THING THAT NEEDED FIXING
+--
+-- Three finance tables were the exception, held shut by RLS alone: cost_basis_overrides,
+-- price_history and symbol_designations had RLS on with no policy, but `authenticated` still held
+-- SELECT. Harmless today, since RLS refuses every row regardless — but that is one lock rather
+-- than two. The day somebody adds a permissive policy for an unrelated reason, or disables RLS to
+-- debug something at 1am, those tables become readable by every signed-in member with no second
+-- barrier and nothing to notice.
+--
+-- Verified before revoking, since a wrong revoke here breaks the finance pages silently rather
+-- than loudly:
+--   · nothing in src/ names those tables at all — no client code selects from them
+--   · all twelve functions that touch them are SECURITY DEFINER, so they run as the owner and
+--     are unaffected by what `authenticated` may or may not do
+--
+-- Verified after: the grants are gone, and admin_list_positions() and admin_reconciliation()
+-- both still return rows.
+--
+-- coingecko_ids and family_contributions already had no grant and were left alone.
+--
+--
+-- CONCLUSION
+--
+-- The other eleven are deliberate. Every one is deny-all by RLS *and* ungranted, reached only
+-- through SECURITY DEFINER functions that enforce their own rules — which is the pattern this
+-- database uses everywhere, and the reason the advisory fires so often. It is describing a
+-- design, not a defect.
+--
+-- The advisory will keep firing. That is fine; it is INFO, and the alternative — writing
+-- policies that restate what the functions already enforce — would give two copies of every rule
+-- to keep in step. Copies like that drift, and the drift is what caused the presence bug in
+-- 2026-08-28-a-request-is-not-consent-to-be-watched.sql.
+
+-- (Applied as migration: finance_tables_lose_grants_nothing_uses.)
+revoke select on finance.cost_basis_overrides from authenticated;
+revoke select on finance.price_history from authenticated;
+revoke select on finance.symbol_designations from authenticated;
