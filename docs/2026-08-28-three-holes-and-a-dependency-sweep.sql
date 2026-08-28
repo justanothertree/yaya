@@ -34,10 +34,19 @@
 -- an old chat backup — could become a member whenever they chose. One token was live and 41 days
 -- old when this was written.
 --
--- Invites now last a week. Existing unclaimed ones were given seven days FROM THE MIGRATION, not
+-- Invites now expire. Existing unclaimed ones were given their window FROM THE MIGRATION, not
 -- from their creation date: backdating would have silently cancelled a link that might be sitting
 -- in a real person's inbox, and the job here was to close a hole, not to withdraw an invitation
 -- on the owner's behalf. The "valid forever" property ends either way.
+--
+-- FOLLOW-UP, same day: the window started at seven days and was raised to THIRTY, with a renew
+-- button alongside it (migration invites_last_a_month_and_can_be_renewed_in_place). Seven was the
+-- wrong number: the risk being bounded is a link still live months or years later, and almost
+-- none of that risk sits between week one and week four, while ordinary human slowness very much
+-- does. Renewal keeps the SAME token deliberately — issuing a fresh link when one lapses leaves
+-- two links in the recipient's thread with only one working, and the one they can see is the one
+-- that fails. Renew also works on an already-expired invite, which is the case it exists for; it
+-- refuses a USED one, since reopening that would let a single link admit two people.
 --
 -- complete_member_signup enforces it, and its failure message is deliberately unchanged and
 -- identical for every case — someone probing tokens learns "no", never "that one existed but
@@ -97,4 +106,5 @@
 
 -- (Applied as migrations: submit_score_ceiling_is_the_board_not_a_round_number,
 --  invites_expire_so_a_forgotten_link_stops_working,
+--  invites_last_a_month_and_can_be_renewed_in_place,
 --  pin_search_path_on_the_two_definer_functions_missing_it.)

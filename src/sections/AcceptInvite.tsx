@@ -129,8 +129,8 @@ export function AcceptInvite() {
       <div>
         <h2 style={{ marginTop: 0 }}>This invite has expired</h2>
         <p className="muted">
-          Invites are good for a week. Ask {invite.label ? 'whoever sent it' : 'your host'} for a
-          fresh link — it only takes them a moment.
+          Invites don’t last forever. Ask {invite.label ? 'whoever sent it' : 'your host'} to reopen
+          it — the same link will start working again.
         </p>
       </div>
     )

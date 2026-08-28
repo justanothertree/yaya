@@ -214,6 +214,24 @@ export function AdminPanel() {
     setInvites((prev) => prev.filter((i) => i.id !== id))
   }
 
+  /**
+   * Push an invite's clock out. The LINK IS UNCHANGED, which is the whole point — the message you
+   * already sent still works, so there is never a second link competing with the first.
+   *
+   * Re-reads the list rather than patching the row locally: the server decides `state`, and
+   * guessing it here is how a panel ends up disagreeing with the signup page about whether a
+   * link works.
+   */
+  async function renewInvite(id: string) {
+    const { error } = await sb.rpc('renew_invite', { p_id: id })
+    if (error) {
+      setError(error.message)
+      return
+    }
+    const { data, error: le } = await sb.rpc('list_invites')
+    if (!le) setInvites((data as Invite[]) ?? [])
+  }
+
   async function copyLink(token: string) {
     await navigator.clipboard.writeText(inviteLink(token))
     setCopied(token)
@@ -623,6 +641,14 @@ export function AdminPanel() {
                     </button>
                     <button
                       className="btn"
+                      style={{ fontSize: '0.78rem', padding: '0.2rem 0.55rem', flexShrink: 0 }}
+                      onClick={() => void renewInvite(inv.id)}
+                      title="Give this invite another 30 days — the link stays the same"
+                    >
+                      ↻ 30d
+                    </button>
+                    <button
+                      className="btn"
                       style={{
                         fontSize: '0.78rem',
                         padding: '0.2rem 0.45rem',
@@ -676,6 +702,16 @@ export function AdminPanel() {
                     <span className="muted" style={{ fontSize: '0.72rem', flexShrink: 0 }}>
                       expired
                     </span>
+                    {/* The case this button exists for: they were slow, the link lapsed, and the
+                        message with it is still sitting in their thread. */}
+                    <button
+                      className="btn"
+                      style={{ fontSize: '0.78rem', padding: '0.2rem 0.55rem', flexShrink: 0 }}
+                      onClick={() => void renewInvite(inv.id)}
+                      title="Bring this invite back for another 30 days — same link"
+                    >
+                      ↻ Revive
+                    </button>
                     <button
                       className="btn"
                       style={{
