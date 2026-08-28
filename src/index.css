@@ -2512,6 +2512,86 @@ section[id] {
   outline: none;
 }
 
+/* ── audio visualiser ────────────────────────────────────────────────
+   The stage is sized in CSS and the canvas measures it — never the other way round. A canvas
+   with no CSS height collapses to its 150px default, and one that sizes its own box makes the
+   same measure-your-own-size loop the snake stage note above describes. */
+.viz-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  min-width: 0;
+}
+.viz-stage {
+  position: relative;
+  /* tall enough for a spectrogram to read as one, short enough to sit in a canvas window */
+  height: clamp(9rem, 34vh, 18rem);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+  background: color-mix(in oklab, var(--text), transparent 96%);
+}
+.viz-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+/* the "nothing playing" line, centred over the stage rather than pushing it around */
+.viz-still {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  text-align: center;
+  padding: 1rem;
+  margin: 0;
+  font-size: 0.85rem;
+  pointer-events: none;
+}
+.viz-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.viz-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(5.2rem, 100%), 1fr));
+  gap: 0.4rem;
+}
+/* sensitivity, mic and ringtone sit on one line and wrap together on a narrow window */
+.viz-row-wide {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+}
+.viz-row-wide .appearance-slider {
+  flex: 1 1 12rem;
+}
+/* a source button reads label-first, so the live dot needs a row rather than the stacked
+   icon-over-label of a style tile */
+.fx-style-btn.viz-src {
+  flex-direction: row;
+  justify-content: center;
+  gap: 0.4rem;
+  font-size: 0.9rem;
+}
+.viz-dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: color-mix(in oklab, var(--text), transparent 70%);
+  flex: none;
+}
+.viz-dot.is-live {
+  background: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent), transparent 82%);
+}
+.viz-note {
+  margin: 0;
+  font-size: 0.78rem;
+}
+
 .icon-link {
   display: inline-flex;
   align-items: center;

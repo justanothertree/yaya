@@ -92,6 +92,9 @@ const Profile = lazy(() => import('./sections/Profile').then((m) => ({ default: 
 const Ratings = lazy(() => import('./sections/Ratings').then((m) => ({ default: m.Ratings })))
 const ChatPage = lazy(() => import('./sections/ChatPage').then((m) => ({ default: m.ChatPage })))
 const People = lazy(() => import('./sections/People').then((m) => ({ default: m.People })))
+const AudioVisualizer = lazy(() =>
+  import('./sections/AudioVisualizer').then((m) => ({ default: m.AudioVisualizer })),
+)
 
 if (import.meta.env.DEV) {
   import('./dev/supabaseDebug')
@@ -107,6 +110,7 @@ type Section =
   | 'investments'
   | 'account-settings'
   | 'snake'
+  | 'visualizer'
   | 'contact'
   | 'admin'
   | 'invite'
@@ -130,6 +134,7 @@ const SECTION_TITLES: Record<Section, string> = {
   investments: 'Investments',
   'account-settings': 'Account settings',
   snake: 'Snake',
+  visualizer: 'Visualiser',
   contact: 'Contact',
   admin: 'Admin',
   invite: 'Accept invite',
@@ -148,6 +153,7 @@ const ALL_SECTIONS: Section[] = [
   'investments',
   'account-settings',
   'snake',
+  'visualizer',
   'contact',
   'admin',
   'invite',
@@ -177,10 +183,11 @@ const navOrder = (
           'account-settings',
           ...(isAdmin ? (['admin'] as Section[]) : []),
           'snake',
+          'visualizer',
           'contact',
         ]
-      : ['home', 'signin', 'snake', 'contact']
-    : ['home', 'snake', 'contact']
+      : ['home', 'signin', 'snake', 'visualizer', 'contact']
+    : ['home', 'snake', 'visualizer', 'contact']
 
 // ── optimistic boot: what the browser already knows about this user ──
 // The persisted Supabase session is peeked synchronously (peekPersistedUserId) so a
@@ -1140,6 +1147,7 @@ export default function App() {
     'investments',
     'account-settings',
     'snake',
+    'visualizer',
     'contact',
     'admin',
     'signin',
@@ -1167,6 +1175,7 @@ export default function App() {
     investments: '📈 Investments',
     'account-settings': '👤 Account',
     snake: '🐍 Snake',
+    visualizer: '🎚️ Visualiser',
     contact: '✉️ Contact',
     admin: '🛠 Admin',
     signin: '🔑 Sign in',
@@ -1202,6 +1211,8 @@ export default function App() {
         return (
           <SnakeGame onControlChange={setSnakeHasControl} onLiveChange={setSnakeLive} autoFocus />
         )
+      case 'visualizer':
+        return <AudioVisualizer />
       case 'contact':
         return <ContactForm />
       case 'admin':
@@ -1548,6 +1559,13 @@ export default function App() {
                   aria-current={active === 'snake' ? 'page' : undefined}
                 >
                   Snake
+                </a>
+                <a
+                  href="#visualizer"
+                  onClick={() => goTo('visualizer')}
+                  aria-current={active === 'visualizer' ? 'page' : undefined}
+                >
+                  Visualiser
                 </a>
                 <a
                   href="#contact"
@@ -1933,6 +1951,20 @@ export default function App() {
                 onLiveChange={setSnakeLive}
                 autoFocus
               />
+            </Suspense>
+          </section>
+        )}
+        {!sharedCanvasShowing && active === 'visualizer' && (
+          <section id="visualizer" className="card reveal">
+            <h2>🎚️ Visualiser</h2>
+            <p className="muted">
+              What the sound looks like. Watch your own mic, the ringtone, or everyone else while
+              you’re in a call — nothing is recorded or sent anywhere.
+            </p>
+            {/* Its own boundary, like the game: a page-wide fallback would blank the rest of the
+                page while this chunk arrives. */}
+            <Suspense fallback={<div aria-busy>Loading…</div>}>
+              <AudioVisualizer />
             </Suspense>
           </section>
         )}

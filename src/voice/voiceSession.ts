@@ -1,5 +1,6 @@
 import { getSupabaseClient } from '../finance/client'
 import { callSounds } from './callSounds'
+import { registerTap } from '../audio/audioTap'
 /**
  * RNNoise — the same family of ML denoiser Krisp is built on, as open source (Xiph), compiled
  * to WASM and run in an AudioWorklet. This is the answer to "we hear each other's keyboards":
@@ -426,6 +427,13 @@ let micLevel = 0
 let openUntil = 0
 /** one shared context for playback, plus a node graph per person */
 let outCtx: AudioContext | null = null
+/**
+ * Everyone else, mixed down to one node, for anything that wants to watch the room rather than a
+ * person. Separate from the per-peer analysers on purpose: those decide who is speaking, which
+ * needs them kept apart, and summing three of them per frame in a consumer would be both slower
+ * and wrong (levels don't add linearly).
+ */
+let peersMix: AnalyserNode | null = null
 const outs = new Map<string, PeerOut>()
 /** master attenuation from the dock, 0–1; per-person gain multiplies on top */
 let master = 1
@@ -609,6 +617,10 @@ function buildGate(mic: MediaStream): MediaStream {
     micSrc = src
     analyser = audioCtx.createAnalyser()
     analyser.fftSize = 512
+    // Publish the node rather than let a visualiser build its own. This one already sits on the
+    // POST-denoise mic (see the rewire below), so what you watch is what peers hear — a separate
+    // tap off the raw mic would show keyboard clacks the gate is busy hiding.
+    registerTap('mic', analyser)
     gate = audioCtx.createGain()
     const dest = audioCtx.createMediaStreamDestination()
     // measure off the source, gate on the way out — rewired to run through RNNoise once the
@@ -688,6 +700,7 @@ function buildGate(mic: MediaStream): MediaStream {
     return dest.stream
   } catch {
     // Web Audio unavailable or blocked — fall back to the plain mic rather than no call
+    registerTap('mic', null)
     audioCtx = null
     analyser = null
     gate = null
@@ -714,6 +727,14 @@ function attachOutput(peerId: string, stream: MediaStream) {
     src.connect(gain)
     gain.connect(analyser)
     gain.connect(outCtx.destination)
+    if (!peersMix) {
+      peersMix = outCtx.createAnalyser()
+      peersMix.fftSize = 1024
+      registerTap('peers', peersMix)
+    }
+    // the mix is a measuring point, never a route to the speakers — an analyser passes audio on
+    // only if you connect its output, and this one's is deliberately left dangling
+    gain.connect(peersMix)
     outs.set(peerId, { src, gain, analyser })
     // A context created before a user gesture starts suspended; joining was the gesture,
     // but resume anyway or nobody is audible and nothing says why.
@@ -759,6 +780,7 @@ function pollSpeaking() {
 function teardownGate() {
   if (gateTimer) clearInterval(gateTimer)
   gateTimer = 0
+  registerTap('mic', null)
   analyser = null
   gate = null
   micSrc = null
@@ -1338,6 +1360,8 @@ export const voiceSession = {
     teardownGate()
     outs.forEach((_, id) => detachOutput(id))
     outs.clear()
+    registerTap('peers', null)
+    peersMix = null
     void outCtx?.close().catch(() => {})
     outCtx = null
     local?.getTracks().forEach((t) => t.stop())

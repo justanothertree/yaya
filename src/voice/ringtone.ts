@@ -10,8 +10,12 @@
  * someone calling YOU, and a group call filling up is ambient news.
  */
 
+import { registerTap } from '../audio/audioTap'
+
 /** One shared context. Browsers cap how many you may create, and a leaked one per ring adds up. */
 let ctx: AudioContext | null = null
+/** Where notes go instead of straight to the destination — see audio(). */
+let bus: AnalyserNode | null = null
 function audio(): AudioContext | null {
   if (typeof window === 'undefined') return null
   try {
@@ -19,7 +23,16 @@ function audio(): AudioContext | null {
       window.AudioContext ??
       (window as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
     if (!Ctor) return null
-    ctx ??= new Ctor()
+    if (!ctx) {
+      ctx = new Ctor()
+      // Every note routes through here on its way out, so a visualiser watching 'ring' sees the
+      // actual ringtone rather than a guess at it. In-path, unlike the call's analysers: this is
+      // the only route to the speakers, so leaving its output dangling would mute the ring.
+      bus = ctx.createAnalyser()
+      bus.fftSize = 1024
+      bus.connect(ctx.destination)
+      registerTap('ring', bus)
+    }
     return ctx
   } catch {
     return null
@@ -61,7 +74,7 @@ function note(a: AudioContext, freq: number, at: number, dur: number, peak: numb
   gain.gain.setValueAtTime(0.0001, at)
   gain.gain.exponentialRampToValueAtTime(peak, at + 0.02)
   gain.gain.exponentialRampToValueAtTime(0.0001, at + dur)
-  osc.connect(gain).connect(a.destination)
+  osc.connect(gain).connect(bus ?? a.destination)
   osc.start(at)
   osc.stop(at + dur + 0.02)
 }
