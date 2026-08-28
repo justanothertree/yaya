@@ -35,7 +35,7 @@
  */
 
 import { motionReduced } from './motion'
-import { amount } from './effectAmount'
+import { amount, dur, px } from './effectAmount'
 
 export type FxStyle =
   | 'sparks'
@@ -152,14 +152,14 @@ function sparks(host: HTMLElement, x: number, y: number) {
       // fill: 'forwards' matters everywhere in this file: without it an element snaps back to
       // its base style the moment its OWN animation ends, and sits there fully visible until
       // every other animation in the burst finishes and the nodes are removed together.
-      { duration: 420, easing: 'cubic-bezier(0.2, 0.8, 0.3, 1)', fill: 'forwards' },
+      { duration: dur(420), easing: 'cubic-bezier(0.2, 0.8, 0.3, 1)', fill: 'forwards' },
     ),
   )
 
   for (let i = 0; i < N; i++) {
     // spread evenly, then jitter — evenly-spaced alone looks mechanical, fully random clumps
     const angle = (i / N) * Math.PI * 2 + (Math.random() - 0.5) * 0.6
-    const dist = 18 + Math.random() * 26
+    const dist = px(18 + Math.random() * 26)
     const p = mk('click-fx-spark', x, y)
     p.style.background = i % 3 === 0 ? b : a
     nodes.push(p)
@@ -173,7 +173,7 @@ function sparks(host: HTMLElement, x: number, y: number) {
           },
         ],
         {
-          duration: 380 + Math.random() * 260,
+          duration: dur(380 + Math.random() * 260),
           easing: 'cubic-bezier(0.15, 0.7, 0.2, 1)',
           fill: 'forwards',
         },
@@ -204,7 +204,7 @@ function sonar(host: HTMLElement, x: number, y: number) {
         // delay too — without it, a delayed animation shows the element's un-animated base state
         // until its delay elapses, which here would be a flash at full size before shrinking back
         // to start.
-        { duration: 620, delay: i * 140, easing: 'ease-out', fill: 'both' },
+        { duration: dur(620), delay: i * 140, easing: 'ease-out', fill: 'both' },
       ),
     )
   }
@@ -221,7 +221,7 @@ function pop(host: HTMLElement, x: number, y: number) {
   const anims: Animation[] = []
   for (let i = 0; i < N; i++) {
     const angle = -Math.PI / 2 + (Math.random() - 0.5) * Math.PI * 1.4
-    const dist = 26 + Math.random() * 40
+    const dist = px(26 + Math.random() * 40)
     const dx = Math.cos(angle) * dist
     const dy = Math.sin(angle) * dist
     const spin = 220 + Math.random() * 260
@@ -243,7 +243,7 @@ function pop(host: HTMLElement, x: number, y: number) {
           },
         ],
         {
-          duration: 520 + Math.random() * 220,
+          duration: dur(520 + Math.random() * 220),
           easing: 'cubic-bezier(0.15, 0.7, 0.3, 1)',
           fill: 'forwards',
         },
@@ -271,7 +271,7 @@ function rocket(host: HTMLElement, x: number, y: number) {
         opacity: 1,
       },
     ],
-    { duration: 260, easing: 'cubic-bezier(0.3, 0, 0.6, 1)', fill: 'forwards' },
+    { duration: dur(260), easing: 'cubic-bezier(0.3, 0, 0.6, 1)', fill: 'forwards' },
   )
   track(host, [dot], [climb])
 
@@ -287,7 +287,7 @@ function rocket(host: HTMLElement, x: number, y: number) {
       const anims: Animation[] = []
       for (let i = 0; i < N; i++) {
         const angle = (i / N) * Math.PI * 2 + (Math.random() - 0.5) * 0.3
-        const dist = 26 + Math.random() * 40
+        const dist = px(26 + Math.random() * 40)
         const p = mk('click-fx-spark', x, peakY)
         p.style.background = colors[i % colors.length]
         nodes.push(p)
@@ -301,7 +301,7 @@ function rocket(host: HTMLElement, x: number, y: number) {
               },
             ],
             {
-              duration: 420 + Math.random() * 260,
+              duration: dur(420 + Math.random() * 260),
               easing: 'cubic-bezier(0.1, 0.6, 0.15, 1)',
               fill: 'forwards',
             },
@@ -322,7 +322,7 @@ function stars(host: HTMLElement, x: number, y: number) {
   const anims: Animation[] = []
   for (let i = 0; i < N; i++) {
     const angle = (i / N) * Math.PI * 2 + (Math.random() - 0.5) * 0.5
-    const dist = 24 + Math.random() * 36
+    const dist = px(24 + Math.random() * 36)
     const p = mkGlyph('★', x, y, 12 + Math.random() * 6, colors[i % colors.length])
     nodes.push(p)
     anims.push(
@@ -342,7 +342,7 @@ function stars(host: HTMLElement, x: number, y: number) {
             opacity: 0,
           },
         ],
-        { duration: 520 + Math.random() * 280, easing: 'ease-out', fill: 'forwards' },
+        { duration: dur(520 + Math.random() * 280), easing: 'ease-out', fill: 'forwards' },
       ),
     )
   }
@@ -377,7 +377,7 @@ function hearts(host: HTMLElement, x: number, y: number) {
             opacity: 0,
           },
         ],
-        { duration: 620 + Math.random() * 260, easing: 'ease-out', fill: 'forwards' },
+        { duration: dur(620 + Math.random() * 260), easing: 'ease-out', fill: 'forwards' },
       ),
     )
   }
@@ -394,7 +394,7 @@ function bubbles(host: HTMLElement, x: number, y: number) {
   for (let i = 0; i < N; i++) {
     const rise = 60 + Math.random() * 60
     const sway = (Math.random() - 0.5) * 40
-    const size = 6 + Math.random() * 10
+    const size = px(6 + Math.random() * 10)
     const p = mk('click-fx-bubble', x + (Math.random() - 0.5) * 18, y)
     p.style.width = size + 'px'
     p.style.height = size + 'px'
@@ -414,7 +414,7 @@ function bubbles(host: HTMLElement, x: number, y: number) {
             opacity: 0,
           },
         ],
-        { duration: 680 + Math.random() * 260, easing: 'ease-out', fill: 'forwards' },
+        { duration: dur(680 + Math.random() * 260), easing: 'ease-out', fill: 'forwards' },
       ),
     )
   }
@@ -430,11 +430,12 @@ function glitter(host: HTMLElement, x: number, y: number) {
   const nodes: HTMLElement[] = []
   const anims: Animation[] = []
   for (let i = 0; i < N; i++) {
-    const dist = 6 + Math.random() * 22
+    const dist = px(6 + Math.random() * 22)
     const angle = Math.random() * Math.PI * 2
-    const px = x + Math.cos(angle) * dist
-    const py = y + Math.sin(angle) * dist
-    const p = mkGlyph('✦', px, py, 8 + Math.random() * 6, colors[i % colors.length])
+    // gx/gy, not px/py: `px` is the size scale imported at the top of this file
+    const gx = x + Math.cos(angle) * dist
+    const gy = y + Math.sin(angle) * dist
+    const p = mkGlyph('✦', gx, gy, 8 + Math.random() * 6, colors[i % colors.length])
     nodes.push(p)
     anims.push(
       p.animate(
@@ -444,7 +445,7 @@ function glitter(host: HTMLElement, x: number, y: number) {
           { transform: 'translate(-50%, -50%) scale(0)', opacity: 0 },
         ],
         {
-          duration: 420 + Math.random() * 200,
+          duration: dur(420 + Math.random() * 200),
           delay: Math.random() * 180,
           easing: 'ease-in-out',
           fill: 'both',
@@ -464,7 +465,7 @@ function shatter(host: HTMLElement, x: number, y: number) {
   const anims: Animation[] = []
   for (let i = 0; i < N; i++) {
     const angle = (i / N) * Math.PI * 2 + (Math.random() - 0.5) * 0.4
-    const dist = 20 + Math.random() * 34
+    const dist = px(20 + Math.random() * 34)
     const spin = (Math.random() - 0.5) * 360
     const p = mk('click-fx-shard', x, y)
     p.style.background = colors[i % colors.length]
@@ -479,7 +480,7 @@ function shatter(host: HTMLElement, x: number, y: number) {
           },
         ],
         {
-          duration: 280 + Math.random() * 160,
+          duration: dur(280 + Math.random() * 160),
           easing: 'cubic-bezier(0.1, 0.8, 0.2, 1)',
           fill: 'forwards',
         },
@@ -499,7 +500,7 @@ function ink(host: HTMLElement, x: number, y: number) {
   for (let i = 0; i < N; i++) {
     const angle = Math.random() * Math.PI * 2
     const dist = Math.random() * 14
-    const size = 14 + Math.random() * 22
+    const size = px(14 + Math.random() * 22)
     const p = mk('click-fx-ink', x + Math.cos(angle) * dist, y + Math.sin(angle) * dist)
     p.style.width = size + 'px'
     p.style.height = size + 'px'
@@ -511,7 +512,7 @@ function ink(host: HTMLElement, x: number, y: number) {
           { transform: 'translate(-50%, -50%) scale(0.1)', opacity: 0.5 },
           { transform: 'translate(-50%, -50%) scale(1)', opacity: 0 },
         ],
-        { duration: 500 + Math.random() * 220, easing: 'ease-out', fill: 'forwards' },
+        { duration: dur(500 + Math.random() * 220), easing: 'ease-out', fill: 'forwards' },
       ),
     )
   }
@@ -560,7 +561,7 @@ function beam(host: HTMLElement, x: number, y: number) {
   const anims: Animation[] = []
   for (let i = 0; i < N; i++) {
     const angle = (i / N) * 360 + (Math.random() - 0.5) * 8
-    const len = 26 + Math.random() * 26
+    const len = px(26 + Math.random() * 26)
     const p = mk('click-fx-beam', x, y)
     p.style.background = i % 2 ? a : b
     p.style.transformOrigin = 'top center'
@@ -573,7 +574,7 @@ function beam(host: HTMLElement, x: number, y: number) {
           { height: len + 'px', opacity: 0.5, offset: 0.5 },
           { height: '0px', opacity: 0 },
         ],
-        { duration: 380 + Math.random() * 160, easing: 'ease-out', fill: 'forwards' },
+        { duration: dur(380 + Math.random() * 160), easing: 'ease-out', fill: 'forwards' },
       ),
     )
   }
@@ -598,7 +599,7 @@ function implode(host: HTMLElement, x: number, y: number) {
   const anims: Animation[] = []
   for (let i = 0; i < N; i++) {
     const angle = (i / N) * Math.PI * 2 + (Math.random() - 0.5) * 0.5
-    const dist = 34 + Math.random() * 26
+    const dist = px(34 + Math.random() * 26)
     const p = mk('click-fx-spark', x, y)
     p.style.background = colors[i % colors.length]
     nodes.push(p)
@@ -617,7 +618,7 @@ function implode(host: HTMLElement, x: number, y: number) {
           { transform: 'translate(-50%, -50%) translate(0, 0) scale(0.2)', opacity: 0 },
         ],
         {
-          duration: 380 + Math.random() * 120,
+          duration: dur(380 + Math.random() * 120),
           easing: 'cubic-bezier(0.7, 0, 0.9, 0.3)',
           fill: 'forwards',
         },
@@ -635,7 +636,7 @@ function implode(host: HTMLElement, x: number, y: number) {
         { transform: 'translate(-50%, -50%) scale(0.05)', opacity: 0.9, offset: 0.72 },
         { transform: 'translate(-50%, -50%) scale(0.5)', opacity: 0 },
       ],
-      { duration: 520, easing: 'ease-out', fill: 'forwards' },
+      { duration: dur(520), easing: 'ease-out', fill: 'forwards' },
     ),
   )
   track(host, nodes, anims)
@@ -678,7 +679,7 @@ function bloom(host: HTMLElement, x: number, y: number) {
           },
         ],
         {
-          duration: 520 + Math.random() * 140,
+          duration: dur(520 + Math.random() * 140),
           easing: 'cubic-bezier(0.2, 0.8, 0.3, 1)',
           fill: 'forwards',
         },
@@ -702,10 +703,10 @@ function dust(host: HTMLElement, x: number, y: number) {
   const anims: Animation[] = []
   for (let i = 0; i < N; i++) {
     const angle = Math.random() * Math.PI * 2
-    const dist = 10 + Math.random() * 26
+    const dist = px(10 + Math.random() * 26)
     const p = mk('click-fx-dust', x, y)
     p.style.background = i % 3 === 0 ? b : a
-    const size = 10 + Math.random() * 16
+    const size = px(10 + Math.random() * 16)
     p.style.width = size + 'px'
     p.style.height = size + 'px'
     nodes.push(p)
@@ -719,7 +720,7 @@ function dust(host: HTMLElement, x: number, y: number) {
           },
         ],
         {
-          duration: 900 + Math.random() * 300,
+          duration: dur(900 + Math.random() * 300),
           easing: 'cubic-bezier(0.2, 0.6, 0.4, 1)',
           fill: 'forwards',
         },
@@ -790,7 +791,7 @@ function splash(host: HTMLElement, x: number, y: number) {
           },
         ],
         {
-          duration: 520 + Math.random() * 160,
+          duration: dur(520 + Math.random() * 160),
           easing: 'cubic-bezier(0.3, 0.1, 0.7, 1)',
           fill: 'forwards',
         },
@@ -816,7 +817,7 @@ function slash(host: HTMLElement, x: number, y: number) {
   const nodes: HTMLElement[] = []
   const anims: Animation[] = []
   const deg = ((swingAngle ?? Math.random() * Math.PI * 2) * 180) / Math.PI
-  const len = 64 + Math.random() * 26
+  const len = px(64 + Math.random() * 26)
 
   for (const [i, colour] of [a, b].entries()) {
     const cut = mk(i === 0 ? 'click-fx-cut' : 'click-fx-gash', x, y)
@@ -847,12 +848,13 @@ function slash(host: HTMLElement, x: number, y: number) {
   for (let i = 0; i < 5; i++) {
     const off = (Math.random() - 0.5) * len * 0.8
     const perp = deg + 90 + (Math.random() - 0.5) * 40
-    const dist = 10 + Math.random() * 18
+    const dist = px(10 + Math.random() * 18)
     const rad = (perp * Math.PI) / 180
     const along = (deg * Math.PI) / 180
-    const px = x + Math.cos(along) * off
-    const py = y + Math.sin(along) * off
-    const p = mk('click-fx-spark', px, py)
+    // sx/sy, not px/py: `px` is the size scale imported at the top of this file
+    const sx = x + Math.cos(along) * off
+    const sy = y + Math.sin(along) * off
+    const p = mk('click-fx-spark', sx, sy)
     p.style.background = b
     nodes.push(p)
     anims.push(
@@ -864,7 +866,7 @@ function slash(host: HTMLElement, x: number, y: number) {
             opacity: 0,
           },
         ],
-        { duration: 320 + Math.random() * 160, easing: 'ease-out', fill: 'forwards' },
+        { duration: dur(320 + Math.random() * 160), easing: 'ease-out', fill: 'forwards' },
       ),
     )
   }

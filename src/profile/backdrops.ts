@@ -20,7 +20,7 @@
  * rather than being a fixed picture pasted behind them.
  */
 
-import { amount } from '../ui/effectAmount'
+import { amount, effectScale } from '../ui/effectAmount'
 
 export type BackdropId = 'none' | 'glow' | 'waves' | 'bubbles' | 'flames' | 'leaves'
 
@@ -77,16 +77,34 @@ export type Effect = {
 const rgba = ([r, g, b]: [number, number, number], a: number) => `rgba(${r},${g},${b},${a})`
 
 /**
+ * Size and speed, read per frame rather than captured at init.
+ *
+ * ⚠️ Per frame on purpose. A backdrop runs continuously, so a slider moved while it is on screen
+ * has to change what you are already watching — capturing the value in init() would mean the
+ * dial only took effect when the canvas happened to be rebuilt, which is a resize or a mode
+ * change. Reading two numbers a frame costs nothing next to the drawing.
+ */
+const sizeScale = () => effectScale('size')
+const speedScale = () => effectScale('speed')
+
+/**
  * How many particles a canvas of this size gets.
  *
  * Per 100k px² rather than a flat number: the same count that looks sparse on a desktop page is a
  * swarm in a 400px canvas window, and the cost of a particle is the same either way.
  */
 function count(w: number, h: number, per100k: number, cap: number, coarse: boolean) {
-  // ⚠️ the dial multiplies the DESIRED count, before the cap and the floor — applied after, a
-  // subtle setting on a phone would land under the floor and quietly become an off switch
+  // ⚠️ the dial multiplies the DESIRED count, before the floor — applied after, a subtle setting
+  // on a phone would land under the floor and quietly become an off switch
   const n = amount('background', ((w * h) / 100000) * per100k)
-  return Math.max(6, Math.min(coarse ? Math.round(cap * 0.45) : cap, n))
+  /**
+   * ⚠️ AND THE CAP MOVES WITH IT, or the dial does nothing where it matters most. On a
+   * 1200x800 page the area-based count already sits at the cap, so "Lots" was clamped straight
+   * back to "Normal" — measured at 15,480 draws against 16,200, a difference nobody could see.
+   * The cap is still a cap: doubled at most, and the coarse-pointer ceiling still applies.
+   */
+  const dialled = Math.min(cap * 2, amount('background', cap))
+  return Math.max(6, Math.min(coarse ? Math.round(dialled * 0.45) : dialled, n))
 }
 
 /**
@@ -100,7 +118,7 @@ function waves(): Effect {
   let bands: Array<{ y: number; amp: number; len: number; speed: number; alpha: number }> = []
   return {
     init(w, h) {
-      const n = w < 520 ? 4 : 6
+      const n = amount('background', w < 520 ? 4 : 6)
       bands = Array.from({ length: n }, (_, i) => ({
         y: h * (0.35 + (i / n) * 0.75),
         amp: 6 + i * 3,
@@ -117,7 +135,10 @@ function waves(): Effect {
         ctx.moveTo(0, h)
         for (let x = 0; x <= w; x += 12) {
           const y =
-            b.y - t * b.speed * 0.35 + Math.sin((x + t * b.speed * 6) / b.len) * b.amp + lean * 0.4
+            b.y -
+            t * b.speed * 0.35 * speedScale() +
+            Math.sin((x + t * b.speed * 6 * speedScale()) / b.len) * b.amp * sizeScale() +
+            lean * 0.4
           ctx.lineTo(x, ((y % (h + 120)) + h + 120) % (h + 120))
         }
         ctx.lineTo(w, h)
@@ -148,7 +169,7 @@ function bubbles(): Effect {
     },
     step({ ctx, w, h, t, dt, paint, px, py }) {
       for (const p of ps) {
-        p.y -= p.v * dt
+        p.y -= p.v * dt * speedScale()
         const wobble = Math.sin(t * 1.6 + p.phase) * 8
         let x = p.x + wobble
         if (p.y < -p.r) {
@@ -165,7 +186,7 @@ function bubbles(): Effect {
           }
         }
         ctx.beginPath()
-        ctx.arc(x, p.y, p.r, 0, Math.PI * 2)
+        ctx.arc(x, p.y, p.r * sizeScale(), 0, Math.PI * 2)
         ctx.strokeStyle = rgba(paint.accent, 0.28)
         ctx.lineWidth = 1
         ctx.stroke()
@@ -206,9 +227,9 @@ function flames(): Effect {
     step({ ctx, w, h, t, dt, paint, px }) {
       const draft = px == null ? 0 : (px / w - 0.5) * 30
       for (const p of ps) {
-        p.life += dt
+        p.life += dt * speedScale()
         if (p.life > p.max) spawn(p, w, h)
-        p.y -= p.v * dt
+        p.y -= p.v * dt * speedScale()
         const k = p.life / p.max
         const x = p.x + Math.sin(t * 2.2 + p.y * 0.02) * 6 + draft * k
         const col: [number, number, number] = [
@@ -217,7 +238,7 @@ function flames(): Effect {
           Math.round(paint.accent[2] + (paint.accent2[2] - paint.accent[2]) * k),
         ]
         ctx.beginPath()
-        ctx.arc(x, p.y, p.r * (1 - k * 0.6), 0, Math.PI * 2)
+        ctx.arc(x, p.y, p.r * (1 - k * 0.6) * sizeScale(), 0, Math.PI * 2)
         ctx.fillStyle = rgba(col, 0.32 * (1 - k))
         ctx.fill()
       }
@@ -241,8 +262,8 @@ function leaves(): Effect {
     },
     step({ ctx, w, h, t, dt, paint, px, py }) {
       for (const p of ps) {
-        p.y += p.v * dt
-        p.a += p.spin * dt
+        p.y += p.v * dt * speedScale()
+        p.a += p.spin * dt * speedScale()
         let x = p.x + Math.sin(t * 0.9 + p.y * 0.015) * 18
         if (p.y > h + p.r) {
           p.y = -p.r
@@ -263,7 +284,7 @@ function leaves(): Effect {
         ctx.rotate(p.a)
         ctx.beginPath()
         // a leaf is two arcs meeting at a point — cheaper than a path and reads at 8px
-        ctx.ellipse(0, 0, p.r, p.r * 0.45, 0, 0, Math.PI * 2)
+        ctx.ellipse(0, 0, p.r * sizeScale(), p.r * 0.45 * sizeScale(), 0, 0, Math.PI * 2)
         ctx.fillStyle = rgba(p.r > 7 ? paint.accent2 : paint.accent, 0.3)
         ctx.fill()
         ctx.restore()
