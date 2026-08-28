@@ -3229,6 +3229,45 @@ select {
   transform-origin: 50% 50%;
   opacity: 0.75;
 }
+/* ── mouse trails ───────────────────────────────────────────────────────────
+   They share the click-fx layer, so they inherit its fixed, pointer-events:none,
+   never-eats-a-click guarantees. Only the shapes differ. */
+.trail-comet {
+  width: 14px;
+  height: 5px;
+  border-radius: 999px;
+  transform-origin: 50% 50%;
+}
+.trail-ribbon {
+  width: 26px;
+  height: 9px;
+  border-radius: 999px;
+  transform-origin: 50% 50%;
+  filter: blur(1px);
+}
+.trail-mote {
+  width: 4px;
+  height: 4px;
+}
+.trail-ink {
+  border-radius: 50%;
+  filter: blur(1.5px);
+}
+.trail-spark {
+  width: 4px;
+  height: 4px;
+}
+.trail-petal {
+  width: 7px;
+  height: 12px;
+  border-radius: 50% 50% 50% 50% / 60% 60% 40% 40%;
+}
+.trail-thread {
+  height: 2px;
+  border-radius: 2px;
+  transform-origin: 50% 50%;
+}
+
 .click-fx-glyph {
   /* text content sizes the box itself (shrink-to-fit under absolute positioning), so no
      width/height here — only the shared `> i` rule's border-radius/background need undoing */
@@ -4011,6 +4050,15 @@ select {
   display: block;
 }
 /* inside the canvas surface, which paints its own ground above any fixed layer */
+/* a profile window drawing its owner's background inside itself */
+.profile-has-backdrop {
+  position: relative;
+}
+.profile-has-backdrop > *:not(.site-backdrop) {
+  position: relative;
+  z-index: 1;
+}
+
 .site-backdrop.is-inline {
   position: absolute;
   z-index: 0;

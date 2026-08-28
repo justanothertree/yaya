@@ -7,7 +7,8 @@ import { applyPalette, derivePalette, loadPalette } from '../theme/customTheme'
 import { previewClickFx, setClickFxScope, type FxStyle } from '../ui/clickFx'
 import { beatLink } from '../game/challenge'
 import { ProfileLookEditor, type LookControls } from './ProfileLookEditor'
-import { isBackdropId, setBackdropOverride } from '../profile/backdrops'
+import { isBackdropId, setBackdropOverride, type BackdropId } from '../profile/backdrops'
+import { SiteBackdrop } from '../profile/SiteBackdrop'
 import { InCanvasWindow } from '../circuit/ui/canvasContext'
 import { setPaneLook } from '../circuit/ui/paneLook'
 import {
@@ -235,11 +236,25 @@ export function Profile({
    * changes what it draws, and puts it back when you leave. Same shape as the click flair's
    * override, for the same reason.
    */
+  /**
+   * ⚠️ IN A WINDOW, THEIR BACKGROUND BELONGS TO THE WINDOW.
+   *
+   * As a full page, their profile IS the page, so taking over the one site-wide layer is right.
+   * In canvas mode it is one window among several — repainting the whole canvas because you
+   * opened someone's profile changes the background behind every OTHER window too, which is the
+   * same takeover the look scoping was written to prevent, arriving by a different route.
+   *
+   * So: override the site layer on a page, and draw a scoped one inside the window otherwise.
+   * That is a second canvas, and it is the one case worth paying for — it is window-sized, the
+   * particle count scales with area, and the alternative is being wrong.
+   */
+  const theirBackdrop: BackdropId =
+    theirLook && isBackdropId(theirLook.backdrop) ? theirLook.backdrop : 'none'
   useEffect(() => {
-    if (!theirLook || isMyPage) return
-    setBackdropOverride(isBackdropId(theirLook.backdrop) ? theirLook.backdrop : 'none')
+    if (!theirLook || isMyPage || inCanvasWindow) return
+    setBackdropOverride(theirBackdrop)
     return () => setBackdropOverride(null)
-  }, [theirLook, isMyPage])
+  }, [theirLook, isMyPage, inCanvasWindow, theirBackdrop])
 
   /**
    * Hand the look up to the window, so the WHOLE window wears it.
@@ -413,9 +428,20 @@ export function Profile({
          with no border or extra padding, which is also why toggling cannot shift the layout.
          As a standalone page the effect above has already repainted <html>, so it must not draw
          a second panel on top of it. */
-      className={wearing && inCanvasWindow ? 'profile-look-window' : undefined}
+      className={
+        [
+          wearing && inCanvasWindow ? 'profile-look-window' : '',
+          wearing && inCanvasWindow && theirBackdrop !== 'none' ? 'profile-has-backdrop' : '',
+        ]
+          .filter(Boolean)
+          .join(' ') || undefined
+      }
       style={{ display: 'grid', gap: 'var(--sp-3, 1rem)', ...lookVars }}
     >
+      {/* their background, inside their window — see the note over theirBackdrop */}
+      {wearing && inCanvasWindow && theirBackdrop !== 'none' && (
+        <SiteBackdrop id={theirBackdrop} inline />
+      )}
       {/* identity header */}
       <div className="card profile-head">
         {/* Their colour, not the site's. This used to be var(--accent) for everyone, so all

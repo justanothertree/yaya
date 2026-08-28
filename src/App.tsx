@@ -9,6 +9,7 @@ import { MobileNav } from './components/MobileNav'
 import { AmbientBackdrop } from './components/AmbientBackdrop'
 import { installClickFx, setClickFxEnabled, setClickFxStyle, type FxStyle } from './ui/clickFx'
 import { FX_STYLES } from './ui/fxStyles'
+import { installMouseTrail, isTrailStyle, setTrailStyle, type TrailStyle } from './ui/mouseTrail'
 
 import { ShareStage } from './voice/ShareStage'
 import { UsagePanel } from './components/UsagePanel'
@@ -354,6 +355,33 @@ export default function App() {
     return (FX_STYLES as string[]).includes(v ?? '') ? (v as FxStyle) : 'sparks'
   })
   useEffect(() => installClickFx(), [])
+  useEffect(() => installMouseTrail(), [])
+
+  /**
+   * Mouse trail — its own setting, alongside the click flair rather than inside it.
+   *
+   * They answer different questions: one is what a CLICK does, the other is what MOVING does,
+   * and someone can reasonably want sparks on click and nothing following their cursor. Local
+   * for now and not part of the published profile look — worth seeing which of these survive
+   * being lived with before giving them a column.
+   */
+  const [trailStyle, setTrailStyleState] = useState<TrailStyle>(() => {
+    try {
+      const v = localStorage.getItem('mouse_trail_v1')
+      return isTrailStyle(v) ? v : 'none'
+    } catch {
+      return 'none'
+    }
+  })
+  useEffect(() => setTrailStyle(trailStyle), [trailStyle])
+  const chooseTrail = (t: TrailStyle) => {
+    setTrailStyleState(t)
+    try {
+      localStorage.setItem('mouse_trail_v1', t)
+    } catch {
+      /* private mode — applies for this visit */
+    }
+  }
   // Wake the call relay early: it sleeps when idle, and the first call of the day should not
   // be the one that pays for the cold start. One request, on load, then never again.
   useEffect(() => voiceSession.pingRelay(), [])
@@ -1563,6 +1591,8 @@ export default function App() {
               onToggleMotion={() => setMotionReduced(!motionPreferenceStored())}
               background={background}
               onBackground={chooseBackground}
+              trailStyle={trailStyle}
+              onTrailStyle={chooseTrail}
               sparksOn={sparksOn}
               onToggleSparks={toggleSparks}
               sparksStyle={sparksStyle}

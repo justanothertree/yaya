@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { PalettePicker } from '../theme/PalettePicker'
 import { FX_STYLE_OPTIONS } from '../ui/fxStyles'
 import { BACKDROPS, type BackdropId } from '../profile/backdrops'
+import { previewTrail, TRAIL_OPTIONS, type TrailStyle } from '../ui/mouseTrail'
 import { previewClickFx, type FxStyle } from '../ui/clickFx'
 import { playCallSound, ringtoneEnabled, setRingtoneEnabled } from '../voice/ringtone'
 
@@ -34,6 +35,8 @@ export function SettingsMenu({
   desktop,
   background,
   onBackground,
+  trailStyle,
+  onTrailStyle,
   motionOff,
   motionBySystem,
   onToggleMotion,
@@ -65,6 +68,9 @@ export function SettingsMenu({
   /** which background is behind the page — glow is one of the options, not a separate switch */
   background: BackdropId
   onBackground: (b: BackdropId) => void
+  /** what follows the cursor — a different question from what a click does */
+  trailStyle: TrailStyle
+  onTrailStyle: (t: TrailStyle) => void
   /** the effective answer: the site switch, or the OS asking */
   motionOff: boolean
   /** true when the OS is the reason, in which case the switch is locked on */
@@ -98,6 +104,8 @@ export function SettingsMenu({
   const currentFx = FX_STYLE_OPTIONS.find(([id]) => id === sparksStyle)
   const currentBg = BACKDROPS.find(([id]) => id === background)
   const [bgOpen, setBgOpen] = useState(false)
+  const currentTrail = TRAIL_OPTIONS.find(([id]) => id === trailStyle)
+  const [trailOpen, setTrailOpen] = useState(false)
   const wrapRef = useRef<HTMLDivElement>(null)
   const cogRef = useRef<HTMLButtonElement>(null)
 
@@ -326,6 +334,18 @@ export function SettingsMenu({
             <span className={'nav-menu-switch' + (motionOff ? ' is-on' : '')} aria-hidden />
           </button>
 
+          <button
+            className="nav-menu-row"
+            role="menuitem"
+            onClick={() => setTrailOpen(true)}
+            title="What follows your cursor as you move"
+          >
+            <span>🪄 Mouse trail</span>
+            <span className="muted" style={{ fontSize: '0.8rem' }}>
+              {currentTrail?.[2] ?? 'None'}
+            </span>
+          </button>
+
           {/* ONE row, not a toggle plus a conditional style row. Off is now a look you pick
               ("None") rather than a separate switch, so there's nowhere to strand yourself:
               turning flair off used to hide the very row that leads back to the picker. */}
@@ -429,6 +449,53 @@ export function SettingsMenu({
                 </button>
               </div>
               <PalettePicker active={customPalette} onActiveChange={onCustomPalette} />
+            </div>
+          </div>,
+          document.body,
+        )}
+
+      {trailOpen &&
+        createPortal(
+          <div
+            className="pal-scrim"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Choose a mouse trail"
+            onPointerDown={(e) => {
+              if (e.target === e.currentTarget) setTrailOpen(false)
+            }}
+          >
+            <div className="pal-sheet fx-sheet">
+              <div className="pal-sheet-head">
+                <strong>Mouse trail</strong>
+                <button className="btn" onClick={() => setTrailOpen(false)} aria-label="Close">
+                  ✕
+                </button>
+              </div>
+              <div className="fx-style-row">
+                {TRAIL_OPTIONS.map(([id, icon, label]) => (
+                  <button
+                    key={id}
+                    className={'fx-style-btn' + (trailStyle === id ? ' is-on' : '')}
+                    aria-pressed={trailStyle === id}
+                    title={label}
+                    onClick={(e) => {
+                      onTrailStyle(id)
+                      // a trail is what MOVING looks like, so show a short run of it rather
+                      // than one particle sitting still
+                      const r = e.currentTarget.getBoundingClientRect()
+                      previewTrail(id, r.left + r.width / 2, r.top + r.height / 2)
+                    }}
+                  >
+                    <span aria-hidden>{icon}</span>
+                    <span className="fx-style-label">{label}</span>
+                  </button>
+                ))}
+              </div>
+              <p className="muted" style={{ margin: '0.6rem 0 0', fontSize: '0.8rem' }}>
+                Move the pointer anywhere to try it. Off under Reduce motion, and not shown on touch
+                devices — there is no cursor to follow.
+              </p>
             </div>
           </div>,
           document.body,
