@@ -6,7 +6,7 @@ function getTokenFromHash(): string | null {
   return new URLSearchParams(qs).get('token')
 }
 
-type InviteInfo = { label: string | null; is_used: boolean }
+type InviteInfo = { label: string | null; is_used: boolean; is_expired: boolean }
 
 export function AcceptInvite() {
   const sb = getSupabaseClient()
@@ -118,6 +118,19 @@ export function AcceptInvite() {
         <h2 style={{ marginTop: 0 }}>Invite not found</h2>
         <p className="muted">
           This invite link is invalid or expired. Ask your host for a new one.
+        </p>
+      </div>
+    )
+
+  // Told here rather than at the end of signup. A lapsed invite used to look perfectly good right
+  // up until the final button, which reads as the site being broken rather than the link being old.
+  if (invite.is_expired && !invite.is_used)
+    return (
+      <div>
+        <h2 style={{ marginTop: 0 }}>This invite has expired</h2>
+        <p className="muted">
+          Invites are good for a week. Ask {invite.label ? 'whoever sent it' : 'your host'} for a
+          fresh link — it only takes them a moment.
         </p>
       </div>
     )

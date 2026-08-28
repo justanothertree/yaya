@@ -14,6 +14,25 @@ type Invite = {
   used_at: string | null
   created_at: string
   accepted_username: string | null
+  expires_at: string | null
+  /** 'live' | 'expired' | 'used', decided by the server so this panel and the signup page can
+   *  never disagree about whether a link still works */
+  state: string | null
+}
+
+/**
+ * How long an invite has left, in words.
+ *
+ * Days rather than a date: "expires 4 Sep" makes you do arithmetic before deciding whether to
+ * send a reminder, and the only question anyone actually has is how much time is left.
+ */
+function expiryWords(iso: string): string {
+  const ms = new Date(iso).getTime() - Date.now()
+  if (ms <= 0) return 'expired'
+  const days = Math.floor(ms / 86400000)
+  if (days >= 1) return `${days}d left`
+  const hours = Math.max(1, Math.floor(ms / 3600000))
+  return `${hours}h left`
 }
 
 type Member = {
@@ -301,7 +320,10 @@ export function AdminPanel() {
     }
   }
 
-  const pending = invites.filter((i) => !i.used_at)
+  // ⚠️ Three states, not two. An expired invite is not pending: leaving it in that list is how
+  // somebody copies a link that will not work and only finds out when the person tries it.
+  const pending = invites.filter((i) => !i.used_at && i.state !== 'expired')
+  const expired = invites.filter((i) => !i.used_at && i.state === 'expired')
   const used = invites.filter((i) => i.used_at)
   const tabBtn = (t: typeof tab, label: string) => (
     <button
@@ -579,8 +601,18 @@ export function AdminPanel() {
                     <span style={{ flex: 1, fontSize: '0.9rem' }}>
                       {inv.label ?? <span className="muted">unlabeled</span>}
                     </span>
-                    <span className="muted" style={{ fontSize: '0.72rem', flexShrink: 0 }}>
-                      {new Date(inv.created_at).toLocaleDateString()}
+                    <span
+                      className="muted"
+                      style={{ fontSize: '0.72rem', flexShrink: 0 }}
+                      title={
+                        inv.expires_at
+                          ? `Expires ${new Date(inv.expires_at).toLocaleString()}`
+                          : undefined
+                      }
+                    >
+                      {inv.expires_at
+                        ? expiryWords(inv.expires_at)
+                        : new Date(inv.created_at).toLocaleDateString()}
                     </span>
                     <button
                       className="btn"
@@ -589,6 +621,61 @@ export function AdminPanel() {
                     >
                       {copied === inv.token ? '✓ Copied!' : 'Copy link'}
                     </button>
+                    <button
+                      className="btn"
+                      style={{
+                        fontSize: '0.78rem',
+                        padding: '0.2rem 0.45rem',
+                        opacity: 0.55,
+                        flexShrink: 0,
+                      }}
+                      onClick={() => void deleteInvite(inv.id)}
+                      title="Delete invite"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+
+          {/* Expired: dead links, kept visible only so they can be cleared out. Separated from
+              pending so nobody copies one by mistake. */}
+          {expired.length > 0 && (
+            <>
+              <div
+                className="muted"
+                style={{
+                  fontSize: '0.72rem',
+                  fontWeight: 700,
+                  marginBottom: '0.4rem',
+                  letterSpacing: '0.05em',
+                  textTransform: 'uppercase',
+                }}
+              >
+                Expired
+              </div>
+              <div style={{ display: 'grid', gap: '0.35rem', marginBottom: '0.9rem' }}>
+                {expired.map((inv) => (
+                  <div
+                    key={inv.id}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.5rem',
+                      padding: '0.4rem 0.65rem',
+                      background: 'var(--b1,rgba(127,127,127,0.07))',
+                      borderRadius: 8,
+                      opacity: 0.6,
+                    }}
+                  >
+                    <span style={{ flex: 1, fontSize: '0.9rem' }}>
+                      {inv.label ?? <span className="muted">unlabeled</span>}
+                    </span>
+                    <span className="muted" style={{ fontSize: '0.72rem', flexShrink: 0 }}>
+                      expired
+                    </span>
                     <button
                       className="btn"
                       style={{

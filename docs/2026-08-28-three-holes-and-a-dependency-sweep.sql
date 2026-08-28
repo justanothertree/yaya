@@ -1,0 +1,100 @@
+-- 2026-08-28 — Closing the outstanding items from the security pass.
+--
+-- Three database fixes and a dependency sweep. Each is small; two were genuinely exploitable by
+-- anyone who read this repo, which is public.
+--
+--
+-- 1. THE LEADERBOARD COULD BE FORGED OUTRIGHT
+--
+-- submit_score is callable by `anon` — correctly, since signed-out people play Snake — and it
+-- accepted any score up to 1,000,000. The best score ever actually recorded is 310. Anyone could
+-- post 999,999 under an unclaimed name and hold first place permanently. The rate limits added
+-- earlier bound a flood; they do nothing about a single fake, and one is all it takes.
+--
+-- The new ceiling is DERIVED, not chosen. scoreFormula() in manager.tsx is `return apples`, so
+-- score is 1:1 with apples eaten; each apple grows the snake by one square; a run ends when the
+-- snake fills the board. The largest board offered is Huge, 48x48 = 2304. A literally perfect
+-- game on the biggest board scores 2304 and nothing legitimate can beat it.
+--
+-- ⚠️ This constant now has a maintenance obligation: add a bigger board to that size list and
+-- this must move with it, or real scores start being silently rejected. That is the honest cost.
+-- 1,000,000 needed no maintenance precisely because it never rejected anything.
+--
+-- p_apples gained the same bound, since it is now meaningful to have one.
+--
+-- Verified: 999999 refused, 2305 refused, 2304 accepted. Test rows deleted; top score is 310.
+--
+--
+-- 2. AN UNCLAIMED INVITE WAS A PERMANENT KEY
+--
+-- Correcting an earlier claim of mine: revocation already existed (delete_invite, admin only).
+-- The missing half was expiry, and it is the half that does not depend on anyone remembering.
+-- A token created and never claimed stayed valid indefinitely, so whoever ended up holding it —
+-- the intended person, anyone the message was forwarded to, anyone reading a leaked mailbox or
+-- an old chat backup — could become a member whenever they chose. One token was live and 41 days
+-- old when this was written.
+--
+-- Invites now last a week. Existing unclaimed ones were given seven days FROM THE MIGRATION, not
+-- from their creation date: backdating would have silently cancelled a link that might be sitting
+-- in a real person's inbox, and the job here was to close a hole, not to withdraw an invitation
+-- on the owner's behalf. The "valid forever" property ends either way.
+--
+-- complete_member_signup enforces it, and its failure message is deliberately unchanged and
+-- identical for every case — someone probing tokens learns "no", never "that one existed but
+-- expired last week". get_invite_by_token reports expiry separately so the signup PAGE can say
+-- why, which is a different audience: they already hold the link.
+--
+-- list_invites gained expires_at and a server-decided state, so the panel and the signup page can
+-- never disagree about whether a link still works. The panel now lists expired invites apart from
+-- pending ones — leaving them together is how somebody copies a dead link and only finds out when
+-- the recipient tries it.
+--
+-- Verified: a token dated in the past is refused by the signup predicate and reported expired by
+-- the read side; a fresh insert gets the default expiry. Test rows deleted.
+--
+--
+-- 3. TWO SECURITY DEFINER FUNCTIONS RAN WITH AN UNPINNED search_path
+--
+-- get_member_trophies and get_member_activity — both mine, written in earlier sessions and not
+-- matched to the pattern around them. A SECURITY DEFINER function runs with the OWNER's
+-- privileges; if the schema search order is not pinned, an unqualified name inside the body can
+-- resolve to an object someone else placed in an earlier schema, which then executes as the
+-- owner. That is the standard privilege-escalation shape for Postgres functions.
+--
+-- Reaching it requires CREATE on a schema in the path, which ordinary roles here should not have,
+-- so this was defence in depth rather than an open door — but every other definer in this
+-- database pins it. ALTER FUNCTION rather than CREATE OR REPLACE, so a working body is not
+-- retyped to change one setting.
+--
+-- Verified: zero SECURITY DEFINER functions in `public` now have a null proconfig.
+--
+--
+-- 4. DEPENDENCIES
+--
+-- Six of seven advisories cleared with plain `npm audit fix` (no --force, no breaking changes):
+-- @babel/core, brace-expansion, fast-uri, js-yaml and others. All build-time only — `npm audit
+-- --omit=dev` reported zero before and after, so none of this ever reached a visitor.
+--
+-- ⚠️ ONE IS DELIBERATELY LEFT: esbuild, "arbitrary file read when running the development server
+-- on Windows" (GHSA-g7r4-m6w7-qqqr). Vite 7.3.5 pins `esbuild ^0.27.0` and the fixed release is
+-- 0.28.1+, which is outside that range — an override would force an incompatible major under
+-- Vite. The real fix is Vite 7 → 8, a framework major that deserves its own session and a proper
+-- test pass rather than being smuggled into a security tidy-up.
+--
+-- Meanwhile it is low risk here: it affects the dev server only, never the built site, and the
+-- dev server binds localhost (no `--host` in the dev script, no host override in vite.config).
+-- Worth remembering before ever running `vite --host` on an untrusted network.
+--
+--
+-- NOT DONE, ON PURPOSE
+--
+-- Supabase's leaked-password protection is behind a paid plan, so it is off the list rather than
+-- outstanding.
+--
+-- The twelve "RLS enabled, no policy" tables still want a one-time audit. Most are deliberate
+-- (deny-all, reached only through SECURITY DEFINER functions) but "most" is not "all", and I have
+-- not checked them one by one.
+
+-- (Applied as migrations: submit_score_ceiling_is_the_board_not_a_round_number,
+--  invites_expire_so_a_forgotten_link_stops_working,
+--  pin_search_path_on_the_two_definer_functions_missing_it.)
