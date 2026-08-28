@@ -20,6 +20,8 @@
  * rather than being a fixed picture pasted behind them.
  */
 
+import { amount } from '../ui/effectAmount'
+
 export type BackdropId = 'none' | 'glow' | 'waves' | 'bubbles' | 'flames' | 'leaves'
 
 export const BACKDROPS: Array<[BackdropId, string, string]> = [
@@ -81,7 +83,9 @@ const rgba = ([r, g, b]: [number, number, number], a: number) => `rgba(${r},${g}
  * swarm in a 400px canvas window, and the cost of a particle is the same either way.
  */
 function count(w: number, h: number, per100k: number, cap: number, coarse: boolean) {
-  const n = Math.round(((w * h) / 100000) * per100k)
+  // ⚠️ the dial multiplies the DESIRED count, before the cap and the floor — applied after, a
+  // subtle setting on a phone would land under the floor and quietly become an off switch
+  const n = amount('background', ((w * h) / 100000) * per100k)
   return Math.max(6, Math.min(coarse ? Math.round(cap * 0.45) : cap, n))
 }
 

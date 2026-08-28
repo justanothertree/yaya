@@ -1,10 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { PalettePicker } from '../theme/PalettePicker'
-import { FX_STYLE_OPTIONS } from '../ui/fxStyles'
-import { BACKDROPS, type BackdropId } from '../profile/backdrops'
-import { previewTrail, TRAIL_OPTIONS, type TrailStyle } from '../ui/mouseTrail'
-import { previewClickFx, type FxStyle } from '../ui/clickFx'
 import { playCallSound, ringtoneEnabled, setRingtoneEnabled } from '../voice/ringtone'
 
 export type Theme = 'light' | 'dark' | 'alt'
@@ -33,17 +29,9 @@ export function SettingsMenu({
   canvasCapable,
   canvasReason,
   desktop,
-  background,
-  onBackground,
-  trailStyle,
-  onTrailStyle,
   motionOff,
   motionBySystem,
   onToggleMotion,
-  sparksOn,
-  onToggleSparks,
-  sparksStyle,
-  onSparksStyle,
   customPalette,
   onCustomPalette,
   authed,
@@ -52,6 +40,7 @@ export function SettingsMenu({
   email,
   onAccount,
   onProfile,
+  onAppearance,
   onSignIn,
   onSignOut,
 }: {
@@ -65,21 +54,11 @@ export function SettingsMenu({
   /** why canvas is unavailable, when it is — a disabled control should say why */
   canvasReason?: string
   desktop: boolean
-  /** which background is behind the page — glow is one of the options, not a separate switch */
-  background: BackdropId
-  onBackground: (b: BackdropId) => void
-  /** what follows the cursor — a different question from what a click does */
-  trailStyle: TrailStyle
-  onTrailStyle: (t: TrailStyle) => void
   /** the effective answer: the site switch, or the OS asking */
   motionOff: boolean
   /** true when the OS is the reason, in which case the switch is locked on */
   motionBySystem: boolean
   onToggleMotion: () => void
-  sparksOn: boolean
-  onToggleSparks: () => void
-  sparksStyle: FxStyle
-  onSparksStyle: (style: FxStyle) => void
   /** true when the user's own palette is overriding the built-in theme */
   customPalette: boolean
   onCustomPalette: (on: boolean) => void
@@ -90,6 +69,8 @@ export function SettingsMenu({
   email: string | null
   onAccount: () => void
   /** opens their own profile page; absent until the username is known */
+  /** opens the one dialog that holds colour, background, click and trail */
+  onAppearance: () => void
   onProfile?: () => void
   onSignIn: () => void
   onSignOut: () => void
@@ -101,11 +82,6 @@ export function SettingsMenu({
    * scroll every time flair was on, so picking a style opens its own dialog instead */
   const [styleOpen, setStyleOpen] = useState(false)
   const [callSound, setCallSound] = useState(ringtoneEnabled)
-  const currentFx = FX_STYLE_OPTIONS.find(([id]) => id === sparksStyle)
-  const currentBg = BACKDROPS.find(([id]) => id === background)
-  const [bgOpen, setBgOpen] = useState(false)
-  const currentTrail = TRAIL_OPTIONS.find(([id]) => id === trailStyle)
-  const [trailOpen, setTrailOpen] = useState(false)
   const wrapRef = useRef<HTMLDivElement>(null)
   const cogRef = useRef<HTMLButtonElement>(null)
 
@@ -290,21 +266,21 @@ export function SettingsMenu({
             </span>
           </div>
 
-          {/* ⚠️ A picker, not a toggle. The glow was its own switch beside everything else, which
-              made "what is behind the page" two controls that could disagree — glow on AND waves
-              on was reachable and drew two animated layers for one slot. One list, one answer,
-              and the same shape as the click flair row directly below it, because it is the same
-              kind of choice. */}
+          {/* ⚠️ ONE row for four decisions. Colour, background, click and trail were four
+              rows opening four sheets — which grew the cog every time an effect was added, and
+              presented as unrelated four things that are obviously one subject. Nobody choosing a
+              look wants them on separate screens, because they have to live together. */}
           <button
             className="nav-menu-row"
             role="menuitem"
-            onClick={() => setBgOpen(true)}
-            title="What moves behind the page"
+            onClick={() => {
+              setOpen(false)
+              onAppearance()
+            }}
+            title="Colours, background, click effect and mouse trail"
           >
-            <span>🌌 Background</span>
-            <span className="muted" style={{ fontSize: '0.8rem' }}>
-              {currentBg?.[2] ?? 'None'}
-            </span>
+            <span>🎨 Appearance</span>
+            <span className="muted">›</span>
           </button>
 
           {/**
@@ -332,37 +308,6 @@ export function SettingsMenu({
           >
             <span>🧘 Reduce motion</span>
             <span className={'nav-menu-switch' + (motionOff ? ' is-on' : '')} aria-hidden />
-          </button>
-
-          <button
-            className="nav-menu-row"
-            role="menuitem"
-            onClick={() => setTrailOpen(true)}
-            title="What follows your cursor as you move"
-          >
-            <span>🪄 Mouse trail</span>
-            <span className="muted" style={{ fontSize: '0.8rem' }}>
-              {currentTrail?.[2] ?? 'None'}
-            </span>
-          </button>
-
-          {/* ONE row, not a toggle plus a conditional style row. Off is now a look you pick
-              ("None") rather than a separate switch, so there's nowhere to strand yourself:
-              turning flair off used to hide the very row that leads back to the picker. */}
-          <button
-            className="nav-menu-row"
-            role="menuitem"
-            onClick={() => {
-              setStyleOpen(true)
-              setOpen(false)
-            }}
-            title="A small burst of light wherever you click"
-          >
-            <span>
-              ⁕ Click flair
-              <span className="muted"> · {sparksOn ? currentFx?.[2] : 'None'}</span>
-            </span>
-            <span className="muted">›</span>
           </button>
 
           {/* Local to this menu rather than lifted into App: nothing else needs to know, and the
@@ -449,165 +394,6 @@ export function SettingsMenu({
                 </button>
               </div>
               <PalettePicker active={customPalette} onActiveChange={onCustomPalette} />
-            </div>
-          </div>,
-          document.body,
-        )}
-
-      {trailOpen &&
-        createPortal(
-          <div
-            className="pal-scrim"
-            role="dialog"
-            aria-modal="true"
-            aria-label="Choose a mouse trail"
-            onPointerDown={(e) => {
-              if (e.target === e.currentTarget) setTrailOpen(false)
-            }}
-          >
-            <div className="pal-sheet fx-sheet">
-              <div className="pal-sheet-head">
-                <strong>Mouse trail</strong>
-                <button className="btn" onClick={() => setTrailOpen(false)} aria-label="Close">
-                  ✕
-                </button>
-              </div>
-              <div className="fx-style-row">
-                {TRAIL_OPTIONS.map(([id, icon, label]) => (
-                  <button
-                    key={id}
-                    className={'fx-style-btn' + (trailStyle === id ? ' is-on' : '')}
-                    aria-pressed={trailStyle === id}
-                    title={label}
-                    onClick={(e) => {
-                      onTrailStyle(id)
-                      // a trail is what MOVING looks like, so show a short run of it rather
-                      // than one particle sitting still
-                      const r = e.currentTarget.getBoundingClientRect()
-                      previewTrail(id, r.left + r.width / 2, r.top + r.height / 2)
-                    }}
-                  >
-                    <span aria-hidden>{icon}</span>
-                    <span className="fx-style-label">{label}</span>
-                  </button>
-                ))}
-              </div>
-              <p className="muted" style={{ margin: '0.6rem 0 0', fontSize: '0.8rem' }}>
-                Move the pointer anywhere to try it. Off under Reduce motion, and not shown on touch
-                devices — there is no cursor to follow.
-              </p>
-            </div>
-          </div>,
-          document.body,
-        )}
-
-      {bgOpen &&
-        createPortal(
-          <div
-            className="pal-scrim"
-            role="dialog"
-            aria-modal="true"
-            aria-label="Choose a background"
-            onPointerDown={(e) => {
-              if (e.target === e.currentTarget) setBgOpen(false)
-            }}
-          >
-            <div className="pal-sheet fx-sheet">
-              <div className="pal-sheet-head">
-                <strong>Background</strong>
-                <button className="btn" onClick={() => setBgOpen(false)} aria-label="Close">
-                  ✕
-                </button>
-              </div>
-              <div className="fx-style-row">
-                {BACKDROPS.map(([id, icon, label]) => (
-                  <button
-                    key={id}
-                    className={'fx-style-btn' + (background === id ? ' is-on' : '')}
-                    aria-pressed={background === id}
-                    title={label}
-                    onClick={() => onBackground(id)}
-                  >
-                    <span aria-hidden>{icon}</span>
-                    <span className="fx-style-label">{label}</span>
-                  </button>
-                ))}
-              </div>
-              <p className="muted" style={{ margin: '0.6rem 0 0', fontSize: '0.8rem' }}>
-                Applies everywhere, and visitors see it on your profile too. Stops entirely under
-                Reduce motion.
-              </p>
-            </div>
-          </div>,
-          document.body,
-        )}
-
-      {/* Same reasoning and the same containing-block trap as the palette dialog above -- a
-          dozen tiles is real depth, not a menu row, and this has to portal to <body> for the
-          same reason that one does. Each tile plays its own effect at its own centre on click,
-          so choosing a style IS trying it, no separate preview area needed. */}
-      {styleOpen &&
-        createPortal(
-          <div
-            className="pal-scrim"
-            role="dialog"
-            aria-modal="true"
-            aria-label="Choose a click flair style"
-            onPointerDown={(e) => {
-              if (e.target === e.currentTarget) setStyleOpen(false)
-            }}
-          >
-            <div className="pal-sheet fx-sheet">
-              <div className="pal-sheet-head">
-                <strong>Click flair style</strong>
-                <button className="btn" onClick={() => setStyleOpen(false)} aria-label="Close">
-                  ✕
-                </button>
-              </div>
-              <div className="fx-style-row">
-                {/* "None" belongs in the list of looks, not only on the toggle two menus back:
-                    when you're standing in the picker deciding you'd rather have nothing, the
-                    answer should be here. It drives the same switch the toggle does. */}
-                <button
-                  className={'fx-style-btn' + (!sparksOn ? ' is-on' : '')}
-                  aria-pressed={!sparksOn}
-                  title="No flair"
-                  onClick={() => {
-                    if (sparksOn) onToggleSparks()
-                  }}
-                >
-                  <span aria-hidden>∅</span>
-                  <span className="fx-style-label">None</span>
-                </button>
-                {FX_STYLE_OPTIONS.map(([id, icon, label]) => (
-                  <button
-                    key={id}
-                    className={'fx-style-btn' + (sparksOn && sparksStyle === id ? ' is-on' : '')}
-                    aria-pressed={sparksOn && sparksStyle === id}
-                    title={label}
-                    onClick={(e) => {
-                      onSparksStyle(id)
-                      // picking a look from None is also how you turn flair back on
-                      if (!sparksOn) onToggleSparks()
-                      const r = e.currentTarget.getBoundingClientRect()
-                      previewClickFx(id, r.left + r.width / 2, r.top + r.height / 2)
-                    }}
-                  >
-                    <span aria-hidden>{icon}</span>
-                    <span className="fx-style-label">{label}</span>
-                  </button>
-                ))}
-              </div>
-              {/* Somewhere to actually try it. The effect already fires anywhere you click, but
-                  the tiles are small and packed, so the burst you're judging lands half behind
-                  the next button. This is just open room with nothing to hit — deliberately
-                  WITHOUT a handler of its own, since the global one already covers it and two
-                  would fire two bursts from one click. */}
-              <div className="fx-testpad">
-                <span className="muted">
-                  {sparksOn ? 'Click around in here to try it' : 'Flair is off'}
-                </span>
-              </div>
             </div>
           </div>,
           document.body,

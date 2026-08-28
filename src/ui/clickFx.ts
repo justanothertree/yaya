@@ -35,6 +35,7 @@
  */
 
 import { motionReduced } from './motion'
+import { amount } from './effectAmount'
 
 export type FxStyle =
   | 'sparks'
@@ -135,7 +136,7 @@ function mkGlyph(char: string, x: number, y: number, size: number, color?: strin
 /** The original: a ring plus 8 radiating dots. Reads as a clean, energetic "that registered". */
 function sparks(host: HTMLElement, x: number, y: number) {
   const [a, b] = palette()
-  const N = 8
+  const N = amount('click', 8)
   const nodes: HTMLElement[] = []
   const anims: Animation[] = []
 
@@ -215,7 +216,7 @@ function sonar(host: HTMLElement, x: number, y: number) {
  * spin the whole way, which is what paper falling actually looks like. */
 function pop(host: HTMLElement, x: number, y: number) {
   const colors = [...palette(), '#fff']
-  const N = 14
+  const N = amount('click', 14)
   const nodes: HTMLElement[] = []
   const anims: Animation[] = []
   for (let i = 0; i < N; i++) {
@@ -281,7 +282,7 @@ function rocket(host: HTMLElement, x: number, y: number) {
     .then(() => {
       const peakY = y - rise
       const colors = palette()
-      const N = 14
+      const N = amount('click', 14)
       const nodes: HTMLElement[] = []
       const anims: Animation[] = []
       for (let i = 0; i < N; i++) {
@@ -316,7 +317,7 @@ function rocket(host: HTMLElement, x: number, y: number) {
  * what reads as "star" rather than "dot with a star drawn on it". */
 function stars(host: HTMLElement, x: number, y: number) {
   const colors = palette()
-  const N = 7
+  const N = amount('click', 7)
   const nodes: HTMLElement[] = []
   const anims: Animation[] = []
   for (let i = 0; i < N; i++) {
@@ -353,7 +354,7 @@ function stars(host: HTMLElement, x: number, y: number) {
  * rather than "exploded". Fixed red rather than the theme palette: a heart reads as itself only
  * in that color family. */
 function hearts(host: HTMLElement, x: number, y: number) {
-  const N = 6
+  const N = amount('click', 6)
   const nodes: HTMLElement[] = []
   const anims: Animation[] = []
   for (let i = 0; i < N; i++) {
@@ -387,7 +388,7 @@ function hearts(host: HTMLElement, x: number, y: number) {
  * vanish, not a plain fade) — the pop at the top is what sells "bubble" over "dot that floats". */
 function bubbles(host: HTMLElement, x: number, y: number) {
   const [a, b] = palette()
-  const N = 8
+  const N = amount('click', 8)
   const nodes: HTMLElement[] = []
   const anims: Animation[] = []
   for (let i = 0; i < N; i++) {
@@ -425,7 +426,7 @@ function bubbles(host: HTMLElement, x: number, y: number) {
  * twinkles in place near the click. */
 function glitter(host: HTMLElement, x: number, y: number) {
   const colors = palette()
-  const N = 9
+  const N = amount('click', 9)
   const nodes: HTMLElement[] = []
   const anims: Animation[] = []
   for (let i = 0; i < N; i++) {
@@ -458,7 +459,7 @@ function glitter(host: HTMLElement, x: number, y: number) {
  * no lingering drift — the only style built to look like something broke rather than dissolved. */
 function shatter(host: HTMLElement, x: number, y: number) {
   const colors = palette()
-  const N = 10
+  const N = amount('click', 10)
   const nodes: HTMLElement[] = []
   const anims: Animation[] = []
   for (let i = 0; i < N; i++) {
@@ -492,7 +493,7 @@ function shatter(host: HTMLElement, x: number, y: number) {
  * landing, not a burst radiating evenly. */
 function ink(host: HTMLElement, x: number, y: number) {
   const [a, b] = palette()
-  const N = 5
+  const N = amount('click', 5)
   const nodes: HTMLElement[] = []
   const anims: Animation[] = []
   for (let i = 0; i < N; i++) {
@@ -523,7 +524,7 @@ function ink(host: HTMLElement, x: number, y: number) {
  * path isn't expressible as a start/end pair of transforms. */
 function orbit(host: HTMLElement, x: number, y: number) {
   const colors = palette()
-  const N = 5
+  const N = amount('click', 5)
   const nodes: HTMLElement[] = []
   const anims: Animation[] = []
   for (let i = 0; i < N; i++) {
@@ -554,7 +555,7 @@ function orbit(host: HTMLElement, x: number, y: number) {
  * while `.animate()` only grows and shrinks its height. */
 function beam(host: HTMLElement, x: number, y: number) {
   const [a, b] = palette()
-  const N = 8
+  const N = amount('click', 8)
   const nodes: HTMLElement[] = []
   const anims: Animation[] = []
   for (let i = 0; i < N; i++) {
@@ -592,7 +593,7 @@ function beam(host: HTMLElement, x: number, y: number) {
  */
 function implode(host: HTMLElement, x: number, y: number) {
   const colors = palette()
-  const N = 12
+  const N = amount('click', 12)
   const nodes: HTMLElement[] = []
   const anims: Animation[] = []
   for (let i = 0; i < N; i++) {
@@ -650,7 +651,7 @@ function implode(host: HTMLElement, x: number, y: number) {
  */
 function bloom(host: HTMLElement, x: number, y: number) {
   const [a, b] = palette()
-  const N = 6
+  const N = amount('click', 6)
   const nodes: HTMLElement[] = []
   const anims: Animation[] = []
   const turn = Math.random() * 360
@@ -696,7 +697,7 @@ function bloom(host: HTMLElement, x: number, y: number) {
  */
 function dust(host: HTMLElement, x: number, y: number) {
   const [a, b] = palette()
-  const N = 7
+  const N = amount('click', 7)
   const nodes: HTMLElement[] = []
   const anims: Animation[] = []
   for (let i = 0; i < N; i++) {
@@ -767,7 +768,7 @@ function splash(host: HTMLElement, x: number, y: number) {
     )
   }
 
-  const N = 5
+  const N = amount('click', 5)
   for (let i = 0; i < N; i++) {
     const spread = (i / (N - 1) - 0.5) * 58 + (Math.random() - 0.5) * 10
     const rise = 18 + Math.random() * 20

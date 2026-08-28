@@ -19,6 +19,7 @@
  */
 
 import { motionReduced } from './motion'
+import { spacingFor } from './effectAmount'
 
 export type TrailStyle =
   | 'none'
@@ -29,6 +30,11 @@ export type TrailStyle =
   | 'spark'
   | 'bloom'
   | 'thread'
+  | 'orbit'
+  | 'dash'
+  | 'rise'
+  | 'smoke'
+  | 'chase'
 
 export const TRAIL_OPTIONS: Array<[TrailStyle, string, string]> = [
   ['none', '∅', 'None'],
@@ -39,6 +45,11 @@ export const TRAIL_OPTIONS: Array<[TrailStyle, string, string]> = [
   ['spark', '⚡', 'Spark'],
   ['bloom', '🌷', 'Petals'],
   ['thread', '🧵', 'Thread'],
+  ['orbit', '⟳', 'Orbit'],
+  ['dash', '≡', 'Dash'],
+  ['rise', '🫧', 'Rise'],
+  ['smoke', '🌫', 'Smoke'],
+  ['chase', '🐾', 'Chase'],
 ]
 
 export const TRAIL_IDS = TRAIL_OPTIONS.map(([id]) => id)
@@ -111,6 +122,11 @@ const SPACING: Record<Exclude<TrailStyle, 'none'>, number> = {
   spark: 18,
   bloom: 42,
   thread: 10,
+  orbit: 30,
+  dash: 22,
+  rise: 20,
+  smoke: 24,
+  chase: 14,
 }
 
 function drop(s: Exclude<TrailStyle, 'none'>, x: number, y: number, dx: number, dy: number) {
@@ -227,6 +243,123 @@ function drop(s: Exclude<TrailStyle, 'none'>, x: number, y: number, dx: number, 
       break
     }
     /**
+     * Particles that circle the point they were dropped at instead of leaving it.
+     *
+     * The only trail whose motion is not "away from here" — each one runs a small orbit and fades
+     * in place, so a slow drag leaves a row of little wheels rather than a line.
+     */
+    case 'orbit': {
+      const r = 10 + Math.random() * 10
+      const from = Math.random() * 360
+      const p = mk('trail-mote', x, y)
+      p.style.background = Math.random() < 0.5 ? a : b
+      emit(
+        p,
+        [
+          {
+            transform: `translate(-50%, -50%) rotate(${from}deg) translateX(${r}px) scale(1)`,
+            opacity: 0.9,
+          },
+          {
+            transform: `translate(-50%, -50%) rotate(${from + 260}deg) translateX(${r}px) scale(0.3)`,
+            opacity: 0,
+          },
+        ],
+        { duration: 780, easing: 'linear', fill: 'forwards' },
+      )
+      break
+    }
+    /** Speed lines: short ticks square across the direction of travel, like motion in a comic. */
+    case 'dash': {
+      const p = mk('trail-dash', x, y)
+      p.style.background = a
+      emit(
+        p,
+        [
+          {
+            transform: `translate(-50%, -50%) rotate(${angle + 90}deg) scaleX(${0.6 + speed})`,
+            opacity: 0.85,
+          },
+          {
+            transform: `translate(-50%, -50%) rotate(${angle + 90}deg) scaleX(0.1)`,
+            opacity: 0,
+          },
+        ],
+        { duration: 300, easing: 'ease-out', fill: 'forwards' },
+      )
+      break
+    }
+    /** Bubbles that lift off the path and wobble as they go, indifferent to which way you moved. */
+    case 'rise': {
+      const p = mk('trail-bubble', x, y)
+      const size = 5 + Math.random() * 9
+      p.style.width = size + 'px'
+      p.style.height = size + 'px'
+      p.style.borderColor = Math.random() < 0.5 ? a : b
+      emit(
+        p,
+        [
+          { transform: 'translate(-50%, -50%) translate(0, 0) scale(0.6)', opacity: 0.8 },
+          {
+            transform: `translate(-50%, -50%) translate(${(Math.random() - 0.5) * 22}px, -34px) scale(1)`,
+            opacity: 0,
+          },
+        ],
+        { duration: 1100 + Math.random() * 500, easing: 'ease-out', fill: 'forwards' },
+      )
+      break
+    }
+    /** Soft puffs that swell and thin out — the quietest of the set, and the only blurred one. */
+    case 'smoke': {
+      const p = mk('trail-smoke', x, y)
+      const size = 14 + Math.random() * 16
+      p.style.width = size + 'px'
+      p.style.height = size + 'px'
+      p.style.background = a
+      emit(
+        p,
+        [
+          { transform: 'translate(-50%, -50%) scale(0.4)', opacity: 0.28 },
+          {
+            transform: `translate(-50%, -50%) translate(${(Math.random() - 0.5) * 18}px, -22px) scale(1.6)`,
+            opacity: 0,
+          },
+        ],
+        { duration: 1200 + Math.random() * 500, easing: 'ease-out', fill: 'forwards' },
+      )
+      break
+    }
+    /**
+     * A dot that runs after the cursor and never quite arrives.
+     *
+     * Every other style is emitted and then forgotten; this one is animated from where it was
+     * dropped TOWARD where the pointer is going, so it reads as something following you rather
+     * than something you left behind. Overshoots slightly, which is what makes it feel alive
+     * instead of mechanical.
+     */
+    case 'chase': {
+      const p = mk('trail-chase', x, y)
+      p.style.background = b
+      const lead = 1.6 + speed * 1.2
+      emit(
+        p,
+        [
+          { transform: 'translate(-50%, -50%) translate(0, 0) scale(0.5)', opacity: 0.9 },
+          {
+            transform: `translate(-50%, -50%) translate(${dx * lead}px, ${dy * lead}px) scale(1)`,
+            opacity: 0.7,
+            offset: 0.55,
+          },
+          {
+            transform: `translate(-50%, -50%) translate(${dx * lead * 1.25}px, ${dy * lead * 1.25}px) scale(0.2)`,
+            opacity: 0,
+          },
+        ],
+        { duration: 560, easing: 'cubic-bezier(0.2, 0.8, 0.4, 1)', fill: 'forwards' },
+      )
+      break
+    }
+    /**
      * A line segment joining where you were to where you are.
      *
      * The only one that draws the PATH rather than points along it, so a fast flick produces one
@@ -264,7 +397,7 @@ function onMove(e: PointerEvent) {
   const dx = e.clientX - lastX
   const dy = e.clientY - lastY
   const dist = Math.hypot(dx, dy)
-  if (dist < SPACING[style]) return
+  if (dist < spacingFor(SPACING[style])) return
   lastX = e.clientX
   lastY = e.clientY
   drop(style, e.clientX, e.clientY, dx, dy)

@@ -9,6 +9,7 @@ import { MobileNav } from './components/MobileNav'
 import { AmbientBackdrop } from './components/AmbientBackdrop'
 import { installClickFx, setClickFxEnabled, setClickFxStyle, type FxStyle } from './ui/clickFx'
 import { FX_STYLES } from './ui/fxStyles'
+import { AppearanceDialog } from './components/AppearanceDialog'
 import { installMouseTrail, isTrailStyle, setTrailStyle, type TrailStyle } from './ui/mouseTrail'
 
 import { ShareStage } from './voice/ShareStage'
@@ -356,6 +357,7 @@ export default function App() {
   })
   useEffect(() => installClickFx(), [])
   useEffect(() => installMouseTrail(), [])
+  const [appearanceOpen, setAppearanceOpen] = useState(false)
 
   /**
    * Mouse trail — its own setting, alongside the click flair rather than inside it.
@@ -1407,6 +1409,28 @@ export default function App() {
        * the thing the whole budget exists to prevent.
        */}
       {!sharedCanvasShowing && <SiteBackdrop id={shownBackground} />}
+      {/* One dialog for colour, background, click and trail. Rendered at app level rather than
+          inside the cog: the cog CLOSES when it opens, and a dialog owned by a component that has
+          just unmounted itself is a dialog that closes with it. */}
+      {appearanceOpen && (
+        <AppearanceDialog
+          onClose={() => setAppearanceOpen(false)}
+          controls={{
+            theme,
+            onTheme: setTheme,
+            customPalette,
+            onCustomPalette: setCustomPalette,
+            background,
+            onBackground: chooseBackground,
+            sparksOn,
+            onToggleSparks: toggleSparks,
+            sparksStyle,
+            onSparksStyle: setSparksStyle,
+            trailStyle,
+            onTrailStyle: chooseTrail,
+          }}
+        />
+      )}
       {/* A call outlives the screen it started on, so its controls and its audio live at app
           level — otherwise you'd navigate away and be stuck in a call you can't hear or end. */}
       <CallDock />
@@ -1571,18 +1595,11 @@ export default function App() {
               motionOff={motionOff}
               motionBySystem={motionReducedBySystem()}
               onToggleMotion={() => setMotionReduced(!motionPreferenceStored())}
-              background={background}
-              onBackground={chooseBackground}
-              trailStyle={trailStyle}
-              onTrailStyle={chooseTrail}
-              sparksOn={sparksOn}
-              onToggleSparks={toggleSparks}
-              sparksStyle={sparksStyle}
-              onSparksStyle={setSparksStyle}
               customPalette={customPalette}
               onCustomPalette={setCustomPalette}
               name={me.name}
               email={me.email}
+              onAppearance={() => setAppearanceOpen(true)}
               onAccount={() => goTo('account-settings')}
               onProfile={
                 me.username

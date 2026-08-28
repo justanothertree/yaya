@@ -3229,6 +3229,66 @@ select {
   transform-origin: 50% 50%;
   opacity: 0.75;
 }
+/* ── the Appearance dialog ──────────────────────────────────────────────────
+   Wider than the palette sheet it borrows its shell from, because four tabs of tiles need the
+   room — a two-across grid of sixty options is the cluttered thing this replaced. */
+.appearance-sheet {
+  max-width: min(560px, 92vw);
+}
+.appearance-tabs {
+  display: flex;
+  gap: 0.25rem;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 0.7rem;
+  flex-wrap: wrap;
+}
+.appearance-tab {
+  appearance: none;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--muted);
+  font: inherit;
+  padding: 0.4rem 0.6rem;
+  cursor: pointer;
+  border-radius: 8px 8px 0 0;
+}
+.appearance-tab:hover {
+  color: var(--text);
+  background: var(--control-bg);
+}
+.appearance-tab.is-on {
+  color: var(--text);
+  border-bottom-color: var(--accent);
+}
+.appearance-body {
+  display: grid;
+  gap: 0.7rem;
+}
+.appearance-palette {
+  border-top: 1px solid var(--border);
+  padding-top: 0.6rem;
+}
+/* the how-much dial sits UNDER the tiles: you pick the thing, then how much of it */
+.appearance-amount {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  border-top: 1px solid var(--border);
+  padding-top: 0.6rem;
+  font-size: 0.85rem;
+}
+.appearance-amount-choices {
+  display: flex;
+  gap: 0.3rem;
+  margin-left: auto;
+}
+.appearance-note {
+  margin: 0;
+  font-size: 0.8rem;
+}
+
 /* ── mouse trails ───────────────────────────────────────────────────────────
    They share the click-fx layer, so they inherit its fixed, pointer-events:none,
    never-eats-a-click guarantees. Only the shapes differ. */
@@ -3261,6 +3321,24 @@ select {
   width: 7px;
   height: 12px;
   border-radius: 50% 50% 50% 50% / 60% 60% 40% 40%;
+}
+.trail-dash {
+  width: 16px;
+  height: 3px;
+  border-radius: 2px;
+  transform-origin: 50% 50%;
+}
+.trail-bubble {
+  border: 1.5px solid currentColor;
+  background: none;
+}
+.trail-smoke {
+  border-radius: 50%;
+  filter: blur(4px);
+}
+.trail-chase {
+  width: 8px;
+  height: 8px;
 }
 .trail-thread {
   height: 2px;
