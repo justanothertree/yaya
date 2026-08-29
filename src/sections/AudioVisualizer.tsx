@@ -100,6 +100,22 @@ const PALETTE_IDS = PALETTES.map((p) => p.id)
 const PATH_IDS = PATHS.map(([id]) => id)
 
 /**
+ * The panel, in four sections.
+ *
+ * Ordered by how often you reach for them: the mode is the thing you change constantly, the
+ * source next, then how it looks, then the dials you set once and leave.
+ */
+type VizTab = 'modes' | 'sound' | 'look' | 'motion'
+const VIZ_TABS: Array<[VizTab, string, string]> = [
+  ['modes', '◉', 'Modes'],
+  ['sound', '🔊', 'Sound'],
+  ['look', '🎨', 'Look'],
+  ['motion', '✨', 'Motion'],
+]
+const TAB_KEY = 'viz_tab_v1'
+const TAB_IDS = VIZ_TABS.map(([id]) => id)
+
+/**
  * "All" is a source you can pick, but not a tap that exists.
  *
  * ⚠️ Kept as a separate union rather than added to TapId, because everywhere else in the
@@ -179,6 +195,7 @@ export function AudioVisualizer() {
   const [depth, setDepth] = useState(() => storedNumber(DEPTH_KEY, 0, 1) ?? 0)
   const [path, setPath] = useState<PathId>(() => readStored(PATH_KEY, PATH_IDS, 'off'))
   const [pathSpeed, setPathSpeed] = useState(() => storedNumber(PATHSPEED_KEY, 0.02, 1) ?? 0.12)
+  const [tab, setTab] = useState<VizTab>(() => readStored(TAB_KEY, TAB_IDS, 'modes'))
   const [full, setFull] = useState(false)
   // a canvas window sizes itself; see the note on the wrapper's class below
   const { inWindow } = useContext(InCanvasWindow)
@@ -246,6 +263,7 @@ export function AudioVisualizer() {
       localStorage.setItem(DEPTH_KEY, String(depth))
       localStorage.setItem(PATH_KEY, path)
       localStorage.setItem(PATHSPEED_KEY, String(pathSpeed))
+      localStorage.setItem(TAB_KEY, tab)
       localStorage.setItem(TRAIL_KEY, String(trail))
       localStorage.setItem(PANEL_KEY, panel ? '1' : '0')
     } catch {
@@ -253,7 +271,7 @@ export function AudioVisualizer() {
     }
     // the site background mirrors these, so tell it rather than making it poll localStorage
     announceVizPrefs()
-  }, [mode, src, gain, mirror, trail, palette, zoom, depth, path, pathSpeed, panel])
+  }, [mode, src, gain, mirror, trail, palette, zoom, depth, path, pathSpeed, tab, panel])
 
   /**
    * ⚠️ Only the MICROPHONE is released on the way out.
@@ -269,6 +287,25 @@ export function AudioVisualizer() {
     },
     [],
   )
+
+  /**
+   * H hides and shows the panel, F goes fullscreen.
+   *
+   * ⚠️ Ignored while a control has focus, or pressing H after clicking a slider would toggle
+   * the panel out from under the thing you were adjusting. Bare keys, no modifiers, for the
+   * reason the instrument's layout documents.
+   */
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.metaKey || e.ctrlKey || e.altKey) return
+      const t = e.target as HTMLElement | null
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'SELECT' || t.tagName === 'TEXTAREA')) return
+      if (e.key === 'h' || e.key === 'H') setPanel((v) => !v)
+      if (e.key === 'f' || e.key === 'F') goFullRef.current?.()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
 
   // fullscreen can also be left with Escape, which fires no click of ours — so track the browser
   // rather than assuming our own button is the only way out
@@ -314,6 +351,19 @@ export function AudioVisualizer() {
     const wav = new Uint8Array(2048)
     // a second buffer the mixer folds each source through, allocated once like the others
     const scratch = new Uint8Array(2048)
+    // your pointer, converted into the zoomed drawing space — reused rather than rebuilt each
+    // frame, for the same reason the buffers are
+    const scaled = {
+      x: 0,
+      y: 0,
+      inside: false,
+      vx: 0,
+      vy: 0,
+      down: false,
+      sinceClick: 99,
+      clickX: 0,
+      clickY: 0,
+    }
     // the auto-path's pointer, reused rather than rebuilt each frame
     const auto = {
       x: 0,
@@ -434,8 +484,30 @@ export function AudioVisualizer() {
       const vh = h / z
       ctx.setTransform(dpr * z, 0, 0, dpr * z, 0, 0)
 
-      // the pointer the modes see: yours if it is over the canvas, otherwise the auto-path
+      /**
+       * The pointer the modes see: yours if it is over the canvas, otherwise the auto-path.
+       *
+       * ⚠️ YOURS HAS TO BE DIVIDED BY THE ZOOM. The modes were just told the canvas is w/zoom
+       * across, but pointer events arrive in real CSS pixels — so at 2x every coordinate handed
+       * to a mode was double what it should be. The cursor appeared to sit somewhere other than
+       * where it was, and the "centre" a mode recentred on was off the canvas entirely. It only
+       * lined up at exactly 1x, which is why zoom seemed to work sometimes and not others.
+       *
+       * Velocity and the click point scale too — they are lengths in the same space.
+       */
       let seen = ptr.current
+      if (seen.inside && z !== 1) {
+        scaled.x = seen.x / z
+        scaled.y = seen.y / z
+        scaled.vx = seen.vx / z
+        scaled.vy = seen.vy / z
+        scaled.clickX = seen.clickX / z
+        scaled.clickY = seen.clickY / z
+        scaled.inside = true
+        scaled.down = seen.down
+        scaled.sinceClick = seen.sinceClick
+        seen = scaled
+      }
       if (!seen.inside && pathId !== 'off') {
         pathT += dt * pspeed
         const [nx, ny] = pathPoint(pathId, pathT)
@@ -621,6 +693,8 @@ export function AudioVisualizer() {
     setTrail(defaultTrail(id))
   }
 
+  // the key handler is bound once, so it reaches the current goFull through a ref
+  const goFullRef = useRef<(() => void) | null>(null)
   const goFull = () => {
     const el = stage.current
     if (!el) return
@@ -642,6 +716,8 @@ export function AudioVisualizer() {
   }
 
   // "All" is live whenever anything is; a single source is live only if it is
+  goFullRef.current = goFull
+
   const nothingOn = src === ALL ? liveSet.length === 0 : !liveSet.includes(src)
   const srcLabel = src === ALL ? 'anything' : (TAPS.find((t) => t.id === src)?.label ?? src)
 
@@ -732,310 +808,340 @@ export function AudioVisualizer() {
             mode without leaving. In fullscreen the CSS floats this over the picture. */}
         {panel && (
           <div className="viz-controls">
-            <div className="viz-modes" role="group" aria-label="Visual style">
-              {VISUALS.map(([id, icon, label]) => (
+            {/**
+             * ⚠️ TABS, because the panel had grown to nine rows and a sixteen-tile grid.
+             *
+             * On a page that cost screen space; in fullscreen it was worse than that — the
+             * panel is pinned across the bottom there and nearly opaque, so a tall one blanked
+             * a rectangle of the picture you had gone fullscreen to look at. One section at a
+             * time keeps every control reachable in a strip instead of a wall.
+             */}
+            <div className="viz-tabs" role="tablist">
+              {VIZ_TABS.map(([id, icon, label]) => (
                 <button
                   key={id}
-                  className={'fx-style-btn' + (mode === id ? ' is-on' : '')}
-                  aria-pressed={mode === id}
-                  onClick={() => pickMode(id)}
+                  role="tab"
+                  aria-selected={tab === id}
+                  className={'viz-tab' + (tab === id ? ' is-on' : '')}
+                  onClick={() => setTab(id)}
                 >
-                  <span aria-hidden>{icon}</span>
-                  <span className="fx-style-label">{label}</span>
+                  <span aria-hidden>{icon}</span> {label}
                 </button>
               ))}
             </div>
-
-            <div className="viz-row" role="group" aria-label="Sound source">
-              {/* Everything at once, and the default. Most of the time the honest answer to
-                  "what should this watch" is "whatever is making noise", and singling out one
-                  source is the special case rather than the norm. */}
-              <button
-                className={'fx-style-btn viz-src' + (src === ALL ? ' is-on' : '')}
-                aria-pressed={src === ALL}
-                onClick={() => setSrc(ALL)}
-                title={
-                  liveSet.length
-                    ? `Mixing ${liveSet.length} live source${liveSet.length > 1 ? 's' : ''}`
-                    : 'Nothing playing yet'
-                }
-              >
-                <span className={'viz-dot' + (liveSet.length ? ' is-live' : '')} aria-hidden />
-                <span className="fx-style-label">
-                  All{liveSet.length > 1 ? ` (${liveSet.length})` : ''}
-                </span>
-              </button>
-              {TAPS.map((t) => {
-                const on = liveSet.includes(t.id)
-                return (
+            {tab === 'modes' && (
+              <div className="viz-modes" role="group" aria-label="Visual style">
+                {VISUALS.map(([id, icon, label]) => (
                   <button
-                    key={t.id}
-                    className={'fx-style-btn viz-src' + (src === t.id ? ' is-on' : '')}
-                    aria-pressed={src === t.id}
-                    onClick={() => setSrc(t.id)}
-                    title={on ? 'Live now' : 'Nothing playing'}
+                    key={id}
+                    className={'fx-style-btn' + (mode === id ? ' is-on' : '')}
+                    aria-pressed={mode === id}
+                    onClick={() => pickMode(id)}
                   >
-                    <span className={'viz-dot' + (on ? ' is-live' : '')} aria-hidden />
-                    <span className="fx-style-label">{t.label}</span>
+                    <span aria-hidden>{icon}</span>
+                    <span className="fx-style-label">{label}</span>
                   </button>
-                )
-              })}
-            </div>
-
+                ))}
+              </div>
+            )}
+            {tab === 'sound' && (
+              <div className="viz-row" role="group" aria-label="Sound source">
+                {/* Everything at once, and the default. Most of the time the honest answer to
+                    "what should this watch" is "whatever is making noise", and singling out one
+                    source is the special case rather than the norm. */}
+                <button
+                  className={'fx-style-btn viz-src' + (src === ALL ? ' is-on' : '')}
+                  aria-pressed={src === ALL}
+                  onClick={() => setSrc(ALL)}
+                  title={
+                    liveSet.length
+                      ? `Mixing ${liveSet.length} live source${liveSet.length > 1 ? 's' : ''}`
+                      : 'Nothing playing yet'
+                  }
+                >
+                  <span className={'viz-dot' + (liveSet.length ? ' is-live' : '')} aria-hidden />
+                  <span className="fx-style-label">
+                    All{liveSet.length > 1 ? ` (${liveSet.length})` : ''}
+                  </span>
+                </button>
+                {TAPS.map((t) => {
+                  const on = liveSet.includes(t.id)
+                  return (
+                    <button
+                      key={t.id}
+                      className={'fx-style-btn viz-src' + (src === t.id ? ' is-on' : '')}
+                      aria-pressed={src === t.id}
+                      onClick={() => setSrc(t.id)}
+                      title={on ? 'Live now' : 'Nothing playing'}
+                    >
+                      <span className={'viz-dot' + (on ? ' is-live' : '')} aria-hidden />
+                      <span className="fx-style-label">{t.label}</span>
+                    </button>
+                  )
+                })}
+              </div>
+            )}
             {/* Where a track comes from. Both routes end at the same tap, so every mode and every
               tool works on music with no further plumbing. */}
-            <div className="viz-row viz-row-wide">
-              <input
-                ref={filePick}
-                type="file"
-                accept="audio/*"
-                hidden
-                onChange={(e) => {
-                  void openFile(e.target.files?.[0])
-                  // cleared so choosing the SAME file twice still fires a change event
-                  e.target.value = ''
-                }}
-              />
-              <button className="btn" onClick={() => filePick.current?.click()}>
-                🎵 Open a track
-              </button>
-              {track && (
-                <>
-                  <span className="muted viz-track" title={track}>
-                    {track}
-                  </span>
-                  <button
-                    className="btn"
-                    onClick={() => {
-                      stopMusic()
-                      setTrack('')
-                    }}
-                  >
-                    ⏹ Stop
-                  </button>
-                </>
-              )}
-              <button
-                className="btn"
-                aria-pressed={sharing}
-                onClick={async () => {
-                  if (sharing) {
-                    stopShared()
-                    setSharing(false)
-                    return
-                  }
-                  setSrcErr(null)
-                  const err = await shareTabAudio()
-                  if (err) {
-                    setSrcErr(err)
-                    return
-                  }
-                  if (sharedOn()) {
-                    setSharing(true)
-                    setSrc('shared')
-                  }
-                }}
-                title="Watch what another tab is playing — Spotify, YouTube, anything"
-              >
-                {sharing ? '⏹ Stop tab audio' : '🖥️ Tab audio'}
-              </button>
-            </div>
-            {srcErr && <p className="muted viz-note viz-warn">{srcErr}</p>}
-
+            {tab === 'sound' && (
+              <div className="viz-row viz-row-wide">
+                <input
+                  ref={filePick}
+                  type="file"
+                  accept="audio/*"
+                  hidden
+                  onChange={(e) => {
+                    void openFile(e.target.files?.[0])
+                    // cleared so choosing the SAME file twice still fires a change event
+                    e.target.value = ''
+                  }}
+                />
+                <button className="btn" onClick={() => filePick.current?.click()}>
+                  🎵 Open a track
+                </button>
+                {track && (
+                  <>
+                    <span className="muted viz-track" title={track}>
+                      {track}
+                    </span>
+                    <button
+                      className="btn"
+                      onClick={() => {
+                        stopMusic()
+                        setTrack('')
+                      }}
+                    >
+                      ⏹ Stop
+                    </button>
+                  </>
+                )}
+                <button
+                  className="btn"
+                  aria-pressed={sharing}
+                  onClick={async () => {
+                    if (sharing) {
+                      stopShared()
+                      setSharing(false)
+                      return
+                    }
+                    setSrcErr(null)
+                    const err = await shareTabAudio()
+                    if (err) {
+                      setSrcErr(err)
+                      return
+                    }
+                    if (sharedOn()) {
+                      setSharing(true)
+                      setSrc('shared')
+                    }
+                  }}
+                  title="Watch what another tab is playing — Spotify, YouTube, anything"
+                >
+                  {sharing ? '⏹ Stop tab audio' : '🖥️ Tab audio'}
+                </button>
+              </div>
+            )}
+            {tab === 'sound' && srcErr && <p className="muted viz-note viz-warn">{srcErr}</p>}
             {/* ⚠️ These are OUTPUT levels and nothing else — see mixer.ts. They sit after the
               analyser branch, so turning the music down to a comfortable level does not shrink
               the picture, which is what a naive gain in the wrong place would do. */}
-            <div className="viz-row viz-row-wide">
-              <VolumeRow c="music" label="🎵 Music" />
-              {micOn && hearing && <VolumeRow c="monitor" label="🎧 Yourself" />}
-            </div>
-
-            <div className="viz-row viz-row-wide">
-              <label className="appearance-slider">
-                <span className="muted">Sensitivity</span>
-                <input
-                  type="range"
-                  min={0.5}
-                  max={4}
-                  step={0.1}
-                  value={gain}
-                  onChange={(e) => setGain(Number(e.target.value))}
-                />
-                <span className="appearance-slider-val">{gain.toFixed(1)}×</span>
-              </label>
-              <label className="appearance-slider">
-                <span className="muted" title="How much of each frame lingers">
-                  Trails
-                </span>
-                <input
-                  type="range"
-                  min={0}
-                  max={0.97}
-                  step={0.01}
-                  value={trail}
-                  onChange={(e) => setTrail(Number(e.target.value))}
-                />
-                <span className="appearance-slider-val">{Math.round(trail * 100)}%</span>
-              </label>
-            </div>
-
-            {/* Sixteen modes drawing two colours look more alike than they are — the eye reads
-                the hue before the shape. A ramp changes all of them at once. */}
-            <div className="viz-row viz-row-wide">
-              <span className="muted viz-tool-label">Colour</span>
-              <div className="viz-palettes">
-                {PALETTES.map((p) => (
-                  <button
-                    key={p.id}
-                    className={'viz-swatch' + (palette === p.id ? ' is-on' : '')}
-                    aria-pressed={palette === p.id}
-                    onClick={() => setPalette(p.id)}
-                    title={p.label}
-                    style={
-                      p.stops.length
-                        ? {
-                            background: `linear-gradient(90deg, ${p.stops
-                              .map((c) => `rgb(${c[0]},${c[1]},${c[2]})`)
-                              .join(',')})`,
-                          }
-                        : // Theme has no colours of its own, so its swatch shows yours
-                          { background: 'linear-gradient(90deg, var(--accent), var(--accent-2))' }
-                    }
-                  >
-                    <span className="viz-swatch-label">{p.label}</span>
-                  </button>
-                ))}
+            {tab === 'sound' && (
+              <div className="viz-row viz-row-wide">
+                <VolumeRow c="music" label="🎵 Music" />
+                {micOn && hearing && <VolumeRow c="monitor" label="🎧 Yourself" />}
               </div>
-            </div>
-
-            <div className="viz-row viz-row-wide">
-              <label className="appearance-slider">
-                <span className="muted" title="Or spin the wheel over the picture">
-                  Zoom
-                </span>
-                <input
-                  type="range"
-                  min={0.3}
-                  max={3}
-                  step={0.01}
-                  value={zoom}
-                  onChange={(e) => setZoom(Number(e.target.value))}
-                />
-                <span className="appearance-slider-val">{zoom.toFixed(2)}×</span>
-              </label>
-              <label className="appearance-slider">
-                <span className="muted" title="Copies of the frame receding behind it">
-                  Depth
-                </span>
-                <input
-                  type="range"
-                  min={0}
-                  max={1}
-                  step={0.01}
-                  value={depth}
-                  onChange={(e) => setDepth(Number(e.target.value))}
-                />
-                <span className="appearance-slider-val">{Math.round(depth * 100)}</span>
-              </label>
-            </div>
-
-            {/* The pointer driven by arithmetic instead of a hand — for watching rather than
-                playing. Yours takes over the moment it is over the picture. */}
-            <div className="viz-row viz-row-wide">
-              <span className="muted viz-tool-label">Motion</span>
-              <select
-                className="viz-select"
-                value={path}
-                onChange={(e) => setPath(e.target.value as PathId)}
-              >
-                {PATHS.map(([id, label]) => (
-                  <option key={id} value={id}>
-                    {label}
-                  </option>
-                ))}
-              </select>
-              {path !== 'off' && (
+            )}
+            {tab === 'motion' && (
+              <div className="viz-row viz-row-wide">
                 <label className="appearance-slider">
-                  <span className="muted">Speed</span>
+                  <span className="muted">Sensitivity</span>
                   <input
                     type="range"
-                    min={0.02}
+                    min={0.5}
+                    max={4}
+                    step={0.1}
+                    value={gain}
+                    onChange={(e) => setGain(Number(e.target.value))}
+                  />
+                  <span className="appearance-slider-val">{gain.toFixed(1)}×</span>
+                </label>
+                <label className="appearance-slider">
+                  <span className="muted" title="How much of each frame lingers">
+                    Trails
+                  </span>
+                  <input
+                    type="range"
+                    min={0}
+                    max={0.97}
+                    step={0.01}
+                    value={trail}
+                    onChange={(e) => setTrail(Number(e.target.value))}
+                  />
+                  <span className="appearance-slider-val">{Math.round(trail * 100)}%</span>
+                </label>
+              </div>
+            )}
+            {/* Sixteen modes drawing two colours look more alike than they are — the eye reads
+                the hue before the shape. A ramp changes all of them at once. */}
+            {tab === 'look' && (
+              <div className="viz-row viz-row-wide">
+                <span className="muted viz-tool-label">Colour</span>
+                <div className="viz-palettes">
+                  {PALETTES.map((p) => (
+                    <button
+                      key={p.id}
+                      className={'viz-swatch' + (palette === p.id ? ' is-on' : '')}
+                      aria-pressed={palette === p.id}
+                      onClick={() => setPalette(p.id)}
+                      title={p.label}
+                      style={
+                        p.stops.length
+                          ? {
+                              background: `linear-gradient(90deg, ${p.stops
+                                .map((c) => `rgb(${c[0]},${c[1]},${c[2]})`)
+                                .join(',')})`,
+                            }
+                          : // Theme has no colours of its own, so its swatch shows yours
+                            { background: 'linear-gradient(90deg, var(--accent), var(--accent-2))' }
+                      }
+                    >
+                      <span className="viz-swatch-label">{p.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+            {tab === 'motion' && (
+              <div className="viz-row viz-row-wide">
+                <label className="appearance-slider">
+                  <span className="muted" title="Or spin the wheel over the picture">
+                    Zoom
+                  </span>
+                  <input
+                    type="range"
+                    min={0.3}
+                    max={3}
+                    step={0.01}
+                    value={zoom}
+                    onChange={(e) => setZoom(Number(e.target.value))}
+                  />
+                  <span className="appearance-slider-val">{zoom.toFixed(2)}×</span>
+                </label>
+                <label className="appearance-slider">
+                  <span className="muted" title="Copies of the frame receding behind it">
+                    Depth
+                  </span>
+                  <input
+                    type="range"
+                    min={0}
                     max={1}
                     step={0.01}
-                    value={pathSpeed}
-                    onChange={(e) => setPathSpeed(Number(e.target.value))}
+                    value={depth}
+                    onChange={(e) => setDepth(Number(e.target.value))}
                   />
-                  <span className="appearance-slider-val">{pathSpeed.toFixed(2)}</span>
+                  <span className="appearance-slider-val">{Math.round(depth * 100)}</span>
                 </label>
-              )}
-            </div>
-
-            <div className="viz-row viz-row-wide">
-              <span className="muted viz-tool-label">Mirror</span>
-              <div className="viz-mirrors">
-                {MIRRORS.map(([n, label]) => (
-                  <button
-                    key={n}
-                    className={'btn' + (mirror === n ? ' is-on' : '')}
-                    aria-pressed={mirror === n}
-                    data-active={mirror === n || undefined}
-                    onClick={() => setMirror(n)}
-                    title={n === 1 ? 'No symmetry' : `${n}-fold kaleidoscope`}
-                  >
-                    {label}
-                  </button>
-                ))}
               </div>
+            )}
+            {/* The pointer driven by arithmetic instead of a hand — for watching rather than
+                playing. Yours takes over the moment it is over the picture. */}
+            {tab === 'motion' && (
+              <div className="viz-row viz-row-wide">
+                <span className="muted viz-tool-label">Motion</span>
+                <select
+                  className="viz-select"
+                  value={path}
+                  onChange={(e) => setPath(e.target.value as PathId)}
+                >
+                  {PATHS.map(([id, label]) => (
+                    <option key={id} value={id}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+                {path !== 'off' && (
+                  <label className="appearance-slider">
+                    <span className="muted">Speed</span>
+                    <input
+                      type="range"
+                      min={0.02}
+                      max={1}
+                      step={0.01}
+                      value={pathSpeed}
+                      onChange={(e) => setPathSpeed(Number(e.target.value))}
+                    />
+                    <span className="appearance-slider-val">{pathSpeed.toFixed(2)}</span>
+                  </label>
+                )}
+              </div>
+            )}
+            {tab === 'sound' && (
+              <div className="viz-row viz-row-wide">
+                <span className="muted viz-tool-label">Mirror</span>
+                <div className="viz-mirrors">
+                  {MIRRORS.map(([n, label]) => (
+                    <button
+                      key={n}
+                      className={'btn' + (mirror === n ? ' is-on' : '')}
+                      aria-pressed={mirror === n}
+                      data-active={mirror === n || undefined}
+                      onClick={() => setMirror(n)}
+                      title={n === 1 ? 'No symmetry' : `${n}-fold kaleidoscope`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
 
-              <button
-                className="btn"
-                aria-pressed={micOn}
-                disabled={micBusy}
-                onClick={async () => {
-                  if (micOn) {
-                    stopLocalMic()
-                    setMicOn(false)
-                    setHearing(false)
-                    setMicDenied(false)
-                    return
-                  }
-                  setMicBusy(true)
-                  const ok = await startLocalMic()
-                  setMicBusy(false)
-                  setMicOn(ok)
-                  setMicDenied(!ok)
-                  if (ok) setSrc('local')
-                }}
-              >
-                {micOn ? '⏹ Stop mic' : micBusy ? 'Asking…' : '🎙 Use my mic'}
-              </button>
-
-              {micOn && (
                 <button
                   className="btn"
-                  aria-pressed={hearing}
-                  onClick={() => {
-                    const next = !hearing
-                    setMonitor(next)
-                    setHearing(next)
+                  aria-pressed={micOn}
+                  disabled={micBusy}
+                  onClick={async () => {
+                    if (micOn) {
+                      stopLocalMic()
+                      setMicOn(false)
+                      setHearing(false)
+                      setMicDenied(false)
+                      return
+                    }
+                    setMicBusy(true)
+                    const ok = await startLocalMic()
+                    setMicBusy(false)
+                    setMicOn(ok)
+                    setMicDenied(!ok)
+                    if (ok) setSrc('local')
                   }}
-                  title={hearing ? 'Stop playing your mic back' : 'Play your mic back to hear it'}
                 >
-                  {hearing ? '🔇 Stop listening' : '🎧 Hear myself'}
+                  {micOn ? '⏹ Stop mic' : micBusy ? 'Asking…' : '🎙 Use my mic'}
                 </button>
-              )}
 
-              <button
-                className="btn"
-                onClick={() => {
-                  setSrc('ring')
-                  playCallSound('ring')
-                }}
-              >
-                🔔 Ringtone
-              </button>
-            </div>
+                {micOn && (
+                  <button
+                    className="btn"
+                    aria-pressed={hearing}
+                    onClick={() => {
+                      const next = !hearing
+                      setMonitor(next)
+                      setHearing(next)
+                    }}
+                    title={hearing ? 'Stop playing your mic back' : 'Play your mic back to hear it'}
+                  >
+                    {hearing ? '🔇 Stop listening' : '🎧 Hear myself'}
+                  </button>
+                )}
 
+                <button
+                  className="btn"
+                  onClick={() => {
+                    setSrc('ring')
+                    playCallSound('ring')
+                  }}
+                >
+                  🔔 Ringtone
+                </button>
+              </div>
+            )}
             {hearing && (
               <p className="muted viz-note viz-warn">
                 ⚠️ Headphones — on speakers your mic will hear itself and start to howl.
@@ -1047,10 +1153,17 @@ export function AudioVisualizer() {
                 way.
               </p>
             )}
-            <p className="muted viz-note">
-              Nothing is recorded or uploaded. A dropped file is played from your own disk, and the
-              mic is read on this device and thrown away frame by frame.
-            </p>
+            {/* ⚠️ On the Sound tab only. It is a promise about the microphone and dropped
+                files, so it belongs beside those controls — and repeating it under Modes and Look
+                cost every tab a couple of lines of height for a sentence that did not apply
+                there. The feedback warning above stays unconditional, because that one is about
+                what is happening right now. */}
+            {tab === 'sound' && (
+              <p className="muted viz-note">
+                Nothing is recorded or uploaded. A dropped file is played from your own disk, and
+                the mic is read on this device and thrown away frame by frame.
+              </p>
+            )}
           </div>
         )}
       </div>

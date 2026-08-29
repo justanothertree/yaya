@@ -3000,20 +3000,46 @@ section[id] {
   flex-direction: column;
   gap: 0.5rem;
   flex: 0 0 auto;
-  padding: 0.6rem;
+  padding: 0.5rem 0.6rem 0.6rem;
   border-top: 1px solid var(--border);
+}
+/* one row of small tabs, so the panel is a strip rather than a wall */
+.viz-tabs {
+  display: flex;
+  gap: 0.2rem;
+  flex-wrap: wrap;
+}
+.viz-tab {
+  appearance: none;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  padding: 0.15rem 0.5rem;
+  font-size: 0.78rem;
+  color: var(--text);
+  opacity: 0.6;
+  cursor: pointer;
+}
+.viz-tab.is-on {
+  opacity: 1;
+  border-color: var(--border);
+  background: color-mix(in oklab, var(--accent), transparent 88%);
 }
 /* In fullscreen the picture should own the screen, so the panel stops taking a slice of the
    layout and floats over the bottom of it instead. */
+/* ⚠️ In fullscreen the panel floats OVER the picture, so its height and its opacity are
+   both costs paid out of the thing you went fullscreen to see. It used to be allowed half the
+   screen and was nearly solid — a blanked rectangle across the bottom whatever the zoom. Tabs
+   keep it to a strip, and it is see-through enough to watch the visuals continue behind it. */
 .viz-stage[data-full] .viz-controls {
   position: absolute;
   left: 0;
   right: 0;
   bottom: 0;
-  max-height: 52vh;
+  max-height: 34vh;
   overflow-y: auto;
-  background: color-mix(in oklab, var(--panel), transparent 12%);
-  backdrop-filter: blur(10px);
+  background: color-mix(in oklab, var(--panel), transparent 34%);
+  backdrop-filter: blur(14px);
   border-top: 1px solid var(--border-strong);
 }
 /* ⚠️ The controls are a TRAY you put away, not something that hides itself.
@@ -3071,7 +3097,7 @@ section[id] {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(min(4.6rem, 100%), 1fr));
   gap: 0.35rem;
-  max-height: 11rem;
+  max-height: 9.5rem;
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-gutter: stable;
