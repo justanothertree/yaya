@@ -29,6 +29,8 @@ import {
   stopMusic,
   stopShared,
 } from '../audio/musicSource'
+import { onMixerChange, setVolume, volume, type Channel } from '../audio/mixer'
+import { announceVizPrefs } from '../profile/audioBackdrop'
 
 /**
  * A window that shows you the sound.
@@ -82,6 +84,35 @@ function readStored<T extends string>(key: string, allowed: readonly T[], fallba
 const VISUAL_IDS = VISUALS.map(([id]) => id)
 const TAP_IDS = TAPS.map((t) => t.id)
 
+/**
+ * One output level.
+ *
+ * Subscribes to the mixer rather than owning the number, so a level changed anywhere — here, or
+ * later from an instrument room or a call — shows up on every slider that displays it.
+ */
+function VolumeRow({ c, label }: { c: Channel; label: string }) {
+  const [v, setV] = useState(() => volume(c))
+  useEffect(() => onMixerChange(() => setV(volume(c))), [c])
+  return (
+    <label className="appearance-slider">
+      <span className="muted">{label}</span>
+      <input
+        type="range"
+        min={0}
+        max={1}
+        step={0.01}
+        value={v}
+        onChange={(e) => {
+          const next = Number(e.target.value)
+          setV(next)
+          setVolume(c, next)
+        }}
+      />
+      <span className="appearance-slider-val">{Math.round(v * 100)}%</span>
+    </label>
+  )
+}
+
 export function AudioVisualizer() {
   const host = useRef<HTMLDivElement>(null)
   const stage = useRef<HTMLDivElement>(null)
@@ -116,6 +147,8 @@ export function AudioVisualizer() {
   const [sharing, setSharing] = useState(sharedOn)
   const [srcErr, setSrcErr] = useState<string | null>(null)
   const [dragging, setDragging] = useState(false)
+  // fullscreen only: the chrome fades out when you stop moving, like a video player
+  const [idle, setIdle] = useState(false)
   const filePick = useRef<HTMLInputElement>(null)
 
   /**
@@ -158,6 +191,8 @@ export function AudioVisualizer() {
     } catch {
       /* private mode — the choices still hold for this visit */
     }
+    // the site background mirrors these, so tell it rather than making it poll localStorage
+    announceVizPrefs()
   }, [mode, src, gain, mirror, panel])
 
   useEffect(
@@ -176,6 +211,39 @@ export function AudioVisualizer() {
     document.addEventListener('fullscreenchange', onFs)
     return () => document.removeEventListener('fullscreenchange', onFs)
   }, [])
+
+  /**
+   * In fullscreen, get out of the way.
+   *
+   * ⚠️ ONLY in fullscreen. Fading the controls out on the normal page would be a trap: they
+   * sit in the layout there, so hiding them would leave a hole and a person hunting for a button
+   * that was under their cursor a second ago. Fullscreen is different — the panel floats over
+   * the picture, the picture is the whole point, and every video player on earth behaves this way.
+   */
+  useEffect(() => {
+    if (!full) {
+      setIdle(false)
+      return
+    }
+    const el = stage.current
+    if (!el) return
+    let timer = 0
+    const wake = () => {
+      setIdle(false)
+      clearTimeout(timer)
+      timer = window.setTimeout(() => setIdle(true), 2500)
+    }
+    el.addEventListener('pointermove', wake)
+    el.addEventListener('pointerdown', wake)
+    window.addEventListener('keydown', wake)
+    wake()
+    return () => {
+      clearTimeout(timer)
+      el.removeEventListener('pointermove', wake)
+      el.removeEventListener('pointerdown', wake)
+      window.removeEventListener('keydown', wake)
+    }
+  }, [full])
 
   useEffect(() => {
     if (reduced) return
@@ -445,6 +513,7 @@ export function AudioVisualizer() {
         className="viz-stage"
         ref={stage}
         data-full={full || undefined}
+        data-idle={(full && idle && !dragging) || undefined}
         onDragOver={(e) => {
           // preventDefault is what MAKES this a drop target; without it the browser navigates
           // away to the file instead, which loses the page
@@ -603,6 +672,14 @@ export function AudioVisualizer() {
               </button>
             </div>
             {srcErr && <p className="muted viz-note viz-warn">{srcErr}</p>}
+
+            {/* ⚠️ These are OUTPUT levels and nothing else — see mixer.ts. They sit after the
+              analyser branch, so turning the music down to a comfortable level does not shrink
+              the picture, which is what a naive gain in the wrong place would do. */}
+            <div className="viz-row viz-row-wide">
+              <VolumeRow c="music" label="🎵 Music" />
+              {micOn && hearing && <VolumeRow c="monitor" label="🎧 Yourself" />}
+            </div>
 
             <div className="viz-row viz-row-wide">
               <label className="appearance-slider">

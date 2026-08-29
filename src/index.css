@@ -2694,6 +2694,20 @@ section[id] {
   backdrop-filter: blur(10px);
   border-top: 1px solid var(--border-strong);
 }
+/* Fullscreen, pointer still: everything but the picture fades out. Pointer-events go with it,
+   so an invisible panel cannot swallow a click meant for the visuals. */
+.viz-stage[data-idle] .viz-controls,
+.viz-stage[data-idle] .viz-float {
+  opacity: 0;
+  pointer-events: none;
+}
+.viz-stage[data-full] .viz-controls,
+.viz-stage[data-full] .viz-float {
+  transition: opacity 0.5s ease;
+}
+.viz-stage[data-idle] {
+  cursor: none;
+}
 /* dropping a track: the whole stage lights up as the target */
 .viz-drop {
   position: absolute;

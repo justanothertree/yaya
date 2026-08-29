@@ -21,8 +21,9 @@
  */
 
 import { amount, effectScale } from '../ui/effectAmount'
+import { audioBackdrop } from './audioBackdrop'
 
-export type BackdropId = 'none' | 'glow' | 'waves' | 'bubbles' | 'flames' | 'leaves'
+export type BackdropId = 'none' | 'glow' | 'waves' | 'bubbles' | 'flames' | 'leaves' | 'audio'
 
 export const BACKDROPS: Array<[BackdropId, string, string]> = [
   ['none', '∅', 'None'],
@@ -35,6 +36,8 @@ export const BACKDROPS: Array<[BackdropId, string, string]> = [
    * meant two animated layers nobody asked for. One list, one answer, and None is in it.
    */
   ['glow', '🌫', 'Glow'],
+  /* whatever is playing, drawn behind everything — see audioBackdrop.ts */
+  ['audio', '🎚️', 'Audio'],
   ['waves', '🌊', 'Waves'],
   ['bubbles', '🫧', 'Bubbles'],
   ['flames', '🔥', 'Flames'],
@@ -330,6 +333,8 @@ export function makeEffect(id: BackdropId): Effect | null {
       return flames()
     case 'leaves':
       return leaves()
+    case 'audio':
+      return audioBackdrop()
     default:
       return null
   }

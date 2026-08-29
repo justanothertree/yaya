@@ -1,4 +1,5 @@
 import { registerTap } from './audioTap'
+import { makeGain, releaseGain, volume } from './mixer'
 
 /**
  * A microphone opened for LOOKING at, not for sending anywhere.
@@ -90,7 +91,7 @@ export function monitorOn(): boolean {
  * MEASURES and the thing that makes NOISE can never be confused for one another — a stray
  * connect() on the analyser would otherwise turn every visualiser into a speaker.
  */
-export function setMonitor(on: boolean, level = 0.6) {
+export function setMonitor(on: boolean) {
   if (!on) {
     if (monitor && ctx) {
       // ramp down before disconnecting, for the same reason we ramp up
@@ -108,14 +109,16 @@ export function setMonitor(on: boolean, level = 0.6) {
         /* nothing playing */
       }
     }
+    releaseGain('monitor')
     monitor = null
     return
   }
   if (!ctx || !source || monitor) return
   try {
-    const g = ctx.createGain()
+    // the mixer owns the level, so the slider reaches it while it is running
+    const g = makeGain(ctx, 'monitor')
     g.gain.setValueAtTime(0.0001, ctx.currentTime)
-    g.gain.exponentialRampToValueAtTime(Math.max(0.05, Math.min(1, level)), ctx.currentTime + 0.06)
+    g.gain.exponentialRampToValueAtTime(Math.max(0.02, volume('monitor')), ctx.currentTime + 0.06)
     source.connect(g)
     g.connect(ctx.destination)
     monitor = g

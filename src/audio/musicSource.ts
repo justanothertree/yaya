@@ -1,4 +1,5 @@
 import { registerTap } from './audioTap'
+import { makeGain, releaseGain } from './mixer'
 
 /**
  * Something to actually watch — a file you picked, or whatever another tab is playing.
@@ -14,16 +15,25 @@ import { registerTap } from './audioTap'
  * used for is the tap.
  *
  * ⚠️ createMediaElementSource REROUTES the element. Once an element is connected to a graph its
- * sound no longer reaches the speakers on its own — it comes out of wherever you connect it. That
- * is why the analyser is wired on to the destination here and not left dangling as the call's
- * analysers are: forget that line and the file plays in total silence with a moving visualiser,
- * which is a genuinely baffling bug to look at.
+ * sound no longer reaches the speakers on its own — it comes out of wherever you connect it. So
+ * there must always be a path to the destination, or the file plays in total silence behind a
+ * moving visualiser, which is a genuinely baffling bug to look at.
+ *
+ * ⚠️ That path FORKS away from the analyser rather than running through it:
+ *
+ *     element ─┬► analyser          (measure: the full signal)
+ *              └► gain ─► speakers  (hear: whatever the mixer says)
+ *
+ * Chaining them instead — element → gain → analyser → speakers — would look identical and be
+ * subtly wrong: turning the music down would shrink the bars too, and the visualiser would fade
+ * out as you made the room comfortable. See mixer.ts.
  */
 
 let ctx: AudioContext | null = null
 let el: HTMLAudioElement | null = null
 let url: string | null = null
 let node: AnalyserNode | null = null
+let gain: GainNode | null = null
 let name = ''
 
 /** Screen/tab capture is a separate lifetime — it can be running with no file loaded. */
@@ -65,9 +75,12 @@ export async function playFile(file: File): Promise<string | null> {
     node.fftSize = 2048
     // smoothing is the difference between bars that dance and bars that strobe
     node.smoothingTimeConstant = 0.8
+    // measure the full signal — this branch ends here, deliberately
     srcNode.connect(node)
-    // ⚠️ the line that keeps it audible — see the note at the top
-    node.connect(c.destination)
+    // and hear it through the mixer — the branch that keeps it audible, see the note above
+    gain = makeGain(c, 'music')
+    srcNode.connect(gain)
+    gain.connect(c.destination)
     el = a
     name = file.name
     registerTap('music', node)
@@ -84,6 +97,13 @@ export async function playFile(file: File): Promise<string | null> {
 
 export function stopMusic() {
   registerTap('music', null)
+  releaseGain('music')
+  try {
+    gain?.disconnect()
+  } catch {
+    /* context already gone */
+  }
+  gain = null
   node = null
   if (el) {
     el.pause()
