@@ -21,6 +21,14 @@ import {
 } from '../audio/visualModes'
 import { makeFeatureReader } from '../audio/audioFeatures'
 import { motionReduced, onMotionChange } from '../ui/motion'
+import {
+  musicName,
+  playFile,
+  sharedOn,
+  shareTabAudio,
+  stopMusic,
+  stopShared,
+} from '../audio/musicSource'
 
 /**
  * A window that shows you the sound.
@@ -104,6 +112,31 @@ export function AudioVisualizer() {
   // ⚠️ Never restored from storage: a playback-of-your-own-mic setting that came back on by
   // itself would greet somebody with feedback on load.
   const [hearing, setHearing] = useState(monitorOn)
+  const [track, setTrack] = useState('')
+  const [sharing, setSharing] = useState(sharedOn)
+  const [srcErr, setSrcErr] = useState<string | null>(null)
+  const [dragging, setDragging] = useState(false)
+  const filePick = useRef<HTMLInputElement>(null)
+
+  /**
+   * The pointer, kept in a REF rather than in state.
+   *
+   * ⚠️ A mousemove that called setState would re-render this component on every pixel of
+   * movement, and the render tears down and rebuilds the whole animation effect — the visual
+   * would restart continuously and never draw anything. The loop reads the ref instead, so the
+   * pointer reaches the canvas without React ever hearing about it.
+   */
+  const ptr = useRef({
+    x: 0,
+    y: 0,
+    inside: false,
+    vx: 0,
+    vy: 0,
+    down: false,
+    sinceClick: 99,
+    clickX: 0,
+    clickY: 0,
+  })
 
   const live = useSyncExternalStore(
     subscribeTaps,
@@ -130,6 +163,8 @@ export function AudioVisualizer() {
   useEffect(
     () => () => {
       stopLocalMic()
+      stopMusic()
+      stopShared()
     },
     [],
   )
@@ -234,6 +269,7 @@ export function AudioVisualizer() {
       }
       const rms = Math.sqrt(sum / Math.max(1, waveN)) * 2.5
       const f = features.read(spec, Math.max(1, bins), rms, dt)
+      ptr.current.sinceClick += dt
 
       /**
        * Persistence: erase only PART of the last frame.
@@ -260,6 +296,7 @@ export function AudioVisualizer() {
         wave: wav,
         waveN: Math.max(2, waveN),
         f,
+        p: ptr.current,
         ink,
       })
 
@@ -317,6 +354,48 @@ export function AudioVisualizer() {
     }
     document.addEventListener('visibilitychange', onVis)
 
+    /**
+     * Pointer, in the surface's own coordinates.
+     *
+     * Velocity is worked out here rather than in a mode, because it needs the time between two
+     * real events — a mode only sees frames, and two frames can pass with no movement at all.
+     */
+    let lastMove = performance.now()
+    const onMove = (e: PointerEvent) => {
+      const r = box.getBoundingClientRect()
+      const nx = e.clientX - r.left
+      const ny = e.clientY - r.top
+      const now = performance.now()
+      const gap = Math.max(0.008, (now - lastMove) / 1000)
+      lastMove = now
+      const q = ptr.current
+      q.vx = (nx - q.x) / gap
+      q.vy = (ny - q.y) / gap
+      q.x = nx
+      q.y = ny
+      q.inside = true
+    }
+    const onLeave = () => {
+      ptr.current.inside = false
+      ptr.current.vx = 0
+      ptr.current.vy = 0
+    }
+    const onDown = (e: PointerEvent) => {
+      const r = box.getBoundingClientRect()
+      const q = ptr.current
+      q.down = true
+      q.sinceClick = 0
+      q.clickX = e.clientX - r.left
+      q.clickY = e.clientY - r.top
+    }
+    const onUp = () => {
+      ptr.current.down = false
+    }
+    box.addEventListener('pointermove', onMove)
+    box.addEventListener('pointerleave', onLeave)
+    box.addEventListener('pointerdown', onDown)
+    window.addEventListener('pointerup', onUp)
+
     resize()
     start()
     return () => {
@@ -324,6 +403,10 @@ export function AudioVisualizer() {
       ro.disconnect()
       io.disconnect()
       document.removeEventListener('visibilitychange', onVis)
+      box.removeEventListener('pointermove', onMove)
+      box.removeEventListener('pointerleave', onLeave)
+      box.removeEventListener('pointerdown', onDown)
+      window.removeEventListener('pointerup', onUp)
     }
   }, [mode, src, gain, reduced, trail, mirror])
 
@@ -341,11 +424,44 @@ export function AudioVisualizer() {
     else void el.requestFullscreen?.().catch(() => {})
   }
 
+  const openFile = async (file: File | undefined) => {
+    if (!file) return
+    setSrcErr(null)
+    const err = await playFile(file)
+    if (err) {
+      setSrcErr(err)
+      setTrack('')
+      return
+    }
+    setTrack(musicName())
+    setSrc('music')
+  }
+
   const nothingOn = !liveSet.includes(src)
 
   return (
     <section className={'viz-wrap' + (panel ? '' : ' is-bare')}>
-      <div className="viz-stage" ref={stage} data-full={full || undefined}>
+      <div
+        className="viz-stage"
+        ref={stage}
+        data-full={full || undefined}
+        onDragOver={(e) => {
+          // preventDefault is what MAKES this a drop target; without it the browser navigates
+          // away to the file instead, which loses the page
+          e.preventDefault()
+          e.dataTransfer.dropEffect = 'copy'
+          if (!dragging) setDragging(true)
+        }}
+        onDragLeave={(e) => {
+          if (e.currentTarget.contains(e.relatedTarget as Node | null)) return
+          setDragging(false)
+        }}
+        onDrop={(e) => {
+          e.preventDefault()
+          setDragging(false)
+          void openFile(e.dataTransfer.files?.[0])
+        }}
+      >
         <div className="viz-surface" ref={host}>
           <canvas ref={canvas} className="viz-canvas" aria-hidden />
         </div>
@@ -385,154 +501,222 @@ export function AudioVisualizer() {
             {full ? '⤡' : '⛶'}
           </button>
         </div>
-      </div>
 
-      {panel && (
-        <div className="viz-controls">
-          <div className="viz-modes" role="group" aria-label="Visual style">
-            {VISUALS.map(([id, icon, label]) => (
-              <button
-                key={id}
-                className={'fx-style-btn' + (mode === id ? ' is-on' : '')}
-                aria-pressed={mode === id}
-                onClick={() => pickMode(id)}
-              >
-                <span aria-hidden>{icon}</span>
-                <span className="fx-style-label">{label}</span>
-              </button>
-            ))}
-          </div>
+        {/* Dropping a track anywhere on the picture loads it — the whole stage is the target,
+            because aiming at a small strip is a worse experience than the feature is worth. */}
+        {dragging && <div className="viz-drop">Drop a track to watch it</div>}
 
-          <div className="viz-row" role="group" aria-label="Sound source">
-            {TAPS.map((t) => {
-              const on = liveSet.includes(t.id)
-              return (
+        {/* ⚠️ INSIDE the stage, not below it. Fullscreen shows one element and its
+            descendants, so a control panel that is a SIBLING of the stage simply vanishes the
+            moment you go fullscreen — which is exactly the state where you most want to change
+            mode without leaving. In fullscreen the CSS floats this over the picture. */}
+        {panel && (
+          <div className="viz-controls">
+            <div className="viz-modes" role="group" aria-label="Visual style">
+              {VISUALS.map(([id, icon, label]) => (
                 <button
-                  key={t.id}
-                  className={'fx-style-btn viz-src' + (src === t.id ? ' is-on' : '')}
-                  aria-pressed={src === t.id}
-                  onClick={() => setSrc(t.id)}
-                  title={on ? 'Live now' : 'Nothing playing'}
+                  key={id}
+                  className={'fx-style-btn' + (mode === id ? ' is-on' : '')}
+                  aria-pressed={mode === id}
+                  onClick={() => pickMode(id)}
                 >
-                  <span className={'viz-dot' + (on ? ' is-live' : '')} aria-hidden />
-                  <span className="fx-style-label">{t.label}</span>
-                </button>
-              )
-            })}
-          </div>
-
-          <div className="viz-row viz-row-wide">
-            <label className="appearance-slider">
-              <span className="muted">Sensitivity</span>
-              <input
-                type="range"
-                min={0.5}
-                max={4}
-                step={0.1}
-                value={gain}
-                onChange={(e) => setGain(Number(e.target.value))}
-              />
-              <span className="appearance-slider-val">{gain.toFixed(1)}×</span>
-            </label>
-            <label className="appearance-slider">
-              <span className="muted" title="How much of each frame lingers">
-                Trails
-              </span>
-              <input
-                type="range"
-                min={0}
-                max={0.97}
-                step={0.01}
-                value={trail}
-                onChange={(e) => setTrail(Number(e.target.value))}
-              />
-              <span className="appearance-slider-val">{Math.round(trail * 100)}%</span>
-            </label>
-          </div>
-
-          <div className="viz-row viz-row-wide">
-            <span className="muted viz-tool-label">Mirror</span>
-            <div className="viz-mirrors">
-              {MIRRORS.map(([n, label]) => (
-                <button
-                  key={n}
-                  className={'btn' + (mirror === n ? ' is-on' : '')}
-                  aria-pressed={mirror === n}
-                  data-active={mirror === n || undefined}
-                  onClick={() => setMirror(n)}
-                  title={n === 1 ? 'No symmetry' : `${n}-fold kaleidoscope`}
-                >
-                  {label}
+                  <span aria-hidden>{icon}</span>
+                  <span className="fx-style-label">{label}</span>
                 </button>
               ))}
             </div>
 
-            <button
-              className="btn"
-              aria-pressed={micOn}
-              disabled={micBusy}
-              onClick={async () => {
-                if (micOn) {
-                  stopLocalMic()
-                  setMicOn(false)
-                  setHearing(false)
-                  setMicDenied(false)
-                  return
-                }
-                setMicBusy(true)
-                const ok = await startLocalMic()
-                setMicBusy(false)
-                setMicOn(ok)
-                setMicDenied(!ok)
-                if (ok) setSrc('local')
-              }}
-            >
-              {micOn ? '⏹ Stop mic' : micBusy ? 'Asking…' : '🎙 Use my mic'}
-            </button>
+            <div className="viz-row" role="group" aria-label="Sound source">
+              {TAPS.map((t) => {
+                const on = liveSet.includes(t.id)
+                return (
+                  <button
+                    key={t.id}
+                    className={'fx-style-btn viz-src' + (src === t.id ? ' is-on' : '')}
+                    aria-pressed={src === t.id}
+                    onClick={() => setSrc(t.id)}
+                    title={on ? 'Live now' : 'Nothing playing'}
+                  >
+                    <span className={'viz-dot' + (on ? ' is-live' : '')} aria-hidden />
+                    <span className="fx-style-label">{t.label}</span>
+                  </button>
+                )
+              })}
+            </div>
 
-            {micOn && (
+            {/* Where a track comes from. Both routes end at the same tap, so every mode and every
+              tool works on music with no further plumbing. */}
+            <div className="viz-row viz-row-wide">
+              <input
+                ref={filePick}
+                type="file"
+                accept="audio/*"
+                hidden
+                onChange={(e) => {
+                  void openFile(e.target.files?.[0])
+                  // cleared so choosing the SAME file twice still fires a change event
+                  e.target.value = ''
+                }}
+              />
+              <button className="btn" onClick={() => filePick.current?.click()}>
+                🎵 Open a track
+              </button>
+              {track && (
+                <>
+                  <span className="muted viz-track" title={track}>
+                    {track}
+                  </span>
+                  <button
+                    className="btn"
+                    onClick={() => {
+                      stopMusic()
+                      setTrack('')
+                    }}
+                  >
+                    ⏹ Stop
+                  </button>
+                </>
+              )}
               <button
                 className="btn"
-                aria-pressed={hearing}
-                onClick={() => {
-                  const next = !hearing
-                  setMonitor(next)
-                  setHearing(next)
+                aria-pressed={sharing}
+                onClick={async () => {
+                  if (sharing) {
+                    stopShared()
+                    setSharing(false)
+                    return
+                  }
+                  setSrcErr(null)
+                  const err = await shareTabAudio()
+                  if (err) {
+                    setSrcErr(err)
+                    return
+                  }
+                  if (sharedOn()) {
+                    setSharing(true)
+                    setSrc('shared')
+                  }
                 }}
-                title={hearing ? 'Stop playing your mic back' : 'Play your mic back to hear it'}
+                title="Watch what another tab is playing — Spotify, YouTube, anything"
               >
-                {hearing ? '🔇 Stop listening' : '🎧 Hear myself'}
+                {sharing ? '⏹ Stop tab audio' : '🖥️ Tab audio'}
               </button>
+            </div>
+            {srcErr && <p className="muted viz-note viz-warn">{srcErr}</p>}
+
+            <div className="viz-row viz-row-wide">
+              <label className="appearance-slider">
+                <span className="muted">Sensitivity</span>
+                <input
+                  type="range"
+                  min={0.5}
+                  max={4}
+                  step={0.1}
+                  value={gain}
+                  onChange={(e) => setGain(Number(e.target.value))}
+                />
+                <span className="appearance-slider-val">{gain.toFixed(1)}×</span>
+              </label>
+              <label className="appearance-slider">
+                <span className="muted" title="How much of each frame lingers">
+                  Trails
+                </span>
+                <input
+                  type="range"
+                  min={0}
+                  max={0.97}
+                  step={0.01}
+                  value={trail}
+                  onChange={(e) => setTrail(Number(e.target.value))}
+                />
+                <span className="appearance-slider-val">{Math.round(trail * 100)}%</span>
+              </label>
+            </div>
+
+            <div className="viz-row viz-row-wide">
+              <span className="muted viz-tool-label">Mirror</span>
+              <div className="viz-mirrors">
+                {MIRRORS.map(([n, label]) => (
+                  <button
+                    key={n}
+                    className={'btn' + (mirror === n ? ' is-on' : '')}
+                    aria-pressed={mirror === n}
+                    data-active={mirror === n || undefined}
+                    onClick={() => setMirror(n)}
+                    title={n === 1 ? 'No symmetry' : `${n}-fold kaleidoscope`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+
+              <button
+                className="btn"
+                aria-pressed={micOn}
+                disabled={micBusy}
+                onClick={async () => {
+                  if (micOn) {
+                    stopLocalMic()
+                    setMicOn(false)
+                    setHearing(false)
+                    setMicDenied(false)
+                    return
+                  }
+                  setMicBusy(true)
+                  const ok = await startLocalMic()
+                  setMicBusy(false)
+                  setMicOn(ok)
+                  setMicDenied(!ok)
+                  if (ok) setSrc('local')
+                }}
+              >
+                {micOn ? '⏹ Stop mic' : micBusy ? 'Asking…' : '🎙 Use my mic'}
+              </button>
+
+              {micOn && (
+                <button
+                  className="btn"
+                  aria-pressed={hearing}
+                  onClick={() => {
+                    const next = !hearing
+                    setMonitor(next)
+                    setHearing(next)
+                  }}
+                  title={hearing ? 'Stop playing your mic back' : 'Play your mic back to hear it'}
+                >
+                  {hearing ? '🔇 Stop listening' : '🎧 Hear myself'}
+                </button>
+              )}
+
+              <button
+                className="btn"
+                onClick={() => {
+                  setSrc('ring')
+                  playCallSound('ring')
+                }}
+              >
+                🔔 Ringtone
+              </button>
+            </div>
+
+            {hearing && (
+              <p className="muted viz-note viz-warn">
+                ⚠️ Headphones — on speakers your mic will hear itself and start to howl.
+              </p>
             )}
-
-            <button
-              className="btn"
-              onClick={() => {
-                setSrc('ring')
-                playCallSound('ring')
-              }}
-            >
-              🔔 Ringtone
-            </button>
-          </div>
-
-          {hearing && (
-            <p className="muted viz-note viz-warn">
-              ⚠️ Headphones — on speakers your mic will hear itself and start to howl.
-            </p>
-          )}
-          {micDenied && (
+            {micDenied && (
+              <p className="muted viz-note">
+                No microphone — the browser said no, or there isn’t one. Nothing was recorded either
+                way.
+              </p>
+            )}
             <p className="muted viz-note">
-              No microphone — the browser said no, or there isn’t one. Nothing was recorded either
-              way.
+              Nothing is recorded or uploaded. A dropped file is played from your own disk, and the
+              mic is read on this device and thrown away frame by frame.
             </p>
-          )}
-          <p className="muted viz-note">
-            Nothing here is recorded or sent anywhere. The mic is read on this device and thrown
-            away frame by frame.
-          </p>
-        </div>
-      )}
+          </div>
+        )}
+      </div>
     </section>
   )
 }

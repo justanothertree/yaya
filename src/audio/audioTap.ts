@@ -16,7 +16,7 @@
  * which is the thing every other effect on this site is careful not to do.
  */
 
-export type TapId = 'mic' | 'peers' | 'ring' | 'local'
+export type TapId = 'mic' | 'peers' | 'ring' | 'local' | 'music' | 'shared'
 
 export type TapInfo = { id: TapId; label: string }
 
@@ -29,6 +29,10 @@ export const TAPS: TapInfo[] = [
   // call ends. This is a mic opened by whoever wanted to watch it, and it must not be torn down
   // by somebody else hanging up.
   { id: 'local', label: 'This mic' },
+  // A file you picked, played here. Never uploaded — see musicSource.ts.
+  { id: 'music', label: 'Music' },
+  // Whatever another tab or window is playing, via screen share with audio ticked.
+  { id: 'shared', label: 'Tab audio' },
 ]
 
 const sources = new Map<TapId, AnalyserNode>()

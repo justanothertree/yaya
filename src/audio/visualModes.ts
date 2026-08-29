@@ -62,6 +62,29 @@ export type Ink = {
   ink: [number, number, number]
 }
 
+/**
+ * Where the pointer is, in the visual's own coordinates.
+ *
+ * ⚠️ Not every mode should use this. A pointer shoved into Bars or Rain would be decoration
+ * bolted onto a chart — those read along an axis, and moving their origin makes them harder to
+ * read for no gain. The modes that take it are the ones with a CENTRE to move, a field to push,
+ * or something to pluck. Three of the sixteen deliberately ignore it.
+ */
+export type Pointer = {
+  /** CSS pixels inside the surface. Meaningless unless `inside`. */
+  x: number
+  y: number
+  inside: boolean
+  /** pixels per second, for modes that care about a flick rather than a position */
+  vx: number
+  vy: number
+  down: boolean
+  /** seconds since the last press, and where it landed */
+  sinceClick: number
+  clickX: number
+  clickY: number
+}
+
 export type Frame = {
   ctx: CanvasRenderingContext2D
   w: number
@@ -75,8 +98,14 @@ export type Frame = {
   waveN: number
   /** bands, beat and clock — see audioFeatures.ts */
   f: Features
+  /** the mouse, for modes that have somewhere to put it */
+  p: Pointer
   ink: Ink
 }
+
+/** A mode's centre: the pointer when it is over the canvas, the middle when it is not. */
+const centre = (p: Pointer, w: number, h: number): [number, number] =>
+  p.inside ? [p.x, p.y] : [w / 2, h / 2]
 
 export type Visual = {
   init(w: number, h: number): void
@@ -175,9 +204,8 @@ function radial(): Visual {
   let spin = 0
   return {
     init() {},
-    draw({ ctx, w, h, dt, spec, bins, f, ink }) {
-      const cx = w / 2
-      const cy = h / 2
+    draw({ ctx, w, h, dt, spec, bins, f, p, ink }) {
+      const [cx, cy] = centre(p, w, h)
       const r0 = Math.min(w, h) * (0.16 + f.level * 0.06)
       const max = Math.min(w, h) * 0.44
       spin += dt * (0.15 + f.level * 0.5)
@@ -255,10 +283,10 @@ function rain(): Visual {
 function lissajous(): Visual {
   return {
     init() {},
-    draw({ ctx, w, h, wave: buf, waveN, f, ink }) {
-      const cx = w / 2
-      const cy = h / 2
-      const r = Math.min(w, h) * 0.42
+    draw({ ctx, w, h, wave: buf, waveN, f, p, ink }) {
+      const [cx, cy] = centre(p, w, h)
+      // holding the button squeezes the figure — a scope's gain knob, basically
+      const r = Math.min(w, h) * 0.42 * (p.down ? 0.55 : 1)
       // a quarter-cycle-ish offset — small enough to stay correlated, big enough to open a loop
       const lag = Math.max(1, Math.floor(waveN / 24))
       ctx.beginPath()
@@ -290,11 +318,12 @@ function tunnel(): Visual {
     init() {
       rings = []
     },
-    draw({ ctx, w, h, dt, f, ink }) {
-      const cx = w / 2
-      const cy = h / 2
+    draw({ ctx, w, h, dt, f, p, ink }) {
+      const [cx, cy] = centre(p, w, h)
       const max = Math.hypot(w, h) * 0.6
       if (f.beat) rings.push({ r: 4, hue: f.bass, born: f.t })
+      // a click throws one by hand, so the tunnel answers you even in silence
+      if (p.down && p.sinceClick < 0.05) rings.push({ r: 4, hue: 1, born: f.t })
       // a slow trickle even in silence, so the shape is legible before anything plays
       if (rings.length === 0 || f.t - rings[rings.length - 1].born > 0.9) {
         rings.push({ r: 4, hue: f.mid, born: f.t })
@@ -340,7 +369,7 @@ function nebula(): Visual {
         s: 0.6 + Math.random() * 1.8,
       }))
     },
-    draw({ ctx, dt, f, ink }) {
+    draw({ ctx, dt, f, p: ptr, ink }) {
       const cx = W / 2
       const cy = H / 2
       for (const p of ps) {
@@ -351,6 +380,21 @@ function nebula(): Visual {
         const push = f.bass * 260
         p.vx += (dx / d) * push * dt + (Math.random() - 0.5) * f.treble * 90 * dt
         p.vy += (dy / d) * push * dt + (Math.random() - 0.5) * f.treble * 90 * dt
+        /**
+         * The pointer repels, and attracts while held.
+         *
+         * ⚠️ Falls off with distance and is CLAMPED near zero. An inverse-square force with
+         * no floor flings a particle to infinity the moment the cursor lands on it and it never
+         * returns — the field quietly empties as you wave the mouse around.
+         */
+        if (ptr.inside) {
+          const rx = p.x - ptr.x
+          const ry = p.y - ptr.y
+          const rd = Math.max(24, Math.hypot(rx, ry))
+          const force = ((ptr.down ? -1 : 1) * 9000) / (rd * rd)
+          p.vx += (rx / rd) * force * dt * 60
+          p.vy += (ry / rd) * force * dt * 60
+        }
         p.vx *= 0.97
         p.vy *= 0.97
         p.x += p.vx * dt * 60 * 0.06
@@ -387,12 +431,13 @@ function terrain(): Visual {
       cols = Math.max(24, Math.min(96, Math.floor(w / 12)))
       rows = []
     },
-    draw({ ctx, w, h, spec, bins, ink }) {
+    draw({ ctx, w, h, spec, bins, p, ink }) {
       const next = new Float32Array(cols)
       for (let i = 0; i < cols; i++) next[i] = at(spec, bins, Math.pow(i / cols, 1.6) * 0.8)
       rows.unshift(next)
       if (rows.length > ROWS) rows.pop()
-      const horizon = h * 0.28
+      // pointer height raises or lowers the eye — a flatter view, or a steeper one
+      const horizon = h * (p.inside ? 0.12 + (p.y / h) * 0.34 : 0.28)
       for (let r = rows.length - 1; r >= 0; r--) {
         // depth 0 = nearest. Perspective: further rows are narrower, higher, and fainter.
         const k = r / ROWS
@@ -430,7 +475,11 @@ function ripple(): Visual {
     init() {
       rs = []
     },
-    draw({ ctx, w, h, dt, f, ink }) {
+    draw({ ctx, w, h, dt, f, p, ink }) {
+      // your own stone, exactly where you put it
+      if (p.down && p.sinceClick < 0.05) {
+        rs.push({ x: p.clickX, y: p.clickY, r: 2, strength: 1 })
+      }
       if (f.beat) {
         rs.push({
           // placed by band content: bass lands low and left, treble high and right
@@ -471,11 +520,17 @@ function strings(): Visual {
     init() {
       energy = Array(N).fill(0)
     },
-    draw({ ctx, w, h, dt, spec, bins, f, ink }) {
+    draw({ ctx, w, h, dt, spec, bins, f, p, ink }) {
+      // whichever string the pointer is crossing, and only while it is actually moving
+      const spacing = h / (N + 1)
+      const touched =
+        p.inside && Math.abs(p.vx) + Math.abs(p.vy) > 40 ? Math.round(p.y / spacing) - 1 : -1
       for (let i = 0; i < N; i++) {
         const band = at(spec, bins, 0.02 + (i / N) * 0.5)
         // pluck on a beat, otherwise decay — a string rings out, it does not track the envelope
         energy[i] = Math.max(energy[i] - dt * 1.6, f.beat ? Math.max(energy[i], band) : band * 0.55)
+        // dragging across a string plucks it, which is what strings are for
+        if (i === touched) energy[i] = Math.max(energy[i], 0.85)
         const y = (h * (i + 1)) / (N + 1)
         const amp = energy[i] * (h / (N + 2)) * 0.9
         // higher strings vibrate faster, like shorter ones do
@@ -511,12 +566,12 @@ function petals(): Visual {
     init() {
       k = 3
     },
-    draw({ ctx, w, h, dt, f, ink }) {
-      const cx = w / 2
-      const cy = h / 2
+    draw({ ctx, w, h, dt, f, p, ink }) {
+      const [cx, cy] = centre(p, w, h)
       const R = Math.min(w, h) * (0.2 + f.level * 0.22)
-      // eased toward the target so petals morph rather than snap between shapes
-      const target = 2 + f.mid * 6 + f.treble * 3
+      // eased toward the target so petals morph rather than snap between shapes, and the
+      // pointer's height adds petals — sweeping up and down walks through whole flowers
+      const target = 2 + f.mid * 6 + f.treble * 3 + (p.inside ? (1 - p.y / h) * 5 : 0)
       k += (target - k) * Math.min(1, dt * 2)
       ctx.beginPath()
       for (let i = 0; i <= 720; i++) {
@@ -546,7 +601,9 @@ function aurora(): Visual {
   const LAYERS = 5
   return {
     init() {},
-    draw({ ctx, w, h, spec, bins, f, ink }) {
+    draw({ ctx, w, h, spec, bins, f, p, ink }) {
+      // the curtains lean toward the pointer, nearer layers leaning further
+      const lean = p.inside ? (p.x / w - 0.5) * 2 : 0
       for (let L = 0; L < LAYERS; L++) {
         const band = at(spec, bins, 0.02 + (L / LAYERS) * 0.4)
         const baseY = h * (0.3 + (L / LAYERS) * 0.4)
@@ -563,7 +620,7 @@ function aurora(): Visual {
           const u = x / w
           const y =
             baseY -
-            Math.sin(u * Math.PI * (1.5 + L * 0.6) + f.t * speed) * amp -
+            Math.sin(u * Math.PI * (1.5 + L * 0.6) + f.t * speed + lean * (1 + L * 0.3)) * amp -
             Math.sin(u * Math.PI * 4.3 - f.t * speed * 1.7) * amp * 0.35
           ctx.lineTo(x, y)
         }
@@ -591,9 +648,8 @@ function orbit(): Visual {
       ang = Array.from({ length: N }, (_, i) => (i / N) * Math.PI * 2)
       rad = Array(N).fill(0)
     },
-    draw({ ctx, w, h, dt, spec, bins, f, ink }) {
-      const cx = w / 2
-      const cy = h / 2
+    draw({ ctx, w, h, dt, spec, bins, f, p, ink }) {
+      const [cx, cy] = centre(p, w, h)
       const R = Math.min(w, h) * 0.42
       for (let i = 0; i < N; i++) {
         const band = at(spec, bins, 0.02 + (i / N) * 0.5)
@@ -636,7 +692,7 @@ function constellation(): Visual {
         }
       })
     },
-    draw({ ctx, w, h, spec, bins, f, ink }) {
+    draw({ ctx, w, h, spec, bins, f, p, ink }) {
       const pull = f.level * 0.35
       for (const s of ss) {
         const v = at(spec, bins, 0.02 + s.band * 0.5)
@@ -648,6 +704,18 @@ function constellation(): Visual {
       }
       const near = Math.min(w, h) * 0.17
       ctx.lineWidth = 1
+      // the cursor joins the web: lines reach for it, so the constellation follows you around
+      if (p.inside) {
+        for (const s of ss) {
+          const d = Math.hypot(s.x - p.x, s.y - p.y)
+          if (d > near * 1.5) continue
+          ctx.beginPath()
+          ctx.moveTo(p.x, p.y)
+          ctx.lineTo(s.x, s.y)
+          ctx.strokeStyle = rgb(ink.accent2, (1 - d / (near * 1.5)) * 0.7)
+          ctx.stroke()
+        }
+      }
       for (let i = 0; i < ss.length; i++) {
         for (let j = i + 1; j < ss.length; j++) {
           const d = Math.hypot(ss[i].x - ss[j].x, ss[i].y - ss[j].y)
@@ -687,9 +755,11 @@ function cells(): Visual {
       rows = Math.max(4, Math.min(18, Math.floor(h / 34)))
       heat = new Float32Array(cols * rows)
     },
-    draw({ ctx, w, h, dt, spec, bins, ink }) {
+    draw({ ctx, w, h, dt, spec, bins, p, ink }) {
       const cw = w / cols
       const ch = h / rows
+      const hotX = p.inside ? Math.floor(p.x / cw) : -9
+      const hotY = p.inside ? Math.floor(p.y / ch) : -9
       for (let y = 0; y < rows; y++) {
         for (let x = 0; x < cols; x++) {
           const idx = y * cols + x
@@ -697,6 +767,10 @@ function cells(): Visual {
           const frac = ((rows - 1 - y) * cols + x) / (cols * rows)
           const v = at(spec, bins, Math.pow(frac, 1.4) * 0.75)
           heat[idx] = Math.max(heat[idx] - dt * 1.9, v)
+          // a soft pool under the cursor rather than one hard tile, so it reads as a torch
+          // being carried across the grid
+          const near = Math.max(Math.abs(x - hotX), Math.abs(y - hotY))
+          if (near <= 1) heat[idx] = Math.max(heat[idx], near === 0 ? 1 : 0.45)
           const k = heat[idx]
           if (k < 0.02) continue
           ctx.fillStyle = mix(ink.accent, ink.accent2, k)
@@ -723,9 +797,8 @@ function spiral(): Visual {
     init() {
       phase = 0
     },
-    draw({ ctx, w, h, dt, spec, bins, f, ink }) {
-      const cx = w / 2
-      const cy = h / 2
+    draw({ ctx, w, h, dt, spec, bins, f, p, ink }) {
+      const [cx, cy] = centre(p, w, h)
       const R = Math.min(w, h) * 0.46
       const turns = 4
       phase += dt * (0.2 + f.level * 0.7)

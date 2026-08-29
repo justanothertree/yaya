@@ -2661,11 +2661,60 @@ section[id] {
   line-height: 1.4;
   backdrop-filter: blur(6px);
 }
+/* The stage now HOLDS the controls, because fullscreen only shows one element and its
+   descendants — a panel that was a sibling simply vanished the moment you went fullscreen. */
+.viz-stage {
+  display: flex;
+  flex-direction: column;
+}
+.viz-surface {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  inset: auto;
+}
 .viz-controls {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
   flex: 0 0 auto;
+  padding: 0.6rem;
+  border-top: 1px solid var(--border);
+}
+/* In fullscreen the picture should own the screen, so the panel stops taking a slice of the
+   layout and floats over the bottom of it instead. */
+.viz-stage[data-full] .viz-controls {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  max-height: 52vh;
+  overflow-y: auto;
+  background: color-mix(in oklab, var(--panel), transparent 12%);
+  backdrop-filter: blur(10px);
+  border-top: 1px solid var(--border-strong);
+}
+/* dropping a track: the whole stage lights up as the target */
+.viz-drop {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: grid;
+  place-content: center;
+  font-weight: 600;
+  border: 2px dashed var(--accent);
+  border-radius: 12px;
+  background: color-mix(in oklab, var(--accent), transparent 88%);
+  pointer-events: none;
+}
+/* a filename can be any length; it must not shove the buttons off the row */
+.viz-track {
+  flex: 1 1 6rem;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.8rem;
 }
 /* sixteen modes and growing — a fixed grid that wraps, capped so it never eats the stage */
 .viz-modes {
