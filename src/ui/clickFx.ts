@@ -94,16 +94,40 @@ function layer(): HTMLElement {
 
 /**
  * Read colours straight off the document so every style follows the active palette — including
- * a custom one — without this module knowing anything about themes. `--warn`/`--danger` are read
- * too, for the styles with a wider palette, and fall back to the accent pair when a theme doesn't
- * define them rather than rendering a broken swatch.
+ * a custom one — without this module knowing anything about themes.
+ *
+ * ⚠️ THE FLAIR RAMP, not the accent pair. This used to return accent, accent-2, --warn and
+ * --danger: two real palette colours plus two STATUS colours borrowed because nothing else was
+ * available. That is why the flairs all looked related — seventeen styles drawing the same two
+ * hues, with a warning yellow and an error red thrown in, which belong to a different language
+ * entirely. The ramp is five colours designed to sit together (see customTheme.ts), so the
+ * styles differ by colour as well as by shape.
+ *
+ * Falls back to the accent pair on a theme that predates the ramp, so nothing renders blank.
  */
 function palette(): string[] {
   const s = getComputedStyle(document.documentElement)
   const get = (name: string, fallback: string) => s.getPropertyValue(name).trim() || fallback
   const a = get('--accent', '#22c55e')
   const b = get('--accent-2', a)
-  return [a, b, get('--warn', a), get('--danger', b)]
+  const ramp = [0, 1, 2, 3, 4].map((i) => s.getPropertyValue(`--fx-${i}`).trim()).filter(Boolean)
+  return ramp.length >= 2 ? ramp : [a, b, get('--warn', a), get('--danger', b)]
+}
+
+/**
+ * The classic CONTRASTING pair, for the styles built around exactly two colours.
+ *
+ * ⚠️ Not palette()[0] and palette()[1]. The ramp is ordered by hue so that anything walking
+ * it gets a gradient — which means its first two entries are neighbours, nearly the same colour.
+ * A beam whose core and glow were two shades of the same green would read as a bug, and taking
+ * the two ends instead keeps these styles looking exactly as they did before the ramp existed.
+ *
+ * So the two kinds of style get what each needs from one ramp: spread for the many-coloured
+ * ones, opposition for the two-coloured ones.
+ */
+function pair(): [string, string] {
+  const p = palette()
+  return [p[1] ?? p[0], p[p.length - 1]]
 }
 
 /**
@@ -139,7 +163,7 @@ function mkGlyph(char: string, x: number, y: number, size: number, color?: strin
 
 /** The original: a ring plus 8 radiating dots. Reads as a clean, energetic "that registered". */
 function sparks(host: HTMLElement, x: number, y: number) {
-  const [a, b] = palette()
+  const [a, b] = pair()
   const N = amount('click', 8)
   const nodes: HTMLElement[] = []
   const anims: Animation[] = []
@@ -191,7 +215,7 @@ function sparks(host: HTMLElement, x: number, y: number) {
  * plain ring — the staggered layering is what makes it read as more than "a flash" while
  * staying the calm, quiet option in the set. */
 function sonar(host: HTMLElement, x: number, y: number) {
-  const [a] = palette()
+  const [a] = pair()
   const nodes: HTMLElement[] = []
   const anims: Animation[] = []
   for (let i = 0; i < 3; i++) {
@@ -261,7 +285,7 @@ function pop(host: HTMLElement, x: number, y: number) {
  * bursts at its peak. The old version was just a busier version of sparks at the same spot,
  * which is exactly why it read as "too similar"; this one moves before it explodes. */
 function rocket(host: HTMLElement, x: number, y: number) {
-  const [a] = palette()
+  const [a] = pair()
   const rise = 70 + Math.random() * 30
   const dot = mk('click-fx-spark', x, y)
   dot.style.background = a
@@ -391,7 +415,7 @@ function hearts(host: HTMLElement, x: number, y: number) {
 /** Translucent circles drift upward with a wobble and POP (a quick scale-up right before they
  * vanish, not a plain fade) — the pop at the top is what sells "bubble" over "dot that floats". */
 function bubbles(host: HTMLElement, x: number, y: number) {
-  const [a, b] = palette()
+  const [a, b] = pair()
   const N = amount('click', 8)
   const nodes: HTMLElement[] = []
   const anims: Animation[] = []
@@ -497,7 +521,7 @@ function shatter(host: HTMLElement, x: number, y: number) {
 /** A handful of overlapping filled, blurred blobs instead of dots or rings — reads as a splash
  * landing, not a burst radiating evenly. */
 function ink(host: HTMLElement, x: number, y: number) {
-  const [a, b] = palette()
+  const [a, b] = pair()
   const N = amount('click', 5)
   const nodes: HTMLElement[] = []
   const anims: Animation[] = []
@@ -559,7 +583,7 @@ function orbit(host: HTMLElement, x: number, y: number) {
  * animated) so `transform-origin: top center` keeps every ray pivoting on the exact click point
  * while `.animate()` only grows and shrinks its height. */
 function beam(host: HTMLElement, x: number, y: number) {
-  const [a, b] = palette()
+  const [a, b] = pair()
   const N = amount('click', 8)
   const nodes: HTMLElement[] = []
   const anims: Animation[] = []
@@ -655,7 +679,7 @@ function implode(host: HTMLElement, x: number, y: number) {
  * dots.
  */
 function bloom(host: HTMLElement, x: number, y: number) {
-  const [a, b] = palette()
+  const [a, b] = pair()
   const N = amount('click', 6)
   const nodes: HTMLElement[] = []
   const anims: Animation[] = []
@@ -701,7 +725,7 @@ function bloom(host: HTMLElement, x: number, y: number) {
  * only style here you could leave on all day without noticing it.
  */
 function dust(host: HTMLElement, x: number, y: number) {
-  const [a, b] = palette()
+  const [a, b] = pair()
   const N = amount('click', 7)
   const nodes: HTMLElement[] = []
   const anims: Animation[] = []
@@ -747,7 +771,7 @@ function dust(host: HTMLElement, x: number, y: number) {
  * Flattened on Y because you are looking at the surface at an angle; a true circle reads as sonar.
  */
 function splash(host: HTMLElement, x: number, y: number) {
-  const [a, b] = palette()
+  const [a, b] = pair()
   const nodes: HTMLElement[] = []
   const anims: Animation[] = []
 
@@ -817,7 +841,7 @@ function splash(host: HTMLElement, x: number, y: number) {
  * underneath it. One line alone looks like a loading bar.
  */
 function slash(host: HTMLElement, x: number, y: number) {
-  const [a, b] = palette()
+  const [a, b] = pair()
   const nodes: HTMLElement[] = []
   const anims: Animation[] = []
   const deg = ((swingAngle ?? Math.random() * Math.PI * 2) * 180) / Math.PI

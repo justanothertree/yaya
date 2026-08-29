@@ -83,12 +83,21 @@ function layer(): HTMLElement {
   return el
 }
 
+/**
+ * The flair ramp — five colours rather than the accent pair.
+ *
+ * ⚠️ Twelve trails drawing two colours read as one trail in twelve shapes, because the eye
+ * takes the hue before the motion. Same ramp the click flairs and the backgrounds use, so a
+ * trail and a click look like they come from the same site without looking like each other.
+ * Falls back to the pair on a theme that predates the ramp.
+ */
 function palette(): string[] {
   const s = getComputedStyle(document.documentElement)
   const get = (name: string, fallback: string) => s.getPropertyValue(name).trim() || fallback
+  const ramp = [0, 1, 2, 3, 4].map((i) => s.getPropertyValue(`--fx-${i}`).trim()).filter(Boolean)
+  if (ramp.length >= 2) return ramp
   const a = get('--accent', '#22c55e')
-  const b = get('--accent-2', a)
-  return [a, b]
+  return [a, get('--accent-2', a)]
 }
 
 function mk(cls: string, x: number, y: number) {
@@ -133,8 +142,37 @@ const SPACING: Record<Exclude<TrailStyle, 'none'>, number> = {
   chase: 14,
 }
 
+/**
+ * Where each trail sits on the ramp, 0–1.
+ *
+ * ⚠️ Twelve trails all drew the same two colours, so they read as one trail in twelve shapes
+ * — the eye takes hue before motion. Giving each style its own place means comet and ink are
+ * recognisably different things before you have registered how they move, while all twelve stay
+ * inside the theme because the ramp IS the theme. Spread deliberately rather than evenly: styles
+ * that tend to appear together are pushed apart.
+ */
+const TRAIL_HUE: Record<Exclude<TrailStyle, 'none'>, number> = {
+  comet: 0.0,
+  ribbon: 0.55,
+  motes: 0.25,
+  ink: 0.8,
+  spark: 0.12,
+  bloom: 0.68,
+  thread: 0.42,
+  orbit: 0.9,
+  dash: 0.32,
+  rise: 0.6,
+  smoke: 0.75,
+  chase: 0.18,
+}
+
 function drop(s: Exclude<TrailStyle, 'none'>, x: number, y: number, dx: number, dy: number) {
-  const [a, b] = palette()
+  const ramp = palette()
+  const at = (t: number) => ramp[Math.round(Math.max(0, Math.min(1, t)) * (ramp.length - 1))]
+  const base = TRAIL_HUE[s] ?? 0
+  const a = at(base)
+  // a partner far enough away to be a different colour, wrapped so it never runs off the end
+  const b = at((base + 0.45) % 1)
   const angle = (Math.atan2(dy, dx) * 180) / Math.PI
   const speed = Math.min(1, Math.hypot(dx, dy) / 40)
 

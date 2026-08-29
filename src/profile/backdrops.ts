@@ -54,6 +54,13 @@ export type Paint = {
   /** their accent, their second accent, and their text colour, as rgb triples */
   accent: [number, number, number]
   accent2: [number, number, number]
+  /**
+   * The five-stop flair ramp, shared with the click effects and the trails.
+   *
+   * ⚠️ Empty on a theme that predates it, which is why every read below falls back to the
+   * accent pair rather than assuming a length.
+   */
+  ramp?: Array<[number, number, number]>
   ink: [number, number, number]
 }
 
@@ -78,6 +85,34 @@ export type Effect = {
 }
 
 const rgba = ([r, g, b]: [number, number, number], a: number) => `rgba(${r},${g},${b},${a})`
+
+/**
+ * A colour from the flair ramp at 0–1.
+ *
+ * ⚠️ Falls back to blending the accent pair when a theme has no ramp, which is exactly what
+ * these effects did before it existed — so an old theme looks unchanged rather than broken.
+ * Same idea as the visualiser's hue(), kept separate because backdrops speak in rgb triples
+ * while that one returns css strings.
+ */
+function ramped(paint: Paint, t: number): [number, number, number] {
+  const k = Math.max(0, Math.min(1, t))
+  const r = paint.ramp
+  if (r && r.length >= 2) {
+    const pos = k * (r.length - 1)
+    const i = Math.min(r.length - 2, Math.floor(pos))
+    const f = pos - i
+    return [
+      Math.round(r[i][0] + (r[i + 1][0] - r[i][0]) * f),
+      Math.round(r[i][1] + (r[i + 1][1] - r[i][1]) * f),
+      Math.round(r[i][2] + (r[i + 1][2] - r[i][2]) * f),
+    ]
+  }
+  return [
+    Math.round(paint.accent[0] + (paint.accent2[0] - paint.accent[0]) * k),
+    Math.round(paint.accent[1] + (paint.accent2[1] - paint.accent[1]) * k),
+    Math.round(paint.accent[2] + (paint.accent2[2] - paint.accent[2]) * k),
+  ]
+}
 
 /**
  * Size and speed, read per frame rather than captured at init.
@@ -133,7 +168,7 @@ function waves(): Effect {
     step({ ctx, w, h, t, paint, px }) {
       // the pointer leans the whole set, so moving across the page pushes the water
       const lean = px == null ? 0 : (px / w - 0.5) * 26
-      for (const b of bands) {
+      for (const [bi, b] of bands.entries()) {
         ctx.beginPath()
         ctx.moveTo(0, h)
         for (let x = 0; x <= w; x += 12) {
@@ -146,7 +181,7 @@ function waves(): Effect {
         }
         ctx.lineTo(w, h)
         ctx.closePath()
-        ctx.fillStyle = rgba(paint.accent, b.alpha)
+        ctx.fillStyle = rgba(ramped(paint, bi / Math.max(1, bands.length - 1)), b.alpha)
         ctx.fill()
       }
     },
@@ -235,11 +270,7 @@ function flames(): Effect {
         p.y -= p.v * dt * speedScale()
         const k = p.life / p.max
         const x = p.x + Math.sin(t * 2.2 + p.y * 0.02) * 6 + draft * k
-        const col: [number, number, number] = [
-          Math.round(paint.accent[0] + (paint.accent2[0] - paint.accent[0]) * k),
-          Math.round(paint.accent[1] + (paint.accent2[1] - paint.accent[1]) * k),
-          Math.round(paint.accent[2] + (paint.accent2[2] - paint.accent[2]) * k),
-        ]
+        const col = ramped(paint, k)
         ctx.beginPath()
         ctx.arc(x, p.y, p.r * (1 - k * 0.6) * sizeScale(), 0, Math.PI * 2)
         ctx.fillStyle = rgba(col, 0.32 * (1 - k))
@@ -288,7 +319,7 @@ function leaves(): Effect {
         ctx.beginPath()
         // a leaf is two arcs meeting at a point — cheaper than a path and reads at 8px
         ctx.ellipse(0, 0, p.r * sizeScale(), p.r * 0.45 * sizeScale(), 0, 0, Math.PI * 2)
-        ctx.fillStyle = rgba(p.r > 7 ? paint.accent2 : paint.accent, 0.3)
+        ctx.fillStyle = rgba(ramped(paint, Math.min(1, (p.r - 4) / 8)), 0.3)
         ctx.fill()
         ctx.restore()
       }

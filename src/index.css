@@ -7,6 +7,15 @@
   --text: #eeeef8;
   --muted: #9090b0;
   --accent: #22c55e;
+  /* The flair ramp: five colours for the click effects, mouse trails and animated
+     backgrounds, which between them could previously find only the accent pair. Derived by
+     rotating hue exactly as derivePalette does for custom palettes, so a built-in theme and
+     a hand-made one feed the effects the same way. */
+  --fx-0: #45c522;
+  --fx-1: #22c55e;
+  --fx-2: #22c5bd;
+  --fx-3: #3522c5;
+  --fx-4: #b022c5;
   --accent-2: #ef4444;
   --btn-text: #052e16;
   --bg-grad1: #11111c;
@@ -37,6 +46,11 @@
   --text: #eeeef8;
   --muted: #9090b0;
   --accent: #22c55e;
+  --fx-0: #45c522;
+  --fx-1: #22c55e;
+  --fx-2: #22c5bd;
+  --fx-3: #3522c5;
+  --fx-4: #b022c5;
   --accent-2: #ef4444;
   --btn-text: #052e16;
   --bg-grad1: #11111c;
@@ -61,6 +75,11 @@
   --text: #0f172a;
   --muted: #475569;
   --accent: #16a34a;
+  --fx-0: #34a316;
+  --fx-1: #16a34a;
+  --fx-2: #16a39c;
+  --fx-3: #2716a3;
+  --fx-4: #9016a3;
   --accent-2: #dc2626;
   --btn-text: #052e16;
   --bg-grad1: #f2f7ff;
@@ -86,6 +105,11 @@
   --text: #e6e9ff;
   --muted: #a3a9c7;
   --accent: #7c3aed;
+  --fx-0: #3a60ed;
+  --fx-1: #7c3aed;
+  --fx-2: #e43aed;
+  --fx-3: #ed4f3a;
+  --fx-4: #edd63a;
   --accent-2: #22d3ee;
   /* ⚠️ White, not near-black. theme/customTheme.ts says, of the value it computes:
      "Picking it by eye is how the alt theme ended up at 3.36:1 — below the 4.5:1 that normal
@@ -114,6 +138,11 @@
    so the module matches the standalone while the rest of the site stays on-brand. */
 #circuit {
   --accent: #7c6af7;
+  --fx-0: #6aaaf7;
+  --fx-1: #7c6af7;
+  --fx-2: #ce6af7;
+  --fx-3: #f76a7b;
+  --fx-4: #f7c36a;
   --accent-2: #ff5566;
   /* ⚠️ NOT white. Measured, white on this purple is 3.99:1 — under the 4.5:1 normal text
      needs — and it applied to every control that sits on the accent: the active tab, the

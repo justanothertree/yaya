@@ -198,6 +198,29 @@ export function derivePalette(seed: PaletteSeed): Record<string, string> {
     // A second accent for the few places that need contrast against the first. Rotating hue is
     // enough: it stays in the family without asking the user for a fourth decision.
     '--accent-2': rotateHue(accentHex, 150),
+    /**
+     * ⚠️ THE FLAIR RAMP — five colours where the effects used to have two.
+     *
+     * Click flairs, mouse trails and animated backgrounds all read their colours off the
+     * document, and all any of them could find was the accent pair. Every effect on the site
+     * therefore drew in the same two hues, which is most of why a dozen distinct flairs read as
+     * variations on one thing: the eye takes the colour before it takes the shape.
+     *
+     * DERIVED FROM THE ACCENT, never asked for. A ramp the person has to choose is a fifth
+     * decision on top of three, and the whole design of this file is that you pick one colour and
+     * everything else follows. Rotating the hue by a little (+/-35°) gives neighbours that always
+     * agree with the accent, and the existing +150° second accent gives one that deliberately
+     * does not — so the ramp has both harmony and contrast without a chance of clashing, whatever
+     * accent somebody picks.
+     *
+     * Ordered so ADJACENT stops are close: an effect that walks the ramp gets a gradient, and one
+     * that picks at random still never lands on two colours that fight.
+     */
+    '--fx-0': rotateHue(accentHex, -35),
+    '--fx-1': accentHex,
+    '--fx-2': rotateHue(accentHex, 35),
+    '--fx-3': rotateHue(accentHex, 105),
+    '--fx-4': rotateHue(accentHex, 150),
     // computed, never chosen — see the note at the top of this file
     '--btn-text': readableOn(accentHex),
     '--surface': `linear-gradient(180deg, ${rgba(text, 0.025)}, ${rgba(text, 0)})`,

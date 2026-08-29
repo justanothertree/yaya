@@ -73,6 +73,18 @@ export function SiteBackdrop({ id, inline = false }: { id: BackdropId; inline?: 
       return {
         accent: read('--accent', [34, 197, 94]),
         accent2: read('--accent-2', [239, 68, 68]),
+        // the same ramp the clicks and trails use, so all three agree about what the site's
+        // colours are rather than each deriving its own answer
+        ramp: [0, 1, 2, 3, 4]
+          .map((i) => s.getPropertyValue(`--fx-${i}`).trim())
+          .filter(Boolean)
+          .map((v) => {
+            const m = /^#?([0-9a-f]{6})$/i.exec(v)
+            if (!m) return null
+            const num = parseInt(m[1], 16)
+            return [(num >> 16) & 255, (num >> 8) & 255, num & 255] as [number, number, number]
+          })
+          .filter((c): c is [number, number, number] => c !== null),
         ink: read('--text', [238, 238, 248]),
       }
     }
