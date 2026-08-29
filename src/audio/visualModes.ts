@@ -1,4 +1,5 @@
 import type { Features } from './audioFeatures'
+import { sample, type RGB } from './palettes'
 
 /**
  * What the sound LOOKS like — a gallery, not a list.
@@ -60,6 +61,15 @@ export type Ink = {
   accent: [number, number, number]
   accent2: [number, number, number]
   ink: [number, number, number]
+  /**
+   * The colour ramp this drawing should use, as stops sampled by hue().
+   *
+   * ⚠️ Every mode asks for colour the same way — "the colour for 0.7" — so no mode has to
+   * know which palette is on, and adding a palette changes all sixteen at once. Empty means the
+   * viewer chose Theme, and hue() falls back to their accent pair, which is what keeps a profile
+   * showing its owner's colours.
+   */
+  stops: RGB[]
 }
 
 /**
@@ -114,12 +124,25 @@ export type Visual = {
 
 const rgb = (c: [number, number, number], a = 1) => `rgba(${c[0]}, ${c[1]}, ${c[2]}, ${a})`
 
-/** Blend two theme colours. Every mode uses this rather than inventing its own palette. */
-function mix(a: [number, number, number], b: [number, number, number], t: number): string {
+/**
+ * The colour for a value between 0 and 1 — the one call every mode makes.
+ *
+ * With a palette chosen it samples that ramp. With Theme chosen there is no ramp, so it blends
+ * the viewer's own two accents exactly as this did before palettes existed: same behaviour,
+ * same file, one code path.
+ */
+function hue(ink: Ink, t: number, alpha = 1): string {
   const k = Math.max(0, Math.min(1, t))
-  return `rgb(${Math.round(a[0] + (b[0] - a[0]) * k)}, ${Math.round(
-    a[1] + (b[1] - a[1]) * k,
-  )}, ${Math.round(a[2] + (b[2] - a[2]) * k)})`
+  const c: RGB = ink.stops.length
+    ? sample(ink.stops, k)
+    : [
+        Math.round(ink.accent[0] + (ink.accent2[0] - ink.accent[0]) * k),
+        Math.round(ink.accent[1] + (ink.accent2[1] - ink.accent[1]) * k),
+        Math.round(ink.accent[2] + (ink.accent2[2] - ink.accent[2]) * k),
+      ]
+  return alpha === 1
+    ? `rgb(${c[0]}, ${c[1]}, ${c[2]})`
+    : `rgba(${c[0]}, ${c[1]}, ${c[2]}, ${alpha})`
 }
 
 /** Read a bin by FRACTION of the spectrum, so a mode never hard-codes an index. */
@@ -154,7 +177,7 @@ function bars(): Visual {
         const v = sum / (hi - lo) / 255
         const bh = Math.max(2, v * h * 0.92)
         const x = i * (bw + gap) + gap / 2
-        ctx.fillStyle = mix(ink.accent, ink.accent2, v)
+        ctx.fillStyle = hue(ink, v)
         ctx.fillRect(x, h - bh, bw, bh)
         // gravity, not a per-frame step, so it falls the same on a 144Hz screen as a 60Hz one
         peaks[i] = Math.max(peaks[i] - dt * 0.9, v)
@@ -190,7 +213,7 @@ function wave(): Visual {
         ctx.lineWidth = width
         ctx.lineJoin = 'round'
         ctx.lineCap = 'round'
-        ctx.strokeStyle = rgb(ink.accent, alpha)
+        ctx.strokeStyle = hue(ink, 0, alpha)
         ctx.stroke()
       }
       line(8, 0.12 + f.level * 0.15)
@@ -223,7 +246,7 @@ function radial(): Visual {
           ctx.moveTo(Math.cos(ang) * r0, Math.sin(ang) * r0)
           ctx.lineTo(Math.cos(ang) * len, Math.sin(ang) * len)
           ctx.lineWidth = 2
-          ctx.strokeStyle = mix(ink.accent, ink.accent2, v)
+          ctx.strokeStyle = hue(ink, v)
           ctx.stroke()
         }
       }
@@ -263,7 +286,7 @@ function rain(): Visual {
       for (let i = 0; i < rows; i++) {
         const v = at(spec, bins, Math.pow(i / rows, 1.5))
         ctx.globalAlpha = v < 0.04 ? 1 : 0.25 + v * 0.75
-        ctx.fillStyle = v < 0.04 ? rgb(ink.ink, 0.05) : mix(ink.accent, ink.accent2, v)
+        ctx.fillStyle = v < 0.04 ? rgb(ink.ink, 0.05) : hue(ink, v)
         ctx.fillRect(w - col, h - (i + 1) * rh, col + 1, rh + 1)
       }
       ctx.globalAlpha = 1
@@ -298,7 +321,7 @@ function lissajous(): Visual {
       }
       ctx.lineWidth = 1.6
       ctx.lineJoin = 'round'
-      ctx.strokeStyle = mix(ink.accent, ink.accent2, f.treble)
+      ctx.strokeStyle = hue(ink, f.treble)
       ctx.stroke()
     },
   }
@@ -335,7 +358,7 @@ function tunnel(): Visual {
         ctx.beginPath()
         ctx.arc(cx, cy, ring.r, 0, Math.PI * 2)
         ctx.lineWidth = Math.max(0.5, 6 * (1 - k))
-        ctx.strokeStyle = mix(ink.accent, ink.accent2, ring.hue)
+        ctx.strokeStyle = hue(ink, ring.hue)
         ctx.globalAlpha = Math.max(0, 1 - k) * 0.9
         ctx.stroke()
       }
@@ -406,7 +429,7 @@ function nebula(): Visual {
         const v = Math.min(1, Math.hypot(p.vx, p.vy) / 60)
         ctx.beginPath()
         ctx.arc(p.x, p.y, p.s * (1 + f.level), 0, Math.PI * 2)
-        ctx.fillStyle = mix(ink.accent, ink.accent2, v)
+        ctx.fillStyle = hue(ink, v)
         ctx.globalAlpha = 0.5 + v * 0.5
         ctx.fill()
       }
@@ -452,7 +475,7 @@ function terrain(): Visual {
           else ctx.lineTo(x, y)
         }
         ctx.lineWidth = 1.2
-        ctx.strokeStyle = mix(ink.accent2, ink.accent, 1 - k)
+        ctx.strokeStyle = hue(ink, k)
         ctx.globalAlpha = 0.15 + (1 - k) * 0.85
         ctx.stroke()
       }
@@ -497,7 +520,7 @@ function ripple(): Visual {
         ctx.beginPath()
         ctx.arc(r.x, r.y, r.r, 0, Math.PI * 2)
         ctx.lineWidth = Math.max(0.6, 3.5 * (1 - k) * r.strength)
-        ctx.strokeStyle = mix(ink.accent, ink.accent2, k)
+        ctx.strokeStyle = hue(ink, k)
         ctx.globalAlpha = Math.max(0, 1 - k) * r.strength
         ctx.stroke()
       }
@@ -543,7 +566,7 @@ function strings(): Visual {
           else ctx.lineTo(x, yy)
         }
         ctx.lineWidth = 1 + energy[i] * 2
-        ctx.strokeStyle = mix(ink.accent, ink.accent2, i / N)
+        ctx.strokeStyle = hue(ink, i / N)
         ctx.globalAlpha = 0.35 + energy[i] * 0.65
         ctx.stroke()
       }
@@ -584,7 +607,7 @@ function petals(): Visual {
       }
       ctx.closePath()
       ctx.lineWidth = 1.4 + f.bass * 3
-      ctx.strokeStyle = mix(ink.accent, ink.accent2, f.bass)
+      ctx.strokeStyle = hue(ink, f.bass)
       ctx.stroke()
     },
   }
@@ -660,7 +683,7 @@ function orbit(): Visual {
         const y = cy + Math.sin(ang[i]) * r
         ctx.beginPath()
         ctx.arc(x, y, 2 + rad[i] * 9, 0, Math.PI * 2)
-        ctx.fillStyle = mix(ink.accent, ink.accent2, i / N)
+        ctx.fillStyle = hue(ink, i / N)
         ctx.fill()
       }
     },
@@ -739,7 +762,7 @@ function constellation(): Visual {
         }
       }
       for (let b = 0; b < BANDS; b++) {
-        ctx.strokeStyle = rgb(ink.accent, ((b + 0.5) / BANDS) * 0.5)
+        ctx.strokeStyle = hue(ink, 0, ((b + 0.5) / BANDS) * 0.5)
         ctx.stroke(webs[b])
       }
 
@@ -758,7 +781,7 @@ function constellation(): Visual {
           cursorWeb[band].lineTo(s.x, s.y)
         }
         for (let b = 0; b < BANDS; b++) {
-          ctx.strokeStyle = rgb(ink.accent2, ((b + 0.5) / BANDS) * 0.7)
+          ctx.strokeStyle = hue(ink, 1, ((b + 0.5) / BANDS) * 0.7)
           ctx.stroke(cursorWeb[b])
         }
       }
@@ -766,7 +789,7 @@ function constellation(): Visual {
         const v = at(spec, bins, 0.02 + s.band * 0.5)
         ctx.beginPath()
         ctx.arc(s.x, s.y, 1.2 + v * 4, 0, Math.PI * 2)
-        ctx.fillStyle = mix(ink.accent, ink.accent2, v)
+        ctx.fillStyle = hue(ink, v)
         ctx.fill()
       }
     },
@@ -808,7 +831,7 @@ function cells(): Visual {
           if (near <= 1) heat[idx] = Math.max(heat[idx], near === 0 ? 1 : 0.45)
           const k = heat[idx]
           if (k < 0.02) continue
-          ctx.fillStyle = mix(ink.accent, ink.accent2, k)
+          ctx.fillStyle = hue(ink, k)
           ctx.globalAlpha = 0.12 + k * 0.88
           const inset = 1.5
           ctx.fillRect(x * cw + inset, y * ch + inset, cw - inset * 2, ch - inset * 2)
@@ -851,7 +874,7 @@ function spiral(): Visual {
       }
       ctx.lineWidth = 1.3 + f.bass * 2.5
       ctx.lineJoin = 'round'
-      ctx.strokeStyle = mix(ink.accent, ink.accent2, f.mid)
+      ctx.strokeStyle = hue(ink, f.mid)
       ctx.stroke()
     },
   }

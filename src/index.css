@@ -3048,6 +3048,38 @@ section[id] {
 .viz-tool-label {
   font-size: 0.85rem;
 }
+/* the ramps, shown as the ramps — a name alone tells you nothing about what "Aurora" looks
+   like, and a single swatch loses the whole point of a gradient */
+.viz-palettes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+.viz-swatch {
+  position: relative;
+  width: 3.4rem;
+  height: 1.5rem;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+  overflow: hidden;
+}
+.viz-swatch.is-on {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px color-mix(in oklab, var(--accent), transparent 70%);
+}
+/* the label rides on the gradient, so it needs its own contrast rather than the theme's */
+.viz-swatch-label {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  font-size: 0.6rem;
+  color: #fff;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85);
+  letter-spacing: 0.02em;
+}
 .viz-mirrors {
   display: flex;
   gap: 0.25rem;

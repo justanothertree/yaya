@@ -1,5 +1,6 @@
 import type { Effect } from './backdrops'
 import { storedNumber } from '../ui/storedNumber'
+import { paletteById } from '../audio/palettes'
 import {
   binCountAll,
   fftSizeAll,
@@ -37,6 +38,7 @@ const MODE_KEY = 'viz_mode_v1'
 const MIRROR_KEY = 'viz_mirror_v1'
 const TRAIL_KEY = 'viz_trail_v1'
 const GAIN_KEY = 'viz_gain_v1'
+const PALETTE_KEY = 'viz_palette_v1'
 const EVENT = 'yaya:viz-prefs'
 
 /** Fired by the visualiser when its look changes, so the background follows without a reload. */
@@ -59,6 +61,7 @@ export function audioBackdrop(): Effect {
   /** null means "no stored choice, use whatever the mode prefers" */
   let trailPref: number | null = null
   let gain = 1
+  let paletteId = 'theme'
   let dpr = 1
 
   const spec = new Uint8Array(2048)
@@ -76,8 +79,8 @@ export function audioBackdrop(): Effect {
       // null here genuinely means "no choice made", which is what lets the mode's own default
       // win — the zero trap would have forced every mode to no trails at all
       trailPref = storedNumber(TRAIL_KEY, 0, 0.97)
-      const g = Number(localStorage.getItem(GAIN_KEY))
-      gain = Number.isFinite(g) && g >= 0.5 && g <= 4 ? g : 1
+      gain = storedNumber(GAIN_KEY, 0.5, 4) ?? 1
+      paletteId = localStorage.getItem(PALETTE_KEY) || 'theme'
     } catch {
       /* private mode — the defaults are fine */
     }
@@ -185,7 +188,9 @@ export function audioBackdrop(): Effect {
           clickX: px ?? 0,
           clickY: py ?? 0,
         },
-        ink: paint,
+        // paint carries the viewer's accents; the ramp comes from their chosen palette, so the
+        // background and the module can never end up different colours
+        ink: { ...paint, stops: paletteById(paletteId).stops },
       })
 
       /**

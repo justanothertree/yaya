@@ -24,6 +24,7 @@ import {
   type VisualId,
 } from '../audio/visualModes'
 import { makeFeatureReader } from '../audio/audioFeatures'
+import { PALETTES, paletteById } from '../audio/palettes'
 import { motionReduced, onMotionChange } from '../ui/motion'
 import { InCanvasWindow } from '../circuit/ui/canvasContext'
 import { storedNumber } from '../ui/storedNumber'
@@ -68,6 +69,7 @@ const SRC_KEY = 'viz_src_v1'
 const GAIN_KEY = 'viz_gain_v1'
 const PANEL_KEY = 'viz_panel_v1'
 const MIRROR_KEY = 'viz_mirror_v1'
+const PALETTE_KEY = 'viz_palette_v1'
 const TRAIL_KEY = 'viz_trail_v1'
 
 const MIRRORS: Array<[number, string]> = [
@@ -89,6 +91,7 @@ function readStored<T extends string>(key: string, allowed: readonly T[], fallba
 }
 
 const VISUAL_IDS = VISUALS.map(([id]) => id)
+const PALETTE_IDS = PALETTES.map((p) => p.id)
 
 /**
  * "All" is a source you can pick, but not a tap that exists.
@@ -154,6 +157,7 @@ export function AudioVisualizer() {
     () =>
       storedNumber(TRAIL_KEY, 0, 0.97) ?? defaultTrail(readStored(MODE_KEY, VISUAL_IDS, 'bars')),
   )
+  const [palette, setPalette] = useState(() => readStored(PALETTE_KEY, PALETTE_IDS, 'theme'))
   const [mirror, setMirror] = useState(() => {
     const v = Number(localStorage.getItem(MIRROR_KEY))
     return MIRRORS.some(([n]) => n === v) ? v : 1
@@ -216,6 +220,7 @@ export function AudioVisualizer() {
       localStorage.setItem(SRC_KEY, src)
       localStorage.setItem(GAIN_KEY, String(gain))
       localStorage.setItem(MIRROR_KEY, String(mirror))
+      localStorage.setItem(PALETTE_KEY, palette)
       localStorage.setItem(TRAIL_KEY, String(trail))
       localStorage.setItem(PANEL_KEY, panel ? '1' : '0')
     } catch {
@@ -223,7 +228,7 @@ export function AudioVisualizer() {
     }
     // the site background mirrors these, so tell it rather than making it poll localStorage
     announceVizPrefs()
-  }, [mode, src, gain, mirror, trail, panel])
+  }, [mode, src, gain, mirror, trail, palette, panel])
 
   /**
    * ⚠️ Only the MICROPHONE is released on the way out.
@@ -295,6 +300,8 @@ export function AudioVisualizer() {
         accent: read('--accent', [34, 197, 94]),
         accent2: read('--accent-2', [239, 68, 68]),
         ink: read('--text', [238, 238, 248]),
+        // empty for Theme, which is what makes hue() fall back to the accent pair
+        stops: paletteById(palette).stops,
       }
     }
     let ink = readInk()
@@ -495,7 +502,7 @@ export function AudioVisualizer() {
       box.removeEventListener('pointerdown', onDown)
       window.removeEventListener('pointerup', onUp)
     }
-  }, [mode, src, gain, reduced, trail, mirror])
+  }, [mode, src, gain, reduced, trail, mirror, palette])
 
   const pickMode = (id: VisualId) => {
     setMode(id)
@@ -760,6 +767,35 @@ export function AudioVisualizer() {
                 />
                 <span className="appearance-slider-val">{Math.round(trail * 100)}%</span>
               </label>
+            </div>
+
+            {/* Sixteen modes drawing two colours look more alike than they are — the eye reads
+                the hue before the shape. A ramp changes all of them at once. */}
+            <div className="viz-row viz-row-wide">
+              <span className="muted viz-tool-label">Colour</span>
+              <div className="viz-palettes">
+                {PALETTES.map((p) => (
+                  <button
+                    key={p.id}
+                    className={'viz-swatch' + (palette === p.id ? ' is-on' : '')}
+                    aria-pressed={palette === p.id}
+                    onClick={() => setPalette(p.id)}
+                    title={p.label}
+                    style={
+                      p.stops.length
+                        ? {
+                            background: `linear-gradient(90deg, ${p.stops
+                              .map((c) => `rgb(${c[0]},${c[1]},${c[2]})`)
+                              .join(',')})`,
+                          }
+                        : // Theme has no colours of its own, so its swatch shows yours
+                          { background: 'linear-gradient(90deg, var(--accent), var(--accent-2))' }
+                    }
+                  >
+                    <span className="viz-swatch-label">{p.label}</span>
+                  </button>
+                ))}
+              </div>
             </div>
 
             <div className="viz-row viz-row-wide">
