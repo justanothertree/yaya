@@ -25,6 +25,7 @@ import {
 } from '../audio/visualModes'
 import { makeFeatureReader } from '../audio/audioFeatures'
 import { PALETTES, paletteById } from '../audio/palettes'
+import { PATHS, pathPoint, type PathId } from '../audio/autoPath'
 import { motionReduced, onMotionChange } from '../ui/motion'
 import { InCanvasWindow } from '../circuit/ui/canvasContext'
 import { storedNumber } from '../ui/storedNumber'
@@ -70,6 +71,10 @@ const GAIN_KEY = 'viz_gain_v1'
 const PANEL_KEY = 'viz_panel_v1'
 const MIRROR_KEY = 'viz_mirror_v1'
 const PALETTE_KEY = 'viz_palette_v1'
+const ZOOM_KEY = 'viz_zoom_v1'
+const DEPTH_KEY = 'viz_depth_v1'
+const PATH_KEY = 'viz_path_v1'
+const PATHSPEED_KEY = 'viz_pathspeed_v1'
 const TRAIL_KEY = 'viz_trail_v1'
 
 const MIRRORS: Array<[number, string]> = [
@@ -92,6 +97,7 @@ function readStored<T extends string>(key: string, allowed: readonly T[], fallba
 
 const VISUAL_IDS = VISUALS.map(([id]) => id)
 const PALETTE_IDS = PALETTES.map((p) => p.id)
+const PATH_IDS = PATHS.map(([id]) => id)
 
 /**
  * "All" is a source you can pick, but not a tap that exists.
@@ -169,6 +175,10 @@ export function AudioVisualizer() {
       return true
     }
   })
+  const [zoom, setZoom] = useState(() => storedNumber(ZOOM_KEY, 0.3, 3) ?? 1)
+  const [depth, setDepth] = useState(() => storedNumber(DEPTH_KEY, 0, 1) ?? 0)
+  const [path, setPath] = useState<PathId>(() => readStored(PATH_KEY, PATH_IDS, 'off'))
+  const [pathSpeed, setPathSpeed] = useState(() => storedNumber(PATHSPEED_KEY, 0.02, 1) ?? 0.12)
   const [full, setFull] = useState(false)
   // a canvas window sizes itself; see the note on the wrapper's class below
   const { inWindow } = useContext(InCanvasWindow)
@@ -192,6 +202,17 @@ export function AudioVisualizer() {
    * would restart continuously and never draw anything. The loop reads the ref instead, so the
    * pointer reaches the canvas without React ever hearing about it.
    */
+  /**
+   * The dials the animation loop reads every frame.
+   *
+   * ⚠️ A ref, not the effect's dependency list. Zoom, depth and the auto-path change while you
+   * drag a slider or spin a wheel; putting them in the deps would tear down and rebuild the whole
+   * visual on every step of that drag — particles reseeded, spectrogram wiped, trails cleared.
+   * The loop reads the current value instead, so they take effect instantly without a restart.
+   */
+  const dials = useRef({ zoom, depth, path, pathSpeed })
+  dials.current = { zoom, depth, path, pathSpeed }
+
   const ptr = useRef({
     x: 0,
     y: 0,
@@ -221,6 +242,10 @@ export function AudioVisualizer() {
       localStorage.setItem(GAIN_KEY, String(gain))
       localStorage.setItem(MIRROR_KEY, String(mirror))
       localStorage.setItem(PALETTE_KEY, palette)
+      localStorage.setItem(ZOOM_KEY, String(zoom))
+      localStorage.setItem(DEPTH_KEY, String(depth))
+      localStorage.setItem(PATH_KEY, path)
+      localStorage.setItem(PATHSPEED_KEY, String(pathSpeed))
       localStorage.setItem(TRAIL_KEY, String(trail))
       localStorage.setItem(PANEL_KEY, panel ? '1' : '0')
     } catch {
@@ -228,7 +253,7 @@ export function AudioVisualizer() {
     }
     // the site background mirrors these, so tell it rather than making it poll localStorage
     announceVizPrefs()
-  }, [mode, src, gain, mirror, trail, palette, panel])
+  }, [mode, src, gain, mirror, trail, palette, zoom, depth, path, pathSpeed, panel])
 
   /**
    * ⚠️ Only the MICROPHONE is released on the way out.
@@ -272,6 +297,8 @@ export function AudioVisualizer() {
     const ctx = buf.getContext('2d')
     if (!ctx) return
 
+    // how far the auto-path has travelled, in turns
+    let pathT = 0
     const visual = makeVisual(mode)
     const owns = ownsItsBuffer(mode)
     const features = makeFeatureReader()
@@ -281,11 +308,24 @@ export function AudioVisualizer() {
     let last = performance.now()
     let onScreen = true
     let visible = document.visibilityState === 'visible'
+    let dpr = 1
 
     const spec = new Uint8Array(2048)
     const wav = new Uint8Array(2048)
     // a second buffer the mixer folds each source through, allocated once like the others
     const scratch = new Uint8Array(2048)
+    // the auto-path's pointer, reused rather than rebuilt each frame
+    const auto = {
+      x: 0,
+      y: 0,
+      inside: true,
+      vx: 0,
+      vy: 0,
+      down: false,
+      sinceClick: 99,
+      clickX: 0,
+      clickY: 0,
+    }
 
     const readInk = (): Ink => {
       const s = getComputedStyle(cv)
@@ -308,7 +348,7 @@ export function AudioVisualizer() {
 
     const resize = () => {
       const r = box.getBoundingClientRect()
-      const dpr = Math.min(window.devicePixelRatio || 1, 2)
+      dpr = Math.min(window.devicePixelRatio || 1, 2)
       w = Math.max(1, Math.round(r.width))
       h = Math.max(1, Math.round(r.height))
       for (const c of [cv, buf]) {
@@ -339,6 +379,7 @@ export function AudioVisualizer() {
     const frame = (now: number) => {
       const dt = Math.min(0.05, Math.max(0, (now - last) / 1000))
       last = now
+      const { zoom: z, depth: dep, path: pathId, pathSpeed: pspeed } = dials.current
       const all = src === ALL
       const bins = Math.min(spec.length, all ? binCountAll() : binCount(src))
       const waveN = Math.min(wav.length, all ? fftSizeAll() : fftSize(src))
@@ -380,21 +421,74 @@ export function AudioVisualizer() {
         ctx.globalCompositeOperation = 'source-over'
       }
 
+      /**
+       * Zoom is a change of SCALE on the drawing, not of the picture afterwards.
+       *
+       * ⚠️ Scaling the finished buffer would just magnify pixels — blurry going in, and no
+       * extra detail coming out. Instead the modes are told the canvas is w/zoom across and the
+       * transform is scaled to match, so they lay themselves out for that size and draw at full
+       * resolution either way. Zooming out genuinely shows more of the pattern rather than a
+       * smaller copy of the same one.
+       */
+      const vw = w / z
+      const vh = h / z
+      ctx.setTransform(dpr * z, 0, 0, dpr * z, 0, 0)
+
+      // the pointer the modes see: yours if it is over the canvas, otherwise the auto-path
+      let seen = ptr.current
+      if (!seen.inside && pathId !== 'off') {
+        pathT += dt * pspeed
+        const [nx, ny] = pathPoint(pathId, pathT)
+        const px = vw / 2 + nx * vw * 0.38
+        const py = vh / 2 + ny * vh * 0.38
+        auto.vx = (px - auto.x) / Math.max(0.008, dt)
+        auto.vy = (py - auto.y) / Math.max(0.008, dt)
+        auto.x = px
+        auto.y = py
+        auto.inside = true
+        seen = auto
+      }
+
       visual.draw({
         ctx,
-        w,
-        h,
+        w: vw,
+        h: vh,
         dt,
         spec,
         bins: Math.max(1, bins),
         wave: wav,
         waveN: Math.max(2, waveN),
         f,
-        p: ptr.current,
+        p: seen,
         ink,
       })
 
       view.clearRect(0, 0, w, h)
+
+      /**
+       * Depth: the same frame composited again at smaller scales, dimmer, behind itself.
+       *
+       * ⚠️ Drawn SMALLEST FIRST. These are meant to read as copies receding away from you, so
+       * the far ones have to be underneath — painting them after the sharp one would put the
+       * haze in front and look like fog on a window instead of distance.
+       *
+       * A real perspective projection would need every mode to think in three dimensions. This
+       * costs one extra blit per layer and gives the eye the cue it actually uses: things further
+       * away are smaller, fainter, and behind.
+       */
+      const echoes = dep > 0.02 ? Math.round(1 + dep * 3) : 0
+      for (let e = echoes; e >= 1; e--) {
+        const k = e / (echoes + 1)
+        const scale = 1 - k * 0.55 * dep
+        const alpha = (1 - k) * 0.55 * dep
+        if (alpha <= 0.01) continue
+        view.save()
+        view.globalAlpha = alpha
+        view.translate((w * (1 - scale)) / 2, (h * (1 - scale)) / 2)
+        view.drawImage(buf, 0, 0, w * scale, h * scale)
+        view.restore()
+      }
+
       if (mirror <= 1) {
         view.drawImage(buf, 0, 0, w, h)
       } else {
@@ -485,6 +579,21 @@ export function AudioVisualizer() {
     const onUp = () => {
       ptr.current.down = false
     }
+    /**
+     * The wheel zooms.
+     *
+     * ⚠️ preventDefault, or the page scrolls out from under the canvas while you are trying to
+     * zoom it. Multiplicative steps rather than additive, because zoom is perceived in ratios: a
+     * fixed +0.1 crawls when you are zoomed out and lurches when you are in.
+     */
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault()
+      setZoom((z) => {
+        const next = z * (e.deltaY < 0 ? 1.12 : 1 / 1.12)
+        return Math.max(0.3, Math.min(3, Math.round(next * 100) / 100))
+      })
+    }
+    box.addEventListener('wheel', onWheel, { passive: false })
     box.addEventListener('pointermove', onMove)
     box.addEventListener('pointerleave', onLeave)
     box.addEventListener('pointerdown', onDown)
@@ -497,6 +606,7 @@ export function AudioVisualizer() {
       ro.disconnect()
       io.disconnect()
       document.removeEventListener('visibilitychange', onVis)
+      box.removeEventListener('wheel', onWheel)
       box.removeEventListener('pointermove', onMove)
       box.removeEventListener('pointerleave', onLeave)
       box.removeEventListener('pointerdown', onDown)
@@ -796,6 +906,68 @@ export function AudioVisualizer() {
                   </button>
                 ))}
               </div>
+            </div>
+
+            <div className="viz-row viz-row-wide">
+              <label className="appearance-slider">
+                <span className="muted" title="Or spin the wheel over the picture">
+                  Zoom
+                </span>
+                <input
+                  type="range"
+                  min={0.3}
+                  max={3}
+                  step={0.01}
+                  value={zoom}
+                  onChange={(e) => setZoom(Number(e.target.value))}
+                />
+                <span className="appearance-slider-val">{zoom.toFixed(2)}×</span>
+              </label>
+              <label className="appearance-slider">
+                <span className="muted" title="Copies of the frame receding behind it">
+                  Depth
+                </span>
+                <input
+                  type="range"
+                  min={0}
+                  max={1}
+                  step={0.01}
+                  value={depth}
+                  onChange={(e) => setDepth(Number(e.target.value))}
+                />
+                <span className="appearance-slider-val">{Math.round(depth * 100)}</span>
+              </label>
+            </div>
+
+            {/* The pointer driven by arithmetic instead of a hand — for watching rather than
+                playing. Yours takes over the moment it is over the picture. */}
+            <div className="viz-row viz-row-wide">
+              <span className="muted viz-tool-label">Motion</span>
+              <select
+                className="viz-select"
+                value={path}
+                onChange={(e) => setPath(e.target.value as PathId)}
+              >
+                {PATHS.map(([id, label]) => (
+                  <option key={id} value={id}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+              {path !== 'off' && (
+                <label className="appearance-slider">
+                  <span className="muted">Speed</span>
+                  <input
+                    type="range"
+                    min={0.02}
+                    max={1}
+                    step={0.01}
+                    value={pathSpeed}
+                    onChange={(e) => setPathSpeed(Number(e.target.value))}
+                  />
+                  <span className="appearance-slider-val">{pathSpeed.toFixed(2)}</span>
+                </label>
+              )}
             </div>
 
             <div className="viz-row viz-row-wide">

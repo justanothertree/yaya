@@ -375,7 +375,7 @@ function tunnel(): Visual {
  * it is the one mode here whose output depends on the last several SECONDS rather than this frame.
  */
 function nebula(): Visual {
-  type P = { x: number; y: number; vx: number; vy: number; s: number }
+  type P = { x: number; y: number; vx: number; vy: number; s: number; hr: number }
   let ps: P[] = []
   let W = 1
   let H = 1
@@ -390,19 +390,50 @@ function nebula(): Visual {
         vx: (Math.random() - 0.5) * 20,
         vy: (Math.random() - 0.5) * 20,
         s: 0.6 + Math.random() * 1.8,
+        /**
+         * ⚠️ Each particle keeps its OWN resting radius, and that is what makes this a cloud.
+         *
+         * One shared radius means one spring equilibrium, and everything drifts onto it — the
+         * field collapses into a hollow ring with an empty middle, which is a worse picture than
+         * the edge-hugging it replaced. Spreading the rest radii spreads the particles.
+         *
+         * sqrt, because radius is not area: uniform radii bunch everything in the middle, since
+         * a thin ring near the edge holds far more room than one near the centre.
+         */
+        hr: Math.sqrt(Math.random()) * 0.92,
       }))
     },
     draw({ ctx, dt, f, p: ptr, ink }) {
       const cx = W / 2
       const cy = H / 2
+      const reach = Math.min(W, H) * 0.46
       for (const p of ps) {
         const dx = p.x - cx
         const dy = p.y - cy
         const d = Math.hypot(dx, dy) || 1
-        // bass shoves outward from the middle; treble is brownian fizz
-        const push = f.bass * 260
-        p.vx += (dx / d) * push * dt + (Math.random() - 0.5) * f.treble * 90 * dt
-        p.vy += (dy / d) * push * dt + (Math.random() - 0.5) * f.treble * 90 * dt
+        /**
+         * ⚠️ A BREATH, not a constant push.
+         *
+         * The outward force used to be proportional to bass and permanently outward, so with any
+         * bass at all the whole field migrated to the edges and stayed there — wrapping made it
+         * worse rather than better, because a particle that wrapped re-entered far from the
+         * centre and was immediately pushed out again. It emptied the middle of the picture,
+         * which is the part you are looking at.
+         *
+         * Now bass KICKS outward on the beat and a soft spring pulls everything home between
+         * kicks, so the cloud expands and gathers instead of leaving. The spring gets stronger
+         * the further out a particle is, which is what stops anything reaching the wall at all.
+         */
+        const kick = (f.beat ? 900 * (0.4 + f.beatStrength) : 0) + f.bass * 90
+        // pulled toward this particle's own rest radius, in both directions, so the cloud fills
+        // rather than settling onto a single shell
+        const pull = (d / reach - p.hr) * 300
+        const radial = kick - pull
+        p.vx += (dx / d) * radial * dt + (Math.random() - 0.5) * f.treble * 90 * dt
+        p.vy += (dy / d) * radial * dt + (Math.random() - 0.5) * f.treble * 90 * dt
+        // a little swirl, so a gathered cloud keeps moving rather than sitting in a lump
+        p.vx += (-dy / d) * (12 + f.mid * 40) * dt
+        p.vy += (dx / d) * (12 + f.mid * 40) * dt
         /**
          * The pointer repels, and attracts while held.
          *
@@ -422,10 +453,9 @@ function nebula(): Visual {
         p.vy *= 0.97
         p.x += p.vx * dt * 60 * 0.06
         p.y += p.vy * dt * 60 * 0.06
-        if (p.x < 0) p.x += W
-        if (p.x > W) p.x -= W
-        if (p.y < 0) p.y += H
-        if (p.y > H) p.y -= H
+        // ⚠️ No wrapping any more. Wrapping fought the spring — a particle teleporting from
+        // one edge to the other reverses which way "home" is, so the two rules disagreed about
+        // where every particle should go. The spring alone keeps them in frame.
         const v = Math.min(1, Math.hypot(p.vx, p.vy) / 60)
         ctx.beginPath()
         ctx.arc(p.x, p.y, p.s * (1 + f.level), 0, Math.PI * 2)
@@ -621,7 +651,7 @@ function petals(): Visual {
  * repeating, which is the trick real aurora footage plays on the eye.
  */
 function aurora(): Visual {
-  const LAYERS = 5
+  const LAYERS = 7
   return {
     init() {},
     draw({ ctx, w, h, spec, bins, f, p, ink }) {
@@ -632,24 +662,44 @@ function aurora(): Visual {
         const baseY = h * (0.3 + (L / LAYERS) * 0.4)
         const amp = h * (0.05 + band * 0.22)
         const speed = 0.25 + L * 0.17
+        /**
+         * Each curtain is drawn twice: a soft body that falls away downward, and a bright crest
+         * along its top edge.
+         *
+         * ⚠️ The crest is what was missing. A gradient alone is a smear — real aurora reads as
+         * light because it has a hard bright line where the curtain folds, with the glow hanging
+         * beneath it. One extra stroke per layer buys the whole effect.
+         */
+        const crest: number[] = []
+        for (let x = 0; x <= w; x += 8) {
+          const u = x / w
+          crest.push(
+            baseY -
+              Math.sin(u * Math.PI * (1.5 + L * 0.6) + f.t * speed + lean * (1 + L * 0.3)) * amp -
+              Math.sin(u * Math.PI * 4.3 - f.t * speed * 1.7) * amp * 0.35 -
+              // a third, faster ripple that only the treble drives, so cymbals shiver the edge
+              Math.sin(u * Math.PI * 9.1 + f.t * 2.4) * amp * 0.12 * f.treble,
+          )
+        }
+
         const grad = ctx.createLinearGradient(0, baseY - amp, 0, h)
-        const c = L % 2 === 0 ? ink.accent : ink.accent2
-        grad.addColorStop(0, rgb(c, 0.55 * (0.35 + band)))
-        grad.addColorStop(1, rgb(c, 0))
+        const tone = L / (LAYERS - 1)
+        grad.addColorStop(0, hue(ink, tone, 0.5 * (0.3 + band)))
+        grad.addColorStop(1, hue(ink, tone, 0))
         ctx.fillStyle = grad
         ctx.beginPath()
         ctx.moveTo(0, h)
-        for (let x = 0; x <= w; x += 8) {
-          const u = x / w
-          const y =
-            baseY -
-            Math.sin(u * Math.PI * (1.5 + L * 0.6) + f.t * speed + lean * (1 + L * 0.3)) * amp -
-            Math.sin(u * Math.PI * 4.3 - f.t * speed * 1.7) * amp * 0.35
-          ctx.lineTo(x, y)
-        }
+        crest.forEach((y, i) => ctx.lineTo(i * 8, y))
         ctx.lineTo(w, h)
         ctx.closePath()
         ctx.fill()
+
+        ctx.beginPath()
+        crest.forEach((y, i) => (i === 0 ? ctx.moveTo(0, y) : ctx.lineTo(i * 8, y)))
+        ctx.lineWidth = 1.2 + band * 2.2
+        ctx.lineJoin = 'round'
+        ctx.strokeStyle = hue(ink, Math.min(1, tone + 0.25), 0.35 + band * 0.65)
+        ctx.stroke()
       }
     },
   }
