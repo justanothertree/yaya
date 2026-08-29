@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { PalettePicker } from '../theme/PalettePicker'
 import { FX_STYLE_OPTIONS } from '../ui/fxStyles'
@@ -131,6 +131,43 @@ function ScaleRow({ cat, kind, label }: { cat: EffectCategory; kind: ScaleKind; 
   )
 }
 
+/**
+ * The flair ramp, shown as the colours it actually is.
+ *
+ * ⚠️ Read off the live document rather than derived here. These five drive the click effects,
+ * the trails and the animated backgrounds, and there is exactly one place that decides them
+ * (customTheme.ts) — recomputing them for the preview would be a second implementation to keep
+ * in step, and the first time it drifted the preview would be confidently wrong.
+ *
+ * Worth showing at all because the ramp is derived, not chosen: without this you change one
+ * accent and four other colours move with no way to see what they became.
+ */
+function RampStrip() {
+  const [stops, setStops] = useState<string[]>([])
+  useEffect(() => {
+    const read = () => {
+      const cs = getComputedStyle(document.documentElement)
+      setStops([0, 1, 2, 3, 4].map((i) => cs.getPropertyValue(`--fx-${i}`).trim()).filter(Boolean))
+    }
+    read()
+    // the palette editor writes custom properties as you drag, and fires this when it does
+    window.addEventListener('yaya:palette', read)
+    return () => window.removeEventListener('yaya:palette', read)
+  }, [])
+  if (stops.length < 2) return null
+  return (
+    <div className="appearance-ramp">
+      <span className="muted">Effect colours</span>
+      <span className="appearance-ramp-strip" aria-hidden>
+        {stops.map((c, i) => (
+          <i key={i} style={{ background: c }} />
+        ))}
+      </span>
+      <span className="muted appearance-ramp-note">from your accent</span>
+    </div>
+  )
+}
+
 export function AppearanceDialog({
   controls,
   onClose,
@@ -203,6 +240,7 @@ export function AppearanceDialog({
             </div>
             {/* only when it is on: a colour editor for colours not in use is a row of controls
                 that appear to do nothing */}
+            <RampStrip />
             {c.customPalette && (
               <div className="appearance-palette">
                 <PalettePicker active={c.customPalette} onActiveChange={c.onCustomPalette} />

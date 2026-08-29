@@ -236,10 +236,43 @@ export function derivePalette(seed: PaletteSeed): Record<string, string> {
   }
 }
 
+/**
+ * Move a colour away from the accent — by hue where that works, by lightness where it cannot.
+ *
+ * ⚠️ ROTATING THE HUE OF A GREY DOES NOTHING. White, black and any grey have no saturation to
+ * carry a hue, so hslToHex hands back the colour it was given. Every derived colour therefore
+ * collapsed onto the accent: --accent-2 equalled --accent, and all five ramp stops were the same
+ * value. Visibly, a white accent made the snake and the apple the same white — and the same for
+ * black. The board still worked; you simply could not see what you were eating.
+ *
+ * It is not only the extremes. #8a8f8a has just enough saturation to satisfy a `s === 0` guard
+ * and still produced five stops differing by three in one channel, which is identical to the eye.
+ * So the correction FADES IN as saturation runs out rather than switching on at zero: full
+ * lightness separation on a true grey, none at all by the time a colour is properly coloured, and
+ * a smooth blend between, so dragging a saturation slider never jumps.
+ *
+ * The lightness spread is monotonic in `degrees` and moves AWAY from whichever end the accent
+ * sits at — a white accent darkens, a black one lightens — so the stops stay ordered and none of
+ * them clips into the wall it started against.
+ */
 function rotateHue(hex: string, degrees: number): string {
   if (!parseHex(hex)) return hex
   const { h, s, l } = hexToHsl(hex)
-  return hslToHex({ h: h + degrees, s, l })
+  // 0 when the colour is saturated enough for hue alone, 1 on a true grey
+  const flat = Math.max(0, Math.min(1, 1 - s / 0.25))
+  if (flat <= 0) return hslToHex({ h: h + degrees, s, l })
+  /**
+   * The rotations actually used run -35..150, mapped onto that span monotonically — with a
+   * FLOOR, so the smallest one still moves.
+   *
+   * ⚠️ Without the 0.12 the -35 stop maps to zero shift and lands exactly on the untouched
+   * accent, leaving four distinct colours where five were asked for. The failure is quiet: the
+   * ramp still works, it just has a duplicate in it, and only a count catches that.
+   */
+  const p = 0.12 + 0.88 * Math.max(0, Math.min(1, (degrees + 35) / 185))
+  const away = l > 0.5 ? -1 : 1
+  const shifted = l + away * p * 0.45 * flat
+  return hslToHex({ h: h + degrees, s, l: Math.max(0, Math.min(1, shifted)) })
 }
 
 /* ── applying and saving ────────────────────────────────────────────────── */

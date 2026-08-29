@@ -3921,6 +3921,27 @@ select {
   /* room for a scrollbar without the content jumping sideways when one appears */
   scrollbar-gutter: stable;
 }
+/* the derived ramp, shown so a change to one accent does not silently move four other colours */
+.appearance-ramp {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.8rem;
+}
+.appearance-ramp-strip {
+  display: flex;
+  flex: 1 1 6rem;
+  height: 1.1rem;
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+}
+.appearance-ramp-strip i {
+  flex: 1;
+}
+.appearance-ramp-note {
+  font-size: 0.72rem;
+}
 .appearance-palette {
   border-top: 1px solid var(--border);
   padding-top: 0.6rem;
