@@ -346,6 +346,9 @@ export function AudioVisualizer() {
     let onScreen = true
     let visible = document.visibilityState === 'visible'
     let dpr = 1
+    // the element size the canvas was last built for, so a drift can be spotted
+    let cssW = -1
+    let cssH = -1
 
     const spec = new Uint8Array(2048)
     const wav = new Uint8Array(2048)
@@ -397,10 +400,14 @@ export function AudioVisualizer() {
     let ink = readInk()
 
     const resize = () => {
-      const r = box.getBoundingClientRect()
+      // clientWidth/Height, not getBoundingClientRect: a rect is the VISUAL size and includes
+      // any transform an ancestor applies, so on a scaled page it disagrees with the layout the
+      // canvas actually occupies
+      cssW = box.clientWidth
+      cssH = box.clientHeight
       dpr = Math.min(window.devicePixelRatio || 1, 2)
-      w = Math.max(1, Math.round(r.width))
-      h = Math.max(1, Math.round(r.height))
+      w = Math.max(1, cssW)
+      h = Math.max(1, cssH)
       for (const c of [cv, buf]) {
         c.width = Math.round(w * dpr)
         c.height = Math.round(h * dpr)
@@ -427,6 +434,22 @@ export function AudioVisualizer() {
     }
 
     const frame = (now: number) => {
+      /**
+       * ⚠️ CHECK THE SIZE EVERY FRAME, rather than trusting the ResizeObserver.
+       *
+       * The panel's height changes when you switch tabs, which changes the surface beneath it —
+       * and the observer did not fire for it. The canvas kept a bitmap sized for a 413px surface
+       * while the element showed 311, so the drawing was scaled to a box it was not drawn for:
+       * a band of the picture that never had anything painted into it. That is the blank
+       * rectangle, and it moved with the tabs rather than the zoom, which is why it survived
+       * every zoom fix.
+       *
+       * Two integer reads per frame is nothing next to the drawing, and it cannot miss a resize
+       * whatever the cause — a hidden observer, a font load, a scrollbar appearing. The observer
+       * stays as the fast path.
+       */
+      if (box.clientWidth !== cssW || box.clientHeight !== cssH) resize()
+
       const dt = Math.min(0.05, Math.max(0, (now - last) / 1000))
       last = now
       const { zoom: z, depth: dep, path: pathId, pathSpeed: pspeed } = dials.current
@@ -754,6 +777,29 @@ export function AudioVisualizer() {
       >
         <div className="viz-surface" ref={host}>
           <canvas ref={canvas} className="viz-canvas" aria-hidden />
+
+          {/* ⚠️ Inside the SURFACE, not the stage. Anchored to the stage they sat at the
+              bottom-right of whatever the stage currently contained — which since the panel moved
+              in is the panel, so they landed on top of its controls, and below the stage they
+              crowded the page's own footer links. Over the picture is the only place they belong,
+              and the top corner is the one no mode fills. */}
+          <div className="viz-float">
+            <button
+              className="btn viz-icon"
+              onClick={() => setPanel((v) => !v)}
+              aria-expanded={panel}
+              title={panel ? 'Hide the controls (H)' : 'Show the controls (H)'}
+            >
+              {panel ? '▴' : '▾'}
+            </button>
+            <button
+              className="btn viz-icon"
+              onClick={goFull}
+              title={full ? 'Leave fullscreen (F)' : 'Fullscreen (F)'}
+            >
+              {full ? '⤡' : '⛶'}
+            </button>
+          </div>
         </div>
 
         {reduced && (
@@ -780,23 +826,6 @@ export function AudioVisualizer() {
 
         {/* Floating over the picture rather than below it, so hiding the panel gives the visuals
             the whole pane instead of leaving a gap where the controls were. */}
-        <div className="viz-float">
-          <button
-            className="btn viz-icon"
-            onClick={() => setPanel((p) => !p)}
-            aria-expanded={panel}
-            title={panel ? 'Hide the controls' : 'Show the controls'}
-          >
-            {panel ? '▾' : '▴'}
-          </button>
-          <button
-            className="btn viz-icon"
-            onClick={goFull}
-            title={full ? 'Leave fullscreen' : 'Fullscreen'}
-          >
-            {full ? '⤡' : '⛶'}
-          </button>
-        </div>
 
         {/* Dropping a track anywhere on the picture loads it — the whole stage is the target,
             because aiming at a small strip is a worse experience than the feature is worth. */}
@@ -1075,7 +1104,10 @@ export function AudioVisualizer() {
                 )}
               </div>
             )}
-            {tab === 'sound' && (
+            {/* ⚠️ Mirror is a LOOK control and lives with Colour. It shared a row with the mic
+                buttons purely because they were added on the same day, and the tab split
+                inherited that accident — so the kaleidoscope ended up filed under Sound. */}
+            {tab === 'look' && (
               <div className="viz-row viz-row-wide">
                 <span className="muted viz-tool-label">Mirror</span>
                 <div className="viz-mirrors">
@@ -1092,7 +1124,11 @@ export function AudioVisualizer() {
                     </button>
                   ))}
                 </div>
+              </div>
+            )}
 
+            {tab === 'sound' && (
+              <div className="viz-row viz-row-wide">
                 <button
                   className="btn"
                   aria-pressed={micOn}

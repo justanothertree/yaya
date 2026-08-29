@@ -2948,22 +2948,29 @@ section[id] {
   height: 100%;
 }
 /* the "nothing playing" line, centred over the stage rather than pushing it around */
+/* ⚠️ Along the bottom, not across the middle. The modes animate on their own clock even in
+   silence, so there IS something to look at — and a paragraph parked over the centre of it was
+   covering the thing it was describing as empty. */
 .viz-still {
   position: absolute;
-  inset: 0;
-  display: grid;
-  place-content: center;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: block;
   text-align: center;
-  padding: 1rem;
+  padding: 0.4rem 1rem;
   margin: 0;
-  font-size: 0.85rem;
+  font-size: 0.78rem;
+  background: linear-gradient(180deg, transparent, color-mix(in oklab, var(--bg), transparent 35%));
   pointer-events: none;
 }
 /* floats over the picture, so hiding the panel gives the visuals the whole pane */
 .viz-float {
   position: absolute;
   right: 0.5rem;
-  bottom: 0.5rem;
+  /* top, not bottom: the bottom of the picture is where the panel meets it and where the page's
+     own footer sits just below, and these two buttons kept landing on both */
+  top: 0.5rem;
   display: flex;
   gap: 0.3rem;
   opacity: 0.35;
@@ -2995,11 +3002,26 @@ section[id] {
   min-height: 0;
   inset: auto;
 }
+/**
+ * ⚠️ ONE HEIGHT FOR EVERY TAB. Sections differ a lot — Look is a couple of rows, Sound is
+ * five — and letting the panel size itself meant the picture above it resized on every tab
+ * press. That is the jumpiness: the canvas is rebuilt at the new size, so particles reseed and
+ * the spectrogram wipes, every time you glance at another tab. A fixed frame that scrolls its
+ * own overflow costs a little empty space under the short tabs and keeps the visual perfectly
+ * still, which is the better trade on the page you go to in order to watch something.
+ */
 .viz-controls {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
   flex: 0 0 auto;
+  /* Sized to the SECOND-tallest section, not the tallest. Modes, Look and Motion fit exactly;
+     Sound is the one outlier and scrolls a little rather than making every other tab carry its
+     height as empty space. */
+  height: 12rem;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
   padding: 0.5rem 0.6rem 0.6rem;
   border-top: 1px solid var(--border);
 }
@@ -3056,9 +3078,6 @@ section[id] {
  * control never has to compete with what it controls.
  */
 .viz-stage[data-full] .viz-float {
-  top: 0.6rem;
-  right: 0.6rem;
-  bottom: auto;
   opacity: 0.5;
 }
 .viz-stage[data-full] .viz-float:hover,
@@ -3097,10 +3116,10 @@ section[id] {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(min(4.6rem, 100%), 1fr));
   gap: 0.35rem;
-  max-height: 9.5rem;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  scrollbar-gutter: stable;
+  /* ⚠️ No height cap. It had one back when every section shared a panel, and on a narrower
+     window that quietly hid the last rows — Tunnel, Spiral and the rest existed but scrolled
+     out of sight inside a box that did not look scrollable. The tab is its own space now, and
+     the panel above scrolls if it ever needs to. */
 }
 .viz-row {
   display: grid;
