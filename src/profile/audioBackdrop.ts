@@ -31,6 +31,8 @@ type Feats = typeof import('../audio/audioFeatures')
 
 const MODE_KEY = 'viz_mode_v1'
 const MIRROR_KEY = 'viz_mirror_v1'
+const TRAIL_KEY = 'viz_trail_v1'
+const GAIN_KEY = 'viz_gain_v1'
 const EVENT = 'yaya:viz-prefs'
 
 /** Fired by the visualiser when its look changes, so the background follows without a reload. */
@@ -53,6 +55,9 @@ export function audioBackdrop(): Effect {
   let modeId = 'bars'
   let mirror = 1
   let trail = 0
+  /** null means "no stored choice, use whatever the mode prefers" */
+  let trailPref: number | null = null
+  let gain = 1
   let dpr = 1
 
   const spec = new Uint8Array(2048)
@@ -63,6 +68,12 @@ export function audioBackdrop(): Effect {
       modeId = localStorage.getItem(MODE_KEY) || 'bars'
       const m = Number(localStorage.getItem(MIRROR_KEY))
       mirror = Number.isFinite(m) && m >= 1 && m <= 8 ? m : 1
+      // ⚠️ Trails and sensitivity were simply not read here, which is what made the
+      // background ignore half the panel. Mode and mirror were the only two that carried.
+      const t = Number(localStorage.getItem(TRAIL_KEY))
+      trailPref = Number.isFinite(t) && t >= 0 && t <= 0.97 ? t : null
+      const g = Number(localStorage.getItem(GAIN_KEY))
+      gain = Number.isFinite(g) && g >= 0.5 && g <= 4 ? g : 1
     } catch {
       /* private mode — the defaults are fine */
     }
@@ -73,7 +84,8 @@ export function audioBackdrop(): Effect {
     const ids = mods.VISUALS.map((v) => v[0]) as string[]
     const id = (ids.includes(modeId) ? modeId : 'bars') as Parameters<Mods['makeVisual']>[0]
     visual = mods.makeVisual(id)
-    trail = mods.defaultTrail(id)
+    // your slider if you have moved it, the mode's own default if you have not
+    trail = trailPref ?? mods.defaultTrail(id)
     visual.init(W, H)
   }
 
@@ -117,6 +129,20 @@ export function audioBackdrop(): Effect {
       if (!src || !readSpectrum(src, spec)) spec.fill(0)
       if (!src || !readWaveform(src, wav)) wav.fill(128)
 
+      /**
+       * Sensitivity, applied to the data exactly as the module does it.
+       *
+       * ⚠️ BEFORE the RMS is measured, not after. Scaling the buffers once the sum had
+       * already been taken would leave the loudness figure describing the unscaled signal — so
+       * every mode reading `level` (Wave's glow, Radial's inner ring, Nebula's size) would
+       * quietly ignore the slider while the spectrum obeyed it.
+       */
+      if (gain !== 1) {
+        for (let i = 0; i < bins; i++) spec[i] = Math.min(255, spec[i] * gain)
+        for (let i = 0; i < waveN; i++) {
+          wav[i] = Math.max(0, Math.min(255, 128 + (wav[i] - 128) * gain))
+        }
+      }
       let sum = 0
       for (let i = 0; i < waveN; i++) {
         const v = (wav[i] - 128) / 128

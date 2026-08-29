@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
+import { useCallback, useContext, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import {
   TAPS,
   binCount,
@@ -25,6 +25,7 @@ import {
 } from '../audio/visualModes'
 import { makeFeatureReader } from '../audio/audioFeatures'
 import { motionReduced, onMotionChange } from '../ui/motion'
+import { InCanvasWindow } from '../circuit/ui/canvasContext'
 import {
   musicName,
   playFile,
@@ -66,6 +67,7 @@ const SRC_KEY = 'viz_src_v1'
 const GAIN_KEY = 'viz_gain_v1'
 const PANEL_KEY = 'viz_panel_v1'
 const MIRROR_KEY = 'viz_mirror_v1'
+const TRAIL_KEY = 'viz_trail_v1'
 
 const MIRRORS: Array<[number, string]> = [
   [1, 'Off'],
@@ -139,7 +141,20 @@ export function AudioVisualizer() {
     const v = Number(localStorage.getItem(GAIN_KEY))
     return Number.isFinite(v) && v >= 0.5 && v <= 4 ? v : 1.5
   })
-  const [trail, setTrail] = useState(() => defaultTrail(readStored(MODE_KEY, VISUAL_IDS, 'bars')))
+  /**
+   * ⚠️ Persisted, unlike before — and that omission was the bug.
+   *
+   * Trails lived only in component state, so it reset on every visit AND the site background had
+   * no way to read it: the backdrop mirrors the visualiser through localStorage, and a setting
+   * that never lands there is a setting the background can never follow. A stored value wins over
+   * the mode's default, or picking a mode would silently undo a choice you had made by hand.
+   */
+  const [trail, setTrail] = useState(() => {
+    const v = Number(localStorage.getItem(TRAIL_KEY))
+    return Number.isFinite(v) && v >= 0 && v <= 0.97
+      ? v
+      : defaultTrail(readStored(MODE_KEY, VISUAL_IDS, 'bars'))
+  })
   const [mirror, setMirror] = useState(() => {
     const v = Number(localStorage.getItem(MIRROR_KEY))
     return MIRRORS.some(([n]) => n === v) ? v : 1
@@ -152,6 +167,8 @@ export function AudioVisualizer() {
     }
   })
   const [full, setFull] = useState(false)
+  // a canvas window sizes itself; see the note on the wrapper's class below
+  const { inWindow } = useContext(InCanvasWindow)
   const [micBusy, setMicBusy] = useState(false)
   const [micOn, setMicOn] = useState(localMicOn)
   const [micDenied, setMicDenied] = useState(false)
@@ -200,13 +217,14 @@ export function AudioVisualizer() {
       localStorage.setItem(SRC_KEY, src)
       localStorage.setItem(GAIN_KEY, String(gain))
       localStorage.setItem(MIRROR_KEY, String(mirror))
+      localStorage.setItem(TRAIL_KEY, String(trail))
       localStorage.setItem(PANEL_KEY, panel ? '1' : '0')
     } catch {
       /* private mode — the choices still hold for this visit */
     }
     // the site background mirrors these, so tell it rather than making it poll localStorage
     announceVizPrefs()
-  }, [mode, src, gain, mirror, panel])
+  }, [mode, src, gain, mirror, trail, panel])
 
   /**
    * ⚠️ Only the MICROPHONE is released on the way out.
@@ -291,8 +309,21 @@ export function AudioVisualizer() {
         c.width = Math.round(w * dpr)
         c.height = Math.round(h * dpr)
       }
-      cv.style.width = w + 'px'
-      cv.style.height = h + 'px'
+      /**
+       * ⚠️ THE BACKING BUFFER IS SET HERE; THE CSS SIZE IS NOT.
+       *
+       * It used to also write cv.style.width/height from this measurement, and inside a canvas
+       * window that was wrong. A pane body carries `zoom` between 0.6 and 1 (scaleFor in
+       * CircuitCanvas), and getBoundingClientRect reports the VISUAL size — already multiplied by
+       * that zoom. Feeding the number back as a CSS length inside the same zoomed box multiplies
+       * it again, so at zoom 0.6 the canvas rendered at 0.6 of its container: measured 144px
+       * inside a 240px box. A drawing centred on a surface smaller than the space around it sits
+       * up in the corner, which is precisely what "off-centre and not properly sizing" looks
+       * like.
+       *
+       * The stylesheet already says width/height 100%. Letting it own the layout and using the
+       * measurement only for pixel density is correct at any zoom.
+       */
       view.setTransform(dpr, 0, 0, dpr, 0, 0)
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
       ink = readInk()
@@ -499,7 +530,15 @@ export function AudioVisualizer() {
   const srcLabel = src === ALL ? 'anything' : (TAPS.find((t) => t.id === src)?.label ?? src)
 
   return (
-    <section className={'viz-wrap' + (panel ? '' : ' is-bare')}>
+    /**
+     * ⚠️ A canvas window is NOT the viewport.
+     *
+     * The stage was sized with `62vh`, which is right on a page and meaningless inside a floating
+     * window: the window has its own height, so on anything but a full-height window the canvas
+     * was taller than the box containing it — overflowing, cropped, and visibly off-centre. In a
+     * window the stage fills whatever it is given instead of asking the screen.
+     */
+    <section className={'viz-wrap' + (panel ? '' : ' is-bare') + (inWindow ? ' is-inwindow' : '')}>
       <div
         className="viz-stage"
         ref={stage}

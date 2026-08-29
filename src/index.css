@@ -2768,6 +2768,27 @@ section[id] {
 .viz-wrap.is-bare .viz-stage {
   height: clamp(20rem, 78vh, 56rem);
 }
+/**
+ * ⚠️ INSIDE A CANVAS WINDOW, vh IS THE WRONG UNIT.
+ *
+ * The stage asks for 62vh, which is a sensible share of the SCREEN and meaningless inside a
+ * floating window that has its own height. On any window shorter than that the canvas was bigger
+ * than the box holding it: overflowing, cropped, and visibly off-centre, because a centred
+ * drawing centred on a surface larger than what you can see is centred somewhere you cannot see.
+ *
+ * In a window the stage takes what it is given instead of asking the screen — and the bare
+ * variant above has to be overridden too, or hiding the tray brings 78vh back with it.
+ */
+.viz-wrap.is-inwindow {
+  height: 100%;
+  min-height: 0;
+}
+.viz-wrap.is-inwindow .viz-stage,
+.viz-wrap.is-inwindow.is-bare .viz-stage {
+  height: auto;
+  flex: 1 1 auto;
+  min-height: 7rem;
+}
 /* fullscreen: the browser paints the backdrop, so give it a real ground rather than a
    see-through box, and drop the rounding that would show black corners */
 .viz-stage[data-full] {
@@ -4612,6 +4633,12 @@ select {
 }
 .site-backdrop canvas {
   display: block;
+  /* ⚠️ The stylesheet sizes this, not the script. SiteBackdrop used to write width/height
+     inline from a measured rect, which double-counted a canvas pane's zoom; it now sets only the
+     backing buffer. Without these two lines the element would fall back to a canvas's default
+     300x150 layout size and the backdrop would shrink into a corner. */
+  width: 100%;
+  height: 100%;
 }
 /* inside the canvas surface, which paints its own ground above any fixed layer */
 /* a profile window drawing its owner's background inside itself */

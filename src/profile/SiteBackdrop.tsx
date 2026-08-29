@@ -86,8 +86,10 @@ export function SiteBackdrop({ id, inline = false }: { id: BackdropId; inline?: 
       h = Math.max(1, Math.round(r.height))
       cv.width = Math.round(w * dpr)
       cv.height = Math.round(h * dpr)
-      cv.style.width = w + 'px'
-      cv.style.height = h + 'px'
+      // ⚠️ No CSS size written here — the same zoom trap the visualiser documents. An inline
+      // backdrop lives inside a canvas window too (a profile wearing its owner's background), and
+      // a pane body is zoomed, so a measured rect fed back as a CSS length double-counts it.
+      // The stylesheet sizes this canvas; the measurement is only for pixel density.
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
       effect.init(w, h, coarse)
       colours = paint()
