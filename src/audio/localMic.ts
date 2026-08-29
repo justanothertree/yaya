@@ -1,5 +1,6 @@
 import { registerTap } from './audioTap'
 import { makeGain, releaseGain, volume } from './mixer'
+import { sharedCtx } from './context'
 
 /**
  * A microphone opened for LOOKING at, not for sending anywhere.
@@ -37,7 +38,7 @@ export async function startLocalMic(): Promise<boolean> {
     // No processing flags set either way: this is for watching a waveform, and echoCancellation
     // or noise suppression would show you a cleaned-up signal rather than the room.
     stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-    ctx = new AudioContext()
+    ctx = sharedCtx()
     const src = ctx.createMediaStreamSource(stream)
     node = ctx.createAnalyser()
     node.fftSize = 2048
@@ -63,7 +64,7 @@ export function stopLocalMic() {
   // the tracks first: this is what turns the browser's recording indicator off
   stream?.getTracks().forEach((t) => t.stop())
   stream = null
-  void ctx?.close().catch(() => {})
+  // shared context — dropped, never closed. See context.ts.
   ctx = null
 }
 

@@ -1,6 +1,7 @@
 import { getSupabaseClient } from '../finance/client'
 import { callSounds } from './callSounds'
 import { registerTap } from '../audio/audioTap'
+import { broadcastBus, sharedCtx } from '../audio/context'
 /**
  * RNNoise — the same family of ML denoiser Krisp is built on, as open source (Xiph), compiled
  * to WASM and run in an AudioWorklet. This is the answer to "we hear each other's keyboards":
@@ -612,7 +613,10 @@ function buildGate(mic: MediaStream): MediaStream {
   try {
     // 48kHz is RNNoise's native rate; asking for it up front means the denoiser never has to
     // work on resampled-in-flight audio. Browsers resample the mic to the context rate anyway.
-    audioCtx = new AudioContext({ sampleRate: 48000 })
+    // ⚠️ The SHARED context, not a private one — already pinned to 48k for exactly this
+    // reason (see context.ts). Sharing it is what lets the instrument and shared music reach
+    // `dest` below; nodes in different contexts cannot be connected at all.
+    audioCtx = sharedCtx()
     const src = audioCtx.createMediaStreamSource(mic)
     micSrc = src
     analyser = audioCtx.createAnalyser()
@@ -623,6 +627,20 @@ function buildGate(mic: MediaStream): MediaStream {
     registerTap('mic', analyser)
     gate = audioCtx.createGain()
     const dest = audioCtx.createMediaStreamDestination()
+    /**
+     * Anything on the broadcast bus goes out with your voice — the instrument, and music you
+     * chose to share.
+     *
+     * ⚠️ Connected AFTER the gate rather than through it. The gate is a noise gate for
+     * SPEECH: it closes when you are not talking, so routing an instrument through it would chop
+     * every held note the moment you stopped speaking over it. Peers get gated voice plus
+     * ungated everything-else, which is what both are supposed to sound like.
+     */
+    try {
+      broadcastBus().connect(dest)
+    } catch {
+      /* no bus — the call still carries voice */
+    }
     // measure off the source, gate on the way out — rewired to run through RNNoise once the
     // worklet is ready (see below); this direct chain is also the no-denoise fallback
     src.connect(analyser)
@@ -714,7 +732,8 @@ const gainFor = (peerId: string) => master * (state.peerVolume[peerId] ?? 0.5) *
 /** Build the playback graph for a person once their track arrives. */
 function attachOutput(peerId: string, stream: MediaStream) {
   try {
-    if (!outCtx) outCtx = new AudioContext()
+    // shared, like the gate above — see context.ts
+    if (!outCtx) outCtx = sharedCtx()
     // Full teardown, not just the source: a peer whose connection drops and recovers comes
     // back through here, and disconnecting only the source left the old gain node wired to
     // the destination forever. Inaudible — nothing feeds it — but it accumulates per recovery.
@@ -787,7 +806,19 @@ function teardownGate() {
   denoiser = null
   micLevel = 0
   openUntil = 0
-  void audioCtx?.close().catch(() => {})
+  /**
+   * ⚠️ The context is SHARED now, so hanging up must not close it.
+   *
+   * Closing it here would take the instrument, the music player, the ringtone and every
+   * visualiser source down with the call — and the symptom, "leaving a call silences the whole
+   * site until you reload", is a genuinely hard one to trace back to this line. The bus is
+   * disconnected instead, so the room stops hearing your instrument the moment you leave.
+   */
+  try {
+    broadcastBus().disconnect()
+  } catch {
+    /* nothing was connected */
+  }
   audioCtx = null
 }
 
@@ -1362,7 +1393,7 @@ export const voiceSession = {
     outs.clear()
     registerTap('peers', null)
     peersMix = null
-    void outCtx?.close().catch(() => {})
+    // shared context: drop the reference, never close it (see teardownGate)
     outCtx = null
     local?.getTracks().forEach((t) => t.stop())
     rawMic?.getTracks().forEach((t) => t.stop())

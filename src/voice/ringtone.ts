@@ -11,6 +11,7 @@
  */
 
 import { registerTap } from '../audio/audioTap'
+import { sharedCtx } from '../audio/context'
 
 /** One shared context. Browsers cap how many you may create, and a leaked one per ring adds up. */
 let ctx: AudioContext | null = null
@@ -19,12 +20,8 @@ let bus: AnalyserNode | null = null
 function audio(): AudioContext | null {
   if (typeof window === 'undefined') return null
   try {
-    const Ctor =
-      window.AudioContext ??
-      (window as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
-    if (!Ctor) return null
     if (!ctx) {
-      ctx = new Ctor()
+      ctx = sharedCtx()
       // Every note routes through here on its way out, so a visualiser watching 'ring' sees the
       // actual ringtone rather than a guess at it. In-path, unlike the call's analysers: this is
       // the only route to the speakers, so leaving its output dangling would mute the ring.

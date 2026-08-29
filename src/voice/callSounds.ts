@@ -1,3 +1,5 @@
+import { sharedCtx } from '../audio/context'
+
 /**
  * Little call chimes: you joined, you left, someone arrived, someone went.
  *
@@ -49,7 +51,7 @@ function note(at: number, freq: number, dur: number, peak: number) {
 function play(seq: Array<[freq: number, delay: number, dur: number, peak: number]>) {
   if (!soundsEnabled()) return
   try {
-    if (!ctx) ctx = new AudioContext()
+    if (!ctx) ctx = sharedCtx()
     // A context made before any gesture starts suspended. Joining a call is a gesture, so
     // by the time these play it's unlocked — resume anyway, silently, in case it isn't.
     void ctx.resume().catch(() => {})

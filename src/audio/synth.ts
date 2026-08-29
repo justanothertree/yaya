@@ -1,5 +1,6 @@
 import { registerTap } from './audioTap'
 import { makeGain, releaseGain } from './mixer'
+import { broadcastBus, resumeAudio, sharedCtx } from './context'
 
 /**
  * The instrument — a small synthesiser built out of oscillators.
@@ -118,7 +119,7 @@ const MAX_VOICES = 16
 
 function ensure(): AudioContext {
   if (ctx) return ctx
-  ctx = new AudioContext()
+  ctx = sharedCtx()
   analyser = ctx.createAnalyser()
   analyser.fftSize = 2048
   analyser.smoothingTimeConstant = 0.78
@@ -129,15 +130,25 @@ function ensure(): AudioContext {
 }
 
 /**
- * Where every voice goes.
+ * Where every voice goes — three places, for three different reasons.
  *
  * ⚠️ The same fork the music player uses: voices reach the analyser at full strength AND the
  * output gain separately, so turning the instrument down does not shrink the visualiser. See
  * mixer.ts — getting this backwards is invisible until somebody drags a slider.
+ *
+ * ⚠️ And the broadcast bus, so anyone in a call with you hears you play. Connected here
+ * always rather than only during a call: the bus goes nowhere when nobody is listening, and
+ * wiring it up at call time would mean a note already sounding never joins the room. Whether the
+ * bus actually reaches anyone is the call's business, not the synth's.
  */
 function connectVoice(node: AudioNode) {
   if (analyser) node.connect(analyser)
   if (out) node.connect(out)
+  try {
+    node.connect(broadcastBus())
+  } catch {
+    /* no bus on this device — you still hear yourself */
+  }
 }
 
 function noiseBuffer(c: AudioContext): AudioBuffer {
@@ -197,7 +208,7 @@ function hitDrum(c: AudioContext, midi: number, at: number) {
  */
 export function noteOn(id: string, instrument: InstrumentId, midi: number, when?: number) {
   const c = ensure()
-  void c.resume().catch(() => {})
+  resumeAudio()
   const at = Math.max(when ?? c.currentTime, c.currentTime)
 
   if (instrument === 'drums') {
@@ -324,18 +335,26 @@ export function synthReady(): boolean {
   return ctx != null
 }
 
+/**
+ * Let go of the synth's nodes.
+ *
+ * ⚠️ DISCONNECTS, never closes. The context is shared with the call, the music player and the
+ * ringtone now — closing it here would silence all of them, and the symptom (leaving the
+ * instrument page kills the call you are in) would be a genuinely bewildering thing to track
+ * down. See context.ts.
+ */
 export function closeSynth() {
   allNotesOff()
   registerTap('instrument', null)
   releaseGain('instrument')
   try {
     out?.disconnect()
+    analyser?.disconnect()
   } catch {
     /* already gone */
   }
   out = null
   analyser = null
   noise = null
-  void ctx?.close().catch(() => {})
   ctx = null
 }

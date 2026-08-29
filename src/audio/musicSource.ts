@@ -1,5 +1,6 @@
 import { registerTap } from './audioTap'
 import { makeGain, releaseGain } from './mixer'
+import { sharedCtx } from './context'
 
 /**
  * Something to actually watch — a file you picked, or whatever another tab is playing.
@@ -42,7 +43,7 @@ let shareCtx: AudioContext | null = null
 let shareNode: AnalyserNode | null = null
 
 function audioCtx(): AudioContext {
-  ctx ??= new AudioContext()
+  ctx ??= sharedCtx()
   return ctx
 }
 
@@ -142,7 +143,7 @@ export async function shareTabAudio(): Promise<string | null> {
       return 'No audio came through — pick a Tab or Entire screen and tick “share audio”.'
     }
     shareStream = stream
-    shareCtx = new AudioContext()
+    shareCtx = sharedCtx()
     const src = shareCtx.createMediaStreamSource(stream)
     shareNode = shareCtx.createAnalyser()
     shareNode.fftSize = 2048
@@ -168,9 +169,15 @@ export function sharedOn(): boolean {
 
 export function stopShared() {
   registerTap('shared', null)
+  try {
+    shareNode?.disconnect()
+  } catch {
+    /* already gone */
+  }
   shareNode = null
   shareStream?.getTracks().forEach((t) => t.stop())
   shareStream = null
-  void shareCtx?.close().catch(() => {})
+  // ⚠️ the context is shared now — stopping the capture must not close it out from under the
+  // call, the instrument and the music player. Dropping the reference is the whole teardown.
   shareCtx = null
 }
