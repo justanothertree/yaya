@@ -2727,6 +2727,34 @@ section[id] {
 .inst-key.is-black .inst-key-name {
   opacity: 0.75;
 }
+/* the root of the scale, marked so you can find home without counting */
+.inst-key.is-root {
+  border-color: var(--accent);
+  background: color-mix(in oklab, var(--accent), transparent 82%);
+}
+.inst-pick {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+}
+.inst-pick select {
+  font: inherit;
+  padding: 0.15rem 0.3rem;
+  color: var(--text);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+/* four knobs on one line where there is room, two-up when there is not */
+.inst-knobs {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(11rem, 100%), 1fr));
+  gap: 0.5rem 0.9rem;
+}
+.inst-knob .appearance-slider-val {
+  min-width: 1.8rem;
+}
 .inst-note {
   margin: 0;
   font-size: 0.8rem;

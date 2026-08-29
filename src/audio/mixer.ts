@@ -16,6 +16,8 @@
  * be a third. A single slider would make each new source fight the others.
  */
 
+import { storedNumber } from '../ui/storedNumber'
+
 export type Channel = 'music' | 'monitor' | 'instrument'
 
 const KEY: Record<Channel, string> = {
@@ -37,13 +39,12 @@ const EVENT = 'yaya:mixer'
 
 const level: Record<Channel, number> = { ...DEFAULTS }
 
-try {
-  for (const c of Object.keys(level) as Channel[]) {
-    const v = Number(localStorage.getItem(KEY[c]))
-    if (Number.isFinite(v) && v >= 0 && v <= 1) level[c] = v
-  }
-} catch {
-  /* private mode — the defaults are sensible */
+// ⚠️ storedNumber, not Number(getItem(...)) — see that file. Every channel here allows 0, so
+// the naive version made a missing key read as "somebody chose silence" and every first-time
+// visitor got a muted site with no explanation.
+for (const c of Object.keys(level) as Channel[]) {
+  const v = storedNumber(KEY[c], 0, 1)
+  if (v != null) level[c] = v
 }
 
 /** Live gain nodes, so a slider reaches audio that is already playing. */

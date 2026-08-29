@@ -1,4 +1,5 @@
 import type { Effect } from './backdrops'
+import { storedNumber } from '../ui/storedNumber'
 import {
   binCountAll,
   fftSizeAll,
@@ -72,8 +73,9 @@ export function audioBackdrop(): Effect {
       mirror = Number.isFinite(m) && m >= 1 && m <= 8 ? m : 1
       // ⚠️ Trails and sensitivity were simply not read here, which is what made the
       // background ignore half the panel. Mode and mirror were the only two that carried.
-      const t = Number(localStorage.getItem(TRAIL_KEY))
-      trailPref = Number.isFinite(t) && t >= 0 && t <= 0.97 ? t : null
+      // null here genuinely means "no choice made", which is what lets the mode's own default
+      // win — the zero trap would have forced every mode to no trails at all
+      trailPref = storedNumber(TRAIL_KEY, 0, 0.97)
       const g = Number(localStorage.getItem(GAIN_KEY))
       gain = Number.isFinite(g) && g >= 0.5 && g <= 4 ? g : 1
     } catch {

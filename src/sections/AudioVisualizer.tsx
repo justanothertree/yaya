@@ -26,6 +26,7 @@ import {
 import { makeFeatureReader } from '../audio/audioFeatures'
 import { motionReduced, onMotionChange } from '../ui/motion'
 import { InCanvasWindow } from '../circuit/ui/canvasContext'
+import { storedNumber } from '../ui/storedNumber'
 import {
   musicName,
   playFile,
@@ -149,12 +150,10 @@ export function AudioVisualizer() {
    * that never lands there is a setting the background can never follow. A stored value wins over
    * the mode's default, or picking a mode would silently undo a choice you had made by hand.
    */
-  const [trail, setTrail] = useState(() => {
-    const v = Number(localStorage.getItem(TRAIL_KEY))
-    return Number.isFinite(v) && v >= 0 && v <= 0.97
-      ? v
-      : defaultTrail(readStored(MODE_KEY, VISUAL_IDS, 'bars'))
-  })
+  const [trail, setTrail] = useState(
+    () =>
+      storedNumber(TRAIL_KEY, 0, 0.97) ?? defaultTrail(readStored(MODE_KEY, VISUAL_IDS, 'bars')),
+  )
   const [mirror, setMirror] = useState(() => {
     const v = Number(localStorage.getItem(MIRROR_KEY))
     return MIRRORS.some(([n]) => n === v) ? v : 1

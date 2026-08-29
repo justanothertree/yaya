@@ -1,6 +1,7 @@
 import { registerTap } from './audioTap'
 import { makeGain, releaseGain } from './mixer'
 import { broadcastBus, resumeAudio, sharedCtx } from './context'
+import { storedNumber } from '../ui/storedNumber'
 
 /**
  * The instrument — a small synthesiser built out of oscillators.
@@ -22,7 +23,19 @@ import { broadcastBus, resumeAudio, sharedCtx } from './context'
  * is still summed into the mix.
  */
 
-export type InstrumentId = 'keys' | 'pluck' | 'bell' | 'pad' | 'bass' | 'drums'
+export type InstrumentId =
+  | 'keys'
+  | 'pluck'
+  | 'bell'
+  | 'pad'
+  | 'bass'
+  | 'organ'
+  | 'brass'
+  | 'reed'
+  | 'marimba'
+  | 'choir'
+  | 'sub'
+  | 'drums'
 
 export const INSTRUMENTS: Array<[InstrumentId, string, string]> = [
   ['keys', '🎹', 'Keys'],
@@ -30,6 +43,12 @@ export const INSTRUMENTS: Array<[InstrumentId, string, string]> = [
   ['bell', '🔔', 'Bell'],
   ['pad', '🌊', 'Pad'],
   ['bass', '🎸', 'Bass'],
+  ['organ', '🎼', 'Organ'],
+  ['brass', '🎺', 'Brass'],
+  ['reed', '🎷', 'Reed'],
+  ['marimba', '🪘', 'Marimba'],
+  ['choir', '🗣️', 'Choir'],
+  ['sub', '🔊', 'Sub'],
   ['drums', '🥁', 'Drums'],
 ]
 
@@ -39,25 +58,37 @@ type Shape = {
   d: number
   s: number
   r: number
-  /** oscillator flavour; 'noise' is a buffer of random samples rather than a periodic wave */
-  wave: OscillatorType | 'noise'
-  /** a second oscillator a fixed interval away, for thickness. Ratio of 1 means detune only. */
-  second?: { ratio: number; detune: number; gain: number }
-  /** lowpass cutoff in Hz at note-on, and where it falls to */
+  wave: OscillatorType
+  /**
+   * The oscillators stacked to make one note, as multiples of the fundamental.
+   *
+   * ⚠️ This is where the CHARACTER of an instrument actually lives — far more than the
+   * waveform does. An organ is sines at 1, 2, 3 and 4; a bell is inharmonic (2.76 belongs to no
+   * scale, which is exactly why it rings rather than sings); a choir is the same note detuned
+   * against itself so the two drift in and out of phase. Same envelope, different stack, and you
+   * would not guess they were the same synth.
+   */
+  partials: Array<{ ratio: number; detune: number; gain: number }>
+  /** lowpass cutoff in Hz at note-on and where it travels to — up is a swell, down is a decay */
   filter?: { from: number; to: number; q: number }
+  /** a pitch that falls (or rises) into place: multiplier at note-on, and how long it takes */
+  pitch?: { mult: number; time: number }
   /** peak gain, so a bass patch does not drown a bell */
   level: number
 }
 
 const SHAPES: Record<Exclude<InstrumentId, 'drums'>, Shape> = {
-  // struck and held: quick on, long tail, a fifth of thickness underneath
+  // struck and held: quick on, long tail, an octave of thickness underneath
   keys: {
     a: 0.004,
     d: 0.9,
     s: 0.25,
     r: 0.5,
     wave: 'triangle',
-    second: { ratio: 2, detune: 4, gain: 0.3 },
+    partials: [
+      { ratio: 1, detune: 0, gain: 1 },
+      { ratio: 2, detune: 4, gain: 0.3 },
+    ],
     filter: { from: 5200, to: 1400, q: 0.7 },
     level: 0.5,
   },
@@ -68,17 +99,22 @@ const SHAPES: Record<Exclude<InstrumentId, 'drums'>, Shape> = {
     s: 0,
     r: 0.14,
     wave: 'sawtooth',
+    partials: [{ ratio: 1, detune: 0, gain: 1 }],
     filter: { from: 4200, to: 500, q: 3 },
     level: 0.42,
   },
-  // an octave-and-a-bit above the fundamental gives the shimmer a bell has; long release
+  // 2.76 is deliberately not a musical interval — inharmonic partials are what make metal ring
   bell: {
     a: 0.002,
     d: 2.4,
     s: 0,
     r: 1.4,
     wave: 'sine',
-    second: { ratio: 2.76, detune: 0, gain: 0.45 },
+    partials: [
+      { ratio: 1, detune: 0, gain: 1 },
+      { ratio: 2.76, detune: 0, gain: 0.45 },
+      { ratio: 5.4, detune: 0, gain: 0.12 },
+    ],
     level: 0.4,
   },
   // slow in, slow out, two detuned saws beating against each other
@@ -88,7 +124,10 @@ const SHAPES: Record<Exclude<InstrumentId, 'drums'>, Shape> = {
     s: 0.7,
     r: 1.1,
     wave: 'sawtooth',
-    second: { ratio: 1, detune: 11, gain: 0.7 },
+    partials: [
+      { ratio: 1, detune: -11, gain: 1 },
+      { ratio: 1, detune: 11, gain: 0.7 },
+    ],
     filter: { from: 1600, to: 900, q: 1 },
     level: 0.3,
   },
@@ -98,8 +137,99 @@ const SHAPES: Record<Exclude<InstrumentId, 'drums'>, Shape> = {
     s: 0.5,
     r: 0.18,
     wave: 'square',
+    partials: [{ ratio: 1, detune: 0, gain: 1 }],
     filter: { from: 900, to: 220, q: 4 },
     level: 0.5,
+  },
+  // additive drawbars: whole-number partials and no filter movement at all. An organ has no
+  // decay — it is on or it is off, which is most of why it sounds like one.
+  organ: {
+    a: 0.012,
+    d: 0.05,
+    s: 1,
+    r: 0.09,
+    wave: 'sine',
+    partials: [
+      { ratio: 1, detune: 0, gain: 1 },
+      { ratio: 2, detune: 0, gain: 0.5 },
+      { ratio: 3, detune: 0, gain: 0.32 },
+      { ratio: 4, detune: 0, gain: 0.2 },
+      { ratio: 8, detune: 0, gain: 0.1 },
+    ],
+    level: 0.3,
+  },
+  // the filter opens INTO the note rather than closing after it — that swell is the brass
+  brass: {
+    a: 0.07,
+    d: 0.3,
+    s: 0.75,
+    r: 0.25,
+    wave: 'sawtooth',
+    partials: [
+      { ratio: 1, detune: 0, gain: 1 },
+      { ratio: 1, detune: 7, gain: 0.5 },
+    ],
+    filter: { from: 400, to: 3200, q: 2 },
+    level: 0.34,
+  },
+  // odd harmonics only, which is the hollow woody sound of anything with a reed in it
+  reed: {
+    a: 0.03,
+    d: 0.2,
+    s: 0.8,
+    r: 0.16,
+    wave: 'square',
+    partials: [
+      { ratio: 1, detune: 0, gain: 1 },
+      { ratio: 3, detune: 0, gain: 0.22 },
+      { ratio: 5, detune: 0, gain: 0.09 },
+    ],
+    filter: { from: 2200, to: 1500, q: 1 },
+    level: 0.3,
+  },
+  // wooden bars: a hard transient and gone. Short decay does the work, not the waveform.
+  marimba: {
+    a: 0.001,
+    d: 0.32,
+    s: 0,
+    r: 0.1,
+    wave: 'sine',
+    partials: [
+      { ratio: 1, detune: 0, gain: 1 },
+      { ratio: 4, detune: 0, gain: 0.28 },
+      { ratio: 9.2, detune: 0, gain: 0.06 },
+    ],
+    level: 0.5,
+  },
+  // three copies of one note, all slightly out of tune with each other, arriving slowly
+  choir: {
+    a: 0.35,
+    d: 0.8,
+    s: 0.65,
+    r: 0.8,
+    wave: 'sawtooth',
+    partials: [
+      { ratio: 1, detune: -14, gain: 1 },
+      { ratio: 1, detune: 0, gain: 0.8 },
+      { ratio: 1, detune: 15, gain: 1 },
+    ],
+    filter: { from: 1100, to: 700, q: 3 },
+    level: 0.24,
+  },
+  // an 808: the pitch falls into the note, which is what you feel rather than hear
+  sub: {
+    a: 0.004,
+    d: 1.1,
+    s: 0.3,
+    r: 0.4,
+    wave: 'sine',
+    partials: [
+      { ratio: 1, detune: 0, gain: 1 },
+      { ratio: 2, detune: 0, gain: 0.08 },
+    ],
+    pitch: { mult: 2.2, time: 0.09 },
+    filter: { from: 700, to: 160, q: 1 },
+    level: 0.62,
   },
 }
 
@@ -110,6 +240,104 @@ let ctx: AudioContext | null = null
 let out: GainNode | null = null
 let analyser: AnalyserNode | null = null
 let noise: AudioBuffer | null = null
+
+/**
+ * The effects chain every voice passes through.
+ *
+ * ⚠️ Built ONCE and shared, not per note. A convolver per keypress would allocate a reverb tail
+ * on every press and the tab would fall over inside a minute; and echoes only overlap into each
+ * other — which is the whole point of an echo — if they share one delay line.
+ *
+ *     voices ─► fxIn ─┬─► dry ────────────┐
+ *                     ├─► delay ─► wet ───┼─► fxOut ─► analyser / gain / broadcast bus
+ *                     │      ↑______↓     │
+ *                     │      feedback     │
+ *                     └─► reverb ─► wet ──┘
+ *
+ * fxOut is where the fork happens, so the analyser still sees the full signal including the
+ * effects — the visualiser should show the reverb tail, since you can hear it.
+ */
+let fxIn: GainNode | null = null
+let fxOut: GainNode | null = null
+let dryGain: GainNode | null = null
+let delayNode: DelayNode | null = null
+let delayWet: GainNode | null = null
+let feedback: GainNode | null = null
+let reverbWet: GainNode | null = null
+let vibrato: GainNode | null = null
+
+export type Knob = 'echo' | 'echoTime' | 'space' | 'vibrato'
+const KNOB_KEY: Record<Knob, string> = {
+  echo: 'synth_echo_v1',
+  echoTime: 'synth_echo_time_v1',
+  space: 'synth_space_v1',
+  vibrato: 'synth_vibrato_v1',
+}
+/** Dry by default: an instrument that arrives drenched in reverb is a toy, not an instrument. */
+const knobs: Record<Knob, number> = { echo: 0, echoTime: 0.26, space: 0.18, vibrato: 0 }
+// ⚠️ the same zero trap the mixer hit — these ranges start at 0, so a missing key must mean
+// "keep the default", not "the default is 0"
+for (const k of Object.keys(knobs) as Knob[]) {
+  const v = storedNumber(KNOB_KEY[k], 0, 1)
+  if (v != null) knobs[k] = v
+}
+
+export function knob(k: Knob): number {
+  return knobs[k]
+}
+
+export function setKnob(k: Knob, v: number) {
+  knobs[k] = Math.max(0, Math.min(1, v))
+  applyKnobs()
+  try {
+    localStorage.setItem(KNOB_KEY[k], String(knobs[k]))
+  } catch {
+    /* applies for this visit */
+  }
+}
+
+function applyKnobs() {
+  const c = ctx
+  if (!c || !dryGain || !delayWet || !reverbWet || !delayNode || !feedback || !vibrato) return
+  const t = c.currentTime
+  const ramp = (p: AudioParam, v: number) => {
+    try {
+      p.setTargetAtTime(v, t, 0.02)
+    } catch {
+      p.value = v
+    }
+  }
+  ramp(delayWet.gain, knobs.echo * 0.55)
+  // ⚠️ Feedback is capped well under 1. At 1 an echo never decays and the delay line builds until
+  // it clips — a runaway howl that outlives the note that started it and has no obvious cause.
+  ramp(feedback.gain, Math.min(0.6, knobs.echo * 0.6))
+  ramp(delayNode.delayTime, 0.06 + knobs.echoTime * 0.7)
+  ramp(reverbWet.gain, knobs.space * 0.9)
+  // 0–70 cents: a whole semitone of wobble is a special effect, not vibrato
+  ramp(vibrato.gain, knobs.vibrato * 70)
+  // dry backs off only slightly, so turning effects up thickens rather than swaps
+  ramp(dryGain.gain, 1 - Math.min(0.35, knobs.space * 0.35))
+}
+
+/**
+ * A reverb impulse: noise that decays.
+ *
+ * Generated rather than downloaded — a real impulse response is a wav file to host, and for a
+ * room this size the difference is inaudible. Two channels of decaying noise IS the mathematical
+ * shape of a room's response; the fancy ones just have a real room's colour on top.
+ */
+function impulse(c: AudioContext, seconds: number): AudioBuffer {
+  const len = Math.floor(c.sampleRate * seconds)
+  const buf = c.createBuffer(2, len, c.sampleRate)
+  for (let ch = 0; ch < 2; ch++) {
+    const d = buf.getChannelData(ch)
+    for (let i = 0; i < len; i++) {
+      // ^2.5 rather than a straight line: rooms lose their high end fast and their tail slowly
+      d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 2.5)
+    }
+  }
+  return buf
+}
 
 type Voice = { stop(at: number): void; ends: number }
 const voices = new Map<string, Voice>()
@@ -123,32 +351,57 @@ function ensure(): AudioContext {
   analyser = ctx.createAnalyser()
   analyser.fftSize = 2048
   analyser.smoothingTimeConstant = 0.78
+
+  fxIn = ctx.createGain()
+  fxOut = ctx.createGain()
+  dryGain = ctx.createGain()
+  delayNode = ctx.createDelay(1.2)
+  delayWet = ctx.createGain()
+  feedback = ctx.createGain()
+  const verb = ctx.createConvolver()
+  verb.buffer = impulse(ctx, 2.2)
+  reverbWet = ctx.createGain()
+
+  fxIn.connect(dryGain).connect(fxOut)
+  fxIn.connect(delayNode)
+  delayNode.connect(delayWet).connect(fxOut)
+  delayNode.connect(feedback).connect(delayNode)
+  fxIn.connect(verb).connect(reverbWet).connect(fxOut)
+
+  // one LFO for the whole instrument; its depth is the vibrato knob
+  const lfo = ctx.createOscillator()
+  lfo.type = 'sine'
+  lfo.frequency.value = 5.2
+  vibrato = ctx.createGain()
+  vibrato.gain.value = 0
+  lfo.connect(vibrato)
+  lfo.start()
+
   out = makeGain(ctx, 'instrument')
+  // the fork: full signal to the analyser and the room, attenuated signal to your speakers
+  fxOut.connect(analyser)
+  fxOut.connect(out)
   out.connect(ctx.destination)
+  try {
+    fxOut.connect(broadcastBus())
+  } catch {
+    /* no bus on this device — you still hear yourself */
+  }
+  applyKnobs()
   registerTap('instrument', analyser)
   return ctx
 }
 
 /**
- * Where every voice goes — three places, for three different reasons.
+ * Every voice goes into the effects chain, and the chain decides the rest.
  *
- * ⚠️ The same fork the music player uses: voices reach the analyser at full strength AND the
- * output gain separately, so turning the instrument down does not shrink the visualiser. See
- * mixer.ts — getting this backwards is invisible until somebody drags a slider.
- *
- * ⚠️ And the broadcast bus, so anyone in a call with you hears you play. Connected here
- * always rather than only during a call: the bus goes nowhere when nobody is listening, and
- * wiring it up at call time would mean a note already sounding never joins the room. Whether the
- * bus actually reaches anyone is the call's business, not the synth's.
+ * One line now because ensure() wires fxOut to the analyser, the output gain and the broadcast
+ * bus once, rather than every note doing it three times. The fork lives there — see the diagram
+ * above fxIn.
  */
 function connectVoice(node: AudioNode) {
-  if (analyser) node.connect(analyser)
-  if (out) node.connect(out)
-  try {
-    node.connect(broadcastBus())
-  } catch {
-    /* no bus on this device — you still hear yourself */
-  }
+  if (fxIn) node.connect(fxIn)
+  else if (out) node.connect(out)
 }
 
 function noiseBuffer(c: AudioContext): AudioBuffer {
@@ -245,23 +498,33 @@ export function noteOn(id: string, instrument: InstrumentId, midi: number, when?
   connectVoice(sink)
 
   const oscs: OscillatorNode[] = []
-  const add = (f0: number, detune: number, gain: number) => {
+  for (const part of sh.partials) {
     const o = c.createOscillator()
-    o.type = sh.wave as OscillatorType
-    o.frequency.value = f0
-    o.detune.value = detune
-    if (gain === 1) {
+    o.type = sh.wave
+    o.detune.value = part.detune
+    const f0 = freq * part.ratio
+    if (sh.pitch) {
+      // a pitch that falls into place. Exponential because pitch is perceived logarithmically —
+      // a linear slide sounds like it lands early and then crawls.
+      o.frequency.setValueAtTime(f0 * sh.pitch.mult, at)
+      o.frequency.exponentialRampToValueAtTime(Math.max(20, f0), at + sh.pitch.time)
+    } else {
+      o.frequency.value = f0
+    }
+    // ⚠️ Vibrato drives DETUNE, not frequency. detune is in cents, so one LFO depth gives the
+    // same musical wobble at every pitch; driving frequency in Hz would be a shiver down low and
+    // a siren up high.
+    if (vibrato) vibrato.connect(o.detune)
+    if (part.gain === 1) {
       o.connect(g)
     } else {
       const sub = c.createGain()
-      sub.gain.value = gain
+      sub.gain.value = part.gain
       o.connect(sub).connect(g)
     }
     o.start(at)
     oscs.push(o)
   }
-  add(freq, 0, 1)
-  if (sh.second) add(freq * sh.second.ratio, sh.second.detune, sh.second.gain)
 
   /**
    * ⚠️ setValueAtTime(0) then a LINEAR ramp up, then exponential down to a tiny non-zero floor.
@@ -350,11 +613,22 @@ export function closeSynth() {
   try {
     out?.disconnect()
     analyser?.disconnect()
+    fxOut?.disconnect()
+    fxIn?.disconnect()
+    vibrato?.disconnect()
   } catch {
     /* already gone */
   }
   out = null
   analyser = null
   noise = null
+  fxIn = null
+  fxOut = null
+  dryGain = null
+  delayNode = null
+  delayWet = null
+  feedback = null
+  reverbWet = null
+  vibrato = null
   ctx = null
 }
