@@ -2827,6 +2827,10 @@ section[id] {
   gap: 0.3rem;
   opacity: 0.35;
   transition: opacity 0.18s ease;
+  /* ⚠️ Above the tray, always. Both were z-index:auto and the tray comes later in the DOM,
+     so it painted straight over these two buttons — which is why the arrow was missing in
+     fullscreen rather than merely hard to see. */
+  z-index: 5;
 }
 .viz-stage:hover .viz-float,
 .viz-float:focus-within {
@@ -2876,7 +2880,18 @@ section[id] {
    visualiser is not a video: moving the mouse is half of what you are doing here, so the chrome
    flickered back exactly when you were most engaged. Now it goes when you say so and stays gone,
    and the arrow that brings it back is always there to be found. */
+/**
+ * ⚠️ TOP-RIGHT in fullscreen, not bottom-right.
+ *
+ * The tray is pinned across the bottom there, so the arrow that hides the tray was underneath
+ * the thing it hides — unreachable exactly when you wanted it, and invisible enough to look
+ * like it did not exist. The top corner is clear whether the tray is open or away, so the
+ * control never has to compete with what it controls.
+ */
 .viz-stage[data-full] .viz-float {
+  top: 0.6rem;
+  right: 0.6rem;
+  bottom: auto;
   opacity: 0.5;
 }
 .viz-stage[data-full] .viz-float:hover,

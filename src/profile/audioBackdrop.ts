@@ -1,11 +1,10 @@
 import type { Effect } from './backdrops'
 import {
-  binCount,
-  fftSize,
+  binCountAll,
+  fftSizeAll,
   liveTaps,
-  readSpectrum,
-  readWaveform,
-  type TapId,
+  readSpectrumAll,
+  readWaveformAll,
 } from '../audio/audioTap'
 
 /**
@@ -21,9 +20,13 @@ import {
  * for the same picture would be a puzzle: you would set Nebula in the module, look at your
  * background, and find Bars. Whatever you last chose over there is what you get here.
  *
- * The source is whichever tap is live, preferring music over a call over a bare mic. A background
- * should react to whatever is playing without being told; being asked to pick a source for your
- * wallpaper is a chore nobody wants.
+ * ⚠️ It watches EVERY live source, not a favourite one.
+ *
+ * This used to walk a hand-written preference list and take the first match — and the instrument
+ * was simply missing from that list, because the synth was built after the list was written. That
+ * is the failure mode of a hard-coded roster: it is silently wrong the moment anything new
+ * arrives, and nothing points at it. Mixing whatever is live has no roster to forget, so the
+ * instrument room and anything after it work here without this file being touched again.
  */
 
 type Mods = typeof import('../audio/visualModes')
@@ -39,9 +42,6 @@ const EVENT = 'yaya:viz-prefs'
 export function announceVizPrefs() {
   if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent(EVENT))
 }
-
-/** Whichever live source is most likely to be the one worth watching. */
-const PREFERENCE: TapId[] = ['music', 'shared', 'peers', 'mic', 'local', 'ring']
 
 export function audioBackdrop(): Effect {
   let mods: Mods | null = null
@@ -62,6 +62,8 @@ export function audioBackdrop(): Effect {
 
   const spec = new Uint8Array(2048)
   const wav = new Uint8Array(2048)
+  // the mixer folds each source through this; allocated once, like the others
+  const scratch = new Uint8Array(2048)
 
   const readPrefs = () => {
     try {
@@ -121,13 +123,13 @@ export function audioBackdrop(): Effect {
     step({ ctx, w, h, dt, paint, px, py }) {
       if (!mods || !feats || !visual || !reader || !bctx || !buf) return
 
-      const src = PREFERENCE.find((id) => liveTaps().includes(id))
       // No sound anywhere: the modes still animate on their clock, so this stays a moving
       // background rather than a frozen one — but it is fed silence, honestly.
-      const bins = src ? Math.min(spec.length, binCount(src)) : 0
-      const waveN = src ? Math.min(wav.length, fftSize(src)) : 0
-      if (!src || !readSpectrum(src, spec)) spec.fill(0)
-      if (!src || !readWaveform(src, wav)) wav.fill(128)
+      const anyLive = liveTaps().length > 0
+      const bins = anyLive ? Math.min(spec.length, binCountAll()) : 0
+      const waveN = anyLive ? Math.min(wav.length, fftSizeAll()) : 0
+      if (!readSpectrumAll(spec, scratch)) spec.fill(0)
+      if (!readWaveformAll(wav, scratch)) wav.fill(128)
 
       /**
        * Sensitivity, applied to the data exactly as the module does it.
