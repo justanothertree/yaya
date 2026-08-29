@@ -30,6 +30,21 @@ import { sharedCtx } from './context'
  * out as you made the room comfortable. See mixer.ts.
  */
 
+/**
+ * Anything that changes what is playing announces it.
+ *
+ * ⚠️ This module has no component and outlives every page, which is the whole point — so React
+ * cannot simply re-render when it changes. The dock and the visualiser subscribe instead.
+ */
+const EVENT = 'yaya:music'
+function announce() {
+  if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent(EVENT))
+}
+export function onMusicChange(fn: () => void): () => void {
+  window.addEventListener(EVENT, fn)
+  return () => window.removeEventListener(EVENT, fn)
+}
+
 let ctx: AudioContext | null = null
 let el: HTMLAudioElement | null = null
 let url: string | null = null
@@ -85,6 +100,7 @@ export async function playFile(file: File): Promise<string | null> {
     el = a
     name = file.name
     registerTap('music', node)
+    announce()
     await c.resume().catch(() => {})
     await a.play()
     return null
@@ -114,6 +130,7 @@ export function stopMusic() {
   name = ''
   if (url) URL.revokeObjectURL(url)
   url = null
+  announce()
 }
 
 /**
@@ -153,6 +170,7 @@ export async function shareTabAudio(): Promise<string | null> {
     // out of the other tab's speakers. Wiring it on would play everything twice, slightly out of
     // step with itself — which sounds like a broken echo.
     registerTap('shared', shareNode)
+    announce()
     // the person can also stop the share from the browser's own bar, which fires this
     stream.getAudioTracks()[0]?.addEventListener('ended', () => stopShared())
     return null
@@ -180,4 +198,5 @@ export function stopShared() {
   // ⚠️ the context is shared now — stopping the capture must not close it out from under the
   // call, the instrument and the music player. Dropping the reference is the whole teardown.
   shareCtx = null
+  announce()
 }

@@ -5,7 +5,11 @@ import {
   fftSize,
   liveTaps,
   readSpectrum,
+  readSpectrumAll,
   readWaveform,
+  readWaveformAll,
+  binCountAll,
+  fftSizeAll,
   subscribeTaps,
   type TapId,
 } from '../audio/audioTap'
@@ -82,7 +86,18 @@ function readStored<T extends string>(key: string, allowed: readonly T[], fallba
 }
 
 const VISUAL_IDS = VISUALS.map(([id]) => id)
-const TAP_IDS = TAPS.map((t) => t.id)
+
+/**
+ * "All" is a source you can pick, but not a tap that exists.
+ *
+ * ⚠️ Kept as a separate union rather than added to TapId, because everywhere else in the
+ * codebase a TapId names one real analyser somebody registered. Letting a fictional id into that
+ * type would mean every consumer — the backdrop, the readers, a future instrument room — has to
+ * remember it is not real.
+ */
+const ALL = 'all' as const
+type SrcChoice = TapId | typeof ALL
+const TAP_IDS = [ALL, ...TAPS.map((t) => t.id)] as SrcChoice[]
 
 /**
  * One output level.
@@ -119,7 +134,7 @@ export function AudioVisualizer() {
   const canvas = useRef<HTMLCanvasElement>(null)
 
   const [mode, setMode] = useState<VisualId>(() => readStored(MODE_KEY, VISUAL_IDS, 'bars'))
-  const [src, setSrc] = useState<TapId>(() => readStored(SRC_KEY, TAP_IDS, 'local'))
+  const [src, setSrc] = useState<SrcChoice>(() => readStored(SRC_KEY, TAP_IDS, ALL))
   const [gain, setGain] = useState(() => {
     const v = Number(localStorage.getItem(GAIN_KEY))
     return Number.isFinite(v) && v >= 0.5 && v <= 4 ? v : 1.5
@@ -147,8 +162,6 @@ export function AudioVisualizer() {
   const [sharing, setSharing] = useState(sharedOn)
   const [srcErr, setSrcErr] = useState<string | null>(null)
   const [dragging, setDragging] = useState(false)
-  // fullscreen only: the chrome fades out when you stop moving, like a video player
-  const [idle, setIdle] = useState(false)
   const filePick = useRef<HTMLInputElement>(null)
 
   /**
@@ -195,11 +208,17 @@ export function AudioVisualizer() {
     announceVizPrefs()
   }, [mode, src, gain, mirror, panel])
 
+  /**
+   * ⚠️ Only the MICROPHONE is released on the way out.
+   *
+   * Music and tab audio deliberately keep playing: stopping them here is what made the player a
+   * toy you had to stand still to use, and the AudioDock exists precisely so you can wander off
+   * with the sound still going. The mic is different — it is a device with a recording
+   * indicator, and leaving that burning because you clicked a link would be indefensible.
+   */
   useEffect(
     () => () => {
       stopLocalMic()
-      stopMusic()
-      stopShared()
     },
     [],
   )
@@ -211,39 +230,6 @@ export function AudioVisualizer() {
     document.addEventListener('fullscreenchange', onFs)
     return () => document.removeEventListener('fullscreenchange', onFs)
   }, [])
-
-  /**
-   * In fullscreen, get out of the way.
-   *
-   * ⚠️ ONLY in fullscreen. Fading the controls out on the normal page would be a trap: they
-   * sit in the layout there, so hiding them would leave a hole and a person hunting for a button
-   * that was under their cursor a second ago. Fullscreen is different — the panel floats over
-   * the picture, the picture is the whole point, and every video player on earth behaves this way.
-   */
-  useEffect(() => {
-    if (!full) {
-      setIdle(false)
-      return
-    }
-    const el = stage.current
-    if (!el) return
-    let timer = 0
-    const wake = () => {
-      setIdle(false)
-      clearTimeout(timer)
-      timer = window.setTimeout(() => setIdle(true), 2500)
-    }
-    el.addEventListener('pointermove', wake)
-    el.addEventListener('pointerdown', wake)
-    window.addEventListener('keydown', wake)
-    wake()
-    return () => {
-      clearTimeout(timer)
-      el.removeEventListener('pointermove', wake)
-      el.removeEventListener('pointerdown', wake)
-      window.removeEventListener('keydown', wake)
-    }
-  }, [full])
 
   useEffect(() => {
     if (reduced) return
@@ -276,6 +262,8 @@ export function AudioVisualizer() {
 
     const spec = new Uint8Array(2048)
     const wav = new Uint8Array(2048)
+    // a second buffer the mixer folds each source through, allocated once like the others
+    const scratch = new Uint8Array(2048)
 
     const readInk = (): Ink => {
       const s = getComputedStyle(cv)
@@ -314,10 +302,11 @@ export function AudioVisualizer() {
     const frame = (now: number) => {
       const dt = Math.min(0.05, Math.max(0, (now - last) / 1000))
       last = now
-      const bins = Math.min(spec.length, binCount(src))
-      const waveN = Math.min(wav.length, fftSize(src))
-      const gotSpec = readSpectrum(src, spec)
-      const gotWave = readWaveform(src, wav)
+      const all = src === ALL
+      const bins = Math.min(spec.length, all ? binCountAll() : binCount(src))
+      const waveN = Math.min(wav.length, all ? fftSizeAll() : fftSize(src))
+      const gotSpec = all ? readSpectrumAll(spec, scratch) : readSpectrum(src, spec)
+      const gotWave = all ? readWaveformAll(wav, scratch) : readWaveform(src, wav)
       if (!gotSpec) spec.fill(0)
       if (!gotWave) wav.fill(128)
       if (gain !== 1 && gotSpec) {
@@ -505,7 +494,9 @@ export function AudioVisualizer() {
     setSrc('music')
   }
 
-  const nothingOn = !liveSet.includes(src)
+  // "All" is live whenever anything is; a single source is live only if it is
+  const nothingOn = src === ALL ? liveSet.length === 0 : !liveSet.includes(src)
+  const srcLabel = src === ALL ? 'anything' : (TAPS.find((t) => t.id === src)?.label ?? src)
 
   return (
     <section className={'viz-wrap' + (panel ? '' : ' is-bare')}>
@@ -513,7 +504,6 @@ export function AudioVisualizer() {
         className="viz-stage"
         ref={stage}
         data-full={full || undefined}
-        data-idle={(full && idle && !dragging) || undefined}
         onDragOver={(e) => {
           // preventDefault is what MAKES this a drop target; without it the browser navigates
           // away to the file instead, which loses the page
@@ -542,12 +532,18 @@ export function AudioVisualizer() {
         )}
         {!reduced && nothingOn && (
           <p className="viz-still muted">
-            Nothing on <strong>{TAPS.find((t) => t.id === src)?.label}</strong> yet.
-            {src === 'local'
-              ? ' Turn the mic on below.'
-              : src === 'ring'
-                ? ' Try the ringtone below.'
-                : ' Join a call and it will appear here.'}
+            Nothing playing on <strong>{srcLabel}</strong> yet.
+            {src === ALL
+              ? ' Drop a track on this page, use your mic, or play the instrument.'
+              : src === 'local'
+                ? ' Turn the mic on below.'
+                : src === 'ring'
+                  ? ' Try the ringtone below.'
+                  : src === 'music'
+                    ? ' Drop a track anywhere on this page.'
+                    : src === 'instrument'
+                      ? ' Open the Instrument page and play something.'
+                      : ' Join a call and it will appear here.'}
           </p>
         )}
 
@@ -596,6 +592,24 @@ export function AudioVisualizer() {
             </div>
 
             <div className="viz-row" role="group" aria-label="Sound source">
+              {/* Everything at once, and the default. Most of the time the honest answer to
+                  "what should this watch" is "whatever is making noise", and singling out one
+                  source is the special case rather than the norm. */}
+              <button
+                className={'fx-style-btn viz-src' + (src === ALL ? ' is-on' : '')}
+                aria-pressed={src === ALL}
+                onClick={() => setSrc(ALL)}
+                title={
+                  liveSet.length
+                    ? `Mixing ${liveSet.length} live source${liveSet.length > 1 ? 's' : ''}`
+                    : 'Nothing playing yet'
+                }
+              >
+                <span className={'viz-dot' + (liveSet.length ? ' is-live' : '')} aria-hidden />
+                <span className="fx-style-label">
+                  All{liveSet.length > 1 ? ` (${liveSet.length})` : ''}
+                </span>
+              </button>
               {TAPS.map((t) => {
                 const on = liveSet.includes(t.id)
                 return (

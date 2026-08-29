@@ -2583,6 +2583,65 @@ section[id] {
   outline: none;
 }
 
+/* ── the audio dock ──────────────────────────────────────────────────
+   Anchored like the call dock, and for the same reason: what is playing outlives the page that
+   started it, so its handle cannot live on a page. Sits ABOVE the call dock rather than beside
+   it — both can be up at once, and a row that reflowed when a call started would move the
+   button you were reaching for. */
+.audio-dock {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: calc(var(--bottom-guard) + var(--kb) + var(--pin-gap) + 3.1rem);
+  z-index: 900000;
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  max-width: min(30rem, calc(100vw - 1.5rem));
+  padding: 0.35rem 0.6rem;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--panel), transparent 8%);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.22);
+}
+.audio-dock-name {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 0;
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--text);
+  cursor: pointer;
+  font-size: 0.82rem;
+}
+/* a filename is any length and must not push the transport off the dock */
+.audio-dock-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 11rem;
+}
+.audio-dock-btn {
+  padding: 0.1rem 0.45rem;
+  font-size: 0.85rem;
+  flex: none;
+}
+.audio-dock-vol {
+  width: 4.5rem;
+  flex: none;
+  accent-color: var(--accent);
+}
+@media (max-width: 30rem) {
+  /* the slider is the first thing to go on a narrow screen: the page it came from still has one,
+     and a 2rem range control is not usable anyway */
+  .audio-dock-vol {
+    display: none;
+  }
+}
+
 /* ── the instrument ─────────────────────────────────────────────────── */
 .inst-wrap {
   display: flex;
@@ -2791,19 +2850,22 @@ section[id] {
   backdrop-filter: blur(10px);
   border-top: 1px solid var(--border-strong);
 }
-/* Fullscreen, pointer still: everything but the picture fades out. Pointer-events go with it,
-   so an invisible panel cannot swallow a click meant for the visuals. */
-.viz-stage[data-idle] .viz-controls,
-.viz-stage[data-idle] .viz-float {
-  opacity: 0;
-  pointer-events: none;
-}
-.viz-stage[data-full] .viz-controls,
+/* ⚠️ The controls are a TRAY you put away, not something that hides itself.
+   They used to fade out after a few seconds of stillness, like a video player — but a
+   visualiser is not a video: moving the mouse is half of what you are doing here, so the chrome
+   flickered back exactly when you were most engaged. Now it goes when you say so and stays gone,
+   and the arrow that brings it back is always there to be found. */
 .viz-stage[data-full] .viz-float {
-  transition: opacity 0.5s ease;
+  opacity: 0.5;
 }
-.viz-stage[data-idle] {
-  cursor: none;
+.viz-stage[data-full] .viz-float:hover,
+.viz-stage[data-full] .viz-float:focus-within {
+  opacity: 1;
+}
+/* with the tray away, the arrow is the one piece of chrome left — so it gets a little more
+   presence than the pair does, or it is genuinely hard to find on a busy picture */
+.viz-wrap.is-bare .viz-float {
+  opacity: 0.75;
 }
 /* dropping a track: the whole stage lights up as the target */
 .viz-drop {

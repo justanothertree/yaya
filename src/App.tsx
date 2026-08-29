@@ -16,6 +16,7 @@ import { ShareStage } from './voice/ShareStage'
 import { UsagePanel } from './components/UsagePanel'
 import { voiceSession } from './voice/voiceSession'
 import { CallDock } from './voice/CallDock'
+import { AudioDock } from './audio/AudioDock'
 import { useReveal } from './hooks/useReveal'
 import { useNotifications, type Notice } from './hooks/useNotifications'
 import { useVoicePresence } from './voice/useVoicePresence'
@@ -1501,6 +1502,9 @@ export default function App() {
       {/* A call outlives the screen it started on, so its controls and its audio live at app
           level — otherwise you'd navigate away and be stuck in a call you can't hear or end. */}
       <CallDock />
+      {/* Sits with the call dock for the same reason it exists: the sound outlives the page that
+          started it, so its handle has to live above the pages. */}
+      <AudioDock onOpen={() => goTo('visualizer')} />
       <ShareStage />
       <a href="#content" className="skip-link">
         Skip to content

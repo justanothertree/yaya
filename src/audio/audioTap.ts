@@ -93,6 +93,64 @@ export function readWaveform(id: TapId, into: Uint8Array): boolean {
   return true
 }
 
+/**
+ * Every live source at once.
+ *
+ * ⚠️ The PEAK per bin, not the sum. Summing dB-scaled bytes is not physically meaningful —
+ * two sources at 200 do not make 400, they make something closer to 206 — and it saturates to a
+ * flat white wall the moment more than one thing plays. Taking the loudest source in each bin
+ * keeps every source visible without any of them washing the others out, which is what somebody
+ * watching a jam actually wants to see.
+ *
+ * Returns false when nothing at all is live, so the caller can say so rather than draw silence.
+ */
+export function readSpectrumAll(into: Uint8Array, scratch: Uint8Array): boolean {
+  let any = false
+  into.fill(0)
+  for (const [, node] of sources) {
+    if (scratch.length < node.frequencyBinCount) continue
+    node.getByteFrequencyData(scratch as Uint8Array<ArrayBuffer>)
+    const n = Math.min(into.length, node.frequencyBinCount)
+    for (let i = 0; i < n; i++) if (scratch[i] > into[i]) into[i] = scratch[i]
+    any = true
+  }
+  return any
+}
+
+/**
+ * The combined waveform — summed, unlike the spectrum, because that IS what mixing does.
+ *
+ * Deviations from the 128 centre add and are clamped at the ends, which is exactly what a mixer
+ * hitting its ceiling sounds like. Summing here is correct where summing the spectrum was not.
+ */
+export function readWaveformAll(into: Uint8Array, scratch: Uint8Array): boolean {
+  let any = false
+  into.fill(128)
+  for (const [, node] of sources) {
+    if (scratch.length < node.fftSize) continue
+    node.getByteTimeDomainData(scratch as Uint8Array<ArrayBuffer>)
+    const n = Math.min(into.length, node.fftSize)
+    for (let i = 0; i < n; i++) {
+      into[i] = Math.max(0, Math.min(255, into[i] + (scratch[i] - 128)))
+    }
+    any = true
+  }
+  return any
+}
+
+/** The widest bin count among live sources, so a consumer can size its buffers for the mix. */
+export function binCountAll(): number {
+  let n = 0
+  for (const [, node] of sources) n = Math.max(n, node.frequencyBinCount)
+  return n
+}
+
+export function fftSizeAll(): number {
+  let n = 0
+  for (const [, node] of sources) n = Math.max(n, node.fftSize)
+  return n
+}
+
 /** How many bins a source produces, so a consumer can size its buffer once. */
 export function binCount(id: TapId): number {
   return sources.get(id)?.frequencyBinCount ?? 0
