@@ -2838,6 +2838,22 @@ section[id] {
 .inst-layers li.is-muted {
   opacity: 0.5;
 }
+/* the layer about to be overwritten, so a re-take cannot land on the wrong one */
+.inst-layers li.is-replacing {
+  outline: 1px solid var(--accent-2);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+.inst-layer-inst {
+  font: inherit;
+  font-size: 0.78rem;
+  padding: 0.05rem 0.2rem;
+  color: var(--text);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  max-width: 6.5rem;
+}
 .inst-layer-name {
   flex: 1;
   min-width: 0;

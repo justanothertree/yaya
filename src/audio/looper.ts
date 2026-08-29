@@ -38,9 +38,15 @@ type State = {
   bpm: number
   bars: number
   metronome: boolean
+  /** 0 = off, else the subdivision notes snap to: 4 = quarters, 8 = eighths, 16 = sixteenths */
+  quantize: number
   layers: Layer[]
   /** 0–1 through the current loop, for a playhead */
   position: number
+  /** beats left before a take begins, so the UI can count you in. 0 when not arming. */
+  countIn: number
+  /** the layer a take will REPLACE, if you armed onto one */
+  replacing: string | null
 }
 
 const BEATS_PER_BAR = 4
@@ -54,8 +60,11 @@ let state: State = {
   bpm: 96,
   bars: 2,
   metronome: true,
+  quantize: 8,
   layers: [],
   position: 0,
+  countIn: 0,
+  replacing: null,
 }
 
 const listeners = new Set<() => void>()
@@ -84,6 +93,17 @@ let timer = 0
 let loopStart = 0
 /** How far ahead we have already scheduled, as an absolute audio time. */
 let scheduledTo = 0
+/**
+ * The exact audio time a waiting take will begin at.
+ *
+ * ⚠️ THIS IS WHY ARMING USED TO DO NOTHING. The old check was `now >= loopStart`, and
+ * loopStart is advanced to the current loop before that line runs — so it was always true and
+ * recording began on the next 25ms tick rather than at the top of the loop. Arm halfway through
+ * a bar and your take started halfway through a bar, every time, which is most of why the thing
+ * was hard to play with. Remembering the boundary makes the wait real.
+ */
+let armAt: number | null = null
+
 /** Events captured during the pass being recorded now. */
 let takeEvents: LoopEvent[] = []
 let takeInstrument: InstrumentId = 'keys'
@@ -91,12 +111,13 @@ let takeInstrument: InstrumentId = 'keys'
 const heldInTake = new Map<number, number>()
 
 /** A click that is heard but never seen or sent. */
-function click(at: number, accent: boolean) {
+function click(at: number, accent: boolean, countIn = false) {
   const c = sharedCtx()
   const o = c.createOscillator()
   const g = c.createGain()
   o.type = 'square'
-  o.frequency.value = accent ? 1600 : 1050
+  // the count-in sits above the metronome so the two are never confused for each other
+  o.frequency.value = countIn ? (accent ? 2300 : 1850) : accent ? 1600 : 1050
   g.gain.setValueAtTime(0.0001, at)
   g.gain.exponentialRampToValueAtTime(accent ? 0.16 : 0.09, at + 0.004)
   g.gain.exponentialRampToValueAtTime(0.0001, at + 0.045)
@@ -143,6 +164,25 @@ function scheduleWindow(from: number, to: number) {
       }
     }
   }
+
+  /**
+   * The count-in: the bar leading into a take, clicked whether or not the metronome is on.
+   *
+   * ⚠️ Independent of the metronome switch on purpose. Somebody who plays with the click off
+   * still needs to know when recording starts, and "it began somewhere in the last two seconds"
+   * is not something you can play to. This is the one case where the site makes a noise you did
+   * not ask for, and it earns it.
+   *
+   * ⚠️ Outside the repetition loop, because the count-in happens ONCE at a known absolute
+   * time — scheduling it per repetition would stack four identical clicks on the same instant
+   * whenever the window spanned a loop boundary.
+   */
+  if (armAt != null) {
+    for (let b = 1; b <= BEATS_PER_BAR; b++) {
+      const at = armAt - b * beat
+      if (at >= from && at < to) click(at, b === BEATS_PER_BAR, true)
+    }
+  }
 }
 
 function tick() {
@@ -156,10 +196,18 @@ function tick() {
   }
   while (now - loopStart >= len) loopStart += len
 
-  if (state.waiting && now >= loopStart) {
-    set({ waiting: false, recording: true })
-    takeEvents = []
-    heldInTake.clear()
+  if (state.waiting && armAt != null) {
+    if (now >= armAt) {
+      armAt = null
+      set({ waiting: false, recording: true, countIn: 0 })
+      takeEvents = []
+      heldInTake.clear()
+    } else {
+      // how many beats are left before it starts, for the countdown on screen
+      const beat = 60 / state.bpm
+      const left = Math.max(1, Math.ceil((armAt - now) / beat))
+      if (left !== state.countIn) set({ countIn: left })
+    }
   }
 
   const target = now + LOOKAHEAD_S
@@ -185,7 +233,15 @@ export function stopLoop() {
   if (timer) clearInterval(timer)
   timer = 0
   if (state.recording) commitTake()
-  set({ playing: false, recording: false, waiting: false, position: 0 })
+  armAt = null
+  set({
+    playing: false,
+    recording: false,
+    waiting: false,
+    position: 0,
+    countIn: 0,
+    replacing: null,
+  })
 }
 
 /**
@@ -195,13 +251,24 @@ export function stopLoop() {
  * playing, and every take would start a fraction late. Arming and waiting is what every looper
  * does, and it is why the button says "armed" until the loop comes round.
  */
-export function armRecord() {
+export function armRecord(replaceId?: string) {
   if (!state.playing) startLoop()
-  set({ waiting: true })
+  const c = sharedCtx()
+  const len = loopLength()
+  /**
+   * The NEXT top, not this instant.
+   *
+   * When the loop is already running that is one boundary away; when it has only just been
+   * started it is the start itself, so pressing record from stopped does not cost you a whole
+   * empty lap before anything happens.
+   */
+  armAt = c.currentTime < loopStart ? loopStart : loopStart + len
+  set({ waiting: true, replacing: replaceId ?? null })
 }
 
 export function cancelRecord() {
-  set({ waiting: false, recording: false })
+  armAt = null
+  set({ waiting: false, recording: false, countIn: 0, replacing: null })
   takeEvents = []
   heldInTake.clear()
 }
@@ -219,6 +286,31 @@ export function capture(midi: number, on: boolean, instrument: InstrumentId) {
   takeEvents.push({ t, midi, on })
 }
 
+/**
+ * Snap a take to the grid.
+ *
+ * ⚠️ Note-ONS are snapped and their matching note-off is moved BY THE SAME AMOUNT, rather
+ * than snapping both independently. Snapping each end separately quietly rewrites how long every
+ * note is — short notes collapse to zero length and vanish, long ones grow — so a quantised take
+ * would not just be tidier than what you played, it would be a different part. Moving the pair
+ * together fixes the timing and leaves the performance alone.
+ */
+function quantise(events: LoopEvent[], len: number, q: number): LoopEvent[] {
+  if (!q) return events
+  const grid = (60 / state.bpm) * (4 / q)
+  const out = events.map((e) => ({ ...e }))
+  for (const on of out) {
+    if (!on.on) continue
+    const snapped = (Math.round(on.t / grid) * grid) % len
+    const delta = snapped - on.t
+    on.t = snapped
+    // the first note-off for this pitch after the original onset is this note's end
+    const off = out.find((e) => !e.on && e.midi === on.midi && e.t >= on.t - delta)
+    if (off) off.t = Math.max(0, Math.min(len - 0.001, off.t + delta))
+  }
+  return out.sort((a, b) => a.t - b.t)
+}
+
 function commitTake() {
   const len = loopLength()
   /**
@@ -233,15 +325,34 @@ function commitTake() {
     takeEvents.push({ t: Math.max(0, len - 0.02), midi, on: false })
   }
   heldInTake.clear()
-  const events = takeEvents.sort((a, b) => a.t - b.t)
+  const events = quantise(
+    takeEvents.sort((a, b) => a.t - b.t),
+    len,
+    state.quantize,
+  )
   takeEvents = []
+  const target = state.replacing
   if (!events.some((e) => e.on)) {
-    // an empty pass is not a layer — it is somebody who armed by accident
-    set({ recording: false })
+    // an empty pass is not a layer — it is somebody who armed by accident. Note that this also
+    // means re-recording and playing nothing LEAVES the old take alone rather than wiping it.
+    set({ recording: false, replacing: null })
+    return
+  }
+  if (target) {
+    // replace in place, keeping the layer's position in the stack so the list does not reorder
+    // under the hand that just recorded it
+    set({
+      recording: false,
+      replacing: null,
+      layers: state.layers.map((l) =>
+        l.id === target ? { ...l, instrument: takeInstrument, events, muted: false } : l,
+      ),
+    })
     return
   }
   set({
     recording: false,
+    replacing: null,
     layers: [
       ...state.layers,
       { id: String(Date.now()), instrument: takeInstrument, events, muted: false },
@@ -271,4 +382,24 @@ export function setBars(bars: number) {
 
 export function setMetronome(on: boolean) {
   set({ metronome: on })
+}
+
+export function setQuantize(q: number) {
+  set({ quantize: q })
+}
+
+/** Take back the last thing you recorded, without hunting for it in the list. */
+export function undoLast() {
+  if (!state.layers.length) return
+  set({ layers: state.layers.slice(0, -1) })
+}
+
+/**
+ * Re-voice a take without replaying it.
+ *
+ * The cheapest fix of all: the notes are right, the sound is not. Storing notes rather than audio
+ * is what makes this a one-line change instead of a re-recording.
+ */
+export function setLayerInstrument(id: string, instrument: InstrumentId) {
+  set({ layers: state.layers.map((l) => (l.id === id ? { ...l, instrument } : l)) })
 }

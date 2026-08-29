@@ -20,11 +20,14 @@ import {
   removeLayer,
   setBars,
   setBpm,
+  setLayerInstrument,
   setMetronome,
+  setQuantize,
   startLoop,
   stopLoop,
   subscribeLoop,
   toggleMute,
+  undoLast,
 } from '../audio/looper'
 
 /**
@@ -432,7 +435,19 @@ export function InstrumentRoom() {
           onClick={() => (loop.waiting || loop.recording ? cancelRecord() : armRecord())}
           title="Record a pass — it starts at the top of the loop"
         >
-          {loop.recording ? '⏺ Recording' : loop.waiting ? '⏳ Armed…' : '⏺ Record'}
+          {loop.recording
+            ? loop.replacing
+              ? '⏺ Replacing'
+              : '⏺ Recording'
+            : loop.waiting
+              ? // ⚠️ Only the last bar gets a number, because only the last bar gets clicks.
+                // Arming early in a long loop can be eight beats away, and counting "8…7…6" at
+                // somebody is not a count-in — it is a wait. The clicks and the digits describe
+                // the same four beats.
+                loop.countIn && loop.countIn <= 4
+                ? `⏳ ${loop.countIn}…`
+                : '⏳ Armed…'
+              : '⏺ Record'}
         </button>
 
         <button
@@ -467,6 +482,27 @@ export function InstrumentRoom() {
             onChange={(e) => setBars(Number(e.target.value))}
           />
         </label>
+
+        {/* Snapping is on by default at eighths. Nobody playing into a loop for fun wants their
+            first take to expose exactly how far off the beat they were, and Off is one click
+            away for anyone who does. */}
+        <label className="inst-pick">
+          <span className="muted" title="Snap what you play to the grid">
+            Snap
+          </span>
+          <select value={loop.quantize} onChange={(e) => setQuantize(Number(e.target.value))}>
+            <option value={0}>Off</option>
+            <option value={4}>1/4</option>
+            <option value={8}>1/8</option>
+            <option value={16}>1/16</option>
+          </select>
+        </label>
+
+        {loop.layers.length > 0 && (
+          <button className="btn" onClick={undoLast} title="Take back the last thing you recorded">
+            ↶ Undo take
+          </button>
+        )}
       </div>
 
       {/* the playhead — a bar you can glance at rather than count against */}
@@ -479,11 +515,40 @@ export function InstrumentRoom() {
       {loop.layers.length > 0 && (
         <ul className="inst-layers">
           {loop.layers.map((l, i) => (
-            <li key={l.id} className={l.muted ? 'is-muted' : undefined}>
+            <li
+              key={l.id}
+              className={
+                (l.muted ? 'is-muted' : '') + (loop.replacing === l.id ? ' is-replacing' : '')
+              }
+            >
               <span className="inst-layer-name">
-                {i + 1}. {INSTRUMENTS.find(([id]) => id === l.instrument)?.[2] ?? l.instrument}
-                <span className="muted"> · {l.events.filter((e) => e.on).length} notes</span>
+                {i + 1}.<span className="muted"> {l.events.filter((e) => e.on).length} notes</span>
               </span>
+
+              {/* Re-voice without replaying: the notes were right, the sound was not. Storing
+                  notes rather than audio is what makes this a dropdown instead of a re-take. */}
+              <select
+                className="inst-layer-inst"
+                value={l.instrument}
+                onChange={(e) => setLayerInstrument(l.id, e.target.value as InstrumentId)}
+                title="Play this take on a different instrument"
+              >
+                {INSTRUMENTS.map(([id, , name]) => (
+                  <option key={id} value={id}>
+                    {name}
+                  </option>
+                ))}
+              </select>
+
+              {/* The third way to fix a take, after undo and re-voice: play it again over the
+                  top. The layer keeps its place in the stack rather than jumping to the end. */}
+              <button
+                className="btn"
+                onClick={() => armRecord(l.id)}
+                title="Record this layer again, keeping its place"
+              >
+                ⏺
+              </button>
               <button className="btn" onClick={() => toggleMute(l.id)} title="Mute this layer">
                 {l.muted ? '🔇' : '🔊'}
               </button>
