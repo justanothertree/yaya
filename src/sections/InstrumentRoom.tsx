@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import {
   INSTRUMENTS,
   allNotesOff,
@@ -11,6 +11,21 @@ import {
   type Knob,
 } from '../audio/synth'
 import { onMixerChange, setVolume, volume } from '../audio/mixer'
+import {
+  armRecord,
+  cancelRecord,
+  capture,
+  clearLayers,
+  loopState,
+  removeLayer,
+  setBars,
+  setBpm,
+  setMetronome,
+  startLoop,
+  stopLoop,
+  subscribeLoop,
+  toggleMute,
+} from '../audio/looper'
 
 /**
  * Somewhere to play.
@@ -26,25 +41,47 @@ import { onMixerChange, setVolume, volume } from '../audio/mixer'
  * the pad and the pluck indistinguishable, which is most of what a synth has to offer.
  */
 
-/** The tracker/DAW layout: home row is white keys, the row above is the black ones. */
+/**
+ * The FL Studio typing layout — four rows, two octaves.
+ *
+ * Two piano keyboards stacked: ZXCVBNM is the lower octave's white keys with SDGHJ as its black
+ * ones, and QWERTYU sits an octave above with 234567 above that. Anyone who has used FL, Ableton
+ * or a tracker already has this in their fingers, which is worth more than a layout I invent.
+ *
+ * ⚠️ LETTERS AND DIGITS ONLY, and nothing needing a modifier. Browsers own the modifier
+ * combinations — ctrl+W closes the tab and no preventDefault can stop it — so a layout using any
+ * of them would be a trap rather than a shortcut. The handler already bails on ctrl, meta and
+ * alt. Deliberately no slash or apostrophe either: both open quick-find in Firefox.
+ */
 const KEY_MAP: Record<string, number> = {
-  a: 0,
-  w: 1,
-  s: 2,
-  e: 3,
-  d: 4,
-  f: 5,
-  t: 6,
-  g: 7,
-  y: 8,
-  h: 9,
-  u: 10,
-  j: 11,
-  k: 12,
-  o: 13,
-  l: 14,
-  p: 15,
-  ';': 16,
+  // lower octave — white keys on the bottom row, black keys on the home row
+  z: 0,
+  s: 1,
+  x: 2,
+  d: 3,
+  c: 4,
+  v: 5,
+  g: 6,
+  b: 7,
+  h: 8,
+  n: 9,
+  j: 10,
+  m: 11,
+  ',': 12,
+  // upper octave — white keys on the QWERTY row, black keys on the number row
+  q: 12,
+  '2': 13,
+  w: 14,
+  '3': 15,
+  e: 16,
+  r: 17,
+  '5': 18,
+  t: 19,
+  '6': 20,
+  y: 21,
+  '7': 22,
+  u: 23,
+  i: 24,
 }
 
 const NAMES = ['C', 'C♯', 'D', 'D♯', 'E', 'F', 'F♯', 'G', 'G♯', 'A', 'A♯', 'B']
@@ -84,8 +121,8 @@ const OCT_KEY = 'instrument_octave_v1'
 const SCALE_KEY = 'instrument_scale_v1'
 const ROOT_KEY = 'instrument_root_v1'
 
-/** Two octaves and a bit — as many keys as fit a screen without each one being a sliver. */
-const SPAN = 17
+/** Two octaves, matching the four typing rows exactly so every key on screen has a key to press. */
+const SPAN = 25
 
 /**
  * One effect, as a slider.
@@ -141,6 +178,7 @@ export function InstrumentRoom() {
     return Number.isFinite(v) && v >= 0 && v <= 11 ? v : 0
   })
   const [held, setHeld] = useState<number[]>([])
+  const loop = useSyncExternalStore(subscribeLoop, loopState, loopState)
   const [vol, setVol] = useState(() => volume('instrument'))
   useEffect(() => onMixerChange(() => setVol(volume('instrument'))), [])
 
@@ -187,13 +225,22 @@ export function InstrumentRoom() {
     }
   }, [inst, octave, scale, root])
 
+  /**
+   * Every note goes to the synth AND offers itself to the recorder.
+   *
+   * capture() is a no-op unless a take is running, so there is no "recording mode" branch here
+   * and no way for the two to disagree about what you played — the sound you heard and the
+   * events stored are produced by the same call.
+   */
   const press = useCallback((id: string, midi: number) => {
     noteOn(id, live.current.inst, midi)
+    capture(midi, true, live.current.inst)
     setHeld((h) => (h.includes(midi) ? h : [...h, midi]))
   }, [])
 
   const lift = useCallback((id: string, midi: number) => {
     noteOff(id)
+    capture(midi, false, live.current.inst)
     setHeld((h) => h.filter((m) => m !== midi))
   }, [])
 
@@ -241,13 +288,13 @@ export function InstrumentRoom() {
   // leaving the page must not leave a note ringing forever
   useEffect(
     () => () => {
+      stopLoop()
       closeSynth()
     },
     [],
   )
 
   const keys = Array.from({ length: SPAN }, (_, i) => noteAt(i))
-  const label = Object.entries(KEY_MAP).find(([, v]) => v === 0)?.[0]
 
   return (
     <section className="inst-wrap">
@@ -368,6 +415,91 @@ export function InstrumentRoom() {
         )}
       </div>
 
+      {/* The looper. Play a pass, it repeats; play another, it stacks. */}
+      <div className="inst-row inst-transport">
+        <button
+          className={'btn' + (loop.playing ? ' is-on' : '')}
+          onClick={() => (loop.playing ? stopLoop() : startLoop())}
+          title={loop.playing ? 'Stop the loop' : 'Start the loop'}
+        >
+          {loop.playing ? '⏹ Stop' : '▶ Play'}
+        </button>
+
+        <button
+          className={
+            'btn inst-rec' + (loop.recording ? ' is-rec' : loop.waiting ? ' is-armed' : '')
+          }
+          onClick={() => (loop.waiting || loop.recording ? cancelRecord() : armRecord())}
+          title="Record a pass — it starts at the top of the loop"
+        >
+          {loop.recording ? '⏺ Recording' : loop.waiting ? '⏳ Armed…' : '⏺ Record'}
+        </button>
+
+        <button
+          className={'btn' + (loop.metronome ? ' is-on' : '')}
+          aria-pressed={loop.metronome}
+          onClick={() => setMetronome(!loop.metronome)}
+          title="Click on every beat"
+        >
+          🎯 Click
+        </button>
+
+        <label className="inst-pick">
+          <span className="muted">BPM</span>
+          <input
+            className="inst-num"
+            type="number"
+            min={40}
+            max={200}
+            value={loop.bpm}
+            onChange={(e) => setBpm(Number(e.target.value))}
+          />
+        </label>
+
+        <label className="inst-pick">
+          <span className="muted">Bars</span>
+          <input
+            className="inst-num"
+            type="number"
+            min={1}
+            max={8}
+            value={loop.bars}
+            onChange={(e) => setBars(Number(e.target.value))}
+          />
+        </label>
+      </div>
+
+      {/* the playhead — a bar you can glance at rather than count against */}
+      {loop.playing && (
+        <div className="inst-playhead" aria-hidden>
+          <span style={{ width: `${Math.round(loop.position * 100)}%` }} />
+        </div>
+      )}
+
+      {loop.layers.length > 0 && (
+        <ul className="inst-layers">
+          {loop.layers.map((l, i) => (
+            <li key={l.id} className={l.muted ? 'is-muted' : undefined}>
+              <span className="inst-layer-name">
+                {i + 1}. {INSTRUMENTS.find(([id]) => id === l.instrument)?.[2] ?? l.instrument}
+                <span className="muted"> · {l.events.filter((e) => e.on).length} notes</span>
+              </span>
+              <button className="btn" onClick={() => toggleMute(l.id)} title="Mute this layer">
+                {l.muted ? '🔇' : '🔊'}
+              </button>
+              <button className="btn" onClick={() => removeLayer(l.id)} title="Delete this layer">
+                ✕
+              </button>
+            </li>
+          ))}
+          <li className="inst-layers-all">
+            <button className="btn" onClick={clearLayers}>
+              Clear all
+            </button>
+          </li>
+        </ul>
+      )}
+
       <div className="inst-row inst-knobs">
         {KNOBS.map(([k, label, hint]) => (
           <KnobRow key={k} k={k} label={label} hint={hint} />
@@ -412,11 +544,10 @@ export function InstrumentRoom() {
       </div>
 
       <p className="muted inst-note">
-        Play with the mouse, or the <kbd>{label}</kbd>–<kbd>;</kbd> rows on your keyboard
-        {scale === 'chromatic'
-          ? ' — the top row is the black keys'
-          : ' — every key is in the scale'}
-        . Drag across the keys to slide. Nothing is recorded or sent anywhere.
+        Play with the mouse, or four rows of your keyboard — <kbd>Z</kbd> and <kbd>Q</kbd> are two
+        octaves of white keys, <kbd>S</kbd> and the number row are the black ones
+        {scale === 'chromatic' ? '' : ', and every key is in the scale'}. Drag across the keys to
+        slide. Nothing is recorded or sent anywhere.
       </p>
       <p className="muted inst-note">
         Open the <strong>🎚️ Visualiser</strong> and pick <strong>Instrument</strong> as the source

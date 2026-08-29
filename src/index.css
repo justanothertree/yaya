@@ -2685,11 +2685,14 @@ section[id] {
   border-radius: 10px;
   background: color-mix(in oklab, var(--text), transparent 96%);
   touch-action: none;
-  overflow: hidden;
+  overflow-x: auto;
+  overflow-y: hidden;
 }
 .inst-key {
   flex: 1 1 0;
-  min-width: 0;
+  /* ⚠️ A floor, not zero. Twenty-five keys across a phone would be 14px slivers nobody can
+     hit; below that width the row scrolls sideways instead of shrinking further. */
+  min-width: 1.6rem;
   display: flex;
   align-items: flex-end;
   justify-content: center;
@@ -2754,6 +2757,71 @@ section[id] {
 }
 .inst-knob .appearance-slider-val {
   min-width: 1.8rem;
+}
+/* ── the looper ────────────────────────────────────────────────────── */
+.inst-transport {
+  gap: 0.4rem;
+}
+.inst-num {
+  width: 3.6rem;
+  font: inherit;
+  padding: 0.15rem 0.3rem;
+  color: var(--text);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+/* armed and recording have to look different at a glance — one means "about to", the other
+   means "right now", and confusing them costs you a take */
+.inst-rec.is-armed {
+  border-color: var(--accent-2);
+  color: var(--accent-2);
+}
+.inst-rec.is-rec {
+  border-color: var(--accent-2);
+  background: color-mix(in oklab, var(--accent-2), transparent 70%);
+  font-weight: 600;
+}
+.inst-playhead {
+  height: 4px;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--text), transparent 88%);
+  overflow: hidden;
+}
+.inst-playhead span {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+}
+.inst-layers {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.3rem;
+}
+.inst-layers li {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+}
+.inst-layers li.is-muted {
+  opacity: 0.5;
+}
+.inst-layer-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.inst-layers li .btn {
+  padding: 0.1rem 0.4rem;
+  font-size: 0.8rem;
+}
+.inst-layers-all {
+  justify-content: flex-end;
 }
 .inst-note {
   margin: 0;
