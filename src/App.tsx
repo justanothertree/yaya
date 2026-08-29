@@ -93,6 +93,9 @@ const Profile = lazy(() => import('./sections/Profile').then((m) => ({ default: 
 const Ratings = lazy(() => import('./sections/Ratings').then((m) => ({ default: m.Ratings })))
 const ChatPage = lazy(() => import('./sections/ChatPage').then((m) => ({ default: m.ChatPage })))
 const People = lazy(() => import('./sections/People').then((m) => ({ default: m.People })))
+const InstrumentRoom = lazy(() =>
+  import('./sections/InstrumentRoom').then((m) => ({ default: m.InstrumentRoom })),
+)
 const AudioVisualizer = lazy(() =>
   import('./sections/AudioVisualizer').then((m) => ({ default: m.AudioVisualizer })),
 )
@@ -112,6 +115,7 @@ type Section =
   | 'account-settings'
   | 'snake'
   | 'visualizer'
+  | 'instrument'
   | 'contact'
   | 'admin'
   | 'invite'
@@ -136,6 +140,7 @@ const SECTION_TITLES: Record<Section, string> = {
   'account-settings': 'Account settings',
   snake: 'Snake',
   visualizer: 'Visualiser',
+  instrument: 'Instrument',
   contact: 'Contact',
   admin: 'Admin',
   invite: 'Accept invite',
@@ -155,6 +160,7 @@ const ALL_SECTIONS: Section[] = [
   'account-settings',
   'snake',
   'visualizer',
+  'instrument',
   'contact',
   'admin',
   'invite',
@@ -185,10 +191,11 @@ const navOrder = (
           ...(isAdmin ? (['admin'] as Section[]) : []),
           'snake',
           'visualizer',
+          'instrument',
           'contact',
         ]
-      : ['home', 'signin', 'snake', 'visualizer', 'contact']
-    : ['home', 'snake', 'visualizer', 'contact']
+      : ['home', 'signin', 'snake', 'visualizer', 'instrument', 'contact']
+    : ['home', 'snake', 'visualizer', 'instrument', 'contact']
 
 // ── optimistic boot: what the browser already knows about this user ──
 // The persisted Supabase session is peeked synchronously (peekPersistedUserId) so a
@@ -1152,6 +1159,7 @@ export default function App() {
     'account-settings',
     'snake',
     'visualizer',
+    'instrument',
     'contact',
     'admin',
     'signin',
@@ -1180,6 +1188,7 @@ export default function App() {
     'account-settings': '👤 Account',
     snake: '🐍 Snake',
     visualizer: '🎚️ Visualiser',
+    instrument: '🎹 Instrument',
     contact: '✉️ Contact',
     admin: '🛠 Admin',
     signin: '🔑 Sign in',
@@ -1217,6 +1226,8 @@ export default function App() {
         )
       case 'visualizer':
         return <AudioVisualizer />
+      case 'instrument':
+        return <InstrumentRoom />
       case 'contact':
         return <ContactForm />
       case 'admin':
@@ -1611,6 +1622,13 @@ export default function App() {
                   aria-current={active === 'visualizer' ? 'page' : undefined}
                 >
                   Visualiser
+                </a>
+                <a
+                  href="#instrument"
+                  onClick={() => goTo('instrument')}
+                  aria-current={active === 'instrument' ? 'page' : undefined}
+                >
+                  Instrument
                 </a>
                 <a
                   href="#contact"
@@ -2014,6 +2032,18 @@ export default function App() {
                 page while this chunk arrives. */}
             <Suspense fallback={<div aria-busy>Loading…</div>}>
               <AudioVisualizer />
+            </Suspense>
+          </section>
+        )}
+        {!sharedCanvasShowing && active === 'instrument' && (
+          <section id="instrument" className="card reveal">
+            <h2>🎹 Instrument</h2>
+            <p className="muted">
+              Play something. Six sounds, your keyboard or the mouse — and the visualiser can watch
+              you do it.
+            </p>
+            <Suspense fallback={<div aria-busy>Loading…</div>}>
+              <InstrumentRoom />
             </Suspense>
           </section>
         )}

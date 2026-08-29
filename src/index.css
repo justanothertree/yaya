@@ -2583,6 +2583,103 @@ section[id] {
   outline: none;
 }
 
+/* ── the instrument ─────────────────────────────────────────────────── */
+.inst-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  min-width: 0;
+}
+.inst-picks {
+  grid-template-columns: repeat(auto-fit, minmax(min(5rem, 100%), 1fr));
+}
+.inst-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.7rem;
+}
+.inst-row .appearance-slider {
+  flex: 1 1 10rem;
+}
+.inst-oct {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.85rem;
+}
+.inst-oct .btn {
+  padding: 0.1rem 0.5rem;
+}
+
+/* The keyboard.
+   ⚠️ touch-action: none is load-bearing — without it a drag across the keys on a phone is
+   interpreted as a scroll, the pointer events stop arriving, and every note you slid onto hangs
+   because its pointerleave never fires. */
+.inst-keys {
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  height: clamp(8rem, 30vh, 16rem);
+  padding: 0.4rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: color-mix(in oklab, var(--text), transparent 96%);
+  touch-action: none;
+  overflow: hidden;
+}
+.inst-key {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding-bottom: 0.4rem;
+  border: 1px solid var(--border);
+  border-radius: 0 0 7px 7px;
+  background: color-mix(in oklab, var(--text), transparent 88%);
+  color: var(--text);
+  cursor: pointer;
+  /* the browser's own tap highlight fights the held state and looks like a bug on iOS */
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+  transition:
+    background 0.06s ease,
+    transform 0.06s ease;
+}
+/* black keys are shorter and darker, the way they are on a real one — the height difference is
+   what makes the layout readable at a glance rather than a row of identical bars */
+.inst-key.is-black {
+  background: color-mix(in oklab, var(--text), transparent 30%);
+  height: 62%;
+  align-self: flex-start;
+  flex-grow: 0.6;
+  border-radius: 0 0 5px 5px;
+}
+.inst-key.is-held {
+  background: var(--accent);
+  transform: translateY(2px);
+}
+.inst-key-name {
+  font-size: 0.62rem;
+  opacity: 0.5;
+  pointer-events: none;
+}
+.inst-key.is-black .inst-key-name {
+  opacity: 0.75;
+}
+.inst-note {
+  margin: 0;
+  font-size: 0.8rem;
+}
+.inst-note kbd {
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  padding: 0.05rem 0.3rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+
 /* ── audio visualiser ────────────────────────────────────────────────
    ⚠️ The STAGE is sized here and the canvas measures it — never the other way round. A canvas
    with no CSS height collapses to its 150px default, and one that sizes its own box creates the

@@ -16,11 +16,12 @@
  * be a third. A single slider would make each new source fight the others.
  */
 
-export type Channel = 'music' | 'monitor'
+export type Channel = 'music' | 'monitor' | 'instrument'
 
 const KEY: Record<Channel, string> = {
   music: 'mix_music_v1',
   monitor: 'mix_monitor_v1',
+  instrument: 'mix_instrument_v1',
 }
 
 /**
@@ -30,7 +31,7 @@ const KEY: Record<Channel, string> = {
  * file that opens at full scale on a laptop is genuinely startling. Monitor starts lower still —
  * see localMic.ts on why anything above unity there is a feedback howl waiting to happen.
  */
-const DEFAULTS: Record<Channel, number> = { music: 0.5, monitor: 0.6 }
+const DEFAULTS: Record<Channel, number> = { music: 0.5, monitor: 0.6, instrument: 0.7 }
 
 const EVENT = 'yaya:mixer'
 

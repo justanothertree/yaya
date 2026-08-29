@@ -24,6 +24,7 @@ export type MobileSection =
   | 'account-settings'
   | 'snake'
   | 'visualizer'
+  | 'instrument'
   | 'contact'
   | 'admin'
   | 'profile'
@@ -129,6 +130,7 @@ export function MobileNav({
     { key: 'snake', label: 'Snake', icon: '🎮', section: 'snake' },
     // the launcher, not the four-slot bar: this is a thing you go looking for, not a daily tab
     { key: 'visualizer', label: 'Visualiser', icon: '🎚️', section: 'visualizer' },
+    { key: 'instrument', label: 'Instrument', icon: '🎹', section: 'instrument' },
     ...(member
       ? ([{ key: 'account', label: 'Account', icon: '👤', section: 'account-settings' }] as Dest[])
       : []),

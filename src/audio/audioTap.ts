@@ -16,7 +16,7 @@
  * which is the thing every other effect on this site is careful not to do.
  */
 
-export type TapId = 'mic' | 'peers' | 'ring' | 'local' | 'music' | 'shared'
+export type TapId = 'mic' | 'peers' | 'ring' | 'local' | 'music' | 'shared' | 'instrument'
 
 export type TapInfo = { id: TapId; label: string }
 
@@ -33,6 +33,8 @@ export const TAPS: TapInfo[] = [
   { id: 'music', label: 'Music' },
   // Whatever another tab or window is playing, via screen share with audio ticked.
   { id: 'shared', label: 'Tab audio' },
+  // The instrument room's synth — registers itself the moment a note is played.
+  { id: 'instrument', label: 'Instrument' },
 ]
 
 const sources = new Map<TapId, AnalyserNode>()
