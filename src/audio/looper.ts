@@ -684,6 +684,23 @@ export function setLayerFx(id: string) {
   set({ layers: state.layers.map((l) => (l.id === id ? { ...l, fx: fxSnapshot() } : l)) })
 }
 
+/**
+ * Replace a layer's notes, from the editor.
+ *
+ * ⚠️ Releases the layer first. Editing while the loop runs is the normal case — you nudge a
+ * note and listen to what it did — and the events holding the note-offs for whatever is sounding
+ * right now are the ones being replaced. Without this, editing a layer mid-note strands it,
+ * exactly like muting used to.
+ */
+export function setLayerEvents(id: string, events: LoopEvent[]) {
+  releaseLayer(id)
+  set({
+    layers: state.layers.map((l) =>
+      l.id === id ? { ...l, events: [...events].sort((a, b) => a.t - b.t) } : l,
+    ),
+  })
+}
+
 export function setLayerInstrument(id: string, instrument: InstrumentId) {
   set({ layers: state.layers.map((l) => (l.id === id ? { ...l, instrument } : l)) })
 }

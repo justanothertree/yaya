@@ -5442,3 +5442,125 @@ a.cz-msg-author:focus-visible {
 #content:focus:not(:focus-visible) {
   outline: none;
 }
+
+/* ── The note editor ─────────────────────────────────────────────────────────
+   A grid of elements rather than a canvas: a take is tens of notes, so the usual reason to
+   reach for a bitmap does not apply, and elements bring hit-testing, focus and this
+   stylesheet's own theming for free. See PianoRoll.tsx. */
+.inst-roll-host {
+  display: block;
+  width: 100%;
+  padding: 0;
+}
+.roll {
+  /* Only as wide as the take needs. A one-bar loop is eight cells across, and stretching the
+     panel to the full row left a large empty plain beside it that looked like missing content
+     rather than like the end of the take. */
+  width: fit-content;
+  max-width: 100%;
+  min-width: min(100%, 30rem);
+  border: 1px solid var(--line);
+  border-radius: 0.5rem;
+  background: color-mix(in srgb, var(--bg) 88%, var(--text) 12%);
+  overflow: hidden;
+}
+.roll-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  padding: 0.4rem 0.55rem;
+  border-bottom: 1px solid var(--line);
+}
+.roll-hint {
+  font-size: 0.7rem;
+  flex: 1 1 12rem;
+}
+.roll-body {
+  display: flex;
+  max-height: 15rem;
+}
+.roll-keys {
+  flex: 0 0 auto;
+  border-right: 1px solid var(--line);
+  overflow: hidden;
+}
+.roll-key {
+  height: 15px;
+  width: 2.4rem;
+  font-size: 0.55rem;
+  line-height: 15px;
+  padding-left: 0.25rem;
+  color: var(--muted);
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 40%, transparent);
+}
+.roll-key.is-black {
+  background: color-mix(in srgb, var(--bg) 70%, #000 30%);
+}
+/* ⚠️ Scrolls in BOTH directions on its own. A take of eight bars is wider than any panel, and
+   letting it push the page sideways instead would move the whole site under the hand that is
+   dragging a note. */
+.roll-scroll {
+  overflow: auto;
+  flex: 1 1 auto;
+}
+.roll-grid {
+  position: relative;
+  touch-action: none;
+  cursor: crosshair;
+}
+.roll-row,
+.roll-line,
+.roll-note,
+.roll-head {
+  position: absolute;
+}
+.roll-row {
+  left: 0;
+  right: 0;
+  width: 100%;
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 35%, transparent);
+}
+.roll-row.is-black {
+  background: color-mix(in srgb, var(--bg) 80%, #000 20%);
+}
+.roll-line {
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: color-mix(in srgb, var(--line) 45%, transparent);
+}
+.roll-line.is-beat {
+  background: color-mix(in srgb, var(--line) 85%, transparent);
+}
+.roll-line.is-bar {
+  background: var(--accent);
+  opacity: 0.5;
+}
+.roll-note {
+  background: var(--accent);
+  border: 1px solid color-mix(in srgb, var(--accent) 55%, #000 45%);
+  border-radius: 3px;
+  cursor: grab;
+  /* the right-hand strip is the resize handle — see HANDLE in PianoRoll */
+  background-image: linear-gradient(
+    to right,
+    transparent calc(100% - 5px),
+    color-mix(in srgb, #000 35%, transparent) calc(100% - 5px)
+  );
+}
+.roll-note.is-sel {
+  outline: 2px solid var(--text);
+  outline-offset: 1px;
+  z-index: 2;
+}
+.roll-head {
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 2px;
+  background: var(--accent-2, #ef4444);
+  pointer-events: none;
+  z-index: 3;
+  will-change: transform;
+}

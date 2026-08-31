@@ -12,6 +12,7 @@ import {
   type Knob,
 } from '../audio/synth'
 import { onMixerChange, setVolume, volume } from '../audio/mixer'
+import { PianoRoll } from './PianoRoll'
 import { jam } from '../party/jam'
 import { hueFor } from '../party/party'
 import { useVoiceSession } from '../voice/useVoiceSession'
@@ -23,6 +24,7 @@ import {
   loopState,
   removeLayer,
   setLayerFx,
+  loopLength,
   setBars,
   setBpm,
   setLayerInstrument,
@@ -269,6 +271,9 @@ export function InstrumentRoom() {
    * browser — those are only released by a message, and unmounting sends none.
    */
   useEffect(() => () => jam.setOn(false), [])
+
+  /** which layer's notes are open in the editor, if any */
+  const [editing, setEditing] = useState<string | null>(null)
 
   /** midi number → the hue of whoever is holding it, for the keyboard below */
   const theirNotes = new Map<number, number>()
@@ -637,6 +642,16 @@ export function InstrumentRoom() {
                * current knobs onto it, so changing the reverb costs a click rather than a
                * performance.
                */}
+              {/* Editing what you played rather than playing it again — only possible because a
+                  take is stored as notes. See PianoRoll. */}
+              <button
+                className={'btn' + (editing === l.id ? ' is-on' : '')}
+                aria-pressed={editing === l.id}
+                onClick={() => setEditing((e) => (e === l.id ? null : l.id))}
+                title="Edit this layer's notes"
+              >
+                ✎
+              </button>
               <button
                 className="btn inst-layer-fx"
                 onClick={() => setLayerFx(l.id)}
@@ -667,6 +682,26 @@ export function InstrumentRoom() {
               </button>
             </li>
           ))}
+          {/* Outside the row it belongs to: a grid this wide inside a flex row would either
+              squash the row or overflow it, and it reads better as a panel under the stack
+              anyway — the list stays a list. */}
+          {editing &&
+            (() => {
+              const l = loop.layers.find((x) => x.id === editing)
+              if (!l) return null
+              return (
+                <li className="inst-roll-host">
+                  <PianoRoll
+                    layer={l}
+                    bpm={loop.bpm}
+                    quantize={loop.quantize}
+                    position={loop.position}
+                    loopLen={loopLength()}
+                    onClose={() => setEditing(null)}
+                  />
+                </li>
+              )
+            })()}
           <li className="inst-layers-all">
             <button className="btn" onClick={clearLayers}>
               Clear all
