@@ -242,29 +242,68 @@ let analyser: AnalyserNode | null = null
 let noise: AudioBuffer | null = null
 
 /**
- * The effects chain every voice passes through.
+ * The effects chain — ONE PER PART, not one for the instrument.
  *
- * ⚠️ Built ONCE and shared, not per note. A convolver per keypress would allocate a reverb tail
- * on every press and the tab would fall over inside a minute; and echoes only overlap into each
- * other — which is the whole point of an echo — if they share one delay line.
+ *     voices ─► bus.in ─┬─► dry ────────────┐
+ *                       ├─► delay ─► wet ───┼─► fxOut ─► analyser / gain / broadcast bus
+ *                       │      ↑______↓     │
+ *                       │      feedback     │
+ *                       └─► reverb ─► wet ──┘
  *
- *     voices ─► fxIn ─┬─► dry ────────────┐
- *                     ├─► delay ─► wet ───┼─► fxOut ─► analyser / gain / broadcast bus
- *                     │      ↑______↓     │
- *                     │      feedback     │
- *                     └─► reverb ─► wet ──┘
+ * ⚠️ IT USED TO BE ONE SHARED CHAIN, AND THAT WAS A BUG YOU COULD HEAR. The knobs are live, so
+ * a layer recorded with a long echo and a big room stopped having them the moment you turned the
+ * echo down to record something dry over the top. Nothing about the take had changed — the
+ * events are just notes — but every part in the stack was played through whatever the knobs
+ * happened to say NOW. You could not build an arrangement, because the last thing you touched
+ * rewrote everything underneath it.
  *
- * fxOut is where the fork happens, so the analyser still sees the full signal including the
- * effects — the visualiser should show the reverb tail, since you can hear it.
+ * The same defect made a jam wrong in a subtler way: a peer's notes arrive as "C#4, bell", and
+ * their bell was then played through YOUR reverb setting. Two people who had each dialled in a
+ * sound heard two different rooms, and neither heard what the other had made.
+ *
+ * So effects belong to the PART — a looper layer, your live hands, one peer — rather than to the
+ * instrument. Each part gets its own delay line and its own reverb, which is also what makes the
+ * echoes behave: an echo is voices overlapping into each other, and a bassline's repeats should
+ * feed the bassline's delay rather than being mixed into the lead's.
+ *
+ * ⚠️ Convolvers are the expensive node here, which is why buses are POOLED AND CAPPED rather
+ * than made per note (a reverb tail allocated per keypress would take the tab down inside a
+ * minute). They are keyed by part, reused for the life of that part, and the least recently used
+ * is dropped once there are too many — but never while it might still be ringing, or you would
+ * hear a tail cut off mid-decay for no reason the player could see.
+ *
+ * fxOut is still shared and is still where the fork happens, so the analyser sees every part's
+ * full signal including its effects — the visualiser should show the reverb tail, since you can
+ * hear it.
  */
-let fxIn: GainNode | null = null
+export type Fx = { echo: number; echoTime: number; space: number; vibrato: number }
+
+type Bus = {
+  in: GainNode
+  /** LFO depth for this part; voices connect it to their detune */
+  vib: GainNode
+  set(fx: Fx): void
+  dispose(): void
+  /** ctx time this bus last had a note, so eviction can leave ringing tails alone */
+  used: number
+}
+
 let fxOut: GainNode | null = null
-let dryGain: GainNode | null = null
-let delayNode: DelayNode | null = null
-let delayWet: GainNode | null = null
-let feedback: GainNode | null = null
-let reverbWet: GainNode | null = null
-let vibrato: GainNode | null = null
+let verbBuf: AudioBuffer | null = null
+const buses = new Map<string, Bus>()
+
+/** The part your own hands play through. */
+export const LIVE_PART = 'live'
+/**
+ * How many parts may have their own effects at once.
+ *
+ * Sized above any real arrangement — a dozen looper layers plus a full call already exceeds what
+ * the voice mesh supports — so eviction is a backstop against a pathological case rather than
+ * something a normal session reaches.
+ */
+const MAX_BUSES = 14
+/** A bus idle for less than this may still be ringing, so it is never evicted. */
+const RING_TAIL = 4
 
 export type Knob = 'echo' | 'echoTime' | 'space' | 'vibrato'
 const KNOB_KEY: Record<Knob, string> = {
@@ -286,6 +325,17 @@ export function knob(k: Knob): number {
   return knobs[k]
 }
 
+/**
+ * The knobs as a value, for storing on a take.
+ *
+ * ⚠️ A COPY, not the live object. The looper keeps this on the layer, and handing it the
+ * mutable one would reintroduce the exact bug this change exists to fix — the layer's settings
+ * would follow the sliders again, which is the opposite of sticking to the recording.
+ */
+export function fxSnapshot(): Fx {
+  return { echo: knobs.echo, echoTime: knobs.echoTime, space: knobs.space, vibrato: knobs.vibrato }
+}
+
 export function setKnob(k: Knob, v: number) {
   knobs[k] = Math.max(0, Math.min(1, v))
   applyKnobs()
@@ -296,27 +346,115 @@ export function setKnob(k: Knob, v: number) {
   }
 }
 
+/** A knob only ever moves YOUR live sound now; every other part keeps what it was given. */
 function applyKnobs() {
-  const c = ctx
-  if (!c || !dryGain || !delayWet || !reverbWet || !delayNode || !feedback || !vibrato) return
-  const t = c.currentTime
+  buses.get(LIVE_PART)?.set(fxSnapshot())
+}
+
+/**
+ * Build one part's effects.
+ *
+ * The convolver shares a single impulse buffer with every other bus — an AudioBuffer is
+ * immutable as far as the graph is concerned, so generating 2.2 seconds of stereo noise once and
+ * pointing every reverb at it costs one buffer rather than fourteen.
+ */
+function makeBus(c: AudioContext): Bus {
+  const input = c.createGain()
+  const dry = c.createGain()
+  const delay = c.createDelay(1.2)
+  const wet = c.createGain()
+  const fb = c.createGain()
+  const verb = c.createConvolver()
+  if (!verbBuf) verbBuf = impulse(c, 2.2)
+  verb.buffer = verbBuf
+  const verbWet = c.createGain()
+
+  input.connect(dry).connect(fxOut!)
+  input.connect(delay)
+  delay.connect(wet).connect(fxOut!)
+  delay.connect(fb).connect(delay)
+  input.connect(verb).connect(verbWet).connect(fxOut!)
+
+  // one LFO per part, so two parts can wobble independently
+  const lfo = c.createOscillator()
+  lfo.type = 'sine'
+  lfo.frequency.value = 5.2
+  const vib = c.createGain()
+  vib.gain.value = 0
+  lfo.connect(vib)
+  lfo.start()
+
   const ramp = (p: AudioParam, v: number) => {
     try {
-      p.setTargetAtTime(v, t, 0.02)
+      p.setTargetAtTime(v, c.currentTime, 0.02)
     } catch {
       p.value = v
     }
   }
-  ramp(delayWet.gain, knobs.echo * 0.55)
-  // ⚠️ Feedback is capped well under 1. At 1 an echo never decays and the delay line builds until
-  // it clips — a runaway howl that outlives the note that started it and has no obvious cause.
-  ramp(feedback.gain, Math.min(0.6, knobs.echo * 0.6))
-  ramp(delayNode.delayTime, 0.06 + knobs.echoTime * 0.7)
-  ramp(reverbWet.gain, knobs.space * 0.9)
-  // 0–70 cents: a whole semitone of wobble is a special effect, not vibrato
-  ramp(vibrato.gain, knobs.vibrato * 70)
-  // dry backs off only slightly, so turning effects up thickens rather than swaps
-  ramp(dryGain.gain, 1 - Math.min(0.35, knobs.space * 0.35))
+
+  return {
+    in: input,
+    vib,
+    used: c.currentTime,
+    set(fx: Fx) {
+      ramp(wet.gain, fx.echo * 0.55)
+      // ⚠️ Feedback is capped well under 1. At 1 an echo never decays and the delay line
+      // builds until it clips — a runaway howl that outlives the note that started it and has
+      // no obvious cause.
+      ramp(fb.gain, Math.min(0.6, fx.echo * 0.6))
+      ramp(delay.delayTime, 0.06 + fx.echoTime * 0.7)
+      ramp(verbWet.gain, fx.space * 0.9)
+      // 0–70 cents: a whole semitone of wobble is a special effect, not vibrato
+      ramp(vib.gain, fx.vibrato * 70)
+      // dry backs off only slightly, so turning effects up thickens rather than swaps
+      ramp(dry.gain, 1 - Math.min(0.35, fx.space * 0.35))
+    },
+    dispose() {
+      try {
+        lfo.stop()
+      } catch {
+        /* already stopped */
+      }
+      for (const n of [input, dry, delay, wet, fb, verb, verbWet, vib]) n.disconnect()
+    },
+  }
+}
+
+/**
+ * The bus for a part, created on first use.
+ *
+ * ⚠️ `fx` is applied on every call, not only on creation. A looper layer's settings are fixed,
+ * but a peer can turn their reverb up mid-jam and the live part changes whenever you touch a
+ * slider — so the cheap thing is to keep writing the values, which setTargetAtTime already makes
+ * a no-op when they have not moved.
+ */
+function busFor(c: AudioContext, part: string, fx: Fx): Bus {
+  let b = buses.get(part)
+  if (!b) {
+    if (buses.size >= MAX_BUSES) evictBus(c)
+    b = makeBus(c)
+    buses.set(part, b)
+  }
+  b.used = c.currentTime
+  b.set(fx)
+  return b
+}
+
+/** Drop the least recently used bus, but never one whose tail could still be sounding. */
+function evictBus(c: AudioContext) {
+  let victim: string | null = null
+  let oldest = Infinity
+  for (const [k, b] of buses) {
+    if (k === LIVE_PART) continue
+    if (c.currentTime - b.used < RING_TAIL) continue
+    if (b.used < oldest) {
+      oldest = b.used
+      victim = k
+    }
+  }
+  if (!victim) return
+  buses.get(victim)!.dispose()
+  buses.delete(victim)
 }
 
 /**
@@ -352,30 +490,7 @@ function ensure(): AudioContext {
   analyser.fftSize = 2048
   analyser.smoothingTimeConstant = 0.78
 
-  fxIn = ctx.createGain()
   fxOut = ctx.createGain()
-  dryGain = ctx.createGain()
-  delayNode = ctx.createDelay(1.2)
-  delayWet = ctx.createGain()
-  feedback = ctx.createGain()
-  const verb = ctx.createConvolver()
-  verb.buffer = impulse(ctx, 2.2)
-  reverbWet = ctx.createGain()
-
-  fxIn.connect(dryGain).connect(fxOut)
-  fxIn.connect(delayNode)
-  delayNode.connect(delayWet).connect(fxOut)
-  delayNode.connect(feedback).connect(delayNode)
-  fxIn.connect(verb).connect(reverbWet).connect(fxOut)
-
-  // one LFO for the whole instrument; its depth is the vibrato knob
-  const lfo = ctx.createOscillator()
-  lfo.type = 'sine'
-  lfo.frequency.value = 5.2
-  vibrato = ctx.createGain()
-  vibrato.gain.value = 0
-  lfo.connect(vibrato)
-  lfo.start()
 
   out = makeGain(ctx, 'instrument')
   // the fork: full signal to the analyser and the room, attenuated signal to your speakers
@@ -387,20 +502,21 @@ function ensure(): AudioContext {
   } catch {
     /* no bus on this device — you still hear yourself */
   }
-  applyKnobs()
+  // your own hands get their bus up front, so the very first keypress is not also a graph build
+  busFor(ctx, LIVE_PART, fxSnapshot())
   registerTap('instrument', analyser)
   return ctx
 }
 
 /**
- * Every voice goes into the effects chain, and the chain decides the rest.
+ * Every voice goes into its part's effects chain, and the chain decides the rest.
  *
- * One line now because ensure() wires fxOut to the analyser, the output gain and the broadcast
- * bus once, rather than every note doing it three times. The fork lives there — see the diagram
- * above fxIn.
+ * Short because ensure() wires fxOut to the analyser, the output gain and the broadcast bus
+ * once, rather than every note doing it three times. The fork lives there — see the diagram
+ * above Fx.
  */
-function connectVoice(node: AudioNode) {
-  if (fxIn) node.connect(fxIn)
+function connectVoice(node: AudioNode, bus: Bus | null) {
+  if (bus) node.connect(bus.in)
   else if (out) node.connect(out)
 }
 
@@ -421,10 +537,10 @@ function noiseBuffer(c: AudioContext): AudioBuffer {
  * noise through a highpass. All three are one-shots — there is no note-off, because you cannot
  * hold a drum.
  */
-function hitDrum(c: AudioContext, midi: number, at: number) {
+function hitDrum(c: AudioContext, midi: number, at: number, bus: Bus | null) {
   const kind = midi % 3
   const g = c.createGain()
-  connectVoice(g)
+  connectVoice(g, bus)
   if (kind === 0) {
     const o = c.createOscillator()
     o.type = 'sine'
@@ -458,14 +574,25 @@ function hitDrum(c: AudioContext, midi: number, at: number) {
  * every note a browser-timer's-worth of jitter away from where it belongs, which is audible as
  * sloppiness on anything rhythmic. This is also the hook multiplayer needs: a peer's note arrives
  * with a timestamp and gets scheduled a few milliseconds out rather than fired on arrival.
+ *
+ * `part` names whose sound this is — your live hands, a looper layer, one peer in a jam — and
+ * carries the effects that belong to it. Omitting it means the live part with the current knobs,
+ * which is what every existing caller wanted and still gets.
  */
-export function noteOn(id: string, instrument: InstrumentId, midi: number, when?: number) {
+export function noteOn(
+  id: string,
+  instrument: InstrumentId,
+  midi: number,
+  when?: number,
+  part?: { key: string; fx: Fx },
+) {
   const c = ensure()
   resumeAudio()
   const at = Math.max(when ?? c.currentTime, c.currentTime)
+  const bus = busFor(c, part?.key ?? LIVE_PART, part?.fx ?? fxSnapshot())
 
   if (instrument === 'drums') {
-    hitDrum(c, midi, at)
+    hitDrum(c, midi, at, bus)
     return
   }
   // already sounding: retrigger rather than stack a second voice on the same key
@@ -495,7 +622,7 @@ export function noteOn(id: string, instrument: InstrumentId, midi: number, when?
     g.connect(f)
     sink = f
   }
-  connectVoice(sink)
+  connectVoice(sink, bus)
 
   const oscs: OscillatorNode[] = []
   for (const part of sh.partials) {
@@ -514,7 +641,7 @@ export function noteOn(id: string, instrument: InstrumentId, midi: number, when?
     // ⚠️ Vibrato drives DETUNE, not frequency. detune is in cents, so one LFO depth gives the
     // same musical wobble at every pitch; driving frequency in Hz would be a shiver down low and
     // a siren up high.
-    if (vibrato) vibrato.connect(o.detune)
+    bus.vib.connect(o.detune)
     if (part.gain === 1) {
       o.connect(g)
     } else {
@@ -611,24 +738,20 @@ export function closeSynth() {
   registerTap('instrument', null)
   releaseGain('instrument')
   try {
+    for (const b of buses.values()) b.dispose()
     out?.disconnect()
     analyser?.disconnect()
     fxOut?.disconnect()
-    fxIn?.disconnect()
-    vibrato?.disconnect()
   } catch {
     /* already gone */
   }
+  buses.clear()
   out = null
   analyser = null
   noise = null
-  fxIn = null
+  // ⚠️ the impulse goes too. It belongs to the AudioContext that made it, and a buffer from a
+  // closed context assigned to a new convolver is a silent reverb rather than an error.
+  verbBuf = null
   fxOut = null
-  dryGain = null
-  delayNode = null
-  delayWet = null
-  feedback = null
-  reverbWet = null
-  vibrato = null
   ctx = null
 }

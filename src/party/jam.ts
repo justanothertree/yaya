@@ -1,5 +1,5 @@
 import { onParty, sendParty, voiceSession } from '../voice/voiceSession'
-import { noteOff, noteOn, type InstrumentId } from '../audio/synth'
+import { fxSnapshot, noteOff, noteOn, type Fx, type InstrumentId } from '../audio/synth'
 
 /**
  * Playing the same instrument room together.
@@ -14,6 +14,14 @@ import { noteOff, noteOn, type InstrumentId } from '../audio/synth'
  *     exactly that
  *   · everyone hears the same thing at full quality, instead of N people's mic-quality mixes
  *   · each player picks their own instrument and it sounds right on every listener's machine
+ *
+ * ⚠️ THE SOUND TRAVELS WITH THE NOTE, not just the instrument id. A note used to arrive as
+ * "C#4, bell" and get played through the LISTENER's reverb and echo settings, so a friend who had
+ * carefully dialled in a cavernous pad was heard bone dry by anyone whose own knobs were down.
+ * Two people each shaping a sound heard two different rooms, and neither heard what the other had
+ * made. Their four effect values ride along with every note-on, and their part gets its own bus
+ * on your machine — the same mechanism a looper layer uses to keep the sound it was recorded
+ * with.
  *
  * The cost is that you hear a friend's note when the MESSAGE arrives, not when their finger
  * moved: realtime adds something like 40–150ms depending on where they are. That is playable for
@@ -98,6 +106,31 @@ const VALID = new Set<string>([
  */
 const voiceId = (peer: string, midi: number) => `jam:${peer}:${midi}`
 
+/**
+ * A peer's effect settings, made safe.
+ *
+ * ⚠️ Clamped to 0–1 rather than trusted, because these become AudioParam values. A feedback
+ * gain above 1 is a delay line that never decays — a howl that grows until it clips and that the
+ * person hearing it cannot stop, since the note that started it is long over. That is a denial of
+ * service made of sound, and it costs one Math.min to make impossible.
+ *
+ * A missing or malformed value falls back to dry rather than to your own settings: a peer whose
+ * client sends nothing should sound plain, not borrow the room you set up for yourself.
+ */
+function cleanFx(v: unknown): Fx {
+  const o = (v ?? {}) as Record<string, unknown>
+  const n = (k: string, d: number) => {
+    const x = o[k]
+    return typeof x === 'number' && Number.isFinite(x) ? Math.max(0, Math.min(1, x)) : d
+  }
+  return {
+    echo: n('echo', 0),
+    echoTime: n('echoTime', 0.26),
+    space: n('space', 0),
+    vibrato: n('vibrato', 0),
+  }
+}
+
 function allowed(peer: string): boolean {
   const now = performance.now()
   const hits = (rate.get(peer) ?? []).filter((t) => now - t < NOTE_WINDOW_MS)
@@ -148,7 +181,9 @@ export const jam = {
    */
   play(midi: number, on: boolean, inst: InstrumentId) {
     if (!state.on) return
-    sendParty('jam', { midi, on, inst })
+    // fx only on the way DOWN: a note-off has nothing to shape, and the bus already holds the
+    // settings the note-on set
+    sendParty('jam', on ? { midi, on, inst, fx: fxSnapshot() } : { midi, on, inst })
   },
 
   start() {
@@ -156,7 +191,13 @@ export const jam = {
 
     const off = onParty((m) => {
       if (m.kind !== 'jam' || !state.on) return
-      const b = m.body as { midi?: unknown; on?: unknown; inst?: unknown; leave?: unknown }
+      const b = m.body as {
+        midi?: unknown
+        on?: unknown
+        inst?: unknown
+        leave?: unknown
+        fx?: unknown
+      }
       if (b?.leave) {
         stopAllFor(m.from)
         return
@@ -167,6 +208,7 @@ export const jam = {
         return
       if (typeof b.inst !== 'string' || !VALID.has(b.inst)) return
       const inst = b.inst as InstrumentId
+      const fx = cleanFx(b.fx)
       const id = voiceId(m.from, b.midi)
       const mine = voices.get(m.from) ?? []
 
@@ -184,7 +226,7 @@ export const jam = {
         while (mine.length >= MAX_VOICES_EACH) noteOff(mine.shift()!)
         if (!mine.includes(id)) mine.push(id)
         voices.set(m.from, mine)
-        noteOn(id, inst, b.midi)
+        noteOn(id, inst, b.midi, undefined, { key: `jam:${m.from}`, fx })
       }
 
       const prev = state.players[m.from]

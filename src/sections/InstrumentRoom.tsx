@@ -7,6 +7,7 @@ import {
   noteOff,
   noteOn,
   setKnob,
+  type Fx,
   type InstrumentId,
   type Knob,
 } from '../audio/synth'
@@ -21,6 +22,7 @@ import {
   clearLayers,
   loopState,
   removeLayer,
+  setLayerFx,
   setBars,
   setBpm,
   setLayerInstrument,
@@ -156,6 +158,21 @@ function KnobRow({ k, label, hint }: { k: Knob; label: string; hint: string }) {
       <span className="appearance-slider-val">{Math.round(v * 100)}</span>
     </label>
   )
+}
+
+/**
+ * A layer's effects in a couple of words.
+ *
+ * Numbers would be honest and unreadable at this size — four percentages per row, in a list you
+ * are scanning to find the bassline. The exact values are in the tooltip; this only has to be
+ * enough to tell two layers apart at a glance.
+ */
+function fxWord(fx: Fx): string {
+  const bits: string[] = []
+  if (fx.echo > 0.02) bits.push('echo')
+  if (fx.space > 0.25) bits.push('room')
+  if (fx.vibrato > 0.02) bits.push('wobble')
+  return bits.length ? bits.join(' + ') : 'dry'
 }
 
 export function InstrumentRoom() {
@@ -602,6 +619,28 @@ export function InstrumentRoom() {
                   </option>
                 ))}
               </select>
+
+              {/**
+               * What this take SOUNDS like, and a way to change your mind.
+               *
+               * The settings are frozen onto the layer when you commit it, which is the whole
+               * point — but frozen with no way back would mean replaying a part you were happy
+               * with just to give it more room. This shows what it kept and re-stamps the
+               * current knobs onto it, so changing the reverb costs a click rather than a
+               * performance.
+               */}
+              <button
+                className="btn inst-layer-fx"
+                onClick={() => setLayerFx(l.id)}
+                title={
+                  `This layer plays with echo ${Math.round(l.fx.echo * 100)}, ` +
+                  `space ${Math.round(l.fx.space * 100)}, ` +
+                  `vibrato ${Math.round(l.fx.vibrato * 100)}. ` +
+                  'Click to give it the settings you have now.'
+                }
+              >
+                {fxWord(l.fx)}
+              </button>
 
               {/* The third way to fix a take, after undo and re-voice: play it again over the
                   top. The layer keeps its place in the stack rather than jumping to the end. */}

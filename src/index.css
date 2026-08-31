@@ -2764,6 +2764,11 @@ section[id] {
     inset 0 0 0 2px hsl(var(--party-hue) 85% 58%),
     0 0 10px hsl(var(--party-hue) 85% 58% / 0.5);
 }
+.inst-layer-fx {
+  font-size: 0.68rem;
+  opacity: 0.75;
+  min-width: 4.5rem;
+}
 .inst-jam {
   align-items: center;
   gap: 0.5rem;

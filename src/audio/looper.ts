@@ -1,5 +1,5 @@
 import { sharedCtx, resumeAudio } from './context'
-import { noteOff, noteOn, type InstrumentId } from './synth'
+import { fxSnapshot, noteOff, noteOn, type Fx, type InstrumentId } from './synth'
 
 /**
  * A loop you play into, and then play over.
@@ -28,6 +28,19 @@ export type Layer = {
   instrument: InstrumentId
   events: LoopEvent[]
   muted: boolean
+  /**
+   * The effect settings this take was played with.
+   *
+   * ⚠️ STORED ON THE LAYER, not read from the knobs at playback. The knobs are live, so a part
+   * recorded with a long echo and a big room lost both the moment you turned them down to record
+   * something dry over the top — the events never changed, but every layer in the stack was
+   * played through whatever the sliders said at that instant. You could not build an arrangement,
+   * because the last thing you touched rewrote everything under it.
+   *
+   * Captured at COMMIT rather than at the first note, so a sound you were still dialling in while
+   * the count-in ran is stored as you finally left it rather than as you first tried it.
+   */
+  fx: Fx
 }
 
 type State = {
@@ -159,7 +172,8 @@ function scheduleWindow(from: number, to: number) {
         // ⚠️ the id carries the layer AND the repetition. Without the repetition, a note still
         // sounding when the loop came round would be silenced by its own next note-on.
         const id = `L${layer.id}:${rep}:${e.midi}`
-        if (e.on) noteOn(id, layer.instrument, e.midi, at)
+        // the layer is its own part, so its echo and reverb are its own too — see Layer.fx
+        if (e.on) noteOn(id, layer.instrument, e.midi, at, { key: `L${layer.id}`, fx: layer.fx })
         else noteOff(id, at)
       }
     }
@@ -345,7 +359,9 @@ function commitTake() {
       recording: false,
       replacing: null,
       layers: state.layers.map((l) =>
-        l.id === target ? { ...l, instrument: takeInstrument, events, muted: false } : l,
+        l.id === target
+          ? { ...l, instrument: takeInstrument, events, muted: false, fx: fxSnapshot() }
+          : l,
       ),
     })
     return
@@ -355,7 +371,13 @@ function commitTake() {
     replacing: null,
     layers: [
       ...state.layers,
-      { id: String(Date.now()), instrument: takeInstrument, events, muted: false },
+      {
+        id: String(Date.now()),
+        instrument: takeInstrument,
+        events,
+        muted: false,
+        fx: fxSnapshot(),
+      },
     ],
   })
 }
@@ -400,6 +422,17 @@ export function undoLast() {
  * The cheapest fix of all: the notes are right, the sound is not. Storing notes rather than audio
  * is what makes this a one-line change instead of a re-recording.
  */
+/**
+ * Give a layer the sound the knobs are currently making.
+ *
+ * The escape hatch for the rule above: settings stick to the take, which is right almost always
+ * and wrong the moment you decide the bassline wants more room after all. Re-recording it just to
+ * change the reverb would mean playing it again, which is a silly price for turning a dial.
+ */
+export function setLayerFx(id: string) {
+  set({ layers: state.layers.map((l) => (l.id === id ? { ...l, fx: fxSnapshot() } : l)) })
+}
+
 export function setLayerInstrument(id: string, instrument: InstrumentId) {
   set({ layers: state.layers.map((l) => (l.id === id ? { ...l, instrument } : l)) })
 }
