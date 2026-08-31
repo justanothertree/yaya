@@ -11,6 +11,9 @@ import {
   type Knob,
 } from '../audio/synth'
 import { onMixerChange, setVolume, volume } from '../audio/mixer'
+import { jam } from '../party/jam'
+import { hueFor } from '../party/party'
+import { useVoiceSession } from '../voice/useVoiceSession'
 import {
   armRecord,
   cancelRecord,
@@ -235,15 +238,40 @@ export function InstrumentRoom() {
    * and no way for the two to disagree about what you played — the sound you heard and the
    * events stored are produced by the same call.
    */
+  /**
+   * Jamming rides the call, so the control only exists while you are in one. Rendering a
+   * disabled "Jam" button to someone playing alone would advertise a feature whose entry point
+   * is somewhere else entirely — the call button, on another page.
+   */
+  const call = useVoiceSession()
+  const jamming = useSyncExternalStore(jam.subscribe, jam.getState, jam.getState)
+  useEffect(() => jam.start(), [])
+  /**
+   * ⚠️ Leaving the page must not leave your friends holding your notes. allNotesOff() silences
+   * the synth locally, which does nothing for the note-ons already sitting in everyone else's
+   * browser — those are only released by a message, and unmounting sends none.
+   */
+  useEffect(() => () => jam.setOn(false), [])
+
+  /** midi number → the hue of whoever is holding it, for the keyboard below */
+  const theirNotes = new Map<number, number>()
+  for (const p of Object.values(jamming.players))
+    for (const m of p.held) theirNotes.set(m, hueFor(p.id))
+
   const press = useCallback((id: string, midi: number) => {
     noteOn(id, live.current.inst, midi)
     capture(midi, true, live.current.inst)
+    // ⚠️ the same call site as capture(), for the same reason: a no-op unless you are jamming,
+    // so there is no mode branch here and no way for what you heard and what they heard to be
+    // produced by different code
+    jam.play(midi, true, live.current.inst)
     setHeld((h) => (h.includes(midi) ? h : [...h, midi]))
   }, [])
 
   const lift = useCallback((id: string, midi: number) => {
     noteOff(id)
     capture(midi, false, live.current.inst)
+    jam.play(midi, false, live.current.inst)
     setHeld((h) => h.filter((m) => m !== midi))
   }, [])
 
@@ -320,6 +348,41 @@ export function InstrumentRoom() {
           ))}
         </div>
       </div>
+
+      {call.inCall && (
+        <div className="inst-row inst-jam">
+          <button
+            className={'btn' + (jamming.on ? ' is-on' : '')}
+            aria-pressed={jamming.on}
+            onClick={() => jam.setOn(!jamming.on)}
+            title={
+              jamming.on
+                ? 'Stop sending your notes to the call'
+                : 'Play together — everyone in the call hears what you play'
+            }
+          >
+            {jamming.on ? '🎶 Jamming' : '🎶 Jam together'}
+          </button>
+          {jamming.on &&
+            (Object.values(jamming.players).length ? (
+              <span className="inst-jam-who">
+                {Object.values(jamming.players).map((p) => (
+                  <span
+                    key={p.id}
+                    className="inst-jam-player"
+                    style={{ ['--party-hue' as string]: hueFor(p.id) }}
+                  >
+                    {p.name}
+                  </span>
+                ))}
+              </span>
+            ) : (
+              <span className="muted">
+                Nobody else is playing yet — they need to press Jam too.
+              </span>
+            ))}
+        </div>
+      )}
 
       <div className="inst-row">
         <span className="muted inst-oct">
@@ -590,7 +653,13 @@ export function InstrumentRoom() {
               // piano furniture on something that is no longer a piano.
               (scale === 'chromatic' && isBlack(midi) ? ' is-black' : '') +
               (scale !== 'chromatic' && midi % 12 === root ? ' is-root' : '') +
-              (held.includes(midi) ? ' is-held' : '')
+              (held.includes(midi) ? ' is-held' : '') +
+              (theirNotes.has(midi) ? ' is-theirs' : '')
+            }
+            style={
+              theirNotes.has(midi)
+                ? ({ ['--party-hue' as string]: theirNotes.get(midi) } as React.CSSProperties)
+                : undefined
             }
             aria-label={noteName(midi)}
             onPointerDown={(e) => {
@@ -612,7 +681,10 @@ export function InstrumentRoom() {
         Play with the mouse, or four rows of your keyboard — <kbd>Z</kbd> and <kbd>Q</kbd> are two
         octaves of white keys, <kbd>S</kbd> and the number row are the black ones
         {scale === 'chromatic' ? '' : ', and every key is in the scale'}. Drag across the keys to
-        slide. Nothing is recorded or sent anywhere.
+        slide.{' '}
+        {jamming.on
+          ? 'While Jam is on, the notes you play are sent to everyone in the call — nothing else is.'
+          : 'Nothing is recorded or sent anywhere.'}
       </p>
       <p className="muted inst-note">
         Open the <strong>🎚️ Visualiser</strong> and pick <strong>Instrument</strong> as the source

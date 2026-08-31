@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { useVoiceSession } from './useVoiceSession'
 import type { VoicePeer } from './voiceSession'
 import { callWord, peerWord, speakingNames } from './callWords'
 import { CallRoster } from './CallRoster'
+import { party, routeIsPrivate } from '../party/party'
 
 /**
  * A call now outlives the screen it started on, which is what makes it usable — but a call
@@ -104,6 +105,11 @@ export function CallDock() {
    *
    * Set above the early return so both tokens still clear when the call ends.
    */
+  const pointers = useSyncExternalStore(party.subscribe, party.getState, party.getState).sharing
+  // recomputed on every render rather than watched: the dock re-renders on navigation anyway,
+  // and a hashchange listener here would be a second copy of the one party.ts already keeps
+  const onPrivatePage = routeIsPrivate()
+
   const dockRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
     const el = document.documentElement
@@ -203,6 +209,33 @@ export function CallDock() {
           {shareMode === 'motion' ? '🎮' : '🔤'}
         </button>
       )}
+      {/**
+       * Pointer sharing.
+       *
+       * ⚠️ It lives HERE rather than in Appearance with the other toggles, because it is not
+       * a preference — it is a live broadcast, and the control for a broadcast belongs next to
+       * the indicator that you are on the air. It also resets every page load on purpose, which
+       * would be baffling behaviour for something filed under settings.
+       *
+       * Disabled rather than hidden on a private page, with the reason in the tooltip: a
+       * control that vanishes looks like a bug, and the fact that this page is excluded is
+       * exactly the thing worth telling you.
+       */}
+      <button
+        className={'btn' + (pointers ? ' is-on' : '')}
+        onClick={() => party.setSharing(!pointers)}
+        aria-pressed={pointers}
+        disabled={!pointers && onPrivatePage}
+        title={
+          onPrivatePage
+            ? 'This page is never shared — your pointer stays private here'
+            : pointers
+              ? 'Stop sharing your pointer'
+              : 'Show your pointer to the call, and see theirs. Off again when you reload.'
+        }
+      >
+        {pointers ? '↖️' : '↗'}
+      </button>
       <button
         className={'btn' + (sharing ? ' is-on' : '')}
         onClick={() => (sharing ? stopShare() : void startShare())}

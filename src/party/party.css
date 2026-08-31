@@ -1,0 +1,54 @@
+/**
+ * The pointer overlay.
+ *
+ * ⚠️ pointer-events: none on the layer AND on every cursor. A layer covering the whole viewport
+ * that could receive a click would swallow every click on the site the moment anyone joined —
+ * the kind of bug that looks like the whole page has frozen.
+ */
+.party-cursors {
+  position: fixed;
+  inset: 0;
+  z-index: 9000;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.party-cursor {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.25rem;
+  pointer-events: none;
+  /* the transform is written by the rAF loop; only the fade is animated here, and only
+     opacity/filter, so nothing in this layer can trigger layout on the page beneath */
+  transition: opacity 0.18s ease;
+  will-change: transform;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.4));
+}
+
+.party-cursor-name {
+  margin-top: 0.85rem;
+  padding: 0.1rem 0.4rem;
+  border-radius: 0.35rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  line-height: 1.5;
+  white-space: nowrap;
+  color: #fff;
+  background: hsl(var(--party-hue) 70% 42%);
+  border: 1px solid hsl(var(--party-hue) 80% 62%);
+  max-width: 10rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Someone who set "reduce motion" still wants to see the cursor, just not chase a lagging
+   ghost of it — the rAF loop already snaps rather than tweens, so there is nothing to disable
+   beyond the fade. */
+@media (prefers-reduced-motion: reduce) {
+  .party-cursor {
+    transition: none;
+  }
+}

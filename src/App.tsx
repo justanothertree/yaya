@@ -16,6 +16,7 @@ import { ShareStage } from './voice/ShareStage'
 import { UsagePanel } from './components/UsagePanel'
 import { voiceSession } from './voice/voiceSession'
 import { CallDock } from './voice/CallDock'
+import { PartyCursors } from './party/PartyCursors'
 import { AudioDock } from './audio/AudioDock'
 import { useReveal } from './hooks/useReveal'
 import { useNotifications, type Notice } from './hooks/useNotifications'
@@ -1502,6 +1503,9 @@ export default function App() {
       {/* A call outlives the screen it started on, so its controls and its audio live at app
           level — otherwise you'd navigate away and be stuck in a call you can't hear or end. */}
       <CallDock />
+      {/* Over everything, drawing nothing until you turn pointer sharing on — see party.ts for
+          why that toggle is off by default and why it does not persist. */}
+      <PartyCursors />
       {/* Sits with the call dock for the same reason it exists: the sound outlives the page that
           started it, so its handle has to live above the pages. */}
       <AudioDock onOpen={() => goTo('visualizer')} />
@@ -2043,8 +2047,8 @@ export default function App() {
           <section id="instrument" className="card reveal">
             <h2>🎹 Instrument</h2>
             <p className="muted">
-              Play something. Six sounds, your keyboard or the mouse — and the visualiser can watch
-              you do it.
+              Play something. Twelve sounds, your keyboard or the mouse — and the visualiser can
+              watch you do it.
             </p>
             <Suspense fallback={<div aria-busy>Loading…</div>}>
               <InstrumentRoom />

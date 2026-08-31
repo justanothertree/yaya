@@ -573,6 +573,46 @@ function send(msg: Signal) {
 }
 
 /**
+ * A second event on the SAME channel, for everything that is co-presence rather than audio:
+ * pointers, what each person is looking at, the shared instrument's notes.
+ *
+ * ⚠️ THE CALL IS THE PARTY, and that is the entire permission story. `voice:<roomId>` is
+ * already gated server-side — realtime.messages RLS asks voice_topic_member() before anyone may
+ * join the topic, so the audience for a pointer is, by construction, exactly the audience that
+ * can already hear your voice. A new `party:<id>` topic would have needed its own gate, its own
+ * migration, and a second copy of the membership rules to drift out of step with the first. This
+ * needs none of them: someone who cannot join the call cannot receive a single one of these
+ * messages, and no client change can alter that.
+ *
+ * Sharing the channel costs nothing in contention either — realtime multiplexes every channel
+ * over one websocket, so a separate channel would have queued behind the same socket anyway.
+ *
+ * Payloads are opaque here on purpose. voiceSession owns the transport and the lifecycle; what
+ * travels over it belongs to src/party, which is where the throttling and the privacy rules
+ * live.
+ */
+const partyListeners = new Set<(payload: PartyEnvelope) => void>()
+
+export type PartyEnvelope = { from: string; name: string; kind: string; body: unknown }
+
+export function sendParty(kind: string, body: unknown) {
+  if (!chan || !meId) return
+  void chan.send({
+    type: 'broadcast',
+    event: 'party',
+    payload: { from: meId, name: myName, kind, body } satisfies PartyEnvelope,
+  })
+}
+
+/** Listen for co-presence messages from everyone else in the call. Returns an unsubscribe. */
+export function onParty(fn: (payload: PartyEnvelope) => void) {
+  partyListeners.add(fn)
+  return () => {
+    partyListeners.delete(fn)
+  }
+}
+
+/**
  * Connect the mic chain in whichever shape is currently right:
  * denoise on and ready:  mic → RNNoise → analyser + gate
  * otherwise:             mic → analyser + gate
@@ -1227,6 +1267,26 @@ export const voiceSession = {
       config: { broadcast: { self: false }, private: true },
     })
     chan = ch
+
+    /**
+     * ⚠️ Delivered WITHOUT ordering or queueing, unlike `voice` below. Co-presence messages are
+     * snapshots of a current value — where a pointer is now, which page someone is on now — so a
+     * late one is worthless rather than out of order, and making a pointer update wait behind an
+     * SDP negotiation would be exactly backwards. A dropped one is corrected by the next.
+     *
+     * A listener that throws must not take the channel down with it, so each is isolated.
+     */
+    ch.on('broadcast', { event: 'party' }, ({ payload }) => {
+      const m = payload as PartyEnvelope
+      if (!m || typeof m.from !== 'string' || m.from === meId) return
+      for (const fn of partyListeners) {
+        try {
+          fn(m)
+        } catch {
+          /* one bad listener is not the channel's problem */
+        }
+      }
+    })
 
     ch.on('broadcast', { event: 'voice' }, ({ payload }) => {
       const m = payload as Signal
