@@ -29,6 +29,19 @@ export type Layer = {
   events: LoopEvent[]
   muted: boolean
   /**
+   * How long this take is, in seconds.
+   *
+   * ⚠️ The take's OWN length, which is not the same as the loop's. Record two bars and then
+   * ask for four and the take does not suddenly become four bars of music with two bars of
+   * silence after it — it repeats, twice, which is what "make the loop longer" means to anyone
+   * who has used a looper pedal. Shrink back to two and the second pass simply stops being
+   * played; nothing is destroyed, and growing again brings it back.
+   *
+   * Kept in seconds and rescaled with the tempo (see setBpm) rather than stored as a bar count,
+   * because the events beside it are in seconds too and the two must not be able to disagree.
+   */
+  len: number
+  /**
    * The effect settings this take was played with.
    *
    * ⚠️ STORED ON THE LAYER, not read from the knobs at playback. The knobs are live, so a part
@@ -123,6 +136,53 @@ let takeInstrument: InstrumentId = 'keys'
 /** Notes held when recording started, so an unmatched note-off cannot hang a layer forever. */
 const heldInTake = new Map<number, number>()
 
+/**
+ * Voice ids the loop has started and not yet released, per layer.
+ *
+ * ⚠️ THIS IS WHAT FIXES NOTES THAT RANG FOREVER. A note-off only ever happened because the
+ * scheduler came round to the event that carried it — so anything that stopped the scheduler
+ * reaching it left the note sounding with nothing left in the world able to stop it. Every one of
+ * these was reachable from the UI:
+ *
+ *   Stop            — the timer died mid-note; the note-off was still in the future.
+ *   Mute a layer    — `if (layer.muted) continue` skips its note-OFFS as eagerly as its note-ons.
+ *   Delete a layer  — the events holding the note-off went with it.
+ *   Clear / Undo    — same, in bulk.
+ *   Tempo or bars   — the grid moves under the scheduled note, and its note-off lands somewhere
+ *                     the window never looks.
+ *
+ * Panic was the only cure, which is why it existed. Tracking the ids means each of those can
+ * release exactly the notes it is responsible for instead — muting one layer must not cut off
+ * another, which a global panic cannot help doing.
+ */
+const sounding = new Map<string, Set<string>>()
+
+function noteStarted(layerId: string, voice: string) {
+  let set = sounding.get(layerId)
+  if (!set) sounding.set(layerId, (set = new Set()))
+  set.add(voice)
+}
+
+/**
+ * Silence one layer now.
+ *
+ * Immediate rather than at the note's scheduled end: the caller is stopping, muting or deleting,
+ * and every one of those means "now". A voice whose oscillator has not started yet is still worth
+ * releasing — stopping it early is how it ends up making no sound at all rather than starting
+ * after the layer it belongs to has gone.
+ */
+export function releaseLayer(layerId: string) {
+  const set = sounding.get(layerId)
+  if (!set) return
+  for (const v of set) noteOff(v)
+  sounding.delete(layerId)
+}
+
+/** Silence every layer, without touching whatever you are playing by hand. */
+function releaseAllLayers() {
+  for (const id of [...sounding.keys()]) releaseLayer(id)
+}
+
 /** A click that is heard but never seen or sent. */
 function click(at: number, accent: boolean, countIn = false) {
   const c = sharedCtx()
@@ -166,15 +226,37 @@ function scheduleWindow(from: number, to: number) {
 
     for (const layer of state.layers) {
       if (layer.muted) continue
-      for (const e of layer.events) {
-        const at = base + e.t
-        if (at < from || at >= to) continue
-        // ⚠️ the id carries the layer AND the repetition. Without the repetition, a note still
-        // sounding when the loop came round would be silenced by its own next note-on.
-        const id = `L${layer.id}:${rep}:${e.midi}`
-        // the layer is its own part, so its echo and reverb are its own too — see Layer.fx
-        if (e.on) noteOn(id, layer.instrument, e.midi, at, { key: `L${layer.id}`, fx: layer.fx })
-        else noteOff(id, at)
+      /**
+       * A take shorter than the loop REPEATS to fill it.
+       *
+       * Two bars laid down and then four asked for gives you the two bars twice, not two bars
+       * and a silence — the thing a looper pedal does, and the thing "make it longer" means.
+       * A take LONGER than the loop is simply cut short by the `at >= base + len` guard below:
+       * the events are still there, so shrinking is a view rather than an edit and growing again
+       * brings the rest back.
+       */
+      const own = Math.max(0.05, layer.len)
+      for (let k = 0; k * own < len - 1e-6; k++) {
+        const sub = base + k * own
+        for (const e of layer.events) {
+          const at = sub + e.t
+          // never let a repetition spill past the end of the loop it is filling
+          if (at >= base + len) continue
+          if (at < from || at >= to) continue
+          // ⚠️ the id carries the layer, the repetition AND which pass through the take this is.
+          // Without the repetition a note still sounding when the loop came round would be
+          // silenced by its own next note-on; without `k`, the second pass through a tiled take
+          // would silence the first one's held notes.
+          const id = `L${layer.id}:${rep}:${k}:${e.midi}`
+          // the layer is its own part, so its echo and reverb are its own too — see Layer.fx
+          if (e.on) {
+            noteOn(id, layer.instrument, e.midi, at, { key: `L${layer.id}`, fx: layer.fx })
+            noteStarted(layer.id, id)
+          } else {
+            noteOff(id, at)
+            sounding.get(layer.id)?.delete(id)
+          }
+        }
       }
     }
   }
@@ -246,6 +328,9 @@ export function startLoop() {
 export function stopLoop() {
   if (timer) clearInterval(timer)
   timer = 0
+  // ⚠️ before commitTake, not after: a take being committed can add a layer, and releasing
+  // afterwards would then chase notes that were never started
+  releaseAllLayers()
   if (state.recording) commitTake()
   armAt = null
   set({
@@ -360,7 +445,7 @@ function commitTake() {
       replacing: null,
       layers: state.layers.map((l) =>
         l.id === target
-          ? { ...l, instrument: takeInstrument, events, muted: false, fx: fxSnapshot() }
+          ? { ...l, instrument: takeInstrument, events, muted: false, fx: fxSnapshot(), len }
           : l,
       ),
     })
@@ -377,29 +462,75 @@ function commitTake() {
         events,
         muted: false,
         fx: fxSnapshot(),
+        len,
       },
     ],
   })
 }
 
 export function toggleMute(id: string) {
+  // muting has to cut what that layer is holding; the scheduler will never reach those note-offs
+  releaseLayer(id)
   set({ layers: state.layers.map((l) => (l.id === id ? { ...l, muted: !l.muted } : l)) })
 }
 
 export function removeLayer(id: string) {
+  releaseLayer(id)
   set({ layers: state.layers.filter((l) => l.id !== id) })
 }
 
 export function clearLayers() {
+  releaseAllLayers()
   set({ layers: [] })
 }
 
+/**
+ * Move the whole arrangement to a new tempo.
+ *
+ * ⚠️ Event times are scaled with it. They are stored in seconds, so leaving them alone would
+ * mean a take recorded at 90bpm keeps its old spacing while the bar lines move — the part drifts
+ * off the grid and then gets cut off by the end of a loop that is now shorter than it is. Scaling
+ * both the events and each take's own length by the same ratio keeps every note exactly where it
+ * was musically, which is the only reading of a tempo change that makes sense.
+ */
 export function setBpm(bpm: number) {
-  set({ bpm: Math.max(40, Math.min(200, Math.round(bpm))) })
+  const next = Math.max(40, Math.min(200, Math.round(bpm)))
+  if (next === state.bpm) return
+  const ratio = state.bpm / next
+  restart()
+  set({
+    bpm: next,
+    layers: state.layers.map((l) => ({
+      ...l,
+      len: l.len * ratio,
+      events: l.events.map((e) => ({ ...e, t: e.t * ratio })),
+    })),
+  })
 }
 
 export function setBars(bars: number) {
-  set({ bars: Math.max(1, Math.min(8, Math.round(bars))) })
+  const next = Math.max(1, Math.min(8, Math.round(bars)))
+  if (next === state.bars) return
+  // Layers are NOT touched: a take keeps its own length and the scheduler tiles it into whatever
+  // the loop is now. That is what makes going 2 -> 4 fill the new bars and 4 -> 2 reversible.
+  restart()
+  set({ bars: next })
+}
+
+/**
+ * Take the loop back to the top after a structural change.
+ *
+ * Changing the tempo or the bar count moves every bar line, so notes already scheduled against
+ * the old grid land in places the new one never looks — which is one of the ways a note used to
+ * get stuck. Releasing and restarting from the top is both the safe answer and the legible one:
+ * you changed the shape of the loop, so the loop starts again.
+ */
+function restart() {
+  releaseAllLayers()
+  if (!state.playing) return
+  const c = sharedCtx()
+  loopStart = c.currentTime
+  scheduledTo = c.currentTime
 }
 
 export function setMetronome(on: boolean) {
@@ -413,6 +544,7 @@ export function setQuantize(q: number) {
 /** Take back the last thing you recorded, without hunting for it in the list. */
 export function undoLast() {
   if (!state.layers.length) return
+  releaseLayer(state.layers[state.layers.length - 1].id)
   set({ layers: state.layers.slice(0, -1) })
 }
 

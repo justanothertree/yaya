@@ -440,15 +440,23 @@ export function InstrumentRoom() {
           <span className="appearance-slider-val">{Math.round(vol * 100)}%</span>
         </label>
 
-        {/* A stuck note is the one failure every synth has, and hunting for the key that caused
-            it is miserable. One button, always there. */}
+        {/**
+         * A stuck note is the one failure every synth has, and hunting for the key that caused
+         * it is miserable. One button, always there.
+         *
+         * ⚠️ It STOPS THE LOOP as well as silencing the voices. Panic used to leave the
+         * transport running, so the loop immediately scheduled the next repetition and whatever
+         * you were panicking about came straight back — you had to hit it, then find Stop, and
+         * in between the thing was still playing. "Make it stop" has one meaning.
+         */}
         <button
           className="btn"
           onClick={() => {
+            stopLoop()
             allNotesOff()
             setHeld([])
           }}
-          title="Silence everything"
+          title="Silence everything and stop the loop"
         >
           ⏹ Panic
         </button>
