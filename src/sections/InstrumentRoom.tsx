@@ -13,6 +13,8 @@ import {
 } from '../audio/synth'
 import { onMixerChange, setVolume, volume } from '../audio/mixer'
 import { PianoRoll } from './PianoRoll'
+import { remember } from '../audio/capture'
+import { sharedCtx } from '../audio/context'
 import { jam } from '../party/jam'
 import { hueFor } from '../party/party'
 import { useVoiceSession } from '../voice/useVoiceSession'
@@ -25,6 +27,7 @@ import {
   removeLayer,
   setLayerFx,
   loopLength,
+  captureLast,
   setBars,
   setBpm,
   setLayerInstrument,
@@ -274,6 +277,8 @@ export function InstrumentRoom() {
 
   /** which layer's notes are open in the editor, if any */
   const [editing, setEditing] = useState<string | null>(null)
+  /** what Capture just did, shown briefly — it is otherwise a button with no visible effect */
+  const [capMsg, setCapMsg] = useState<string | null>(null)
 
   /** midi number → the hue of whoever is holding it, for the keyboard below */
   const theirNotes = new Map<number, number>()
@@ -287,6 +292,9 @@ export function InstrumentRoom() {
     // so there is no mode branch here and no way for what you heard and what they heard to be
     // produced by different code
     jam.play(midi, true, live.current.inst)
+    // …and into the rolling history, so Capture can find it later. Same funnel again: what you
+    // heard, what they heard, what was recorded and what can be captured are one call site.
+    remember(sharedCtx().currentTime, midi, true, live.current.inst)
     setHeld((h) => (h.includes(midi) ? h : [...h, midi]))
   }, [])
 
@@ -294,6 +302,7 @@ export function InstrumentRoom() {
     noteOff(id)
     capture(midi, false, live.current.inst)
     jam.play(midi, false, live.current.inst)
+    remember(sharedCtx().currentTime, midi, false, live.current.inst)
     setHeld((h) => h.filter((m) => m !== midi))
   }, [])
 
@@ -512,6 +521,11 @@ export function InstrumentRoom() {
       </div>
 
       {/* The looper. Play a pass, it repeats; play another, it stacks. */}
+      {capMsg && (
+        <p className="muted inst-capture-note" role="status">
+          {capMsg}
+        </p>
+      )}
       <div className="inst-row inst-transport">
         <button
           className={'btn' + (loop.playing ? ' is-on' : '')}
@@ -521,6 +535,30 @@ export function InstrumentRoom() {
           {loop.playing ? '⏹ Stop' : '▶ Play'}
         </button>
 
+        {/**
+         * Capture — Josh's idea, and the best one in the transport.
+         *
+         * ⚠️ It does not start anything. Everything you play is already in a rolling buffer, so
+         * this asks "keep what just happened" rather than "start keeping things". The whole
+         * value is that you decide AFTER hearing it, which is when you actually know.
+         */}
+        <button
+          className="btn"
+          onClick={() => {
+            const r = captureLast()
+            setCapMsg(
+              !r.ok
+                ? 'Nothing to capture yet — play something first.'
+                : r.tempoSet
+                  ? `Captured ${r.notes} notes · tempo set to ${r.bpm} from your playing`
+                  : `Captured ${r.notes} notes`,
+            )
+            window.setTimeout(() => setCapMsg(null), 4000)
+          }}
+          title="Keep the last loop's worth of what you just played — no need to have been recording"
+        >
+          ⧉ Capture
+        </button>
         <button
           className={
             'btn inst-rec' + (loop.recording ? ' is-rec' : loop.waiting ? ' is-armed' : '')

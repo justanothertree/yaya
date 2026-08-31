@@ -1,5 +1,7 @@
 import { sharedCtx, resumeAudio } from './context'
 import { fxSnapshot, noteOff, noteOn, type Fx, type InstrumentId } from './synth'
+import { detectTempo, lastPlayedAt, playedBetween } from './capture'
+import { toEvents } from './noteEdit'
 
 /**
  * A loop you play into, and then play over.
@@ -418,6 +420,114 @@ export function stopLoop() {
  * playing, and every take would start a fraction late. Arming and waiting is what every looper
  * does, and it is why the button says "armed" until the loop comes round.
  */
+/**
+ * Keep the thing you just played, without having been recording.
+ *
+ * ⚠️ There is no recording step. Every note has been going into a ring buffer since the page
+ * loaded (see capture.ts), so this reads history rather than capturing anything — which is the
+ * entire point. A record button asks you to decide before you play, and deciding is what stops
+ * people playing well; this asks afterwards, when you already know whether it was any good.
+ *
+ * Two cases, and they want different things:
+ *
+ * RUNNING — there is already a grid, so the last loop's worth of playing is folded onto it by
+ * the same modulo the live recorder uses. A phrase played across the loop boundary lands where it
+ * belongs in the cycle rather than being cut in half, because the cycle is what it was played
+ * against.
+ *
+ * STOPPED — there is no grid, so one is inferred from the playing itself and the phrase starts at
+ * bar one. ⚠️ The tempo is only ADOPTED WHEN THERE ARE NO LAYERS YET. Detection is good but not
+ * certain, and quietly re-timing an arrangement somebody has already built on the strength of a
+ * guess is not a trade worth making — with layers present, capture uses the tempo you set and
+ * leaves the guess alone.
+ */
+export function captureLast(): { ok: boolean; notes: number; bpm: number; tempoSet: boolean } {
+  const c = sharedCtx()
+  const now = c.currentTime
+  const last = lastPlayedAt()
+  const fail = { ok: false, notes: 0, bpm: state.bpm, tempoSet: false }
+  // nothing played, or nothing played recently enough that "the last bit" means anything
+  if (last == null || now - last > 30) return fail
+
+  let bpm = state.bpm
+  let tempoSet = false
+  let len: number
+  let from: number
+  let to: number
+  let phase: number
+
+  if (state.playing) {
+    len = loopLength()
+    from = now - len
+    to = now
+    phase = loopStart
+  } else {
+    const onsets = playedBetween(last - 25, now)
+      .filter((e) => e.on)
+      .map((e) => e.t)
+    const guess = state.layers.length ? null : detectTempo(onsets)
+    if (guess) {
+      bpm = guess
+      tempoSet = true
+    }
+    len = (state.bars * BEATS_PER_BAR * 60) / bpm
+    // start the take at the first note of the phrase, not at an arbitrary moment `len` ago —
+    // otherwise a four-bar capture of a two-bar idea begins with two bars of silence
+    const winStart = last - len
+    const inWindow = onsets.filter((t) => t >= winStart)
+    phase = inWindow.length ? inWindow[0] : winStart
+    from = phase
+    to = phase + len
+  }
+
+  /**
+   * Pair the note-ons with their note-offs in ABSOLUTE time, before any wrapping.
+   *
+   * ⚠️ Order matters here and getting it wrong is how you make a note that never stops. Wrap
+   * first and a note held across the loop boundary becomes an off at 0.1 and an on at 0.9 — sorted
+   * by time, the off comes first, the on has nothing after it, and the note rings forever. Pairing
+   * while the times are still absolute keeps each note whole; the wrap then moves a note rather
+   * than splitting one.
+   */
+  const played = playedBetween(from - 0.001, to + 0.001)
+  const open = new Map<number, number>()
+  const notes: Array<{ midi: number; t: number; dur: number }> = []
+  let inst: InstrumentId = 'keys'
+  for (const e of played) {
+    inst = e.inst
+    const prev = open.get(e.midi)
+    if (prev !== undefined) notes.push({ midi: e.midi, t: prev, dur: e.t - prev })
+    if (e.on) open.set(e.midi, e.t)
+    else open.delete(e.midi)
+  }
+  // still held when the window closes: end them at the window's end, as commitTake does
+  for (const [midi, t] of open) notes.push({ midi, t, dur: to - t })
+
+  const wrap = (t: number) => (state.playing ? (((t - phase) % len) + len) % len : t - phase)
+  const placed = notes
+    .filter((n) => n.dur > 0.02)
+    .map((n) => ({ midi: n.midi, t: wrap(n.t), dur: n.dur }))
+    .filter((n) => n.t >= 0 && n.t < len)
+
+  // toEvents does the boundary trimming and the same-pitch overlap rule — the same code the note
+  // editor writes through, so a captured take cannot be shaped differently from an edited one
+  const events = quantise(toEvents(placed, len), len, state.quantize)
+  if (!events.some((e) => e.on)) return fail
+
+  const layer: Layer = {
+    id: String(Date.now()),
+    instrument: inst,
+    events,
+    muted: false,
+    fx: fxSnapshot(),
+    len,
+  }
+  if (tempoSet || bpm !== state.bpm) set({ bpm })
+  set({ layers: [...state.layers, layer] })
+  if (!state.playing) startLoop()
+  return { ok: true, notes: placed.length, bpm, tempoSet }
+}
+
 export function armRecord(replaceId?: string) {
   /**
    * ⚠️ Pressing record from STOPPED counts you in first.

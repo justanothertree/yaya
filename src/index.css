@@ -5564,3 +5564,10 @@ a.cz-msg-author:focus-visible {
   z-index: 3;
   will-change: transform;
 }
+
+/* Capture has no visible effect of its own — a layer appears in a list that may be scrolled
+   away — so it says what it did. */
+.inst-capture-note {
+  margin: 0.2rem 0 0;
+  font-size: 0.78rem;
+}
