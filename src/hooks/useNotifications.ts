@@ -8,6 +8,7 @@ import {
   previewOverview,
 } from '../dev/previewMember'
 import { onNotificationsChanged } from './notifySignal'
+import { useRealtimeLife } from '../finance/realtimeLife'
 
 /**
  * What's waiting for you, in one place: unread messages per conversation and friend requests
@@ -164,6 +165,8 @@ export function useNotifications(authed: boolean): Notifications {
     ])
   }, [authed])
 
+  const life = useRealtimeLife()
+
   useEffect(() => {
     void load()
   }, [load])
@@ -178,8 +181,17 @@ export function useNotifications(authed: boolean): Notifications {
     return () => clearTimeout(t)
   }, [seen])
 
-  // a new message anywhere we can see should update the badge without a reload; RLS applies
-  // to realtime too, so this only fires for rooms we're actually in
+  /**
+   * A new message anywhere we can see should update the badge without a reload; RLS applies to
+   * realtime too, so this only fires for rooms we're actually in.
+   *
+   * ⚠️ `life` in the deps is what makes this survive the day. Without it the channel was
+   * subscribed once at mount and never again, so a token expiring, a socket dropping or a
+   * subscription racing the restored session left it permanently dead — the reported symptom was
+   * a friend getting no notification for a message OR a call until they reloaded. See
+   * realtimeLife.ts; the same number is in the voice presence hook, because both were dying
+   * together for the same reason.
+   */
   useEffect(() => {
     if (!authed || previewMember) return
     const sb = getSupabaseClient()
@@ -199,12 +211,51 @@ export function useNotifications(authed: boolean): Notifications {
     return () => {
       void sb.removeChannel(ch)
     }
-  }, [authed, load])
+  }, [authed, load, life])
 
   // Reading a room doesn't always move the hash — tapping a conversation row marks it read
   // in place — so the screens that change these counts say so directly. This is the reliable
   // path; the hashchange listener below is the backstop for anything that doesn't announce.
   useEffect(() => onNotificationsChanged(() => void load()), [load])
+
+  /**
+   * The backstop: check again when you come back to the tab, and every minute while you are
+   * looking at it.
+   *
+   * ⚠️ Realtime is an optimisation, not a guarantee, and this hook had been treating it as the
+   * only source of new information. A missed message is not a missed frame — it is somebody
+   * thinking they were ignored — so there has to be a path that works when the socket does not.
+   * Sixty seconds of staleness is invisible in practice and three cheap RPCs an hour is nothing;
+   * being permanently wrong until a reload is the failure worth spending that on.
+   *
+   * Only while visible: a hidden tab has its timers throttled anyway, and re-checking on the way
+   * back in is what actually matters.
+   */
+  useEffect(() => {
+    if (!authed) return
+    const tick = () => {
+      if (document.visibilityState === 'visible') void load()
+    }
+    const onShow = () => {
+      if (document.visibilityState === 'visible') void load()
+    }
+    const t = window.setInterval(tick, 60000)
+    document.addEventListener('visibilitychange', onShow)
+    window.addEventListener('focus', onShow)
+    window.addEventListener('online', onShow)
+    return () => {
+      window.clearInterval(t)
+      document.removeEventListener('visibilitychange', onShow)
+      window.removeEventListener('focus', onShow)
+      window.removeEventListener('online', onShow)
+    }
+  }, [authed, load])
+
+  // a reconnect may have happened while we were away — the channel is rebuilt above, but
+  // whatever arrived while it was down was missed, so read the current truth once
+  useEffect(() => {
+    if (authed) void load()
+  }, [life, authed, load])
 
   // reading a room or answering a request happens on another screen — recheck on navigation
   useEffect(() => {

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { getSupabaseClient } from '../finance/client'
+import { useRealtimeLife } from '../finance/realtimeLife'
 
 /**
  * Who is sitting in each room's voice call, live — the "two friends are in General" glance
@@ -36,6 +37,14 @@ export function useVoicePresence(
   activeRoomId: string | null,
 ): Record<string, string[]> {
   const [byRoom, setByRoom] = useState<Record<string, string[]>>({})
+  /**
+   * ⚠️ Rebuild these when the connection has been renewed.
+   *
+   * These channels are how you find out somebody is calling you. Subscribed once at mount and
+   * never again, they die quietly with the first expired token or dropped socket, and the call
+   * button on the other end rings into a room nobody is listening to. See realtimeLife.ts.
+   */
+  const life = useRealtimeLife()
   // joined into a string so the effect doesn't re-run on every render just because the
   // caller built a new array with the same ids in it
   const key = roomIds.join(',')
@@ -108,7 +117,7 @@ export function useVoicePresence(
         void sb.removeChannel(ch)
       })
     }
-  }, [key, activeRoomId, myId, myName])
+  }, [key, activeRoomId, myId, myName, life])
 
   return byRoom
 }
