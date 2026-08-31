@@ -53,6 +53,25 @@ type Drag =
   | { kind: 'resize'; i: number; from: Note[]; col: number }
   | null
 
+/** Does this note run into another of the same pitch? */
+function hits(list: Note[], self: number, n: Note): boolean {
+  return list.some(
+    (o, i) =>
+      i !== self && o.midi === n.midi && n.t < o.t + o.dur - 1e-6 && n.t + n.dur > o.t + 1e-6,
+  )
+}
+
+/** How long this note may be before it would touch the next one of the same pitch. */
+function roomAfter(list: Note[], self: number, n: Note): number {
+  let limit = Infinity
+  for (let i = 0; i < list.length; i++) {
+    const o = list[i]
+    if (i === self || o.midi !== n.midi || o.t <= n.t) continue
+    limit = Math.min(limit, o.t - n.t)
+  }
+  return limit
+}
+
 export function PianoRoll({
   layer,
   bpm,
@@ -114,18 +133,38 @@ export function PianoRoll({
   const shown = useMemo(() => {
     if (!drag) return notes
     const next = [...drag.from]
-    const n = { ...next[drag.i] }
-    if (!n) return notes
+    const was = next[drag.i]
+    if (!was) return notes
+    const n = { ...was }
     if (drag.kind === 'move') {
       n.t = Math.max(0, Math.min(cols - 1, drag.col - drag.dx)) * step
       n.midi = Math.max(lo, Math.min(hi, hi - (drag.row - drag.dy)))
+      /**
+       * ⚠️ A move onto an occupied slot is REFUSED, not merged.
+       *
+       * Landing one note on another of the same pitch used to replace it — which is what most
+       * sequencers do, and which is still one note fewer than you had without ever saying so. It
+       * also made the overlap rule reachable from the mouse, and every overlap is a chance for
+       * the pairing to come out wrong.
+       *
+       * Refusing means the note simply stays where it was until you find a free slot: nothing is
+       * ever lost by dragging, and there is no state in which two notes of one pitch sound at
+       * once. The pointer keeps moving, so it costs nothing to try again.
+       */
+      if (hits(next, drag.i, n)) return notes
     } else {
       const endCol = Math.max(Math.round(n.t / step) + 1, drag.col + 1)
-      n.dur = Math.min(layer.len - n.t, endCol * step - n.t)
+      // stretch up to the next note of this pitch and no further, so lengthening cannot
+      // swallow a neighbour either
+      n.dur = Math.min(layer.len - n.t, endCol * step - n.t, roomAfter(next, drag.i, n))
     }
     next[drag.i] = n
     return next
   }, [drag, notes, cols, step, lo, hi, layer.len])
+
+  /** Click an empty cell adds; clicking an occupied one must not stack a second note on it. */
+  const occupied = (list: Note[], midi: number, t: number) =>
+    list.some((o) => o.midi === midi && t < o.t + o.dur - 1e-6 && t + step > o.t + 1e-6)
 
   /** Write back through the looper, which is the single source of truth. */
   const commit = useCallback(
@@ -229,13 +268,18 @@ export function PianoRoll({
     setDrag(null)
   }
 
-  /** Click an empty cell to put a note there. */
+  /** Click an empty cell to put a note there. An occupied one is left alone. */
   const onGridDown = (e: React.PointerEvent) => {
     const c = cellFrom(e)
     if (!c) return
     const midi = hi - c.row
     if (midi < lo || midi > hi || c.col < 0 || c.col >= cols) return
-    const n: Note = { midi, t: c.col * step, dur: step }
+    const t = c.col * step
+    // ⚠️ clicking where a note already is must not drop a second one on top of it — the click
+    // fell through the note element's own handler only because it was a miss, and a miss on an
+    // occupied cell means the pointer was in the gap, not that you wanted two notes there
+    if (occupied(notes, midi, t)) return
+    const n: Note = { midi, t, dur: step }
     audition(midi)
     const next = [...notes, n]
     setSel(next.length - 1)

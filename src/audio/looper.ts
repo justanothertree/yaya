@@ -282,17 +282,43 @@ function scheduleWindow(from: number, to: number) {
        *
        * Two bars laid down and then four asked for gives you the two bars twice, not two bars
        * and a silence — the thing a looper pedal does, and the thing "make it longer" means.
-       * A take LONGER than the loop is simply cut short by the `at >= base + len` guard below:
-       * the events are still there, so shrinking is a view rather than an edit and growing again
-       * brings the rest back.
+       * A take LONGER than the loop is cut short at the boundary: the events are still there, so
+       * shrinking is a view rather than an edit and growing again brings the rest back.
+       *
+       * ⚠️ WHOLE REPETITIONS ONLY, and this was a note-that-rang-forever.
+       *
+       * The condition used to be `k * own < len`, which admits a final repetition that STARTS
+       * inside the loop without finishing inside it — and the guard below then skipped everything
+       * past the boundary, note-OFFS included. So a take of 1.2s in a 5s loop scheduled a fifth
+       * pass at 4.8s, its note-ons at 4.9s were played, and their note-offs at 5.15s were dropped
+       * on the floor. The note had nothing left in the world to end it, and every lap started
+       * another copy on top. That is the sticking-and-layering that survived the quantise fix,
+       * because it was never the same bug.
+       *
+       * Whole repetitions leave a sliver of silence when the loop is not an exact multiple of the
+       * take, which is the correct answer: a partial pass is not something anybody asked to hear.
        */
       const own = Math.max(0.05, layer.len)
-      for (let k = 0; k * own < len - 1e-6; k++) {
+      const reps = Math.max(1, Math.floor(len / own + 1e-6))
+      const end = base + len
+      for (let k = 0; k < reps; k++) {
         const sub = base + k * own
         for (const e of layer.events) {
-          const at = sub + e.t
-          // never let a repetition spill past the end of the loop it is filling
-          if (at >= base + len) continue
+          let at = sub + e.t
+          /**
+           * ⚠️ A note-off past the boundary is CLAMPED, never skipped.
+           *
+           * Skipping a note-on is fine — a note that cannot start inside the loop simply does not
+           * play. Skipping a note-OFF is not symmetrical at all: its note-on may already have
+           * been scheduled, and dropping the only thing that would have ended it is precisely how
+           * a voice ends up ringing until Panic. This can still be reached with a take longer
+           * than the loop, where k=0 alone runs past the end. Ending it at the boundary is both
+           * safe and what the truncation already implies.
+           */
+          if (at >= end) {
+            if (e.on) continue
+            at = Math.max(from, end - 0.005)
+          }
           if (at < from || at >= to) continue
           // ⚠️ the id carries the layer, the repetition AND which pass through the take this is.
           // Without the repetition a note still sounding when the loop came round would be
