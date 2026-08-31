@@ -76,7 +76,21 @@ type State = {
 }
 
 const BEATS_PER_BAR = 4
-const LOOKAHEAD_S = 0.14
+/**
+ * How far ahead notes are handed to the audio clock.
+ *
+ * ⚠️ Raised while jamming (see setLookahead). Alone at the keyboard, short is better: it is
+ * how quickly muting a layer or moving a slider takes effect. In a jam every scheduled note is
+ * also a message to everyone else, and a message that leaves 140ms before the note is due arrives
+ * after it — the lookahead has to cover the trip or the far end is always late.
+ */
+let lookahead = 0.14
+const LOOKAHEAD_SOLO = 0.14
+
+/** Give the network room while jamming; back to snappy when alone. */
+export function setLookahead(seconds: number) {
+  lookahead = Math.max(LOOKAHEAD_SOLO, Math.min(1, seconds))
+}
 const TICK_MS = 25
 
 let state: State = {
@@ -157,6 +171,36 @@ const heldInTake = new Map<number, number>()
  */
 const sounding = new Map<string, Set<string>>()
 
+/**
+ * Somebody who wants to know about every note the loop schedules, and when.
+ *
+ * Exists so the jam can send your loops to the room as NOTES rather than as audio down the call
+ * — with the time they are due, so the far end schedules them rather than playing them on
+ * arrival. The looper stays unaware of any of that: it announces, and something else decides
+ * whether anyone is listening.
+ */
+export type ScheduledNote = {
+  midi: number
+  on: boolean
+  inst: InstrumentId
+  /** when it is due, on our audio clock */
+  at: number
+  /** which layer it belongs to, so the far end can keep the parts apart */
+  part: string
+  /**
+   * ⚠️ The LAYER's effects, not the live knobs. Sending a snapshot of the sliders would
+   * undo the whole point of storing effects on a take: everyone else would hear your bassline
+   * through whatever you happened to be dialling in for the take you are playing now.
+   */
+  fx: Fx
+}
+
+let onSchedule: ((n: ScheduledNote) => void) | null = null
+
+export function setScheduleListener(fn: ((n: ScheduledNote) => void) | null) {
+  onSchedule = fn
+}
+
 function noteStarted(layerId: string, voice: string) {
   let set = sounding.get(layerId)
   if (!set) sounding.set(layerId, (set = new Set()))
@@ -214,6 +258,11 @@ function scheduleWindow(from: number, to: number) {
   const firstRep = Math.floor((from - loopStart) / len)
   const lastRep = Math.floor((to - loopStart) / len)
   for (let rep = firstRep; rep <= lastRep; rep++) {
+    // ⚠️ Nothing before the first pass. Starting with a count-in puts loopStart a bar in the
+    // future, which makes rep -1 a real repetition as far as the arithmetic is concerned — and
+    // its notes land inside the count-in. You would hear the loop during the bar that exists to
+    // tell you the loop has not started.
+    if (rep < 0) continue
     const base = loopStart + rep * len
     if (base + len < from) continue
 
@@ -256,6 +305,14 @@ function scheduleWindow(from: number, to: number) {
             noteOff(id, at)
             sounding.get(layer.id)?.delete(id)
           }
+          onSchedule?.({
+            midi: e.midi,
+            on: e.on,
+            inst: layer.instrument,
+            at,
+            part: `L${layer.id}`,
+            fx: layer.fx,
+          })
         }
       }
     }
@@ -306,21 +363,32 @@ function tick() {
     }
   }
 
-  const target = now + LOOKAHEAD_S
+  const target = now + lookahead
   if (scheduledTo < now) scheduledTo = now
   if (target > scheduledTo) {
     scheduleWindow(scheduledTo, target)
     scheduledTo = target
   }
-  set({ position: (now - loopStart) / len })
+  // clamped at 0: during a count-in `now` is before the loop's first beat, and a playhead
+  // running backwards off the left of the bar is not a useful picture of "about to start"
+  set({ position: Math.max(0, (now - loopStart) / len) })
 }
 
-export function startLoop() {
+/**
+ * Start the transport.
+ *
+ * `leadIn` pushes the first bar into the future without delaying the scheduler, which is what
+ * makes a count-in possible: the clicks live BEFORE the loop's first beat, so there has to be
+ * room before it for them to happen in.
+ */
+export function startLoop(leadIn = 0) {
   if (state.playing) return
   resumeAudio()
   const c = sharedCtx()
-  loopStart = c.currentTime + 0.08
-  scheduledTo = loopStart
+  loopStart = c.currentTime + 0.08 + Math.max(0, leadIn)
+  // ⚠️ from NOW, not from loopStart. The count-in sits in the gap between the two, and a
+  // scheduler that only looked forward from the loop's first beat would never see it.
+  scheduledTo = c.currentTime
   set({ playing: true })
   timer = window.setInterval(tick, TICK_MS)
 }
@@ -351,16 +419,23 @@ export function stopLoop() {
  * does, and it is why the button says "armed" until the loop comes round.
  */
 export function armRecord(replaceId?: string) {
-  if (!state.playing) startLoop()
+  /**
+   * ⚠️ Pressing record from STOPPED counts you in first.
+   *
+   * It used to start the loop 80ms away and arm onto that, so every count-in click — they sit at
+   * armAt minus one, two, three, four beats — was already in the past by the time it was
+   * scheduled, and none of them was ever heard. Recording simply began, instantly, from silence,
+   * with nothing to play to. A bar of lead-in puts those four clicks back in the future where
+   * they can be sounded, which is the entire point of a count-in.
+   *
+   * When the loop is ALREADY running there is no lead-in: the next boundary is coming anyway and
+   * the clicks before it are already scheduled.
+   */
+  const beat = 60 / state.bpm
+  if (!state.playing) startLoop(BEATS_PER_BAR * beat)
   const c = sharedCtx()
   const len = loopLength()
-  /**
-   * The NEXT top, not this instant.
-   *
-   * When the loop is already running that is one boundary away; when it has only just been
-   * started it is the start itself, so pressing record from stopped does not cost you a whole
-   * empty lap before anything happens.
-   */
+  // the next top: the start itself when it has not happened yet, otherwise one boundary on
   armAt = c.currentTime < loopStart ? loopStart : loopStart + len
   set({ waiting: true, replacing: replaceId ?? null })
 }
@@ -531,6 +606,50 @@ function restart() {
   const c = sharedCtx()
   loopStart = c.currentTime
   scheduledTo = c.currentTime
+}
+
+/**
+ * Where the current loop began, on the audio clock.
+ *
+ * Exposed so a jam can share it. The metronome is a click at loopStart + n beats and nothing
+ * else, so two people agreeing on this number and on the tempo is the whole of "our metronomes
+ * are together" — there is nothing else to synchronise.
+ */
+export function loopOrigin(): number {
+  return loopStart
+}
+
+/**
+ * Adopt somebody else's transport.
+ *
+ * ⚠️ `origin` is in OUR audio clock already — the caller has converted it (see party/clock).
+ * Doing the conversion here would put a network concern inside the sequencer, and the sequencer
+ * has no idea other machines exist.
+ *
+ * Layers are left alone. Following someone's tempo must not rewrite the takes you have recorded,
+ * which is exactly what setBpm does and why this is not simply setBpm plus a nudge.
+ */
+export function setTransport(t: { bpm: number; bars: number; playing: boolean; origin: number }) {
+  const bpm = Math.max(40, Math.min(200, Math.round(t.bpm)))
+  const bars = Math.max(1, Math.min(8, Math.round(t.bars)))
+  if (!t.playing) {
+    if (state.playing) stopLoop()
+    if (bpm !== state.bpm || bars !== state.bars) set({ bpm, bars })
+    return
+  }
+  releaseAllLayers()
+  loopStart = t.origin
+  const c = sharedCtx()
+  scheduledTo = Math.max(c.currentTime, t.origin)
+  // wind an origin that is already in the past forward to the pass we are actually in, so the
+  // playhead and the metronome describe now rather than a bar that finished minutes ago
+  const len = (bars * BEATS_PER_BAR * 60) / bpm
+  while (c.currentTime - loopStart >= len) loopStart += len
+  if (!state.playing) {
+    if (timer) clearInterval(timer)
+    timer = window.setInterval(tick, TICK_MS)
+  }
+  set({ bpm, bars, playing: true })
 }
 
 export function setMetronome(on: boolean) {

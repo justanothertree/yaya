@@ -497,15 +497,43 @@ function ensure(): AudioContext {
   fxOut.connect(analyser)
   fxOut.connect(out)
   out.connect(ctx.destination)
-  try {
-    fxOut.connect(broadcastBus())
-  } catch {
-    /* no bus on this device — you still hear yourself */
-  }
+  wireBroadcast()
   // your own hands get their bus up front, so the very first keypress is not also a graph build
   busFor(ctx, LIVE_PART, fxSnapshot())
   registerTap('instrument', analyser)
   return ctx
+}
+
+/**
+ * Whether the instrument is also piped down the voice call as audio.
+ *
+ * ⚠️ TURNED OFF WHILE JAMMING, and that is not an optimisation. Notes are broadcast as events
+ * in a jam and synthesised on every machine, so leaving the audio path connected meant every note
+ * reached a listener TWICE — once as a message they played instantly, once as call audio arriving
+ * on its own schedule. Two copies of the same note a few tens of milliseconds apart is a flam,
+ * and it made careful playing sound sloppy for reasons the player could not see.
+ *
+ * The event copy is the one worth keeping. Call audio is echo-cancelled, noise-gated and
+ * compressed for speech, and a sustained instrument is exactly what that machinery is built to
+ * identify as noise and remove.
+ */
+let broadcasting = true
+
+function wireBroadcast() {
+  if (!fxOut) return
+  try {
+    if (broadcasting) fxOut.connect(broadcastBus())
+    else fxOut.disconnect(broadcastBus())
+  } catch {
+    /* no bus on this device, or already in the state we asked for — you still hear yourself */
+  }
+}
+
+/** Send the instrument down the call as audio, or don't. See `broadcasting`. */
+export function setBroadcastAudio(onAir: boolean) {
+  if (onAir === broadcasting) return
+  broadcasting = onAir
+  wireBroadcast()
 }
 
 /**

@@ -1,5 +1,16 @@
 import { onParty, sendParty, voiceSession } from '../voice/voiceSession'
-import { fxSnapshot, noteOff, noteOn, type Fx, type InstrumentId } from '../audio/synth'
+import {
+  fxSnapshot,
+  noteOff,
+  noteOn,
+  setBroadcastAudio,
+  type Fx,
+  type InstrumentId,
+} from '../audio/synth'
+import { sharedCtx } from '../audio/context'
+import { setLookahead, setScheduleListener } from '../audio/looper'
+import { clock, toLocalTime } from './clock'
+import { transport } from './transport'
 
 /**
  * Playing the same instrument room together.
@@ -14,6 +25,8 @@ import { fxSnapshot, noteOff, noteOn, type Fx, type InstrumentId } from '../audi
  *     exactly that
  *   · everyone hears the same thing at full quality, instead of N people's mic-quality mixes
  *   · each player picks their own instrument and it sounds right on every listener's machine
+ *   · the instrument stops going down the call as audio at all, which is why it stops being
+ *     treated as background noise by the call's own noise suppression
  *
  * ⚠️ THE SOUND TRAVELS WITH THE NOTE, not just the instrument id. A note used to arrive as
  * "C#4, bell" and get played through the LISTENER's reverb and echo settings, so a friend who had
@@ -104,7 +117,22 @@ const VALID = new Set<string>([
  * would mean the second press stole the first person's note and the first release silenced both
  * — the chord would collapse to one voice and then to none.
  */
-const voiceId = (peer: string, midi: number) => `jam:${peer}:${midi}`
+const voiceId = (peer: string, part: string, midi: number) => `jam:${peer}:${part}:${midi}`
+
+/**
+ * Which of a peer's parts a note belongs to, made safe to use as a key.
+ *
+ * ⚠️ Restricted characters and a hard length cap, because this string becomes a map key on our
+ * machine — one that the effects pool is indexed by. Left unchecked, a peer could mint an
+ * unbounded number of distinct parts by varying it, and each one asks for a convolver. The pool
+ * evicts, so this is a cap on churn rather than on memory, but a peer should not be able to make
+ * our audio graph thrash at all.
+ */
+function cleanPart(v: unknown): string {
+  if (typeof v !== 'string') return 'live'
+  const t = v.slice(0, 24).replace(/[^\w:-]/g, '')
+  return t || 'live'
+}
 
 /**
  * A peer's effect settings, made safe.
@@ -154,6 +182,8 @@ function stopAllFor(peer: string) {
 }
 
 let detach: Array<() => void> = []
+/** what setOn(true) started, torn down by setOn(false) */
+let rig: Array<() => void> = []
 
 export const jam = {
   getState: () => state,
@@ -168,9 +198,28 @@ export const jam = {
       sendParty('jam', { leave: true })
       // silence everyone else's notes rather than leaving a held pad ringing forever
       for (const peer of [...voices.keys()]) stopAllFor(peer)
+      rig.forEach((d) => d())
+      rig = []
+      setScheduleListener(null)
+      setLookahead(0)
+      setBroadcastAudio(true)
       set({ on: false, players: {} })
       return
     }
+    /**
+     * Everything a jam needs, brought up together.
+     *
+     * ⚠️ The lookahead goes UP. The sequencer hands notes to the audio clock 140ms early when
+     * you are alone, which is fine for local sound and useless as a head start over a network —
+     * the message would arrive after the note was due. Half a second gives the trip room, at the
+     * cost of muting a layer taking that long to be heard, which is the right way round.
+     */
+    rig = [clock.start(), transport.start()]
+    setLookahead(0.5)
+    // your loops become notes for everyone else, stamped with when they are due
+    setScheduleListener((n) => jam.play(n.midi, n.on, n.inst, { at: n.at, part: n.part, fx: n.fx }))
+    // and stop being audio, so nobody hears them twice — see setBroadcastAudio
+    setBroadcastAudio(false)
     set({ on: true })
   },
 
@@ -178,12 +227,25 @@ export const jam = {
    * Offer a note to the room. A no-op unless jamming is on, so InstrumentRoom calls it
    * unconditionally next to capture() — the same reason that one has no "recording mode"
    * branch: the note you heard and the note they hear come from one call site.
+   *
+   * `at` is when the note is due on OUR audio clock, for notes the sequencer scheduled ahead.
+   * Live playing has no such time — it already happened — and is sent to be played on arrival.
    */
-  play(midi: number, on: boolean, inst: InstrumentId) {
+  play(
+    midi: number,
+    on: boolean,
+    inst: InstrumentId,
+    opts?: { at?: number; part?: string; fx?: Fx },
+  ) {
     if (!state.on) return
     // fx only on the way DOWN: a note-off has nothing to shape, and the bus already holds the
     // settings the note-on set
-    sendParty('jam', on ? { midi, on, inst, fx: fxSnapshot() } : { midi, on, inst })
+    const body: Record<string, unknown> = { midi, on, inst }
+    if (on) body.fx = opts?.fx ?? fxSnapshot()
+    if (opts?.at !== undefined) body.at = opts.at
+    // 'live' is the default and is left off the wire, since most notes are live ones
+    if (opts?.part) body.part = opts.part
+    sendParty('jam', body)
   },
 
   start() {
@@ -197,6 +259,8 @@ export const jam = {
         inst?: unknown
         leave?: unknown
         fx?: unknown
+        at?: unknown
+        part?: unknown
       }
       if (b?.leave) {
         stopAllFor(m.from)
@@ -209,11 +273,25 @@ export const jam = {
       if (typeof b.inst !== 'string' || !VALID.has(b.inst)) return
       const inst = b.inst as InstrumentId
       const fx = cleanFx(b.fx)
-      const id = voiceId(m.from, b.midi)
+      /**
+       * A sequenced note carries the time it is due, so it can be placed rather than dropped
+       * wherever the network happened to deliver it.
+       *
+       * ⚠️ A time already past is ignored and the note plays now instead — scheduling into the
+       * past is how you get every late note firing at once in a burst. Late is better than
+       * bunched: one note slightly out of place beats four arriving together.
+       */
+      let when: number | undefined
+      if (typeof b.at === 'number' && Number.isFinite(b.at)) {
+        const local = toLocalTime(m.from, b.at)
+        if (local != null && local > sharedCtx().currentTime) when = local
+      }
+      const part = cleanPart(b.part)
+      const id = voiceId(m.from, part, b.midi)
       const mine = voices.get(m.from) ?? []
 
       if (b.on === false) {
-        noteOff(id)
+        noteOff(id, when)
         voices.set(
           m.from,
           mine.filter((v) => v !== id),
@@ -226,11 +304,11 @@ export const jam = {
         while (mine.length >= MAX_VOICES_EACH) noteOff(mine.shift()!)
         if (!mine.includes(id)) mine.push(id)
         voices.set(m.from, mine)
-        noteOn(id, inst, b.midi, undefined, { key: `jam:${m.from}`, fx })
+        noteOn(id, inst, b.midi, when, { key: `jam:${m.from}:${part}`, fx })
       }
 
       const prev = state.players[m.from]
-      const held = mine.map((v) => Number(v.split(':')[2])).filter(Number.isFinite)
+      const held = mine.map((v) => Number(v.split(':')[3])).filter(Number.isFinite)
       set({
         players: {
           ...state.players,
@@ -248,8 +326,11 @@ export const jam = {
     // could ever have released it.
     const offVoice = voiceSession.subscribe(() => {
       if (!voiceSession.getState().inCall && (state.on || Object.keys(state.players).length)) {
+        // through setOn, so the lookahead, the schedule listener and the audio path are all put
+        // back — a dropped call used to be able to leave the instrument silently off the air
+        jam.setOn(false)
         for (const peer of [...voices.keys()]) stopAllFor(peer)
-        set({ on: false, players: {} })
+        set({ players: {} })
       }
     })
 
