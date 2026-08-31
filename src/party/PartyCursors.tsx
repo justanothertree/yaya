@@ -1,5 +1,6 @@
 import { useEffect, useRef, useSyncExternalStore } from 'react'
 import { party, currentRoute, hueFor, type PartyPeer } from './party'
+import { shared } from './shared'
 import './party.css'
 
 /**
@@ -22,6 +23,13 @@ export function PartyCursors() {
   peersRef.current = state.peers
 
   useEffect(() => party.start(), [])
+  /**
+   * ⚠️ Started here, next to the cursors, rather than inside any window that uses it. The
+   * registry has to be listening BEFORE a window mounts, or a shared window that is already
+   * being offered when you open it never sees the offer — and the offer only comes round again
+   * when the sharer next changes something.
+   */
+  useEffect(() => shared.start(), [])
 
   useEffect(() => {
     let raf = 0

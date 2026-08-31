@@ -5573,3 +5573,13 @@ a.cz-msg-author:focus-visible {
   margin: 0.2rem 0 0;
   font-size: 0.78rem;
 }
+
+/* Watching a window together — see src/party/shared.ts */
+.viz-party {
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+.viz-party-note {
+  font-size: 0.72rem;
+}

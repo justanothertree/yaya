@@ -26,6 +26,7 @@ import {
 import { makeFeatureReader } from '../audio/audioFeatures'
 import { PALETTES, paletteById } from '../audio/palettes'
 import { PATHS, pathPoint, type PathId } from '../audio/autoPath'
+import { useSharedWindow } from '../party/useSharedWindow'
 import { motionReduced, onMotionChange } from '../ui/motion'
 import { InCanvasWindow } from '../circuit/ui/canvasContext'
 import { storedNumber } from '../ui/storedNumber'
@@ -203,6 +204,101 @@ export function AudioVisualizer() {
   const [echo, setEcho] = useState(() => storedNumber(ECHO_KEY, 0, 1) ?? 0)
   const [tab, setTab] = useState<VizTab>(() => readStored(TAB_KEY, TAB_IDS, 'modes'))
   const [full, setFull] = useState(false)
+
+  /**
+   * Looking at the same visualiser together.
+   *
+   * ⚠️ The DIALS travel, not the picture and not the sound. Everyone renders it themselves from
+   * their own audio, which is why it stays sharp and interactive instead of being a video of
+   * somebody's window — and in a call the audio is largely the same audio anyway, since the
+   * source that matters is everyone in the room.
+   *
+   * `src` is deliberately part of it and `full` deliberately is not: which sound to watch is the
+   * shared decision, whereas whether YOUR window is fullscreen is about your screen and nobody
+   * else's. Volume is left out for the same reason — following somebody must never change how
+   * loud your machine is.
+   */
+  const party = useSharedWindow(
+    'visualizer',
+    'Visualiser',
+    () => ({
+      mode,
+      src,
+      gain,
+      mirror,
+      trail,
+      palette,
+      zoom,
+      depth,
+      path,
+      pathSpeed,
+      bloom,
+      punch,
+      echo,
+    }),
+    (d) => {
+      if (!d || typeof d !== 'object') return
+      const v = d as Record<string, unknown>
+      // everything off the wire is checked against the same tables the UI offers, so a patched
+      // peer cannot put this window into a state it has no controls for
+      if (typeof v.mode === 'string' && VISUAL_IDS.includes(v.mode as VisualId))
+        setMode(v.mode as VisualId)
+      if (typeof v.src === 'string' && TAP_IDS.includes(v.src as SrcChoice))
+        setSrc(v.src as SrcChoice)
+      if (typeof v.palette === 'string' && PALETTE_IDS.includes(v.palette)) setPalette(v.palette)
+      if (typeof v.path === 'string' && PATH_IDS.includes(v.path as PathId))
+        setPath(v.path as PathId)
+      if (typeof v.mirror === 'number' && MIRRORS.some(([n]) => n === v.mirror)) setMirror(v.mirror)
+      const num = (k: string, lo: number, hi: number, set: (n: number) => void) => {
+        const x = v[k]
+        if (typeof x === 'number' && Number.isFinite(x)) set(Math.max(lo, Math.min(hi, x)))
+      }
+      num('gain', 0.2, 4, setGain)
+      num('trail', 0, 0.97, setTrail)
+      num('zoom', 0.3, 3, setZoom)
+      num('depth', 0, 1, setDepth)
+      num('pathSpeed', 0.02, 1, setPathSpeed)
+      num('bloom', 0, 1, setBloom)
+      num('punch', 0, 1, setPunch)
+      num('echo', 0, 1, setEcho)
+    },
+  )
+
+  /**
+   * ⚠️ Pulled out of `party` so the effect below depends on VALUES rather than on the object the
+   * hook returns. That object is a fresh literal every render, so listing it would run the effect
+   * on every render forever — harmless here, since push is a no-op when you are not sharing, but
+   * it is the shape of a bug and it costs nothing to not write.
+   */
+  const sharingViz = party.sharing
+  const pushViz = party.push
+
+  /**
+   * Push on every change, and let the throttle in shared.ts decide what actually goes out.
+   *
+   * ⚠️ Depends on the VALUES, not on a handler. Half of these move through paths that never
+   * touch a click handler — a stored default, a mode changing its own trail, the background
+   * wallpaper syncing — and a push wired to the buttons would silently miss every one of them.
+   */
+  useEffect(() => {
+    if (sharingViz) pushViz()
+  }, [
+    mode,
+    src,
+    gain,
+    mirror,
+    trail,
+    palette,
+    zoom,
+    depth,
+    path,
+    pathSpeed,
+    bloom,
+    punch,
+    echo,
+    sharingViz,
+    pushViz,
+  ])
   // a canvas window sizes itself; see the note on the wrapper's class below
   const { inWindow } = useContext(InCanvasWindow)
   const [micBusy, setMicBusy] = useState(false)
@@ -966,8 +1062,22 @@ export function AudioVisualizer() {
             descendants, so a control panel that is a SIBLING of the stage simply vanishes the
             moment you go fullscreen — which is exactly the state where you most want to change
             mode without leaving. In fullscreen the CSS floats this over the picture. */}
+        {/**
+         * ⚠️ Touching ANY control below stops you following a shared visualiser — one capture
+         * handler on the container, rather than thirteen wrapped setters.
+         *
+         * Fighting an incoming update is the one behaviour nobody can work with: a slider that
+         * springs back a fraction of a second after you move it reads as a broken site, not a
+         * shared one. Capture phase so it lands before the control's own handler, and on the
+         * container so a control added next year is covered without anyone remembering to wrap
+         * it.
+         */}
         {panel && (
-          <div className="viz-controls">
+          <div
+            className="viz-controls"
+            onPointerDownCapture={() => party.following && party.stopFollowing()}
+            onKeyDownCapture={() => party.following && party.stopFollowing()}
+          >
             {/**
              * ⚠️ TABS, because the panel had grown to nine rows and a sixteen-tile grid.
              *
@@ -1235,6 +1345,55 @@ export function AudioVisualizer() {
                 )}
               </div>
             )}
+            {/**
+             * Watching it together.
+             *
+             * Only rendered inside a call, because that is the only place the party exists —
+             * a button whose entire explanation is "start a call first" is a button that
+             * should not be there yet.
+             */}
+            {party.available && (
+              <div className="viz-row viz-row-wide viz-party">
+                <button
+                  className={'btn' + (party.sharing ? ' is-on' : '')}
+                  aria-pressed={party.sharing}
+                  onClick={() => (party.sharing ? party.stopSharing() : party.share())}
+                  title={
+                    party.sharing
+                      ? 'Stop offering your visualiser to the call'
+                      : 'Let the call watch your visualiser — your settings, their audio'
+                  }
+                >
+                  {party.sharing ? '◉ Sharing' : '◎ Share this'}
+                </button>
+
+                {party.following ? (
+                  <button
+                    className="btn is-on"
+                    onClick={party.stopFollowing}
+                    title="Go back to your own settings"
+                  >
+                    ✓ Following {party.followingName}
+                  </button>
+                ) : (
+                  party.offers.map((o) => (
+                    <button
+                      key={o.by}
+                      className="btn"
+                      onClick={() => party.follow(o.by)}
+                      title={`Watch ${o.name}'s visualiser — their settings, your sound`}
+                    >
+                      Join {o.name}
+                    </button>
+                  ))
+                )}
+
+                {party.following && (
+                  <span className="muted viz-party-note">Touch any control to take it back.</span>
+                )}
+              </div>
+            )}
+
             {/* Three tools that act on the finished frame, so all sixteen modes get them at
                 once — the same reason the ramp was worth more than another mode. */}
             {tab === 'look' && (
