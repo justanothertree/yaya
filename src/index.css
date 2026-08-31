@@ -5458,7 +5458,7 @@ a.cz-msg-author:focus-visible {
      rather than like the end of the take. */
   width: fit-content;
   max-width: 100%;
-  min-width: min(100%, 30rem);
+  min-width: min(100%, 34rem);
   border: 1px solid var(--line);
   border-radius: 0.5rem;
   background: color-mix(in srgb, var(--bg) 88%, var(--text) 12%);
@@ -5478,7 +5478,9 @@ a.cz-msg-author:focus-visible {
 }
 .roll-body {
   display: flex;
-  max-height: 15rem;
+  /* Taller than it was. Two octaves of pitch at 18px a row is 432px, and a window showing six
+     rows of that made you scroll to see a phrase that fits on one screen. */
+  max-height: 26rem;
 }
 .roll-keys {
   flex: 0 0 auto;
@@ -5486,7 +5488,7 @@ a.cz-msg-author:focus-visible {
   overflow: hidden;
 }
 .roll-key {
-  height: 15px;
+  height: 18px;
   width: 2.4rem;
   font-size: 0.55rem;
   line-height: 15px;

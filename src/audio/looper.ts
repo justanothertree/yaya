@@ -1,7 +1,7 @@
 import { sharedCtx, resumeAudio } from './context'
 import { fxSnapshot, noteOff, noteOn, type Fx, type InstrumentId } from './synth'
 import { detectTempo, lastPlayedAt, playedBetween } from './capture'
-import { toEvents } from './noteEdit'
+import { toEvents, toNotes } from './noteEdit'
 
 /**
  * A loop you play into, and then play over.
@@ -582,17 +582,30 @@ export function capture(midi: number, on: boolean, instrument: InstrumentId) {
 function quantise(events: LoopEvent[], len: number, q: number): LoopEvent[] {
   if (!q) return events
   const grid = (60 / state.bpm) * (4 / q)
-  const out = events.map((e) => ({ ...e }))
-  for (const on of out) {
-    if (!on.on) continue
-    const snapped = (Math.round(on.t / grid) * grid) % len
-    const delta = snapped - on.t
-    on.t = snapped
-    // the first note-off for this pitch after the original onset is this note's end
-    const off = out.find((e) => !e.on && e.midi === on.midi && e.t >= on.t - delta)
-    if (off) off.t = Math.max(0, Math.min(len - 0.001, off.t + delta))
-  }
-  return out.sort((a, b) => a.t - b.t)
+  /**
+   * ⚠️ DONE IN NOTES, NOT IN EVENTS — and the event version had a bug that made notes ring
+   * forever, stacking another copy on every repetition until Panic.
+   *
+   * It snapped each note-on with `(Math.round(t / grid) * grid) % len`. For a note near the end of
+   * the take that rounds UP to len, and the modulo then wraps it to ZERO — the note-on jumps to
+   * the top of the loop while its note-off, moved by the same (now hugely negative) delta, gets
+   * clamped to 0 as well. A note-on and a note-off at the same instant sort unstably, so half the
+   * time the off came first, the on had nothing after it, and the voice was never released. Every
+   * lap added another.
+   *
+   * Snapping the note's START and carrying its LENGTH along cannot express that state at all: a
+   * note is a start and a duration, so there is no way to produce an on without an off. toEvents
+   * then applies the boundary rule and the same-pitch overlap rule — the same code the editor
+   * writes through, so a quantised take and an edited one are shaped by one set of rules.
+   *
+   * Clamped rather than wrapped, too. A note at the very end belongs at the end; wrapping it to
+   * the start moves it somewhere the player did not play it.
+   */
+  const notes = toNotes(events, len).map((n) => ({
+    ...n,
+    t: Math.max(0, Math.min(len, Math.round(n.t / grid) * grid)),
+  }))
+  return toEvents(notes, len)
 }
 
 function commitTake() {

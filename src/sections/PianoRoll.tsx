@@ -28,14 +28,29 @@ const NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
 const isBlack = (m: number) => [1, 3, 6, 8, 10].includes(((m % 12) + 12) % 12)
 const nameOf = (m: number) => `${NAMES[((m % 12) + 12) % 12]}${Math.floor(m / 12) - 1}`
 
-const CELL_W = 26
-const ROW_H = 15
+const CELL_W = 32
+const ROW_H = 18
 /** Grab within this fraction of a note's right edge and you are resizing, not moving. */
 const HANDLE = 0.3
 
+/**
+ * A drag in progress.
+ *
+ * ⚠️ It carries a SNAPSHOT of the notes as they were when the gesture started, and the edit is
+ * recomputed from that snapshot on every move rather than applied on top of the last one.
+ *
+ * The version without it committed each move straight to the layer, and dragging a note across
+ * another one of the same pitch destroyed it: the overlap rule trims the earlier note to meet the
+ * later one, that trim was committed, and moving on left the damage behind. Passing over a note
+ * chopped it. Worse, committing re-sorted the array, so the index being dragged could quietly
+ * start pointing at a different note halfway through the gesture.
+ *
+ * Recomputing from the snapshot makes a drag a preview of one edit rather than a sequence of
+ * hundreds, so nothing is destroyed on the way past and only the release writes anything.
+ */
 type Drag =
-  | { kind: 'move'; i: number; dx: number; dy: number }
-  | { kind: 'resize'; i: number; dur: number }
+  | { kind: 'move'; i: number; dx: number; dy: number; from: Note[]; col: number; row: number }
+  | { kind: 'resize'; i: number; from: Note[]; col: number }
   | null
 
 export function PianoRoll({
@@ -62,25 +77,55 @@ export function PianoRoll({
   const step = gridStep(bpm, quantize)
   const notes = useMemo(() => toNotes(layer.events, layer.len), [layer.events, layer.len])
   /**
-   * The pitch range on show.
+   * The pitch range on show — decided ONCE, when the editor opens for this layer.
    *
-   * ⚠️ FROZEN WHILE DRAGGING. The range is derived from the notes and padded, so dragging a
-   * note to the top of the grid widens it — and every other row then shifts down by one to make
-   * space, mid-drag, under the hand that is moving. The note you are holding stays put (it is
-   * placed from the cursor, not from the layout) while the whole grid slides beneath it, which
-   * reads as the editor lurching. Recomputing only between gestures keeps the picture still while
-   * you work and still lets the range grow the moment you let go.
+   * ⚠️ It must not follow the notes. Deriving it from them meant that adding a note near the top
+   * widened the range, which pushed every existing row down to make space — so the note you just
+   * placed appeared somewhere other than where you clicked, and so did everything else. The
+   * placement was right and the picture moved underneath it, which is indistinguishable from the
+   * placement being wrong.
+   *
+   * Fixed instead, with two octaves of room around whatever you recorded, and every edit clamped
+   * inside it. Because you can only click within the grid and a drag is clamped to the same
+   * bounds, no edit can ever fall outside — so the range never needs to change, and the grid
+   * never moves while you work.
    */
-  const liveRange = useMemo(() => pitchRange(notes), [notes])
-  const frozen = useRef(liveRange)
-  if (!drag) frozen.current = liveRange
-  const [lo, hi] = drag ? frozen.current : liveRange
+  const [lo, hi] = useMemo(
+    () => {
+      const [a, b] = pitchRange(toNotes(layer.events, layer.len))
+      const pad = Math.max(0, 24 - (b - a))
+      return [Math.max(0, a - Math.ceil(pad / 2)), Math.min(127, b + Math.floor(pad / 2))]
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [layer.id],
+  )
   const rows = useMemo(() => {
     const r: number[] = []
     for (let m = hi; m >= lo; m--) r.push(m)
     return r
   }, [lo, hi])
   const cols = Math.max(1, Math.round(layer.len / step))
+
+  /**
+   * What is on screen: the committed notes, or the preview of the drag in progress.
+   *
+   * One edit, recomputed from the gesture's starting point every time the pointer moves.
+   */
+  const shown = useMemo(() => {
+    if (!drag) return notes
+    const next = [...drag.from]
+    const n = { ...next[drag.i] }
+    if (!n) return notes
+    if (drag.kind === 'move') {
+      n.t = Math.max(0, Math.min(cols - 1, drag.col - drag.dx)) * step
+      n.midi = Math.max(lo, Math.min(hi, hi - (drag.row - drag.dy)))
+    } else {
+      const endCol = Math.max(Math.round(n.t / step) + 1, drag.col + 1)
+      n.dur = Math.min(layer.len - n.t, endCol * step - n.t)
+    }
+    next[drag.i] = n
+    return next
+  }, [drag, notes, cols, step, lo, hi, layer.len])
 
   /** Write back through the looper, which is the single source of truth. */
   const commit = useCallback(
@@ -145,14 +190,22 @@ export function PianoRoll({
     e.preventDefault()
     const n = notes[i]
     const box = (e.currentTarget as HTMLElement).getBoundingClientRect()
+    const c = cellFrom(e)
+    if (!c) return
     setSel(i)
     ;(e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId)
     if (e.clientX > box.right - Math.max(6, box.width * HANDLE)) {
-      setDrag({ kind: 'resize', i, dur: n.dur })
+      setDrag({ kind: 'resize', i, from: notes, col: c.col })
     } else {
-      const c = cellFrom(e)
-      if (!c) return
-      setDrag({ kind: 'move', i, dx: c.col - Math.round(n.t / step), dy: c.row - (hi - n.midi) })
+      setDrag({
+        kind: 'move',
+        i,
+        from: notes,
+        dx: c.col - Math.round(n.t / step),
+        dy: c.row - (hi - n.midi),
+        col: c.col,
+        row: c.row,
+      })
     }
   }
 
@@ -160,23 +213,21 @@ export function PianoRoll({
     if (!drag) return
     const c = cellFrom(e)
     if (!c) return
-    const next = [...notes]
-    const n = { ...next[drag.i] }
     if (drag.kind === 'move') {
-      const col = Math.max(0, Math.min(cols - 1, c.col - drag.dx))
-      const midi = Math.max(lo, Math.min(hi, hi - (c.row - drag.dy)))
-      if (midi !== n.midi) audition(midi)
-      n.t = col * step
-      n.midi = midi
+      if (c.col === drag.col && c.row === drag.row) return
+      if (c.row !== drag.row) audition(Math.max(lo, Math.min(hi, hi - (c.row - drag.dy))))
+      setDrag({ ...drag, col: c.col, row: c.row })
     } else {
-      const endCol = Math.max(Math.round(n.t / step) + 1, c.col + 1)
-      n.dur = Math.min(layer.len - n.t, endCol * step - n.t)
+      if (c.col === drag.col) return
+      setDrag({ ...drag, col: c.col })
     }
-    next[drag.i] = n
-    commit(next)
   }
 
-  const endDrag = () => setDrag(null)
+  /** ⚠️ The ONLY place a drag writes anything. See the note on Drag. */
+  const endDrag = () => {
+    if (drag) commit(shown)
+    setDrag(null)
+  }
 
   /** Click an empty cell to put a note there. */
   const onGridDown = (e: React.PointerEvent) => {
@@ -216,7 +267,7 @@ export function PianoRoll({
       <div className="roll-bar">
         <strong>Notes</strong>
         <span className="muted">
-          {notes.length} note{notes.length === 1 ? '' : 's'} · {layer.len.toFixed(1)}s
+          {shown.length} note{shown.length === 1 ? '' : 's'} · {layer.len.toFixed(1)}s
         </span>
         <span className="muted roll-hint">
           Click to add · drag to move · drag the right edge to lengthen · Delete to remove
@@ -273,7 +324,7 @@ export function PianoRoll({
               />
             ))}
 
-            {notes.map((n, i) => (
+            {shown.map((n, i) => (
               <div
                 key={i}
                 className={'roll-note' + (sel === i ? ' is-sel' : '')}
