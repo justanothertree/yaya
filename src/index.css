@@ -5857,3 +5857,24 @@ a.cz-msg-author:focus-visible {
     height: clamp(14rem, 46vh, 24rem);
   }
 }
+
+/* Transparent, offered as a colour. The checkerboard on the swatch is the same idea as the
+   one behind the board: it is how you tell "nothing" from "white". */
+.paint-swatch-none {
+  background-color: #fff;
+  background-image:
+    linear-gradient(45deg, #bbb 25%, transparent 25%),
+    linear-gradient(-45deg, #bbb 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #bbb 75%),
+    linear-gradient(-45deg, transparent 75%, #bbb 75%);
+  background-size: 10px 10px;
+  background-position:
+    0 0,
+    0 5px,
+    5px -5px,
+    -5px 0;
+}
+/* With paper chosen the checkerboard has nothing to say, so it goes. */
+.paint-board.has-paper {
+  background-image: none;
+}

@@ -52,6 +52,16 @@ export type Drawing = {
   name: string
   /** the shape of the page it was made on, so a replay knows its proportions */
   ratio: number
+  /**
+   * What sits BEHIND the paint, or null for nothing.
+   *
+   * ⚠️ It is not a stroke, and that is the whole point. Erasing is destination-out, so a
+   * background painted INTO the picture would be erased along with everything on top of it —
+   * rub out a line over a black backdrop and you would punch a hole through to the page. Keeping
+   * it behind the canvas means the eraser takes away paint and reveals the backdrop, which is
+   * what erasing means everywhere else.
+   */
+  bg: string | null
   strokes: Stroke[]
 }
 
@@ -71,8 +81,19 @@ const TOOL_IDS = new Set<string>(TOOLS.map(([t]) => t))
  * is finite and obvious.
  */
 const HEX = /^#[0-9a-f]{6}$/i
+
+/**
+ * ⚠️ 'none' IS A COLOUR HERE, and that is the mental model rather than an implementation detail.
+ *
+ * Transparency was only reachable as a TOOL — the eraser — so you could erase a line but not
+ * erase a region, because the fill bucket had no way to be given nothing. Making it a colour
+ * means every tool gets it for free: a brush loaded with 'none' erases, a box outlines in
+ * nothing, and a bucket of 'none' clears an area. Which is what you would expect if you think of
+ * transparency as a paint rather than as a mode.
+ */
+export const NONE = 'none'
 const colour = (v: unknown, fallback = '#000000') =>
-  typeof v === 'string' && HEX.test(v) ? v : fallback
+  v === NONE ? NONE : typeof v === 'string' && HEX.test(v) ? v : fallback
 
 const num = (v: unknown, lo: number, hi: number, d: number) =>
   typeof v === 'number' && Number.isFinite(v) ? Math.max(lo, Math.min(hi, v)) : d
@@ -91,6 +112,7 @@ export function readDrawing(v: unknown): Drawing | null {
     v: 1,
     name: typeof o.name === 'string' ? o.name.slice(0, MAX_NAME).trim() || 'Untitled' : 'Untitled',
     ratio: num(o.ratio, 0.2, 5, 1.5),
+    bg: typeof o.bg === 'string' && HEX.test(o.bg) ? o.bg : null,
     strokes,
   }
 }
@@ -130,18 +152,24 @@ export function paintStroke(ctx: CanvasRenderingContext2D, s: Stroke, w: number,
   const X = (i: number) => s.p[i] * w
   const Y = (i: number) => s.p[i] * h
 
+  /**
+   * ⚠️ The eraser TOOL and the colour 'none' are the same thing, deliberately. The tool is a
+   * shortcut for "brush loaded with nothing", so there is one code path for taking paint away
+   * rather than two that can disagree about what erasing means.
+   */
+  const erasing = s.t === 'eraser' || s.c === NONE
   ctx.save()
   ctx.globalAlpha = s.a
   ctx.lineCap = 'round'
   ctx.lineJoin = 'round'
   ctx.lineWidth = Math.max(0.5, s.w * short)
-  ctx.strokeStyle = s.c
-  ctx.fillStyle = s.c
-  if (s.t === 'eraser') ctx.globalCompositeOperation = 'destination-out'
+  ctx.strokeStyle = erasing ? '#000000' : s.c
+  ctx.fillStyle = erasing ? '#000000' : s.c
+  if (erasing) ctx.globalCompositeOperation = 'destination-out'
 
   switch (s.t) {
     case 'fill':
-      floodFill(ctx, Math.round(X(0)), Math.round(Y(1)), s.c, s.a, w, h)
+      floodFill(ctx, X(0), Y(1), erasing ? null : s.c, s.a)
       break
     case 'rect': {
       const x0 = X(0)
@@ -182,6 +210,13 @@ export function paintStroke(ctx: CanvasRenderingContext2D, s: Stroke, w: number,
 }
 
 /** Replay a whole drawing onto a blank context. */
+/**
+ * Replay a whole drawing onto a blank context.
+ *
+ * ⚠️ The BACKGROUND IS NOT PAINTED HERE. It belongs behind the canvas, or the eraser would
+ * cut through it — see Drawing.bg. Anything showing a drawing puts `d.bg` behind the surface and
+ * calls this on top.
+ */
 export function paintDrawing(ctx: CanvasRenderingContext2D, d: Drawing, w: number, h: number) {
   ctx.clearRect(0, 0, w, h)
   for (const s of d.strokes) paintStroke(ctx, s, w, h)
@@ -202,15 +237,27 @@ export function paintDrawing(ctx: CanvasRenderingContext2D, d: Drawing, w: numbe
  */
 function floodFill(
   ctx: CanvasRenderingContext2D,
-  sx: number,
-  sy: number,
-  hex: string,
+  cssX: number,
+  cssY: number,
+  hex: string | null,
   alpha: number,
-  w: number,
-  h: number,
 ) {
-  const W = Math.round(w)
-  const H = Math.round(h)
+  /**
+   * ⚠️ DEVICE PIXELS, NOT CSS PIXELS — and getting this wrong is why only the top-left of the
+   * picture could be filled.
+   *
+   * The context carries a dpr transform so drawing can be written in CSS units, but getImageData
+   * and putImageData ignore transforms entirely: they always address the backing store. Passing
+   * the CSS width meant reading a rectangle of (1/dpr) of the canvas, so on a normal 2x screen
+   * the fill only ever saw the top-left QUARTER — drawable everywhere, fillable in one corner.
+   *
+   * So the whole flood works in device pixels and the seed point is converted on the way in.
+   */
+  const W = ctx.canvas.width
+  const H = ctx.canvas.height
+  const t = ctx.getTransform()
+  const sx = Math.round(cssX * t.a + t.e)
+  const sy = Math.round(cssY * t.d + t.f)
   if (sx < 0 || sy < 0 || sx >= W || sy >= H) return
   let img: ImageData
   try {
@@ -226,10 +273,11 @@ function floodFill(
   const t2 = d[start + 2]
   const t3 = d[start + 3]
 
-  const r = parseInt(hex.slice(1, 3), 16)
-  const g = parseInt(hex.slice(3, 5), 16)
-  const b = parseInt(hex.slice(5, 7), 16)
-  const a = Math.round(alpha * 255)
+  // a null colour is the bucket loaded with nothing: it clears the region instead of filling it
+  const r = hex ? parseInt(hex.slice(1, 3), 16) : 0
+  const g = hex ? parseInt(hex.slice(3, 5), 16) : 0
+  const b = hex ? parseInt(hex.slice(5, 7), 16) : 0
+  const a = hex ? Math.round(alpha * 255) : 0
   if (t0 === r && t1 === g && t2 === b && t3 === a) return // already this colour
 
   const TOL = 32

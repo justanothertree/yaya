@@ -1200,6 +1200,7 @@ export default function App() {
     'snake',
     'visualizer',
     'instrument',
+    'paint',
     'contact',
     'admin',
     'signin',

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
+  NONE,
   TOOLS,
   paintDrawing,
   paintStroke,
@@ -47,6 +48,15 @@ export function PaintRoom() {
   const size = useRef({ w: 0, h: 0, dpr: 1 })
 
   const [strokes, setStrokes] = useState<Stroke[]>([])
+  /**
+   * What sits behind the paint. null is the checkerboard — a genuinely transparent picture.
+   *
+   * ⚠️ Behind the canvas, not painted into it. Erasing is destination-out, so a background
+   * drawn into the picture would be rubbed out along with the line on top of it: you would erase
+   * a stroke over a black backdrop and punch a hole through to the page. Behind means the eraser
+   * takes away paint and reveals the backdrop, which is what erasing means everywhere else.
+   */
+  const [bg, setBg] = useState<string | null>(null)
   const [undone, setUndone] = useState<Stroke[]>([])
   const [tool, setTool] = useState<Tool>('brush')
   const [colour, setColour] = useState('#22c55e')
@@ -55,11 +65,18 @@ export function PaintRoom() {
   const live = useRef<Stroke | null>(null)
 
   /** the drawing, as it would be saved */
-  const drawingRef = useRef<Drawing>({ v: 1, name: 'Untitled', ratio: 1.5, strokes: [] })
+  const drawingRef = useRef<Drawing>({
+    v: 1,
+    name: 'Untitled',
+    ratio: 1.5,
+    bg: null,
+    strokes: [],
+  })
   drawingRef.current = {
     v: 1,
     name: 'Untitled',
     ratio: size.current.h ? size.current.w / size.current.h : 1.5,
+    bg,
     strokes,
   }
 
@@ -240,6 +257,18 @@ export function PaintRoom() {
 
       <div className="paint-row">
         <span className="paint-swatches" role="group" aria-label="Colour">
+          {/* ⚠️ Transparency sits in the SWATCH ROW, not as a tool. It is a colour you can load
+              into anything: brush with it and you rub out, fill with it and you clear a region,
+              draw a box in it and you cut an outline. Reaching it only through an eraser tool
+              meant the bucket could never be given nothing, so an area could be painted but not
+              un-painted. */}
+          <button
+            className={'paint-swatch paint-swatch-none' + (colour === NONE ? ' is-on' : '')}
+            aria-label="Transparent"
+            aria-pressed={colour === NONE}
+            title="Transparent — paint or fill with nothing"
+            onClick={() => setColour(NONE)}
+          />
           {SWATCHES.map((c) => (
             <button
               key={c}
@@ -253,11 +282,30 @@ export function PaintRoom() {
         </span>
         <label className="inst-pick">
           <span className="muted">Colour</span>
-          <input type="color" value={colour} onChange={(e) => setColour(e.target.value)} />
+          <input
+            type="color"
+            value={colour === NONE ? '#000000' : colour}
+            onChange={(e) => setColour(e.target.value)}
+          />
+        </label>
+        <label className="inst-pick">
+          <span className="muted" title="What sits behind the paint">
+            Paper
+          </span>
+          <input type="color" value={bg ?? '#000000'} onChange={(e) => setBg(e.target.value)} />
+          <button
+            className={'btn' + (bg === null ? ' is-on' : '')}
+            onClick={() => setBg(null)}
+            title="No paper — the picture stays transparent"
+          >
+            None
+          </button>
         </label>
         <label className="appearance-slider">
-          <span className="muted" title="How see-through the paint is">
-            Alpha
+          {/* Renamed: "Alpha" read as a mode when it is really just how thin the paint is.
+              Transparency proper is the swatch above. */}
+          <span className="muted" title="How thin the paint is — 100 is solid">
+            Opacity
           </span>
           <input
             type="range"
@@ -312,7 +360,15 @@ export function PaintRoom() {
       {/* ⚠️ The board is transparent, not white. A drawing has no background of its own, which is
           what lets the same picture sit on a light profile and a dark one — so the checkerboard
           behind it is the page telling you where the paint ends and the page begins. */}
-      <div className="paint-board" ref={host}>
+      {/* ⚠️ The paper is a BACKDROP, not paint. See `bg` above — this is the same colour a
+          profile block will put behind the strokes, so what you draw against is what other
+          people will see it against. With no paper the checkerboard shows through, which is how
+          you can tell transparent from white. */}
+      <div
+        className={'paint-board' + (bg ? ' has-paper' : '')}
+        ref={host}
+        style={bg ? { background: bg } : undefined}
+      >
         <canvas
           ref={view}
           className="paint-canvas"
