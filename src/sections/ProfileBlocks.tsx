@@ -3,6 +3,7 @@ import { getSupabaseClient } from '../finance/client'
 import { BANNER_STYLES, bannerBackground, type BannerStyle } from '../profile/look'
 import { SongBlock, VisualBlock } from '../profile/ProfileMusic'
 import { songFromConfig } from '../profile/songBlockConfig'
+import { packSong } from '../audio/songFile'
 import { library, subscribeLibrary, type LibraryItem } from '../audio/library'
 import { VISUALS } from '../audio/visualModes'
 import { PALETTES } from '../audio/palettes'
@@ -50,6 +51,9 @@ type ProfileNote = {
   author_username: string
   can_delete: boolean
 }
+
+/** Must stay in step with the length() guard in save_my_profile_blocks. */
+const CONFIG_LIMIT = 16000
 
 const TIER_LABEL: Record<Tier, string> = {
   public: 'Anyone',
@@ -540,6 +544,14 @@ function SongPicker({
 }) {
   const items = useSyncExternalStore(subscribeLibrary, library, library)
   const current = songFromConfig(value)
+  /**
+   * ⚠️ Say so BEFORE the save fails.
+   *
+   * The server caps a block's config, and a song past that cap came back as "invalid block" —
+   * a message about the shape of the data for a problem that is really "this piece is long".
+   * Checking here means the answer arrives while you are choosing, not after you press Done.
+   */
+  const tooBig = JSON.stringify(value.song ?? {}).length > CONFIG_LIMIT
   if (!items.length)
     return (
       <p className="muted" style={{ margin: 0, fontSize: '0.85rem' }}>
@@ -555,7 +567,9 @@ function SongPicker({
         value={current?.name ?? ''}
         onChange={(e) => {
           const picked = items.find((i: LibraryItem) => i.song.name === e.target.value)
-          onChange({ ...value, song: picked ? picked.song : undefined })
+          // ⚠️ the COMPACT form goes into the block — see packSong. The readable one is roughly
+          // five times larger and a normal four-layer song does not fit in a profile block at all
+          onChange({ ...value, song: picked ? packSong(picked.song) : undefined })
         }}
       >
         <option value="">Pick one…</option>
@@ -565,6 +579,11 @@ function SongPicker({
           </option>
         ))}
       </select>
+      {tooBig && (
+        <span className="muted" style={{ fontSize: '0.75rem' }}>
+          This one is long — it may not fit on a page. Try a shorter take.
+        </span>
+      )}
     </label>
   )
 }

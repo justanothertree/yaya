@@ -1,5 +1,5 @@
 import { INSTRUMENTS, type Fx, type InstrumentId } from './synth'
-import { toEvents, toNotes } from './noteEdit'
+import { toEvents, toNotes, type Note } from './noteEdit'
 import type { Layer, LoopEvent } from './looper'
 
 /**
@@ -134,6 +134,9 @@ function readLayer(v: unknown, budget: number): SongLayer | null {
 export function readSong(v: unknown): Song | null {
   if (!v || typeof v !== 'object') return null
   const o = v as Record<string, unknown>
+  // ⚠️ Both forms, forever. Songs kept before the compact encoding existed are still in
+  // people's libraries, and a reader that dropped them would quietly delete work.
+  if (o.v === 2 || Array.isArray(o.l)) return readPacked(o)
   if (!Array.isArray(o.layers)) return null
 
   const layers: SongLayer[] = []
@@ -152,6 +155,110 @@ export function readSong(v: unknown): Song | null {
     name: typeof o.name === 'string' ? o.name.slice(0, MAX_NAME).trim() || 'Untitled' : 'Untitled',
     bpm: Math.round(num(o.bpm, 40, 200, 96)),
     bars: Math.round(num(o.bars, 1, 8, 2)),
+    layers,
+  }
+}
+
+/**
+ * The same song, small enough to live in a profile block.
+ *
+ * ⚠️ STORED AS NOTES, NOT EVENTS, and as flat numbers rather than objects. Measured on real
+ * material, the readable form costs about 67 characters per note — `{"t":0.5,"midi":60,"on":true}`
+ * twice over, once for the press and once for the release. A four-layer song of 192 notes came to
+ * 12,800 characters, and the profile block limit is 4,000: a two-layer sketch of 64 notes already
+ * did not fit.
+ *
+ * A note is a start, a pitch and a length, so three integers say everything: milliseconds, midi,
+ * milliseconds. That is about 14 characters per note instead of 67, and it halves the count on
+ * top of that by storing one note where there were two events.
+ *
+ *     4 layers, 192 notes    12,800 chars  →  ~2,700
+ *
+ * Integers rather than seconds-with-decimals for the same reason: "0.4833333333333333" is
+ * eighteen characters of false precision for a moment nobody can hear the difference in.
+ *
+ * ⚠️ It goes back out through toEvents like every other path, so a compact song is subject to
+ * exactly the same guarantees as a verbose one — pairing, the boundary rule, no overlaps. This is
+ * a smaller way of writing the same thing down, not a second format with its own semantics.
+ */
+export type PackedSong = {
+  v: 2
+  name: string
+  bpm: number
+  bars: number
+  /** layers: instrument, own length in ms, fx as four numbers, muted, notes as flat triples */
+  l: Array<{ i: string; d: number; f: [number, number, number, number]; m: 0 | 1; n: number[] }>
+}
+
+export function packSong(song: Song): PackedSong {
+  return {
+    v: 2,
+    name: song.name,
+    bpm: song.bpm,
+    bars: song.bars,
+    l: song.layers.map((layer) => {
+      const notes = toNotes(layer.events, layer.len)
+      const n: number[] = []
+      for (const note of notes) {
+        n.push(Math.round(note.t * 1000), note.midi, Math.round(note.dur * 1000))
+      }
+      return {
+        i: layer.instrument,
+        d: Math.round(layer.len * 1000),
+        f: [layer.fx.echo, layer.fx.echoTime, layer.fx.space, layer.fx.vibrato].map(
+          (x) => Math.round(x * 100) / 100,
+        ) as [number, number, number, number],
+        m: layer.muted ? 1 : 0,
+        n,
+      }
+    }),
+  }
+}
+
+/** Read the compact form. Same caps and the same normaliser as the verbose one. */
+function readPacked(v: Record<string, unknown>): Song | null {
+  if (!Array.isArray(v.l)) return null
+  const layers: SongLayer[] = []
+  let budget = MAX_EVENTS_TOTAL
+  for (const raw of v.l.slice(0, MAX_LAYERS)) {
+    if (budget <= 0) break
+    if (!raw || typeof raw !== 'object') continue
+    const o = raw as Record<string, unknown>
+    if (!Array.isArray(o.n)) continue
+    const len = num(o.d, 100, 60000, 2000) / 1000
+    const inst = typeof o.i === 'string' && INSTRUMENT_IDS.has(o.i) ? (o.i as InstrumentId) : 'keys'
+    const fxArr = Array.isArray(o.f) ? o.f : []
+    const fx: Fx = {
+      echo: num(fxArr[0], 0, 1, 0),
+      echoTime: num(fxArr[1], 0, 1, 0.26),
+      space: num(fxArr[2], 0, 1, 0),
+      vibrato: num(fxArr[3], 0, 1, 0),
+    }
+    // ⚠️ budget is in EVENTS and each note becomes two, so the triple count is halved against it
+    const notes: Note[] = []
+    const cap = Math.min(MAX_EVENTS_PER_LAYER, budget) / 2
+    for (let i = 0; i + 2 < o.n.length && notes.length < cap; i += 3) {
+      const t = o.n[i]
+      const midi = o.n[i + 1]
+      const dur = o.n[i + 2]
+      if (typeof t !== 'number' || typeof midi !== 'number' || typeof dur !== 'number') continue
+      if (!Number.isFinite(t) || !Number.isFinite(midi) || !Number.isFinite(dur)) continue
+      if (!Number.isInteger(midi) || midi < 0 || midi > 127) continue
+      if (t < 0 || t > 60000 || dur <= 0) continue
+      notes.push({ midi, t: t / 1000, dur: dur / 1000 })
+    }
+    if (!notes.length) continue
+    const events = toEvents(notes, len)
+    if (!events.some((e) => e.on)) continue
+    budget -= events.length
+    layers.push({ instrument: inst, events, len, fx, muted: o.m === 1 })
+  }
+  if (!layers.length) return null
+  return {
+    v: VERSION,
+    name: typeof v.name === 'string' ? v.name.slice(0, MAX_NAME).trim() || 'Untitled' : 'Untitled',
+    bpm: Math.round(num(v.bpm, 40, 200, 96)),
+    bars: Math.round(num(v.bars, 1, 8, 2)),
     layers,
   }
 }
