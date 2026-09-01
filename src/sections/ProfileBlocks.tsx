@@ -1,6 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { getSupabaseClient } from '../finance/client'
 import { BANNER_STYLES, bannerBackground, type BannerStyle } from '../profile/look'
+import { SongBlock, VisualBlock } from '../profile/ProfileMusic'
+import { songFromConfig } from '../profile/songBlockConfig'
+import { library, subscribeLibrary, type LibraryItem } from '../audio/library'
+import { VISUALS } from '../audio/visualModes'
+import { PALETTES } from '../audio/palettes'
 
 /**
  * Optional, block-based profile customization.
@@ -19,7 +24,16 @@ export type Tier = 'public' | 'friends' | 'members' | 'private'
 
 export type ProfileBlock = {
   id?: string
-  block_type: 'bio' | 'banner' | 'stats' | 'activity' | 'guestbook' | 'status' | 'trophies'
+  block_type:
+    | 'bio'
+    | 'banner'
+    | 'stats'
+    | 'activity'
+    | 'guestbook'
+    | 'status'
+    | 'trophies'
+    | 'song'
+    | 'visualizer'
   size: 'small' | 'medium' | 'large'
   config: Record<string, unknown>
   visibility: Tier
@@ -62,6 +76,8 @@ const BLOCK_LABEL: Record<ProfileBlock['block_type'], string> = {
   guestbook: '💬 Guestbook',
   status: '💭 Status',
   trophies: '🏆 Trophies',
+  song: '🎵 Song',
+  visualizer: '◉ Visualiser',
 }
 
 /**
@@ -134,6 +150,19 @@ function BlockView({
 }) {
   const cfg = block.config
   switch (block.block_type) {
+    /**
+     * ⚠️ A song is NOTES, so this hosts nothing and streams nothing — the visitor's own browser
+     * synthesises it. See ProfileMusic. An unreadable one renders as nothing rather than as a
+     * broken player: the parser returns null for anything it will not vouch for, and a profile
+     * is the last place to argue with a visitor about somebody else's data.
+     */
+    case 'song': {
+      const song = songFromConfig(cfg)
+      if (!song) return null
+      return <SongBlock id={block.id ?? `song-${song.name}`} song={song} />
+    }
+    case 'visualizer':
+      return <VisualBlock cfg={cfg} />
     case 'bio': {
       const text = typeof cfg.text === 'string' ? cfg.text : ''
       if (!text.trim()) return null
@@ -464,6 +493,7 @@ function isBlockEmpty(block: ProfileBlock): boolean {
   const txt = typeof block.config.text === 'string' ? block.config.text.trim() : ''
   if (block.block_type === 'bio') return !txt
   if (block.block_type === 'status') return !txt
+  if (block.block_type === 'song') return !songFromConfig(block.config)
   return false
 }
 
@@ -480,9 +510,110 @@ function blockSummary(block: ProfileBlock): string {
     }
     case 'activity':
       return `last ${typeof block.config.limit === 'number' ? block.config.limit : 10}`
+    case 'song': {
+      const song = songFromConfig(block.config)
+      return song ? song.name : 'nothing picked yet'
+    }
+    case 'visualizer': {
+      const m = typeof block.config.mode === 'string' ? block.config.mode : 'bars'
+      return VISUALS.find(([id]) => id === m)?.[2] ?? 'Bars'
+    }
     default:
       return 'fills in on its own'
   }
+}
+
+/**
+ * Choosing which of your songs goes on the page.
+ *
+ * ⚠️ It reads the LOCAL library, which lives in this browser — so you can only put up a song
+ * from the machine you made it on. The song itself is then copied into the block, which is what
+ * makes it work for visitors: the page carries the notes, so it does not matter that the library
+ * it came from is on somebody's laptop.
+ */
+function SongPicker({
+  value,
+  onChange,
+}: {
+  value: Record<string, unknown>
+  onChange: (config: Record<string, unknown>) => void
+}) {
+  const items = useSyncExternalStore(subscribeLibrary, library, library)
+  const current = songFromConfig(value)
+  if (!items.length)
+    return (
+      <p className="muted" style={{ margin: 0, fontSize: '0.85rem' }}>
+        Nothing in your library yet. Make something in the Instrument room and press{' '}
+        <strong>Keep song</strong>, then come back.
+      </p>
+    )
+  return (
+    <label className="inst-pick" style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
+      <span className="muted">Song</span>
+      <select
+        className="viz-select"
+        value={current?.name ?? ''}
+        onChange={(e) => {
+          const picked = items.find((i: LibraryItem) => i.song.name === e.target.value)
+          onChange({ ...value, song: picked ? picked.song : undefined })
+        }}
+      >
+        <option value="">Pick one…</option>
+        {items.map((i: LibraryItem) => (
+          <option key={i.id} value={i.song.name}>
+            {i.kind === 'loop' ? '🔁' : '🎵'} {i.name}
+          </option>
+        ))}
+      </select>
+    </label>
+  )
+}
+
+/** Which visualiser a visitor sees, and in which colours. It watches whatever the page plays. */
+function VisualPicker({
+  value,
+  onChange,
+}: {
+  value: Record<string, unknown>
+  onChange: (config: Record<string, unknown>) => void
+}) {
+  const mode = typeof value.mode === 'string' ? value.mode : 'bars'
+  const palette = typeof value.palette === 'string' ? value.palette : 'theme'
+  return (
+    <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap', alignItems: 'center' }}>
+      <label className="inst-pick" style={{ display: 'flex', gap: '0.4rem' }}>
+        <span className="muted">Style</span>
+        <select
+          className="viz-select"
+          value={mode}
+          onChange={(e) => onChange({ ...value, mode: e.target.value })}
+        >
+          {VISUALS.map(([id, icon, label]) => (
+            <option key={id} value={id}>
+              {icon} {label}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className="inst-pick" style={{ display: 'flex', gap: '0.4rem' }}>
+        <span className="muted">Colour</span>
+        <select
+          className="viz-select"
+          value={palette}
+          onChange={(e) => onChange({ ...value, palette: e.target.value })}
+        >
+          {PALETTES.map((pal) => (
+            <option key={pal.id} value={pal.id}>
+              {pal.label}
+            </option>
+          ))}
+        </select>
+      </label>
+      <span className="muted" style={{ fontSize: '0.78rem' }}>
+        Moves when a song on this page is playing.
+      </span>
+    </div>
+  )
 }
 
 function BlockEditRow({
@@ -582,6 +713,20 @@ function BlockEditRow({
       </div>
       {!open ? null : (
         <>
+          {block.block_type === 'song' && (
+            <SongPicker
+              value={block.config}
+              onChange={(config) => onChange({ ...block, config })}
+            />
+          )}
+
+          {block.block_type === 'visualizer' && (
+            <VisualPicker
+              value={block.config}
+              onChange={(config) => onChange({ ...block, config })}
+            />
+          )}
+
           {block.block_type === 'bio' && (
             <textarea
               className="profile-editrow-textarea"
