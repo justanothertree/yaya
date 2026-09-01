@@ -5621,3 +5621,85 @@ a.cz-msg-author:focus-visible {
 .profile-block.profile-visual.is-large canvas {
   min-height: 16rem;
 }
+
+/* ── The instrument on a phone ────────────────────────────────────────────────
+   Measured before writing any of this: on a 390×844 phone the keys began 1617px
+   down the page — two full screens of scrolling to reach the instrument you came
+   for. Rotating to landscape made it worse rather than better, which is the
+   wrong way round: the keys shrank to 133px tall (30vh of a short viewport) and
+   were still 1.6 screens away. */
+
+/* ⚠️ NARROW **OR** SHORT, not just narrow — and getting that wrong is why the first
+   attempt did nothing in landscape. A phone held sideways is 844px wide, so a
+   max-width rule aimed at "phone" matches in portrait and misses in the orientation
+   somebody rotated into specifically in order to play. Height is the honest signal
+   for the second case. */
+@media (max-width: 780px), (orientation: landscape) and (max-height: 560px) {
+  /* The keyboard goes FIRST. .inst-wrap is already a flex column, so this is one
+     property rather than a second markup path to keep in step with the first. On a
+     desktop, picker-then-keys reads as a workflow; on a phone it just means the
+     instrument is off screen. */
+  .inst-keys {
+    order: -2;
+  }
+  /* the picker follows it; everything else keeps its written order */
+  .inst-bar {
+    order: -1;
+  }
+
+  /* Thumbs, not cursors: 25 keys at 25px are slivers. Below this the row scrolls
+     sideways, which it already knew how to do. */
+  .inst-key {
+    min-width: 2.4rem;
+  }
+
+  /* The page ends above the fixed bottom nav rather than behind it — "Bars 2" was
+     sitting underneath it. */
+  .inst-wrap {
+    padding-bottom: 1rem;
+  }
+}
+
+/* ⚠️ Landscape on a phone is a REQUEST TO PLAY. Nobody turns a handset sideways to
+   read a control panel, so the keyboard takes the height it needs and the chrome
+   gets out of the way. Keyed on height rather than orientation alone, so a short
+   desktop window behaves sensibly and a tall tablet in landscape keeps the normal
+   layout. */
+@media (orientation: landscape) and (max-height: 560px) {
+  .inst-keys {
+    height: min(62vh, 15rem);
+  }
+  .inst-key {
+    min-width: 2.2rem;
+  }
+  /* The blurb and the page heading are the first things to go — on a 390px-tall screen
+     they were eating 157px, most of it above the fold, to tell somebody holding an
+     instrument that it is an instrument.
+
+     ⚠️ Scoped with :has so it only trims THIS page's heading. The alternative was a
+     class threaded down from the router, which is a second thing to keep in step for a
+     rule that is purely about how tall the screen is. Browsers without :has simply keep
+     the heading, which is a smaller page rather than a broken one. */
+  .card:has(> .inst-wrap) > h2 {
+    font-size: 1.05rem;
+    margin-bottom: 0.15rem;
+  }
+  .card:has(> .inst-wrap) > p.muted {
+    display: none;
+  }
+  .inst-note {
+    display: none;
+  }
+  .inst-picks .fx-style-label {
+    font-size: 0.65rem;
+  }
+  .inst-row {
+    gap: 0.45rem;
+  }
+}
+
+/* Long-press on a key must not offer to copy it. touch-action already stops the
+   drag-to-scroll; this stops iOS putting a callout over the keyboard mid-phrase. */
+.inst-key {
+  -webkit-touch-callout: none;
+}

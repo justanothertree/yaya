@@ -892,8 +892,26 @@ export function InstrumentRoom() {
             }
             aria-label={noteName(midi)}
             onPointerDown={(e) => {
-              e.currentTarget.releasePointerCapture?.(e.pointerId)
+              /**
+               * ⚠️ SOUND FIRST, then let go of the pointer — and the release is wrapped because
+               * it can throw.
+               *
+               * Releasing the implicit capture is what makes a glissando work: without it the
+               * first key you touch keeps every subsequent move event and dragging across the
+               * keyboard plays one note. But releasePointerCapture throws NotFoundError for a
+               * pointer that was never captured, and it used to be the FIRST statement here — so
+               * any case where the browser had not captured (and there are several: a
+               * pointercancel that already released it, a synthetic event, some pen and
+               * assistive input paths) threw before the note was played. The most important
+               * interaction in the room was one exception away from silence, for the sake of a
+               * convenience.
+               */
               press('p:' + midi, midi)
+              try {
+                e.currentTarget.releasePointerCapture(e.pointerId)
+              } catch {
+                /* it was never captured; the glissando just works differently for this pointer */
+              }
             }}
             onPointerUp={() => lift('p:' + midi, midi)}
             onPointerLeave={() => lift('p:' + midi, midi)}
