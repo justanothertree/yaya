@@ -30,6 +30,9 @@ const nameOf = (m: number) => `${NAMES[((m % 12) + 12) % 12]}${Math.floor(m / 12
 
 const CELL_W = 32
 const ROW_H = 18
+/** Two notes never share a pitch and a start, so this identifies one exactly. */
+const isSame = (n: Note, sel: { midi: number; t: number } | null) =>
+  !!sel && n.midi === sel.midi && Math.abs(n.t - sel.t) < 1e-6
 /** Grab within this fraction of a note's right edge and you are resizing, not moving. */
 const HANDLE = 0.3
 
@@ -88,7 +91,16 @@ export function PianoRoll({
   loopLen: number
   onClose: () => void
 }) {
-  const [sel, setSel] = useState<number | null>(null)
+  /**
+   * The selected note, by WHAT IT IS rather than where it sits in the array.
+   *
+   * ⚠️ It was an index, and that could delete the wrong note. `notes` is derived fresh from
+   * the layer's events and sorted on every change, so adding or moving anything reshuffles it —
+   * the index you selected then points at a different note, and the delete button acts on that
+   * one instead. A pitch and a start time identify a note uniquely now that two notes of one
+   * pitch cannot overlap, so there is nothing to go stale.
+   */
+  const [sel, setSel] = useState<{ midi: number; t: number } | null>(null)
   const [drag, setDrag] = useState<Drag>(null)
   const gridRef = useRef<HTMLDivElement>(null)
   const headRef = useRef<HTMLDivElement>(null)
@@ -231,7 +243,7 @@ export function PianoRoll({
     const box = (e.currentTarget as HTMLElement).getBoundingClientRect()
     const c = cellFrom(e)
     if (!c) return
-    setSel(i)
+    setSel({ midi: n.midi, t: n.t })
     ;(e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId)
     if (e.clientX > box.right - Math.max(6, box.width * HANDLE)) {
       setDrag({ kind: 'resize', i, from: notes, col: c.col })
@@ -282,15 +294,24 @@ export function PianoRoll({
     const n: Note = { midi, t, dur: step }
     audition(midi)
     const next = [...notes, n]
-    setSel(next.length - 1)
+    // select the note you just made, by identity — see the note on `sel`
+    setSel({ midi: n.midi, t: n.t })
     commit(next)
   }
 
+  /** Delete one note, whichever way you asked for it to go. */
+  const removeNote = useCallback(
+    (n: Note) => {
+      commit(notes.filter((o) => !(o.midi === n.midi && Math.abs(o.t - n.t) < 1e-6)))
+      setSel(null)
+    },
+    [notes, commit],
+  )
+
   const removeSelected = useCallback(() => {
-    if (sel == null || sel >= notes.length) return
-    commit(notes.filter((_, i) => i !== sel))
-    setSel(null)
-  }, [sel, notes, commit])
+    const n = notes.find((x) => isSame(x, sel))
+    if (n) removeNote(n)
+  }, [sel, notes, removeNote])
 
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
@@ -314,9 +335,15 @@ export function PianoRoll({
           {shown.length} note{shown.length === 1 ? '' : 's'} · {layer.len.toFixed(1)}s
         </span>
         <span className="muted roll-hint">
-          Click to add · drag to move · drag the right edge to lengthen · Delete to remove
+          Click to add · drag to move · drag the right edge to lengthen ·{' '}
+          <strong>right-click or double-click a note to delete it</strong>
         </span>
-        <button className="btn" onClick={removeSelected} disabled={sel == null}>
+        <button
+          className="btn"
+          onClick={removeSelected}
+          disabled={!sel}
+          title="Delete the selected note (or right-click it)"
+        >
           ✕ Note
         </button>
         <button className="btn" onClick={onClose} title="Close the editor (Esc)">
@@ -339,6 +366,7 @@ export function PianoRoll({
             className="roll-grid"
             style={{ width: cols * CELL_W, height: rows.length * ROW_H }}
             onPointerDown={onGridDown}
+            onContextMenu={(e) => e.preventDefault()}
             onPointerMove={onMove}
             onPointerUp={endDrag}
             onPointerCancel={endDrag}
@@ -371,7 +399,7 @@ export function PianoRoll({
             {shown.map((n, i) => (
               <div
                 key={i}
-                className={'roll-note' + (sel === i ? ' is-sel' : '')}
+                className={'roll-note' + (isSame(n, sel) ? ' is-sel' : '')}
                 style={{
                   left: (n.t / step) * CELL_W,
                   top: (hi - n.midi) * ROW_H,
@@ -382,7 +410,23 @@ export function PianoRoll({
                 onPointerMove={onMove}
                 onPointerUp={endDrag}
                 onPointerCancel={endDrag}
-                title={`${nameOf(n.midi)} · ${n.dur.toFixed(2)}s`}
+                /**
+                 * ⚠️ Two ways to delete a note, because the one that existed — select it, then
+                 * press Delete or find a button that is disabled until you do — was invisible.
+                 * Right-click is what every sequencer does, and a double-click is what people
+                 * try when right-click is awkward. Neither needs a selection first, which was
+                 * the part nobody discovered.
+                 */
+                onContextMenu={(e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  removeNote(n)
+                }}
+                onDoubleClick={(e) => {
+                  e.stopPropagation()
+                  removeNote(n)
+                }}
+                title={`${nameOf(n.midi)} · ${n.dur.toFixed(2)}s — right-click or double-click to delete`}
               />
             ))}
 

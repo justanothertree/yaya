@@ -60,6 +60,10 @@ export function SongBlock({ id, song }: { id: string; song: Song }) {
  * and a decorative animation that runs while a laptop is on battery in a background tab is a rude
  * thing to ship.
  */
+/** A dial off a stored config, clamped into the range its slider offers. */
+const dial = (v: unknown, lo: number, hi: number, fallback: number) =>
+  typeof v === 'number' && Number.isFinite(v) ? Math.max(lo, Math.min(hi, v)) : fallback
+
 export function VisualBlock({ cfg }: { cfg: Record<string, unknown> }) {
   const box = useRef<HTMLDivElement>(null)
   const cv = useRef<HTMLCanvasElement>(null)
@@ -68,6 +72,19 @@ export function VisualBlock({ cfg }: { cfg: Record<string, unknown> }) {
     typeof cfg.mode === 'string' && VISUALS.some(([id]) => id === cfg.mode) ? cfg.mode : 'bars'
   ) as VisualId
   const paletteId = typeof cfg.palette === 'string' ? cfg.palette : 'theme'
+  /**
+   * The same modifiers the visualiser page has.
+   *
+   * ⚠️ Every one is clamped here rather than trusted, because this config travels: it is
+   * stored on a profile and rendered on a stranger's machine. A mirror count of 9,999 is 9,999
+   * clipped composites per frame, which is a page that freezes a visitor's browser rather than
+   * a page that looks unusual.
+   */
+  const mirror = Math.round(dial(cfg.mirror, 1, 8, 1))
+  const trailCfg = typeof cfg.trail === 'number' ? dial(cfg.trail, 0, 0.97, 0) : null
+  const bloom = dial(cfg.bloom, 0, 1, 0.25)
+  const punch = dial(cfg.punch, 0, 1, 0)
+  const echo = dial(cfg.echo, 0, 1, 0)
 
   useEffect(() => {
     const el = cv.current
@@ -80,7 +97,22 @@ export function VisualBlock({ cfg }: { cfg: Record<string, unknown> }) {
     const features = makeFeatureReader()
     const spec = new Uint8Array(2048)
     const wave = new Uint8Array(2048)
-    const trail = defaultTrail(modeId)
+    const trail = trailCfg ?? defaultTrail(modeId)
+    /**
+     * The same three-surface arrangement the visualiser page uses: modes draw into `buf`, the
+     * composite lands on the visible canvas, and the glow is built small and stretched back.
+     *
+     * ⚠️ A mode CANNOT draw straight onto the visible canvas once there are shared tools.
+     * Trails need a surface that survives the frame, and a kaleidoscope needs to composite one
+     * drawing several times — neither works if the only surface is the one being shown.
+     */
+    const buf = document.createElement('canvas')
+    const bctx = buf.getContext('2d')
+    const glow = document.createElement('canvas')
+    const gctx = glow.getContext('2d')
+    if (!bctx) return
+    let hit = 0
+    let swirl = 0
     let w = 0
     let h = 0
     let dpr = 1
@@ -113,7 +145,12 @@ export function VisualBlock({ cfg }: { cfg: Record<string, unknown> }) {
       h = Math.round(r.height)
       el.width = Math.round(w * dpr)
       el.height = Math.round(h * dpr)
+      buf.width = el.width
+      buf.height = el.height
+      glow.width = Math.max(1, Math.round(el.width / 3))
+      glow.height = Math.max(1, Math.round(el.height / 3))
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+      bctx.setTransform(dpr, 0, 0, dpr, 0, 0)
       paint = ink()
       visual.init(w, h)
     }
@@ -167,12 +204,29 @@ export function VisualBlock({ cfg }: { cfg: Record<string, unknown> }) {
       if (quiet > 1.2) return
 
       const f = features.read(spec, Math.max(1, bins), rms, dt)
-      ctx.globalCompositeOperation = 'destination-out'
-      ctx.fillStyle = `rgba(0,0,0,${1 - Math.max(0, Math.min(0.97, trail))})`
-      ctx.fillRect(0, 0, w, h)
-      ctx.globalCompositeOperation = 'source-over'
+
+      // trails: erase only part of the last frame, so a line becomes a smear
+      bctx.globalCompositeOperation = 'destination-out'
+      bctx.fillStyle = `rgba(0,0,0,${1 - Math.max(0, Math.min(0.97, trail))})`
+      bctx.fillRect(0, 0, w, h)
+      bctx.globalCompositeOperation = 'source-over'
+
+      // echo: the frame drawn back into itself, slightly larger and slightly turned
+      if (echo > 0.01) {
+        swirl += dt * 0.35 * echo
+        bctx.save()
+        bctx.globalAlpha = 0.28 + echo * 0.5
+        bctx.translate(w / 2, h / 2)
+        bctx.rotate(Math.sin(swirl) * 0.02 * echo)
+        const es = 1 + 0.035 * echo
+        bctx.scale(es, es)
+        bctx.translate(-w / 2, -h / 2)
+        bctx.drawImage(bctx.canvas, 0, 0, w, h)
+        bctx.restore()
+      }
+
       visual.draw({
-        ctx,
+        ctx: bctx,
         w,
         h,
         dt,
@@ -184,6 +238,61 @@ export function VisualBlock({ cfg }: { cfg: Record<string, unknown> }) {
         p: pointer,
         ink: paint,
       })
+
+      // ── the composite ──────────────────────────────────────────────────
+      ctx.setTransform(1, 0, 0, 1, 0, 0)
+      ctx.clearRect(0, 0, el.width, el.height)
+
+      // punch: the whole picture leans in on an onset. Decays per SECOND, not per frame, or
+      // the same music kicks differently on a 60Hz screen and a 144Hz one.
+      hit = Math.max(0, hit - dt * 3.4)
+      if (f.beat) hit = Math.max(hit, 0.35 + f.beatStrength * 0.65)
+      const kick = 1 + hit * punch * 0.09
+      if (punch > 0.01 && kick !== 1) {
+        ctx.save()
+        ctx.translate((el.width * (1 - kick)) / 2, (el.height * (1 - kick)) / 2)
+        ctx.scale(kick, kick)
+      }
+
+      if (mirror <= 1) {
+        ctx.drawImage(buf, 0, 0, el.width, el.height)
+      } else {
+        const cx = el.width / 2
+        const cy = el.height / 2
+        const seg = (Math.PI * 2) / mirror
+        const reach = Math.hypot(el.width, el.height)
+        for (let i = 0; i < mirror; i++) {
+          ctx.save()
+          ctx.translate(cx, cy)
+          ctx.rotate(i * seg)
+          if (i % 2) ctx.scale(1, -1)
+          ctx.beginPath()
+          ctx.moveTo(0, 0)
+          ctx.arc(0, 0, reach, -seg / 2, seg / 2)
+          ctx.closePath()
+          ctx.clip()
+          ctx.translate(-cx, -cy)
+          ctx.drawImage(buf, 0, 0, el.width, el.height)
+          ctx.restore()
+        }
+      }
+
+      // bloom: built at a third of the size and added with 'lighter', so bright areas spill
+      if (bloom > 0.01 && gctx) {
+        gctx.setTransform(1, 0, 0, 1, 0, 0)
+        gctx.clearRect(0, 0, glow.width, glow.height)
+        gctx.filter = `blur(${(2 + bloom * 5).toFixed(1)}px)`
+        gctx.drawImage(el, 0, 0, glow.width, glow.height)
+        gctx.filter = 'none'
+        ctx.save()
+        ctx.globalCompositeOperation = 'lighter'
+        ctx.globalAlpha = 0.35 + bloom * 0.75
+        ctx.drawImage(glow, 0, 0, el.width, el.height)
+        ctx.restore()
+      }
+
+      if (punch > 0.01 && kick !== 1) ctx.restore()
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
     }
 
     const start = () => {
@@ -209,7 +318,7 @@ export function VisualBlock({ cfg }: { cfg: Record<string, unknown> }) {
       document.removeEventListener('visibilitychange', onVis)
       offPlayer()
     }
-  }, [modeId, paletteId])
+  }, [modeId, paletteId, mirror, trailCfg, bloom, punch, echo])
 
   return (
     <div className="card profile-block profile-visual" ref={box}>

@@ -628,7 +628,48 @@ function VisualPicker({
           ))}
         </select>
       </label>
-      <span className="muted" style={{ fontSize: '0.78rem' }}>
+      {/* ⚠️ The same dials the visualiser page has. They were missing, so a visualiser on a
+          profile could be any of sixteen shapes in any of eleven colours and then had to look
+          exactly as it came — no trails, no kaleidoscope, no glow. Those are the tools that make
+          two people's pages look different from each other. */}
+      {(
+        [
+          ['bloom', 'Bloom', 0, 1, 0.01, 0.25],
+          ['trail', 'Trails', 0, 0.97, 0.01, 0.5],
+          ['punch', 'Punch', 0, 1, 0.01, 0],
+          ['echo', 'Echo', 0, 1, 0.01, 0],
+        ] as Array<[string, string, number, number, number, number]>
+      ).map(([key, label, lo, hi, step, dflt]) => (
+        <label key={key} className="appearance-slider" style={{ minWidth: '9rem' }}>
+          <span className="muted">{label}</span>
+          <input
+            type="range"
+            min={lo}
+            max={hi}
+            step={step}
+            value={typeof value[key] === 'number' ? (value[key] as number) : dflt}
+            onChange={(e) => onChange({ ...value, [key]: Number(e.target.value) })}
+          />
+          <span className="appearance-slider-val">
+            {Math.round((typeof value[key] === 'number' ? (value[key] as number) : dflt) * 100)}
+          </span>
+        </label>
+      ))}
+      <label className="inst-pick" style={{ display: 'flex', gap: '0.4rem' }}>
+        <span className="muted">Mirror</span>
+        <select
+          className="viz-select"
+          value={typeof value.mirror === 'number' ? value.mirror : 1}
+          onChange={(e) => onChange({ ...value, mirror: Number(e.target.value) })}
+        >
+          {[1, 2, 3, 4, 6, 8].map((n) => (
+            <option key={n} value={n}>
+              {n === 1 ? 'Off' : n}
+            </option>
+          ))}
+        </select>
+      </label>
+      <span className="muted" style={{ fontSize: '0.78rem', flexBasis: '100%' }}>
         Moves when a song on this page is playing.
       </span>
     </div>
