@@ -654,7 +654,20 @@ export function capture(midi: number, on: boolean, instrument: InstrumentId) {
  * together fixes the timing and leaves the performance alone.
  */
 function quantise(events: LoopEvent[], len: number, q: number): LoopEvent[] {
-  if (!q) return events
+  /**
+   * ⚠️ SNAP OFF STILL NORMALISES. It used to return the take untouched, and that was a stuck
+   * note nobody could see coming.
+   *
+   * commitTake closes anything still held at `len - 0.02`. Strike a note in the last fraction of
+   * a pass and capture() records the note-on at, say, 1.999 — so the closer's note-off at 1.980
+   * sorts BEFORE the note-on it belongs to. The scheduler then starts that note every lap with
+   * nothing left to end it. With snapping on the take went through the converter and the problem
+   * could not survive; with snapping off it went straight into the layer.
+   *
+   * So the early return keeps only the SNAP, and hands the events through the converter either
+   * way. Turning a musical preference off should not change whether the data is well formed.
+   */
+  if (!q) return toEvents(toNotes(events, len), len)
   const grid = (60 / state.bpm) * (4 / q)
   /**
    * ⚠️ DONE IN NOTES, NOT IN EVENTS — and the event version had a bug that made notes ring
@@ -887,6 +900,29 @@ export function undoLast() {
  * The mask is grown to the song's length on demand and filled with `true`, so switching one bar
  * off never silently mutes the bars nobody has touched.
  */
+/**
+ * A layer with nothing in it, to draw notes into.
+ *
+ * ⚠️ The note editor could only ever be reached through a recording, so starting a loop meant
+ * playing something first even when what you wanted was to place four notes by hand. A take is
+ * stored as notes, so there is no reason an empty one cannot exist — the only thing standing in
+ * the way was that every path to a layer went through the recorder.
+ *
+ * commitTake still refuses an empty PASS, and should: an empty pass is somebody who armed by
+ * accident, and turning that into a layer would litter the stack. This is the deliberate version
+ * of the same thing, which is a different intention entirely.
+ */
+export function addEmptyLayer(instrument: InstrumentId): string {
+  const id = `${Date.now()}-blank`
+  set({
+    layers: [
+      ...state.layers,
+      { id, instrument, events: [], muted: false, fx: fxSnapshot(), len: loopLength() },
+    ].slice(0, 12),
+  })
+  return id
+}
+
 export function toggleLayerBar(id: string, bar: number) {
   releaseLayer(id)
   set({

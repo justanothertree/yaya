@@ -40,6 +40,7 @@ import {
   addLayers,
   toggleLayerBar,
   clearLayerBars,
+  addEmptyLayer,
   setBars,
   setBpm,
   setLayerInstrument,
@@ -626,6 +627,16 @@ export function InstrumentRoom() {
          * this asks "keep what just happened" rather than "start keeping things". The whole
          * value is that you decide AFTER hearing it, which is when you actually know.
          */}
+        {/* Start a part by drawing it rather than by playing it. The editor was only reachable
+            through a recording, which meant placing four notes by hand required performing them
+            first. */}
+        <button
+          className="btn"
+          onClick={() => setEditing(addEmptyLayer(live.current.inst))}
+          title="Add an empty layer and draw notes into it"
+        >
+          ✎ New part
+        </button>
         <button
           className={'btn' + (libOpen ? ' is-on' : '')}
           aria-pressed={libOpen}
