@@ -292,7 +292,7 @@ export function SettingsMenu({
                   setOpen(false)
                   onAppearance()
                 }}
-                title="Appearance — colours, background, click and trail"
+                title="Appearance — colours, background, click, trail and pointer"
               >
                 🎨
               </button>

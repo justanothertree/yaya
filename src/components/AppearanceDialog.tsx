@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { PalettePicker } from '../theme/PalettePicker'
 import { FX_STYLE_OPTIONS } from '../ui/fxStyles'
+import { CURSOR_OPTIONS, type CursorSkin } from '../ui/cursorSkin'
 import { previewClickFx, type FxStyle } from '../ui/clickFx'
 import { BACKDROPS, type BackdropId } from '../profile/backdrops'
 import { previewTrail, TRAIL_OPTIONS, type TrailStyle } from '../ui/mouseTrail'
@@ -48,15 +49,18 @@ export type AppearanceControls = {
   onSparksStyle: (s: FxStyle) => void
   trailStyle: TrailStyle
   onTrailStyle: (t: TrailStyle) => void
+  cursor: CursorSkin
+  setCursor: (c: CursorSkin) => void
 }
 
-type Tab = 'colour' | 'background' | 'click' | 'trail'
+type Tab = 'colour' | 'background' | 'click' | 'trail' | 'cursor'
 
 const TABS: Array<[Tab, string, string]> = [
   ['colour', '🎨', 'Colour'],
   ['background', '🌌', 'Background'],
   ['click', '✨', 'Click'],
   ['trail', '🪄', 'Trail'],
+  ['cursor', '↖', 'Pointer'],
 ]
 
 const THEMES: Array<[Theme, string, string]> = [
@@ -308,6 +312,32 @@ export function AppearanceDialog({
             <ScaleRow cat="click" kind="size" label="Size" />
             <ScaleRow cat="click" kind="speed" label="Speed" />
             <p className="muted appearance-note">Click anywhere to try it.</p>
+          </div>
+        )}
+
+        {tab === 'cursor' && (
+          <div className="appearance-body">
+            <div className="fx-style-row">
+              {CURSOR_OPTIONS.map(([id, icon, label]) => (
+                <button
+                  key={id}
+                  className={'fx-style-btn' + (c.cursor === id ? ' is-on' : '')}
+                  aria-pressed={c.cursor === id}
+                  onClick={() => c.setCursor(id)}
+                >
+                  <span aria-hidden>{icon}</span>
+                  <span className="fx-style-label">{label}</span>
+                </button>
+              ))}
+            </div>
+            {/* ⚠️ No preview swatch here on purpose: the preview IS your pointer, which is
+                already on this dialog and changes the instant you pick one. Drawing a second
+                copy of it in a box would be showing you a picture of the thing you are
+                holding. */}
+            <p className="muted appearance-note">
+              It takes your accent colour, so it follows your palette. Text boxes keep their I-beam
+              — that one is telling you where you can type, not decorating the page.
+            </p>
           </div>
         )}
 

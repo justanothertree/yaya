@@ -9,6 +9,7 @@ import { MobileNav } from './components/MobileNav'
 import { AmbientBackdrop } from './components/AmbientBackdrop'
 import { installClickFx, setClickFxEnabled, setClickFxStyle, type FxStyle } from './ui/clickFx'
 import { FX_STYLES } from './ui/fxStyles'
+import { applyCursorSkin, isCursorSkin, type CursorSkin } from './ui/cursorSkin'
 import { AppearanceDialog } from './components/AppearanceDialog'
 import { installMouseTrail, isTrailStyle, setTrailStyle, type TrailStyle } from './ui/mouseTrail'
 
@@ -372,6 +373,18 @@ export default function App() {
     // through to the default rather than erroring — those ids just don't exist any more.
     return (FX_STYLES as string[]).includes(v ?? '') ? (v as FxStyle) : 'sparks'
   })
+  /**
+   * The pointer skin.
+   *
+   * ⚠️ Re-applied when the THEME changes, not only when the skin does. The cursor is drawn from
+   * the live accent so it follows your palette like every other flair, and a data URI cannot read
+   * a CSS variable — the image has to be rebuilt when the colour underneath it moves.
+   */
+  const [cursor, setCursor] = useState<CursorSkin>(() => {
+    if (typeof window === 'undefined') return 'system'
+    const v = localStorage.getItem('cursor_skin_v1')
+    return isCursorSkin(v) ? v : 'system'
+  })
   useEffect(() => installClickFx(), [])
   useEffect(() => installMouseTrail(), [])
   const [appearanceOpen, setAppearanceOpen] = useState(false)
@@ -435,6 +448,26 @@ export default function App() {
   )
   // bumped by PalettePicker's 'yaya:palette' event — see the publish effect below for why
   const [paletteTick, setPaletteTick] = useState(0)
+
+  /**
+   * The pointer skin.
+   *
+   * ⚠️ Re-applied when the THEME changes, not only when the skin does. The cursor is drawn from
+   * the live accent so it follows your palette like every other flair, and a data URI cannot read
+   * a CSS variable — the image has to be rebuilt when the colour underneath it moves. It sits
+   * here, below the palette state, for the same reason: the accent has to exist before it can be
+   * read.
+   */
+  useEffect(() => {
+    const accent =
+      getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#22c55e'
+    applyCursorSkin(cursor, accent)
+    try {
+      localStorage.setItem('cursor_skin_v1', cursor)
+    } catch {
+      /* private mode — it still applies for this visit */
+    }
+  }, [cursor, theme, customPalette, paletteTick])
   useEffect(() => {
     const onPalette = () => setPaletteTick((n) => n + 1)
     window.addEventListener('yaya:palette', onPalette)
@@ -1493,6 +1526,8 @@ export default function App() {
             onBackground: chooseBackground,
             sparksOn,
             onToggleSparks: toggleSparks,
+            cursor,
+            setCursor,
             sparksStyle,
             onSparksStyle: setSparksStyle,
             trailStyle,
