@@ -289,6 +289,8 @@ type Bus = {
 }
 
 let fxOut: GainNode | null = null
+/** the last node before the fork — fxOut through the limiter. See ensure(). */
+let peak: AudioNode | null = null
 let verbBuf: AudioBuffer | null = null
 const buses = new Map<string, Bus>()
 
@@ -492,10 +494,34 @@ function ensure(): AudioContext {
 
   fxOut = ctx.createGain()
 
+  /**
+   * A limiter across everything the instrument makes.
+   *
+   * ⚠️ Notes SUM. Normalising the partials fixes one voice; it does nothing about six of them
+   * held at once, and nothing about the reverb and delay returns which are added on top of the
+   * dry signal by design. Past 1.0 the hardware simply flattens the peaks, which is the crunch
+   * you hear on a chord and never on a single note.
+   *
+   * Set as a limiter rather than a compressor — a high ratio above a high threshold, so it is
+   * inaudible until something is about to clip and then catches only the overshoot. A gentler
+   * ratio would breathe on every note, which is a worse sound than the occasional peak it would
+   * be preventing.
+   */
+  const limiter = ctx.createDynamicsCompressor()
+  limiter.threshold.value = -3
+  limiter.knee.value = 0
+  limiter.ratio.value = 20
+  limiter.attack.value = 0.002
+  limiter.release.value = 0.12
+  fxOut.connect(limiter)
+  peak = limiter
+
   out = makeGain(ctx, 'instrument')
   // the fork: full signal to the analyser and the room, attenuated signal to your speakers
-  fxOut.connect(analyser)
-  fxOut.connect(out)
+  // ⚠️ the fork moves AFTER the limiter, so the visualiser draws the signal you actually
+  // hear rather than the one before it was caught
+  peak.connect(analyser)
+  peak.connect(out)
   out.connect(ctx.destination)
   wireBroadcast()
   // your own hands get their bus up front, so the very first keypress is not also a graph build
@@ -520,10 +546,10 @@ function ensure(): AudioContext {
 let broadcasting = true
 
 function wireBroadcast() {
-  if (!fxOut) return
+  if (!peak) return
   try {
-    if (broadcasting) fxOut.connect(broadcastBus())
-    else fxOut.disconnect(broadcastBus())
+    if (broadcasting) peak.connect(broadcastBus())
+    else peak.disconnect(broadcastBus())
   } catch {
     /* no bus on this device, or already in the state we asked for — you still hear yourself */
   }
@@ -574,7 +600,12 @@ function hitDrum(c: AudioContext, midi: number, at: number, bus: Bus | null) {
     o.type = 'sine'
     o.frequency.setValueAtTime(150, at)
     o.frequency.exponentialRampToValueAtTime(45, at + 0.12)
-    g.gain.setValueAtTime(0.9, at)
+    // ⚠️ A 1ms ramp in, not a step. setValueAtTime jumps the gain from silence to full between
+    // one sample and the next, and a vertical edge in a waveform is a click on top of the drum —
+    // audible as a tick riding every kick. One millisecond is far too short to soften the
+    // transient and long enough to remove the discontinuity.
+    g.gain.setValueAtTime(0.0001, at)
+    g.gain.linearRampToValueAtTime(0.9, at + 0.001)
     g.gain.exponentialRampToValueAtTime(0.0001, at + 0.35)
     o.connect(g)
     o.start(at)
@@ -587,7 +618,8 @@ function hitDrum(c: AudioContext, midi: number, at: number, bus: Bus | null) {
     f.type = hat ? 'highpass' : 'bandpass'
     f.frequency.value = hat ? 7000 : 1900
     const dur = hat ? 0.07 : 0.19
-    g.gain.setValueAtTime(hat ? 0.35 : 0.6, at)
+    g.gain.setValueAtTime(0.0001, at)
+    g.gain.linearRampToValueAtTime(hat ? 0.35 : 0.6, at + 0.001)
     g.gain.exponentialRampToValueAtTime(0.0001, at + dur)
     src.connect(f).connect(g)
     src.start(at)
@@ -652,6 +684,20 @@ export function noteOn(
   }
   connectVoice(sink, bus)
 
+  /**
+   * ⚠️ Partials are NORMALISED so a voice peaks at `level`, whatever it is built from.
+   *
+   * They were summed raw: Bell is 1 + 0.45 + 0.12 = 1.57 before `level` is applied, Pad is 1.7.
+   * So an instrument was louder for having more partials, which is backwards — the extra
+   * partials are there to make it sound like metal, not to make it louder than the others — and
+   * `level` did not mean what it said. Measured: four pad notes reached 1.008 and clipped, where
+   * one bell note reached 0.28.
+   *
+   * Dividing by the sum keeps every partial's share of the tone exactly as written and only
+   * changes the total, so the timbre is untouched and the headroom is predictable.
+   */
+  const partialSum = sh.partials.reduce((n, x) => n + x.gain, 0) || 1
+
   const oscs: OscillatorNode[] = []
   for (const part of sh.partials) {
     const o = c.createOscillator()
@@ -670,11 +716,12 @@ export function noteOn(
     // same musical wobble at every pitch; driving frequency in Hz would be a shiver down low and
     // a siren up high.
     bus.vib.connect(o.detune)
-    if (part.gain === 1) {
+    const share = part.gain / partialSum
+    if (share === 1) {
       o.connect(g)
     } else {
       const sub = c.createGain()
-      sub.gain.value = part.gain
+      sub.gain.value = share
       o.connect(sub).connect(g)
     }
     o.start(at)
@@ -699,8 +746,29 @@ export function noteOn(
     stop(t: number) {
       const from = Math.max(t, c.currentTime)
       try {
-        g.gain.cancelScheduledValues(from)
-        g.gain.setValueAtTime(Math.max(0.0001, g.gain.value), from)
+        /**
+         * ⚠️ THIS WAS THE POP, and it got worse the more the sequencer was used.
+         *
+         * It read `g.gain.value` — the gain RIGHT NOW — and pinned it at `from`, which is a
+         * moment in the FUTURE for every note the looper, the song player or a jam schedules
+         * ahead. A bell struck a moment ago is near its peak now and will have decayed a long
+         * way by the time `from` arrives, so pinning today's value at tomorrow's instant yanks
+         * the gain back UP at the release. A vertical jump in a waveform is a click, and it
+         * happened on every scheduled note-off.
+         *
+         * cancelAndHoldAtTime is exactly the tool for this: it keeps the automation running up to
+         * `from` and holds whatever value it genuinely has THERE, so the release starts from the
+         * curve instead of from a guess. Safari was late to it and some engines still lack it,
+         * hence the fallback — which is the old behaviour, and only reachable where there is no
+         * better option.
+         */
+        const gain = g.gain as AudioParam & { cancelAndHoldAtTime?: (t: number) => void }
+        if (typeof gain.cancelAndHoldAtTime === 'function') {
+          gain.cancelAndHoldAtTime(from)
+        } else {
+          g.gain.cancelScheduledValues(from)
+          g.gain.setValueAtTime(Math.max(0.0001, g.gain.value), from)
+        }
         g.gain.exponentialRampToValueAtTime(0.0001, from + sh.r)
       } catch {
         /* context went away */
@@ -769,6 +837,7 @@ export function closeSynth() {
     for (const b of buses.values()) b.dispose()
     out?.disconnect()
     analyser?.disconnect()
+    peak?.disconnect()
     fxOut?.disconnect()
   } catch {
     /* already gone */
@@ -781,5 +850,6 @@ export function closeSynth() {
   // closed context assigned to a new convolver is a silent reverb rather than an error.
   verbBuf = null
   fxOut = null
+  peak = null
   ctx = null
 }
