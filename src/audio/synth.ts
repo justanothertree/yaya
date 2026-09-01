@@ -591,39 +591,164 @@ function noiseBuffer(c: AudioContext): AudioBuffer {
  * noise through a highpass. All three are one-shots — there is no note-off, because you cannot
  * hold a drum.
  */
+/**
+ * The kit, one piece per semitone, repeating every octave.
+ *
+ * ⚠️ `midi % 12`, so a given key ALWAYS plays the same drum. It was `midi % 3` — three sounds
+ * cycling across the keyboard — which meant the layout carried no information: you could not
+ * learn where the snare was, because the snare was wherever you happened to be standing. A
+ * repeating octave means you learn the kit once and it is under your fingers at any octave, and
+ * a pattern drawn in the note editor keeps meaning the same thing when you move it.
+ *
+ * Roughly the General MIDI order for the first few — kick, rim, snare, clap — so anybody who has
+ * used a drum machine finds them where they expect.
+ */
+export const DRUMS: string[] = [
+  'Kick',
+  'Rim',
+  'Snare',
+  'Clap',
+  'Low tom',
+  'Mid tom',
+  'Closed hat',
+  'High tom',
+  'Open hat',
+  'Ride',
+  'Cowbell',
+  'Crash',
+]
+
+/** The piece a key plays, for a UI that wants to label the keyboard. */
+export function drumName(midi: number): string {
+  return DRUMS[((midi % 12) + 12) % 12]
+}
+
+/** A short noise burst through a filter — the basis of every metal and skin sound here. */
+function noiseHit(
+  c: AudioContext,
+  at: number,
+  g: GainNode,
+  type: BiquadFilterType,
+  freq: number,
+  q: number,
+  peak: number,
+  dur: number,
+) {
+  const src = c.createBufferSource()
+  src.buffer = noiseBuffer(c)
+  const f = c.createBiquadFilter()
+  f.type = type
+  f.frequency.value = freq
+  f.Q.value = q
+  const env = c.createGain()
+  env.gain.setValueAtTime(0.0001, at)
+  env.gain.linearRampToValueAtTime(peak, at + 0.001)
+  env.gain.exponentialRampToValueAtTime(0.0001, at + dur)
+  src.connect(f).connect(env).connect(g)
+  src.start(at)
+  src.stop(at + dur + 0.02)
+}
+
+/** A pitched body: a sine that falls, which is what a kick and a tom both are. */
+function drumTone(
+  c: AudioContext,
+  at: number,
+  g: GainNode,
+  from: number,
+  to: number,
+  drop: number,
+  peak: number,
+  dur: number,
+  wave: OscillatorType = 'sine',
+) {
+  const o = c.createOscillator()
+  o.type = wave
+  o.frequency.setValueAtTime(from, at)
+  o.frequency.exponentialRampToValueAtTime(Math.max(20, to), at + drop)
+  const env = c.createGain()
+  // ⚠️ 1ms in, never a step. A vertical edge in the waveform is a click riding the drum.
+  env.gain.setValueAtTime(0.0001, at)
+  env.gain.linearRampToValueAtTime(peak, at + 0.001)
+  env.gain.exponentialRampToValueAtTime(0.0001, at + dur)
+  o.connect(env).connect(g)
+  o.start(at)
+  o.stop(at + dur + 0.02)
+}
+
+/**
+ * Twelve pieces, all synthesised — no samples to host, and every one lands on the part's own
+ * effects bus like any other voice.
+ *
+ * ⚠️ The levels are BALANCED AGAINST EACH OTHER, measured rather than guessed. The first pass put
+ * the toms at 0.88 peak and the rim and clap at 0.25 — a three-and-a-half-to-one spread inside one
+ * kit, so going from a rim to a tom jumped in your face and you ended up riding the volume instead
+ * of playing. Measured again after: 2.05, and then the clap lifted to close it further.
+ *
+ * NOT flat, deliberately. The kick and snare sit on top and the clap sits under them, because that
+ * is where they sit on a real kit — a set of drums levelled to identical peaks sounds like a
+ * spreadsheet. The fault was the toms dominating, not the existence of a spread.
+ */
 function hitDrum(c: AudioContext, midi: number, at: number, bus: Bus | null) {
-  const kind = midi % 3
   const g = c.createGain()
   connectVoice(g, bus)
-  if (kind === 0) {
-    const o = c.createOscillator()
-    o.type = 'sine'
-    o.frequency.setValueAtTime(150, at)
-    o.frequency.exponentialRampToValueAtTime(45, at + 0.12)
-    // ⚠️ A 1ms ramp in, not a step. setValueAtTime jumps the gain from silence to full between
-    // one sample and the next, and a vertical edge in a waveform is a click on top of the drum —
-    // audible as a tick riding every kick. One millisecond is far too short to soften the
-    // transient and long enough to remove the discontinuity.
-    g.gain.setValueAtTime(0.0001, at)
-    g.gain.linearRampToValueAtTime(0.9, at + 0.001)
-    g.gain.exponentialRampToValueAtTime(0.0001, at + 0.35)
-    o.connect(g)
-    o.start(at)
-    o.stop(at + 0.4)
-  } else {
-    const src = c.createBufferSource()
-    src.buffer = noiseBuffer(c)
-    const f = c.createBiquadFilter()
-    const hat = kind === 2
-    f.type = hat ? 'highpass' : 'bandpass'
-    f.frequency.value = hat ? 7000 : 1900
-    const dur = hat ? 0.07 : 0.19
-    g.gain.setValueAtTime(0.0001, at)
-    g.gain.linearRampToValueAtTime(hat ? 0.35 : 0.6, at + 0.001)
-    g.gain.exponentialRampToValueAtTime(0.0001, at + dur)
-    src.connect(f).connect(g)
-    src.start(at)
-    src.stop(at + dur + 0.02)
+  switch (((midi % 12) + 12) % 12) {
+    case 0: // Kick: a sine falling off a cliff, plus a click of noise for the beater
+      drumTone(c, at, g, 150, 45, 0.12, 0.9, 0.35)
+      noiseHit(c, at, g, 'highpass', 3000, 0.7, 0.12, 0.02)
+      break
+    case 1: // Rim: almost all click, almost no body
+      noiseHit(c, at, g, 'bandpass', 2400, 6, 0.85, 0.035)
+      drumTone(c, at, g, 420, 380, 0.02, 0.34, 0.04, 'triangle')
+      break
+    case 2: // Snare: noise for the wires, a tone for the skin under it
+      noiseHit(c, at, g, 'bandpass', 1900, 0.9, 0.55, 0.19)
+      drumTone(c, at, g, 190, 150, 0.06, 0.3, 0.12, 'triangle')
+      break
+    case 3:
+      /**
+       * Clap: four bursts a few milliseconds apart, not one.
+       *
+       * ⚠️ The stagger IS the sound. A single noise burst through the same filter is just a
+       * short snare; what makes a clap read as many hands is that the hits do not land together.
+       */
+      for (let i = 0; i < 4; i++)
+        noiseHit(
+          c,
+          at + i * 0.011,
+          g,
+          'bandpass',
+          1150,
+          1.4,
+          i === 3 ? 0.95 : 0.68,
+          i === 3 ? 0.16 : 0.03,
+        )
+      break
+    case 4: // Low tom
+      drumTone(c, at, g, 150, 70, 0.22, 0.46, 0.5)
+      break
+    case 5: // Mid tom
+      drumTone(c, at, g, 210, 100, 0.2, 0.45, 0.42)
+      break
+    case 6: // Closed hat: short, bright, gone
+      noiseHit(c, at, g, 'highpass', 8000, 0.8, 0.44, 0.045)
+      break
+    case 7: // High tom
+      drumTone(c, at, g, 290, 140, 0.18, 0.44, 0.36)
+      break
+    case 8: // Open hat: the same metal, allowed to ring
+      noiseHit(c, at, g, 'highpass', 7500, 0.8, 0.4, 0.32)
+      break
+    case 9: // Ride: metal with a ping on top of it
+      noiseHit(c, at, g, 'highpass', 6000, 0.6, 0.24, 0.7)
+      drumTone(c, at, g, 780, 760, 0.05, 0.2, 0.5, 'square')
+      break
+    case 10: // Cowbell: two squares a fifth-ish apart, which is the whole trick
+      drumTone(c, at, g, 540, 535, 0.02, 0.24, 0.28, 'square')
+      drumTone(c, at, g, 800, 795, 0.02, 0.19, 0.24, 'square')
+      break
+    default: // Crash: a lot of metal, decaying slowly
+      noiseHit(c, at, g, 'highpass', 5200, 0.5, 0.32, 1.3)
+      break
   }
 }
 

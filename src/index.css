@@ -5768,3 +5768,13 @@ a.cz-msg-author:focus-visible {
   font-size: 0.62rem;
   padding: 0.05rem 0.3rem;
 }
+
+/* Drum names are words, not "C#4" — they need the room and they must not wrap mid-key. */
+.inst-keys[data-kit='1'] .inst-key-name {
+  font-size: 0.55rem;
+  line-height: 1.1;
+  text-align: center;
+  padding: 0 1px;
+  overflow-wrap: anywhere;
+  opacity: 0.85;
+}

@@ -10,6 +10,7 @@ import {
   type Fx,
   type InstrumentId,
   type Knob,
+  drumName,
 } from '../audio/synth'
 import { onMixerChange, setVolume, volume } from '../audio/mixer'
 import { PianoRoll } from './PianoRoll'
@@ -919,7 +920,12 @@ export function InstrumentRoom() {
        * never see a pointerenter. touch-action is none in the CSS for the same reason: on a
        * phone the browser would otherwise decide a drag across the keys is a scroll.
        */}
-      <div className="inst-keys" role="group" aria-label="Keyboard">
+      <div
+        className="inst-keys"
+        data-kit={inst === 'drums' ? '1' : undefined}
+        role="group"
+        aria-label={inst === 'drums' ? 'Drum kit' : 'Keyboard'}
+      >
         {keys.map((midi) => (
           <button
             key={midi}
@@ -938,7 +944,7 @@ export function InstrumentRoom() {
                 ? ({ ['--party-hue' as string]: theirNotes.get(midi) } as React.CSSProperties)
                 : undefined
             }
-            aria-label={noteName(midi)}
+            aria-label={inst === 'drums' ? drumName(midi) : noteName(midi)}
             onPointerDown={(e) => {
               /**
                * ⚠️ SOUND FIRST, then let go of the pointer — and the release is wrapped because
@@ -967,7 +973,12 @@ export function InstrumentRoom() {
               if (e.buttons > 0) press('p:' + midi, midi)
             }}
           >
-            <span className="inst-key-name">{noteName(midi)}</span>
+            {/* ⚠️ Drums say WHICH DRUM, not which note. A twelve-piece kit laid out as
+                C4/C#4/D4 is twelve unlabelled buttons — the note name is true and useless,
+                because nobody is playing a kick in the key of C. */}
+            <span className="inst-key-name">
+              {inst === 'drums' ? drumName(midi) : noteName(midi)}
+            </span>
           </button>
         ))}
       </div>
