@@ -39,6 +39,7 @@ import { previewMember, PREVIEW_ME, PREVIEW_VOICE_IN } from './dev/previewMember
  * Both render sites are gated on `active === 'snake'`, so there was nothing keeping it there.
  */
 const SnakeGame = lazy(() => import('./sections/SnakeGame').then((m) => ({ default: m.SnakeGame })))
+const PaintRoom = lazy(() => import('./sections/PaintRoom').then((m) => ({ default: m.PaintRoom })))
 const SignIn = lazy(() => import('./sections/SignIn').then((m) => ({ default: m.SignIn })))
 const Investments = lazy(() =>
   import('./sections/Investments').then((m) => ({ default: m.Investments })),
@@ -119,6 +120,7 @@ type Section =
   | 'snake'
   | 'visualizer'
   | 'instrument'
+  | 'paint'
   | 'contact'
   | 'admin'
   | 'invite'
@@ -144,6 +146,7 @@ const SECTION_TITLES: Record<Section, string> = {
   snake: 'Snake',
   visualizer: 'Visualiser',
   instrument: 'Instrument',
+  paint: 'Paint',
   contact: 'Contact',
   admin: 'Admin',
   invite: 'Accept invite',
@@ -164,6 +167,7 @@ const ALL_SECTIONS: Section[] = [
   'snake',
   'visualizer',
   'instrument',
+  'paint',
   'contact',
   'admin',
   'invite',
@@ -195,10 +199,11 @@ const navOrder = (
           'snake',
           'visualizer',
           'instrument',
+          'paint',
           'contact',
         ]
-      : ['home', 'signin', 'snake', 'visualizer', 'instrument', 'contact']
-    : ['home', 'snake', 'visualizer', 'instrument', 'contact']
+      : ['home', 'signin', 'snake', 'visualizer', 'instrument', 'paint', 'contact']
+    : ['home', 'snake', 'visualizer', 'instrument', 'paint', 'contact']
 
 // ── optimistic boot: what the browser already knows about this user ──
 // The persisted Supabase session is peeked synchronously (peekPersistedUserId) so a
@@ -1224,6 +1229,7 @@ export default function App() {
     snake: '🐍 Snake',
     visualizer: '🎚️ Visualiser',
     instrument: '🎹 Instrument',
+    paint: '🎨 Paint',
     contact: '✉️ Contact',
     admin: '🛠 Admin',
     signin: '🔑 Sign in',
@@ -1263,6 +1269,8 @@ export default function App() {
         return <AudioVisualizer />
       case 'instrument':
         return <InstrumentRoom />
+      case 'paint':
+        return <PaintRoom />
       case 'contact':
         return <ContactForm />
       case 'admin':
@@ -1672,6 +1680,13 @@ export default function App() {
                   aria-current={active === 'instrument' ? 'page' : undefined}
                 >
                   Instrument
+                </a>
+                <a
+                  href="#paint"
+                  onClick={() => goTo('paint')}
+                  aria-current={active === 'paint' ? 'page' : undefined}
+                >
+                  Paint
                 </a>
                 <a
                   href="#contact"
@@ -2087,6 +2102,18 @@ export default function App() {
             </p>
             <Suspense fallback={<div aria-busy>Loading…</div>}>
               <InstrumentRoom />
+            </Suspense>
+          </section>
+        )}
+        {!sharedCanvasShowing && active === 'paint' && (
+          <section id="paint" className="card reveal">
+            <h2>🎨 Paint</h2>
+            <p className="muted">
+              Draw something. Brush, shapes, a fill bucket and real transparency — kept as the
+              strokes you made rather than as an image.
+            </p>
+            <Suspense fallback={<div aria-busy>Loading…</div>}>
+              <PaintRoom />
             </Suspense>
           </section>
         )}
