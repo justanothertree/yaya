@@ -884,12 +884,12 @@ function BlockEditRow({
                 Named by what they DO, because "small / medium / large" described nothing you
                 could see — and until today two of them were the same rule. */}
             <label className="profile-editrow-size">
-              <span className="muted">Width on a wide screen</span>
+              <span className="muted">Width of the page</span>
               <button className="btn" onClick={cycleSize} title="Cycle width">
                 {block.size === 'small'
-                  ? 'one column'
+                  ? 'a third'
                   : block.size === 'medium'
-                    ? 'two columns'
+                    ? 'a half'
                     : 'full width'}
               </button>
             </label>

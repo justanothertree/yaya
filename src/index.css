@@ -4665,7 +4665,24 @@ select {
      track simply refused to shrink and ran off the right edge, where `html { overflow-x:
      hidden }` clipped it with no way to scroll to what was cut off. min(_, 100%) lets the
      track fall back to the container when the rem value is too big for it. */
-  grid-template-columns: repeat(auto-fit, minmax(min(15rem, 100%), 1fr));
+  /**
+   * ⚠️ A FIXED SIX COLUMNS, not auto-fit — and this is the difference between a page somebody
+   * composed and a page that assembles itself.
+   *
+   * It was `repeat(auto-fit, minmax(min(15rem, 100%), 1fr))`, which derives the column COUNT
+   * from the window: three columns at one width, four at another, two at a third. A block set to
+   * "two columns" was therefore two-thirds of the page on one screen and a half on the next, and
+   * which blocks ended up beside each other was decided by how the spans happened to pack rather
+   * than by the person arranging them. The composition did not exist — the browser made a new one
+   * per viewport, which is exactly why a profile felt thrown together while the same fluidity
+   * reads as a feature everywhere else on the site.
+   *
+   * Six because it divides by two and three, so a block can be a half, a third, two thirds or
+   * the whole width, and those fractions mean the same thing at every size. The page still
+   * scales with the window — it just scales as one picture instead of being re-packed into a
+   * different one.
+   */
+  grid-template-columns: repeat(6, 1fr);
   /**
    * ⚠️ `start`, not the default `stretch`.
    *
@@ -4681,22 +4698,27 @@ select {
  * the three choices did nothing whatsoever and the third looked arbitrary because a 2-of-3-column
  * block leaves a gap the next block flows into. One column, two columns, the whole row.
  */
+/* Fractions of the page, and they mean the same fraction at every width. */
 .profile-block.is-small {
-  grid-column: span 1;
+  grid-column: span 2; /* a third */
 }
 .profile-block.is-medium {
-  grid-column: span 2;
+  grid-column: span 3; /* a half */
 }
 .profile-block.is-large {
-  /* the full row whatever the column count, rather than a span that guesses at it */
-  grid-column: 1 / -1;
+  grid-column: 1 / -1; /* the whole width */
 }
 @media (max-width: 700px) {
-  /* one column down here, so every width is the same width — see the editor, which stops
-     offering the control rather than pretending it does something */
+  /* One column on a phone, so the arrangement becomes a reading order rather than a squeeze.
+     The editor stops offering the width control down here rather than pretending it does
+     something. */
+  .profile-blocks-grid {
+    grid-template-columns: 1fr;
+  }
+  .profile-block.is-small,
   .profile-block.is-medium,
   .profile-block.is-large {
-    grid-column: span 1;
+    grid-column: 1 / -1;
   }
 }
 /* The banner is generated CSS now, not an <img> of a URL someone pasted — see
