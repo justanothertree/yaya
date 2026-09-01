@@ -1235,8 +1235,25 @@ export function AudioVisualizer() {
                   />
                   <span className="appearance-slider-val">{gain.toFixed(1)}×</span>
                 </label>
+                {/**
+                 * ⚠️ Trails is the one shared tool that does not apply to every mode, so it says
+                 * so rather than sitting there doing nothing.
+                 *
+                 * A mode that owns its own buffer (Rain scrolls its history sideways) cannot
+                 * have the buffer partly erased under it — the erase IS the trail, and doing it
+                 * would eat the picture. Leaving the slider live and inert is the worst version:
+                 * you drag it, nothing happens, and you conclude the feature is broken instead
+                 * of that it does not apply here.
+                 */}
                 <label className="appearance-slider">
-                  <span className="muted" title="How much of each frame lingers">
+                  <span
+                    className="muted"
+                    title={
+                      ownsItsBuffer(mode)
+                        ? 'This mode keeps its own history, so trails do not apply to it'
+                        : 'How much of each frame lingers'
+                    }
+                  >
                     Trails
                   </span>
                   <input
@@ -1245,9 +1262,12 @@ export function AudioVisualizer() {
                     max={0.97}
                     step={0.01}
                     value={trail}
+                    disabled={ownsItsBuffer(mode)}
                     onChange={(e) => setTrail(Number(e.target.value))}
                   />
-                  <span className="appearance-slider-val">{Math.round(trail * 100)}%</span>
+                  <span className="appearance-slider-val">
+                    {ownsItsBuffer(mode) ? 'n/a' : `${Math.round(trail * 100)}%`}
+                  </span>
                 </label>
               </div>
             )}

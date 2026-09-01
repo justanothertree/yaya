@@ -158,6 +158,31 @@ const at = (spec: Uint8Array, bins: number, frac: number) =>
  * by the time you register a spike it is gone. Bin widths are curved because an FFT is linear in
  * Hz, which crams all of music into the left eighth and leaves the right side dead.
  */
+/**
+ * How strongly the pointer should affect something at `x`, 0–1.
+ *
+ * ⚠️ Shared by the modes that had NO pointer response at all. Bars, Wave and Rain ignored it
+ * completely, which meant the whole Motion tab — the mouse, and the auto-path built on top of it
+ * — did nothing on three of the sixteen modes. A control that silently does nothing on the mode
+ * you happen to have picked is worse than one that is missing: you conclude the feature is
+ * broken rather than that it does not apply.
+ *
+ * A soft falloff rather than a hard radius, so passing the pointer over a row of bars swells them
+ * and lets them down again instead of switching a band on.
+ */
+function reach(p: Pointer, x: number, top: number, bottom: number, radius: number): number {
+  if (!p.inside) return 0
+  // ⚠️ Distance to the BAR, not to its tip. Measuring to the top alone meant a quiet band —
+  // whose bar is two pixels tall — could only be touched by hovering exactly on that sliver,
+  // so the pointer appeared to do nothing across most of the spectrum. Clamping into the bar's
+  // vertical span makes "near this column" enough, which is what reaching for a bar means.
+  const dy = p.y < top ? top - p.y : p.y > bottom ? p.y - bottom : 0
+  const d = Math.hypot(p.x - x, dy)
+  if (d > radius) return 0
+  const k = 1 - d / radius
+  return k * k
+}
+
 function bars(): Visual {
   let peaks = new Float32Array(0)
   let n = 0
@@ -166,7 +191,7 @@ function bars(): Visual {
       n = Math.max(8, Math.min(64, Math.floor(w / 14)))
       peaks = new Float32Array(n)
     },
-    draw({ ctx, w, h, dt, spec, bins, ink }) {
+    draw({ ctx, w, h, dt, spec, bins, p, ink }) {
       const gap = Math.max(1, w / n / 6)
       const bw = w / n - gap
       for (let i = 0; i < n; i++) {
@@ -174,9 +199,17 @@ function bars(): Visual {
         const hi = Math.max(lo + 1, Math.floor(Math.pow((i + 1) / n, 1.7) * bins))
         let sum = 0
         for (let k = lo; k < hi; k++) sum += spec[k]
-        const v = sum / (hi - lo) / 255
-        const bh = Math.max(2, v * h * 0.92)
+        let v = sum / (hi - lo) / 255
         const x = i * (bw + gap) + gap / 2
+        /**
+         * The pointer lifts the bars it is over.
+         *
+         * ⚠️ Measured to the bar's TOP, not to its base, so running along the bottom of the
+         * canvas does not swell the whole spectrum at once. You have to reach for a bar, which is
+         * what makes it feel like touching them rather than like a proximity field.
+         */
+        v = Math.min(1, v + reach(p, x + bw / 2, h - v * h * 0.92, h, h * 0.3) * 0.45)
+        const bh = Math.max(2, v * h * 0.92)
         ctx.fillStyle = hue(ink, v)
         ctx.fillRect(x, h - bh, bw, bh)
         // gravity, not a per-frame step, so it falls the same on a 144Hz screen as a 60Hz one
@@ -192,7 +225,7 @@ function bars(): Visual {
 function wave(): Visual {
   return {
     init() {},
-    draw({ ctx, w, h, wave: buf, waveN, f, ink }) {
+    draw({ ctx, w, h, wave: buf, waveN, f, p, ink }) {
       const mid = h / 2
       const amp = h * 0.42
       const step = Math.max(1, Math.floor(waveN / Math.max(1, w)))
@@ -202,11 +235,24 @@ function wave(): Visual {
       ctx.moveTo(0, mid)
       ctx.lineTo(w, mid)
       ctx.stroke()
+      /**
+       * The pointer drags the line toward itself.
+       *
+       * ⚠️ A pull toward the cursor's Y, falling off with distance along X — not a vertical
+       * offset added to the whole line. Offsetting everything would just move the waveform up and
+       * down the screen; pulling locally makes the line stretch, which is the thing that looks
+       * like a string being touched.
+       */
+      const pull = (x: number, y: number) => {
+        if (!p.inside) return y
+        const k = Math.max(0, 1 - Math.abs(p.x - x) / (w * 0.28))
+        return y + (p.y - y) * k * k * 0.7
+      }
       const line = (width: number, alpha: number) => {
         ctx.beginPath()
         for (let i = 0; i < waveN; i += step) {
           const x = (i / waveN) * w
-          const y = mid + ((buf[i] - 128) / 128) * amp
+          const y = pull(x, mid + ((buf[i] - 128) / 128) * amp)
           if (i === 0) ctx.moveTo(x, y)
           else ctx.lineTo(x, y)
         }
@@ -273,7 +319,7 @@ function rain(): Visual {
     init() {
       cleared = false
     },
-    draw({ ctx, w, h, spec, bins, ink }) {
+    draw({ ctx, w, h, spec, bins, p, ink }) {
       if (!cleared) {
         ctx.fillStyle = rgb(ink.ink, 0.06)
         ctx.fillRect(0, 0, w, h)
@@ -288,6 +334,23 @@ function rain(): Visual {
         ctx.globalAlpha = v < 0.04 ? 1 : 0.25 + v * 0.75
         ctx.fillStyle = v < 0.04 ? rgb(ink.ink, 0.05) : hue(ink, v)
         ctx.fillRect(w - col, h - (i + 1) * rh, col + 1, rh + 1)
+      }
+      /**
+       * The pointer writes into the spectrogram.
+       *
+       * ⚠️ Drawn into the NEWEST column, so it scrolls away with the history rather than sitting
+       * on top of it as an overlay. That is the whole reason this is the right gesture for this
+       * mode: everything here is a record of a moment, so a mark you make should become part of
+       * the record and travel left with it. An overlay would be a cursor; this is a pen.
+       *
+       * It also gives Rain a pointer at all — it had none, which meant the mouse and the
+       * auto-path did nothing whatsoever on it.
+       */
+      if (p.inside) {
+        const y = Math.max(0, Math.min(h, p.y))
+        ctx.globalAlpha = 1
+        ctx.fillStyle = rgb(ink.ink, 0.95)
+        ctx.fillRect(w - col, y - 1, col + 1, 3)
       }
       ctx.globalAlpha = 1
     },
@@ -524,14 +587,49 @@ function terrain(): Visual {
 function ripple(): Visual {
   type R = { x: number; y: number; r: number; strength: number }
   let rs: R[] = []
+  /** seconds until the next ambient ring — see the note in draw */
+  let idle = 0
   return {
     init() {
       rs = []
+      idle = 0
     },
     draw({ ctx, w, h, dt, f, p, ink }) {
       // your own stone, exactly where you put it
       if (p.down && p.sinceClick < 0.05) {
         rs.push({ x: p.clickX, y: p.clickY, r: 2, strength: 1 })
+      }
+      /**
+       * ⚠️ A RIPPLE THAT ONLY ANSWERS ONSETS SHOWS NOTHING AT ALL ON STEADY SOUND.
+       *
+       * Every ring here used to need either a beat or a click, so a held pad, a drone, or a quiet
+       * passage left the canvas completely black — and a mode that draws nothing is
+       * indistinguishable from a mode that is broken. It measured zero painted pixels in an audit
+       * of all sixteen; it was the only one that did.
+       *
+       * A slow ring shed from wherever the pointer is keeps water on the surface between onsets,
+       * scaled by loudness so silence really is still. The beat rings below are unchanged and
+       * still the loud event; this is the difference between a pond and a blank wall.
+       */
+      idle -= dt
+      if (idle <= 0 && f.level > 0.02) {
+        /**
+         * ⚠️ Placed by BAND CONTENT, like the beat rings below, not merely at the centre.
+         *
+         * Centred ambient rings made the mode answer loudness and nothing else: two completely
+         * different pieces of music produced an identical picture as long as they were the same
+         * volume. Offsetting by treble and bass means bright material ripples from a different
+         * place than heavy material does, so what you play is visible and not just that you are
+         * playing.
+         *
+         * Your pointer still wins outright when it is over the canvas, since a stone you place
+         * yourself should land where you put it.
+         */
+        const [cx, cy] = centre(p, w, h)
+        const x = p.inside ? cx : w * (0.2 + f.treble * 0.6)
+        const y = p.inside ? cy : h * (0.8 - f.bass * 0.55)
+        rs.push({ x, y, r: 2, strength: 0.12 + f.level * 0.3 })
+        idle = 0.45 - Math.min(0.3, f.level * 0.5)
       }
       if (f.beat) {
         rs.push({
