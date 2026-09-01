@@ -841,6 +841,39 @@ export function setLayerFx(id: string) {
  * right now are the ones being replaced. Without this, editing a layer mid-note strands it,
  * exactly like muting used to.
  */
+/**
+ * Replace everything with a saved song.
+ *
+ * ⚠️ Stops and releases first. Loading over a running loop would leave every currently sounding
+ * note owned by a layer that no longer exists, and nothing left to release it — the same
+ * stranding that mute and delete had to be taught about.
+ */
+export function loadSong(bpm: number, bars: number, layers: Layer[]) {
+  stopLoop()
+  releaseAllLayers()
+  set({
+    bpm: Math.max(40, Math.min(200, Math.round(bpm))),
+    bars: Math.max(1, Math.min(8, Math.round(bars))),
+    layers,
+    position: 0,
+  })
+}
+
+/**
+ * Drop one saved part into what you already have — a drum loop you made last week under a new
+ * bassline.
+ *
+ * ⚠️ The layer keeps its OWN length rather than being stretched to this song's loop. That is what
+ * makes reuse work at all: a one-bar drum pattern tiles into a four-bar arrangement (see the
+ * scheduler), so borrowing a part does not require the two songs to have been the same shape. The
+ * tempo is not touched either — the borrowed part plays at the tempo you are working at now,
+ * which is the only reading that lets you build something new out of it.
+ */
+export function addLayers(layers: Layer[]) {
+  if (!layers.length) return
+  set({ layers: [...state.layers, ...layers].slice(0, 12) })
+}
+
 export function setLayerEvents(id: string, events: LoopEvent[]) {
   releaseLayer(id)
   set({

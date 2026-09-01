@@ -13,6 +13,14 @@ import {
 } from '../audio/synth'
 import { onMixerChange, setVolume, volume } from '../audio/mixer'
 import { PianoRoll } from './PianoRoll'
+import { toSong, songNotes, songToLayers } from '../audio/songFile'
+import {
+  library,
+  removeFromLibrary,
+  saveToLibrary,
+  subscribeLibrary,
+  type LibraryItem,
+} from '../audio/library'
 import { remember } from '../audio/capture'
 import { sharedCtx } from '../audio/context'
 import { jam } from '../party/jam'
@@ -28,6 +36,8 @@ import {
   setLayerFx,
   loopLength,
   captureLast,
+  loadSong,
+  addLayers,
   setBars,
   setBpm,
   setLayerInstrument,
@@ -279,6 +289,25 @@ export function InstrumentRoom() {
   const [editing, setEditing] = useState<string | null>(null)
   /** what Capture just did, shown briefly — it is otherwise a button with no visible effect */
   const [capMsg, setCapMsg] = useState<string | null>(null)
+  const [libOpen, setLibOpen] = useState(false)
+  const saved = useSyncExternalStore(subscribeLibrary, library, library)
+
+  /**
+   * Keeping something.
+   *
+   * A whole arrangement is a song; one layer is a loop. Same format either way — a loop is a
+   * song with one layer — which is what lets a drum pattern you kept last week be dropped under
+   * a bassline you are writing now.
+   */
+  const keep = (kind: 'song' | 'loop', layerId?: string) => {
+    const name =
+      window.prompt(kind === 'loop' ? 'Name this loop' : 'Name this song', '')?.trim() ?? ''
+    if (!name) return
+    const item = saveToLibrary(kind, toSong(name, loop.bpm, loop.bars, loop.layers, layerId))
+    setCapMsg(item ? `Kept “${item.name}”` : 'Nothing to keep — record something first.')
+    window.setTimeout(() => setCapMsg(null), 4000)
+    if (item) setLibOpen(true)
+  }
 
   /** midi number → the hue of whoever is holding it, for the keyboard below */
   const theirNotes = new Map<number, number>()
@@ -521,6 +550,59 @@ export function InstrumentRoom() {
       </div>
 
       {/* The looper. Play a pass, it repeats; play another, it stacks. */}
+      {libOpen && (
+        <div className="inst-row inst-library">
+          {!saved.length ? (
+            <span className="muted">
+              Nothing kept yet. Record something, then <strong>Keep song</strong> — or keep a single
+              layer with the ⬇ on its row and reuse it in a different song later.
+            </span>
+          ) : (
+            <ul className="inst-lib-list">
+              {saved.map((it: LibraryItem) => (
+                <li key={it.id}>
+                  <span className="inst-lib-name">
+                    {it.kind === 'loop' ? '🔁' : '🎵'} {it.name}
+                  </span>
+                  <span className="muted inst-lib-meta">
+                    {it.song.layers.length} layer{it.song.layers.length === 1 ? '' : 's'} ·{' '}
+                    {songNotes(it.song)} notes · {it.song.bpm}bpm
+                  </span>
+                  {/* Two different verbs, and the distinction is the whole point of the library.
+                      Open REPLACES what you have; Add brings this part in alongside it. */}
+                  <button
+                    className="btn"
+                    onClick={() => {
+                      loadSong(it.song.bpm, it.song.bars, songToLayers(it.song))
+                      setEditing(null)
+                    }}
+                    title="Open this, replacing what you have now"
+                  >
+                    Open
+                  </button>
+                  <button
+                    className="btn"
+                    onClick={() => addLayers(songToLayers(it.song))}
+                    title="Add these layers to what you are working on"
+                  >
+                    + Add
+                  </button>
+                  <button
+                    className="btn"
+                    onClick={() => {
+                      if (window.confirm(`Delete “${it.name}”?`)) removeFromLibrary(it.id)
+                    }}
+                    title="Delete this"
+                  >
+                    ✕
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+
       {capMsg && (
         <p className="muted inst-capture-note" role="status">
           {capMsg}
@@ -542,6 +624,22 @@ export function InstrumentRoom() {
          * this asks "keep what just happened" rather than "start keeping things". The whole
          * value is that you decide AFTER hearing it, which is when you actually know.
          */}
+        <button
+          className={'btn' + (libOpen ? ' is-on' : '')}
+          aria-pressed={libOpen}
+          onClick={() => setLibOpen((v) => !v)}
+          title="Songs and loops you have kept"
+        >
+          📁 Library{saved.length ? ` · ${saved.length}` : ''}
+        </button>
+        <button
+          className="btn"
+          disabled={!loop.layers.length}
+          onClick={() => keep('song')}
+          title="Keep this whole arrangement"
+        >
+          ⬇ Keep song
+        </button>
         <button
           className="btn"
           onClick={() => {
@@ -680,6 +778,17 @@ export function InstrumentRoom() {
                * current knobs onto it, so changing the reverb costs a click rather than a
                * performance.
                */}
+              {/* Keeping ONE layer. This is the drum-loop case: a part worth reusing is almost
+                  never a whole song, and a library of one-layer loops is what makes the next
+                  song faster to start than the last one. */}
+              <button
+                className="btn"
+                onClick={() => keep('loop', l.id)}
+                title="Keep this layer as a loop you can reuse"
+              >
+                ⬇
+              </button>
+
               {/* Editing what you played rather than playing it again — only possible because a
                   take is stored as notes. See PianoRoll. */}
               <button
