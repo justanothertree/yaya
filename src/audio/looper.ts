@@ -44,6 +44,20 @@ export type Layer = {
    */
   len: number
   /**
+   * Which bars of the song this layer plays in — the arrangement.
+   *
+   * ⚠️ UNDEFINED MEANS EVERYWHERE, and that is what makes this additive rather than a rewrite.
+   * Every take recorded before arrangement existed, and every one recorded without touching the
+   * grid, has no mask and plays in every bar exactly as it always did. Structure is something you
+   * opt into by turning a bar off, not something you have to set up before you can hear anything.
+   *
+   * One entry per bar of the SONG, not of the take. A one-bar drum loop in a sixteen-bar song has
+   * sixteen entries, because the question the arrangement answers is "is the drum part playing
+   * during bar 12", and the tiling underneath already knows how to repeat a short take to get
+   * there.
+   */
+  play?: boolean[]
+  /**
    * The effect settings this take was played with.
    *
    * ⚠️ STORED ON THE LAYER, not read from the knobs at playback. The knobs are live, so a part
@@ -78,6 +92,15 @@ type State = {
 }
 
 const BEATS_PER_BAR = 4
+/**
+ * How long a song may be.
+ *
+ * ⚠️ Raised from eight, because eight bars is a loop and a track is not. The scheduler already
+ * tiles a short take across a long loop, so a one-bar drum pattern fills thirty-two bars without
+ * anyone re-recording it — which means the only thing standing between a loop and an arrangement
+ * was the ceiling and a way to say "not in this bar".
+ */
+const MAX_BARS = 32
 /**
  * How far ahead notes are handed to the audio clock.
  *
@@ -301,10 +324,35 @@ function scheduleWindow(from: number, to: number) {
       const own = Math.max(0.05, layer.len)
       const reps = Math.max(1, Math.floor(len / own + 1e-6))
       const end = base + len
+      const barLen = (60 / state.bpm) * BEATS_PER_BAR
       for (let k = 0; k < reps; k++) {
         const sub = base + k * own
+        /**
+         * ⚠️ Skip a whole repetition that cannot touch this window.
+         *
+         * Cheap before, load-bearing now. A one-bar take in a thirty-two bar song is thirty-two
+         * repetitions, and the window only ever covers a fraction of a second of them — without
+         * this, every layer walked every note of every repetition forty times a second to
+         * discard almost all of it. One comparison per repetition instead.
+         */
+        if (sub > to || sub + own < from) continue
         for (const e of layer.events) {
           let at = sub + e.t
+          /**
+           * The arrangement: silence in a bar this layer is not part of.
+           *
+           * ⚠️ Checked on the NOTE's bar rather than the repetition's, so a note that starts
+           * near the end of one bar belongs to the bar it starts in. Deciding per repetition
+           * would let a take that straddles a boundary sound in a bar you had switched off.
+           *
+           * Note-offs are exempt: a note that legitimately started must always be allowed to
+           * end, even if it runs into a bar the layer is muted for. Silencing the release rather
+           * than the attack is how a note rings forever.
+           */
+          if (e.on && layer.play) {
+            const bar = Math.floor((at - base) / barLen)
+            if (bar >= 0 && bar < layer.play.length && !layer.play[bar]) continue
+          }
           /**
            * ⚠️ A note-off past the boundary is CLAMPED, never skipped.
            *
@@ -733,7 +781,7 @@ export function setBpm(bpm: number) {
 }
 
 export function setBars(bars: number) {
-  const next = Math.max(1, Math.min(8, Math.round(bars)))
+  const next = Math.max(1, Math.min(MAX_BARS, Math.round(bars)))
   if (next === state.bars) return
   // Layers are NOT touched: a take keeps its own length and the scheduler tiles it into whatever
   // the loop is now. That is what makes going 2 -> 4 fill the new bars and 4 -> 2 reversible.
@@ -829,6 +877,34 @@ export function undoLast() {
  * and wrong the moment you decide the bassline wants more room after all. Re-recording it just to
  * change the reverb would mean playing it again, which is a silly price for turning a dial.
  */
+/**
+ * Turn one bar of one layer on or off.
+ *
+ * ⚠️ Releases the layer first, for the same reason editing its notes does: the bar you just
+ * switched off may be sounding right now, and the note-off that would have ended it is about to
+ * stop being scheduled.
+ *
+ * The mask is grown to the song's length on demand and filled with `true`, so switching one bar
+ * off never silently mutes the bars nobody has touched.
+ */
+export function toggleLayerBar(id: string, bar: number) {
+  releaseLayer(id)
+  set({
+    layers: state.layers.map((l) => {
+      if (l.id !== id) return l
+      const mask = Array.from({ length: state.bars }, (_, i) => l.play?.[i] ?? true)
+      if (bar >= 0 && bar < mask.length) mask[bar] = !mask[bar]
+      return { ...l, play: mask }
+    }),
+  })
+}
+
+/** Put a layer back in every bar. */
+export function clearLayerBars(id: string) {
+  releaseLayer(id)
+  set({ layers: state.layers.map((l) => (l.id === id ? { ...l, play: undefined } : l)) })
+}
+
 export function setLayerFx(id: string) {
   set({ layers: state.layers.map((l) => (l.id === id ? { ...l, fx: fxSnapshot() } : l)) })
 }
@@ -853,7 +929,7 @@ export function loadSong(bpm: number, bars: number, layers: Layer[]) {
   releaseAllLayers()
   set({
     bpm: Math.max(40, Math.min(200, Math.round(bpm))),
-    bars: Math.max(1, Math.min(8, Math.round(bars))),
+    bars: Math.max(1, Math.min(MAX_BARS, Math.round(bars))),
     layers,
     position: 0,
   })

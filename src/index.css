@@ -5703,3 +5703,33 @@ a.cz-msg-author:focus-visible {
 .inst-key {
   -webkit-touch-callout: none;
 }
+
+/* The arrangement grid — one cell per bar, per layer. See toggleLayerBar. */
+.inst-arrange {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-wrap: wrap;
+  max-width: 18rem;
+}
+.inst-bar-cell {
+  width: 12px;
+  height: 18px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  background: transparent;
+  cursor: pointer;
+}
+.inst-bar-cell.is-on {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.inst-bar-cell:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 1px;
+}
+.inst-bar-all {
+  font-size: 0.62rem;
+  padding: 0.05rem 0.3rem;
+}

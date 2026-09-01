@@ -38,6 +38,8 @@ import {
   captureLast,
   loadSong,
   addLayers,
+  toggleLayerBar,
+  clearLayerBars,
   setBars,
   setBpm,
   setLayerInstrument,
@@ -706,7 +708,7 @@ export function InstrumentRoom() {
             className="inst-num"
             type="number"
             min={1}
-            max={8}
+            max={32}
             value={loop.bars}
             onChange={(e) => setBars(Number(e.target.value))}
           />
@@ -778,6 +780,41 @@ export function InstrumentRoom() {
                * current knobs onto it, so changing the reverb costs a click rather than a
                * performance.
                */}
+              {/**
+               * The arrangement: which bars this layer plays in.
+               *
+               * ⚠️ Every bar is ON until you turn one off, so a take you just recorded behaves
+               * exactly as it always did and structure is something you opt into. This is the
+               * difference between a stack of loops all playing at once and a track — the
+               * tiling underneath already repeats a one-bar drum part across thirty-two bars,
+               * so the only thing missing was a way to say "not here".
+               */}
+              <span className="inst-arrange" role="group" aria-label="Bars this layer plays in">
+                {Array.from({ length: loop.bars }, (_, b) => {
+                  const on = l.play?.[b] ?? true
+                  return (
+                    <button
+                      key={b}
+                      className={'inst-bar-cell' + (on ? ' is-on' : '')}
+                      aria-pressed={on}
+                      onClick={() => toggleLayerBar(l.id, b)}
+                      title={`Bar ${b + 1}: ${on ? 'playing' : 'silent'}`}
+                    >
+                      <span className="sr-only">{b + 1}</span>
+                    </button>
+                  )
+                })}
+                {l.play && (
+                  <button
+                    className="btn inst-bar-all"
+                    onClick={() => clearLayerBars(l.id)}
+                    title="Play in every bar again"
+                  >
+                    all
+                  </button>
+                )}
+              </span>
+
               {/* Keeping ONE layer. This is the drum-loop case: a part worth reusing is almost
                   never a whole song, and a library of one-layer loops is what makes the next
                   song faster to start than the last one. */}

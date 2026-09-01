@@ -48,6 +48,8 @@ export type SongLayer = {
   len: number
   fx: Fx
   muted: boolean
+  /** which bars of the song this layer plays in; absent means all of them */
+  play?: boolean[]
 }
 
 export type Song = {
@@ -78,6 +80,7 @@ export function toSong(
       len: l.len,
       fx: l.fx,
       muted: l.muted,
+      play: l.play,
     })),
   }
 }
@@ -93,6 +96,20 @@ function readFx(v: unknown): Fx {
     space: num(o.space, 0, 1, 0),
     vibrato: num(o.vibrato, 0, 1, 0),
   }
+}
+
+/**
+ * An arrangement mask off the wire.
+ *
+ * ⚠️ Bounded at MAX_BARS like everything else here. It is an array a stranger's file supplies
+ * and it becomes a loop bound in the scheduler, so a million-entry mask is a million comparisons
+ * per repetition. Absent or unusable means "plays everywhere", which is the safe reading: a song
+ * that loses its arrangement is still a song, where one that silently mutes itself is a bug
+ * nobody can diagnose.
+ */
+function readPlay(v: unknown): boolean[] | undefined {
+  if (!Array.isArray(v) || !v.length) return undefined
+  return v.slice(0, 32).map((x) => x !== false)
 }
 
 function readLayer(v: unknown, budget: number): SongLayer | null {
@@ -127,7 +144,14 @@ function readLayer(v: unknown, budget: number): SongLayer | null {
   const events = toEvents(toNotes(raw, len), len)
   if (!events.some((e) => e.on)) return null
 
-  return { instrument: inst, events, len, fx: readFx(o.fx), muted: o.muted === true }
+  return {
+    instrument: inst,
+    events,
+    len,
+    fx: readFx(o.fx),
+    muted: o.muted === true,
+    play: readPlay(o.play),
+  }
 }
 
 /** Read a song from anywhere. Returns null rather than throwing — a bad file is not a crash. */
@@ -187,7 +211,15 @@ export type PackedSong = {
   bpm: number
   bars: number
   /** layers: instrument, own length in ms, fx as four numbers, muted, notes as flat triples */
-  l: Array<{ i: string; d: number; f: [number, number, number, number]; m: 0 | 1; n: number[] }>
+  l: Array<{
+    i: string
+    /** arrangement bitmask, one bit per bar; -1 means "every bar" */
+    p: number
+    d: number
+    f: [number, number, number, number]
+    m: 0 | 1
+    n: number[]
+  }>
 }
 
 export function packSong(song: Song): PackedSong {
@@ -202,8 +234,14 @@ export function packSong(song: Song): PackedSong {
       for (const note of notes) {
         n.push(Math.round(note.t * 1000), note.midi, Math.round(note.dur * 1000))
       }
+      // ⚠️ the mask packs to ONE NUMBER — a bit per bar. Thirty-two booleans as JSON is
+      // "[true,false,...]" at ~6 characters each; as an integer it is at most ten.
+      let mask = 0
+      if (layer.play)
+        for (let i = 0; i < layer.play.length && i < 32; i++) if (layer.play[i]) mask |= 1 << i
       return {
         i: layer.instrument,
+        p: layer.play ? mask : -1,
         d: Math.round(layer.len * 1000),
         f: [layer.fx.echo, layer.fx.echoTime, layer.fx.space, layer.fx.vibrato].map(
           (x) => Math.round(x * 100) / 100,
@@ -251,7 +289,10 @@ function readPacked(v: Record<string, unknown>): Song | null {
     const events = toEvents(notes, len)
     if (!events.some((e) => e.on)) continue
     budget -= events.length
-    layers.push({ instrument: inst, events, len, fx, muted: o.m === 1 })
+    const bits = typeof o.p === 'number' && Number.isInteger(o.p) ? o.p : -1
+    const play =
+      bits < 0 ? undefined : Array.from({ length: 32 }, (_, i) => (bits & (1 << i)) !== 0)
+    layers.push({ instrument: inst, events, len, fx, muted: o.m === 1, play })
   }
   if (!layers.length) return null
   return {
@@ -285,5 +326,6 @@ export function songToLayers(s: Song): Layer[] {
     muted: l.muted,
     fx: l.fx,
     len: l.len,
+    play: l.play,
   }))
 }
