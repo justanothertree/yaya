@@ -55,8 +55,18 @@ function Poster({ accent, label }: { accent: string; label: string }) {
 function Slideshow({ project }: { project: Project }) {
   const [i, setI] = useState(0)
   const [zoom, setZoom] = useState(false)
+  /**
+   * Pictures that did not load.
+   *
+   * ⚠️ A SCREENSHOT PATH IS TYPED BY HAND, so it can be wrong — and the place it would be wrong
+   * is the public front page, where a broken-image icon is the first thing a visitor sees. The
+   * generated poster was always the fallback for "no picture yet"; a picture that fails to arrive
+   * is the same situation, so it falls back the same way instead of leaving a hole.
+   */
+  const [broken, setBroken] = useState<Set<string>>(() => new Set())
   const shots = project.shots.length ? project.shots : ([{ label: project.title }] as Shot[])
   const shot = shots[i]
+  const picture = shot.src && !broken.has(shot.src) ? shot.src : null
   const go = (d: number) => setI((p) => (p + d + shots.length) % shots.length)
 
   return (
@@ -76,11 +86,12 @@ function Slideshow({ project }: { project: Project }) {
           background: 'var(--b1, rgba(127,127,127,0.06))',
         }}
       >
-        {shot.src ? (
+        {picture ? (
           <img
-            src={shot.src}
+            src={picture}
             alt={shot.label}
             onClick={() => setZoom(true)}
+            onError={() => setBroken((b) => new Set(b).add(picture))}
             style={{ width: '100%', height: '100%', objectFit: 'cover', cursor: 'zoom-in' }}
           />
         ) : (
@@ -159,7 +170,7 @@ function Slideshow({ project }: { project: Project }) {
         )}
       </div>
 
-      {zoom && shot.src && (
+      {zoom && picture && (
         <div
           onClick={() => setZoom(false)}
           style={{
@@ -173,9 +184,12 @@ function Slideshow({ project }: { project: Project }) {
             zIndex: 1500,
           }}
         >
+          {/* the same picture the slide is showing, so a fallen-back slide cannot open a
+              broken one full-screen */}
           <img
-            src={shot.src}
+            src={picture}
             alt={shot.label}
+            onError={() => setBroken((b) => new Set(b).add(picture))}
             style={{ maxWidth: '94vw', maxHeight: '92vh', borderRadius: 10 }}
           />
         </div>
