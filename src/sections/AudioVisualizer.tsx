@@ -74,6 +74,9 @@ const MIRROR_KEY = 'viz_mirror_v1'
 const PALETTE_KEY = 'viz_palette_v1'
 const ZOOM_KEY = 'viz_zoom_v1'
 const SPIN_KEY = 'viz_spin_v1'
+const ANCHOR_KEY = 'viz_anchor_v1'
+/** Two taps closer together than this are one gesture. */
+const DOUBLE_TAP_MS = 320
 /** How long the mouse has to sit still before the controls duck out of the way. */
 const IDLE_MS = 2600
 const DEPTH_KEY = 'viz_depth_v1'
@@ -202,6 +205,26 @@ export function AudioVisualizer() {
   const [depth, setDepth] = useState(() => storedNumber(DEPTH_KEY, 0, 1) ?? 0)
   /* signed: negative turns the other way, and 0 in the middle is the off position */
   const [spin, setSpin] = useState(() => storedNumber(SPIN_KEY, -1, 1) ?? 0)
+  /**
+   * A pinned stand-in for the pointer, kept as FRACTIONS of the surface rather than pixels.
+   *
+   * ⚠️ Fractions because everything about this surface moves: the window resizes, a canvas pane
+   * is dragged wider, and zoom changes what the modes think the canvas measures without a resize
+   * happening at all. A remembered pixel would mean the pin drifting off the picture the first
+   * time any of those changed — the same mistake that sent nebula into the corner.
+   */
+  const [anchor, setAnchor] = useState<{ x: number; y: number } | null>(() => {
+    try {
+      const raw = localStorage.getItem(ANCHOR_KEY)
+      if (!raw) return null
+      const v = JSON.parse(raw) as { x?: unknown; y?: unknown }
+      if (typeof v?.x !== 'number' || typeof v?.y !== 'number') return null
+      if (!Number.isFinite(v.x) || !Number.isFinite(v.y)) return null
+      return { x: Math.max(0, Math.min(1, v.x)), y: Math.max(0, Math.min(1, v.y)) }
+    } catch {
+      return null
+    }
+  })
   const [path, setPath] = useState<PathId>(() => readStored(PATH_KEY, PATH_IDS, 'off'))
   const [pathSpeed, setPathSpeed] = useState(() => storedNumber(PATHSPEED_KEY, 0.02, 1) ?? 0.12)
   const [bloom, setBloom] = useState(() => storedNumber(BLOOM_KEY, 0, 1) ?? 0.25)
@@ -337,8 +360,8 @@ export function AudioVisualizer() {
    * visual on every step of that drag — particles reseeded, spectrogram wiped, trails cleared.
    * The loop reads the current value instead, so they take effect instantly without a restart.
    */
-  const dials = useRef({ zoom, depth, path, pathSpeed, bloom, punch, echo, spin })
-  dials.current = { zoom, depth, path, pathSpeed, bloom, punch, echo, spin }
+  const dials = useRef({ zoom, depth, path, pathSpeed, bloom, punch, echo, spin, anchor })
+  dials.current = { zoom, depth, path, pathSpeed, bloom, punch, echo, spin, anchor }
 
   const ptr = useRef({
     x: 0,
@@ -372,6 +395,8 @@ export function AudioVisualizer() {
       localStorage.setItem(ZOOM_KEY, String(zoom))
       localStorage.setItem(DEPTH_KEY, String(depth))
       localStorage.setItem(SPIN_KEY, String(spin))
+      if (anchor) localStorage.setItem(ANCHOR_KEY, JSON.stringify(anchor))
+      else localStorage.removeItem(ANCHOR_KEY)
       localStorage.setItem(PATH_KEY, path)
       localStorage.setItem(PATHSPEED_KEY, String(pathSpeed))
       localStorage.setItem(TAB_KEY, tab)
@@ -395,6 +420,7 @@ export function AudioVisualizer() {
     zoom,
     depth,
     spin,
+    anchor,
     path,
     pathSpeed,
     bloom,
@@ -677,6 +703,7 @@ export function AudioVisualizer() {
         punch: pun,
         echo: ech,
         spin: spn,
+        anchor: anc,
       } = dials.current
       const all = src === ALL
       const bins = Math.min(spec.length, all ? binCountAll() : binCount(src))
@@ -759,7 +786,25 @@ export function AudioVisualizer() {
         scaled.sinceClick = seen.sinceClick
         seen = scaled
       }
-      if (!seen.inside && pathId !== 'off') {
+      /**
+       * A pinned pointer, when there is one and your hand is not on the picture.
+       *
+       * ⚠️ Ranked BELOW your own pointer and ABOVE the auto-path, which is the same order the
+       * auto-path already followed: whatever you are actually doing wins, and the fallbacks only
+       * fill the gap. Pinning would be worthless if it fought the mouse, and pointless if the
+       * path could talk over it.
+       *
+       * ⚠️ Zero velocity, deliberately. A pin is a place, not a gesture, and modes that read a
+       * flick would otherwise inherit whatever speed the pointer happened to have when it left.
+       */
+      if (!seen.inside && anc) {
+        auto.x = anc.x * vw
+        auto.y = anc.y * vh
+        auto.vx = 0
+        auto.vy = 0
+        auto.inside = true
+        seen = auto
+      } else if (!seen.inside && pathId !== 'off') {
         pathT += dt * pspeed
         const [nx, ny] = pathPoint(pathId, pathT)
         const px = vw / 2 + nx * vw * 0.38
@@ -1016,8 +1061,28 @@ export function AudioVisualizer() {
       q.clickX = e.clientX - r.left
       q.clickY = e.clientY - r.top
     }
-    const onUp = () => {
+    /**
+     * Double-tap the picture to go fullscreen, and back.
+     *
+     * ⚠️ TOUCH ONLY. With a mouse there is already a button and the F key, and a stray
+     * double-click on the canvas is something people do — several modes answer clicks, so
+     * stealing that gesture would fight them. On a phone there is no F key, the button is small,
+     * and double-tapping the picture is what every video player has trained people to do.
+     *
+     * ⚠️ Not on the controls or the pin: tapping twice on a slider is ordinary use of a slider,
+     * and a second tap on the pin is how you would grab it again after nudging it.
+     */
+    let lastTap = 0
+    const onUp = (e: PointerEvent) => {
       ptr.current.down = false
+      if (e.pointerType !== 'touch') return
+      const t = e.target
+      if (t instanceof Element && t.closest('.viz-controls, .viz-anchor, .viz-float')) return
+      const now = performance.now()
+      if (now - lastTap < DOUBLE_TAP_MS) {
+        lastTap = 0
+        goFullRef.current?.()
+      } else lastTap = now
     }
     /**
      * The wheel zooms.
@@ -1124,6 +1189,72 @@ export function AudioVisualizer() {
       >
         <div className="viz-surface" ref={host}>
           <canvas ref={canvas} className="viz-canvas" aria-hidden />
+
+          {/**
+           * The pin, when there is one — drag it to say where the pointer-driven part of a mode
+           * should sit without having to hold the mouse there.
+           *
+           * ⚠️ Positioned in PERCENTAGES, from the same fractions the loop reads, so the handle
+           * and the effect cannot drift apart when the surface resizes or the zoom changes.
+           *
+           * ⚠️ Arrow keys move it too. It is a control, and a control that can only be dragged
+           * cannot be used without a mouse — which on this particular one would be an odd thing
+           * to ship, since the whole point is standing in for a pointer.
+           */}
+          {anchor && (
+            <div
+              className="viz-anchor"
+              style={{ left: `${anchor.x * 100}%`, top: `${anchor.y * 100}%` }}
+              role="application"
+              tabIndex={0}
+              aria-label="Pinned pointer — drag or use the arrow keys to move it"
+              title="Drag to move it. Double-click, or the button in Motion, to remove it."
+              onDoubleClick={() => setAnchor(null)}
+              onKeyDown={(e) => {
+                const step = e.shiftKey ? 0.08 : 0.02
+                const dx = e.key === 'ArrowLeft' ? -step : e.key === 'ArrowRight' ? step : 0
+                const dy = e.key === 'ArrowUp' ? -step : e.key === 'ArrowDown' ? step : 0
+                if (!dx && !dy) return
+                e.preventDefault()
+                /* ⚠️ and stop it here: the arrow keys page between sections of the site, so
+                   nudging the pin one step to the right used to walk you off the visualiser
+                   entirely — measured, it landed on the instrument */
+                e.stopPropagation()
+                setAnchor((a) =>
+                  a
+                    ? {
+                        x: Math.max(0, Math.min(1, a.x + dx)),
+                        y: Math.max(0, Math.min(1, a.y + dy)),
+                      }
+                    : a,
+                )
+              }}
+              onPointerDown={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                const el = e.currentTarget
+                el.setPointerCapture(e.pointerId)
+                const move = (ev: PointerEvent) => {
+                  const box = host.current
+                  if (!box) return
+                  const r = box.getBoundingClientRect()
+                  if (r.width < 1 || r.height < 1) return
+                  setAnchor({
+                    x: Math.max(0, Math.min(1, (ev.clientX - r.left) / r.width)),
+                    y: Math.max(0, Math.min(1, (ev.clientY - r.top) / r.height)),
+                  })
+                }
+                const up = () => {
+                  el.removeEventListener('pointermove', move)
+                  el.removeEventListener('pointerup', up)
+                  el.removeEventListener('pointercancel', up)
+                }
+                el.addEventListener('pointermove', move)
+                el.addEventListener('pointerup', up)
+                el.addEventListener('pointercancel', up)
+              }}
+            />
+          )}
 
           {/* ⚠️ Inside the SURFACE, not the stage. Anchored to the stage they sat at the
               bottom-right of whatever the stage currently contained — which since the panel moved
@@ -1515,6 +1646,21 @@ export function AudioVisualizer() {
                     <span className="appearance-slider-val">{pathSpeed.toFixed(2)}</span>
                   </label>
                 )}
+                {/* ⚠️ Placed in the MIDDLE, not wherever the pointer happens to be. A pin that
+                    appeared under the cursor would land on the button you just pressed, and the
+                    first thing you would have to do is drag it off the controls. */}
+                <button
+                  className={'btn' + (anchor ? ' is-on' : '')}
+                  aria-pressed={!!anchor}
+                  onClick={() => setAnchor((a) => (a ? null : { x: 0.5, y: 0.5 }))}
+                  title={
+                    anchor
+                      ? 'Remove the pin and let the motion take over again'
+                      : 'Pin the pointer somewhere on the picture and leave it there'
+                  }
+                >
+                  📍 {anchor ? 'Unpin' : 'Pin'}
+                </button>
               </div>
             )}
             {/**

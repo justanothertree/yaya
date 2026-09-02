@@ -5923,3 +5923,38 @@ a.cz-msg-author:focus-visible {
 .paint-peers {
   font-size: 0.75rem;
 }
+
+/* ── the visualiser's pinned pointer ─────────────────────────────────────────
+   A handle standing in for a cursor, so a pointer-driven mode can be aimed and
+   left alone. Positioned in percentages by the component: pixels would drift the
+   moment the surface resized or the zoom changed. */
+.viz-anchor {
+  position: absolute;
+  width: 22px;
+  height: 22px;
+  margin: -11px 0 0 -11px;
+  border-radius: 50%;
+  border: 2px solid var(--accent, #22c55e);
+  /* ⚠️ Faint fill rather than none: a ring with a hollow middle is a 2px target to grab, and on a
+     touchscreen that is smaller than a fingertip. The fill makes the whole circle draggable. */
+  background: color-mix(in oklab, var(--accent, #22c55e), transparent 78%);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
+  cursor: grab;
+  touch-action: none; /* dragging it must not scroll the page underneath */
+  z-index: 3;
+}
+.viz-anchor::after {
+  /* the exact point, since the ring is deliberately bigger than the place it marks */
+  content: '';
+  position: absolute;
+  inset: 8px;
+  border-radius: 50%;
+  background: var(--accent, #22c55e);
+}
+.viz-anchor:active {
+  cursor: grabbing;
+}
+.viz-anchor:focus-visible {
+  outline: 2px solid var(--accent, #22c55e);
+  outline-offset: 3px;
+}
