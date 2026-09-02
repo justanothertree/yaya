@@ -10,8 +10,23 @@
 -- save_my_profile_blocks carries its own allowlist of block types, separate from the client's.
 -- 'art' was never added, so choosing an art block and saving returns "invalid block" — which is
 -- the "bad block" error from a while back, and it is still happening. Only the allowlist changes;
--- the rest of the function is reproduced verbatim so this file is a complete, replayable
--- definition rather than a patch that assumes what is already there.
+-- the rest of the function is reproduced as-is so this file is a complete, replayable definition
+-- rather than a patch that assumes what is already there. One line differs from the live text,
+-- for a linter's benefit rather than the database's — see the note on v_count below.
+--
+--
+-- ABOUT THE "DESTRUCTIVE OPERATIONS" WARNING THE EDITOR SHOWS
+--
+-- Expected, and nothing here removes data. What triggers it:
+--   * `create or replace function` twice   — replacing a definition, which is the point
+--   * `drop policy if exists`              — on the policy the very next line recreates
+--   * `revoke`                             — taking away rights nothing should have had
+--   * `delete from public.profile_blocks`  — INSIDE the function body, scoped to `user_id = v_me`,
+--                                            and already exactly what the live function does: it
+--                                            replaces your blocks by clearing yours and
+--                                            re-inserting. Defining a function does not run it.
+--
+-- The whole file is wrapped in begin/commit, so if any statement fails, none of it is applied.
 --
 --
 -- 2. THE HOME PAGE'S TEXT
@@ -64,7 +79,14 @@ begin
   if v_me is null then raise exception 'not authenticated'; end if;
   if jsonb_typeof(p_blocks) <> 'array' then raise exception 'p_blocks must be an array'; end if;
 
-  select count(*) into v_count from jsonb_array_elements(p_blocks);
+  -- ⚠️ ASSIGNED, not `select count(*) into v_count`, which is what the live definition says and
+  -- what this otherwise reproduces. The two are identical in plpgsql, but the SQL editor lints the
+  -- body as top-level SQL, where `select … into name` is the archaic spelling of CREATE TABLE AS —
+  -- so it reports "creates a table without RLS: v_count" every time this file is opened. It never
+  -- created a table (the live function has run that line on every profile save and there is no
+  -- such table), but a warning you have to dismiss in order to proceed is a warning you stop
+  -- reading, and that habit is worth more than one line of style.
+  v_count := (select count(*) from jsonb_array_elements(p_blocks));
   if v_count > 20 then raise exception 'too many blocks (max 20)'; end if;
 
   if exists (
@@ -104,6 +126,10 @@ create table if not exists public.site_content (
 alter table public.site_content enable row level security;
 
 -- read: everyone, including signed-out visitors. This is the front page.
+-- ⚠️ Granted explicitly rather than left to Supabase's default privileges. A policy says who MAY
+-- read; the grant is what lets the request through at all, and a front page that renders for
+-- signed-in people and is blank for everyone else is the exact failure that would follow.
+grant select on public.site_content to anon, authenticated;
 drop policy if exists "anyone can read site content" on public.site_content;
 create policy "anyone can read site content"
   on public.site_content for select
