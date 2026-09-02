@@ -494,7 +494,7 @@ export function EvanCook({ isAdmin = false }: { isAdmin?: boolean } = {}) {
 // file's section components, so it lives here despite the fast-refresh lint preference.
 export type HomePane = { id: string; title: string; node: ReactNode }
 // eslint-disable-next-line react-refresh/only-export-components
-export function homePanes(): HomePane[] {
+export function homePanes({ isAdmin = false }: { isAdmin?: boolean } = {}): HomePane[] {
   return [
     { id: 'home:hero', title: '👋 Intro', node: <Hero /> },
     { id: 'home:about', title: 'About', node: <AboutCard /> },
@@ -507,5 +507,16 @@ export function homePanes(): HomePane[] {
       title: p.title,
       node: <ProjectCard project={p} />,
     })),
+    /**
+     * ⚠️ The editor is a WINDOW here, not a panel under the page, because in canvas mode there is
+     * no page under anything. Without this, turning canvas on hid the only way to edit the very
+     * text the canvas is displaying — and canvas is not a mode you leave to do one thing.
+     *
+     * No Done button in this form: closing the window is how you leave a window, and a second
+     * way out inside it would be a button that disagrees with the ✕ in its own title bar.
+     */
+    ...(isAdmin
+      ? [{ id: 'home:edit', title: '✎ Edit this page', node: <HomeEditor /> } as HomePane]
+      : []),
   ]
 }

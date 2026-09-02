@@ -298,6 +298,16 @@ export default function App() {
   // DEV member preview (previewMember): render the signed-in UI with fake data, no login
   const [isFinanceAuthed, setIsFinanceAuthed] = useState(!!boot.uid || previewMember)
   const [isAdmin, setIsAdmin] = useState(boot.flags?.admin ?? false)
+  /**
+   * May this viewer edit the home page — used by BOTH the normal page and the canvas window, so
+   * the two can never disagree about whether the editor exists.
+   *
+   * ⚠️ #dev-home turns it on without an admin session, the same workbench reasoning as
+   * #dev-profile and #dev-admin: an admin-gated surface is one nobody can check while signed out,
+   * so it would otherwise ship unverified. DEV only — the constant folds away in a production
+   * build — and the server still decides who may actually publish, so this grants nothing.
+   */
+  const canEditHome = isAdmin || (import.meta.env.DEV && DEV_PREVIEW === 'home')
   // 'finance' feature flag for this account: null = still loading (don't redirect yet).
   // A cached true paints the tab immediately; a cached false stays "loading" so a
   // deep link to #investments can't be bounced before the server weighs in.
@@ -1409,7 +1419,7 @@ export default function App() {
     ...circuitCanvasPanes.map((p) => ({ id: p.id, title: p.title, group: 'The Circuit' })),
     // Home's cards are windows in their own right — they were missing from the first pass, so
     // the one page that is ALREADY several windows was the one you couldn't compose from.
-    ...homePanes().map((p) => ({
+    ...homePanes({ isAdmin: canEditHome }).map((p) => ({
       id: p.id,
       title: p.title,
       group: 'Home',
@@ -1453,7 +1463,9 @@ export default function App() {
       togglePin(existing)
       return
     }
-    const home = id.startsWith('home:') ? homePanes().find((p) => p.id === id) : null
+    const home = id.startsWith('home:')
+      ? homePanes({ isAdmin: canEditHome }).find((p) => p.id === id)
+      : null
     if (home) {
       togglePin(home)
       return
@@ -1531,7 +1543,7 @@ export default function App() {
     if (!desktop || !canvasOpen) return
     if (active === 'circuit' || active === 'invite') return
     if (active === 'home') {
-      const fresh = homePanes()
+      const fresh = homePanes({ isAdmin: canEditHome })
       setPinned((prev) => {
         const missing = fresh.filter((p) => !prev.some((x) => x.id === p.id))
         return missing.length ? [...prev, ...missing] : prev
@@ -1939,12 +1951,7 @@ export default function App() {
           )}
           {active === 'home' && !sharedCanvasShowing && (
             <section id="home">
-              {/* ⚠️ #dev-home turns the editor on without an admin session, the same workbench
-                  reasoning as #dev-profile and #dev-admin below: an admin-gated surface is one
-                  nobody can check while signed out, so it would otherwise ship unverified. DEV
-                  only — the constant folds away in a production build — and the server still
-                  decides who may actually publish, so this grants nothing. */}
-              <EvanCook isAdmin={isAdmin || (import.meta.env.DEV && DEV_PREVIEW === 'home')} />
+              <EvanCook isAdmin={canEditHome} />
             </section>
           )}
           {/* Circuit stays mounted whenever the shared canvas is on, even on another page --

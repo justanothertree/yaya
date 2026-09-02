@@ -6004,6 +6004,15 @@ a.cz-msg-author:focus-visible {
 }
 .profile-canvas-cell {
   position: relative;
+  /**
+   * ⚠️ A GRID ITEM WILL NOT SHRINK BELOW ITS CONTENT unless told to: `min-width` defaults to
+   * `auto`, which resolves to the content's minimum size rather than to zero. The published page
+   * has no wrapper — the blocks are grid items themselves and were already handled — but this
+   * editor puts a cell around each one, and that cell inherited the default. Measured on a 375px
+   * phone: the editor card rendered 411px wide inside a 314px column while the published view of
+   * the very same blocks fitted exactly.
+   */
+  min-width: 0;
 }
 /* ⚠️ The SAME spans the published page uses, taken from .profile-block. The cell is a wrapper
    around the block, so without these the wrapper would be one column wide and the composition on

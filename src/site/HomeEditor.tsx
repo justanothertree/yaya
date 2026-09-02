@@ -28,7 +28,7 @@ import { homeStore, previewHome, saveHome } from './homeStore'
 
 const MAX_PARAGRAPHS = 8
 
-export function HomeEditor({ onClose }: { onClose: () => void }) {
+export function HomeEditor({ onClose }: { onClose?: () => void } = {}) {
   const published = homeStore.getState().published
   const missing = homeStore.getState().missing
   const [draft, setDraft] = useState<HomeDoc>(published)
@@ -316,9 +316,12 @@ export function HomeEditor({ onClose }: { onClose: () => void }) {
           <button className="btn btn-ghost" onClick={() => setDraft(DEFAULT_HOME)}>
             Back to the built-in text
           </button>
-          <button className="btn btn-ghost" onClick={onClose}>
-            Done
-          </button>
+          {/* absent inside a canvas window, where the title bar's ✕ is already the way out */}
+          {onClose && (
+            <button className="btn btn-ghost" onClick={onClose}>
+              Done
+            </button>
+          )}
         </span>
       </div>
     </section>
