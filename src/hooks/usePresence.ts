@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { getSupabaseClient } from '../finance/client'
-import { effectiveStatus, onStatusChange, type SeenStatus } from './presenceStatus'
+import { type SeenStatus } from './presenceStatus'
 
 /**
  * Who's online, among the people allowed to know that about you.
@@ -15,6 +15,11 @@ import { effectiveStatus, onStatusChange, type SeenStatus } from './presenceStat
  * `private: true` on every channel routes the join through realtime.messages' RLS, exactly like
  * voice presence does — without it the topic would bypass authorization entirely.
  *
+ * ⚠️ THIS ONLY WATCHES. Announcing yourself is PresenceBeacon's job, at app level, because it used
+ * to happen here — and this hook is only called by the People directory, so you were online only
+ * while looking at that one page. Two people had to be on the same screen at the same moment to
+ * see each other, which is why nobody's status ever appeared.
+ *
  * ⚠️ Returns a STATUS per person, and a missing entry means "not visible to you" — which covers
  * offline and invisible with one answer, on purpose. Distinguishing the two would leak exactly
  * what invisible exists to hide: "offline" and "hiding" must be indistinguishable from outside,
@@ -27,10 +32,8 @@ export function usePresence(
   const [online, setOnline] = useState<Record<string, SeenStatus | undefined>>({})
   // stable key so the effect re-runs only when the SET of ids actually changes
   const idsKey = [...new Set(ids)].sort().join(',')
-  // re-run when you change your own status, so the announcement below is redone (or withdrawn)
-  const [statusTick, setStatusTick] = useState(0)
-  useEffect(() => onStatusChange(() => setStatusTick((n) => n + 1)), [])
-
+  /* Nothing here depends on YOUR status: going invisible stops you being broadcast, it does not
+     stop you seeing other people. */
   useEffect(() => {
     if (!myId) return
     const sb = getSupabaseClient()
@@ -60,29 +63,11 @@ export function usePresence(
       return ch
     })
 
-    /**
-     * Announce yourself on your OWN topic, so friends watching it see you — separate from the
-     * loop above because you are never in your own `ids` list (list_member_directory excludes
-     * you), yet your own topic is the one everyone else is actually subscribed to.
-     *
-     * ⚠️ Invisible does not join at all. Not "joins and marks itself hidden" — there is no
-     * channel, no track(), and so nothing for a patched client or a socket log to read. See
-     * presenceStatus.ts: this line is where that guarantee is actually kept.
-     */
-    const mine = effectiveStatus()
-      ? sb.channel(`presence:${myId}`, { config: { presence: { key: myId }, private: true } })
-      : null
-    mine?.subscribe((status) => {
-      const now = effectiveStatus()
-      if (status === 'SUBSCRIBED' && now) void mine.track({ at: Date.now(), status: now })
-    })
-
     return () => {
       channels.forEach((ch) => void sb.removeChannel(ch))
-      if (mine) void sb.removeChannel(mine)
       setOnline({})
     }
-  }, [myId, idsKey, statusTick])
+  }, [myId, idsKey])
 
   return online
 }

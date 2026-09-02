@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, Suspense } from 'react'
 import { lazyRetry } from './lazyRetry'
 import { ErrorBoundary } from './ErrorBoundary'
+import { PresenceBeacon } from './components/PresenceBeacon'
 import type { ReactNode } from 'react'
 import { ContactForm } from './sections/ContactForm'
 import { EvanCook, homePanes } from './sections/EvanCook'
@@ -1581,6 +1582,9 @@ export default function App() {
       )}
       {/* A call outlives the screen it started on, so its controls and its audio live at app
           level — otherwise you'd navigate away and be stuck in a call you can't hear or end. */}
+      {/* Being here is a property of the person, not of the page — see PresenceBeacon, and the
+          call dock directly below for the same argument about a call. Renders nothing. */}
+      <PresenceBeacon />
       <CallDock />
       {/* Over everything, drawing nothing until you turn pointer sharing on — see party.ts for
           why that toggle is off by default and why it does not persist. */}

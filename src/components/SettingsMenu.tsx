@@ -1,7 +1,14 @@
 import { useEffect, useRef, useState } from 'react'
 import { playCallSound, ringtoneEnabled, setRingtoneEnabled } from '../voice/ringtone'
 
-import { myStatus, setMyStatus, STATUS_OPTIONS, type MyStatus } from '../hooks/presenceStatus'
+import {
+  effectiveStatus,
+  myStatus,
+  onStatusChange,
+  setMyStatus,
+  STATUS_OPTIONS,
+  type MyStatus,
+} from '../hooks/presenceStatus'
 
 export type Theme = 'light' | 'dark' | 'alt'
 
@@ -76,6 +83,14 @@ export function SettingsMenu({
   const [open, setOpen] = useState(false)
   // mirrored into state so the row re-renders on a change; presenceStatus is the source of truth
   const [status, setStatus] = useState<MyStatus>(myStatus)
+  /**
+   * What other people actually see, which is not always what you picked: choosing Online and then
+   * going quiet for five minutes shows you as away. Without this line the setting gives no
+   * feedback at all — you press a button and nothing anywhere confirms it did something, which is
+   * most of the reason presence felt like it was not working.
+   */
+  const [seen, setSeen] = useState(effectiveStatus)
+  useEffect(() => onStatusChange(() => setSeen(effectiveStatus())), [])
   /** the palette editor is collapsed by default — it's the one control here with real depth */
   /** same reasoning as palOpen: a dozen style tiles inline turned the whole cog menu into a
    * scroll every time flair was on, so picking a style opens its own dialog instead */
@@ -253,6 +268,15 @@ export function SettingsMenu({
             <p className="nav-menu-note muted">
               Invisible on this device — nothing is broadcast from this browser at all. Other
               devices you are signed in on announce themselves separately.
+            </p>
+          )}
+          {authed && status !== 'invisible' && (
+            <p className="nav-menu-note muted">
+              {seen === 'away'
+                ? status === 'away'
+                  ? 'Friends and circuit-mates see you as away.'
+                  : 'Friends and circuit-mates see you as away — you have been quiet for a few minutes.'
+                : 'Friends and circuit-mates see you as online.'}
             </p>
           )}
 

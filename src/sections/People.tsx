@@ -198,7 +198,15 @@ export function People({ authed = false }: { authed?: boolean }) {
         </span>
         <span className="cz-person-text">
           <span className="cz-person-name">{p.name}</span>
-          <span className="cz-person-handle muted">@{p.username}</span>
+          {/* Spelled out, not only a dot. A 10px circle in the corner of an avatar is the whole
+              of what presence used to say, which is easy to have never noticed at all — and
+              impossible to read if the difference between the two states is a hue. */}
+          <span className="cz-person-handle muted">
+            @{p.username}
+            {!!p.user_id && online[p.user_id] && (
+              <> · {online[p.user_id] === 'away' ? 'Away' : 'Online'}</>
+            )}
+          </span>
         </span>
       </a>
       <span className="cz-person-actions">
