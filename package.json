@@ -22,7 +22,7 @@
     "bad-words": "^4.0.0",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
-    "ws": "^8.18.0"
+    "ws": "^8.21.3"
   },
   "devDependencies": {
     "@commitlint/cli": "^19.5.0",
