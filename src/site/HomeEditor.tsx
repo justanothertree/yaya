@@ -116,8 +116,8 @@ export function HomeEditor({ onClose }: { onClose: () => void }) {
       {missing && (
         <p className="muted home-editor-note">
           ⚠️ The store for this is not set up yet, so Publish will fail. Everything else works —
-          what you change here is a preview in this browser only. The one-time SQL is in the commit
-          message that added this.
+          what you change here is a preview in this browser only. The one-time SQL is{' '}
+          <code>docs/2026-09-02-site-content-and-art-block.sql</code>.
         </p>
       )}
 
