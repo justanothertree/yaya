@@ -95,6 +95,7 @@ function readFx(v: unknown): Fx {
     echoTime: num(o.echoTime, 0, 1, 0.26),
     space: num(o.space, 0, 1, 0),
     vibrato: num(o.vibrato, 0, 1, 0),
+    glide: num(o.glide, 0, 1, 0),
   }
 }
 
@@ -210,13 +211,18 @@ export type PackedSong = {
   name: string
   bpm: number
   bars: number
-  /** layers: instrument, own length in ms, fx as four numbers, muted, notes as flat triples */
+  /** layers: instrument, own length in ms, fx as five numbers, muted, notes as flat triples */
   l: Array<{
     i: string
     /** arrangement bitmask, one bit per bar; -1 means "every bar" */
     p: number
     d: number
-    f: [number, number, number, number]
+    /**
+     * ⚠️ [echo, echoTime, space, vibrato, glide] — and any future one goes on the END. A reader
+     * takes these by position, so appending is invisible to an old file and inserting would
+     * re-label every value after it.
+     */
+    f: [number, number, number, number, number]
     m: 0 | 1
     n: number[]
   }>
@@ -243,9 +249,12 @@ export function packSong(song: Song): PackedSong {
         i: layer.instrument,
         p: layer.play ? mask : -1,
         d: Math.round(layer.len * 1000),
-        f: [layer.fx.echo, layer.fx.echoTime, layer.fx.space, layer.fx.vibrato].map(
+        /* ⚠️ glide is APPENDED, never inserted. This array is positional, so a fifth entry is
+           invisible to an older reader and a missing one simply defaults — where putting it in
+           the middle would silently turn every saved song's reverb into its vibrato. */
+        f: [layer.fx.echo, layer.fx.echoTime, layer.fx.space, layer.fx.vibrato, layer.fx.glide].map(
           (x) => Math.round(x * 100) / 100,
-        ) as [number, number, number, number],
+        ) as [number, number, number, number, number],
         m: layer.muted ? 1 : 0,
         n,
       }
@@ -271,6 +280,8 @@ function readPacked(v: Record<string, unknown>): Song | null {
       echoTime: num(fxArr[1], 0, 1, 0.26),
       space: num(fxArr[2], 0, 1, 0),
       vibrato: num(fxArr[3], 0, 1, 0),
+      /* absent in songs saved before glide existed, which is exactly what the default is for */
+      glide: num(fxArr[4], 0, 1, 0),
     }
     // ⚠️ budget is in EVENTS and each note becomes two, so the triple count is halved against it
     const notes: Note[] = []

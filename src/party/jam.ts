@@ -156,6 +156,7 @@ function cleanFx(v: unknown): Fx {
     echoTime: n('echoTime', 0.26),
     space: n('space', 0),
     vibrato: n('vibrato', 0),
+    glide: n('glide', 0),
   }
 }
 

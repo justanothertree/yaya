@@ -133,12 +133,15 @@ const SCALES: Array<[string, string, number[]]> = [
   ['dorian', 'Dorian', [0, 2, 3, 5, 7, 9, 10]],
 ]
 
-/** The four things you can bend about the sound, as sliders rather than a patch editor. */
+/** The five things you can bend about the sound, as sliders rather than a patch editor. */
 const KNOBS: Array<[Knob, string, string]> = [
   ['echo', 'Echo', 'How much of the note comes back'],
   ['echoTime', 'Echo time', 'How long before it does'],
   ['space', 'Space', 'The size of the room it is played in'],
   ['vibrato', 'Vibrato', 'A wobble in the pitch, like a singer'],
+  /* the only one that is about PLAYING rather than about the sound, and it applies to all of
+     them — see Fx.glide for why it lives with the effects rather than with the instruments */
+  ['glide', 'Glide', 'Each note slides from the one before it'],
 ]
 const isBlack = (midi: number) => [1, 3, 6, 8, 10].includes(((midi % 12) + 12) % 12)
 const noteName = (midi: number) => NAMES[((midi % 12) + 12) % 12] + (Math.floor(midi / 12) - 1)
@@ -191,6 +194,7 @@ function fxWord(fx: Fx): string {
   if (fx.echo > 0.02) bits.push('echo')
   if (fx.space > 0.25) bits.push('room')
   if (fx.vibrato > 0.02) bits.push('wobble')
+  if (fx.glide > 0.02) bits.push('slide')
   return bits.length ? bits.join(' + ') : 'dry'
 }
 

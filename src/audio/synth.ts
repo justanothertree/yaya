@@ -538,7 +538,21 @@ let noise: AudioBuffer | null = null
  * full signal including its effects — the visualiser should show the reverb tail, since you can
  * hear it.
  */
-export type Fx = { echo: number; echoTime: number; space: number; vibrato: number }
+export type Fx = {
+  echo: number
+  echoTime: number
+  space: number
+  vibrato: number
+  /**
+   * How long a note takes to slide from the pitch of the one before it. 0 is off.
+   *
+   * ⚠️ it lives in Fx rather than beside the instrument list because it belongs to the
+   * PART, exactly like echo and reverb do — a recorded layer keeps the glide it was played with,
+   * and a peer's notes glide from their own last note rather than from yours. Putting it on the
+   * instrument would make it a property of the sound instead of a property of the playing.
+   */
+  glide: number
+}
 
 type Bus = {
   in: GainNode
@@ -566,6 +580,16 @@ export const LIVE_PART = 'live'
  * something a normal session reaches.
  */
 const MAX_BUSES = 14
+/**
+ * The last pitch each part played, so the next note knows where to slide from.
+ *
+ * ⚠️ PER PART, not one shared value. The live keyboard, every recorded layer and every peer
+ * in a jam all schedule through here, so a single last-note would make your melody slide from
+ * whatever somebody else just played — which is not a subtle bug, it is every note landing wrong.
+ * Cleared with the bus it belongs to, so it cannot outlive the part.
+ */
+const lastPitch = new Map<string, number>()
+
 /** A bus idle for less than this may still be ringing, so it is never evicted. */
 const RING_TAIL = 4
 
@@ -588,15 +612,22 @@ const RING_TAIL = 4
  */
 const SAFE_START = 0.006
 
-export type Knob = 'echo' | 'echoTime' | 'space' | 'vibrato'
+export type Knob = 'echo' | 'echoTime' | 'space' | 'vibrato' | 'glide'
 const KNOB_KEY: Record<Knob, string> = {
   echo: 'synth_echo_v1',
   echoTime: 'synth_echo_time_v1',
   space: 'synth_space_v1',
   vibrato: 'synth_vibrato_v1',
+  glide: 'synth_glide_v1',
 }
 /** Dry by default: an instrument that arrives drenched in reverb is a toy, not an instrument. */
-const knobs: Record<Knob, number> = { echo: 0, echoTime: 0.26, space: 0.18, vibrato: 0 }
+const knobs: Record<Knob, number> = {
+  echo: 0,
+  echoTime: 0.26,
+  space: 0.18,
+  vibrato: 0,
+  glide: 0,
+}
 // ⚠️ the same zero trap the mixer hit — these ranges start at 0, so a missing key must mean
 // "keep the default", not "the default is 0"
 for (const k of Object.keys(knobs) as Knob[]) {
@@ -616,7 +647,13 @@ export function knob(k: Knob): number {
  * would follow the sliders again, which is the opposite of sticking to the recording.
  */
 export function fxSnapshot(): Fx {
-  return { echo: knobs.echo, echoTime: knobs.echoTime, space: knobs.space, vibrato: knobs.vibrato }
+  return {
+    echo: knobs.echo,
+    echoTime: knobs.echoTime,
+    space: knobs.space,
+    vibrato: knobs.vibrato,
+    glide: knobs.glide,
+  }
 }
 
 export function setKnob(k: Knob, v: number) {
@@ -738,6 +775,7 @@ function evictBus(c: AudioContext) {
   if (!victim) return
   buses.get(victim)!.dispose()
   buses.delete(victim)
+  lastPitch.delete(victim)
 }
 
 /**
@@ -1077,6 +1115,19 @@ export function noteOn(
 
   const sh = SHAPES[instrument]
   const freq = freqOf(midi)
+
+  /**
+   * ⚠️ only slides when there is somewhere to slide FROM. The first note after silence has
+   * no previous pitch, and starting it from an arbitrary one would make every phrase open with a
+   * swoop nobody played. A repeat of the same note is skipped too, since sliding to where you
+   * already are is a ramp that does nothing but cost a scheduled event.
+   */
+  const partKey = part?.key ?? LIVE_PART
+  const glideTime = (part?.fx ?? fxSnapshot()).glide * 0.3
+  const previous = lastPitch.get(partKey)
+  const glideFrom =
+    glideTime > 0.005 && previous && Math.abs(previous - freq) > 0.5 ? previous : null
+  lastPitch.set(partKey, freq)
   const g = c.createGain()
   let sink: AudioNode = g
   if (sh.filter) {
@@ -1110,7 +1161,21 @@ export function noteOn(
     o.type = sh.wave
     o.detune.value = part.detune
     const f0 = freq * part.ratio
-    if (sh.pitch) {
+    if (glideFrom) {
+      /**
+       * Glide: start at the pitch of the previous note and slide into this one.
+       *
+       * ⚠️ it REPLACES the patch's own bend rather than adding to it. Sub and Koto already
+       * arrive from above or below by design, and doing both would mean sliding from the last
+       * note to a wrong pitch and only then to the right one — an audible stumble at the front of
+       * every note. When you have asked for a slide, the slide is what you get.
+       *
+       * Exponential for the same reason the patch bends are: pitch is heard logarithmically, so a
+       * linear ramp sounds like it lands early and then crawls the rest of the way.
+       */
+      o.frequency.setValueAtTime(Math.max(20, glideFrom * part.ratio), at)
+      o.frequency.exponentialRampToValueAtTime(Math.max(20, f0), at + glideTime)
+    } else if (sh.pitch) {
       // a pitch that falls into place. Exponential because pitch is perceived logarithmically —
       // a linear slide sounds like it lands early and then crawls.
       o.frequency.setValueAtTime(f0 * sh.pitch.mult, at)
