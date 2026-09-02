@@ -1,4 +1,6 @@
-import { useEffect, useRef, useState, lazy, Suspense } from 'react'
+import { useEffect, useRef, useState, Suspense } from 'react'
+import { lazyRetry } from './lazyRetry'
+import { ErrorBoundary } from './ErrorBoundary'
 import type { ReactNode } from 'react'
 import { ContactForm } from './sections/ContactForm'
 import { EvanCook, homePanes } from './sections/EvanCook'
@@ -38,20 +40,35 @@ import { previewMember, PREVIEW_ME, PREVIEW_VOICE_IN } from './dev/previewMember
  * all rode in the main bundle that every visitor downloads, including the ones who never open it.
  * Both render sites are gated on `active === 'snake'`, so there was nothing keeping it there.
  */
-const SnakeGame = lazy(() => import('./sections/SnakeGame').then((m) => ({ default: m.SnakeGame })))
-const PaintRoom = lazy(() => import('./sections/PaintRoom').then((m) => ({ default: m.PaintRoom })))
-const SignIn = lazy(() => import('./sections/SignIn').then((m) => ({ default: m.SignIn })))
-const Investments = lazy(() =>
-  import('./sections/Investments').then((m) => ({ default: m.Investments })),
+const SnakeGame = lazyRetry(
+  () => import('./sections/SnakeGame'),
+  (m) => m.SnakeGame,
 )
-const AccountSettings = lazy(() =>
-  import('./sections/AccountSettings').then((m) => ({ default: m.AccountSettings })),
+const PaintRoom = lazyRetry(
+  () => import('./sections/PaintRoom'),
+  (m) => m.PaintRoom,
 )
-const Circuit = lazy(() => import('./sections/Circuit').then((m) => ({ default: m.Circuit })))
+const SignIn = lazyRetry(
+  () => import('./sections/SignIn'),
+  (m) => m.SignIn,
+)
+const Investments = lazyRetry(
+  () => import('./sections/Investments'),
+  (m) => m.Investments,
+)
+const AccountSettings = lazyRetry(
+  () => import('./sections/AccountSettings'),
+  (m) => m.AccountSettings,
+)
+const Circuit = lazyRetry(
+  () => import('./sections/Circuit'),
+  (m) => m.Circuit,
+)
 // Generic window-manager (the Circuit's "canvas"), reused for the optional site-wide
 // canvas mode that turns a page into draggable/resizable/minimizable windows.
-const PageCanvas = lazy(() =>
-  import('./circuit/ui/CircuitCanvas').then((m) => ({ default: m.CircuitCanvas })),
+const PageCanvas = lazyRetry(
+  () => import('./circuit/ui/CircuitCanvas'),
+  (m) => m.CircuitCanvas,
 )
 import type { CanvasPane, LaunchableWindow } from './circuit/ui/CircuitCanvas'
 import { applyPalette, loadPalette } from './theme/customTheme'
@@ -70,8 +87,9 @@ import {
   type BackdropId,
 } from './profile/backdrops'
 import { SiteBackdrop } from './profile/SiteBackdrop'
-const AdminPanel = lazy(() =>
-  import('./sections/AdminPanel').then((m) => ({ default: m.AdminPanel })),
+const AdminPanel = lazyRetry(
+  () => import('./sections/AdminPanel'),
+  (m) => m.AdminPanel,
 )
 /**
  * DEV-only workbench. The conditional wraps the dynamic import itself, not just the render:
@@ -79,29 +97,46 @@ const AdminPanel = lazy(() =>
  * chunk it would have pulled in — is eliminated rather than shipped as an orphan nobody fetches.
  */
 const ProfileLookPreview = import.meta.env.DEV
-  ? lazy(() => import('./dev/ProfileLookPreview').then((m) => ({ default: m.ProfileLookPreview })))
+  ? lazyRetry(
+      () => import('./dev/ProfileLookPreview'),
+      (m) => m.ProfileLookPreview,
+    )
   : null
 
 /** The one-account path a family member takes — see the file header for why it needs a route. */
 const InvestmentsMemberPreview = import.meta.env.DEV
-  ? lazy(() =>
-      import('./dev/InvestmentsMemberPreview').then((m) => ({
-        default: m.InvestmentsMemberPreview,
-      })),
+  ? lazyRetry(
+      () => import('./dev/InvestmentsMemberPreview'),
+      (m) => m.InvestmentsMemberPreview,
     )
   : null
-const AcceptInvite = lazy(() =>
-  import('./sections/AcceptInvite').then((m) => ({ default: m.AcceptInvite })),
+const AcceptInvite = lazyRetry(
+  () => import('./sections/AcceptInvite'),
+  (m) => m.AcceptInvite,
 )
-const Profile = lazy(() => import('./sections/Profile').then((m) => ({ default: m.Profile })))
-const Ratings = lazy(() => import('./sections/Ratings').then((m) => ({ default: m.Ratings })))
-const ChatPage = lazy(() => import('./sections/ChatPage').then((m) => ({ default: m.ChatPage })))
-const People = lazy(() => import('./sections/People').then((m) => ({ default: m.People })))
-const InstrumentRoom = lazy(() =>
-  import('./sections/InstrumentRoom').then((m) => ({ default: m.InstrumentRoom })),
+const Profile = lazyRetry(
+  () => import('./sections/Profile'),
+  (m) => m.Profile,
 )
-const AudioVisualizer = lazy(() =>
-  import('./sections/AudioVisualizer').then((m) => ({ default: m.AudioVisualizer })),
+const Ratings = lazyRetry(
+  () => import('./sections/Ratings'),
+  (m) => m.Ratings,
+)
+const ChatPage = lazyRetry(
+  () => import('./sections/ChatPage'),
+  (m) => m.ChatPage,
+)
+const People = lazyRetry(
+  () => import('./sections/People'),
+  (m) => m.People,
+)
+const InstrumentRoom = lazyRetry(
+  () => import('./sections/InstrumentRoom'),
+  (m) => m.InstrumentRoom,
+)
+const AudioVisualizer = lazyRetry(
+  () => import('./sections/AudioVisualizer'),
+  (m) => m.AudioVisualizer,
 )
 
 if (import.meta.env.DEV) {
@@ -1771,262 +1806,291 @@ export default function App() {
           paddingBottom: !desktop ? '1rem' : 'env(safe-area-inset-bottom)',
         }}
       >
-        {/* The page's heading, for anyone navigating by headings. Home already renders a real
+        {/**
+         * The page-level net.
+         *
+         * ⚠️ INSIDE the shell, not around it. A boundary wrapping the whole app means one
+         * broken page ends the call and stops the music, because CallDock and AudioDock sit above
+         * <main> exactly so they can outlive the page you started them on. Down here, a page that
+         * throws takes only itself, and everything you had running keeps running.
+         *
+         * ⚠️ Keyed on `active` so navigating somewhere else clears it. React keeps a boundary
+         * tripped until it is reset, so without this a single bad page would stay broken behind
+         * every tab you clicked afterwards.
+         */}
+        <ErrorBoundary resetKey={active} scoped>
+          {/* The page's heading, for anyone navigating by headings. Home already renders a real
             visible <h1>, so adding one here would give that route two. Everywhere else the top
             heading is an <h2> and there was no <h1> at all. Visually hidden rather than shown:
             the visible design already names the page, and this is about the accessibility tree
             rather than the layout. */}
-        {active !== 'home' && <h1 className="sr-only">{SECTION_TITLES[active]}</h1>}
-        {suspended && (
-          <div
-            role="status"
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.6rem',
-              padding: '0.7rem 1rem',
-              marginBottom: '1rem',
-              borderRadius: 12,
-              background: 'rgba(244,107,107,0.1)',
-              border: '1px solid rgba(244,107,107,0.4)',
-              fontSize: '0.92rem',
-            }}
-          >
-            <span style={{ fontSize: '1.1rem' }}>⏸</span>
-            <span>
-              <strong>Your member access is paused.</strong>{' '}
-              <span className="muted">
-                You can still browse the site — reach out to Evan to restore access.
+          {active !== 'home' && <h1 className="sr-only">{SECTION_TITLES[active]}</h1>}
+          {suspended && (
+            <div
+              role="status"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.6rem',
+                padding: '0.7rem 1rem',
+                marginBottom: '1rem',
+                borderRadius: 12,
+                background: 'rgba(244,107,107,0.1)',
+                border: '1px solid rgba(244,107,107,0.4)',
+                fontSize: '0.92rem',
+              }}
+            >
+              <span style={{ fontSize: '1.1rem' }}>⏸</span>
+              <span>
+                <strong>Your member access is paused.</strong>{' '}
+                <span className="muted">
+                  You can still browse the site — reach out to Evan to restore access.
+                </span>
               </span>
-            </span>
-          </div>
-        )}
-        {/**
-         * Dev-only preview of admin surfaces.
-         *
-         * Anything behind the admin gate can't be checked without signing in, so it shipped
-         * unverified. `import.meta.env.DEV` means this never exists in a production build — a
-         * workbench, not a back door.
-         */}
-        {import.meta.env.DEV && DEV_PREVIEW === 'usage' && (
-          <section className="card">
-            <p className="muted" style={{ marginTop: 0, fontSize: '0.8rem' }}>
-              dev preview — #dev-usage
-            </p>
-            <UsagePanel />
-          </section>
-        )}
-        {/* The whole panel, not one card: its tabs (invites / members / snake names) are the
+            </div>
+          )}
+          {/**
+           * Dev-only preview of admin surfaces.
+           *
+           * Anything behind the admin gate can't be checked without signing in, so it shipped
+           * unverified. `import.meta.env.DEV` means this never exists in a production build — a
+           * workbench, not a back door.
+           */}
+          {import.meta.env.DEV && DEV_PREVIEW === 'usage' && (
+            <section className="card">
+              <p className="muted" style={{ marginTop: 0, fontSize: '0.8rem' }}>
+                dev preview — #dev-usage
+              </p>
+              <UsagePanel />
+            </section>
+          )}
+          {/* The whole panel, not one card: its tabs (invites / members / snake names) are the
             part that can't otherwise be seen without an admin session. The RPCs behind it still
             enforce `is_admin()` server-side, so this renders empty rather than privileged data
             unless the viewer really is an admin — it's a layout workbench, not an access grant. */}
-        {import.meta.env.DEV && DEV_PREVIEW === 'admin' && (
-          <section className="card">
-            <p className="muted" style={{ marginTop: 0, fontSize: '0.8rem' }}>
-              dev preview — #dev-admin
-            </p>
-            <Suspense fallback={<div aria-busy>Loading…</div>}>
-              <AdminPanel />
-            </Suspense>
-          </section>
-        )}
-        {/* How a profile LOOKS can't be seen without a session (the page needs one, and the
+          {import.meta.env.DEV && DEV_PREVIEW === 'admin' && (
+            <section className="card">
+              <p className="muted" style={{ marginTop: 0, fontSize: '0.8rem' }}>
+                dev preview — #dev-admin
+              </p>
+              <Suspense fallback={<div aria-busy>Loading…</div>}>
+                <AdminPanel />
+              </Suspense>
+            </section>
+          )}
+          {/* How a profile LOOKS can't be seen without a session (the page needs one, and the
             customiser needs it to be YOUR page on top of that). Same workbench reasoning as
             #dev-admin — invented people, real components. */}
-        {ProfileLookPreview && DEV_PREVIEW === 'profile' && (
-          <Suspense fallback={<div aria-busy>Loading…</div>}>
-            <ProfileLookPreview />
-          </Suspense>
-        )}
-        {/* The family member's own card. Same workbench reasoning as #dev-profile, and the same
+          {ProfileLookPreview && DEV_PREVIEW === 'profile' && (
+            <Suspense fallback={<div aria-busy>Loading…</div>}>
+              <ProfileLookPreview />
+            </Suspense>
+          )}
+          {/* The family member's own card. Same workbench reasoning as #dev-profile, and the same
             privacy rule: every person in it is invented. */}
-        {InvestmentsMemberPreview && DEV_PREVIEW === 'investments' && (
-          <Suspense fallback={<div aria-busy>Loading…</div>}>
-            <InvestmentsMemberPreview />
-          </Suspense>
-        )}
-        {/* ONE shared canvas instance — mounted whenever desktop+canvas are on, for every page
+          {InvestmentsMemberPreview && DEV_PREVIEW === 'investments' && (
+            <Suspense fallback={<div aria-busy>Loading…</div>}>
+              <InvestmentsMemberPreview />
+            </Suspense>
+          )}
+          {/* ONE shared canvas instance — mounted whenever desktop+canvas are on, for every page
             except Circuit (still separate, see the next step) and invite (never canvas-capable).
             No more `key={active}`: there's nothing to remount between pages any more, that was
             only ever needed because three separate mount points meant three separate instances.
             What's actually open (`pinned`) and which one is in front (`focusPane`) are both
             driven by the nav effect above, not by which page happens to be `active`. */}
-        {sharedCanvasShowing && (
-          <Suspense
-            fallback={
-              <div className="card" aria-busy>
-                Loading…
-              </div>
-            }
-          >
-            <PageCanvas
-              panes={livePanes}
-              pinnedIds={pinnedIds}
-              onTogglePin={togglePin}
-              background={shownBackground}
-              focusPane={focusPane}
-              toolbar={circuitToolbar}
-              launchableWindows={launchableWindows()}
-              launcherOpenIds={pinnedIds}
-              onToggleWindow={toggleWindow}
-              onDropLink={(url) => {
-                const u = profileFromUrl(url)
-                if (u) openProfileWindow(u)
-              }}
-            />
-          </Suspense>
-        )}
-        {active === 'home' && !sharedCanvasShowing && (
-          <section id="home">
-            <EvanCook />
-          </section>
-        )}
-        {/* Circuit stays mounted whenever the shared canvas is on, even on another page --
+          {sharedCanvasShowing && (
+            <Suspense
+              fallback={
+                <div className="card" aria-busy>
+                  Loading…
+                </div>
+              }
+            >
+              <PageCanvas
+                panes={livePanes}
+                pinnedIds={pinnedIds}
+                onTogglePin={togglePin}
+                background={shownBackground}
+                focusPane={focusPane}
+                toolbar={circuitToolbar}
+                launchableWindows={launchableWindows()}
+                launcherOpenIds={pinnedIds}
+                onToggleWindow={toggleWindow}
+                onDropLink={(url) => {
+                  const u = profileFromUrl(url)
+                  if (u) openProfileWindow(u)
+                }}
+              />
+            </Suspense>
+          )}
+          {active === 'home' && !sharedCanvasShowing && (
+            <section id="home">
+              <EvanCook />
+            </section>
+          )}
+          {/* Circuit stays mounted whenever the shared canvas is on, even on another page --
             not to show anything (it renders its own tabbed page only when it's the active tab
             AND the canvas is off), but so its sub-tab windows keep reporting into
             circuitCanvasPanes/circuitToolbar and stay openable from anywhere, the same way
             Home's cards and the 10 single-page windows already are. The Suspense fallback only
             shows while actually viewing Circuit -- background-loading its chunk from another
             page shouldn't flash a loading card on screen. */}
-        {circuitMounted && (
-          <Suspense
-            fallback={
-              active === 'circuit' ? (
-                <div className="card" aria-busy>
-                  Loading Circuit…
-                </div>
-              ) : null
-            }
-          >
-            <Circuit
-              authed={isFinanceAuthed || !hasFinanceSupabaseEnv()}
-              canvasMode={canvasOpen && desktop}
-              isActiveTab={active === 'circuit'}
-              // re-clicking Circuit in the nav pans back to its Board, same as every other tab
-              focusPing={navPing}
-              voiceIn={voiceIn}
-              onCanvasPanesChange={(panes, toolbar) => {
-                setCircuitCanvasPanes(panes)
-                setCircuitToolbar(toolbar)
-                refreshPinned(panes)
-              }}
-              onOpenCanvasPane={openAndFocus}
-            />
-          </Suspense>
-        )}
-        {!sharedCanvasShowing && active === 'people' && (
-          <section id="people" className="card reveal">
+          {circuitMounted && (
             <Suspense
               fallback={
-                <div className="card" aria-busy>
-                  Loading People…
-                </div>
+                active === 'circuit' ? (
+                  <div className="card" aria-busy>
+                    Loading Circuit…
+                  </div>
+                ) : null
               }
             >
-              <People authed={isFinanceAuthed || previewMember} />
+              <Circuit
+                authed={isFinanceAuthed || !hasFinanceSupabaseEnv()}
+                canvasMode={canvasOpen && desktop}
+                isActiveTab={active === 'circuit'}
+                // re-clicking Circuit in the nav pans back to its Board, same as every other tab
+                focusPing={navPing}
+                voiceIn={voiceIn}
+                onCanvasPanesChange={(panes, toolbar) => {
+                  setCircuitCanvasPanes(panes)
+                  setCircuitToolbar(toolbar)
+                  refreshPinned(panes)
+                }}
+                onOpenCanvasPane={openAndFocus}
+              />
             </Suspense>
-          </section>
-        )}
-        {!sharedCanvasShowing && active === 'chat' && (
-          <section id="chat" className="card reveal">
-            <Suspense
-              fallback={
-                <div className="card" aria-busy>
-                  Loading Chat…
-                </div>
-              }
-            >
-              <ChatPage authed={isFinanceAuthed || previewMember} voiceIn={voiceIn} />
-            </Suspense>
-          </section>
-        )}
-        {!sharedCanvasShowing && active === 'ratings' && (
-          <section id="ratings" className="card reveal">
-            <Suspense
-              fallback={
-                <div className="card" aria-busy>
-                  Loading Ratings…
-                </div>
-              }
-            >
-              <Ratings authed={isFinanceAuthed || previewMember} />
-            </Suspense>
-          </section>
-        )}
-        {!sharedCanvasShowing && active === 'signin' && (
-          <section id="signin" className="card reveal">
-            <Suspense
-              fallback={
-                <div className="card" aria-busy>
-                  Loading sign-in…
-                </div>
-              }
-            >
-              <SignIn />
-            </Suspense>
-          </section>
-        )}
-        {!sharedCanvasShowing && active === 'investments' && (
-          <section id="investments" className="card reveal">
-            {isFinanceAuthed && canFinance === true ? (
+          )}
+          {!sharedCanvasShowing && active === 'people' && (
+            <section id="people" className="card reveal">
               <Suspense
                 fallback={
                   <div className="card" aria-busy>
-                    Loading investments…
+                    Loading People…
                   </div>
                 }
               >
-                <Investments />
+                <People authed={isFinanceAuthed || previewMember} />
               </Suspense>
-            ) : !isFinanceAuthed ? (
+            </section>
+          )}
+          {!sharedCanvasShowing && active === 'chat' && (
+            <section id="chat" className="card reveal">
               <Suspense
                 fallback={
                   <div className="card" aria-busy>
-                    Loading investments…
+                    Loading Chat…
                   </div>
                 }
               >
-                <Investments demo />
+                <ChatPage authed={isFinanceAuthed || previewMember} voiceIn={voiceIn} />
               </Suspense>
-            ) : (
-              <div className="card">
-                <h2 className="section-title" style={{ marginTop: 0 }}>
-                  Investments
-                </h2>
-                <p className="muted" style={{ marginBottom: 0 }}>
-                  Investments aren’t enabled for your account.
-                </p>
-              </div>
-            )}
-          </section>
-        )}
-        {!sharedCanvasShowing && active === 'account-settings' && (
-          <section id="account-settings" className="card reveal">
-            {isFinanceAuthed ? (
+            </section>
+          )}
+          {!sharedCanvasShowing && active === 'ratings' && (
+            <section id="ratings" className="card reveal">
               <Suspense
                 fallback={
                   <div className="card" aria-busy>
-                    Loading account settings…
+                    Loading Ratings…
                   </div>
                 }
               >
-                <AccountSettings />
+                <Ratings authed={isFinanceAuthed || previewMember} />
               </Suspense>
-            ) : (
-              <div className="card">
-                <h2 className="section-title" style={{ marginTop: 0 }}>
-                  Account settings
-                </h2>
-                <p className="muted" style={{ marginBottom: 0 }}>
-                  Sign in to manage your account.
-                </p>
-              </div>
-            )}
-          </section>
-        )}
-        {!sharedCanvasShowing && active === 'admin' && (
-          <section id="admin" className="card reveal">
-            {isAdmin ? (
+            </section>
+          )}
+          {!sharedCanvasShowing && active === 'signin' && (
+            <section id="signin" className="card reveal">
+              <Suspense
+                fallback={
+                  <div className="card" aria-busy>
+                    Loading sign-in…
+                  </div>
+                }
+              >
+                <SignIn />
+              </Suspense>
+            </section>
+          )}
+          {!sharedCanvasShowing && active === 'investments' && (
+            <section id="investments" className="card reveal">
+              {isFinanceAuthed && canFinance === true ? (
+                <Suspense
+                  fallback={
+                    <div className="card" aria-busy>
+                      Loading investments…
+                    </div>
+                  }
+                >
+                  <Investments />
+                </Suspense>
+              ) : !isFinanceAuthed ? (
+                <Suspense
+                  fallback={
+                    <div className="card" aria-busy>
+                      Loading investments…
+                    </div>
+                  }
+                >
+                  <Investments demo />
+                </Suspense>
+              ) : (
+                <div className="card">
+                  <h2 className="section-title" style={{ marginTop: 0 }}>
+                    Investments
+                  </h2>
+                  <p className="muted" style={{ marginBottom: 0 }}>
+                    Investments aren’t enabled for your account.
+                  </p>
+                </div>
+              )}
+            </section>
+          )}
+          {!sharedCanvasShowing && active === 'account-settings' && (
+            <section id="account-settings" className="card reveal">
+              {isFinanceAuthed ? (
+                <Suspense
+                  fallback={
+                    <div className="card" aria-busy>
+                      Loading account settings…
+                    </div>
+                  }
+                >
+                  <AccountSettings />
+                </Suspense>
+              ) : (
+                <div className="card">
+                  <h2 className="section-title" style={{ marginTop: 0 }}>
+                    Account settings
+                  </h2>
+                  <p className="muted" style={{ marginBottom: 0 }}>
+                    Sign in to manage your account.
+                  </p>
+                </div>
+              )}
+            </section>
+          )}
+          {!sharedCanvasShowing && active === 'admin' && (
+            <section id="admin" className="card reveal">
+              {isAdmin ? (
+                <Suspense
+                  fallback={
+                    <div className="card" aria-busy>
+                      Loading…
+                    </div>
+                  }
+                >
+                  <AdminPanel />
+                </Suspense>
+              ) : (
+                <p className="muted">Admin access required.</p>
+              )}
+            </section>
+          )}
+          {active === 'invite' && (
+            <section id="invite" className="card reveal">
               <Suspense
                 fallback={
                   <div className="card" aria-busy>
@@ -2034,95 +2098,80 @@ export default function App() {
                   </div>
                 }
               >
-                <AdminPanel />
+                <AcceptInvite />
               </Suspense>
-            ) : (
-              <p className="muted">Admin access required.</p>
-            )}
-          </section>
-        )}
-        {active === 'invite' && (
-          <section id="invite" className="card reveal">
-            <Suspense
-              fallback={
-                <div className="card" aria-busy>
-                  Loading…
-                </div>
-              }
-            >
-              <AcceptInvite />
-            </Suspense>
-          </section>
-        )}
-        {!sharedCanvasShowing && active === 'profile' && (
-          <section id="profile" className="reveal">
-            <Suspense
-              fallback={
-                <div className="card" aria-busy>
-                  Loading…
-                </div>
-              }
-            >
-              <Profile authed={isFinanceAuthed} />
-            </Suspense>
-          </section>
-        )}
-        {!sharedCanvasShowing && active === 'snake' && (
-          <section id="snake" className="card reveal show-dpad">
-            {/* Its own boundary, not the page-wide one: a shared fallback would blank whatever
+            </section>
+          )}
+          {!sharedCanvasShowing && active === 'profile' && (
+            <section id="profile" className="reveal">
+              <Suspense
+                fallback={
+                  <div className="card" aria-busy>
+                    Loading…
+                  </div>
+                }
+              >
+                <Profile authed={isFinanceAuthed} />
+              </Suspense>
+            </section>
+          )}
+          {!sharedCanvasShowing && active === 'snake' && (
+            <section id="snake" className="card reveal show-dpad">
+              {/* Its own boundary, not the page-wide one: a shared fallback would blank whatever
                 else is mounted while the game chunk arrives. */}
-            <Suspense fallback={<div aria-busy>Loading the game…</div>}>
-              <SnakeGame
-                onControlChange={setSnakeHasControl}
-                onLiveChange={setSnakeLive}
-                autoFocus
-              />
-            </Suspense>
-          </section>
-        )}
-        {!sharedCanvasShowing && active === 'visualizer' && (
-          <section id="visualizer" className="card reveal">
-            <h2>🎚️ Visualiser</h2>
-            <p className="muted">
-              What the sound looks like. Watch your own mic, the ringtone, or everyone else while
-              you’re in a call — nothing is recorded or sent anywhere.
-            </p>
-            {/* Its own boundary, like the game: a page-wide fallback would blank the rest of the
+              <Suspense fallback={<div aria-busy>Loading the game…</div>}>
+                <SnakeGame
+                  onControlChange={setSnakeHasControl}
+                  onLiveChange={setSnakeLive}
+                  autoFocus
+                />
+              </Suspense>
+            </section>
+          )}
+          {!sharedCanvasShowing && active === 'visualizer' && (
+            <section id="visualizer" className="card reveal">
+              <h2>🎚️ Visualiser</h2>
+              <p className="muted">
+                What the sound looks like. Watch your own mic, the ringtone, or everyone else while
+                you’re in a call — nothing is recorded or sent anywhere.
+              </p>
+              {/* Its own boundary, like the game: a page-wide fallback would blank the rest of the
                 page while this chunk arrives. */}
-            <Suspense fallback={<div aria-busy>Loading…</div>}>
-              <AudioVisualizer />
-            </Suspense>
-          </section>
-        )}
-        {!sharedCanvasShowing && active === 'instrument' && (
-          <section id="instrument" className="card reveal">
-            <h2>🎹 Instrument</h2>
-            <p className="muted">
-              Play something. Twelve sounds, your keyboard or the mouse — and the visualiser can
-              watch you do it.
-            </p>
-            <Suspense fallback={<div aria-busy>Loading…</div>}>
-              <InstrumentRoom />
-            </Suspense>
-          </section>
-        )}
-        {!sharedCanvasShowing && active === 'paint' && (
-          <section id="paint" className="card reveal">
-            <h2>🎨 Paint</h2>
-            <p className="muted">
-              Draw something. Brush, shapes, a fill bucket and real transparency — kept as the
-              strokes you made rather than as an image.
-            </p>
-            <Suspense fallback={<div aria-busy>Loading…</div>}>
-              <PaintRoom />
-            </Suspense>
-          </section>
-        )}
-        {!sharedCanvasShowing && active === 'contact' && (
-          <section id="contact" className="card reveal">
-            <ContactForm />
-          </section>
-        )}
+              <Suspense fallback={<div aria-busy>Loading…</div>}>
+                <AudioVisualizer />
+              </Suspense>
+            </section>
+          )}
+          {!sharedCanvasShowing && active === 'instrument' && (
+            <section id="instrument" className="card reveal">
+              <h2>🎹 Instrument</h2>
+              <p className="muted">
+                Play something. Twelve sounds, your keyboard or the mouse — and the visualiser can
+                watch you do it.
+              </p>
+              <Suspense fallback={<div aria-busy>Loading…</div>}>
+                <InstrumentRoom />
+              </Suspense>
+            </section>
+          )}
+          {!sharedCanvasShowing && active === 'paint' && (
+            <section id="paint" className="card reveal">
+              <h2>🎨 Paint</h2>
+              <p className="muted">
+                Draw something. Brush, shapes, a fill bucket and real transparency — kept as the
+                strokes you made rather than as an image.
+              </p>
+              <Suspense fallback={<div aria-busy>Loading…</div>}>
+                <PaintRoom />
+              </Suspense>
+            </section>
+          )}
+          {!sharedCanvasShowing && active === 'contact' && (
+            <section id="contact" className="card reveal">
+              <ContactForm />
+            </section>
+          )}
+        </ErrorBoundary>
       </main>
       <div
         ref={liveRef}
