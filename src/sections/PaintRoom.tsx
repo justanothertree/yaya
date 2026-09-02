@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useContext, useEffect, useRef, useState } from 'react'
 import {
   NONE,
   TOOLS,
@@ -8,6 +8,7 @@ import {
   type Stroke,
   type Tool,
 } from '../draw/strokes'
+import { InCanvasWindow } from '../circuit/ui/canvasContext'
 
 /**
  * A place to draw.
@@ -57,6 +58,20 @@ export function PaintRoom() {
    * takes away paint and reveals the backdrop, which is what erasing means everywhere else.
    */
   const [bg, setBg] = useState<string | null>(null)
+  const { inWindow } = useContext(InCanvasWindow)
+
+  /**
+   * The view: how far in, and where.
+   *
+   * ⚠️ ZOOM IS A VIEW, NOT AN EDIT. Nothing about the drawing changes — `scale` and the offset
+   * only decide which part of the 0–1 space the screen is showing. That is only possible because
+   * strokes are stored in fractions rather than pixels, and it is why zooming in gives you a
+   * genuinely sharper line instead of a magnified one: the stroke is re-rendered at the new size
+   * rather than blown up.
+   */
+  const [scale, setScale] = useState(1)
+  const off = useRef({ x: 0, y: 0 })
+  const pan = useRef<{ x: number; y: number } | null>(null)
   const [undone, setUndone] = useState<Stroke[]>([])
   const [tool, setTool] = useState<Tool>('brush')
   const [colour, setColour] = useState('#22c55e')
@@ -80,6 +95,54 @@ export function PaintRoom() {
     strokes,
   }
 
+  /**
+   * Put `base` on screen, cropped to whatever the view is showing.
+   *
+   * ⚠️ `base` is ALWAYS rendered unzoomed, at the document's own resolution, and the zoom is
+   * applied only when blitting it here. That is not an optimisation — it is what keeps the fill
+   * bucket honest. A flood fill reads the pixels that are actually on a canvas, so computing one
+   * against a zoomed view would fill only what happened to be visible and give a different
+   * result at every zoom level. Filling against the unzoomed document means a fill is the same
+   * fill however far in you were when you asked for it.
+   */
+  const blit = useCallback(() => {
+    const b = base.current
+    const v = view.current
+    if (!b || !v) return
+    const { w, h, dpr } = size.current
+    const vc = v.getContext('2d')
+    if (!vc) return
+    vc.setTransform(1, 0, 0, 1, 0, 0)
+    vc.clearRect(0, 0, v.width, v.height)
+    vc.imageSmoothingEnabled = true
+    const sw = b.width / scale
+    const sh = b.height / scale
+    vc.drawImage(
+      b,
+      off.current.x * b.width,
+      off.current.y * b.height,
+      sw,
+      sh,
+      0,
+      0,
+      v.width,
+      v.height,
+    )
+    if (live.current) {
+      // the stroke in progress is drawn straight onto the view, so it needs the same mapping
+      vc.setTransform(
+        dpr * scale,
+        0,
+        0,
+        dpr * scale,
+        -off.current.x * w * dpr * scale,
+        -off.current.y * h * dpr * scale,
+      )
+      paintStroke(vc, live.current, w, h)
+    }
+    vc.setTransform(dpr, 0, 0, dpr, 0, 0)
+  }, [scale])
+
   /** Rebuild `base` from the committed strokes, then show it. */
   const repaint = useCallback(() => {
     const b = base.current
@@ -88,25 +151,12 @@ export function PaintRoom() {
     const { w, h } = size.current
     if (w < 1 || h < 1) return
     const bc = b.getContext('2d')
-    const vc = v.getContext('2d')
-    if (!bc || !vc) return
+    if (!bc) return
     paintDrawing(bc, drawingRef.current, w, h)
-    vc.clearRect(0, 0, w, h)
-    vc.drawImage(b, 0, 0, w, h)
-  }, [])
+    blit()
+  }, [blit])
 
-  /** Show `base` plus whatever is being drawn right now. */
-  const preview = useCallback(() => {
-    const b = base.current
-    const v = view.current
-    if (!b || !v) return
-    const { w, h } = size.current
-    const vc = v.getContext('2d')
-    if (!vc) return
-    vc.clearRect(0, 0, w, h)
-    vc.drawImage(b, 0, 0, w, h)
-    if (live.current) paintStroke(vc, live.current, w, h)
-  }, [])
+  const preview = blit
 
   // ── sizing ────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -149,11 +199,51 @@ export function PaintRoom() {
   useEffect(() => {
     repaint()
   }, [strokes, repaint])
+  useEffect(() => {
+    blit()
+  }, [scale, blit])
 
   // ── drawing ───────────────────────────────────────────────────────────────
-  const at = (e: React.PointerEvent): [number, number] => {
+  /**
+   * Where the pointer is IN THE DRAWING, not on the screen.
+   *
+   * ⚠️ Through the view, or every stroke would land where the cursor is rather than where you
+   * are pointing the moment you zoom in. The screen fraction is divided by the scale and shifted
+   * by the offset, which is the inverse of what blit() does to get the picture on screen.
+   */
+  const at = (e: { clientX: number; clientY: number }): [number, number] => {
     const r = view.current!.getBoundingClientRect()
-    return [(e.clientX - r.left) / r.width, (e.clientY - r.top) / r.height]
+    return [
+      off.current.x + (e.clientX - r.left) / r.width / scale,
+      off.current.y + (e.clientY - r.top) / r.height / scale,
+    ]
+  }
+
+  /** Keep the view over the picture: at 1x it is exactly the picture, further in it can roam. */
+  const clampOffset = (nextScale: number) => {
+    const span = 1 - 1 / nextScale
+    off.current.x = Math.max(0, Math.min(span, off.current.x))
+    off.current.y = Math.max(0, Math.min(span, off.current.y))
+  }
+
+  /**
+   * ⚠️ Zoom toward the POINTER, not the middle.
+   *
+   * Zooming about the centre means the thing you are looking at slides away as you go in, and you
+   * spend the whole time chasing it. Keeping the point under the cursor fixed is what makes a
+   * wheel feel like a magnifying glass rather than a slider.
+   */
+  const onWheel = (e: React.WheelEvent) => {
+    e.preventDefault()
+    const r = view.current!.getBoundingClientRect()
+    const fx = (e.clientX - r.left) / r.width
+    const fy = (e.clientY - r.top) / r.height
+    const before = at(e)
+    const next = Math.max(1, Math.min(12, scale * (e.deltaY < 0 ? 1.15 : 1 / 1.15)))
+    off.current.x = before[0] - fx / next
+    off.current.y = before[1] - fy / next
+    clampOffset(next)
+    setScale(next)
   }
 
   const commit = (s: Stroke) => {
@@ -164,6 +254,16 @@ export function PaintRoom() {
 
   const onDown = (e: React.PointerEvent) => {
     e.preventDefault()
+    // middle button, or any button while zoomed out of reach, drags the picture around
+    if (e.button === 1 || e.button === 2) {
+      pan.current = { x: e.clientX, y: e.clientY }
+      try {
+        e.currentTarget.setPointerCapture(e.pointerId)
+      } catch {
+        /* nothing to capture */
+      }
+      return
+    }
     const [x, y] = at(e)
     try {
       e.currentTarget.setPointerCapture(e.pointerId)
@@ -185,6 +285,15 @@ export function PaintRoom() {
   }
 
   const onMove = (e: React.PointerEvent) => {
+    if (pan.current) {
+      const r = view.current!.getBoundingClientRect()
+      off.current.x -= (e.clientX - pan.current.x) / r.width / scale
+      off.current.y -= (e.clientY - pan.current.y) / r.height / scale
+      pan.current = { x: e.clientX, y: e.clientY }
+      clampOffset(scale)
+      blit()
+      return
+    }
     const s = live.current
     if (!s) return
     const [x, y] = at(e)
@@ -203,6 +312,7 @@ export function PaintRoom() {
   }
 
   const onUp = () => {
+    pan.current = null
     const s = live.current
     if (!s) return
     commit(s)
@@ -238,7 +348,10 @@ export function PaintRoom() {
   })
 
   return (
-    <section className="paint-wrap">
+    /* ⚠️ In a canvas window the board takes the height it is GIVEN. Outside one it has to pick
+       a height, and vh is the only sensible guess — but inside a window that guess ignored the
+       window, so dragging the bottom edge made it wider and never taller. */
+    <section className={'paint-wrap' + (inWindow ? ' is-inwindow' : '')}>
       <div className="paint-bar">
         <div className="fx-style-row paint-tools">
           {TOOLS.map(([id, icon, label]) => (
@@ -352,6 +465,35 @@ export function PaintRoom() {
         >
           ✕ Clear
         </button>
+        <label className="appearance-slider">
+          <span className="muted" title="Or spin the wheel over the picture">
+            Zoom
+          </span>
+          <input
+            type="range"
+            min={1}
+            max={12}
+            step={0.1}
+            value={scale}
+            onChange={(e) => {
+              const next = Number(e.target.value)
+              clampOffset(next)
+              setScale(next)
+            }}
+          />
+          <span className="appearance-slider-val">{scale.toFixed(1)}×</span>
+        </label>
+        <button
+          className="btn"
+          disabled={scale === 1 && !off.current.x && !off.current.y}
+          onClick={() => {
+            off.current = { x: 0, y: 0 }
+            setScale(1)
+          }}
+          title="Back to the whole picture"
+        >
+          ⤢ Fit
+        </button>
         <span className="muted paint-count">
           {strokes.length} stroke{strokes.length === 1 ? '' : 's'}
         </span>
@@ -376,6 +518,7 @@ export function PaintRoom() {
           onPointerMove={onMove}
           onPointerUp={onUp}
           onPointerCancel={onUp}
+          onWheel={onWheel}
           onContextMenu={(e) => e.preventDefault()}
         />
       </div>

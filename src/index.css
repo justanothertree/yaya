@@ -5878,3 +5878,15 @@ a.cz-msg-author:focus-visible {
 .paint-board.has-paper {
   background-image: none;
 }
+
+/* In a canvas window the board takes the height it is given, the same way the visualiser's
+   stage does — outside one it keeps its vh guess, because there is nothing else to ask. */
+.paint-wrap.is-inwindow {
+  height: 100%;
+  min-height: 0;
+}
+.paint-wrap.is-inwindow .paint-board {
+  height: auto;
+  flex: 1 1 auto;
+  min-height: 6rem;
+}
