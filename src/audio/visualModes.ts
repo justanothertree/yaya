@@ -40,6 +40,10 @@ export type VisualId =
   | 'ring'
   | 'lava'
   | 'matrix'
+  | 'fireworks'
+  | 'flock'
+  | 'tree'
+  | 'weave'
 
 /** id, icon, label, and how much of the previous frame lingers by default (0 = none, 1 = all). */
 export const VISUALS: Array<[VisualId, string, string, number]> = [
@@ -63,6 +67,10 @@ export const VISUALS: Array<[VisualId, string, string, number]> = [
   ['ring', '○', 'Ring', 0.4],
   ['lava', '🟠', 'Lava', 0.2],
   ['matrix', '🔣', 'Matrix', 0.75],
+  ['fireworks', '🎆', 'Fireworks', 0.9],
+  ['flock', '🐦', 'Flock', 0.7],
+  ['tree', '🌳', 'Tree', 0.6],
+  ['weave', '▓', 'Weave', 0.3],
 ]
 
 export type Ink = {
@@ -1233,6 +1241,251 @@ function matrix(): Visual {
 }
 
 /**
+ * Fireworks — a shell per beat, bursting where it runs out of climb.
+ *
+ * ⚠️ Fountain is a CONTINUOUS spout and this is DISCRETE events, which is why both earn a
+ * place. There, the beat adds to a stream that is always running; here, nothing happens at all
+ * between beats and each one is a separate object with a life of its own. On quiet music Fountain
+ * trickles and this goes dark, and that difference is the point.
+ */
+function fireworks(): Visual {
+  type Spark = { x: number; y: number; vx: number; vy: number; life: number; tone: number }
+  type Shell = { x: number; y: number; vy: number; fuse: number; tone: number }
+  let shells: Shell[] = []
+  let sparks: Spark[] = []
+  return {
+    init() {
+      shells = []
+      sparks = []
+    },
+    draw({ ctx, w, h, dt, f, p: ptr, ink }) {
+      if (f.beat && shells.length < 6) {
+        shells.push({
+          x: ptr.inside ? ptr.x : w * (0.2 + Math.random() * 0.6),
+          y: h,
+          vy: -(240 + f.beatStrength * 260),
+          fuse: 0.5 + Math.random() * 0.4,
+          tone: Math.random(),
+        })
+      }
+      const G = 220
+      for (const sh of shells) {
+        sh.y += sh.vy * dt
+        sh.vy += G * dt
+        sh.fuse -= dt
+        ctx.beginPath()
+        ctx.arc(sh.x, sh.y, 2.4, 0, Math.PI * 2)
+        ctx.fillStyle = hue(ink, sh.tone)
+        ctx.fill()
+        if (sh.fuse <= 0 && sparks.length < 500) {
+          const n = 26 + Math.round(f.beatStrength * 26)
+          for (let i = 0; i < n; i++) {
+            const a = (i / n) * Math.PI * 2
+            const sp = 90 + Math.random() * 150
+            sparks.push({
+              x: sh.x,
+              y: sh.y,
+              vx: Math.cos(a) * sp,
+              vy: Math.sin(a) * sp,
+              life: 1,
+              tone: (sh.tone + Math.random() * 0.15) % 1,
+            })
+          }
+        }
+      }
+      shells = shells.filter((sh) => sh.fuse > 0 && sh.y > -20)
+      for (const q of sparks) {
+        q.vy += G * 0.6 * dt
+        q.x += q.vx * dt
+        q.y += q.vy * dt
+        q.life -= dt * 0.75
+        ctx.beginPath()
+        ctx.arc(q.x, q.y, 1.6 + q.life * 1.6, 0, Math.PI * 2)
+        ctx.fillStyle = hue(ink, q.tone, Math.max(0, q.life))
+        ctx.fill()
+      }
+      sparks = sparks.filter((q) => q.life > 0)
+    },
+  }
+}
+
+/**
+ * Flock — points that steer by their neighbours rather than by the spectrum.
+ *
+ * ⚠️ the audio does not POSITION anything here; it changes the RULES. Loudness raises the
+ * speed, treble raises the urge to separate, bass pulls the flock together — and what you watch
+ * is the shape those pressures produce. That is why it is the only mode where the picture is not
+ * a function of this frame's numbers, and why it keeps its character through a chorus.
+ *
+ * The neighbour loop is O(n²), so the count is deliberately small; at 34 birds that is around
+ * 560 pair checks a frame, which is affordable, and 80 would not be.
+ */
+function flock(): Visual {
+  type B = { x: number; y: number; vx: number; vy: number; tone: number }
+  let bs: B[] = []
+  return {
+    init(w, h) {
+      bs = Array.from({ length: 34 }, () => ({
+        x: Math.random() * w,
+        y: Math.random() * h,
+        vx: (Math.random() - 0.5) * 60,
+        vy: (Math.random() - 0.5) * 60,
+        tone: Math.random(),
+      }))
+    },
+    draw({ ctx, w, h, dt, f, p: ptr, ink }) {
+      const speed = 40 + f.level * 220
+      const sep = 18 + f.treble * 34
+      const cohere = 0.12 + f.bass * 0.5
+      for (let i = 0; i < bs.length; i++) {
+        const b = bs[i]
+        let cx = 0
+        let cy = 0
+        let ax = 0
+        let ay = 0
+        let sx = 0
+        let sy = 0
+        let n = 0
+        for (let j = 0; j < bs.length; j++) {
+          if (i === j) continue
+          const o = bs[j]
+          const dx = o.x - b.x
+          const dy = o.y - b.y
+          const d2 = dx * dx + dy * dy
+          if (d2 > 120 * 120) continue
+          n++
+          cx += o.x
+          cy += o.y
+          ax += o.vx
+          ay += o.vy
+          if (d2 < sep * sep) {
+            const d = Math.sqrt(d2) || 1
+            sx -= dx / d
+            sy -= dy / d
+          }
+        }
+        if (n) {
+          b.vx += ((cx / n - b.x) * cohere + (ax / n - b.vx) * 0.05 + sx * 40) * dt
+          b.vy += ((cy / n - b.y) * cohere + (ay / n - b.vy) * 0.05 + sy * 40) * dt
+        }
+        /* the pointer is a predator: everything steers away from it */
+        if (ptr.inside) {
+          const dx = b.x - ptr.x
+          const dy = b.y - ptr.y
+          const d = Math.hypot(dx, dy)
+          if (d < 130) {
+            b.vx += (dx / (d || 1)) * 260 * dt
+            b.vy += (dy / (d || 1)) * 260 * dt
+          }
+        }
+        const m = Math.hypot(b.vx, b.vy) || 1
+        b.vx = (b.vx / m) * speed
+        b.vy = (b.vy / m) * speed
+        b.x += b.vx * dt
+        b.y += b.vy * dt
+        if (b.x < 0) b.x += w
+        if (b.x > w) b.x -= w
+        if (b.y < 0) b.y += h
+        if (b.y > h) b.y -= h
+        /* drawn as a dart pointing where it is going, so the flock has a direction you can read */
+        const a = Math.atan2(b.vy, b.vx)
+        const L = 7 + f.level * 6
+        ctx.beginPath()
+        ctx.moveTo(b.x + Math.cos(a) * L, b.y + Math.sin(a) * L)
+        ctx.lineTo(b.x + Math.cos(a + 2.6) * L * 0.6, b.y + Math.sin(a + 2.6) * L * 0.6)
+        ctx.lineTo(b.x + Math.cos(a - 2.6) * L * 0.6, b.y + Math.sin(a - 2.6) * L * 0.6)
+        ctx.closePath()
+        ctx.fillStyle = hue(ink, b.tone)
+        ctx.fill()
+      }
+    },
+  }
+}
+
+/**
+ * Tree — a branching figure that regrows from the bass and sways with the treble.
+ *
+ * ⚠️ recursion with a HARD DEPTH CAP, because branching doubles: depth 8 is 255 segments
+ * and depth 12 would be 4095 for a picture nobody could read. The depth is driven by loudness, so
+ * a quiet passage is a sapling and a loud one fills the frame — growth as the readout, rather
+ * than height or colour.
+ */
+function tree(): Visual {
+  return {
+    init() {},
+    draw({ ctx, w, h, f, p: ptr, ink }) {
+      const depth = 5 + Math.round(f.level * 3.4)
+      const sway =
+        (ptr.inside ? (ptr.x / w - 0.5) * 0.5 : 0) + Math.sin(f.t * 0.7) * 0.12 + f.treble * 0.3
+      const len0 = Math.min(w, h) * (0.16 + f.bass * 0.1)
+      ctx.lineCap = 'round'
+      const branch = (x: number, y: number, a: number, len: number, d: number) => {
+        if (d > depth || len < 2) return
+        const x2 = x + Math.cos(a) * len
+        const y2 = y + Math.sin(a) * len
+        ctx.beginPath()
+        ctx.moveTo(x, y)
+        ctx.lineTo(x2, y2)
+        ctx.lineWidth = Math.max(0.6, (depth - d) * 0.9)
+        ctx.strokeStyle = hue(ink, d / Math.max(1, depth))
+        ctx.stroke()
+        const spread = 0.42 + f.mid * 0.4
+        branch(x2, y2, a - spread + sway * 0.4, len * 0.74, d + 1)
+        branch(x2, y2, a + spread + sway * 0.4, len * 0.74, d + 1)
+      }
+      branch(w / 2, h, -Math.PI / 2 + sway * 0.3, len0, 0)
+    },
+  }
+}
+
+/**
+ * Weave — two sets of lines crossing, each rippling on its own band.
+ *
+ * ⚠️ the picture is the INTERFERENCE, not the lines. Neither set means anything alone; where
+ * they cross at a shallow angle they produce moiré bands that shift with the music, and that is
+ * what you are actually watching. It is also the cheapest mode here after Ring — a few dozen
+ * strokes, no particles, no state between frames.
+ */
+function weave(): Visual {
+  return {
+    init() {},
+    draw({ ctx, w, h, spec, bins, f, p: ptr, ink }) {
+      const N = 22
+      const amp = Math.min(w, h) * (0.03 + f.level * 0.06)
+      const lean = ptr.inside ? (ptr.y / h - 0.5) * 0.6 : 0
+      ctx.lineWidth = 1.2
+      for (let i = 0; i < N; i++) {
+        const k = i / (N - 1)
+        const band = at(spec, bins, 0.02 + k * 0.5)
+        ctx.beginPath()
+        for (let x = 0; x <= w; x += 10) {
+          const y =
+            h * k + Math.sin(x / (60 + k * 90) + f.t * (0.8 + band * 2)) * amp * (0.4 + band * 2)
+          if (x === 0) ctx.moveTo(x, y)
+          else ctx.lineTo(x, y)
+        }
+        ctx.strokeStyle = hue(ink, k, 0.35 + band * 0.5)
+        ctx.stroke()
+      }
+      for (let i = 0; i < N; i++) {
+        const k = i / (N - 1)
+        const band = at(spec, bins, 0.5 + k * 0.45)
+        ctx.beginPath()
+        for (let y = 0; y <= h; y += 10) {
+          const x =
+            w * k +
+            Math.sin(y / (70 + k * 80) + f.t * (0.6 + band * 1.6) + lean) * amp * (0.4 + band * 2)
+          if (y === 0) ctx.moveTo(x, y)
+          else ctx.lineTo(x, y)
+        }
+        ctx.strokeStyle = hue(ink, (k + 0.4) % 1, 0.25 + band * 0.45)
+        ctx.stroke()
+      }
+    },
+  }
+}
+
+/**
  * The spectrum wound onto an Archimedean spiral, low frequencies at the middle.
  *
  * A line chart bent into a coil: one continuous read of the whole range where the eye can follow
@@ -1291,6 +1544,10 @@ const MAKERS: Record<VisualId, () => Visual> = {
   ring,
   lava,
   matrix,
+  fireworks,
+  flock,
+  tree,
+  weave,
 }
 
 export function makeVisual(id: VisualId): Visual {

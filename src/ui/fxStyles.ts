@@ -34,6 +34,10 @@ export const FX_STYLE_OPTIONS: Array<[FxStyle, string, string]> = [
   ['snow', '❄', 'Snow'],
   ['vortex', '🌀', 'Vortex'],
   ['firework', '🎆', 'Firework'],
+  ['coin', '🪙', 'Coin'],
+  ['lightning', '🌩', 'Lightning'],
+  ['leaves', '🍂', 'Leaves'],
+  ['pixels', '🟦', 'Pixels'],
 ]
 
 /** The style ids alone, for anywhere that only needs to cycle or validate them. */

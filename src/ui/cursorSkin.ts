@@ -35,6 +35,10 @@ export type CursorSkin =
   | 'note'
   | 'bolt'
   | 'target'
+  | 'hand'
+  | 'diamond'
+  | 'moon'
+  | 'paw'
 
 export const CURSOR_OPTIONS: Array<[CursorSkin, string, string]> = [
   ['system', '↖', 'System'],
@@ -53,6 +57,10 @@ export const CURSOR_OPTIONS: Array<[CursorSkin, string, string]> = [
   ['note', '🎵', 'Note'],
   ['bolt', '⚡', 'Bolt'],
   ['target', '⌖', 'Target'],
+  ['hand', '☝', 'Hand'],
+  ['diamond', '◆', 'Diamond'],
+  ['moon', '☾', 'Moon'],
+  ['paw', '🐾', 'Paw'],
 ]
 
 export const CURSOR_IDS = CURSOR_OPTIONS.map(([id]) => id)
@@ -183,6 +191,42 @@ const SKINS: Record<Exclude<CursorSkin, 'system'>, Skin> = {
       `<path d="M14 1.5 V5.5 M14 22.5 V26.5 M1.5 14 H5.5 M22.5 14 H26.5" stroke="rgba(0,0,0,.55)" stroke-width="4" stroke-linecap="round"/>` +
       `<path d="M14 1.5 V5.5 M14 22.5 V26.5 M1.5 14 H5.5 M22.5 14 H26.5" stroke="${c}" stroke-width="2" stroke-linecap="round"/>` +
       `<circle cx="14" cy="14" r="1.6" fill="${c}"/>`,
+  },
+  /**
+   * A pointing finger. Hotspot on the FINGERTIP, which is the one place anybody would expect it
+   * — a hand anchored anywhere else feels like it is pointing at something other than what you
+   * pressed.
+   */
+  hand: {
+    hot: [10, 2],
+    body: (c) =>
+      `<path d="M10 2 A2 2 0 0 1 12.5 4 V13 L14 12.6 A1.9 1.9 0 0 1 16.4 14.4 L16.4 15 L18 14.8 A1.9 1.9 0 0 1 20.2 16.6 V17.2 L21.6 17.2 A1.9 1.9 0 0 1 23.4 19 V21.5 C23.4 24.6 20.6 26.5 17 26.5 H14.5 C11 26.5 8.6 24.6 7.8 21.8 L6 16.2 A1.9 1.9 0 0 1 9.4 14.8 L10 16.3 V4 A2 2 0 0 1 10 2 Z" fill="${c}" stroke="rgba(0,0,0,.65)" stroke-width="1.6" stroke-linejoin="round"/>`,
+  },
+  /** Symmetrical, so its hotspot is simply its middle — the quietest precise pointer here. */
+  diamond: {
+    hot: [14, 14],
+    body: (c) =>
+      `<path d="M14 3 L23 14 L14 25 L5 14 Z" fill="${c}" stroke="rgba(0,0,0,.6)" stroke-width="1.6" stroke-linejoin="round"/>` +
+      `<circle cx="14" cy="14" r="1.4" fill="rgba(0,0,0,.5)"/>`,
+  },
+  /**
+   * A crescent. Hotspot on the upper HORN rather than the body's middle, because the horn is the
+   * part that looks like a point — the centre of a crescent is the empty side of it.
+   */
+  moon: {
+    hot: [17, 3],
+    body: (c) =>
+      `<path d="M17 3 A11 11 0 1 0 24 17 A8.6 8.6 0 0 1 17 3 Z" fill="${c}" stroke="rgba(0,0,0,.6)" stroke-width="1.6" stroke-linejoin="round"/>`,
+  },
+  /** Pads and a toe, anchored on the big pad so it presses where the paw looks like it lands. */
+  paw: {
+    hot: [14, 17],
+    body: (c) =>
+      `<ellipse cx="14" cy="18.5" rx="6.6" ry="5.4" fill="${c}" stroke="rgba(0,0,0,.6)" stroke-width="1.5"/>` +
+      `<ellipse cx="7.6" cy="11.4" rx="2.7" ry="3.4" fill="${c}" stroke="rgba(0,0,0,.6)" stroke-width="1.3"/>` +
+      `<ellipse cx="13" cy="8.6" rx="2.7" ry="3.6" fill="${c}" stroke="rgba(0,0,0,.6)" stroke-width="1.3"/>` +
+      `<ellipse cx="18.6" cy="10.2" rx="2.7" ry="3.4" fill="${c}" stroke="rgba(0,0,0,.6)" stroke-width="1.3"/>` +
+      `<ellipse cx="22.6" cy="15" rx="2.4" ry="2.9" fill="${c}" stroke="rgba(0,0,0,.6)" stroke-width="1.3"/>`,
   },
 }
 

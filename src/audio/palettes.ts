@@ -193,6 +193,58 @@ export const PALETTES: Palette[] = [
     ],
   },
   {
+    // reef warmth: pink into orange without Sunset's purple start
+    id: 'coral',
+    label: 'Coral',
+    stops: [
+      [58, 18, 34],
+      [156, 44, 62],
+      [232, 96, 88],
+      [250, 156, 122],
+      [255, 214, 186],
+    ],
+  },
+  {
+    // the industrial one — blue-grey with a copper filament, where Mono has no hue at all
+    id: 'slate',
+    label: 'Slate',
+    stops: [
+      [16, 20, 26],
+      [48, 60, 74],
+      [104, 122, 140],
+      [186, 140, 96],
+      [232, 226, 214],
+    ],
+  },
+  {
+    // Forest climbs to yellow-green; this one climbs to mint, and stays cooler the whole way
+    id: 'jade',
+    label: 'Jade',
+    stops: [
+      [6, 30, 26],
+      [16, 84, 70],
+      [34, 150, 118],
+      [120, 214, 176],
+      [214, 248, 232],
+    ],
+  },
+  {
+    /**
+     * ⚠️ The only ramp that does not start nearly black. Every other one climbs out of the dark,
+     * which is right for a visualiser on a dark page and wrong for anything meant to look soft —
+     * so this one lives entirely in the pale end and separates by hue instead of by brightness.
+     */
+    id: 'cotton',
+    label: 'Cotton',
+    stops: [
+      [176, 190, 220],
+      [206, 186, 226],
+      [238, 190, 206],
+      [246, 214, 190],
+      [250, 240, 226],
+    ],
+  },
+  {
     /**
      * The whole wheel, rather than a journey between two ends of one.
      *

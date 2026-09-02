@@ -63,6 +63,10 @@ export type FxStyle =
   | 'snow'
   | 'vortex'
   | 'firework'
+  | 'coin'
+  | 'lightning'
+  | 'leaves'
+  | 'pixels'
 
 const LAYER_ID = 'click-fx-layer'
 /** Concurrent bursts to allow. A fast clicker shouldn't be able to pile up hundreds of nodes. */
@@ -1113,6 +1117,198 @@ function firework(host: HTMLElement, x: number, y: number) {
   track(host, nodes, anims)
 }
 
+/**
+ * Coins — struck upward, flipping, and falling back past where they started.
+ *
+ * ⚠️ the flip is a scaleX through zero, not a rotation. A coin seen edge-on is INFINITELY
+ * THIN, which a rotate cannot express — spinning a circle just looks like a circle. Squashing its
+ * width to nothing and back is what the eye reads as a coin turning over.
+ */
+function coin(host: HTMLElement, x: number, y: number) {
+  const colors = palette()
+  const N = amount('click', 5)
+  const nodes: HTMLElement[] = []
+  const anims: Animation[] = []
+  for (let i = 0; i < N; i++) {
+    const drift = (Math.random() - 0.5) * 46
+    const up = px(28 + Math.random() * 24)
+    const size = px(9 + Math.random() * 5)
+    const c = mk('click-fx-spark', x, y)
+    c.style.width = size + 'px'
+    c.style.height = size + 'px'
+    c.style.borderRadius = '50%'
+    c.style.background = colors[i % colors.length]
+    nodes.push(c)
+    anims.push(
+      c.animate(
+        [
+          { transform: 'translate(-50%, -50%) translate(0, 0) scaleX(1)', opacity: 1 },
+          {
+            transform: `translate(-50%, -50%) translate(${drift * 0.5}px, ${-up}px) scaleX(0.05)`,
+            opacity: 1,
+            offset: 0.45,
+          },
+          {
+            transform: `translate(-50%, -50%) translate(${drift}px, ${up * 0.7}px) scaleX(1)`,
+            opacity: 0,
+          },
+        ],
+        {
+          duration: dur(820 + Math.random() * 260),
+          easing: 'cubic-bezier(0.3, 0.1, 0.5, 1)',
+          fill: 'forwards',
+        },
+      ),
+    )
+  }
+  track(host, nodes, anims)
+}
+
+/**
+ * Lightning — a bolt that arrives from off the top rather than growing out of the click.
+ *
+ * ⚠️ the only effect whose ORIGIN is not where you pressed. Everything else radiates from
+ * the point, so they all share a silhouette; this one comes down to it, which makes the click
+ * look like a target instead of a source. The jag is built from a few segments with alternating
+ * offsets, because a smooth curve reads as a rope and a truly random walk reads as a scribble.
+ */
+function lightning(host: HTMLElement, x: number, y: number) {
+  const [a, b] = pair()
+  const nodes: HTMLElement[] = []
+  const anims: Animation[] = []
+  const SEGS = 5
+  const top = y - px(80)
+  let cx = x + (Math.random() - 0.5) * 30
+  let cy = top
+  for (let i = 0; i < SEGS; i++) {
+    const t = (i + 1) / SEGS
+    const nx = x + (1 - t) * (Math.random() - 0.5) * 34
+    const ny = top + (y - top) * t
+    const len = Math.hypot(nx - cx, ny - cy)
+    const ang = (Math.atan2(ny - cy, nx - cx) * 180) / Math.PI
+    const seg = mk('click-fx-spark', cx, cy)
+    seg.style.width = len + 'px'
+    seg.style.height = px(3) + 'px'
+    seg.style.background = i === SEGS - 1 ? b : a
+    seg.style.transformOrigin = '0 50%'
+    nodes.push(seg)
+    anims.push(
+      seg.animate(
+        [
+          { transform: `translate(0, -50%) rotate(${ang}deg) scaleX(0)`, opacity: 1 },
+          { transform: `translate(0, -50%) rotate(${ang}deg) scaleX(1)`, opacity: 1, offset: 0.3 },
+          { transform: `translate(0, -50%) rotate(${ang}deg) scaleX(1)`, opacity: 0 },
+        ],
+        {
+          duration: dur(420),
+          /* each segment lights a moment after the one above it, so the bolt travels down */
+          delay: i * 26,
+          easing: 'steps(3, end)',
+          fill: 'forwards',
+        },
+      ),
+    )
+    cx = nx
+    cy = ny
+  }
+  track(host, nodes, anims)
+}
+
+/**
+ * Leaves — glyphs that flutter down, turning as they go.
+ *
+ * ⚠️ falls like Snow but TUMBLES, and that is the difference worth having: a flake drifts
+ * flat, a leaf turns over. The horizontal motion is a sine of its own phase rather than a straight
+ * drift, so each one swings rather than sliding.
+ */
+function leaves(host: HTMLElement, x: number, y: number) {
+  const colors = palette()
+  const GLYPHS = ['🍂', '🍃', '🍁']
+  const N = amount('click', 6)
+  const nodes: HTMLElement[] = []
+  const anims: Animation[] = []
+  for (let i = 0; i < N; i++) {
+    const swing = 20 + Math.random() * 26
+    const fall = px(36 + Math.random() * 34)
+    const dir = Math.random() < 0.5 ? 1 : -1
+    const g = mkGlyph(
+      GLYPHS[i % GLYPHS.length],
+      x + (Math.random() - 0.5) * 22,
+      y - 4,
+      12 + Math.random() * 8,
+      colors[i % colors.length],
+    )
+    nodes.push(g)
+    anims.push(
+      g.animate(
+        [
+          { transform: 'translate(-50%, -50%) translate(0, 0) rotate(0deg)', opacity: 0 },
+          { opacity: 1, offset: 0.15 },
+          {
+            transform: `translate(-50%, -50%) translate(${dir * swing}px, ${fall * 0.5}px) rotate(${dir * 120}deg)`,
+            opacity: 0.9,
+            offset: 0.55,
+          },
+          {
+            transform: `translate(-50%, -50%) translate(${-dir * swing * 0.4}px, ${fall}px) rotate(${dir * 300}deg)`,
+            opacity: 0,
+          },
+        ],
+        {
+          duration: dur(1300 + Math.random() * 600),
+          delay: Math.random() * 180,
+          easing: 'cubic-bezier(0.35, 0.1, 0.6, 1)',
+          fill: 'forwards',
+        },
+      ),
+    )
+  }
+  track(host, nodes, anims)
+}
+
+/**
+ * Pixels — square blocks that scatter on a grid and snap out.
+ *
+ * ⚠️ positions are ROUNDED to a step and the easing is stepped, so nothing here moves
+ * smoothly. Every other effect is built out of continuous motion; refusing that is the entire
+ * character of this one, and it is what makes it sit with the Pixel cursor rather than beside it.
+ */
+function pixels(host: HTMLElement, x: number, y: number) {
+  const colors = palette()
+  const N = amount('click', 10)
+  const STEP = 7
+  const nodes: HTMLElement[] = []
+  const anims: Animation[] = []
+  for (let i = 0; i < N; i++) {
+    const angle = (i / N) * Math.PI * 2 + (Math.random() - 0.5) * 0.6
+    const dist = px(18 + Math.random() * 26)
+    const tx = Math.round((Math.cos(angle) * dist) / STEP) * STEP
+    const ty = Math.round((Math.sin(angle) * dist) / STEP) * STEP
+    const size = px(STEP)
+    const b = mk('click-fx-spark', Math.round(x / STEP) * STEP, Math.round(y / STEP) * STEP)
+    b.style.width = size + 'px'
+    b.style.height = size + 'px'
+    b.style.borderRadius = '0'
+    b.style.background = colors[i % colors.length]
+    nodes.push(b)
+    anims.push(
+      b.animate(
+        [
+          { transform: 'translate(-50%, -50%) translate(0, 0)', opacity: 1 },
+          { transform: `translate(-50%, -50%) translate(${tx}px, ${ty}px)`, opacity: 1 },
+          { transform: `translate(-50%, -50%) translate(${tx}px, ${ty}px)`, opacity: 0 },
+        ],
+        {
+          duration: dur(560 + Math.random() * 180),
+          easing: 'steps(4, end)',
+          fill: 'forwards',
+        },
+      ),
+    )
+  }
+  track(host, nodes, anims)
+}
+
 const BUILDERS: Record<FxStyle, (host: HTMLElement, x: number, y: number) => void> = {
   sparks,
   sonar,
@@ -1135,6 +1331,10 @@ const BUILDERS: Record<FxStyle, (host: HTMLElement, x: number, y: number) => voi
   snow,
   vortex,
   firework,
+  coin,
+  lightning,
+  leaves,
+  pixels,
 }
 
 function onPointerMove(e: PointerEvent) {

@@ -34,6 +34,9 @@ export type Tool =
   | 'spray'
   | 'marker'
   | 'nib'
+  | 'pencil'
+  | 'star'
+  | 'arrow'
 
 export const TOOLS: Array<[Tool, string, string]> = [
   ['brush', '🖌', 'Brush'],
@@ -45,6 +48,9 @@ export const TOOLS: Array<[Tool, string, string]> = [
   ['spray', '💨', 'Spray'],
   ['marker', '🖍', 'Marker'],
   ['nib', '✒', 'Nib'],
+  ['pencil', '✏', 'Pencil'],
+  ['star', '⭐', 'Star'],
+  ['arrow', '↗', 'Arrow'],
 ]
 
 export type Stroke = {
@@ -343,6 +349,90 @@ export function paintStroke(ctx: CanvasRenderingContext2D, s: Stroke, w: number,
       }
       break
     }
+    /**
+     * Pencil — thin, hard-edged, and very slightly unsteady.
+     *
+     * ⚠️ the wobble is DERIVED from the point index, like the spray's scatter, so the same
+     * line redraws identically forever. It is tiny on purpose — a fraction of the line width —
+     * because the point is to take the mechanical perfection off a stroke, not to make it look
+     * drawn by someone unwell.
+     */
+    case 'pencil': {
+      ctx.lineWidth = Math.max(0.4, s.w * short * 0.45)
+      ctx.lineCap = 'round'
+      ctx.beginPath()
+      for (let i = 0; i + 1 < s.p.length; i += 2) {
+        const j = noise(i * 2.17) - 0.5
+        const k = noise(i * 3.91) - 0.5
+        const x = X(i) + j * ctx.lineWidth * 1.6
+        const y = Y(i + 1) + k * ctx.lineWidth * 1.6
+        if (i === 0) ctx.moveTo(x, y)
+        else ctx.lineTo(x, y)
+      }
+      if (s.p.length === 2) ctx.lineTo(X(0), Y(1) + 0.01)
+      ctx.stroke()
+      break
+    }
+    /**
+     * Star — dragged from its centre outward, so the drag sets both size AND rotation.
+     *
+     * ⚠️ a shape tool, which means two points and not a path. Its second point is the tip of
+     * one arm rather than an opposite corner, because a star has no meaningful bounding box to
+     * drag — the gesture that makes sense for it is "how big, and which way up".
+     */
+    case 'star': {
+      const cx = X(0)
+      const cy = Y(1)
+      const rx = X(2) - cx
+      const ry = Y(3) - cy
+      const R = Math.hypot(rx, ry)
+      if (R < 0.5) break
+      const rot = Math.atan2(ry, rx)
+      const POINTS = 5
+      ctx.beginPath()
+      for (let i = 0; i < POINTS * 2; i++) {
+        const r = i % 2 === 0 ? R : R * 0.42
+        const a = rot + (i / (POINTS * 2)) * Math.PI * 2
+        const x = cx + Math.cos(a) * r
+        const y = cy + Math.sin(a) * r
+        if (i === 0) ctx.moveTo(x, y)
+        else ctx.lineTo(x, y)
+      }
+      ctx.closePath()
+      ctx.stroke()
+      break
+    }
+    /**
+     * Arrow — drag from tail to head, and the head is drawn in proportion to the shaft.
+     *
+     * ⚠️ the head scales with the LENGTH, not with the brush size. A fixed head on a long
+     * arrow looks like a pin, and on a short one it swallows the whole shape; tying it to the
+     * distance dragged is what keeps a two-inch arrow and a two-pixel one recognisably the same
+     * object.
+     */
+    case 'arrow': {
+      const x0 = X(0)
+      const y0 = Y(1)
+      const x1 = X(2)
+      const y1 = Y(3)
+      const len = Math.hypot(x1 - x0, y1 - y0)
+      if (len < 0.5) break
+      const a = Math.atan2(y1 - y0, x1 - x0)
+      const head = Math.min(len * 0.32, Math.max(6, s.w * short * 4))
+      ctx.lineCap = 'round'
+      ctx.lineJoin = 'round'
+      ctx.beginPath()
+      ctx.moveTo(x0, y0)
+      ctx.lineTo(x1, y1)
+      ctx.stroke()
+      ctx.beginPath()
+      ctx.moveTo(x1, y1)
+      ctx.lineTo(x1 - Math.cos(a - 0.42) * head, y1 - Math.sin(a - 0.42) * head)
+      ctx.moveTo(x1, y1)
+      ctx.lineTo(x1 - Math.cos(a + 0.42) * head, y1 - Math.sin(a + 0.42) * head)
+      ctx.stroke()
+      break
+    }
     default: {
       // brush, eraser and line are all a polyline; a line just happens to have two points
       if (rainbow) {
@@ -412,7 +502,12 @@ export type PackedDrawing = {
  * like the tool is broken rather than like a list is out of date.
  */
 export const isFreehand = (t: Tool) =>
-  t === 'brush' || t === 'eraser' || t === 'spray' || t === 'marker' || t === 'nib'
+  t === 'brush' ||
+  t === 'eraser' ||
+  t === 'spray' ||
+  t === 'marker' ||
+  t === 'nib' ||
+  t === 'pencil'
 
 /**
  * ⚠️ APPEND ONLY, NEVER REORDER. A packed stroke stores its tool as an INDEX into this

@@ -39,6 +39,10 @@ export type InstrumentId =
   | 'glass'
   | 'strings'
   | 'kalimba'
+  | 'flute'
+  | 'clav'
+  | 'lead'
+  | 'box'
   | 'drums'
 
 export const INSTRUMENTS: Array<[InstrumentId, string, string]> = [
@@ -57,6 +61,10 @@ export const INSTRUMENTS: Array<[InstrumentId, string, string]> = [
   ['glass', '💎', 'Glass'],
   ['strings', '🎻', 'Strings'],
   ['kalimba', '🪵', 'Kalimba'],
+  ['flute', '🌬', 'Flute'],
+  ['clav', '🪶', 'Clav'],
+  ['lead', '⚡', 'Lead'],
+  ['box', '🎁', 'Music box'],
   ['drums', '🥁', 'Drums'],
 ]
 
@@ -316,6 +324,83 @@ const SHAPES: Record<Exclude<InstrumentId, 'drums'>, Shape> = {
     ],
     filter: { from: 4200, to: 1100, q: 1.2 },
     level: 0.46,
+  },
+  /**
+   * Air rather than string or metal: almost nothing but the fundamental, and a second partial
+   * quiet enough to be breath instead of a harmonic. The attack is the slowest of any non-pad
+   * voice here, because a flute has to be blown before it speaks.
+   */
+  flute: {
+    a: 0.06,
+    d: 0.35,
+    s: 0.7,
+    r: 0.22,
+    wave: 'sine',
+    partials: [
+      { ratio: 1, detune: 0, gain: 1 },
+      { ratio: 2, detune: 6, gain: 0.12 },
+      { ratio: 3, detune: -5, gain: 0.04 },
+    ],
+    filter: { from: 3000, to: 2100, q: 0.7 },
+    level: 0.34,
+  },
+  /**
+   * A clavinet: plucked and gone in a moment, but bright the whole way. Where Pluck rounds off,
+   * this keeps its odd harmonics, which is what makes it cut through a mix instead of sitting in
+   * it — the shortest sustained voice here and the most percussive of the strings.
+   */
+  clav: {
+    a: 0.001,
+    d: 0.22,
+    s: 0.12,
+    r: 0.1,
+    wave: 'square',
+    partials: [
+      { ratio: 1, detune: 0, gain: 1 },
+      { ratio: 3, detune: 0, gain: 0.3 },
+      { ratio: 5, detune: 0, gain: 0.14 },
+    ],
+    filter: { from: 4800, to: 1600, q: 4 },
+    level: 0.3,
+  },
+  /**
+   * The synth voice the set was missing: a detuned saw pair under a filter that opens on the
+   * attack and closes again. Everything else here imitates an instrument that exists; this one
+   * only sounds like a synthesiser, which is why it is worth having.
+   */
+  lead: {
+    a: 0.006,
+    d: 0.5,
+    s: 0.55,
+    r: 0.2,
+    wave: 'sawtooth',
+    partials: [
+      { ratio: 1, detune: -9, gain: 1 },
+      { ratio: 1, detune: 10, gain: 0.9 },
+      { ratio: 2, detune: 0, gain: 0.22 },
+    ],
+    filter: { from: 4200, to: 900, q: 6 },
+    level: 0.24,
+  },
+  /**
+   * A music box: the Bell's inharmonic ring with the decay cut right down, so it chimes and stops
+   * rather than hanging. The high partials are what make it sound small — a large bell keeps its
+   * fundamental longest, a little tine does not.
+   */
+  box: {
+    a: 0.001,
+    d: 0.9,
+    s: 0,
+    r: 0.5,
+    wave: 'sine',
+    partials: [
+      { ratio: 1, detune: 0, gain: 0.7 },
+      { ratio: 2.76, detune: 0, gain: 1 },
+      { ratio: 5.4, detune: 0, gain: 0.4 },
+      { ratio: 8.9, detune: 0, gain: 0.12 },
+    ],
+    filter: { from: 6500, to: 2600, q: 1 },
+    level: 0.3,
   },
 }
 

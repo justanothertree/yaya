@@ -34,6 +34,9 @@ export type BackdropId =
   | 'stars'
   | 'rain'
   | 'grid'
+  | 'mesh'
+  | 'ripples'
+  | 'aurora'
 
 export const BACKDROPS: Array<[BackdropId, string, string]> = [
   ['none', '∅', 'None'],
@@ -51,6 +54,9 @@ export const BACKDROPS: Array<[BackdropId, string, string]> = [
   ['stars', '✦', 'Stars'],
   ['rain', '🌧', 'Rain'],
   ['grid', '▦', 'Grid'],
+  ['mesh', '⬡', 'Mesh'],
+  ['ripples', '◉', 'Ripples'],
+  ['aurora', '🌌', 'Aurora'],
   ['waves', '🌊', 'Waves'],
   ['bubbles', '🫧', 'Bubbles'],
   ['flames', '🔥', 'Flames'],
@@ -509,6 +515,186 @@ function grid(): Effect {
   }
 }
 
+/**
+ * Mesh — points that drift, with a line drawn between any two that come close.
+ *
+ * ⚠️ the pair loop is O(n²), so the COUNT is what keeps this affordable, not the drawing.
+ * It is capped far lower than the particle effects here for that reason alone — at 90 points
+ * that is 4000 distance checks a frame, and doubling the points would quadruple them. The check
+ * is squared distance, because a square root per pair buys nothing when the question is only
+ * "closer than this".
+ */
+function mesh(): Effect {
+  let ps: Array<{ x: number; y: number; vx: number; vy: number; tone: number }> = []
+  let W = 0
+  let H = 0
+  return {
+    init(w, h, coarse) {
+      W = w
+      H = h
+      ps = Array.from({ length: count(w, h, 5, 60, coarse) }, () => ({
+        x: Math.random() * w,
+        y: Math.random() * h,
+        vx: (Math.random() - 0.5) * 16,
+        vy: (Math.random() - 0.5) * 16,
+        tone: Math.random(),
+      }))
+    },
+    step({ ctx, w, h, dt, paint, px, py }) {
+      W = w
+      H = h
+      for (const p of ps) {
+        p.x += p.vx * dt * speedScale()
+        p.y += p.vy * dt * speedScale()
+        if (p.x < 0) p.x += W
+        if (p.x > W) p.x -= W
+        if (p.y < 0) p.y += H
+        if (p.y > H) p.y -= H
+      }
+      const near = Math.min(W, H) * 0.16
+      const near2 = near * near
+      ctx.lineWidth = 1
+      for (let i = 0; i < ps.length; i++) {
+        for (let j = i + 1; j < ps.length; j++) {
+          const dx = ps[i].x - ps[j].x
+          const dy = ps[i].y - ps[j].y
+          const d2 = dx * dx + dy * dy
+          if (d2 > near2) continue
+          ctx.beginPath()
+          ctx.moveTo(ps[i].x, ps[i].y)
+          ctx.lineTo(ps[j].x, ps[j].y)
+          ctx.strokeStyle = rgba(ramped(paint, ps[i].tone), (1 - d2 / near2) * 0.14)
+          ctx.stroke()
+        }
+      }
+      for (const p of ps) {
+        /* a point near the pointer swells, so the web has something to answer a hand with */
+        let r = 1.4
+        if (px != null && py != null) {
+          const d = Math.hypot(p.x - px, p.y - py)
+          if (d < 120) r += (1 - d / 120) * 2.4
+        }
+        ctx.beginPath()
+        ctx.arc(p.x, p.y, r * sizeScale(), 0, Math.PI * 2)
+        ctx.fillStyle = rgba(ramped(paint, p.tone), 0.4)
+        ctx.fill()
+      }
+    },
+  }
+}
+
+/**
+ * Ripples — rings that start somewhere at random and spread until they fade.
+ *
+ * ⚠️ a FIXED pool, reused, rather than pushing new rings and filtering dead ones. A backdrop
+ * runs for as long as the page is open, and an effect that allocates every second is the one that
+ * shows up in a memory graph an hour later. A dead ring here is simply one that gets a new centre.
+ */
+function ripples(): Effect {
+  let rs: Array<{ x: number; y: number; age: number; life: number; tone: number }> = []
+  let W = 0
+  let H = 0
+  const reseed = (r: { x: number; y: number; age: number; life: number; tone: number }) => {
+    r.x = Math.random() * W
+    r.y = Math.random() * H
+    r.age = 0
+    r.life = 2.4 + Math.random() * 2.6
+    r.tone = Math.random()
+  }
+  return {
+    init(w, h, coarse) {
+      W = w
+      H = h
+      rs = Array.from({ length: count(w, h, 2, 14, coarse) }, () => ({
+        x: Math.random() * w,
+        y: Math.random() * h,
+        age: Math.random() * 3,
+        life: 2.4 + Math.random() * 2.6,
+        tone: Math.random(),
+      }))
+    },
+    step({ ctx, w, h, dt, paint, px, py }) {
+      W = w
+      H = h
+      const max = Math.min(w, h) * 0.5
+      for (const r of rs) {
+        r.age += dt * speedScale()
+        if (r.age > r.life) reseed(r)
+        const k = r.age / r.life
+        ctx.beginPath()
+        ctx.arc(r.x, r.y, Math.max(1, k * max * sizeScale()), 0, Math.PI * 2)
+        ctx.strokeStyle = rgba(ramped(paint, r.tone), (1 - k) * 0.16)
+        ctx.lineWidth = 1 + (1 - k) * 2
+        ctx.stroke()
+      }
+      /* pressing a pointer into it starts one where the cursor is, rather than at random */
+      if (px != null && py != null) {
+        const oldest = rs.reduce((a, b) => (a.age / a.life > b.age / b.life ? a : b), rs[0])
+        if (oldest && oldest.age / oldest.life > 0.94) {
+          reseed(oldest)
+          oldest.x = px
+          oldest.y = py
+        }
+      }
+    },
+  }
+}
+
+/**
+ * Aurora — vertical curtains that lean and breathe.
+ *
+ * ⚠️ vertical, where Waves is horizontal, and that is the whole distinction. Both are a few
+ * sine-driven filled paths; turning them ninety degrees changes what they are, because the eye
+ * reads horizontal bands as water and vertical ones as light hanging. Each curtain is one path
+ * with a gradient down it, so the count stays in single figures however wide the canvas gets.
+ */
+function aurora(): Effect {
+  let curtains: Array<{
+    x: number
+    w: number
+    amp: number
+    rate: number
+    phase: number
+    tone: number
+  }> = []
+  return {
+    init(w) {
+      const n = amount('background', w < 520 ? 3 : 5)
+      curtains = Array.from({ length: n }, (_, i) => ({
+        x: (w * (i + 0.5)) / n,
+        w: w / n / (1.4 + Math.random()),
+        amp: 24 + Math.random() * 40,
+        rate: 0.12 + Math.random() * 0.22,
+        phase: Math.random() * Math.PI * 2,
+        tone: i / Math.max(1, n - 1),
+      }))
+    },
+    step({ ctx, w, h, t, paint, px }) {
+      const lean = px == null ? 0 : (px / w - 0.5) * 60
+      for (const c of curtains) {
+        const sway = Math.sin(t * c.rate + c.phase) * c.amp * sizeScale() + lean
+        const g = ctx.createLinearGradient(0, 0, 0, h)
+        g.addColorStop(0, rgba(ramped(paint, c.tone), 0))
+        g.addColorStop(0.45, rgba(ramped(paint, c.tone), 0.13))
+        g.addColorStop(1, rgba(ramped(paint, (c.tone + 0.3) % 1), 0))
+        ctx.fillStyle = g
+        ctx.beginPath()
+        ctx.moveTo(c.x + sway - c.w / 2, 0)
+        for (let y = 0; y <= h; y += 40) {
+          const k = y / h
+          ctx.lineTo(c.x + sway * (1 - k * 0.6) - c.w / 2 + Math.sin(k * 3 + t * c.rate) * 18, y)
+        }
+        for (let y = h; y >= 0; y -= 40) {
+          const k = y / h
+          ctx.lineTo(c.x + sway * (1 - k * 0.6) + c.w / 2 + Math.sin(k * 3 + t * c.rate) * 18, y)
+        }
+        ctx.closePath()
+        ctx.fill()
+      }
+    },
+  }
+}
+
 export function makeEffect(id: BackdropId): Effect | null {
   switch (id) {
     case 'waves':
@@ -527,6 +713,12 @@ export function makeEffect(id: BackdropId): Effect | null {
       return rain()
     case 'grid':
       return grid()
+    case 'mesh':
+      return mesh()
+    case 'ripples':
+      return ripples()
+    case 'aurora':
+      return aurora()
     default:
       return null
   }

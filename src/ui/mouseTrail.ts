@@ -44,6 +44,10 @@ export type TrailStyle =
   | 'fireflies'
   | 'rain'
   | 'arrows'
+  | 'snake'
+  | 'wave'
+  | 'bolt'
+  | 'shadow'
 
 export const TRAIL_OPTIONS: Array<[TrailStyle, string, string]> = [
   ['none', '∅', 'None'],
@@ -63,6 +67,10 @@ export const TRAIL_OPTIONS: Array<[TrailStyle, string, string]> = [
   ['fireflies', '💡', 'Fireflies'],
   ['rain', '🌧', 'Rain'],
   ['arrows', '➤', 'Arrows'],
+  ['snake', '🐍', 'Snake'],
+  ['wave', '〰️', 'Wave'],
+  ['bolt', '⌁', 'Bolt'],
+  ['shadow', '◑', 'Shadow'],
 ]
 
 export const TRAIL_IDS = TRAIL_OPTIONS.map(([id]) => id)
@@ -154,6 +162,11 @@ const SPACING: Record<Exclude<TrailStyle, 'none'>, number> = {
   fireflies: 30,
   rain: 12,
   arrows: 26,
+  /* a body wants its segments touching; a shadow wants one copy, not a stream */
+  snake: 9,
+  wave: 7,
+  bolt: 20,
+  shadow: 16,
 }
 
 /**
@@ -182,6 +195,10 @@ const TRAIL_HUE: Record<Exclude<TrailStyle, 'none'>, number> = {
   fireflies: 0.22,
   rain: 0.58,
   arrows: 0.08,
+  snake: 0.3,
+  wave: 0.47,
+  bolt: 0.14,
+  shadow: 0.86,
 }
 
 function drop(s: Exclude<TrailStyle, 'none'>, x: number, y: number, dx: number, dy: number) {
@@ -523,6 +540,113 @@ function drop(s: Exclude<TrailStyle, 'none'>, x: number, y: number, dx: number, 
         [
           { transform: `translate(-50%, -50%) rotate(${angle}deg) scaleX(1)`, opacity: 0.9 },
           { transform: `translate(-50%, -50%) rotate(${angle}deg) scaleX(0.2)`, opacity: 0 },
+        ],
+        { duration: dur(520), easing: 'ease-out', fill: 'forwards' },
+      )
+      break
+    }
+    /**
+     * A body that follows the head, in a site that already has a snake in it.
+     *
+     * ⚠️ the segments SHRINK along the tail rather than fading, which is what makes it a
+     * body instead of exhaust. Fading is how every other trail here ends; tapering is how a tail
+     * ends, and the two read completely differently even with identical timing.
+     */
+    case 'snake': {
+      const p = mk('trail-mote', x, y)
+      const size = px(11)
+      p.style.width = size + 'px'
+      p.style.height = size + 'px'
+      p.style.background = a
+      p.style.borderRadius = '50%'
+      emit(
+        p,
+        [
+          { transform: 'translate(-50%, -50%) scale(1)', opacity: 0.95 },
+          { transform: 'translate(-50%, -50%) scale(0.15)', opacity: 0.5 },
+        ],
+        { duration: dur(560), easing: 'linear', fill: 'forwards' },
+      )
+      break
+    }
+    /**
+     * A ripple laid ACROSS your direction of travel, so the trail reads as a wave rather than a
+     * line.
+     *
+     * ⚠️ offset perpendicular to the movement and alternating side to side. Everything else
+     * here sits on the path; stepping off it in alternate directions is the whole effect, and it
+     * only works because the offset is computed from the angle rather than from the axes.
+     */
+    case 'wave': {
+      const side = Math.random() < 0.5 ? 1 : -1
+      const rad = (angle * Math.PI) / 180
+      const off = px(9 + speed * 12) * side
+      const p = mk(
+        'trail-mote',
+        x + Math.cos(rad + Math.PI / 2) * off,
+        y + Math.sin(rad + Math.PI / 2) * off,
+      )
+      const size = px(5 + speed * 4)
+      p.style.width = size + 'px'
+      p.style.height = size + 'px'
+      p.style.background = side > 0 ? a : b
+      emit(
+        p,
+        [
+          { transform: 'translate(-50%, -50%) scale(0.4)', opacity: 0.9 },
+          { transform: 'translate(-50%, -50%) scale(1.1)', opacity: 0 },
+        ],
+        { duration: dur(620), easing: 'ease-out', fill: 'forwards' },
+      )
+      break
+    }
+    /**
+     * Short arcs that snap into place and vanish, like static jumping off the cursor.
+     *
+     * ⚠️ stepped easing and a hard cut, where every other style eases. Electricity does not
+     * accelerate — it is there or it is not, and using a smooth curve for it is what makes most
+     * attempts at this look like a worm instead of a spark.
+     */
+    case 'bolt': {
+      const p = mk('trail-dash', x, y)
+      const len = px(10 + Math.random() * 16)
+      p.style.width = len + 'px'
+      p.style.height = px(2) + 'px'
+      p.style.background = Math.random() < 0.4 ? b : a
+      const jag = angle + (Math.random() - 0.5) * 150
+      emit(
+        p,
+        [
+          { transform: `translate(-50%, -50%) rotate(${jag}deg) scaleX(0.2)`, opacity: 1 },
+          {
+            transform: `translate(-50%, -50%) rotate(${jag}deg) scaleX(1)`,
+            opacity: 1,
+            offset: 0.5,
+          },
+          { transform: `translate(-50%, -50%) rotate(${jag}deg) scaleX(1)`, opacity: 0 },
+        ],
+        { duration: dur(260), easing: 'steps(2, end)', fill: 'forwards' },
+      )
+      break
+    }
+    /**
+     * One soft copy of the pointer, arriving late.
+     *
+     * ⚠️ the quietest thing in this list, and deliberately so. Every other trail is a
+     * STREAM; this is a single lagging disc, so it reads as a shadow under your hand rather than
+     * as an effect — the option for someone who wants a trail without wanting to be told about it.
+     */
+    case 'shadow': {
+      const p = mk('trail-smoke', x, y)
+      const size = px(20 + speed * 10)
+      p.style.width = size + 'px'
+      p.style.height = size + 'px'
+      p.style.background = a
+      emit(
+        p,
+        [
+          { transform: 'translate(-50%, -50%) scale(0.8)', opacity: 0.28 },
+          { transform: 'translate(-50%, -50%) scale(1)', opacity: 0 },
         ],
         { duration: dur(520), easing: 'ease-out', fill: 'forwards' },
       )
