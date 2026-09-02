@@ -25,6 +25,17 @@ platform. Instead of describing past work, each nav section is something you can
   threads. One rooms model covers circuit rooms, a members-wide lounge, and friend DMs.
 - **Snake** — a canvas Snake game with single-player, an online leaderboard, and room-based
   multiplayer over WebSockets.
+- **Instrument** — a synthesiser you play with the keyboard, a mouse or a phone: eleven voices
+  and a twelve-piece drum kit, a bar-based looper, a piano-roll editor, and songs you can save
+  and put on your profile. What it records is the notes you played, not the audio.
+- **Visualiser** — sixteen drawing modes over whatever is making sound: your microphone, the
+  instrument, a dropped track, or everyone in a call. Colour ramps, mirrors, trails, spin, bloom
+  and feedback, and a whole room can watch one person's settings.
+- **Paint** — a drawing space that keeps the strokes you made rather than a picture of them, so a
+  drawing stays sharp at any size, reaches a call in a few hundred bytes, and fits on a profile.
+- **Calls** — voice and screen sharing between members, and the co-presence that rides along with
+  it: seeing each other's pointers, playing the instrument together, sharing a window, drawing on
+  the same page.
 - **Investments** — a family "dollar-a-day" fund: each member sees their own allocated
   holdings, what's been promised vs invested, and whether the plan is ahead of schedule.
   Trades import from broker CSV exports and are split across the family's accounts; an
@@ -59,6 +70,11 @@ the showcase, and a UI that explains itself to non-technical friends and family.
   edit what is enforced by RLS, not the client.
 - **Resilient public board** — signed out, the board renders instantly from a bundled snapshot,
   then refreshes from a live anon RPC and self-heals stale caches.
+- **Send what it MEANS, not what it looks like** — the rule the newer modules are built on and
+  the reason they are small. A recorded loop is notes, not audio; a drawing is strokes, not
+  pixels; a shared visualiser sends its dials, not video. So everyone renders it themselves at
+  their own resolution, it stays sharp and editable afterwards, it survives being saved, and a
+  drawing or a song reaches a profile in a few hundred bytes instead of needing to be hosted.
 - **Mobile-first, not mobile-adapted** — phones get their own navigation (a thumb-zone bottom bar
   plus a full-screen launcher) and their own layouts, rather than a shrunk desktop: chat becomes a
   full-height messaging screen, and the log collapses each exercise to a single line so the first
@@ -95,12 +111,19 @@ src/
   circuit/           # The Circuit: store, adapters, scoring, social, seeds, and ui/
   finance/           # Supabase client, auth, and the investments data layer (RPC-backed)
   game/              # Snake engine, renderer, net client, leaderboard
+  audio/             # synth voices and FX buses, the looper, note editing, song files,
+                     #   the visualiser's sixteen modes and its colour ramps
+  draw/              # the paint format: strokes, packing, flood fill, and the local gallery
   voice/             # WebRTC calls and screen sharing: session, presence, RNNoise, ringtone
+  party/             # what rides along with a call: pointers, jamming, a shared transport
+                     #   and clock, shared windows, drawing together
+  site/              # the home page's text as data, its store, and the admin editor
   theme/             # the three built-in themes plus the custom-palette system
   profile/           # per-member look: derived identity colour and banner styles
   hooks/             # cross-cutting hooks (notifications, reveal-on-scroll, scroll fade)
   ui/                # click flair and other small UI behaviours
   dev/               # DEV-only preview harness; tree-shaken out of production
+  types/             # shared type declarations
   config/site.ts     # site metadata
 scripts/             # maintenance CLIs (broker CSV trade import, public-seed generator)
   fixtures/          #   invented-data broker exports for exercising the importer
