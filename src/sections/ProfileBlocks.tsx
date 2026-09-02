@@ -67,6 +67,17 @@ type ProfileNote = {
 const CONFIG_LIMIT = 16000
 
 /**
+ * How big the server will think this block's config is.
+ *
+ * ⚠️ THE WHOLE CONFIG, because that is what `length(e->>'config')` measures on the other end. The
+ * two pickers each measured only their own field — the song, or the chosen drawings — so both
+ * under-reported, and a block could be shown as using 62% of its room while the config it would
+ * actually send was over the cap. The save then failed with "invalid block", a message about the
+ * SHAPE of the data for a problem that is really "this is too long".
+ */
+const configSize = (config: Record<string, unknown>) => JSON.stringify(config ?? {}).length
+
+/**
  * Block types the SERVER may not accept yet.
  *
  * ⚠️ save_my_profile_blocks keeps its own allowlist and rejects the WHOLE payload if any block is
@@ -551,7 +562,7 @@ function SongPicker({
    * a message about the shape of the data for a problem that is really "this piece is long".
    * Checking here means the answer arrives while you are choosing, not after you press Done.
    */
-  const tooBig = JSON.stringify(value.song ?? {}).length > CONFIG_LIMIT
+  const tooBig = configSize(value) > CONFIG_LIMIT
   if (!items.length)
     return (
       <p className="muted" style={{ margin: 0, fontSize: '0.85rem' }}>
@@ -606,7 +617,8 @@ function ArtPicker({
 }) {
   const items = useSyncExternalStore(subscribeGallery, gallery, gallery)
   const chosen = Array.isArray(value.art) ? value.art : []
-  const used = JSON.stringify(chosen).length
+  /* the config as it would be SENT, not just the pictures in it — see configSize */
+  const used = configSize({ ...value, art: chosen })
   const names = chosen.map((a) => readDrawing(a)?.name ?? '?')
 
   if (!items.length)
@@ -990,6 +1002,23 @@ export function ProfileBlocksEditor({
   useEffect(() => {
     const payload = payloadOf(blocks)
     const json = JSON.stringify(payload)
+
+    /**
+     * ⚠️ Caught HERE rather than by the server, because the server's answer for this is the same
+     * "invalid block" it gives for an unknown type — and it refuses the entire payload, so one
+     * over-long block stops the whole page saving. Checking first names the block, keeps the rest
+     * of the page saveable the moment it is fixed, and spares a request that cannot succeed.
+     */
+    const overSized = blocks.find((b) => configSize(b.config) > CONFIG_LIMIT)
+    if (overSized) {
+      setBlocked(null)
+      setErr(
+        `the ${BLOCK_LABEL[overSized.block_type]} block holds too much — take something out of it`,
+      )
+      setStatus('idle')
+      return
+    }
+
     /**
      * ⚠️ Back in step with the server means there is nothing WRONG any more, so the warning has
      * to go with it. Taking out a block the server refused returns the page to exactly what was
