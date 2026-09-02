@@ -36,8 +36,11 @@
 --   * an id other than 'home'      — so a compromised admin session cannot fill the table with
 --                                    rows nobody reads and nobody is watching the size of
 --   * a document that is not an object
---   * anything over 40kB           — matches HOME_DOC_LIMIT in the client, so the editor can warn
---                                    before a save can fail rather than after
+--   * anything over 40kB           — the client stops at 36000, deliberately lower: this counts
+--                                    `p_doc::text`, and Postgres renders jsonb with a space after
+--                                    every colon and comma where the browser emits neither, about
+--                                    9% more on a representative document. The editor spends the
+--                                    smaller budget so it can never promise room that is not there
 --
 -- Note what is NOT enforced here: the shape of the document. The client validates and clamps
 -- every field on the way OUT of storage (readHomeDoc), which is the side that matters — a reader

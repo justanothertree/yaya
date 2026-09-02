@@ -63,8 +63,20 @@ export const DEFAULT_HOME: HomeDoc = {
 const MAX_HEADING = 200
 const MAX_BLURB = 2000
 const MAX_PARAGRAPHS = 8
-/** Matches the cap the server enforces, so the editor can warn before a save can fail. */
-export const HOME_DOC_LIMIT = 40000
+/**
+ * How much text the editor will let you keep.
+ *
+ * ⚠️ DELIBERATELY UNDER THE SERVER'S 40000, because the two do not measure the same string.
+ * save_site_content checks `length(p_doc::text)`, and Postgres renders jsonb with a space after
+ * every colon and comma, where a browser's JSON.stringify emits neither. Measured on a
+ * representative document: Postgres 312 characters against the browser's 287, about 9% more.
+ *
+ * So a client that used the server's number verbatim would cheerfully report 99% of the room used
+ * and then be refused — the same mistake the profile block pickers were making, in the same shape.
+ * The margin is bigger than the worst case observed, and the editor is honest about the smaller
+ * budget rather than about a number it cannot actually spend.
+ */
+export const HOME_DOC_LIMIT = 36000
 
 const str = (v: unknown, max: number, fallback: string) =>
   typeof v === 'string' && v.trim() ? v.slice(0, max) : fallback
