@@ -35,6 +35,10 @@ export type InstrumentId =
   | 'marimba'
   | 'choir'
   | 'sub'
+  | 'harp'
+  | 'glass'
+  | 'strings'
+  | 'kalimba'
   | 'drums'
 
 export const INSTRUMENTS: Array<[InstrumentId, string, string]> = [
@@ -49,6 +53,10 @@ export const INSTRUMENTS: Array<[InstrumentId, string, string]> = [
   ['marimba', '🪘', 'Marimba'],
   ['choir', '🗣️', 'Choir'],
   ['sub', '🔊', 'Sub'],
+  ['harp', '🎶', 'Harp'],
+  ['glass', '💎', 'Glass'],
+  ['strings', '🎻', 'Strings'],
+  ['kalimba', '🪵', 'Kalimba'],
   ['drums', '🥁', 'Drums'],
 ]
 
@@ -230,6 +238,84 @@ const SHAPES: Record<Exclude<InstrumentId, 'drums'>, Shape> = {
     pitch: { mult: 2.2, time: 0.09 },
     filter: { from: 700, to: 160, q: 1 },
     level: 0.62,
+  },
+  /**
+   * Plucked like the Pluck, but ringing on instead of stopping — the difference is the RELEASE,
+   * not the attack. A harp string is not damped when you let go, so a chord you played a second
+   * ago is still there under the one you are playing now.
+   */
+  harp: {
+    a: 0.002,
+    d: 1.6,
+    s: 0,
+    r: 1.2,
+    wave: 'triangle',
+    partials: [
+      { ratio: 1, detune: 0, gain: 1 },
+      { ratio: 2, detune: 0, gain: 0.34 },
+      { ratio: 3, detune: 0, gain: 0.16 },
+      { ratio: 5, detune: 0, gain: 0.05 },
+    ],
+    filter: { from: 5200, to: 900, q: 0.8 },
+    level: 0.42,
+  },
+  /**
+   * Where the Bell is inharmonic and metallic, this is nearly pure: a fundamental with two quiet
+   * octaves above it and a very slow decay. Almost no attack transient, so it arrives rather than
+   * strikes — the closest thing here to a wine glass under a wet finger.
+   */
+  glass: {
+    a: 0.02,
+    d: 3.2,
+    s: 0,
+    r: 2.2,
+    wave: 'sine',
+    partials: [
+      { ratio: 1, detune: 0, gain: 1 },
+      { ratio: 2, detune: 3, gain: 0.22 },
+      { ratio: 4, detune: -4, gain: 0.09 },
+      { ratio: 6.1, detune: 0, gain: 0.03 },
+    ],
+    filter: { from: 6000, to: 2400, q: 0.6 },
+    level: 0.34,
+  },
+  /**
+   * Bowed rather than blown or struck: a slow swell, a full sustain, and a sawtooth stack tuned
+   * against itself so the section never quite agrees with its own pitch. Slower to arrive than
+   * the Pad and much brighter, which is what stops the two being the same patch twice.
+   */
+  strings: {
+    a: 0.22,
+    d: 0.6,
+    s: 0.8,
+    r: 0.55,
+    wave: 'sawtooth',
+    partials: [
+      { ratio: 1, detune: -8, gain: 1 },
+      { ratio: 1, detune: 7, gain: 0.9 },
+      { ratio: 2, detune: 0, gain: 0.3 },
+      { ratio: 3, detune: 4, gain: 0.12 },
+    ],
+    filter: { from: 2600, to: 1300, q: 1.4 },
+    level: 0.26,
+  },
+  /**
+   * A thumb piano: a short woody body like the Marimba, but with a metal tine on top — the tenth
+   * partial is what gives it the little bloom the wooden bars do not have.
+   */
+  kalimba: {
+    a: 0.001,
+    d: 0.7,
+    s: 0,
+    r: 0.28,
+    wave: 'triangle',
+    partials: [
+      { ratio: 1, detune: 0, gain: 1 },
+      { ratio: 3, detune: 0, gain: 0.2 },
+      { ratio: 10.4, detune: 0, gain: 0.07 },
+    ],
+    filter: { from: 4200, to: 1100, q: 1.2 },
+    level: 0.46,
   },
 }
 

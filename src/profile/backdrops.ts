@@ -23,7 +23,17 @@
 import { amount, effectScale } from '../ui/effectAmount'
 import { audioBackdrop } from './audioBackdrop'
 
-export type BackdropId = 'none' | 'glow' | 'waves' | 'bubbles' | 'flames' | 'leaves' | 'audio'
+export type BackdropId =
+  | 'none'
+  | 'glow'
+  | 'waves'
+  | 'bubbles'
+  | 'flames'
+  | 'leaves'
+  | 'audio'
+  | 'stars'
+  | 'rain'
+  | 'grid'
 
 export const BACKDROPS: Array<[BackdropId, string, string]> = [
   ['none', '∅', 'None'],
@@ -38,6 +48,9 @@ export const BACKDROPS: Array<[BackdropId, string, string]> = [
   ['glow', '🌫', 'Glow'],
   /* whatever is playing, drawn behind everything — see audioBackdrop.ts */
   ['audio', '🎚️', 'Audio'],
+  ['stars', '✦', 'Stars'],
+  ['rain', '🌧', 'Rain'],
+  ['grid', '▦', 'Grid'],
   ['waves', '🌊', 'Waves'],
   ['bubbles', '🫧', 'Bubbles'],
   ['flames', '🔥', 'Flames'],
@@ -354,6 +367,148 @@ export function onBackdropOverrideChange(fn: () => void): () => void {
   return () => window.removeEventListener(OVERRIDE_EVENT, fn)
 }
 
+/**
+ * Stars — a slow field with a slower drift, and a twinkle that is not random.
+ *
+ * ⚠️ each star's brightness is a SINE of its own phase, not Math.random() per frame. Random
+ * flicker reads as noise or a broken screen; a slow cycle reads as air moving in front of
+ * something steady. It also costs one sin() rather than a new random number, and this is the
+ * cheapest effect here — no wrapping, no collisions, just points.
+ */
+function stars(): Effect {
+  let ps: Array<{ x: number; y: number; r: number; phase: number; rate: number; tone: number }> = []
+  return {
+    init(w, h, coarse) {
+      ps = Array.from({ length: count(w, h, 14, 140, coarse) }, () => ({
+        x: Math.random() * w,
+        y: Math.random() * h,
+        r: 0.6 + Math.random() * 1.7,
+        phase: Math.random() * Math.PI * 2,
+        rate: 0.4 + Math.random() * 1.1,
+        tone: Math.random(),
+      }))
+    },
+    step({ ctx, w, h, t, paint, px, py }) {
+      for (const s of ps) {
+        /* a whole-field drift, so it reads as sky rather than as a static image */
+        const x = (((s.x + t * 4 * speedScale()) % w) + w) % w
+        const y = (((s.y + t * 1.5 * speedScale()) % h) + h) % h
+        let a = 0.25 + 0.45 * (0.5 + 0.5 * Math.sin(t * s.rate + s.phase))
+        /* the pointer brightens what is near it, which is the only interaction a star can have */
+        if (px != null && py != null) {
+          const d = Math.hypot(x - px, y - py)
+          if (d < 90) a = Math.min(1, a + (1 - d / 90) * 0.5)
+        }
+        ctx.beginPath()
+        ctx.arc(x, y, s.r * sizeScale(), 0, Math.PI * 2)
+        ctx.fillStyle = rgba(ramped(paint, s.tone), a)
+        ctx.fill()
+      }
+    },
+  }
+}
+
+/**
+ * Rain — streaks falling on a slant, with the pointer bending them as it passes.
+ *
+ * ⚠️ drawn as LINES, not as long thin rectangles. A rectangle needs a transform per drop to
+ * lean it; a line takes the slant for free in its two endpoints, so the whole effect is two
+ * numbers per drop and no save/restore anywhere in the loop.
+ */
+function rain(): Effect {
+  let ps: Array<{ x: number; y: number; len: number; v: number; tone: number }> = []
+  let W = 0
+  let H = 0
+  const SLANT = 0.22
+  return {
+    init(w, h, coarse) {
+      W = w
+      H = h
+      ps = Array.from({ length: count(w, h, 11, 110, coarse) }, () => ({
+        x: Math.random() * w,
+        y: Math.random() * h,
+        len: 8 + Math.random() * 16,
+        v: 160 + Math.random() * 220,
+        tone: Math.random(),
+      }))
+    },
+    step({ ctx, w, h, dt, paint, px, py }) {
+      W = w
+      H = h
+      ctx.lineCap = 'round'
+      for (const d of ps) {
+        d.y += d.v * dt * speedScale()
+        d.x += d.v * dt * SLANT * speedScale()
+        if (d.y - d.len > H) {
+          d.y = -d.len
+          d.x = Math.random() * W
+        }
+        if (d.x > W + 20) d.x -= W + 40
+        /* a drop passing the pointer is nudged aside, so the cursor parts the rain */
+        let bend = 0
+        if (px != null && py != null) {
+          const dx = d.x - px
+          const dy = d.y - py
+          const dd = Math.hypot(dx, dy)
+          if (dd < 110) bend = (dx / (dd || 1)) * (1 - dd / 110) * 14
+        }
+        const len = d.len * sizeScale()
+        ctx.beginPath()
+        ctx.moveTo(d.x + bend, d.y)
+        ctx.lineTo(d.x + bend - len * SLANT, d.y - len)
+        ctx.strokeStyle = rgba(ramped(paint, d.tone), 0.1 + d.tone * 0.16)
+        ctx.lineWidth = 1 + d.tone
+        ctx.stroke()
+      }
+    },
+  }
+}
+
+/**
+ * Grid — a floor receding to a horizon, scrolling toward you.
+ *
+ * ⚠️ the only backdrop here with no particles at all. It is a dozen strokes a frame however
+ * big the canvas is, which makes it the one to reach for on a weak machine — and it looks least
+ * like the others precisely because it has structure instead of scatter.
+ *
+ * The rows are spaced by a SQUARE of their depth, which is what puts the horizon where the eye
+ * expects it; evenly spaced lines read as a ladder lying flat rather than a floor going away.
+ */
+function grid(): Effect {
+  const ROWS = 16
+  const COLS = 14
+  return {
+    init() {
+      /* nothing to keep: every line is derived from t and the canvas size */
+    },
+    step({ ctx, w, h, t, paint, px }) {
+      const horizon = h * 0.42
+      /* the pointer slides the vanishing point, so the floor turns as you move across it */
+      const vanish = px == null ? w / 2 : w / 2 + (px / w - 0.5) * w * 0.25
+      const scroll = (t * 0.25 * speedScale()) % 1
+
+      ctx.lineWidth = 1
+      for (let i = 0; i < ROWS; i++) {
+        const k = (i + scroll) / ROWS
+        const y = horizon + (h - horizon) * k * k
+        ctx.beginPath()
+        ctx.moveTo(0, y)
+        ctx.lineTo(w, y)
+        ctx.strokeStyle = rgba(ramped(paint, k), 0.05 + k * 0.16)
+        ctx.stroke()
+      }
+      for (let i = 0; i <= COLS; i++) {
+        const f = i / COLS
+        ctx.beginPath()
+        ctx.moveTo(vanish, horizon)
+        ctx.lineTo(f * w * 2 - w * 0.5, h)
+        ctx.strokeStyle = rgba(ramped(paint, f), 0.07)
+        ctx.stroke()
+      }
+    },
+  }
+}
+
 export function makeEffect(id: BackdropId): Effect | null {
   switch (id) {
     case 'waves':
@@ -366,6 +521,12 @@ export function makeEffect(id: BackdropId): Effect | null {
       return leaves()
     case 'audio':
       return audioBackdrop()
+    case 'stars':
+      return stars()
+    case 'rain':
+      return rain()
+    case 'grid':
+      return grid()
     default:
       return null
   }

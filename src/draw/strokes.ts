@@ -24,7 +24,16 @@
  * replay a guess about what it was drawn at.
  */
 
-export type Tool = 'brush' | 'eraser' | 'line' | 'rect' | 'ellipse' | 'fill'
+export type Tool =
+  | 'brush'
+  | 'eraser'
+  | 'line'
+  | 'rect'
+  | 'ellipse'
+  | 'fill'
+  | 'spray'
+  | 'marker'
+  | 'nib'
 
 export const TOOLS: Array<[Tool, string, string]> = [
   ['brush', '🖌', 'Brush'],
@@ -33,6 +42,9 @@ export const TOOLS: Array<[Tool, string, string]> = [
   ['rect', '▭', 'Box'],
   ['ellipse', '◯', 'Ellipse'],
   ['fill', '🪣', 'Fill'],
+  ['spray', '💨', 'Spray'],
+  ['marker', '🖍', 'Marker'],
+  ['nib', '✒', 'Nib'],
 ]
 
 export type Stroke = {
@@ -111,6 +123,16 @@ export const RAINBOW = 'rainbow'
 
 const colour = (v: unknown, fallback = '#000000') =>
   v === NONE || v === RAINBOW ? v : typeof v === 'string' && HEX.test(v) ? v : fallback
+
+/**
+ * A repeatable 0–1 from a number — the spray's stand-in for randomness.
+ *
+ * ⚠️ Deterministic on purpose: see the spray tool. Same input, same speckle, forever.
+ */
+const noise = (n: number) => {
+  const x = Math.sin(n * 12.9898) * 43758.5453
+  return x - Math.floor(x)
+}
 
 /** A hue on the wheel, as a css colour. `t` turns once per 1. */
 const wheel = (t: number) => `hsl(${(((t * 360) % 360) + 360) % 360} 92% 58%)`
@@ -247,6 +269,80 @@ export function paintStroke(ctx: CanvasRenderingContext2D, s: Stroke, w: number,
       ctx.stroke()
       break
     }
+    /**
+     * Spray — an airbrush: dots scattered around the path rather than a solid line.
+     *
+     * ⚠️ THE SCATTER IS DERIVED, NOT RANDOM. Math.random() here would be a different
+     * picture every time the drawing was replayed — and drawings ARE replayed, on every resize,
+     * every reload, and on someone else's profile. The whole promise of keeping strokes instead
+     * of pixels is that redrawing gives you back the same picture, and one Math.random() in this
+     * function would quietly break it. Hashing the point index gives the same speckle forever.
+     */
+    case 'spray': {
+      const R = Math.max(1, s.w * short) * 1.7
+      const dots = 5
+      ctx.lineWidth = 1
+      for (let i = 0; i + 1 < s.p.length; i += 2) {
+        const cx = X(i)
+        const cy = Y(i + 1)
+        for (let k = 0; k < dots; k++) {
+          const seed = i * 7.13 + k * 3.71
+          const a = noise(seed) * Math.PI * 2
+          const d = Math.sqrt(noise(seed + 1.7)) * R
+          const r = 0.6 + noise(seed + 3.3) * (R * 0.16)
+          if (rainbow) ctx.fillStyle = wheel(((i / 2) * 8) / TURN)
+          ctx.beginPath()
+          ctx.arc(cx + Math.cos(a) * d, cy + Math.sin(a) * d, r, 0, Math.PI * 2)
+          ctx.fill()
+        }
+      }
+      break
+    }
+    /**
+     * Marker — broad, flat-ended and translucent, so crossing your own line shows.
+     *
+     * ⚠️ butt caps and a miter join, which is the whole difference from Brush. Round caps
+     * make a pen; a chisel tip makes a marker, and the corners are where you see it.
+     */
+    case 'marker': {
+      ctx.lineCap = 'butt'
+      ctx.lineJoin = 'miter'
+      ctx.lineWidth = Math.max(1, s.w * short) * 2.2
+      ctx.globalAlpha = s.a * 0.55
+      ctx.beginPath()
+      ctx.moveTo(X(0), Y(1))
+      if (s.p.length === 2) ctx.lineTo(X(0), Y(1) + 0.01)
+      for (let i = 2; i + 1 < s.p.length; i += 2) ctx.lineTo(X(i), Y(i + 1))
+      ctx.stroke()
+      break
+    }
+    /**
+     * Nib — a calligraphy pen: the line thickens and thins with the DIRECTION you draw.
+     *
+     * ⚠️ width comes from the angle between the stroke and a fixed nib, so the same gesture
+     * drawn sideways is fat and drawn along the nib is hairline. That is what makes handwriting
+     * with it look written rather than traced, and it is the only tool here whose thickness is not
+     * a setting.
+     */
+    case 'nib': {
+      const NIB = -Math.PI / 4
+      const wide = Math.max(1, s.w * short) * 2.4
+      ctx.lineCap = 'butt'
+      for (let i = 0; i + 3 < s.p.length; i += 2) {
+        const ax = X(i)
+        const ay = Y(i + 1)
+        const bx = X(i + 2)
+        const by = Y(i + 3)
+        const angle = Math.atan2(by - ay, bx - ax)
+        ctx.lineWidth = Math.max(0.4, wide * (0.12 + 0.88 * Math.abs(Math.sin(angle - NIB))))
+        if (rainbow) ctx.strokeStyle = wheel(((i / 2) * 6) / TURN)
+        ctx.beginPath()
+        ctx.moveTo(ax, ay)
+        ctx.lineTo(bx, by)
+        ctx.stroke()
+      }
+      break
+    }
     default: {
       // brush, eraser and line are all a polyline; a line just happens to have two points
       if (rainbow) {
@@ -306,6 +402,23 @@ export type PackedDrawing = {
   s: Array<[number, string | 0 | 1, number, number, ...number[]]>
 }
 
+/**
+ * The tools you DRAG to draw a path, as opposed to those taking two corners or a single point.
+ *
+ * ⚠️ One definition, because the paint room asks this twice — once to decide what a new stroke
+ * starts as, and again on every pointer move to decide whether to append a point or move a
+ * corner. Those were two hand-written lists of the same two tools, and adding a third to one but
+ * not the other gives you a brush that draws one straight line from where you pressed: it looks
+ * like the tool is broken rather than like a list is out of date.
+ */
+export const isFreehand = (t: Tool) =>
+  t === 'brush' || t === 'eraser' || t === 'spray' || t === 'marker' || t === 'nib'
+
+/**
+ * ⚠️ APPEND ONLY, NEVER REORDER. A packed stroke stores its tool as an INDEX into this
+ * list, so moving an entry silently repaints every drawing anyone has ever saved — a brush stroke
+ * becomes an eraser, and the picture is gone with no error to explain it. New tools go on the end.
+ */
 const TOOL_ORDER = TOOLS.map(([t]) => t)
 
 export function packDrawing(d: Drawing): PackedDrawing {

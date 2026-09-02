@@ -59,6 +59,10 @@ export type FxStyle =
   | 'implode'
   | 'bloom'
   | 'dust'
+  | 'notes'
+  | 'snow'
+  | 'vortex'
+  | 'firework'
 
 const LAYER_ID = 'click-fx-layer'
 /** Concurrent bursts to allow. A fast clicker shouldn't be able to pile up hundreds of nodes. */
@@ -901,6 +905,214 @@ function slash(host: HTMLElement, x: number, y: number) {
   track(host, nodes, anims)
 }
 
+/**
+ * Notes — a little phrase rising out of the click.
+ *
+ * The one style that belongs to this site in particular: there is a synthesiser, a looper and a
+ * visualiser behind these buttons, and a click that leaves music behind reads as part of them.
+ *
+ * ⚠️ they rise in a STAGGERED line rather than a burst. Notes on a stave are read left to
+ * right, so a radial spray of them looks like debris; a drifting column looks like a phrase. The
+ * sideways drift alternates so the column leans rather than marching straight up.
+ */
+function notes(host: HTMLElement, x: number, y: number) {
+  const colors = palette()
+  const GLYPHS = ['\u266a', '\u266b', '\u266c', '\u2669']
+  const N = amount('click', 5)
+  const nodes: HTMLElement[] = []
+  const anims: Animation[] = []
+  for (let i = 0; i < N; i++) {
+    const lean = (i % 2 === 0 ? 1 : -1) * (8 + Math.random() * 16)
+    const rise = px(34 + Math.random() * 26)
+    const g = mkGlyph(
+      GLYPHS[i % GLYPHS.length],
+      x + (Math.random() - 0.5) * 10,
+      y,
+      13 + Math.random() * 7,
+      colors[i % colors.length],
+    )
+    nodes.push(g)
+    anims.push(
+      g.animate(
+        [
+          { transform: 'translate(-50%, -50%) translate(0, 0) scale(0.5)', opacity: 0 },
+          {
+            transform: `translate(-50%, -50%) translate(${lean * 0.4}px, ${-rise * 0.45}px) scale(1)`,
+            opacity: 1,
+            offset: 0.35,
+          },
+          {
+            transform: `translate(-50%, -50%) translate(${lean}px, ${-rise}px) scale(0.85)`,
+            opacity: 0,
+          },
+        ],
+        {
+          duration: dur(900 + Math.random() * 400),
+          /* each note starts a beat after the last, which is what makes it a phrase */
+          delay: i * 70,
+          easing: 'cubic-bezier(0.25, 0.8, 0.4, 1)',
+          fill: 'forwards',
+        },
+      ),
+    )
+  }
+  track(host, nodes, anims)
+}
+
+/**
+ * Snow — flakes that fall instead of flying.
+ *
+ * ⚠️ every other style here moves AWAY from the click; this one moves DOWN. That is the
+ * whole of it. Gravity is the one motion none of the others have, so it reads as different even
+ * though the particles are ordinary, and the horizontal sway is a sine rather than a straight
+ * drift so each flake wanders the way a real one does.
+ */
+function snow(host: HTMLElement, x: number, y: number) {
+  const colors = palette()
+  const N = amount('click', 9)
+  const nodes: HTMLElement[] = []
+  const anims: Animation[] = []
+  for (let i = 0; i < N; i++) {
+    const sway = (Math.random() - 0.5) * 34
+    const fall = px(30 + Math.random() * 40)
+    const g = mkGlyph(
+      '\u2744',
+      x + (Math.random() - 0.5) * 30,
+      y - 6,
+      8 + Math.random() * 8,
+      colors[i % colors.length],
+    )
+    nodes.push(g)
+    anims.push(
+      g.animate(
+        [
+          { transform: 'translate(-50%, -50%) translate(0, 0) rotate(0deg)', opacity: 0 },
+          { opacity: 0.9, offset: 0.2 },
+          {
+            transform: `translate(-50%, -50%) translate(${sway}px, ${fall}px) rotate(${180 + Math.random() * 180}deg)`,
+            opacity: 0,
+          },
+        ],
+        {
+          duration: dur(1100 + Math.random() * 500),
+          delay: Math.random() * 160,
+          easing: 'cubic-bezier(0.4, 0.1, 0.7, 1)',
+          fill: 'forwards',
+        },
+      ),
+    )
+  }
+  track(host, nodes, anims)
+}
+
+/**
+ * Vortex — everything sucked into the point you pressed.
+ *
+ * ⚠️ it starts wide and ends AT the cursor, the reverse of every other style. Because the
+ * particles converge, the click reads as the destination rather than the source — which is what
+ * makes it feel like a button pulling itself shut. The spiral comes from advancing the angle as
+ * the radius shrinks; a straight inward line looks like a collapse, not a whirl.
+ */
+function vortex(host: HTMLElement, x: number, y: number) {
+  const [a, b] = pair()
+  const N = amount('click', 12)
+  const nodes: HTMLElement[] = []
+  const anims: Animation[] = []
+  const spin = Math.random() < 0.5 ? 1 : -1
+  for (let i = 0; i < N; i++) {
+    const a0 = (i / N) * Math.PI * 2
+    const r0 = px(30 + Math.random() * 22)
+    const a1 = a0 + spin * 1.9
+    const dot = mk('click-fx-spark', x, y)
+    dot.style.background = i % 3 === 0 ? b : a
+    nodes.push(dot)
+    anims.push(
+      dot.animate(
+        [
+          {
+            transform: `translate(-50%, -50%) translate(${Math.cos(a0) * r0}px, ${Math.sin(a0) * r0}px) scale(1)`,
+            opacity: 0,
+          },
+          { opacity: 1, offset: 0.25 },
+          {
+            transform: `translate(-50%, -50%) translate(${Math.cos(a1) * r0 * 0.45}px, ${Math.sin(a1) * r0 * 0.45}px) scale(0.7)`,
+            opacity: 0.9,
+            offset: 0.65,
+          },
+          { transform: 'translate(-50%, -50%) translate(0, 0) scale(0)', opacity: 0 },
+        ],
+        {
+          duration: dur(620 + Math.random() * 200),
+          easing: 'cubic-bezier(0.5, 0, 0.75, 0)',
+          fill: 'forwards',
+        },
+      ),
+    )
+  }
+  track(host, nodes, anims)
+}
+
+/**
+ * Firework — a shell that goes up, bursts, and leaves sparks falling.
+ *
+ * ⚠️ it is the only style with two ACTS, and the delay between them is the effect. A burst
+ * on its own is already here twice over (Sparks, Pop); what a firework has that those do not is
+ * the wait — a single rising dot, a pause, and only then the flash. The sparks are given a small
+ * downward drift at the end so they die like embers rather than freezing in a ring.
+ */
+function firework(host: HTMLElement, x: number, y: number) {
+  const colors = palette()
+  const N = amount('click', 14)
+  const nodes: HTMLElement[] = []
+  const anims: Animation[] = []
+  const climb = px(30 + Math.random() * 16)
+  const RISE = dur(300)
+
+  const shell = mk('click-fx-spark', x, y)
+  shell.style.background = colors[0]
+  nodes.push(shell)
+  anims.push(
+    shell.animate(
+      [
+        { transform: 'translate(-50%, -50%) translate(0, 0) scale(1)', opacity: 1 },
+        {
+          transform: `translate(-50%, -50%) translate(0, ${-climb}px) scale(0.6)`,
+          opacity: 0,
+        },
+      ],
+      { duration: RISE, easing: 'cubic-bezier(0.2, 0.7, 0.4, 1)', fill: 'forwards' },
+    ),
+  )
+
+  for (let i = 0; i < N; i++) {
+    const angle = (i / N) * Math.PI * 2 + Math.random() * 0.2
+    const dist = px(22 + Math.random() * 30)
+    const sp = mk('click-fx-spark', x, y - climb)
+    sp.style.background = colors[i % colors.length]
+    nodes.push(sp)
+    anims.push(
+      sp.animate(
+        [
+          { transform: 'translate(-50%, -50%) translate(0, 0) scale(0.4)', opacity: 0 },
+          { opacity: 1, offset: 0.1 },
+          {
+            transform: `translate(-50%, -50%) translate(${Math.cos(angle) * dist}px, ${Math.sin(angle) * dist + 14}px) scale(0.5)`,
+            opacity: 0,
+          },
+        ],
+        {
+          duration: dur(720 + Math.random() * 260),
+          /* the pause IS the firework — see above */
+          delay: RISE,
+          easing: 'cubic-bezier(0.1, 0.7, 0.3, 1)',
+          fill: 'forwards',
+        },
+      ),
+    )
+  }
+  track(host, nodes, anims)
+}
+
 const BUILDERS: Record<FxStyle, (host: HTMLElement, x: number, y: number) => void> = {
   sparks,
   sonar,
@@ -919,6 +1131,10 @@ const BUILDERS: Record<FxStyle, (host: HTMLElement, x: number, y: number) => voi
   implode,
   bloom,
   dust,
+  notes,
+  snow,
+  vortex,
+  firework,
 }
 
 function onPointerMove(e: PointerEvent) {

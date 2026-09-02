@@ -40,6 +40,10 @@ export type TrailStyle =
   | 'rise'
   | 'smoke'
   | 'chase'
+  | 'rings'
+  | 'fireflies'
+  | 'rain'
+  | 'arrows'
 
 export const TRAIL_OPTIONS: Array<[TrailStyle, string, string]> = [
   ['none', '∅', 'None'],
@@ -55,6 +59,10 @@ export const TRAIL_OPTIONS: Array<[TrailStyle, string, string]> = [
   ['rise', '🫧', 'Rise'],
   ['smoke', '🌫', 'Smoke'],
   ['chase', '🐾', 'Chase'],
+  ['rings', '◎', 'Rings'],
+  ['fireflies', '💡', 'Fireflies'],
+  ['rain', '🌧', 'Rain'],
+  ['arrows', '➤', 'Arrows'],
 ]
 
 export const TRAIL_IDS = TRAIL_OPTIONS.map(([id]) => id)
@@ -141,12 +149,17 @@ const SPACING: Record<Exclude<TrailStyle, 'none'>, number> = {
   rise: 20,
   smoke: 24,
   chase: 14,
+  /* rings and fireflies are big or slow, so they need room or they stop being either */
+  rings: 34,
+  fireflies: 30,
+  rain: 12,
+  arrows: 26,
 }
 
 /**
  * Where each trail sits on the ramp, 0–1.
  *
- * ⚠️ Twelve trails all drew the same two colours, so they read as one trail in twelve shapes
+ * ⚠️ Sixteen trails all drew the same two colours, so they read as one trail in twelve shapes
  * — the eye takes hue before motion. Giving each style its own place means comet and ink are
  * recognisably different things before you have registered how they move, while all twelve stay
  * inside the theme because the ramp IS the theme. Spread deliberately rather than evenly: styles
@@ -165,6 +178,10 @@ const TRAIL_HUE: Record<Exclude<TrailStyle, 'none'>, number> = {
   rise: 0.6,
   smoke: 0.75,
   chase: 0.18,
+  rings: 0.5,
+  fireflies: 0.22,
+  rain: 0.58,
+  arrows: 0.08,
 }
 
 function drop(s: Exclude<TrailStyle, 'none'>, x: number, y: number, dx: number, dy: number) {
@@ -408,6 +425,109 @@ function drop(s: Exclude<TrailStyle, 'none'>, x: number, y: number, dx: number, 
      * The only one that draws the PATH rather than points along it, so a fast flick produces one
      * long stroke instead of a scatter — the shape of the gesture rather than a sample of it.
      */
+    /**
+     * Expanding rings dropped where you passed, like something touching water.
+     *
+     * ⚠️ Given the widest SPACING of any style. Rings are large and hollow, so at a normal rate
+     * they overlap into a solid band and stop reading as rings at all — the gap between them is
+     * what makes each one a ring rather than part of a tube.
+     */
+    case 'rings': {
+      const p = mk('trail-bubble', x, y)
+      const size = px(10)
+      p.style.width = size + 'px'
+      p.style.height = size + 'px'
+      p.style.borderColor = a
+      emit(
+        p,
+        [
+          { transform: 'translate(-50%, -50%) scale(0.4)', opacity: 0.9 },
+          { transform: `translate(-50%, -50%) scale(${2.6 + speed * 1.6})`, opacity: 0 },
+        ],
+        { duration: dur(900), easing: 'cubic-bezier(0.1, 0.6, 0.3, 1)', fill: 'forwards' },
+      )
+      break
+    }
+    /**
+     * Slow points that blink on, hang, and go out.
+     *
+     * ⚠️ the only style that gets BRIGHTER before it fades. Everything else here starts at
+     * full and decays, which reads as exhaust; a lamp that comes up and holds reads as alive. They
+     * also drift almost independently of the pointer, so they linger where you have been instead
+     * of chasing you.
+     */
+    case 'fireflies': {
+      const p = mk('trail-mote', x + (Math.random() - 0.5) * 26, y + (Math.random() - 0.5) * 26)
+      const size = px(4 + Math.random() * 4)
+      p.style.width = size + 'px'
+      p.style.height = size + 'px'
+      p.style.background = Math.random() < 0.4 ? b : a
+      emit(
+        p,
+        [
+          { transform: 'translate(-50%, -50%) scale(0.2)', opacity: 0 },
+          { transform: 'translate(-50%, -50%) scale(1)', opacity: 1, offset: 0.35 },
+          { transform: 'translate(-50%, -50%) scale(1)', opacity: 0.85, offset: 0.6 },
+          {
+            transform: `translate(-50%, -50%) translate(${(Math.random() - 0.5) * 18}px, ${-8 - Math.random() * 14}px) scale(0.3)`,
+            opacity: 0,
+          },
+        ],
+        { duration: dur(1300 + Math.random() * 700), easing: 'ease-in-out', fill: 'forwards' },
+      )
+      break
+    }
+    /**
+     * Streaks that fall away from the pointer instead of following it.
+     *
+     * ⚠️ gravity, which no other trail has. Every other style drifts along the direction you
+     * moved, so they all read as variations on a wake; this one ignores your direction entirely
+     * and goes down, which is why it still looks different at a glance from Comet or Dash.
+     */
+    case 'rain': {
+      const p = mk('trail-dash', x + (Math.random() - 0.5) * 16, y)
+      p.style.background = Math.random() < 0.3 ? b : a
+      p.style.width = px(2) + 'px'
+      p.style.height = px(9 + Math.random() * 7) + 'px'
+      emit(
+        p,
+        [
+          { transform: 'translate(-50%, -50%) translate(0, 0)', opacity: 0.85 },
+          {
+            transform: `translate(-50%, -50%) translate(${(Math.random() - 0.5) * 10}px, ${px(26 + Math.random() * 26)}px)`,
+            opacity: 0,
+          },
+        ],
+        {
+          duration: dur(620 + Math.random() * 260),
+          easing: 'cubic-bezier(0.4,0,0.9,1)',
+          fill: 'forwards',
+        },
+      )
+      break
+    }
+    /**
+     * Small chevrons laid down pointing the way you went.
+     *
+     * ⚠️ rotated to the MOVEMENT, not to a fixed angle, so the trail becomes a readable path
+     * rather than decoration — you can see which way you came. They shrink rather than travel,
+     * because an arrow that also moves is two motions telling you the same thing.
+     */
+    case 'arrows': {
+      const p = mk('trail-dash', x, y)
+      p.style.background = a
+      p.style.width = px(10 + speed * 8) + 'px'
+      p.style.height = px(3) + 'px'
+      emit(
+        p,
+        [
+          { transform: `translate(-50%, -50%) rotate(${angle}deg) scaleX(1)`, opacity: 0.9 },
+          { transform: `translate(-50%, -50%) rotate(${angle}deg) scaleX(0.2)`, opacity: 0 },
+        ],
+        { duration: dur(520), easing: 'ease-out', fill: 'forwards' },
+      )
+      break
+    }
     case 'thread': {
       const len = Math.hypot(dx, dy)
       if (len < 1) break

@@ -8,6 +8,7 @@ import {
   type Drawing,
   type Stroke,
   type Tool,
+  isFreehand,
 } from '../draw/strokes'
 import { InCanvasWindow } from '../circuit/ui/canvasContext'
 import { gallery, removeArt, saveArt, subscribeGallery, type Art } from '../draw/gallery'
@@ -306,7 +307,7 @@ export function PaintRoom() {
       c: colour,
       a: alpha,
       w: width,
-      p: tool === 'brush' || tool === 'eraser' ? [x, y] : [x, y, x, y],
+      p: isFreehand(tool) ? [x, y] : [x, y, x, y],
     }
     preview()
   }
@@ -324,7 +325,7 @@ export function PaintRoom() {
     const s = live.current
     if (!s) return
     const [x, y] = at(e)
-    if (s.t === 'brush' || s.t === 'eraser') {
+    if (isFreehand(s.t)) {
       // ⚠️ skip points closer than a fraction of a percent — a fast drag emits hundreds of
       // events a second and every one of them would be stored forever in the saved file
       const px = s.p[s.p.length - 2]

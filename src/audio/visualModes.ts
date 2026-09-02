@@ -36,6 +36,10 @@ export type VisualId =
   | 'constellation'
   | 'cells'
   | 'spiral'
+  | 'fountain'
+  | 'ring'
+  | 'lava'
+  | 'matrix'
 
 /** id, icon, label, and how much of the previous frame lingers by default (0 = none, 1 = all). */
 export const VISUALS: Array<[VisualId, string, string, number]> = [
@@ -55,6 +59,10 @@ export const VISUALS: Array<[VisualId, string, string, number]> = [
   ['constellation', '✳️', 'Stars', 0.5],
   ['cells', '🧫', 'Cells', 0],
   ['spiral', '🌀', 'Spiral', 0.7],
+  ['fountain', '⛲', 'Fountain', 0.86],
+  ['ring', '○', 'Ring', 0.4],
+  ['lava', '🟠', 'Lava', 0.2],
+  ['matrix', '🔣', 'Matrix', 0.75],
 ]
 
 export type Ink = {
@@ -1029,6 +1037,202 @@ function cells(): Visual {
 }
 
 /**
+ * Fountain — the beat throws particles up, and gravity brings them back.
+ *
+ * ⚠️ the only mode here with real physics. Everything else positions things from the
+ * spectrum every frame, so the picture is a direct readout; here the audio applies a FORCE and
+ * what you see is the history of those forces. That is why it keeps moving through a quiet
+ * passage — the last beat is still falling — and why it reads as a thing being played rather than
+ * a meter being driven.
+ */
+function fountain(): Visual {
+  type P = { x: number; y: number; vx: number; vy: number; life: number; tone: number }
+  let ps: P[] = []
+  return {
+    init() {
+      ps = []
+    },
+    draw({ ctx, w, h, dt, f, p: ptr, ink }) {
+      const [cx, cy] = centre(ptr, w, h)
+      const base = ptr.inside ? cy : h * 0.86
+      /* a beat launches a burst; loudness alone trickles, so quiet music still has a spout */
+      const launching = f.beat ? 14 + Math.round(f.beatStrength * 22) : f.level > 0.04 ? 2 : 0
+      for (let i = 0; i < launching && ps.length < 420; i++) {
+        const spread = 0.5 + f.treble * 1.1
+        const angle = -Math.PI / 2 + (Math.random() - 0.5) * spread
+        const speed = (120 + Math.random() * 190) * (0.5 + f.level + f.bass * 0.9)
+        ps.push({
+          x: cx + (Math.random() - 0.5) * 12,
+          y: base,
+          vx: Math.cos(angle) * speed,
+          vy: Math.sin(angle) * speed,
+          life: 1,
+          tone: Math.random(),
+        })
+      }
+      const G = 460
+      for (const q of ps) {
+        q.vy += G * dt
+        q.x += q.vx * dt
+        q.y += q.vy * dt
+        q.life -= dt * 0.42
+        const r = 1.4 + q.tone * 2.6 + f.level * 2
+        ctx.beginPath()
+        ctx.arc(q.x, q.y, r, 0, Math.PI * 2)
+        ctx.fillStyle = hue(ink, q.tone, Math.max(0, Math.min(1, q.life)))
+        ctx.fill()
+      }
+      ps = ps.filter((q) => q.life > 0 && q.y < h + 40)
+    },
+  }
+}
+
+/**
+ * Ring — the waveform itself, bent into a circle.
+ *
+ * ⚠️ this is the WAVE, not the spectrum. Radial already draws frequency as spokes; what is
+ * missing from a circle is the actual shape of the sound, and wrapping it end to end means the
+ * loop closes — a steady tone becomes a still ring, and a noisy one becomes a rough one. Reading
+ * the buffer as a closed loop is the whole trick, so the join has no seam.
+ */
+function ring(): Visual {
+  return {
+    init() {},
+    draw({ ctx, w, h, wave, waveN, f, p: ptr, ink }) {
+      const [cx, cy] = centre(ptr, w, h)
+      const R = Math.min(w, h) * (0.2 + f.level * 0.1)
+      const swing = Math.min(w, h) * 0.16
+      const N = Math.min(waveN, 512)
+      ctx.lineWidth = 1.5 + f.level * 3
+      ctx.strokeStyle = hue(ink, 0.5 + f.mid * 0.4)
+      ctx.beginPath()
+      for (let i = 0; i <= N; i++) {
+        /* i % N so the last point IS the first: the loop closes with no seam */
+        const v = (wave[(i % N) * Math.floor(waveN / N)] - 128) / 128
+        const a = (i / N) * Math.PI * 2
+        const r = R + v * swing
+        const x = cx + Math.cos(a) * r
+        const y = cy + Math.sin(a) * r
+        if (i === 0) ctx.moveTo(x, y)
+        else ctx.lineTo(x, y)
+      }
+      ctx.closePath()
+      ctx.stroke()
+      /* a second, quieter ring inside, lagging on the bass, so the middle is not empty */
+      ctx.beginPath()
+      ctx.arc(cx, cy, R * (0.42 + f.bass * 0.3), 0, Math.PI * 2)
+      ctx.strokeStyle = hue(ink, f.bass, 0.5)
+      ctx.lineWidth = 1 + f.bass * 5
+      ctx.stroke()
+    },
+  }
+}
+
+/**
+ * Lava — three soft blobs that swell with the bands and melt into each other.
+ *
+ * ⚠️ no particles and no edges, which is why it is here. Every other mode draws COUNTABLE
+ * things — bars, dots, lines — and reads as data even when it is pretty. This one has nothing to
+ * count, so it reads as atmosphere, and it is the one to leave running behind something else.
+ * Drawn as three gradients composited additively: cheap at any size, and the overlaps make the
+ * colours rather than a palette lookup doing it.
+ */
+function lava(): Visual {
+  return {
+    init() {},
+    draw({ ctx, w, h, f, p: ptr, ink }) {
+      const prev = ctx.globalCompositeOperation
+      ctx.globalCompositeOperation = 'lighter'
+      const bands = [f.bass, f.mid, f.treble]
+      for (let i = 0; i < 3; i++) {
+        const band = bands[i]
+        const a = f.t * (0.18 + i * 0.09)
+        const x = w * (0.5 + Math.cos(a + i * 2.1) * 0.26)
+        const y = h * (0.5 + Math.sin(a * 1.3 + i * 1.7) * 0.24)
+        const r = Math.min(w, h) * (0.18 + band * 0.34)
+        const g = ctx.createRadialGradient(x, y, 0, x, y, Math.max(1, r))
+        g.addColorStop(0, hue(ink, i / 2, 0.5 + band * 0.4))
+        g.addColorStop(0.6, hue(ink, i / 2, 0.12 + band * 0.1))
+        g.addColorStop(1, hue(ink, i / 2, 0))
+        ctx.fillStyle = g
+        ctx.beginPath()
+        ctx.arc(x, y, r, 0, Math.PI * 2)
+        ctx.fill()
+      }
+      /* the pointer is a fourth blob, so there is something to do with a mouse in here */
+      if (ptr.inside) {
+        const r = Math.min(w, h) * (0.1 + f.level * 0.2)
+        const g = ctx.createRadialGradient(ptr.x, ptr.y, 0, ptr.x, ptr.y, Math.max(1, r))
+        g.addColorStop(0, hue(ink, 1, 0.45))
+        g.addColorStop(1, hue(ink, 1, 0))
+        ctx.fillStyle = g
+        ctx.beginPath()
+        ctx.arc(ptr.x, ptr.y, r, 0, Math.PI * 2)
+        ctx.fill()
+      }
+      ctx.globalCompositeOperation = prev
+    },
+  }
+}
+
+/**
+ * Matrix — columns of glyphs falling, each column driven by its own slice of the spectrum.
+ *
+ * ⚠️ the columns fall at a speed set by their BAND, not by a fixed rate — so bass columns
+ * pour and treble columns flicker, and the spectrum is legible as motion rather than as height.
+ * It is the only mode that draws text, which is most of why it looks unlike the rest.
+ *
+ * The glyph for a cell is chosen from its position and a slow clock rather than at random per
+ * frame: random every frame is a seizure, and a character that holds for a moment is what makes
+ * this read as falling code.
+ */
+function matrix(): Visual {
+  const GLYPHS = '01<>[]{}/\\|=+*#$@&%'
+  let cols = 0
+  let head: number[] = []
+  return {
+    init(w) {
+      /**
+       * ⚠️ Capped at 48 columns, not the 64 a wide canvas would allow. Text is the most expensive
+       * thing drawn anywhere in this file, and columns multiply by tail length: at 64 wide with a
+       * long tail this was averaging around 340 fillText calls a frame, in a file whose own budget
+       * note records 700 strokes costing 28% of a frame. 48 keeps the look and roughly halves it.
+       */
+      cols = Math.max(8, Math.min(48, Math.floor(w / 18)))
+      head = Array.from({ length: cols }, () => Math.random() * 40)
+    },
+    draw({ ctx, w, h, dt, spec, bins, f, p: ptr, ink }) {
+      const cw = w / cols
+      const size = Math.max(8, Math.min(20, cw * 0.9))
+      const rows = Math.ceil(h / size) + 1
+      ctx.font = `${size}px ui-monospace, SFMono-Regular, Menlo, monospace`
+      ctx.textAlign = 'center'
+      for (let c = 0; c < cols; c++) {
+        const band = at(spec, bins, 0.02 + (c / cols) * 0.6)
+        head[c] += dt * (2 + band * 26 + f.level * 6)
+        if (head[c] > rows + 6) head[c] = -Math.random() * 8
+        const lit = Math.round(head[c])
+        const tail = 5 + Math.round(band * 7)
+        for (let k = 0; k < tail; k++) {
+          const r = lit - k
+          if (r < 0 || r > rows) continue
+          const ch = GLYPHS[(c * 7 + r * 3 + Math.floor(f.t * 6)) % GLYPHS.length]
+          const fade = 1 - k / tail
+          ctx.fillStyle = hue(ink, k === 0 ? 1 : band, fade * (0.25 + band * 0.75))
+          ctx.fillText(ch, c * cw + cw / 2, r * size)
+        }
+      }
+      /* the pointer wipes a column bright, which is the one thing a hand can do to falling code */
+      if (ptr.inside) {
+        const c = Math.max(0, Math.min(cols - 1, Math.floor(ptr.x / cw)))
+        head[c] = Math.max(head[c], ptr.y / size)
+      }
+      ctx.textAlign = 'start'
+    },
+  }
+}
+
+/**
  * The spectrum wound onto an Archimedean spiral, low frequencies at the middle.
  *
  * A line chart bent into a coil: one continuous read of the whole range where the eye can follow
@@ -1083,6 +1287,10 @@ const MAKERS: Record<VisualId, () => Visual> = {
   constellation,
   cells,
   spiral,
+  fountain,
+  ring,
+  lava,
+  matrix,
 }
 
 export function makeVisual(id: VisualId): Visual {

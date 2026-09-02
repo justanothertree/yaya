@@ -144,6 +144,55 @@ export const PALETTES: Palette[] = [
     ],
   },
   {
+    // warm neutrals, which nothing else here covers: every other ramp is a hue, this one is earth
+    id: 'desert',
+    label: 'Desert',
+    stops: [
+      [42, 26, 16],
+      [107, 58, 30],
+      [184, 118, 58],
+      [224, 176, 112],
+      [246, 230, 200],
+    ],
+  },
+  {
+    // deep violet without Neon's glare — the same end of the wheel played quietly
+    id: 'plum',
+    label: 'Plum',
+    stops: [
+      [28, 10, 36],
+      [78, 20, 80],
+      [142, 42, 114],
+      [200, 106, 160],
+      [240, 200, 220],
+    ],
+  },
+  {
+    // Forest is a vivid green; this is the muted, yellower one, for when the shape is the point
+    id: 'moss',
+    label: 'Moss',
+    stops: [
+      [20, 24, 12],
+      [56, 72, 28],
+      [110, 132, 52],
+      [168, 184, 98],
+      [226, 232, 180],
+    ],
+  },
+  {
+    // Ice goes to white through pale blue; this goes to silver through indigo, and stays dark
+    // much longer — the difference between a bright winter and a clear night
+    id: 'midnight',
+    label: 'Midnight',
+    stops: [
+      [4, 6, 15],
+      [18, 32, 74],
+      [42, 74, 140],
+      [106, 134, 200],
+      [200, 216, 244],
+    ],
+  },
+  {
     /**
      * The whole wheel, rather than a journey between two ends of one.
      *

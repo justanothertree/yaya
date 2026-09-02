@@ -31,6 +31,10 @@ export type CursorSkin =
   | 'star'
   | 'leaf'
   | 'ghost'
+  | 'brush'
+  | 'note'
+  | 'bolt'
+  | 'target'
 
 export const CURSOR_OPTIONS: Array<[CursorSkin, string, string]> = [
   ['system', '↖', 'System'],
@@ -45,6 +49,10 @@ export const CURSOR_OPTIONS: Array<[CursorSkin, string, string]> = [
   ['star', '★', 'Star'],
   ['leaf', '🍃', 'Leaf'],
   ['ghost', '👻', 'Ghost'],
+  ['brush', '🖌', 'Brush'],
+  ['note', '🎵', 'Note'],
+  ['bolt', '⚡', 'Bolt'],
+  ['target', '⌖', 'Target'],
 ]
 
 export const CURSOR_IDS = CURSOR_OPTIONS.map(([id]) => id)
@@ -129,6 +137,52 @@ const SKINS: Record<Exclude<CursorSkin, 'system'>, Skin> = {
       `<path d="M4 25 V12 A10 10 0 0 1 24 12 V25 L20.5 22 L17 25 L14 22 L11 25 L7.5 22 Z" fill="${c}" stroke="rgba(0,0,0,.6)" stroke-width="1.6" stroke-linejoin="round"/>` +
       `<circle cx="10.5" cy="13" r="1.9" fill="rgba(0,0,0,.75)"/>` +
       `<circle cx="17.5" cy="13" r="1.9" fill="rgba(0,0,0,.75)"/>`,
+  },
+  /**
+   * The Paint room's own pointer. Hotspot on the BRISTLE TIP, where paint would actually land —
+   * a brush whose hotspot sat on the handle would put every stroke an inch from the hand holding
+   * it.
+   */
+  brush: {
+    hot: [4, 24],
+    body: (c) =>
+      `<path d="M11 17 L21 7 A2.3 2.3 0 0 1 24.3 10.3 L14.3 20.3 Z" fill="${c}" stroke="rgba(0,0,0,.6)" stroke-width="1.5" stroke-linejoin="round"/>` +
+      `<path d="M10.6 17.4 L14 20.8 L6.5 25.5 L4 24 Z" fill="${c}" stroke="rgba(0,0,0,.65)" stroke-width="1.5" stroke-linejoin="round"/>`,
+  },
+  /**
+   * For the instrument. Hotspot on the NOTEHEAD, because that is the part a musician reads as the
+   * note's position — the stem is just which way it is drawn.
+   */
+  note: {
+    hot: [9, 21],
+    body: (c) =>
+      `<path d="M14.6 20.5 V5" stroke="rgba(0,0,0,.6)" stroke-width="4.2" stroke-linecap="round"/>` +
+      `<path d="M14.6 20.5 V5" stroke="${c}" stroke-width="2.2" stroke-linecap="round"/>` +
+      `<path d="M14.6 5.5 C18.6 6.6 21.4 8.6 21.9 12.6" fill="none" stroke="rgba(0,0,0,.6)" stroke-width="4" stroke-linecap="round"/>` +
+      `<path d="M14.6 5.5 C18.6 6.6 21.4 8.6 21.9 12.6" fill="none" stroke="${c}" stroke-width="2.2" stroke-linecap="round"/>` +
+      `<ellipse cx="9.6" cy="20.6" rx="5.4" ry="4.1" transform="rotate(-22 9.6 20.6)" fill="${c}" stroke="rgba(0,0,0,.65)" stroke-width="1.5"/>`,
+  },
+  /**
+   * Hotspot at the TOP of the strike, where the bolt comes from, so it points the way an arrow
+   * does — a bolt anchored at its lower tip would feel like dragging the cursor behind the shape.
+   */
+  bolt: {
+    hot: [4, 2],
+    body: (c) =>
+      `<path d="M4 2 L17.5 2 L11.5 11.5 L19.5 11.5 L7 26.5 L10 15.5 L3.5 15.5 Z" fill="${c}" stroke="rgba(0,0,0,.65)" stroke-width="1.5" stroke-linejoin="round"/>`,
+  },
+  /**
+   * Precision without the bulk of Ring: the arms reach past the circle so the exact centre stays
+   * visible against a busy drawing, which is where this one is worth having.
+   */
+  target: {
+    hot: [14, 14],
+    body: (c) =>
+      `<circle cx="14" cy="14" r="8" fill="none" stroke="rgba(0,0,0,.55)" stroke-width="4"/>` +
+      `<circle cx="14" cy="14" r="8" fill="none" stroke="${c}" stroke-width="2"/>` +
+      `<path d="M14 1.5 V5.5 M14 22.5 V26.5 M1.5 14 H5.5 M22.5 14 H26.5" stroke="rgba(0,0,0,.55)" stroke-width="4" stroke-linecap="round"/>` +
+      `<path d="M14 1.5 V5.5 M14 22.5 V26.5 M1.5 14 H5.5 M22.5 14 H26.5" stroke="${c}" stroke-width="2" stroke-linecap="round"/>` +
+      `<circle cx="14" cy="14" r="1.6" fill="${c}"/>`,
   },
 }
 
