@@ -47,6 +47,10 @@ export type InstrumentId =
   | 'vibes'
   | 'koto'
   | 'drone'
+  | 'banjo'
+  | 'cello'
+  | 'whistle'
+  | 'fifths'
   | 'drums'
 
 export const INSTRUMENTS: Array<[InstrumentId, string, string]> = [
@@ -73,6 +77,10 @@ export const INSTRUMENTS: Array<[InstrumentId, string, string]> = [
   ['vibes', '🎐', 'Vibes'],
   ['koto', '🏯', 'Koto'],
   ['drone', '🕉', 'Drone'],
+  ['banjo', '🤠', 'Banjo'],
+  ['cello', '🎗', 'Cello'],
+  ['whistle', '😗', 'Whistle'],
+  ['fifths', '🗼', 'Fifths'],
   ['drums', '🥁', 'Drums'],
 ]
 
@@ -478,6 +486,87 @@ const SHAPES: Record<Exclude<InstrumentId, 'drums'>, Shape> = {
    * something else rather than played. Full sustain, a very slow attack, and low partials only —
    * everything above the fifth is filtered away so it never competes with a melody on top.
    */
+  /**
+   * A banjo: the shortest, brightest pluck here. Where Clav is square and electric, this is a
+   * skin head — a hard transient over a body that dies almost at once, with the fifth partial
+   * strong enough to give it the twang it is known for.
+   */
+  banjo: {
+    a: 0.001,
+    d: 0.28,
+    s: 0,
+    r: 0.12,
+    wave: 'triangle',
+    partials: [
+      { ratio: 1, detune: 0, gain: 1 },
+      { ratio: 2, detune: 0, gain: 0.45 },
+      { ratio: 5, detune: 3, gain: 0.26 },
+      { ratio: 8, detune: 0, gain: 0.08 },
+    ],
+    filter: { from: 5600, to: 1400, q: 2.4 },
+    level: 0.34,
+  },
+  /**
+   * A cello: Strings an octave down and one player instead of a section, so the detune is much
+   * narrower — a section is many instruments not quite agreeing, and using that width on a solo
+   * voice is what makes a synth "cello" sound like a chorus pedal instead.
+   */
+  cello: {
+    a: 0.13,
+    d: 0.7,
+    s: 0.75,
+    r: 0.45,
+    wave: 'sawtooth',
+    partials: [
+      { ratio: 0.5, detune: 0, gain: 1 },
+      { ratio: 1, detune: -3, gain: 0.7 },
+      { ratio: 1.5, detune: 2, gain: 0.2 },
+      { ratio: 2, detune: 0, gain: 0.14 },
+    ],
+    filter: { from: 1500, to: 640, q: 1.8 },
+    level: 0.3,
+  },
+  /**
+   * A whistle: one sine and almost nothing else, which is the purest thing in the set. It only
+   * works because of what it LACKS — every other voice here is defined by its partials, and this
+   * one is defined by having none worth mentioning.
+   */
+  whistle: {
+    a: 0.03,
+    d: 0.3,
+    s: 0.65,
+    r: 0.18,
+    wave: 'sine',
+    partials: [
+      { ratio: 1, detune: 0, gain: 1 },
+      { ratio: 2, detune: 0, gain: 0.05 },
+    ],
+    filter: { from: 4000, to: 3200, q: 0.5 },
+    level: 0.3,
+  },
+  /**
+   * Fifths: a chord from a single key.
+   *
+   * ⚠️ The only patch whose partials are a HARMONY rather than a timbre. 1.5 is a perfect fifth
+   * and 2 is the octave, so every note played is a power chord — which means it is the one voice
+   * here where playing two keys at once is usually too much. Worth having precisely because it
+   * changes how you play rather than how it sounds.
+   */
+  fifths: {
+    a: 0.008,
+    d: 0.8,
+    s: 0.5,
+    r: 0.3,
+    wave: 'sawtooth',
+    partials: [
+      { ratio: 1, detune: 0, gain: 1 },
+      { ratio: 1.5, detune: 2, gain: 0.75 },
+      { ratio: 2, detune: -2, gain: 0.5 },
+      { ratio: 3, detune: 0, gain: 0.16 },
+    ],
+    filter: { from: 2600, to: 1000, q: 2 },
+    level: 0.22,
+  },
   drone: {
     a: 0.9,
     d: 1.4,

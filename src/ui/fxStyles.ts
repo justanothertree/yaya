@@ -42,6 +42,10 @@ export const FX_STYLE_OPTIONS: Array<[FxStyle, string, string]> = [
   ['stamp', '🔖', 'Stamp'],
   ['swarm', '🐝', 'Swarm'],
   ['balloons', '🎈', 'Balloons'],
+  ['crystals', '💎', 'Crystals'],
+  ['fizz', '🥤', 'Fizz'],
+  ['portal', '⭕', 'Portal'],
+  ['magnet', '🧲', 'Magnet'],
 ]
 
 /** The style ids alone, for anywhere that only needs to cycle or validate them. */

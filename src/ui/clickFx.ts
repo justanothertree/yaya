@@ -71,6 +71,10 @@ export type FxStyle =
   | 'stamp'
   | 'swarm'
   | 'balloons'
+  | 'crystals'
+  | 'fizz'
+  | 'portal'
+  | 'magnet'
 
 const LAYER_ID = 'click-fx-layer'
 /** Concurrent bursts to allow. A fast clicker shouldn't be able to pile up hundreds of nodes. */
@@ -1529,6 +1533,181 @@ function balloons(host: HTMLElement, x: number, y: number) {
   track(host, nodes, anims)
 }
 
+/**
+ * Crystals — angular shards that GROW outward from the point rather than flying off it.
+ *
+ * ⚠️ Shatter breaks something apart; this builds something. The pieces are the same
+ * triangles, but they scale up from nothing while staying put, which is the difference between
+ * an explosion and a formation. Their long axis points away from the centre so they read as
+ * spikes rather than as scattered chips.
+ */
+function crystals(host: HTMLElement, x: number, y: number) {
+  const colors = palette()
+  const N = amount('click', 7)
+  const nodes: HTMLElement[] = []
+  const anims: Animation[] = []
+  for (let i = 0; i < N; i++) {
+    const ang = (i / N) * Math.PI * 2 + (Math.random() - 0.5) * 0.5
+    const len = px(16 + Math.random() * 20)
+    const el = mk('click-fx-spark', x, y)
+    el.style.width = len + 'px'
+    el.style.height = px(4 + Math.random() * 4) + 'px'
+    el.style.background = colors[i % colors.length]
+    el.style.transformOrigin = '0 50%'
+    el.style.clipPath = 'polygon(0 50%, 30% 0, 100% 45%, 100% 55%, 30% 100%)'
+    nodes.push(el)
+    const deg = (ang * 180) / Math.PI
+    anims.push(
+      el.animate(
+        [
+          { transform: `translate(0, -50%) rotate(${deg}deg) scaleX(0)`, opacity: 1 },
+          { transform: `translate(0, -50%) rotate(${deg}deg) scaleX(1)`, opacity: 1, offset: 0.45 },
+          { transform: `translate(0, -50%) rotate(${deg}deg) scaleX(1)`, opacity: 0 },
+        ],
+        {
+          duration: dur(680 + Math.random() * 240),
+          delay: i * 18,
+          easing: 'cubic-bezier(0.15,0.9,0.3,1)',
+          fill: 'forwards',
+        },
+      ),
+    )
+  }
+  track(host, nodes, anims)
+}
+
+/**
+ * Fizz — a lot of very small bubbles, rising fast and briefly.
+ *
+ * ⚠️ the same motion as Bubbles at a completely different SCALE and RATE, which is the only
+ * thing separating them — and it is enough, because a few slow round things read as calm and many
+ * fast tiny ones read as energetic. Worth having as a pair rather than as one compromise.
+ */
+function fizz(host: HTMLElement, x: number, y: number) {
+  const colors = palette()
+  const N = amount('click', 18)
+  const nodes: HTMLElement[] = []
+  const anims: Animation[] = []
+  for (let i = 0; i < N; i++) {
+    const size = px(2 + Math.random() * 3)
+    const b = mk('click-fx-spark', x + (Math.random() - 0.5) * 26, y + (Math.random() - 0.5) * 10)
+    b.style.width = size + 'px'
+    b.style.height = size + 'px'
+    b.style.borderRadius = '50%'
+    b.style.background = colors[i % colors.length]
+    nodes.push(b)
+    anims.push(
+      b.animate(
+        [
+          { transform: 'translate(-50%, -50%) translate(0, 0)', opacity: 0.95 },
+          {
+            transform: `translate(-50%, -50%) translate(${(Math.random() - 0.5) * 14}px, ${px(-20 - Math.random() * 22)}px)`,
+            opacity: 0,
+          },
+        ],
+        {
+          duration: dur(420 + Math.random() * 260),
+          delay: Math.random() * 200,
+          easing: 'ease-out',
+          fill: 'forwards',
+        },
+      ),
+    )
+  }
+  track(host, nodes, anims)
+}
+
+/**
+ * Portal — a ring that opens, holds, and closes again.
+ *
+ * ⚠️ it RETURNS to nothing instead of fading at full size. Sonar and Stamp both end by
+ * disappearing while still large; closing back down is a different gesture entirely — something
+ * that opened and shut, rather than something that spread out and stopped mattering.
+ */
+function portal(host: HTMLElement, x: number, y: number) {
+  const [a, b] = pair()
+  const nodes: HTMLElement[] = []
+  const anims: Animation[] = []
+  for (let i = 0; i < 2; i++) {
+    const ring = mk('click-fx-ring', x, y)
+    const size = px(34 - i * 10)
+    ring.style.width = size + 'px'
+    ring.style.height = size + 'px'
+    ring.style.borderColor = i ? b : a
+    nodes.push(ring)
+    anims.push(
+      ring.animate(
+        [
+          { transform: 'translate(-50%, -50%) scale(0) rotate(0deg)', opacity: 0 },
+          { transform: 'translate(-50%, -50%) scale(1) rotate(60deg)', opacity: 1, offset: 0.32 },
+          { transform: 'translate(-50%, -50%) scale(1) rotate(120deg)', opacity: 1, offset: 0.62 },
+          { transform: 'translate(-50%, -50%) scale(0) rotate(200deg)', opacity: 0 },
+        ],
+        {
+          duration: dur(820),
+          delay: i * 70,
+          easing: 'cubic-bezier(0.4,0,0.3,1)',
+          fill: 'forwards',
+        },
+      ),
+    )
+  }
+  track(host, nodes, anims)
+}
+
+/**
+ * Magnet — filings that line up along one axis instead of radiating.
+ *
+ * ⚠️ the direction comes from the way the pointer was last MOVING, not from the click. Every
+ * other effect is rotationally symmetric and therefore says nothing about how you arrived; this
+ * one points along your travel, so a click at the end of a fast sweep looks different from one
+ * made standing still — and that is a piece of information nothing else here shows.
+ */
+function magnet(host: HTMLElement, x: number, y: number) {
+  const [a, b] = pair()
+  const N = amount('click', 12)
+  const nodes: HTMLElement[] = []
+  const anims: Animation[] = []
+  /* ⚠️ null until the pointer has moved. Falls back to a random axis rather than a fixed one,
+     matching Slash above: a still click would otherwise lay the filings the same way every time,
+     which looks like the effect is stuck. */
+  const axis = ((swingAngle ?? Math.random() * Math.PI * 2) * 180) / Math.PI
+  for (let i = 0; i < N; i++) {
+    const along = (Math.random() - 0.5) * px(70)
+    const across = (Math.random() - 0.5) * px(30)
+    const el = mk('click-fx-spark', x, y)
+    el.style.width = px(7 + Math.random() * 7) + 'px'
+    el.style.height = px(2) + 'px'
+    el.style.background = Math.abs(across) < px(8) ? a : b
+    nodes.push(el)
+    /* placed in the ROTATED frame, so the whole cloud is an ellipse lying along the axis */
+    const rad = (axis * Math.PI) / 180
+    const ox = Math.cos(rad) * along - Math.sin(rad) * across
+    const oy = Math.sin(rad) * along + Math.cos(rad) * across
+    anims.push(
+      el.animate(
+        [
+          {
+            transform: `translate(-50%, -50%) translate(0, 0) rotate(${axis}deg) scaleX(0.2)`,
+            opacity: 0,
+          },
+          {
+            transform: `translate(-50%, -50%) translate(${ox}px, ${oy}px) rotate(${axis}deg) scaleX(1)`,
+            opacity: 1,
+            offset: 0.4,
+          },
+          {
+            transform: `translate(-50%, -50%) translate(${ox}px, ${oy}px) rotate(${axis}deg) scaleX(1)`,
+            opacity: 0,
+          },
+        ],
+        { duration: dur(720 + Math.random() * 200), easing: 'ease-out', fill: 'forwards' },
+      ),
+    )
+  }
+  track(host, nodes, anims)
+}
+
 const BUILDERS: Record<FxStyle, (host: HTMLElement, x: number, y: number) => void> = {
   sparks,
   sonar,
@@ -1559,6 +1738,10 @@ const BUILDERS: Record<FxStyle, (host: HTMLElement, x: number, y: number) => voi
   stamp,
   swarm,
   balloons,
+  crystals,
+  fizz,
+  portal,
+  magnet,
 }
 
 function onPointerMove(e: PointerEvent) {

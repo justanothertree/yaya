@@ -52,6 +52,10 @@ export type TrailStyle =
   | 'notes'
   | 'frost'
   | 'confetti'
+  | 'stars'
+  | 'pulse'
+  | 'wire'
+  | 'grid'
 
 export const TRAIL_OPTIONS: Array<[TrailStyle, string, string]> = [
   ['none', '∅', 'None'],
@@ -79,6 +83,10 @@ export const TRAIL_OPTIONS: Array<[TrailStyle, string, string]> = [
   ['notes', '🎶', 'Notes'],
   ['frost', '❅', 'Frost'],
   ['confetti', '🎉', 'Confetti'],
+  ['stars', '⭐', 'Stars'],
+  ['pulse', '▣', 'Pulse'],
+  ['wire', '╱', 'Wire'],
+  ['grid', '⊞', 'Grid'],
 ]
 
 export const TRAIL_IDS = TRAIL_OPTIONS.map(([id]) => id)
@@ -179,6 +187,11 @@ const SPACING: Record<Exclude<TrailStyle, 'none'>, number> = {
   notes: 30,
   frost: 22,
   confetti: 14,
+  stars: 28,
+  pulse: 30,
+  /* wire draws the segment BETWEEN samples, so it has to sample often or the line has corners */
+  wire: 5,
+  grid: 18,
 }
 
 /**
@@ -215,6 +228,10 @@ const TRAIL_HUE: Record<Exclude<TrailStyle, 'none'>, number> = {
   notes: 0.64,
   frost: 0.52,
   confetti: 0.36,
+  stars: 0.1,
+  pulse: 0.44,
+  wire: 0.72,
+  grid: 0.28,
 }
 
 function drop(s: Exclude<TrailStyle, 'none'>, x: number, y: number, dx: number, dy: number) {
@@ -779,6 +796,104 @@ function drop(s: Exclude<TrailStyle, 'none'>, x: number, y: number, dx: number, 
           easing: 'cubic-bezier(0.4,0.1,0.7,1)',
           fill: 'forwards',
         },
+      )
+      break
+    }
+    /** Glyph stars, tumbling as they shrink — the counterpart to Notes for anyone not musical. */
+    case 'stars': {
+      const el = mk('click-fx-glyph', x, y)
+      el.textContent = '\u2605'
+      el.style.fontSize = px(11 + Math.random() * 8) + 'px'
+      el.style.color = Math.random() < 0.5 ? a : b
+      emit(
+        el,
+        [
+          { transform: 'translate(-50%, -50%) scale(1) rotate(0deg)', opacity: 0.95 },
+          {
+            transform: `translate(-50%, -50%) translate(${(Math.random() - 0.5) * 20}px, ${px(-14)}px) scale(0.2) rotate(${(Math.random() - 0.5) * 200}deg)`,
+            opacity: 0,
+          },
+        ],
+        { duration: dur(760), easing: 'ease-out', fill: 'forwards' },
+      )
+      break
+    }
+    /**
+     * Squares that expand where you passed.
+     *
+     * ⚠️ SQUARES, against Rings' circles, and that is the whole of it. The two have the same
+     * motion and read completely differently — a circle spreading is water, a square spreading is
+     * a signal — which is worth more than a third kind of motion would be.
+     */
+    case 'pulse': {
+      const p = mk('trail-dash', x, y)
+      const size = px(9)
+      p.style.width = size + 'px'
+      p.style.height = size + 'px'
+      p.style.background = 'transparent'
+      p.style.border = `${px(2)}px solid ${a}`
+      p.style.borderRadius = '0'
+      emit(
+        p,
+        [
+          { transform: 'translate(-50%, -50%) scale(0.5) rotate(0deg)', opacity: 0.9 },
+          { transform: 'translate(-50%, -50%) scale(3) rotate(45deg)', opacity: 0 },
+        ],
+        { duration: dur(760), easing: 'cubic-bezier(0.1,0.7,0.3,1)', fill: 'forwards' },
+      )
+      break
+    }
+    /**
+     * One continuous line, drawn as the segment between this sample and the last.
+     *
+     * ⚠️ the only trail that draws the GAP rather than the point. Every other style puts a
+     * particle where the pointer was, which leaves beads at speed however tightly they are spaced;
+     * spanning the distance instead means the line is unbroken however fast you move, and its
+     * length tells you the speed for free.
+     */
+    case 'wire': {
+      const len = Math.hypot(dx, dy)
+      if (len < 0.5) break
+      const p = mk('trail-dash', x - dx, y - dy)
+      p.style.width = len + 'px'
+      p.style.height = px(2 + speed * 3) + 'px'
+      p.style.background = a
+      p.style.transformOrigin = '0 50%'
+      emit(
+        p,
+        [
+          { transform: `translate(0, -50%) rotate(${angle}deg) scaleY(1)`, opacity: 0.9 },
+          { transform: `translate(0, -50%) rotate(${angle}deg) scaleY(0.2)`, opacity: 0 },
+        ],
+        { duration: dur(620), easing: 'ease-out', fill: 'forwards' },
+      )
+      break
+    }
+    /**
+     * Marks that snap to a grid instead of landing where the pointer actually is.
+     *
+     * ⚠️ the position is ROUNDED, which no other style does. It means moving smoothly
+     * produces a stepped trail — the pointer is continuous and its trail is not, and that
+     * disagreement is the effect.
+     */
+    case 'grid': {
+      const STEP = px(22)
+      const gx = Math.round(x / STEP) * STEP
+      const gy = Math.round(y / STEP) * STEP
+      const p = mk('trail-dash', gx, gy)
+      p.style.width = px(7) + 'px'
+      p.style.height = px(7) + 'px'
+      p.style.background = 'transparent'
+      p.style.border = `${px(1.5)}px solid ${Math.random() < 0.4 ? b : a}`
+      p.style.borderRadius = '0'
+      emit(
+        p,
+        [
+          { transform: 'translate(-50%, -50%) scale(0.4)', opacity: 0.9 },
+          { transform: 'translate(-50%, -50%) scale(1)', opacity: 0.7, offset: 0.3 },
+          { transform: 'translate(-50%, -50%) scale(1)', opacity: 0 },
+        ],
+        { duration: dur(700), easing: 'steps(4, end)', fill: 'forwards' },
       )
       break
     }

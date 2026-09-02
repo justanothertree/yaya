@@ -40,6 +40,9 @@ export type BackdropId =
   | 'snow'
   | 'bokeh'
   | 'rays'
+  | 'confetti'
+  | 'orbits'
+  | 'fog'
 
 export const BACKDROPS: Array<[BackdropId, string, string]> = [
   ['none', '∅', 'None'],
@@ -63,6 +66,9 @@ export const BACKDROPS: Array<[BackdropId, string, string]> = [
   ['snow', '❄', 'Snow'],
   ['bokeh', '⚪', 'Bokeh'],
   ['rays', '☀', 'Rays'],
+  ['confetti', '🎉', 'Confetti'],
+  ['orbits', '🪐', 'Orbits'],
+  ['fog', '☁', 'Fog'],
   ['waves', '🌊', 'Waves'],
   ['bubbles', '🫧', 'Bubbles'],
   ['flames', '🔥', 'Flames'],
@@ -866,6 +872,151 @@ function rays(): Effect {
   }
 }
 
+/**
+ * Confetti — oblongs that fall and tumble.
+ *
+ * ⚠️ it TURNS, which is what separates it from Snow and Rain. All three fall; a flake
+ * drifts flat and a drop has no orientation at all, but a piece of paper spins about its own
+ * middle, and that is the only cue needed to tell the three apart at a glance.
+ */
+function confetti(): Effect {
+  let ps: Array<{
+    x: number
+    y: number
+    w: number
+    h: number
+    v: number
+    spin: number
+    a: number
+    tone: number
+  }> = []
+  let W = 0
+  let H = 0
+  return {
+    init(w, h, coarse) {
+      W = w
+      H = h
+      ps = Array.from({ length: count(w, h, 8, 90, coarse) }, () => ({
+        x: Math.random() * w,
+        y: Math.random() * h,
+        w: 3 + Math.random() * 4,
+        h: 6 + Math.random() * 6,
+        v: 30 + Math.random() * 50,
+        spin: (Math.random() - 0.5) * 3,
+        a: Math.random() * Math.PI * 2,
+        tone: Math.random(),
+      }))
+    },
+    step({ ctx, w, h, dt, paint, px }) {
+      W = w
+      H = h
+      const wind = px == null ? 0 : (px / w - 0.5) * 30
+      for (const c of ps) {
+        c.y += c.v * dt * speedScale()
+        c.a += c.spin * dt * speedScale()
+        if (c.y - c.h > H) {
+          c.y = -c.h
+          c.x = Math.random() * W
+        }
+        ctx.save()
+        ctx.translate((((c.x + wind) % W) + W) % W, c.y)
+        ctx.rotate(c.a)
+        /* scaleY by cos of its own angle: a flat oblong seen edge-on is a line, and that flicker
+           is most of what makes tumbling paper read as paper */
+        ctx.scale(1, Math.abs(Math.cos(c.a)) * 0.8 + 0.2)
+        ctx.fillStyle = rgba(ramped(paint, c.tone), 0.2 + c.tone * 0.2)
+        ctx.fillRect(
+          (-c.w / 2) * sizeScale(),
+          (-c.h / 2) * sizeScale(),
+          c.w * sizeScale(),
+          c.h * sizeScale(),
+        )
+        ctx.restore()
+      }
+    },
+  }
+}
+
+/**
+ * Orbits — dots going round a common centre at different radii and speeds.
+ *
+ * ⚠️ nothing here is stored except the ring each dot belongs to; its POSITION is computed
+ * from the clock every frame. That makes this the only backdrop with no simulation state at all —
+ * it cannot drift, cannot accumulate error, and looks identical on a slow machine and a fast one.
+ * Inner rings run faster, which is the one detail that makes it read as orbits rather than as a
+ * spinning wheel.
+ */
+function orbits(): Effect {
+  let ds: Array<{ r: number; a0: number; rate: number; size: number; tone: number }> = []
+  return {
+    init(w, h, coarse) {
+      const n = count(w, h, 4, coarse ? 22 : 40, coarse)
+      ds = Array.from({ length: n }, (_, i) => {
+        const ring = 0.12 + ((i * 7) % 10) / 12
+        return {
+          r: ring,
+          a0: Math.random() * Math.PI * 2,
+          rate: (0.5 - ring * 0.32) * (Math.random() < 0.5 ? 1 : -1),
+          size: 1.2 + Math.random() * 2.2,
+          tone: ring,
+        }
+      })
+    },
+    step({ ctx, w, h, t, paint, px, py }) {
+      const cx = px ?? w / 2
+      const cy = py ?? h / 2
+      const R = Math.min(w, h) * 0.5
+      for (const d of ds) {
+        const a = d.a0 + t * d.rate * speedScale()
+        const x = cx + Math.cos(a) * R * d.r
+        const y = cy + Math.sin(a) * R * d.r
+        ctx.beginPath()
+        ctx.arc(x, y, d.size * sizeScale(), 0, Math.PI * 2)
+        ctx.fillStyle = rgba(ramped(paint, d.tone), 0.18 + (1 - d.tone) * 0.22)
+        ctx.fill()
+      }
+    },
+  }
+}
+
+/**
+ * Fog — broad soft bands drifting sideways.
+ *
+ * ⚠️ the quietest thing in this list and the cheapest after Grid: five gradients, no
+ * particles, no state. It exists because every other backdrop draws OBJECTS, and sometimes the
+ * right background is one with nothing in it to look at — Bokeh is the nearest neighbour and even
+ * that has countable discs.
+ */
+function fog(): Effect {
+  let bands: Array<{ y: number; h: number; rate: number; phase: number; tone: number }> = []
+  return {
+    init(w, h) {
+      const n = amount('background', 5)
+      bands = Array.from({ length: n }, (_, i) => ({
+        y: (h * (i + 0.5)) / n,
+        h: (h / n) * (1.6 + Math.random()),
+        rate: 6 + Math.random() * 14,
+        phase: Math.random() * 1000,
+        tone: i / Math.max(1, n - 1),
+      }))
+      void w
+    },
+    step({ ctx, w, h, t, paint }) {
+      for (const b of bands) {
+        const drift = ((t * b.rate * speedScale() + b.phase) % (w * 2)) - w * 0.5
+        const g = ctx.createLinearGradient(drift, 0, drift + w, 0)
+        g.addColorStop(0, rgba(ramped(paint, b.tone), 0))
+        g.addColorStop(0.5, rgba(ramped(paint, b.tone), 0.075))
+        g.addColorStop(1, rgba(ramped(paint, b.tone), 0))
+        ctx.fillStyle = g
+        const bh = b.h * sizeScale()
+        ctx.fillRect(0, b.y - bh / 2, w, bh)
+        void h
+      }
+    },
+  }
+}
+
 export function makeEffect(id: BackdropId): Effect | null {
   switch (id) {
     case 'waves':
@@ -896,6 +1047,12 @@ export function makeEffect(id: BackdropId): Effect | null {
       return bokeh()
     case 'rays':
       return rays()
+    case 'confetti':
+      return confetti()
+    case 'orbits':
+      return orbits()
+    case 'fog':
+      return fog()
     default:
       return null
   }

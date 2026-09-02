@@ -61,6 +61,8 @@ export const TOOLS: Array<[Tool, string, string]> = [
 
 /** How many mirrored copies a stroke is drawn as. 0 or 1 is "just the one". */
 export const SYMMETRIES = [0, 2, 4, 6, 8, 12] as const
+/** Fading copies trailing a stroke. 0 is just the one. */
+export const ECHOES = [0, 1, 2, 3, 5] as const
 
 export type Stroke = {
   t: Tool
@@ -77,6 +79,14 @@ export type Stroke = {
    * same reason this format keeps strokes instead of pixels.
    */
   k?: number
+  /**
+   * How many fading copies trail behind the stroke, along the direction it was drawn.
+   *
+   * ⚠️ the offset comes from the stroke's OWN direction, first point to last, not from a
+   * fixed diagonal. A fixed offset is a drop shadow and looks pasted on; following the gesture
+   * makes it read as motion, which is the thing worth having.
+   */
+  e?: number
   /** css colour; ignored by the eraser */
   c: string
   /** 0–1 */
@@ -194,6 +204,9 @@ export function readDrawing(v: unknown): Drawing | null {
 const segments = (v: unknown): number =>
   typeof v === 'number' && (SYMMETRIES as readonly number[]).includes(v) ? v : 0
 
+const echoes = (v: unknown): number =>
+  typeof v === 'number' && (ECHOES as readonly number[]).includes(v) ? v : 0
+
 export function readStroke(raw: unknown): Stroke | null {
   if (!raw || typeof raw !== 'object') return null
   const o = raw as Record<string, unknown>
@@ -213,6 +226,7 @@ export function readStroke(raw: unknown): Stroke | null {
     a: num(o.a, 0.02, 1, 1),
     w: num(o.w, 0.0015, 0.25, 0.01),
     k: segments(o.k),
+    e: echoes(o.e),
     p,
   }
 }
@@ -255,6 +269,45 @@ function boxWheel(
  * twelve full-canvas reads for a tool whose result is already whatever region it landed in.
  */
 export function paintStroke(ctx: CanvasRenderingContext2D, s: Stroke, w: number, h: number) {
+  const copies = s.t === 'fill' ? 0 : (s.e ?? 0)
+  if (copies < 1) {
+    paintMirrored(ctx, s, w, h)
+    return
+  }
+  /**
+   * ⚠️ Drawn FURTHEST FIRST, so the freshest copy lands on top. Painting them in the other order
+   * puts the faintest ghost over the sharp stroke, which reads as the drawing being smudged
+   * rather than as something having moved.
+   */
+  const [dx, dy] = gestureDirection(s, w, h)
+  for (let i = copies; i >= 1; i--) {
+    ctx.save()
+    ctx.globalAlpha = 1 - i / (copies + 1)
+    ctx.translate(dx * i, dy * i)
+    paintMirrored(ctx, s, w, h)
+    ctx.restore()
+  }
+  paintMirrored(ctx, s, w, h)
+}
+
+/**
+ * Which way the gesture went, as the offset one echo step should take.
+ *
+ * ⚠️ Scaled to the SHORT side, so an echo is the same visual distance on any canvas — a fraction
+ * of the stroke's own length would make a long sweep echo across the whole picture and a dot echo
+ * not at all.
+ */
+function gestureDirection(s: Stroke, w: number, h: number): [number, number] {
+  const n = s.p.length
+  if (n < 4) return [Math.min(w, h) * 0.02, Math.min(w, h) * 0.02]
+  const dx = (s.p[n - 2] - s.p[0]) * w
+  const dy = (s.p[n - 1] - s.p[1]) * h
+  const len = Math.hypot(dx, dy) || 1
+  const step = Math.min(w, h) * 0.022
+  return [(-dx / len) * step, (-dy / len) * step]
+}
+
+function paintMirrored(ctx: CanvasRenderingContext2D, s: Stroke, w: number, h: number) {
   const k = s.k ?? 0
   if (k < 2 || s.t === 'fill') {
     paintOne(ctx, s, w, h)
@@ -635,18 +688,22 @@ function paintOne(ctx: CanvasRenderingContext2D, s: Stroke, w: number, h: number
  */
 export type PackedDrawing = {
   /**
-   * ⚠️ VERSION 3 ADDS A FIELD IN THE MIDDLE OF EVERY ROW, which is exactly why the number had to
-   * change. A row is positional — [tool, colour, alpha, width, ...points] — so a reader that met
-   * a v3 row expecting v2 would take the symmetry as the first x coordinate and draw nonsense.
-   * Version 2 drawings are still read, with no symmetry, and nobody's saved work moves.
+   * ⚠️ EVERY FIXED FIELD ADDED HERE GOES IN THE MIDDLE OF THE ROW, which is why the version has to
+   * move each time. A row is positional — the points run to the end — so a reader that met a
+   * newer row would take a modifier as its first x coordinate and draw nonsense. Older versions
+   * are all still read, so nobody's saved work moves.
+   *
+   * v2 [tool, colour, alpha, width, ...points]
+   * v3 + symmetry
+   * v4 + echo
    */
-  v: 3
+  v: 4
   n: string
   r: number
   /** background, hash-less hex, or 0 for none */
   b: string | 0
-  /** [toolIndex, colour, alpha%, width‰, segments, ...points‰] — colour 0 is none, 1 is rainbow */
-  s: Array<[number, string | 0 | 1, number, number, number, ...number[]]>
+  /** [tool, colour, alpha%, width‰, segments, echoes, ...points‰] — colour 0 none, 1 rainbow */
+  s: Array<[number, string | 0 | 1, number, number, number, number, ...number[]]>
 }
 
 /**
@@ -677,7 +734,7 @@ const TOOL_ORDER = TOOLS.map(([t]) => t)
 
 export function packDrawing(d: Drawing): PackedDrawing {
   return {
-    v: 3,
+    v: 4,
     n: d.name,
     r: Math.round(d.ratio * 100) / 100,
     b: d.bg ? d.bg.slice(1) : 0,
@@ -687,6 +744,7 @@ export function packDrawing(d: Drawing): PackedDrawing {
       Math.round(k.a * 100),
       Math.round(k.w * 1000),
       k.k ?? 0,
+      k.e ?? 0,
       ...k.p.map((n) => Math.round(n * 1000)),
     ]) as PackedDrawing['s'],
   }
@@ -694,21 +752,28 @@ export function packDrawing(d: Drawing): PackedDrawing {
 
 function unpack(v: Record<string, unknown>): Drawing | null {
   if (!Array.isArray(v.s)) return null
-  /* ⚠️ anything that is not explicitly v3 is read as the older four-field row — including a
-     document with no version at all, which is what the very first packed drawings looked like */
-  const hasSegments = v.v === 3
+  /**
+   * ⚠️ ONE TABLE, not a chain of version checks. Each version added a fixed field in front of the
+   * points, so the only thing a reader needs to know is HOW MANY there are — and the next
+   * modifier is then a single line here rather than another branch through the loop. Anything
+   * unrecognised, including a document with no version at all, is read as the original four.
+   */
+  const FIXED: Record<number, number> = { 2: 4, 3: 5, 4: 6 }
+  const fixed = FIXED[typeof v.v === 'number' ? v.v : 2] ?? 4
   const strokes: unknown[] = []
   for (const row of v.s.slice(0, MAX_STROKES)) {
     if (!Array.isArray(row) || row.length < 5) continue
-    const [ti, c, a, w, ...rest] = row as [number, string | 0 | 1, number, number, ...number[]]
-    const k = hasSegments ? rest[0] : 0
-    const pts = hasSegments ? rest.slice(1) : rest
+    const [ti, c, a, w] = row as [number, string | 0 | 1, number, number]
+    const k = fixed > 4 ? (row[4] as number) : 0
+    const e = fixed > 5 ? (row[5] as number) : 0
+    const pts = row.slice(fixed) as number[]
     strokes.push({
       t: TOOL_ORDER[typeof ti === 'number' ? ti : 0] ?? 'brush',
       c: c === 0 ? NONE : c === 1 ? RAINBOW : typeof c === 'string' ? `#${c}` : '#000000',
       a: typeof a === 'number' ? a / 100 : 1,
       w: typeof w === 'number' ? w / 1000 : 0.01,
       k,
+      e,
       p: pts.filter((n) => typeof n === 'number').map((n) => n / 1000),
     })
   }

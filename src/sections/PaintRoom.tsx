@@ -10,6 +10,7 @@ import {
   type Tool,
   isFreehand,
   SYMMETRIES,
+  ECHOES,
 } from '../draw/strokes'
 import { InCanvasWindow } from '../circuit/ui/canvasContext'
 import { gallery, removeArt, saveArt, subscribeGallery, type Art } from '../draw/gallery'
@@ -85,6 +86,8 @@ export function PaintRoom() {
   const [width, setWidth] = useState(0.008)
   /** kaleidoscope segments for strokes drawn from now on — see Stroke.k */
   const [symmetry, setSymmetry] = useState(0)
+  /** fading copies trailing each stroke along the way it was drawn — see Stroke.e */
+  const [echo, setEcho] = useState(0)
   const live = useRef<Stroke | null>(null)
   const [galleryOpen, setGalleryOpen] = useState(false)
   const saved = useSyncExternalStore(subscribeGallery, gallery, gallery)
@@ -302,7 +305,7 @@ export function PaintRoom() {
       /* some inputs cannot be captured; drawing still works, it just stops at the edge */
     }
     if (tool === 'fill') {
-      commit({ t: 'fill', c: colour, a: alpha, w: width, k: 0, p: [x, y] })
+      commit({ t: 'fill', c: colour, a: alpha, w: width, k: 0, e: 0, p: [x, y] })
       return
     }
     live.current = {
@@ -311,6 +314,7 @@ export function PaintRoom() {
       a: alpha,
       w: width,
       k: symmetry,
+      e: echo,
       p: isFreehand(tool) ? [x, y] : [x, y, x, y],
     }
     preview()
@@ -498,6 +502,28 @@ export function PaintRoom() {
                 aria-pressed={symmetry === n}
                 onClick={() => setSymmetry(n)}
                 title={n === 0 ? 'No mirroring' : `${n} mirrored segments`}
+              >
+                {n === 0 ? 'Off' : n}
+              </button>
+            ))}
+          </span>
+        </label>
+        {/* the second modifier, and it composes with the first: an echoed mandala is one stroke
+            drawn twelve times, twice over, from two numbers in the file */}
+        <label className="inst-pick">
+          <span className="muted" title="Fading copies trailing the way you drew">
+            Echo
+          </span>
+          <span className="paint-sym-row">
+            {ECHOES.map((n) => (
+              <button
+                key={n}
+                className={'btn' + (echo === n ? ' is-on' : '')}
+                aria-pressed={echo === n}
+                onClick={() => setEcho(n)}
+                title={
+                  n === 0 ? 'No trailing copies' : `${n} trailing ${n === 1 ? 'copy' : 'copies'}`
+                }
               >
                 {n === 0 ? 'Off' : n}
               </button>

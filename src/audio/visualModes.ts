@@ -48,6 +48,9 @@ export type VisualId =
   | 'helix'
   | 'serpent'
   | 'kaleido'
+  | 'bounce'
+  | 'sun'
+  | 'stack'
 
 /** id, icon, label, and how much of the previous frame lingers by default (0 = none, 1 = all). */
 export const VISUALS: Array<[VisualId, string, string, number]> = [
@@ -79,6 +82,9 @@ export const VISUALS: Array<[VisualId, string, string, number]> = [
   ['helix', '🧬', 'Helix', 0.5],
   ['serpent', '🐍', 'Serpent', 0.8],
   ['kaleido', '❉', 'Kaleido', 0.55],
+  ['bounce', '🏐', 'Bounce', 0.82],
+  ['sun', '☀️', 'Sun', 0.35],
+  ['stack', '📚', 'Stack', 0],
 ]
 
 export type Ink = {
@@ -1695,6 +1701,159 @@ function kaleido(): Visual {
 }
 
 /**
+ * Bounce — balls kept inside the frame, kicked by the beat.
+ *
+ * ⚠️ BOUNDED physics, where Fountain and Fireworks both let their particles leave and die.
+ * Nothing is ever created or destroyed here, so the same handful of objects accumulate a history
+ * with the music — a long quiet passage leaves them resting along the floor, and a loud one has
+ * them everywhere. That memory is the whole point, and it is only possible because they cannot
+ * escape.
+ */
+function bounce(): Visual {
+  type B = { x: number; y: number; vx: number; vy: number; r: number; tone: number }
+  let bs: B[] = []
+  return {
+    init(w, h) {
+      bs = Array.from({ length: 14 }, (_, i) => ({
+        x: (w * (i + 0.5)) / 14,
+        y: h * 0.5 + Math.random() * h * 0.3,
+        vx: (Math.random() - 0.5) * 120,
+        vy: 0,
+        r: 5 + Math.random() * 12,
+        tone: i / 14,
+      }))
+    },
+    draw({ ctx, w, h, dt, f, p: ptr, ink }) {
+      const G = 520
+      for (const b of bs) {
+        if (f.beat) b.vy -= (260 + f.beatStrength * 460) * (0.4 + b.tone)
+        b.vy += G * dt
+        b.x += b.vx * dt
+        b.y += b.vy * dt
+        /* the walls take a little energy each time, or one beat would ring forever */
+        if (b.x - b.r < 0) {
+          b.x = b.r
+          b.vx = Math.abs(b.vx) * 0.92
+        }
+        if (b.x + b.r > w) {
+          b.x = w - b.r
+          b.vx = -Math.abs(b.vx) * 0.92
+        }
+        if (b.y + b.r > h) {
+          b.y = h - b.r
+          b.vy = -Math.abs(b.vy) * 0.72
+        }
+        if (b.y - b.r < 0) {
+          b.y = b.r
+          b.vy = Math.abs(b.vy) * 0.72
+        }
+        if (ptr.inside) {
+          const dx = b.x - ptr.x
+          const dy = b.y - ptr.y
+          const d = Math.hypot(dx, dy)
+          if (d < 90) {
+            b.vx += (dx / (d || 1)) * 420 * dt
+            b.vy += (dy / (d || 1)) * 420 * dt
+          }
+        }
+        ctx.beginPath()
+        ctx.arc(b.x, b.y, b.r * (1 + f.level * 0.4), 0, Math.PI * 2)
+        ctx.fillStyle = hue(ink, b.tone, 0.55 + f.level * 0.45)
+        ctx.fill()
+      }
+    },
+  }
+}
+
+/**
+ * Sun — a solid disc with a corona whose spikes are the spectrum.
+ *
+ * ⚠️ Radial draws the spectrum as lines FROM a centre; this draws it as the EDGE of a body.
+ * The difference is that a body has an inside — the disc stays lit and breathing whatever the
+ * music does, so the mode never goes empty, which is the one thing every purely line-based mode
+ * does in a quiet passage.
+ */
+function sun(): Visual {
+  return {
+    init() {},
+    draw({ ctx, w, h, spec, bins, f, p: ptr, ink }) {
+      const [cx, cy] = centre(ptr, w, h)
+      const base = Math.min(w, h) * (0.16 + f.bass * 0.06)
+      const N = 96
+
+      const g = ctx.createRadialGradient(cx, cy, base * 0.2, cx, cy, base)
+      g.addColorStop(0, hue(ink, 1, 0.95))
+      g.addColorStop(1, hue(ink, 0.55, 0.75))
+      ctx.fillStyle = g
+      ctx.beginPath()
+      ctx.arc(cx, cy, base, 0, Math.PI * 2)
+      ctx.fill()
+
+      /* one closed path for the whole corona, so the flare is a shape rather than N wedges */
+      ctx.beginPath()
+      for (let i = 0; i <= N; i++) {
+        const k = i / N
+        const v = at(spec, bins, 0.02 + (k < 0.5 ? k : 1 - k) * 1.1)
+        const r = base * (1 + v * 1.5 + Math.sin(k * 40 + f.t * 2) * 0.04)
+        const a = k * Math.PI * 2 - Math.PI / 2
+        const x = cx + Math.cos(a) * r
+        const y = cy + Math.sin(a) * r
+        if (i === 0) ctx.moveTo(x, y)
+        else ctx.lineTo(x, y)
+      }
+      ctx.closePath()
+      ctx.strokeStyle = hue(ink, 0.85, 0.6 + f.level * 0.4)
+      ctx.lineWidth = 1.5 + f.level * 3
+      ctx.stroke()
+    },
+  }
+}
+
+/**
+ * Stack — past WAVEFORMS piled up the screen, newest at the front.
+ *
+ * ⚠️ Terrain does this with the spectrum; this does it with the wave, and they look nothing
+ * alike. A spectrum is smooth and hill-shaped, so stacking it gives landscape; a waveform is
+ * jagged and symmetrical about zero, so stacking it gives something closer to a seismograph roll.
+ * Same idea, different data, and the data is what you see.
+ */
+function stack(): Visual {
+  const ROWS = 26
+  let rows: Float32Array[] = []
+  return {
+    init() {
+      rows = []
+    },
+    draw({ ctx, w, h, wave, waveN, f, p: ptr, ink }) {
+      const N = 96
+      const row = new Float32Array(N)
+      for (let i = 0; i < N; i++) {
+        row[i] = (wave[Math.floor((i / N) * waveN)] - 128) / 128
+      }
+      rows.unshift(row)
+      if (rows.length > ROWS) rows.pop()
+      const lean = ptr.inside ? (ptr.x / w - 0.5) * 0.5 : 0
+      const amp = h * (0.035 + f.level * 0.05)
+      for (let r = rows.length - 1; r >= 0; r--) {
+        const k = r / ROWS
+        const y = h * (0.12 + k * 0.8)
+        const squeeze = 1 - k * 0.35
+        ctx.beginPath()
+        for (let i = 0; i < N; i++) {
+          const x = w / 2 + (i / (N - 1) - 0.5) * w * squeeze + lean * k * w * 0.2
+          const yy = y - rows[r][i] * amp * (1 - k * 0.5)
+          if (i === 0) ctx.moveTo(x, yy)
+          else ctx.lineTo(x, yy)
+        }
+        ctx.strokeStyle = hue(ink, 1 - k, 1 - k * 0.85)
+        ctx.lineWidth = 1 + (1 - k) * 1.6
+        ctx.stroke()
+      }
+    },
+  }
+}
+
+/**
  * The spectrum wound onto an Archimedean spiral, low frequencies at the middle.
  *
  * A line chart bent into a coil: one continuous read of the whole range where the eye can follow
@@ -1761,6 +1920,9 @@ const MAKERS: Record<VisualId, () => Visual> = {
   helix,
   serpent,
   kaleido,
+  bounce,
+  sun,
+  stack,
 }
 
 export function makeVisual(id: VisualId): Visual {

@@ -298,6 +298,59 @@ export const PALETTES: Palette[] = [
     ],
   },
   {
+    // between Ocean's blue and Jade's green, and brighter than either — shallow water, not deep
+    id: 'lagoon',
+    label: 'Lagoon',
+    stops: [
+      [4, 34, 44],
+      [10, 92, 104],
+      [24, 158, 158],
+      [110, 214, 202],
+      [206, 248, 240],
+    ],
+  },
+  {
+    // Ember is fire, Gold is polish; this is the same metal left out in the rain
+    id: 'rust',
+    label: 'Rust',
+    stops: [
+      [30, 16, 12],
+      [96, 46, 26],
+      [162, 82, 40],
+      [206, 138, 96],
+      [238, 206, 178],
+    ],
+  },
+  {
+    // Plum without the dark: violet that starts already light, a companion to Cotton
+    id: 'lilac',
+    label: 'Lilac',
+    stops: [
+      [130, 118, 178],
+      [162, 146, 208],
+      [196, 176, 226],
+      [222, 206, 240],
+      [244, 236, 250],
+    ],
+  },
+  {
+    /**
+     * ⚠️ Four greys and ONE colour, which is the opposite arrangement to every other ramp here.
+     * Mono has no hue at all and the rest are a journey through one; this stays out of the way
+     * until the very top, so only the loudest part of a mode picks up any colour and everything
+     * else reads as ink.
+     */
+    id: 'carbon',
+    label: 'Carbon',
+    stops: [
+      [14, 14, 16],
+      [46, 46, 52],
+      [92, 92, 100],
+      [150, 150, 158],
+      [255, 96, 48],
+    ],
+  },
+  {
     /**
      * The whole wheel, rather than a journey between two ends of one.
      *

@@ -43,6 +43,10 @@ export type CursorSkin =
   | 'key'
   | 'flame'
   | 'eye'
+  | 'rocket'
+  | 'crown'
+  | 'snowflake'
+  | 'anchor'
 
 export const CURSOR_OPTIONS: Array<[CursorSkin, string, string]> = [
   ['system', '↖', 'System'],
@@ -69,6 +73,10 @@ export const CURSOR_OPTIONS: Array<[CursorSkin, string, string]> = [
   ['key', '🗝', 'Key'],
   ['flame', '🔥', 'Flame'],
   ['eye', '👁', 'Eye'],
+  ['rocket', '🚀', 'Rocket'],
+  ['crown', '👑', 'Crown'],
+  ['snowflake', '❄', 'Snowflake'],
+  ['anchor', '⚓', 'Anchor'],
 ]
 
 export const CURSOR_IDS = CURSOR_OPTIONS.map(([id]) => id)
@@ -274,6 +282,48 @@ const SKINS: Record<Exclude<CursorSkin, 'system'>, Skin> = {
       `<path d="M2.5 14 C6 8.5 10 6 14 6 C18 6 22 8.5 25.5 14 C22 19.5 18 22 14 22 C10 22 6 19.5 2.5 14 Z" fill="${c}" stroke="rgba(0,0,0,.62)" stroke-width="1.5" stroke-linejoin="round"/>` +
       `<circle cx="14" cy="14" r="4.2" fill="rgba(0,0,0,.72)"/>` +
       `<circle cx="14" cy="14" r="1.6" fill="${c}"/>`,
+  },
+  /** Nose first, like Arrow — a rocket anchored at its fins would point with its exhaust. */
+  rocket: {
+    hot: [14, 2],
+    body: (c) =>
+      `<path d="M14 2 C18 6 20 11 20 16 L20 21 L8 21 L8 16 C8 11 10 6 14 2 Z" fill="${c}" stroke="rgba(0,0,0,.62)" stroke-width="1.5" stroke-linejoin="round"/>` +
+      `<path d="M8 16 L4 22 L8 21 Z M20 16 L24 22 L20 21 Z" fill="${c}" stroke="rgba(0,0,0,.6)" stroke-width="1.3" stroke-linejoin="round"/>` +
+      `<circle cx="14" cy="12" r="2.6" fill="rgba(0,0,0,.55)"/>` +
+      `<path d="M11.5 21 L14 26 L16.5 21 Z" fill="rgba(0,0,0,.45)"/>`,
+  },
+  /** Anchored on the centre spike, which is the tallest point and the one the eye tracks. */
+  crown: {
+    hot: [14, 3],
+    body: (c) =>
+      `<path d="M4 22 L5.5 9 L10 14.5 L14 3 L18 14.5 L22.5 9 L24 22 Z" fill="${c}" stroke="rgba(0,0,0,.62)" stroke-width="1.5" stroke-linejoin="round"/>` +
+      `<path d="M4.5 19 H23.5" stroke="rgba(0,0,0,.4)" stroke-width="1.4"/>`,
+  },
+  /** Six-fold and symmetrical, so the hotspot is its middle — the same reasoning as Diamond. */
+  snowflake: {
+    hot: [14, 14],
+    body: (c) =>
+      `<g stroke="rgba(0,0,0,.55)" stroke-width="4" stroke-linecap="round">` +
+      `<path d="M14 3 V25 M4.5 8.5 L23.5 19.5 M4.5 19.5 L23.5 8.5"/></g>` +
+      `<g stroke="${c}" stroke-width="2" stroke-linecap="round">` +
+      `<path d="M14 3 V25 M4.5 8.5 L23.5 19.5 M4.5 19.5 L23.5 8.5"/>` +
+      `<path d="M14 7 L11 4.5 M14 7 L17 4.5 M14 21 L11 23.5 M14 21 L17 23.5"/></g>`,
+  },
+  /**
+   * Hotspot at the top RING, not the fluke. An anchor hangs from its ring, so that is where the
+   * eye reads it as being held — the flukes are the far end of the object.
+   */
+  anchor: {
+    hot: [14, 3],
+    body: (c) =>
+      `<circle cx="14" cy="5.5" r="3.2" fill="none" stroke="rgba(0,0,0,.6)" stroke-width="4"/>` +
+      `<circle cx="14" cy="5.5" r="3.2" fill="none" stroke="${c}" stroke-width="2"/>` +
+      `<path d="M14 8.5 V24" stroke="rgba(0,0,0,.6)" stroke-width="4.4" stroke-linecap="round"/>` +
+      `<path d="M14 8.5 V24" stroke="${c}" stroke-width="2.4" stroke-linecap="round"/>` +
+      `<path d="M8 12 H20" stroke="rgba(0,0,0,.6)" stroke-width="4" stroke-linecap="round"/>` +
+      `<path d="M8 12 H20" stroke="${c}" stroke-width="2" stroke-linecap="round"/>` +
+      `<path d="M5 18 C5 23 9 25.5 14 25.5 C19 25.5 23 23 23 18" fill="none" stroke="rgba(0,0,0,.6)" stroke-width="4" stroke-linecap="round"/>` +
+      `<path d="M5 18 C5 23 9 25.5 14 25.5 C19 25.5 23 23 23 18" fill="none" stroke="${c}" stroke-width="2" stroke-linecap="round"/>`,
   },
 }
 
