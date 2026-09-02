@@ -74,6 +74,8 @@ const MIRROR_KEY = 'viz_mirror_v1'
 const PALETTE_KEY = 'viz_palette_v1'
 const ZOOM_KEY = 'viz_zoom_v1'
 const SPIN_KEY = 'viz_spin_v1'
+const SHAKE_KEY = 'viz_shake_v1'
+const SPLIT_KEY = 'viz_split_v1'
 const ANCHOR_KEY = 'viz_anchor_v1'
 /** Two taps closer together than this are one gesture. */
 const DOUBLE_TAP_MS = 320
@@ -205,6 +207,8 @@ export function AudioVisualizer() {
   const [depth, setDepth] = useState(() => storedNumber(DEPTH_KEY, 0, 1) ?? 0)
   /* signed: negative turns the other way, and 0 in the middle is the off position */
   const [spin, setSpin] = useState(() => storedNumber(SPIN_KEY, -1, 1) ?? 0)
+  const [shake, setShake] = useState(() => storedNumber(SHAKE_KEY, 0, 1) ?? 0)
+  const [split, setSplit] = useState(() => storedNumber(SPLIT_KEY, 0, 1) ?? 0)
   /**
    * A pinned stand-in for the pointer, kept as FRACTIONS of the surface rather than pixels.
    *
@@ -259,6 +263,8 @@ export function AudioVisualizer() {
       zoom,
       depth,
       spin,
+      shake,
+      split,
       path,
       pathSpeed,
       bloom,
@@ -287,6 +293,8 @@ export function AudioVisualizer() {
       num('zoom', 0.3, 3, setZoom)
       num('depth', 0, 1, setDepth)
       num('spin', -1, 1, setSpin)
+      num('shake', 0, 1, setShake)
+      num('split', 0, 1, setSplit)
       num('pathSpeed', 0.02, 1, setPathSpeed)
       num('bloom', 0, 1, setBloom)
       num('punch', 0, 1, setPunch)
@@ -322,6 +330,8 @@ export function AudioVisualizer() {
     zoom,
     depth,
     spin,
+    shake,
+    split,
     path,
     pathSpeed,
     bloom,
@@ -360,8 +370,32 @@ export function AudioVisualizer() {
    * visual on every step of that drag — particles reseeded, spectrogram wiped, trails cleared.
    * The loop reads the current value instead, so they take effect instantly without a restart.
    */
-  const dials = useRef({ zoom, depth, path, pathSpeed, bloom, punch, echo, spin, anchor })
-  dials.current = { zoom, depth, path, pathSpeed, bloom, punch, echo, spin, anchor }
+  const dials = useRef({
+    zoom,
+    depth,
+    path,
+    pathSpeed,
+    bloom,
+    punch,
+    echo,
+    spin,
+    anchor,
+    shake,
+    split,
+  })
+  dials.current = {
+    zoom,
+    depth,
+    path,
+    pathSpeed,
+    bloom,
+    punch,
+    echo,
+    spin,
+    anchor,
+    shake,
+    split,
+  }
 
   const ptr = useRef({
     x: 0,
@@ -395,6 +429,8 @@ export function AudioVisualizer() {
       localStorage.setItem(ZOOM_KEY, String(zoom))
       localStorage.setItem(DEPTH_KEY, String(depth))
       localStorage.setItem(SPIN_KEY, String(spin))
+      localStorage.setItem(SHAKE_KEY, String(shake))
+      localStorage.setItem(SPLIT_KEY, String(split))
       if (anchor) localStorage.setItem(ANCHOR_KEY, JSON.stringify(anchor))
       else localStorage.removeItem(ANCHOR_KEY)
       localStorage.setItem(PATH_KEY, path)
@@ -420,6 +456,8 @@ export function AudioVisualizer() {
     zoom,
     depth,
     spin,
+    shake,
+    split,
     anchor,
     path,
     pathSpeed,
@@ -561,6 +599,8 @@ export function AudioVisualizer() {
     let swirl = 0
     /** how far the picture has turned so far, in radians */
     let spinA = 0
+    /** which way the current knock threw the picture, held for its whole decay */
+    let shakeDir = 0
 
     // how far the auto-path has travelled, in turns
     let pathT = 0
@@ -704,6 +744,8 @@ export function AudioVisualizer() {
         echo: ech,
         spin: spn,
         anchor: anc,
+        shake: shk,
+        split: spl,
       } = dials.current
       const all = src === ALL
       const bins = Math.min(spec.length, all ? binCountAll() : binCount(src))
@@ -919,10 +961,27 @@ export function AudioVisualizer() {
       hit = Math.max(0, hit - dt * 3.4)
       if (f.beat) hit = Math.max(hit, 0.35 + f.beatStrength * 0.65)
       const kick = 1 + hit * pun * 0.09
-      if (pun > 0.01 && kick !== 1) {
+      /**
+       * Shake: the same onset that drives Punch, spent on POSITION instead of scale.
+       *
+       * ⚠️ It reuses `hit` rather than detecting anything of its own, so a beat that punches also
+       * shakes and the two stay in step — two independent decays would drift apart and read as
+       * one effect being late.
+       *
+       * ⚠️ The direction is random per beat but HELD for the whole decay, not re-rolled each
+       * frame. Re-rolling is a vibration, which looks like a fault; one shove that settles is what
+       * a knock looks like.
+       */
+      if (f.beat) shakeDir = Math.random() * Math.PI * 2
+      const shove = hit * shk * Math.min(w, h) * 0.045
+      const moved = pun > 0.01 || shove > 0.05
+      if (moved) {
         view.save()
-        view.translate((w * (1 - kick)) / 2, (h * (1 - kick)) / 2)
-        view.scale(kick, kick)
+        if (shove > 0.05) view.translate(Math.cos(shakeDir) * shove, Math.sin(shakeDir) * shove)
+        if (pun > 0.01 && kick !== 1) {
+          view.translate((w * (1 - kick)) / 2, (h * (1 - kick)) / 2)
+          view.scale(kick, kick)
+        }
       }
 
       /**
@@ -946,6 +1005,31 @@ export function AudioVisualizer() {
         view.globalAlpha = alpha
         view.translate((w * (1 - scale)) / 2, (h * (1 - scale)) / 2)
         view.drawImage(buf, 0, 0, w * scale, h * scale)
+        view.restore()
+      }
+
+      /**
+       * Split: the picture again, twice, nudged apart and hue-shifted the other way.
+       *
+       * ⚠️ TWO EXTRA COPIES, not a per-pixel filter. A true chromatic aberration separates the
+       * colour channels, which canvas cannot do without reading every pixel back — at 60fps on a
+       * full-screen canvas that is the one thing certain to make a laptop fan spin. Offsetting the
+       * whole frame and rotating its hue produces the same fringe on the edges, which is the part
+       * anyone actually sees, for two drawImage calls.
+       *
+       * ⚠️ Underneath the sharp copy, and additively, so the fringes appear at the EDGES rather
+       * than washing over the middle — the same reasoning as Bloom drawing last.
+       */
+      if (spl > 0.01) {
+        const off = spl * Math.min(w, h) * 0.02
+        view.save()
+        view.globalCompositeOperation = 'lighter'
+        view.globalAlpha = 0.4 + spl * 0.35
+        view.filter = 'hue-rotate(-28deg)'
+        view.drawImage(buf, -off, 0, w, h)
+        view.filter = 'hue-rotate(28deg)'
+        view.drawImage(buf, off, 0, w, h)
+        view.filter = 'none'
         view.restore()
       }
 
@@ -997,7 +1081,7 @@ export function AudioVisualizer() {
         view.restore()
       }
 
-      if (pun > 0.01 && kick !== 1) view.restore()
+      if (moved) view.restore()
       raf = requestAnimationFrame(frame)
     }
 
@@ -1573,6 +1657,34 @@ export function AudioVisualizer() {
                     onChange={(e) => setZoom(Number(e.target.value))}
                   />
                   <span className="appearance-slider-val">{zoom.toFixed(2)}×</span>
+                </label>
+                <label className="appearance-slider">
+                  <span className="muted" title="The picture is knocked sideways on the beat">
+                    Shake
+                  </span>
+                  <input
+                    type="range"
+                    min={0}
+                    max={1}
+                    step={0.01}
+                    value={shake}
+                    onChange={(e) => setShake(Number(e.target.value))}
+                  />
+                  <span className="appearance-slider-val">{Math.round(shake * 100)}</span>
+                </label>
+                <label className="appearance-slider">
+                  <span className="muted" title="Colour fringes, as if the lens could not agree">
+                    Split
+                  </span>
+                  <input
+                    type="range"
+                    min={0}
+                    max={1}
+                    step={0.01}
+                    value={split}
+                    onChange={(e) => setSplit(Number(e.target.value))}
+                  />
+                  <span className="appearance-slider-val">{Math.round(split * 100)}</span>
                 </label>
                 <label className="appearance-slider">
                   <span className="muted" title="Copies of the frame receding behind it">
