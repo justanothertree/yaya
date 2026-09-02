@@ -143,6 +143,33 @@ export const PALETTES: Palette[] = [
       [255, 255, 255],
     ],
   },
+  {
+    /**
+     * The whole wheel, rather than a journey between two ends of one.
+     *
+     * ⚠️ EVERY OTHER RAMP HERE IS A GRADIENT AND THIS ONE IS A CYCLE, which is the point: with a
+     * gradient, a mode's quiet end and its loud end are always different colours, so loudness
+     * reads as position along a fixed scale. Here hue is unbound — it keeps going round, so what
+     * you see is the shape moving through colour rather than a meter filling up.
+     *
+     * ⚠️ It ends where it starts, on red. Stopping at magenta would put a hard seam between the
+     * top of the ramp and the bottom, visible in every mode that wraps an angle — the ring modes
+     * would show a scar down one side.
+     */
+    id: 'spectrum',
+    label: 'Spectrum',
+    stops: [
+      [255, 48, 48],
+      [255, 168, 32],
+      [244, 232, 48],
+      [72, 208, 88],
+      [48, 200, 208],
+      [64, 112, 240],
+      [148, 72, 224],
+      [232, 64, 168],
+      [255, 48, 48],
+    ],
+  },
 ]
 
 export const paletteById = (id: string): Palette => PALETTES.find((p) => p.id === id) ?? PALETTES[0]

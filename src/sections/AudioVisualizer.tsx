@@ -73,6 +73,9 @@ const PANEL_KEY = 'viz_panel_v1'
 const MIRROR_KEY = 'viz_mirror_v1'
 const PALETTE_KEY = 'viz_palette_v1'
 const ZOOM_KEY = 'viz_zoom_v1'
+const SPIN_KEY = 'viz_spin_v1'
+/** How long the mouse has to sit still before the controls duck out of the way. */
+const IDLE_MS = 2600
 const DEPTH_KEY = 'viz_depth_v1'
 const PATH_KEY = 'viz_path_v1'
 const PATHSPEED_KEY = 'viz_pathspeed_v1'
@@ -197,6 +200,8 @@ export function AudioVisualizer() {
   })
   const [zoom, setZoom] = useState(() => storedNumber(ZOOM_KEY, 0.3, 3) ?? 1)
   const [depth, setDepth] = useState(() => storedNumber(DEPTH_KEY, 0, 1) ?? 0)
+  /* signed: negative turns the other way, and 0 in the middle is the off position */
+  const [spin, setSpin] = useState(() => storedNumber(SPIN_KEY, -1, 1) ?? 0)
   const [path, setPath] = useState<PathId>(() => readStored(PATH_KEY, PATH_IDS, 'off'))
   const [pathSpeed, setPathSpeed] = useState(() => storedNumber(PATHSPEED_KEY, 0.02, 1) ?? 0.12)
   const [bloom, setBloom] = useState(() => storedNumber(BLOOM_KEY, 0, 1) ?? 0.25)
@@ -230,6 +235,7 @@ export function AudioVisualizer() {
       palette,
       zoom,
       depth,
+      spin,
       path,
       pathSpeed,
       bloom,
@@ -257,6 +263,7 @@ export function AudioVisualizer() {
       num('trail', 0, 0.97, setTrail)
       num('zoom', 0.3, 3, setZoom)
       num('depth', 0, 1, setDepth)
+      num('spin', -1, 1, setSpin)
       num('pathSpeed', 0.02, 1, setPathSpeed)
       num('bloom', 0, 1, setBloom)
       num('punch', 0, 1, setPunch)
@@ -291,6 +298,7 @@ export function AudioVisualizer() {
     palette,
     zoom,
     depth,
+    spin,
     path,
     pathSpeed,
     bloom,
@@ -329,8 +337,8 @@ export function AudioVisualizer() {
    * visual on every step of that drag — particles reseeded, spectrogram wiped, trails cleared.
    * The loop reads the current value instead, so they take effect instantly without a restart.
    */
-  const dials = useRef({ zoom, depth, path, pathSpeed, bloom, punch, echo })
-  dials.current = { zoom, depth, path, pathSpeed, bloom, punch, echo }
+  const dials = useRef({ zoom, depth, path, pathSpeed, bloom, punch, echo, spin })
+  dials.current = { zoom, depth, path, pathSpeed, bloom, punch, echo, spin }
 
   const ptr = useRef({
     x: 0,
@@ -363,6 +371,7 @@ export function AudioVisualizer() {
       localStorage.setItem(PALETTE_KEY, palette)
       localStorage.setItem(ZOOM_KEY, String(zoom))
       localStorage.setItem(DEPTH_KEY, String(depth))
+      localStorage.setItem(SPIN_KEY, String(spin))
       localStorage.setItem(PATH_KEY, path)
       localStorage.setItem(PATHSPEED_KEY, String(pathSpeed))
       localStorage.setItem(TAB_KEY, tab)
@@ -385,6 +394,7 @@ export function AudioVisualizer() {
     palette,
     zoom,
     depth,
+    spin,
     path,
     pathSpeed,
     bloom,
@@ -422,11 +432,56 @@ export function AudioVisualizer() {
       const t = e.target as HTMLElement | null
       if (t && (t.tagName === 'INPUT' || t.tagName === 'SELECT' || t.tagName === 'TEXTAREA')) return
       if (e.key === 'h' || e.key === 'H') setPanel((v) => !v)
+      // any key is also movement, so the duck-out clears — see the idle watcher
       if (e.key === 'f' || e.key === 'F') goFullRef.current?.()
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [])
+
+  /**
+   * The controls step out of the way when you stop moving, and come back the moment you do.
+   *
+   * ⚠️ A SEPARATE STATE FROM `panel`, not a flip of it. `panel` is your choice and is remembered
+   * between visits; this is a temporary duck-out. Folding the two together would mean going idle
+   * quietly rewrote a preference — you would come back tomorrow to a panel you never chose to
+   * hide — and moving the mouse would then "unhide" a panel you had deliberately put away.
+   *
+   * ⚠️ Never while the pointer is over the controls, and never while one of them has focus. The
+   * whole failure mode of an auto-hiding panel is it vanishing out from under the slider you are
+   * reaching for, and stillness is exactly what careful aiming looks like.
+   */
+  const [ducked, setDucked] = useState(false)
+  useEffect(() => {
+    if (!panel) return
+    let timer = 0
+    const overControls = (t: EventTarget | null) =>
+      t instanceof Element && !!t.closest('.viz-controls')
+    const focusedControl = () => {
+      const a = document.activeElement
+      return !!a && a !== document.body && !!a.closest?.('.viz-controls')
+    }
+    const arm = (e?: Event) => {
+      setDucked(false)
+      window.clearTimeout(timer)
+      if (overControls(e?.target ?? null) || focusedControl()) return
+      timer = window.setTimeout(() => {
+        if (!focusedControl()) setDucked(true)
+      }, IDLE_MS)
+    }
+    arm()
+    window.addEventListener('pointermove', arm, { passive: true })
+    window.addEventListener('pointerdown', arm, { passive: true })
+    window.addEventListener('keydown', arm)
+    return () => {
+      window.clearTimeout(timer)
+      window.removeEventListener('pointermove', arm)
+      window.removeEventListener('pointerdown', arm)
+      window.removeEventListener('keydown', arm)
+      setDucked(false)
+    }
+  }, [panel])
+  const showPanel = panel && !ducked
 
   // fullscreen can also be left with Escape, which fires no click of ours — so track the browser
   // rather than assuming our own button is the only way out
@@ -478,6 +533,8 @@ export function AudioVisualizer() {
     let hit = 0
     // the spin the feedback copy carries, so an echo tunnel turns instead of just receding
     let swirl = 0
+    /** how far the picture has turned so far, in radians */
+    let spinA = 0
 
     // how far the auto-path has travelled, in turns
     let pathT = 0
@@ -502,6 +559,18 @@ export function AudioVisualizer() {
     // your pointer, converted into the zoomed drawing space — reused rather than rebuilt each
     // frame, for the same reason the buffers are
     const scaled = {
+      x: 0,
+      y: 0,
+      inside: false,
+      vx: 0,
+      vy: 0,
+      down: false,
+      sinceClick: 99,
+      clickX: 0,
+      clickY: 0,
+    }
+    // the pointer turned back out of the spin, reused rather than rebuilt each frame
+    const turned = {
       x: 0,
       y: 0,
       inside: false,
@@ -607,6 +676,7 @@ export function AudioVisualizer() {
         bloom: blm,
         punch: pun,
         echo: ech,
+        spin: spn,
       } = dials.current
       const all = src === ALL
       const bins = Math.min(spec.length, all ? binCountAll() : binCount(src))
@@ -714,6 +784,12 @@ export function AudioVisualizer() {
        * than being immediately swallowed by it. Scaling slightly above 1 pushes the echo outward
        * — below 1 pulls it into the middle, which reads as falling down a hole instead.
        */
+      /**
+       * ⚠️ The angle accumulates from ELAPSED TIME, not from a frame count. A dropped frame or a
+       * 120Hz screen would otherwise change how fast the picture turns.
+       */
+      spinA += dt * spn * 1.2
+
       if (ech > 0.01) {
         swirl += dt * 0.35 * ech
         ctx.save()
@@ -725,6 +801,46 @@ export function AudioVisualizer() {
         ctx.translate(-vw / 2, -vh / 2)
         ctx.drawImage(ctx.canvas, 0, 0, vw, vh)
         ctx.restore()
+      }
+
+      /**
+       * Spin: the drawing turns, the history does not.
+       *
+       * ⚠️ Applied around the MODE ONLY, after the trail fade and the feedback copy. Rotating
+       * those as well would turn the whole accumulated picture every frame, and a trail that is
+       * re-rotated on top of itself smears into a blurred disc within a second — the frames
+       * behind are supposed to stay where they were drawn. Turning only the new drawing is what
+       * makes a slow spin lay its history down as a spirograph instead.
+       *
+       * ⚠️ The pointer is turned the OTHER way by the same angle, so a mode still finds it under
+       * the actual cursor. Without this, every pointer-driven mode would put its effect somewhere
+       * else on the screen the moment the picture was turned, and the further it had spun the
+       * further off it would be.
+       */
+      const turning = Math.abs(spn) > 0.001
+      if (turning) {
+        if (seen.inside) {
+          const ca = Math.cos(-spinA)
+          const sa = Math.sin(-spinA)
+          const rx = seen.x - vw / 2
+          const ry = seen.y - vh / 2
+          turned.x = vw / 2 + rx * ca - ry * sa
+          turned.y = vh / 2 + rx * sa + ry * ca
+          turned.vx = seen.vx * ca - seen.vy * sa
+          turned.vy = seen.vx * sa + seen.vy * ca
+          const cx2 = seen.clickX - vw / 2
+          const cy2 = seen.clickY - vh / 2
+          turned.clickX = vw / 2 + cx2 * ca - cy2 * sa
+          turned.clickY = vh / 2 + cx2 * sa + cy2 * ca
+          turned.inside = true
+          turned.down = seen.down
+          turned.sinceClick = seen.sinceClick
+          seen = turned
+        }
+        ctx.save()
+        ctx.translate(vw / 2, vh / 2)
+        ctx.rotate(spinA)
+        ctx.translate(-vw / 2, -vh / 2)
       }
 
       visual.draw({
@@ -740,6 +856,8 @@ export function AudioVisualizer() {
         p: seen,
         ink,
       })
+
+      if (turning) ctx.restore()
 
       view.clearRect(0, 0, w, h)
 
@@ -980,7 +1098,9 @@ export function AudioVisualizer() {
      * was taller than the box containing it — overflowing, cropped, and visibly off-centre. In a
      * window the stage fills whatever it is given instead of asking the screen.
      */
-    <section className={'viz-wrap' + (panel ? '' : ' is-bare') + (inWindow ? ' is-inwindow' : '')}>
+    <section
+      className={'viz-wrap' + (showPanel ? '' : ' is-bare') + (inWindow ? ' is-inwindow' : '')}
+    >
       <div
         className="viz-stage"
         ref={stage}
@@ -1011,13 +1131,19 @@ export function AudioVisualizer() {
               crowded the page's own footer links. Over the picture is the only place they belong,
               and the top corner is the one no mode fills. */}
           <div className="viz-float">
+            {/* Reads the EFFECTIVE state, so the arrow always matches what you can see — but
+                sets the remembered one. Pressing it while the controls have ducked away brings
+                them back rather than telling them to hide, which is what they already are. */}
             <button
               className="btn viz-icon"
-              onClick={() => setPanel((v) => !v)}
-              aria-expanded={panel}
-              title={panel ? 'Hide the controls (H)' : 'Show the controls (H)'}
+              onClick={() => {
+                setDucked(false)
+                setPanel(!showPanel)
+              }}
+              aria-expanded={showPanel}
+              title={showPanel ? 'Hide the controls (H)' : 'Show the controls (H)'}
             >
-              {panel ? '▴' : '▾'}
+              {showPanel ? '▴' : '▾'}
             </button>
             <button
               className="btn viz-icon"
@@ -1072,7 +1198,7 @@ export function AudioVisualizer() {
          * container so a control added next year is covered without anyone remembering to wrap
          * it.
          */}
-        {panel && (
+        {showPanel && (
           <div
             className="viz-controls"
             onPointerDownCapture={() => party.following && party.stopFollowing()}
@@ -1330,6 +1456,32 @@ export function AudioVisualizer() {
                     onChange={(e) => setDepth(Number(e.target.value))}
                   />
                   <span className="appearance-slider-val">{Math.round(depth * 100)}</span>
+                </label>
+                {/* ⚠️ Signed, with zero in the middle, so the off position is where a slider
+                    naturally rests rather than at one end — and so it can turn either way. A
+                    double-click puts it back to still, because finding exact zero by dragging a
+                    continuous slider is fiddly. */}
+                <label className="appearance-slider">
+                  <span
+                    className="muted"
+                    title="Turn the drawing as it plays. Double-click to stop."
+                  >
+                    Spin
+                  </span>
+                  <input
+                    type="range"
+                    min={-1}
+                    max={1}
+                    step={0.01}
+                    value={spin}
+                    onChange={(e) => setSpin(Number(e.target.value))}
+                    onDoubleClick={() => setSpin(0)}
+                  />
+                  <span className="appearance-slider-val">
+                    {spin === 0
+                      ? 'still'
+                      : `${spin > 0 ? '↻' : '↺'} ${Math.round(Math.abs(spin) * 100)}`}
+                  </span>
                 </label>
               </div>
             )}
