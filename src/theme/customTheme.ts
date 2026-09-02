@@ -298,10 +298,24 @@ export function loadPalette(): PaletteSeed | null {
     const raw = localStorage.getItem(KEY)
     if (!raw) return null
     const p = JSON.parse(raw) as Partial<PaletteSeed>
-    if (!p || !parseHex(p.bg ?? '') || !parseHex(p.text ?? '') || !parseHex(p.accent ?? '')) {
-      return null
-    }
-    return { bg: p.bg!, text: p.text!, accent: p.accent! }
+    const bg = parseHex(p?.bg ?? '')
+    const text = parseHex(p?.text ?? '')
+    const accent = parseHex(p?.accent ?? '')
+    if (!bg || !text || !accent) return null
+    /**
+     * ⚠️ Returned CANONICAL — six digits, with the hash — not as it was written down.
+     *
+     * parseHex is deliberately forgiving: it accepts `#abc` and even a bare `aabbcc`. This used
+     * to validate with it and then return the ORIGINAL string, so a palette stored in either of
+     * those shorter forms passed here and was sent on to set_my_profile_look, which requires
+     * `^#[0-9a-fA-F]{6}$` and refuses anything else — the whole look save failing on a colour the
+     * site itself was perfectly happy to render.
+     *
+     * Nothing writes those forms today, so this is a trap rather than a live bug. But this reads
+     * localStorage, which outlives any one version of the app and can be edited by hand, and
+     * being liberal in what is accepted while being strict in what is emitted costs nothing.
+     */
+    return { bg: toHex(bg), text: toHex(text), accent: toHex(accent) }
   } catch {
     return null
   }
