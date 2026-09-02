@@ -736,18 +736,38 @@ export default function App() {
   // used to pay its chunk fetch right then (the "small load times" on each first visit).
   // Now the code is already in the browser and navigation is instant.
   useEffect(() => {
+    /**
+     * ⚠️ ONLY WHAT THIS VISITOR COULD ACTUALLY OPEN. It used to fetch all seven for everybody, so
+     * a signed-out stranger reading the home page downloaded the admin console and the family
+     * investments module — pages they cannot reach and would be refused by the server anyway.
+     * Measured on a plain home-page load: 22 files and 124kB of javascript, of which AdminPanel
+     * and Investments were 30kB nobody in that state can use.
+     *
+     * Circuit and Sign in stay unconditional on purpose: the Circuit has a public demo and is the
+     * first thing the home page invites you into, and signing in is where a visitor most often
+     * goes next.
+     */
     const warm = () => {
       void import('./sections/SignIn')
-      void import('./sections/Investments')
-      void import('./sections/AccountSettings')
       void import('./sections/Circuit')
-      void import('./circuit/ui/CircuitCanvas')
-      void import('./sections/AdminPanel')
       void import('./sections/Profile')
+      if (desktop) void import('./circuit/ui/CircuitCanvas')
+      if (isFinanceAuthed) void import('./sections/AccountSettings')
+      if (isAdmin) void import('./sections/AdminPanel')
+      if (canFinance) void import('./sections/Investments')
     }
+    /**
+     * ⚠️ Not at all on a metered or slow connection. Prefetching spends someone else's data on a
+     * guess about where they are going next, which is a fine trade on wifi and a rude one on a
+     * phone plan that is nearly out.
+     */
+    const link = (
+      navigator as Navigator & { connection?: { saveData?: boolean; effectiveType?: string } }
+    ).connection
+    if (link?.saveData || /(^|-)2g$/.test(link?.effectiveType ?? '')) return
     if ('requestIdleCallback' in window) window.requestIdleCallback(warm, { timeout: 4000 })
     else setTimeout(warm, 1500)
-  }, [])
+  }, [desktop, isFinanceAuthed, isAdmin, canFinance])
   const liveRef = useRef<HTMLDivElement>(null)
   const navLinksRef = useRef<HTMLDivElement>(null)
   const navRef = useRef<HTMLElement>(null)
