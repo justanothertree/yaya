@@ -1,5 +1,6 @@
 import { onParty, sendParty, voiceSession } from '../voice/voiceSession'
 import {
+  INSTRUMENTS,
   fxSnapshot,
   noteOff,
   noteOn,
@@ -95,20 +96,16 @@ function set(patch: Partial<JamState>) {
 const rate = new Map<string, number[]>()
 const voices = new Map<string, string[]>()
 
-const VALID = new Set<string>([
-  'keys',
-  'pluck',
-  'bell',
-  'pad',
-  'bass',
-  'organ',
-  'brass',
-  'reed',
-  'marimba',
-  'choir',
-  'sub',
-  'drums',
-])
+/**
+ * Which instruments a peer is allowed to name.
+ *
+ * ⚠️ DERIVED FROM THE INSTRUMENT LIST, never written out again. This was a hand-kept copy
+ * of the twelve instruments that existed when jamming was built, and the sixteen added since were
+ * silently dropped — a peer picked harp, played, and the rest of the room heard nothing at all,
+ * with no error anywhere because an unknown instrument simply returns. A second copy of a list is
+ * a copy that will fall behind; the check is worth having, the transcription is not.
+ */
+const VALID = new Set<string>(INSTRUMENTS.map(([id]) => id))
 
 /**
  * A voice id nobody else can collide with.
