@@ -5958,3 +5958,18 @@ a.cz-msg-author:focus-visible {
   outline: 2px solid var(--accent, #22c55e);
   outline-offset: 3px;
 }
+
+/* The rainbow swatch shows what it is: the wheel itself, not a word for it. Same size and shape
+   as every other swatch, because it IS one — a colour you load a tool with. */
+.paint-swatch-rainbow {
+  background: conic-gradient(
+    from 0deg,
+    hsl(0 92% 58%),
+    hsl(60 92% 58%),
+    hsl(120 92% 58%),
+    hsl(180 92% 58%),
+    hsl(240 92% 58%),
+    hsl(300 92% 58%),
+    hsl(360 92% 58%)
+  );
+}

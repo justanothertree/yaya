@@ -1,6 +1,7 @@
 import { useCallback, useContext, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import {
   NONE,
+  RAINBOW,
   TOOLS,
   paintDrawing,
   paintStroke,
@@ -408,6 +409,15 @@ export function PaintRoom() {
             title="Transparent — paint or fill with nothing"
             onClick={() => setColour(NONE)}
           />
+          {/* Next to transparency because it is the same kind of thing: a colour any tool can be
+              loaded with, rather than a mode the tools have to know about. */}
+          <button
+            className={'paint-swatch paint-swatch-rainbow' + (colour === RAINBOW ? ' is-on' : '')}
+            aria-label="Rainbow"
+            aria-pressed={colour === RAINBOW}
+            title="Rainbow — the colour moves along as you draw"
+            onClick={() => setColour(RAINBOW)}
+          />
           {SWATCHES.map((c) => (
             <button
               key={c}
@@ -423,7 +433,7 @@ export function PaintRoom() {
           <span className="muted">Colour</span>
           <input
             type="color"
-            value={colour === NONE ? '#000000' : colour}
+            value={colour === NONE || colour === RAINBOW ? '#000000' : colour}
             onChange={(e) => setColour(e.target.value)}
           />
         </label>

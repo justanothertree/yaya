@@ -92,8 +92,28 @@ const HEX = /^#[0-9a-f]{6}$/i
  * transparency as a paint rather than as a mode.
  */
 export const NONE = 'none'
+
+/**
+ * Paint that keeps changing its mind.
+ *
+ * ⚠️ A COLOUR, not a tool or a mode — the same decision as NONE above, for the same reason. Every
+ * tool gets it without knowing about it: a rainbow brush flows through the wheel as you draw, a
+ * rainbow box is a gradient outline, a rainbow bucket picks its hue from where you clicked. A
+ * "rainbow mode" flag would have to be understood separately by each of the six tools, and would
+ * not survive being saved.
+ *
+ * ⚠️ It costs nothing in a saved file. The stroke still stores ONE short colour value, the
+ * sentinel, and the actual hues are worked out at drawing time from the geometry that is already
+ * there. Storing a colour per point would have been the obvious way and would have roughly
+ * doubled the size of every rainbow stroke on a profile.
+ */
+export const RAINBOW = 'rainbow'
+
 const colour = (v: unknown, fallback = '#000000') =>
-  v === NONE ? NONE : typeof v === 'string' && HEX.test(v) ? v : fallback
+  v === NONE || v === RAINBOW ? v : typeof v === 'string' && HEX.test(v) ? v : fallback
+
+/** A hue on the wheel, as a css colour. `t` turns once per 1. */
+const wheel = (t: number) => `hsl(${(((t * 360) % 360) + 360) % 360} 92% 58%)`
 
 const num = (v: unknown, lo: number, hi: number, d: number) =>
   typeof v === 'number' && Number.isFinite(v) ? Math.max(lo, Math.min(hi, v)) : d
@@ -150,6 +170,21 @@ export function readStroke(raw: unknown): Stroke | null {
  * painting white would erase to a colour that only looks right on one theme. Alpha is the goal
  * feature and this is where it lives.
  */
+/** A rainbow across a shape's bounding box, so a box or ellipse is not one flat hue. */
+function boxWheel(
+  ctx: CanvasRenderingContext2D,
+  x0: number,
+  y0: number,
+  x1: number,
+  y1: number,
+  turn: number,
+): CanvasGradient {
+  const g = ctx.createLinearGradient(x0, y0, x1, y1)
+  const start = (x0 + y0) / turn
+  for (let i = 0; i <= 6; i++) g.addColorStop(i / 6, wheel(start + i / 6))
+  return g
+}
+
 export function paintStroke(ctx: CanvasRenderingContext2D, s: Stroke, w: number, h: number) {
   const short = Math.min(w, h)
   const X = (i: number) => s.p[i] * w
@@ -161,24 +196,35 @@ export function paintStroke(ctx: CanvasRenderingContext2D, s: Stroke, w: number,
    * rather than two that can disagree about what erasing means.
    */
   const erasing = s.t === 'eraser' || s.c === NONE
+  const rainbow = !erasing && s.c === RAINBOW
   ctx.save()
   ctx.globalAlpha = s.a
   ctx.lineCap = 'round'
   ctx.lineJoin = 'round'
   ctx.lineWidth = Math.max(0.5, s.w * short)
-  ctx.strokeStyle = erasing ? '#000000' : s.c
-  ctx.fillStyle = erasing ? '#000000' : s.c
+  /**
+   * ⚠️ A rainbow's hue comes from DISTANCE TRAVELLED, not from how many points the stroke has.
+   * Points arrive faster when you draw slowly, so counting them would make a careful line cycle
+   * through the whole wheel while a quick flick of the same length barely changed colour — the
+   * speed of your hand would decide the colours. One turn per 1.2 short-sides of travel means a
+   * stroke looks the same however it was drawn.
+   */
+  const paint = rainbow ? wheel(0) : erasing ? '#000000' : s.c
+  ctx.strokeStyle = paint
+  ctx.fillStyle = paint
   if (erasing) ctx.globalCompositeOperation = 'destination-out'
+  const TURN = short * 1.2
 
   switch (s.t) {
     case 'fill':
-      floodFill(ctx, X(0), Y(1), erasing ? null : s.c, s.a)
+      floodFill(ctx, X(0), Y(1), erasing ? null : rainbow ? wheel((X(0) + Y(1)) / TURN) : s.c, s.a)
       break
     case 'rect': {
       const x0 = X(0)
       const y0 = Y(1)
       const x1 = X(2)
       const y1 = Y(3)
+      if (rainbow) ctx.strokeStyle = boxWheel(ctx, x0, y0, x1, y1, TURN)
       ctx.strokeRect(Math.min(x0, x1), Math.min(y0, y1), Math.abs(x1 - x0), Math.abs(y1 - y0))
       break
     }
@@ -187,6 +233,7 @@ export function paintStroke(ctx: CanvasRenderingContext2D, s: Stroke, w: number,
       const y0 = Y(1)
       const x1 = X(2)
       const y1 = Y(3)
+      if (rainbow) ctx.strokeStyle = boxWheel(ctx, x0, y0, x1, y1, TURN)
       ctx.beginPath()
       ctx.ellipse(
         (x0 + x1) / 2,
@@ -202,6 +249,30 @@ export function paintStroke(ctx: CanvasRenderingContext2D, s: Stroke, w: number,
     }
     default: {
       // brush, eraser and line are all a polyline; a line just happens to have two points
+      if (rainbow) {
+        /* segment by segment, because one path can only carry one colour — and the joins do not
+           show, since round caps at this width overlap by more than a segment's length */
+        let travelled = 0
+        for (let i = 0; i + 3 < s.p.length; i += 2) {
+          const ax = X(i)
+          const ay = Y(i + 1)
+          const bx = X(i + 2)
+          const by = Y(i + 3)
+          ctx.strokeStyle = wheel(travelled / TURN)
+          ctx.beginPath()
+          ctx.moveTo(ax, ay)
+          ctx.lineTo(bx, by)
+          ctx.stroke()
+          travelled += Math.hypot(bx - ax, by - ay)
+        }
+        if (s.p.length === 2) {
+          ctx.beginPath()
+          ctx.moveTo(X(0), Y(1))
+          ctx.lineTo(X(0), Y(1) + 0.01)
+          ctx.stroke()
+        }
+        break
+      }
       ctx.beginPath()
       ctx.moveTo(X(0), Y(1))
       if (s.p.length === 2) ctx.lineTo(X(0), Y(1) + 0.01) // a single tap should leave a dot
@@ -231,8 +302,8 @@ export type PackedDrawing = {
   r: number
   /** background, hash-less hex, or 0 for none */
   b: string | 0
-  /** [toolIndex, colour, alpha%, width‰, ...points‰] per stroke */
-  s: Array<[number, string | 0, number, number, ...number[]]>
+  /** [toolIndex, colour, alpha%, width‰, ...points‰] per stroke — 0 is none, 1 is rainbow */
+  s: Array<[number, string | 0 | 1, number, number, ...number[]]>
 }
 
 const TOOL_ORDER = TOOLS.map(([t]) => t)
@@ -245,7 +316,7 @@ export function packDrawing(d: Drawing): PackedDrawing {
     b: d.bg ? d.bg.slice(1) : 0,
     s: d.strokes.map((k) => [
       Math.max(0, TOOL_ORDER.indexOf(k.t)),
-      k.c === NONE ? 0 : k.c.slice(1),
+      k.c === NONE ? 0 : k.c === RAINBOW ? 1 : k.c.slice(1),
       Math.round(k.a * 100),
       Math.round(k.w * 1000),
       ...k.p.map((n) => Math.round(n * 1000)),
@@ -258,10 +329,10 @@ function unpack(v: Record<string, unknown>): Drawing | null {
   const strokes: unknown[] = []
   for (const row of v.s.slice(0, MAX_STROKES)) {
     if (!Array.isArray(row) || row.length < 5) continue
-    const [ti, c, a, w, ...pts] = row as [number, string | 0, number, number, ...number[]]
+    const [ti, c, a, w, ...pts] = row as [number, string | 0 | 1, number, number, ...number[]]
     strokes.push({
       t: TOOL_ORDER[typeof ti === 'number' ? ti : 0] ?? 'brush',
-      c: c === 0 ? NONE : typeof c === 'string' ? `#${c}` : '#000000',
+      c: c === 0 ? NONE : c === 1 ? RAINBOW : typeof c === 'string' ? `#${c}` : '#000000',
       a: typeof a === 'number' ? a / 100 : 1,
       w: typeof w === 'number' ? w / 1000 : 0.01,
       p: pts.filter((n) => typeof n === 'number').map((n) => n / 1000),
