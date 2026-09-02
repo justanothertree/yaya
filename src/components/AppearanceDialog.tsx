@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useSyncExternalStore } from 'react'
 import { createPortal } from 'react-dom'
 import { PalettePicker } from '../theme/PalettePicker'
 import { FX_STYLE_OPTIONS } from '../ui/fxStyles'
@@ -17,6 +17,17 @@ import {
   type EffectCategory,
   type ScaleKind,
 } from '../ui/effectAmount'
+import {
+  applyLook,
+  captureLook,
+  myLooks,
+  randomLook,
+  removeLook,
+  saveLook,
+  STARTERS,
+  subscribeLooks,
+  type Look,
+} from '../ui/looks'
 import type { Theme } from './SettingsMenu'
 
 /**
@@ -54,10 +65,11 @@ export type AppearanceControls = {
   setCursor: (c: CursorSkin) => void
 }
 
-type Tab = 'colour' | 'background' | 'click' | 'trail' | 'cursor'
+type Tab = 'looks' | 'colour' | 'background' | 'click' | 'trail' | 'cursor'
 
 /** "Click" is not what you do on a phone, and the tab is the only place that word appears. */
 const tabsFor = (touch: boolean): Array<[Tab, string, string]> => [
+  ['looks', '🎭', 'Looks'],
   ['colour', '🎨', 'Colour'],
   ['background', '🌌', 'Background'],
   ['click', '✨', touch ? 'Tap' : 'Click'],
@@ -174,6 +186,152 @@ function RampStrip() {
   )
 }
 
+/**
+ * The name of an option, from the same tables the tiles are built from.
+ *
+ * ⚠️ LOOKED UP, never stored on the Look. A Look holds ids because ids are what the rest of
+ * the site understands; putting the label in as well would let the two disagree the first time
+ * something is renamed, and a saved Look would then describe itself wrongly forever.
+ */
+const LABELS = {
+  background: new Map(BACKDROPS.map(([id, , label]) => [id as string, label])),
+  click: new Map(FX_STYLE_OPTIONS.map(([id, , label]) => [id as string, label])),
+  trail: new Map(TRAIL_OPTIONS.map(([id, , label]) => [id as string, label])),
+}
+
+/**
+ * One saved appearance, as a button.
+ *
+ * ⚠️ the swatch shows the LOOK'S colours, not the page's. A row of tiles all painted in the
+ * current theme would say nothing about what pressing one does, which is the only question being
+ * asked here. Looks with no palette of their own show their theme instead of pretending to a
+ * colour they have not got.
+ */
+function LookCard({
+  look,
+  onApply,
+  onRemove,
+}: {
+  look: Look
+  onApply: () => void
+  onRemove?: () => void
+}) {
+  const p = look.palette
+  const parts = [
+    LABELS.background.get(look.background),
+    look.click ? LABELS.click.get(look.click) : null,
+    LABELS.trail.get(look.trail),
+  ].filter((x) => x && x !== 'None')
+  return (
+    <div className="look-card">
+      <button className="look-btn" onClick={onApply}>
+        <span
+          className="look-chip"
+          aria-hidden
+          style={p ? { background: p.bg, color: p.text, borderColor: p.accent } : undefined}
+        >
+          {p ? 'Aa' : look.theme === 'light' ? '☀' : look.theme === 'alt' ? '◐' : '🌙'}
+        </span>
+        <span className="look-text">
+          <span className="look-name">{look.name}</span>
+          <span className="look-parts muted">{parts.join(' · ') || 'Plain'}</span>
+        </span>
+      </button>
+      {onRemove && (
+        <button
+          className="btn btn-ghost look-del"
+          onClick={onRemove}
+          aria-label={`Delete ${look.name}`}
+          title="Delete"
+        >
+          ✕
+        </button>
+      )}
+    </div>
+  )
+}
+
+/**
+ * Looks: every other tab at once, under a name.
+ *
+ * ⚠️ applying goes through applyLook and therefore through the DIALOG'S OWN SETTERS, so the
+ * other tabs show the new answer rather than the one they were opened with. The amount and speed
+ * rows are the exception by construction, since they hold their own state, but each tab is
+ * unmounted while it is not showing and so re-reads storage on the way back in.
+ */
+function LooksTab({ c, touch }: { c: AppearanceControls; touch: boolean }) {
+  const mine = useSyncExternalStore(subscribeLooks, myLooks, myLooks)
+  const [name, setName] = useState('')
+
+  const save = () => {
+    if (!name.trim()) return
+    saveLook(captureLook(name, c))
+    setName('')
+  }
+
+  return (
+    <div className="appearance-body">
+      <p className="muted appearance-note">
+        A Look is every tab at once — colours, background, {touch ? 'tap' : 'click'}, trail and
+        pointer — under one name. Try one freely: save what you have first and it is one press to
+        come back.
+      </p>
+
+      <div className="look-save">
+        <input
+          className="look-input"
+          value={name}
+          maxLength={40}
+          placeholder="Name this look"
+          aria-label="Name for the look you are saving"
+          onChange={(e) => setName(e.target.value)}
+          onKeyDown={(e) => {
+            /* the site reads arrow keys as navigation, and this is a text field */
+            e.stopPropagation()
+            if (e.key === 'Enter') save()
+          }}
+        />
+        <button className="btn" disabled={!name.trim()} onClick={save}>
+          Save this
+        </button>
+        <button
+          className="btn btn-ghost"
+          onClick={() => applyLook(randomLook(), c)}
+          title="A random combination"
+        >
+          Shuffle
+        </button>
+      </div>
+
+      {mine.length > 0 && (
+        <>
+          <h4 className="look-head">Yours</h4>
+          <div className="look-grid">
+            {mine.map((l) => (
+              <LookCard
+                key={l.name}
+                look={l}
+                onApply={() => applyLook(l, c)}
+                onRemove={() => removeLook(l.name)}
+              />
+            ))}
+          </div>
+        </>
+      )}
+
+      <h4 className="look-head">To start from</h4>
+      <div className="look-grid">
+        {STARTERS.map((l) => (
+          <LookCard key={l.name} look={l} onApply={() => applyLook(l, c)} />
+        ))}
+      </div>
+      <p className="muted appearance-note">
+        Kept in this browser rather than on your account, so they stay on this device.
+      </p>
+    </div>
+  )
+}
+
 export function AppearanceDialog({
   controls,
   onClose,
@@ -181,7 +339,9 @@ export function AppearanceDialog({
   controls: AppearanceControls
   onClose: () => void
 }) {
-  const [tab, setTab] = useState<Tab>('colour')
+  /* Looks first: it is the one tab that shows what the other five add up to, and what every other
+     tab has in common is that nobody was ever going to find most of it on their own */
+  const [tab, setTab] = useState<Tab>('looks')
   /* a trail follows a pointer and a skin decorates one, so on a touchscreen both are choices
      about something that is not there — say so rather than offering dead buttons */
   const touch = useTouchOnly()
@@ -218,6 +378,8 @@ export function AppearanceDialog({
             </button>
           ))}
         </div>
+
+        {tab === 'looks' && <LooksTab c={c} touch={touch} />}
 
         {tab === 'colour' && (
           <div className="appearance-body">

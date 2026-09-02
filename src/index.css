@@ -4109,6 +4109,101 @@ select {
   font-size: 0.8rem;
 }
 
+/* ⚠️ saved looks
+   The one tab that is a LIST rather than a grid of tiles. A Look has a name worth reading and a
+   swatch worth seeing, neither of which fits in a 4rem square, so it gets a wide row instead of
+   being squeezed into the shape the other five tabs use. */
+.look-save {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.look-input {
+  flex: 1 1 8rem;
+  /* ⚠️ min-width, or the flex item refuses to shrink past its content and pushes the two
+     buttons off the edge of a narrow sheet */
+  min-width: 0;
+  padding: 0.4rem 0.55rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--control-bg);
+  color: var(--text);
+  font: inherit;
+}
+.look-head {
+  margin: 0.2rem 0 -0.3rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.look-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
+  gap: 0.4rem;
+}
+.look-card {
+  display: flex;
+  align-items: stretch;
+  gap: 0.25rem;
+  min-width: 0;
+}
+.look-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+  text-align: left;
+  appearance: none;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--control-bg);
+  color: var(--text);
+  font: inherit;
+  padding: 0.4rem;
+  cursor: pointer;
+}
+.look-btn:hover {
+  border-color: var(--accent);
+}
+.look-chip {
+  flex: none;
+  width: 2.1rem;
+  height: 2.1rem;
+  display: grid;
+  place-items: center;
+  border-radius: 7px;
+  border: 2px solid var(--border);
+  background: var(--bg);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+.look-text {
+  display: grid;
+  min-width: 0;
+}
+.look-name,
+.look-parts {
+  /* ⚠️ one line each, clipped. Names are typed by hand and a long one would otherwise make
+     its own card twice the height of the others and break the row. */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.look-name {
+  font-size: 0.86rem;
+}
+.look-parts {
+  font-size: 0.72rem;
+}
+.look-del {
+  flex: none;
+  padding: 0 0.45rem;
+}
+
 /* ── mouse trails ───────────────────────────────────────────────────────────
    They share the click-fx layer, so they inherit its fixed, pointer-events:none,
    never-eats-a-click guarantees. Only the shapes differ. */
