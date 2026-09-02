@@ -4,7 +4,7 @@ import { avatarStyle } from '../profile/look'
 import type { ProfileData } from '../profile/profileData'
 import { previewMember, PREVIEW_PROFILES } from '../dev/previewMember'
 import { applyPalette, derivePalette, loadPalette } from '../theme/customTheme'
-import { previewClickFx, setClickFxScope, type FxStyle } from '../ui/clickFx'
+import { isFxStyle, previewClickFx, setClickFxScope } from '../ui/clickFx'
 import { beatLink } from '../game/challenge'
 import { isBackdropId, setBackdropOverride, type BackdropId } from '../profile/backdrops'
 import { SiteBackdrop } from '../profile/SiteBackdrop'
@@ -206,8 +206,16 @@ export function Profile({ authed, username }: { authed: boolean; username?: stri
    *
    * Nothing to apply on your own page, and nothing to go stale.
    */
-  const theirFlair =
+  /**
+   * ⚠️ CHECKED, exactly as the backdrop below it is. set_my_profile_look validates a flair
+   * by SHAPE — a lowercase word of 40 characters or fewer — and not against any list, so what
+   * comes back is a string somebody else chose, not necessarily an effect that exists. It used to
+   * be cast straight to FxStyle, which made every click on their page throw for a visitor whose
+   * build did not have it.
+   */
+  const wornFlair =
     state.kind === 'ok' && !state.p.is_me && wearTheirLook ? (state.p.look?.flair ?? null) : null
+  const theirFlair = isFxStyle(wornFlair) ? wornFlair : null
   // derived up here beside the flair, and for the same reason: it drives a hook, and a hook
   // cannot sit below the loading / missing / error returns further down
   const theirLook =
@@ -232,7 +240,7 @@ export function Profile({ authed, username }: { authed: boolean; username?: stri
    */
   useEffect(() => {
     if (!theirFlair) return
-    setClickFxScope(lookRef.current, theirFlair as FxStyle)
+    setClickFxScope(lookRef.current, theirFlair)
     return () => setClickFxScope(null, null)
   }, [theirFlair])
 
@@ -511,7 +519,10 @@ export function Profile({ authed, username }: { authed: boolean; username?: stri
                   </button>
                 </>
               )}
-              {wearing?.flair && (
+              {/* theirFlair, not wearing.flair: the same value once it is known to name an
+                  effect this build has. An unchecked one both threw when pressed and put a
+                  stranger's arbitrary 40-character string on the page as a button label. */}
+              {theirFlair && (
                 <>
                   {' · '}
                   <button
@@ -519,14 +530,10 @@ export function Profile({ authed, username }: { authed: boolean; username?: stri
                     style={{ padding: '0 0.4rem', fontSize: '0.72rem' }}
                     onClick={(e) => {
                       const r = e.currentTarget.getBoundingClientRect()
-                      previewClickFx(
-                        wearing.flair as FxStyle,
-                        r.left + r.width / 2,
-                        r.top + r.height / 2,
-                      )
+                      previewClickFx(theirFlair, r.left + r.width / 2, r.top + r.height / 2)
                     }}
                   >
-                    ✨ {wearing.flair}
+                    ✨ {theirFlair}
                   </button>
                 </>
               )}

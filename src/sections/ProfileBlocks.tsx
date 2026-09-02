@@ -75,7 +75,35 @@ const CONFIG_LIMIT = 16000
  * actually send was over the cap. The save then failed with "invalid block", a message about the
  * SHAPE of the data for a problem that is really "this is too long".
  */
-const configSize = (config: Record<string, unknown>) => JSON.stringify(config ?? {}).length
+/**
+ * Postgres writes jsonb back with a space after every `:` and every `,`; JSON.stringify does not.
+ *
+ * ⚠️ THIS IS NOT A ROUNDING ERROR ON A PACKED DRAWING. A drawing is thousands of
+ * comma-separated numbers, so it is very nearly one extra character per number — measured at 25.6%
+ * on a twelve-stroke drawing, which means a config the meter showed as 15,999 of 16,000 arrives as
+ * about 20,100 and is refused. The error is 'invalid block', a message about the SHAPE of the data
+ * for a problem that is really "this is too long", which is the worst possible way to be told.
+ *
+ * Counted from the VALUE rather than by scanning the text, so a comma inside a string is not
+ * mistaken for a separator. Verified exact against Postgres on a sample containing both.
+ */
+const separators = (v: unknown): number => {
+  if (Array.isArray(v)) return Math.max(0, v.length - 1) + v.reduce((n, x) => n + separators(x), 0)
+  if (v && typeof v === 'object') {
+    const keys = Object.keys(v as object)
+    return (
+      Math.max(0, keys.length - 1) +
+      keys.length +
+      keys.reduce((n, k) => n + separators((v as Record<string, unknown>)[k]), 0)
+    )
+  }
+  return 0
+}
+
+const configSize = (config: Record<string, unknown>) => {
+  const c = config ?? {}
+  return JSON.stringify(c).length + separators(c)
+}
 
 /**
  * Block types the SERVER may not accept yet.

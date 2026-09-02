@@ -1757,7 +1757,16 @@ function burst(x: number, y: number, target: EventTarget | null) {
   if (live >= MAX_BURSTS) return
   const inScope =
     scopeEl != null && scopeStyle != null && target instanceof Node && scopeEl.contains(target)
-  BUILDERS[inScope ? scopeStyle! : style](layer(), x, y)
+  /**
+   * ⚠️ THE LOOKUP FALLS BACK RATHER THAN BEING ASSUMED TOTAL. The scoped style comes off
+   * somebody else's profile, so it is a string from the network wearing a type; if it names an
+   * effect this build has not got, BUILDERS[it] is undefined and calling it throws inside a
+   * pointerdown listener — every click on that page, for every visitor. Which is reachable
+   * without anyone being hostile: a visitor on a tab opened before the last deploy meets a flair
+   * that only exists after it.
+   */
+  const draw = BUILDERS[inScope ? scopeStyle! : style] ?? BUILDERS[style] ?? sparks
+  draw(layer(), x, y)
 }
 
 /**
@@ -1774,6 +1783,17 @@ function burst(x: number, y: number, target: EventTarget | null) {
  */
 let scopeEl: Element | null = null
 let scopeStyle: FxStyle | null = null
+
+/**
+ * Whether a string names an effect this build can actually draw.
+ *
+ * ⚠️ ASKED OF BUILDERS, not of the picker's list. The two are meant to agree and a
+ * validator built on the wrong one would pass an id that nothing can draw. hasOwnProperty rather
+ * than `in`, because the server's rule for a flair is a lowercase word — and 'constructor' is a
+ * lowercase word that every object answers to.
+ */
+export const isFxStyle = (v: unknown): v is FxStyle =>
+  typeof v === 'string' && Object.prototype.hasOwnProperty.call(BUILDERS, v)
 
 /** Give one element its own style. Pass (null, null) to drop the override. */
 export function setClickFxScope(el: Element | null, fxStyle: FxStyle | null) {
@@ -1814,7 +1834,8 @@ export function setClickFxStyle(next: FxStyle) {
  */
 export function previewClickFx(fxStyle: FxStyle, x: number, y: number) {
   if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return
-  BUILDERS[fxStyle](layer(), x, y)
+  // same reason as burst: one caller previews a style that came off a profile
+  BUILDERS[fxStyle]?.(layer(), x, y)
 }
 
 /**
