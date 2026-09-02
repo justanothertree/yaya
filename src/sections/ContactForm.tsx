@@ -2,8 +2,13 @@ import { useEffect, useRef, useState, type FormEvent, type CSSProperties } from 
 import { site } from '../config/site'
 import { getSupabaseClient } from '../finance/client'
 
+/** Must stay in step with the length() guard in submit_contact_message. */
+const MESSAGE_MAX = 5000
+
 export function ContactForm() {
   const [status, setStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle')
+  /** how much has been written, so the counter can appear only when it is close to mattering */
+  const [typed, setTyped] = useState(0)
   /** what the form service said went wrong, when it said anything */
   const [why, setWhy] = useState('')
   const formRef = useRef<HTMLFormElement>(null)
@@ -114,9 +119,22 @@ export function ContactForm() {
           <span>Leave this field empty</span>
           <input name="_gotcha" tabIndex={-1} autoComplete="off" />
         </label>
+        {/**
+         * ⚠️ The caps match submit_contact_message exactly — 200, 320 and 5000. The server refuses
+         * anything longer with "that is longer than this form accepts", which does not say WHICH
+         * field or by how much, and you would only find out after writing the whole thing. Setting
+         * them here makes that refusal unreachable rather than merely survivable.
+         */}
         <label style={labelStyle}>
           <span>Name</span>
-          <input name="name" placeholder="Your name" required style={fieldStyle} inputMode="text" />
+          <input
+            name="name"
+            placeholder="Your name"
+            required
+            maxLength={200}
+            style={fieldStyle}
+            inputMode="text"
+          />
         </label>
         <label style={labelStyle}>
           <span>Email</span>
@@ -125,6 +143,7 @@ export function ContactForm() {
             type="email"
             placeholder="you@example.com"
             required
+            maxLength={320}
             style={fieldStyle}
             inputMode="email"
           />
@@ -136,8 +155,17 @@ export function ContactForm() {
             placeholder="Your message"
             rows={5}
             required
+            maxLength={MESSAGE_MAX}
             style={fieldStyle}
+            onChange={(e) => setTyped(e.target.value.length)}
           />
+          {/* only near the end: a counter on an empty box is clutter, and 5000 characters is far
+              more than anyone writing a note here will use */}
+          {typed > MESSAGE_MAX - 500 && (
+            <span className="muted" style={{ fontSize: '0.75rem' }}>
+              {MESSAGE_MAX - typed} characters left
+            </span>
+          )}
         </label>
         <button
           className="btn"
