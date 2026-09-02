@@ -5890,3 +5890,36 @@ a.cz-msg-author:focus-visible {
   flex: 1 1 auto;
   min-height: 6rem;
 }
+
+/* Pictures you have kept, and who you are drawing with. */
+.paint-gallery {
+  display: block;
+  width: 100%;
+}
+.paint-gallery-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+.paint-gallery-list li {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+  padding: 0.3rem 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 55%, transparent);
+}
+.paint-gallery-name {
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+.paint-gallery-meta {
+  font-size: 0.72rem;
+  margin-right: auto;
+}
+.paint-peers {
+  font-size: 0.75rem;
+}

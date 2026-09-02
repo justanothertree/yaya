@@ -1,4 +1,4 @@
-import { useCallback, useContext, useEffect, useRef, useState } from 'react'
+import { useCallback, useContext, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import {
   NONE,
   TOOLS,
@@ -9,6 +9,9 @@ import {
   type Tool,
 } from '../draw/strokes'
 import { InCanvasWindow } from '../circuit/ui/canvasContext'
+import { gallery, removeArt, saveArt, subscribeGallery, type Art } from '../draw/gallery'
+import { drawParty } from '../party/draw'
+import { useVoiceSession } from '../voice/useVoiceSession'
 
 /**
  * A place to draw.
@@ -78,6 +81,26 @@ export function PaintRoom() {
   const [alpha, setAlpha] = useState(1)
   const [width, setWidth] = useState(0.008)
   const live = useRef<Stroke | null>(null)
+  const [galleryOpen, setGalleryOpen] = useState(false)
+  const saved = useSyncExternalStore(subscribeGallery, gallery, gallery)
+  const call = useVoiceSession()
+  const party = useSyncExternalStore(drawParty.subscribe, drawParty.getState, drawParty.getState)
+  const [note, setNote] = useState<string | null>(null)
+
+  /**
+   * Somebody else's stroke.
+   *
+   * ⚠️ It goes into the SAME list as your own, so it is undoable, savable and part of the
+   * picture exactly like anything you drew. Keeping other people's marks in a separate layer
+   * would mean two pictures that only look like one, and a save that quietly dropped half of what
+   * is on screen.
+   */
+  useEffect(() => drawParty.start(), [])
+  useEffect(() => {
+    drawParty.setHandler((s) => setStrokes((prev) => [...prev, s]))
+    return () => drawParty.setHandler(null)
+  }, [])
+  useEffect(() => () => drawParty.setOn(false), [])
 
   /** the drawing, as it would be saved */
   const drawingRef = useRef<Drawing>({
@@ -250,6 +273,9 @@ export function PaintRoom() {
     live.current = null
     setUndone([])
     setStrokes((prev) => [...prev, s])
+    // ⚠️ sent on COMPLETION, never while dragging — see party/draw.ts for why a half-drawn
+    // stroke is not something the room should be shown
+    drawParty.send(s)
   }
 
   const onDown = (e: React.PointerEvent) => {
@@ -494,6 +520,45 @@ export function PaintRoom() {
         >
           ⤢ Fit
         </button>
+        <button
+          className={'btn' + (galleryOpen ? ' is-on' : '')}
+          aria-pressed={galleryOpen}
+          onClick={() => setGalleryOpen((v) => !v)}
+          title="Pictures you have kept"
+        >
+          🖼 Gallery{saved.length ? ` · ${saved.length}` : ''}
+        </button>
+        <button
+          className="btn"
+          disabled={!strokes.length}
+          onClick={() => {
+            const name = window.prompt('Name this picture', '')?.trim() ?? ''
+            if (!name) return
+            const item = saveArt({ ...drawingRef.current, name })
+            setNote(item ? `Kept “${item.name}”` : 'Nothing to keep yet.')
+            window.setTimeout(() => setNote(null), 4000)
+            if (item) setGalleryOpen(true)
+          }}
+        >
+          ⬇ Keep
+        </button>
+        {call.inCall && (
+          <button
+            className={'btn' + (party.on ? ' is-on' : '')}
+            aria-pressed={party.on}
+            onClick={() => drawParty.setOn(!party.on)}
+            title={
+              party.on
+                ? 'Stop sending your strokes to the call'
+                : 'Draw together — finished strokes go to everyone in the call'
+            }
+          >
+            {party.on ? '◉ Drawing together' : '◎ Draw together'}
+          </button>
+        )}
+        {party.on && Object.keys(party.peers).length > 0 && (
+          <span className="muted paint-peers">with {Object.values(party.peers).join(', ')}</span>
+        )}
         <span className="muted paint-count">
           {strokes.length} stroke{strokes.length === 1 ? '' : 's'}
         </span>
@@ -502,6 +567,50 @@ export function PaintRoom() {
       {/* ⚠️ The board is transparent, not white. A drawing has no background of its own, which is
           what lets the same picture sit on a light profile and a dark one — so the checkerboard
           behind it is the page telling you where the paint ends and the page begins. */}
+      {note && (
+        <p className="muted paint-note" role="status">
+          {note}
+        </p>
+      )}
+
+      {galleryOpen && (
+        <div className="paint-row paint-gallery">
+          {!saved.length ? (
+            <span className="muted">
+              Nothing kept yet. Draw something, then press <strong>Keep</strong>.
+            </span>
+          ) : (
+            <ul className="paint-gallery-list">
+              {saved.map((a: Art) => (
+                <li key={a.id}>
+                  <span className="paint-gallery-name">🖼 {a.name}</span>
+                  <span className="muted paint-gallery-meta">{a.art.strokes.length} strokes</span>
+                  <button
+                    className="btn"
+                    onClick={() => {
+                      setUndone([])
+                      setBg(a.art.bg)
+                      setStrokes(a.art.strokes)
+                    }}
+                    title="Open this, replacing what is on the board"
+                  >
+                    Open
+                  </button>
+                  <button
+                    className="btn"
+                    onClick={() => {
+                      if (window.confirm(`Delete “${a.name}”?`)) removeArt(a.id)
+                    }}
+                  >
+                    ✕
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+
       {/* ⚠️ The paper is a BACKDROP, not paint. See `bg` above — this is the same colour a
           profile block will put behind the strokes, so what you draw against is what other
           people will see it against. With no paper the checkerboard shows through, which is how

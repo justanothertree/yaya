@@ -102,6 +102,9 @@ const num = (v: unknown, lo: number, hi: number, d: number) =>
 export function readDrawing(v: unknown): Drawing | null {
   if (!v || typeof v !== 'object') return null
   const o = v as Record<string, unknown>
+  // ⚠️ both forms, forever — drawings kept before the compact one existed are in people's
+  // galleries, and a reader that dropped them would quietly delete work
+  if (o.v === 2 || Array.isArray(o.s)) return unpack(o)
   if (!Array.isArray(o.strokes)) return null
   const strokes: Stroke[] = []
   for (const raw of o.strokes.slice(0, MAX_STROKES)) {
@@ -207,6 +210,69 @@ export function paintStroke(ctx: CanvasRenderingContext2D, s: Stroke, w: number,
     }
   }
   ctx.restore()
+}
+
+/**
+ * The same drawing, small enough to live in a profile block.
+ *
+ * ⚠️ Points become INTEGER THOUSANDTHS. A brush stroke is a list of fractions, and JSON writes
+ * 0.4833333333333333 as eighteen characters of precision nobody can see — the canvas is at most a
+ * couple of thousand pixels across, so a thousandth is already finer than a pixel. Measured on a
+ * real doodle it is roughly a five-fold saving, which is the difference between a drawing fitting
+ * on a profile and not.
+ *
+ * The tool becomes its index and the colour loses its hash, for the same reason: this is the same
+ * picture written down more tersely, not a second format with its own meaning. It goes back out
+ * through readDrawing, so a packed drawing gets exactly the same validation as any other.
+ */
+export type PackedDrawing = {
+  v: 2
+  n: string
+  r: number
+  /** background, hash-less hex, or 0 for none */
+  b: string | 0
+  /** [toolIndex, colour, alpha%, width‰, ...points‰] per stroke */
+  s: Array<[number, string | 0, number, number, ...number[]]>
+}
+
+const TOOL_ORDER = TOOLS.map(([t]) => t)
+
+export function packDrawing(d: Drawing): PackedDrawing {
+  return {
+    v: 2,
+    n: d.name,
+    r: Math.round(d.ratio * 100) / 100,
+    b: d.bg ? d.bg.slice(1) : 0,
+    s: d.strokes.map((k) => [
+      Math.max(0, TOOL_ORDER.indexOf(k.t)),
+      k.c === NONE ? 0 : k.c.slice(1),
+      Math.round(k.a * 100),
+      Math.round(k.w * 1000),
+      ...k.p.map((n) => Math.round(n * 1000)),
+    ]) as PackedDrawing['s'],
+  }
+}
+
+function unpack(v: Record<string, unknown>): Drawing | null {
+  if (!Array.isArray(v.s)) return null
+  const strokes: unknown[] = []
+  for (const row of v.s.slice(0, MAX_STROKES)) {
+    if (!Array.isArray(row) || row.length < 5) continue
+    const [ti, c, a, w, ...pts] = row as [number, string | 0, number, number, ...number[]]
+    strokes.push({
+      t: TOOL_ORDER[typeof ti === 'number' ? ti : 0] ?? 'brush',
+      c: c === 0 ? NONE : typeof c === 'string' ? `#${c}` : '#000000',
+      a: typeof a === 'number' ? a / 100 : 1,
+      w: typeof w === 'number' ? w / 1000 : 0.01,
+      p: pts.filter((n) => typeof n === 'number').map((n) => n / 1000),
+    })
+  }
+  return readDrawing({
+    name: v.n,
+    ratio: v.r,
+    bg: typeof v.b === 'string' ? `#${v.b}` : null,
+    strokes,
+  })
 }
 
 /** Replay a whole drawing onto a blank context. */

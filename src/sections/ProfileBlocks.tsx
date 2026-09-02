@@ -4,6 +4,9 @@ import { BANNER_STYLES, bannerBackground, type BannerStyle } from '../profile/lo
 import { SongBlock, VisualBlock } from '../profile/ProfileMusic'
 import { songFromConfig } from '../profile/songBlockConfig'
 import { packSong } from '../audio/songFile'
+import { ArtBlock } from '../profile/ProfileArt'
+import { gallery, subscribeGallery, type Art } from '../draw/gallery'
+import { packDrawing, readDrawing } from '../draw/strokes'
 import { library, subscribeLibrary, type LibraryItem } from '../audio/library'
 import { VISUALS } from '../audio/visualModes'
 import { PALETTES } from '../audio/palettes'
@@ -35,6 +38,7 @@ export type ProfileBlock = {
     | 'trophies'
     | 'song'
     | 'visualizer'
+    | 'art'
   size: 'small' | 'medium' | 'large'
   config: Record<string, unknown>
   visibility: Tier
@@ -82,6 +86,7 @@ const BLOCK_LABEL: Record<ProfileBlock['block_type'], string> = {
   trophies: '🏆 Trophies',
   song: '🎵 Song',
   visualizer: '◉ Visualiser',
+  art: '🖼 Art',
 }
 
 /**
@@ -167,6 +172,9 @@ function BlockView({
     }
     case 'visualizer':
       return <VisualBlock cfg={cfg} />
+    /* ⚠️ Strokes, not an image — the visitor's browser draws it. See ProfileArt. */
+    case 'art':
+      return <ArtBlock cfg={cfg} />
     case 'bio': {
       const text = typeof cfg.text === 'string' ? cfg.text : ''
       if (!text.trim()) return null
@@ -498,6 +506,8 @@ function isBlockEmpty(block: ProfileBlock): boolean {
   if (block.block_type === 'bio') return !txt
   if (block.block_type === 'status') return !txt
   if (block.block_type === 'song') return !songFromConfig(block.config)
+  if (block.block_type === 'art')
+    return !(Array.isArray(block.config.art) && block.config.art.length)
   return false
 }
 
@@ -521,6 +531,10 @@ function blockSummary(block: ProfileBlock): string {
     case 'visualizer': {
       const m = typeof block.config.mode === 'string' ? block.config.mode : 'bars'
       return VISUALS.find(([id]) => id === m)?.[2] ?? 'Bars'
+    }
+    case 'art': {
+      const n = Array.isArray(block.config.art) ? block.config.art.length : 0
+      return n ? `${n} picture${n === 1 ? '' : 's'}` : 'nothing picked yet'
     }
     default:
       return 'fills in on its own'
@@ -585,6 +599,78 @@ function SongPicker({
         </span>
       )}
     </label>
+  )
+}
+
+/**
+ * Choosing which of your drawings go on the page, and whether they shuffle.
+ *
+ * ⚠️ The PACKED form goes into the block, and the running total is measured against the same
+ * limit the server enforces. Several pictures in one block is exactly where a config gets big, so
+ * what you can add is bounded by real size rather than by a guessed number of items — a few
+ * simple doodles fit where two dense ones do not, and the line underneath says which case you are
+ * in before a save can fail.
+ */
+function ArtPicker({
+  value,
+  onChange,
+}: {
+  value: Record<string, unknown>
+  onChange: (config: Record<string, unknown>) => void
+}) {
+  const items = useSyncExternalStore(subscribeGallery, gallery, gallery)
+  const chosen = Array.isArray(value.art) ? value.art : []
+  const used = JSON.stringify(chosen).length
+  const names = chosen.map((a) => readDrawing(a)?.name ?? '?')
+
+  if (!items.length)
+    return (
+      <p className="muted" style={{ margin: 0, fontSize: '0.85rem' }}>
+        Nothing in your gallery yet. Draw something in the Paint room and press{' '}
+        <strong>Keep</strong>, then come back.
+      </p>
+    )
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+      <div className="fx-style-row">
+        {items.map((a: Art) => {
+          const on = names.includes(a.name)
+          return (
+            <button
+              key={a.id}
+              className={'fx-style-btn' + (on ? ' is-on' : '')}
+              aria-pressed={on}
+              onClick={() =>
+                onChange({
+                  ...value,
+                  art: on
+                    ? chosen.filter((c) => readDrawing(c)?.name !== a.name)
+                    : [...chosen, packDrawing(a.art)],
+                })
+              }
+            >
+              <span aria-hidden>🖼</span>
+              <span className="fx-style-label">{a.name}</span>
+            </button>
+          )
+        })}
+      </div>
+      <label className="inst-pick" style={{ display: 'flex', gap: '0.4rem' }}>
+        <input
+          type="checkbox"
+          checked={value.shuffle !== false}
+          onChange={(e) => onChange({ ...value, shuffle: e.target.checked })}
+        />
+        <span className="muted">Shuffle through them</span>
+      </label>
+      <span className="muted" style={{ fontSize: '0.75rem' }}>
+        {chosen.length} chosen{' '}
+        {used > CONFIG_LIMIT
+          ? '— too much for one block, take one out'
+          : `· ${Math.round((used / CONFIG_LIMIT) * 100)}% of the room a block has`}
+      </span>
+    </div>
   )
 }
 
@@ -778,6 +864,10 @@ function BlockEditRow({
               value={block.config}
               onChange={(config) => onChange({ ...block, config })}
             />
+          )}
+
+          {block.block_type === 'art' && (
+            <ArtPicker value={block.config} onChange={(config) => onChange({ ...block, config })} />
           )}
 
           {block.block_type === 'visualizer' && (
