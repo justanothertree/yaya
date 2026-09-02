@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type PointerEvent as ReactPointerEvent,
+} from 'react'
 import { getSupabaseClient } from '../finance/client'
 import { BANNER_STYLES, bannerBackground, type BannerStyle } from '../profile/look'
 import { SongBlock, VisualBlock } from '../profile/ProfileMusic'
@@ -494,13 +501,7 @@ function BannerPicker({
   )
 }
 
-/**
- * What a collapsed row says about itself.
- *
- * A list of seven labels is not a page you can recognise — the point of collapsing is that you
- * can still see WHICH bio and WHICH status without opening each one.
- */
-/** The blocks BlockView renders as nothing, so the editor can say so instead of showing a gap. */
+/** A block with nothing in it yet, so the canvas can say so instead of drawing a blank card. */
 function isBlockEmpty(block: ProfileBlock): boolean {
   const txt = typeof block.config.text === 'string' ? block.config.text.trim() : ''
   if (block.block_type === 'bio') return !txt
@@ -509,36 +510,6 @@ function isBlockEmpty(block: ProfileBlock): boolean {
   if (block.block_type === 'art')
     return !(Array.isArray(block.config.art) && block.config.art.length)
   return false
-}
-
-function blockSummary(block: ProfileBlock): string {
-  const txt = typeof block.config.text === 'string' ? block.config.text.trim() : ''
-  switch (block.block_type) {
-    case 'bio':
-      return txt ? txt.replace(/\s+/g, ' ').slice(0, 48) : 'nothing written yet'
-    case 'status':
-      return txt ? `${(block.config.emoji as string) ?? '💭'} ${txt.slice(0, 36)}` : 'no status set'
-    case 'banner': {
-      const style = typeof block.config.style === 'string' ? block.config.style : 'aurora'
-      return BANNER_STYLES[style as BannerStyle]?.label ?? 'Aurora'
-    }
-    case 'activity':
-      return `last ${typeof block.config.limit === 'number' ? block.config.limit : 10}`
-    case 'song': {
-      const song = songFromConfig(block.config)
-      return song ? song.name : 'nothing picked yet'
-    }
-    case 'visualizer': {
-      const m = typeof block.config.mode === 'string' ? block.config.mode : 'bars'
-      return VISUALS.find(([id]) => id === m)?.[2] ?? 'Bars'
-    }
-    case 'art': {
-      const n = Array.isArray(block.config.art) ? block.config.art.length : 0
-      return n ? `${n} picture${n === 1 ? '' : 's'}` : 'nothing picked yet'
-    }
-    default:
-      return 'fills in on its own'
-  }
 }
 
 /**
@@ -762,264 +733,112 @@ function VisualPicker({
   )
 }
 
-function BlockEditRow({
+/**
+ * The fields for ONE block's content — no chrome, no preview, no toolbar.
+ *
+ * ⚠️ Pulled out of the old row so the same fields can sit in an inspector beside a live page, and
+ * later beside a different page altogether. What a bio needs is a text box wherever it is being
+ * edited; the surrounding arrangement is not its business.
+ */
+function BlockFields({
   block,
   username,
-  activity,
-  trophies,
-  snakeBest,
-  open,
-  onToggle,
   onChange,
-  onRemove,
-  onMove,
-  isFirst,
-  isLast,
 }: {
   block: ProfileBlock
   username: string
-  /** the same data the reader's page gets, because the preview below IS the reader's page */
-  activity: ActivityItem[]
-  trophies: ProfileTrophy[]
-  snakeBest: { score: number; game_mode: string | null } | null
-  open: boolean
-  onToggle: () => void
   onChange: (next: ProfileBlock) => void
-  onRemove: () => void
-  onMove: (dir: -1 | 1) => void
-  isFirst: boolean
-  isLast: boolean
 }) {
-  /**
-   * Bring the row you just opened into view.
-   *
-   * The list is long enough that the row you tap can be off-screen entirely by the time it
-   * expands — and a control you cannot see is a control that does not work.
-   */
-  const rowRef = useRef<HTMLDivElement>(null)
-  useEffect(() => {
-    if (!open) return
-    const el = rowRef.current
-    if (!el) return
-    const r = el.getBoundingClientRect()
-    if (r.top >= 0 && r.top < window.innerHeight * 0.5) return // already comfortably in view
-    /**
-     * ⚠️ 'auto', not 'smooth'. Smooth scrolling is an animation, and an animation that does not
-     * run leaves you exactly where you were — measured here doing nothing at all while 'auto'
-     * moved 1260px. Same family as requestAnimationFrame never firing in a hidden tab. This is
-     * the fix for "editing doesn't work", so it has to be the version that can be verified,
-     * not the prettier one. And it answers a tap, where instant reads as responsive anyway.
-     */
-    el.scrollIntoView({ block: 'start', behavior: 'auto' })
-  }, [open])
-
   const setCfg = (patch: Record<string, unknown>) =>
     onChange({ ...block, config: { ...block.config, ...patch } })
-  const cycleSize = () =>
-    onChange({
-      ...block,
-      size: block.size === 'small' ? 'medium' : block.size === 'medium' ? 'large' : 'small',
-    })
 
-  /**
-   * Collapsed by default, one open at a time.
-   *
-   * Every block used to carry its whole toolbar permanently: five controls that measured 113px
-   * of chrome per block, 678px across six of them, and 2.5 phone screens to arrange a page.
-   * The list was the one thing you could not see. So the header is now the three things you do
-   * while SCANNING — move up, move down, remove — and everything you do while EDITING lives
-   * inside the block you opened.
-   */
-  return (
-    <div className="card profile-editrow" data-open={open || undefined} ref={rowRef}>
-      <div className="profile-editrow-head">
-        <button
-          type="button"
-          className="profile-editrow-toggle"
-          aria-expanded={open}
-          onClick={onToggle}
-        >
-          <span className="profile-editrow-caret" aria-hidden>
-            {open ? '▾' : '▸'}
-          </span>
-          <strong>{BLOCK_LABEL[block.block_type]}</strong>
-          <span className="muted profile-editrow-sum">{blockSummary(block)}</span>
-        </button>
-        <span className="profile-editrow-actions">
-          <button className="btn" disabled={isFirst} onClick={() => onMove(-1)} title="Move up">
-            ↑
-          </button>
-          <button className="btn" disabled={isLast} onClick={() => onMove(1)} title="Move down">
-            ↓
-          </button>
-          <button className="btn" onClick={onRemove} title="Remove">
-            ✕
-          </button>
-        </span>
-      </div>
-      {!open ? null : (
-        <>
-          {block.block_type === 'song' && (
-            <SongPicker
-              value={block.config}
-              onChange={(config) => onChange({ ...block, config })}
-            />
-          )}
-
-          {block.block_type === 'art' && (
-            <ArtPicker value={block.config} onChange={(config) => onChange({ ...block, config })} />
-          )}
-
-          {block.block_type === 'visualizer' && (
-            <VisualPicker
-              value={block.config}
-              onChange={(config) => onChange({ ...block, config })}
-            />
-          )}
-
-          {block.block_type === 'bio' && (
-            <textarea
-              className="profile-editrow-textarea"
-              placeholder="Say something about yourself…"
-              value={typeof block.config.text === 'string' ? block.config.text : ''}
-              onChange={(e) => setCfg({ text: e.target.value.slice(0, 2000) })}
-              rows={4}
-            />
-          )}
-          {block.block_type === 'banner' && (
-            <BannerPicker config={block.config} username={username} onChange={setCfg} />
-          )}
-          {block.block_type === 'activity' && (
-            <label
-              className="muted"
-              style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}
-            >
-              Show
-              <input
-                type="number"
-                min={1}
-                max={20}
-                style={{ width: '4rem' }}
-                value={typeof block.config.limit === 'number' ? block.config.limit : 10}
-                onChange={(e) =>
-                  setCfg({ limit: Math.min(20, Math.max(1, Number(e.target.value) || 10)) })
-                }
-              />
-              items
-            </label>
-          )}
-          {block.block_type === 'stats' && (
-            <p className="muted" style={{ margin: 0 }}>
-              Fills in automatically from your Snake results — nothing to set here.
-            </p>
-          )}
-          {block.block_type === 'status' && (
-            <div style={{ display: 'grid', gap: '0.4rem' }}>
-              <div className="profile-mood-row">
-                {MOODS.map((m) => (
-                  <button
-                    key={m}
-                    className={
-                      'profile-mood' + ((block.config.emoji ?? '💭') === m ? ' is-on' : '')
-                    }
-                    onClick={() => setCfg({ emoji: m })}
-                    aria-pressed={(block.config.emoji ?? '💭') === m}
-                    title={`Use ${m}`}
-                  >
-                    {m}
-                  </button>
-                ))}
-              </div>
-              <input
-                placeholder="What are you up to?"
-                value={typeof block.config.text === 'string' ? block.config.text : ''}
-                onChange={(e) => setCfg({ text: e.target.value.slice(0, 120) })}
-              />
-            </div>
-          )}
-          {block.block_type === 'trophies' && (
-            <p className="muted" style={{ margin: 0 }}>
-              Fills in from the Snake rounds you&apos;ve won — nothing to set here.
-            </p>
-          )}
-          {block.block_type === 'guestbook' && (
-            <p className="muted" style={{ margin: 0 }}>
-              Friends can leave notes on your page. Whoever this block is visible to can write in it
-              — you can remove anything left here.
-            </p>
-          )}
-
-          {/* Settings, in words. These used to be two nameless controls in the toolbar: a button
-              that said "medium" and a dropdown that said "Friends", neither of which told you
-              what it was for. They are used once per block, so they belong down here with a
-              label rather than up there taking the room the block's own name needed. */}
-          <div className="profile-editrow-settings">
-            <label>
-              <span className="muted">Who can see this</span>
-              <select
-                className="btn"
-                value={block.visibility}
-                onChange={(e) => onChange({ ...block, visibility: e.target.value as Tier })}
-              >
-                {(Object.keys(TIER_LABEL) as Tier[]).map((t) => (
-                  <option key={t} value={t}>
-                    {TIER_LABEL[t]}
-                  </option>
-                ))}
-              </select>
-            </label>
-            {/* Hidden on a phone: every width renders as one full-width column there (see
-                .profile-block under the 700px breakpoint), so the control provably does nothing
-                on the device you'd be tapping it with.
-                Named by what they DO, because "small / medium / large" described nothing you
-                could see — and until today two of them were the same rule. */}
-            <label className="profile-editrow-size">
-              <span className="muted">Width of the page</span>
-              <button className="btn" onClick={cycleSize} title="Cycle width">
-                {block.size === 'small'
-                  ? 'a third'
-                  : block.size === 'medium'
-                    ? 'a half'
-                    : 'full width'}
-              </button>
-            </label>
-          </div>
-        </>
-      )}
-
-      {/**
-       * The block as a reader sees it — same component, same props.
-       *
-       * ⚠️ BELOW the controls, not above them. It used to sit between the header and the editor,
-       * which put the controls 152px further down: on a phone you tapped a block and NOTHING
-       * VISIBLY CHANGED, because everything that opened was below the fold. That reads as
-       * "editing doesn't work, I can only add blocks and rearrange", which is exactly what it
-       * was reported as.
-       *
-       * Underneath is the better place regardless: you change a setting and watch the result
-       * move directly beneath your finger.
-       */}
-      <div className="profile-editrow-preview">
-        {open && (
-          <div className="muted profile-editrow-previewlabel">How it looks on your page</div>
-        )}
-        {isBlockEmpty(block) ? (
-          <p className="muted" style={{ margin: 0, fontSize: '0.85rem' }}>
-            Nothing in this one yet — {open ? 'fill it in above' : 'tap to fill it in'}.
-          </p>
-        ) : (
-          <BlockView
-            block={block}
-            activity={activity}
-            trophies={trophies}
-            snakeBest={snakeBest}
-            username={username}
-            isMe
+  switch (block.block_type) {
+    case 'song':
+      return (
+        <SongPicker value={block.config} onChange={(config) => onChange({ ...block, config })} />
+      )
+    case 'art':
+      return (
+        <ArtPicker value={block.config} onChange={(config) => onChange({ ...block, config })} />
+      )
+    case 'visualizer':
+      return (
+        <VisualPicker value={block.config} onChange={(config) => onChange({ ...block, config })} />
+      )
+    case 'bio':
+      return (
+        <textarea
+          className="profile-editrow-textarea"
+          placeholder="Say something about yourself…"
+          value={typeof block.config.text === 'string' ? block.config.text : ''}
+          onChange={(e) => setCfg({ text: e.target.value.slice(0, 2000) })}
+          rows={4}
+        />
+      )
+    case 'banner':
+      return <BannerPicker config={block.config} username={username} onChange={setCfg} />
+    case 'activity':
+      return (
+        <label className="muted" style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
+          Show
+          <input
+            type="number"
+            min={1}
+            max={20}
+            style={{ width: '4rem' }}
+            value={typeof block.config.limit === 'number' ? block.config.limit : 10}
+            onChange={(e) =>
+              setCfg({ limit: Math.min(20, Math.max(1, Number(e.target.value) || 10)) })
+            }
           />
-        )}
-      </div>
-    </div>
-  )
+          items
+        </label>
+      )
+    case 'status':
+      return (
+        <div style={{ display: 'grid', gap: '0.4rem' }}>
+          <div className="profile-mood-row">
+            {MOODS.map((m) => (
+              <button
+                key={m}
+                className={'profile-mood' + ((block.config.emoji ?? '💭') === m ? ' is-on' : '')}
+                onClick={() => setCfg({ emoji: m })}
+                aria-pressed={(block.config.emoji ?? '💭') === m}
+                title={`Use ${m}`}
+              >
+                {m}
+              </button>
+            ))}
+          </div>
+          <input
+            placeholder="What are you up to?"
+            value={typeof block.config.text === 'string' ? block.config.text : ''}
+            onChange={(e) => setCfg({ text: e.target.value.slice(0, 120) })}
+          />
+        </div>
+      )
+    case 'stats':
+      return (
+        <p className="muted" style={{ margin: 0 }}>
+          Fills in automatically from your Snake results — nothing to set here.
+        </p>
+      )
+    case 'trophies':
+      return (
+        <p className="muted" style={{ margin: 0 }}>
+          Fills in from the Snake rounds you&apos;ve won — nothing to set here.
+        </p>
+      )
+    case 'guestbook':
+      return (
+        <p className="muted" style={{ margin: 0 }}>
+          Friends can leave notes on your page. Whoever this block is visible to can write in it —
+          you can remove anything left here.
+        </p>
+      )
+    default:
+      return null
+  }
 }
 
 /** The "arrange your page" panel — owner only, shown behind an Edit toggle in Profile.tsx. */
@@ -1044,8 +863,11 @@ export function ProfileBlocksEditor({
   const [status, setStatus] = useState<'idle' | 'saving' | 'saved'>('idle')
   /** the block you just removed, and the list it came from, so it can come straight back */
   const [undo, setUndo] = useState<{ blocks: ProfileBlock[]; label: string } | null>(null)
-  /** which block is open for editing; null means the list is a list. One at a time. */
+  /** which block is selected; its fields appear underneath the page rather than inside it */
   const [openIdx, setOpenIdx] = useState<number | null>(null)
+  /** the block being dragged, and the slot it would land in */
+  const [dragIdx, setDragIdx] = useState<number | null>(null)
+  const [overIdx, setOverIdx] = useState<number | null>(null)
   /** the add-a-block palette, which is seven buttons you are mostly not pressing */
   const [adding, setAdding] = useState(false)
 
@@ -1069,6 +891,17 @@ export function ProfileBlocksEditor({
         visibility: type === 'activity' || type === 'stats' ? 'friends' : 'members',
       },
     ])
+  }
+  /** drop `from` into `to`, closing the gap it leaves — the reorder a drag performs */
+  const moveTo = (from: number, to: number) => {
+    if (from === to || to < 0 || to >= blocks.length) return
+    setOpenIdx(to)
+    setBlocks((b) => {
+      const next = [...b]
+      const [taken] = next.splice(from, 1)
+      next.splice(to, 0, taken)
+      return next
+    })
   }
   const move = (i: number, dir: -1 | 1) => {
     const j = i + dir
@@ -1185,72 +1018,259 @@ export function ProfileBlocksEditor({
     [],
   )
 
+  const selected = openIdx != null ? blocks[openIdx] : null
+
+  /**
+   * Dragging a block to a new place.
+   *
+   * ⚠️ pointer events and elementFromPoint, not the HTML drag-and-drop API. That API does
+   * not fire on touch at all, and rearranging your own page on a phone is exactly the case this
+   * is for.
+   *
+   * ⚠️ from a HANDLE, not from the block. The block itself is a click target — it selects,
+   * so its fields appear — and a surface that both selects on click and moves on drag turns
+   * every imprecise tap into a small accident.
+   */
+  const startDrag = (i: number) => (e: ReactPointerEvent) => {
+    e.preventDefault()
+    const el = e.currentTarget as HTMLElement
+    /**
+     * ⚠️ Capture is an OPTIMISATION here, not the mechanism, and it is allowed to fail — it
+     * throws outright for a pointer the element does not already own. The moves are listened for
+     * on the window for the same reason: a drag has to keep working once it leaves the small
+     * handle it started on, which is most of the drag.
+     */
+    try {
+      el.setPointerCapture(e.pointerId)
+    } catch {
+      /* the window listeners below do the actual work */
+    }
+    setDragIdx(i)
+    setOverIdx(i)
+    setOpenIdx(i)
+    const cellUnder = (ev: PointerEvent) => {
+      const under = document.elementFromPoint(ev.clientX, ev.clientY)
+      const cell = under?.closest('[data-cell]') as HTMLElement | null
+      const idx = cell ? Number(cell.dataset.cell) : NaN
+      return Number.isInteger(idx) ? idx : null
+    }
+    const over = (ev: PointerEvent) => {
+      const idx = cellUnder(ev)
+      if (idx != null) setOverIdx(idx)
+    }
+    const end = (ev: PointerEvent) => {
+      window.removeEventListener('pointermove', over)
+      window.removeEventListener('pointerup', end)
+      window.removeEventListener('pointercancel', end)
+      const to = cellUnder(ev)
+      if (to != null) moveTo(i, to)
+      setDragIdx(null)
+      setOverIdx(null)
+    }
+    window.addEventListener('pointermove', over)
+    window.addEventListener('pointerup', end)
+    window.addEventListener('pointercancel', end)
+  }
+
   return (
     <div className="card profile-editor" data-username={username}>
-      <h3 style={{ marginTop: 0 }}>Your page</h3>
-      <p className="muted" style={{ margin: '0 0 0.75rem', fontSize: '0.82rem' }}>
-        This is what people see, in order. Tap a block to change it.
-      </p>
-      <div style={{ display: 'grid', gap: '0.5rem' }}>
-        {blocks.map((b, i) => (
-          <BlockEditRow
-            key={i}
-            block={b}
-            username={username}
-            activity={activity}
-            trophies={trophies}
-            snakeBest={snakeBest}
-            open={openIdx === i}
-            onToggle={() => setOpenIdx((cur) => (cur === i ? null : i))}
-            onChange={(next) => setBlocks((all) => all.map((x, idx) => (idx === i ? next : x)))}
-            onRemove={() => removeAt(i)}
-            onMove={(dir) => move(i, dir)}
-            isFirst={i === 0}
-            isLast={i === blocks.length - 1}
-          />
-        ))}
+      <div className="profile-editor-head">
+        <h3>Your page</h3>
+        <p className="muted">
+          This is the page itself, at the widths it really uses. Click a block to change what is in
+          it, drag the handle to move it.
+        </p>
       </div>
-      {/* Seven "+ block" buttons sat here permanently, 192px of a phone screen spent on things
-          you are not adding. Behind one word now. */}
-      <div className="profile-editor-add">
-        {adding ? (
-          <>
-            {(Object.keys(BLOCK_LABEL) as Array<ProfileBlock['block_type']>).map((t) => (
-              <button
-                key={t}
-                className="btn"
-                onClick={() => addBlock(t)}
-                disabled={blocks.length >= 20}
-              >
-                + {BLOCK_LABEL[t]}
-              </button>
-            ))}
-            <button className="btn btn-ghost" onClick={() => setAdding(false)}>
-              Cancel
-            </button>
-          </>
-        ) : (
+
+      {/**
+       * ⚠️ THE EDITOR IS THE PAGE.
+       *
+       * It was a vertical list of rows with up and down arrows, while the page it produced was a
+       * six-column grid — so width was a word in a dropdown, position was an arrow press, and the
+       * arrangement being made could not be seen until you left. That gap is the whole reason a
+       * profile felt thrown together: there was nothing to compose ON. Same grid, same blocks, and
+       * the same components a visitor is served.
+       */}
+      <div
+        className="profile-blocks-grid profile-canvas"
+        onPointerDown={(e) => {
+          // a press on the gaps between blocks puts the inspector away
+          if ((e.target as HTMLElement).closest('[data-cell]')) return
+          setOpenIdx(null)
+        }}
+      >
+        {blocks.map((b, i) => (
+          <div
+            key={i}
+            data-cell={i}
+            className={
+              'profile-canvas-cell is-' +
+              b.size +
+              (openIdx === i ? ' is-selected' : '') +
+              (dragIdx === i ? ' is-dragging' : '') +
+              (dragIdx != null && overIdx === i && dragIdx !== i ? ' is-target' : '')
+            }
+          >
+            <button
+              type="button"
+              className="profile-canvas-pick"
+              aria-pressed={openIdx === i}
+              aria-label={'Edit ' + BLOCK_LABEL[b.block_type]}
+              onClick={() => setOpenIdx((cur) => (cur === i ? null : i))}
+            />
+            <span className="profile-canvas-tag">{BLOCK_LABEL[b.block_type]}</span>
+            <span
+              className="profile-canvas-grip"
+              role="button"
+              tabIndex={0}
+              aria-label={'Move ' + BLOCK_LABEL[b.block_type]}
+              title="Drag to move — or use the arrow keys"
+              onPointerDown={startDrag(i)}
+              onKeyDown={(e) => {
+                /* ⚠️ the arrow keys page between sections of this site, so they are stopped
+                   here as well as prevented — the visualiser's pin hit the same trap */
+                if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return
+                e.preventDefault()
+                e.stopPropagation()
+                move(i, e.key === 'ArrowLeft' ? -1 : 1)
+              }}
+            >
+              ⠿
+            </span>
+            {isBlockEmpty(b) ? (
+              <div className="profile-block profile-canvas-empty">
+                <strong>{BLOCK_LABEL[b.block_type]}</strong>
+                <span className="muted">Nothing in this one yet — click to fill it in.</span>
+              </div>
+            ) : (
+              <BlockView
+                block={b}
+                activity={activity}
+                trophies={trophies}
+                snakeBest={snakeBest}
+                username={username}
+                isMe
+              />
+            )}
+          </div>
+        ))}
+
+        {/* the add tile sits IN the grid, in the place a new block would appear */}
+        <div className="profile-canvas-cell is-small profile-canvas-add">
           <button
             className="btn"
-            onClick={() => setAdding(true)}
+            onClick={() => setAdding((v) => !v)}
             disabled={blocks.length >= 20}
-            aria-expanded={false}
+            aria-expanded={adding}
           >
             + Add a block
           </button>
-        )}
+        </div>
       </div>
-      {/* Where the Save button was. It says what happened instead of asking you to make it
-          happen — and carries the one undo, because removing a block is the only action here
-          that can lose something. */}
+
+      {adding && (
+        <div className="profile-editor-add">
+          {(Object.keys(BLOCK_LABEL) as Array<ProfileBlock['block_type']>).map((t) => (
+            <button
+              key={t}
+              className="btn"
+              onClick={() => addBlock(t)}
+              disabled={blocks.length >= 20}
+            >
+              + {BLOCK_LABEL[t]}
+            </button>
+          ))}
+          <button className="btn btn-ghost" onClick={() => setAdding(false)}>
+            Cancel
+          </button>
+        </div>
+      )}
+
+      {/**
+       * The inspector: everything about the ONE block you picked.
+       *
+       * ⚠️ underneath the page rather than inside the block. A panel that opens inside the
+       * grid pushes every other block somewhere else, so you would be editing a layout that moves
+       * while you edit it.
+       */}
+      {selected && openIdx != null && (
+        <div className="profile-inspector">
+          <div className="profile-inspector-head">
+            <strong>{BLOCK_LABEL[selected.block_type]}</strong>
+            <button
+              className="btn btn-ghost"
+              onClick={() => setOpenIdx(null)}
+              aria-label="Close this block"
+            >
+              Done
+            </button>
+          </div>
+
+          <BlockFields
+            block={selected}
+            username={username}
+            onChange={(next) =>
+              setBlocks((all) => all.map((x, idx) => (idx === openIdx ? next : x)))
+            }
+          />
+
+          <div className="profile-editrow-settings">
+            {/* ⚠️ three buttons rather than one that cycles. A cycling button cannot show
+                which of the three you are on without being read, and cannot go back a step. */}
+            <label className="profile-editrow-size">
+              <span className="muted">Width of the page</span>
+              <span className="profile-width-row">
+                {(['small', 'medium', 'large'] as const).map((sz) => (
+                  <button
+                    key={sz}
+                    className={'btn' + (selected.size === sz ? ' is-on' : '')}
+                    aria-pressed={selected.size === sz}
+                    onClick={() =>
+                      setBlocks((all) =>
+                        all.map((x, idx) => (idx === openIdx ? { ...x, size: sz } : x)),
+                      )
+                    }
+                  >
+                    {sz === 'small' ? 'a third' : sz === 'medium' ? 'a half' : 'full width'}
+                  </button>
+                ))}
+              </span>
+            </label>
+            <label>
+              <span className="muted">Who can see this</span>
+              <select
+                className="btn"
+                value={selected.visibility}
+                onChange={(e) =>
+                  setBlocks((all) =>
+                    all.map((x, idx) =>
+                      idx === openIdx ? { ...x, visibility: e.target.value as Tier } : x,
+                    ),
+                  )
+                }
+              >
+                {(Object.keys(TIER_LABEL) as Tier[]).map((t) => (
+                  <option key={t} value={t}>
+                    {TIER_LABEL[t]}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button className="btn btn-ghost" onClick={() => removeAt(openIdx)}>
+              Remove this block
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="profile-editor-status" aria-live="polite">
         <span className={err ? 'profile-editor-err' : 'muted'}>
           {err
-            ? `Couldn’t save — ${err}`
+            ? 'Couldn\u2019t save \u2014 ' + err
             : status === 'saving'
-              ? 'Saving…'
+              ? 'Saving\u2026'
               : status === 'saved'
-                ? 'Saved ✓'
+                ? 'Saved \u2713'
                 : 'Changes save themselves.'}
         </span>
         {undo && (

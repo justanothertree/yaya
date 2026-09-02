@@ -5973,3 +5973,156 @@ a.cz-msg-author:focus-visible {
     hsl(360 92% 58%)
   );
 }
+
+/* ── arranging your page, on the page ────────────────────────────────────────
+   The editor renders the real .profile-blocks-grid, so everything below is only
+   the handles laid over it. Nothing here may change how a block SIZES, or the
+   thing being composed would stop being the thing that gets published. */
+.profile-canvas {
+  padding: var(--sp-2, 0.6rem);
+  border: 1px dashed var(--border);
+  border-radius: 12px;
+  /* the gaps are a click target too — pressing one puts the inspector away */
+  min-height: 6rem;
+}
+.profile-canvas-cell {
+  position: relative;
+}
+/* ⚠️ The SAME spans the published page uses, taken from .profile-block. The cell is a wrapper
+   around the block, so without these the wrapper would be one column wide and the composition on
+   screen would not be the one being saved. */
+.profile-canvas-cell.is-small {
+  grid-column: span 2;
+}
+.profile-canvas-cell.is-medium {
+  grid-column: span 3;
+}
+.profile-canvas-cell.is-large {
+  grid-column: 1 / -1;
+}
+.profile-canvas-cell > .profile-block {
+  /* the wrapper carries the span now, so the block fills it rather than spanning again */
+  grid-column: auto;
+  width: 100%;
+  /* ⚠️ Not interactive while you are arranging: a guestbook form or a song's play button inside
+     the canvas would swallow the click that is meant to select the block it lives in. */
+  pointer-events: none;
+}
+.profile-canvas-pick {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  cursor: pointer;
+}
+.profile-canvas-pick:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.profile-canvas-cell.is-selected {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: 12px;
+}
+.profile-canvas-cell.is-dragging {
+  opacity: 0.45;
+}
+.profile-canvas-cell.is-target {
+  outline: 2px dashed var(--accent);
+  outline-offset: 3px;
+  border-radius: 12px;
+}
+/* the block's name, so an empty or picture-only block is still identifiable while arranging */
+.profile-canvas-tag {
+  position: absolute;
+  top: -0.55rem;
+  left: 0.5rem;
+  z-index: 3;
+  padding: 0 0.35rem;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  background: var(--bg);
+  color: var(--muted);
+  border: 1px solid var(--border);
+  pointer-events: none;
+}
+.profile-canvas-grip {
+  position: absolute;
+  top: -0.55rem;
+  right: 0.5rem;
+  z-index: 4;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 34px;
+  min-height: 26px;
+  border-radius: 999px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  cursor: grab;
+  /* dragging a block must not scroll the page under your thumb */
+  touch-action: none;
+  user-select: none;
+}
+.profile-canvas-grip:active {
+  cursor: grabbing;
+}
+.profile-canvas-grip:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.profile-canvas-empty {
+  display: grid;
+  gap: 0.25rem;
+  min-height: 4.5rem;
+  align-content: center;
+  border-style: dashed;
+}
+.profile-canvas-add {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 4.5rem;
+  border: 1px dashed var(--border);
+  border-radius: 12px;
+}
+.profile-inspector {
+  display: grid;
+  gap: 0.6rem;
+  margin-top: 0.85rem;
+  padding: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--b2, rgba(127, 127, 127, 0.08));
+}
+.profile-inspector-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+.profile-width-row {
+  display: flex;
+  gap: 0.3rem;
+  flex-wrap: wrap;
+}
+.profile-editor-head h3 {
+  margin: 0;
+}
+.profile-editor-head p {
+  margin: 0.15rem 0 0.75rem;
+  font-size: 0.82rem;
+}
+/* ⚠️ On a phone every block is full width anyway (see .profile-block below 700px), so the widths
+   here would be a lie. The canvas still shows the real page — it just shows the phone's version of
+   it, which is the one you are looking at. */
+@media (max-width: 700px) {
+  .profile-canvas-cell.is-small,
+  .profile-canvas-cell.is-medium,
+  .profile-canvas-cell.is-large {
+    grid-column: 1 / -1;
+  }
+}
