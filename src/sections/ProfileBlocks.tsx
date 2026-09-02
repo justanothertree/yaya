@@ -66,6 +66,21 @@ type ProfileNote = {
 /** Must stay in step with the length() guard in save_my_profile_blocks. */
 const CONFIG_LIMIT = 16000
 
+/**
+ * Block types the SERVER may not accept yet.
+ *
+ * ⚠️ save_my_profile_blocks keeps its own allowlist and rejects the WHOLE payload if any block is
+ * not on it — so one unknown block type does not fail to save itself, it stops the page saving at
+ * all. Anyone who added an Art block therefore lost every edit they made afterwards, and all they
+ * were told was "invalid block".
+ *
+ * Listing it here does not fix the save; the one-time SQL in
+ * docs/2026-09-02-site-content-and-art-block.sql does that. What this does is turn a dead end into
+ * something you can act on, and it stops being used the moment the server accepts the type — no
+ * second edit needed here, because the error it keys off simply stops happening.
+ */
+const NEEDS_SERVER_SUPPORT: Array<ProfileBlock['block_type']> = ['art']
+
 const TIER_LABEL: Record<Tier, string> = {
   public: 'Anyone',
   friends: 'Friends',
@@ -863,6 +878,8 @@ export function ProfileBlocksEditor({
   const [status, setStatus] = useState<'idle' | 'saving' | 'saved'>('idle')
   /** the block you just removed, and the list it came from, so it can come straight back */
   const [undo, setUndo] = useState<{ blocks: ProfileBlock[]; label: string } | null>(null)
+  /** the block type the server refused, so the rest of the page can still be saved without it */
+  const [blocked, setBlocked] = useState<ProfileBlock['block_type'] | null>(null)
   /** which block is selected; its fields appear underneath the page rather than inside it */
   const [openIdx, setOpenIdx] = useState<number | null>(null)
   /** the block being dragged, and the slot it would land in */
@@ -973,7 +990,19 @@ export function ProfileBlocksEditor({
   useEffect(() => {
     const payload = payloadOf(blocks)
     const json = JSON.stringify(payload)
-    if (json === savedJsonRef.current) return
+    /**
+     * ⚠️ Back in step with the server means there is nothing WRONG any more, so the warning has
+     * to go with it. Taking out a block the server refused returns the page to exactly what was
+     * last saved — so no save is needed, none runs, and without this the failure message from the
+     * attempt before it stayed on screen accusing a page that is now perfectly fine. Measured:
+     * one save attempted, one error shown, and the error still there afterwards.
+     */
+    if (json === savedJsonRef.current) {
+      setErr(null)
+      setBlocked(null)
+      setStatus('idle')
+      return
+    }
     pendingRef.current = { json, payload, blocks }
     const t = window.setTimeout(() => {
       setStatus('saving')
@@ -981,10 +1010,21 @@ export function ProfileBlocksEditor({
         .rpc('save_my_profile_blocks', { p_blocks: payload })
         .then(({ error }) => {
           if (error) {
-            setErr(error.message)
+            /* name the block that did it, rather than repeating the server's one-word refusal */
+            const culprit = /invalid block/i.test(error.message)
+              ? (blocks.find((b) => NEEDS_SERVER_SUPPORT.includes(b.block_type))?.block_type ??
+                null)
+              : null
+            setBlocked(culprit)
+            setErr(
+              culprit
+                ? `the ${BLOCK_LABEL[culprit]} block needs a one-time database change that hasn’t been applied yet`
+                : error.message,
+            )
             setStatus('idle')
             return
           }
+          setBlocked(null)
           savedJsonRef.current = json
           pendingRef.current = null
           setErr(null)
@@ -1273,6 +1313,18 @@ export function ProfileBlocksEditor({
                 ? 'Saved \u2713'
                 : 'Changes save themselves.'}
         </span>
+        {blocked && (
+          <button
+            className="btn"
+            onClick={() => {
+              setBlocks((all) => all.filter((b) => b.block_type !== blocked))
+              setOpenIdx(null)
+              setBlocked(null)
+            }}
+          >
+            Take the {BLOCK_LABEL[blocked]} block out and save the rest
+          </button>
+        )}
         {undo && (
           <button className="btn btn-ghost" onClick={undoRemove}>
             Undo removing {undo.label}
