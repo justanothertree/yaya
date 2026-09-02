@@ -304,7 +304,14 @@ export function Circuit({
     {
       id: 'board',
       title: '🏆 Board',
-      node: <Board onLogToday={requestLogToday} onLogDate={requestLog} viewGroup={activeGroup} />,
+      node: (
+        <Board
+          onLogToday={requestLogToday}
+          onLogDate={requestLog}
+          viewGroup={activeGroup}
+          demo={!authed}
+        />
+      ),
     },
     { id: 'log', title: '✏️ Log', node: logNode },
     {

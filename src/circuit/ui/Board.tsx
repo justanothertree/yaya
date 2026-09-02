@@ -12,11 +12,14 @@ export function Board({
   onLogToday,
   onLogDate,
   viewGroup = '',
+  demo = false,
 }: {
   onLogToday?: (personId: string) => void
   onLogDate?: (personId: string, date: string) => void
   // which circuit to scope to (shared filter from the Circuit shell; '' = all)
   viewGroup?: string
+  /** the signed-out sandbox, where the bundled snapshot is all the data there will ever be */
+  demo?: boolean
 } = {}) {
   const state = useCircuit()
   const [profile, setProfile] = useState<Person | null>(null)
@@ -27,11 +30,32 @@ export function Board({
   const curMonth = todayMonth()
   const todayStr = todayISO()
   const [picked, setPicked] = useState('')
-  // Default to the CURRENT month. Defaulting to "latest month with data" made the signed-
-  // out demo jump last-month → current-month when the live board replaced the bundled
-  // snapshot mid-load (a clunky switch); anchoring to the current month means the label
-  // never moves — data just populates into it.
-  const ym = picked || curMonth
+
+  /**
+   * The newest month that actually has something in it, for the demo to open on.
+   *
+   * ⚠️ ONLY IN THE DEMO, and the distinction is the whole point. Signed in, this defaults to the
+   * CURRENT month because "latest month with data" made the board jump last-month →
+   * current-month when the live data replaced the bundled snapshot mid-load — anchoring to the
+   * current month means the label never moves and data simply populates into it.
+   *
+   * That reasoning does not apply signed OUT, because no live data is ever coming: the bundled
+   * snapshot is the whole of it. So the old rule left a visitor looking at whatever month it
+   * happens to be now, which has nothing in it and never will. Measured today: the newest entry
+   * in the public snapshot is from May and the board opened on September, so the first thing
+   * anyone saw of the flagship project was an empty board.
+   */
+  const latestWithData = useMemo(() => {
+    const ids = new Set(visiblePeople.map((p) => p.id))
+    let newest = ''
+    for (const l of state.logs) {
+      if (!ids.has(l.personId) || !l.entries.length) continue
+      if (l.date > newest) newest = l.date
+    }
+    return newest.slice(0, 7)
+  }, [state.logs, visiblePeople])
+
+  const ym = picked || (demo && latestWithData ? latestWithData : curMonth)
   const [yNum, mNum] = ym.split('-').map(Number)
   const days = new Date(yNum, mNum, 0).getDate()
   const shiftMonth = (d: number) => {
