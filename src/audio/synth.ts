@@ -745,6 +745,20 @@ export function fxSnapshot(): Fx {
   }
 }
 
+const KNOB_EVENT = 'synth:knob'
+
+/**
+ * Told when any knob moves, however it moved.
+ *
+ * ⚠️ Needed the moment something OTHER than a slider can set one — saving a rig and pressing it
+ * later does exactly that, and without this the slider goes on showing the old number while the
+ * sound is already the new one. Same shape as onMixerChange, for the same reason.
+ */
+export function onKnobChange(fn: () => void): () => void {
+  window.addEventListener(KNOB_EVENT, fn)
+  return () => window.removeEventListener(KNOB_EVENT, fn)
+}
+
 export function setKnob(k: Knob, v: number) {
   knobs[k] = Math.max(0, Math.min(1, v))
   applyKnobs()
@@ -753,6 +767,7 @@ export function setKnob(k: Knob, v: number) {
   } catch {
     /* applies for this visit */
   }
+  window.dispatchEvent(new Event(KNOB_EVENT))
 }
 
 /** A knob only ever moves YOUR live sound now; every other part keeps what it was given. */

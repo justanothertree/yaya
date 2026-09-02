@@ -2199,8 +2199,14 @@ export default function App() {
             <section id="instrument" className="card reveal">
               <h2>🎹 Instrument</h2>
               <p className="muted">
-                Play something. Twelve sounds, your keyboard or the mouse — and the visualiser can
-                watch you do it.
+                {/* ⚠️ NO NUMBER. This said "Twelve sounds" for as long as there were
+                    twenty-eight — a count in prose is a fact with nobody responsible for it, the
+                    same way the jam's hand-kept instrument list fell sixteen behind. Counting the
+                    real list would fix that, but importing it here drags the whole synth module
+                    out of its lazy chunk and into the main bundle: measured at 14kB, 5kB gzipped,
+                    for one word. The sentence does not need the number. */}
+                Play something with your keyboard or the mouse — and the visualiser can watch you do
+                it.
               </p>
               <Suspense fallback={<div aria-busy>Loading…</div>}>
                 <InstrumentRoom />

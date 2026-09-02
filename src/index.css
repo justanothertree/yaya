@@ -4109,6 +4109,80 @@ select {
   font-size: 0.8rem;
 }
 
+/* ─ saved kits ──────────────────────────
+   The same row in Paint and in the instrument room, because it is the same interaction. Sits
+   with the other controls rather than behind a dialog: these are settings you change while
+   working, and anything modal costs three presses instead of one and stops being used. */
+.kitbar {
+  display: grid;
+  gap: 0.35rem;
+  min-width: 0;
+}
+.kitbar-save {
+  display: flex;
+  gap: 0.3rem;
+  align-items: center;
+}
+.kitbar-input {
+  flex: 1 1 7rem;
+  /* ⚠️ or the flex item refuses to shrink past its content and pushes Save off a narrow bar */
+  min-width: 0;
+  padding: 0.3rem 0.45rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--control-bg);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.82rem;
+}
+.kitbar-list {
+  display: flex;
+  gap: 0.3rem;
+  flex-wrap: wrap;
+}
+.kitbar-kit {
+  display: flex;
+  align-items: stretch;
+  gap: 0.15rem;
+  min-width: 0;
+}
+.kitbar-btn {
+  display: grid;
+  gap: 0.05rem;
+  text-align: left;
+  min-width: 0;
+  max-width: 11rem;
+  appearance: none;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--control-bg);
+  color: var(--text);
+  font: inherit;
+  padding: 0.25rem 0.5rem;
+  cursor: pointer;
+}
+.kitbar-btn:hover {
+  border-color: var(--accent);
+}
+.kitbar-name,
+.kitbar-desc {
+  /* ⚠️ one line each, clipped: names are typed by hand and a long one would otherwise make
+     its own chip twice the height of its neighbours and break the row */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.kitbar-name {
+  font-size: 0.82rem;
+}
+.kitbar-desc {
+  font-size: 0.68rem;
+}
+.kitbar-del {
+  flex: none;
+  padding: 0 0.35rem;
+}
+
 /* ⚠️ saved looks
    The one tab that is a LIST rather than a grid of tiles. A Look has a name worth reading and a
    swatch worth seeing, neither of which fits in a 4rem square, so it gets a wide row instead of

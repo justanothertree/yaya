@@ -1,4 +1,6 @@
 import { useCallback, useContext, useEffect, useRef, useState, useSyncExternalStore } from 'react'
+import { KitBar } from '../ui/KitBar'
+import { loadLastKit, paintKits, saveLastKit, type PaintKit } from '../draw/paintKit'
 import {
   NONE,
   RAINBOW,
@@ -48,6 +50,16 @@ const SWATCHES = [
   '#8b5a2b',
 ]
 
+/**
+ * What you were last drawing with, read ONCE rather than per render.
+ *
+ * ⚠️ the room used to open at its defaults every single time, so the six controls that
+ * decide what a mark looks like had to be set again before every drawing. Read at module load
+ * because it is only ever the seed for the initial state; re-reading it later would fight the
+ * controls the person is currently using.
+ */
+const LAST = loadLastKit()
+
 export function PaintRoom() {
   const host = useRef<HTMLDivElement>(null)
   const view = useRef<HTMLCanvasElement>(null)
@@ -80,14 +92,20 @@ export function PaintRoom() {
   const off = useRef({ x: 0, y: 0 })
   const pan = useRef<{ x: number; y: number } | null>(null)
   const [undone, setUndone] = useState<Stroke[]>([])
-  const [tool, setTool] = useState<Tool>('brush')
-  const [colour, setColour] = useState('#22c55e')
-  const [alpha, setAlpha] = useState(1)
-  const [width, setWidth] = useState(0.008)
+  const [tool, setTool] = useState<Tool>(() => LAST?.tool ?? 'brush')
+  const [colour, setColour] = useState(() => LAST?.colour ?? '#22c55e')
+  const [alpha, setAlpha] = useState(() => LAST?.alpha ?? 1)
+  const [width, setWidth] = useState(() => LAST?.width ?? 0.008)
   /** kaleidoscope segments for strokes drawn from now on — see Stroke.k */
-  const [symmetry, setSymmetry] = useState(0)
+  const [symmetry, setSymmetry] = useState(() => LAST?.symmetry ?? 0)
   /** fading copies trailing each stroke along the way it was drawn — see Stroke.e */
-  const [echo, setEcho] = useState(0)
+  const [echo, setEcho] = useState(() => LAST?.echo ?? 0)
+  /* ⚠️ Stored on CHANGE, not on leaving: a tab closed or crashed never gets an unload handler,
+     and losing the setup in exactly the case where you were interrupted is the worst of both. */
+  useEffect(() => {
+    saveLastKit({ tool, colour, alpha, width, symmetry, echo })
+  }, [tool, colour, alpha, width, symmetry, echo])
+
   const live = useRef<Stroke | null>(null)
   const [galleryOpen, setGalleryOpen] = useState(false)
   const saved = useSyncExternalStore(subscribeGallery, gallery, gallery)
@@ -530,6 +548,32 @@ export function PaintRoom() {
             ))}
           </span>
         </label>
+        {/* ⚠️ SIX CONTROLS ARE ENOUGH TO BE WORTH A NAME. Tool, colour, alpha, width, symmetry
+            and echo make a way of drawing rather than a setting, and rebuilding one from memory
+            is the thing that stops people trying the others. Saved palettes made the same case
+            for three numbers. */}
+        <KitBar
+          store={paintKits}
+          placeholder="Name this brush"
+          capture={(name) => ({ name, tool, colour, alpha, width, symmetry, echo })}
+          apply={(k: PaintKit) => {
+            setTool(k.tool)
+            setColour(k.colour)
+            setAlpha(k.alpha)
+            setWidth(k.width)
+            setSymmetry(k.symmetry)
+            setEcho(k.echo)
+          }}
+          describe={(k) =>
+            [
+              TOOLS.find(([id]) => id === k.tool)?.[2] ?? k.tool,
+              k.symmetry ? `${k.symmetry}-fold` : null,
+              k.echo ? `echo ${k.echo}` : null,
+            ]
+              .filter(Boolean)
+              .join(' · ')
+          }
+        />
         <button className="btn" onClick={undo} disabled={!strokes.length} title="Undo (Ctrl+Z)">
           ↶ Undo
         </button>

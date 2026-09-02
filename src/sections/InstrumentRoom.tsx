@@ -4,6 +4,7 @@ import {
   allNotesOff,
   closeSynth,
   knob,
+  onKnobChange,
   noteOff,
   noteOn,
   setKnob,
@@ -12,6 +13,8 @@ import {
   type Knob,
   drumName,
 } from '../audio/synth'
+import { applyFx, captureFx, makeInstKits, type InstKit } from '../audio/instKit'
+import { KitBar } from '../ui/KitBar'
 import { onMixerChange, setVolume, volume } from '../audio/mixer'
 import { PianoRoll } from './PianoRoll'
 import { toSong, songNotes, songToLayers } from '../audio/songFile'
@@ -146,6 +149,15 @@ const KNOBS: Array<[Knob, string, string]> = [
 const isBlack = (midi: number) => [1, 3, 6, 8, 10].includes(((midi % 12) + 12) % 12)
 const noteName = (midi: number) => NAMES[((midi % 12) + 12) % 12] + (Math.floor(midi / 12) - 1)
 
+/**
+ * The saved rigs, built with the room's OWN scale list.
+ *
+ * ⚠️ passed in rather than duplicated inside the audio module. A second copy of SCALES is
+ * a copy that goes stale the first time one is added, and a kit naming a scale the check has not
+ * heard of quietly becomes Chromatic with nothing said.
+ */
+const instKits = makeInstKits(SCALES.map(([id]) => id))
+
 const INST_KEY = 'instrument_v1'
 const OCT_KEY = 'instrument_octave_v1'
 const SCALE_KEY = 'instrument_scale_v1'
@@ -162,6 +174,9 @@ const SPAN = 25
  */
 function KnobRow({ k, label, hint }: { k: Knob; label: string; hint: string }) {
   const [v, setV] = useState(() => knob(k))
+  // a saved rig moves the knobs without touching the slider, so follow the synth rather than
+  // assume this control is the only thing that can change it
+  useEffect(() => onKnobChange(() => setV(knob(k))), [k])
   return (
     <label className="appearance-slider inst-knob" title={hint}>
       <span className="muted">{label}</span>
@@ -415,6 +430,32 @@ export function InstrumentRoom() {
             </button>
           ))}
         </div>
+        {/* ⚠️ NINE SETTINGS, of which the four that were already remembered are the four
+            that matter least. The effects decide what an instrument SOUNDS like far more than the
+            octave does, and they were the ones thrown away on every visit. A rig keeps all nine,
+            so "keys, dry" and "keys, drenched in echo" become two things you can switch between
+            rather than one thing you rebuild. */}
+        <KitBar
+          store={instKits}
+          placeholder="Name this rig"
+          capture={(name) => ({ name, inst, octave, scale, root, fx: captureFx() })}
+          apply={(k: InstKit) => {
+            allNotesOff()
+            setHeld([])
+            setInst(k.inst)
+            setOctave(k.octave)
+            setScale(k.scale)
+            setRoot(k.root)
+            applyFx(k.fx)
+          }}
+          describe={(k) =>
+            [
+              INSTRUMENTS.find(([id]) => id === k.inst)?.[2] ?? k.inst,
+              SCALES.find(([id]) => id === k.scale)?.[1] ?? k.scale,
+              fxWord(k.fx),
+            ].join(' · ')
+          }
+        />
       </div>
 
       {call.inCall && (
