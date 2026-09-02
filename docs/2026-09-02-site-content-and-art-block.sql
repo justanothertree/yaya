@@ -43,8 +43,18 @@
 -- WHY THERE IS NO WRITE POLICY AT ALL. The only way in is save_site_content, which is SECURITY
 -- DEFINER and checks is_admin(). Leaving the table with no insert/update/delete policy means a
 -- future change to roles or grants cannot accidentally open a second door: with RLS on and no
--- policy, every direct write is refused before anything else is consulted. One door, and it is
--- watched.
+-- policy, every direct insert, update and delete is refused before anything else is consulted.
+-- One door, and it is watched.
+--
+-- ⚠️ WITH ONE EXCEPTION WORTH KNOWING: TRUNCATE IS NOT SUBJECT TO RLS. Policies govern select,
+-- insert, update and delete; truncate answers only to the table grant. Supabase's stock default
+-- privileges grant it to anon and authenticated on every new table in public — so this table is
+-- no different from the twenty already here, and it is not reachable with the anon key either,
+-- because PostgREST has no truncate verb. It is worth writing down rather than leaving as a
+-- thing the RLS switch is quietly assumed to cover. To hold this table to exactly what it needs:
+--
+--   revoke all on public.site_content from anon, authenticated;
+--   grant select on public.site_content to anon, authenticated;
 --
 -- WHAT THE FUNCTION REFUSES, and why each one is here rather than trusted to the client:
 --   * not an admin                 — the client hides the button; this is what actually stops it
