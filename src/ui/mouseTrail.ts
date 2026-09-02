@@ -19,6 +19,7 @@
  */
 
 import { motionReduced } from './motion'
+import { touchOnly } from './pointerKind'
 import { scalesFor, spacingFor } from './effectAmount'
 
 // the trail's own size and speed — see scalesFor. A trail wants to be bigger and slower than
@@ -461,8 +462,9 @@ export function previewTrail(s: TrailStyle, x: number, y: number) {
 export function installMouseTrail(): () => void {
   if (installed) return () => {}
   if (typeof Element.prototype.animate !== 'function') return () => {}
-  // no hovering cursor on a phone: a touch trail is a smear under your own thumb
-  if (window.matchMedia?.('(hover: none) and (pointer: coarse)').matches) return () => {}
+  // no hovering cursor on a phone: a touch trail is a smear under your own thumb. The picker
+  // says so out loud now — same query, one definition, so the two cannot disagree.
+  if (touchOnly()) return () => {}
   installed = true
   window.addEventListener('pointermove', onMove, { passive: true })
   return () => {

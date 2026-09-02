@@ -84,7 +84,11 @@
   gap: 12px;
   align-items: start;
   justify-items: center;
-  touch-action: none; /* block swipe gestures bubbling to page */
+  /* ⚠️ NO touch-action HERE. It used to carry `none`, to stop a swipe on the board scrolling the
+     page — but the settings panel lives inside this grid too, so on a phone every drag that did
+     not land exactly on a button was swallowed: the panel would not scroll, and neither would the
+     page behind it. The rule belongs on the board itself, which is the only thing that wants to
+     eat a swipe. */
 }
 .snake-grid[data-versus] {
   grid-template-columns: 1fr; /* keep canvas centered; previews stack separately */
@@ -110,6 +114,9 @@
 .snake-canvas-wrap {
   position: relative;
   overscroll-behavior: contain;
+  /* the board and its touch-control overlay, and nothing else — a swipe to steer must not also
+     scroll the page out from under the game */
+  touch-action: none;
 }
 /* Remove extra outer glow to avoid multiple borders when focused/captured */
 /* Previously: .snake-canvas-wrap[data-captured]::after { ... } */

@@ -4,6 +4,7 @@ import { PalettePicker } from '../theme/PalettePicker'
 import { FX_STYLE_OPTIONS } from '../ui/fxStyles'
 import { CURSOR_OPTIONS, type CursorSkin } from '../ui/cursorSkin'
 import { previewClickFx, type FxStyle } from '../ui/clickFx'
+import { useTouchOnly } from '../ui/pointerKind'
 import { BACKDROPS, type BackdropId } from '../profile/backdrops'
 import { previewTrail, TRAIL_OPTIONS, type TrailStyle } from '../ui/mouseTrail'
 import {
@@ -55,10 +56,11 @@ export type AppearanceControls = {
 
 type Tab = 'colour' | 'background' | 'click' | 'trail' | 'cursor'
 
-const TABS: Array<[Tab, string, string]> = [
+/** "Click" is not what you do on a phone, and the tab is the only place that word appears. */
+const tabsFor = (touch: boolean): Array<[Tab, string, string]> => [
   ['colour', '🎨', 'Colour'],
   ['background', '🌌', 'Background'],
-  ['click', '✨', 'Click'],
+  ['click', '✨', touch ? 'Tap' : 'Click'],
   ['trail', '🪄', 'Trail'],
   ['cursor', '↖', 'Pointer'],
 ]
@@ -180,6 +182,9 @@ export function AppearanceDialog({
   onClose: () => void
 }) {
   const [tab, setTab] = useState<Tab>('colour')
+  /* a trail follows a pointer and a skin decorates one, so on a touchscreen both are choices
+     about something that is not there — say so rather than offering dead buttons */
+  const touch = useTouchOnly()
   const c = controls
 
   return createPortal(
@@ -201,7 +206,7 @@ export function AppearanceDialog({
         </div>
 
         <div className="appearance-tabs" role="tablist">
-          {TABS.map(([id, icon, label]) => (
+          {tabsFor(touch).map(([id, icon, label]) => (
             <button
               key={id}
               role="tab"
@@ -317,6 +322,12 @@ export function AppearanceDialog({
 
         {tab === 'cursor' && (
           <div className="appearance-body">
+            {touch && (
+              <p className="muted appearance-note">
+                Your screen has no pointer to skin — this one needs a mouse or a trackpad. Pick one
+                anyway and it will be waiting if you open the site on a computer.
+              </p>
+            )}
             <div className="fx-style-row">
               {CURSOR_OPTIONS.map(([id, icon, label]) => (
                 <button
@@ -343,6 +354,12 @@ export function AppearanceDialog({
 
         {tab === 'trail' && (
           <div className="appearance-body">
+            {touch && (
+              <p className="muted appearance-note">
+                A trail follows a pointer, and a finger already covers the place it would be — so
+                this stays off on a touchscreen. Your choice is kept for when you are on a computer.
+              </p>
+            )}
             <div className="fx-style-row">
               {TRAIL_OPTIONS.map(([id, icon, label]) => (
                 <button
