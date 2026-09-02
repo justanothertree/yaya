@@ -37,6 +37,9 @@ export type Tool =
   | 'pencil'
   | 'star'
   | 'arrow'
+  | 'crayon'
+  | 'neon'
+  | 'triangle'
 
 export const TOOLS: Array<[Tool, string, string]> = [
   ['brush', '🖌', 'Brush'],
@@ -51,6 +54,9 @@ export const TOOLS: Array<[Tool, string, string]> = [
   ['pencil', '✏', 'Pencil'],
   ['star', '⭐', 'Star'],
   ['arrow', '↗', 'Arrow'],
+  ['crayon', '🖤', 'Crayon'],
+  ['neon', '💡', 'Neon'],
+  ['triangle', '△', 'Triangle'],
 ]
 
 export type Stroke = {
@@ -433,6 +439,99 @@ export function paintStroke(ctx: CanvasRenderingContext2D, s: Stroke, w: number,
       ctx.stroke()
       break
     }
+    /**
+     * Crayon — waxy and broken up, laid down in several offset passes.
+     *
+     * ⚠️ the gaps are the point, and they are DERIVED, not random. A crayon skips where the
+     * paper is high, so three passes at slightly different offsets with a few segments dropped
+     * gives the same broken coverage — and deriving the pattern from the point index means the
+     * same stroke breaks up in the same places every time it is redrawn.
+     */
+    case 'crayon': {
+      const base = Math.max(1, s.w * short)
+      ctx.lineCap = 'round'
+      ctx.globalAlpha = s.a * 0.5
+      for (let pass = 0; pass < 3; pass++) {
+        ctx.lineWidth = base * (0.9 - pass * 0.22)
+        const ox = (noise(pass * 9.1) - 0.5) * base * 0.7
+        const oy = (noise(pass * 5.7) - 0.5) * base * 0.7
+        let drawing = false
+        ctx.beginPath()
+        for (let i = 0; i + 1 < s.p.length; i += 2) {
+          /* a skipped segment is where the wax did not take */
+          if (noise(i * 1.7 + pass * 31) < 0.22) {
+            drawing = false
+            continue
+          }
+          const x = X(i) + ox
+          const y = Y(i + 1) + oy
+          if (!drawing) {
+            ctx.moveTo(x, y)
+            drawing = true
+          } else ctx.lineTo(x, y)
+        }
+        if (s.p.length === 2) {
+          ctx.moveTo(X(0) + ox, Y(1) + oy)
+          ctx.lineTo(X(0) + ox, Y(1) + oy + 0.01)
+        }
+        ctx.stroke()
+      }
+      break
+    }
+    /**
+     * Neon — a wide soft halo with a bright thin core down the middle.
+     *
+     * ⚠️ two passes of the SAME path, not a blur. Canvas shadow blur is expensive and gets
+     * baked into the saved picture at whatever size it was drawn; stroking the path twice — fat
+     * and faint, then thin and bright — costs two strokes and scales with the drawing, which is
+     * the whole reason this format keeps strokes instead of pixels.
+     */
+    case 'neon': {
+      const base = Math.max(1, s.w * short)
+      ctx.lineCap = 'round'
+      ctx.lineJoin = 'round'
+      const path = () => {
+        ctx.beginPath()
+        ctx.moveTo(X(0), Y(1))
+        if (s.p.length === 2) ctx.lineTo(X(0), Y(1) + 0.01)
+        for (let i = 2; i + 1 < s.p.length; i += 2) ctx.lineTo(X(i), Y(i + 1))
+      }
+      ctx.globalAlpha = s.a * 0.22
+      ctx.lineWidth = base * 3
+      path()
+      ctx.stroke()
+      ctx.globalAlpha = s.a
+      ctx.lineWidth = Math.max(0.6, base * 0.45)
+      ctx.strokeStyle = rainbow ? wheel(0.5) : '#ffffff'
+      path()
+      ctx.stroke()
+      break
+    }
+    /**
+     * Triangle — drawn into the box you drag, like Box and Ellipse.
+     *
+     * ⚠️ it shares the two-corner gesture rather than Star's centre-and-tip one, because a
+     * triangle HAS a sensible bounding box and a star does not. Matching the tool beside it is
+     * worth more than being clever about it.
+     */
+    case 'triangle': {
+      const x0 = X(0)
+      const y0 = Y(1)
+      const x1 = X(2)
+      const y1 = Y(3)
+      const l = Math.min(x0, x1)
+      const r = Math.max(x0, x1)
+      const t = Math.min(y0, y1)
+      const b = Math.max(y0, y1)
+      ctx.lineJoin = 'round'
+      ctx.beginPath()
+      ctx.moveTo((l + r) / 2, t)
+      ctx.lineTo(r, b)
+      ctx.lineTo(l, b)
+      ctx.closePath()
+      ctx.stroke()
+      break
+    }
     default: {
       // brush, eraser and line are all a polyline; a line just happens to have two points
       if (rainbow) {
@@ -507,7 +606,9 @@ export const isFreehand = (t: Tool) =>
   t === 'spray' ||
   t === 'marker' ||
   t === 'nib' ||
-  t === 'pencil'
+  t === 'pencil' ||
+  t === 'crayon' ||
+  t === 'neon'
 
 /**
  * ⚠️ APPEND ONLY, NEVER REORDER. A packed stroke stores its tool as an INDEX into this

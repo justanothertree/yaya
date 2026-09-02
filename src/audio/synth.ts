@@ -43,6 +43,10 @@ export type InstrumentId =
   | 'clav'
   | 'lead'
   | 'box'
+  | 'steelpan'
+  | 'vibes'
+  | 'koto'
+  | 'drone'
   | 'drums'
 
 export const INSTRUMENTS: Array<[InstrumentId, string, string]> = [
@@ -65,6 +69,10 @@ export const INSTRUMENTS: Array<[InstrumentId, string, string]> = [
   ['clav', '🪶', 'Clav'],
   ['lead', '⚡', 'Lead'],
   ['box', '🎁', 'Music box'],
+  ['steelpan', '🛢', 'Steel pan'],
+  ['vibes', '🎐', 'Vibes'],
+  ['koto', '🏯', 'Koto'],
+  ['drone', '🕉', 'Drone'],
   ['drums', '🥁', 'Drums'],
 ]
 
@@ -401,6 +409,89 @@ const SHAPES: Record<Exclude<InstrumentId, 'drums'>, Shape> = {
     ],
     filter: { from: 6500, to: 2600, q: 1 },
     level: 0.3,
+  },
+  /**
+   * A steel pan: inharmonic like the Bell, but WARM and short with it. The 2.4 and 3.7 partials
+   * are close enough to a scale to sound tuned and far enough off it to sound hammered — which is
+   * exactly what an oil drum with dents in it is.
+   */
+  steelpan: {
+    a: 0.002,
+    d: 0.55,
+    s: 0.08,
+    r: 0.35,
+    wave: 'triangle',
+    partials: [
+      { ratio: 1, detune: 0, gain: 1 },
+      { ratio: 2.4, detune: 4, gain: 0.42 },
+      { ratio: 3.7, detune: -6, gain: 0.2 },
+      { ratio: 6.1, detune: 0, gain: 0.06 },
+    ],
+    filter: { from: 3800, to: 1200, q: 1.6 },
+    level: 0.38,
+  },
+  /**
+   * A vibraphone: Marimba's struck bars in metal, with the tremolo that gives it its name.
+   *
+   * ⚠️ The wobble is TWO COPIES a few cents apart, not a modulator — there is no LFO on the
+   * amplitude anywhere in this synth, and two detuned partials beating against each other produce
+   * the same slow pulse for nothing. Same trick the Choir uses, at a different depth.
+   */
+  vibes: {
+    a: 0.002,
+    d: 1.5,
+    s: 0,
+    r: 0.9,
+    wave: 'sine',
+    partials: [
+      { ratio: 1, detune: -3, gain: 1 },
+      { ratio: 1, detune: 3, gain: 0.95 },
+      { ratio: 4, detune: 0, gain: 0.18 },
+      { ratio: 9.6, detune: 0, gain: 0.04 },
+    ],
+    filter: { from: 4200, to: 1400, q: 0.9 },
+    level: 0.36,
+  },
+  /**
+   * A koto: plucked, but the pitch BENDS UP into the note rather than sitting on it. Sub already
+   * uses a falling bend for weight; rising into the note is what a string being pushed sideways
+   * does, and it is the whole character here.
+   */
+  koto: {
+    a: 0.002,
+    d: 1.1,
+    s: 0,
+    r: 0.7,
+    wave: 'triangle',
+    partials: [
+      { ratio: 1, detune: 0, gain: 1 },
+      { ratio: 2, detune: 5, gain: 0.3 },
+      { ratio: 3, detune: -4, gain: 0.18 },
+      { ratio: 7, detune: 0, gain: 0.05 },
+    ],
+    pitch: { mult: 0.94, time: 0.07 },
+    filter: { from: 4600, to: 1000, q: 2 },
+    level: 0.4,
+  },
+  /**
+   * A drone: the longest thing here by a distance, and the only voice meant to be held under
+   * something else rather than played. Full sustain, a very slow attack, and low partials only —
+   * everything above the fifth is filtered away so it never competes with a melody on top.
+   */
+  drone: {
+    a: 0.9,
+    d: 1.4,
+    s: 0.85,
+    r: 2.4,
+    wave: 'sawtooth',
+    partials: [
+      { ratio: 0.5, detune: 0, gain: 0.8 },
+      { ratio: 1, detune: -6, gain: 1 },
+      { ratio: 1, detune: 6, gain: 0.9 },
+      { ratio: 2, detune: 0, gain: 0.25 },
+    ],
+    filter: { from: 700, to: 420, q: 1 },
+    level: 0.2,
   },
 }
 

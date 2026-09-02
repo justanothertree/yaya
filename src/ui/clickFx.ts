@@ -67,6 +67,10 @@ export type FxStyle =
   | 'lightning'
   | 'leaves'
   | 'pixels'
+  | 'web'
+  | 'stamp'
+  | 'swarm'
+  | 'balloons'
 
 const LAYER_ID = 'click-fx-layer'
 /** Concurrent bursts to allow. A fast clicker shouldn't be able to pile up hundreds of nodes. */
@@ -1309,6 +1313,222 @@ function pixels(host: HTMLElement, x: number, y: number) {
   track(host, nodes, anims)
 }
 
+/**
+ * Web — spokes out to a ring of points, and the points joined up.
+ *
+ * ⚠️ the only effect that makes a closed SHAPE. Everything else is a scatter, and a scatter
+ * has no outline however many pieces it has; joining the ends turns the same dozen elements into
+ * one figure, which is why this reads as a structure snapping into place rather than as debris.
+ */
+function web(host: HTMLElement, x: number, y: number) {
+  const [a, b] = pair()
+  const N = Math.max(5, amount('click', 8))
+  const R = px(26 + Math.random() * 10)
+  const nodes: HTMLElement[] = []
+  const anims: Animation[] = []
+  const pts: Array<[number, number]> = []
+  for (let i = 0; i < N; i++) {
+    const ang = (i / N) * Math.PI * 2 - Math.PI / 2
+    pts.push([Math.cos(ang) * R, Math.sin(ang) * R])
+  }
+  const strand = (
+    x1: number,
+    y1: number,
+    x2: number,
+    y2: number,
+    colour: string,
+    delay: number,
+  ) => {
+    const len = Math.hypot(x2 - x1, y2 - y1)
+    const ang = (Math.atan2(y2 - y1, x2 - x1) * 180) / Math.PI
+    const el = mk('click-fx-spark', x + x1, y + y1)
+    el.style.width = len + 'px'
+    el.style.height = px(2) + 'px'
+    el.style.background = colour
+    el.style.transformOrigin = '0 50%'
+    nodes.push(el)
+    anims.push(
+      el.animate(
+        [
+          { transform: `translate(0, -50%) rotate(${ang}deg) scaleX(0)`, opacity: 1 },
+          { transform: `translate(0, -50%) rotate(${ang}deg) scaleX(1)`, opacity: 1, offset: 0.4 },
+          { transform: `translate(0, -50%) rotate(${ang}deg) scaleX(1)`, opacity: 0 },
+        ],
+        { duration: dur(680), delay, easing: 'cubic-bezier(0.2,0.8,0.3,1)', fill: 'forwards' },
+      ),
+    )
+  }
+  /* spokes first, then the rim a moment later — the order is what makes it look built */
+  for (const [dx, dy] of pts) strand(0, 0, dx, dy, a, 0)
+  for (let i = 0; i < N; i++) {
+    const [x1, y1] = pts[i]
+    const [x2, y2] = pts[(i + 1) % N]
+    strand(x1, y1, x2, y2, b, 120)
+  }
+  track(host, nodes, anims)
+}
+
+/**
+ * Stamp — a mark that comes DOWN onto the point and settles.
+ *
+ * ⚠️ it scales from big to small, where every other effect here grows or flies outward.
+ * That single reversal is what makes it feel like weight arriving rather than energy leaving —
+ * and the short hold at the end is the part that sells it, because something pressed stays for a
+ * moment before it lifts.
+ */
+function stamp(host: HTMLElement, x: number, y: number) {
+  const [a, b] = pair()
+  const nodes: HTMLElement[] = []
+  const anims: Animation[] = []
+  const size = px(30)
+
+  const ring = mk('click-fx-ring', x, y)
+  ring.style.width = size + 'px'
+  ring.style.height = size + 'px'
+  ring.style.borderColor = a
+  ring.style.borderWidth = px(3) + 'px'
+  nodes.push(ring)
+  anims.push(
+    ring.animate(
+      [
+        { transform: 'translate(-50%, -50%) scale(2.4)', opacity: 0 },
+        { transform: 'translate(-50%, -50%) scale(1)', opacity: 1, offset: 0.28 },
+        { transform: 'translate(-50%, -50%) scale(1)', opacity: 1, offset: 0.7 },
+        { transform: 'translate(-50%, -50%) scale(1.08)', opacity: 0 },
+      ],
+      { duration: dur(760), easing: 'cubic-bezier(0.3,1.6,0.4,1)', fill: 'forwards' },
+    ),
+  )
+  const dot = mk('click-fx-spark', x, y)
+  dot.style.width = px(9) + 'px'
+  dot.style.height = px(9) + 'px'
+  dot.style.borderRadius = '50%'
+  dot.style.background = b
+  nodes.push(dot)
+  anims.push(
+    dot.animate(
+      [
+        { transform: 'translate(-50%, -50%) scale(0)', opacity: 0 },
+        { transform: 'translate(-50%, -50%) scale(1)', opacity: 1, offset: 0.3 },
+        { transform: 'translate(-50%, -50%) scale(1)', opacity: 1, offset: 0.72 },
+        { transform: 'translate(-50%, -50%) scale(0.6)', opacity: 0 },
+      ],
+      { duration: dur(760), easing: 'ease-out', fill: 'forwards' },
+    ),
+  )
+  track(host, nodes, anims)
+}
+
+/**
+ * Swarm — points that overshoot the click, come back past it, and settle.
+ *
+ * ⚠️ it CROSSES the centre rather than stopping at it. Vortex converges once and is done;
+ * this oscillates, so the same handful of dots keep passing through the point you pressed. That
+ * reads as something alive gathering, which is a different feeling from something being pulled in.
+ */
+function swarm(host: HTMLElement, x: number, y: number) {
+  const colors = palette()
+  const N = amount('click', 10)
+  const nodes: HTMLElement[] = []
+  const anims: Animation[] = []
+  for (let i = 0; i < N; i++) {
+    const ang = (i / N) * Math.PI * 2 + Math.random() * 0.4
+    const far = px(30 + Math.random() * 20)
+    const back = -far * (0.35 + Math.random() * 0.25)
+    const dot = mk('click-fx-spark', x, y)
+    dot.style.width = px(5) + 'px'
+    dot.style.height = px(5) + 'px'
+    dot.style.borderRadius = '50%'
+    dot.style.background = colors[i % colors.length]
+    nodes.push(dot)
+    const at = (d: number) =>
+      `translate(-50%, -50%) translate(${Math.cos(ang) * d}px, ${Math.sin(ang) * d}px)`
+    anims.push(
+      dot.animate(
+        [
+          { transform: at(0), opacity: 1 },
+          { transform: at(far), opacity: 1, offset: 0.3 },
+          { transform: at(back), opacity: 0.9, offset: 0.62 },
+          { transform: at(far * 0.25), opacity: 0.8, offset: 0.84 },
+          { transform: at(0), opacity: 0 },
+        ],
+        {
+          duration: dur(900 + Math.random() * 260),
+          easing: 'ease-in-out',
+          fill: 'forwards',
+        },
+      ),
+    )
+  }
+  track(host, nodes, anims)
+}
+
+/**
+ * Balloons — they rise slowly, and each one pops on its own.
+ *
+ * ⚠️ the pop is a SEPARATE element that appears where the balloon ended, because an element
+ * cannot both drift up and burst outward in one animation. The balloon fades out at the top of its
+ * climb and the burst fades in at the same place — two objects doing one thing, which is the
+ * cheapest way to express a change of state in the Web Animations API.
+ */
+function balloons(host: HTMLElement, x: number, y: number) {
+  const colors = palette()
+  const N = Math.max(3, Math.round(amount('click', 5) * 0.6))
+  const nodes: HTMLElement[] = []
+  const anims: Animation[] = []
+  for (let i = 0; i < N; i++) {
+    const drift = (Math.random() - 0.5) * 40
+    const up = px(46 + Math.random() * 34)
+    const rise = dur(900 + Math.random() * 500)
+    const colour = colors[i % colors.length]
+    const size = px(12 + Math.random() * 8)
+
+    const b = mk('click-fx-spark', x + (Math.random() - 0.5) * 26, y)
+    b.style.width = size + 'px'
+    b.style.height = size * 1.25 + 'px'
+    b.style.borderRadius = '50%'
+    b.style.background = colour
+    nodes.push(b)
+    anims.push(
+      b.animate(
+        [
+          { transform: 'translate(-50%, -50%) translate(0, 0) scale(0.5)', opacity: 0 },
+          {
+            transform: `translate(-50%, -50%) translate(${drift * 0.4}px, ${-up * 0.5}px) scale(1)`,
+            opacity: 1,
+            offset: 0.4,
+          },
+          {
+            transform: `translate(-50%, -50%) translate(${drift}px, ${-up}px) scale(1.05)`,
+            opacity: 1,
+            offset: 0.92,
+          },
+          {
+            transform: `translate(-50%, -50%) translate(${drift}px, ${-up}px) scale(1.3)`,
+            opacity: 0,
+          },
+        ],
+        { duration: rise, easing: 'cubic-bezier(0.3,0.7,0.4,1)', fill: 'forwards' },
+      ),
+    )
+
+    const burst = mk('click-fx-ring', x + (Math.random() - 0.5) * 26 + drift, y - up)
+    burst.style.borderColor = colour
+    nodes.push(burst)
+    anims.push(
+      burst.animate(
+        [
+          { transform: 'translate(-50%, -50%) scale(0.2)', opacity: 0 },
+          { transform: 'translate(-50%, -50%) scale(0.9)', opacity: 0.9, offset: 0.3 },
+          { transform: 'translate(-50%, -50%) scale(1.6)', opacity: 0 },
+        ],
+        { duration: dur(340), delay: rise * 0.9, easing: 'ease-out', fill: 'forwards' },
+      ),
+    )
+  }
+  track(host, nodes, anims)
+}
+
 const BUILDERS: Record<FxStyle, (host: HTMLElement, x: number, y: number) => void> = {
   sparks,
   sonar,
@@ -1335,6 +1555,10 @@ const BUILDERS: Record<FxStyle, (host: HTMLElement, x: number, y: number) => voi
   lightning,
   leaves,
   pixels,
+  web,
+  stamp,
+  swarm,
+  balloons,
 }
 
 function onPointerMove(e: PointerEvent) {

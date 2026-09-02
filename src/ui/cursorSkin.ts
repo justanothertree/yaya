@@ -39,6 +39,10 @@ export type CursorSkin =
   | 'diamond'
   | 'moon'
   | 'paw'
+  | 'feather'
+  | 'key'
+  | 'flame'
+  | 'eye'
 
 export const CURSOR_OPTIONS: Array<[CursorSkin, string, string]> = [
   ['system', '↖', 'System'],
@@ -61,6 +65,10 @@ export const CURSOR_OPTIONS: Array<[CursorSkin, string, string]> = [
   ['diamond', '◆', 'Diamond'],
   ['moon', '☾', 'Moon'],
   ['paw', '🐾', 'Paw'],
+  ['feather', '🪶', 'Feather'],
+  ['key', '🗝', 'Key'],
+  ['flame', '🔥', 'Flame'],
+  ['eye', '👁', 'Eye'],
 ]
 
 export const CURSOR_IDS = CURSOR_OPTIONS.map(([id]) => id)
@@ -227,6 +235,45 @@ const SKINS: Record<Exclude<CursorSkin, 'system'>, Skin> = {
       `<ellipse cx="13" cy="8.6" rx="2.7" ry="3.6" fill="${c}" stroke="rgba(0,0,0,.6)" stroke-width="1.3"/>` +
       `<ellipse cx="18.6" cy="10.2" rx="2.7" ry="3.4" fill="${c}" stroke="rgba(0,0,0,.6)" stroke-width="1.3"/>` +
       `<ellipse cx="22.6" cy="15" rx="2.4" ry="2.9" fill="${c}" stroke="rgba(0,0,0,.6)" stroke-width="1.3"/>`,
+  },
+  /** A quill. Hotspot on the QUILL TIP, the same reasoning as Pen and Brush — the writing end. */
+  feather: {
+    hot: [4, 25],
+    body: (c) =>
+      `<path d="M4 25 C9 20 10 14 14 9 C17 5 21 3 24.5 3 C24.5 8 23 13 19.5 16.5 C16 20 10 21 4 25 Z" fill="${c}" stroke="rgba(0,0,0,.6)" stroke-width="1.5" stroke-linejoin="round"/>` +
+      `<path d="M6.5 22.5 C11 18.5 15 13.5 22 6" fill="none" stroke="rgba(0,0,0,.5)" stroke-width="1.3"/>`,
+  },
+  /**
+   * Hotspot on the BIT — the toothed end that does the work — rather than the bow you hold. A key
+   * anchored at its ring would point with the wrong end, which is the same mistake as anchoring a
+   * pen by its cap.
+   */
+  key: {
+    hot: [3, 24],
+    body: (c) =>
+      `<path d="M3 24 L13.5 13.5" stroke="rgba(0,0,0,.65)" stroke-width="5" stroke-linecap="round"/>` +
+      `<path d="M3 24 L13.5 13.5" stroke="${c}" stroke-width="2.6" stroke-linecap="round"/>` +
+      `<path d="M5.5 21.5 L8 24 M8.5 18.5 L11 21" stroke="${c}" stroke-width="2.4" stroke-linecap="round"/>` +
+      `<circle cx="18.5" cy="8.5" r="5.6" fill="none" stroke="rgba(0,0,0,.6)" stroke-width="4.4"/>` +
+      `<circle cx="18.5" cy="8.5" r="5.6" fill="none" stroke="${c}" stroke-width="2.4"/>`,
+  },
+  /**
+   * Hotspot at the TIP of the flame, where it tapers — the widest part is the base, and pointing
+   * with a base is like pointing with the back of your hand.
+   */
+  flame: {
+    hot: [14, 2],
+    body: (c) =>
+      `<path d="M14 2 C17 7 20 9 21.5 13 A8 8 0 1 1 6.5 13 C8 10 10.5 9.5 11.5 6.5 C12.6 9 13.4 9.6 14 2 Z" fill="${c}" stroke="rgba(0,0,0,.62)" stroke-width="1.5" stroke-linejoin="round"/>` +
+      `<path d="M14 12 C15.6 14.6 16.6 15.8 16.6 17.6 A2.7 2.7 0 1 1 11.4 17.6 C11.4 15.8 12.4 14.6 14 12 Z" fill="rgba(0,0,0,.35)"/>`,
+  },
+  /** Symmetrical like Diamond, so the pupil is both the middle and the point. */
+  eye: {
+    hot: [14, 14],
+    body: (c) =>
+      `<path d="M2.5 14 C6 8.5 10 6 14 6 C18 6 22 8.5 25.5 14 C22 19.5 18 22 14 22 C10 22 6 19.5 2.5 14 Z" fill="${c}" stroke="rgba(0,0,0,.62)" stroke-width="1.5" stroke-linejoin="round"/>` +
+      `<circle cx="14" cy="14" r="4.2" fill="rgba(0,0,0,.72)"/>` +
+      `<circle cx="14" cy="14" r="1.6" fill="${c}"/>`,
   },
 }
 

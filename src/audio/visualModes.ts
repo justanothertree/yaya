@@ -44,6 +44,10 @@ export type VisualId =
   | 'flock'
   | 'tree'
   | 'weave'
+  | 'radar'
+  | 'helix'
+  | 'serpent'
+  | 'kaleido'
 
 /** id, icon, label, and how much of the previous frame lingers by default (0 = none, 1 = all). */
 export const VISUALS: Array<[VisualId, string, string, number]> = [
@@ -71,6 +75,10 @@ export const VISUALS: Array<[VisualId, string, string, number]> = [
   ['flock', '🐦', 'Flock', 0.7],
   ['tree', '🌳', 'Tree', 0.6],
   ['weave', '▓', 'Weave', 0.3],
+  ['radar', '📡', 'Radar', 0.92],
+  ['helix', '🧬', 'Helix', 0.5],
+  ['serpent', '🐍', 'Serpent', 0.8],
+  ['kaleido', '❉', 'Kaleido', 0.55],
 ]
 
 export type Ink = {
@@ -1486,6 +1494,207 @@ function weave(): Visual {
 }
 
 /**
+ * Radar — a sweeping arm that paints the spectrum where it passes.
+ *
+ * ⚠️ this is a spectrogram in POLAR form, and the sweep is what makes it one. Rain scrolls
+ * time sideways; here the arm carries time around the circle, so a whole bar of music is visible
+ * at once as a ring and you can see a rhythm repeat as a pattern rather than as a stripe. It is
+ * also the one mode whose picture depends on WHERE THE ARM IS — everything else is redrawn whole
+ * every frame.
+ */
+function radar(): Visual {
+  let angle = 0
+  return {
+    init() {
+      angle = 0
+    },
+    draw({ ctx, w, h, dt, spec, bins, f, p: ptr, ink }) {
+      const [cx, cy] = centre(ptr, w, h)
+      const R = Math.min(w, h) * 0.46
+      const speed = 1.1 + f.level * 1.4
+      const prev = angle
+      angle += dt * speed
+      /* draw the wedge between where the arm WAS and where it is, so a slow frame leaves no gap */
+      const steps = Math.max(1, Math.ceil((angle - prev) / 0.05))
+      for (let s = 0; s < steps; s++) {
+        const a = prev + ((angle - prev) * s) / steps
+        for (let i = 0; i < 26; i++) {
+          const k = i / 26
+          const v = at(spec, bins, 0.02 + k * 0.6)
+          if (v < 0.04) continue
+          const r0 = R * (0.14 + k * 0.86)
+          ctx.beginPath()
+          ctx.arc(cx, cy, r0, a, a + (angle - prev) / steps + 0.02)
+          ctx.strokeStyle = hue(ink, v, 0.25 + v * 0.75)
+          ctx.lineWidth = (R * 0.86) / 26 + 1
+          ctx.stroke()
+        }
+      }
+      /* the arm itself, so you can see where "now" is */
+      ctx.beginPath()
+      ctx.moveTo(cx, cy)
+      ctx.lineTo(cx + Math.cos(angle) * R, cy + Math.sin(angle) * R)
+      ctx.strokeStyle = hue(ink, 1, 0.8)
+      ctx.lineWidth = 1.5
+      ctx.stroke()
+    },
+  }
+}
+
+/**
+ * Helix — two strands twisting around each other, with rungs between them.
+ *
+ * ⚠️ the two strands are the SAME sine half a turn apart, which is what makes them read as
+ * one twisted object rather than two wavy lines. The rungs are the proof: they join points that
+ * belong together, and without them the eye separates the strands immediately.
+ */
+function helix(): Visual {
+  return {
+    init() {},
+    draw({ ctx, w, h, spec, bins, f, p: ptr, ink }) {
+      const N = 60
+      const mid = ptr.inside ? ptr.y : h / 2
+      const amp = h * (0.12 + f.level * 0.18)
+      const turns = 2.4 + f.bass * 2
+      const pts: Array<[number, number, number, number]> = []
+      for (let i = 0; i <= N; i++) {
+        const k = i / N
+        const x = k * w
+        const a = k * Math.PI * 2 * turns + f.t * (0.8 + f.mid)
+        pts.push([x, mid + Math.sin(a) * amp, x, mid + Math.sin(a + Math.PI) * amp])
+      }
+      /* rungs first, so the strands are drawn over them and read as in front */
+      for (let i = 0; i <= N; i += 3) {
+        const [x1, y1, x2, y2] = pts[i]
+        const v = at(spec, bins, 0.02 + (i / N) * 0.6)
+        ctx.beginPath()
+        ctx.moveTo(x1, y1)
+        ctx.lineTo(x2, y2)
+        ctx.strokeStyle = hue(ink, v, 0.15 + v * 0.5)
+        ctx.lineWidth = 1 + v * 2
+        ctx.stroke()
+      }
+      for (const which of [0, 1]) {
+        ctx.beginPath()
+        pts.forEach(([x1, y1, x2, y2], i) => {
+          const x = which ? x2 : x1
+          const y = which ? y2 : y1
+          if (i === 0) ctx.moveTo(x, y)
+          else ctx.lineTo(x, y)
+        })
+        ctx.strokeStyle = hue(ink, which ? 0.75 : 0.25)
+        ctx.lineWidth = 2 + f.level * 3
+        ctx.stroke()
+      }
+    },
+  }
+}
+
+/**
+ * Serpent — a single line that grows, turns on the beat, and forgets its tail.
+ *
+ * ⚠️ the only mode with MEMORY of a path. Everything else is a field redrawn each frame;
+ * this keeps a queue of where it has been, so what you see is a history rather than a state — and
+ * because it only turns on a beat, the shape of the line is the rhythm of the music written down.
+ * The queue is capped, which is both the tail length and the whole of its memory management.
+ */
+function serpent(): Visual {
+  let pts: Array<[number, number]> = []
+  let dir = 0
+  let x = 0
+  let y = 0
+  return {
+    init(w, h) {
+      pts = []
+      dir = -Math.PI / 4
+      x = w / 2
+      y = h / 2
+    },
+    draw({ ctx, w, h, dt, f, p: ptr, ink }) {
+      /* a beat turns it; loudness decides how far it travels between turns */
+      if (f.beat) dir += (Math.random() < 0.5 ? 1 : -1) * (0.5 + f.beatStrength * 1.1)
+      if (ptr.inside) {
+        /* steer gently toward the pointer, so it can be led without being dragged */
+        const want = Math.atan2(ptr.y - y, ptr.x - x)
+        let d = want - dir
+        while (d > Math.PI) d -= Math.PI * 2
+        while (d < -Math.PI) d += Math.PI * 2
+        dir += d * Math.min(1, dt * 1.6)
+      }
+      const speed = 70 + f.level * 320
+      x += Math.cos(dir) * speed * dt
+      y += Math.sin(dir) * speed * dt
+      if (x < 0) x += w
+      if (x > w) x -= w
+      if (y < 0) y += h
+      if (y > h) y -= h
+      pts.push([x, y])
+      const MAX = 220
+      if (pts.length > MAX) pts.splice(0, pts.length - MAX)
+
+      ctx.lineCap = 'round'
+      for (let i = 1; i < pts.length; i++) {
+        const [ax, ay] = pts[i - 1]
+        const [bx, by] = pts[i]
+        /* a wrap puts two points on opposite edges; joining them would draw a line across the
+           whole canvas, so the segment is simply skipped */
+        if (Math.abs(bx - ax) > w / 2 || Math.abs(by - ay) > h / 2) continue
+        const k = i / pts.length
+        ctx.beginPath()
+        ctx.moveTo(ax, ay)
+        ctx.lineTo(bx, by)
+        ctx.strokeStyle = hue(ink, k, 0.15 + k * 0.85)
+        ctx.lineWidth = 1 + k * (4 + f.level * 6)
+        ctx.stroke()
+      }
+    },
+  }
+}
+
+/**
+ * Kaleido — one small drawing, repeated around a circle and mirrored.
+ *
+ * ⚠️ the generator is deliberately SIMPLE, because the symmetry does the work. A complex
+ * figure repeated twelve times is noise; a few lines repeated twelve times is a pattern. This is
+ * also why it is not the same as the Mirror knob, which folds the FINISHED picture of whatever
+ * mode you are on — here the wedge is drawn for the purpose, so the seams always meet.
+ */
+function kaleido(): Visual {
+  return {
+    init() {},
+    draw({ ctx, w, h, spec, bins, f, p: ptr, ink }) {
+      const [cx, cy] = centre(ptr, w, h)
+      const R = Math.min(w, h) * 0.46
+      const SEG = 6 + Math.round(f.bass * 6)
+      ctx.save()
+      ctx.translate(cx, cy)
+      for (let s = 0; s < SEG; s++) {
+        ctx.save()
+        ctx.rotate((s / SEG) * Math.PI * 2)
+        /* every other wedge is flipped, which is what turns a rotation into a reflection */
+        if (s % 2) ctx.scale(1, -1)
+        ctx.beginPath()
+        for (let i = 0; i < 10; i++) {
+          const k = i / 10
+          const v = at(spec, bins, 0.02 + k * 0.5)
+          const r = R * (0.1 + k * 0.9)
+          const a = (0.12 + v * 0.5) * (1 + Math.sin(f.t * 0.6 + k * 3) * 0.3)
+          const px2 = Math.cos(a) * r
+          const py2 = Math.sin(a) * r
+          if (i === 0) ctx.moveTo(px2, py2)
+          else ctx.lineTo(px2, py2)
+        }
+        ctx.strokeStyle = hue(ink, s / SEG, 0.5 + f.level * 0.5)
+        ctx.lineWidth = 1.5 + f.level * 2.5
+        ctx.stroke()
+        ctx.restore()
+      }
+      ctx.restore()
+    },
+  }
+}
+
+/**
  * The spectrum wound onto an Archimedean spiral, low frequencies at the middle.
  *
  * A line chart bent into a coil: one continuous read of the whole range where the eye can follow
@@ -1548,6 +1757,10 @@ const MAKERS: Record<VisualId, () => Visual> = {
   flock,
   tree,
   weave,
+  radar,
+  helix,
+  serpent,
+  kaleido,
 }
 
 export function makeVisual(id: VisualId): Visual {

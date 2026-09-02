@@ -245,6 +245,59 @@ export const PALETTES: Palette[] = [
     ],
   },
   {
+    // metal rather than fire: Ember burns orange, this one is struck brass going to pale gold
+    id: 'gold',
+    label: 'Gold',
+    stops: [
+      [30, 22, 6],
+      [98, 70, 16],
+      [176, 132, 40],
+      [226, 190, 96],
+      [250, 236, 190],
+    ],
+  },
+  {
+    /**
+     * ⚠️ The only ramp that is not monotonic in brightness — it climbs, dips into the dark of
+     * the cloud, then breaks to white. Every other ramp here gets steadily lighter, which is the
+     * right shape for loudness; this one is the shape of weather, and modes that walk it end up
+     * with a band of gloom before the flash.
+     */
+    id: 'storm',
+    label: 'Storm',
+    stops: [
+      [22, 26, 34],
+      [70, 82, 98],
+      [40, 48, 62],
+      [140, 156, 178],
+      [244, 248, 255],
+    ],
+  },
+  {
+    // Candy is bright pink; this is the dusty, greyed one that sits behind text without shouting
+    id: 'rose',
+    label: 'Rose',
+    stops: [
+      [40, 24, 30],
+      [104, 58, 66],
+      [172, 108, 112],
+      [214, 162, 158],
+      [244, 218, 210],
+    ],
+  },
+  {
+    // deep red into violet — between Ember's heat and Plum's cool, and darker than either
+    id: 'wine',
+    label: 'Wine',
+    stops: [
+      [26, 6, 14],
+      [82, 14, 40],
+      [140, 30, 70],
+      [186, 82, 120],
+      [232, 178, 196],
+    ],
+  },
+  {
     /**
      * The whole wheel, rather than a journey between two ends of one.
      *

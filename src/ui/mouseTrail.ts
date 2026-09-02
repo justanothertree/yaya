@@ -48,6 +48,10 @@ export type TrailStyle =
   | 'wave'
   | 'bolt'
   | 'shadow'
+  | 'flame'
+  | 'notes'
+  | 'frost'
+  | 'confetti'
 
 export const TRAIL_OPTIONS: Array<[TrailStyle, string, string]> = [
   ['none', '∅', 'None'],
@@ -71,6 +75,10 @@ export const TRAIL_OPTIONS: Array<[TrailStyle, string, string]> = [
   ['wave', '〰️', 'Wave'],
   ['bolt', '⌁', 'Bolt'],
   ['shadow', '◑', 'Shadow'],
+  ['flame', '🔥', 'Flame'],
+  ['notes', '🎶', 'Notes'],
+  ['frost', '❅', 'Frost'],
+  ['confetti', '🎉', 'Confetti'],
 ]
 
 export const TRAIL_IDS = TRAIL_OPTIONS.map(([id]) => id)
@@ -167,6 +175,10 @@ const SPACING: Record<Exclude<TrailStyle, 'none'>, number> = {
   wave: 7,
   bolt: 20,
   shadow: 16,
+  flame: 8,
+  notes: 30,
+  frost: 22,
+  confetti: 14,
 }
 
 /**
@@ -199,6 +211,10 @@ const TRAIL_HUE: Record<Exclude<TrailStyle, 'none'>, number> = {
   wave: 0.47,
   bolt: 0.14,
   shadow: 0.86,
+  flame: 0.05,
+  notes: 0.64,
+  frost: 0.52,
+  confetti: 0.36,
 }
 
 function drop(s: Exclude<TrailStyle, 'none'>, x: number, y: number, dx: number, dy: number) {
@@ -649,6 +665,120 @@ function drop(s: Exclude<TrailStyle, 'none'>, x: number, y: number, dx: number, 
           { transform: 'translate(-50%, -50%) scale(1)', opacity: 0 },
         ],
         { duration: dur(520), easing: 'ease-out', fill: 'forwards' },
+      )
+      break
+    }
+    /**
+     * Tongues that rise and narrow, brightening as they go.
+     *
+     * ⚠️ it moves UP regardless of which way you moved, which no other trail does — even
+     * Rise, which drifts with you. Fire does not follow a hand, it goes up, and ignoring the
+     * pointer's direction entirely is what stops this looking like exhaust.
+     */
+    case 'flame': {
+      const p = mk('trail-smoke', x + (Math.random() - 0.5) * 8, y)
+      const size = px(10 + Math.random() * 10)
+      p.style.width = size + 'px'
+      p.style.height = size * 1.4 + 'px'
+      p.style.background = Math.random() < 0.35 ? b : a
+      emit(
+        p,
+        [
+          { transform: 'translate(-50%, -50%) translate(0, 0) scale(1, 1)', opacity: 0.75 },
+          {
+            transform: `translate(-50%, -50%) translate(${(Math.random() - 0.5) * 12}px, ${px(-26)}px) scale(0.3, 1.5)`,
+            opacity: 0,
+          },
+        ],
+        { duration: dur(520 + Math.random() * 260), easing: 'ease-out', fill: 'forwards' },
+      )
+      break
+    }
+    /**
+     * Notes drifting off the pointer, for the site that has an instrument in it.
+     *
+     * ⚠️ the only trail made of GLYPHS rather than shapes, so it is the only one whose
+     * particles have a meaning of their own. That is also why it is spaced so widely — a stream of
+     * overlapping characters is illegible, and an illegible letter is just a smudge with corners.
+     */
+    case 'notes': {
+      const GLYPHS = ['\u266a', '\u266b', '\u266c']
+      /* ⚠️ click-fx-glyph, not a new class of its own. Trails share the click layer, and that
+         rule already carries the text reset a character particle needs — a second copy of it
+         would be one more thing to keep in step for no gain. */
+      const el = mk('click-fx-glyph', x, y)
+      el.textContent = GLYPHS[Math.floor(Math.random() * GLYPHS.length)]
+      el.style.fontSize = px(13 + Math.random() * 7) + 'px'
+      el.style.color = Math.random() < 0.5 ? a : b
+      emit(
+        el,
+        [
+          { transform: 'translate(-50%, -50%) translate(0, 0) rotate(0deg)', opacity: 0.95 },
+          {
+            transform: `translate(-50%, -50%) translate(${(Math.random() - 0.5) * 26}px, ${px(-30)}px) rotate(${(Math.random() - 0.5) * 60}deg)`,
+            opacity: 0,
+          },
+        ],
+        { duration: dur(900 + Math.random() * 400), easing: 'ease-out', fill: 'forwards' },
+      )
+      break
+    }
+    /**
+     * Crystals that grow outward in a fixed direction and hold, rather than drifting.
+     *
+     * ⚠️ it does not MOVE at all — it scales from nothing and stops. Every other style here
+     * travels; this one is deposited, which is what ice does, and the stillness is the effect.
+     */
+    case 'frost': {
+      const p = mk('trail-dash', x, y)
+      const len = px(12 + Math.random() * 12)
+      p.style.width = len + 'px'
+      p.style.height = px(2) + 'px'
+      p.style.background = Math.random() < 0.4 ? b : a
+      const spoke = Math.round(Math.random() * 6) * 60
+      emit(
+        p,
+        [
+          { transform: `translate(-50%, -50%) rotate(${spoke}deg) scaleX(0)`, opacity: 0.95 },
+          {
+            transform: `translate(-50%, -50%) rotate(${spoke}deg) scaleX(1)`,
+            opacity: 0.8,
+            offset: 0.35,
+          },
+          { transform: `translate(-50%, -50%) rotate(${spoke}deg) scaleX(1)`, opacity: 0 },
+        ],
+        { duration: dur(900), easing: 'cubic-bezier(0.1,0.8,0.2,1)', fill: 'forwards' },
+      )
+      break
+    }
+    /**
+     * Little rectangles that tumble as they fall.
+     *
+     * ⚠️ rectangles, not dots, and they ROTATE — which is the entire difference from Rain.
+     * A falling dot has no orientation, so it reads as a drop however it moves; a falling oblong
+     * that turns reads as paper, and the two never get confused even though the physics is the
+     * same.
+     */
+    case 'confetti': {
+      const p = mk('trail-dash', x + (Math.random() - 0.5) * 18, y)
+      p.style.width = px(5 + Math.random() * 4) + 'px'
+      p.style.height = px(8 + Math.random() * 5) + 'px'
+      p.style.background = Math.random() < 0.5 ? a : b
+      const spin = (Math.random() - 0.5) * 720
+      emit(
+        p,
+        [
+          { transform: 'translate(-50%, -50%) translate(0, 0) rotate(0deg)', opacity: 0.95 },
+          {
+            transform: `translate(-50%, -50%) translate(${(Math.random() - 0.5) * 30}px, ${px(34 + Math.random() * 24)}px) rotate(${spin}deg)`,
+            opacity: 0,
+          },
+        ],
+        {
+          duration: dur(1000 + Math.random() * 500),
+          easing: 'cubic-bezier(0.4,0.1,0.7,1)',
+          fill: 'forwards',
+        },
       )
       break
     }

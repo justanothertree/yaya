@@ -37,6 +37,9 @@ export type BackdropId =
   | 'mesh'
   | 'ripples'
   | 'aurora'
+  | 'snow'
+  | 'bokeh'
+  | 'rays'
 
 export const BACKDROPS: Array<[BackdropId, string, string]> = [
   ['none', '∅', 'None'],
@@ -57,6 +60,9 @@ export const BACKDROPS: Array<[BackdropId, string, string]> = [
   ['mesh', '⬡', 'Mesh'],
   ['ripples', '◉', 'Ripples'],
   ['aurora', '🌌', 'Aurora'],
+  ['snow', '❄', 'Snow'],
+  ['bokeh', '⚪', 'Bokeh'],
+  ['rays', '☀', 'Rays'],
   ['waves', '🌊', 'Waves'],
   ['bubbles', '🫧', 'Bubbles'],
   ['flames', '🔥', 'Flames'],
@@ -695,6 +701,171 @@ function aurora(): Effect {
   }
 }
 
+/**
+ * Snow — flakes that fall and sway.
+ *
+ * ⚠️ the sway is a SINE of each flake's own phase, not a random walk. A random horizontal
+ * nudge per frame produces jitter, which reads as a bad video rather than as air; a slow
+ * oscillation with its own period per flake is what makes a field of them look like weather.
+ * Rain falls straight and fast for contrast — same idea, opposite handling.
+ */
+function snow(): Effect {
+  let ps: Array<{
+    x: number
+    y: number
+    r: number
+    v: number
+    phase: number
+    rate: number
+    amp: number
+    tone: number
+  }> = []
+  let W = 0
+  let H = 0
+  return {
+    init(w, h, coarse) {
+      W = w
+      H = h
+      ps = Array.from({ length: count(w, h, 10, 110, coarse) }, () => ({
+        x: Math.random() * w,
+        y: Math.random() * h,
+        r: 1 + Math.random() * 2.6,
+        v: 14 + Math.random() * 26,
+        phase: Math.random() * Math.PI * 2,
+        rate: 0.4 + Math.random() * 0.7,
+        amp: 6 + Math.random() * 18,
+        tone: Math.random(),
+      }))
+    },
+    step({ ctx, w, h, dt, t, paint, px }) {
+      W = w
+      H = h
+      const wind = px == null ? 0 : (px / w - 0.5) * 26
+      for (const f of ps) {
+        f.y += f.v * dt * speedScale()
+        if (f.y - f.r > H) {
+          f.y = -f.r
+          f.x = Math.random() * W
+        }
+        const x = f.x + Math.sin(t * f.rate + f.phase) * f.amp + wind
+        ctx.beginPath()
+        ctx.arc(((x % W) + W) % W, f.y, f.r * sizeScale(), 0, Math.PI * 2)
+        ctx.fillStyle = rgba(ramped(paint, f.tone), 0.16 + f.tone * 0.24)
+        ctx.fill()
+      }
+    },
+  }
+}
+
+/**
+ * Bokeh — big, soft, out-of-focus circles drifting past.
+ *
+ * ⚠️ FEW and LARGE, where Stars is many and tiny — and that is the whole difference, since
+ * both are drifting circles. A dozen discs the size of a thumbnail read as depth of field; a
+ * hundred small ones read as a starfield however soft you make them. Each is a radial gradient
+ * rather than a flat fill, because a hard-edged circle at that size looks like a bug.
+ */
+function bokeh(): Effect {
+  let ps: Array<{
+    x: number
+    y: number
+    r: number
+    vx: number
+    vy: number
+    tone: number
+    a: number
+  }> = []
+  let W = 0
+  let H = 0
+  return {
+    init(w, h, coarse) {
+      W = w
+      H = h
+      const n = Math.max(4, Math.min(coarse ? 8 : 16, Math.round((w * h) / 90000)))
+      ps = Array.from({ length: amount('background', n) }, () => ({
+        x: Math.random() * w,
+        y: Math.random() * h,
+        r: Math.min(w, h) * (0.05 + Math.random() * 0.11),
+        vx: (Math.random() - 0.5) * 10,
+        vy: (Math.random() - 0.5) * 8,
+        tone: Math.random(),
+        a: 0.05 + Math.random() * 0.09,
+      }))
+    },
+    step({ ctx, w, h, dt, paint, px, py }) {
+      W = w
+      H = h
+      for (const b of ps) {
+        b.x += b.vx * dt * speedScale()
+        b.y += b.vy * dt * speedScale()
+        if (b.x < -b.r) b.x = W + b.r
+        if (b.x > W + b.r) b.x = -b.r
+        if (b.y < -b.r) b.y = H + b.r
+        if (b.y > H + b.r) b.y = -b.r
+        let a = b.a
+        /* one near the pointer comes into focus a little, which is the only thing bokeh can do */
+        if (px != null && py != null) {
+          const d = Math.hypot(b.x - px, b.y - py)
+          if (d < b.r * 2) a += (1 - d / (b.r * 2)) * 0.07
+        }
+        const r = Math.max(1, b.r * sizeScale())
+        const g = ctx.createRadialGradient(b.x, b.y, r * 0.2, b.x, b.y, r)
+        g.addColorStop(0, rgba(ramped(paint, b.tone), a))
+        g.addColorStop(0.72, rgba(ramped(paint, b.tone), a * 0.6))
+        g.addColorStop(1, rgba(ramped(paint, b.tone), 0))
+        ctx.fillStyle = g
+        ctx.beginPath()
+        ctx.arc(b.x, b.y, r, 0, Math.PI * 2)
+        ctx.fill()
+      }
+    },
+  }
+}
+
+/**
+ * Rays — light from one corner, sweeping slowly.
+ *
+ * ⚠️ it ROTATES, which nothing else here does. Waves roll, particles drift, Grid scrolls —
+ * all of it is translation. Turning around a point is a motion the eye reads completely
+ * differently, and it is why this looks like a source of light rather than a pattern moving past.
+ * A handful of long triangles, so the cost does not change with the canvas.
+ */
+function rays(): Effect {
+  let beams: Array<{ a: number; w: number; rate: number; tone: number }> = []
+  return {
+    init(w, h, coarse) {
+      const n = coarse ? 5 : 8
+      beams = Array.from({ length: amount('background', n) }, (_, i) => ({
+        a: (i / n) * Math.PI * 0.9,
+        w: 0.05 + Math.random() * 0.12,
+        rate: 0.03 + Math.random() * 0.05,
+        tone: i / Math.max(1, n - 1),
+      }))
+      void w
+      void h
+    },
+    step({ ctx, w, h, t, paint, px, py }) {
+      /* the light comes from the pointer when there is one, and from the top-left when there is not */
+      const ox = px ?? w * 0.12
+      const oy = py ?? h * 0.08
+      const far = Math.hypot(w, h) * 1.2
+      for (const b of beams) {
+        const a = b.a + t * b.rate * speedScale()
+        const g = ctx.createLinearGradient(ox, oy, ox + Math.cos(a) * far, oy + Math.sin(a) * far)
+        g.addColorStop(0, rgba(ramped(paint, b.tone), 0.1))
+        g.addColorStop(1, rgba(ramped(paint, b.tone), 0))
+        ctx.fillStyle = g
+        ctx.beginPath()
+        ctx.moveTo(ox, oy)
+        ctx.lineTo(ox + Math.cos(a - b.w) * far, oy + Math.sin(a - b.w) * far)
+        ctx.lineTo(ox + Math.cos(a + b.w) * far, oy + Math.sin(a + b.w) * far)
+        ctx.closePath()
+        ctx.fill()
+      }
+    },
+  }
+}
+
 export function makeEffect(id: BackdropId): Effect | null {
   switch (id) {
     case 'waves':
@@ -719,6 +890,12 @@ export function makeEffect(id: BackdropId): Effect | null {
       return ripples()
     case 'aurora':
       return aurora()
+    case 'snow':
+      return snow()
+    case 'bokeh':
+      return bokeh()
+    case 'rays':
+      return rays()
     default:
       return null
   }
