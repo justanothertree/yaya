@@ -9,6 +9,7 @@ import {
   type Stroke,
   type Tool,
   isFreehand,
+  SYMMETRIES,
 } from '../draw/strokes'
 import { InCanvasWindow } from '../circuit/ui/canvasContext'
 import { gallery, removeArt, saveArt, subscribeGallery, type Art } from '../draw/gallery'
@@ -82,6 +83,8 @@ export function PaintRoom() {
   const [colour, setColour] = useState('#22c55e')
   const [alpha, setAlpha] = useState(1)
   const [width, setWidth] = useState(0.008)
+  /** kaleidoscope segments for strokes drawn from now on — see Stroke.k */
+  const [symmetry, setSymmetry] = useState(0)
   const live = useRef<Stroke | null>(null)
   const [galleryOpen, setGalleryOpen] = useState(false)
   const saved = useSyncExternalStore(subscribeGallery, gallery, gallery)
@@ -299,7 +302,7 @@ export function PaintRoom() {
       /* some inputs cannot be captured; drawing still works, it just stops at the edge */
     }
     if (tool === 'fill') {
-      commit({ t: 'fill', c: colour, a: alpha, w: width, p: [x, y] })
+      commit({ t: 'fill', c: colour, a: alpha, w: width, k: 0, p: [x, y] })
       return
     }
     live.current = {
@@ -307,6 +310,7 @@ export function PaintRoom() {
       c: colour,
       a: alpha,
       w: width,
+      k: symmetry,
       p: isFreehand(tool) ? [x, y] : [x, y, x, y],
     }
     preview()
@@ -478,6 +482,27 @@ export function PaintRoom() {
             onChange={(e) => setWidth(Number(e.target.value))}
           />
           <span className="appearance-slider-val">{Math.round(width * 1000)}</span>
+        </label>
+        {/* ⚠️ A MODIFIER, not a tool: it applies to whichever of the fifteen tools is selected, so
+            one control multiplies the whole toolbar rather than adding one more thing to it. It
+            is remembered per stroke, so turning it off later leaves what you already drew. */}
+        <label className="inst-pick">
+          <span className="muted" title="Mirror what you draw around the middle of the picture">
+            Symmetry
+          </span>
+          <span className="paint-sym-row">
+            {SYMMETRIES.map((n) => (
+              <button
+                key={n}
+                className={'btn' + (symmetry === n ? ' is-on' : '')}
+                aria-pressed={symmetry === n}
+                onClick={() => setSymmetry(n)}
+                title={n === 0 ? 'No mirroring' : `${n} mirrored segments`}
+              >
+                {n === 0 ? 'Off' : n}
+              </button>
+            ))}
+          </span>
         </label>
         <button className="btn" onClick={undo} disabled={!strokes.length} title="Undo (Ctrl+Z)">
           ↶ Undo

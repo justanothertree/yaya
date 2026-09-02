@@ -59,8 +59,24 @@ export const TOOLS: Array<[Tool, string, string]> = [
   ['triangle', '△', 'Triangle'],
 ]
 
+/** How many mirrored copies a stroke is drawn as. 0 or 1 is "just the one". */
+export const SYMMETRIES = [0, 2, 4, 6, 8, 12] as const
+
 export type Stroke = {
   t: Tool
+  /**
+   * Kaleidoscope segments for THIS stroke.
+   *
+   * ⚠️ Per stroke, not per drawing, because symmetry is something you switch on and off while
+   * working — half a picture mirrored and half of it freehand is the normal way to use it, and a
+   * single setting for the whole file could not express that.
+   *
+   * ⚠️ Stored as ONE NUMBER, not as copies of the stroke. Saving the mirrored copies would
+   * multiply the file by up to twelve and freeze the symmetry into the geometry, so it could
+   * never be changed or turned off afterwards. The copies are made at drawing time, which is the
+   * same reason this format keeps strokes instead of pixels.
+   */
+  k?: number
   /** css colour; ignored by the eraser */
   c: string
   /** 0–1 */
@@ -174,6 +190,10 @@ export function readDrawing(v: unknown): Drawing | null {
   }
 }
 
+/** Only the offered segment counts, so a hand-edited file cannot ask for 4000 copies. */
+const segments = (v: unknown): number =>
+  typeof v === 'number' && (SYMMETRIES as readonly number[]).includes(v) ? v : 0
+
 export function readStroke(raw: unknown): Stroke | null {
   if (!raw || typeof raw !== 'object') return null
   const o = raw as Record<string, unknown>
@@ -192,6 +212,7 @@ export function readStroke(raw: unknown): Stroke | null {
     c: colour(o.c),
     a: num(o.a, 0.02, 1, 1),
     w: num(o.w, 0.0015, 0.25, 0.01),
+    k: segments(o.k),
     p,
   }
 }
@@ -219,7 +240,38 @@ function boxWheel(
   return g
 }
 
+/**
+ * Draw a stroke, mirrored into however many segments it asks for.
+ *
+ * ⚠️ Around the CENTRE of the picture, not around where the stroke started. A kaleidoscope has one
+ * axis and everything folds about it; folding each stroke about its own middle would give a row of
+ * small independent snowflakes rather than one figure.
+ *
+ * ⚠️ Alternate segments are FLIPPED. Rotation alone repeats a shape around a circle, which reads
+ * as a wheel; reflecting every other copy is what makes the seams meet and turns it into a
+ * kaleidoscope.
+ *
+ * ⚠️ Never for the fill bucket. Flood fill reads the canvas back, so mirroring it would mean up to
+ * twelve full-canvas reads for a tool whose result is already whatever region it landed in.
+ */
 export function paintStroke(ctx: CanvasRenderingContext2D, s: Stroke, w: number, h: number) {
+  const k = s.k ?? 0
+  if (k < 2 || s.t === 'fill') {
+    paintOne(ctx, s, w, h)
+    return
+  }
+  for (let seg = 0; seg < k; seg++) {
+    ctx.save()
+    ctx.translate(w / 2, h / 2)
+    ctx.rotate((seg / k) * Math.PI * 2)
+    if (seg % 2) ctx.scale(1, -1)
+    ctx.translate(-w / 2, -h / 2)
+    paintOne(ctx, s, w, h)
+    ctx.restore()
+  }
+}
+
+function paintOne(ctx: CanvasRenderingContext2D, s: Stroke, w: number, h: number) {
   const short = Math.min(w, h)
   const X = (i: number) => s.p[i] * w
   const Y = (i: number) => s.p[i] * h
@@ -582,13 +634,19 @@ export function paintStroke(ctx: CanvasRenderingContext2D, s: Stroke, w: number,
  * through readDrawing, so a packed drawing gets exactly the same validation as any other.
  */
 export type PackedDrawing = {
-  v: 2
+  /**
+   * ⚠️ VERSION 3 ADDS A FIELD IN THE MIDDLE OF EVERY ROW, which is exactly why the number had to
+   * change. A row is positional — [tool, colour, alpha, width, ...points] — so a reader that met
+   * a v3 row expecting v2 would take the symmetry as the first x coordinate and draw nonsense.
+   * Version 2 drawings are still read, with no symmetry, and nobody's saved work moves.
+   */
+  v: 3
   n: string
   r: number
   /** background, hash-less hex, or 0 for none */
   b: string | 0
-  /** [toolIndex, colour, alpha%, width‰, ...points‰] per stroke — 0 is none, 1 is rainbow */
-  s: Array<[number, string | 0 | 1, number, number, ...number[]]>
+  /** [toolIndex, colour, alpha%, width‰, segments, ...points‰] — colour 0 is none, 1 is rainbow */
+  s: Array<[number, string | 0 | 1, number, number, number, ...number[]]>
 }
 
 /**
@@ -619,7 +677,7 @@ const TOOL_ORDER = TOOLS.map(([t]) => t)
 
 export function packDrawing(d: Drawing): PackedDrawing {
   return {
-    v: 2,
+    v: 3,
     n: d.name,
     r: Math.round(d.ratio * 100) / 100,
     b: d.bg ? d.bg.slice(1) : 0,
@@ -628,6 +686,7 @@ export function packDrawing(d: Drawing): PackedDrawing {
       k.c === NONE ? 0 : k.c === RAINBOW ? 1 : k.c.slice(1),
       Math.round(k.a * 100),
       Math.round(k.w * 1000),
+      k.k ?? 0,
       ...k.p.map((n) => Math.round(n * 1000)),
     ]) as PackedDrawing['s'],
   }
@@ -635,15 +694,21 @@ export function packDrawing(d: Drawing): PackedDrawing {
 
 function unpack(v: Record<string, unknown>): Drawing | null {
   if (!Array.isArray(v.s)) return null
+  /* ⚠️ anything that is not explicitly v3 is read as the older four-field row — including a
+     document with no version at all, which is what the very first packed drawings looked like */
+  const hasSegments = v.v === 3
   const strokes: unknown[] = []
   for (const row of v.s.slice(0, MAX_STROKES)) {
     if (!Array.isArray(row) || row.length < 5) continue
-    const [ti, c, a, w, ...pts] = row as [number, string | 0 | 1, number, number, ...number[]]
+    const [ti, c, a, w, ...rest] = row as [number, string | 0 | 1, number, number, ...number[]]
+    const k = hasSegments ? rest[0] : 0
+    const pts = hasSegments ? rest.slice(1) : rest
     strokes.push({
       t: TOOL_ORDER[typeof ti === 'number' ? ti : 0] ?? 'brush',
       c: c === 0 ? NONE : c === 1 ? RAINBOW : typeof c === 'string' ? `#${c}` : '#000000',
       a: typeof a === 'number' ? a / 100 : 1,
       w: typeof w === 'number' ? w / 1000 : 0.01,
+      k,
       p: pts.filter((n) => typeof n === 'number').map((n) => n / 1000),
     })
   }

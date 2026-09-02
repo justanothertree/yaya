@@ -6243,3 +6243,15 @@ a.cz-msg-author:focus-visible {
   font-size: 0.8rem;
   padding: 0.35rem 0.6rem;
 }
+.paint-sym-row {
+  display: flex;
+  gap: 0.25rem;
+  flex-wrap: wrap;
+}
+/* ⚠️ Six small buttons in a row that already holds sliders, so they are sized down to match the
+   controls beside them rather than the page's default button. */
+.paint-sym-row .btn {
+  padding: 0.3rem 0.5rem;
+  font-size: 0.8rem;
+  min-width: 2rem;
+}
