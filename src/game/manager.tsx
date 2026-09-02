@@ -3483,9 +3483,18 @@ export function GameManager({
                   </button>
                 )}
                 {/* Fullscreen buttons temporarily removed */}
+                {/**
+                 * ⚠️ The board is FOCUSABLE, so it needs to say what it is. tabIndex puts it in
+                 * the tab order — that is how the arrow keys reach the game at all — and a
+                 * keyboard or screen-reader user therefore lands on it and, until now, was told
+                 * nothing: an unlabelled stop between the toolbar and the leaderboard. The label
+                 * doubles as the instructions, which is the one thing worth hearing there.
+                 */}
                 <canvas
                   ref={canvasRef}
                   tabIndex={0}
+                  role="application"
+                  aria-label="Snake board. Arrow keys or WASD to steer, space to pause."
                   className="snake-canvas"
                   onFocus={() => {
                     capturedRef.current = true
