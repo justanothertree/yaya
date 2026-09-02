@@ -1344,7 +1344,26 @@ export function noteOn(
           g.gain.cancelScheduledValues(from)
           g.gain.setValueAtTime(Math.max(0.0001, g.gain.value), from)
         }
-        g.gain.exponentialRampToValueAtTime(0.0001, from + sh.r)
+        /**
+         * ⚠️ setTargetAtTime, NOT exponentialRampToValueAtTime — AND THIS IS THE SECOND HALF OF
+         * THE POP, the one cancelAndHoldAtTime above did not fix.
+         *
+         * A ramp interpolates from the PREVIOUS AUTOMATION EVENT, not from now. Hold a note past
+         * the end of its attack and decay and that event is hundreds of milliseconds in the past,
+         * so a ramp "over sh.r" is already ~99.9% finished the instant it begins: the gain falls
+         * off a cliff instead of fading, and a vertical edge is a click. Measured on organ, held
+         * 600ms: 0.3 down to 0.00025 in 21ms of a 90ms release, a jump nine times the waveform's
+         * own steepest slope.
+         *
+         * It bites hardest on organ because its decay ends after 62ms, so any real press is past
+         * it — but every sustaining patch is exposed the moment it is held longer than a + d.
+         *
+         * setTargetAtTime has no such anchor: it decays from whatever the value genuinely is at
+         * `from`, which is exactly what a release wants, and it composes correctly with the hold
+         * above for notes released on a schedule. tau = r/5, so by `from + r` it has fallen to
+         * 0.7% — about -43dB — and the oscillator stop below lands well under the noise.
+         */
+        g.gain.setTargetAtTime(0.0001, from, Math.max(0.005, sh.r / 5))
       } catch {
         /* context went away */
       }
