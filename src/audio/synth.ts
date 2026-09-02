@@ -307,6 +307,25 @@ const MAX_BUSES = 14
 /** A bus idle for less than this may still be ringing, so it is never evicted. */
 const RING_TAIL = 4
 
+/**
+ * How far ahead a live note is scheduled, and the answer to the remaining clicks.
+ *
+ * ⚠️ AN ENVELOPE THAT STARTS AT `currentTime` STARTS IN THE PAST. Audio is rendered in blocks of
+ * 128 frames — about 2.7ms at 48kHz — and `currentTime` is the start of the block being worked on
+ * now, so by the time anything scheduled at exactly that instant is looked at, the moment has
+ * already gone by. A 2ms attack ramp laid down there is entirely behind the playhead, and the
+ * parameter simply arrives at its end value on the next block: silence to full level in one
+ * sample, which is the definition of a click. The same thing happens at the other end, where a
+ * release that was supposed to fade over `r` instead lands already finished.
+ *
+ * Scheduled notes never had this problem, which is why it was the LIVE playing that popped, and
+ * only sometimes — it depends where in the block the key happened to fall.
+ *
+ * Two render blocks of margin puts the whole ramp safely in the future. Six milliseconds is far
+ * below the ~20ms where a delay starts to be felt under the fingers, so nothing feels slower.
+ */
+const SAFE_START = 0.006
+
 export type Knob = 'echo' | 'echoTime' | 'space' | 'vibrato'
 const KNOB_KEY: Record<Knob, string> = {
   echo: 'synth_echo_v1',
@@ -773,7 +792,7 @@ export function noteOn(
 ) {
   const c = ensure()
   resumeAudio()
-  const at = Math.max(when ?? c.currentTime, c.currentTime)
+  const at = Math.max(when ?? 0, c.currentTime + SAFE_START)
   const bus = busFor(c, part?.key ?? LIVE_PART, part?.fx ?? fxSnapshot())
 
   if (instrument === 'drums') {
@@ -869,7 +888,7 @@ export function noteOn(
   const voice: Voice = {
     ends,
     stop(t: number) {
-      const from = Math.max(t, c.currentTime)
+      const from = Math.max(t, c.currentTime + SAFE_START)
       try {
         /**
          * ⚠️ THIS WAS THE POP, and it got worse the more the sequencer was used.
@@ -930,7 +949,7 @@ export function noteOff(id: string, when?: number) {
   if (!c) return
   const v = voices.get(id)
   if (!v) return
-  v.stop(Math.max(when ?? c.currentTime, c.currentTime))
+  v.stop(Math.max(when ?? 0, c.currentTime + SAFE_START))
   voices.delete(id)
 }
 
@@ -938,7 +957,7 @@ export function noteOff(id: string, when?: number) {
 export function allNotesOff() {
   const c = ctx
   if (!c) return
-  for (const [, v] of voices) v.stop(c.currentTime)
+  for (const [, v] of voices) v.stop(c.currentTime + SAFE_START)
   voices.clear()
 }
 
