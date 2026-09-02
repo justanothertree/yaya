@@ -440,6 +440,16 @@ function tunnel(): Visual {
 function nebula(): Visual {
   type P = { x: number; y: number; vx: number; vy: number; s: number; hr: number }
   let ps: P[] = []
+  /**
+   * The size the particles were last positioned for.
+   *
+   * ⚠️ NOT the size init was given. Zoom changes how big the drawing surface is WITHOUT a resize
+   * — the modes are told the canvas is w/zoom across, so they lay out for that — and this mode
+   * used to keep the width and height it was built with and centre on those forever. Zoom out and
+   * the cloud went on orbiting the middle of the old, smaller canvas, which is up in the top-left
+   * corner of the new one. That is the reported drift, and it was every mode that remembered a
+   * size instead of reading the one it is handed.
+   */
   let W = 1
   let H = 1
   return {
@@ -466,7 +476,19 @@ function nebula(): Visual {
         hr: Math.sqrt(Math.random()) * 0.92,
       }))
     },
-    draw({ ctx, dt, f, p: ptr, ink }) {
+    draw({ ctx, w, h, dt, f, p: ptr, ink }) {
+      /* the surface changed under us (a zoom, not a resize) — carry the cloud across rather than
+         reseeding it, so the picture moves with the frame instead of restarting */
+      if (w !== W || h !== H) {
+        const sx = w / W
+        const sy = h / H
+        for (const p of ps) {
+          p.x *= sx
+          p.y *= sy
+        }
+        W = w
+        H = h
+      }
       const cx = W / 2
       const cy = H / 2
       const reach = Math.min(W, H) * 0.46
@@ -846,17 +868,30 @@ function orbit(): Visual {
  * from a fixed table — loud passages pull points together and the whole thing meshes.
  */
 function constellation(): Visual {
-  type S = { x: number; y: number; bx: number; by: number; band: number }
+  /**
+   * ⚠️ ANCHORS ARE POLAR AND FRACTIONAL, not pixels remembered from init.
+   *
+   * They used to be absolute coordinates worked out once from the size this mode was built with.
+   * Zoom does not resize anything — it tells the modes the canvas is w/zoom across — so those
+   * anchors went on describing the middle of the old, smaller canvas, and the whole web sat up in
+   * the top-left corner of the new one. An angle and a fraction of the short side mean the ring
+   * is re-derived from whatever size the frame actually is, and follows a zoom exactly.
+   *
+   * `seed` carries the drift phase, which used to be taken from the anchor's x. Deriving it from
+   * a position that now changes with zoom would make every star jump when you touched the wheel.
+   */
+  type S = { x: number; y: number; a: number; rf: number; seed: number; band: number }
   let ss: S[] = []
   return {
     init(w, h) {
       const n = Math.max(18, Math.min(54, Math.round((w * h) / 24000)))
       ss = Array.from({ length: n }, (_, i) => {
         const a = (i / n) * Math.PI * 2
-        const r = Math.min(w, h) * (0.18 + ((i * 37) % 100) / 300)
+        const rf = 0.18 + ((i * 37) % 100) / 300
         return {
-          bx: w / 2 + Math.cos(a) * r,
-          by: h / 2 + Math.sin(a) * r,
+          a,
+          rf,
+          seed: Math.cos(a) * rf * 600,
           x: 0,
           y: 0,
           band: (i % 12) / 12,
@@ -865,11 +900,14 @@ function constellation(): Visual {
     },
     draw({ ctx, w, h, spec, bins, f, p, ink }) {
       const pull = f.level * 0.35
+      const R = Math.min(w, h)
       for (const s of ss) {
         const v = at(spec, bins, 0.02 + s.band * 0.5)
+        const bx = w / 2 + Math.cos(s.a) * R * s.rf
+        const by = h / 2 + Math.sin(s.a) * R * s.rf
         // drift around the anchor, and get tugged toward the centre as things get loud
-        s.x = s.bx + Math.sin(f.t * (0.6 + s.band) + s.bx) * 14 * (0.4 + v)
-        s.y = s.by + Math.cos(f.t * (0.5 + s.band) + s.by) * 14 * (0.4 + v)
+        s.x = bx + Math.sin(f.t * (0.6 + s.band) + s.seed) * 14 * (0.4 + v)
+        s.y = by + Math.cos(f.t * (0.5 + s.band) + s.seed) * 14 * (0.4 + v)
         s.x += (w / 2 - s.x) * pull
         s.y += (h / 2 - s.y) * pull
       }
