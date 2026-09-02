@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState, Suspense } from 'react'
+import { useEffect, useRef, useState, useSyncExternalStore, Suspense } from 'react'
 import { lazyRetry } from './lazyRetry'
 import { ErrorBoundary } from './ErrorBoundary'
 import { PresenceBeacon } from './components/PresenceBeacon'
+import { homeStore } from './site/homeStore'
 import type { ReactNode } from 'react'
 import { ContactForm } from './sections/ContactForm'
 import { EvanCook, homePanes } from './sections/EvanCook'
@@ -428,6 +429,14 @@ export default function App() {
   })
   useEffect(() => installClickFx(), [])
   useEffect(() => installMouseTrail(), [])
+  /**
+   * ⚠️ Subscribed here purely so CANVAS MODE keeps up. homePanes() builds the home windows outside
+   * the React tree and therefore reads the home document straight from the store; without a
+   * subscription somewhere in the tree, those windows would keep the text they were built with
+   * while the same page rendered normally showed the newer copy. Rare enough to be free — the
+   * document changes on load and when an admin edits it.
+   */
+  useSyncExternalStore(homeStore.subscribe, () => homeStore.getState().doc)
   const [appearanceOpen, setAppearanceOpen] = useState(false)
 
   /**
@@ -1930,7 +1939,12 @@ export default function App() {
           )}
           {active === 'home' && !sharedCanvasShowing && (
             <section id="home">
-              <EvanCook />
+              {/* ⚠️ #dev-home turns the editor on without an admin session, the same workbench
+                  reasoning as #dev-profile and #dev-admin below: an admin-gated surface is one
+                  nobody can check while signed out, so it would otherwise ship unverified. DEV
+                  only — the constant folds away in a production build — and the server still
+                  decides who may actually publish, so this grants nothing. */}
+              <EvanCook isAdmin={isAdmin || (import.meta.env.DEV && DEV_PREVIEW === 'home')} />
             </section>
           )}
           {/* Circuit stays mounted whenever the shared canvas is on, even on another page --

@@ -2,10 +2,13 @@
 // Home, Projects, and Resume sections. Each project has a click-through slideshow
 // of slides (real screenshots when present, themed poster tiles otherwise) plus an
 // informational write-up. Résumé content folds in as About / Skills, with a PDF link.
-import { useState, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { site } from '../config/site'
 import { IconGitHub, IconLinkedIn } from '../components/Icons'
-import { projects, skills, type Project, type Shot } from './work'
+import { skills, type Project, type Shot } from './work'
+import { projectsFor } from '../site/homeContent'
+import { homeStore, loadHome, useHomeDoc } from '../site/homeStore'
+import { HomeEditor } from '../site/HomeEditor'
 import { readableOn } from '../theme/customTheme'
 
 const STATUS_LABEL: Record<Project['status'], string> = {
@@ -297,6 +300,7 @@ function ProjectCard({ project }: { project: Project }) {
 }
 
 function Hero() {
+  const doc = useHomeDoc()
   return (
     <section className="card" style={{ overflow: 'hidden' }}>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem', alignItems: 'flex-end' }}>
@@ -313,12 +317,9 @@ function Hero() {
           >
             {site.name}
           </p>
-          <h1 style={{ margin: '0.3rem 0 0.5rem', lineHeight: 1.1 }}>
-            I build tools for the people around me.
-          </h1>
+          <h1 style={{ margin: '0.3rem 0 0.5rem', lineHeight: 1.1 }}>{doc.hero.heading}</h1>
           <p className="muted" style={{ margin: 0, fontSize: '1.02rem' }}>
-            A workout tracker my friends use every day. An investing tracker for my family. Games I
-            wanted to exist. It all runs here, and I build it with AI.
+            {doc.hero.blurb}
           </p>
           <div
             className="no-print"
@@ -372,18 +373,22 @@ function Hero() {
 }
 
 function AboutCard() {
+  const doc = useHomeDoc()
   return (
     <div className="card">
-      <h2 className="section-title">About</h2>
-      <p className="muted" style={{ lineHeight: 1.6 }}>
-        The Circuit started as a spreadsheet my friends and I used to score our workouts. Then a
-        single HTML file. Now it’s the biggest thing on this site and they still use it daily.
-      </p>
-      <p className="muted" style={{ lineHeight: 1.6, marginBottom: 0 }}>
-        That’s how all of it goes — something small that a few people actually want, rebuilt
-        properly. I work with AI the whole way through, so this site is also a record of what
-        building that way is like. Still prototyping. Always adding.
-      </p>
+      <h2 className="section-title">{doc.about.heading}</h2>
+      {doc.about.paragraphs.map((text, i) => (
+        <p
+          key={i}
+          className="muted"
+          style={{
+            lineHeight: 1.6,
+            marginBottom: i === doc.about.paragraphs.length - 1 ? 0 : undefined,
+          }}
+        >
+          {text}
+        </p>
+      ))}
     </div>
   )
 }
@@ -432,6 +437,7 @@ function SkillsCard() {
 }
 
 function Work() {
+  const doc = useHomeDoc()
   return (
     <section id="projects-showcase" style={{ scrollMarginTop: 'var(--nav-h)' }}>
       <h2 className="section-title" style={{ marginBottom: '0.25rem' }}>
@@ -441,7 +447,7 @@ function Work() {
         All of it runs here. Click through the slides.
       </p>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', marginTop: '1rem' }}>
-        {projects.map((p) => (
+        {projectsFor(doc).map((p) => (
           <ProjectCard key={p.id} project={p} />
         ))}
       </div>
@@ -449,15 +455,37 @@ function Work() {
   )
 }
 
-export function EvanCook() {
+export function EvanCook({ isAdmin = false }: { isAdmin?: boolean } = {}) {
+  /* ⚠️ Asked for here rather than at app start: this is the only page that needs it, and a fetch
+     fired on every load of every section would be a request nobody reads. It is a no-op after the
+     first call. */
+  useEffect(() => loadHome(), [])
+  const [editing, setEditing] = useState(false)
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+      {/* ⚠️ Only for an admin, and the gate is only cosmetic — the server decides who may
+          actually write, so this button appearing to anybody else would still change nothing. */}
+      {isAdmin && (
+        <div className="home-edit-bar">
+          <button
+            className={'btn' + (editing ? ' is-on' : '')}
+            aria-pressed={editing}
+            onClick={() => setEditing((v) => !v)}
+          >
+            {editing ? '✓ Done editing' : '✎ Edit this page'}
+          </button>
+        </div>
+      )}
       <Hero />
       <section className="grid grid-2" style={{ gap: '1rem' }}>
         <AboutCard />
         <SkillsCard />
       </section>
       <Work />
+      {/* ⚠️ BELOW the page, not above it. The panel writes into the same store the page renders
+          from, so everything you change is happening in the real thing directly above — putting
+          the controls first would push the page you are editing off the screen. */}
+      {isAdmin && editing && <HomeEditor onClose={() => setEditing(false)} />}
     </div>
   )
 }
@@ -471,7 +499,10 @@ export function homePanes(): HomePane[] {
     { id: 'home:hero', title: '👋 Intro', node: <Hero /> },
     { id: 'home:about', title: 'About', node: <AboutCard /> },
     { id: 'home:skills', title: 'Skills', node: <SkillsCard /> },
-    ...projects.map((p) => ({
+    /* ⚠️ The SAME text the normal page renders. Canvas mode builds its windows from this
+       function, outside the React tree, so it reads the store directly — App subscribes so these
+       are rebuilt when the document arrives. */
+    ...projectsFor(homeStore.getState().doc).map((p) => ({
       id: `home:proj:${p.id}`,
       title: p.title,
       node: <ProjectCard project={p} />,
