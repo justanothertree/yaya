@@ -317,6 +317,50 @@ export function randomLook(name = 'Surprise'): Look {
   }) as Look
 }
 
+// ─ sharing one ────────────────────────
+
+/**
+ * A Look as a piece of text you can hand to somebody.
+ *
+ * ⚠️ THE SAME JSON, base64'd, NOT a second format. A tighter encoding is easy to want at
+ * this size and would have to be kept in step with the Look type forever; going through the shape
+ * that already exists means a new field is shared the day it is added, with nothing to update.
+ *
+ * The prefix is there so a person can tell what they have been sent, and so pasting a stray URL
+ * or word can be rejected instantly rather than being decoded into a valid-looking default.
+ */
+const TAG = 'look1.'
+
+export function encodeLook(l: Look): string {
+  const bytes = new TextEncoder().encode(JSON.stringify(l))
+  let bin = ''
+  for (const b of bytes) bin += String.fromCharCode(b)
+  return TAG + btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+}
+
+/**
+ * Read a shared code, or return null.
+ *
+ * ⚠️ the result goes through readLook like anything else, so a hand-edited code cannot put
+ * an id on the page that the site does not have. This is the whole reason readLook validates
+ * instead of casting: a code is the one path into a Look that a stranger controls.
+ */
+export function decodeLook(text: string): Look | null {
+  const raw = text.trim()
+  if (!raw.startsWith(TAG)) return null
+  try {
+    const b64 = raw.slice(TAG.length).replace(/-/g, '+').replace(/_/g, '/')
+    const bin = atob(b64.padEnd(Math.ceil(b64.length / 4) * 4, '='))
+    const bytes = Uint8Array.from(bin, (ch) => ch.charCodeAt(0))
+    return readLook(JSON.parse(new TextDecoder().decode(bytes)))
+  } catch {
+    return null
+  }
+}
+
+/** Whether a field of text is a code rather than a name, so the button can say what it will do. */
+export const looksLikeCode = (text: string) => text.trim().startsWith(TAG)
+
 // ── the ones you save ───────────────────────────────────────────────────────
 const KEY = 'looks_v1'
 const MAX = 24

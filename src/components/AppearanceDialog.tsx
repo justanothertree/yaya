@@ -20,6 +20,9 @@ import {
 import {
   applyLook,
   captureLook,
+  decodeLook,
+  encodeLook,
+  looksLikeCode,
   myLooks,
   randomLook,
   removeLook,
@@ -211,10 +214,12 @@ function LookCard({
   look,
   onApply,
   onRemove,
+  onCopy,
 }: {
   look: Look
   onApply: () => void
   onRemove?: () => void
+  onCopy?: () => void
 }) {
   const p = look.palette
   const parts = [
@@ -237,6 +242,16 @@ function LookCard({
           <span className="look-parts muted">{parts.join(' · ') || 'Plain'}</span>
         </span>
       </button>
+      {onCopy && (
+        <button
+          className="btn btn-ghost look-del"
+          onClick={onCopy}
+          aria-label={`Copy ${look.name} as a code to share`}
+          title="Copy a code to share"
+        >
+          ⧉
+        </button>
+      )}
       {onRemove && (
         <button
           className="btn btn-ghost look-del"
@@ -262,11 +277,50 @@ function LookCard({
 function LooksTab({ c, touch }: { c: AppearanceControls; touch: boolean }) {
   const mine = useSyncExternalStore(subscribeLooks, myLooks, myLooks)
   const [name, setName] = useState('')
+  const [said, setSaid] = useState('')
 
-  const save = () => {
+  /**
+   * ⚠️ ONE FIELD FOR BOTH JOBS, with the button saying which one it is about to do. A second
+   * input for codes would sit empty almost always, and the two are never ambiguous in practice: a
+   * code announces itself with a prefix and nobody names a look that.
+   */
+  const shared = looksLikeCode(name) ? decodeLook(name) : null
+  const pasted = looksLikeCode(name)
+
+  const say = (msg: string) => {
+    setSaid(msg)
+    window.setTimeout(() => setSaid(''), 2600)
+  }
+
+  const submit = () => {
+    if (pasted) {
+      if (!shared) return say('That code could not be read.')
+      saveLook(shared)
+      applyLook(shared, c)
+      setName('')
+      say(`Added ${shared.name}.`)
+      return
+    }
     if (!name.trim()) return
     saveLook(captureLook(name, c))
     setName('')
+  }
+
+  /**
+   * ⚠️ WHEN THE CLIPBOARD IS REFUSED THE CODE GOES INTO THE FIELD instead. Browsers deny
+   * clipboard writes for reasons the person cannot see or fix, and an apology would leave them with
+   * no way at all to get the thing they asked for — whereas the box is right there and already
+   * accepts codes, so it is both the fallback and the explanation.
+   */
+  const copy = (l: Look) => {
+    const code = encodeLook(l)
+    const handOver = () => {
+      setName(code)
+      say('Clipboard blocked — the code is in the box, copy it from there.')
+    }
+    const done = navigator.clipboard?.writeText(code)
+    if (!done) return handOver()
+    done.then(() => say('Code copied — paste it to a friend.'), handOver)
   }
 
   return (
@@ -281,18 +335,21 @@ function LooksTab({ c, touch }: { c: AppearanceControls; touch: boolean }) {
         <input
           className="look-input"
           value={name}
-          maxLength={40}
-          placeholder="Name this look"
-          aria-label="Name for the look you are saving"
+          /* ⚠️ NOT capped at a name's length: a code is hundreds of characters, and an input
+             that truncated the paste would cut it down to something that can never be read back.
+             captureLook trims a name to 40 itself, which is the right place for that rule. */
+          maxLength={4000}
+          placeholder="Name this look, or paste a code"
+          aria-label="Name for the look you are saving, or a shared code to add"
           onChange={(e) => setName(e.target.value)}
           onKeyDown={(e) => {
             /* the site reads arrow keys as navigation, and this is a text field */
             e.stopPropagation()
-            if (e.key === 'Enter') save()
+            if (e.key === 'Enter') submit()
           }}
         />
-        <button className="btn" disabled={!name.trim()} onClick={save}>
-          Save this
+        <button className="btn" disabled={!name.trim()} onClick={submit}>
+          {pasted ? (shared ? `Add ${shared.name}` : 'Unreadable code') : 'Save this'}
         </button>
         <button
           className="btn btn-ghost"
@@ -302,6 +359,11 @@ function LooksTab({ c, touch }: { c: AppearanceControls; touch: boolean }) {
           Shuffle
         </button>
       </div>
+      {said && (
+        <p className="muted appearance-note" role="status">
+          {said}
+        </p>
+      )}
 
       {mine.length > 0 && (
         <>
@@ -313,6 +375,7 @@ function LooksTab({ c, touch }: { c: AppearanceControls; touch: boolean }) {
                 look={l}
                 onApply={() => applyLook(l, c)}
                 onRemove={() => removeLook(l.name)}
+                onCopy={() => copy(l)}
               />
             ))}
           </div>
@@ -326,7 +389,8 @@ function LooksTab({ c, touch }: { c: AppearanceControls; touch: boolean }) {
         ))}
       </div>
       <p className="muted appearance-note">
-        Kept in this browser rather than on your account, so they stay on this device.
+        Kept in this browser rather than on your account, so they stay on this device. Copy one to a
+        code and anybody you send it to can add it to theirs.
       </p>
     </div>
   )

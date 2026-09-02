@@ -1390,14 +1390,28 @@ export default function App() {
     window.location.hash = tab ? `#${section}?tab=${tab}` : `#${section}`
     setActive(section)
   }
-  const cycleTheme = () => {
-    const next = theme === 'dark' ? 'light' : theme === 'light' ? 'alt' : 'dark'
+  /**
+   * Choosing a theme, everywhere.
+   *
+   * ⚠️ THE THREE PLACES THAT CHANGE THE THEME USED TO EACH CARRY THIS RULE, and one of them
+   * carried only half of it: the appearance dialog was handed the raw setState, so a theme picked
+   * there looked right and was gone on the next reload. A rule kept in three copies is a rule that
+   * will be wrong in one of them, so there is now one copy and the call sites pass it along.
+   *
+   * Asking for a built-in theme means you want that theme. The custom palette is inline styles on
+   * <html>, so leaving it on would win and the choice would appear to do nothing.
+   */
+  const chooseTheme = (next: 'light' | 'dark' | 'alt') => {
     setTheme(next)
-    localStorage.setItem('theme', next)
-    // Asking for a built-in theme means you want that theme. The custom palette is inline
-    // styles on <html>, so leaving it on would win and the button would appear to do nothing.
+    try {
+      localStorage.setItem('theme', next)
+    } catch {
+      /* private mode: it holds for this visit */
+    }
     if (customPalette) setCustomPalette(false)
   }
+  const cycleTheme = () =>
+    chooseTheme(theme === 'dark' ? 'light' : theme === 'light' ? 'alt' : 'dark')
 
   // Pinned windows follow you across tabs. We keep the pane OBJECTS (not just ids) so a
   // window pinned on one tab can still render on another after its own page unmounted —
@@ -1510,7 +1524,7 @@ export default function App() {
   /**
    * Somebody's profile as a window of its own, one per person.
    *
-   * WARNING: keyed by username, NOT the single 'profile' id the nav uses. That one window
+   * ⚠️ keyed by username, NOT the single 'profile' id the nav uses. That one window
    * follows the hash, and the hash can only ever name one person — so opening a second profile
    * through it just changed the first, which is why several profiles side by side were
    * impossible. These are pinned to their person and ignore the hash entirely (see Profile's
@@ -1605,7 +1619,7 @@ export default function App() {
           onClose={() => setAppearanceOpen(false)}
           controls={{
             theme,
-            onTheme: setTheme,
+            onTheme: chooseTheme,
             customPalette,
             onCustomPalette: setCustomPalette,
             background,
@@ -1792,13 +1806,7 @@ export default function App() {
             )}
             <SettingsMenu
               theme={theme}
-              onTheme={(t) => {
-                setTheme(t)
-                localStorage.setItem('theme', t)
-                // same reason as cycleTheme: the inline palette would override the theme you
-                // just asked for, so choosing one steps out of the custom palette
-                setCustomPalette(false)
-              }}
+              onTheme={chooseTheme}
               uiScale={uiScale}
               onScale={(d) => (d === 0 ? setUiScale(1) : bumpScale(d))}
               canvasOpen={canvasOpen}
