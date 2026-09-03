@@ -469,6 +469,39 @@ export function startLoop(leadIn = 0) {
   timer = window.setInterval(tick, TICK_MS)
 }
 
+/**
+ * Jump the playhead to a point in the loop.
+ *
+ * ⚠️ MOVES THE ORIGIN, it does not move a cursor. The loop has no playhead variable to set — the
+ * position is derived from `currentTime - loopStart` — so "go to 1.5s in" is "pretend the pass
+ * began 1.5s ago". That sounds like a trick and is actually the honest description: the origin IS
+ * where the bar line is, which is why this is the same operation the shared metronome sends.
+ *
+ * ⚠️ Held notes are released FIRST. Skipping over a note-off leaves the voice that its note-on
+ * started with nothing to stop it, and it rings until Panic — the classic stuck note, arrived at
+ * by the one gesture guaranteed to skip events.
+ *
+ * scheduledTo is wound back to now, or the scheduler would believe it had already covered the
+ * stretch you just jumped into and would play nothing until it caught up.
+ *
+ * Nothing here knows about the network. transport.ts already broadcasts on any origin change
+ * while playing, so a seek reaches the room the same way a tempo change does, under the same
+ * last-change-wins rule — which is what you want, because a loop with two different origins is
+ * not one loop.
+ */
+export function seekTo(t: number) {
+  if (!state.playing) return
+  const c = sharedCtx()
+  const len = loopLength()
+  if (!(len > 0)) return
+  const into = ((t % len) + len) % len
+  releaseAllLayers()
+  loopStart = c.currentTime - into
+  scheduledTo = c.currentTime
+  // let anything watching the transport see that the origin moved
+  set({})
+}
+
 export function stopLoop() {
   if (timer) clearInterval(timer)
   timer = 0

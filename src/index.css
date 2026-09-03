@@ -4109,6 +4109,38 @@ select {
   font-size: 0.8rem;
 }
 
+/* ─ the roll's ruler: click it to move the playhead ────────────── */
+.roll-ruler,
+.roll-ruler-pad {
+  height: 16px;
+  flex: 0 0 auto;
+}
+.roll-ruler {
+  position: relative;
+  border-bottom: 1px solid var(--line);
+  cursor: pointer;
+  /* ⚠️ the whole strip is the target, including the gaps between the numbers. Aiming at a
+     tick is a precision task nobody asked for; aiming at a stripe is not. */
+  background: linear-gradient(180deg, transparent 60%, var(--line) 60%);
+  user-select: none;
+}
+.roll-ruler:hover {
+  background: linear-gradient(180deg, var(--control-bg) 60%, var(--accent, #7c6af7) 60%);
+}
+.roll-ruler-bar {
+  position: absolute;
+  top: 0;
+  padding-left: 3px;
+  font-size: 0.6rem;
+  line-height: 15px;
+  color: var(--muted);
+  border-left: 1px solid var(--line);
+  pointer-events: none;
+}
+.roll-ruler-pad {
+  border-bottom: 1px solid var(--line);
+}
+
 /* ─ piano roll: the grip, and a length that is not the snap ─────────── */
 .roll-note {
   position: absolute;
@@ -5815,6 +5847,11 @@ a.cz-msg-author:focus-visible {
   display: block;
   width: 100%;
   padding: 0;
+  /* ⚠️ A grid item's automatic minimum is its CONTENT's width, so this sized itself to the whole
+     take — 1062px inside a 284px list on a phone — and every constraint below it was then
+     measured against that lie, including the roll's own fit-to-panel. One declaration; everything
+     downstream was already right. */
+  min-width: 0;
 }
 .roll {
   /* Only as wide as the take needs. A one-bar loop is eight cells across, and stretching the
@@ -5842,6 +5879,8 @@ a.cz-msg-author:focus-visible {
 }
 .roll-body {
   display: flex;
+  /* same reason as .roll-scroll below */
+  min-width: 0;
   /* Taller than it was. Two octaves of pitch at 18px a row is 432px, and a window showing six
      rows of that made you scroll to see a phrase that fits on one screen. */
   max-height: 26rem;
@@ -5869,6 +5908,11 @@ a.cz-msg-author:focus-visible {
 .roll-scroll {
   overflow: auto;
   flex: 1 1 auto;
+  /* ⚠️ Without this the flex item refuses to shrink below its own content, so the scroller
+     measured the 1024px grid it was supposed to be constraining and the fit computed from it
+     was always "already fits". The roll then sized itself to the take instead of to the panel,
+     which is the horizontal scrolling this was meant to end. */
+  min-width: 0;
 }
 .roll-grid {
   position: relative;

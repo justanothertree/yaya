@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { gridStep, pitchRange, toEvents, toNotes, type Note } from '../audio/noteEdit'
-import { setLayerEvents, type Layer } from '../audio/looper'
+import { seekTo, setLayerEvents, type Layer } from '../audio/looper'
 import { noteOff, noteOn } from '../audio/synth'
 
 /**
@@ -28,7 +28,10 @@ const NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
 const isBlack = (m: number) => [1, 3, 6, 8, 10].includes(((m % 12) + 12) % 12)
 const nameOf = (m: number) => `${NAMES[((m % 12) + 12) % 12]}${Math.floor(m / 12) - 1}`
 
+/** How wide a grid step is when the take fits comfortably. The ceiling, never the answer. */
 const CELL_W = 32
+/** Below this a note is too small to grab, so the roll scrolls rather than shrinking further. */
+const CELL_MIN = 11
 const ROW_H = 18
 /** Two notes never share a pitch and a start, so this identifies one exactly. */
 const isSame = (n: Note, sel: { midi: number; t: number } | null) =>
@@ -166,6 +169,33 @@ export function PianoRoll({
   const cols = Math.max(1, Math.round(layer.len / step))
 
   /**
+   * ⚠️ THE TAKE IS FITTED TO THE PANEL, not drawn at a fixed size and left to overflow. Eight
+   * bars at 1/16 is 128 steps, which at a fixed 32px is a four-thousand-pixel grid — so the
+   * editor was mostly off-screen and reading a phrase meant scrolling back and forth over it.
+   *
+   * Only ever DOWN, to CELL_MIN: past that a note is too small to grab and scrolling is the
+   * honest answer, and stretching a short take across a wide screen would make two bars look
+   * like a symphony. Measured rather than guessed at with breakpoints, because the panel's width
+   * depends on the window, the key column and whether this is a canvas pane.
+   */
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const [avail, setAvail] = useState(0)
+  useEffect(() => {
+    const el = scrollRef.current
+    if (!el) return
+    const ro = new ResizeObserver(([e]) => setAvail(e.contentRect.width))
+    ro.observe(el)
+    setAvail(el.clientWidth)
+    return () => ro.disconnect()
+  }, [])
+  const cellW = avail > 0 ? Math.max(CELL_MIN, Math.min(CELL_W, Math.floor(avail / cols))) : CELL_W
+  /* how the take divides into bars, for the ruler's numbers. A take is whatever length it was
+     recorded at, so this is its own bars rather than the loop's. */
+  const beat = 60 / bpm
+  const bars = Math.max(1, Math.round(layer.len / (beat * 4)))
+  const barW = (cols * cellW) / bars
+
+  /**
    * What is on screen: the committed notes, or the preview of the drag in progress.
    *
    * One edit, recomputed from the gesture's starting point every time the pointer moves.
@@ -228,9 +258,32 @@ export function PianoRoll({
     [layer.id, layer.instrument, layer.fx],
   )
 
+  /**
+   * Click the ruler to move the playhead there.
+   *
+   * ⚠️ IT KEEPS THE LAP YOU ARE IN. A take shorter than the loop tiles inside it, so a point
+   * in the picture is several points in time and picking the first one would throw you back to
+   * the top of the loop whenever you clicked near the end of a repetition — which reads as the
+   * click being wrong rather than as a decision you did not know had been made. Staying in the
+   * current repetition is the one answer nobody has to think about.
+   *
+   * The mapping is deliberately the same arithmetic as the playhead above, so the marker lands
+   * exactly where you pressed rather than a fraction off.
+   */
+  const onRulerDown = (e: React.PointerEvent) => {
+    const box = (e.currentTarget as HTMLElement).getBoundingClientRect()
+    const width = cols * cellW
+    if (width <= 0 || layer.len <= 0) return
+    const into = Math.max(0, Math.min(1, (e.clientX - box.left) / width)) * layer.len
+    const lap = Math.floor((posRef.current % Math.max(loopLen, 1e-6)) / layer.len)
+    seekTo(lap * layer.len + into)
+  }
+
   // ── the playhead, positioned outside React ────────────────────────────────
   const posRef = useRef(position)
   posRef.current = position
+  const cellRef = useRef(cellW)
+  cellRef.current = cellW
   const lenRef = useRef({ loopLen, own: layer.len })
   lenRef.current = { loopLen, own: layer.len }
   useEffect(() => {
@@ -247,7 +300,7 @@ export function PianoRoll({
        * the right-hand edge for the whole second half.
        */
       const intoLoop = posRef.current * L
-      const x = own > 0 ? ((intoLoop % own) / own) * cols * CELL_W : 0
+      const x = own > 0 ? ((intoLoop % own) / own) * cols * cellRef.current : 0
       el.style.transform = `translate3d(${x.toFixed(1)}px, 0, 0)`
     }
     raf = requestAnimationFrame(tick)
@@ -259,7 +312,7 @@ export function PianoRoll({
     const box = gridRef.current?.getBoundingClientRect()
     if (!box) return null
     return {
-      col: Math.floor((e.clientX - box.left) / CELL_W),
+      col: Math.floor((e.clientX - box.left) / cellW),
       row: Math.floor((e.clientY - box.top) / ROW_H),
     }
   }
@@ -402,6 +455,9 @@ export function PianoRoll({
 
       <div className="roll-body">
         <div className="roll-keys" aria-hidden>
+          {/* ⚠️ the ruler adds height on the right only, so without this the key names sit
+              one strip lower than the rows they label. Same height, same place, no cleverness. */}
+          <div className="roll-ruler-pad" />
           {rows.map((m) => (
             <div key={m} className={'roll-key' + (isBlack(m) ? ' is-black' : '')}>
               {m % 12 === 0 ? nameOf(m) : ''}
@@ -409,11 +465,26 @@ export function PianoRoll({
           ))}
         </div>
 
-        <div className="roll-scroll">
+        <div className="roll-scroll" ref={scrollRef}>
+          {/* ⚠️ Inside the same scroller as the grid, so it cannot drift out of alignment
+              when you scroll sideways. A ruler that does not line up with the notes is worse
+              than none. */}
+          <div
+            className="roll-ruler"
+            style={{ width: cols * cellW }}
+            onPointerDown={onRulerDown}
+            title="Click to jump the playhead here"
+          >
+            {Array.from({ length: bars }, (_, b) => (
+              <span key={b} className="roll-ruler-bar" style={{ left: b * barW }}>
+                {b + 1}
+              </span>
+            ))}
+          </div>
           <div
             ref={gridRef}
             className="roll-grid"
-            style={{ width: cols * CELL_W, height: rows.length * ROW_H }}
+            style={{ width: cols * cellW, height: rows.length * ROW_H }}
             onPointerDown={onGridDown}
             onContextMenu={(e) => e.preventDefault()}
             onPointerMove={onMove}
@@ -441,7 +512,7 @@ export function PianoRoll({
                       ? ' is-beat'
                       : '')
                 }
-                style={{ left: i * CELL_W }}
+                style={{ left: i * cellW }}
               />
             ))}
 
@@ -450,9 +521,9 @@ export function PianoRoll({
                 key={i}
                 className={'roll-note' + (isSame(n, sel) ? ' is-sel' : '')}
                 style={{
-                  left: (n.t / step) * CELL_W,
+                  left: (n.t / step) * cellW,
                   top: (hi - n.midi) * ROW_H,
-                  width: Math.max(6, (n.dur / step) * CELL_W - 1),
+                  width: Math.max(6, (n.dur / step) * cellW - 1),
                   height: ROW_H - 1,
                 }}
                 onPointerDown={(e) => onNoteDown(e, i)}
