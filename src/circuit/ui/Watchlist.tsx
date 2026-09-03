@@ -7,7 +7,7 @@
 import { useMemo, useState } from 'react'
 import { circuitStore, useCircuit } from '../store'
 import { watchlistInGroup } from '../groupFilter'
-import { MV_PIDS } from './movieMeta'
+import { ratersIn } from './movieMeta'
 import { REVIEW_KINDS, kindEmoji, kindsPresent } from '../reviewKinds'
 import { Modal } from './Modal'
 import type { CircuitGroup, WatchlistItem } from '../types'
@@ -41,10 +41,7 @@ export function Watchlist({
   /** the current pick, kept so it can be re-rolled or accepted */
   const [picked, setPicked] = useState<WatchlistItem | null>(null)
 
-  const voters = useMemo(
-    () => MV_PIDS.map((id) => people.find((p) => p.id === id)).filter(Boolean) as typeof people,
-    [people],
-  )
+  const voters = useMemo(() => ratersIn(people, viewGroup), [people, viewGroup])
 
   // which kinds are actually present — the filter only earns its space when there's a choice
   const kindCounts = useMemo(() => {

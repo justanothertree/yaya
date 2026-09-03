@@ -1,5 +1,27 @@
 // Movie rating vocabulary (mirrors the standalone app) + shared helpers.
-export const MV_PIDS = ['1', '2', '3', '5', '6'] // the rating crew, by person id
+import { peopleInGroup } from '../groupFilter'
+import type { Person } from '../types'
+
+/**
+ * Who can rate and vote here.
+ *
+ * ⚠️ DERIVED FROM CIRCUIT MEMBERSHIP, never written out. This was `MV_PIDS`, five person
+ * ids typed in when the crew was five people — and it decided who got a rating slot, who got a
+ * vote chip in the pool, and who appeared in the stats, across six files. Everyone else was
+ * invisible to the whole ratings surface, and invisible in a way that could not heal: with no
+ * slot to rate in you never get a rating, and several places only showed people who already had
+ * one. Measured on the live board, four of nine people were locked out, including both of the
+ * members who had actually signed up and joined — and one circuit of two people had exactly one
+ * participant.
+ *
+ * Membership was already modelled, already enforced by RLS on every verb, and already synced by
+ * realtime. Only this list disagreed with it.
+ *
+ * An empty group means "all circuits", which is what the toolbar's picker means by it too.
+ */
+export function ratersIn(people: Person[], group?: string | null): Person[] {
+  return peopleInGroup(people, group ?? '')
+}
 
 export const MV_ICONS = [
   { id: 'pop', emoji: '🍿', label: 'Popcorn' },

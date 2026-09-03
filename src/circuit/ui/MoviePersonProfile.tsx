@@ -3,7 +3,7 @@
 import { useMemo } from 'react'
 import { useCircuit } from '../store'
 import { Modal } from './Modal'
-import { MV_PIDS, scoreColor } from './movieMeta'
+import { ratersIn, scoreColor } from './movieMeta'
 
 const mean = (a: number[]) => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : 0)
 
@@ -32,13 +32,19 @@ export function MoviePersonProfile({
   personName,
   color,
   onClose,
+  viewGroup = '',
 }: {
   personId: string
   personName: string
   color: string
   onClose: () => void
+  /** whose circle to compare against — '' means everyone you can see */
+  viewGroup?: string
 }) {
   const { movies, people } = useCircuit()
+  /* who this person is measured against: their circle, not a fixed five. Generosity and taste
+     matches are comparisons, so who is in the comparison decides what the numbers mean. */
+  const peers = useMemo(() => ratersIn(people, viewGroup).map((p) => p.id), [people, viewGroup])
   const nameById = useMemo(
     () => Object.fromEntries(people.map((p) => [p.id, p.name])) as Record<string, string>,
     [people],
@@ -60,7 +66,8 @@ export function MoviePersonProfile({
     movies.forEach((m) => {
       const mine = m.ratings[personId]?.score
       if (mine == null) return
-      const others = MV_PIDS.filter((id) => id !== personId)
+      const others = peers
+        .filter((id) => id !== personId)
         .map((id) => m.ratings[id]?.score)
         .filter((s): s is number => s != null)
       if (!others.length) return
@@ -74,7 +81,8 @@ export function MoviePersonProfile({
       buckets[v >= 100 ? 5 : v >= 90 ? 4 : v >= 80 ? 3 : v >= 70 ? 2 : v >= 60 ? 1 : 0]++
     })
 
-    const matches = MV_PIDS.filter((id) => id !== personId)
+    const matches = peers
+      .filter((id) => id !== personId)
       .map((id) => {
         let diff = 0,
           c = 0
@@ -93,7 +101,7 @@ export function MoviePersonProfile({
 
     const top = [...rated].sort((a, b) => b.score - a.score).slice(0, 8)
     return { n, avg, hi, lo, generosity, buckets, matches, top }
-  }, [movies, personId, nameById])
+  }, [movies, personId, nameById, peers])
 
   const { n, avg, hi, lo, generosity, buckets, matches, top } = stats
   const twin = matches[0]

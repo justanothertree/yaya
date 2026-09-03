@@ -12,7 +12,7 @@ import { MoviePersonProfile } from './MoviePersonProfile'
 import { MovieDetail } from './MovieDetail'
 import { Modal } from './Modal'
 import { MovieStats } from './MovieStats'
-import { MV_PIDS, scoreColor } from './movieMeta'
+import { ratersIn, scoreColor } from './movieMeta'
 import { kindEmoji, kindsPresent } from '../reviewKinds'
 
 type SortKey = 'avg' | 'alpha' | 'rt' | 'date'
@@ -79,12 +79,13 @@ export function Movies({
         if (r?.score != null) present.add(id)
       }),
     )
+    const circle = ratersIn(state.people, viewGroup)
     const order = (id: string) => {
-      const i = MV_PIDS.indexOf(id)
-      return i === -1 ? MV_PIDS.length : i
+      const i = circle.findIndex((p) => p.id === id)
+      return i === -1 ? circle.length : i
     }
     return state.people.filter((p) => present.has(p.id)).sort((a, b) => order(a.id) - order(b.id))
-  }, [inGroup, state.people])
+  }, [inGroup, state.people, viewGroup])
 
   const [hidden, setHidden] = useState<Set<string>>(() => {
     try {
@@ -471,6 +472,7 @@ export function Movies({
           personId={profile.id}
           personName={profile.name}
           color={profile.color}
+          viewGroup={viewGroup}
           onClose={() => setProfile(null)}
         />
       )}

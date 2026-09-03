@@ -2,7 +2,7 @@
 import { useMemo, useState } from 'react'
 import { useCircuit } from '../store'
 import { Modal } from './Modal'
-import { MV_ICONS, MV_PIDS, REC, REWATCH, SENTIMENT, TIPS, scoreColor } from './movieMeta'
+import { MV_ICONS, REC, REWATCH, SENTIMENT, TIPS, ratersIn, scoreColor } from './movieMeta'
 import { MovieRate } from './MovieRate'
 import { MoviePersonProfile } from './MoviePersonProfile'
 import type { Movie, Person } from '../types'
@@ -15,14 +15,19 @@ export function MovieDetail({ movie, onClose }: { movie: Movie; onClose: () => v
   // Raters = people you can see who are either movie-raters or have actually rated this film —
   // not a hardcoded crew list, so a member viewing from another circuit still sees real names.
   const raters = useMemo(() => {
-    const ids = new Set<string>(MV_PIDS)
+    /* WARNING the movie's OWN circuit, not the one you happen to be filtered to. A film belongs
+       to the circle that rated it, so opening it from "all circuits" must still offer that
+       circle's people — and anyone who has already rated it is kept whatever their membership
+       says now, or leaving a circuit would erase your scores from view. */
+    const circle = ratersIn(people, movie.groupId)
+    const ids = new Set<string>(circle.map((p) => p.id))
     Object.keys(movie.ratings).forEach((id) => ids.add(id))
     const order = (id: string) => {
-      const i = MV_PIDS.indexOf(id)
-      return i === -1 ? MV_PIDS.length : i
+      const i = circle.findIndex((p) => p.id === id)
+      return i === -1 ? circle.length : i
     }
     return people.filter((p) => ids.has(p.id)).sort((a, b) => order(a.id) - order(b.id))
-  }, [people, movie.ratings])
+  }, [people, movie.ratings, movie.groupId])
 
   const scores = raters.map((p) => movie.ratings[p.id]?.score).filter((s): s is number => s != null)
   const avg = scores.length ? scores.reduce((a, b) => a + b, 0) / scores.length : null
@@ -380,6 +385,7 @@ export function MovieDetail({ movie, onClose }: { movie: Movie; onClose: () => v
           personId={personProfile.id}
           personName={personProfile.name}
           color={personProfile.color}
+          viewGroup={movie.groupId ?? ''}
           onClose={() => setPersonProfile(null)}
         />
       )}

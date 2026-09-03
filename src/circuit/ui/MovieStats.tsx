@@ -2,7 +2,7 @@
 import { useMemo } from 'react'
 import { useCircuit } from '../store'
 import { moviesInGroup } from '../groupFilter'
-import { MV_PIDS, scoreColor } from './movieMeta'
+import { ratersIn, scoreColor } from './movieMeta'
 import type { Person } from '../types'
 
 const mean = (a: number[]) => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : 0)
@@ -54,19 +54,15 @@ function Fact({
 export function MovieStats({ viewGroup = '' }: { viewGroup?: string } = {}) {
   const { movies: allMovies, people } = useCircuit()
   const movies = useMemo(() => moviesInGroup(allMovies, viewGroup), [allMovies, viewGroup])
-  const byId = useMemo(
-    () => Object.fromEntries(people.map((p) => [p.id, p])) as Record<string, Person>,
-    [people],
-  )
-  const raters = MV_PIDS.map((id) => byId[id]).filter(Boolean)
+  const raters = useMemo(() => ratersIn(people, viewGroup), [people, viewGroup])
 
   const stats = useMemo(() => {
     // per-movie aggregate
     const movieAgg = movies
       .map((m) => {
-        const scores = MV_PIDS.map((id) => m.ratings[id]?.score).filter(
-          (s): s is number => s != null,
-        )
+        const scores = raters
+          .map((p) => m.ratings[p.id]?.score)
+          .filter((s): s is number => s != null)
         return {
           title: m.title,
           avg: scores.length ? mean(scores) : null,
@@ -89,8 +85,9 @@ export function MovieStats({ viewGroup = '' }: { viewGroup?: string } = {}) {
       movies.forEach((m) => {
         const mine = m.ratings[p.id]?.score
         if (mine == null) return
-        const others = MV_PIDS.filter((id) => id !== p.id)
-          .map((id) => m.ratings[id]?.score)
+        const others = raters
+          .filter((q) => q.id !== p.id)
+          .map((q) => m.ratings[q.id]?.score)
           .filter((s): s is number => s != null)
         if (!others.length) return
         gsum += mine - mean(others)
