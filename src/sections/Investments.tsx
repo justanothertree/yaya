@@ -1191,13 +1191,19 @@ export function AccountCard({
                         flexShrink: 0,
                       }}
                     />
-                    <span style={{ fontWeight: 700, minWidth: '4.5rem' }}>{h.symbol}</span>
+                    <span style={{ fontWeight: 700, minWidth: 'clamp(3rem, 14vw, 4.5rem)' }}>
+                      {h.symbol}
+                    </span>
                     <span style={{ opacity: 0.5, fontSize: '0.72rem' }}>{isOpen ? '▾' : '▸'}</span>
                     <span
                       className="cz-num"
                       style={{
                         marginLeft: 'auto',
-                        width: '6rem',
+                        /* ⚠️ clamped, not fixed. Three fixed columns plus a dot and an arrow
+                           came to 261px of a row, against 285px of content on a 375px phone —
+                           so the last one hung off the edge. vw units let the row give way on a
+                           narrow screen and keep the comfortable width everywhere else. */
+                        width: 'clamp(4.2rem, 18vw, 6rem)',
                         textAlign: 'right',
                         fontWeight: 700,
                       }}
@@ -1213,7 +1219,7 @@ export function AccountCard({
                           : 'Not enough cost history to show gain/loss'
                       }
                       style={{
-                        width: '4.5rem',
+                        width: 'clamp(3.2rem, 14vw, 4.5rem)',
                         textAlign: 'right',
                         fontSize: '0.8rem',
                         fontWeight: 700,
@@ -1680,7 +1686,9 @@ function TradesLedger({ accounts }: { accounts: AccountPortfolio[] | null }) {
                         borderRadius: 8,
                       }}
                     >
-                      <span style={{ fontWeight: 700, minWidth: '3.5rem' }}>{p.symbol}</span>
+                      <span style={{ fontWeight: 700, minWidth: 'clamp(2.6rem, 11vw, 3.5rem)' }}>
+                        {p.symbol}
+                      </span>
                       <span className="muted cz-num" style={{ fontSize: '0.76rem' }}>
                         {fmtU(p.units)} units{p.value != null ? ` · worth ${usd(p.value)}` : ''}
                       </span>
@@ -1845,7 +1853,9 @@ function TradesLedger({ accounts }: { accounts: AccountPortfolio[] | null }) {
                 }}
               >
                 <span style={{ opacity: 0.6, fontSize: '0.8rem' }}>{isOpen ? '▾' : '▸'}</span>
-                <span style={{ fontWeight: 700, minWidth: '3.5rem' }}>{t.symbol}</span>
+                <span style={{ fontWeight: 700, minWidth: 'clamp(2.6rem, 11vw, 3.5rem)' }}>
+                  {t.symbol}
+                </span>
                 {t.dollars === 0 ? (
                   <span className="muted" style={{ fontSize: '0.68rem', fontWeight: 700 }}>
                     SPLIT/ADJ

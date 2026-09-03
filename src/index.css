@@ -6622,3 +6622,29 @@ a.cz-msg-author:focus-visible {
   font-size: 0.8rem;
   min-width: 2rem;
 }
+
+/* ── one gutter on a phone, not three ────────────────────────────────────────
+   ⚠️ MEASURED, NOT GUESSED. On a 375px screen the content column was 285px —
+   a quarter of the display was empty side margin — because three separate
+   gutters stacked up and none of them knew about the others:
+
+     .container  max-width: calc(100vw - 2rem)   16px each side
+     .container  padding: clamp(0.9rem, …)       14.4px each side
+     .card       padding: var(--card-pad)        14.4px each side
+
+   Each is reasonable on a desktop, where 90px of a 1440px column is nothing.
+   On a phone it is the difference between a page that reads and one that feels
+   thin and endless, because everything wraps sooner and so runs longer.
+
+   The inset goes (the padding already IS the gutter), and the two paddings come
+   down to a total of about 23px from screen edge to text — close to the 16px a
+   native app uses, with a card border in between. Content: 285px → 328px. */
+@media (max-width: 640px) {
+  :root {
+    --card-pad: 0.8rem;
+  }
+  .container {
+    max-width: 100%;
+    padding-inline: 0.65rem;
+  }
+}
