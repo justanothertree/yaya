@@ -9,6 +9,8 @@ import { circuitStore, useCircuit } from '../store'
 import { watchlistInGroup } from '../groupFilter'
 import { ratersIn } from './movieMeta'
 import { REVIEW_KINDS, kindEmoji, kindsPresent } from '../reviewKinds'
+import { buildLibrary, filterLibrary, libraryKinds, type LibraryEntry } from '../poolLibrary'
+import { useTouchOnly } from '../../ui/pointerKind'
 import { Modal } from './Modal'
 import type { CircuitGroup, WatchlistItem } from '../types'
 
@@ -40,6 +42,13 @@ export function Watchlist({
   const [newGroup, setNewGroup] = useState<string | undefined>(() => viewGroup || defaultGroup())
   /** the current pick, kept so it can be re-rolled or accepted */
   const [picked, setPicked] = useState<WatchlistItem | null>(null)
+  const [libOpen, setLibOpen] = useState(false)
+  const [libSearch, setLibSearch] = useState('')
+  const [libKind, setLibKind] = useState('')
+  const [dragOver, setDragOver] = useState(false)
+  /* a finger cannot drag an HTML5 draggable, so the tap is the real interaction and the drag is
+     the extra one — the wording has to match whichever the person actually has */
+  const touch = useTouchOnly()
 
   const voters = useMemo(() => ratersIn(people, viewGroup), [people, viewGroup])
 
@@ -108,6 +117,35 @@ export function Watchlist({
     return best ?? st.groups?.[0]?.id ?? undefined
   }
 
+  /**
+   * ⚠️ BUILT FROM THE WHOLE BOARD, filtered for display only. Rebuilding on every keystroke
+   * would walk 250-odd rows per character; the catalogue changes when the data does, and the
+   * search is a view of it.
+   */
+  const library = useMemo(
+    () => buildLibrary(circuitStore.getState(), inGroup),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [allWatchlist, inGroup],
+  )
+  const libShown = useMemo(
+    () => filterLibrary(library, libKind, libSearch).slice(0, 200),
+    [library, libKind, libSearch],
+  )
+  const libCats = useMemo(() => libraryKinds(library), [library])
+
+  /** Put one of the room's old suggestions back on the table. */
+  function addFromLibrary(e: LibraryEntry) {
+    if (e.inPool) return
+    void circuitStore.saveWatchlist({
+      id: 'wl' + (crypto.randomUUID?.() ?? String(Date.now())),
+      title: e.title,
+      rt: e.rt,
+      votes: [],
+      kind: e.kind,
+      groupId: viewGroup || defaultGroup(),
+    })
+  }
+
   function addItem() {
     const t = newTitle.trim()
     if (!t) return
@@ -169,6 +207,17 @@ export function Watchlist({
         </span>
         <button className="btn cz-tap" onClick={() => setAdding(true)}>
           ＋ Add
+        </button>
+        {/* ⚠️ The complaint was never "there is no catalogue", it was "I have to type every
+            option in from scratch". A hundred titles the room has already discussed were sitting
+            in the database with nothing offering them. */}
+        <button
+          className={'btn cz-tap' + (libOpen ? ' is-on' : '')}
+          onClick={() => setLibOpen((v) => !v)}
+          aria-expanded={libOpen}
+          title="Everything you have all suggested or rated before"
+        >
+          📚 From the list
         </button>
         <span style={{ marginLeft: 'auto', display: 'flex', gap: '0.35rem' }}>
           {sortBtn('votes', 'Top')}
@@ -249,7 +298,25 @@ export function Watchlist({
         </div>
       )}
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+      {/* ⚠️ The drop target is the pool itself, so dragging goes where it looks like it
+          goes. It is additive only: tapping an entry does the same thing, which is what a
+          touchscreen gets, since an HTML5 drag never starts under a finger. */}
+      <div
+        className={'cz-pool-list' + (dragOver ? ' is-drop' : '')}
+        onDragOver={(e) => {
+          if (!e.dataTransfer.types.includes('text/pool-entry')) return
+          e.preventDefault()
+          setDragOver(true)
+        }}
+        onDragLeave={() => setDragOver(false)}
+        onDrop={(e) => {
+          e.preventDefault()
+          setDragOver(false)
+          const key = e.dataTransfer.getData('text/pool-entry')
+          const hit = library.find((x) => x.key === key)
+          if (hit) addFromLibrary(hit)
+        }}
+      >
         {sorted.map((item) => {
           const voteCount = item.votes?.length ?? 0
           const isPick = picked?.id === item.id
@@ -321,6 +388,79 @@ export function Watchlist({
           </p>
         )}
       </div>
+
+      {libOpen && (
+        <div className="cz-lib">
+          <div className="cz-lib-head">
+            <input
+              className="cz-lib-search"
+              value={libSearch}
+              onChange={(e) => setLibSearch(e.target.value)}
+              onKeyDown={(e) => e.stopPropagation()}
+              placeholder={`Search ${library.length} things you have suggested or rated`}
+              aria-label="Search the list"
+            />
+            {libCats.length > 1 && (
+              <span className="cz-lib-cats">
+                <button
+                  className={'btn cz-tap' + (libKind === '' ? ' is-on' : '')}
+                  onClick={() => setLibKind('')}
+                >
+                  All
+                </button>
+                {libCats.map((k) => (
+                  <button
+                    key={k}
+                    className={'btn cz-tap' + (libKind === k ? ' is-on' : '')}
+                    onClick={() => setLibKind(k)}
+                    title={k}
+                  >
+                    {kindEmoji(k)}
+                  </button>
+                ))}
+              </span>
+            )}
+          </div>
+          <div className="cz-lib-grid">
+            {libShown.map((e) => (
+              <button
+                key={e.key}
+                className={'cz-lib-item' + (e.inPool ? ' is-in' : '')}
+                disabled={e.inPool}
+                draggable={!e.inPool && !touch}
+                onDragStart={(ev) => ev.dataTransfer.setData('text/pool-entry', e.key)}
+                onClick={() => addFromLibrary(e)}
+                title={e.inPool ? 'Already in the pool' : 'Add to the pool'}
+              >
+                <span className="cz-lib-title">
+                  <span aria-hidden>{kindEmoji(e.kind)} </span>
+                  {e.title}
+                </span>
+                <span className="cz-lib-meta muted">
+                  {e.inPool
+                    ? 'in the pool'
+                    : [
+                        e.score != null ? `rated ${Math.round(e.score)}` : null,
+                        e.suggested > 1 ? `suggested ${e.suggested}×` : null,
+                        e.rt || null,
+                      ]
+                        .filter(Boolean)
+                        .join(' · ') || 'never picked'}
+                </span>
+              </button>
+            ))}
+            {libShown.length === 0 && (
+              <p className="muted" style={{ margin: 0 }}>
+                Nothing matches. Anything genuinely new goes in with ＋ Add.
+              </p>
+            )}
+          </div>
+          <p className="muted cz-lib-note">
+            Everything you have all suggested or rated before — nothing fetched, nothing suggested
+            by a machine. {touch ? 'Tap' : 'Click or drag'} one to put it back on the table.
+          </p>
+        </div>
+      )}
 
       {adding && (
         <Modal

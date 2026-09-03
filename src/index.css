@@ -4109,6 +4109,96 @@ select {
   font-size: 0.8rem;
 }
 
+/* ─ the pool's library ───────────────────────
+   A memory of everything the room has suggested, not a recommender. Laid out as a dense grid
+   because the whole point is seeing a lot at once — a one-per-row list of 250 titles is the
+   scrolling this was meant to replace. */
+.cz-pool-list.is-drop {
+  outline: 2px dashed var(--accent, #7c6af7);
+  outline-offset: 4px;
+  border-radius: 10px;
+}
+.cz-lib {
+  margin-top: 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 0.6rem;
+  display: grid;
+  gap: 0.5rem;
+  min-width: 0;
+}
+.cz-lib-head {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.cz-lib-search {
+  flex: 1 1 12rem;
+  /* ⚠️ or the flex item refuses to shrink past its placeholder and the chips wrap away */
+  min-width: 0;
+  padding: 0.4rem 0.55rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--control-bg);
+  color: var(--text);
+  font: inherit;
+}
+.cz-lib-cats {
+  display: flex;
+  gap: 0.25rem;
+  flex-wrap: wrap;
+}
+.cz-lib-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(13rem, 1fr));
+  gap: 0.3rem;
+  /* tall enough to browse, capped so the pool it feeds stays on screen above it */
+  max-height: min(22rem, 46vh);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 0.2rem;
+}
+.cz-lib-item {
+  display: grid;
+  gap: 0.1rem;
+  text-align: left;
+  min-width: 0;
+  appearance: none;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--control-bg);
+  color: var(--text);
+  font: inherit;
+  padding: 0.35rem 0.5rem;
+  cursor: pointer;
+}
+.cz-lib-item:hover:not(:disabled) {
+  border-color: var(--accent, #7c6af7);
+}
+.cz-lib-item.is-in {
+  opacity: 0.45;
+  cursor: default;
+}
+.cz-lib-title,
+.cz-lib-meta {
+  /* ⚠️ one line each: titles are typed by hand and a long one would double its own tile's
+     height and tear a hole in the grid */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cz-lib-title {
+  font-size: 0.85rem;
+}
+.cz-lib-meta {
+  font-size: 0.7rem;
+}
+.cz-lib-note {
+  margin: 0;
+  font-size: 0.78rem;
+}
+
 /* ─ saved kits ──────────────────────────
    The same row in Paint and in the instrument room, because it is the same interaction. Sits
    with the other controls rather than behind a dialog: these are settings you change while
