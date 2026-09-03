@@ -809,9 +809,23 @@ export function InstrumentRoom() {
                 (l.muted ? 'is-muted' : '') + (loop.replacing === l.id ? ' is-replacing' : '')
               }
             >
-              <span className="inst-layer-name">
+              {/**
+               * ⚠️ THE NAME IS THE SWITCH, and there is no pencil any more.
+               *
+               * Editing a take was behind a ✎ next to five other small buttons, which is a lot of
+               * looking for the thing you most want to do with a layer. The row already names the
+               * layer and counts its notes — "3. 14 notes" is exactly the handle for "show me
+               * those fourteen notes", so it may as well be the control. Pressing the open one
+               * again closes it, because a toggle you cannot un-toggle is a trap.
+               */}
+              <button
+                className={'inst-layer-name' + (editing === l.id ? ' is-open' : '')}
+                aria-expanded={editing === l.id}
+                onClick={() => setEditing((e) => (e === l.id ? null : l.id))}
+                title={editing === l.id ? 'Hide these notes' : 'Show these notes'}
+              >
                 {i + 1}.<span className="muted"> {l.events.filter((e) => e.on).length} notes</span>
-              </span>
+              </button>
 
               {/* Re-voice without replaying: the notes were right, the sound was not. Storing
                   notes rather than audio is what makes this a dropdown instead of a re-take. */}
@@ -883,16 +897,6 @@ export function InstrumentRoom() {
                 ⬇
               </button>
 
-              {/* Editing what you played rather than playing it again — only possible because a
-                  take is stored as notes. See PianoRoll. */}
-              <button
-                className={'btn' + (editing === l.id ? ' is-on' : '')}
-                aria-pressed={editing === l.id}
-                onClick={() => setEditing((e) => (e === l.id ? null : l.id))}
-                title="Edit this layer's notes"
-              >
-                ✎
-              </button>
               <button
                 className="btn inst-layer-fx"
                 onClick={() => setLayerFx(l.id)}

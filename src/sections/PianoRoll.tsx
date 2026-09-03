@@ -33,8 +33,33 @@ const ROW_H = 18
 /** Two notes never share a pitch and a start, so this identifies one exactly. */
 const isSame = (n: Note, sel: { midi: number; t: number } | null) =>
   !!sel && n.midi === sel.midi && Math.abs(n.t - sel.t) < 1e-6
-/** Grab within this fraction of a note's right edge and you are resizing, not moving. */
+/**
+ * Grab within this fraction of a note's right edge and you are resizing, not moving.
+ *
+ * ⚠️ THE ZONE WAS ALWAYS HERE; WHAT WAS MISSING WAS ANY SIGN OF IT. No cursor change, no
+ * grip, nothing drawn — on a one-cell note the target is about ten pixels of otherwise identical
+ * note. A feature nobody can see is one that does not exist, which is why this was reported as
+ * missing when it had been working all along. The grip element below is the whole fix.
+ */
 const HANDLE = 0.3
+
+/**
+ * Lengths you can draw in, as note values.
+ *
+ * ⚠️ SEPARATE FROM THE SNAP, which is the point. A new note used to be exactly one grid
+ * step long, so asking for finer placement — 1/16 to nudge something into the pocket — also
+ * meant every note you drew afterwards was a semiquaver. Those are two different questions:
+ * where a note starts, and how long it is. `null` keeps the old behaviour of following the
+ * snap, and it stays the default so nothing changes for anyone who never opens this.
+ */
+const LENGTHS: Array<[number | null, string]> = [
+  [null, 'Snap'],
+  [16, '1/16'],
+  [8, '1/8'],
+  [4, '1/4'],
+  [2, '1/2'],
+  [1, '1'],
+]
 
 /**
  * A drag in progress.
@@ -106,6 +131,9 @@ export function PianoRoll({
   const headRef = useRef<HTMLDivElement>(null)
 
   const step = gridStep(bpm, quantize)
+  const [drawLen, setDrawLen] = useState<number | null>(null)
+  /** how long a note you draw comes out — the snap, unless you have said otherwise */
+  const newDur = drawLen == null ? step : gridStep(bpm, drawLen)
   const notes = useMemo(() => toNotes(layer.events, layer.len), [layer.events, layer.len])
   /**
    * The pitch range on show — decided ONCE, when the editor opens for this layer.
@@ -245,7 +273,8 @@ export function PianoRoll({
     if (!c) return
     setSel({ midi: n.midi, t: n.t })
     ;(e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId)
-    if (e.clientX > box.right - Math.max(6, box.width * HANDLE)) {
+    const onGrip = (e.target as HTMLElement).classList?.contains('roll-grip')
+    if (onGrip || e.clientX > box.right - Math.max(6, box.width * HANDLE)) {
       setDrag({ kind: 'resize', i, from: notes, col: c.col })
     } else {
       setDrag({
@@ -291,7 +320,10 @@ export function PianoRoll({
     // fell through the note element's own handler only because it was a miss, and a miss on an
     // occupied cell means the pointer was in the gap, not that you wanted two notes there
     if (occupied(notes, midi, t)) return
-    const n: Note = { midi, t, dur: step }
+    /* clamped to what is left of the take: a bar-long note drawn in the last beat would
+       otherwise be trimmed by the scheduler anyway, and silently coming out shorter than the
+       button you pressed is worse than visibly hitting the end */
+    const n: Note = { midi, t, dur: Math.min(newDur, loopLen - t) }
     audition(midi)
     const next = [...notes, n]
     // select the note you just made, by identity — see the note on `sel`
@@ -335,8 +367,25 @@ export function PianoRoll({
           {shown.length} note{shown.length === 1 ? '' : 's'} · {layer.len.toFixed(1)}s
         </span>
         <span className="muted roll-hint">
-          Click to add · drag to move · drag the right edge to lengthen ·{' '}
+          Click to add · drag to move · drag the grip to resize ·{' '}
           <strong>right-click or double-click a note to delete it</strong>
+        </span>
+        {/* ⚠️ Sits with the editor's own tools, not with Snap out in the room. They read as one
+            setting when they are next to each other, and being one setting is the thing that was
+            wrong. */}
+        <span className="roll-len" role="group" aria-label="Length of notes you draw">
+          <span className="muted">Length</span>
+          {LENGTHS.map(([v, label]) => (
+            <button
+              key={label}
+              className={'btn' + (drawLen === v ? ' is-on' : '')}
+              aria-pressed={drawLen === v}
+              onClick={() => setDrawLen(v)}
+              title={v == null ? 'Same as the snap' : `Draw ${label}-length notes`}
+            >
+              {label}
+            </button>
+          ))}
         </span>
         <button
           className="btn"
@@ -427,7 +476,12 @@ export function PianoRoll({
                   removeNote(n)
                 }}
                 title={`${nameOf(n.midi)} · ${n.dur.toFixed(2)}s — right-click or double-click to delete`}
-              />
+              >
+                {/* ⚠️ A REAL ELEMENT, not just a coordinate range. It draws the affordance, it
+                    carries its own ew-resize cursor, and it can be widened for a fingertip
+                    without widening the invisible zone that decides move-versus-resize. */}
+                <span className="roll-grip" aria-hidden />
+              </div>
             ))}
 
             <div ref={headRef} className="roll-head" aria-hidden />
