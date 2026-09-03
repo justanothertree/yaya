@@ -28,8 +28,28 @@ export function sharedCtx(): AudioContext {
     (window as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
   // 48k to match the call. If the device refuses that rate, take whatever it gives rather than
   // failing outright — a visualiser at 44.1k is fine, and only the denoiser really cares.
+  /**
+   * ⚠️ A BIGGER BUFFER ON A PHONE, and the small one everywhere else.
+   *
+   * With no latencyHint the browser picks "interactive", which is the smallest buffer it can
+   * manage — measured here at 481 frames, about 10ms. That is the right answer on a desktop,
+   * where playing an instrument wants every millisecond and there is CPU to spare.
+   *
+   * It is a thin margin for a phone running this synth, a reverb per part, a canvas visualiser
+   * and React at the same time. When the audio thread misses that deadline the output is not
+   * quiet, it is torn — which is what crackling IS, and it comes from the machine being late
+   * rather than from anything wrong with the signal. Doubling the buffer roughly doubles the
+   * headroom for 10ms of extra latency, which nobody notices on a touchscreen where the finger
+   * is already the slow part.
+   *
+   * The context is shared with the call, so this lands on voice too; 10ms is far below anything
+   * audible in a conversation.
+   */
+  const coarse = window.matchMedia?.('(hover: none) and (pointer: coarse)').matches ?? false
+  const opts: AudioContextOptions = { sampleRate: 48000 }
+  if (coarse) opts.latencyHint = 0.02
   try {
-    ctx = new Ctor({ sampleRate: 48000 })
+    ctx = new Ctor(opts)
   } catch {
     ctx = new Ctor()
   }
