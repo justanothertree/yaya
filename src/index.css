@@ -7218,3 +7218,15 @@ a.cz-msg-author:focus-visible {
   font-size: 0.78rem;
   min-width: 4.5rem;
 }
+
+/* the note editor's octave shift — see PianoRoll */
+.roll-oct {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+.roll-oct-at {
+  font-size: 0.75rem;
+  min-width: 4.2rem;
+  text-align: center;
+}

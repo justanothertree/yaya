@@ -183,7 +183,7 @@ export function PianoRoll({
    * bounds, no edit can ever fall outside — so the range never needs to change, and the grid
    * never moves while you work.
    */
-  const [lo, hi] = useMemo(
+  const [baseLo, baseHi] = useMemo(
     () => {
       const [a, b] = pitchRange(toNotes(layer.events, layer.len))
       const pad = Math.max(0, 24 - (b - a))
@@ -192,6 +192,24 @@ export function PianoRoll({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [layer.id],
   )
+  /**
+   * ⚠️ SLIDING THE WINDOW IS ALLOWED; RESIZING IT STILL IS NOT.
+   *
+   * The note above is about the range CHANGING ON ITS OWN, and that stays true — a grid that
+   * grows because of where you put a note moves every other note out from under your finger. A
+   * shift you asked for is the opposite: you know the rows moved, because you moved them. So the
+   * window keeps exactly its height and slides by whole octaves, which also means a note is
+   * always the same distance from the row above it.
+   *
+   * Whole octaves rather than free scrolling so the labelled C rows stay where the eye expects.
+   */
+  const [octave, setOctave] = useState(0)
+  useEffect(() => setOctave(0), [layer.id])
+  const span = baseHi - baseLo
+  const lo = Math.max(0, Math.min(127 - span, baseLo + octave * 12))
+  const hi = lo + span
+  const canUp = hi < 127
+  const canDown = lo > 0
   const rows = useMemo(() => {
     const r: number[] = []
     for (let m = hi; m >= lo; m--) r.push(m)
@@ -501,6 +519,27 @@ export function PianoRoll({
         {/* ⚠️ Sits with the editor's own tools, not with Snap out in the room. They read as one
             setting when they are next to each other, and being one setting is the thing that was
             wrong. */}
+        <span className="roll-oct" role="group" aria-label="Which octaves are shown">
+          <button
+            className="btn"
+            onClick={() => setOctave((v) => v + 1)}
+            disabled={!canUp}
+            title="Show higher notes"
+          >
+            ▲
+          </button>
+          <span className="muted roll-oct-at" title="The octaves on screen">
+            {nameOf(lo)}–{nameOf(hi)}
+          </span>
+          <button
+            className="btn"
+            onClick={() => setOctave((v) => v - 1)}
+            disabled={!canDown}
+            title="Show lower notes"
+          >
+            ▼
+          </button>
+        </span>
         <span className="roll-len" role="group" aria-label="Length of notes you draw">
           <span className="muted">Length</span>
           {LENGTHS.map(([v, label]) => (

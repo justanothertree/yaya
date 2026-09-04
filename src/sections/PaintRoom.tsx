@@ -162,7 +162,17 @@ export function PaintRoom() {
   useEffect(() => drawParty.start(), [])
   useEffect(() => {
     drawParty.setHandler((s) => setStrokes((prev) => [...prev, s]))
-    return () => drawParty.setHandler(null)
+    /* ⚠️ by name, not by position: their array is not ours and never was */
+    drawParty.setUndoHandler((id) => {
+      setSel([])
+      setStrokes((prev) => prev.filter((k) => k.id !== id))
+    })
+    drawParty.setPaperHandler((c) => setBg(c))
+    return () => {
+      drawParty.setHandler(null)
+      drawParty.setUndoHandler(null)
+      drawParty.setPaperHandler(null)
+    }
   }, [])
   useEffect(() => () => drawParty.setOn(false), [])
 
@@ -591,6 +601,7 @@ export function PaintRoom() {
   const commit = (s: Stroke) => {
     live.current = null
     setUndone([])
+    s.id = drawParty.mark()
     setStrokes((prev) => [...prev, s])
     // ⚠️ sent on COMPLETION, never while dragging — see party/draw.ts for why a half-drawn
     // stroke is not something the room should be shown
@@ -718,21 +729,33 @@ export function PaintRoom() {
     commit(s)
   }
 
+  /**
+   * WARNING YOUR OWN LAST STROKE, not the last stroke in the picture.
+   *
+   * While drawing together the array holds everybody's marks in arrival order, so "remove the
+   * last one" would take back whatever a peer had just drawn — undoing somebody else's work by
+   * pressing undo on yours. Skipping past marks that are not yours is the only reading of undo
+   * that is true in both a shared room and an empty one.
+   */
   const undo = () => {
     setSel([])
-    setStrokes((prev) => {
-      if (!prev.length) return prev
-      setUndone((u) => [...u, prev[prev.length - 1]])
-      return prev.slice(0, -1)
-    })
+    let i = strokes.length - 1
+    while (i >= 0 && strokes[i].id && !strokes[i].id!.startsWith('me:')) i--
+    if (i < 0) return
+    const gone = strokes[i]
+    setUndone((u) => [...u, gone])
+    setStrokes((prev) => prev.filter((_, n) => n !== i))
+    // ⚠️ outside the updater: React may run an updater twice, and this one leaves the machine
+    if (gone.id) drawParty.undo(gone.id)
   }
   const redo = () => {
     setSel([])
-    setUndone((u) => {
-      if (!u.length) return u
-      setStrokes((prev) => [...prev, u[u.length - 1]])
-      return u.slice(0, -1)
-    })
+    const back = undone[undone.length - 1]
+    if (!back) return
+    setUndone((u) => u.slice(0, -1))
+    setStrokes((prev) => [...prev, back])
+    // it keeps the name it had, so an undo and a redo are exactly each other on every screen
+    drawParty.send(back)
   }
 
   useEffect(() => {
@@ -1000,10 +1023,22 @@ export function PaintRoom() {
           />
         </span>
         <span className="paint-colour">
-          <ShadePad label="Paper" value={bg ?? '#111111'} onChange={setBg} />
+          {/* ⚠️ the paper is the one part of the picture that is not a stroke, so it needs
+              saying out loud — everything else reaches the room by being drawn */}
+          <ShadePad
+            label="Paper"
+            value={bg ?? '#111111'}
+            onChange={(c) => {
+              setBg(c)
+              drawParty.paper(c)
+            }}
+          />
           <button
             className={'btn' + (bg === null ? ' is-on' : '')}
-            onClick={() => setBg(null)}
+            onClick={() => {
+              setBg(null)
+              drawParty.paper(null)
+            }}
             title="No paper — the picture stays transparent"
           >
             None

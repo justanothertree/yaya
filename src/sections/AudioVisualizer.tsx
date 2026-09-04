@@ -329,6 +329,20 @@ export function AudioVisualizer() {
       bright,
       punch,
       echo,
+      /**
+       * ⚠️ THE ARRANGEMENT TRAVELS; WHICH DRAWING DOES NOT.
+       *
+       * A drawing is chosen by an id out of YOUR gallery, and a gallery is local — the same id
+       * on somebody else's machine means a different picture or, far more often, nothing at all.
+       * Sending it would be sending a name only one person can read.
+       *
+       * Sending the picture itself would work and is a kilobyte or two, but it would break the
+       * promise at the top of shared.ts: what travels is a window's settings, about a hundred
+       * bytes of them, not its contents. And the fallback is better than the compromise — a
+       * follower sees this mode arranged the way you arranged it, made out of THEIR art. Same
+       * window, their picture, which is exactly what the visualiser already does with audio.
+       */
+      artStyle,
     }),
     (d) => {
       if (!d || typeof d !== 'object') return
@@ -337,6 +351,8 @@ export function AudioVisualizer() {
       // peer cannot put this window into a state it has no controls for
       if (typeof v.mode === 'string' && VISUAL_IDS.includes(v.mode as VisualId))
         setMode(v.mode as VisualId)
+      if (v.artStyle === 'swarm' || v.artStyle === 'totem' || v.artStyle === 'bars')
+        setArtStyle(v.artStyle)
       if (typeof v.src === 'string' && TAP_IDS.includes(v.src as SrcChoice))
         setSrc(v.src as SrcChoice)
       if (typeof v.palette === 'string' && PALETTE_IDS.includes(v.palette)) setPalette(v.palette)
@@ -398,6 +414,7 @@ export function AudioVisualizer() {
     bright,
     punch,
     echo,
+    artStyle,
     sharingViz,
     pushViz,
   ])

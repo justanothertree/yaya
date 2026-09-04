@@ -114,6 +114,18 @@ export type Stroke = {
    * it into all twenty frames, which is also what keeps the file small enough to publish.
    */
   f?: number
+  /**
+   * A name for this stroke while the program is running. NEVER SAVED.
+   *
+   * ⚠️ It exists so drawing together can say "take back the one I called this". Only finished
+   * strokes were ever sent, so an undo was private: your copy lost the line, everybody else kept
+   * it, and the two pictures disagreed from then on with nothing on screen to say so.
+   *
+   * ⚠️ It does not reach a file, and that is by construction rather than by remembering to strip
+   * it: packDrawing lists the fields it writes, and readStroke lists the fields it reads, so a
+   * property neither mentions cannot travel to disk or arrive from one.
+   */
+  id?: string
   /** flat [x, y, x, y, …] in 0–1 space — two points for line/rect/ellipse, one for fill */
   p: number[]
 }
