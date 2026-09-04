@@ -1,6 +1,14 @@
 import { useEffect, useRef, useSyncExternalStore } from 'react'
 import { songNotes, type Song } from '../audio/songFile'
-import { songPlayerState, subscribeSongPlayer, toggleSong, stopSong } from '../audio/songPlayer'
+import {
+  seekSong,
+  songLength,
+  songPlayerState,
+  songPosition,
+  stopSong,
+  subscribeSongPlayer,
+  toggleSong,
+} from '../audio/songPlayer'
 import { makeVisual, defaultTrail, VISUALS, type Ink, type VisualId } from '../audio/visualModes'
 import { makeFeatureReader } from '../audio/audioFeatures'
 import { paletteById } from '../audio/palettes'
@@ -21,29 +29,186 @@ import { binCount, fftSize, readSpectrum, readWaveform } from '../audio/audioTap
  * markup, and no sanitiser to get wrong.
  */
 
+/**
+ * The shape of a song, drawn from the notes themselves.
+ *
+ * ⚠️ NOT A WAVEFORM, because there is no wave. A song here is notes, not audio — there is
+ * nothing recorded to take an envelope from, and faking one would be drawing a picture of a
+ * sound that does not exist. What a song DOES have is structure: when the notes fall, how high
+ * they sit, how many at once, which layer they belong to. That is more honest than an amplitude
+ * blob and, unlike one, it actually tells you where the chorus is.
+ *
+ * Cheap by construction: one rectangle per note, drawn once per song rather than per frame. The
+ * playhead moves over the top of it and never causes a redraw of the notes.
+ */
+function drawSongMap(
+  ctx: CanvasRenderingContext2D,
+  song: Song,
+  w: number,
+  h: number,
+  accent: string,
+) {
+  ctx.clearRect(0, 0, w, h)
+  const len = songLength(song)
+  if (len <= 0) return
+  let lo = 127
+  let hi = 0
+  for (const l of song.layers)
+    for (const e of l.events)
+      if (e.on) {
+        if (e.midi < lo) lo = e.midi
+        if (e.midi > hi) hi = e.midi
+      }
+  if (hi < lo) return
+  // ⚠️ padded, so a song on one note is a line through the middle rather than a bar along the top
+  if (hi - lo < 6) {
+    const mid = (hi + lo) / 2
+    lo = mid - 3
+    hi = mid + 3
+  }
+  const pad = 2
+  const rows = Math.max(1, hi - lo)
+  for (let li = 0; li < song.layers.length; li++) {
+    const layer = song.layers[li]
+    if (layer.muted) continue
+    /* each layer its own tint of the accent, so parts are told apart without a legend */
+    ctx.fillStyle = accent
+    ctx.globalAlpha = 0.35 + 0.65 * (1 - li / Math.max(1, song.layers.length))
+    const own = Math.max(0.05, layer.len)
+    const reps = Math.max(1, Math.floor(len / own + 1e-6))
+    const open = new Map<number, number>()
+    for (const e of layer.events) {
+      if (e.on) open.set(e.midi, e.t)
+      else {
+        const from = open.get(e.midi)
+        if (from == null) continue
+        open.delete(e.midi)
+        for (let k = 0; k < reps; k++) {
+          const a = (from + k * own) / len
+          const b = Math.min(1, (e.t + k * own) / len)
+          if (a >= 1) continue
+          const x = a * w
+          const y = pad + (1 - (e.midi - lo) / rows) * (h - pad * 2)
+          ctx.fillRect(x, y - 1, Math.max(1.5, (b - a) * w), 2.5)
+        }
+      }
+    }
+  }
+  ctx.globalAlpha = 1
+}
+
 export function SongBlock({ id, song }: { id: string; song: Song }) {
   const playing = useSyncExternalStore(subscribeSongPlayer, songPlayerState, songPlayerState)
   const isMe = playing.playing === id
+  const bar = useRef<HTMLDivElement>(null)
+  const cv = useRef<HTMLCanvasElement>(null)
+  const head = useRef<HTMLSpanElement>(null)
 
   // leaving the page must not leave the song going — this is somebody else's tab
   useEffect(() => () => stopSong(), [])
 
+  /* the map is drawn when the song or the width changes, never per frame */
+  useEffect(() => {
+    const el = cv.current
+    const box = bar.current
+    if (!el || !box) return
+    let lastW = 0
+    const paint = () => {
+      const w = Math.round(box.clientWidth)
+      if (w < 1) return
+      const h = 40
+      const dpr = Math.min(window.devicePixelRatio || 1, 2)
+      /* ⚠️ CSS size set explicitly and height fixed — the profile art block grew without bound
+         by letting the backing store decide the layout, and this is the same shape of code */
+      el.style.width = w + 'px'
+      el.style.height = h + 'px'
+      el.width = Math.round(w * dpr)
+      el.height = Math.round(h * dpr)
+      const ctx = el.getContext('2d')
+      if (!ctx) return
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+      const accent =
+        getComputedStyle(el).getPropertyValue('--accent').trim() || 'rgba(124,106,247,1)'
+      drawSongMap(ctx, song, w, h, accent)
+      lastW = w
+    }
+    paint()
+    const ro = new ResizeObserver(() => {
+      if (Math.round(box.clientWidth) !== lastW) paint()
+    })
+    ro.observe(box)
+    return () => ro.disconnect()
+  }, [song])
+
+  /**
+   * ⚠️ The playhead is a transform written by rAF, never React state. It moves sixty times a
+   * second; re-rendering a card that often to move one line would be the most expensive thing on
+   * the page. Same reasoning as the piano roll's.
+   */
+  useEffect(() => {
+    if (!isMe) {
+      if (head.current) head.current.style.transform = 'scaleX(0)'
+      return
+    }
+    let raf = 0
+    const len = songLength(song)
+    const tick = () => {
+      raf = requestAnimationFrame(tick)
+      const el = head.current
+      if (!el || len <= 0) return
+      el.style.transform = `scaleX(${Math.max(0, Math.min(1, songPosition() / len))})`
+    }
+    raf = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(raf)
+  }, [isMe, song])
+
+  const scrub = (e: React.PointerEvent) => {
+    const box = bar.current?.getBoundingClientRect()
+    if (!box || box.width < 1) return
+    // ⚠️ the rect's own width, so a scaled canvas window still scrubs where you pressed
+    const f = Math.max(0, Math.min(1, (e.clientX - box.left) / box.width))
+    if (!isMe) toggleSong(id, song)
+    seekSong(f * songLength(song))
+  }
+
   return (
     <div className="card profile-block profile-song">
-      <button
-        className={'btn profile-song-play' + (isMe ? ' is-on' : '')}
-        onClick={() => toggleSong(id, song)}
-        aria-pressed={isMe}
-        title={isMe ? 'Stop' : 'Play this'}
+      <div className="profile-song-head">
+        <button
+          className={'btn profile-song-play' + (isMe ? ' is-on' : '')}
+          onClick={() => toggleSong(id, song)}
+          aria-pressed={isMe}
+          title={isMe ? 'Stop' : 'Play this'}
+        >
+          {isMe ? '⏹' : '▶'}
+        </button>
+        <span className="profile-song-name">{song.name}</span>
+      </div>
+
+      {/* ⚠️ a button, not a div with a click. It is the main control of this card, and it has to
+          be reachable by a keyboard and announce itself like the play button does. */}
+      <div
+        ref={bar}
+        className={'profile-song-bar' + (isMe ? ' is-playing' : '')}
+        role="button"
+        tabIndex={0}
+        aria-label={`Scrub ${song.name}`}
+        onPointerDown={scrub}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault()
+            toggleSong(id, song)
+          }
+        }}
       >
-        {isMe ? '⏹' : '▶'}
-      </button>
-      <span className="profile-song-name">{song.name}</span>
+        <canvas ref={cv} aria-hidden />
+        <span ref={head} className="profile-song-head-line" aria-hidden />
+      </div>
+
       <span className="muted profile-song-meta">
         {song.layers.length} layer{song.layers.length === 1 ? '' : 's'} · {songNotes(song)} notes ·{' '}
-        {song.bpm}bpm
+        {song.bpm}bpm · played by your browser, not streamed
       </span>
-      <span className="muted profile-song-note">played by your browser, not streamed</span>
     </div>
   )
 }

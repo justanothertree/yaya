@@ -6681,8 +6681,10 @@ a.cz-msg-author:focus-visible {
    ⚠️ The cell has to be big enough to READ a number and to hit with a thumb; the old mute strip
    only had to be big enough to see a colour. */
 .inst-bar-cell {
-  min-width: 1.5rem;
-  font-size: 0.66rem;
+  /* ⚠️ back to the size it was. Widening every cell to fit a number made the row longer and
+     harder to take in, for a number that is usually not worth reading — see the label in
+     InstrumentRoom. It grows only where a coarse pointer needs something to hit. */
+  font-size: 0.62rem;
   font-family: var(--mono);
   line-height: 1.2;
   cursor: pointer;
@@ -6719,4 +6721,53 @@ a.cz-msg-author:focus-visible {
 .profile-art canvas {
   display: block;
   max-width: 100%;
+}
+
+/* a song's own block, with its shape drawn from the notes -----------------
+   ⚠️ Fixed height on the bar. It holds a canvas, and a canvas whose height comes from its own
+   backing store is how the art block grew without bound — see ProfileArt. */
+.profile-song {
+  display: grid;
+  gap: 0.45rem;
+}
+.profile-song-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+.profile-song-name {
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.profile-song-bar {
+  position: relative;
+  height: 40px;
+  border-radius: 8px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--text) 7%, transparent);
+  cursor: pointer;
+  min-width: 0;
+}
+.profile-song-bar:focus-visible {
+  outline: 2px solid var(--accent, #7c6af7);
+  outline-offset: 2px;
+}
+.profile-song-bar canvas {
+  display: block;
+}
+/* the played part, as a wash over the map rather than a line that hides it */
+.profile-song-head-line {
+  position: absolute;
+  inset: 0;
+  transform-origin: left center;
+  transform: scaleX(0);
+  background: color-mix(in srgb, var(--accent, #7c6af7) 22%, transparent);
+  border-right: 2px solid var(--accent, #7c6af7);
+  pointer-events: none;
+}
+.profile-song-meta {
+  font-size: 0.74rem;
 }

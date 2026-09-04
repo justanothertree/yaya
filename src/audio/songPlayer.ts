@@ -112,6 +112,41 @@ function tick() {
   scheduledTo = to
 }
 
+/** One pass of a song, in seconds. */
+export function songLength(song: Song): number {
+  return (song.bars * BEATS_PER_BAR * 60) / song.bpm
+}
+
+/** How far into the current pass we are, or 0 when nothing is playing. */
+export function songPosition(): number {
+  if (!current || !state.playing) return 0
+  const len = songLength(current)
+  if (len <= 0) return 0
+  const t = sharedCtx().currentTime - origin
+  return ((t % len) + len) % len
+}
+
+/**
+ * Jump to a point in the song.
+ *
+ * ⚠️ Everything sounding is released FIRST and the token is rolled. Ids here carry the
+ * repetition, and moving the origin renumbers repetitions — the looper had exactly that bug, a
+ * note whose off was computed under a different number and so never matched its on, ringing
+ * until Panic. Releasing first means nothing is in flight; a fresh token means an id from before
+ * the seek could not collide with one after it even if something were.
+ */
+export function seekSong(seconds: number) {
+  if (!current || !state.playing) return
+  const len = songLength(current)
+  if (len <= 0) return
+  const into = ((seconds % len) + len) % len
+  const c = sharedCtx()
+  releaseAll()
+  token = `${Date.now().toString(36)}-s`
+  origin = c.currentTime - into
+  scheduledTo = c.currentTime
+}
+
 /** Stop whatever is playing. Safe to call when nothing is. */
 export function stopSong() {
   if (timer) window.clearInterval(timer)

@@ -1026,6 +1026,8 @@ export function InstrumentRoom() {
                */}
               <span className="inst-arrange" role="group" aria-label="The bars this layer plays">
                 {layerPlan(l).map((src, b) => {
+                  /* has this layer actually been rearranged, or is it just playing in order? */
+                  const arranged = !!l.plan
                   const held = lifted?.id === l.id && lifted.bar === b
                   return (
                     <button
@@ -1068,10 +1070,15 @@ export function InstrumentRoom() {
                             : `Bar ${b + 1} plays part ${src + 1} of ${takeBars(l)} — tap to pick it up`
                       }
                     >
-                      {/* ⚠️ a dot rather than nothing: an empty cell you cannot see is a gap you
-                          cannot count, and the whole point of the row is knowing which slot you
-                          are looking at */}
-                      {src == null ? '·' : src + 1}
+                      {/**
+                       * ⚠️ QUIET UNTIL IT HAS SOMETHING TO SAY. Numbering every cell made the
+                       * common case harder to read: a take that plays straight through says
+                       * 1 2 3 4, which is four numbers to tell you nothing happened. So a layer
+                       * nobody has rearranged looks exactly as it always did — a row of blocks,
+                       * on or off — and the numbers appear only once the order stops being the
+                       * obvious one, which is the only time they explain anything.
+                       */}
+                      {arranged ? (src == null ? '·' : src + 1) : ''}
                     </button>
                   )
                 })}
