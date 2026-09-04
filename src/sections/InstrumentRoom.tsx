@@ -395,6 +395,56 @@ export function InstrumentRoom() {
     setHeld((h) => (h.includes(midi) ? h : [...h, midi]))
   }, [])
 
+  /**
+   * ⚠️ A POINTER OWNS EXACTLY ONE NOTE, and re-entering the key it already owns does
+   * nothing.
+   *
+   * pointerenter used to call press() unconditionally whenever a button was down. That is right
+   * for a mouse, which stays where you put it, and wrong for a finger, which does not: a fingertip
+   * resting on a phone wobbles a pixel or two, and if it is anywhere near a key edge the browser
+   * sends leave/enter/leave/enter for as long as you hold. Every one of those enters restarted the
+   * voice. A held note was therefore not held at all — it was being retriggered tens of times a
+   * second, which is heard as crackling rather than as repeated notes because each restart is only
+   * a few milliseconds from the last.
+   *
+   * Keyed by pointerId rather than by midi, so two fingers on the same key are two voices and
+   * neither steals the other's.
+   */
+  const owned = useRef(new Map<number, number>())
+  const setOwned = useCallback(
+    (pointerId: number, midi: number | null) => {
+      const now = owned.current.get(pointerId)
+      if (now === midi) return // the jitter case: same finger, same key, nothing to do
+      if (now !== undefined) lift('p:' + pointerId, now)
+      if (midi == null) owned.current.delete(pointerId)
+      else {
+        owned.current.set(pointerId, midi)
+        press('p:' + pointerId, midi)
+      }
+    },
+    // press and lift are stable useCallbacks with no deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  )
+
+  /**
+   * ⚠️ The end of a press is caught on WINDOW, not on the key.
+   *
+   * Capture is deliberately released so a press can slide between keys, which also means the
+   * pointerup lands on whatever happens to be under the finger — and if that is the gap below the
+   * keyboard, the key's own handler never runs and the note sounds forever. Listening at the top
+   * means a finger that leaves the keys still ends its note.
+   */
+  useEffect(() => {
+    const end = (e: PointerEvent) => setOwned(e.pointerId, null)
+    window.addEventListener('pointerup', end)
+    window.addEventListener('pointercancel', end)
+    return () => {
+      window.removeEventListener('pointerup', end)
+      window.removeEventListener('pointercancel', end)
+    }
+  }, [setOwned])
+
   const lift = useCallback((id: string, midi: number) => {
     noteOff(id)
     capture(midi, false, live.current.inst)
@@ -1055,17 +1105,16 @@ export function InstrumentRoom() {
                * interaction in the room was one exception away from silence, for the sake of a
                * convenience.
                */
-              press('p:' + midi, midi)
+              setOwned(e.pointerId, midi)
               try {
                 e.currentTarget.releasePointerCapture(e.pointerId)
               } catch {
                 /* it was never captured; the glissando just works differently for this pointer */
               }
             }}
-            onPointerUp={() => lift('p:' + midi, midi)}
-            onPointerLeave={() => lift('p:' + midi, midi)}
+            onPointerUp={(e) => setOwned(e.pointerId, null)}
             onPointerEnter={(e) => {
-              if (e.buttons > 0) press('p:' + midi, midi)
+              if (e.buttons > 0) setOwned(e.pointerId, midi)
             }}
           >
             {/* ⚠️ Drums say WHICH DRUM, not which note. A twelve-piece kit laid out as
