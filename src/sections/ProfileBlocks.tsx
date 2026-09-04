@@ -1,11 +1,4 @@
-import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-  useSyncExternalStore,
-  type PointerEvent as ReactPointerEvent,
-} from 'react'
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { getSupabaseClient } from '../finance/client'
 import { BANNER_STYLES, bannerBackground, type BannerStyle } from '../profile/look'
 import { SongBlock, VisualBlock } from '../profile/ProfileMusic'
@@ -922,9 +915,16 @@ export function ProfileBlocksEditor({
   const [blocked, setBlocked] = useState<ProfileBlock['block_type'] | null>(null)
   /** which block is selected; its fields appear underneath the page rather than inside it */
   const [openIdx, setOpenIdx] = useState<number | null>(null)
-  /** the block being dragged, and the slot it would land in */
-  const [dragIdx, setDragIdx] = useState<number | null>(null)
-  const [overIdx, setOverIdx] = useState<number | null>(null)
+  /**
+   * ⚠️ THE BLOCK THAT HAS BEEN PICKED UP, waiting to be put down.
+   *
+   * Dragging was the only way to reorder, and it was unreliable in exactly the way pointer
+   * dragging always is on a touchscreen: the browser wants to scroll, the block wants to move,
+   * and whichever wins is a coin toss you have to lose a few times to learn. Tap to lift, tap to
+   * place is one gesture, identical on a phone and a mouse, and it cannot be interrupted by a
+   * scroll because it is not a gesture that lasts.
+   */
+  const [liftIdx, setLiftIdx] = useState<number | null>(null)
   /** the add-a-block palette, which is seven buttons you are mostly not pressing */
   const [adding, setAdding] = useState(false)
 
@@ -960,6 +960,9 @@ export function ProfileBlocksEditor({
       return next
     })
   }
+  const setSizeAt = (i: number, size: ProfileBlock['size']) =>
+    setBlocks((all) => all.map((x, idx) => (idx === i ? { ...x, size } : x)))
+
   const move = (i: number, dir: -1 | 1) => {
     const j = i + dir
     if (j < 0 || j >= blocks.length) return
@@ -1128,46 +1131,6 @@ export function ProfileBlocksEditor({
    * so its fields appear — and a surface that both selects on click and moves on drag turns
    * every imprecise tap into a small accident.
    */
-  const startDrag = (i: number) => (e: ReactPointerEvent) => {
-    e.preventDefault()
-    const el = e.currentTarget as HTMLElement
-    /**
-     * ⚠️ Capture is an OPTIMISATION here, not the mechanism, and it is allowed to fail — it
-     * throws outright for a pointer the element does not already own. The moves are listened for
-     * on the window for the same reason: a drag has to keep working once it leaves the small
-     * handle it started on, which is most of the drag.
-     */
-    try {
-      el.setPointerCapture(e.pointerId)
-    } catch {
-      /* the window listeners below do the actual work */
-    }
-    setDragIdx(i)
-    setOverIdx(i)
-    setOpenIdx(i)
-    const cellUnder = (ev: PointerEvent) => {
-      const under = document.elementFromPoint(ev.clientX, ev.clientY)
-      const cell = under?.closest('[data-cell]') as HTMLElement | null
-      const idx = cell ? Number(cell.dataset.cell) : NaN
-      return Number.isInteger(idx) ? idx : null
-    }
-    const over = (ev: PointerEvent) => {
-      const idx = cellUnder(ev)
-      if (idx != null) setOverIdx(idx)
-    }
-    const end = (ev: PointerEvent) => {
-      window.removeEventListener('pointermove', over)
-      window.removeEventListener('pointerup', end)
-      window.removeEventListener('pointercancel', end)
-      const to = cellUnder(ev)
-      if (to != null) moveTo(i, to)
-      setDragIdx(null)
-      setOverIdx(null)
-    }
-    window.addEventListener('pointermove', over)
-    window.addEventListener('pointerup', end)
-    window.addEventListener('pointercancel', end)
-  }
 
   return (
     <div className="card profile-editor" data-username={username}>
@@ -1194,6 +1157,7 @@ export function ProfileBlocksEditor({
           // a press on the gaps between blocks puts the inspector away
           if ((e.target as HTMLElement).closest('[data-cell]')) return
           setOpenIdx(null)
+          setLiftIdx(null)
         }}
       >
         {blocks.map((b, i) => (
@@ -1204,8 +1168,8 @@ export function ProfileBlocksEditor({
               'profile-canvas-cell is-' +
               b.size +
               (openIdx === i ? ' is-selected' : '') +
-              (dragIdx === i ? ' is-dragging' : '') +
-              (dragIdx != null && overIdx === i && dragIdx !== i ? ' is-target' : '')
+              (liftIdx === i ? ' is-lifted' : '') +
+              (liftIdx != null && liftIdx !== i ? ' is-drop' : '')
             }
           >
             <button
@@ -1213,16 +1177,74 @@ export function ProfileBlocksEditor({
               className="profile-canvas-pick"
               aria-pressed={openIdx === i}
               aria-label={'Edit ' + BLOCK_LABEL[b.block_type]}
-              onClick={() => setOpenIdx((cur) => (cur === i ? null : i))}
+              onClick={() => {
+                /* holding something? this is where it goes. Otherwise open it as before. */
+                if (liftIdx != null && liftIdx !== i) {
+                  moveTo(liftIdx, i)
+                  setLiftIdx(null)
+                  return
+                }
+                setLiftIdx(null)
+                setOpenIdx((cur) => (cur === i ? null : i))
+              }}
             />
             <span className="profile-canvas-tag">{BLOCK_LABEL[b.block_type]}</span>
+            {/**
+             * ⚠️ THE COMMON ACTIONS LIVE ON THE BLOCK, not in a panel somewhere else.
+             *
+             * Width and delete were at the bottom of the page, describing a block that was up
+             * here — so every small change was a journey, and on a phone the panel and the thing
+             * it described were never on screen together. These three are the ones reached most
+             * and they need no room to explain themselves. Anything with more to say than a
+             * button — the text of a bio, which drawings a gallery shows — is still the panel's
+             * job.
+             */}
+            {openIdx === i && (
+              <span className="profile-canvas-tools">
+                <button
+                  className="btn"
+                  title="A third of the width"
+                  aria-pressed={b.size === 'small'}
+                  onClick={() => setSizeAt(i, 'small')}
+                >
+                  ▮
+                </button>
+                <button
+                  className="btn"
+                  title="Half the width"
+                  aria-pressed={b.size === 'medium'}
+                  onClick={() => setSizeAt(i, 'medium')}
+                >
+                  ▮▮
+                </button>
+                <button
+                  className="btn"
+                  title="The whole width"
+                  aria-pressed={b.size === 'large'}
+                  onClick={() => setSizeAt(i, 'large')}
+                >
+                  ▮▮▮
+                </button>
+                <button
+                  className="btn btn-ghost"
+                  title={'Remove this ' + BLOCK_LABEL[b.block_type]}
+                  onClick={() => removeAt(i)}
+                >
+                  ✕
+                </button>
+              </span>
+            )}
             <span
               className="profile-canvas-grip"
               role="button"
               tabIndex={0}
               aria-label={'Move ' + BLOCK_LABEL[b.block_type]}
-              title="Drag to move — or use the arrow keys"
-              onPointerDown={startDrag(i)}
+              title="Tap to pick this up, then tap where it should go"
+              onClick={(e) => {
+                e.stopPropagation()
+                setLiftIdx((cur) => (cur === i ? null : i))
+                setOpenIdx(i)
+              }}
               onKeyDown={(e) => {
                 /* ⚠️ the arrow keys page between sections of this site, so they are stopped
                    here as well as prevented — the visualiser's pin hit the same trap */

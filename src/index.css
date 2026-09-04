@@ -6771,3 +6771,48 @@ a.cz-msg-author:focus-visible {
 .profile-song-meta {
   font-size: 0.74rem;
 }
+
+/* the profile editor: a block you pick up, and its tools ------------------
+   ⚠️ A lifted block and a place to put it are two different signals and need to look different.
+   Everything else dims so the choice is the only bright thing on the canvas. */
+.profile-canvas-cell.is-lifted {
+  outline: 2px solid var(--accent, #7c6af7);
+  outline-offset: 3px;
+  opacity: 0.85;
+}
+.profile-canvas-cell.is-drop {
+  outline: 1px dashed var(--border-strong, var(--border));
+  outline-offset: 3px;
+}
+.profile-canvas-tools {
+  position: absolute;
+  z-index: 3;
+  top: 0.25rem;
+  right: 0.25rem;
+  display: flex;
+  gap: 0.15rem;
+  padding: 0.15rem;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+  backdrop-filter: blur(3px);
+}
+.profile-canvas-tools .btn {
+  padding: 0.1rem 0.3rem;
+  font-size: 0.7rem;
+  line-height: 1.3;
+}
+.profile-canvas-tools .btn[aria-pressed='true'] {
+  border-color: var(--accent, #7c6af7);
+  color: var(--accent, #7c6af7);
+}
+@media (hover: none) and (pointer: coarse) {
+  /* ⚠️ the width buttons do nothing below 700px, where the grid is a single column by design —
+     so they are hidden rather than left there to be pressed with no effect */
+  .profile-canvas-tools .btn:not(.btn-ghost) {
+    display: none;
+  }
+  .profile-canvas-tools .btn {
+    min-width: 34px;
+    min-height: 34px;
+  }
+}
