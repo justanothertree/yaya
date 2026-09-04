@@ -1802,7 +1802,6 @@ li {
 /* Back to top button */
 .back-to-top {
   position: fixed;
-  right: 14px;
   bottom: calc(14px + env(safe-area-inset-bottom, 0px));
   background: var(--icon-bg);
   color: var(--text);
@@ -2891,22 +2890,6 @@ section[id] {
   /* ⚠️ wraps, so the bar strip below can claim a whole line of its own */
   flex-wrap: wrap;
 }
-/**
- * ⚠️ THE TRACK GETS ITS OWN LINE, and that is a correctness fix rather than a tidy-up.
- *
- * It used to sit inline with the layer's other controls, so anything that changed width to its
- * LEFT moved every tile sideways: the "all" button appearing the moment you arranged something,
- * and the effects button, whose label is words — "dry" against "echo + room + slide". You would
- * click a tile, the row would re-flow, and the tile you meant to click next had moved. Tiles you
- * are aiming at must not depend on the width of anything else.
- */
-.inst-arrange {
-  flex: 1 0 100%;
-  display: flex;
-  align-items: center;
-  gap: 0.15rem;
-  flex-wrap: wrap;
-}
 .inst-layers li.is-muted {
   opacity: 0.5;
 }
@@ -3009,10 +2992,6 @@ section[id] {
   border-radius: 0;
   border: none;
   background: var(--bg);
-}
-.viz-surface {
-  position: absolute;
-  inset: 0;
 }
 .viz-canvas {
   display: block;
@@ -6011,20 +5990,12 @@ a.cz-msg-author:focus-visible {
 /* A song on a profile — see src/profile/ProfileMusic.tsx. Nothing is hosted or embedded;
    the visitor's own browser synthesises the notes. */
 .profile-song {
-  display: flex;
   align-items: center;
-  gap: 0.55rem;
   flex-wrap: wrap;
 }
 .profile-song-play {
   font-size: 1rem;
   min-width: 2.4rem;
-}
-.profile-song-name {
-  font-weight: 600;
-}
-.profile-song-meta {
-  font-size: 0.76rem;
 }
 .profile-song-note {
   font-size: 0.7rem;
@@ -6145,15 +6116,20 @@ a.cz-msg-author:focus-visible {
 /**
  * ⚠️ ITS OWN FULL-WIDTH LINE, AND IT MUST NOT WRAP.
  *
- * This rule used to drop the `flex: 1 0 100%` set earlier in the file, which put the bar strip
- * inline after the layer's name, instrument and modifier chips — so where the tiles STARTED
- * depended on how wide those happened to be, and every layer with a different set of modifiers
- * began its bars at a different offset. Bar 4 of one take sat above bar 3 of another, which is
- * exactly what makes an arrangement unreadable: the whole value of the strip is that a column
- * means one moment in the song.
+ * Inline with the layer's other controls, anything that changed width to its LEFT moved every
+ * tile sideways — the "all" button appearing the moment you arranged something, and the effects
+ * button, whose label is words: "dry" against "echo + room + slide". You would click a tile, the
+ * row would re-flow, and the tile you meant to click next had moved. Bar 4 of one take sat above
+ * bar 3 of another, which is what makes an arrangement unreadable, because the whole value of
+ * the strip is that a column means one moment in the song. Tiles you aim at must not depend on
+ * the width of anything else.
  *
  * Wrapping breaks the same promise more quietly — a strip that folds onto a second line puts bar
  * 17 underneath bar 1. So it scrolls sideways instead, and a column stays a column.
+ *
+ * ⚠️ THIS IS THE ONLY .inst-arrange RULE, and it needs to stay that way. There were two, and the
+ * later one quietly dropped the `flex` and `flex-wrap` the earlier one set — which is exactly
+ * how the tiles came to be staggered in the first place.
  */
 .inst-arrange {
   flex: 1 0 100%;
@@ -6175,7 +6151,6 @@ a.cz-msg-author:focus-visible {
   border: 1px solid var(--line);
   border-radius: 2px;
   background: transparent;
-  cursor: pointer;
 }
 .inst-bar-cell.is-on {
   background: var(--accent);
