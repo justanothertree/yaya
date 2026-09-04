@@ -10,6 +10,7 @@ import {
 } from '../audio/synth'
 import { sharedCtx } from '../audio/context'
 import { setLookahead, setScheduleListener } from '../audio/looper'
+import { packSong, readSong, type Song } from '../audio/songFile'
 import { clock, toLocalTime } from './clock'
 import { transport } from './transport'
 
@@ -82,9 +83,11 @@ export type JamState = {
   /** true while WE are sending our notes to the room */
   on: boolean
   players: Record<string, JamPlayer>
+  /** a song somebody has put on the table, waiting for you to take it or wave it away */
+  offer: SongOffer | null
 }
 
-let state: JamState = { on: false, players: {} }
+let state: JamState = { on: false, players: {}, offer: null }
 const listeners = new Set<() => void>()
 
 function set(patch: Partial<JamState>) {
@@ -93,6 +96,19 @@ function set(patch: Partial<JamState>) {
 }
 
 /** per-peer rate accounting, and which voices they currently own */
+/**
+ * ⚠️ A SONG SOMEBODY HAS OFFERED, held until you say yes.
+ *
+ * Notes already travel — a jam hears every scheduled note of everyone's loops, in time. What
+ * never travelled is the DOCUMENT: open a song while jamming and the room can hear it while
+ * having nothing on screen, no way to join in on the arrangement and nothing to keep.
+ *
+ * ⚠️ AN OFFER, NEVER AN ARRIVAL. Loading a song replaces every layer you have. Doing that to
+ * somebody because their friend clicked Open would destroy work that was never asked about, and
+ * a feature that can eat your afternoon is worse than no feature. It waits here until accepted.
+ */
+export type SongOffer = { from: string; name: string; song: Song }
+
 const rate = new Map<string, number[]>()
 const voices = new Map<string, string[]>()
 
@@ -201,7 +217,7 @@ export const jam = {
       setScheduleListener(null)
       setLookahead(0)
       setBroadcastAudio(true)
-      set({ on: false, players: {} })
+      set({ on: false, players: {}, offer: null })
       return
     }
     /**
@@ -219,6 +235,17 @@ export const jam = {
     // and stop being audio, so nobody hears them twice — see setBroadcastAudio
     setBroadcastAudio(false)
     set({ on: true })
+  },
+
+  /** Put a song on the table for the room. A no-op unless jamming is on. */
+  offerSong(song: Song) {
+    if (!state.on) return
+    sendParty('jam:song', packSong(song))
+  },
+
+  /** Take the offer away, whether it was accepted or waved off. */
+  clearOffer() {
+    set({ offer: null })
   },
 
   /**
@@ -250,6 +277,18 @@ export const jam = {
     if (detach.length) return () => {}
 
     const off = onParty((m) => {
+      /**
+       * ⚠️ Its own message kind, and read through readSong like a file from disk. What arrives is
+       * a stranger's JSON: readSong already clamps every length, checks every instrument against
+       * the list this build has and caps the note count, because it was written for exactly this
+       * class of input. Trusting it here because it came from a friend would be trusting the
+       * network, not the friend.
+       */
+      if (m.kind === 'jam:song' && state.on) {
+        const song = readSong(m.body)
+        if (song) set({ offer: { from: m.from, name: m.name || 'Someone', song } })
+        return
+      }
       if (m.kind !== 'jam' || !state.on) return
       const b = m.body as {
         midi?: unknown

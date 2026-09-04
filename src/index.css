@@ -6697,3 +6697,17 @@ a.cz-msg-author:focus-visible {
     min-height: 1.9rem;
   }
 }
+
+/* somebody has put a song on the table */
+.inst-offer {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  margin: 0 0 0.5rem;
+  padding: 0.45rem 0.6rem;
+  font-size: 0.82rem;
+  border: 1px solid var(--accent, #7c6af7);
+  border-radius: 9px;
+  background: var(--control-bg);
+}

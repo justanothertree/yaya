@@ -746,6 +746,8 @@ export function InstrumentRoom() {
                     onClick={() => {
                       loadSong(it.song.bpm, it.song.bars, songToLayers(it.song))
                       setEditing(null)
+                      // ⚠️ offered, not pushed — see jam.offerSong. A no-op when nobody is jamming.
+                      jam.offerSong(it.song)
                     }}
                     title="Open this, replacing what you have now"
                   >
@@ -920,6 +922,34 @@ export function InstrumentRoom() {
         <div className="inst-playhead" aria-hidden>
           <span style={{ width: `${Math.round(loop.position * 100)}%` }} />
         </div>
+      )}
+
+      {jamming.offer && (
+        /**
+         * ⚠️ A CHOICE, not a notification. Taking it replaces every layer you have, which is
+         * the one thing a message from somebody else must never do on its own — so the button
+         * says what it will cost and the other one simply makes it go away.
+         */
+        <p className="inst-offer">
+          <strong>{jamming.offer.from === 'me' ? 'You' : jamming.offer.name}</strong> opened “
+          {jamming.offer.song.name}” — {jamming.offer.song.layers.length} part
+          {jamming.offer.song.layers.length === 1 ? '' : 's'}
+          <button
+            className="btn"
+            onClick={() => {
+              const o = jamming.offer
+              if (!o) return
+              loadSong(o.song.bpm, o.song.bars, songToLayers(o.song))
+              jam.clearOffer()
+            }}
+            title="Replaces the parts you have now"
+          >
+            Load it
+          </button>
+          <button className="btn btn-ghost" onClick={() => jam.clearOffer()}>
+            No thanks
+          </button>
+        </p>
       )}
 
       {loop.layers.length > 0 && (
