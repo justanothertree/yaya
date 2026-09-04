@@ -1233,6 +1233,17 @@ export function noteOn(
     glideTime > 0.005 && previous && Math.abs(previous - freq) > 0.5 ? previous : null
   lastPitch.set(partKey, freq)
   const g = c.createGain()
+  /**
+   * ⚠️ EVERY NODE THIS VOICE MAKES, so it can be disconnected when it stops.
+   *
+   * Nothing used to take a voice down. A note left its gain, its filter and one sub-gain per
+   * partial hanging off the bus and relied entirely on garbage collection — which for an audio
+   * node is not prompt and, while any automation on it is still running, may not come at all. A
+   * bell is five partials, so a minute of playing left hundreds of live nodes attached to a bus
+   * that is mixed every single render quantum. That is free on a desktop and is exactly the sort
+   * of accumulating cost that turns into dropouts on a phone.
+   */
+  const made: AudioNode[] = [g]
   let sink: AudioNode = g
   if (sh.filter) {
     const f = c.createBiquadFilter()
@@ -1242,6 +1253,7 @@ export function noteOn(
     f.frequency.exponentialRampToValueAtTime(Math.max(80, sh.filter.to), at + sh.d)
     g.connect(f)
     sink = f
+    made.push(f)
   }
   connectVoice(sink, bus)
 
@@ -1298,6 +1310,7 @@ export function noteOn(
       const sub = c.createGain()
       sub.gain.value = share
       o.connect(sub).connect(g)
+      made.push(sub)
     }
     o.start(at)
     oscs.push(o)
@@ -1314,6 +1327,24 @@ export function noteOn(
   g.gain.setValueAtTime(0.0001, at)
   g.gain.linearRampToValueAtTime(peak, at + sh.a)
   g.gain.exponentialRampToValueAtTime(Math.max(0.0001, peak * sh.s || 0.0001), at + sh.a + sh.d)
+
+  /**
+   * ⚠️ The teardown hangs off the FIRST oscillator's `ended`, not off a timer. Every
+   * oscillator in a voice is given the same stop time, so one of them firing means the voice is
+   * genuinely finished — where a setTimeout would be guessing, and would fire early on a page
+   * whose timers are being throttled in a background tab.
+   */
+  if (oscs.length) {
+    oscs[0].onended = () => {
+      for (const n of made) {
+        try {
+          n.disconnect()
+        } catch {
+          /* already gone */
+        }
+      }
+    }
+  }
 
   const ends = sh.s > 0 ? Infinity : at + sh.a + sh.d + sh.r
   const voice: Voice = {
@@ -1363,7 +1394,17 @@ export function noteOn(
          * above for notes released on a schedule. tau = r/5, so by `from + r` it has fallen to
          * 0.7% — about -43dB — and the oscillator stop below lands well under the noise.
          */
-        g.gain.setTargetAtTime(0.0001, from, Math.max(0.005, sh.r / 5))
+        const tau = Math.max(0.005, sh.r / 5)
+        g.gain.setTargetAtTime(0.0001, from, tau)
+        /**
+         * ⚠️ AND THEN END IT. setTargetAtTime approaches its target forever and never
+         * arrives, so the parameter stays in automation for as long as the node exists — computed
+         * every sample, on every voice ever released, with nothing to stop it. The ramp it
+         * replaced at least finished. Pinning the value at the moment the oscillators stop closes
+         * the automation off; by then the curve is at about 0.7% of where the release started,
+         * some -43dB, so the step down to the floor is far below anything audible.
+         */
+        g.gain.setValueAtTime(0.0001, from + sh.r + 0.02)
       } catch {
         /* context went away */
       }
