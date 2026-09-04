@@ -114,6 +114,16 @@ const configSize = (config: Record<string, unknown>) => {
  */
 const NEEDS_SERVER_SUPPORT: Array<ProfileBlock['block_type']> = ['art']
 
+/**
+ * Does this block get a line to itself?
+ *
+ * ⚠️ Stored in the block's own config rather than as a column on the row, because config is
+ * free-form jsonb the server already accepts and a new field would otherwise mean another
+ * migration to run before anything could be tried. Readers of each block type ignore keys they
+ * do not know, so it costs nothing to carry.
+ */
+const blockAlone = (b: ProfileBlock) => b.config?.alone === true
+
 const TIER_LABEL: Record<Tier, string> = {
   public: 'Anyone',
   friends: 'Friends',
@@ -369,15 +379,26 @@ export function ProfileBlocksView({
   return (
     <div className="profile-blocks-grid">
       {blocks.map((b, i) => (
-        <BlockView
+        /**
+         * ⚠️ WRAPPED, exactly as the editor wraps. Blocks used to be the grid items themselves,
+         * which meant every block type had to remember to put its own size class on — and the
+         * song, art and visualiser blocks did not, so their width setting was quietly ignored.
+         * One wrapper carries the span for all of them, the two views finally agree, and there is
+         * a single place for a block that wants the line to itself.
+         */
+        <div
           key={b.id ?? i}
-          block={b}
-          activity={activity}
-          trophies={trophies}
-          snakeBest={snakeBest}
-          username={username}
-          isMe={isMe}
-        />
+          className={'profile-slot is-' + b.size + (blockAlone(b) ? ' is-alone' : '')}
+        >
+          <BlockView
+            block={b}
+            activity={activity}
+            trophies={trophies}
+            snakeBest={snakeBest}
+            username={username}
+            isMe={isMe}
+          />
+        </div>
       ))}
     </div>
   )
@@ -963,6 +984,13 @@ export function ProfileBlocksEditor({
       return next
     })
   }
+  const setAloneAt = (i: number, alone: boolean) =>
+    setBlocks((all) =>
+      all.map((x, idx) =>
+        idx === i ? { ...x, config: { ...x.config, alone: alone || undefined } } : x,
+      ),
+    )
+
   const setSizeAt = (i: number, size: ProfileBlock['size']) =>
     setBlocks((all) => all.map((x, idx) => (idx === i ? { ...x, size } : x)))
 
@@ -1181,6 +1209,7 @@ export function ProfileBlocksEditor({
               b.size +
               (openIdx === i ? ' is-selected' : '') +
               (liftIdx === i ? ' is-lifted' : '') +
+              (blockAlone(b) ? ' is-alone' : '') +
               (liftIdx != null && liftIdx !== i ? ' is-drop' : '')
             }
           >
@@ -1236,6 +1265,18 @@ export function ProfileBlocksEditor({
                   onClick={() => setSizeAt(i, 'large')}
                 >
                   ▮▮▮
+                </button>
+                <button
+                  className={'btn' + (blockAlone(b) ? ' is-on' : '')}
+                  aria-pressed={blockAlone(b)}
+                  title={
+                    blockAlone(b)
+                      ? 'Sharing its line with other blocks again'
+                      : 'Give this block a line of its own, centred, with nothing beside it'
+                  }
+                  onClick={() => setAloneAt(i, !blockAlone(b))}
+                >
+                  ⇔
                 </button>
                 <button
                   className="btn btn-ghost"

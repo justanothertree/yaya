@@ -6892,3 +6892,67 @@ a.cz-msg-author:focus-visible {
   outline: 2px solid var(--accent, #7c6af7);
   border-radius: 6px;
 }
+
+/* ── packed layout, and a block that wants the line to itself ─────────────
+   ⚠️ `dense` is what makes this feel composed rather than gappy. Without it the grid places
+   blocks strictly in order and a half-width block after a third-width one leaves a third of a
+   row empty for ever. Dense lets a later small block back-fill that hole, which is the whole of
+   the Pinterest feeling — nothing is aligned to anything, and no space is wasted waiting.
+
+   It changes VISUAL order, not reading order: the DOM order is untouched, so a screen reader and
+   the editor still see the arrangement you made. */
+.profile-blocks-grid {
+  grid-auto-flow: row dense;
+}
+
+/* the published wrapper, matching the editor's cell — see the note in ProfileBlocks */
+.profile-slot {
+  min-width: 0;
+  display: grid;
+}
+.profile-slot.is-small {
+  grid-column: span 2;
+}
+.profile-slot.is-medium {
+  grid-column: span 3;
+}
+.profile-slot.is-large {
+  grid-column: 1 / -1;
+}
+.profile-slot > .profile-block {
+  /* the wrapper carries the span now, so the block must not span again */
+  grid-column: auto;
+  width: 100%;
+}
+
+/**
+ * ⚠️ ALONE means the SLOT takes the whole line while the BLOCK keeps its size, centred.
+ *
+ * "Start a new line" was the obvious way to describe this and the wrong one: it only says where a
+ * block begins, and leaves whatever comes next free to sit beside it. What was actually wanted is
+ * a third-width block with nothing at its sides — so the row is claimed and the block is centred
+ * inside it, which is a thing you can see rather than a rule you have to remember.
+ */
+.profile-slot.is-alone,
+.profile-canvas-cell.is-alone {
+  grid-column: 1 / -1;
+  justify-items: center;
+}
+.profile-slot.is-alone.is-small > .profile-block,
+.profile-canvas-cell.is-alone.is-small > .profile-block {
+  max-width: 33%;
+  margin-inline: auto;
+}
+.profile-slot.is-alone.is-medium > .profile-block,
+.profile-canvas-cell.is-alone.is-medium > .profile-block {
+  max-width: 50%;
+  margin-inline: auto;
+}
+@media (max-width: 700px) {
+  /* one column down here, so "alone" is already true of everything and a narrowed block would
+     just be a thin strip on a small screen */
+  .profile-slot.is-alone > .profile-block,
+  .profile-canvas-cell.is-alone > .profile-block {
+    max-width: 100%;
+  }
+}
