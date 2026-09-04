@@ -426,7 +426,21 @@ const SHAPES: Record<Exclude<InstrumentId, 'drums'>, Shape> = {
   steelpan: {
     a: 0.002,
     d: 0.55,
-    s: 0.08,
+    /**
+     * ⚠️ ZERO, AND IT HAS TO BE ZERO RATHER THAN NEARLY ZERO.
+     *
+     * This is a one-shot like the marimba and the bell — you hit an oil drum and it rings, and
+     * letting go of the mallet does nothing to it. But it was written with a sustain of 0.08,
+     * which is inaudible as a level and yet decisive as a FLAG: stop() exempts a voice from the
+     * release only when the sustain is zero, so this patch was the one struck sound still having
+     * its ring cut when you let go. Its own decay falls with a time constant near 0.22s and the
+     * release forces 0.07s, so the sound changed slope three-fold in the middle of a note, which
+     * is heard as a knock rather than as a fade.
+     *
+     * The clav next door keeps its small sustain on purpose: a clavinet really does have a
+     * damper, so stopping when you let go is what that instrument does.
+     */
+    s: 0,
     r: 0.35,
     wave: 'triangle',
     partials: [

@@ -7255,3 +7255,22 @@ a.cz-msg-author:focus-visible {
   font-size: 0.8rem;
   color: #ff8a8a;
 }
+
+/* Is the computer keyboard armed? — see InstrumentRoom's keysLive.
+   ⚠️ NOT .inst-keys: that name is already the keyboard container itself, so this pill's
+   border and half opacity would have been applied to every piano key on the page. */
+.inst-keylight {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.78rem;
+  padding: 0.15rem 0.45rem;
+  border-radius: 999px;
+  border: 1px solid var(--line, rgba(255, 255, 255, 0.16));
+  opacity: 0.55;
+}
+.inst-keylight.is-live {
+  opacity: 1;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent) inset;
+}

@@ -293,6 +293,41 @@ export function InstrumentRoom() {
     const v = Number(localStorage.getItem(OCT_KEY))
     return Number.isFinite(v) && v >= 1 && v <= 6 ? v : 4
   })
+  /**
+   * ⚠️ WHETHER THE KEYS PLAY IS INVISIBLE, AND IT DECIDES WHAT TYPING DOES.
+   *
+   * Focus is the difference between a letter playing a note and a letter going into a box, and
+   * nothing on screen said which was true — so "the keyboard stopped working" was really "focus
+   * is somewhere that eats letters", with no way to tell from looking. It is a small light, and
+   * it is the whole explanation.
+   *
+   * Watched on focusin/focusout at the document rather than on each control, because the answer
+   * depends on wherever focus happens to be, including controls nobody has written yet.
+   */
+  const [keysLive, setKeysLive] = useState(true)
+  useEffect(() => {
+    const look = () => {
+      const t = document.activeElement as HTMLElement | null
+      const eats =
+        !!t &&
+        (t.isContentEditable ||
+          t.tagName === 'TEXTAREA' ||
+          t.tagName === 'SELECT' ||
+          (t.tagName === 'INPUT' &&
+            !['range', 'checkbox', 'radio', 'button', 'submit', 'color'].includes(
+              (t as HTMLInputElement).type,
+            )))
+      setKeysLive(!eats)
+    }
+    look()
+    document.addEventListener('focusin', look)
+    document.addEventListener('focusout', look)
+    return () => {
+      document.removeEventListener('focusin', look)
+      document.removeEventListener('focusout', look)
+    }
+  }, [])
+
   const [scale, setScale] = useState(() => {
     try {
       const v = localStorage.getItem(SCALE_KEY)
@@ -500,12 +535,29 @@ export function InstrumentRoom() {
    * moment focus is in a text field, because otherwise typing your name plays a tune.
    */
   useEffect(() => {
-    const target = (e: KeyboardEvent) => {
+    /**
+     * ⚠️ "IS IT AN INPUT" WAS TOO BLUNT A QUESTION, and it cost you the keyboard.
+     *
+     * A range slider is an <input>, so nudging the volume left the keys dead until you clicked
+     * the page again — the guard could not tell "somebody is typing words" from "somebody moved
+     * a slider". The thing worth protecting against is TEXT ENTRY: typing your name should not
+     * play a tune. A slider, a checkbox and a button take arrow keys and space, never letters,
+     * so they can hold focus and let you keep playing.
+     *
+     * A <select> is listed because it does letter type-ahead of its own: pressing S while one is
+     * focused jumps it to the next option starting with S, which is how choosing a key and then
+     * playing changed the key underneath you.
+     */
+    const typing = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement | null
-      return t?.tagName === 'INPUT' || t?.tagName === 'TEXTAREA' || t?.isContentEditable
+      if (!t) return false
+      if (t.isContentEditable || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT') return true
+      if (t.tagName !== 'INPUT') return false
+      const kind = (t as HTMLInputElement).type
+      return !['range', 'checkbox', 'radio', 'button', 'submit', 'color'].includes(kind)
     }
     const down = (e: KeyboardEvent) => {
-      if (e.repeat || e.metaKey || e.ctrlKey || e.altKey || target(e)) return
+      if (e.repeat || e.metaKey || e.ctrlKey || e.altKey || typing(e)) return
       const off = KEY_MAP[e.key.toLowerCase()]
       if (off === undefined) return
       e.preventDefault()
@@ -667,6 +719,19 @@ export function InstrumentRoom() {
           />
           <span className="appearance-slider-val">{Math.round(vol * 100)}%</span>
         </label>
+        {/* ⚠️ says what is true rather than what to do: the light is the explanation for why
+            typing sometimes plays and sometimes does not */}
+        <span
+          className={'inst-keylight' + (keysLive ? ' is-live' : '')}
+          title={
+            keysLive
+              ? 'Your computer keyboard plays notes'
+              : 'Typing is going into a control — click the page to play with the keys again'
+          }
+        >
+          <span aria-hidden>⌨</span>
+          <span className="muted">{keysLive ? 'keys play' : 'keys off'}</span>
+        </span>
 
         {/**
          * A stuck note is the one failure every synth has, and hunting for the key that caused
@@ -701,6 +766,7 @@ export function InstrumentRoom() {
               stopLive()
               setHeld([])
               setScale(e.target.value)
+              e.target.blur()
             }}
           >
             {SCALES.map(([id, label]) => (
@@ -722,6 +788,9 @@ export function InstrumentRoom() {
                 stopLive()
                 setHeld([])
                 setRoot(Number(e.target.value))
+                /* ⚠️ hand the keyboard back: a focused select eats letters as type-ahead, so
+                   staying here would change the key again the moment you played a note */
+                e.target.blur()
               }}
             >
               {NAMES.map((nm, i) => (
