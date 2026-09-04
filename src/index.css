@@ -7124,3 +7124,11 @@ a.cz-msg-author:focus-visible {
 .paint-colour .colour-pad {
   max-width: 9rem;
 }
+
+/* the governor saying so — see AudioVisualizer's renderQ */
+.viz-quality {
+  grid-column: 1 / -1;
+  font-size: 0.78rem;
+  line-height: 1.35;
+  opacity: 0.85;
+}

@@ -246,6 +246,16 @@ export function AudioVisualizer() {
    * effect it is rather than a workaround.
    */
   const [bright, setBright] = useState(() => storedNumber(BRIGHT_KEY, 0, 0.6) ?? 0.28)
+  /**
+   * ⚠️ SHOWN, because a picture that quietly softens itself is worse than one that says so.
+   *
+   * The governor only moves when frames are genuinely being missed, and it puts the resolution
+   * straight back if dropping it did not help - but from the outside that is indistinguishable
+   * from the mode just looking worse than you remembered. One honest line means it is never a
+   * mystery, and it is the only way to tell "this mode is soft" from "this mode is being held
+   * back". Stays hidden at full resolution, which is where it sits in a window.
+   */
+  const [renderQ, setRenderQ] = useState(1)
   const [punch, setPunch] = useState(() => storedNumber(PUNCH_KEY, 0, 1) ?? 0)
   const [echo, setEcho] = useState(() => storedNumber(ECHO_KEY, 0, 1) ?? 0)
   const [tab, setTab] = useState<VizTab>(() => readStored(TAB_KEY, TAB_IDS, 'modes'))
@@ -1162,6 +1172,7 @@ export function AudioVisualizer() {
           if (pace > probe.before * 0.88) {
             qual = probe.at
             resize()
+            setRenderQ(qual)
             held = -1500
           } else {
             held = 0
@@ -1173,10 +1184,12 @@ export function AudioVisualizer() {
         qual = Math.max(0.5, qual - 0.25)
         held = 0
         resize()
+        setRenderQ(qual)
       } else if (pace < 17.5 && qual < 1 && held > 720) {
         qual = Math.min(1, qual + 0.25)
         held = 0
         resize()
+        setRenderQ(qual)
       }
 
       raf = requestAnimationFrame(frame)
@@ -1938,6 +1951,12 @@ export function AudioVisualizer() {
                 once — the same reason the ramp was worth more than another mode. */}
             {tab === 'look' && (
               <div className="viz-row viz-row-wide">
+                {renderQ < 1 && (
+                  <span className="muted viz-quality" role="status">
+                    Drawing at {Math.round(renderQ * 100)}% resolution to hold the frame rate — it
+                    goes back on its own when there is room.
+                  </span>
+                )}
                 {/* ⚠️ before Bloom deliberately: this is the one that costs nothing, so it
                     should be the one you try first when the picture looks dark */}
                 <label className="appearance-slider">
