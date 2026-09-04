@@ -44,6 +44,21 @@ export type Layer = {
    */
   len: number
   /**
+   * The arrangement as an ORDER, not just a mask: for each bar of the song, which bar of this
+   * take plays there, or null for silence.
+   *
+   * ⚠️ `play` says WHETHER a bar sounds. `plan` says WHICH bar sounds. That is the whole
+   * difference between muting bar three and moving bar three to the end, and it is what lets a
+   * row of bars be dragged into an order rather than only switched off.
+   *
+   * UNDEFINED MEANS THE OLD BEHAVIOUR, exactly as it does for `play`: the take repeats to fill
+   * the loop, by its own length. That matters because a take is not always a whole number of
+   * bars — it is whatever you played — and a plan reads it in bars. Rather than reinterpret every
+   * existing take, a plan is only consulted once somebody makes one, and until then nothing about
+   * the scheduling changes.
+   */
+  plan?: (number | null)[]
+  /**
    * Which bars of the song this layer plays in — the arrangement.
    *
    * ⚠️ UNDEFINED MEANS EVERYWHERE, and that is what makes this additive rather than a rewrite.
@@ -325,6 +340,55 @@ function scheduleWindow(from: number, to: number) {
       const reps = Math.max(1, Math.floor(len / own + 1e-6))
       const end = base + len
       const barLen = (60 / state.bpm) * BEATS_PER_BAR
+
+      /**
+       * ⚠️ A PLANNED LAYER IS SCHEDULED BY BAR, an unplanned one by repetition, and the two
+       * are deliberately separate paths.
+       *
+       * Repetition tiling repeats a take by its OWN length, which is whatever was played and need
+       * not be a whole number of bars. A plan is a list of bars. Making the planned case a
+       * special case of the tiled one would mean reinterpreting every take that predates plans as
+       * a whole number of bars, quietly changing music nobody edited. Two paths, and a take only
+       * moves to the second one when somebody arranges it.
+       */
+      if (layer.plan) {
+        const takeBars = Math.max(1, Math.round(own / barLen))
+        for (let b = 0; b < state.bars; b++) {
+          const src = layer.plan[b]
+          if (src == null || src < 0 || src >= takeBars) continue
+          const slot = base + b * barLen
+          if (slot > to || slot + barLen < from) continue
+          for (const e of layer.events) {
+            const eBar = Math.floor(e.t / barLen + 1e-6)
+            if (eBar !== src) continue
+            let at = slot + (e.t - eBar * barLen)
+            /* same asymmetry as the tiled path: a note-on past the end simply does not play, but
+               a note-off must always be allowed to land or its voice rings for ever */
+            if (at >= end) {
+              if (e.on) continue
+              at = Math.max(from, end - 0.005)
+            }
+            if (at < from || at >= to) continue
+            const id = `L${layer.id}:${Math.round(slot * 1000)}:${e.midi}`
+            if (e.on) {
+              noteOn(id, layer.instrument, e.midi, at, { key: `L${layer.id}`, fx: layer.fx })
+              noteStarted(layer.id, id)
+            } else {
+              noteOff(id, at)
+              sounding.get(layer.id)?.delete(id)
+            }
+            onSchedule?.({
+              midi: e.midi,
+              on: e.on,
+              inst: layer.instrument,
+              at,
+              part: `L${layer.id}`,
+              fx: layer.fx,
+            })
+          }
+        }
+        continue
+      }
       for (let k = 0; k < reps; k++) {
         const sub = base + k * own
         /**
@@ -989,9 +1053,70 @@ export function toggleLayerBar(id: string, bar: number) {
 }
 
 /** Put a layer back in every bar. */
+/**
+ * How many bars of its own a take holds — the blocks there are to arrange.
+ */
+export function takeBars(l: Layer): number {
+  const barLen = (60 / state.bpm) * BEATS_PER_BAR
+  return Math.max(1, Math.round(Math.max(0.05, l.len) / barLen))
+}
+
+/**
+ * The plan a layer is currently playing, made explicit.
+ *
+ * ⚠️ Derived rather than stored until somebody edits it, so a take that has never been
+ * arranged still schedules down the untouched tiling path. This is what the track view draws, and
+ * the first drag is what turns it into a real plan.
+ */
+export function layerPlan(l: Layer): (number | null)[] {
+  const n = state.bars
+  const tb = takeBars(l)
+  if (l.plan) return Array.from({ length: n }, (_, i) => l.plan?.[i] ?? null)
+  return Array.from({ length: n }, (_, i) => (l.play?.[i] === false ? null : i % tb))
+}
+
+/** Put a layer's bars in a given order. Releases first: moving a bar must not leave it sounding. */
+export function setLayerPlan(id: string, plan: (number | null)[]) {
+  releaseLayer(id)
+  set({ layers: state.layers.map((l) => (l.id === id ? { ...l, plan, play: undefined } : l)) })
+}
+
+/**
+ * Move one bar of a layer to another slot.
+ *
+ * ⚠️ It SWAPS rather than shifting everything along. A row of bars is a set of slots on a
+ * timeline, not a list — dragging bar 4 onto bar 1 should not push everything else sideways and
+ * silently re-time the whole part. Swapping keeps every other slot exactly where it was, which is
+ * what the picture shows.
+ */
+export function moveLayerBar(id: string, from: number, to: number) {
+  const l = state.layers.find((x) => x.id === id)
+  if (!l || from === to) return
+  const plan = layerPlan(l)
+  if (from < 0 || to < 0 || from >= plan.length || to >= plan.length) return
+  const next = [...plan]
+  const tmp = next[to]
+  next[to] = next[from]
+  next[from] = tmp
+  setLayerPlan(id, next)
+}
+
+/** Silence one slot, or give it back the bar it would naturally have played. */
+export function toggleLayerSlot(id: string, bar: number) {
+  const l = state.layers.find((x) => x.id === id)
+  if (!l) return
+  const plan = layerPlan(l)
+  if (bar < 0 || bar >= plan.length) return
+  const next = [...plan]
+  next[bar] = next[bar] == null ? bar % takeBars(l) : null
+  setLayerPlan(id, next)
+}
+
 export function clearLayerBars(id: string) {
   releaseLayer(id)
-  set({ layers: state.layers.map((l) => (l.id === id ? { ...l, play: undefined } : l)) })
+  set({
+    layers: state.layers.map((l) => (l.id === id ? { ...l, play: undefined, plan: undefined } : l)),
+  })
 }
 
 export function setLayerFx(id: string) {

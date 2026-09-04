@@ -6658,3 +6658,24 @@ a.cz-msg-author:focus-visible {
   display: grid;
   gap: 0.1rem;
 }
+
+/* the track: a row of bars you can put in an order ------------------------
+   ⚠️ The cell has to be big enough to READ a number and to hit with a thumb; the old mute strip
+   only had to be big enough to see a colour. */
+.inst-bar-cell {
+  min-width: 1.5rem;
+  font-size: 0.66rem;
+  font-family: var(--mono);
+  line-height: 1.2;
+  cursor: pointer;
+}
+.inst-bar-cell.is-lifted {
+  outline: 2px solid var(--accent, #7c6af7);
+  outline-offset: 1px;
+}
+@media (hover: none) and (pointer: coarse) {
+  .inst-bar-cell {
+    min-width: 1.9rem;
+    min-height: 1.9rem;
+  }
+}

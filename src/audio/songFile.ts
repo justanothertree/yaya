@@ -50,6 +50,16 @@ export type SongLayer = {
   muted: boolean
   /** which bars of the song this layer plays in; absent means all of them */
   play?: boolean[]
+  /**
+   * The arrangement as an order: for each song bar, which bar of the take sounds there, or null
+   * for silence.
+   *
+   * ⚠️ Saved ALONGSIDE `play` rather than replacing it, so a song written now still opens in a
+   * build that only knows about `play` — it just plays the bars in their original order. A
+   * newer reader prefers `plan` when it is there, which is the same additive rule the fx array
+   * follows.
+   */
+  plan?: (number | null)[]
 }
 
 export type Song = {
@@ -81,8 +91,21 @@ export function toSong(
       fx: l.fx,
       muted: l.muted,
       play: l.play,
+      plan: l.plan,
     })),
   }
+}
+
+/**
+ * ⚠️ Every entry checked, and anything unrecognised becomes silence rather than a bar index the
+ * take does not have. A plan is a list of numbers from a file; pointing one at bar 900 of a
+ * two-bar take would schedule nothing and look like a bug in the sequencer.
+ */
+function readPlan(v: unknown): (number | null)[] | undefined {
+  if (!Array.isArray(v)) return undefined
+  return v
+    .slice(0, 32)
+    .map((x) => (typeof x === 'number' && Number.isFinite(x) && x >= 0 ? Math.round(x) : null))
 }
 
 const num = (v: unknown, lo: number, hi: number, fallback: number) =>
@@ -152,6 +175,7 @@ function readLayer(v: unknown, budget: number): SongLayer | null {
     fx: readFx(o.fx),
     muted: o.muted === true,
     play: readPlay(o.play),
+    plan: readPlan(o.plan),
   }
 }
 
@@ -248,6 +272,9 @@ export function packSong(song: Song): PackedSong {
       return {
         i: layer.instrument,
         p: layer.play ? mask : -1,
+        /* ⚠️ -1 for silence, so the whole arrangement is one array of small integers. Absent
+           when nobody has arranged this layer, which is the common case and costs nothing. */
+        q: layer.plan ? layer.plan.map((x) => (x == null ? -1 : x)) : undefined,
         d: Math.round(layer.len * 1000),
         /* ⚠️ glide is APPENDED, never inserted. This array is positional, so a fifth entry is
            invisible to an older reader and a missing one simply defaults — where putting it in
@@ -303,7 +330,15 @@ function readPacked(v: Record<string, unknown>): Song | null {
     const bits = typeof o.p === 'number' && Number.isInteger(o.p) ? o.p : -1
     const play =
       bits < 0 ? undefined : Array.from({ length: 32 }, (_, i) => (bits & (1 << i)) !== 0)
-    layers.push({ instrument: inst, events, len, fx, muted: o.m === 1, play })
+    // ⚠️ -1 back to null, and every entry re-checked: this is a file, not our own memory
+    const plan = Array.isArray(o.q)
+      ? o.q
+          .slice(0, 32)
+          .map((x) =>
+            typeof x === 'number' && Number.isFinite(x) && x >= 0 ? Math.round(x) : null,
+          )
+      : undefined
+    layers.push({ instrument: inst, events, len, fx, muted: o.m === 1, play, plan })
   }
   if (!layers.length) return null
   return {

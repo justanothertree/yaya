@@ -15,6 +15,7 @@ import {
 } from '../audio/synth'
 import { applyFx, captureFx, makeInstKits, type InstKit } from '../audio/instKit'
 import { KitBar } from '../ui/KitBar'
+import { useTouchOnly } from '../ui/pointerKind'
 import {
   healthOn,
   readHealth,
@@ -50,13 +51,16 @@ import {
   captureLast,
   loadSong,
   addLayers,
-  toggleLayerBar,
   clearLayerBars,
   addEmptyLayer,
   setBars,
   setBpm,
   setLayerInstrument,
+  layerPlan,
+  moveLayerBar,
   setMetronome,
+  takeBars,
+  toggleLayerSlot,
   setQuantize,
   startLoop,
   stopLoop,
@@ -370,6 +374,10 @@ export function InstrumentRoom() {
 
   /** which layer's notes are open in the editor, if any */
   const [editing, setEditing] = useState<string | null>(null)
+  /** the bar picked up and waiting to be put down — the touch half of drag and drop */
+  const [lifted, setLifted] = useState<{ id: string; bar: number } | null>(null)
+  /* a finger cannot start an HTML5 drag, so the tap-to-lift path is the real one on a phone */
+  const touch = useTouchOnly()
   /** what Capture just did, shown briefly — it is otherwise a button with no visible effect */
   const [capMsg, setCapMsg] = useState<string | null>(null)
   const [libOpen, setLibOpen] = useState(false)
@@ -971,18 +979,63 @@ export function InstrumentRoom() {
                * tiling underneath already repeats a one-bar drum part across thirty-two bars,
                * so the only thing missing was a way to say "not here".
                */}
-              <span className="inst-arrange" role="group" aria-label="Bars this layer plays in">
-                {Array.from({ length: loop.bars }, (_, b) => {
-                  const on = l.play?.[b] ?? true
+              {/**
+               * The track: a row of bars you can put in an order.
+               *
+               * ⚠️ EACH CELL NAMES THE BAR IT PLAYS, not merely whether it plays. That one
+               * change is what turns a mute strip into an arrangement — "bar 3 of this take
+               * sounds here" can be moved, where "on" can only be switched off.
+               *
+               * Two ways to move one, because they suit different hands. Dragging is what a
+               * mouse expects. On a touchscreen an HTML5 drag never starts, so a tap picks a
+               * bar up and a second tap puts it down — which also happens to be easier than
+               * dragging on a small screen even where dragging works.
+               */}
+              <span className="inst-arrange" role="group" aria-label="The bars this layer plays">
+                {layerPlan(l).map((src, b) => {
+                  const held = lifted?.id === l.id && lifted.bar === b
                   return (
                     <button
                       key={b}
-                      className={'inst-bar-cell' + (on ? ' is-on' : '')}
-                      aria-pressed={on}
-                      onClick={() => toggleLayerBar(l.id, b)}
-                      title={`Bar ${b + 1}: ${on ? 'playing' : 'silent'}`}
+                      className={
+                        'inst-bar-cell' + (src != null ? ' is-on' : '') + (held ? ' is-lifted' : '')
+                      }
+                      aria-pressed={src != null}
+                      draggable={!touch && src != null}
+                      onDragStart={(e) => {
+                        e.dataTransfer.setData('text/bar', String(b))
+                        setLifted({ id: l.id, bar: b })
+                      }}
+                      onDragOver={(e) => {
+                        if (e.dataTransfer.types.includes('text/bar')) e.preventDefault()
+                      }}
+                      onDrop={(e) => {
+                        e.preventDefault()
+                        const from = Number(e.dataTransfer.getData('text/bar'))
+                        if (Number.isFinite(from)) moveLayerBar(l.id, from, b)
+                        setLifted(null)
+                      }}
+                      onDragEnd={() => setLifted(null)}
+                      onClick={() => {
+                        if (lifted && lifted.id === l.id) {
+                          if (lifted.bar === b) toggleLayerSlot(l.id, b)
+                          else moveLayerBar(l.id, lifted.bar, b)
+                          setLifted(null)
+                        } else if (src == null) {
+                          toggleLayerSlot(l.id, b)
+                        } else {
+                          setLifted({ id: l.id, bar: b })
+                        }
+                      }}
+                      title={
+                        src == null
+                          ? `Bar ${b + 1}: silent — tap to fill it`
+                          : lifted && lifted.id === l.id
+                            ? `Put bar ${lifted.bar + 1} here`
+                            : `Bar ${b + 1} plays part ${src + 1} of ${takeBars(l)} — tap to pick it up`
+                      }
                     >
-                      <span className="sr-only">{b + 1}</span>
+                      {src == null ? '' : src + 1}
                     </button>
                   )
                 })}
