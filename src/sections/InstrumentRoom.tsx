@@ -250,9 +250,9 @@ function AudioHealthStrip() {
   const bad = h.dropped > 0 || h.clipped > 0
   return (
     <p className="muted inst-health" style={bad ? { color: '#f46b6b' } : undefined}>
-      buffer {h.bufferMs}ms ({h.bufferFrames}f @{Math.round(h.sampleRate / 1000)}k) · late{' '}
-      <strong>{h.dropped}</strong> · gaps <strong>{h.gaps}</strong> · peak {h.peak} · clip{' '}
-      <strong>{h.clipped}</strong>
+      buffer {h.bufferMs}ms ({h.bufferFrames}f) · late <strong>{h.dropped}</strong> · gaps{' '}
+      <strong>{h.gaps}</strong> · peak {h.peak} · clip <strong>{h.clipped}</strong> · notes on{' '}
+      <strong>{h.on}</strong> off <strong>{h.off}</strong>
       {bad ? (h.clipped > 0 ? ' — CLIPPING' : ' — DROPOUTS') : ' — clean'}
     </p>
   )

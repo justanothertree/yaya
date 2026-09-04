@@ -1,5 +1,6 @@
 import { sharedCtx } from './context'
 import { readWaveform } from './audioTap'
+import { noteCounts, resetNoteCounts } from './synth'
 
 /**
  * Is the sound actually broken, and in which of the two ways?
@@ -35,6 +36,9 @@ export type AudioHealth = {
   peak: number
   /** samples at or above 0.985 — the flattened tops of a clipped waveform */
   clipped: number
+  /** notes actually started and stopped at the synth since the last read */
+  on: number
+  off: number
 }
 
 let node: AudioWorkletNode | null = null
@@ -67,8 +71,17 @@ class H extends AudioWorkletProcessor {
 registerProcessor('audio-health', H)
 `
 
+/**
+ * ⚠️ TURNED ON FROM THE URL as well as from storage, because the device that has the problem is a
+ * phone and a phone has no console. `?audio_debug=1` sticks it in storage so it survives the
+ * navigation, and `?audio_debug=0` clears it again; asking somebody to open devtools on a handset
+ * is asking them not to bother.
+ */
 export function healthOn(): boolean {
   try {
+    const q = new URLSearchParams(location.search).get('audio_debug')
+    if (q === '1') localStorage.setItem('audio_debug', '1')
+    if (q === '0') localStorage.removeItem('audio_debug')
     return localStorage.getItem('audio_debug') === '1'
   } catch {
     return false
@@ -138,9 +151,12 @@ export function readHealth(): AudioHealth {
     gaps: gapCount,
     peak: +peak.toFixed(3),
     clipped,
+    on: noteCounts.on,
+    off: noteCounts.off,
   }
   node?.port.postMessage('read')
   peak = 0
   clipped = 0
+  resetNoteCounts()
   return out
 }

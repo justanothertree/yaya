@@ -1240,6 +1240,7 @@ export function noteOn(
   when?: number,
   part?: { key: string; fx: Fx },
 ) {
+  noteCounts.on++
   const c = ensure()
   resumeAudio()
   const at = Math.max(when ?? 0, c.currentTime + SAFE_START)
@@ -1481,7 +1482,22 @@ export function noteOn(
   }
 }
 
+/**
+ * ⚠️ Counts what ACTUALLY reached the synth, not what the UI meant to send.
+ *
+ * "It sounds once on press and again on release" is a claim about how many times noteOn ran, and
+ * every attempt to answer it by reasoning about pointer events failed because the events on a
+ * phone are not the events on a desktop. This makes the question answerable by looking: press a
+ * key once and read the numbers.
+ */
+export const noteCounts = { on: 0, off: 0 }
+export function resetNoteCounts() {
+  noteCounts.on = 0
+  noteCounts.off = 0
+}
+
 export function noteOff(id: string, when?: number) {
+  noteCounts.off++
   const c = ctx
   if (!c) return
   const v = voices.get(id)
