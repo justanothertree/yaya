@@ -114,6 +114,22 @@ export function PaintRoom() {
   const [playing, setPlaying] = useState(false)
   const [fps, setFps] = useState(8)
 
+  /**
+   * ⚠️ SELECTING IS NOT A TOOL, and deliberately not in the TOOLS list.
+   *
+   * Every entry in TOOLS is a kind of STROKE — it is validated against that list on the way in
+   * and written into saved files — so putting "select" beside brush and eraser would have added
+   * a stroke type that can never be drawn, to a format that travels to other people's machines.
+   * It is a mode the room is in, which is what it actually is.
+   */
+  const [selecting, setSelecting] = useState(false)
+  const [sel, setSel] = useState<number[]>([])
+  const [clip, setClip] = useState<Stroke[]>([])
+  /** the rectangle being dragged, and the move in progress — refs, they change per pointer event */
+  const band = useRef<{ x0: number; y0: number; x1: number; y1: number } | null>(null)
+  const shove = useRef<{ x: number; y: number } | null>(null)
+  const markRef = useRef<{ x0: number; y0: number; x1: number; y1: number } | null>(null)
+
   const [tool, setTool] = useState<Tool>(() => LAST?.tool ?? 'brush')
   const [colour, setColour] = useState(() => LAST?.colour ?? '#22c55e')
   const [alpha, setAlpha] = useState(() => LAST?.alpha ?? 1)
@@ -213,6 +229,31 @@ export function PaintRoom() {
       )
       paintStroke(vc, live.current, w, h)
     }
+    /**
+     * ⚠️ The selection is drawn ON THE VIEW, never into `base`. It is not part of the picture,
+     * so it must not survive a save, appear in the gallery thumbnail, or be there when somebody
+     * else opens the drawing. Anything painted into base is the drawing; this is furniture.
+     */
+    const box = markRef.current
+    if (box) {
+      vc.setTransform(dpr, 0, 0, dpr, 0, 0)
+      const px = (fx: number) => (fx - off.current.x) * w * scale
+      const py = (fy: number) => (fy - off.current.y) * h * scale
+      vc.save()
+      vc.lineWidth = 1
+      vc.setLineDash([5, 4])
+      vc.strokeStyle = 'rgba(255,255,255,0.85)'
+      vc.strokeRect(px(box.x0), py(box.y0), px(box.x1) - px(box.x0), py(box.y1) - py(box.y0))
+      vc.setLineDash([])
+      vc.strokeStyle = 'rgba(0,0,0,0.55)'
+      vc.strokeRect(
+        px(box.x0) - 1,
+        py(box.y0) - 1,
+        px(box.x1) - px(box.x0) + 2,
+        py(box.y1) - py(box.y0) + 2,
+      )
+      vc.restore()
+    }
     vc.setTransform(dpr, 0, 0, dpr, 0, 0)
   }, [scale])
 
@@ -281,6 +322,19 @@ export function PaintRoom() {
   useEffect(() => {
     repaint()
   }, [strokes, repaint])
+  /* the outline lives on the view, so a change of selection needs a blit and not a repaint */
+  useEffect(() => {
+    blit()
+  }, [sel, selecting, blit])
+  /**
+   * ⚠️ A SELECTION IS A LIST OF POSITIONS IN THE STROKE ARRAY, so anything that renumbers that
+   * array leaves it pointing at the wrong strokes — undo and redo do, and so does moving to a
+   * frame or layer where the caught strokes are not even visible. Dropping it is the honest
+   * answer: a selection that silently means something else is how you delete the wrong thing.
+   */
+  useEffect(() => {
+    setSel([])
+  }, [frame, layer])
   /**
    * ⚠️ ONE BLIT PER FRAME, NOT ONE PER WHEEL EVENT.
    *
@@ -437,6 +491,103 @@ export function PaintRoom() {
     setFrame(at)
   }
 
+  /**
+   * Which strokes a rectangle catches.
+   *
+   * ⚠️ ONLY WHAT YOU CAN SEE. A stroke on a hidden layer, or belonging to another frame, is
+   * not offered to the rectangle — dragging a box on frame three and cutting something out of
+   * frame one would be indistinguishable from the program losing your work. What is selectable
+   * has to be what is on screen.
+   *
+   * Any point inside counts, rather than the whole stroke: a long line half in the box is
+   * something you meant to catch, and requiring containment makes big strokes almost unselectable.
+   */
+  const inBand = (r: { x0: number; y0: number; x1: number; y1: number }) => {
+    const lo = { x: Math.min(r.x0, r.x1), y: Math.min(r.y0, r.y1) }
+    const hi = { x: Math.max(r.x0, r.x1), y: Math.max(r.y0, r.y1) }
+    const out: number[] = []
+    strokes.forEach((k, i) => {
+      if (hidden.includes(k.l ?? 0)) return
+      if (frame !== null && k.f !== undefined && k.f !== frame) return
+      for (let n = 0; n < k.p.length; n += 2) {
+        if (k.p[n] >= lo.x && k.p[n] <= hi.x && k.p[n + 1] >= lo.y && k.p[n + 1] <= hi.y) {
+          out.push(i)
+          return
+        }
+      }
+    })
+    return out
+  }
+
+  /** the box around the current selection, in 0-1 space, or null */
+  const selBox = () => {
+    if (!sel.length) return null
+    let x0 = 1
+    let y0 = 1
+    let x1 = 0
+    let y1 = 0
+    for (const i of sel) {
+      const k = strokes[i]
+      if (!k) continue
+      for (let n = 0; n < k.p.length; n += 2) {
+        x0 = Math.min(x0, k.p[n])
+        x1 = Math.max(x1, k.p[n])
+        y0 = Math.min(y0, k.p[n + 1])
+        y1 = Math.max(y1, k.p[n + 1])
+      }
+    }
+    return x1 > x0 || y1 > y0 ? { x0, y0, x1, y1 } : null
+  }
+
+  const drop = () => setSel([])
+  /* ⚠️ through a ref: blit is a useCallback on [scale] and must not be rebuilt per drag event */
+  markRef.current = band.current ?? selBox()
+  const selectAll = () => setSel(inBand({ x0: -1, y0: -1, x1: 2, y1: 2 }))
+  const copy = () => {
+    if (!sel.length) return
+    setClip(sel.map((i) => ({ ...strokes[i], p: [...strokes[i].p] })).filter(Boolean))
+  }
+  const cut = () => {
+    if (!sel.length) return
+    copy()
+    setUndone([])
+    setStrokes((prev) => prev.filter((_, i) => !sel.includes(i)))
+    drop()
+  }
+  const erase = () => {
+    if (!sel.length) return
+    setUndone([])
+    setStrokes((prev) => prev.filter((_, i) => !sel.includes(i)))
+    drop()
+  }
+  /**
+   * ⚠️ PASTE STAMPS THE LAYER AND FRAME YOU ARE ON NOW, which is what makes this the
+   * animation tool rather than only a copy tool. Select a frame, copy, add a frame, paste, and
+   * nudge — that is frame-by-frame animation with the previous drawing as the starting point,
+   * which is exactly what onion skin is for. Pasting things back onto the frame they came from
+   * would have made the obvious workflow impossible.
+   *
+   * Offset slightly so a paste is visibly a second copy rather than an invisible one exactly on
+   * top of the original.
+   */
+  const paste = () => {
+    if (!clip.length) return
+    const same = clip.every((k) => (k.f ?? -1) === (frame ?? -1) && (k.l ?? 0) === layer)
+    const nudge = same ? 0.02 : 0
+    const add = clip.map((k) => ({
+      ...k,
+      l: layer,
+      f: frame ?? undefined,
+      p: k.p.map((n) => n + nudge),
+    }))
+    setUndone([])
+    setStrokes((prev) => {
+      const at = prev.length
+      setSel(add.map((_, i) => at + i))
+      return [...prev, ...add]
+    })
+  }
+
   const commit = (s: Stroke) => {
     live.current = null
     setUndone([])
@@ -463,6 +614,23 @@ export function PaintRoom() {
       e.currentTarget.setPointerCapture(e.pointerId)
     } catch {
       /* some inputs cannot be captured; drawing still works, it just stops at the edge */
+    }
+    /**
+     * ⚠️ Inside the current selection starts a MOVE, anywhere else starts a new rectangle. It is
+     * the behaviour every editor has and the only one that lets you drag something you have just
+     * caught without catching something else instead.
+     */
+    if (selecting) {
+      const box = selBox()
+      const pad = 0.02
+      if (box && x >= box.x0 - pad && x <= box.x1 + pad && y >= box.y0 - pad && y <= box.y1 + pad) {
+        shove.current = { x, y }
+      } else {
+        band.current = { x0: x, y0: y, x1: x, y1: y }
+        setSel([])
+      }
+      preview()
+      return
     }
     if (tool === 'fill') {
       commit({ t: 'fill', c: colour, a: alpha, w: width, k: 0, e: 0, p: [x, y] })
@@ -492,6 +660,26 @@ export function PaintRoom() {
       blit()
       return
     }
+    if (band.current) {
+      const [bx, by] = at(e)
+      band.current.x1 = bx
+      band.current.y1 = by
+      preview()
+      return
+    }
+    if (shove.current) {
+      const [mx, my] = at(e)
+      const dx = mx - shove.current.x
+      const dy = my - shove.current.y
+      shove.current = { x: mx, y: my }
+      // ⚠️ moved in place rather than re-added, so the indices the selection holds stay valid
+      setStrokes((prev) =>
+        prev.map((k, i) =>
+          sel.includes(i) ? { ...k, p: k.p.map((n, j) => n + (j % 2 ? dy : dx)) } : k,
+        ),
+      )
+      return
+    }
     const s = live.current
     if (!s) return
     const [x, y] = at(e)
@@ -511,12 +699,27 @@ export function PaintRoom() {
 
   const onUp = () => {
     pan.current = null
+    if (band.current) {
+      const r = band.current
+      band.current = null
+      // a tap rather than a drag clears the selection instead of catching nothing
+      const tiny = Math.abs(r.x1 - r.x0) < 0.005 && Math.abs(r.y1 - r.y0) < 0.005
+      setSel(tiny ? [] : inBand(r))
+      preview()
+      return
+    }
+    if (shove.current) {
+      shove.current = null
+      setUndone([])
+      return
+    }
     const s = live.current
     if (!s) return
     commit(s)
   }
 
   const undo = () => {
+    setSel([])
     setStrokes((prev) => {
       if (!prev.length) return prev
       setUndone((u) => [...u, prev[prev.length - 1]])
@@ -524,6 +727,7 @@ export function PaintRoom() {
     })
   }
   const redo = () => {
+    setSel([])
     setUndone((u) => {
       if (!u.length) return u
       setStrokes((prev) => [...prev, u[u.length - 1]])
@@ -539,6 +743,27 @@ export function PaintRoom() {
         e.preventDefault()
         if (e.shiftKey) redo()
         else undo()
+        return
+      }
+      const mod = e.ctrlKey || e.metaKey
+      const k = e.key.toLowerCase()
+      if (mod && k === 'c' && sel.length) {
+        e.preventDefault()
+        copy()
+      } else if (mod && k === 'x' && sel.length) {
+        e.preventDefault()
+        cut()
+      } else if (mod && k === 'v' && clip.length) {
+        e.preventDefault()
+        paste()
+      } else if (mod && k === 'a' && selecting) {
+        e.preventDefault()
+        selectAll()
+      } else if ((e.key === 'Delete' || e.key === 'Backspace') && sel.length) {
+        e.preventDefault()
+        erase()
+      } else if (e.key === 'Escape' && sel.length) {
+        drop()
       }
     }
     window.addEventListener('keydown', key)
@@ -564,6 +789,57 @@ export function PaintRoom() {
             </button>
           ))}
         </div>
+      </div>
+
+      <div className="paint-row paint-select">
+        <button
+          className={'btn' + (selecting ? ' is-on' : '')}
+          aria-pressed={selecting}
+          onClick={() => {
+            setSelecting((v) => !v)
+            drop()
+          }}
+          title="Drag a box round some strokes, then move, copy or cut them"
+        >
+          ⬚ Select
+        </button>
+        {selecting && (
+          <>
+            <button className="btn" onClick={selectAll} title="Select everything you can see">
+              All
+            </button>
+            <span className="muted paint-select-count">
+              {sel.length ? `${sel.length} picked` : 'drag a box'}
+            </span>
+            <button className="btn" onClick={copy} disabled={!sel.length} title="Copy (Ctrl+C)">
+              Copy
+            </button>
+            <button className="btn" onClick={cut} disabled={!sel.length} title="Cut (Ctrl+X)">
+              Cut
+            </button>
+            {/* ⚠️ paste lands on the layer and frame you are on now — see paste() */}
+            <button
+              className="btn"
+              onClick={paste}
+              disabled={!clip.length}
+              title={
+                frame === null
+                  ? 'Paste (Ctrl+V)'
+                  : 'Paste onto this frame (Ctrl+V) — the way to build the next pose'
+              }
+            >
+              Paste{clip.length ? ` · ${clip.length}` : ''}
+            </button>
+            <button
+              className="btn"
+              onClick={erase}
+              disabled={!sel.length}
+              title="Delete the selection"
+            >
+              ✕
+            </button>
+          </>
+        )}
       </div>
 
       <div className="paint-row paint-stack">
@@ -847,6 +1123,7 @@ export function PaintRoom() {
           onClick={() => {
             if (window.confirm('Clear the whole picture?')) {
               setUndone([])
+              setSel([])
               setStrokes([])
             }
           }}

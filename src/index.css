@@ -7207,3 +7207,14 @@ a.cz-msg-author:focus-visible {
   font-size: 0.82rem;
   max-width: 12rem;
 }
+
+/* the selection row — see PaintRoom, selecting is a mode and not a tool */
+.paint-select {
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  align-items: center;
+}
+.paint-select-count {
+  font-size: 0.78rem;
+  min-width: 4.5rem;
+}
