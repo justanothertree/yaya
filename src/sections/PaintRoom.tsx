@@ -389,19 +389,23 @@ export function PaintRoom() {
    * off while playing above: ghosts are a drawing aid, and during playback they would just be
    * every frame smeared over every other one.
    */
+  const animating = frame !== null
   useEffect(() => {
-    if (!playing || frame === null) return
-    const total = frameCount(drawingRef.current)
-    if (total < 2) {
-      setPlaying(false)
-      return
-    }
+    if (!playing || !animating) return
     const id = window.setInterval(
-      () => setFrame((f) => ((f ?? 0) + 1) % total),
+      () => {
+        // ⚠️ counted INSIDE the tick, not captured when the timer was made: add a frame while it
+        // is playing and a captured total would loop over the old length and never show it
+        const total = frameCount(drawingRef.current)
+        if (total < 2) return
+        setFrame((f) => ((f ?? 0) + 1) % total)
+      },
       Math.round(1000 / Math.max(1, Math.min(24, fps))),
     )
     return () => window.clearInterval(id)
-  }, [playing, fps, frame === null])
+    // ⚠️ `frame` is deliberately not a dependency — it changes on every tick, and depending on it
+    // would tear the timer down and build a new one sixty times a minute instead of running one
+  }, [playing, animating, fps])
 
   const layers = layerCount(drawingRef.current)
   const frames = frameCount(drawingRef.current)
