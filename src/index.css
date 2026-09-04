@@ -6142,16 +6142,35 @@ a.cz-msg-author:focus-visible {
 }
 
 /* The arrangement grid — one cell per bar, per layer. See toggleLayerBar. */
+/**
+ * ⚠️ ITS OWN FULL-WIDTH LINE, AND IT MUST NOT WRAP.
+ *
+ * This rule used to drop the `flex: 1 0 100%` set earlier in the file, which put the bar strip
+ * inline after the layer's name, instrument and modifier chips — so where the tiles STARTED
+ * depended on how wide those happened to be, and every layer with a different set of modifiers
+ * began its bars at a different offset. Bar 4 of one take sat above bar 3 of another, which is
+ * exactly what makes an arrangement unreadable: the whole value of the strip is that a column
+ * means one moment in the song.
+ *
+ * Wrapping breaks the same promise more quietly — a strip that folds onto a second line puts bar
+ * 17 underneath bar 1. So it scrolls sideways instead, and a column stays a column.
+ */
 .inst-arrange {
+  flex: 1 0 100%;
   display: flex;
   align-items: center;
   gap: 2px;
-  flex-wrap: wrap;
-  max-width: 18rem;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  padding-bottom: 2px;
 }
 .inst-bar-cell {
   width: 12px;
   height: 18px;
+  /* ⚠️ fixed basis: the strip no longer wraps, so without this flex would squeeze the cells
+     to fit and the columns would stop lining up between layers with different bar counts */
+  flex: 0 0 12px;
   padding: 0;
   border: 1px solid var(--line);
   border-radius: 2px;
@@ -7298,4 +7317,38 @@ a.cz-msg-author:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: -1px;
   filter: brightness(1.25);
+}
+
+/* the bar ruler above the layer rows — same cell width as .inst-bar-cell so the columns line up */
+.inst-ruler {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  margin: 0.2rem 0 0.1rem;
+}
+.inst-ruler-cell {
+  width: 12px;
+  height: 14px;
+  padding: 0;
+  flex: 0 0 12px;
+  border: 0;
+  border-radius: 2px;
+  background: none;
+  color: inherit;
+  font-size: 0.5rem;
+  line-height: 14px;
+  text-align: center;
+  opacity: 0.45;
+  cursor: pointer;
+}
+.inst-ruler-cell:hover {
+  opacity: 1;
+  background: var(--accent);
+}
+.inst-ruler-cell.is-now {
+  opacity: 1;
+  box-shadow: 0 0 0 1px var(--accent) inset;
 }

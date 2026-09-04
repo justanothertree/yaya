@@ -291,6 +291,42 @@ export function PianoRoll({
        * ever lost by dragging, and there is no state in which two notes of one pitch sound at
        * once. The pointer keeps moving, so it costs nothing to try again.
        */
+      /**
+       * ⚠️ A PICKED GROUP MOVES TOGETHER, by the same offset, all or nothing.
+       *
+       * Dragging one note of a selection and leaving the rest behind would take the phrase apart
+       * — the intervals and the rhythm inside it are the thing you selected. So the offset the
+       * dragged note wants is applied to every picked note, and if ANY of them would leave the
+       * grid or land on another pitch's neighbour the whole move is refused rather than the
+       * group arriving bent. Same rule as one note, applied to the set: nothing is ever lost by
+       * dragging, and the pointer is still moving so it costs nothing to try again.
+       */
+      if (picks.length > 1 && isPicked(was)) {
+        const dt = n.t - was.t
+        const dm = n.midi - was.midi
+        if (!dt && !dm) return notes
+        const moving = new Map<number, Note>()
+        for (let i = 0; i < next.length; i++) {
+          if (!isPicked(next[i])) continue
+          const t = next[i].t + dt
+          const midi = next[i].midi + dm
+          if (t < 0 || t > (cols - 1) * step || midi < lo || midi > hi) return notes
+          moving.set(i, { ...next[i], t, midi })
+        }
+        for (const [i, m] of moving) {
+          const clash = next.some(
+            (o, j) =>
+              j !== i &&
+              !moving.has(j) &&
+              o.midi === m.midi &&
+              m.t < o.t + o.dur - 1e-6 &&
+              m.t + m.dur > o.t + 1e-6,
+          )
+          if (clash) return notes
+        }
+        for (const [i, m] of moving) next[i] = m
+        return next
+      }
       if (hits(next, drag.i, n)) return notes
     } else {
       const endCol = Math.max(Math.round(n.t / step) + 1, drag.col + 1)
@@ -300,7 +336,8 @@ export function PianoRoll({
     }
     next[drag.i] = n
     return next
-  }, [drag, notes, cols, step, lo, hi, layer.len])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [drag, notes, cols, step, lo, hi, layer.len, picks])
 
   /** Click an empty cell adds; clicking an occupied one must not stack a second note on it. */
   const occupied = (list: Note[], midi: number, t: number) =>
@@ -412,14 +449,16 @@ export function PianoRoll({
     const c = cellFrom(e)
     if (!c) return
     anchor.current = { col: c.col, row: c.row }
-    /* in select mode a note is something you add to or take out of the pile, not something you
-       drag — dragging is what the pile does together, once it exists */
-    if (selecting) {
-      setPicks((p) =>
-        p.some((x) => x.midi === n.midi && Math.abs(x.t - n.t) < 1e-6)
-          ? p.filter((x) => !(x.midi === n.midi && Math.abs(x.t - n.t) < 1e-6))
-          : [...p, { midi: n.midi, t: n.t }],
-      )
+    /**
+     * ⚠️ IN SELECT MODE, AN UNPICKED NOTE JOINS THE PILE AND A PICKED ONE DRAGS IT.
+     *
+     * Both gestures start with a press on a note, so one of them has to be decided by what the
+     * note already is. Picking things up one at a time and then moving the group is the order
+     * you do it in anyway, and it means the group can be dragged without leaving the mode you
+     * gathered it in. Taking a note back out is the box again, or Escape and start over.
+     */
+    if (selecting && !isPicked(n)) {
+      setPicks((p) => [...p, { midi: n.midi, t: n.t }])
       setSel({ midi: n.midi, t: n.t })
       return
     }

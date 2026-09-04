@@ -70,6 +70,7 @@ import {
   subscribeLoop,
   toggleMute,
   undoLast,
+  seekTo,
 } from '../audio/looper'
 
 /**
@@ -1035,6 +1036,35 @@ export function InstrumentRoom() {
         </p>
       )}
 
+      {/**
+       * ⚠️ THE BAR NUMBERS, AND THE WAY TO JUMP TO ONE.
+       *
+       * The tiles below say which bars a layer plays, but nothing said WHICH bar you were
+       * looking at — you counted along the row. This is the same cell width as a tile, so a
+       * number sits directly above its column, and clicking one moves the playhead there.
+       *
+       * Seeking is here rather than on the tiles because a tile already means two things — turn
+       * this bar off, or pick it up and move it — and a third would make every click a guess.
+       * The ruler has nothing else to do.
+       */}
+      {loop.layers.length > 0 && loop.bars > 1 && (
+        <div className="inst-ruler" role="group" aria-label="Jump to a bar">
+          {Array.from({ length: loop.bars }, (_, b) => {
+            const at = (loopLength() * b) / Math.max(1, loop.bars)
+            const now = Math.floor(loop.position * loop.bars) === b
+            return (
+              <button
+                key={b}
+                className={'inst-ruler-cell' + (now && loop.playing ? ' is-now' : '')}
+                onClick={() => seekTo(at)}
+                title={`Jump to bar ${b + 1}`}
+              >
+                {(b + 1) % 4 === 1 ? b + 1 : '·'}
+              </button>
+            )
+          })}
+        </div>
+      )}
       {loop.layers.length > 0 && (
         <ul className="inst-layers">
           {loop.layers.map((l, i) => (

@@ -1,5 +1,6 @@
 import { sharedCtx, resumeAudio } from './context'
 import { noteOff, noteOn } from './synth'
+import { toNotes } from './noteEdit'
 import type { Song } from './songFile'
 
 /**
@@ -104,23 +105,38 @@ function tick() {
       if (layer.muted) continue
       const own = Math.max(0.05, layer.len)
       const reps = Math.max(1, Math.floor(len / own + 1e-6))
+      /**
+       * ⚠️ A NOTE IS SCHEDULED AS A PAIR, both ends at once, and it has to be.
+       *
+       * Ons and offs used to be scheduled independently as they fell inside the lookahead
+       * window, which loses an off whenever the window boundary lands in the wrong place. A note
+       * running to the very end of a pass had its off pulled back to `end - 0.005`; if the
+       * window happened to stop inside that sliver the off was skipped as "not yet", and by the
+       * next window `firstRep` had moved on to the following pass, so that pass was never
+       * visited again and the off was never scheduled by anybody. The note held forever. Notes
+       * touching the start had the same fate whenever they ran the length of the loop.
+       *
+       * Scheduling both ends together removes the whole class: an off cannot be missed by a
+       * window it was never offered to, because it is booked at the same moment as its on.
+       *
+       * ⚠️ THE ID IS BUILT FROM ABSOLUTE TIME, not from the repeat counters. `rep` and `k`
+       * renumber as the song loops, so two different notes could share an id and one note's off
+       * could silence another — the same bug this file's cousin in looper.ts had.
+       */
+      const notes = toNotes(layer.events, own)
       for (let k = 0; k < reps; k++) {
         const sub = base + k * own
-        for (const e of layer.events) {
-          let at = sub + e.t
-          if (at >= end) {
-            if (e.on) continue
-            at = Math.max(from, end - 0.005)
-          }
-          if (at < from || at >= to) continue
-          const id = `sp:${token}:${li}:${rep}:${k}:${e.midi}`
-          if (e.on) {
-            noteOn(id, layer.instrument, e.midi, at, { key: `sp:${token}:${li}`, fx: layer.fx })
-            sounding.add(id)
-          } else {
-            noteOff(id, at)
-            sounding.delete(id)
-          }
+        for (const n of notes) {
+          const onAt = sub + n.t
+          if (onAt < from || onAt >= to) continue
+          /* held no further than the end of the pass: a song that loops should not have the last
+             note of one pass still sounding under the first note of the next */
+          const offAt = Math.min(onAt + n.dur, end)
+          if (offAt <= onAt) continue
+          const id = `sp:${token}:${li}:${Math.round(onAt * 1000)}:${n.midi}`
+          noteOn(id, layer.instrument, n.midi, onAt, { key: `sp:${token}:${li}`, fx: layer.fx })
+          noteOff(id, offAt)
+          sounding.add(id)
         }
       }
     }
