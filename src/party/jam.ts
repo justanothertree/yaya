@@ -109,6 +109,23 @@ function set(patch: Partial<JamState>) {
  */
 export type SongOffer = { from: string; name: string; song: Song }
 
+/**
+ * ⚠️ WHAT I AM HOLDING, and when each of THEIR notes started. Both exist for the same
+ * reason: the channel is best-effort.
+ *
+ * Notes are broadcast, and a broadcast can be dropped. A lost note-ON is nothing — a note nobody
+ * hears. A lost note-OFF is a voice with nothing left in the world to end it: it rings until
+ * Panic, and its key stays lit, because the lit keys are drawn from the same list. That
+ * asymmetry cannot be fixed by sending more carefully; it needs somebody to notice afterwards.
+ *
+ * So every player says, once a second, exactly which notes it is holding. Anyone hearing that can
+ * release what is not on the list. A dropped note-off then costs a second of a hanging note
+ * instead of the rest of the session.
+ */
+const myHeld = new Set<string>()
+const startedAt = new Map<string, number>()
+let beat = 0
+
 const rate = new Map<string, number[]>()
 const voices = new Map<string, string[]>()
 
@@ -212,6 +229,12 @@ export const jam = {
       sendParty('jam', { leave: true })
       // silence everyone else's notes rather than leaving a held pad ringing forever
       for (const peer of [...voices.keys()]) stopAllFor(peer)
+      if (beat) {
+        clearInterval(beat)
+        beat = 0
+      }
+      myHeld.clear()
+      startedAt.clear()
       rig.forEach((d) => d())
       rig = []
       setScheduleListener(null)
@@ -228,6 +251,9 @@ export const jam = {
      * the message would arrive after the note was due. Half a second gives the trip room, at the
      * cost of muting a layer taking that long to be heard, which is the right way round.
      */
+    beat = window.setInterval(() => {
+      if (state.on) sendParty('jam:held', { held: [...myHeld] })
+    }, 1000)
     rig = [clock.start(), transport.start()]
     setLookahead(0.5)
     // your loops become notes for everyone else, stamped with when they are due
@@ -270,6 +296,9 @@ export const jam = {
     if (opts?.at !== undefined) body.at = opts.at
     // 'live' is the default and is left off the wire, since most notes are live ones
     if (opts?.part) body.part = opts.part
+    const key = `${opts?.part ?? 'live'}:${midi}`
+    if (on) myHeld.add(key)
+    else myHeld.delete(key)
     sendParty('jam', body)
   },
 
@@ -287,6 +316,40 @@ export const jam = {
       if (m.kind === 'jam:song' && state.on) {
         const song = readSong(m.body)
         if (song) set({ offer: { from: m.from, name: m.name || 'Someone', song } })
+        return
+      }
+      /**
+       * ⚠️ A LIST OF WHAT THEY HOLD, and anything of theirs not on it is released — but only
+       * if it started before the list was drawn up.
+       *
+       * Without that clause this races: their heartbeat describes a moment, and a note they
+       * played a hair after it would be cut off the instant the list arrived. A note older than
+       * the heartbeat and absent from it, on the other hand, is a note whose ending never made
+       * it, which is exactly what we are here to clean up.
+       */
+      if (m.kind === 'jam:held' && state.on) {
+        const list = (m.body as { held?: unknown })?.held
+        if (!Array.isArray(list)) return
+        const alive = new Set(list.filter((x): x is string => typeof x === 'string'))
+        const mine = voices.get(m.from) ?? []
+        const cutoff = performance.now() - 1500
+        const keep: string[] = []
+        for (const id of mine) {
+          const parts = id.split(':')
+          const key = `${parts[2]}:${parts[3]}`
+          if (alive.has(key) || (startedAt.get(id) ?? 0) > cutoff) {
+            keep.push(id)
+            continue
+          }
+          noteOff(id)
+          startedAt.delete(id)
+        }
+        if (keep.length !== mine.length) {
+          voices.set(m.from, keep)
+          const held = keep.map((v) => Number(v.split(':')[3])).filter(Number.isFinite)
+          const who = state.players[m.from]
+          if (who) set({ players: { ...state.players, [m.from]: { ...who, held } } })
+        }
         return
       }
       if (m.kind !== 'jam' || !state.on) return
@@ -338,8 +401,13 @@ export const jam = {
         // ⚠️ Steal the OLDEST rather than refuse the newest: a ceiling that drops what you just
         // played sounds broken, while one that releases what has been ringing longest is what
         // every polyphonic instrument has always done.
-        while (mine.length >= MAX_VOICES_EACH) noteOff(mine.shift()!)
+        while (mine.length >= MAX_VOICES_EACH) {
+          const old = mine.shift()!
+          noteOff(old)
+          startedAt.delete(old)
+        }
         if (!mine.includes(id)) mine.push(id)
+        startedAt.set(id, performance.now())
         voices.set(m.from, mine)
         noteOn(id, inst, b.midi, when, { key: `jam:${m.from}:${part}`, fx })
       }
