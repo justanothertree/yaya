@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
+import { createPortal } from 'react-dom'
 import { getSupabaseClient } from '../finance/client'
 import { useTouchOnly } from '../ui/pointerKind'
 import { BANNER_STYLES, bannerBackground, type BannerStyle } from '../profile/look'
@@ -233,7 +234,13 @@ function BlockView({
     case 'song': {
       const song = songFromConfig(cfg)
       if (!song) return null
-      return <SongBlock id={block.id ?? `song-${song.name}`} song={song} />
+      return (
+        <SongBlock
+          id={block.id ?? `song-${song.name}`}
+          song={song}
+          autoplay={cfg.autoplay === true}
+        />
+      )
     }
     case 'visualizer':
       return <VisualBlock cfg={cfg} />
@@ -638,6 +645,20 @@ function SongPicker({
           This one is long — it may not fit on a page. Try a shorter take.
         </span>
       )}
+      {/**
+       * ⚠️ The label says "as soon as they let it", not "on load", because that is the truth. A
+       * browser refuses sound until the visitor has interacted with the page, so this can only
+       * mean "at the first moment it is allowed". Promising more would leave a setting that
+       * appears to work on some visits and not others, with nothing to tell them apart.
+       */}
+      <label className="profile-song-auto">
+        <input
+          type="checkbox"
+          checked={value.autoplay === true}
+          onChange={(e) => onChange({ ...value, autoplay: e.target.checked || undefined })}
+        />
+        <span className="muted">Start playing as soon as the browser allows it</span>
+      </label>
     </label>
   )
 }
@@ -1401,75 +1422,88 @@ export function ProfileBlocksEditor({
        * grid pushes every other block somewhere else, so you would be editing a layout that moves
        * while you edit it.
        */}
-      {selected && openIdx != null && (
-        <div className="profile-inspector">
-          <div className="profile-inspector-head">
-            <strong>{BLOCK_LABEL[selected.block_type]}</strong>
-            <button
-              className="btn btn-ghost"
-              onClick={() => setOpenIdx(null)}
-              aria-label="Close this block"
-            >
-              Done
-            </button>
-          </div>
-
-          <BlockFields
-            block={selected}
-            username={username}
-            onChange={(next) =>
-              setBlocks((all) => all.map((x, idx) => (idx === openIdx ? next : x)))
-            }
-          />
-
-          <div className="profile-editrow-settings">
-            {/* ⚠️ three buttons rather than one that cycles. A cycling button cannot show
-                which of the three you are on without being read, and cannot go back a step. */}
-            <label className="profile-editrow-size">
-              <span className="muted">Width of the page</span>
-              <span className="profile-width-row">
-                {(['small', 'medium', 'large'] as const).map((sz) => (
-                  <button
-                    key={sz}
-                    className={'btn' + (selected.size === sz ? ' is-on' : '')}
-                    aria-pressed={selected.size === sz}
-                    onClick={() =>
-                      setBlocks((all) =>
-                        all.map((x, idx) => (idx === openIdx ? { ...x, size: sz } : x)),
-                      )
-                    }
-                  >
-                    {sz === 'small' ? 'a third' : sz === 'medium' ? 'a half' : 'full width'}
-                  </button>
-                ))}
-              </span>
-            </label>
-            <label>
-              <span className="muted">Who can see this</span>
-              <select
-                className="btn"
-                value={selected.visibility}
-                onChange={(e) =>
-                  setBlocks((all) =>
-                    all.map((x, idx) =>
-                      idx === openIdx ? { ...x, visibility: e.target.value as Tier } : x,
-                    ),
-                  )
-                }
+      {selected &&
+        openIdx != null &&
+        /**
+         * ⚠️ THROUGH A PORTAL, and that is what makes `position: fixed` mean the viewport.
+         *
+         * A transformed ancestor becomes the containing block for anything fixed inside it — and
+         * this editor lives in a `.card`, which grows a transform on hover. So the panel was
+         * anchored to the card rather than to the screen, and drifted as the card lifted under
+         * the pointer. No amount of correcting the offsets fixes that; the panel has to leave the
+         * subtree. Portalling to the body puts it beyond the reach of any ancestor's transform,
+         * filter or containment, now or later.
+         */
+        createPortal(
+          <div className="profile-inspector">
+            <div className="profile-inspector-head">
+              <strong>{BLOCK_LABEL[selected.block_type]}</strong>
+              <button
+                className="btn btn-ghost"
+                onClick={() => setOpenIdx(null)}
+                aria-label="Close this block"
               >
-                {(Object.keys(TIER_LABEL) as Tier[]).map((t) => (
-                  <option key={t} value={t}>
-                    {TIER_LABEL[t]}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <button className="btn btn-ghost" onClick={() => removeAt(openIdx)}>
-              Remove this block
-            </button>
-          </div>
-        </div>
-      )}
+                Done
+              </button>
+            </div>
+
+            <BlockFields
+              block={selected}
+              username={username}
+              onChange={(next) =>
+                setBlocks((all) => all.map((x, idx) => (idx === openIdx ? next : x)))
+              }
+            />
+
+            <div className="profile-editrow-settings">
+              {/* ⚠️ three buttons rather than one that cycles. A cycling button cannot show
+                which of the three you are on without being read, and cannot go back a step. */}
+              <label className="profile-editrow-size">
+                <span className="muted">Width of the page</span>
+                <span className="profile-width-row">
+                  {(['small', 'medium', 'large'] as const).map((sz) => (
+                    <button
+                      key={sz}
+                      className={'btn' + (selected.size === sz ? ' is-on' : '')}
+                      aria-pressed={selected.size === sz}
+                      onClick={() =>
+                        setBlocks((all) =>
+                          all.map((x, idx) => (idx === openIdx ? { ...x, size: sz } : x)),
+                        )
+                      }
+                    >
+                      {sz === 'small' ? 'a third' : sz === 'medium' ? 'a half' : 'full width'}
+                    </button>
+                  ))}
+                </span>
+              </label>
+              <label>
+                <span className="muted">Who can see this</span>
+                <select
+                  className="btn"
+                  value={selected.visibility}
+                  onChange={(e) =>
+                    setBlocks((all) =>
+                      all.map((x, idx) =>
+                        idx === openIdx ? { ...x, visibility: e.target.value as Tier } : x,
+                      ),
+                    )
+                  }
+                >
+                  {(Object.keys(TIER_LABEL) as Tier[]).map((t) => (
+                    <option key={t} value={t}>
+                      {TIER_LABEL[t]}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <button className="btn btn-ghost" onClick={() => removeAt(openIdx)}>
+                Remove this block
+              </button>
+            </div>
+          </div>,
+          document.body,
+        )}
 
       <div className="profile-editor-status" aria-live="polite">
         <span className={err ? 'profile-editor-err' : 'muted'}>

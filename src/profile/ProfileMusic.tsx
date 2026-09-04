@@ -1,5 +1,6 @@
 import { useEffect, useRef, useSyncExternalStore } from 'react'
 import { songNotes, type Song } from '../audio/songFile'
+import { sharedCtx } from '../audio/context'
 import {
   seekSong,
   songLength,
@@ -97,7 +98,16 @@ function drawSongMap(
   ctx.globalAlpha = 1
 }
 
-export function SongBlock({ id, song }: { id: string; song: Song }) {
+export function SongBlock({
+  id,
+  song,
+  autoplay,
+}: {
+  id: string
+  song: Song
+  /** start this one as the page opens, if the browser will allow it — see below */
+  autoplay?: boolean
+}) {
   const playing = useSyncExternalStore(subscribeSongPlayer, songPlayerState, songPlayerState)
   const isMe = playing.playing === id
   const bar = useRef<HTMLDivElement>(null)
@@ -106,6 +116,46 @@ export function SongBlock({ id, song }: { id: string; song: Song }) {
 
   // leaving the page must not leave the song going — this is somebody else's tab
   useEffect(() => () => stopSong(), [])
+
+  /**
+   * ⚠️ A BROWSER WILL NOT LET A PAGE MAKE NOISE AT SOMEBODY, and that is not a bug to work
+   * around. Audio is blocked until the visitor has interacted with the page at all, so "autoplay"
+   * here can only mean "start at the first opportunity" — trying and failing silently would leave
+   * a setting that appears to do nothing on some visits and works on others, which is worse than
+   * one that plainly waits.
+   *
+   * So it starts if sound is already allowed, and otherwise ARMS: the next press, tap or key
+   * anywhere on the page starts it, once. That is the earliest a browser permits and the latest
+   * anybody would call automatic.
+   *
+   * ⚠️ Once per mount, guarded by a ref. Without it every re-render while playing would try
+   * to start the song again, which restarts it — the block re-renders whenever the player's state
+   * changes, which is to say whenever it starts.
+   */
+  const armed = useRef(false)
+  useEffect(() => {
+    if (!autoplay || armed.current) return
+    armed.current = true
+    const go = () => {
+      if (songPlayerState().playing) return
+      toggleSong(id, song)
+    }
+    if (sharedCtx().state === 'running') {
+      go()
+      return
+    }
+    const once = () => {
+      window.removeEventListener('pointerdown', once)
+      window.removeEventListener('keydown', once)
+      go()
+    }
+    window.addEventListener('pointerdown', once, { once: true })
+    window.addEventListener('keydown', once, { once: true })
+    return () => {
+      window.removeEventListener('pointerdown', once)
+      window.removeEventListener('keydown', once)
+    }
+  }, [autoplay, id, song])
 
   /* the map is drawn when the song or the width changes, never per frame */
   useEffect(() => {

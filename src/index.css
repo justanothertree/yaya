@@ -6956,3 +6956,10 @@ a.cz-msg-author:focus-visible {
     max-width: 100%;
   }
 }
+
+.profile-song-auto {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.78rem;
+}
