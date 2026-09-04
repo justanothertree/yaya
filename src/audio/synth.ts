@@ -797,7 +797,51 @@ function makeBus(c: AudioContext): Bus {
   input.connect(delay)
   delay.connect(wet).connect(fxOut!)
   delay.connect(fb).connect(delay)
-  input.connect(verb).connect(verbWet).connect(fxOut!)
+  input.connect(verb).connect(verbWet)
+
+  /**
+   * ⚠️ THE REVERB IS UNPLUGGED WHEN IT IS NOT IN USE, and this is the single biggest thing
+   * the instrument does to a phone.
+   *
+   * A ConvolverNode does not stop working because the gain after it is zero. Web Audio has no
+   * bypass: any node whose output is pulled toward the destination is processed on every render
+   * quantum, and convolution against a 2.2 second stereo impulse is by a wide margin the most
+   * expensive thing in this graph. The instrument is DRY BY DEFAULT, so out of the box every bus
+   * was running a full reverb to produce silence — up to MAX_BUSES of them at once, for ever,
+   * from the moment a part first sounded.
+   *
+   * That cost is constant rather than per-note, which is exactly the shape of the fault it
+   * causes: a single steadily held note crackles, because the thread is already behind before
+   * you play anything. It is invisible on a desktop and ruinous on a phone.
+   *
+   * So verbWet reaches fxOut only while there is reverb to hear. Turning it off waits for the
+   * tail before unplugging, or the room would be cut off mid-decay.
+   */
+  let verbLive = false
+  let verbOff = 0
+  const verbConnect = (on: boolean) => {
+    if (on) {
+      if (verbOff) {
+        clearTimeout(verbOff)
+        verbOff = 0
+      }
+      if (!verbLive) {
+        verbWet.connect(fxOut!)
+        verbLive = true
+      }
+    } else if (verbLive && !verbOff) {
+      // 2.2s of impulse plus the ramp that is fading it out, then let go
+      verbOff = window.setTimeout(() => {
+        verbOff = 0
+        verbLive = false
+        try {
+          verbWet.disconnect()
+        } catch {
+          /* already gone */
+        }
+      }, 2600)
+    }
+  }
 
   // one LFO per part, so two parts can wobble independently
   const lfo = c.createOscillator()
@@ -828,12 +872,14 @@ function makeBus(c: AudioContext): Bus {
       ramp(fb.gain, Math.min(0.6, fx.echo * 0.6))
       ramp(delay.delayTime, 0.06 + fx.echoTime * 0.7)
       ramp(verbWet.gain, fx.space * 0.9)
+      verbConnect(fx.space > 0.001)
       // 0–70 cents: a whole semitone of wobble is a special effect, not vibrato
       ramp(vib.gain, fx.vibrato * 70)
       // dry backs off only slightly, so turning effects up thickens rather than swaps
       ramp(dry.gain, 1 - Math.min(0.35, fx.space * 0.35))
     },
     dispose() {
+      if (verbOff) clearTimeout(verbOff)
       try {
         lfo.stop()
       } catch {
