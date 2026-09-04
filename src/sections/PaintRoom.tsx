@@ -282,7 +282,7 @@ export function PaintRoom() {
    * spend the whole time chasing it. Keeping the point under the cursor fixed is what makes a
    * wheel feel like a magnifying glass rather than a slider.
    */
-  const onWheel = (e: React.WheelEvent) => {
+  const onWheel = (e: WheelEvent) => {
     e.preventDefault()
     const r = view.current!.getBoundingClientRect()
     const fx = (e.clientX - r.left) / r.width
@@ -294,6 +294,26 @@ export function PaintRoom() {
     clampOffset(next)
     setScale(next)
   }
+
+  /**
+   * ⚠️ ATTACHED BY HAND, because React's onWheel is PASSIVE and a passive listener is forbidden
+   * to preventDefault.
+   *
+   * The handler above always called preventDefault and it was always ignored, so the wheel
+   * zoomed the picture AND scrolled the page under it — the drawing went in while the room went
+   * up, which is exactly what it looked like. Nothing about the code said so: the call is there,
+   * it just has no effect from a listener React added with { passive: true }.
+   *
+   * Re-attached when `scale` changes because the handler closes over it; the alternative is a ref
+   * shadowing the state, and one listener swap per zoom step is cheaper than that confusion.
+   */
+  useEffect(() => {
+    const el = view.current
+    if (!el) return
+    el.addEventListener('wheel', onWheel, { passive: false })
+    return () => el.removeEventListener('wheel', onWheel)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scale])
 
   const commit = (s: Stroke) => {
     live.current = null
@@ -733,7 +753,6 @@ export function PaintRoom() {
           onPointerMove={onMove}
           onPointerUp={onUp}
           onPointerCancel={onUp}
-          onWheel={onWheel}
           onContextMenu={(e) => e.preventDefault()}
         />
       </div>

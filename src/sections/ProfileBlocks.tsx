@@ -1000,6 +1000,30 @@ export function ProfileBlocksEditor({
    * scroll because it is not a gesture that lasts.
    */
   const [liftIdx, setLiftIdx] = useState<number | null>(null)
+  /**
+   * ⚠️ WHICH EDGE THE PANEL LIVES ON, remembered. There is no right answer — it depends which
+   * side of the page the block you are editing happens to be on, and that changes as you work. So
+   * it is a preference rather than a layout decision, and it is kept, because moving it back
+   * every visit would be worse than it being on the wrong side occasionally.
+   */
+  const [anchor, setAnchor] = useState<'left' | 'right'>(() => {
+    try {
+      return localStorage.getItem('profile_panel_side') === 'right' ? 'right' : 'left'
+    } catch {
+      return 'left'
+    }
+  })
+  const anchorTo = (side: 'left' | 'right') => {
+    setAnchor(side)
+    try {
+      localStorage.setItem('profile_panel_side', side)
+    } catch {
+      /* private mode: it holds for this visit */
+    }
+  }
+  /** on a phone the panel is a tray, and a tray can be pushed out of the way */
+  const [trayOpen, setTrayOpen] = useState(true)
+
   /* dragging is offered to a pointer and not to a finger — see the grip below */
   const touch = useTouchOnly()
   /** the add-a-block palette, which is seven buttons you are mostly not pressing */
@@ -1467,9 +1491,32 @@ export function ProfileBlocksEditor({
          * filter or containment, now or later.
          */
         createPortal(
-          <div className="profile-inspector">
+          <div className={'profile-inspector is-' + anchor + (trayOpen ? ' is-open' : ' is-shut')}>
             <div className="profile-inspector-head">
+              {/* ⚠️ a tray you have to hit a small chevron to close is a tray that stays open and
+                  covers the thing you are editing, so the pull is a proper target */}
+              <button
+                className="btn btn-ghost profile-inspector-pull"
+                onClick={() => setTrayOpen((v) => !v)}
+                aria-expanded={trayOpen}
+                title={trayOpen ? 'Slide these out of the way' : 'Bring the settings back'}
+              >
+                {trayOpen ? '▾' : '▴'}
+              </button>
               <strong>{BLOCK_LABEL[selected.block_type]}</strong>
+              <span className="profile-inspector-side">
+                {(['left', 'right'] as const).map((side) => (
+                  <button
+                    key={side}
+                    className={'btn' + (anchor === side ? ' is-on' : '')}
+                    aria-pressed={anchor === side}
+                    onClick={() => anchorTo(side)}
+                    title={'Move these settings to the ' + side}
+                  >
+                    {side === 'left' ? '⇤' : '⇥'}
+                  </button>
+                ))}
+              </span>
               <button
                 className="btn btn-ghost"
                 onClick={() => setOpenIdx(null)}
@@ -1478,61 +1525,74 @@ export function ProfileBlocksEditor({
                 Done
               </button>
             </div>
+            {/**
+             * ⚠️ THE BODY IS NOT RENDERED WHILE THE TRAY IS SHUT, rather than hidden by CSS.
+             *
+             * Collapsing it with a transform and then with a max-height both failed here —
+             * something in the cascade was defeating rules that were more specific and later,
+             * and hunting it would have cost more than it was worth. Not rendering cannot be
+             * overridden by any stylesheet, does not depend on a transform surviving a
+             * reduced-motion setting, and has the honest side effect of taking the settings out
+             * of the tab order while they are out of the way.
+             */}
+            {trayOpen && (
+              <>
+                <BlockFields
+                  block={selected}
+                  username={username}
+                  onChange={(next) =>
+                    setBlocks((all) => all.map((x, idx) => (idx === openIdx ? next : x)))
+                  }
+                />
 
-            <BlockFields
-              block={selected}
-              username={username}
-              onChange={(next) =>
-                setBlocks((all) => all.map((x, idx) => (idx === openIdx ? next : x)))
-              }
-            />
-
-            <div className="profile-editrow-settings">
-              {/* ⚠️ three buttons rather than one that cycles. A cycling button cannot show
+                <div className="profile-editrow-settings">
+                  {/* ⚠️ three buttons rather than one that cycles. A cycling button cannot show
                 which of the three you are on without being read, and cannot go back a step. */}
-              <label className="profile-editrow-size">
-                <span className="muted">Width of the page</span>
-                <span className="profile-width-row">
-                  {(['small', 'medium', 'large'] as const).map((sz) => (
-                    <button
-                      key={sz}
-                      className={'btn' + (selected.size === sz ? ' is-on' : '')}
-                      aria-pressed={selected.size === sz}
-                      onClick={() =>
+                  <label className="profile-editrow-size">
+                    <span className="muted">Width of the page</span>
+                    <span className="profile-width-row">
+                      {(['small', 'medium', 'large'] as const).map((sz) => (
+                        <button
+                          key={sz}
+                          className={'btn' + (selected.size === sz ? ' is-on' : '')}
+                          aria-pressed={selected.size === sz}
+                          onClick={() =>
+                            setBlocks((all) =>
+                              all.map((x, idx) => (idx === openIdx ? { ...x, size: sz } : x)),
+                            )
+                          }
+                        >
+                          {sz === 'small' ? 'a third' : sz === 'medium' ? 'a half' : 'full width'}
+                        </button>
+                      ))}
+                    </span>
+                  </label>
+                  <label>
+                    <span className="muted">Who can see this</span>
+                    <select
+                      className="btn"
+                      value={selected.visibility}
+                      onChange={(e) =>
                         setBlocks((all) =>
-                          all.map((x, idx) => (idx === openIdx ? { ...x, size: sz } : x)),
+                          all.map((x, idx) =>
+                            idx === openIdx ? { ...x, visibility: e.target.value as Tier } : x,
+                          ),
                         )
                       }
                     >
-                      {sz === 'small' ? 'a third' : sz === 'medium' ? 'a half' : 'full width'}
-                    </button>
-                  ))}
-                </span>
-              </label>
-              <label>
-                <span className="muted">Who can see this</span>
-                <select
-                  className="btn"
-                  value={selected.visibility}
-                  onChange={(e) =>
-                    setBlocks((all) =>
-                      all.map((x, idx) =>
-                        idx === openIdx ? { ...x, visibility: e.target.value as Tier } : x,
-                      ),
-                    )
-                  }
-                >
-                  {(Object.keys(TIER_LABEL) as Tier[]).map((t) => (
-                    <option key={t} value={t}>
-                      {TIER_LABEL[t]}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <button className="btn btn-ghost" onClick={() => removeAt(openIdx)}>
-                Remove this block
-              </button>
-            </div>
+                      {(Object.keys(TIER_LABEL) as Tier[]).map((t) => (
+                        <option key={t} value={t}>
+                          {TIER_LABEL[t]}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <button className="btn btn-ghost" onClick={() => removeAt(openIdx)}>
+                    Remove this block
+                  </button>
+                </div>
+              </>
+            )}
           </div>,
           document.body,
         )}

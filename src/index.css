@@ -6520,7 +6520,17 @@ a.cz-msg-author:focus-visible {
   padding: 0.75rem;
   border: 1px solid var(--border);
   border-radius: 12px;
-  background: var(--surface, rgba(20, 20, 24, 0.96));
+  /**
+   * ⚠️ AN OPAQUE COLOUR, and this was a real bug rather than a preference. It said
+   * `var(--surface, …)`, and --surface is a GRADIENT of near-transparent whites — so the fallback
+   * never applied and the computed background was rgba(0,0,0,0). The panel was invisible, with
+   * the page showing straight through the settings, which is exactly what "overlapping other
+   * content looks terrible" describes. --bg is a colour, so the fallback chain works and there is
+   * something solid behind the text; the surface gradient goes on top for the same sheen every
+   * other panel has.
+   */
+  background-color: var(--bg, #0b0b0f);
+  background-image: var(--surface);
   position: fixed;
   z-index: 40;
   left: 1rem;
@@ -6532,18 +6542,72 @@ a.cz-msg-author:focus-visible {
   overscroll-behavior: contain;
   box-shadow: 0 18px 40px rgba(0, 0, 0, 0.4);
 }
+/* which edge it is anchored to, on a screen wide enough to have edges */
+.profile-inspector.is-right {
+  left: auto;
+  right: 1rem;
+}
+
+.profile-inspector-head {
+  position: sticky;
+  top: -0.75rem;
+  z-index: 1;
+  margin: -0.75rem -0.75rem 0;
+  padding: 0.75rem;
+  background-color: var(--bg, #0b0b0f);
+}
+.profile-inspector-side {
+  display: flex;
+  gap: 0.15rem;
+  margin-left: auto;
+}
+.profile-inspector-side .btn,
+.profile-inspector-pull {
+  padding: 0.05rem 0.35rem;
+  font-size: 0.75rem;
+}
+/* the pull is only meaningful where the panel is a tray */
+.profile-inspector-pull {
+  display: none;
+}
+
 @media (max-width: 900px) {
+  /**
+   * ⚠️ A TRAY, not a floating card. On a phone the panel is as wide as the page, so "floating"
+   * only means "covering" — and the useful question is not where it sits but whether it is in the
+   * way right now. Sliding it down to its header leaves the title and the pull, which is enough
+   * to know what you have open and to bring it back.
+   */
   .profile-inspector {
-    left: 0.5rem;
-    right: 0.5rem;
+    left: 0;
+    right: 0;
     top: auto;
-    bottom: 0.5rem;
+    bottom: 0;
     transform: none;
     width: auto;
-    /* ⚠️ short enough that the block you are editing is still visible above it, which is the
-       whole reason it moved */
-    max-height: 48vh;
+    max-height: 52vh;
+    border-radius: 14px 14px 0 0;
     padding-bottom: calc(0.75rem + env(safe-area-inset-bottom, 0px));
+    transition: max-height 0.18s ease;
+  }
+  /**
+   * ⚠️ COLLAPSED BY HEIGHT, not slid by transform. A transform would have been the obvious way
+   * and it did not take on this element — and rather than keep hunting for what was eating it, a
+   * height is the more robust mechanism anyway: it survives a reduced-motion setting stripping
+   * transforms, it cannot be captured by an ancestor, and the space genuinely goes away instead
+   * of the panel being moved off over content that is still underneath it.
+   *
+   * The header is sticky and stays, so what is left is a labelled bar you press to bring it back.
+   */
+  .profile-inspector.is-shut {
+    /* nothing but the header is rendered while shut — see ProfileBlocks. The height follows. */
+    padding-bottom: calc(0.35rem + env(safe-area-inset-bottom, 0px));
+  }
+  .profile-inspector-pull {
+    display: inline-flex;
+  }
+  .profile-inspector-side {
+    display: none;
   }
 }
 .profile-inspector-head {
