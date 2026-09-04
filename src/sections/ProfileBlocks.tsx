@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { getSupabaseClient } from '../finance/client'
+import { useTouchOnly } from '../ui/pointerKind'
 import { BANNER_STYLES, bannerBackground, type BannerStyle } from '../profile/look'
 import { SongBlock, VisualBlock } from '../profile/ProfileMusic'
 import { songFromConfig } from '../profile/songBlockConfig'
@@ -925,6 +926,8 @@ export function ProfileBlocksEditor({
    * scroll because it is not a gesture that lasts.
    */
   const [liftIdx, setLiftIdx] = useState<number | null>(null)
+  /* dragging is offered to a pointer and not to a finger — see the grip below */
+  const touch = useTouchOnly()
   /** the add-a-block palette, which is seven buttons you are mostly not pressing */
   const [adding, setAdding] = useState(false)
 
@@ -1164,6 +1167,15 @@ export function ProfileBlocksEditor({
           <div
             key={i}
             data-cell={i}
+            onDragOver={(e) => {
+              if (e.dataTransfer.types.includes('text/block')) e.preventDefault()
+            }}
+            onDrop={(e) => {
+              e.preventDefault()
+              const from = Number(e.dataTransfer.getData('text/block'))
+              if (Number.isInteger(from) && from !== i) moveTo(from, i)
+              setLiftIdx(null)
+            }}
             className={
               'profile-canvas-cell is-' +
               b.size +
@@ -1235,11 +1247,35 @@ export function ProfileBlocksEditor({
               </span>
             )}
             <span
-              className="profile-canvas-grip"
+              className={'profile-canvas-grip' + (liftIdx === i ? ' is-holding' : '')}
               role="button"
               tabIndex={0}
               aria-label={'Move ' + BLOCK_LABEL[b.block_type]}
-              title="Tap to pick this up, then tap where it should go"
+              /**
+               * ⚠️ BOTH WAYS, and neither is the pointer-drag that was here before.
+               *
+               * Tap to lift is the reliable one and the only one a finger gets. But the handle
+               * still LOOKS like something you drag, so people drag it — and when I replaced the
+               * mechanism without replacing the affordance, the honest report was "drag and drop
+               * doesn't work". HTML5 drag costs almost nothing here, is solid on a desktop, and
+               * never starts under a finger, so it restores the muscle memory without bringing
+               * back the flakiness that made pointer-dragging worth removing.
+               */
+              draggable={!touch}
+              onDragStart={(e) => {
+                e.dataTransfer.setData('text/block', String(i))
+                e.dataTransfer.effectAllowed = 'move'
+                setLiftIdx(i)
+                setOpenIdx(i)
+              }}
+              onDragEnd={() => setLiftIdx(null)}
+              title={
+                liftIdx === i
+                  ? 'Now tap where it should go'
+                  : touch
+                    ? 'Tap to pick this up, then tap where it should go'
+                    : 'Drag me, or tap to pick up and tap where it should go'
+              }
               onClick={(e) => {
                 e.stopPropagation()
                 setLiftIdx((cur) => (cur === i ? null : i))
@@ -1303,6 +1339,18 @@ export function ProfileBlocksEditor({
             Cancel
           </button>
         </div>
+      )}
+
+      {liftIdx != null && (
+        /* ⚠️ a mode needs saying out loud. Something is held, every other block is a place to put
+           it, and there is no way to tell that from the blocks alone. */
+        <p className="profile-lift-hint">
+          Holding <strong>{BLOCK_LABEL[blocks[liftIdx]?.block_type] ?? 'a block'}</strong> — tap
+          another block to swap them
+          <button className="btn btn-ghost" onClick={() => setLiftIdx(null)}>
+            Cancel
+          </button>
+        </p>
       )}
 
       {/**

@@ -116,11 +116,20 @@ export function PianoRoll({
   quantize,
   position,
   loopLen,
+  held,
   onClose,
 }: {
   layer: Layer
   bpm: number
   quantize: number
+  /**
+   * ⚠️ The notes your hands are on right now, so the editor answers "which row is that?".
+   *
+   * Finding a pitch in a grid of rows means counting from a labelled C, every time. The keyboard
+   * below already lights what you are holding; the roll is the same information in the same room
+   * and had no reason not to. It is a hint, not state — nothing here edits it.
+   */
+  held: number[]
   /** 0–1 through the LOOP, which may be longer than this take — see the playhead note */
   position: number
   loopLen: number
@@ -538,7 +547,12 @@ export function PianoRoll({
               one strip lower than the rows they label. Same height, same place, no cleverness. */}
           <div className="roll-ruler-pad" />
           {rows.map((m) => (
-            <div key={m} className={'roll-key' + (isBlack(m) ? ' is-black' : '')}>
+            <div
+              key={m}
+              className={
+                'roll-key' + (isBlack(m) ? ' is-black' : '') + (held.includes(m) ? ' is-held' : '')
+              }
+            >
               {m % 12 === 0 ? nameOf(m) : ''}
             </div>
           ))}
@@ -596,6 +610,18 @@ export function PianoRoll({
               />
             ))}
 
+            {/* ⚠️ behind the notes, never over them: this is a hint about where a pitch lives,
+                and a band painted on top would hide the very notes you are placing */}
+            {held.map((m) =>
+              m >= lo && m <= hi ? (
+                <div
+                  key={'h' + m}
+                  className="roll-held-row"
+                  style={{ top: (hi - m) * ROW_H, height: ROW_H - 1 }}
+                  aria-hidden
+                />
+              ) : null,
+            )}
             {shown.map((n, i) => (
               <div
                 key={i}

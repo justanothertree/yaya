@@ -1165,6 +1165,7 @@ export function InstrumentRoom() {
                     quantize={loop.quantize}
                     position={loop.position}
                     loopLen={loopLength()}
+                    held={held}
                     onClose={() => setEditing(null)}
                   />
                 </li>
