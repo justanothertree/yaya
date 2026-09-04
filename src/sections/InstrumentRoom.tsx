@@ -15,6 +15,13 @@ import {
 } from '../audio/synth'
 import { applyFx, captureFx, makeInstKits, type InstKit } from '../audio/instKit'
 import { KitBar } from '../ui/KitBar'
+import {
+  healthOn,
+  readHealth,
+  startHealth,
+  stopHealth,
+  type AudioHealth,
+} from '../audio/audioHealth'
 import { onMixerChange, setVolume, volume } from '../audio/mixer'
 import { PianoRoll } from './PianoRoll'
 import { toSong, songNotes, songToLayers } from '../audio/songFile'
@@ -211,6 +218,44 @@ function fxWord(fx: Fx): string {
   if (fx.vibrato > 0.02) bits.push('wobble')
   if (fx.glide > 0.02) bits.push('slide')
   return bits.length ? bits.join(' + ') : 'dry'
+}
+
+/**
+ * The audio health strip, when localStorage.audio_debug is '1'.
+ *
+ * ⚠️ It reports the TWO THINGS THAT SOUND THE SAME AND ARE NOT. Clipping shows as `clip` rising
+ * with peak pinned near 1; dropouts show as `late` rising with peak nowhere near it. Both were
+ * zero on the machine this was written on while the fault was audible on a phone, which is
+ * precisely why it has to run on the phone.
+ */
+function AudioHealthStrip() {
+  const [h, setH] = useState<AudioHealth | null>(null)
+  useEffect(() => {
+    if (!healthOn()) return
+    let alive = true
+    void startHealth().then((ok) => {
+      if (!ok || !alive) return
+      setH(readHealth())
+    })
+    const t = window.setInterval(() => {
+      if (alive) setH(readHealth())
+    }, 1000)
+    return () => {
+      alive = false
+      clearInterval(t)
+      stopHealth()
+    }
+  }, [])
+  if (!h) return null
+  const bad = h.dropped > 0 || h.clipped > 0
+  return (
+    <p className="muted inst-health" style={bad ? { color: '#f46b6b' } : undefined}>
+      buffer {h.bufferMs}ms ({h.bufferFrames}f @{Math.round(h.sampleRate / 1000)}k) · late{' '}
+      <strong>{h.dropped}</strong> · gaps <strong>{h.gaps}</strong> · peak {h.peak} · clip{' '}
+      <strong>{h.clipped}</strong>
+      {bad ? (h.clipped > 0 ? ' — CLIPPING' : ' — DROPOUTS') : ' — clean'}
+    </p>
+  )
 }
 
 export function InstrumentRoom() {
@@ -412,6 +457,7 @@ export function InstrumentRoom() {
 
   return (
     <section className="inst-wrap">
+      <AudioHealthStrip />
       <div className="inst-bar">
         <div className="fx-style-row inst-picks">
           {INSTRUMENTS.map(([id, icon, name]) => (
