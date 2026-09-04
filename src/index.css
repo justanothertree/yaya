@@ -2888,6 +2888,24 @@ section[id] {
   align-items: center;
   gap: 0.4rem;
   font-size: 0.85rem;
+  /* ⚠️ wraps, so the bar strip below can claim a whole line of its own */
+  flex-wrap: wrap;
+}
+/**
+ * ⚠️ THE TRACK GETS ITS OWN LINE, and that is a correctness fix rather than a tidy-up.
+ *
+ * It used to sit inline with the layer's other controls, so anything that changed width to its
+ * LEFT moved every tile sideways: the "all" button appearing the moment you arranged something,
+ * and the effects button, whose label is words — "dry" against "echo + room + slide". You would
+ * click a tile, the row would re-flow, and the tile you meant to click next had moved. Tiles you
+ * are aiming at must not depend on the width of anything else.
+ */
+.inst-arrange {
+  flex: 1 0 100%;
+  display: flex;
+  align-items: center;
+  gap: 0.15rem;
+  flex-wrap: wrap;
 }
 .inst-layers li.is-muted {
   opacity: 0.5;

@@ -284,9 +284,10 @@ export function PianoRoll({
    */
   const onRulerDown = (e: React.PointerEvent) => {
     const box = (e.currentTarget as HTMLElement).getBoundingClientRect()
-    const width = cols * cellW
-    if (width <= 0 || layer.len <= 0) return
-    const into = Math.max(0, Math.min(1, (e.clientX - box.left) / width)) * layer.len
+    // ⚠️ the rect's OWN width, not cols * cellW — the two differ the moment anything is scaled,
+    // and a fraction of the element is what a click along it actually means
+    if (box.width <= 0 || layer.len <= 0) return
+    const into = Math.max(0, Math.min(1, (e.clientX - box.left) / box.width)) * layer.len
     const lap = Math.floor((posRef.current % Math.max(loopLen, 1e-6)) / layer.len)
     seekTo(lap * layer.len + into)
   }
@@ -320,12 +321,23 @@ export function PianoRoll({
   }, [cols])
 
   // ── dragging ──────────────────────────────────────────────────────────────
+  /**
+   * ⚠️ THE GRID MAY BE SCALED. getBoundingClientRect reports SCREEN pixels, and cellW and
+   * ROW_H are CSS pixels — the same number only while nothing is transformed. On the canvas a
+   * window is scaled, so dividing a screen distance by an unscaled cell size put every note in
+   * the wrong column, further out the further you clicked from the top left.
+   *
+   * offsetWidth is the untransformed width, so the ratio between the two is the scale in force,
+   * whatever produced it.
+   */
   const cellFrom = (e: React.PointerEvent) => {
-    const box = gridRef.current?.getBoundingClientRect()
-    if (!box) return null
+    const el = gridRef.current
+    const box = el?.getBoundingClientRect()
+    if (!el || !box) return null
+    const scale = el.offsetWidth > 0 ? box.width / el.offsetWidth : 1
     return {
-      col: Math.floor((e.clientX - box.left) / cellW),
-      row: Math.floor((e.clientY - box.top) / ROW_H),
+      col: Math.floor((e.clientX - box.left) / (cellW * scale)),
+      row: Math.floor((e.clientY - box.top) / (ROW_H * scale)),
     }
   }
 

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from '
 import {
   INSTRUMENTS,
   allNotesOff,
+  stopLive,
   closeSynth,
   knob,
   onKnobChange,
@@ -504,7 +505,7 @@ export function InstrumentRoom() {
     // a key still down when the window loses focus never gets its keyup — that is the classic
     // stuck note, and it hangs until you press the same key again
     const blur = () => {
-      allNotesOff()
+      stopLive()
       setHeld([])
     }
     window.addEventListener('keydown', down)
@@ -539,7 +540,9 @@ export function InstrumentRoom() {
               className={'fx-style-btn' + (inst === id ? ' is-on' : '')}
               aria-pressed={inst === id}
               onClick={() => {
-                allNotesOff()
+                // ⚠️ stopLive, not allNotesOff: your held keys must let go of the old sound, but
+                // a loop playing underneath is not yours to interrupt
+                stopLive()
                 setHeld([])
                 setInst(id)
               }}
@@ -559,7 +562,7 @@ export function InstrumentRoom() {
           placeholder="Name this rig"
           capture={(name) => ({ name, inst, octave, scale, root, fx: captureFx() })}
           apply={(k: InstKit) => {
-            allNotesOff()
+            stopLive()
             setHeld([])
             setInst(k.inst)
             setOctave(k.octave)
@@ -681,7 +684,7 @@ export function InstrumentRoom() {
           <select
             value={scale}
             onChange={(e) => {
-              allNotesOff()
+              stopLive()
               setHeld([])
               setScale(e.target.value)
             }}
@@ -702,7 +705,7 @@ export function InstrumentRoom() {
             <select
               value={root}
               onChange={(e) => {
-                allNotesOff()
+                stopLive()
                 setHeld([])
                 setRoot(Number(e.target.value))
               }}
@@ -1035,11 +1038,14 @@ export function InstrumentRoom() {
                             : `Bar ${b + 1} plays part ${src + 1} of ${takeBars(l)} — tap to pick it up`
                       }
                     >
-                      {src == null ? '' : src + 1}
+                      {/* ⚠️ a dot rather than nothing: an empty cell you cannot see is a gap you
+                          cannot count, and the whole point of the row is knowing which slot you
+                          are looking at */}
+                      {src == null ? '·' : src + 1}
                     </button>
                   )
                 })}
-                {l.play && (
+                {(l.play || l.plan) && (
                   <button
                     className="btn inst-bar-all"
                     onClick={() => clearLayerBars(l.id)}

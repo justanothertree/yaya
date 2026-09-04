@@ -1577,6 +1577,28 @@ export function noteOff(id: string, when?: number) {
   voices.delete(id)
 }
 
+/**
+ * Silence only what the PLAYER is holding, and leave the sequencer alone.
+ *
+ * ⚠️ allNotesOff stops every voice there is, the looper's included. It was being called
+ * whenever you changed instrument, scale, key or rig, and whenever the window lost focus — so
+ * picking a different sound cut a bar out of a loop that had nothing to do with you. The reason
+ * to stop notes there is that YOUR held keys would otherwise hang in the old instrument; that
+ * argument does not reach a layer the sequencer is playing.
+ *
+ * Live notes are the ones this room's hands make: `k:` from the computer keyboard, `p:` from a
+ * pointer. A layer's are `L…` and a jam's are `jam:…`, and neither is ours to end.
+ */
+export function stopLive() {
+  const c = ctx
+  if (!c) return
+  for (const [id, v] of [...voices]) {
+    if (!id.startsWith('k:') && !id.startsWith('p:')) continue
+    v.stop(c.currentTime + SAFE_START, true)
+    voices.delete(id)
+  }
+}
+
 /** Panic — everything off. Worth having the moment a stuck note happens, which it will. */
 export function allNotesOff() {
   const c = ctx
