@@ -57,6 +57,15 @@ export type Layer = {
    * existing take, a plan is only consulted once somebody makes one, and until then nothing about
    * the scheduling changes.
    */
+  /**
+   * How loud this layer is against the others, 0 to 1.5, 1 being as recorded.
+   *
+   * ⚠️ Undefined means 1, so nothing that already exists changes. It rides on the part's own bus
+   * rather than scaling the notes, which means it applies to the tail of a note already sounding
+   * when you move the slider — scaling at note-on would leave whatever is ringing at its old
+   * level and only take effect on the next one.
+   */
+  gain?: number
   plan?: (number | null)[]
   /**
    * Which bars of the song this layer plays in — the arrangement.
@@ -371,7 +380,11 @@ function scheduleWindow(from: number, to: number) {
             if (at < from || at >= to) continue
             const id = `L${layer.id}:${Math.round(slot * 1000)}:${e.midi}`
             if (e.on) {
-              noteOn(id, layer.instrument, e.midi, at, { key: `L${layer.id}`, fx: layer.fx })
+              noteOn(id, layer.instrument, e.midi, at, {
+                key: `L${layer.id}`,
+                fx: layer.fx,
+                gain: layer.gain,
+              })
               noteStarted(layer.id, id)
             } else {
               noteOff(id, at)
@@ -459,7 +472,11 @@ function scheduleWindow(from: number, to: number) {
           const id = `L${layer.id}:${Math.round(sub * 1000)}:${e.midi}`
           // the layer is its own part, so its echo and reverb are its own too — see Layer.fx
           if (e.on) {
-            noteOn(id, layer.instrument, e.midi, at, { key: `L${layer.id}`, fx: layer.fx })
+            noteOn(id, layer.instrument, e.midi, at, {
+              key: `L${layer.id}`,
+              fx: layer.fx,
+              gain: layer.gain,
+            })
             noteStarted(layer.id, id)
           } else {
             noteOff(id, at)
@@ -1117,6 +1134,12 @@ export function clearLayerBars(id: string) {
   set({
     layers: state.layers.map((l) => (l.id === id ? { ...l, play: undefined, plan: undefined } : l)),
   })
+}
+
+/** How loud one layer is. Takes effect on whatever is already ringing, not just the next note. */
+export function setLayerGain(id: string, gain: number) {
+  const v = Math.max(0, Math.min(1.5, gain))
+  set({ layers: state.layers.map((l) => (l.id === id ? { ...l, gain: v } : l)) })
 }
 
 export function setLayerFx(id: string) {

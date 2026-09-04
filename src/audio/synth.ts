@@ -648,6 +648,8 @@ type Bus = {
   /** LFO depth for this part; voices connect it to their detune */
   vib: GainNode
   set(fx: Fx): void
+  /** how loud this whole part is, 0..1.5 — see Layer.gain */
+  level(v: number): void
   dispose(): void
   /** ctx time this bus last had a note, so eviction can leave ringing tails alone */
   used: number
@@ -900,6 +902,11 @@ function makeBus(c: AudioContext): Bus {
     in: input,
     vib,
     used: c.currentTime,
+    level(v: number) {
+      /* ⚠️ ramped like every other live control. Setting a gain outright while a note is
+         sounding is a step in the waveform, which is a click — the same lesson as the release. */
+      ramp(input.gain, Math.max(0, Math.min(1.5, v)))
+    },
     set(fx: Fx) {
       ramp(wet.gain, fx.echo * 0.55)
       echoConnect(fx.echo > 0.001)
@@ -936,7 +943,7 @@ function makeBus(c: AudioContext): Bus {
  * slider — so the cheap thing is to keep writing the values, which setTargetAtTime already makes
  * a no-op when they have not moved.
  */
-function busFor(c: AudioContext, part: string, fx: Fx): Bus {
+function busFor(c: AudioContext, part: string, fx: Fx, gain?: number): Bus {
   let b = buses.get(part)
   if (!b) {
     if (buses.size >= MAX_BUSES) evictBus(c)
@@ -945,6 +952,7 @@ function busFor(c: AudioContext, part: string, fx: Fx): Bus {
   }
   b.used = c.currentTime
   b.set(fx)
+  if (gain !== undefined) b.level(gain)
   return b
 }
 
@@ -1276,13 +1284,13 @@ export function noteOn(
   instrument: InstrumentId,
   midi: number,
   when?: number,
-  part?: { key: string; fx: Fx },
+  part?: { key: string; fx: Fx; gain?: number },
 ) {
   noteCounts.on++
   const c = ensure()
   resumeAudio()
   const at = Math.max(when ?? 0, c.currentTime + SAFE_START)
-  const bus = busFor(c, part?.key ?? LIVE_PART, part?.fx ?? fxSnapshot())
+  const bus = busFor(c, part?.key ?? LIVE_PART, part?.fx ?? fxSnapshot(), part?.gain)
 
   if (instrument === 'drums') {
     hitDrum(c, midi, at, bus)

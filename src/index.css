@@ -6500,14 +6500,51 @@ a.cz-msg-author:focus-visible {
   border: 1px dashed var(--border);
   border-radius: 12px;
 }
+/**
+ * ⚠️ IT FLOATS NOW, rather than sitting under the page.
+ *
+ * Underneath was chosen so that opening it could not push the grid around while you were
+ * arranging it — which is a real hazard and still is. But the cost was worse: the panel and the
+ * block it describes were never on screen together, so every change meant scrolling down to the
+ * controls, changing something you could no longer see, and scrolling back up to find out what
+ * happened. On a phone that is the entire interaction.
+ *
+ * Fixed to the viewport solves both. It cannot move the grid, because it is out of the flow, and
+ * it cannot leave the block behind, because it never scrolls away. Left on a wide screen so it
+ * sits beside the canvas rather than over it; along the bottom on a phone, where the reachable
+ * edge is the bottom one and there is no room beside anything.
+ */
 .profile-inspector {
   display: grid;
   gap: 0.6rem;
-  margin-top: 0.85rem;
   padding: 0.75rem;
   border: 1px solid var(--border);
   border-radius: 12px;
-  background: var(--b2, rgba(127, 127, 127, 0.08));
+  background: var(--surface, rgba(20, 20, 24, 0.96));
+  position: fixed;
+  z-index: 40;
+  left: 1rem;
+  top: 50%;
+  transform: translateY(-50%);
+  width: min(20rem, 32vw);
+  max-height: min(78vh, 44rem);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.4);
+}
+@media (max-width: 900px) {
+  .profile-inspector {
+    left: 0.5rem;
+    right: 0.5rem;
+    top: auto;
+    bottom: 0.5rem;
+    transform: none;
+    width: auto;
+    /* ⚠️ short enough that the block you are editing is still visible above it, which is the
+       whole reason it moved */
+    max-height: 48vh;
+    padding-bottom: calc(0.75rem + env(safe-area-inset-bottom, 0px));
+  }
 }
 .profile-inspector-head {
   display: flex;
@@ -6815,4 +6852,14 @@ a.cz-msg-author:focus-visible {
     min-width: 34px;
     min-height: 34px;
   }
+}
+
+.inst-layer-vol {
+  display: inline-flex;
+  align-items: center;
+}
+.inst-layer-vol input[type='range'] {
+  /* ⚠️ narrow on purpose. It sits in a row with six other controls and only has to be nudged;
+     a full-width slider here would push the rest of the row off a phone. */
+  width: 3.4rem;
 }

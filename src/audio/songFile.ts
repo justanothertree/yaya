@@ -48,6 +48,8 @@ export type SongLayer = {
   len: number
   fx: Fx
   muted: boolean
+  /** how loud this layer is, 0..1.5; absent means 1 */
+  gain?: number
   /** which bars of the song this layer plays in; absent means all of them */
   play?: boolean[]
   /**
@@ -90,6 +92,7 @@ export function toSong(
       len: l.len,
       fx: l.fx,
       muted: l.muted,
+      gain: l.gain,
       play: l.play,
       plan: l.plan,
     })),
@@ -174,6 +177,7 @@ function readLayer(v: unknown, budget: number): SongLayer | null {
     len,
     fx: readFx(o.fx),
     muted: o.muted === true,
+    gain: typeof o.gain === 'number' ? num(o.gain, 0, 1.5, 1) : undefined,
     play: readPlay(o.play),
     plan: readPlan(o.plan),
   }
@@ -272,6 +276,8 @@ export function packSong(song: Song): PackedSong {
       return {
         i: layer.instrument,
         p: layer.play ? mask : -1,
+        /* ⚠️ as hundredths, and only when it differs from 1 — an absent key is the common case */
+        v: layer.gain !== undefined ? Math.round(layer.gain * 100) : undefined,
         /* ⚠️ -1 for silence, so the whole arrangement is one array of small integers. Absent
            when nobody has arranged this layer, which is the common case and costs nothing. */
         q: layer.plan ? layer.plan.map((x) => (x == null ? -1 : x)) : undefined,
@@ -338,7 +344,9 @@ function readPacked(v: Record<string, unknown>): Song | null {
             typeof x === 'number' && Number.isFinite(x) && x >= 0 ? Math.round(x) : null,
           )
       : undefined
-    layers.push({ instrument: inst, events, len, fx, muted: o.m === 1, play, plan })
+    const gain =
+      typeof o.v === 'number' && Number.isFinite(o.v) ? num(o.v / 100, 0, 1.5, 1) : undefined
+    layers.push({ instrument: inst, events, len, fx, muted: o.m === 1, gain, play, plan })
   }
   if (!layers.length) return null
   return {

@@ -142,6 +142,16 @@ export function PianoRoll({
 
   const step = gridStep(bpm, quantize)
   const [drawLen, setDrawLen] = useState<number | null>(null)
+  /**
+   * ⚠️ HOLDING THE RIGHT BUTTON RUBS NOTES OUT, which is what a right button held down
+   * means in every editor that has one. A single right-click already deleted one note; needing
+   * to aim at each of twenty separately is the part that made clearing a passage tedious, and
+   * the gesture people reach for instead is exactly this.
+   *
+   * A ref rather than state: it is read inside pointer handlers that fire far faster than React
+   * re-renders, and nothing on screen depends on knowing about it except the notes that vanish.
+   */
+  const erasing = useRef(false)
   const metronome = useSyncExternalStore(
     subscribeLoop,
     () => loopState().metronome,
@@ -344,6 +354,11 @@ export function PianoRoll({
   const onNoteDown = (e: React.PointerEvent, i: number) => {
     e.stopPropagation()
     e.preventDefault()
+    if (e.button === 2 || (e.buttons & 2) !== 0) {
+      erasing.current = true
+      removeNote(notes[i])
+      return
+    }
     const n = notes[i]
     const box = (e.currentTarget as HTMLElement).getBoundingClientRect()
     const c = cellFrom(e)
@@ -366,7 +381,26 @@ export function PianoRoll({
     }
   }
 
+  /** Rub out whatever note is under the pointer, if there is one. */
+  const eraseAt = (e: React.PointerEvent) => {
+    const c = cellFrom(e)
+    if (!c) return
+    const midi = hi - c.row
+    const t = c.col * step
+    /* ⚠️ the note SPANNING this cell, not one starting in it. A long note is erased by touching
+       any part of it, which is what rubbing something out means — otherwise only its first cell
+       would work and the rest would look like a bug. */
+    const hit = notes.find(
+      (n) => n.midi === midi && t >= n.t - 1e-6 && t < n.t + Math.max(n.dur, step) - 1e-6,
+    )
+    if (hit) removeNote(hit)
+  }
+
   const onMove = (e: React.PointerEvent) => {
+    if (erasing.current) {
+      eraseAt(e)
+      return
+    }
     if (!drag) return
     const c = cellFrom(e)
     if (!c) return
@@ -382,12 +416,20 @@ export function PianoRoll({
 
   /** ⚠️ The ONLY place a drag writes anything. See the note on Drag. */
   const endDrag = () => {
+    erasing.current = false
     if (drag) commit(shown)
     setDrag(null)
   }
 
   /** Click an empty cell to put a note there. An occupied one is left alone. */
   const onGridDown = (e: React.PointerEvent) => {
+    /* ⚠️ button 2 is the right one; buttons is checked too, because a drag that STARTS on a note
+       and continues onto the grid arrives here with no fresh button press of its own */
+    if (e.button === 2 || (e.buttons & 2) !== 0) {
+      erasing.current = true
+      eraseAt(e)
+      return
+    }
     const c = cellFrom(e)
     if (!c) return
     const midi = hi - c.row
@@ -523,6 +565,7 @@ export function PianoRoll({
             className="roll-grid"
             style={{ width: cols * cellW, height: rows.length * ROW_H }}
             onPointerDown={onGridDown}
+            onPointerLeave={endDrag}
             onContextMenu={(e) => e.preventDefault()}
             onPointerMove={onMove}
             onPointerUp={endDrag}

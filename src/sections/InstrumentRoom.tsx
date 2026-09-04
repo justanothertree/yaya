@@ -48,6 +48,7 @@ import {
   loopState,
   removeLayer,
   setLayerFx,
+  setLayerGain,
   loopLength,
   captureLast,
   loadSong,
@@ -1104,6 +1105,21 @@ export function InstrumentRoom() {
                 ⬇
               </button>
 
+              {/* ⚠️ On the row, not behind a dialog. Balancing parts is done BY EAR, which means
+                  moving one while the others play — a slider you have to open something to reach
+                  is a slider you use once and then stop using. */}
+              <label className="inst-layer-vol" title="How loud this layer is">
+                <span className="sr-only">Layer volume</span>
+                <input
+                  type="range"
+                  min={0}
+                  max={1.5}
+                  step={0.05}
+                  value={l.gain ?? 1}
+                  onChange={(e) => setLayerGain(l.id, Number(e.target.value))}
+                  onKeyDown={(e) => e.stopPropagation()}
+                />
+              </label>
               <button
                 className="btn inst-layer-fx"
                 onClick={() => setLayerFx(l.id)}
