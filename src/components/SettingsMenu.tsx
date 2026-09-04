@@ -47,6 +47,7 @@ export function SettingsMenu({
   onAccount,
   onProfile,
   onAppearance,
+  onReportBug,
   onSignIn,
   onSignOut,
 }: {
@@ -76,6 +77,7 @@ export function SettingsMenu({
   /** opens their own profile page; absent until the username is known */
   /** opens the one dialog that holds colour, background, click and trail */
   onAppearance: () => void
+  onReportBug: () => void
   onProfile?: () => void
   onSignIn: () => void
   onSignOut: () => void
@@ -174,6 +176,19 @@ export function SettingsMenu({
             </button>
           )}
 
+          {/* ⚠️ on every page, because a bug you have to remember until you are somewhere else
+              gets reported as "something went weird once", if it gets reported at all */}
+          <button
+            className="nav-menu-row"
+            role="menuitem"
+            onClick={() => {
+              setOpen(false)
+              onReportBug()
+            }}
+          >
+            <span>🐞 Report a bug</span>
+            <span className="muted">›</span>
+          </button>
           {authed && onProfile && (
             <button
               className="nav-menu-row"

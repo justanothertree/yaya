@@ -15,6 +15,7 @@ import { installClickFx, setClickFxEnabled, setClickFxStyle, type FxStyle } from
 import { FX_STYLES } from './ui/fxStyles'
 import { applyCursorSkin, isCursorSkin, type CursorSkin } from './ui/cursorSkin'
 import { AppearanceDialog } from './components/AppearanceDialog'
+import { BugReport } from './components/BugReport'
 import { installMouseTrail, isTrailStyle, setTrailStyle, type TrailStyle } from './ui/mouseTrail'
 
 import { ShareStage } from './voice/ShareStage'
@@ -448,6 +449,7 @@ export default function App() {
    */
   useSyncExternalStore(homeStore.subscribe, () => homeStore.getState().doc)
   const [appearanceOpen, setAppearanceOpen] = useState(false)
+  const [bugOpen, setBugOpen] = useState(false)
 
   /**
    * Mouse trail — its own setting, alongside the click flair rather than inside it.
@@ -1614,6 +1616,8 @@ export default function App() {
       {/* One dialog for colour, background, click and trail. Rendered at app level rather than
           inside the cog: the cog CLOSES when it opens, and a dialog owned by a component that has
           just unmounted itself is a dialog that closes with it. */}
+      {/* reachable from every page, so a bug can be reported where it happened */}
+      <BugReport open={bugOpen} onClose={() => setBugOpen(false)} />
       {appearanceOpen && (
         <AppearanceDialog
           onClose={() => setAppearanceOpen(false)}
@@ -1827,6 +1831,7 @@ export default function App() {
               name={me.name}
               email={me.email}
               onAppearance={() => setAppearanceOpen(true)}
+              onReportBug={() => setBugOpen(true)}
               onAccount={() => goTo('account-settings')}
               onProfile={
                 me.username

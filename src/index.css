@@ -7230,3 +7230,28 @@ a.cz-msg-author:focus-visible {
   min-width: 4.2rem;
   text-align: center;
 }
+
+/* the bug reporter — see components/BugReport.tsx */
+.bug-card {
+  max-width: 30rem;
+  width: min(30rem, calc(100vw - 2rem));
+}
+.bug-text {
+  width: 100%;
+  box-sizing: border-box;
+  background: var(--bg);
+  color: inherit;
+  border: 1px solid var(--line, rgba(255, 255, 255, 0.18));
+  border-radius: 0.5rem;
+  padding: 0.5rem;
+  font: inherit;
+  resize: vertical;
+}
+.bug-ctx {
+  font-size: 0.75rem;
+  line-height: 1.4;
+}
+.bug-err {
+  font-size: 0.8rem;
+  color: #ff8a8a;
+}
