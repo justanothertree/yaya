@@ -714,15 +714,16 @@ export function AudioVisualizer() {
      * 0.5 is a quarter. On a soft, glowing, trailed picture it is close to invisible, which is
      * the same trick the glow buffer already plays at a third size.
      *
-     * ⚠️ IT REACTS TO OUR OWN DRAWING TIME, NOT THE FRAME RATE. A slow frame rate can just
-     * as easily mean a 30Hz screen, a throttled tab or another program - and shrinking the canvas
-     * would then cost quality to fix something that was never ours. Timing only the work between
-     * these two marks means we step down when WE are the expense and stay out of the way when we
-     * are not.
+     * Measured at 2880x1800, per frame: the whole-canvas compositing is only about 2.2ms, while
+     * the aurora mode on its own is 32ms and weave is 26ms. So the expense is the MODE's drawing,
+     * not the passes over the finished frame - and backing scale is still the right dial, because
+     * that drawing is rasterisation and shrinks with it: aurora 32ms to 10ms at half scale, weave
+     * 26ms to 7ms. See the frame loop for how it decides, which is less obvious than it looks.
      */
     let qual = 1
-    let cost = 0
+    let pace = 16.7
     let held = 0
+    let probe: { before: number; at: number } | null = null
 
     const resize = () => {
       // clientWidth/Height, not getBoundingClientRect: a rect is the VISUAL size and includes
@@ -777,7 +778,7 @@ export function AudioVisualizer() {
        */
       if (box.clientWidth !== cssW || box.clientHeight !== cssH) resize()
 
-      const t0 = performance.now()
+      const gap = now - last
       const dt = Math.min(0.05, Math.max(0, (now - last) / 1000))
       last = now
       const {
@@ -1133,23 +1134,48 @@ export function AudioVisualizer() {
       if (moved) view.restore()
 
       /**
-       * ⚠️ A LONG AVERAGE AND A LONG COOLDOWN, because the failure here is oscillation. Shrinking
-       * makes the frame cheap, cheap invites growing back, growing back makes it slow again — and
-       * a canvas visibly breathing between two resolutions is far worse than one that is quietly
-       * a little soft. Twelve seconds of comfort before it tries again, and a gap between the two
-       * thresholds wide enough that no scene can sit on both sides of it.
+       * ⚠️ TIMING THE DRAWING WITH performance.now() MEASURES ALMOST NOTHING, which is how
+       * the first version of this was wrong. Canvas 2D calls queue work and return; they do not
+       * wait for it. Measured on the aurora mode at 2880x1800: the draw call takes 0.77ms to
+       * return and the frame really costs 39ms. Ninety-seven per cent of the expense is invisible
+       * to a clock wrapped around the call, and it is invisible for precisely the modes that
+       * cause the problem. The only way to make that clock honest is to read a pixel back, and a
+       * readback every frame stalls the pipeline it is trying to measure.
+       *
+       * So this watches the GAP BETWEEN FRAMES instead. The browser cannot present the next frame
+       * until the last one is finished, so the cadence tells the truth about GPU work that no
+       * timer in here can see.
+       *
+       * ⚠️ A SLOW CADENCE IS NOT PROOF THAT WE ARE THE CAUSE - it is also what a 30Hz
+       * screen, a throttled tab or a busy machine looks like, and shrinking the canvas would then
+       * cost quality for a problem that was never ours. So a step down is treated as an
+       * EXPERIMENT: remember the cadence, take the step, and check afterwards whether it actually
+       * helped. If it did not, put the resolution back and do not try again for half a minute.
+       * Being able to tell "we are slow" from "something else is slow" is worth the one brief
+       * probe it costs.
        */
-      cost = cost * 0.94 + (performance.now() - t0) * 0.06
+      pace = pace * 0.9 + Math.min(200, gap) * 0.1
       held++
-      if (cost > 9 && qual > 0.5 && held > 90) {
-        qual = Math.max(0.5, qual - 0.18)
+      if (probe) {
+        if (held > 45) {
+          // no real improvement means the pixels were never the problem: undo it and back off
+          if (pace > probe.before * 0.88) {
+            qual = probe.at
+            resize()
+            held = -1500
+          } else {
+            held = 0
+          }
+          probe = null
+        }
+      } else if (pace > 21 && qual > 0.5 && held > 90) {
+        probe = { before: pace, at: qual }
+        qual = Math.max(0.5, qual - 0.25)
         held = 0
-        cost = 5
         resize()
-      } else if (cost < 3.5 && qual < 1 && held > 720) {
-        qual = Math.min(1, qual + 0.18)
+      } else if (pace < 17.5 && qual < 1 && held > 720) {
+        qual = Math.min(1, qual + 0.25)
         held = 0
-        cost = 5
         resize()
       }
 

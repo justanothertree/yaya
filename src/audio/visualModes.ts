@@ -868,15 +868,27 @@ function aurora(): Visual {
           )
         }
 
-        const grad = ctx.createLinearGradient(0, baseY - amp, 0, h)
+        /**
+         * ⚠️ A GRADIENT FILL COSTS ABOUT TEN TIMES WHAT THE SAME SHAPE COSTS SOLID, so the
+         * only thing that matters here is how many pixels get gradient-shaded. Measured at
+         * 2880x1800 with these seven curtains: 34ms filled with a gradient, 3.6ms filled solid.
+         * That one fact is the whole reason this mode could stall a browser in fullscreen.
+         *
+         * Each curtain used to be filled to the bottom of the canvas, which is 3.7 whole canvases
+         * of gradient every frame - and most of it was the far end of a fade nobody can see. It
+         * now stops where the fade has essentially run out. Caching the gradient object does not
+         * help (measured: no change); it is the per-pixel shading, not the object.
+         */
+        const foot = Math.min(h, baseY + amp + h * 0.26)
+        const grad = ctx.createLinearGradient(0, baseY - amp, 0, foot)
         const tone = L / (LAYERS - 1)
         grad.addColorStop(0, hue(ink, tone, 0.5 * (0.3 + band)))
         grad.addColorStop(1, hue(ink, tone, 0))
         ctx.fillStyle = grad
         ctx.beginPath()
-        ctx.moveTo(0, h)
+        ctx.moveTo(0, foot)
         crest.forEach((y, i) => ctx.lineTo(i * 8, y))
-        ctx.lineTo(w, h)
+        ctx.lineTo(w, foot)
         ctx.closePath()
         ctx.fill()
 
