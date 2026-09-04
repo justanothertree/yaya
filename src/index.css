@@ -7190,3 +7190,20 @@ a.cz-msg-author:focus-visible {
 .paint-onion input[type='range'] {
   width: 4.5rem;
 }
+
+/* the art mode's drawing picker — see AudioVisualizer */
+.viz-art {
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+}
+.viz-art-pick {
+  background: var(--bg);
+  color: inherit;
+  border: 1px solid var(--line, rgba(255, 255, 255, 0.18));
+  border-radius: 0.5rem;
+  padding: 0.25rem 0.4rem;
+  font: inherit;
+  font-size: 0.82rem;
+  max-width: 12rem;
+}

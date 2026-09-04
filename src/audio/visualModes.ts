@@ -1,5 +1,6 @@
 import type { Features } from './audioFeatures'
 import { sample, type RGB } from './palettes'
+import type { Sprite } from './artSprite'
 
 /**
  * What the sound LOOKS like — a gallery, not a list.
@@ -51,6 +52,7 @@ export type VisualId =
   | 'bounce'
   | 'sun'
   | 'stack'
+  | 'art'
 
 /** id, icon, label, and how much of the previous frame lingers by default (0 = none, 1 = all). */
 export const VISUALS: Array<[VisualId, string, string, number]> = [
@@ -85,6 +87,7 @@ export const VISUALS: Array<[VisualId, string, string, number]> = [
   ['bounce', '🏐', 'Bounce', 0.82],
   ['sun', '☀️', 'Sun', 0.35],
   ['stack', '📚', 'Stack', 0],
+  ['art', '🎨', 'Your art', 0.55],
 ]
 
 export type Ink = {
@@ -158,7 +161,18 @@ export type Frame = {
   /** the mouse, for modes that have somewhere to put it */
   p: Pointer
   ink: Ink
+  /** a drawing of yours, already rasterised — only the `art` mode looks at it */
+  art?: Sprite | null
+  /** how the art mode arranges it */
+  artStyle?: ArtStyle
 }
+
+export type ArtStyle = 'swarm' | 'totem' | 'bars'
+export const ART_STYLES: Array<[ArtStyle, string]> = [
+  ['swarm', 'Swarm'],
+  ['totem', 'Totem'],
+  ['bars', 'Bars'],
+]
 
 /** A mode's centre: the pointer when it is over the canvas, the middle when it is not. */
 const centre = (p: Pointer, w: number, h: number): [number, number] =>
@@ -899,6 +913,138 @@ function aurora(): Visual {
         ctx.strokeStyle = hue(ink, Math.min(1, tone + 0.25), 0.35 + band * 0.65)
         ctx.stroke()
       }
+    },
+  }
+}
+
+/**
+ * Your own drawing, stamped to the music.
+ *
+ * ⚠️ THE PAINT ROOM IS THE SHAPE EDITOR. There is no shape picker here and there should not
+ * be one: a drawing is already a shape, already stored in fractions so it scales to any canvas,
+ * already has a gallery to choose from, and since the frame editor it can already be a loop. The
+ * only new idea needed was to rasterise it once — see artSprite.
+ *
+ * ⚠️ THREE ARRANGEMENTS, ONE MODE, because the expensive part is identical for all of them
+ * and only the placement differs. Splitting them into three entries would have put the same
+ * baking, the same frame stepping and the same drawing-picker in three places, and made choosing
+ * between them a trip through a grid of thirty-odd modes rather than a switch sitting next to
+ * the picture you chose.
+ */
+function art(): Visual {
+  /** the swarm's population; ordinary objects because there are at most a few dozen */
+  type Mote = {
+    x: number
+    y: number
+    vx: number
+    vy: number
+    life: number
+    turn: number
+    n: number
+  }
+  let motes: Mote[] = []
+  let spin = 0
+  let cell = 0
+  let sinceStep = 0
+  return {
+    init() {
+      motes = []
+      spin = 0
+      cell = 0
+    },
+    draw({ ctx, w, h, dt, spec, bins, f, p, ink, art: sprite, artStyle }) {
+      if (!sprite || !sprite.cells.length) {
+        // nothing chosen yet: say so rather than drawing an empty canvas
+        ctx.fillStyle = hue(ink, 0.6, 0.5)
+        ctx.font = `${Math.round(Math.min(w, h) * 0.045)}px system-ui, sans-serif`
+        ctx.textAlign = 'center'
+        ctx.fillText('Pick one of your drawings', w / 2, h / 2)
+        ctx.textAlign = 'start'
+        return
+      }
+      const cells = sprite.cells
+      const many = cells.length > 1
+
+      /**
+       * ⚠️ FRAMES ADVANCE ON THE BEAT when there is more than one, rather than on a timer.
+       * The drawing already carries its own fps for a page, but here it has music to belong to,
+       * and a four-frame loop stepping with the drums is the entire reason to bring an animation
+       * into a visualiser. A quiet passage simply holds the pose.
+       */
+      sinceStep += dt
+      if (many && (f.beat || sinceStep > 0.5)) {
+        cell = (cell + 1) % cells.length
+        sinceStep = 0
+      }
+      const now = cells[cell]
+      spin += dt * (0.2 + f.level * 0.8)
+
+      const style = artStyle ?? 'swarm'
+
+      if (style === 'totem') {
+        const base = Math.min(w, h) * 0.55 * (1 + f.level * 0.35)
+        const [cx, cy] = centre(p, w, h)
+        ctx.save()
+        ctx.translate(cx, cy)
+        ctx.rotate(Math.sin(spin * 0.4) * 0.12)
+        ctx.globalAlpha = 0.35 + f.level * 0.65
+        ctx.drawImage(now, -base / 2, (-base * sprite.ratio) / 2, base, base * sprite.ratio)
+        ctx.restore()
+        return
+      }
+
+      if (style === 'bars') {
+        const N = 14
+        const cw = w / N
+        for (let i = 0; i < N; i++) {
+          const band = at(spec, bins, 0.02 + (i / N) * 0.6)
+          const size = cw * (0.8 + band * 1.9)
+          ctx.save()
+          ctx.globalAlpha = 0.25 + band * 0.75
+          ctx.translate(cw * (i + 0.5), h - size * sprite.ratio * 0.6)
+          // ⚠️ a different cell per column, so an animation reads as a wave across the row
+          const c = many ? cells[(cell + i) % cells.length] : now
+          ctx.drawImage(c, -size / 2, -size * sprite.ratio * 0.5, size, size * sprite.ratio)
+          ctx.restore()
+        }
+        return
+      }
+
+      // ── swarm ──────────────────────────────────────────────────────────────
+      if (f.beat && motes.length < 60) {
+        const born = 1 + Math.round(f.beatStrength * 3)
+        const [cx, cy] = centre(p, w, h)
+        for (let i = 0; i < born; i++) {
+          const a = Math.random() * Math.PI * 2
+          const speed = Math.min(w, h) * (0.08 + f.beatStrength * 0.3)
+          motes.push({
+            x: cx,
+            y: cy,
+            vx: Math.cos(a) * speed,
+            vy: Math.sin(a) * speed,
+            life: 1,
+            turn: (Math.random() - 0.5) * 2,
+            n: Math.floor(Math.random() * cells.length),
+          })
+        }
+      }
+      const size = Math.min(w, h) * (0.09 + f.level * 0.06)
+      for (const m of motes) {
+        m.x += m.vx * dt
+        m.y += m.vy * dt
+        m.vx *= 0.994
+        m.vy *= 0.994
+        m.life -= dt * 0.55
+        ctx.save()
+        ctx.globalAlpha = Math.max(0, m.life) * (0.4 + f.level * 0.6)
+        ctx.translate(m.x, m.y)
+        ctx.rotate(m.turn * (1 - m.life) * 2)
+        const grow = size * (0.6 + (1 - m.life) * 0.8)
+        const c = many ? cells[(m.n + cell) % cells.length] : now
+        ctx.drawImage(c, -grow / 2, (-grow * sprite.ratio) / 2, grow, grow * sprite.ratio)
+        ctx.restore()
+      }
+      motes = motes.filter((m) => m.life > 0)
     },
   }
 }
@@ -1952,6 +2098,7 @@ const MAKERS: Record<VisualId, () => Visual> = {
   strings,
   petals,
   aurora,
+  art,
   orbit,
   constellation,
   cells,

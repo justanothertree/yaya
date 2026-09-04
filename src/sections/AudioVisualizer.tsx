@@ -17,6 +17,8 @@ import { localMicOn, monitorOn, setMonitor, startLocalMic, stopLocalMic } from '
 import { playCallSound } from '../voice/ringtone'
 import {
   VISUALS,
+  ART_STYLES,
+  type ArtStyle,
   defaultTrail,
   makeVisual,
   ownsItsBuffer,
@@ -26,6 +28,8 @@ import {
 import { makeFeatureReader } from '../audio/audioFeatures'
 import { PALETTES, paletteById } from '../audio/palettes'
 import { PATHS, pathPoint, type PathId } from '../audio/autoPath'
+import { gallery, subscribeGallery } from '../draw/gallery'
+import { bakeSize, bakeSprite, type Sprite } from '../audio/artSprite'
 import { useSharedWindow } from '../party/useSharedWindow'
 import { motionReduced, onMotionChange } from '../ui/motion'
 import { InCanvasWindow } from '../circuit/ui/canvasContext'
@@ -86,6 +90,8 @@ const PATH_KEY = 'viz_path_v1'
 const PATHSPEED_KEY = 'viz_pathspeed_v1'
 const BLOOM_KEY = 'viz_bloom_v1'
 const BRIGHT_KEY = 'viz_bright_v1'
+const ART_KEY = 'viz_art_v1'
+const ARTSTYLE_KEY = 'viz_artstyle_v1'
 const PUNCH_KEY = 'viz_punch_v1'
 const ECHO_KEY = 'viz_echo_v1'
 const TRAIL_KEY = 'viz_trail_v1'
@@ -256,6 +262,34 @@ export function AudioVisualizer() {
    * back". Stays hidden at full resolution, which is where it sits in a window.
    */
   const [renderQ, setRenderQ] = useState(1)
+
+  /**
+   * ⚠️ WHICH OF YOUR DRAWINGS, and how it is arranged. Only the `art` mode reads either.
+   *
+   * The drawing is chosen by id rather than copied in, so editing it in the paint room and
+   * coming back shows the new version instead of a stale snapshot — and nothing here has to own
+   * a second copy of somebody's picture.
+   */
+  const [artId, setArtId] = useState<string>(() => {
+    try {
+      return localStorage.getItem(ART_KEY) ?? ''
+    } catch {
+      return ''
+    }
+  })
+  const [artStyle, setArtStyle] = useState<ArtStyle>(() => {
+    try {
+      const v = localStorage.getItem(ARTSTYLE_KEY)
+      return v === 'totem' || v === 'bars' ? v : 'swarm'
+    } catch {
+      return 'swarm'
+    }
+  })
+  const art = useSyncExternalStore(subscribeGallery, gallery, gallery)
+  const chosenArt = art.find((a) => a.id === artId) ?? null
+  /* ⚠️ a ref, so choosing a different drawing does not restart the whole render effect */
+  const artRef = useRef(chosenArt)
+  artRef.current = chosenArt
   const [punch, setPunch] = useState(() => storedNumber(PUNCH_KEY, 0, 1) ?? 0)
   const [echo, setEcho] = useState(() => storedNumber(ECHO_KEY, 0, 1) ?? 0)
   const [tab, setTab] = useState<VizTab>(() => readStored(TAB_KEY, TAB_IDS, 'modes'))
@@ -406,6 +440,7 @@ export function AudioVisualizer() {
     bright,
     punch,
     echo,
+    artStyle,
     spin,
     anchor,
     shake,
@@ -420,6 +455,7 @@ export function AudioVisualizer() {
     bright,
     punch,
     echo,
+    artStyle,
     spin,
     anchor,
     shake,
@@ -467,6 +503,8 @@ export function AudioVisualizer() {
       localStorage.setItem(TAB_KEY, tab)
       localStorage.setItem(BLOOM_KEY, String(bloom))
       localStorage.setItem(BRIGHT_KEY, String(bright))
+      localStorage.setItem(ART_KEY, artId)
+      localStorage.setItem(ARTSTYLE_KEY, artStyle)
       localStorage.setItem(PUNCH_KEY, String(punch))
       localStorage.setItem(ECHO_KEY, String(echo))
       localStorage.setItem(TRAIL_KEY, String(trail))
@@ -495,6 +533,8 @@ export function AudioVisualizer() {
     bright,
     punch,
     echo,
+    artId,
+    artStyle,
     tab,
     panel,
   ])
@@ -712,6 +752,30 @@ export function AudioVisualizer() {
     let ink = readInk()
 
     /**
+     * ⚠️ BAKED HERE, AND ONLY WHEN IT HAS TO BE. Rasterising a drawing is real work, so it is
+     * done when the picture changes or when the canvas has grown enough that the old bake would
+     * show — not every frame, and not on every resize nudge. `bakedAt` remembers the size it was
+     * made for so a window being dragged does not rebuild it continuously.
+     */
+    let sprite: Sprite | null = null
+    let bakedFor = ''
+    let bakedAt = 0
+    const freshenSprite = () => {
+      const want = bakeSize(w, h)
+      const drawing = artRef.current
+      if (!drawing) {
+        sprite = null
+        bakedFor = ''
+        return
+      }
+      const same = bakedFor === drawing.id && Math.abs(want - bakedAt) / Math.max(1, bakedAt) < 0.25
+      if (same) return
+      sprite = bakeSprite(drawing.art, want)
+      bakedFor = drawing.id
+      bakedAt = want
+    }
+
+    /**
      * ⚠️ HOW MANY PIXELS WE ARE ALLOWED TO DRAW, lowered when the drawing cannot keep up.
      *
      * Fullscreen on a retina laptop is 2880x1800, and a frame is not one pass over it. Trail
@@ -768,6 +832,7 @@ export function AudioVisualizer() {
       view.setTransform(dpr, 0, 0, dpr, 0, 0)
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
       ink = readInk()
+      freshenSprite()
       visual.init(w, h)
     }
 
@@ -807,6 +872,8 @@ export function AudioVisualizer() {
       } = dials.current
       // one assignment a frame, rather than rebuilding ink: the modes read it through hue()
       ink.lift = bri
+      // cheap: returns immediately unless the chosen drawing actually changed
+      freshenSprite()
       const all = src === ALL
       const bins = Math.min(spec.length, all ? binCountAll() : binCount(src))
       const waveN = Math.min(wav.length, all ? fftSizeAll() : fftSize(src))
@@ -1002,6 +1069,8 @@ export function AudioVisualizer() {
         f,
         p: seen,
         ink,
+        art: sprite,
+        artStyle: dials.current.artStyle,
       })
 
       if (turning) ctx.restore()
@@ -1563,6 +1632,48 @@ export function AudioVisualizer() {
                     <span className="fx-style-label">{label}</span>
                   </button>
                 ))}
+              </div>
+            )}
+            {/**
+             * ⚠️ Right under the grid and only when Your art is chosen, because these settings
+             * are meaningless for the other thirty modes and hiding them elsewhere would mean
+             * picking a mode that draws a "pick a drawing" message with no drawing picker in
+             * sight. A mode that needs an argument should ask for it where it was chosen.
+             */}
+            {tab === 'modes' && mode === 'art' && (
+              <div className="viz-row viz-art" role="group" aria-label="Your art">
+                {art.length === 0 ? (
+                  <span className="muted">
+                    Nothing in your gallery yet — draw something in Paint and press Keep.
+                  </span>
+                ) : (
+                  <>
+                    <span className="muted">Drawing</span>
+                    <select
+                      className="viz-art-pick"
+                      value={artId}
+                      onChange={(e) => setArtId(e.target.value)}
+                      aria-label="Which drawing"
+                    >
+                      <option value="">Choose one…</option>
+                      {art.map((a) => (
+                        <option key={a.id} value={a.id}>
+                          {a.name}
+                        </option>
+                      ))}
+                    </select>
+                    {ART_STYLES.map(([id, label]) => (
+                      <button
+                        key={id}
+                        className={'btn' + (artStyle === id ? ' is-on' : '')}
+                        aria-pressed={artStyle === id}
+                        onClick={() => setArtStyle(id)}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </>
+                )}
               </div>
             )}
             {tab === 'sound' && (
