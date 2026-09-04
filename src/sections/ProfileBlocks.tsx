@@ -8,7 +8,7 @@ import { songFromConfig, songsFromConfig } from '../profile/songBlockConfig'
 import { packSong } from '../audio/songFile'
 import { ArtBlock } from '../profile/ProfileArt'
 import { gallery, subscribeGallery, type Art } from '../draw/gallery'
-import { packDrawing, readDrawing } from '../draw/strokes'
+import { frameCount, packDrawing, readDrawing } from '../draw/strokes'
 import { library, subscribeLibrary, type LibraryItem } from '../audio/library'
 import { VISUALS } from '../audio/visualModes'
 import { PALETTES } from '../audio/palettes'
@@ -758,6 +758,29 @@ function ArtPicker({
         />
         <span className="muted">Shuffle through them</span>
       </label>
+      {/**
+       * ⚠️ Only offered when one of the chosen drawings actually HAS frames. A switch for
+       * "play the animation" on a page of still pictures is a control that does nothing, and a
+       * control that does nothing is worse than one that is missing — it invites you to go
+       * looking for the animation you were promised.
+       *
+       * Defaults ON, unlike the song block's autoplay, because motion is not sound: it does not
+       * interrupt anything, it is the point of a drawing that has frames, and a visitor who does
+       * not want it has already said so through prefers-reduced-motion, which ArtBlock obeys.
+       */}
+      {chosen.some((a) => {
+        const d = readDrawing(a)
+        return d ? frameCount(d) > 1 : false
+      }) && (
+        <label className="inst-pick" style={{ display: 'flex', gap: '0.4rem' }}>
+          <input
+            type="checkbox"
+            checked={value.autoplay !== false}
+            onChange={(e) => onChange({ ...value, autoplay: e.target.checked ? undefined : false })}
+          />
+          <span className="muted">Play the animation</span>
+        </label>
+      )}
       <span className="muted" style={{ fontSize: '0.75rem' }}>
         {chosen.length} chosen{' '}
         {used > CONFIG_LIMIT
