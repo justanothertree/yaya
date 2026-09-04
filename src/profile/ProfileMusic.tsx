@@ -1,4 +1,4 @@
-import { useEffect, useRef, useSyncExternalStore } from 'react'
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { songNotes, type Song } from '../audio/songFile'
 import { sharedCtx } from '../audio/context'
 import {
@@ -6,9 +6,9 @@ import {
   songLength,
   songPlayerState,
   songPosition,
+  playSong,
   stopSong,
   subscribeSongPlayer,
-  toggleSong,
 } from '../audio/songPlayer'
 import { makeVisual, defaultTrail, VISUALS, type Ink, type VisualId } from '../audio/visualModes'
 import { makeFeatureReader } from '../audio/audioFeatures'
@@ -100,15 +100,20 @@ function drawSongMap(
 
 export function SongBlock({
   id,
-  song,
+  songs,
   autoplay,
 }: {
   id: string
-  song: Song
-  /** start this one as the page opens, if the browser will allow it — see below */
+  /** one song is a loop; several is a playlist — see the note on endOfPass in songPlayer */
+  songs: Song[]
+  /** start as the page opens, if the browser will allow it — see below */
   autoplay?: boolean
 }) {
   const playing = useSyncExternalStore(subscribeSongPlayer, songPlayerState, songPlayerState)
+  const [track, setTrack] = useState(0)
+  const list = songs.length ? songs : []
+  const song = list[Math.min(track, Math.max(0, list.length - 1))]
+  const many = list.length > 1
   const isMe = playing.playing === id
   const bar = useRef<HTMLDivElement>(null)
   const cv = useRef<HTMLCanvasElement>(null)
@@ -132,13 +137,32 @@ export function SongBlock({
    * to start the song again, which restarts it — the block re-renders whenever the player's state
    * changes, which is to say whenever it starts.
    */
+  /**
+   * ⚠️ THE HANDOVER IS RECREATED EACH TIME rather than a loop set up once. Each song is played
+   * for a single pass and hands to the next when it ends, so "what plays after this" is decided
+   * at the moment it is needed — which is the only way the answer can still be right after
+   * somebody has pressed a different track halfway through.
+   *
+   * A single song keeps looping, because that is what one song on a page has always done.
+   */
+  const startAt = (n: number) => {
+    const next = list[n]
+    if (!next) return
+    setTrack(n)
+    if (!many) {
+      playSong(id, next)
+      return
+    }
+    playSong(id, next, () => startAt((n + 1) % list.length))
+  }
+
   const armed = useRef(false)
   useEffect(() => {
     if (!autoplay || armed.current) return
     armed.current = true
     const go = () => {
       if (songPlayerState().playing) return
-      toggleSong(id, song)
+      startAt(0)
     }
     if (sharedCtx().state === 'running') {
       go()
@@ -155,7 +179,8 @@ export function SongBlock({
       window.removeEventListener('pointerdown', once)
       window.removeEventListener('keydown', once)
     }
-  }, [autoplay, id, song])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoplay, id])
 
   /* the map is drawn when the song or the width changes, never per frame */
   useEffect(() => {
@@ -217,16 +242,18 @@ export function SongBlock({
     if (!box || box.width < 1) return
     // ⚠️ the rect's own width, so a scaled canvas window still scrubs where you pressed
     const f = Math.max(0, Math.min(1, (e.clientX - box.left) / box.width))
-    if (!isMe) toggleSong(id, song)
+    if (!isMe) startAt(track)
     seekSong(f * songLength(song))
   }
+
+  if (!song) return null
 
   return (
     <div className="card profile-block profile-song">
       <div className="profile-song-head">
         <button
           className={'btn profile-song-play' + (isMe ? ' is-on' : '')}
-          onClick={() => toggleSong(id, song)}
+          onClick={() => (isMe ? stopSong() : startAt(track))}
           aria-pressed={isMe}
           title={isMe ? 'Stop' : 'Play this'}
         >
@@ -247,7 +274,8 @@ export function SongBlock({
         onKeyDown={(e) => {
           if (e.key === 'Enter' || e.key === ' ') {
             e.preventDefault()
-            toggleSong(id, song)
+            if (isMe) stopSong()
+            else startAt(track)
           }
         }}
       >
@@ -255,7 +283,29 @@ export function SongBlock({
         <span ref={head} className="profile-song-head-line" aria-hidden />
       </div>
 
+      {many && (
+        /* ⚠️ the list is the block's point when there is one, so it sits above the small print
+           rather than behind a control — and the playing track is marked, not merely selected */
+        <ol className="profile-song-list">
+          {list.map((t, n) => (
+            <li key={n}>
+              <button
+                className={'profile-song-track' + (n === track ? ' is-on' : '')}
+                aria-current={n === track ? 'true' : undefined}
+                onClick={() => startAt(n)}
+              >
+                <span className="profile-song-tracknum muted">
+                  {isMe && n === track ? '▸' : n + 1}
+                </span>
+                <span className="profile-song-trackname">{t.name}</span>
+              </button>
+            </li>
+          ))}
+        </ol>
+      )}
+
       <span className="muted profile-song-meta">
+        {many ? `${list.length} tracks · ` : ''}
         {song.layers.length} layer{song.layers.length === 1 ? '' : 's'} · {songNotes(song)} notes ·{' '}
         {song.bpm}bpm · played by your browser, not streamed
       </span>

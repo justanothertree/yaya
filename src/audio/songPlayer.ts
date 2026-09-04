@@ -52,6 +52,13 @@ export function subscribeSongPlayer(fn: () => void) {
 }
 
 let timer = 0
+/**
+ * ⚠️ Set only for a PLAYLIST. One song on its own keeps looping, which is what a single song on a
+ * page has always done and what a loop taken from the looper is for. Several songs mean each is
+ * played once and the next follows — the difference between "this is my loop" and "this is my
+ * music", and the count is the only signal needed to tell them apart.
+ */
+let endOfPass: (() => void) | null = null
 let origin = 0
 let scheduledTo = 0
 let current: Song | null = null
@@ -70,6 +77,15 @@ function tick() {
   const now = c.currentTime
   const len = (song.bars * BEATS_PER_BAR * 60) / song.bpm
   if (len <= 0) return
+
+  /* one pass is up and somebody is waiting for it — hand over before scheduling any more */
+  if (endOfPass && now - origin >= len) {
+    const go = endOfPass
+    endOfPass = null
+    stopSong()
+    go()
+    return
+  }
 
   const target = now + LOOKAHEAD
   if (scheduledTo < now) scheduledTo = now
@@ -149,6 +165,7 @@ export function seekSong(seconds: number) {
 
 /** Stop whatever is playing. Safe to call when nothing is. */
 export function stopSong() {
+  endOfPass = null
   if (timer) window.clearInterval(timer)
   timer = 0
   current = null
@@ -163,7 +180,7 @@ export function stopSong() {
  * second play button meant, and on a profile with three of them it would be a mess nobody could
  * untangle without reloading.
  */
-export function playSong(id: string, song: Song) {
+export function playSong(id: string, song: Song, onEnd?: () => void) {
   stopSong()
   resumeAudio()
   const c = sharedCtx()
@@ -171,6 +188,7 @@ export function playSong(id: string, song: Song) {
   token = `${Date.now().toString(36)}`
   origin = c.currentTime + 0.08
   scheduledTo = origin
+  endOfPass = onEnd ?? null
   set({ playing: id })
   tick()
   timer = window.setInterval(tick, TICK_MS)

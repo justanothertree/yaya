@@ -4,7 +4,7 @@ import { getSupabaseClient } from '../finance/client'
 import { useTouchOnly } from '../ui/pointerKind'
 import { BANNER_STYLES, bannerBackground, type BannerStyle } from '../profile/look'
 import { SongBlock, VisualBlock } from '../profile/ProfileMusic'
-import { songFromConfig } from '../profile/songBlockConfig'
+import { songFromConfig, songsFromConfig } from '../profile/songBlockConfig'
 import { packSong } from '../audio/songFile'
 import { ArtBlock } from '../profile/ProfileArt'
 import { gallery, subscribeGallery, type Art } from '../draw/gallery'
@@ -232,12 +232,12 @@ function BlockView({
      * is the last place to argue with a visitor about somebody else's data.
      */
     case 'song': {
-      const song = songFromConfig(cfg)
-      if (!song) return null
+      const songs = songsFromConfig(cfg)
+      if (!songs.length) return null
       return (
         <SongBlock
-          id={block.id ?? `song-${song.name}`}
-          song={song}
+          id={block.id ?? `song-${songs[0].name}`}
+          songs={songs}
           autoplay={cfg.autoplay === true}
         />
       )
@@ -604,7 +604,6 @@ function SongPicker({
   onChange: (config: Record<string, unknown>) => void
 }) {
   const items = useSyncExternalStore(subscribeLibrary, library, library)
-  const current = songFromConfig(value)
   /**
    * ⚠️ Say so BEFORE the save fails.
    *
@@ -613,6 +612,13 @@ function SongPicker({
    * Checking here means the answer arrives while you are choosing, not after you press Done.
    */
   const tooBig = configSize(value) > CONFIG_LIMIT
+  /* whatever is already in the block, as one list — a block written before playlists holds its
+     single song under `song`, so the two are folded together here and written back as `songs` */
+  const queue = [
+    ...(value.song ? [value.song] : []),
+    ...(Array.isArray(value.songs) ? value.songs : []),
+  ]
+  const picked = songsFromConfig(value).map((x) => x.name)
   if (!items.length)
     return (
       <p className="muted" style={{ margin: 0, fontSize: '0.85rem' }}>
@@ -622,18 +628,44 @@ function SongPicker({
     )
   return (
     <label className="inst-pick" style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
-      <span className="muted">Song</span>
+      <span className="muted">Songs</span>
+      {/**
+       * ⚠️ ADD rather than replace. One song in a block is a loop and several are a playlist,
+       * and the only difference in the data is how many there are — so the control is a list you
+       * add to, and choosing a second one is how a loop becomes a playlist. There is no mode to
+       * switch and nothing to explain.
+       */}
+      {picked.length > 0 && (
+        <ol className="profile-song-picked">
+          {picked.map((n, at) => (
+            <li key={at}>
+              <span className="profile-song-trackname">{n}</span>
+              <button
+                className="btn btn-ghost"
+                title="Take this one out"
+                onClick={() => {
+                  const rest = queue.filter((_, k) => k !== at)
+                  onChange({ ...value, song: undefined, songs: rest.length ? rest : undefined })
+                }}
+              >
+                ✕
+              </button>
+            </li>
+          ))}
+        </ol>
+      )}
       <select
         className="viz-select"
-        value={current?.name ?? ''}
+        value=""
         onChange={(e) => {
-          const picked = items.find((i: LibraryItem) => i.song.name === e.target.value)
+          const add = items.find((i: LibraryItem) => i.song.name === e.target.value)
+          if (!add) return
           // ⚠️ the COMPACT form goes into the block — see packSong. The readable one is roughly
           // five times larger and a normal four-layer song does not fit in a profile block at all
-          onChange({ ...value, song: picked ? packSong(picked.song) : undefined })
+          onChange({ ...value, song: undefined, songs: [...queue, packSong(add.song)] })
         }}
       >
-        <option value="">Pick one…</option>
+        <option value="">{picked.length ? 'Add another…' : 'Pick one…'}</option>
         {items.map((i: LibraryItem) => (
           <option key={i.id} value={i.song.name}>
             {i.kind === 'loop' ? '🔁' : '🎵'} {i.name}

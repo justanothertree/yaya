@@ -13,3 +13,24 @@ import { readSong, type Song } from '../audio/songFile'
 export function songFromConfig(cfg: Record<string, unknown>): Song | null {
   return readSong(cfg.song)
 }
+
+/**
+ * Every song in a block, in order.
+ *
+ * ⚠️ `song` is still read, and read FIRST. Blocks made before playlists existed hold a single
+ * packed song under that key, and they must keep working untouched — so the newer `songs` array
+ * is additive and a block with both is simply a block whose first track was set the old way.
+ * Each entry goes through readSong for the same reason it always did: this is stored data, which
+ * is to say data somebody could have edited.
+ */
+export function songsFromConfig(cfg: Record<string, unknown>): Song[] {
+  const out: Song[] = []
+  const one = readSong(cfg.song)
+  if (one) out.push(one)
+  if (Array.isArray(cfg.songs))
+    for (const raw of cfg.songs.slice(0, 24)) {
+      const s = readSong(raw)
+      if (s) out.push(s)
+    }
+  return out
+}

@@ -6963,3 +6963,59 @@ a.cz-msg-author:focus-visible {
   gap: 0.4rem;
   font-size: 0.78rem;
 }
+
+/* a song block holding more than one song */
+.profile-song-list,
+.profile-song-picked {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.15rem;
+  max-height: 11rem;
+  overflow-y: auto;
+}
+.profile-song-picked li {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.8rem;
+}
+.profile-song-track {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  width: 100%;
+  min-width: 0;
+  text-align: left;
+  appearance: none;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-size: 0.82rem;
+  padding: 0.2rem 0.35rem;
+  cursor: pointer;
+}
+.profile-song-track:hover {
+  border-color: var(--border);
+}
+.profile-song-track.is-on {
+  border-color: var(--accent, #7c6af7);
+  background: var(--control-bg);
+}
+.profile-song-tracknum {
+  flex: none;
+  width: 1.1rem;
+  font-family: var(--mono);
+  font-size: 0.7rem;
+}
+.profile-song-trackname {
+  /* ⚠️ one line, clipped: names are typed by hand and a long one would make its row twice the
+     height of its neighbours and break the rhythm of the list */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
