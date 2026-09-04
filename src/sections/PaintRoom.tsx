@@ -1,5 +1,6 @@
 import { useCallback, useContext, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { KitBar } from '../ui/KitBar'
+import { ShadePad } from '../theme/ColorField'
 import { loadLastKit, paintKits, saveLastKit, type PaintKit } from '../draw/paintKit'
 import {
   NONE,
@@ -476,19 +477,25 @@ export function PaintRoom() {
             />
           ))}
         </span>
-        <label className="inst-pick">
-          <span className="muted">Colour</span>
-          <input
-            type="color"
-            value={colour === NONE || colour === RAINBOW ? '#000000' : colour}
-            onChange={(e) => setColour(e.target.value)}
+        {/**
+         * ⚠️ THE SITE'S OWN PAD, not the operating system's colour dialog.
+         *
+         * `input type=color` hands the choice to a native window that looks like nothing else
+         * here, covers what you are painting, and on some platforms is a modal you have to
+         * dismiss before you can see whether the colour was right. The theme already has a pad
+         * built for exactly this — hue rail, shade square, live — and a paint room choosing
+         * colours is the same job. Reusing it also means one place to improve rather than two
+         * that drift.
+         */}
+        <span className="paint-colour">
+          <ShadePad
+            label="Colour"
+            value={colour === NONE || colour === RAINBOW ? '#22c55e' : colour}
+            onChange={setColour}
           />
-        </label>
-        <label className="inst-pick">
-          <span className="muted" title="What sits behind the paint">
-            Paper
-          </span>
-          <input type="color" value={bg ?? '#000000'} onChange={(e) => setBg(e.target.value)} />
+        </span>
+        <span className="paint-colour">
+          <ShadePad label="Paper" value={bg ?? '#111111'} onChange={setBg} />
           <button
             className={'btn' + (bg === null ? ' is-on' : '')}
             onClick={() => setBg(null)}
@@ -496,7 +503,7 @@ export function PaintRoom() {
           >
             None
           </button>
-        </label>
+        </span>
         <label className="appearance-slider">
           {/* Renamed: "Alpha" read as a mode when it is really just how thin the paint is.
               Transparency proper is the swatch above. */}

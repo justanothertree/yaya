@@ -1712,12 +1712,25 @@ export function AudioVisualizer() {
                     Spin
                   </span>
                   <input
+                    className="viz-spin"
                     type="range"
                     min={-1}
                     max={1}
                     step={0.01}
                     value={spin}
-                    onChange={(e) => setSpin(Number(e.target.value))}
+                    /**
+                     * ⚠️ IT CATCHES AT THE MIDDLE. Still is the one setting on this slider you
+                     * reach for deliberately and the only one you cannot see yourself hit — the
+                     * picture keeps turning at 0.01 and there is no way to tell that from 0 by
+                     * looking. A double-click reset was there and it is not the same thing: it
+                     * asks you to know the trick, and it cannot help while you are already
+                     * dragging. Anything inside a twentieth of the range snaps home, which is
+                     * far too small to get in the way of choosing a slow spin.
+                     */
+                    onChange={(e) => {
+                      const v = Number(e.target.value)
+                      setSpin(Math.abs(v) < 0.05 ? 0 : v)
+                    }}
                     onDoubleClick={() => setSpin(0)}
                   />
                   <span className="appearance-slider-val">

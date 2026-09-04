@@ -7083,3 +7083,44 @@ a.cz-msg-author:focus-visible {
   white-space: nowrap;
   min-width: 0;
 }
+
+/* ⚠️ a mark where the slider catches, so the detent is visible and not only felt. Painted on the
+   track rather than added as an element, because a range input has no room for a child. */
+.viz-spin {
+  background-image: linear-gradient(
+    var(--border-strong, currentColor),
+    var(--border-strong, currentColor)
+  );
+  background-size: 2px 0.7rem;
+  background-position: center center;
+  background-repeat: no-repeat;
+}
+
+/* the dock can be put somewhere else on a desktop — see AudioDock */
+.audio-dock.is-placed {
+  left: var(--dock-x);
+  top: var(--dock-y);
+  bottom: auto;
+  transform: none;
+}
+.audio-dock-move {
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  opacity: 0.6;
+}
+.audio-dock-move:active {
+  cursor: grabbing;
+  opacity: 1;
+}
+
+/* the paint room borrows the theme's colour pad — keep it to the size of a control in a toolbar */
+.paint-colour {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+.paint-colour .shade-pad,
+.paint-colour .colour-pad {
+  max-width: 9rem;
+}
