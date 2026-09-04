@@ -48,21 +48,48 @@ export function ArtBlock({ cfg }: { cfg: Record<string, unknown> }) {
     const ctx = el.getContext('2d')
     if (!ctx) return
 
+    /**
+     * ⚠️ THIS BLOCK USED TO GROW UNTIL THE BROWSER GAVE UP, and the loop is worth spelling out
+     * because nothing about it looks wrong line by line.
+     *
+     * A canvas with no CSS size lays out at its `width`/`height` ATTRIBUTES, in CSS pixels. This
+     * measured the host, multiplied by devicePixelRatio and wrote that into the attributes — so on
+     * a 2x screen the canvas laid out twice as wide as the box it was measured from. The host is a
+     * block and grew to fit its child. The ResizeObserver saw the host change, measured it again,
+     * and multiplied again. Every pass doubled it. On a phone at 3x it ran away faster.
+     *
+     * Two things break the cycle, and both are needed:
+     *
+     *   · the CSS size is set explicitly, so the backing store can be whatever the screen wants
+     *     without the layout following it
+     *   · the HEIGHT comes from the drawing's own ratio rather than from measuring, so height is
+     *     computed from width and never read back
+     *
+     * Width is then the only thing measured, and nothing this function does can change it.
+     */
+    let lastW = 0
     const draw = () => {
-      const r = box.getBoundingClientRect()
-      if (r.width < 1) return
+      const w = Math.round(box.clientWidth)
+      if (w < 1) return
+      const ratio = current.ratio > 0.05 && current.ratio < 20 ? current.ratio : 0.6
+      const h = Math.max(60, Math.round(w * ratio))
       const dpr = Math.min(window.devicePixelRatio || 1, 2)
-      const w = Math.round(r.width)
-      const h = Math.round(r.height)
+      el.style.width = w + 'px'
+      el.style.height = h + 'px'
       if (el.width !== Math.round(w * dpr) || el.height !== Math.round(h * dpr)) {
         el.width = Math.round(w * dpr)
         el.height = Math.round(h * dpr)
       }
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
       paintDrawing(ctx, current, w, h)
+      lastW = w
     }
     draw()
-    const ro = new ResizeObserver(draw)
+    /* ⚠️ redraw only when the WIDTH actually changed. The observer also fires for the height
+       this function just set, and answering that would be the same loop in a politer form. */
+    const ro = new ResizeObserver(() => {
+      if (Math.round(box.clientWidth) !== lastW) draw()
+    })
     ro.observe(box)
     return () => ro.disconnect()
   }, [current])

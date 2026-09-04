@@ -6711,3 +6711,12 @@ a.cz-msg-author:focus-visible {
   border-radius: 9px;
   background: var(--control-bg);
 }
+
+/* the art block on a profile ---------------------------------------------
+   ⚠️ display:block on the canvas. An inline canvas sits on a text baseline, which adds a few
+   stray pixels under it — and those pixels grow the card, which the observer then reads. The
+   sizing is done in ProfileArt, but this stops the layout arguing with it. */
+.profile-art canvas {
+  display: block;
+  max-width: 100%;
+}
