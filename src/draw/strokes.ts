@@ -93,6 +93,27 @@ export type Stroke = {
   a: number
   /** brush width as a fraction of the canvas's short side, so it scales with the picture */
   w: number
+  /**
+   * Which layer this stroke sits on, low to high. Absent means the bottom one.
+   *
+   * ⚠️ LAYERS AND FRAMES ARE THE SAME MECHANISM, which is why they are two plain numbers on
+   * a stroke rather than nested arrays of strokes. Nesting would have meant a second shape for
+   * every reader, packer, validator and the multiplayer path to learn, and cut/copy/paste would
+   * have had to move strokes between containers. As numbers, a layer is "sort by this" and a
+   * frame is "filter by that", the file stays one flat list, and every existing reader keeps
+   * working because both fields are optional.
+   */
+  l?: number
+  /**
+   * Which animation frame this stroke belongs to, or ABSENT for every frame.
+   *
+   * ⚠️ "ON NO FRAME" IS THE USEFUL CASE, not an edge case. A stroke with no frame shows on
+   * all of them, so the background you draw once and animate a character over is simply a stroke
+   * that never picked a frame. That falls out of making the field optional, and it is exactly
+   * what a static layer is for — so animating gets a background for free rather than by copying
+   * it into all twenty frames, which is also what keeps the file small enough to publish.
+   */
+  f?: number
   /** flat [x, y, x, y, …] in 0–1 space — two points for line/rect/ellipse, one for fill */
   p: number[]
 }
@@ -112,12 +133,18 @@ export type Drawing = {
    * what erasing means everywhere else.
    */
   bg: string | null
+  /** layer names, bottom first. Absent or short means the rest are unnamed. */
+  layers?: string[]
+  /** frames a second when this is played back */
+  fps?: number
   strokes: Stroke[]
 }
 
 const MAX_STROKES = 4000
 const MAX_POINTS = 2000
 const MAX_NAME = 60
+const MAX_LAYERS = 12
+const MAX_FRAMES = 60
 
 const TOOL_IDS = new Set<string>(TOOLS.map(([t]) => t))
 
@@ -196,6 +223,10 @@ export function readDrawing(v: unknown): Drawing | null {
     name: typeof o.name === 'string' ? o.name.slice(0, MAX_NAME).trim() || 'Untitled' : 'Untitled',
     ratio: num(o.ratio, 0.2, 5, 1.5),
     bg: typeof o.bg === 'string' && HEX.test(o.bg) ? o.bg : null,
+    layers: Array.isArray(o.layers)
+      ? o.layers.slice(0, MAX_LAYERS).map((n) => (typeof n === 'string' ? n.slice(0, 24) : ''))
+      : undefined,
+    fps: typeof o.fps === 'number' && o.fps >= 1 && o.fps <= 24 ? Math.round(o.fps) : undefined,
     strokes,
   }
 }
@@ -206,6 +237,22 @@ const segments = (v: unknown): number =>
 
 const echoes = (v: unknown): number =>
   typeof v === 'number' && (ECHOES as readonly number[]).includes(v) ? v : 0
+
+/**
+ * A layer or frame index, or undefined.
+ *
+ * ⚠️ Clamped to a small whole number, and undefined stays undefined. These indices are used to
+ * SIZE things — how many layer rows to render, how many frames to step through — so a file
+ * claiming frame 900000 would otherwise ask the editor to build ninety thousand controls. The
+ * distinction between 0 and absent is load-bearing for frames (absent means every frame), so
+ * this cannot simply default to 0.
+ */
+const slot = (v: unknown, max: number): number | undefined =>
+  // ⚠️ >= 0, not > 0. Frame 0 is a real frame — the FIRST one — and rejecting it here quietly
+  // turned "the opening frame" into "every frame", which is the one case that must survive.
+  typeof v === 'number' && Number.isFinite(v) && v >= 0
+    ? Math.min(max - 1, Math.floor(v))
+    : undefined
 
 export function readStroke(raw: unknown): Stroke | null {
   if (!raw || typeof raw !== 'object') return null
@@ -227,6 +274,8 @@ export function readStroke(raw: unknown): Stroke | null {
     w: num(o.w, 0.0015, 0.25, 0.01),
     k: segments(o.k),
     e: echoes(o.e),
+    l: slot(o.l, MAX_LAYERS),
+    f: slot(o.f, MAX_FRAMES),
     p,
   }
 }
@@ -697,12 +746,20 @@ export type PackedDrawing = {
    * v3 + symmetry
    * v4 + echo
    */
-  v: 4
+  /** 4 for a flat drawing, 5 once layers or frames are in use — see packDrawing */
+  v: 4 | 5
   n: string
   r: number
   /** background, hash-less hex, or 0 for none */
   b: string | 0
-  /** [tool, colour, alpha%, width‰, segments, echoes, ...points‰] — colour 0 none, 1 rainbow */
+  /** layer names, v5 only */
+  l?: string[]
+  /** frames a second, v5 only */
+  fp?: number
+  /**
+   * [tool, colour, alpha%, width‰, segments, echoes, ...points‰] — colour 0 none, 1 rainbow.
+   * v5 inserts [layer, frame] after echoes, frame -1 meaning every frame.
+   */
   s: Array<[number, string | 0 | 1, number, number, number, number, ...number[]]>
 }
 
@@ -733,18 +790,46 @@ export const isFreehand = (t: Tool) =>
 const TOOL_ORDER = TOOLS.map(([t]) => t)
 
 export function packDrawing(d: Drawing): PackedDrawing {
+  /**
+   * ⚠️ WRITTEN AS VERSION 4 UNLESS LAYERS OR FRAMES ARE ACTUALLY USED.
+   *
+   * Every fixed field costs two more numbers on EVERY stroke, and a block on a profile gets
+   * 16000 bytes for everything it holds — so making all existing drawings pay for an animation
+   * feature they do not use would take room away from the picture itself and, worse, would grow
+   * files that are already saved the moment they were next opened. A flat drawing still writes
+   * the format it wrote before, byte for byte, and only an animation pays for being one.
+   */
+  const layered = d.strokes.some((k) => k.l || k.f !== undefined)
+  const fixed = (k: Stroke) =>
+    layered
+      ? [
+          Math.max(0, TOOL_ORDER.indexOf(k.t)),
+          k.c === NONE ? 0 : k.c === RAINBOW ? 1 : k.c.slice(1),
+          Math.round(k.a * 100),
+          Math.round(k.w * 1000),
+          k.k ?? 0,
+          k.e ?? 0,
+          k.l ?? 0,
+          // ⚠️ -1, not 0: "on every frame" has to survive the round trip, and 0 is a real frame
+          k.f ?? -1,
+        ]
+      : [
+          Math.max(0, TOOL_ORDER.indexOf(k.t)),
+          k.c === NONE ? 0 : k.c === RAINBOW ? 1 : k.c.slice(1),
+          Math.round(k.a * 100),
+          Math.round(k.w * 1000),
+          k.k ?? 0,
+          k.e ?? 0,
+        ]
   return {
-    v: 4,
+    v: layered ? 5 : 4,
     n: d.name,
     r: Math.round(d.ratio * 100) / 100,
     b: d.bg ? d.bg.slice(1) : 0,
+    ...(layered && d.layers?.length ? { l: d.layers } : {}),
+    ...(layered && d.fps ? { fp: d.fps } : {}),
     s: d.strokes.map((k) => [
-      Math.max(0, TOOL_ORDER.indexOf(k.t)),
-      k.c === NONE ? 0 : k.c === RAINBOW ? 1 : k.c.slice(1),
-      Math.round(k.a * 100),
-      Math.round(k.w * 1000),
-      k.k ?? 0,
-      k.e ?? 0,
+      ...fixed(k),
       ...k.p.map((n) => Math.round(n * 1000)),
     ]) as PackedDrawing['s'],
   }
@@ -758,7 +843,7 @@ function unpack(v: Record<string, unknown>): Drawing | null {
    * modifier is then a single line here rather than another branch through the loop. Anything
    * unrecognised, including a document with no version at all, is read as the original four.
    */
-  const FIXED: Record<number, number> = { 2: 4, 3: 5, 4: 6 }
+  const FIXED: Record<number, number> = { 2: 4, 3: 5, 4: 6, 5: 8 }
   const fixed = FIXED[typeof v.v === 'number' ? v.v : 2] ?? 4
   const strokes: unknown[] = []
   for (const row of v.s.slice(0, MAX_STROKES)) {
@@ -766,6 +851,8 @@ function unpack(v: Record<string, unknown>): Drawing | null {
     const [ti, c, a, w] = row as [number, string | 0 | 1, number, number]
     const k = fixed > 4 ? (row[4] as number) : 0
     const e = fixed > 5 ? (row[5] as number) : 0
+    const l = fixed > 6 ? (row[6] as number) : 0
+    const fr = fixed > 7 ? (row[7] as number) : -1
     const pts = row.slice(fixed) as number[]
     strokes.push({
       t: TOOL_ORDER[typeof ti === 'number' ? ti : 0] ?? 'brush',
@@ -774,6 +861,9 @@ function unpack(v: Record<string, unknown>): Drawing | null {
       w: typeof w === 'number' ? w / 1000 : 0.01,
       k,
       e,
+      l,
+      // ⚠️ anything below zero means the stroke never chose a frame, so it shows on all of them
+      f: typeof fr === 'number' && fr >= 0 ? fr : undefined,
       p: pts.filter((n) => typeof n === 'number').map((n) => n / 1000),
     })
   }
@@ -781,6 +871,8 @@ function unpack(v: Record<string, unknown>): Drawing | null {
     name: v.n,
     ratio: v.r,
     bg: typeof v.b === 'string' ? `#${v.b}` : null,
+    layers: Array.isArray(v.l) ? v.l : undefined,
+    fps: typeof v.fp === 'number' ? v.fp : undefined,
     strokes,
   })
 }
@@ -793,9 +885,94 @@ function unpack(v: Record<string, unknown>): Drawing | null {
  * cut through it — see Drawing.bg. Anything showing a drawing puts `d.bg` behind the surface and
  * calls this on top.
  */
-export function paintDrawing(ctx: CanvasRenderingContext2D, d: Drawing, w: number, h: number) {
+export type DrawView = {
+  /** which frame to show. Undefined shows frame 0 of an animation, or everything if it is flat. */
+  frame?: number
+  /** layer indices to leave out */
+  hidden?: number[]
+  /** how many earlier frames to ghost in behind the current one */
+  onion?: number
+}
+
+/** The highest frame any stroke claims, or -1 for a drawing that is not an animation. */
+export const frameCount = (d: Drawing): number =>
+  d.strokes.reduce((n, s) => (s.f === undefined ? n : Math.max(n, s.f + 1)), 0)
+
+/** The highest layer any stroke sits on, at least one. */
+export const layerCount = (d: Drawing): number =>
+  Math.max(
+    d.layers?.length ?? 0,
+    d.strokes.reduce((n, s) => Math.max(n, (s.l ?? 0) + 1), 1),
+  )
+
+/**
+ * ⚠️ ONE SCRATCH CANVAS, kept between calls. Ghost frames are composited through it, and
+ * allocating one per repaint would mean a new canvas for every stroke you draw.
+ */
+let scratch: HTMLCanvasElement | null = null
+
+export function paintDrawing(
+  ctx: CanvasRenderingContext2D,
+  d: Drawing,
+  w: number,
+  h: number,
+  view?: DrawView,
+) {
   ctx.clearRect(0, 0, w, h)
-  for (const s of d.strokes) paintStroke(ctx, s, w, h)
+  const hidden = view?.hidden
+  const visible = (s: Stroke) => !hidden?.length || !hidden.includes(s.l ?? 0)
+  /**
+   * ⚠️ Sorted by layer, and sort is stable, so strokes on the same layer keep the order they
+   * were drawn in. Order is the ONLY thing a layer means to the renderer.
+   */
+  const ordered = (list: Stroke[]) => list.sort((a, b) => (a.l ?? 0) - (b.l ?? 0))
+  const frames = frameCount(d)
+
+  // a flat drawing, or an explicit request for everything at once
+  if (!frames) {
+    for (const s of ordered(d.strokes.filter(visible))) paintStroke(ctx, s, w, h)
+    return
+  }
+  const now = Math.max(0, Math.min(frames - 1, view?.frame ?? 0))
+
+  /**
+   * ⚠️ EACH GHOST IS DRAWN ON ITS OWN SURFACE, then faded in as a picture.
+   *
+   * Fading with globalAlpha and drawing straight onto the canvas would be cheaper and wrong: the
+   * eraser is destination-out, so an erased area in a ghost frame would cut a hole through the
+   * ghosts underneath it and through anything already on the canvas. Compositing a finished
+   * image means a frame can only ever erase itself, which is what a frame is.
+   */
+  const back = Math.max(0, Math.min(4, view?.onion ?? 0))
+  if (back > 0) {
+    if (!scratch) scratch = document.createElement('canvas')
+    if (scratch.width !== w || scratch.height !== h) {
+      scratch.width = w
+      scratch.height = h
+    }
+    const sc = scratch.getContext('2d')
+    for (let i = back; i >= 1; i--) {
+      const f = now - i
+      if (f < 0) continue
+      const list = ordered(d.strokes.filter((s) => s.f === f && visible(s)))
+      if (!list.length || !sc) continue
+      sc.setTransform(1, 0, 0, 1, 0, 0)
+      sc.clearRect(0, 0, w, h)
+      for (const s of list) paintStroke(sc, s, w, h)
+      ctx.save()
+      // the further back, the fainter — 0.30, 0.18, 0.11 …
+      ctx.globalAlpha = 0.3 * Math.pow(0.6, i - 1)
+      ctx.drawImage(scratch, 0, 0)
+      ctx.restore()
+    }
+  }
+
+  // ⚠️ a stroke with no frame belongs to every frame, so it is drawn HERE and never as a ghost —
+  // ghosting it too would darken the background once per onion step
+  for (const s of ordered(
+    d.strokes.filter((s) => (s.f === undefined || s.f === now) && visible(s)),
+  ))
+    paintStroke(ctx, s, w, h)
 }
 
 /**

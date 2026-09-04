@@ -7132,3 +7132,61 @@ a.cz-msg-author:focus-visible {
   line-height: 1.35;
   opacity: 0.85;
 }
+
+/* layers and frames — one row, because they are one mechanism (see Stroke.l / Stroke.f) */
+.paint-stack {
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  align-items: center;
+}
+.paint-stack-label {
+  font-size: 0.78rem;
+  letter-spacing: 0.02em;
+}
+.paint-stack-gap {
+  flex: 1 1 0.5rem;
+  min-width: 0.5rem;
+}
+.paint-layer {
+  display: inline-flex;
+  align-items: stretch;
+  border: 1px solid var(--line, rgba(255, 255, 255, 0.16));
+  border-radius: 0.5rem;
+  overflow: hidden;
+}
+.paint-layer.is-on {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent) inset;
+}
+.paint-layer-pick,
+.paint-layer-eye {
+  background: none;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.78rem;
+  padding: 0.22rem 0.45rem;
+  line-height: 1.3;
+}
+.paint-layer-eye {
+  border-left: 1px solid var(--line, rgba(255, 255, 255, 0.16));
+  opacity: 0.75;
+}
+.paint-layer-eye[aria-pressed='false'] {
+  opacity: 0.45;
+}
+.paint-frame-at {
+  font-size: 0.78rem;
+  min-width: 3.2rem;
+  text-align: center;
+}
+.paint-onion {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.78rem;
+}
+.paint-onion input[type='range'] {
+  width: 4.5rem;
+}

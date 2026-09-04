@@ -14,6 +14,8 @@ import {
   isFreehand,
   SYMMETRIES,
   ECHOES,
+  frameCount,
+  layerCount,
 } from '../draw/strokes'
 import { InCanvasWindow } from '../circuit/ui/canvasContext'
 import { gallery, removeArt, saveArt, subscribeGallery, type Art } from '../draw/gallery'
@@ -93,6 +95,25 @@ export function PaintRoom() {
   const off = useRef({ x: 0, y: 0 })
   const pan = useRef<{ x: number; y: number } | null>(null)
   const [undone, setUndone] = useState<Stroke[]>([])
+  /**
+   * ⚠️ LAYERS AND FRAMES ARE ONE FEATURE HERE, because they are one field each on a stroke.
+   * A layer decides what is drawn OVER what, a frame decides WHEN — everything else about the
+   * room, every tool, undo, the party feed, is untouched by both. See Stroke.l and Stroke.f.
+   */
+  const [layer, setLayer] = useState(0)
+  const [hidden, setHidden] = useState<number[]>([])
+  const [layerNames, setLayerNames] = useState<string[]>([])
+  /**
+   * ⚠️ NULL MEANS "NOT ANIMATING", and that is the default so the room stays a paint
+   * program until you ask for more. A stroke drawn while this is null gets no frame at all,
+   * which is what makes it show on every frame if you start animating later — the drawing you
+   * already had becomes the background of the animation rather than being stranded on frame 0.
+   */
+  const [frame, setFrame] = useState<number | null>(null)
+  const [onion, setOnion] = useState(2)
+  const [playing, setPlaying] = useState(false)
+  const [fps, setFps] = useState(8)
+
   const [tool, setTool] = useState<Tool>(() => LAST?.tool ?? 'brush')
   const [colour, setColour] = useState(() => LAST?.colour ?? '#22c55e')
   const [alpha, setAlpha] = useState(() => LAST?.alpha ?? 1)
@@ -142,6 +163,8 @@ export function PaintRoom() {
     name: 'Untitled',
     ratio: size.current.h ? size.current.w / size.current.h : 1.5,
     bg,
+    layers: layerNames.length ? layerNames : undefined,
+    fps,
     strokes,
   }
 
@@ -202,9 +225,18 @@ export function PaintRoom() {
     if (w < 1 || h < 1) return
     const bc = b.getContext('2d')
     if (!bc) return
-    paintDrawing(bc, drawingRef.current, w, h)
+    /**
+     * ⚠️ The view is passed EVERY repaint rather than baked into the drawing, because which
+     * frame you are on and which layers you have hidden are things about looking, not about the
+     * picture. Save the file and none of it travels; it is the same drawing seen from here.
+     */
+    paintDrawing(bc, drawingRef.current, w, h, {
+      frame: frame ?? undefined,
+      hidden,
+      onion: frame === null || playing ? 0 : onion,
+    })
     blit()
-  }, [blit])
+  }, [blit, frame, hidden, onion, playing])
 
   const preview = blit
 
@@ -350,6 +382,57 @@ export function PaintRoom() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scale])
 
+  /**
+   * ⚠️ PLAYBACK IS A TIMER, not an animation loop, because the frames are not moving pictures —
+   * each one is a full repaint of committed strokes, and asking for a redraw sixty times a
+   * second to show eight frames would do the work seven times for nothing. Onion skin is turned
+   * off while playing above: ghosts are a drawing aid, and during playback they would just be
+   * every frame smeared over every other one.
+   */
+  useEffect(() => {
+    if (!playing || frame === null) return
+    const total = frameCount(drawingRef.current)
+    if (total < 2) {
+      setPlaying(false)
+      return
+    }
+    const id = window.setInterval(
+      () => setFrame((f) => ((f ?? 0) + 1) % total),
+      Math.round(1000 / Math.max(1, Math.min(24, fps))),
+    )
+    return () => window.clearInterval(id)
+  }, [playing, fps, frame === null])
+
+  const layers = layerCount(drawingRef.current)
+  const frames = frameCount(drawingRef.current)
+  const nameOf = (i: number) => layerNames[i]?.trim() || `Layer ${i + 1}`
+
+  const addLayer = () => {
+    if (layers >= 12) return
+    setLayerNames((n) => {
+      const next = [...n]
+      while (next.length < layers) next.push('')
+      next.push('')
+      return next
+    })
+    setLayer(layers)
+  }
+  /**
+   * ⚠️ Starting an animation puts you on frame 1, not frame 0.
+   *
+   * Everything already drawn has no frame, so it shows on all of them — it has become the
+   * background. Landing on frame 0 would invite you to draw the first pose ON TOP of that shared
+   * background with no way to tell them apart afterwards, whereas frame 1 makes "the bit that
+   * stays" and "the bit that moves" two different places from the first stroke.
+   */
+  const startFrames = () => setFrame((f) => (f === null ? Math.max(1, frames) : null))
+
+  const addFrame = () => {
+    const at = Math.max(frames, (frame ?? 0) + 1)
+    if (at >= 60) return
+    setFrame(at)
+  }
+
   const commit = (s: Stroke) => {
     live.current = null
     setUndone([])
@@ -388,6 +471,8 @@ export function PaintRoom() {
       w: width,
       k: symmetry,
       e: echo,
+      l: layer,
+      f: frame ?? undefined,
       p: isFreehand(tool) ? [x, y] : [x, y, x, y],
     }
     preview()
@@ -475,6 +560,112 @@ export function PaintRoom() {
             </button>
           ))}
         </div>
+      </div>
+
+      <div className="paint-row paint-stack">
+        <span className="muted paint-stack-label">Layers</span>
+        {Array.from({ length: layers }, (_, i) => layers - 1 - i).map((i) => (
+          <span key={i} className={'paint-layer' + (layer === i ? ' is-on' : '')}>
+            <button
+              className="paint-layer-pick"
+              aria-pressed={layer === i}
+              onClick={() => setLayer(i)}
+              title={`Draw on ${nameOf(i)}`}
+            >
+              {nameOf(i)}
+            </button>
+            <button
+              className="paint-layer-eye"
+              aria-pressed={!hidden.includes(i)}
+              onClick={() =>
+                setHidden((h) => (h.includes(i) ? h.filter((n) => n !== i) : [...h, i]))
+              }
+              title={hidden.includes(i) ? 'Show this layer' : 'Hide this layer'}
+            >
+              {hidden.includes(i) ? '🚫' : '👁'}
+            </button>
+          </span>
+        ))}
+        <button
+          className="btn"
+          onClick={addLayer}
+          disabled={layers >= 12}
+          title="Add a layer above"
+        >
+          + layer
+        </button>
+
+        <span className="paint-stack-gap" aria-hidden />
+
+        <button
+          className={'btn' + (frame !== null ? ' is-on' : '')}
+          aria-pressed={frame !== null}
+          onClick={startFrames}
+          title={
+            frame !== null
+              ? 'Back to drawing one picture'
+              : 'Animate — what you have drawn so far stays behind every frame'
+          }
+        >
+          🎬 Frames
+        </button>
+        {frame !== null && (
+          <>
+            <button
+              className="btn"
+              onClick={() => setFrame((f) => Math.max(0, (f ?? 0) - 1))}
+              disabled={(frame ?? 0) <= 0}
+              title="Previous frame"
+            >
+              ◀
+            </button>
+            <span className="muted paint-frame-at">
+              {(frame ?? 0) + 1} / {Math.max(frames, (frame ?? 0) + 1)}
+            </span>
+            <button
+              className="btn"
+              onClick={() => setFrame((f) => Math.min(frames - 1, (f ?? 0) + 1))}
+              disabled={(frame ?? 0) >= frames - 1}
+              title="Next frame"
+            >
+              ▶
+            </button>
+            <button className="btn" onClick={addFrame} title="Add a frame after this one">
+              + frame
+            </button>
+            <label className="paint-onion" title="How many earlier frames show through behind">
+              <span className="muted">Onion</span>
+              <input
+                type="range"
+                min={0}
+                max={4}
+                step={1}
+                value={onion}
+                onChange={(e) => setOnion(Number(e.target.value))}
+              />
+            </label>
+            <button
+              className={'btn' + (playing ? ' is-on' : '')}
+              aria-pressed={playing}
+              onClick={() => setPlaying((v) => !v)}
+              disabled={frames < 2}
+              title={playing ? 'Stop' : 'Play the animation'}
+            >
+              {playing ? '⏸' : '▶️'}
+            </button>
+            <label className="paint-onion" title="Frames a second">
+              <span className="muted">{fps}fps</span>
+              <input
+                type="range"
+                min={1}
+                max={24}
+                step={1}
+                value={fps}
+                onChange={(e) => setFps(Number(e.target.value))}
+              />
+            </label>
+          </>
+        )}
       </div>
 
       <div className="paint-row">
