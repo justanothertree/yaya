@@ -1454,29 +1454,46 @@ export function noteOn(
         /**
          * ⚠️ THIS WAS THE POP, and it got worse the more the sequencer was used.
          *
-         * It read `g.gain.value` — the gain RIGHT NOW — and pinned it at `from`, which is a
-         * moment in the FUTURE for every note the looper, the song player or a jam schedules
+         * The release read `g.gain.value` — the gain RIGHT NOW — and pinned it at `from`, which
+         * is a moment in the FUTURE for every note the looper, the song player or a jam schedules
          * ahead. A bell struck a moment ago is near its peak now and will have decayed a long
          * way by the time `from` arrives, so pinning today's value at tomorrow's instant yanks
          * the gain back UP at the release. A vertical jump in a waveform is a click, and it
          * happened on every scheduled note-off.
-         *
-         * cancelAndHoldAtTime is exactly the tool for this: it keeps the automation running up to
-         * `from` and holds whatever value it genuinely has THERE, so the release starts from the
-         * curve instead of from a guess. Safari was late to it and some engines still lack it,
-         * hence the fallback — which is the old behaviour, and only reachable where there is no
-         * better option.
          */
-        const gain = g.gain as AudioParam & { cancelAndHoldAtTime?: (t: number) => void }
-        if (typeof gain.cancelAndHoldAtTime === 'function') {
-          gain.cancelAndHoldAtTime(from)
-        } else {
-          g.gain.cancelScheduledValues(from)
-          g.gain.setValueAtTime(Math.max(0.0001, g.gain.value), from)
-        }
+        /**
+         * ⚠️ WE WORK OUT THE LEVEL OURSELVES RATHER THAN ASKING THE ENGINE, and that is what
+         * makes this sound the same in every browser.
+         *
+         * This used to call cancelAndHoldAtTime where it existed and fall back to
+         * `setValueAtTime(g.gain.value, from)` where it did not. That fallback is the original
+         * bug: it reads the gain NOW and pins it at `from`, a moment in the FUTURE, so a note
+         * that has decayed in between is yanked back up at the release — a vertical edge, which
+         * is a click.
+         *
+         * Firefox has never shipped cancelAndHoldAtTime. So every release in Firefox took the
+         * broken branch while Chrome took the good one, which is exactly the shape of "no issues
+         * in Chrome, still issues in Firefox" — one engine running code the other never sees.
+         *
+         * There was never a need to ask. The envelope is three segments we scheduled ourselves
+         * from numbers we still hold, so the value at any instant is arithmetic. Computing it
+         * removes the branch, the feature detection and the difference between engines all at
+         * once.
+         */
+        const target = Math.max(0.0001, peak * sh.s || 0.0001)
+        const level =
+          from <= at
+            ? 0.0001
+            : from < at + sh.a
+              ? 0.0001 + (peak - 0.0001) * ((from - at) / sh.a)
+              : from < at + sh.a + sh.d
+                ? peak * Math.pow(target / peak, (from - at - sh.a) / sh.d)
+                : target
+        g.gain.cancelScheduledValues(from)
+        g.gain.setValueAtTime(Math.max(0.0001, level), from)
         /**
          * ⚠️ setTargetAtTime, NOT exponentialRampToValueAtTime — AND THIS IS THE SECOND HALF OF
-         * THE POP, the one cancelAndHoldAtTime above did not fix.
+         * THE POP, the one that holding the right level at the release does not fix.
          *
          * A ramp interpolates from the PREVIOUS AUTOMATION EVENT, not from now. Hold a note past
          * the end of its attack and decay and that event is hundreds of milliseconds in the past,
