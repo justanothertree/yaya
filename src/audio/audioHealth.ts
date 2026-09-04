@@ -19,8 +19,9 @@ import { liveVoices, noteCounts, resetNoteCounts } from './synth'
  * phone — which is the whole reason this is in the page rather than in a test. The device that has
  * the problem has to be the device that does the measuring.
  *
- * Behind a flag and off by default: localStorage.audio_debug = '1'. Nothing here is created,
- * and no worklet is compiled, unless somebody asks for it.
+ * ON BY DEFAULT, and turned off with ?audio_debug=0. It earned that: four separate audio faults
+ * this week were each found by a number rather than by reasoning, and the one that took longest
+ * was the one nobody could measure on the device that had it.
  */
 
 export type AudioHealth = {
@@ -94,8 +95,12 @@ export function healthOn(): boolean {
   try {
     const q = new URLSearchParams(location.search).get('audio_debug')
     if (q === '1') localStorage.setItem('audio_debug', '1')
-    if (q === '0') localStorage.removeItem('audio_debug')
-    return localStorage.getItem('audio_debug') === '1'
+    if (q === '0') localStorage.setItem('audio_debug', '0')
+    // ⚠️ ON unless explicitly turned off. What it costs is one counter incremented per 128-frame
+    // quantum on the audio thread, and one scan of 2048 bytes a second on the main one — far
+    // below anything either thread will notice. What it buys is that the next time something
+    // sounds wrong the answer is already on screen instead of a week of guessing.
+    return localStorage.getItem('audio_debug') !== '0'
   } catch {
     return false
   }

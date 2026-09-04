@@ -368,11 +368,31 @@ function scheduleWindow(from: number, to: number) {
             at = Math.max(from, end - 0.005)
           }
           if (at < from || at >= to) continue
-          // ⚠️ the id carries the layer, the repetition AND which pass through the take this is.
-          // Without the repetition a note still sounding when the loop came round would be
-          // silenced by its own next note-on; without `k`, the second pass through a tiled take
-          // would silence the first one's held notes.
-          const id = `L${layer.id}:${rep}:${k}:${e.midi}`
+          /**
+           * ⚠️ IDENTIFIED BY THE REPETITION'S ABSOLUTE START TIME, never by its index.
+           *
+           * The id has to distinguish one pass through a take from the next — without that, a
+           * note still sounding when the loop comes round is silenced by its own next note-on,
+           * and a tiled take's second pass silences the first's held notes. It used to do that
+           * with `rep` and `k`, which are counted from loopStart.
+           *
+           * But tick() advances loopStart by a whole loop every time a pass completes, and the
+           * numbering moves with it. So a note-on scheduled just before a boundary as rep=1 had
+           * its note-off computed after loopStart had moved, as rep=0 — a DIFFERENT id. noteOff
+           * looked up an id nothing was stored under, found nothing, and returned. The voice was
+           * never stopped and never removed: it rang until Panic, while the note-on and note-off
+           * counts stayed perfectly balanced, which is what made it look like a scheduling
+           * problem rather than a naming one.
+           *
+           * It bit notes at the START of a take because that is exactly where a note-on falls in
+           * the lookahead of the pass before the boundary and its note-off falls after it.
+           *
+           * `sub` is an absolute time on the audio clock. Renumbering cannot move it: when
+           * loopStart gains a loop and rep loses one, base is arithmetically identical. Rounded to
+           * the millisecond, which is coarser than any float drift and finer than any two
+           * repetitions.
+           */
+          const id = `L${layer.id}:${Math.round(sub * 1000)}:${e.midi}`
           // the layer is its own part, so its echo and reverb are its own too — see Layer.fx
           if (e.on) {
             noteOn(id, layer.instrument, e.midi, at, { key: `L${layer.id}`, fx: layer.fx })

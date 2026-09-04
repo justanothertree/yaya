@@ -1,6 +1,13 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { gridStep, pitchRange, toEvents, toNotes, type Note } from '../audio/noteEdit'
-import { seekTo, setLayerEvents, type Layer } from '../audio/looper'
+import {
+  loopState,
+  seekTo,
+  setLayerEvents,
+  setMetronome,
+  subscribeLoop,
+  type Layer,
+} from '../audio/looper'
 import { noteOff, noteOn } from '../audio/synth'
 
 /**
@@ -135,6 +142,11 @@ export function PianoRoll({
 
   const step = gridStep(bpm, quantize)
   const [drawLen, setDrawLen] = useState<number | null>(null)
+  const metronome = useSyncExternalStore(
+    subscribeLoop,
+    () => loopState().metronome,
+    () => loopState().metronome,
+  )
   /** how long a note you draw comes out — the snap, unless you have said otherwise */
   const newDur = drawLen == null ? step : gridStep(bpm, drawLen)
   const notes = useMemo(() => toNotes(layer.events, layer.len), [layer.events, layer.len])
@@ -447,6 +459,19 @@ export function PianoRoll({
           title="Delete the selected note (or right-click it)"
         >
           ✕ Note
+        </button>
+        {/* ⚠️ The click is ALSO here, not only out in the room's toolbar. Editing a part means
+            listening to it over and over, and the metronome is the first thing you want gone —
+            but the toolbar is above the layer list and off screen on a phone by the time the roll
+            is open. A control you have to go looking for during the one task that needs it is a
+            control in the wrong place. Same state, same setter, second doorway. */}
+        <button
+          className={'btn' + (metronome ? ' is-on' : '')}
+          aria-pressed={metronome}
+          onClick={() => setMetronome(!metronome)}
+          title={metronome ? 'Silence the click' : 'Click on every beat'}
+        >
+          🎯 Click
         </button>
         <button className="btn" onClick={onClose} title="Close the editor (Esc)">
           Done

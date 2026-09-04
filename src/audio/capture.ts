@@ -21,8 +21,15 @@ import type { InstrumentId } from './synth'
 
 export type Played = { t: number; midi: number; on: boolean; inst: InstrumentId }
 
-/** How much history to keep. Long enough to catch a phrase you have already stopped playing. */
-const KEEP_S = 90
+/**
+ * How much history to keep. Long enough to catch a phrase you have already stopped playing.
+ *
+ * ⚠️ Four minutes, not ninety seconds. The point of Capture is deciding it was worth keeping
+ * AFTER you hear it, and ninety seconds is shorter than the gap between playing something good
+ * and realising it. Each event is a small object, so a busy four minutes is a few thousand of
+ * them — nothing against what one held note costs.
+ */
+const KEEP_S = 240
 
 let log: Played[] = []
 
