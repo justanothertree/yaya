@@ -249,9 +249,43 @@ export function PaintRoom() {
   useEffect(() => {
     repaint()
   }, [strokes, repaint])
+  /**
+   * ⚠️ ONE BLIT PER FRAME, NOT ONE PER WHEEL EVENT.
+   *
+   * A wheel is not one event per notch. A trackpad or a smooth mouse wheel sends a stream of
+   * them, ten or twenty inside a single frame, and each one set the scale, re-rendered, and
+   * blitted the whole document again. Measured at 2048x1536 into a 2560x1600 view that is about
+   * 2.7ms a blit, so a frame's worth of wheel spent 30-50ms redrawing the same picture over and
+   * over and only the last one was ever seen. That is the stutter when zooming with a lot on the
+   * canvas, and it got worse the more there was to draw.
+   *
+   * Scheduling on an animation frame collapses the burst into the single blit that was the only
+   * one that could reach the screen anyway.
+   */
+  const blitSoon = useRef(0)
+  /**
+   * ⚠️ THROUGH A REF, because blit() is rebuilt whenever `scale` changes.
+   *
+   * Calling the captured blit would draw the scale from the FIRST event of the burst and then
+   * skip the other fourteen, since the guard below stops them scheduling anything of their own —
+   * the zoom would visibly lag a notch behind the wheel and stop early. The ref always holds the
+   * newest one, so the single blit that does run is the one for where the wheel actually ended.
+   */
+  const latestBlit = useRef(blit)
+  latestBlit.current = blit
   useEffect(() => {
-    blit()
+    if (blitSoon.current) return
+    blitSoon.current = requestAnimationFrame(() => {
+      blitSoon.current = 0
+      latestBlit.current()
+    })
   }, [scale, blit])
+  useEffect(
+    () => () => {
+      if (blitSoon.current) cancelAnimationFrame(blitSoon.current)
+    },
+    [],
+  )
 
   // ── drawing ───────────────────────────────────────────────────────────────
   /**
