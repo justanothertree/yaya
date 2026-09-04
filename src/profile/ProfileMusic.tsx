@@ -10,7 +10,14 @@ import {
   stopSong,
   subscribeSongPlayer,
 } from '../audio/songPlayer'
-import { makeVisual, defaultTrail, VISUALS, type Ink, type VisualId } from '../audio/visualModes'
+import {
+  makeVisual,
+  defaultTrail,
+  readLift,
+  VISUALS,
+  type Ink,
+  type VisualId,
+} from '../audio/visualModes'
 import { makeFeatureReader } from '../audio/audioFeatures'
 import { paletteById } from '../audio/palettes'
 import { binCount, fftSize, readSpectrum, readWaveform } from '../audio/audioTap'
@@ -398,6 +405,7 @@ export function VisualBlock({ cfg }: { cfg: Record<string, unknown> }) {
         accent2: read('--accent-2', [239, 68, 68]),
         ink: read('--text', [238, 238, 248]),
         stops: paletteById(paletteId).stops,
+        lift: readLift(),
       }
     }
     let paint = ink()

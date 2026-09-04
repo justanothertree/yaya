@@ -85,6 +85,7 @@ const DEPTH_KEY = 'viz_depth_v1'
 const PATH_KEY = 'viz_path_v1'
 const PATHSPEED_KEY = 'viz_pathspeed_v1'
 const BLOOM_KEY = 'viz_bloom_v1'
+const BRIGHT_KEY = 'viz_bright_v1'
 const PUNCH_KEY = 'viz_punch_v1'
 const ECHO_KEY = 'viz_echo_v1'
 const TRAIL_KEY = 'viz_trail_v1'
@@ -232,6 +233,19 @@ export function AudioVisualizer() {
   const [path, setPath] = useState<PathId>(() => readStored(PATH_KEY, PATH_IDS, 'off'))
   const [pathSpeed, setPathSpeed] = useState(() => storedNumber(PATHSPEED_KEY, 0.02, 1) ?? 0.12)
   const [bloom, setBloom] = useState(() => storedNumber(BLOOM_KEY, 0, 1) ?? 0.25)
+  /**
+   * ⚠️ BRIGHTNESS IS FREE AND BLOOM IS NOT, which is the whole reason this control exists.
+   *
+   * Both make the picture lighter, but they charge completely differently. This one changes the
+   * colour a shape is drawn in - the same pixels, different bytes - so it costs nothing at any
+   * size. Bloom blurs a copy of the finished frame and adds it back on top, which is real work
+   * per pixel every frame and is what makes a fullscreen visualiser expensive.
+   *
+   * People were reaching for bloom to fix darkness because it was the only lever there was. With
+   * a brightness control the cheap want has a cheap answer, and bloom goes back to being the
+   * effect it is rather than a workaround.
+   */
+  const [bright, setBright] = useState(() => storedNumber(BRIGHT_KEY, 0, 0.6) ?? 0.28)
   const [punch, setPunch] = useState(() => storedNumber(PUNCH_KEY, 0, 1) ?? 0)
   const [echo, setEcho] = useState(() => storedNumber(ECHO_KEY, 0, 1) ?? 0)
   const [tab, setTab] = useState<VizTab>(() => readStored(TAB_KEY, TAB_IDS, 'modes'))
@@ -268,6 +282,7 @@ export function AudioVisualizer() {
       path,
       pathSpeed,
       bloom,
+      bright,
       punch,
       echo,
     }),
@@ -297,6 +312,7 @@ export function AudioVisualizer() {
       num('split', 0, 1, setSplit)
       num('pathSpeed', 0.02, 1, setPathSpeed)
       num('bloom', 0, 1, setBloom)
+      num('bright', 0, 0.6, setBright)
       num('punch', 0, 1, setPunch)
       num('echo', 0, 1, setEcho)
     },
@@ -335,6 +351,7 @@ export function AudioVisualizer() {
     path,
     pathSpeed,
     bloom,
+    bright,
     punch,
     echo,
     sharingViz,
@@ -376,6 +393,7 @@ export function AudioVisualizer() {
     path,
     pathSpeed,
     bloom,
+    bright,
     punch,
     echo,
     spin,
@@ -389,6 +407,7 @@ export function AudioVisualizer() {
     path,
     pathSpeed,
     bloom,
+    bright,
     punch,
     echo,
     spin,
@@ -437,6 +456,7 @@ export function AudioVisualizer() {
       localStorage.setItem(PATHSPEED_KEY, String(pathSpeed))
       localStorage.setItem(TAB_KEY, tab)
       localStorage.setItem(BLOOM_KEY, String(bloom))
+      localStorage.setItem(BRIGHT_KEY, String(bright))
       localStorage.setItem(PUNCH_KEY, String(punch))
       localStorage.setItem(ECHO_KEY, String(echo))
       localStorage.setItem(TRAIL_KEY, String(trail))
@@ -462,6 +482,7 @@ export function AudioVisualizer() {
     path,
     pathSpeed,
     bloom,
+    bright,
     punch,
     echo,
     tab,
@@ -675,9 +696,33 @@ export function AudioVisualizer() {
         ink: read('--text', [238, 238, 248]),
         // empty for Theme, which is what makes hue() fall back to the accent pair
         stops: paletteById(palette).stops,
+        lift: 0, // replaced every frame from the dial below
       }
     }
     let ink = readInk()
+
+    /**
+     * ⚠️ HOW MANY PIXELS WE ARE ALLOWED TO DRAW, lowered when the drawing cannot keep up.
+     *
+     * Fullscreen on a retina laptop is 2880x1800, and a frame is not one pass over it. Trail
+     * fades the whole buffer, mirror and echo each copy it back, bloom takes it down and puts it
+     * back up: a busy frame writes the full canvas six or seven times, so roughly 35 million
+     * pixels at 60Hz. That is what "it lagged my browser in fullscreen" is - fill rate, nothing
+     * to do with which colours or how many shapes.
+     *
+     * Backing scale is the right dial because cost goes with its SQUARE: 0.7 is half the work,
+     * 0.5 is a quarter. On a soft, glowing, trailed picture it is close to invisible, which is
+     * the same trick the glow buffer already plays at a third size.
+     *
+     * ⚠️ IT REACTS TO OUR OWN DRAWING TIME, NOT THE FRAME RATE. A slow frame rate can just
+     * as easily mean a 30Hz screen, a throttled tab or another program - and shrinking the canvas
+     * would then cost quality to fix something that was never ours. Timing only the work between
+     * these two marks means we step down when WE are the expense and stay out of the way when we
+     * are not.
+     */
+    let qual = 1
+    let cost = 0
+    let held = 0
 
     const resize = () => {
       // clientWidth/Height, not getBoundingClientRect: a rect is the VISUAL size and includes
@@ -685,7 +730,7 @@ export function AudioVisualizer() {
       // canvas actually occupies
       cssW = box.clientWidth
       cssH = box.clientHeight
-      dpr = Math.min(window.devicePixelRatio || 1, 2)
+      dpr = Math.min(window.devicePixelRatio || 1, 2) * qual
       w = Math.max(1, cssW)
       h = Math.max(1, cssH)
       for (const c of [cv, buf]) {
@@ -732,6 +777,7 @@ export function AudioVisualizer() {
        */
       if (box.clientWidth !== cssW || box.clientHeight !== cssH) resize()
 
+      const t0 = performance.now()
       const dt = Math.min(0.05, Math.max(0, (now - last) / 1000))
       last = now
       const {
@@ -740,6 +786,7 @@ export function AudioVisualizer() {
         path: pathId,
         pathSpeed: pspeed,
         bloom: blm,
+        bright: bri,
         punch: pun,
         echo: ech,
         spin: spn,
@@ -747,6 +794,8 @@ export function AudioVisualizer() {
         shake: shk,
         split: spl,
       } = dials.current
+      // one assignment a frame, rather than rebuilding ink: the modes read it through hue()
+      ink.lift = bri
       const all = src === ALL
       const bins = Math.min(spec.length, all ? binCountAll() : binCount(src))
       const waveN = Math.min(wav.length, all ? fftSizeAll() : fftSize(src))
@@ -1082,6 +1131,28 @@ export function AudioVisualizer() {
       }
 
       if (moved) view.restore()
+
+      /**
+       * ⚠️ A LONG AVERAGE AND A LONG COOLDOWN, because the failure here is oscillation. Shrinking
+       * makes the frame cheap, cheap invites growing back, growing back makes it slow again — and
+       * a canvas visibly breathing between two resolutions is far worse than one that is quietly
+       * a little soft. Twelve seconds of comfort before it tries again, and a gap between the two
+       * thresholds wide enough that no scene can sit on both sides of it.
+       */
+      cost = cost * 0.94 + (performance.now() - t0) * 0.06
+      held++
+      if (cost > 9 && qual > 0.5 && held > 90) {
+        qual = Math.max(0.5, qual - 0.18)
+        held = 0
+        cost = 5
+        resize()
+      } else if (cost < 3.5 && qual < 1 && held > 720) {
+        qual = Math.min(1, qual + 0.18)
+        held = 0
+        cost = 5
+        resize()
+      }
+
       raf = requestAnimationFrame(frame)
     }
 
@@ -1841,6 +1912,25 @@ export function AudioVisualizer() {
                 once — the same reason the ramp was worth more than another mode. */}
             {tab === 'look' && (
               <div className="viz-row viz-row-wide">
+                {/* ⚠️ before Bloom deliberately: this is the one that costs nothing, so it
+                    should be the one you try first when the picture looks dark */}
+                <label className="appearance-slider">
+                  <span
+                    className="muted"
+                    title="Lifts the dark end of the palette — costs nothing, unlike Bloom"
+                  >
+                    Brightness
+                  </span>
+                  <input
+                    type="range"
+                    min={0}
+                    max={0.6}
+                    step={0.01}
+                    value={bright}
+                    onChange={(e) => setBright(Number(e.target.value))}
+                  />
+                  <span className="appearance-slider-val">{Math.round((bright / 0.6) * 100)}</span>
+                </label>
                 <label className="appearance-slider">
                   <span className="muted" title="Bright areas spill light into what is around them">
                     Bloom

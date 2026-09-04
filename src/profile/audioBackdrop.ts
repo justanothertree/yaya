@@ -190,7 +190,7 @@ export function audioBackdrop(): Effect {
         },
         // paint carries the viewer's accents; the ramp comes from their chosen palette, so the
         // background and the module can never end up different colours
-        ink: { ...paint, stops: paletteById(paletteId).stops },
+        ink: { ...paint, stops: paletteById(paletteId).stops, lift: mods.readLift() },
       })
 
       /**

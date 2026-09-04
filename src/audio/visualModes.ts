@@ -100,6 +100,23 @@ export type Ink = {
    * showing its owner's colours.
    */
   stops: RGB[]
+  /**
+   * How far off the floor of the ramp to start, 0-1.
+   *
+   * ⚠️ THE RAMPS ARE GRADIENTS, AND A GRADIENT'S DARK END IS NOT A COLOUR YOU CAN DRAW WITH.
+   * Every ramp is authored dark-to-bright the way a fire or a sunset goes, which is right for a
+   * filled background and wrong for picking an element's colour: twenty-one of the twenty-seven
+   * start below 0.11 luminance and six start below 0.06, so anything asking for a low value was
+   * drawn near-black ON a dark page. Quiet music asks for low values almost all of the time.
+   *
+   * That is why glow had to be "just right" to see anything: bloom adds light additively, so it
+   * was being used to put back brightness the ramp had refused to give. Lifting the floor here
+   * costs one multiply-add per colour and no fill rate at all, while glow costs a blur and a
+   * full-canvas composite every frame — so this is the cheap end of the same want.
+   *
+   * 0 is exactly the old behaviour, for anyone who liked it.
+   */
+  lift: number
 }
 
 /**
@@ -155,6 +172,23 @@ export type Visual = {
 const rgb = (c: [number, number, number], a = 1) => `rgba(${c[0]}, ${c[1]}, ${c[2]}, ${a})`
 
 /**
+ * The viewer's brightness preference, for the drawings that are not the visualiser itself.
+ *
+ * ⚠️ The profile backdrop and the song map build their own Ink, and they were dark for
+ * exactly the same reason - they sample the same gradient ramps. Reading the one setting here
+ * means somebody who turned brightness up because the visualiser looked dim does not have to
+ * find two more controls that do not exist.
+ */
+export const readLift = (): number => {
+  try {
+    const n = Number(localStorage.getItem('viz_bright_v1'))
+    return Number.isFinite(n) && n >= 0 && n <= 0.6 ? n : 0.28
+  } catch {
+    return 0.28
+  }
+}
+
+/**
  * The colour for a value between 0 and 1 — the one call every mode makes.
  *
  * With a palette chosen it samples that ramp. With Theme chosen there is no ramp, so it blends
@@ -162,7 +196,9 @@ const rgb = (c: [number, number, number], a = 1) => `rgba(${c[0]}, ${c[1]}, ${c[
  * same file, one code path.
  */
 function hue(ink: Ink, t: number, alpha = 1): string {
-  const k = Math.max(0, Math.min(1, t))
+  // the floor lift, one multiply-add: see Ink.lift for why the ramps need it
+  const raw = Math.max(0, Math.min(1, t))
+  const k = ink.lift + raw * (1 - ink.lift)
   const c: RGB = ink.stops.length
     ? sample(ink.stops, k)
     : [
