@@ -948,7 +948,7 @@ function impulse(c: AudioContext, seconds: number): AudioBuffer {
   return buf
 }
 
-type Voice = { stop(at: number): void; ends: number }
+type Voice = { stop(at: number, force?: boolean): void; ends: number }
 const voices = new Map<string, Voice>()
 
 /** More than this many at once and the oldest is cut — see the note in noteOn. */
@@ -1250,8 +1250,9 @@ export function noteOn(
     hitDrum(c, midi, at, bus)
     return
   }
-  // already sounding: retrigger rather than stack a second voice on the same key
-  voices.get(id)?.stop(at)
+  // already sounding: retrigger rather than stack a second voice on the same key. Forced,
+  // because otherwise hammering one key would pile up rings that nothing is tracking.
+  voices.get(id)?.stop(at, true)
   voices.delete(id)
 
   // ⚠️ Voice stealing. Without a cap, a stuck key or a fast peer can pile up oscillators until
@@ -1259,7 +1260,7 @@ export function noteOn(
   if (voices.size >= MAX_VOICES) {
     const oldest = voices.keys().next().value
     if (oldest !== undefined) {
-      voices.get(oldest)?.stop(at)
+      voices.get(oldest)?.stop(at, true)
       voices.delete(oldest)
     }
   }
@@ -1396,7 +1397,20 @@ export function noteOn(
   const ends = sh.s > 0 ? Infinity : at + sh.a + sh.d + sh.r
   const voice: Voice = {
     ends,
-    stop(t: number) {
+    stop(t: number, force = false) {
+      /**
+       * ⚠️ A STRUCK NOTE RINGS OUT. Lifting your finger off a marimba bar does not stop the bar,
+       * and ten of these patches are one-shots — they decay to silence on their own and their
+       * sustain is zero. Applying a release to them as well CUT THE RING SHORT: marimba fell from
+       * 0.32s to 0.10s, pluck from 0.45s to 0.14s, bell from 2.4s to 1.4s. Letting go of the key
+       * was therefore audible, which is the whole complaint, and it was audible only when the
+       * note was still sounding — release after it had died did nothing, because there was
+       * nothing left to cut.
+       *
+       * force is for the cases that genuinely must silence a voice whatever it is: panic, and
+       * stealing the oldest voice when the cap is reached.
+       */
+      if (sh.s <= 0 && !force) return
       const from = Math.max(t, c.currentTime + SAFE_START)
       try {
         /**
@@ -1510,7 +1524,7 @@ export function noteOff(id: string, when?: number) {
 export function allNotesOff() {
   const c = ctx
   if (!c) return
-  for (const [, v] of voices) v.stop(c.currentTime + SAFE_START)
+  for (const [, v] of voices) v.stop(c.currentTime + SAFE_START, true)
   voices.clear()
 }
 
