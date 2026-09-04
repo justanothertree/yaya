@@ -145,6 +145,27 @@ export function PianoRoll({
    * pitch cannot overlap, so there is nothing to go stale.
    */
   const [sel, setSel] = useState<{ midi: number; t: number } | null>(null)
+  /**
+   * ⚠️ NOTES ARE NAMED BY PITCH AND START, never by their index.
+   *
+   * `notes` is rebuilt from the layer's events on every edit, so an index means something
+   * different the moment anything changes — and a selection that quietly starts pointing at
+   * other notes is how you delete the wrong bar. Pitch and start are what actually identify a
+   * note here; `isSame` above already relies on it, and two notes can never share both.
+   */
+  const [picks, setPicks] = useState<Array<{ midi: number; t: number }>>([])
+  const [selecting, setSelecting] = useState(false)
+  const [clip, setClip] = useState<Note[]>([])
+  /** the rectangle being dragged out, in grid cells; a ref because it changes per pointer event */
+  const band = useRef<{ c0: number; r0: number; c1: number; r1: number } | null>(null)
+  const [bandBox, setBandBox] = useState<{ c0: number; r0: number; c1: number; r1: number } | null>(
+    null,
+  )
+  /** where you last put the pointer down, so a paste knows where you want it */
+  const anchor = useRef<{ col: number; row: number } | null>(null)
+
+  const isPicked = (n: Note) => picks.some((p) => p.midi === n.midi && Math.abs(p.t - n.t) < 1e-6)
+  const picked = () => notes.filter(isPicked)
   const [drag, setDrag] = useState<Drag>(null)
   const gridRef = useRef<HTMLDivElement>(null)
   const headRef = useRef<HTMLDivElement>(null)
@@ -390,6 +411,18 @@ export function PianoRoll({
     const box = (e.currentTarget as HTMLElement).getBoundingClientRect()
     const c = cellFrom(e)
     if (!c) return
+    anchor.current = { col: c.col, row: c.row }
+    /* in select mode a note is something you add to or take out of the pile, not something you
+       drag — dragging is what the pile does together, once it exists */
+    if (selecting) {
+      setPicks((p) =>
+        p.some((x) => x.midi === n.midi && Math.abs(x.t - n.t) < 1e-6)
+          ? p.filter((x) => !(x.midi === n.midi && Math.abs(x.t - n.t) < 1e-6))
+          : [...p, { midi: n.midi, t: n.t }],
+      )
+      setSel({ midi: n.midi, t: n.t })
+      return
+    }
     setSel({ midi: n.midi, t: n.t })
     ;(e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId)
     const onGrip = (e.target as HTMLElement).classList?.contains('roll-grip')
@@ -424,6 +457,13 @@ export function PianoRoll({
   }
 
   const onMove = (e: React.PointerEvent) => {
+    if (band.current) {
+      const c = cellFrom(e)
+      if (!c) return
+      band.current = { ...band.current, c1: c.col, r1: c.row }
+      setBandBox(band.current)
+      return
+    }
     if (erasing.current) {
       eraseAt(e)
       return
@@ -444,6 +484,28 @@ export function PianoRoll({
   /** ⚠️ The ONLY place a drag writes anything. See the note on Drag. */
   const endDrag = () => {
     erasing.current = false
+    if (band.current) {
+      const r = band.current
+      band.current = null
+      setBandBox(null)
+      const c0 = Math.min(r.c0, r.c1)
+      const c1 = Math.max(r.c0, r.c1)
+      const r0 = Math.min(r.r0, r.r1)
+      const r1 = Math.max(r.r0, r.r1)
+      /* ⚠️ a note is caught if any part of it is inside the box, not only its start: a long note
+         crossing the box is one you meant to catch, and requiring its head to be inside makes
+         held notes almost impossible to pick */
+      const got = notes.filter((n) => {
+        const row = hi - n.midi
+        if (row < r0 || row > r1) return false
+        const a = Math.round(n.t / step)
+        const b = Math.round((n.t + Math.max(n.dur, step)) / step) - 1
+        return b >= c0 && a <= c1
+      })
+      setPicks(got.map((n) => ({ midi: n.midi, t: n.t })))
+      setSel(got.length ? { midi: got[0].midi, t: got[0].t } : null)
+      return
+    }
     if (drag) commit(shown)
     setDrag(null)
   }
@@ -459,6 +521,15 @@ export function PianoRoll({
     }
     const c = cellFrom(e)
     if (!c) return
+    anchor.current = { col: c.col, row: c.row }
+    /* ⚠️ a box on the grid selects; it never draws. Placing and selecting cannot share a drag,
+       so selecting is a mode you turn on, the same decision the paint room made. */
+    if (selecting) {
+      band.current = { c0: c.col, r0: c.row, c1: c.col, r1: c.row }
+      setBandBox(band.current)
+      ;(e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId)
+      return
+    }
     const midi = hi - c.row
     if (midi < lo || midi > hi || c.col < 0 || c.col >= cols) return
     const t = c.col * step
@@ -475,6 +546,76 @@ export function PianoRoll({
     // select the note you just made, by identity — see the note on `sel`
     setSel({ midi: n.midi, t: n.t })
     commit(next)
+  }
+
+  const dropPicks = () => setPicks([])
+
+  const copyPicked = () => {
+    const list = picked()
+    if (list.length) setClip(list.map((n) => ({ ...n })))
+  }
+  const cutPicked = () => {
+    const list = picked()
+    if (!list.length) return
+    setClip(list.map((n) => ({ ...n })))
+    commit(notes.filter((n) => !isPicked(n)))
+    dropPicks()
+    setSel(null)
+  }
+  const deletePicked = () => {
+    if (!picks.length) return
+    commit(notes.filter((n) => !isPicked(n)))
+    dropPicks()
+    setSel(null)
+  }
+
+  /**
+   * ⚠️ PASTED WHERE YOU LAST PUT THE POINTER, keeping the block's own shape.
+   *
+   * The alternative is pasting back exactly where it came from, which is invisible, or always a
+   * bar later, which is only right when you happen to want that. Anchoring on the last cell you
+   * touched means "click there, paste" — and because the whole block is moved by one offset, the
+   * intervals and rhythm inside it survive, which is the only reason to copy a phrase at all.
+   *
+   * Anything that would land outside the take or on top of an existing note is dropped rather
+   * than clamped: a paste that silently stacks notes or piles them against the last bar is worse
+   * than one that plainly puts fewer notes down.
+   */
+  const pastePicked = () => {
+    if (!clip.length) return
+    const t0 = Math.min(...clip.map((n) => n.t))
+    const top = Math.max(...clip.map((n) => n.midi))
+    const a = anchor.current
+    const toT = a ? a.col * step : t0 + step
+    const toMidi = a ? hi - a.row : top
+    const out = [...notes]
+    const made: Array<{ midi: number; t: number }> = []
+    for (const n of clip) {
+      const t = toT + (n.t - t0)
+      const midi = toMidi + (n.midi - top)
+      if (midi < lo || midi > hi || t < 0 || t >= loopLen) continue
+      if (occupied(out, midi, t)) continue
+      const put = { midi, t, dur: Math.min(n.dur, loopLen - t) }
+      out.push(put)
+      made.push({ midi, t })
+    }
+    if (!made.length) return
+    commit(out)
+    setPicks(made)
+    setSel(made[0])
+  }
+
+  /**
+   * ⚠️ CHANGE ONE, CHANGE ALL — but only the ones you picked.
+   *
+   * With a group selected the length buttons stop meaning "what I draw next" and start meaning
+   * "make these that long", because that is plainly what you are asking for while several notes
+   * are lit. With nothing selected they go back to setting the next note's length, which is what
+   * they have always done.
+   */
+  const setPickedLength = (dur: number) => {
+    if (!picks.length) return
+    commit(notes.map((n) => (isPicked(n) ? { ...n, dur: Math.min(dur, loopLen - n.t) } : n)))
   }
 
   /** Delete one note, whichever way you asked for it to go. */
@@ -495,6 +636,37 @@ export function PianoRoll({
     const key = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement | null
       if (t && /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)) return
+      const mod = e.ctrlKey || e.metaKey
+      const k = e.key.toLowerCase()
+      if (mod && k === 'c' && picks.length) {
+        e.preventDefault()
+        copyPicked()
+        return
+      }
+      if (mod && k === 'x' && picks.length) {
+        e.preventDefault()
+        cutPicked()
+        return
+      }
+      if (mod && k === 'v' && clip.length) {
+        e.preventDefault()
+        pastePicked()
+        return
+      }
+      if (mod && k === 'a' && selecting) {
+        e.preventDefault()
+        setPicks(notes.map((n) => ({ midi: n.midi, t: n.t })))
+        return
+      }
+      if (e.key === 'Escape' && picks.length) {
+        dropPicks()
+        return
+      }
+      if ((e.key === 'Delete' || e.key === 'Backspace') && picks.length) {
+        e.preventDefault()
+        deletePicked()
+        return
+      }
       if (e.key === 'Escape') onClose()
       if (e.key === 'Delete' || e.key === 'Backspace') {
         e.preventDefault()
@@ -503,7 +675,13 @@ export function PianoRoll({
     }
     window.addEventListener('keydown', key)
     return () => window.removeEventListener('keydown', key)
-  }, [removeSelected, onClose])
+    /**
+     * ⚠️ NO DEPENDENCY LIST, deliberately. This handler reads the picked notes, the clipboard and
+     * the notes themselves, and a list that named only some of them left the shortcuts holding a
+     * selection from several edits ago — Ctrl+C copying notes you had already replaced. Swapping
+     * one window listener per render is far cheaper than the class of bug that causes.
+     */
+  })
 
   return (
     <div className="roll">
@@ -519,6 +697,55 @@ export function PianoRoll({
         {/* ⚠️ Sits with the editor's own tools, not with Snap out in the room. They read as one
             setting when they are next to each other, and being one setting is the thing that was
             wrong. */}
+        <span className="roll-pick" role="group" aria-label="Selecting notes">
+          <button
+            className={'btn' + (selecting ? ' is-on' : '')}
+            aria-pressed={selecting}
+            onClick={() => {
+              setSelecting((v) => !v)
+              dropPicks()
+            }}
+            title="Drag a box round some notes, then copy, move or retime them together"
+          >
+            ⬚
+          </button>
+          {selecting && (
+            <>
+              <button
+                className="btn"
+                onClick={() => setPicks(notes.map((n) => ({ midi: n.midi, t: n.t })))}
+                title="Select every note in this part"
+              >
+                All
+              </button>
+              <span className="muted roll-pick-count">
+                {picks.length ? `${picks.length} picked` : 'drag a box'}
+              </span>
+              <button className="btn" onClick={copyPicked} disabled={!picks.length} title="Copy">
+                ⧉
+              </button>
+              <button className="btn" onClick={cutPicked} disabled={!picks.length} title="Cut">
+                ✂
+              </button>
+              <button
+                className="btn"
+                onClick={pastePicked}
+                disabled={!clip.length}
+                title="Paste where you last clicked"
+              >
+                📋{clip.length ? ` ${clip.length}` : ''}
+              </button>
+              <button
+                className="btn"
+                onClick={deletePicked}
+                disabled={!picks.length}
+                title="Delete the picked notes"
+              >
+                ✕
+              </button>
+            </>
+          )}
+        </span>
         <span className="roll-oct" role="group" aria-label="Which octaves are shown">
           <button
             className="btn"
@@ -547,8 +774,19 @@ export function PianoRoll({
               key={label}
               className={'btn' + (drawLen === v ? ' is-on' : '')}
               aria-pressed={drawLen === v}
-              onClick={() => setDrawLen(v)}
-              title={v == null ? 'Same as the snap' : `Draw ${label}-length notes`}
+              onClick={() => {
+                setDrawLen(v)
+                /* ⚠️ with notes picked these stop meaning "what I draw next" and start meaning
+                   "make these that long" — see setPickedLength */
+                if (picks.length) setPickedLength(v == null ? step : gridStep(bpm, v))
+              }}
+              title={
+                picks.length
+                  ? `Make the ${picks.length} picked note${picks.length === 1 ? '' : 's'} ${label} long`
+                  : v == null
+                    ? 'Same as the snap'
+                    : `Draw ${label}-length notes`
+              }
             >
               {label}
             </button>
@@ -661,10 +899,26 @@ export function PianoRoll({
                 />
               ) : null,
             )}
+            {bandBox && (
+              /* ⚠️ drawn over the grid and never committed anywhere: it is a gesture, not content */
+              <div
+                className="roll-band"
+                style={{
+                  left: Math.min(bandBox.c0, bandBox.c1) * cellW,
+                  top: Math.min(bandBox.r0, bandBox.r1) * ROW_H,
+                  width: (Math.abs(bandBox.c1 - bandBox.c0) + 1) * cellW,
+                  height: (Math.abs(bandBox.r1 - bandBox.r0) + 1) * ROW_H,
+                }}
+              />
+            )}
             {shown.map((n, i) => (
               <div
                 key={i}
-                className={'roll-note' + (isSame(n, sel) ? ' is-sel' : '')}
+                className={
+                  'roll-note' +
+                  (isSame(n, sel) ? ' is-sel' : '') +
+                  (isPicked(n) ? ' is-picked' : '')
+                }
                 style={{
                   left: (n.t / step) * cellW,
                   top: (hi - n.midi) * ROW_H,

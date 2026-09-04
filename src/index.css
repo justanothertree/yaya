@@ -7274,3 +7274,28 @@ a.cz-msg-author:focus-visible {
   border-color: var(--accent);
   box-shadow: 0 0 0 1px var(--accent) inset;
 }
+
+/* selecting notes in the editor — see PianoRoll's picks */
+.roll-pick {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+.roll-pick-count {
+  font-size: 0.75rem;
+  min-width: 4.5rem;
+  text-align: center;
+}
+.roll-band {
+  position: absolute;
+  pointer-events: none;
+  border: 1px dashed rgba(255, 255, 255, 0.9);
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 2px;
+  z-index: 3;
+}
+.roll-note.is-picked {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+  filter: brightness(1.25);
+}
