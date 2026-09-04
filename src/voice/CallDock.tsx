@@ -4,6 +4,7 @@ import type { VoicePeer } from './voiceSession'
 import { callWord, peerWord, speakingNames } from './callWords'
 import { CallRoster } from './CallRoster'
 import { party, routeIsPrivate } from '../party/party'
+import { together } from '../party/together'
 
 /**
  * A call now outlives the screen it started on, which is what makes it usable — but a call
@@ -106,6 +107,7 @@ export function CallDock() {
    * Set above the early return so both tokens still clear when the call ends.
    */
   const pointers = useSyncExternalStore(party.subscribe, party.getState, party.getState).sharing
+  const shareAll = useSyncExternalStore(together.subscribe, together.getState, together.getState).on
   // recomputed on every render rather than watched: the dock re-renders on navigation anyway,
   // and a hashchange listener here would be a second copy of the one party.ts already keeps
   const onPrivatePage = routeIsPrivate()
@@ -221,6 +223,30 @@ export function CallDock() {
        * control that vanishes looks like a bug, and the fact that this page is excluded is
        * exactly the thing worth telling you.
        */}
+      {/**
+       * ⚠️ ONE SWITCH FOR THREE MECHANISMS, and it belongs HERE rather than in any of them.
+       *
+       * Playing together, drawing together and sharing a window each have their own on-switch
+       * inside their own room, so sharing three things meant visiting three rooms. The switch
+       * that means "all of it" cannot live in one of the three; it lives with the call, which is
+       * the only place all three are true at once, and is where you are standing when you decide.
+       *
+       * It shares and never follows: what other people are offering still waits for you to join
+       * it, because offering costs a room nothing while adopting somebody's settings changes what
+       * is on your screen.
+       */}
+      <button
+        className={'btn' + (shareAll ? ' is-on' : '')}
+        onClick={() => together.setOn(!shareAll)}
+        aria-pressed={shareAll}
+        title={
+          shareAll
+            ? 'Sharing everything you open — the instrument, the drawing, the visualiser'
+            : 'Share everything you open with the call, instead of switching each room on'
+        }
+      >
+        {shareAll ? '🤝' : '🫱'}
+      </button>
       <button
         className={'btn' + (pointers ? ' is-on' : '')}
         onClick={() => party.setSharing(!pointers)}

@@ -37,6 +37,7 @@ import {
 } from '../audio/library'
 import { remember } from '../audio/capture'
 import { sharedCtx } from '../audio/context'
+import { together } from '../party/together'
 import { jam } from '../party/jam'
 import { hueFor } from '../party/party'
 import { useVoiceSession } from '../voice/useVoiceSession'
@@ -373,6 +374,18 @@ export function InstrumentRoom() {
    * browser — those are only released by a message, and unmounting sends none.
    */
   useEffect(() => () => jam.setOn(false), [])
+  /**
+   * ⚠️ APPLIED ON ARRIVAL AS WELL AS ON CHANGE. Leaving this room switches jamming off — the
+   * line above, and it is right, because nobody should keep sharing a room they walked out of.
+   * That means "share everything" cannot be a thing you turn on once and forget: it has to be
+   * re-applied every time you come back, or it would quietly stop being true the first time you
+   * went to look at something else.
+   */
+  useEffect(() => {
+    const apply = () => jam.setOn(together.getState().on)
+    apply()
+    return together.subscribe(apply)
+  }, [])
 
   /** which layer's notes are open in the editor, if any */
   const [editing, setEditing] = useState<string | null>(null)

@@ -19,6 +19,7 @@ import {
 } from '../draw/strokes'
 import { InCanvasWindow } from '../circuit/ui/canvasContext'
 import { gallery, removeArt, saveArt, subscribeGallery, type Art } from '../draw/gallery'
+import { together } from '../party/together'
 import { drawParty } from '../party/draw'
 import { useVoiceSession } from '../voice/useVoiceSession'
 
@@ -175,6 +176,13 @@ export function PaintRoom() {
     }
   }, [])
   useEffect(() => () => drawParty.setOn(false), [])
+  /* ⚠️ re-applied on arrival, for the same reason as the instrument room: leaving turns sharing
+     off, so a preference that was only read once would stop being true the moment you wandered */
+  useEffect(() => {
+    const apply = () => drawParty.setOn(together.getState().on)
+    apply()
+    return together.subscribe(apply)
+  }, [])
 
   /** the drawing, as it would be saved */
   const drawingRef = useRef<Drawing>({

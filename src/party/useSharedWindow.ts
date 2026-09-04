@@ -1,6 +1,7 @@
 /* eslint-disable react-hooks/exhaustive-deps */
 import { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from 'react'
 import { shared, type Offer } from './shared'
+import { together } from './together'
 import { useVoiceSession } from '../voice/useVoiceSession'
 
 /**
@@ -48,6 +49,22 @@ export function useSharedWindow<T>(
       ),
     [id],
   )
+
+  /**
+   * ⚠️ HERE RATHER THAN IN THE VISUALISER, so every window that becomes shareable later joins in
+   * without knowing this feature exists — the same reason the rest of this file exists.
+   *
+   * Only while in a call, because an offer rides the call's channel and an offer to nobody is
+   * just state. Re-offered when a call starts rather than only when the switch is flipped: you
+   * turn "share everything" on once and it is true for the next call too, which is the entire
+   * point of it being a preference rather than a button.
+   */
+  const shareAll = useSyncExternalStore(together.subscribe, together.getState, together.getState).on
+  useEffect(() => {
+    if (!inCall) return
+    if (shareAll) shared.offer(id, label)
+    else shared.withdraw(id)
+  }, [shareAll, inCall, id, label])
 
   /**
    * Leaving the page gives the window back to you rather than leaving you following something you
