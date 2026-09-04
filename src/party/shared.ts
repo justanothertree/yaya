@@ -55,9 +55,19 @@ export type SharedState = {
   sharing: string[]
   /** window id → the peer whose copy we are following */
   following: Record<string, string>
+  /**
+   * Peers whose windows we follow WHOLESALE, including ones they have not opened yet.
+   *
+   * ⚠️ Kept as a standing decision rather than applied once and forgotten, because the thing
+   * that made this manual was not the first join — it was the second and the third. Somebody
+   * opens the instrument, you join; they open the visualiser, you join again. Remembering the
+   * answer means "I am watching what Josh is doing" is one decision instead of one per window
+   * for the rest of the call.
+   */
+  followingAll: string[]
 }
 
-let state: SharedState = { offers: {}, sharing: [], following: {} }
+let state: SharedState = { offers: {}, sharing: [], following: {}, followingAll: [] }
 const listeners = new Set<() => void>()
 
 function set(patch: Partial<SharedState>) {
@@ -164,9 +174,51 @@ export const shared = {
    */
   unfollow(id: string) {
     if (!(id in state.following)) return
+    const peer = state.following[id]
     const next = { ...state.following }
     delete next[id]
-    set({ following: next })
+    /**
+     * ⚠️ TAKING ONE WINDOW BACK ENDS THE STANDING ANSWER for that person, and it has to.
+     * Otherwise touching a slider would drop you out of the window and the wholesale follow
+     * would put you straight back in — the site and you pulling in opposite directions, which
+     * is the exact failure the note at the top of this file exists to avoid.
+     */
+    set({ following: next, followingAll: state.followingAll.filter((p) => p !== peer) })
+  },
+
+  /** Follow everything somebody is showing, and everything they show next. */
+  followAll(peer: string) {
+    const mine = Object.values(state.offers).filter((o) => o.by === peer)
+    const following = { ...state.following }
+    for (const o of mine) following[o.id] = peer
+    set({
+      following,
+      followingAll: state.followingAll.includes(peer)
+        ? state.followingAll
+        : [...state.followingAll, peer],
+    })
+    for (const o of mine) {
+      const seed = latest.get(key(peer, o.id))
+      if (seed !== undefined) appliers.get(o.id)?.(seed)
+    }
+  },
+
+  /** Stop following everything of theirs, and stop expecting more. */
+  unfollowAll(peer: string) {
+    const following = { ...state.following }
+    for (const [id, by] of Object.entries(following)) if (by === peer) delete following[id]
+    set({ following, followingAll: state.followingAll.filter((p) => p !== peer) })
+  },
+
+  /** Everyone who is offering at least one window right now. */
+  sharers(): Array<{ by: string; name: string; count: number }> {
+    const seen = new Map<string, { by: string; name: string; count: number }>()
+    for (const o of Object.values(state.offers)) {
+      const got = seen.get(o.by)
+      if (got) got.count++
+      else seen.set(o.by, { by: o.by, name: o.name, count: 1 })
+    }
+    return [...seen.values()]
   },
 
   /** Everyone offering this window right now. */
@@ -195,6 +247,8 @@ export const shared = {
       if (!id) return
 
       if (b.act === 'offer') {
+        /* ⚠️ after the offer is recorded, not before: follow() seeds from what they last sent */
+        const wholesale = state.followingAll.includes(m.from)
         set({
           offers: {
             ...state.offers,
@@ -206,6 +260,7 @@ export const shared = {
             },
           },
         })
+        if (wholesale) shared.follow(id, m.from)
         return
       }
 

@@ -5,6 +5,7 @@ import { callWord, peerWord, speakingNames } from './callWords'
 import { CallRoster } from './CallRoster'
 import { party, routeIsPrivate } from '../party/party'
 import { together } from '../party/together'
+import { shared } from '../party/shared'
 
 /**
  * A call now outlives the screen it started on, which is what makes it usable — but a call
@@ -108,6 +109,13 @@ export function CallDock() {
    */
   const pointers = useSyncExternalStore(party.subscribe, party.getState, party.getState).sharing
   const shareAll = useSyncExternalStore(together.subscribe, together.getState, together.getState).on
+  const sharedState = useSyncExternalStore(shared.subscribe, shared.getState, shared.getState)
+  /**
+   * ⚠️ Derived from the store snapshot rather than memoised on its own, so it cannot go stale:
+   * offers arrive and expire on a sweep, and a list that updated only when this component felt
+   * like it would show people who stopped sharing minutes ago.
+   */
+  const sharers = shared.sharers()
   // recomputed on every render rather than watched: the dock re-renders on navigation anyway,
   // and a hashchange listener here would be a second copy of the one party.ts already keeps
   const onPrivatePage = routeIsPrivate()
@@ -247,6 +255,33 @@ export function CallDock() {
       >
         {shareAll ? '🤝' : '🫱'}
       </button>
+      {/**
+       * ⚠️ ONE BUTTON PER PERSON, NOT ONE PER WINDOW, because what made this manual was never
+       * the first join — it was the second and the third. They open the instrument, you join;
+       * they open the visualiser, you join again. "I am watching what Josh is doing" is one
+       * decision, and shared.ts remembers it so windows they open later come along too.
+       *
+       * Still a decision, though: nobody is followed until you say so, and touching any control
+       * of theirs hands that window — and the standing answer — back to you.
+       */}
+      {sharers.map((p) => {
+        const on = sharedState.followingAll.includes(p.by)
+        return (
+          <button
+            key={p.by}
+            className={'btn' + (on ? ' is-on' : '')}
+            aria-pressed={on}
+            onClick={() => (on ? shared.unfollowAll(p.by) : shared.followAll(p.by))}
+            title={
+              on
+                ? `Stop following ${p.name}`
+                : `Follow everything ${p.name} is showing — ${p.count} open now, and whatever they open next`
+            }
+          >
+            {on ? '👀' : '👁'} {p.name.split(' ')[0]}
+          </button>
+        )
+      })}
       <button
         className={'btn' + (pointers ? ' is-on' : '')}
         onClick={() => party.setSharing(!pointers)}
