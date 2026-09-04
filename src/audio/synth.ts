@@ -795,7 +795,9 @@ function makeBus(c: AudioContext): Bus {
 
   input.connect(dry).connect(fxOut!)
   input.connect(delay)
-  delay.connect(wet).connect(fxOut!)
+  // ⚠️ delay → wet is permanent; only wet → fxOut is switched, so the tail is intact the instant
+  // the echo is plugged back in. Wiring the gate one node earlier severed the effect entirely.
+  delay.connect(wet)
   delay.connect(fb).connect(delay)
   input.connect(verb).connect(verbWet)
 
@@ -817,6 +819,40 @@ function makeBus(c: AudioContext): Bus {
    * So verbWet reaches fxOut only while there is reverb to hear. Turning it off waits for the
    * tail before unplugging, or the room would be cut off mid-decay.
    */
+  /**
+   * ⚠️ THE SAME ARGUMENT AS THE REVERB BELOW, and it was left standing when that was fixed.
+   *
+   * A DelayNode feeding itself is a feedback loop that runs on every render quantum whether or
+   * not anybody can hear it, and echo is off by default too. One delay line is far cheaper than
+   * one convolution, but there is a bus per part and the cost is constant rather than per-note,
+   * which is the shape that hurts a phone.
+   */
+  let echoLive = false
+  let echoOff = 0
+  const echoConnect = (on: boolean) => {
+    if (on) {
+      if (echoOff) {
+        clearTimeout(echoOff)
+        echoOff = 0
+      }
+      if (!echoLive) {
+        wet.connect(fxOut!)
+        echoLive = true
+      }
+    } else if (echoLive && !echoOff) {
+      // long enough for the longest delay time plus its feedback to fall away
+      echoOff = window.setTimeout(() => {
+        echoOff = 0
+        echoLive = false
+        try {
+          wet.disconnect()
+        } catch {
+          /* already gone */
+        }
+      }, 3000)
+    }
+  }
+
   let verbLive = false
   let verbOff = 0
   const verbConnect = (on: boolean) => {
@@ -866,6 +902,7 @@ function makeBus(c: AudioContext): Bus {
     used: c.currentTime,
     set(fx: Fx) {
       ramp(wet.gain, fx.echo * 0.55)
+      echoConnect(fx.echo > 0.001)
       // ⚠️ Feedback is capped well under 1. At 1 an echo never decays and the delay line
       // builds until it clips — a runaway howl that outlives the note that started it and has
       // no obvious cause.
@@ -879,6 +916,7 @@ function makeBus(c: AudioContext): Bus {
       ramp(dry.gain, 1 - Math.min(0.35, fx.space * 0.35))
     },
     dispose() {
+      if (echoOff) clearTimeout(echoOff)
       if (verbOff) clearTimeout(verbOff)
       try {
         lfo.stop()
@@ -1505,6 +1543,8 @@ export function noteOn(
  * key once and read the numbers.
  */
 export const noteCounts = { on: 0, off: 0 }
+/** How many voices are sounding right now — a held note should be 1. */
+export const liveVoices = () => voices.size
 export function resetNoteCounts() {
   noteCounts.on = 0
   noteCounts.off = 0

@@ -6648,3 +6648,13 @@ a.cz-msg-author:focus-visible {
     padding-inline: 0.65rem;
   }
 }
+
+/* the audio health strip — only ever visible behind ?audio_debug=1 */
+.inst-health {
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  line-height: 1.5;
+  margin: 0 0 0.4rem;
+  display: grid;
+  gap: 0.1rem;
+}

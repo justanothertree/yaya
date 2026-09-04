@@ -18,6 +18,7 @@ import { KitBar } from '../ui/KitBar'
 import {
   healthOn,
   readHealth,
+  resetHealth,
   startHealth,
   stopHealth,
   type AudioHealth,
@@ -247,14 +248,28 @@ function AudioHealthStrip() {
     }
   }, [])
   if (!h) return null
-  const bad = h.dropped > 0 || h.clipped > 0
+  const bad = h.worst !== 'clean'
   return (
-    <p className="muted inst-health" style={bad ? { color: '#f46b6b' } : undefined}>
-      buffer {h.bufferMs}ms ({h.bufferFrames}f) · late <strong>{h.dropped}</strong> · gaps{' '}
-      <strong>{h.gaps}</strong> · peak {h.peak} · clip <strong>{h.clipped}</strong> · notes on{' '}
-      <strong>{h.on}</strong> off <strong>{h.off}</strong>
-      {bad ? (h.clipped > 0 ? ' — CLIPPING' : ' — DROPOUTS') : ' — clean'}
-    </p>
+    <div className="inst-health" style={bad ? { color: '#f46b6b' } : undefined}>
+      <div>
+        <strong>{h.worst === 'clean' ? 'clean' : h.worst}</strong> · late {h.droppedTotal} · clip{' '}
+        {h.clippedTotal} · peak max {h.peakMax}
+        <button
+          className="btn"
+          onClick={() => {
+            resetHealth()
+            setH(readHealth())
+          }}
+          style={{ marginLeft: '0.4rem', padding: '0 0.35rem', fontSize: '0.7rem' }}
+        >
+          reset
+        </button>
+      </div>
+      <div className="muted">
+        buffer {h.bufferMs}ms · now: late {h.dropped} gaps {h.gaps} peak {h.peak} · voices{' '}
+        {h.voices} · notes {h.on}/{h.off}
+      </div>
+    </div>
   )
 }
 

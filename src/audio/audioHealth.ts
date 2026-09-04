@@ -1,6 +1,6 @@
 import { sharedCtx } from './context'
 import { readWaveform } from './audioTap'
-import { noteCounts, resetNoteCounts } from './synth'
+import { liveVoices, noteCounts, resetNoteCounts } from './synth'
 
 /**
  * Is the sound actually broken, and in which of the two ways?
@@ -39,6 +39,16 @@ export type AudioHealth = {
   /** notes actually started and stopped at the synth since the last read */
   on: number
   off: number
+  /** voices sounding right now — holding one key should read 1 */
+  voices: number
+  /** ⚠️ LATCHED TOTALS. A dropout lasts a few milliseconds and the per-second figures are back to
+   *  zero long before anybody looks up from the keyboard, which is exactly what "I can't tell for
+   *  sure" means. These only ever climb, so a glance after the fact still tells the story. */
+  droppedTotal: number
+  clippedTotal: number
+  peakMax: number
+  /** the worst thing seen since the strip started, not just in the last second */
+  worst: 'clean' | 'DROPOUTS' | 'CLIPPING'
 }
 
 let node: AudioWorkletNode | null = null
@@ -48,6 +58,9 @@ let gapCount = 0
 let peak = 0
 let clipped = 0
 let scratch: Uint8Array | null = null
+let droppedTotal = 0
+let clippedTotal = 0
+let peakMax = 0
 
 /**
  * ⚠️ Counts its OWN calls rather than timing them from the main thread. process() runs once per
@@ -119,6 +132,14 @@ export async function startHealth(): Promise<boolean> {
   }
 }
 
+/** Clear the latched totals, for measuring one thing at a time. */
+export function resetHealth() {
+  droppedTotal = 0
+  clippedTotal = 0
+  peakMax = 0
+  resetNoteCounts()
+}
+
 export function stopHealth() {
   try {
     node?.disconnect()
@@ -143,16 +164,25 @@ export function readHealth(): AudioHealth {
       if (v >= 0.985) clipped++
     }
   }
+  const dropped = Math.max(0, expectedFrom - counted)
+  droppedTotal += dropped
+  clippedTotal += clipped
+  if (peak > peakMax) peakMax = peak
   const out: AudioHealth = {
     bufferMs: +(ctx.baseLatency * 1000).toFixed(1),
     bufferFrames: Math.round(ctx.baseLatency * ctx.sampleRate),
     sampleRate: ctx.sampleRate,
-    dropped: Math.max(0, expectedFrom - counted),
+    dropped,
     gaps: gapCount,
     peak: +peak.toFixed(3),
     clipped,
     on: noteCounts.on,
     off: noteCounts.off,
+    voices: liveVoices(),
+    droppedTotal,
+    clippedTotal,
+    peakMax: +peakMax.toFixed(3),
+    worst: clippedTotal > 0 ? 'CLIPPING' : droppedTotal > 0 ? 'DROPOUTS' : 'clean',
   }
   node?.port.postMessage('read')
   peak = 0
