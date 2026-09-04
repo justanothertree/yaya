@@ -6250,7 +6250,71 @@ a.cz-msg-author:focus-visible {
 }
 @media (max-width: 780px) {
   .paint-board {
-    height: clamp(14rem, 46vh, 24rem);
+    /* ⚠️ 42vh rather than 46: with the canvas hoisted, this is the last few pixels between
+       "the tools are on screen" and "the last row of tools is just off the bottom". Thirty
+       pixels of drawing surface is a cheap price for not scrolling to change brush. */
+    height: clamp(14rem, 42vh, 24rem);
+  }
+
+  /**
+   * ⚠️ THE CANVAS COMES FIRST ON A PHONE, and this is a bug fix rather than a preference.
+   *
+   * The tools are laid out in the order you reach for them on a desktop, where they all fit
+   * beside each other. On a 375px screen they do not fit, they stack, and the thing you are
+   * actually drawing on ended up 1392px down a page 812px tall — you scrolled past nearly two
+   * screens of controls to reach it, and then could not see a single tool while drawing.
+   *
+   * Reordering rather than hiding: everything is still there, in the same DOM, in the same tab
+   * order for a keyboard, and nothing had to be duplicated for a second layout. The canvas goes
+   * to the top and the tool grid sits directly under it, which is about 690px of the 812 — so
+   * you can see what you are drawing AND what you are drawing with, at once, without scrolling.
+   *
+   * The rest keeps its source order underneath, because sliders, kits, zoom and the gallery are
+   * things you set down and come back to rather than things you hold.
+   */
+  .paint-board {
+    order: -2;
+  }
+  .paint-bar {
+    order: -1;
+  }
+  /**
+   * ⚠️ A TIGHTER TOOL GRID, so the canvas and the tools share the first screen instead of
+   * missing it by a hundred pixels.
+   *
+   * Four columns of 5rem is fifteen tools in four rows, which at 318px tall pushed the grid off
+   * the bottom even with the canvas hoisted. Five columns of 4rem is three rows. The buttons
+   * keep their labels — an icon-only row would be smaller still and you would have to learn
+   * fifteen glyphs to use it — and keep a 44px minimum, which is the smallest a finger should be
+   * asked to hit.
+   *
+   * ⚠️ Scoped to .paint-tools. The same button class draws the visualiser's mode grid, where
+   * there is no canvas competing for the screen and no reason to shrink anything.
+   */
+  .paint-tools {
+    grid-template-columns: repeat(auto-fit, minmax(min(4rem, 100%), 1fr));
+    gap: 0.3rem;
+  }
+  .paint-tools .fx-style-btn {
+    padding: 0.28rem 0.2rem;
+    min-height: 44px;
+    justify-content: center;
+    font-size: 1rem;
+  }
+  .paint-tools .fx-style-label {
+    font-size: 0.62rem;
+  }
+  /**
+   * ⚠️ The blurb goes, exactly as it does for the instrument room a few rules up.
+   *
+   * "Draw something. Brush, shapes, a fill bucket and real transparency…" is three lines and
+   * 63px on a phone, and it is read once ever. That was the last of the gap between the tool
+   * grid and the fixed navigation bar at the bottom of the screen, which the measurement above
+   * missed because it is 60px of FIXED overlay rather than page height. Taking it from the
+   * blurb rather than from the canvas, because the canvas is the point of the page.
+   */
+  .card:has(> .paint-wrap) > p.muted {
+    display: none;
   }
 }
 
