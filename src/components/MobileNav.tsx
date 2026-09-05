@@ -25,6 +25,7 @@ export type MobileSection =
   | 'snake'
   | 'visualizer'
   | 'instrument'
+  | 'paint'
   | 'contact'
   | 'admin'
   | 'profile'
@@ -131,6 +132,10 @@ export function MobileNav({
     // the launcher, not the four-slot bar: this is a thing you go looking for, not a daily tab
     { key: 'visualizer', label: 'Visualiser', icon: '🎚️', section: 'visualizer' },
     { key: 'instrument', label: 'Instrument', icon: '🎹', section: 'instrument' },
+    /* ⚠️ Paint belongs with these two and was simply missed when it was built — it is on the
+       desktop nav between Instrument and Contact, so on a phone it was a page you could only
+       reach by typing the URL. A room with no door is the same as a room that is not there. */
+    { key: 'paint', label: 'Paint', icon: '🎨', section: 'paint' },
     ...(member
       ? ([{ key: 'account', label: 'Account', icon: '👤', section: 'account-settings' }] as Dest[])
       : []),
