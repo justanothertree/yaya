@@ -21,6 +21,21 @@ export function Modal({
 }) {
   const boxRef = useRef<HTMLDivElement | null>(null)
   const titleId = useId()
+  /**
+   * ⚠️ onClose THROUGH A REF, AND THIS IS THE WHOLE FIX FOR "IT ONLY TAKES ONE LETTER".
+   *
+   * The effect below moves focus to the dialog's first control when it opens, and it used to
+   * depend on `onClose`. Every one of the seventeen places that opens a Modal passes an inline
+   * arrow — `onClose={() => setAdding(false)}` — which is a NEW function on every render of the
+   * parent. So typing a character re-rendered the parent, handed the Modal a different onClose,
+   * re-ran the "open" effect, and moved focus to the Close button. One letter, then you had to
+   * click back into the field, in every dialog in the app with a text box in it.
+   *
+   * Opening is a mount concern; only the Escape handler needs a CURRENT onClose. A ref gives it
+   * one without making the effect depend on identity.
+   */
+  const closeRef = useRef(onClose)
+  closeRef.current = onClose
 
   /**
    * The rest of the dialog contract: Escape already worked, but focus did not.
@@ -48,7 +63,7 @@ export function Modal({
 
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        onClose()
+        closeRef.current()
         return
       }
       if (e.key !== 'Tab') return
@@ -88,7 +103,9 @@ export function Modal({
       const focusIsLoose = !active || active === document.body || !!box?.contains(active)
       if (focusIsLoose && opener?.isConnected) opener.focus?.()
     }
-  }, [onClose])
+    /* ⚠️ empty on purpose: this runs when the dialog OPENS and cleans up when it closes. See
+       closeRef above — depending on onClose made every keystroke re-open it. */
+  }, [])
 
   const divider = '1px solid var(--border, rgba(127,127,127,0.18))'
 
