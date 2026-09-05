@@ -2,7 +2,16 @@
 import { useMemo, useState } from 'react'
 import { useCircuit } from '../store'
 import { Modal } from './Modal'
-import { MV_ICONS, REC, REWATCH, SENTIMENT, TIPS, ratersIn, scoreColor } from './movieMeta'
+import {
+  MV_ICONS,
+  REC,
+  REWATCH,
+  SENTIMENT,
+  TIPS,
+  canRateAs,
+  ratersIn,
+  scoreColor,
+} from './movieMeta'
 import { MovieRate } from './MovieRate'
 import { MoviePersonProfile } from './MoviePersonProfile'
 import type { Movie, Person } from '../types'
@@ -318,13 +327,18 @@ export function MovieDetail({ movie, onClose }: { movie: Movie; onClose: () => v
                         {r.score}
                       </span>
                     )}
-                    <button
-                      className="btn"
-                      style={{ fontSize: '0.7rem', padding: '2px 8px' }}
-                      onClick={() => setEditing(p)}
-                    >
-                      {r?.score != null ? 'Edit' : 'Rate'}
-                    </button>
+                    {/* only your own — a rating row carries your account id and the policies
+                        refuse anybody else's, so offering the button would be offering a
+                        failure */}
+                    {canRateAs(p.id) && (
+                      <button
+                        className="btn"
+                        style={{ fontSize: '0.7rem', padding: '2px 8px' }}
+                        onClick={() => setEditing(p)}
+                      >
+                        {r?.score != null ? 'Edit' : 'Rate'}
+                      </button>
+                    )}
                   </span>
                 </div>
                 {(rv?.tips ?? []).length > 0 && (

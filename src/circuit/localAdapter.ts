@@ -10,6 +10,7 @@ import type {
   Person,
   Pool,
   PoolVote,
+  Rating,
   WatchlistItem,
   ID,
 } from './types'
@@ -110,6 +111,10 @@ function refreshPublicBoard(cached: CircuitState, live: CircuitState): CircuitSt
        nothing on screen to explain where it went. */
     pools: cached.pools ?? [],
     votes: cached.votes ?? [],
+    /* ⚠️ kept whole, not merged. The public board carries no rating ROWS — the demo's ratings
+       ride inside each seeded film's own map — so `live.ratings` is always empty and merging
+       against it would delete whatever the visitor rated here. */
+    ratings: cached.ratings ?? [],
   }
 }
 
@@ -190,6 +195,8 @@ export function createLocalAdapter(seed?: CircuitState, liveSeed = false): Circu
     deletePool: (id: ID) => mutate((s) => ({ ...s, pools: removeById(s.pools ?? [], id) })),
     saveVote: (v: PoolVote) => mutate((s) => ({ ...s, votes: upsert(s.votes ?? [], v) })),
     deleteVote: (id: ID) => mutate((s) => ({ ...s, votes: removeById(s.votes ?? [], id) })),
+    saveRating: (r: Rating) => mutate((s) => ({ ...s, ratings: upsert(s.ratings ?? [], r) })),
+    deleteRating: (id: ID) => mutate((s) => ({ ...s, ratings: removeById(s.ratings ?? [], id) })),
 
     subscribe(onExternalChange) {
       const handler = (e: StorageEvent) => {

@@ -8,6 +8,7 @@ import type {
   Person,
   Pool,
   PoolVote,
+  Rating,
   WatchlistItem,
   ID,
 } from './types'
@@ -35,6 +36,10 @@ export interface CircuitAdapter {
   /** A vote is created and destroyed, never edited — save is an idempotent "I'm in". */
   saveVote(vote: PoolVote): Promise<void>
   deleteVote(id: ID): Promise<void>
+
+  /** One person's rating of one film. Writing it can never touch anybody else's. */
+  saveRating(rating: Rating): Promise<void>
+  deleteRating(id: ID): Promise<void>
 
   /**
    * Subscribe to changes made elsewhere (other devices/people). The localStorage

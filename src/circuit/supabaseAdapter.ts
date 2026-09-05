@@ -6,15 +6,16 @@ import type {
   CircuitState,
   DayLog,
   Movie,
-  MovieRating,
+  MovieReview,
   Person,
   Pool,
   PoolAudience,
   PoolVote,
+  Rating,
   WatchlistItem,
   ID,
 } from './types'
-import { voteId } from './types'
+import { ratingId, voteId } from './types'
 import { getSupabaseClient, subscribeLogged } from '../finance/client'
 
 const TABLES = [
@@ -25,6 +26,7 @@ const TABLES = [
   'pools',
   'pool_people',
   'pool_votes',
+  'circuit_ratings',
 ] as const
 
 // Last cloud snapshot, cached locally so a returning member's board paints instantly on
@@ -92,7 +94,6 @@ type MovieRow = {
   kind?: string | null
   date: string | null
   rt: string | null
-  ratings: Record<string, MovieRating>
   group_id?: string | null
 }
 type WlRow = {
@@ -110,6 +111,13 @@ type PoolRow = {
   owner_user_id?: string | null
 }
 type VoteRow = { item_id: string; user_id: string }
+type RatingRow = {
+  movie_id: string
+  user_id: string
+  score: number | null
+  icons: string[] | null
+  review: MovieReview | null
+}
 
 const personToRow = (p: Person): PersonRow => ({
   id: p.id,
@@ -155,7 +163,6 @@ const movieToRow = (m: Movie): MovieRow => ({
   kind: m.kind ?? 'movie',
   date: m.date ?? null,
   rt: m.rt ?? null,
-  ratings: m.ratings,
   // preserve an existing film's circuit; new films send null and a DB trigger scopes them
   group_id: m.groupId ?? null,
 })
@@ -165,7 +172,11 @@ const rowToMovie = (r: MovieRow): Movie => ({
   kind: r.kind ?? 'movie',
   date: r.date ?? undefined,
   rt: r.rt ?? undefined,
-  ratings: r.ratings ?? {},
+  /* ⚠️ EMPTY ON PURPOSE, and the rows are folded in where the board renders. The blob column
+     still exists (dropping it is a later step, so a cached older tab keeps working) but reading
+     it here would show every rating twice — once keyed by circuit_people.id from the blob and
+     once keyed by account from circuit_ratings. */
+  ratings: {},
   groupId: r.group_id ?? null,
 })
 /* ⚠️ `votes` is NOT sent any more even though the column still exists. Votes are rows in
@@ -209,12 +220,20 @@ const rowToVote = (r: VoteRow): PoolVote => ({
   itemId: r.item_id,
   userId: r.user_id,
 })
+const rowToRating = (r: RatingRow): Rating => ({
+  id: ratingId(r.movie_id, r.user_id),
+  movieId: r.movie_id,
+  userId: r.user_id,
+  score: r.score,
+  icons: r.icons ?? undefined,
+  review: r.review ?? undefined,
+})
 
 export function createSupabaseAdapter(): CircuitAdapter {
   const sb = getSupabaseClient()
 
   async function loadAll(): Promise<CircuitState> {
-    const [ppl, logs, movies, wl, pgroups, groups, pools, votes] = await Promise.all([
+    const [ppl, logs, movies, wl, pgroups, groups, pools, votes, ratings] = await Promise.all([
       sb.from('circuit_people').select('*'),
       sb.from('circuit_logs').select('*'),
       sb.from('circuit_movies').select('*'),
@@ -226,6 +245,7 @@ export function createSupabaseAdapter(): CircuitAdapter {
          board — and starts working the moment the SQL lands, with no second deploy. */
       sb.from('pools').select('id, name, audience, owner_user_id'),
       sb.from('pool_votes').select('item_id, user_id'),
+      sb.from('circuit_ratings').select('movie_id, user_id, score, icons, review'),
     ])
     // which circuit(s) each person is shared into — lets the board scope to one circuit
     const byPerson: Record<string, string[]> = {}
@@ -246,6 +266,7 @@ export function createSupabaseAdapter(): CircuitAdapter {
       })),
       pools: ((pools.data as PoolRow[] | null) ?? []).map(rowToPool),
       votes: ((votes.data as VoteRow[] | null) ?? []).map(rowToVote),
+      ratings: ((ratings.data as RatingRow[] | null) ?? []).map(rowToRating),
     }
   }
 
@@ -316,6 +337,27 @@ export function createSupabaseAdapter(): CircuitAdapter {
       const [itemId, userId] = id.split('::')
       if (!itemId || !userId) return
       await sb.from('pool_votes').delete().eq('item_id', itemId).eq('user_id', userId)
+    },
+    /* ⚠️ upsert on the PAIR, which is what stops one person's save touching another's. The old
+       path wrote the whole film row including everybody's ratings; this writes one row and
+       cannot reach any other. */
+    async saveRating(r: Rating) {
+      await sb.from('circuit_ratings').upsert(
+        {
+          movie_id: r.movieId,
+          user_id: r.userId,
+          score: r.score,
+          icons: r.icons ?? null,
+          review: r.review ?? null,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'movie_id,user_id' },
+      )
+    },
+    async deleteRating(id: ID) {
+      const [movieId, userId] = id.split('::')
+      if (!movieId || !userId) return
+      await sb.from('circuit_ratings').delete().eq('movie_id', movieId).eq('user_id', userId)
     },
     subscribe(onExternalChange) {
       emitExternal = onExternalChange

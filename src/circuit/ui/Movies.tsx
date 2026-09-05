@@ -12,7 +12,7 @@ import { MoviePersonProfile } from './MoviePersonProfile'
 import { MovieDetail } from './MovieDetail'
 import { Modal } from './Modal'
 import { MovieStats } from './MovieStats'
-import { ratersIn, scoreColor } from './movieMeta'
+import { canRateAs, ratersIn, scoreColor } from './movieMeta'
 import { kindEmoji, kindsPresent } from '../reviewKinds'
 
 type SortKey = 'avg' | 'alpha' | 'rt' | 'date'
@@ -47,8 +47,36 @@ export function Movies({
   const [confirmDel, setConfirmDel] = useState<Movie | null>(null)
   const [view, setView] = useState<'board' | 'stats'>('board')
 
+  /**
+   * Films with everybody's ratings folded back on, then scoped to the viewed circuit.
+   *
+   * ⚠️ THE ONE PLACE THE TWO HALVES MEET. Ratings are rows now — a film's row no longer carries
+   * them — because the old single map was rewritten whole on every save and quietly erased
+   * whoever else was reviewing at that moment. Reassembling here means MovieDetail, MovieStats,
+   * MoviePersonProfile and the board all keep doing `movie.ratings[rater.id]` untouched, and
+   * the fix cost one line rather than five files.
+   *
+   * ⚠️ The film's own map is the BASE, rows are laid over it. The signed-out demo has no rating
+   * rows at all — its ratings ride inside each seeded film — so starting from `{}` would empty
+   * the public board.
+   */
+  const withRatings = useMemo(() => {
+    const rows = state.ratings ?? []
+    if (rows.length === 0) return state.movies
+    const byMovie = new Map<string, Movie['ratings']>()
+    for (const r of rows) {
+      const into = byMovie.get(r.movieId) ?? {}
+      into[r.userId] = { score: r.score, icons: r.icons, review: r.review }
+      byMovie.set(r.movieId, into)
+    }
+    return state.movies.map((m) => {
+      const mine = byMovie.get(m.id)
+      return mine ? { ...m, ratings: { ...m.ratings, ...mine } } : m
+    })
+  }, [state.movies, state.ratings])
+
   // scope to the viewed circuit (shared filter) — '' shows everything you can see
-  const inGroup = useMemo(() => moviesInGroup(state.movies, viewGroup), [state.movies, viewGroup])
+  const inGroup = useMemo(() => moviesInGroup(withRatings, viewGroup), [withRatings, viewGroup])
   // which review kinds are present here, and the active category filter ('' = all)
   const kindCounts = useMemo(() => {
     const m = new Map<string, number>()
@@ -422,14 +450,19 @@ export function Movies({
                   </td>
                   {raters.map((p) => {
                     const r = m.ratings[p.id]
+                    const mine = canRateAs(p.id)
                     // Vibes/reactions live in the detail modal (click the title), so the list
                     // stays a tight grid of score chips — no per-row emoji band bloating height.
                     return (
                       <td
                         key={p.id}
-                        onClick={() => setRate({ movie: m, person: p })}
-                        title={`Rate as ${p.name}`}
-                        style={{ padding: '4px 8px', textAlign: 'center', cursor: 'pointer' }}
+                        onClick={mine ? () => setRate({ movie: m, person: p }) : undefined}
+                        title={mine ? `Rate as ${p.name}` : `${p.name}'s rating`}
+                        style={{
+                          padding: '4px 8px',
+                          textAlign: 'center',
+                          cursor: mine ? 'pointer' : 'default',
+                        }}
                       >
                         {chip(r?.score ?? null)}
                       </td>

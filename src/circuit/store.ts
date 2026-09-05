@@ -15,6 +15,7 @@ import type {
   Person,
   Pool,
   PoolVote,
+  Rating,
   WatchlistItem,
   ID,
 } from './types'
@@ -44,6 +45,8 @@ export interface CircuitStore {
   deletePool(id: ID): Promise<void>
   saveVote(v: PoolVote): Promise<void>
   deleteVote(id: ID): Promise<void>
+  saveRating(r: Rating): Promise<void>
+  deleteRating(id: ID): Promise<void>
 }
 
 function upsert<T extends { id: ID }>(arr: T[], item: T): T[] {
@@ -57,8 +60,8 @@ const removeById = <T extends { id: ID }>(arr: T[], id: ID): T[] => arr.filter((
 const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v))
 
 // ---- command model for undo/redo ------------------------------------------
-type Coll = 'people' | 'logs' | 'movies' | 'watchlist' | 'pools' | 'votes'
-type Entity = Person | DayLog | Movie | WatchlistItem | Pool | PoolVote
+type Coll = 'people' | 'logs' | 'movies' | 'watchlist' | 'pools' | 'votes' | 'ratings'
+type Entity = Person | DayLog | Movie | WatchlistItem | Pool | PoolVote | Rating
 type Op = { kind: 'save'; coll: Coll; item: Entity } | { kind: 'delete'; coll: Coll; id: ID }
 interface HistEntry {
   do: Op
@@ -72,6 +75,7 @@ const METHOD = {
   watchlist: { save: 'saveWatchlist', del: 'deleteWatchlist' },
   pools: { save: 'savePool', del: 'deletePool' },
   votes: { save: 'saveVote', del: 'deleteVote' },
+  ratings: { save: 'saveRating', del: 'deleteRating' },
 } as const
 
 function applyOpToState(s: CircuitState, op: Op): CircuitState {
@@ -292,6 +296,10 @@ function createCircuitStore(): CircuitStore {
        reverse in the place it was cast. */
     saveVote: (v) => dispatch({ kind: 'save', coll: 'votes', item: v }, false),
     deleteVote: (id) => dispatch({ kind: 'delete', coll: 'votes', id }, false),
+    /* ⚠️ recorded for undo, unlike a vote: a rating is written work — a note, tags, a score —
+       and taking one back by accident should be recoverable the way any other edit is */
+    saveRating: (r) => dispatch({ kind: 'save', coll: 'ratings', item: r }, true),
+    deleteRating: (id) => dispatch({ kind: 'delete', coll: 'ratings', id }, true),
   }
 }
 

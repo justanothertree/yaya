@@ -1,6 +1,7 @@
 // Movie rating vocabulary (mirrors the standalone app) + shared helpers.
 import { peopleInGroup } from '../groupFilter'
 import { circuitStore } from '../store'
+import { peekPersistedUserId } from '../../finance/auth'
 import type { Person } from '../types'
 
 /**
@@ -21,7 +22,32 @@ import type { Person } from '../types'
  * An empty group means "all circuits", which is what the toolbar's picker means by it too.
  */
 export function ratersIn(people: Person[], group?: string | null): Person[] {
-  return peopleInGroup(people, group ?? '')
+  /**
+   * ⚠️ THE ID IS THE ACCOUNT NOW, not circuit_people.id, because that is what a rating is keyed
+   * by since ratings became rows. Everything downstream does `movie.ratings[rater.id]`, so
+   * swapping the id here is the whole of the change — five screens carried on unedited.
+   *
+   * ⚠️ `?? p.id` is not defensive padding, it is the signed-out demo. Nobody in the public seed
+   * has an account, so filtering to people who do would empty the board of columns for every
+   * visitor. Falling back keeps the sandbox internally consistent — it writes and reads its own
+   * ratings under the same key — while a real member gets a real account id.
+   */
+  return peopleInGroup(people, group ?? '').map((p) =>
+    p.ownerUserId ? { ...p, id: p.ownerUserId } : p,
+  )
+}
+
+/**
+ * Whether you may rate in this person's name.
+ *
+ * ⚠️ You may not, and the policies say so too: a rating row carries `user_id = auth.uid()`. The
+ * board used to let anyone fill in anyone's column, which suited four people round one laptop
+ * and is exactly how one person's write erased another's. Signed out there are no accounts at
+ * all, so the demo stays fully playable.
+ */
+export function canRateAs(raterId: string): boolean {
+  const me = peekPersistedUserId()
+  return !me || raterId === me
 }
 
 /**

@@ -90,6 +90,31 @@ export interface MovieRating {
   review?: MovieReview | null
 }
 
+/**
+ * One person's rating of one film, as a row.
+ *
+ * ⚠️ THIS USED TO LIVE INSIDE Movie.ratings, AND THAT LOST PEOPLE'S WRITING. The map held
+ * everybody's ratings and rating a film rewrote the whole of it, so two people reviewing the
+ * same thing inside one round trip meant the second save erased the first — not a tap, but a
+ * score, icons, sentiment, rewatch, recommend, tips, tags and a written note. Reviewing at the
+ * same time is the normal case here, so the storage had to stop hoping they miss each other.
+ *
+ * ⚠️ The FILM still has one shared row and one shared page. Only the individual ratings moved
+ * out of a single rewritten blob into a row each. `id` is synthetic (`movie::user`) so a rating
+ * fits the store's by-id model; the server's primary key is the pair.
+ */
+export interface Rating {
+  id: ID
+  movieId: ID
+  /** the account that rated it — keyed by user now, never by circuit_people.id */
+  userId: string
+  score: number | null
+  icons?: string[]
+  review?: MovieReview | null
+}
+
+export const ratingId = (movieId: ID, userId: string): ID => `${movieId}::${userId}`
+
 export interface Movie {
   id: ID
   title: string
@@ -99,7 +124,14 @@ export interface Movie {
   date?: string
   /** Rotten Tomatoes string, e.g. "94%" — movie-only */
   rt?: string
-  /** per-person ratings, keyed by Person.id (becomes a join table on Supabase) */
+  /**
+   * Everyone's ratings of this film, keyed by ACCOUNT.
+   *
+   * ⚠️ ASSEMBLED FOR READING, NEVER WRITTEN BACK. The rows live in `CircuitState.ratings`; this
+   * map is folded together where the board renders (see Movies.tsx) so the five screens that
+   * do `movie.ratings[rater.id]` carry on working untouched. Writing it back is what used to
+   * erase other people's reviews, so `movieToRow` no longer sends the column at all.
+   */
   ratings: Record<ID, MovieRating>
   /** Circuit (group) this film belongs to; server-set/preserved. New ones default to the
    *  member's circuit via a DB trigger. Undefined in the signed-out demo. */
@@ -172,6 +204,8 @@ export interface CircuitState {
   /** Pools you own or are in. Optional so older cached boards deserialise unchanged. */
   pools?: Pool[]
   votes?: PoolVote[]
+  /** One row per person per film. Folded into Movie.ratings for rendering. */
+  ratings?: Rating[]
 }
 
 export const emptyCircuitState = (): CircuitState => ({
@@ -182,4 +216,5 @@ export const emptyCircuitState = (): CircuitState => ({
   groups: [],
   pools: [],
   votes: [],
+  ratings: [],
 })

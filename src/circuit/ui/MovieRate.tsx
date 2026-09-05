@@ -2,7 +2,8 @@
 // + tip-of-the-cap + tags + hot-take, for one person on one movie. Writes via the store.
 import { useMemo, useState } from 'react'
 import { circuitStore, useCircuit } from '../store'
-import type { Movie, MovieRating, MovieReview } from '../types'
+import { ratingId } from '../types'
+import type { Movie, MovieReview } from '../types'
 import { Modal } from './Modal'
 import { MV_ICONS, REC, REWATCH, SENTIMENT, TAG_PRESETS, TIPS, scoreColor } from './movieMeta'
 
@@ -109,15 +110,26 @@ export function MovieRate({
       !tags.length &&
       !review.note
     const allEmpty = score == null && !icons.length && reviewEmpty
-    const ratings: Record<string, MovieRating> = { ...movie.ratings }
-    if (allEmpty) delete ratings[personId]
+    /**
+     * ⚠️ ONE ROW, NOT THE WHOLE FILM. This used to be
+     *     saveMovie({ ...movie, ratings: { ...movie.ratings, [personId]: … } })
+     * — a read-modify-write of everybody's ratings at once. Two people reviewing the same thing
+     * inside one round trip meant the second save erased the first, and what got erased was not
+     * a tap: a score, vibe icons, sentiment, rewatch, recommend, tips, tags and a written note.
+     * Reviewing at the same time is the normal case here, so the write had to stop being able to
+     * reach anybody else's work. The policies enforce the same thing server-side.
+     */
+    const id = ratingId(movie.id, personId)
+    if (allEmpty) void circuitStore.deleteRating(id)
     else
-      ratings[personId] = {
+      void circuitStore.saveRating({
+        id,
+        movieId: movie.id,
+        userId: personId,
         score,
         icons: icons.length ? icons : undefined,
         review: reviewEmpty ? undefined : review,
-      }
-    void circuitStore.saveMovie({ ...movie, ratings })
+      })
     onClose()
   }
 
