@@ -37,6 +37,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { circuitStore, useCircuit } from '../store'
 import { kindEmoji, kindsPresent } from '../reviewKinds'
+import { defaultMovieGroup } from './movieMeta'
 import { buildLibrary, filterLibrary, libraryKinds, type LibraryEntry } from '../poolLibrary'
 import { buildReel, reelStep, ROLL_MS, sendRoll, watchRolls, weightedPick } from '../poolRoll'
 import { useScrollFade } from '../../hooks/useScrollFade'
@@ -73,9 +74,7 @@ function tint(id: string): string {
   return `hsl(${h % 360} 62% 52%)`
 }
 
-export function Watchlist({
-  onWatched,
-}: { onWatched?: (title: string, rt?: string) => void } = {}) {
+export function Watchlist() {
   const state = useCircuit()
   const allWatchlist = state.watchlist
   const allPools = useMemo(() => state.pools ?? [], [state.pools])
@@ -127,6 +126,25 @@ export function Watchlist({
       /* private mode: it holds for this visit */
     }
   }, [])
+
+  /**
+   * `#ratings?tab=watchlist&pool=<id>` — where the bell's "shared a pool with you" lands.
+   *
+   * ⚠️ A notice that opens the Pool tab but not the POOL is barely a notice: you would arrive
+   * at whichever pool you last had open and have to guess which of them is the new one. Listens
+   * for hashchange as well as reading on mount, because tapping a notice while already on this
+   * page changes only the hash.
+   */
+  useEffect(() => {
+    const open = () => {
+      const q = new URLSearchParams(window.location.hash.split('?')[1] ?? '')
+      const want = q.get('pool')
+      if (want) choosePool(want)
+    }
+    open()
+    window.addEventListener('hashchange', open)
+    return () => window.removeEventListener('hashchange', open)
+  }, [choosePool])
   /* ⚠️ "no account, no owner" counts as yours. The signed-out sandbox has no accounts, so a
      pool made there is stamped with a null owner — comparing that to a null meId with `===` on
      ids alone left you unable to rename or re-aim a pool you had just made yourself. The server
@@ -285,10 +303,39 @@ export function Watchlist({
     else add(typed, kind, newRt.trim() ? newRt.trim() + '%' : undefined)
   }
 
-  function markDone(w: Winner) {
+  /**
+   * What happens to the thing the wheel landed on.
+   *
+   * ⚠️ THIS WAS ONE BUTTON CALLED "✓ Did it" AND IT QUIETLY DID NOTHING BUT DELETE. It took an
+   * `onWatched` callback meant to carry the title over to the review board — and in the whole
+   * app nothing ever passed one, from either screen, ever. So the wheel picked a film, you
+   * pressed the button that said you did it, and the option vanished without trace, next to a
+   * Reviews board built for exactly that.
+   *
+   * Two buttons, because there are two endings and the old one guessed wrong at both: you
+   * watched it and want to rate it, or you didn't and want it gone.
+   */
+  function rateIt(w: Winner) {
+    void circuitStore.saveMovie({
+      id: 'm' + (crypto.randomUUID?.() ?? String(Date.now())),
+      title: w.title,
+      kind: w.kind ?? 'movie',
+      date: new Date().toISOString().slice(0, 10),
+      rt: allWatchlist.find((x) => x.id === w.id)?.rt,
+      /* nobody has rated it yet — this is the row to hang a rating on, not a rating */
+      ratings: {},
+      groupId: defaultMovieGroup(),
+    })
     void circuitStore.deleteWatchlist(w.id)
     setLanded(null)
-    onWatched?.(w.title, allWatchlist.find((x) => x.id === w.id)?.rt)
+    /* straight to where the rating happens; landing back on the pool it just left would leave
+       you to find it yourself on a board of a hundred and fifty */
+    window.location.hash = '#ratings?tab=reviews'
+  }
+
+  function dropIt(w: Winner) {
+    void circuitStore.deleteWatchlist(w.id)
+    setLanded(null)
   }
 
   // ── the wheel ─────────────────────────────────────────────────────────────────────────────
@@ -617,13 +664,23 @@ export function Watchlist({
               <span className="cz-stage-who muted">{spin.by} is rolling…</span>
             )}
             {landed && (
-              <button
-                className="btn cz-tap"
-                onClick={() => markDone(landed)}
-                title="We did this one"
-              >
-                ✓ Did it
-              </button>
+              <>
+                <button
+                  className="btn cz-tap"
+                  onClick={() => rateIt(landed)}
+                  title="We did this one — put it on the review board"
+                >
+                  ★ Rate it
+                </button>
+                <button
+                  className="btn cz-tap"
+                  onClick={() => dropIt(landed)}
+                  title="Take it out of the pool without reviewing it"
+                  style={{ opacity: 0.6 }}
+                >
+                  ✕ Drop it
+                </button>
+              </>
             )}
             {/* announced once, at the end — a live region on the reel itself would read out
                 twenty names nobody asked for */}

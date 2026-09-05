@@ -57,7 +57,7 @@ export const PREVIEW_PEOPLE: PreviewPerson[] = [
 
 /** stand-in activity notices (kudos / comments / joins) for the bell */
 export const PREVIEW_ACTIVITY: {
-  kind: 'kudos' | 'comment' | 'join'
+  kind: 'kudos' | 'comment' | 'join' | 'pool'
   actor: string
   subject: string
   detail: string | null
@@ -65,6 +65,8 @@ export const PREVIEW_ACTIVITY: {
   { kind: 'kudos', actor: 'Alex', subject: '2026-07-28', detail: '🔥' },
   { kind: 'comment', actor: 'Riley', subject: '2026-07-28', detail: 'that leg day was unreal' },
   { kind: 'join', actor: 'Casey', subject: 'The Crew', detail: null },
+  // subject is the pool's id (what the href needs), detail its name (what the bell shows)
+  { kind: 'pool', actor: 'Jordan', subject: 'pv-crew', detail: 'Friday film' },
 ]
 
 export type PreviewRoom = { id: string; kind: string; name: string }

@@ -1,5 +1,6 @@
 // Movie rating vocabulary (mirrors the standalone app) + shared helpers.
 import { peopleInGroup } from '../groupFilter'
+import { circuitStore } from '../store'
 import type { Person } from '../types'
 
 /**
@@ -21,6 +22,32 @@ import type { Person } from '../types'
  */
 export function ratersIn(people: Person[], group?: string | null): Person[] {
   return peopleInGroup(people, group ?? '')
+}
+
+/**
+ * Which circuit a new review joins, when nobody said.
+ *
+ * ⚠️ Lives here rather than in AddMovie.tsx because two screens now create reviews — the Add
+ * dialog and "Rate it" on a pool's result — and a component file that also exports helpers
+ * breaks fast refresh (see the same note atop visibilityLabels.ts).
+ *
+ * ⚠️ Reviews are still circuit-scoped while pools are not, so a pool shared with friends who
+ * share no circuit files its review under YOUR usual circuit. That is the honest behaviour of
+ * the current model rather than a decision made here; it goes away when the review board moves
+ * to friends too.
+ */
+export function defaultMovieGroup(): string | undefined {
+  const st = circuitStore.getState()
+  const counts = new Map<string, number>()
+  for (const m of st.movies) if (m.groupId) counts.set(m.groupId, (counts.get(m.groupId) ?? 0) + 1)
+  let best: string | undefined
+  let bestN = 0
+  for (const [g, n] of counts)
+    if (n > bestN) {
+      bestN = n
+      best = g
+    }
+  return best ?? st.groups?.[0]?.id ?? undefined
 }
 
 export const MV_ICONS = [

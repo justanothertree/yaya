@@ -19,7 +19,7 @@ import { useRealtimeLife } from '../finance/realtimeLife'
 
 export type Notice = {
   id: string
-  kind: 'chat' | 'friend' | 'kudos' | 'comment' | 'join' | 'guestbook' | 'call'
+  kind: 'chat' | 'friend' | 'kudos' | 'comment' | 'join' | 'guestbook' | 'call' | 'pool'
   text: string
   detail?: string
   /** where tapping it should take you */
@@ -49,7 +49,7 @@ export type Notifications = {
 }
 
 type ActivityRow = {
-  kind: 'kudos' | 'comment' | 'join' | 'guestbook'
+  kind: 'kudos' | 'comment' | 'join' | 'guestbook' | 'pool'
   actor: string
   subject: string
   detail: string | null
@@ -69,7 +69,11 @@ function activityNotice(a: ActivityRow, i: number): Notice {
         ? `${a.actor} commented on your ${a.subject} log`
         : a.kind === 'guestbook'
           ? `${a.actor} wrote on your page`
-          : `${a.actor} joined ${a.subject}`
+          : /* ⚠️ the pool's NAME is in `detail`, not `subject` — subject carries its id so the
+               href can open that exact pool, and detail is what the bell renders underneath */
+            a.kind === 'pool'
+            ? `${a.actor} shared a pool with you`
+            : `${a.actor} joined ${a.subject}`
   return {
     id: `${a.kind}-${a.actor}-${a.subject}-${i}`,
     kind: a.kind,
@@ -80,7 +84,9 @@ function activityNotice(a: ActivityRow, i: number): Notice {
         ? '#circuit?tab=circuits'
         : a.kind === 'guestbook'
           ? '#profile?u=' + encodeURIComponent(a.subject)
-          : '#circuit?tab=feed',
+          : a.kind === 'pool'
+            ? '#ratings?tab=watchlist&pool=' + encodeURIComponent(a.subject)
+            : '#circuit?tab=feed',
   }
 }
 

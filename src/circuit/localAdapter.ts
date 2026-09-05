@@ -18,7 +18,7 @@ import { publicSeed } from './publicSeed'
 
 const KEY = 'circuit_state_v1'
 /**
- * Ids of people the visitor created in THIS browser.
+ * Ids of anything the visitor created in THIS browser — people, reviews, pool options.
  *
  * ⚠️ Without this, refreshPublicBoard couldn't tell "someone the visitor invented in the
  * demo" from "someone who used to be public and isn't any more" — both are simply absent
@@ -26,6 +26,13 @@ const KEY = 'circuit_state_v1'
  * cached in every browser that had ever loaded the demo while they were public, and no
  * amount of reloading removed them. An explicit list means anyone not on the live board
  * and not created here is dropped, which is also a one-time cleanup for existing caches.
+ *
+ * ⚠️ IT COVERS REVIEWS AND POOL OPTIONS NOW, and it always should have. Only `people` were
+ * protected; `movies` and `watchlist` were taken wholesale from the live board on every read,
+ * so a signed-out visitor could add a film to the review board or an option to the pool, watch
+ * it appear, and have it deleted from under them a second or two later when the background
+ * refresh landed — no error, no toast, nothing on screen to say why the thing they just typed
+ * was gone. Measured: added a review, saw 74 rows, saw 73 a moment later.
  */
 const LOCAL_KEY = 'circuit_local_ids_v1'
 
@@ -82,6 +89,12 @@ function refreshPublicBoard(cached: CircuitState, live: CircuitState): CircuitSt
   // made their board private, and keeping them would strand real data in this browser.
   const localPeople = cached.people.filter((p) => p.id === 'demo' || mine.has(p.id))
   const localIds = new Set(localPeople.map((p) => p.id))
+  /* the visitor's own rows first, then everything the live board still has that they did not
+     make — so their additions survive and anything withdrawn upstream still disappears */
+  const keepMine = <T extends { id: string }>(cachedRows: T[], liveRows: T[]): T[] => [
+    ...cachedRows.filter((r) => mine.has(r.id)),
+    ...liveRows.filter((r) => !mine.has(r.id)),
+  ]
   return {
     ...emptyCircuitState(),
     people: [...localPeople, ...live.people.filter((p) => !localIds.has(p.id))],
@@ -89,8 +102,8 @@ function refreshPublicBoard(cached: CircuitState, live: CircuitState): CircuitSt
       ...cached.logs.filter((l) => localIds.has(l.personId)),
       ...live.logs.filter((l) => !localIds.has(l.personId)),
     ],
-    movies: live.movies,
-    watchlist: live.watchlist,
+    movies: keepMine(cached.movies, live.movies),
+    watchlist: keepMine(cached.watchlist, live.watchlist),
     /* ⚠️ THE VISITOR'S OWN, NOT THE LIVE BOARD'S. Pools and votes are a members' feature, so the
        public board never carries any — taking them from `live` meant a pool made in the sandbox
        was wiped the moment the background refresh landed, a second or two after making it, with
@@ -155,11 +168,20 @@ export function createLocalAdapter(seed?: CircuitState, liveSeed = false): Circu
     saveLog: (log: DayLog) => mutate((s) => ({ ...s, logs: upsert(s.logs, log) })),
     deleteLog: (id: ID) => mutate((s) => ({ ...s, logs: removeById(s.logs, id) })),
 
-    saveMovie: (m: Movie) => mutate((s) => ({ ...s, movies: upsert(s.movies, m) })),
+    saveMovie: (m: Movie) =>
+      mutate((s) => {
+        // same rule as people: anything not part of the seeded board is the visitor's to keep
+        if (!(seed?.movies ?? publicSeed.movies).some((x) => x.id === m.id)) rememberLocalId(m.id)
+        return { ...s, movies: upsert(s.movies, m) }
+      }),
     deleteMovie: (id: ID) => mutate((s) => ({ ...s, movies: removeById(s.movies, id) })),
 
     saveWatchlist: (w: WatchlistItem) =>
-      mutate((s) => ({ ...s, watchlist: upsert(s.watchlist, w) })),
+      mutate((s) => {
+        if (!(seed?.watchlist ?? publicSeed.watchlist).some((x) => x.id === w.id))
+          rememberLocalId(w.id)
+        return { ...s, watchlist: upsert(s.watchlist, w) }
+      }),
     deleteWatchlist: (id: ID) => mutate((s) => ({ ...s, watchlist: removeById(s.watchlist, id) })),
 
     /* the signed-out sandbox has no accounts and therefore no audience: a pool here is a

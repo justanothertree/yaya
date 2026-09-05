@@ -50,6 +50,11 @@ create table if not exists public.pools (
 create table if not exists public.pool_people (
   pool_id uuid not null references public.pools(id) on delete cascade,
   user_id uuid not null references auth.users(id) on delete cascade,
+  /* ⚠️ needed for the bell, not for bookkeeping. A notice is "this became visible to you
+     recently", and without a timestamp the only question the row can answer is the standing
+     "are you in it", which would re-announce every pool you have ever been added to on every
+     visit — see the pool branch of list_activity_notices below. */
+  added_at timestamptz not null default now(),
   primary key (pool_id, user_id)
 );
 
@@ -381,6 +386,97 @@ with check (
   (extension = any (array['broadcast', 'presence']))
   and public.pool_topic_member((select realtime.topic()))
 );
+
+-- ── the bell ────────────────────────────────────────────────────────────────────────────────
+/*
+ * A pool you can suddenly see should say so.
+ *
+ * ⚠️ Being added to something is useless if nobody is told. The audience work is what makes a
+ * pool reach your friends; without this it reaches them only if they happen to open Ratings and
+ * notice a new name in a dropdown, which is not reaching them.
+ *
+ * ⚠️ ONE NOTICE PER POOL PER PERSON, from either of the two ways a pool becomes yours to see:
+ * being ticked into a `selected` one, or somebody you are friends with making a `friends` one.
+ * Both are the same event — "this became visible to you" — and both happen once, so neither can
+ * turn into a stream. Changing a pool's name or its options deliberately says nothing.
+ *
+ * ⚠️ `subject` carries the POOL ID and `detail` the name, which is backwards from the other
+ * branches and is the reason this needed no signature change: the bell renders `detail` as the
+ * secondary line, so the name shows and the uuid stays in the href. Adding a sixth column would
+ * have meant dropping and recreating a function the bell already depends on.
+ */
+create or replace function public.list_activity_notices()
+returns table(kind text, actor text, subject text, detail text, at timestamp with time zone)
+language sql
+stable
+security definer
+set search_path to 'public'
+as $function$
+  with me as (select auth.uid() as uid),
+  seen as (
+    select coalesce(
+      (select ar.seen_at from public.activity_reads ar, me where ar.user_id = me.uid),
+      now() - interval '30 days'   -- first run: a sensible window, not the whole archive
+    ) as since
+  ),
+  -- logs belonging to a person I own
+  mine as (
+    select l.id, l.date
+    from public.circuit_logs l
+    join public.circuit_people p on p.id = l.person_id
+    join me on p.owner_user_id = me.uid
+  )
+  select 'kudos', r.author_name, m.date::text, r.emoji, r.created_at
+  from public.circuit_log_reactions r
+  join mine m on m.id = r.log_id, me, seen
+  where r.user_id <> me.uid and r.created_at > seen.since
+  union all
+  select 'comment', c.author_name, m.date::text, c.body, c.created_at
+  from public.circuit_log_comments c
+  join mine m on m.id = c.log_id, me, seen
+  where c.user_id <> me.uid and c.created_at > seen.since
+  union all
+  select 'join', coalesce(pr.first_name, pr.username::text), g.name, null, gm.joined_at
+  from public.circuit_group_members gm
+  join public.circuit_groups g on g.id = gm.group_id
+  join public.profiles pr on pr.user_id = gm.user_id, me, seen
+  where gm.user_id <> me.uid
+    and gm.joined_at > seen.since
+    and exists (
+      select 1 from public.circuit_group_members mine_gm
+      where mine_gm.group_id = gm.group_id and mine_gm.user_id = me.uid
+    )
+  union all
+  -- someone wrote on my page. `subject` carries MY username so the bell can link straight there.
+  select 'guestbook',
+         coalesce(ap.first_name, ap.username::text),
+         myp.username::text,
+         n.body,
+         n.created_at
+  from public.profile_notes n
+  join public.profiles ap on ap.user_id = n.author_user_id
+  join me on n.profile_user_id = me.uid
+  join public.profiles myp on myp.user_id = me.uid, seen
+  where n.author_user_id <> me.uid and n.created_at > seen.since
+  union all
+  -- ticked into a pool by name
+  select 'pool', public.display_name(p.owner_user_id), p.id::text, p.name, pp.added_at
+  from public.pool_people pp
+  join public.pools p on p.id = pp.pool_id, me, seen
+  where pp.user_id = me.uid
+    and p.owner_user_id <> me.uid
+    and pp.added_at > seen.since
+  union all
+  -- a friend made a pool aimed at their friends, which includes you
+  select 'pool', public.display_name(p.owner_user_id), p.id::text, p.name, p.created_at
+  from public.pools p, me, seen
+  where p.audience = 'friends'
+    and p.owner_user_id <> me.uid
+    and p.created_at > seen.since
+    and public.are_friends(me.uid, p.owner_user_id)
+  order by 5 desc
+  limit 30;
+$function$;
 
 -- ── the live board ──────────────────────────────────────────────────────────────────────────
 -- so a friend adding an option or casting a vote reaches everyone's screen the same way an
