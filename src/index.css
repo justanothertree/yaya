@@ -7446,14 +7446,14 @@ a.cz-msg-author:focus-visible {
     min-height: 44px;
   }
   /**
-   * ⚠️ THE COG GOES AWAY ON A PHONE, because the bottom bar now carries "You".
+   * ⚠️ THE COG GOES AWAY ON A PHONE, because the launcher carries Settings instead.
    *
-   * The sheet it opens slides up from the floor, so a trigger in the top-right meant reaching to
-   * the far end of the screen to make something appear under your thumb. Leaving both would be
-   * two ways into one panel, which is exactly what put a theme cycle and a theme picker in the
-   * same corner before this.
+   * The panel it opens is a sheet on the floor, so a trigger in the top-right meant reaching to
+   * the far end of the screen to make something appear under your thumb. Leaving it as a second
+   * way in would be two doors to one panel, which is what put a theme cycle and a theme picker
+   * in the same corner a few commits ago.
    *
-   * Signed OUT there is no "You" on the bar, so the cog stays — it is the only way in, and at
+   * Signed OUT there is no launcher row for it, so the cog stays — it is the only way in, and at
    * that point it is a ⚙ rather than an avatar anyway.
    */
   .nav-cog.has-bar-trigger {
@@ -7530,4 +7530,26 @@ a.cz-msg-author:focus-visible {
   from {
     opacity: 0.4;
   }
+}
+
+/* the sheet's way out — last, so it is what the thumb is already on. See SettingsMenu. */
+.nav-sheet-close {
+  margin-top: 0.35rem;
+  min-height: 46px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--control-bg, rgba(127, 127, 127, 0.12));
+  color: var(--text);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* the launcher's way out, last so it is under the thumb that opened it — see MobileNav */
+.mlaunch-foot-btn.is-close {
+  min-height: 46px;
+  font-weight: 600;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--control-bg, rgba(127, 127, 127, 0.12));
 }

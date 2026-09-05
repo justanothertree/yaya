@@ -537,9 +537,6 @@ export default function App() {
     email: string | null
     username: string | null
   }>({ name: null, email: null, username: null })
-  /* ⚠️ one letter, two places: the cog draws it on a desktop and the phone's bar draws it on a
-     phone, and computing it twice is how they would eventually show different people */
-  const youInitial = (me.name?.trim()[0] ?? me.email?.[0] ?? '★').toUpperCase()
   useEffect(() => {
     if (previewMember) {
       setMe({ name: PREVIEW_ME.name, email: PREVIEW_ME.email, username: PREVIEW_ME.username })
@@ -2165,13 +2162,7 @@ export default function App() {
           hasAuth={hasFinanceSupabaseEnv()}
           viewer={viewer}
           onOpenSettings={() => setSettingsOpen(true)}
-          initial={youInitial}
           suspended={suspended}
-          onSignOut={() => {
-            void signOut().catch(() => {
-              /* ignore */
-            })
-          }}
           unreadChats={notifications.unreadChats}
           friendRequests={notifications.friendRequests}
           onProfile={
