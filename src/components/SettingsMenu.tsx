@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { playCallSound, ringtoneEnabled, setRingtoneEnabled } from '../voice/ringtone'
 
@@ -95,8 +95,13 @@ export function SettingsMenu({
    * only works if they share one piece of state — the alternative is a second copy that can
    * disagree with the first, which is the bug this codebase keeps finding.
    */
-  const setOpen = (v: boolean | ((p: boolean) => boolean)) =>
-    onOpenChange(typeof v === 'function' ? v(open) : v)
+  const setOpen = useCallback(
+    (v: boolean | ((p: boolean) => boolean)) => onOpenChange(typeof v === 'function' ? v(open) : v),
+    /* ⚠️ memoised so the listeners below can name it honestly. It is not a useState setter any
+       more, so it is a NEW function every render unless this is here — and an effect that
+       depends on it would rebind on every keystroke while claiming to depend only on `open`. */
+    [open, onOpenChange],
+  )
   // mirrored into state so the row re-renders on a change; presenceStatus is the source of truth
   const [status, setStatus] = useState<MyStatus>(myStatus)
   /**
@@ -163,7 +168,7 @@ export function SettingsMenu({
       window.removeEventListener('pointerdown', onDown)
       window.removeEventListener('keydown', onKey)
     }
-  }, [open])
+  }, [open, setOpen])
 
   // Same as above, its own listener for the same reason: the style dialog outlives the dropdown
   // that opened it.
