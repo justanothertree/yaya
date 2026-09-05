@@ -390,6 +390,8 @@ export default function App() {
   useSyncExternalStore(homeStore.subscribe, () => homeStore.getState().doc)
   const [appearanceOpen, setAppearanceOpen] = useState(false)
   const [bugOpen, setBugOpen] = useState(false)
+  /* held here so the cog AND the phone's bottom bar can open the same panel — see SettingsMenu */
+  const [settingsOpen, setSettingsOpen] = useState(false)
 
   /**
    * Mouse trail — its own setting, alongside the click flair rather than inside it.
@@ -535,6 +537,9 @@ export default function App() {
     email: string | null
     username: string | null
   }>({ name: null, email: null, username: null })
+  /* ⚠️ one letter, two places: the cog draws it on a desktop and the phone's bar draws it on a
+     phone, and computing it twice is how they would eventually show different people */
+  const youInitial = (me.name?.trim()[0] ?? me.email?.[0] ?? '★').toUpperCase()
   useEffect(() => {
     if (previewMember) {
       setMe({ name: PREVIEW_ME.name, email: PREVIEW_ME.email, username: PREVIEW_ME.username })
@@ -1647,6 +1652,8 @@ export default function App() {
               <NotificationBell notifications={withCalls} />
             )}
             <SettingsMenu
+              open={settingsOpen}
+              onOpenChange={setSettingsOpen}
               theme={theme}
               onTheme={chooseTheme}
               uiScale={uiScale}
@@ -2157,6 +2164,8 @@ export default function App() {
           authed={hasFinanceSupabaseEnv() && isFinanceAuthed}
           hasAuth={hasFinanceSupabaseEnv()}
           viewer={viewer}
+          onOpenSettings={() => setSettingsOpen(true)}
+          initial={youInitial}
           suspended={suspended}
           onSignOut={() => {
             void signOut().catch(() => {

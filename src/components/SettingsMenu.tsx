@@ -28,6 +28,8 @@ export type Theme = 'light' | 'dark' | 'alt'
  * from under the cursor.
  */
 export function SettingsMenu({
+  open,
+  onOpenChange,
   theme,
   onTheme,
   uiScale,
@@ -79,11 +81,22 @@ export function SettingsMenu({
   /** opens the one dialog that holds colour, background, click and trail */
   onAppearance: () => void
   onReportBug: () => void
+  /** the panel's open state, held by App so the phone's bottom bar can raise it too */
+  open: boolean
+  onOpenChange: (open: boolean) => void
   onProfile?: () => void
   onSignIn: () => void
   onSignOut: () => void
 }) {
-  const [open, setOpen] = useState(false)
+  /**
+   * ⚠️ CONTROLLED FROM OUTSIDE, because on a phone this sheet is opened from the BOTTOM BAR
+   * rather than from the cog above it. The sheet slides up under your thumb; the button that
+   * summons it had no business being at the far end of the screen. Two triggers for one panel
+   * only works if they share one piece of state — the alternative is a second copy that can
+   * disagree with the first, which is the bug this codebase keeps finding.
+   */
+  const setOpen = (v: boolean | ((p: boolean) => boolean)) =>
+    onOpenChange(typeof v === 'function' ? v(open) : v)
   // mirrored into state so the row re-renders on a change; presenceStatus is the source of truth
   const [status, setStatus] = useState<MyStatus>(myStatus)
   /**
@@ -171,7 +184,7 @@ export function SettingsMenu({
     <div className="nav-cog-wrap" ref={wrapRef}>
       <button
         ref={cogRef}
-        className={'btn nav-cog' + (open ? ' is-open' : '')}
+        className={'btn nav-cog' + (open ? ' is-open' : '') + (authed ? ' has-bar-trigger' : '')}
         aria-expanded={open}
         aria-haspopup="menu"
         aria-label={authed ? 'You and your settings' : 'Settings'}

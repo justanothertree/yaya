@@ -46,6 +46,8 @@ export function MobileNav({
   authed,
   hasAuth,
   viewer,
+  onOpenSettings,
+  initial,
   suspended,
   onSignOut,
   onProfile,
@@ -58,6 +60,10 @@ export function MobileNav({
   hasAuth: boolean
   /** ⚠️ the whole viewer, not loose flags: the shared list asks the questions, not this file */
   viewer: Viewer
+  /** raise the settings sheet — it belongs on the bar, not at the top of the screen */
+  onOpenSettings: () => void
+  /** ⚠️ the same letter the cog draws, computed once by App so the two cannot disagree */
+  initial: string
   suspended: boolean
   onSignOut: () => void
   onProfile?: () => void
@@ -87,7 +93,6 @@ export function MobileNav({
     ? [
         { key: 'home', label: 'Home', icon: '🏠', section: 'home' },
         { key: 'circuit', label: 'Circuit', icon: '🏆', section: 'circuit' },
-        { key: 'ratings', label: 'Ratings', icon: '⭐', section: 'ratings' },
         { key: 'chat', label: 'Chat', icon: '💬', section: 'chat' },
       ]
     : [
@@ -194,6 +199,30 @@ export function MobileNav({
             )}
           </button>
         ))}
+        {/**
+         * ⚠️ YOU, ON THE BAR. The settings panel became a sheet along the bottom, and the button
+         * that raised it stayed in the top-right corner — so you reached to the far end of the
+         * screen to make something appear under your thumb. The trigger belongs with the thing
+         * it opens. The cog above hides at this width rather than staying as a second way in,
+         * because two triggers for one panel is what put a theme cycle and a theme picker in the
+         * same corner earlier.
+         *
+         * It takes Ratings' slot rather than becoming a sixth: five is what fits, Ratings is one
+         * tap away in the launcher beside it, and settings is reached more often than a rating.
+         */}
+        {member && (
+          <button
+            className="mnav-item"
+            aria-haspopup="menu"
+            onClick={onOpenSettings}
+            aria-label="You and your settings"
+          >
+            <span className="mnav-ic" aria-hidden>
+              {initial}
+            </span>
+            <span className="mnav-lbl">You</span>
+          </button>
+        )}
         <button
           className={'mnav-item' + (open ? ' is-on' : '')}
           aria-haspopup="menu"

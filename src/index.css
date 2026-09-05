@@ -7445,10 +7445,19 @@ a.cz-msg-author:focus-visible {
   .nav-menu-row {
     min-height: 44px;
   }
-  /* ⚠️ px, not rem: the root font here is fluid (clamp), so 2.6rem came out at 42px on a
-     375px screen — close enough to look right and still under the floor it was aiming at */
-  .nav-cog {
-    height: 44px;
+  /**
+   * ⚠️ THE COG GOES AWAY ON A PHONE, because the bottom bar now carries "You".
+   *
+   * The sheet it opens slides up from the floor, so a trigger in the top-right meant reaching to
+   * the far end of the screen to make something appear under your thumb. Leaving both would be
+   * two ways into one panel, which is exactly what put a theme cycle and a theme picker in the
+   * same corner before this.
+   *
+   * Signed OUT there is no "You" on the bar, so the cog stays — it is the only way in, and at
+   * that point it is a ⚙ rather than an avatar anyway.
+   */
+  .nav-cog.has-bar-trigger {
+    display: none;
   }
 }
 
