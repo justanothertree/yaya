@@ -1,5 +1,17 @@
 -- 2026-09-05 — the pool's wheel, broadcast to the circuit it belongs to
 --
+-- ⚠️ SUPERSEDED BEFORE IT WAS EVER RUN — DO NOT RUN THIS FILE.
+--
+-- Everything executable here is folded into 2026-09-05-pools-belong-to-friends.sql, which
+-- rewrote the audience from "in that circuit" to "can see that pool" the same afternoon. Two
+-- scripts that must be run in order is a trap whose failure is silent: run the wrong one, or
+-- only one, and the wheel turns on a single screen forever with nothing on the page to say why.
+-- One script, run once.
+--
+-- Kept because the REASONING is not repeated in full over there: why a broadcast channel needs
+-- INSERT when the six channels in 2026-08-10 deliberately did not, and why the `extension`
+-- filter is right here and catastrophic on a postgres_changes topic.
+--
 -- WHY: the pool could already pick for you, but the pick happened on ONE laptop. Four people
 -- deciding what to watch got one person reading out a result the others had to take on trust,
 -- which is a worse version of that person just choosing. A randomiser only settles an argument

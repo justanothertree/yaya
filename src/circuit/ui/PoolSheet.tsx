@@ -25,7 +25,9 @@ const AUDIENCE_LABEL: Record<PoolAudience, string> = {
 }
 const AUDIENCE_HINT: Record<PoolAudience, string> = {
   just_me: 'A shortlist nobody else can see. You can open it up later.',
-  friends: 'Anyone you have added as a friend can see it, add to it and vote.',
+  /* ⚠️ says the quiet part. Your friends are not necessarily each other's friends, and a pool
+     shows everyone in it who else is in it — better to know that before ticking, not after. */
+  friends: 'Anyone you have added as a friend can add and vote — and can see each other here.',
   selected: 'Only the people you tick below.',
 }
 

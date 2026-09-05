@@ -396,15 +396,26 @@ export function Watchlist({
   const moviesOnly = !multiKind && (kindCounts.has('movie') || kindCounts.size === 0)
   const face = spin ? spin.reel[Math.min(step, spin.reel.length - 1)] : null
 
+  /**
+   * One line saying who else is here.
+   *
+   * ⚠️ A pool somebody ELSE shared says whose it is. Without that, a name in the picker is just
+   * a name — you cannot tell "Friday film" is Josh's list you were added to from "Friday film"
+   * you made yourself, and the difference decides whether the settings button will let you
+   * change anything.
+   */
+  const ownerName = pool?.ownerUserId ? (names[pool.ownerUserId] ?? 'Someone') : null
   const audienceLine = !pool
     ? ''
     : pool.id === LOOSE_ID
       ? 'Not shared with anyone.'
-      : pool.audience === 'just_me'
-        ? 'Just you.'
-        : pool.audience === 'friends'
-          ? 'Your friends can see it, add to it and vote.'
-          : 'Shared with the people you picked.'
+      : !isOwner
+        ? `${ownerName ?? 'Someone'} shared this with you — you can add options and vote.`
+        : pool.audience === 'just_me'
+          ? 'Just you.'
+          : pool.audience === 'friends'
+            ? 'Your friends can see it, add to it and vote — and they can see each other doing it.'
+            : 'Shared with the people you picked.'
 
   return (
     <div>

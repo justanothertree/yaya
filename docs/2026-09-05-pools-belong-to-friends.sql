@@ -344,6 +344,44 @@ $$;
 revoke all on function public.pool_topic_member(text) from public, anon;
 grant execute on function public.pool_topic_member(text) to authenticated;
 
+/*
+ * ⚠️ THESE TWO POLICIES WERE IN A SEPARATE SCRIPT AND ARE FOLDED IN HERE, because neither script
+ * had been run yet and "run these two, in this order" is a trap with a silent failure at the end
+ * of it: run only this one and the wheel would turn on one screen forever, with nothing to say
+ * why. 2026-09-05-the-pool-rolls-together.sql is now a design note, not a script.
+ *
+ * ⚠️ INSERT is granted here, unlike the six read-only channels in 2026-08-10, and the difference
+ * is that this topic is not fixed. It names one pool and the gate is being able to SEE that
+ * pool, so there is no topic a stranger and a member both reach — an unrecognised uuid matches
+ * nobody. The audience for anything sent is exactly the people who can already read the pool,
+ * vote in it and delete from it; speaking to them is not a new capability, it is the one they
+ * have, arriving faster. Without INSERT a broadcast is silently dropped.
+ *
+ * ⚠️ The `extension` filter belongs on THESE policies and must never be copied onto a
+ * postgres_changes topic — see the long note in 2026-08-10. `extension` describes the
+ * authorization probe, not the subscription, and is null at join time for postgres_changes, so
+ * filtering on it there produces false denials only. Here the channel really is a broadcast.
+ */
+drop policy if exists "pool: members can watch the wheel" on realtime.messages;
+create policy "pool: members can watch the wheel"
+on realtime.messages
+for select
+to authenticated
+using (
+  (extension = any (array['broadcast', 'presence']))
+  and public.pool_topic_member((select realtime.topic()))
+);
+
+drop policy if exists "pool: members can spin it" on realtime.messages;
+create policy "pool: members can spin it"
+on realtime.messages
+for insert
+to authenticated
+with check (
+  (extension = any (array['broadcast', 'presence']))
+  and public.pool_topic_member((select realtime.topic()))
+);
+
 -- ── the live board ──────────────────────────────────────────────────────────────────────────
 -- so a friend adding an option or casting a vote reaches everyone's screen the same way an
 -- edit to any other board does
@@ -378,8 +416,11 @@ update public.circuit_watchlist set pool_id = group_id where group_id is not nul
 commit;
 
 -- ── HOW TO CHECK IT WORKED ──────────────────────────────────────────────────────────────────
---   select count(*) from public.pools;                                     -- one per circuit
+--   select count(*) from public.pools;                                     -- one per circuit: 2
 --   select count(*) from public.circuit_watchlist where pool_id is null;   -- 0
+--   select count(*) from public.pool_people;                               -- 8
+-- Dry-run before writing this said exactly those numbers, so anything else means something
+-- moved underneath it — stop and look rather than carrying on.
 --   select * from public.pool_names(id) from public.pools;                 -- names resolve
 -- In the app: Ratings → Pool shows a pool picker with your migrated circuits in it, and "New
 -- pool" makes one aimed at your friends without going anywhere near a circuit.
@@ -398,5 +439,8 @@ commit;
 --   alter table public.circuit_watchlist drop column pool_id;
 --   drop table public.pool_votes, public.pool_people, public.pools;
 --   drop function public.pool_visible(uuid), public.pool_can_invite(uuid),
---                 public.pool_item_visible(text), public.pool_names(uuid);
---   ...and restore pool_topic_member's body from 2026-09-05-the-pool-rolls-together.sql.
+--                 public.pool_item_visible(text), public.pool_names(uuid),
+--                 public.pool_topic_member(text);
+--   drop policy "pool: members can watch the wheel" on realtime.messages;
+--   drop policy "pool: members can spin it" on realtime.messages;
+--   alter publication supabase_realtime drop table public.pools, public.pool_people, public.pool_votes;
