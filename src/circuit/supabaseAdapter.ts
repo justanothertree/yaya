@@ -242,17 +242,42 @@ export function createSupabaseAdapter(): CircuitAdapter {
     subscribe(onExternalChange) {
       emitExternal = onExternalChange
       const ch = sb.channel('circuit-sync', { config: { private: true } })
+      /**
+       * ⚠️ ONE REFETCH PER BURST, not one per row.
+       *
+       * A change to any of four tables means reloading all six, and a realtime event fires per
+       * ROW — so four friends adding options to the pool at once, or one person pasting a day's
+       * log, produced a full six-query board reload for each individual row, on every open
+       * client. The store used to hide this behind a 2.5-second deaf window; now that boards land
+       * promptly the burst is visible, so it is coalesced here, where it belongs. A change
+       * queries once for whatever settled within a beat of it.
+       *
+       * ⚠️ Short on purpose. This delay is the floor on how quickly a friend's edit can appear,
+       * and the point of the exercise is that it appears. 180ms is under the threshold where a
+       * screen updating reads as a response to something rather than as a separate event.
+       */
+      const COALESCE_MS = 180
+      let pending: ReturnType<typeof setTimeout> | null = null
+      const refetch = () => {
+        if (pending) return
+        pending = setTimeout(() => {
+          pending = null
+          void loadAll()
+            .then((s) => {
+              writeCloudCache(s) // keep next mount's instant paint current
+              onExternalChange(s)
+            })
+            .catch(() => undefined)
+        }, COALESCE_MS)
+      }
       for (const table of TABLES) {
-        ch.on('postgres_changes', { event: '*', schema: 'public', table }, () => {
-          void loadAll().then((s) => {
-            writeCloudCache(s) // keep next mount's instant paint current
-            onExternalChange(s)
-          })
-        })
+        ch.on('postgres_changes', { event: '*', schema: 'public', table }, refetch)
       }
       subscribeLogged(ch, 'circuit-sync')
       return () => {
         emitExternal = null
+        if (pending) clearTimeout(pending)
+        pending = null
         void sb.removeChannel(ch)
       }
     },

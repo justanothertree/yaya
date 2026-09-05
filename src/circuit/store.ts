@@ -3,8 +3,8 @@
 // was supplied to init() — localStorage when signed out, Supabase + realtime when in.
 //
 // Every mutation is a reversible command (save/delete on one collection), so the
-// store keeps a 30-step undo/redo history. External (realtime) changes reset it,
-// since the base state shifted underneath us.
+// store keeps a 30-step undo/redo history. Signing in or out resets it; a realtime
+// change from somebody else does not — see adoptState for why.
 import { useSyncExternalStore } from 'react'
 import type { CircuitAdapter } from './adapter'
 import { showToast } from './toast'
@@ -72,6 +72,11 @@ function persistOp(a: CircuitAdapter, op: Op): Promise<void> {
   const fn = a[METHOD[op.coll].del] as (id: ID) => Promise<void>
   return fn(op.id)
 }
+/** collection + row, the identity a replayed op is keyed by */
+function opKey(op: Op): string {
+  return `${op.coll}:${op.kind === 'save' ? (op.item as { id: ID }).id : op.id}`
+}
+
 /** The inverse command, computed against the state *before* op is applied. */
 function inverseOf(s: CircuitState, op: Op): Op {
   const arr = s[op.coll] as Array<{ id: ID }>
@@ -89,11 +94,28 @@ function createCircuitStore(): CircuitStore {
   const undoStack: HistEntry[] = []
   const redoStack: HistEntry[] = []
   let histSnap: HistoryState = { canUndo: false, canRedo: false }
-  // echo-suppression: timestamp of our most recent local write. Supabase realtime echoes
-  // our own writes back as a full reload; applying that mid-edit reverts an in-flight
-  // optimistic change. While we're actively writing we ignore echoes and reconcile after.
-  let lastLocalWriteAt = 0
-  let reconcileTimer: ReturnType<typeof setTimeout> | null = null
+  /**
+   * Our own recent writes, replayed on top of any snapshot that arrives while they might still
+   * be in flight.
+   *
+   * ⚠️ THIS REPLACED A 2.5-SECOND DEAF WINDOW, and the window had a hole in it. Realtime hands
+   * us a whole fresh board on any change — including the echo of our own write — and applying
+   * one mid-edit reverted the optimistic change we had just painted. The fix was to ignore
+   * incoming boards for 2.5s after any local write and reconcile once things went quiet. But
+   * "quiet" was measured from OUR writing, and the reconcile was scheduled once rather than
+   * rescheduled: keep adding things for ten seconds and a friend's change that arrived in the
+   * middle was not deferred, it was DROPPED, until the next unrelated event happened to bring
+   * it in. Two people adding options at the same time is the one moment the pool exists for,
+   * and it was the one moment each of them went blind to the other.
+   *
+   * Replaying is both simpler and more correct than deferring. A save we have not confirmed is
+   * re-applied over the snapshot; a delete is re-removed. If the snapshot already contains our
+   * write the replay changes nothing, and if it was queried before our write committed — the
+   * real race, and the reason this outlives the promise resolving — it stops the row flickering
+   * out and back. After a few seconds the server is simply right and we stop arguing with it.
+   */
+  const recent = new Map<string, { op: Op; at: number }>()
+  const RECENT_MS = 4000
 
   const emit = () => listeners.forEach((l) => l())
   const refreshHist = () => {
@@ -132,14 +154,62 @@ function createCircuitStore(): CircuitStore {
     redoStack.length = 0
     refreshHist()
   }
-  // Replace whole state (init / external realtime change): history no longer valid.
+  /** A different board entirely — a sign-in, a sign-out, or a write we had to take back. */
   const replaceState = (next: CircuitState) => {
     state = next
     clearHistory()
     emit()
   }
+  /**
+   * A newer version of the SAME board, from realtime. Undo survives it.
+   *
+   * ⚠️ THIS USED TO CLEAR THE HISTORY, on the reasoning that the base had shifted underneath us.
+   * That was safe only while realtime was being ignored for 2.5s after every local write: once
+   * boards land promptly, YOUR OWN WRITE ECHOES BACK as a change like any other, so clearing
+   * here would empty the undo stack a moment after every single edit — undo would be permanently
+   * greyed out on a board with more than one person on it, and nobody would ever learn why.
+   *
+   * Keeping it is coherent rather than merely convenient. Each entry is a whole-row save of what
+   * that row looked like before, so applying it to a newer board restores that row and touches
+   * nothing else. Where it collides with somebody else's edit to the same row, the loser is the
+   * earlier write — which is the rule this whole store already runs on (see the same argument in
+   * party/transport.ts). A stale undo is survivable; an undo button that quietly stops working
+   * is not.
+   */
+  const adoptState = (next: CircuitState) => {
+    state = next
+    emit()
+  }
+  /** An incoming board, with our own too-recent writes put back on top. See `recent`. */
+  const withRecent = (next: CircuitState): CircuitState => {
+    const now = Date.now()
+    let out = next
+    // insertion order, so several edits to the same board replay in the order they were made
+    for (const [key, entry] of recent) {
+      if (now - entry.at > RECENT_MS) {
+        recent.delete(key)
+        continue
+      }
+      out = applyOpToState(out, entry.op)
+    }
+    return out
+  }
+  /**
+   * Apply an op locally, remember it briefly, and persist it.
+   *
+   * ⚠️ A FAILED WRITE IS FORGOTTEN IMMEDIATELY, before persistFailed reloads. Replaying it over
+   * the board we are about to fetch would paint the edit back on — the precise illusion that
+   * reload exists to dispel.
+   */
+  const runOp = (op: Op, what: string): Promise<void> => {
+    const key = opKey(op)
+    recent.set(key, { op, at: Date.now() })
+    return persistOp(need(), op).catch((err) => {
+      recent.delete(key)
+      persistFailed(what, err)
+    })
+  }
   const dispatch = (op: Op, record: boolean): Promise<void> => {
-    lastLocalWriteAt = Date.now()
     const inv = inverseOf(state, op)
     state = applyOpToState(state, op)
     if (record) {
@@ -149,7 +219,7 @@ function createCircuitStore(): CircuitStore {
     }
     refreshHist()
     emit()
-    return persistOp(need(), op).catch((err) => persistFailed('save', err))
+    return runOp(op, 'save')
   }
 
   return {
@@ -159,28 +229,12 @@ function createCircuitStore(): CircuitStore {
         unsub()
         unsub = null
       }
-      if (reconcileTimer) {
-        clearTimeout(reconcileTimer)
-        reconcileTimer = null
-      }
       adapter = a
+      recent.clear()
       replaceState(await a.load())
-      // Realtime changes replace state — but our OWN writes echo back the same way, and a
-      // full reload mid-edit would revert an in-flight optimistic change (and wipe undo).
-      // While actively writing, ignore echoes; reconcile once ~2.5s of quiet has passed so
-      // a genuine change from another member still lands.
-      const ECHO_MS = 2500
-      unsub = a.subscribe((external) => {
-        if (Date.now() - lastLocalWriteAt < ECHO_MS) {
-          if (reconcileTimer) clearTimeout(reconcileTimer)
-          reconcileTimer = setTimeout(() => {
-            reconcileTimer = null
-            if (Date.now() - lastLocalWriteAt >= ECHO_MS) void a.load().then(replaceState)
-          }, ECHO_MS)
-          return
-        }
-        replaceState(external)
-      })
+      // Every board from elsewhere lands straight away — including the echo of our own write,
+      // which is why `recent` exists to put the last few seconds of our edits back on top.
+      unsub = a.subscribe((external) => adoptState(withRecent(external)))
     },
     getState: () => state,
     subscribe(listener) {
@@ -191,22 +245,20 @@ function createCircuitStore(): CircuitStore {
     undo() {
       const entry = undoStack.pop()
       if (!entry) return Promise.resolve()
-      lastLocalWriteAt = Date.now()
       state = applyOpToState(state, entry.undo)
       redoStack.push(entry)
       refreshHist()
       emit()
-      return persistOp(need(), entry.undo).catch((err) => persistFailed('undo', err))
+      return runOp(entry.undo, 'undo')
     },
     redo() {
       const entry = redoStack.pop()
       if (!entry) return Promise.resolve()
-      lastLocalWriteAt = Date.now()
       state = applyOpToState(state, entry.do)
       undoStack.push(entry)
       refreshHist()
       emit()
-      return persistOp(need(), entry.do).catch((err) => persistFailed('redo', err))
+      return runOp(entry.do, 'redo')
     },
     savePerson: (p) => dispatch({ kind: 'save', coll: 'people', item: p }, true),
     deletePerson: (id) => dispatch({ kind: 'delete', coll: 'people', id }, true),

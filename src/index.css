@@ -3427,6 +3427,10 @@ select {
   background: var(--b1, rgba(127, 127, 127, 0.07));
   border-radius: 8px;
 }
+/* what the wheel stopped on, still sitting in the list where you left it */
+.cz-pool-row.is-pick {
+  box-shadow: 0 0 0 2px var(--accent, #7c6af7);
+}
 .cz-pool-title {
   flex: 1;
   min-width: 0;
@@ -4216,15 +4220,219 @@ select {
   background: var(--control-bg);
 }
 
+/* ─ the pool's composer ───────────────────────
+   One box, always open, with the room's own back catalogue underneath it. This replaced a
+   modal (six steps to add one option) plus a separate panel with its own separate search
+   field, which meant the thing you were about to type was already listed somewhere you were
+   not looking. Everything here is sized for somebody adding four things while three people
+   wait. */
+.cz-add {
+  display: grid;
+  gap: 0.5rem;
+  margin-bottom: 0.9rem;
+  padding: 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  min-width: 0;
+}
+.cz-add-row {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+}
+.cz-add-box {
+  flex: 1 1 8rem;
+  /* ⚠️ or the flex item refuses to shrink past its placeholder and the button wraps away */
+  min-width: 0;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--control-bg);
+  color: var(--text);
+  font: inherit;
+  /* the one control on the screen you should never have to look for */
+  font-size: 1rem;
+}
+.cz-add-rt {
+  width: 5rem;
+  flex-shrink: 0;
+  padding: 0.5rem 0.4rem;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--control-bg);
+  color: var(--text);
+  font: inherit;
+}
+.cz-add-kinds,
+.cz-sugg {
+  display: flex;
+  gap: 0.3rem;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.cz-sugg-item,
+.cz-sugg-more {
+  appearance: none;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--control-bg);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.82rem;
+  /* ⚠️ 32px tall at minimum: this is the control a thumb hits repeatedly, in a hurry */
+  padding: 0.32rem 0.7rem;
+  cursor: pointer;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cz-sugg-item:hover,
+.cz-sugg-more:hover {
+  border-color: var(--accent, #7c6af7);
+}
+.cz-sugg-more {
+  font-weight: 700;
+  opacity: 0.75;
+}
+.cz-add-where {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+  font-size: 0.78rem;
+}
+/* ⚠️ On a phone the strip is ONE swipeable row, not six wrapped ones. Ten suggestions wrapped
+   is most of a screen of chrome sitting above the pool they exist to fill — you scrolled past
+   the shortcut to reach the thing it was a shortcut to. Same strip treatment as the sub-tabs,
+   including the fade that says there is more to the right. */
+@media (max-width: 640px) {
+  .cz-sugg {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+    scroll-snap-type: x proximity;
+    padding-bottom: 2px;
+    /* bleed to the card's edge so a half-visible chip reads as "keep swiping" */
+    margin-right: -0.6rem;
+    padding-right: 0.6rem;
+    -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent 100%);
+    mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent 100%);
+  }
+  .cz-sugg.cz-scroll-end {
+    -webkit-mask-image: none;
+    mask-image: none;
+  }
+  .cz-sugg::-webkit-scrollbar {
+    display: none;
+  }
+  .cz-sugg-item,
+  .cz-sugg-more {
+    flex: 0 0 auto;
+    min-height: 36px;
+  }
+}
+
+/* ─ the stage ───────────────────────
+   Where the wheel turns. One row: the button, the face that changes, and what to do about it.
+   Everybody in the circuit sees the same faces in the same order (see circuit/poolRoll.ts), so
+   this has to hold a line of text that changes twenty times without the row jumping about. */
+.cz-stage {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  padding: 0.55rem 0.7rem;
+  margin-bottom: 0.9rem;
+  border-radius: 12px;
+  background: var(--b1, rgba(127, 127, 127, 0.07));
+  border: 1px solid transparent;
+}
+.cz-stage.is-spinning,
+.cz-stage.is-landed {
+  border-color: var(--accent, #7c6af7);
+}
+.cz-stage-go {
+  appearance: none;
+  border: 0;
+  border-radius: 9px;
+  background: var(--accent, #7c6af7);
+  color: var(--btn-text);
+  font: inherit;
+  font-weight: 700;
+  padding: 0.45rem 0.8rem;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.cz-stage-go:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.cz-stage-face {
+  flex: 1 1 10rem;
+  min-width: 0;
+  font-size: 1.05rem;
+  /* ⚠️ one line, clipped. A long title wrapping mid-spin would resize the row on some faces
+     and not others, which reads as the page glitching rather than as a wheel turning. */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cz-stage-who {
+  font-size: 0.78rem;
+  flex-shrink: 0;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .cz-stage.is-spinning .cz-stage-face {
+    /* each new face arrives, rather than replacing the last one in place */
+    animation: czface 90ms ease-out;
+  }
+  .cz-stage.is-landed .cz-stage-face {
+    animation: czland 420ms cubic-bezier(0.2, 1.4, 0.4, 1);
+  }
+}
+/* ⚠️ No fill-mode, and every keyframe ends where the element already is. An animation that
+   never runs — reduced motion, a paused tab — must leave the result plainly readable, which is
+   not true of anything that starts from opacity 0. */
+@keyframes czface {
+  from {
+    opacity: 0.35;
+    transform: translateY(-0.18em);
+  }
+}
+@keyframes czland {
+  from {
+    transform: scale(1.22);
+  }
+}
+
+/* ─ a vote circle ───────────────────────
+   Your own sits first and wears a ring: four people round one laptop knew whose initial was
+   whose, four people in four rooms did not. */
+.cz-vote {
+  border-style: solid;
+  border-width: 1.5px;
+  border-radius: 50%;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  font-size: 0.72rem;
+  font-weight: 800;
+  cursor: pointer;
+  line-height: 1;
+  flex-shrink: 0;
+}
+.cz-vote.is-me {
+  box-shadow:
+    0 0 0 2px var(--bg, #fff),
+    0 0 0 3.5px var(--vc, currentColor);
+}
+
 /* ─ the pool's library ───────────────────────
    A memory of everything the room has suggested, not a recommender. Laid out as a dense grid
    because the whole point is seeing a lot at once — a one-per-row list of 250 titles is the
    scrolling this was meant to replace. */
-.cz-pool-list.is-drop {
-  outline: 2px dashed var(--accent, #7c6af7);
-  outline-offset: 4px;
-  border-radius: 10px;
-}
 .cz-lib {
   margin-top: 0.7rem;
   border: 1px solid var(--border);
@@ -4238,22 +4446,6 @@ select {
   display: flex;
   gap: 0.4rem;
   align-items: center;
-  flex-wrap: wrap;
-}
-.cz-lib-search {
-  flex: 1 1 12rem;
-  /* ⚠️ or the flex item refuses to shrink past its placeholder and the chips wrap away */
-  min-width: 0;
-  padding: 0.4rem 0.55rem;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--control-bg);
-  color: var(--text);
-  font: inherit;
-}
-.cz-lib-cats {
-  display: flex;
-  gap: 0.25rem;
   flex-wrap: wrap;
 }
 .cz-lib-grid {

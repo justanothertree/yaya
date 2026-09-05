@@ -170,7 +170,7 @@ export function Ratings({ authed = false }: { authed?: boolean }) {
 
       <div className="cz-pane" key={tab}>
         {tab === 'reviews' && <Movies viewGroup={activeGroup} />}
-        {tab === 'watchlist' && <Watchlist viewGroup={activeGroup} />}
+        {tab === 'watchlist' && <Watchlist viewGroup={activeGroup} groups={groups} />}
       </div>
 
       <Toast />
