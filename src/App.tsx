@@ -1350,9 +1350,6 @@ export default function App() {
     }
     if (customPalette) setCustomPalette(false)
   }
-  const cycleTheme = () =>
-    chooseTheme(theme === 'dark' ? 'light' : theme === 'light' ? 'alt' : 'dark')
-
   // Pinned windows follow you across tabs. We keep the pane OBJECTS (not just ids) so a
   // window pinned on one tab can still render on another after its own page unmounted —
   // the node re-mounts and reads the same live store.
@@ -2161,8 +2158,6 @@ export default function App() {
           hasAuth={hasFinanceSupabaseEnv()}
           viewer={viewer}
           suspended={suspended}
-          theme={theme}
-          onCycleTheme={cycleTheme}
           onSignOut={() => {
             void signOut().catch(() => {
               /* ignore */

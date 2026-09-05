@@ -47,8 +47,6 @@ export function MobileNav({
   hasAuth,
   viewer,
   suspended,
-  theme,
-  onCycleTheme,
   onSignOut,
   onProfile,
   unreadChats = 0,
@@ -61,8 +59,6 @@ export function MobileNav({
   /** ⚠️ the whole viewer, not loose flags: the shared list asks the questions, not this file */
   viewer: Viewer
   suspended: boolean
-  theme: 'light' | 'dark' | 'alt'
-  onCycleTheme: () => void
   onSignOut: () => void
   onProfile?: () => void
   /** what's waiting, so the bar can pip it without opening anything */
@@ -179,8 +175,6 @@ export function MobileNav({
     }
   }, [])
 
-  const themeIcon = theme === 'light' ? '☀' : theme === 'dark' ? '☾' : '✦'
-
   return (
     <>
       <nav className="mnav" aria-label="Primary (mobile)" ref={barRef}>
@@ -255,9 +249,19 @@ export function MobileNav({
                   🪪 My profile
                 </button>
               )}
-              <button className="mlaunch-foot-btn" onClick={onCycleTheme}>
-                {themeIcon} Theme
-              </button>
+              {/**
+               * ⚠️ NO THEME BUTTON HERE. There was one, and it was the worse of two.
+               *
+               * The cog in the header carries a theme PICKER — light, dark, alt and the full
+               * appearance dialog — and it stays tappable while this launcher is open, because
+               * the header sits above the overlay. This one was a blind CYCLE: same word, same
+               * corner of the screen, different behaviour, and no way to tell which you were
+               * about to get. Two doors to one setting is a nuisance; two doors that do
+               * different things is a trap.
+               *
+               * Profile and Sign out below are duplicated too, but harmlessly — they do exactly
+               * what the cog's versions do, and a launcher is a reasonable place to find them.
+               */}
               {member && (
                 <button
                   className="mlaunch-foot-btn"
