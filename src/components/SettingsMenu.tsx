@@ -148,6 +148,21 @@ export function SettingsMenu({
         onClick={() => setOpen((o) => !o)}
       >
         {authed ? <span className="nav-cog-avatar">{initial}</span> : '⚙'}
+        {/**
+         * ⚠️ A CARET, BECAUSE A LETTER IN A CIRCLE DOES NOT SAY "MENU".
+         *
+         * Signed out this control is a ⚙, which everybody reads as settings. Signed in it
+         * becomes your initial — and an avatar looks like a picture of you rather than a button
+         * that opens anything, so the whole settings menu was sitting behind an affordance that
+         * did not announce itself. Every app that puts an avatar in a corner pairs it with this
+         * mark for exactly that reason.
+         *
+         * Screen readers already knew — aria-haspopup and aria-expanded were there — so this is
+         * the visual half of a promise the markup was already making.
+         */}
+        <span className="nav-cog-caret" aria-hidden>
+          ▾
+        </span>
       </button>
 
       {open && (

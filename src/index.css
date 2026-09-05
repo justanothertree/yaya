@@ -7411,3 +7411,47 @@ a.cz-msg-author:focus-visible {
     gap: 0.3rem;
   }
 }
+
+/* the "this opens a menu" mark beside the avatar — see SettingsMenu */
+.nav-cog-caret {
+  font-size: 0.6rem;
+  line-height: 1;
+  margin-left: 0.25rem;
+  opacity: 0.65;
+  transition: transform 0.15s ease;
+}
+.nav-cog.is-open .nav-cog-caret {
+  transform: rotate(180deg);
+  opacity: 1;
+}
+
+@media (max-width: 780px) {
+  /**
+   * ⚠️ THE MENU IS A DESKTOP DROPDOWN AND A PHONE IS NOT A DESKTOP.
+   *
+   * Measured at 375px: a 240px column pinned to the top-right corner with 32px rows — the
+   * narrowest part of the widest thing available, at the end of the screen furthest from a
+   * thumb, with targets under the 44px a finger wants. It fits, which is why it never looked
+   * broken; it was just uncomfortable.
+   *
+   * Widened to most of the screen and given proper touch targets. It stays anchored under the
+   * cog rather than becoming a bottom sheet, because .nav sets `will-change: transform` to keep
+   * itself on its own compositor layer — which makes it a containing block for fixed children,
+   * so a sheet pinned to the bottom of the VIEWPORT would need coordinates relative to the nav
+   * instead. The note on .nav says as much. Comfort here is worth more than the reshuffle.
+   */
+  .nav-menu {
+    width: calc(100vw - 1.25rem);
+    max-width: 22rem;
+    max-height: min(72vh, 34rem);
+    padding: 0.5rem;
+  }
+  .nav-menu-row {
+    min-height: 44px;
+  }
+  /* ⚠️ px, not rem: the root font here is fluid (clamp), so 2.6rem came out at 42px on a
+     375px screen — close enough to look right and still under the floor it was aiming at */
+  .nav-cog {
+    height: 44px;
+  }
+}
