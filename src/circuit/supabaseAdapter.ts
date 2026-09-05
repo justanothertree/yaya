@@ -2,10 +2,30 @@
 // Same CircuitAdapter contract as localAdapter, so the UI is unchanged. Reuses the
 // app's existing singleton Supabase client (Auth JWT + RLS).
 import type { CircuitAdapter } from './adapter'
-import type { CircuitState, DayLog, Movie, MovieRating, Person, WatchlistItem, ID } from './types'
+import type {
+  CircuitState,
+  DayLog,
+  Movie,
+  MovieRating,
+  Person,
+  Pool,
+  PoolAudience,
+  PoolVote,
+  WatchlistItem,
+  ID,
+} from './types'
+import { voteId } from './types'
 import { getSupabaseClient, subscribeLogged } from '../finance/client'
 
-const TABLES = ['circuit_people', 'circuit_logs', 'circuit_movies', 'circuit_watchlist'] as const
+const TABLES = [
+  'circuit_people',
+  'circuit_logs',
+  'circuit_movies',
+  'circuit_watchlist',
+  'pools',
+  'pool_people',
+  'pool_votes',
+] as const
 
 // Last cloud snapshot, cached locally so a returning member's board paints instantly on
 // mount instead of sitting empty (or flashing the demo) while the network load runs.
@@ -79,10 +99,17 @@ type WlRow = {
   id: string
   title: string
   rt: string | null
-  votes: string[]
   group_id?: string | null
+  pool_id?: string | null
   kind?: string | null
 }
+type PoolRow = {
+  id: string
+  name: string
+  audience: string
+  owner_user_id?: string | null
+}
+type VoteRow = { item_id: string; user_id: string }
 
 const personToRow = (p: Person): PersonRow => ({
   id: p.id,
@@ -141,34 +168,64 @@ const rowToMovie = (r: MovieRow): Movie => ({
   ratings: r.ratings ?? {},
   groupId: r.group_id ?? null,
 })
+/* ⚠️ `votes` is NOT sent any more even though the column still exists. Votes are rows in
+   pool_votes now (see docs/2026-09-05-pools-belong-to-friends.sql); writing the dead array
+   back would be the one way to resurrect the clobbering bug that move was made to kill. */
 const wlToRow = (w: WatchlistItem): WlRow => ({
   id: w.id,
   title: w.title,
   rt: w.rt ?? null,
-  votes: w.votes ?? [],
   group_id: w.groupId ?? null,
+  pool_id: w.poolId ?? null,
   kind: w.kind ?? 'movie',
 })
 const rowToWl = (r: WlRow): WatchlistItem => ({
   id: r.id,
   title: r.title,
   rt: r.rt ?? undefined,
-  votes: r.votes ?? [],
   groupId: r.group_id ?? null,
+  poolId: r.pool_id ?? null,
   kind: r.kind ?? 'movie',
+})
+const AUDIENCES: PoolAudience[] = ['just_me', 'friends', 'selected']
+const poolToRow = (p: Pool): PoolRow => ({
+  id: p.id,
+  name: p.name,
+  audience: p.audience,
+  // sent back unchanged so the owner's own upsert passes the ownership WITH CHECK; the policy
+  // forbids setting it to anybody else, so this cannot hand a pool to someone
+  owner_user_id: p.ownerUserId ?? null,
+})
+const rowToPool = (r: PoolRow): Pool => ({
+  id: r.id,
+  name: r.name,
+  /* an unrecognised audience must never fall open — anything the client does not understand
+     is treated as the narrowest one it knows */
+  audience: (AUDIENCES as string[]).includes(r.audience) ? (r.audience as PoolAudience) : 'just_me',
+  ownerUserId: r.owner_user_id ?? null,
+})
+const rowToVote = (r: VoteRow): PoolVote => ({
+  id: voteId(r.item_id, r.user_id),
+  itemId: r.item_id,
+  userId: r.user_id,
 })
 
 export function createSupabaseAdapter(): CircuitAdapter {
   const sb = getSupabaseClient()
 
   async function loadAll(): Promise<CircuitState> {
-    const [ppl, logs, movies, wl, pgroups, groups] = await Promise.all([
+    const [ppl, logs, movies, wl, pgroups, groups, pools, votes] = await Promise.all([
       sb.from('circuit_people').select('*'),
       sb.from('circuit_logs').select('*'),
       sb.from('circuit_movies').select('*'),
       sb.from('circuit_watchlist').select('*'),
       sb.from('circuit_person_groups').select('person_id, group_id'),
       sb.from('circuit_groups').select('id, name'),
+      /* ⚠️ A missing table comes back as { data: null, error } rather than throwing, so a
+         build that ships before the migration runs shows "no pools yet" instead of a broken
+         board — and starts working the moment the SQL lands, with no second deploy. */
+      sb.from('pools').select('id, name, audience, owner_user_id'),
+      sb.from('pool_votes').select('item_id, user_id'),
     ])
     // which circuit(s) each person is shared into — lets the board scope to one circuit
     const byPerson: Record<string, string[]> = {}
@@ -187,6 +244,8 @@ export function createSupabaseAdapter(): CircuitAdapter {
         id: g.id,
         name: g.name,
       })),
+      pools: ((pools.data as PoolRow[] | null) ?? []).map(rowToPool),
+      votes: ((votes.data as VoteRow[] | null) ?? []).map(rowToVote),
     }
   }
 
@@ -238,6 +297,25 @@ export function createSupabaseAdapter(): CircuitAdapter {
     },
     async deleteWatchlist(id: ID) {
       await sb.from('circuit_watchlist').delete().eq('id', id)
+    },
+    async savePool(p: Pool) {
+      await sb.from('pools').upsert(poolToRow(p))
+    },
+    async deletePool(id: ID) {
+      await sb.from('pools').delete().eq('id', id)
+    },
+    /* ⚠️ ignoreDuplicates, not a plain insert. Tapping "I'm in" twice quickly, or a tap racing
+       its own realtime echo, must be a no-op rather than a unique-violation toast telling
+       somebody their vote did not save when it plainly did. */
+    async saveVote(v: PoolVote) {
+      await sb
+        .from('pool_votes')
+        .upsert({ item_id: v.itemId, user_id: v.userId }, { ignoreDuplicates: true })
+    },
+    async deleteVote(id: ID) {
+      const [itemId, userId] = id.split('::')
+      if (!itemId || !userId) return
+      await sb.from('pool_votes').delete().eq('item_id', itemId).eq('user_id', userId)
     },
     subscribe(onExternalChange) {
       emitExternal = onExternalChange

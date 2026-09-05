@@ -1,5 +1,5 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
-import { getFinanceEnv } from './env'
+import { getFinanceEnv, hasFinanceSupabaseEnv } from './env'
 
 let _supabase: SupabaseClient | null = null
 
@@ -24,6 +24,24 @@ export function getSupabaseClient(): SupabaseClient {
   })
 
   return _supabase
+}
+
+/**
+ * The client, or null when this build has no Supabase at all.
+ *
+ * ⚠️ getSupabaseClient() THROWS on a build with no env, which is correct for the finance
+ * screens — they cannot exist without it — and wrong for anything that also renders signed out
+ * or in the demo sandbox. Those callers were each writing their own hasFinanceSupabaseEnv()
+ * guard, and a component that forgets one takes the whole page down with an exception thrown
+ * during render.
+ */
+export function getSupabaseClientOrNull(): SupabaseClient | null {
+  if (!hasFinanceSupabaseEnv()) return null
+  try {
+    return getSupabaseClient()
+  } catch {
+    return null
+  }
 }
 
 /**

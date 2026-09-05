@@ -106,15 +106,59 @@ export interface Movie {
   groupId?: string | null
 }
 
+/**
+ * Who a pool is for.
+ *
+ * ⚠️ NOT a VisibilityTier, on purpose. That vocabulary runs private → friends → members →
+ * public, and a pool has no business being visible to "anyone with an account" or to the open
+ * internet: it is four people deciding where to eat. The two overlapping-but-different values
+ * would be a standing invitation to pass one where the other was meant.
+ */
+export type PoolAudience = 'just_me' | 'friends' | 'selected'
+
+/**
+ * A pool: a named set of options, and the people it is shared with.
+ *
+ * ⚠️ THIS REPLACED CIRCUIT GATING. A pool used to be "the watchlist rows tagged with this
+ * circuit id", so sharing one with two friends meant first creating a fitness board and getting
+ * them to join it — an audience mechanism inherited from the thing the feature was built beside
+ * rather than chosen for it. `name` and `people` live server-side; `people` is loaded only for
+ * pools you can see, and only ever holds people you could already reach.
+ */
+export interface Pool {
+  id: ID
+  name: string
+  audience: PoolAudience
+  /** the account that made it — only they can rename it, re-aim it or delete it */
+  ownerUserId?: string | null
+}
+
+/**
+ * One person being up for one option.
+ *
+ * ⚠️ A ROW, not an entry in an array on the option. `WatchlistItem.votes` was a jsonb array
+ * rewritten whole on every tap, so two people voting at the same moment meant the second write
+ * erased the first — in a feature whose entire point is several people acting at once. The id
+ * is synthetic (`item::user`) purely so a vote fits the store's by-id model; the server's
+ * primary key is the pair itself.
+ */
+export interface PoolVote {
+  id: ID
+  itemId: ID
+  userId: string
+}
+
+export const voteId = (itemId: ID, userId: string): ID => `${itemId}::${userId}`
+
 export interface WatchlistItem {
   id: ID
   title: string
   rt?: string
-  /** person ids who voted for it */
-  votes?: ID[]
   /** what kind of thing this pool holds (movie, food, game…) — see reviewKinds */
   kind?: string
-  /** Circuit this item belongs to (see Movie.groupId). */
+  /** The pool this option is in. */
+  poolId?: string | null
+  /** Legacy circuit tag, kept for anything not yet moved into a pool (see Movie.groupId). */
   groupId?: string | null
 }
 
@@ -125,6 +169,9 @@ export interface CircuitState {
   watchlist: WatchlistItem[]
   /** Circuits the signed-in user belongs to (server-loaded). Empty in the demo. */
   groups?: CircuitGroup[]
+  /** Pools you own or are in. Optional so older cached boards deserialise unchanged. */
+  pools?: Pool[]
+  votes?: PoolVote[]
 }
 
 export const emptyCircuitState = (): CircuitState => ({
@@ -133,4 +180,6 @@ export const emptyCircuitState = (): CircuitState => ({
   movies: [],
   watchlist: [],
   groups: [],
+  pools: [],
+  votes: [],
 })

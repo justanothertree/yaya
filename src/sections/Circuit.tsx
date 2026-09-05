@@ -335,7 +335,7 @@ export function Circuit({
           {
             id: 'watchlist',
             title: '🎲 Pool',
-            node: <Watchlist viewGroup={activeGroup} groups={groups} />,
+            node: <Watchlist />,
           },
         ]),
   ]
@@ -509,7 +509,7 @@ export function Circuit({
             {tab === 'charts' && <Charts onDayClick={requestLog} viewGroup={activeGroup} />}
             {tab === 'chat' && <Chat authed={authed} voiceIn={voiceIn} />}
             {tab === 'movies' && <Movies viewGroup={activeGroup} groups={groups} />}
-            {tab === 'watchlist' && <Watchlist viewGroup={activeGroup} groups={groups} />}
+            {tab === 'watchlist' && <Watchlist />}
             {tab === 'circuits' && <CircuitsPanel />}
           </div>
         </section>

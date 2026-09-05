@@ -4407,26 +4407,127 @@ select {
   }
 }
 
-/* ─ a vote circle ───────────────────────
-   Your own sits first and wears a ring: four people round one laptop knew whose initial was
-   whose, four people in four rooms did not. */
-.cz-vote {
-  border-style: solid;
-  border-width: 1.5px;
-  border-radius: 50%;
-  width: 30px;
-  height: 30px;
-  padding: 0;
-  font-size: 0.72rem;
-  font-weight: 800;
+/* ─ which pool, and who it is for ───────────────────────
+   The picker is the heading: a pool has a name, and the name is the thing you are choosing
+   between when you have more than one. */
+.cz-pool-head {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.35rem;
+}
+.cz-pool-pick {
+  font: inherit;
+  font-size: 1.05rem;
+  font-weight: 700;
+  padding: 0.15rem 1.6rem 0.15rem 0.4rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--control-bg);
+  color: var(--text);
+  max-width: 60vw;
+}
+.cz-pool-aud {
+  margin: 0 0 0.8rem;
+  font-size: 0.78rem;
+}
+
+/* ─ "I'm up for it" ───────────────────────
+   ⚠️ ONE control, and it is yours. The row used to carry a circle per person that anybody
+   could tap, which was fine for four people round one laptop and wrong in every other case:
+   unlabelled on a phone, and a standing invitation to vote in somebody else's name. Who else
+   is up for it now reads as a result — their initials, after the fact — rather than as a
+   control you could press. */
+.cz-up {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  flex-shrink: 0;
+  appearance: none;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--control-bg);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.85rem;
+  /* a thumb target, on the control this screen exists to have tapped */
+  min-height: 34px;
+  padding: 0.2rem 0.6rem;
   cursor: pointer;
+  opacity: 0.7;
+}
+.cz-up:hover {
+  opacity: 1;
+}
+.cz-up.is-on {
+  background: var(--accent, #7c6af7);
+  color: var(--btn-text);
+  border-color: transparent;
+  opacity: 1;
+}
+.cz-up b {
+  font-weight: 800;
+}
+.cz-voter {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  color: #fff;
+  font-size: 0.68rem;
+  font-weight: 800;
   line-height: 1;
   flex-shrink: 0;
 }
-.cz-vote.is-me {
-  box-shadow:
-    0 0 0 2px var(--bg, #fff),
-    0 0 0 3.5px var(--vc, currentColor);
+
+/* ─ who a pool is for ───────────────────────
+   Three whole rows rather than a select, because the difference between "all my friends" and
+   "only these people" is the entire point and deserves its sentence on screen, not in a
+   dropdown you have to open to read. */
+.cz-aud {
+  display: grid;
+  gap: 0.1rem;
+  text-align: left;
+  appearance: none;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--control-bg);
+  color: var(--text);
+  font: inherit;
+  padding: 0.45rem 0.6rem;
+  cursor: pointer;
+}
+.cz-aud .muted {
+  font-size: 0.76rem;
+}
+.cz-aud.is-on {
+  border-color: var(--accent, #7c6af7);
+  box-shadow: inset 0 0 0 1px var(--accent, #7c6af7);
+}
+.cz-pick-people {
+  max-height: min(16rem, 40vh);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.4rem 0.55rem;
+}
+.cz-pick-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  /* a whole row is the target, not the 13px box in it */
+  min-height: 36px;
+  cursor: pointer;
+}
+/* the confirmed half of a two-press destructive action: it should look like what it does */
+.cz-danger {
+  background: #b02525;
+  color: #fff;
+  border-color: transparent;
 }
 
 /* ─ the pool's library ───────────────────────

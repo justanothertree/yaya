@@ -137,7 +137,10 @@ export function Ratings({ authed = false }: { authed?: boolean }) {
           reviews &amp; watchlist, shared with your circles
         </span>
         {/* filter sits on the title line, matching the Circuit */}
-        {groupPicker && (
+        {/* ⚠️ Reviews only. The pool used to be scoped by this same circuit filter and is now
+            scoped by its own audience (see Watchlist.tsx), so leaving the picker up on that tab
+            would be a control that visibly does nothing. */}
+        {tab === 'reviews' && groupPicker && (
           <span className="cz-head-filter" style={{ marginLeft: 'auto' }}>
             {groupPicker}
           </span>
@@ -170,7 +173,7 @@ export function Ratings({ authed = false }: { authed?: boolean }) {
 
       <div className="cz-pane" key={tab}>
         {tab === 'reviews' && <Movies viewGroup={activeGroup} />}
-        {tab === 'watchlist' && <Watchlist viewGroup={activeGroup} groups={groups} />}
+        {tab === 'watchlist' && <Watchlist />}
       </div>
 
       <Toast />

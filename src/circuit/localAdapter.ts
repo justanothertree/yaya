@@ -3,7 +3,16 @@
 // implement in Phase 2 — so the UI never changes when we switch.
 
 import type { CircuitAdapter } from './adapter'
-import type { CircuitState, DayLog, Movie, Person, WatchlistItem, ID } from './types'
+import type {
+  CircuitState,
+  DayLog,
+  Movie,
+  Person,
+  Pool,
+  PoolVote,
+  WatchlistItem,
+  ID,
+} from './types'
 import { emptyCircuitState } from './types'
 import { publicSeed } from './publicSeed'
 
@@ -82,6 +91,12 @@ function refreshPublicBoard(cached: CircuitState, live: CircuitState): CircuitSt
     ],
     movies: live.movies,
     watchlist: live.watchlist,
+    /* ⚠️ THE VISITOR'S OWN, NOT THE LIVE BOARD'S. Pools and votes are a members' feature, so the
+       public board never carries any — taking them from `live` meant a pool made in the sandbox
+       was wiped the moment the background refresh landed, a second or two after making it, with
+       nothing on screen to explain where it went. */
+    pools: cached.pools ?? [],
+    votes: cached.votes ?? [],
   }
 }
 
@@ -146,6 +161,13 @@ export function createLocalAdapter(seed?: CircuitState, liveSeed = false): Circu
     saveWatchlist: (w: WatchlistItem) =>
       mutate((s) => ({ ...s, watchlist: upsert(s.watchlist, w) })),
     deleteWatchlist: (id: ID) => mutate((s) => ({ ...s, watchlist: removeById(s.watchlist, id) })),
+
+    /* the signed-out sandbox has no accounts and therefore no audience: a pool here is a
+       private shortlist that never leaves this browser, which is exactly what 'just_me' means */
+    savePool: (p: Pool) => mutate((s) => ({ ...s, pools: upsert(s.pools ?? [], p) })),
+    deletePool: (id: ID) => mutate((s) => ({ ...s, pools: removeById(s.pools ?? [], id) })),
+    saveVote: (v: PoolVote) => mutate((s) => ({ ...s, votes: upsert(s.votes ?? [], v) })),
+    deleteVote: (id: ID) => mutate((s) => ({ ...s, votes: removeById(s.votes ?? [], id) })),
 
     subscribe(onExternalChange) {
       const handler = (e: StorageEvent) => {

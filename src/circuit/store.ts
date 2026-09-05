@@ -8,7 +8,16 @@
 import { useSyncExternalStore } from 'react'
 import type { CircuitAdapter } from './adapter'
 import { showToast } from './toast'
-import type { CircuitState, DayLog, Movie, Person, WatchlistItem, ID } from './types'
+import type {
+  CircuitState,
+  DayLog,
+  Movie,
+  Person,
+  Pool,
+  PoolVote,
+  WatchlistItem,
+  ID,
+} from './types'
 import { emptyCircuitState } from './types'
 
 export interface HistoryState {
@@ -31,6 +40,10 @@ export interface CircuitStore {
   deleteMovie(id: ID): Promise<void>
   saveWatchlist(w: WatchlistItem): Promise<void>
   deleteWatchlist(id: ID): Promise<void>
+  savePool(p: Pool): Promise<void>
+  deletePool(id: ID): Promise<void>
+  saveVote(v: PoolVote): Promise<void>
+  deleteVote(id: ID): Promise<void>
 }
 
 function upsert<T extends { id: ID }>(arr: T[], item: T): T[] {
@@ -44,8 +57,8 @@ const removeById = <T extends { id: ID }>(arr: T[], id: ID): T[] => arr.filter((
 const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v))
 
 // ---- command model for undo/redo ------------------------------------------
-type Coll = 'people' | 'logs' | 'movies' | 'watchlist'
-type Entity = Person | DayLog | Movie | WatchlistItem
+type Coll = 'people' | 'logs' | 'movies' | 'watchlist' | 'pools' | 'votes'
+type Entity = Person | DayLog | Movie | WatchlistItem | Pool | PoolVote
 type Op = { kind: 'save'; coll: Coll; item: Entity } | { kind: 'delete'; coll: Coll; id: ID }
 interface HistEntry {
   do: Op
@@ -57,10 +70,14 @@ const METHOD = {
   logs: { save: 'saveLog', del: 'deleteLog' },
   movies: { save: 'saveMovie', del: 'deleteMovie' },
   watchlist: { save: 'saveWatchlist', del: 'deleteWatchlist' },
+  pools: { save: 'savePool', del: 'deletePool' },
+  votes: { save: 'saveVote', del: 'deleteVote' },
 } as const
 
 function applyOpToState(s: CircuitState, op: Op): CircuitState {
-  const arr = s[op.coll] as Array<{ id: ID }>
+  /* ⚠️ `?? []`: pools and votes are optional on CircuitState so a board cached before they
+     existed still deserialises, and a cached board is exactly what the first op lands on */
+  const arr = (s[op.coll] ?? []) as Array<{ id: ID }>
   if (op.kind === 'save') return { ...s, [op.coll]: upsert(arr, op.item as { id: ID }) }
   return { ...s, [op.coll]: removeById(arr, op.id) }
 }
@@ -79,7 +96,7 @@ function opKey(op: Op): string {
 
 /** The inverse command, computed against the state *before* op is applied. */
 function inverseOf(s: CircuitState, op: Op): Op {
-  const arr = s[op.coll] as Array<{ id: ID }>
+  const arr = (s[op.coll] ?? []) as Array<{ id: ID }>
   const id = op.kind === 'save' ? (op.item as { id: ID }).id : op.id
   const prev = arr.find((x) => x.id === id)
   if (prev) return { kind: 'save', coll: op.coll, item: clone(prev) as Entity }
@@ -268,6 +285,13 @@ function createCircuitStore(): CircuitStore {
     deleteMovie: (id) => dispatch({ kind: 'delete', coll: 'movies', id }, true),
     saveWatchlist: (w) => dispatch({ kind: 'save', coll: 'watchlist', item: w }, true),
     deleteWatchlist: (id) => dispatch({ kind: 'delete', coll: 'watchlist', id }, true),
+    savePool: (p) => dispatch({ kind: 'save', coll: 'pools', item: p }, true),
+    deletePool: (id) => dispatch({ kind: 'delete', coll: 'pools', id }, true),
+    /* ⚠️ NOT recorded for undo. Ctrl+Z on the fitness board taking back somebody's vote in a
+       pool three screens away is not an undo, it is a surprise — and a vote is one tap to
+       reverse in the place it was cast. */
+    saveVote: (v) => dispatch({ kind: 'save', coll: 'votes', item: v }, false),
+    deleteVote: (id) => dispatch({ kind: 'delete', coll: 'votes', id }, false),
   }
 }
 

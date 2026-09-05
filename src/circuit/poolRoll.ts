@@ -88,7 +88,7 @@ function parseRoll(v: unknown): Roll | null {
 // ── the channels ────────────────────────────────────────────────────────────────────────────
 type Entry = { ch: RealtimeChannel; listeners: Set<(r: Roll) => void> }
 
-/** one channel per circuit, shared by however many things are listening to it */
+/** one channel per pool, shared by however many things are listening to it */
 const live = new Map<string, Entry>()
 /**
  * ⚠️ Leaving is DELAYED, because realtime-js dedupes channels by topic and React mounts every
@@ -99,27 +99,28 @@ const live = new Map<string, Entry>()
 const closing = new Map<string, ReturnType<typeof setTimeout>>()
 const LINGER_MS = 1500
 
-const topicFor = (groupId: string) => `pool:${groupId}`
+const topicFor = (poolId: string) => `pool:${poolId}`
 
-function join(groupId: string): Entry | null {
+function join(poolId: string): Entry | null {
   // signed out, or a build with no Supabase at all: the pool still works, it just works alone
   if (!hasFinanceSupabaseEnv() || !peekPersistedUserId()) return null
 
-  const pending = closing.get(groupId)
+  const pending = closing.get(poolId)
   if (pending !== undefined) {
     clearTimeout(pending)
-    closing.delete(groupId)
+    closing.delete(poolId)
   }
-  const existing = live.get(groupId)
+  const existing = live.get(poolId)
   if (existing) return existing
 
-  const ch = getSupabaseClient().channel(topicFor(groupId), {
+  const ch = getSupabaseClient().channel(topicFor(poolId), {
     // private routes the join through the realtime.messages policies, which gate the topic on
-    // membership of this circuit — see docs/2026-09-05-the-pool-rolls-together.sql
+    // being able to SEE that pool — see docs/2026-09-05-the-pool-rolls-together.sql for the
+    // policies and 2026-09-05-pools-belong-to-friends.sql for the membership test they call
     config: { broadcast: { self: false }, private: true },
   })
   const entry: Entry = { ch, listeners: new Set() }
-  live.set(groupId, entry)
+  live.set(poolId, entry)
 
   ch.on('broadcast', { event: 'roll' }, ({ payload }) => {
     const roll = parseRoll(payload)
@@ -133,28 +134,28 @@ function join(groupId: string): Entry | null {
       }
     }
   })
-  subscribeLogged(ch, topicFor(groupId))
+  subscribeLogged(ch, topicFor(poolId))
   return entry
 }
 
-function leave(groupId: string) {
-  if (closing.has(groupId)) return
+function leave(poolId: string) {
+  if (closing.has(poolId)) return
   closing.set(
-    groupId,
+    poolId,
     setTimeout(() => {
-      closing.delete(groupId)
-      const entry = live.get(groupId)
+      closing.delete(poolId)
+      const entry = live.get(poolId)
       if (!entry || entry.listeners.size > 0) return
-      live.delete(groupId)
+      live.delete(poolId)
       void getSupabaseClient().removeChannel(entry.ch)
     }, LINGER_MS),
   )
 }
 
-/** Listen for rolls in these circuits. Returns the unsubscribe. */
-export function watchRolls(groupIds: readonly string[], onRoll: (r: Roll) => void): () => void {
+/** Listen for rolls in these pools. Returns the unsubscribe. */
+export function watchRolls(poolIds: readonly string[], onRoll: (r: Roll) => void): () => void {
   const joined: string[] = []
-  for (const g of groupIds) {
+  for (const g of poolIds) {
     const entry = join(g)
     if (!entry) continue
     entry.listeners.add(onRoll)
@@ -171,15 +172,15 @@ export function watchRolls(groupIds: readonly string[], onRoll: (r: Roll) => voi
 }
 
 /**
- * Tell the circuit what came up.
+ * Tell the pool what came up.
  *
- * Silent when there is nowhere to send it — no circuit, signed out, or a channel the policies
- * refused. The caller has already started its own reel by then, so the result of a failure is a
+ * Silent when there is nowhere to send it — a pool that is just yours, signed out, or a channel
+ * the policies refused. The caller has already started its own reel by then, so the result of a failure is a
  * pool that decides for one person instead of for the room: degraded, never broken.
  */
-export function sendRoll(groupId: string | null | undefined, roll: Roll): void {
-  if (!groupId) return
-  const entry = live.get(groupId)
+export function sendRoll(poolId: string | null | undefined, roll: Roll): void {
+  if (!poolId) return
+  const entry = live.get(poolId)
   if (!entry) return
   void Promise.resolve(entry.ch.send({ type: 'broadcast', event: 'roll', payload: roll })).catch(
     () => undefined,
