@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useSyncExternalStore, Suspense } from 'react'
+import { Suspense, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { lazyRetry } from './lazyRetry'
 import { ErrorBoundary } from './ErrorBoundary'
 import { PresenceBeacon } from './components/PresenceBeacon'
@@ -14,6 +14,7 @@ import { AmbientBackdrop } from './components/AmbientBackdrop'
 import { installClickFx, setClickFxEnabled, setClickFxStyle, type FxStyle } from './ui/clickFx'
 import { FX_STYLES } from './ui/fxStyles'
 import { applyCursorSkin, isCursorSkin, type CursorSkin } from './ui/cursorSkin'
+import { ALL_SECTIONS, SECTION_TITLES, navFor, type Section } from './nav/places'
 import { AppearanceDialog } from './components/AppearanceDialog'
 import { BugReport } from './components/BugReport'
 import { installMouseTrail, isTrailStyle, setTrailStyle, type TrailStyle } from './ui/mouseTrail'
@@ -146,24 +147,6 @@ if (import.meta.env.DEV) {
   import('./dev/supabaseDebug')
 }
 
-type Section =
-  | 'home'
-  | 'circuit'
-  | 'ratings'
-  | 'chat'
-  | 'people'
-  | 'signin'
-  | 'investments'
-  | 'account-settings'
-  | 'snake'
-  | 'visualizer'
-  | 'instrument'
-  | 'paint'
-  | 'contact'
-  | 'admin'
-  | 'invite'
-  | 'profile'
-
 /**
  * What each page is called, for the browser tab and for the page's own <h1>.
  *
@@ -172,76 +155,15 @@ type Section =
  * navigation. And only the home page had an <h1> at all — every other route's top heading was an
  * <h2>, so heading-based navigation found no page title to land on.
  */
-const SECTION_TITLES: Record<Section, string> = {
-  home: 'Home',
-  circuit: 'The Circuit',
-  ratings: 'Ratings',
-  chat: 'Chat',
-  people: 'People',
-  signin: 'Sign in',
-  investments: 'Investments',
-  'account-settings': 'Account settings',
-  snake: 'Snake',
-  visualizer: 'Visualiser',
-  instrument: 'Instrument',
-  paint: 'Paint',
-  contact: 'Contact',
-  admin: 'Admin',
-  invite: 'Accept invite',
-  profile: 'Profile',
-}
 
 // Every routable section — the single source of truth for hash validation (initial load +
 // hashchange). Keep in sync with the Section type above; a missing entry silently routes home.
-const ALL_SECTIONS: Section[] = [
-  'home',
-  'circuit',
-  'ratings',
-  'chat',
-  'people',
-  'signin',
-  'investments',
-  'account-settings',
-  'snake',
-  'visualizer',
-  'instrument',
-  'paint',
-  'contact',
-  'admin',
-  'invite',
-  'profile',
-]
 
 // Single source of truth for left/right section order (keyboard shortcuts and the nav).
 // No longer drives a swipe gesture — see the note where that was removed.
 // Home is the unified Evan Cook page (portfolio + about + projects). Circuit is featured
 // as a project on Home and appears in nav only for signed-in members.
 // 'invite' and 'admin' are not in the arrow-key order — accessed via direct link or nav only.
-const navOrder = (
-  financeOn: boolean,
-  authed: boolean,
-  isAdmin: boolean,
-  canFinance: boolean,
-): Section[] =>
-  financeOn
-    ? authed
-      ? [
-          'home',
-          'circuit',
-          'ratings',
-          'chat',
-          'people',
-          ...(canFinance ? (['investments'] as Section[]) : []),
-          'account-settings',
-          ...(isAdmin ? (['admin'] as Section[]) : []),
-          'snake',
-          'visualizer',
-          'instrument',
-          'paint',
-          'contact',
-        ]
-      : ['home', 'signin', 'snake', 'visualizer', 'instrument', 'paint', 'contact']
-    : ['home', 'snake', 'visualizer', 'instrument', 'paint', 'contact']
 
 // ── optimistic boot: what the browser already knows about this user ──
 // The persisted Supabase session is peeked synchronously (peekPersistedUserId) so a
@@ -316,6 +238,24 @@ export default function App() {
     previewMember ? true : boot.flags?.finance ? true : null,
   )
   const [suspended, setSuspended] = useState(boot.flags?.suspended ?? false)
+
+  /**
+   * Who is looking, as far as the navigation cares — see nav/places.ts.
+   *
+   * ⚠️ Assembled ONCE and passed around, rather than each nav re-deriving it from five separate
+   * pieces of state. Re-deriving is how the desktop strip and the phone came to disagree about
+   * Paint: the same question answered in two places will eventually be answered two ways.
+   */
+  const viewer = useMemo(
+    () => ({
+      financeOn: hasFinanceSupabaseEnv(),
+      authed: isFinanceAuthed,
+      suspended,
+      isAdmin,
+      canFinance: canFinance === true,
+    }),
+    [isFinanceAuthed, suspended, isAdmin, canFinance],
+  )
   const [theme, setTheme] = useState<'light' | 'dark' | 'alt'>(() => {
     const saved = localStorage.getItem('theme') as 'light' | 'dark' | 'alt' | null
     if (saved) return saved
@@ -1047,12 +987,8 @@ export default function App() {
       // tab), so the guard follows the GAME, not the page.
       const allowPageNav = !snakeHasControl
       if (allowPageNav) {
-        const order = navOrder(
-          hasFinanceSupabaseEnv(),
-          isFinanceAuthed,
-          isAdmin,
-          canFinance === true,
-        )
+        /* the same list the nav strip draws, so the arrows visit exactly what you can see */
+        const order = navFor(viewer).map((p) => p.id)
         const idx = order.indexOf(active)
         if (key === 'ArrowLeft' && idx > 0) {
           setActive(order[idx - 1])
@@ -1066,7 +1002,9 @@ export default function App() {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [active, snakeHasControl, isFinanceAuthed, isAdmin, canFinance])
+    /* ⚠️ `viewer` rather than the five flags it is made of — it is memoised on exactly those,
+       so naming it once keeps this list honest and stops it drifting from what navFor reads */
+  }, [active, snakeHasControl, viewer])
 
   // Keep the tab in step with the route. Home keeps the full descriptive title (it is what gets
   // shared and indexed); everywhere else is prefixed so history and bookmarks are told apart.
@@ -1679,121 +1617,24 @@ export default function App() {
               >
                 ‹
               </button>
+              {/**
+               * ⚠️ ONE LIST, not a run of hand-written links. There were twelve of these, each
+               * carrying its own copy of "who may see this" — and the phone's launcher carried a
+               * thirteenth list of its own, which is how Paint ended up on the desktop and
+               * nowhere else. Both navs now render whatever nav/places.ts says this viewer gets,
+               * so a room cannot exist in one and not the other.
+               */}
               <div className="nav-links" ref={navLinksRef}>
-                <a
-                  href="#home"
-                  onClick={() => goTo('home')}
-                  aria-current={active === 'home' ? 'page' : undefined}
-                >
-                  Home
-                </a>
-                {isFinanceAuthed && !suspended && (
+                {navFor(viewer).map((place) => (
                   <a
-                    href="#circuit"
-                    onClick={() => goTo('circuit')}
-                    aria-current={active === 'circuit' ? 'page' : undefined}
+                    key={place.id}
+                    href={`#${place.id}`}
+                    onClick={() => goTo(place.id)}
+                    aria-current={active === place.id ? 'page' : undefined}
                   >
-                    Circuit
+                    {place.label}
                   </a>
-                )}
-                {isFinanceAuthed && !suspended && (
-                  <a
-                    href="#ratings"
-                    onClick={() => goTo('ratings')}
-                    aria-current={active === 'ratings' ? 'page' : undefined}
-                  >
-                    Ratings
-                  </a>
-                )}
-                {isFinanceAuthed && !suspended && (
-                  <a
-                    href="#chat"
-                    onClick={() => goTo('chat')}
-                    aria-current={active === 'chat' ? 'page' : undefined}
-                  >
-                    Chat
-                  </a>
-                )}
-                {isFinanceAuthed && !suspended && (
-                  <a
-                    href="#people"
-                    onClick={() => goTo('people')}
-                    aria-current={active === 'people' ? 'page' : undefined}
-                  >
-                    People
-                  </a>
-                )}
-                {hasFinanceSupabaseEnv() && !isFinanceAuthed && (
-                  <a
-                    href="#signin"
-                    onClick={() => goTo('signin')}
-                    aria-current={active === 'signin' ? 'page' : undefined}
-                  >
-                    Sign in
-                  </a>
-                )}
-                {isFinanceAuthed && canFinance === true && !suspended && (
-                  <a
-                    href="#investments"
-                    onClick={() => goTo('investments')}
-                    aria-current={active === 'investments' ? 'page' : undefined}
-                  >
-                    Investments
-                  </a>
-                )}
-                {isFinanceAuthed && !suspended && (
-                  <a
-                    href="#account-settings"
-                    onClick={() => goTo('account-settings')}
-                    aria-current={active === 'account-settings' ? 'page' : undefined}
-                  >
-                    Account
-                  </a>
-                )}
-                {isAdmin && (
-                  <a
-                    href="#admin"
-                    onClick={() => goTo('admin')}
-                    aria-current={active === 'admin' ? 'page' : undefined}
-                  >
-                    Admin
-                  </a>
-                )}
-                <a
-                  href="#snake"
-                  onClick={() => goTo('snake')}
-                  aria-current={active === 'snake' ? 'page' : undefined}
-                >
-                  Snake
-                </a>
-                <a
-                  href="#visualizer"
-                  onClick={() => goTo('visualizer')}
-                  aria-current={active === 'visualizer' ? 'page' : undefined}
-                >
-                  Visualiser
-                </a>
-                <a
-                  href="#instrument"
-                  onClick={() => goTo('instrument')}
-                  aria-current={active === 'instrument' ? 'page' : undefined}
-                >
-                  Instrument
-                </a>
-                <a
-                  href="#paint"
-                  onClick={() => goTo('paint')}
-                  aria-current={active === 'paint' ? 'page' : undefined}
-                >
-                  Paint
-                </a>
-                <a
-                  href="#contact"
-                  onClick={() => goTo('contact')}
-                  aria-current={active === 'contact' ? 'page' : undefined}
-                >
-                  Contact
-                </a>
+                ))}
               </div>
               <button
                 className="nav-arrow nav-arrow-r"
@@ -2318,8 +2159,7 @@ export default function App() {
           go={go}
           authed={hasFinanceSupabaseEnv() && isFinanceAuthed}
           hasAuth={hasFinanceSupabaseEnv()}
-          canFinance={canFinance === true}
-          isAdmin={isAdmin}
+          viewer={viewer}
           suspended={suspended}
           theme={theme}
           onCycleTheme={cycleTheme}

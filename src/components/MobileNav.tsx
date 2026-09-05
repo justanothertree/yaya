@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { navFor, type Viewer } from '../nav/places'
 
 /**
  * The phone's navigation. A cramped horizontal scroll strip is the wrong shape for a
@@ -44,8 +45,7 @@ export function MobileNav({
   go,
   authed,
   hasAuth,
-  canFinance,
-  isAdmin,
+  viewer,
   suspended,
   theme,
   onCycleTheme,
@@ -58,8 +58,8 @@ export function MobileNav({
   go: (section: MobileSection, tab?: string) => void
   authed: boolean
   hasAuth: boolean
-  canFinance: boolean
-  isAdmin: boolean
+  /** ⚠️ the whole viewer, not loose flags: the shared list asks the questions, not this file */
+  viewer: Viewer
   suspended: boolean
   theme: 'light' | 'dark' | 'alt'
   onCycleTheme: () => void
@@ -111,42 +111,36 @@ export function MobileNav({
         { key: 'contact', label: 'Say hi', icon: '✉️', section: 'contact' },
       ]
 
-  // everything you can reach — the launcher grid
-  const all: Dest[] = [
-    { key: 'home', label: 'Home', icon: '🏠', section: 'home' },
-    ...(member
-      ? ([
-          { key: 'circuit', label: 'Circuit', icon: '🏆', section: 'circuit' },
-          { key: 'log', label: 'Quick log', icon: '✏️', section: 'circuit', tab: 'log' },
-          { key: 'ratings', label: 'Ratings', icon: '⭐', section: 'ratings' },
-          { key: 'chat', label: 'Chat', icon: '💬', section: 'chat' },
-          { key: 'people', label: 'People', icon: '🧑‍🤝‍🧑', section: 'people' },
-          // circuit management: out of the daily tab strip, but one tap from here
-          { key: 'circuits', label: 'Circuits', icon: '👥', section: 'circuit', tab: 'circuits' },
-        ] as Dest[])
-      : []),
-    ...(member && canFinance
-      ? ([{ key: 'invest', label: 'Investments', icon: '📈', section: 'investments' }] as Dest[])
-      : []),
-    { key: 'snake', label: 'Snake', icon: '🎮', section: 'snake' },
-    // the launcher, not the four-slot bar: this is a thing you go looking for, not a daily tab
-    { key: 'visualizer', label: 'Visualiser', icon: '🎚️', section: 'visualizer' },
-    { key: 'instrument', label: 'Instrument', icon: '🎹', section: 'instrument' },
-    /* ⚠️ Paint belongs with these two and was simply missed when it was built — it is on the
-       desktop nav between Instrument and Contact, so on a phone it was a page you could only
-       reach by typing the URL. A room with no door is the same as a room that is not there. */
-    { key: 'paint', label: 'Paint', icon: '🎨', section: 'paint' },
-    ...(member
-      ? ([{ key: 'account', label: 'Account', icon: '👤', section: 'account-settings' }] as Dest[])
-      : []),
-    ...(isAdmin
-      ? ([{ key: 'admin', label: 'Admin', icon: '🛠', section: 'admin' }] as Dest[])
-      : []),
-    ...(hasAuth && !authed
-      ? ([{ key: 'signin', label: 'Sign in', icon: '🔑', section: 'signin' }] as Dest[])
-      : []),
-    { key: 'contact', label: 'Contact', icon: '✉️', section: 'contact' },
-  ]
+  /**
+   * Everything you can reach — the launcher grid.
+   *
+   * ⚠️ THE PLACES COME FROM nav/places.ts, the same list the desktop strip draws from. This
+   * array used to be written out by hand and that is exactly how Paint came to be missing here
+   * while existing everywhere else: two lists of the same thing, one of them forgotten.
+   *
+   * The tab shortcuts below are the launcher's OWN, and rightly so — "Quick log" and "Circuits"
+   * are two doors into the Circuit rather than two places, and a phone has room to offer them
+   * where a desktop strip does not. They are extra doors to a room the shared list already
+   * knows about, which is a different thing from a room only this file knows about.
+   */
+  const shared = navFor(viewer)
+  const extras: Record<string, Dest[]> = {
+    circuit: member
+      ? [{ key: 'log', label: 'Quick log', icon: '✏️', section: 'circuit', tab: 'log' }]
+      : [],
+    people: member
+      ? [{ key: 'circuits', label: 'Circuits', icon: '👥', section: 'circuit', tab: 'circuits' }]
+      : [],
+  }
+  const all: Dest[] = shared.flatMap((place) => [
+    {
+      key: place.id,
+      label: place.label,
+      icon: place.icon,
+      section: place.id as MobileSection,
+    },
+    ...(extras[place.id] ?? []),
+  ])
 
   /**
    * Publish the bar's real height as `--mnav-h` so anything else pinned to the bottom of the
