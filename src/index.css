@@ -2000,9 +2000,21 @@ li {
     opacity: 0;
   }
 }
+/**
+ * ⚠️ OPACITY, NOT translateY(100%) — this one was a real trap and not a hypothetical.
+ *
+ * An animation that has not run holds its FROM state, and a browser can decline to run one. With
+ * a 100% slide that means the launcher parks itself entirely below the screen: measured exactly
+ * that, `transform: translateY(580px)` on a sheet whose resting place is top 232 / bottom 0, so
+ * the whole menu was invisible and every tile in it unreachable. The page looked like tapping ☰
+ * did nothing.
+ *
+ * A fade that never runs leaves a sheet that is simply there. Same reasoning as .nav-sheet, and
+ * the same conclusion: when the decoration fails, the thing underneath still has to work.
+ */
 @keyframes msheet {
   from {
-    transform: translateY(100%);
+    opacity: 0.4;
   }
 }
 @keyframes mtilein {

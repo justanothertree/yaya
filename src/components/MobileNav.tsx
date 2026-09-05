@@ -47,6 +47,7 @@ export function MobileNav({
   hasAuth,
   viewer,
   onOpenSettings,
+  onAppearance,
   suspended,
   onProfile,
   unreadChats = 0,
@@ -60,6 +61,8 @@ export function MobileNav({
   viewer: Viewer
   /** raise the settings sheet — it belongs on the bar, not at the top of the screen */
   onOpenSettings: () => void
+  /** ⚠️ its own door: theming is the most-used setting here, not a thing to dig for */
+  onAppearance: () => void
   suspended: boolean
   onProfile?: () => void
   /** what's waiting, so the bar can pip it without opening anything */
@@ -261,6 +264,23 @@ export function MobileNav({
                   ⚙ Settings
                 </button>
               )}
+              {/**
+               * ⚠️ APPEARANCE GETS ITS OWN DOOR, because folding it into Settings buried it.
+               *
+               * Reaching it went ☰ → Settings → the Theme row → the paint icon: two menus and
+               * four taps for the thing this site is most about changing. It is not a setting
+               * you set once like a call sound; it is the reason people come back. One tap from
+               * the launcher, straight into the dialog.
+               */}
+              <button
+                className="mlaunch-foot-btn"
+                onClick={() => {
+                  setOpen(false)
+                  onAppearance()
+                }}
+              >
+                🎨 Appearance
+              </button>
               {onProfile && member && (
                 <button
                   className="mlaunch-foot-btn"

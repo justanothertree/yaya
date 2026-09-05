@@ -2162,6 +2162,7 @@ export default function App() {
           hasAuth={hasFinanceSupabaseEnv()}
           viewer={viewer}
           onOpenSettings={() => setSettingsOpen(true)}
+          onAppearance={() => setAppearanceOpen(true)}
           suspended={suspended}
           unreadChats={notifications.unreadChats}
           friendRequests={notifications.friendRequests}
