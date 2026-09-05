@@ -7440,12 +7440,8 @@ a.cz-msg-author:focus-visible {
    * so a sheet pinned to the bottom of the VIEWPORT would need coordinates relative to the nav
    * instead. The note on .nav says as much. Comfort here is worth more than the reshuffle.
    */
-  .nav-menu {
-    width: calc(100vw - 1.25rem);
-    max-width: 22rem;
-    max-height: min(72vh, 34rem);
-    padding: 0.5rem;
-  }
+  /* ⚠️ .nav-menu is not drawn at this width any more — the sheet below replaces it. The row
+     height stays here because the sheet reuses every row inside it. */
   .nav-menu-row {
     min-height: 44px;
   }
@@ -7453,5 +7449,76 @@ a.cz-msg-author:focus-visible {
      375px screen — close enough to look right and still under the floor it was aiming at */
   .nav-cog {
     height: 44px;
+  }
+}
+
+/**
+ * The settings sheet — the phone's shape for the cog menu. See SettingsMenu.
+ *
+ * ⚠️ FIXED, AND ONLY CORRECT BECAUSE IT IS PORTALLED TO THE BODY. Inside the nav these
+ * coordinates would measure from the nav's own box, because `will-change: transform` makes it a
+ * containing block, and the sheet would hang under the header instead of resting on the floor.
+ */
+.nav-sheet-back {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  background: rgba(0, 0, 0, 0.45);
+}
+.nav-sheet {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 201;
+  max-height: min(78vh, 40rem);
+  overflow-y: auto;
+  padding: 0.35rem 0.6rem 0.6rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  background: var(--bg);
+  border-top: 1px solid var(--border);
+  border-radius: 16px 16px 0 0;
+  box-shadow: 0 -12px 40px rgba(0, 0, 0, 0.45);
+  /**
+   * ⚠️ NO ROOM RESERVED FOR THE PHONE'S NAV BAR. The first version padded the sheet by --mnav-h
+   * so nothing would hide behind the bar — but the sheet is z-index 201 and the bar is 40, so it
+   * covers the bar completely and that padding was 70px of empty sheet. A modal sheet over the
+   * navigation is what a phone does anyway; the backdrop already says the rest of the page is
+   * out of play. Only the hardware inset is real.
+   */
+  padding-bottom: calc(0.6rem + env(safe-area-inset-bottom, 0px));
+}
+/* the little handle that says "this is a sheet and it came from the bottom" */
+.nav-sheet-grip {
+  align-self: center;
+  width: 2.2rem;
+  height: 4px;
+  flex: 0 0 4px;
+  border-radius: 2px;
+  background: var(--border-strong, rgba(127, 127, 127, 0.5));
+  margin: 0.15rem 0 0.4rem;
+}
+/**
+ * ⚠️ IT FADES; IT DOES NOT SLIDE, and that is deliberate rather than lazy.
+ *
+ * A slide is the nicer entrance and it was written first — `from { transform: translateY(12%) }`.
+ * But an animation that has not run yet holds its FROM state, and a browser can decline to run
+ * one: a throttled tab, a paused compositor, whatever a future engine decides. A stuck slide
+ * leaves this sheet 68px below where it belongs with Sign out off the bottom of the screen —
+ * measured exactly that, because animations do not advance in the pane this was tested in.
+ *
+ * A stuck fade leaves a sheet that is slightly translucent and completely usable. When the
+ * decoration fails, the thing underneath still has to work.
+ */
+@media (prefers-reduced-motion: no-preference) {
+  .nav-sheet {
+    animation: nav-sheet-in 0.18s ease-out;
+  }
+}
+@keyframes nav-sheet-in {
+  from {
+    opacity: 0.4;
   }
 }
