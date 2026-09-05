@@ -722,8 +722,34 @@ export function PianoRoll({
      */
   })
 
+  /**
+   * ⚠️ BRING THE EDITOR TO THE PERSON WHO OPENED IT.
+   *
+   * The roll renders below the room's own controls, which on a phone is around 1500px down a
+   * 750px screen — so tapping "New part" appeared to do nothing at all, and the grid you place
+   * notes on was two screens further still. It was only ever discoverable by scrolling on a
+   * hunch.
+   *
+   * Scrolling on mount rather than moving it in the layout: the editor belongs after the layer
+   * it edits, and a phone-only reordering would have put it above the list it came from.
+   *
+   * `block: 'start'` rather than 'center', because the roll is taller than a phone screen and
+   * centring a tall thing hides its top.
+   *
+   * ⚠️ INSTANT, NOT SMOOTH, and that is a measurement rather than a taste. Smooth was written
+   * first and observed doing NOTHING AT ALL in one browser while 'auto' moved correctly in the
+   * same place — and a nicety that silently leaves the editor off-screen is worse than no
+   * nicety, because the failure looks exactly like the bug this fixes. A jump of fifteen hundred
+   * pixels is also a long ride to animate, and instant cannot be interrupted by somebody
+   * starting to draw halfway through it.
+   */
+  const rollRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    rollRef.current?.scrollIntoView({ block: 'start', behavior: 'auto' })
+  }, [layer.id])
+
   return (
-    <div className="roll">
+    <div className="roll" ref={rollRef}>
       <div className="roll-bar">
         <strong>Notes</strong>
         <span className="muted">

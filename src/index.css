@@ -7391,3 +7391,23 @@ a.cz-msg-author:focus-visible {
   opacity: 1;
   box-shadow: 0 0 0 1px var(--accent) inset;
 }
+
+@media (max-width: 780px) {
+  /**
+   * ⚠️ The instructions go, and only on a phone.
+   *
+   * "Click to add · drag to move · drag the grip to resize · right-click or double-click a note
+   * to delete it" is 30px of a 148px toolbar, and every verb in it is a MOUSE verb — there is no
+   * right-click on a phone and the resize grip is a drag target sized for a pointer. It was
+   * costing a tenth of the editor's height to explain gestures the device cannot perform.
+   *
+   * The desktop keeps it, because there it is both true and useful.
+   */
+  .roll-hint {
+    display: none;
+  }
+  /* the toolbar is a row of small groups; let it breathe rather than forcing everything wide */
+  .roll-bar {
+    gap: 0.3rem;
+  }
+}
