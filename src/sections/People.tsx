@@ -6,7 +6,7 @@
 // come first (they're the only rows with a decision attached), then your friends, then
 // everyone else.
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { notificationsChanged } from '../hooks/notifySignal'
+import { notificationsChanged, onNotificationsChanged } from '../hooks/notifySignal'
 import { getSupabaseClient } from '../finance/client'
 import { previewMember, PREVIEW_PEOPLE, type PreviewPerson } from '../dev/previewMember'
 import { usePresence } from '../hooks/usePresence'
@@ -145,26 +145,32 @@ export function People({ authed = false }: { authed?: boolean }) {
     void refresh()
   }, [refresh])
 
-  useEffect(() => {
+  const loadWaiting = useCallback(async () => {
     if (previewMember || !authed) return
-    let live = true
-    void getSupabaseClient()
-      .rpc('list_chat_overview')
-      .then(({ data }) => {
-        if (!live) return
-        const rows = (data ?? []) as { peer_user_id?: string | null; unread?: number }[]
-        const next: Record<string, number> = {}
-        for (const r of rows) {
-          /* ⚠️ defensive on the column, not just the value: before the migration runs this key
-             is simply absent, and the page should show no badges rather than break. */
-          if (r.peer_user_id && (r.unread ?? 0) > 0) next[r.peer_user_id] = r.unread ?? 0
-        }
-        setWaiting(next)
-      })
-    return () => {
-      live = false
+    const { data } = await getSupabaseClient().rpc('list_chat_overview')
+    const rows = (data ?? []) as { peer_user_id?: string | null; unread?: number }[]
+    const next: Record<string, number> = {}
+    for (const r of rows) {
+      /* ⚠️ defensive on the column, not just the value: before the migration runs this key is
+         simply absent, and the page should show no badges rather than break. */
+      if (r.peer_user_id && (r.unread ?? 0) > 0) next[r.peer_user_id] = r.unread ?? 0
     }
+    setWaiting(next)
   }, [authed])
+
+  /**
+   * ⚠️ RE-READ WHEN THE BELL DOES, not only on mount.
+   *
+   * A count fetched once at page load is wrong the moment somebody writes to you while you are
+   * looking at the page — and "who is waiting on you" going stale in front of you is worse than
+   * not showing it, because you would trust it. notificationsChanged() already fires on exactly
+   * the events that move this number, and the bell already listens to it; this is the same
+   * signal, not a second mechanism.
+   */
+  useEffect(() => {
+    void loadWaiting()
+    return onNotificationsChanged(() => void loadWaiting())
+  }, [loadWaiting])
 
   /** run a friendship RPC, then reflect the new standing */
   async function act(username: string, kind: 'add' | 'remove' | 'accept' | 'decline') {
