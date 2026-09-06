@@ -81,6 +81,16 @@ const SPIN_KEY = 'viz_spin_v1'
 const SHAKE_KEY = 'viz_shake_v1'
 const SPLIT_KEY = 'viz_split_v1'
 const ANCHOR_KEY = 'viz_anchor_v1'
+/**
+ * Whether the pin's ring is DRAWN. It always still works.
+ *
+ * ⚠️ Hiding it is not unpinning it, and that distinction is the whole feature. The ring is a
+ * 22px circle sitting on top of the artwork — genuinely useful while you are placing it, and an
+ * eyesore once it is where you want it, which is most of the time. Unpinning would hand the
+ * picture back to the auto-path and change what you are looking at; this changes only whether
+ * you can see the handle.
+ */
+const ANCHOR_SHOW_KEY = 'viz_anchor_show_v1'
 /** Two taps closer together than this are one gesture. */
 const DOUBLE_TAP_MS = 320
 /** How long the mouse has to sit still before the controls duck out of the way. */
@@ -224,6 +234,13 @@ export function AudioVisualizer() {
    * happening at all. A remembered pixel would mean the pin drifting off the picture the first
    * time any of those changed — the same mistake that sent nebula into the corner.
    */
+  const [showAnchor, setShowAnchor] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem(ANCHOR_SHOW_KEY) !== '0'
+    } catch {
+      return true
+    }
+  })
   const [anchor, setAnchor] = useState<{ x: number; y: number } | null>(() => {
     try {
       const raw = localStorage.getItem(ANCHOR_KEY)
@@ -515,6 +532,7 @@ export function AudioVisualizer() {
       localStorage.setItem(SPLIT_KEY, String(split))
       if (anchor) localStorage.setItem(ANCHOR_KEY, JSON.stringify(anchor))
       else localStorage.removeItem(ANCHOR_KEY)
+      localStorage.setItem(ANCHOR_SHOW_KEY, showAnchor ? '1' : '0')
       localStorage.setItem(PATH_KEY, path)
       localStorage.setItem(PATHSPEED_KEY, String(pathSpeed))
       localStorage.setItem(TAB_KEY, tab)
@@ -544,6 +562,7 @@ export function AudioVisualizer() {
     shake,
     split,
     anchor,
+    showAnchor,
     path,
     pathSpeed,
     bloom,
@@ -1481,7 +1500,7 @@ export function AudioVisualizer() {
            * cannot be used without a mouse — which on this particular one would be an odd thing
            * to ship, since the whole point is standing in for a pointer.
            */}
-          {anchor && (
+          {anchor && showAnchor && (
             <div
               className="viz-anchor"
               style={{ left: `${anchor.x * 100}%`, top: `${anchor.y * 100}%` }}
@@ -2024,6 +2043,24 @@ export function AudioVisualizer() {
                 >
                   📍 {anchor ? 'Unpin' : 'Pin'}
                 </button>
+                {/* ⚠️ Only offered while something is pinned, and it never removes the pin.
+                    Hidden, the ring cannot be dragged or double-clicked — so this button is the
+                    way back, which is why it lives here beside Unpin rather than on the ring it
+                    is hiding. */}
+                {anchor && (
+                  <button
+                    className={'btn' + (showAnchor ? '' : ' is-on')}
+                    aria-pressed={!showAnchor}
+                    onClick={() => setShowAnchor((v) => !v)}
+                    title={
+                      showAnchor
+                        ? 'Keep the pin working but stop drawing the ring over the picture'
+                        : 'Show the ring again so you can move the pin'
+                    }
+                  >
+                    {showAnchor ? '🙈 Hide the ring' : '👁 Show the ring'}
+                  </button>
+                )}
               </div>
             )}
             {/**
