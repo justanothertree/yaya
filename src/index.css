@@ -4328,6 +4328,34 @@ select {
   opacity: 1;
 }
 
+/* ─ achievements on a profile ───────────────────────
+   Earned ones read as won; the nearest few read as goals. The difference is deliberate and
+   entirely in the weight — a locked one that shouted would turn a page into a chore list. */
+.profile-acts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin-bottom: 0.5rem;
+}
+.profile-act {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.78rem;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  border: 1px solid var(--accent, #7c6af7);
+  background: color-mix(in oklab, var(--accent, #7c6af7), transparent 86%);
+}
+.profile-act.is-locked {
+  border-color: var(--border);
+  background: none;
+  opacity: 0.62;
+}
+.profile-acts.is-near {
+  margin-bottom: 0.7rem;
+}
+
 /* ─ have a go ───────────────────────
    The invitation band under the hero. Cards rather than a list because each one has to carry a
    sentence, and the sentence is what makes it usable by somebody who does not know what a

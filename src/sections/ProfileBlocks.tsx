@@ -28,6 +28,33 @@ import { PALETTES } from '../audio/palettes'
 
 export type Tier = 'public' | 'friends' | 'members' | 'private'
 
+/**
+ * One achievement, earned or not, as the server derives it.
+ *
+ * ⚠️ `goal` and `have` rather than a boolean, because the locked ones are the point. An
+ * achievement you cannot see is a surprise, not a goal — and "3/25" is what makes the earned
+ * ones mean something.
+ */
+export type Achievement = {
+  module: string
+  code: string
+  label: string
+  note: string
+  goal: number
+  have: number
+}
+
+/** one glyph per module, so an achievement says where it came from without spelling it out */
+const MODULE_ICON: Record<string, string> = {
+  circuit: '🏆',
+  snake: '🎮',
+  reviewer: '⭐',
+  profile: '🪪',
+  paint: '🎨',
+  instrument: '🎹',
+  visual: '🎚️',
+}
+
 export type ProfileBlock = {
   id?: string
   block_type:
@@ -210,6 +237,7 @@ function BlockView({
   block,
   activity,
   trophies,
+  achievements,
   snakeBest,
   username,
   isMe,
@@ -217,6 +245,7 @@ function BlockView({
   block: ProfileBlock
   activity: ActivityItem[]
   trophies: ProfileTrophy[]
+  achievements?: Achievement[]
   snakeBest: { score: number; game_mode: string | null } | null
   /** whose page this is — a banner with no colour picked falls back to their own */
   username: string
@@ -307,9 +336,39 @@ function BlockView({
       // Snake trophies already existed and were only ever COUNTED (the stats block says "3
       // trophies"). Naming them is the difference between a number and something worth showing.
       const won = trophies
+      const acts = achievements ?? []
+      const got = acts.filter((a) => a.have >= a.goal)
+      /* ⚠️ the nearest few, not every locked one. Fifteen greyed-out rows is a chore list; the
+         three you are closest to is a nudge. Sorted by how far along you are. */
+      const near = acts
+        .filter((a) => a.have < a.goal)
+        .sort((x, y) => y.have / y.goal - x.have / x.goal)
+        .slice(0, 3)
       return (
         <div className={'card profile-block is-' + block.size}>
           <h3 style={{ marginTop: 0 }}>🏆 Trophies</h3>
+          {got.length > 0 && (
+            <div className="profile-acts">
+              {got.map((a) => (
+                <span key={a.code} className="profile-act" title={a.note}>
+                  <span aria-hidden>{MODULE_ICON[a.module] ?? '★'}</span> {a.label}
+                </span>
+              ))}
+            </div>
+          )}
+          {near.length > 0 && (
+            <div className="profile-acts is-near">
+              {near.map((a) => (
+                <span key={a.code} className="profile-act is-locked" title={a.note}>
+                  <span aria-hidden>{MODULE_ICON[a.module] ?? '★'}</span> {a.label}
+                  <span className="muted">
+                    {' '}
+                    {a.have}/{a.goal}
+                  </span>
+                </span>
+              ))}
+            </div>
+          )}
           {won.length ? (
             <div className="profile-trophies">
               {won.map((a, i) => (
@@ -371,6 +430,7 @@ export function ProfileBlocksView({
   blocks,
   activity,
   trophies,
+  achievements,
   snakeBest,
   username,
   isMe = false,
@@ -378,6 +438,7 @@ export function ProfileBlocksView({
   blocks: ProfileBlock[]
   activity: ActivityItem[]
   trophies: ProfileTrophy[]
+  achievements?: Achievement[]
   snakeBest: { score: number; game_mode: string | null } | null
   username: string
   isMe?: boolean
@@ -401,6 +462,7 @@ export function ProfileBlocksView({
             block={b}
             activity={activity}
             trophies={trophies}
+            achievements={achievements}
             snakeBest={snakeBest}
             username={username}
             isMe={isMe}
@@ -993,6 +1055,7 @@ export function ProfileBlocksEditor({
   username,
   activity,
   trophies,
+  achievements,
   snakeBest,
   onSaved,
 }: {
@@ -1001,6 +1064,7 @@ export function ProfileBlocksEditor({
   /** passed straight through to the previews, so editing shows the page and not a description */
   activity: ActivityItem[]
   trophies: ProfileTrophy[]
+  achievements?: Achievement[]
   snakeBest: { score: number; game_mode: string | null } | null
   onSaved: (blocks: ProfileBlock[]) => void
 }) {
@@ -1443,6 +1507,7 @@ export function ProfileBlocksEditor({
                 block={b}
                 activity={activity}
                 trophies={trophies}
+                achievements={achievements}
                 snakeBest={snakeBest}
                 username={username}
                 isMe

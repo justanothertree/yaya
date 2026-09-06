@@ -18,6 +18,7 @@ import {
   type ProfileTrophy,
   type ProfileBlock,
   type Tier,
+  type Achievement,
 } from './ProfileBlocks'
 
 // duplicated from ProfileBlocks.tsx's own (unexported) copy -- kept local rather than shared,
@@ -113,6 +114,9 @@ export function Profile({ authed, username }: { authed: boolean; username?: stri
   const [blocks, setBlocks] = useState<ProfileBlock[]>([])
   const [activity, setActivity] = useState<ActivityItem[]>([])
   const [trophies, setTrophies] = useState<ProfileTrophy[]>([])
+  /* every module's achievements, earned and locked, derived server-side — see
+     docs/2026-09-06-achievements-are-derived.sql */
+  const [achievements, setAchievements] = useState<Achievement[]>([])
   const [editing, setEditing] = useState(editFromHash)
   /**
    * Open your own page in the editor, once the server has confirmed it IS your own page.
@@ -204,6 +208,11 @@ export function Profile({ authed, username }: { authed: boolean; username?: stri
     // ⚠️ Separate from the activity feed on purpose: that one is time-ordered and capped at 20,
     // so trophies older than a member's last twenty events silently vanished from their profile.
     void sb.rpc('get_member_trophies', { p_username: u }).then(({ data }) => {
+      /* ⚠️ read defensively: before the migration runs this RPC does not exist, and a profile
+       that fails to render because an achievement list is missing would be a poor trade */
+      void sb
+        .rpc('list_achievements', { p_username: u })
+        .then(({ data }) => setAchievements(Array.isArray(data) ? (data as Achievement[]) : []))
       if (live && data) setTrophies(data as ProfileTrophy[])
     })
     return () => {
@@ -683,6 +692,7 @@ export function Profile({ authed, username }: { authed: boolean; username?: stri
           username={p.username}
           activity={activity}
           trophies={trophies}
+          achievements={achievements}
           snakeBest={p.snake_best}
           /* Called after every autosave now, not once at the end — so leaving edit mode shows
              what is actually stored. It no longer closes the editor: you are done when you say
@@ -694,6 +704,7 @@ export function Profile({ authed, username }: { authed: boolean; username?: stri
           blocks={blocks}
           activity={activity}
           trophies={trophies}
+          achievements={achievements}
           snakeBest={p.snake_best}
           username={p.username}
           isMe={p.is_me}
