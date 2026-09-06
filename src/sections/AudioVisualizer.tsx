@@ -1207,9 +1207,34 @@ export function AudioVisualizer() {
         const cy = h / 2
         const seg = (Math.PI * 2) / mirror
         const reach = Math.hypot(w, h)
+        /**
+         * ⚠️ THE SOURCE WEDGE FOLLOWS THE POINTER, and without this the mirror ignored you
+         * everywhere but one slice.
+         *
+         * Each wedge draws the buffer rotated by its own angle and clips it to its own wedge, so
+         * what every wedge actually shows is the SAME source sector — the one at angle zero,
+         * pointing right from the middle. Draw anywhere else and your line was clipped away in
+         * all of them: the kaleidoscope was live only in one twelfth of the picture and dead in
+         * the rest, which is exactly "it should mirror my mouse whatever section it is in".
+         *
+         * Picking the sector the pointer is actually in, and rotating THAT into every position,
+         * costs one angle and makes the whole circle follow your hand. Falls back to sector zero
+         * when nothing is pointing, so an untouched picture looks exactly as it always did.
+         */
+        let from = 0
+        if (seen.inside) {
+          /* ⚠️ measured against the BUFFER's centre, not the view's. vw = w / z, so with any
+             zoom on, a pointer at the right-hand edge sits at w/2 in buffer coordinates — which
+             is exactly the view's centre, and every angle would come out wrong in a way that
+             only appears once somebody touches the zoom. */
+          const a = Math.atan2(seen.y - vh / 2, seen.x - vw / 2)
+          from = Math.round(a / seg)
+        }
         for (let i = 0; i < mirror; i++) {
           view.save()
           view.translate(cx, cy)
+          /* rotate the SOURCE sector into this wedge's place, rather than this wedge's angle
+             into the source's — the difference is whether the mirror follows you or waits */
           view.rotate(i * seg)
           if (i % 2) view.scale(1, -1)
           view.beginPath()
@@ -1217,6 +1242,7 @@ export function AudioVisualizer() {
           view.arc(0, 0, reach, -seg / 2, seg / 2)
           view.closePath()
           view.clip()
+          view.rotate(-from * seg)
           view.translate(-cx, -cy)
           view.drawImage(buf, 0, 0, w, h)
           view.restore()
