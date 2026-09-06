@@ -362,15 +362,49 @@ function scheduleWindow(from: number, to: number) {
        */
       if (layer.plan) {
         const takeBars = Math.max(1, Math.round(own / barLen))
+        /**
+         * ⚠️ WHICH BAR AN EVENT BELONGS TO IS THE BAR ITS NOTE STARTED IN, not the bar the
+         * event itself falls in — and getting that wrong is why arranged takes held notes for
+         * ever.
+         *
+         * The filter here used to be `eBar !== src` for every event alike. Any note sustaining
+         * across a bar line had its note-ON placed (it is in the bar) and its note-OFF silently
+         * dropped (it is in the next one), so the voice started and nothing ever ended it. It
+         * showed up worst on the cello, which is exactly the patch you play long notes on — the
+         * bug was not in the patch, it just needed slow music to become obvious.
+         *
+         * The tiled path immediately below already knew this: "Note-offs are exempt: a note that
+         * legitimately started must always be allowed to end... Silencing the release rather than
+         * the attack is how a note rings forever." The planned path never learned it.
+         *
+         * Walked once per layer rather than once per bar, and the offset is measured from the
+         * OWNER's bar, so a note keeps the length it was played at instead of being folded back
+         * to the start of the slot.
+         */
+        const ownerBar: number[] = new Array(layer.events.length)
+        const openAt = new Map<number, number>()
+        for (let i = 0; i < layer.events.length; i++) {
+          const e = layer.events[i]
+          const eBar = Math.floor(e.t / barLen + 1e-6)
+          if (e.on) {
+            openAt.set(e.midi, eBar)
+            ownerBar[i] = eBar
+          } else {
+            /* an off with no on before it is malformed data, not a sustained note — treat it as
+               belonging where it sits so it is still placed rather than dropped */
+            ownerBar[i] = openAt.get(e.midi) ?? eBar
+            openAt.delete(e.midi)
+          }
+        }
         for (let b = 0; b < state.bars; b++) {
           const src = layer.plan[b]
           if (src == null || src < 0 || src >= takeBars) continue
           const slot = base + b * barLen
           if (slot > to || slot + barLen < from) continue
-          for (const e of layer.events) {
-            const eBar = Math.floor(e.t / barLen + 1e-6)
-            if (eBar !== src) continue
-            let at = slot + (e.t - eBar * barLen)
+          for (let i = 0; i < layer.events.length; i++) {
+            const e = layer.events[i]
+            if (ownerBar[i] !== src) continue
+            let at = slot + (e.t - ownerBar[i] * barLen)
             /* same asymmetry as the tiled path: a note-on past the end simply does not play, but
                a note-off must always be allowed to land or its voice rings for ever */
             if (at >= end) {
