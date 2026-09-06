@@ -21,6 +21,7 @@ import { InCanvasWindow } from '../circuit/ui/canvasContext'
 import { gallery, removeArt, saveArt, subscribeGallery, type Art } from '../draw/gallery'
 import { together } from '../party/together'
 import { drawParty } from '../party/draw'
+import { paintSession } from '../draw/session'
 import { useVoiceSession } from '../voice/useVoiceSession'
 
 /**
@@ -71,7 +72,9 @@ export function PaintRoom() {
   const base = useRef<HTMLCanvasElement | null>(null)
   const size = useRef({ w: 0, h: 0, dpr: 1 })
 
-  const [strokes, setStrokes] = useState<Stroke[]>([])
+  /* ⚠️ seeded from the session, so flipping canvas mode — which unmounts this room and mounts
+     it somewhere else in the tree — no longer throws the picture away. See draw/session.ts. */
+  const [strokes, setStrokes] = useState<Stroke[]>(() => paintSession.restore()?.strokes ?? [])
   /**
    * What sits behind the paint. null is the checkerboard — a genuinely transparent picture.
    *
@@ -80,7 +83,7 @@ export function PaintRoom() {
    * a stroke over a black backdrop and punch a hole through to the page. Behind means the eraser
    * takes away paint and reveals the backdrop, which is what erasing means everywhere else.
    */
-  const [bg, setBg] = useState<string | null>(null)
+  const [bg, setBg] = useState<string | null>(() => paintSession.restore()?.bg ?? null)
   const { inWindow } = useContext(InCanvasWindow)
 
   /**
@@ -102,8 +105,10 @@ export function PaintRoom() {
    * room, every tool, undo, the party feed, is untouched by both. See Stroke.l and Stroke.f.
    */
   const [layer, setLayer] = useState(0)
-  const [hidden, setHidden] = useState<number[]>([])
-  const [layerNames, setLayerNames] = useState<string[]>([])
+  const [hidden, setHidden] = useState<number[]>(() => paintSession.restore()?.hidden ?? [])
+  const [layerNames, setLayerNames] = useState<string[]>(
+    () => paintSession.restore()?.layerNames ?? [],
+  )
   /**
    * ⚠️ NULL MEANS "NOT ANIMATING", and that is the default so the room stays a paint
    * program until you ask for more. A stroke drawn while this is null gets no frame at all,
@@ -173,7 +178,19 @@ export function PaintRoom() {
     setSel([])
     setStrokes([])
     setBg(null)
+    /* nothing to come back to — carrying the cleared picture forward would be the bug */
+    paintSession.forget()
   }, [])
+
+  /**
+   * ⚠️ Kept on CHANGE, not on unmount. A cleanup that saves runs after React has already decided
+   * to tear the tree down, and in StrictMode it runs on a mount nobody asked for — writing state
+   * at teardown is how you save the wrong thing or nothing at all. Committed strokes change a
+   * few times a minute, so this is cheap.
+   */
+  useEffect(() => {
+    paintSession.keep({ strokes, bg, hidden, layerNames })
+  }, [strokes, bg, hidden, layerNames])
 
   useEffect(() => drawParty.start(), [])
   useEffect(() => {
