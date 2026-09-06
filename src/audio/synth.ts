@@ -358,7 +358,36 @@ const SHAPES: Record<Exclude<InstrumentId, 'drums'>, Shape> = {
       { ratio: 3, detune: -5, gain: 0.04 },
     ],
     filter: { from: 3000, to: 2100, q: 0.7 },
-    level: 0.34,
+    /**
+     * ⚠️ LEVEL SET BY MEASUREMENT, NOT BY EAR, and it is lower than it looks like it should be.
+     *
+     * Flute and whistle were reported as crackly while every louder patch was fine — organ, drone,
+     * strings, cello and choir all hit the limiter HARDER than these two and none of them crackle.
+     * The level is not what is different; the SPECTRUM is. A patch with a dozen partials hides the
+     * limiter's intermodulation products inside its own harmonics. These two are essentially a
+     * sine, so there is nothing for the junk to hide behind and you hear it directly.
+     *
+     * Rendered through the real limiter offline (threshold -3, ratio 20, attack 2ms, release 120ms)
+     * and measured against a bin-aligned control that reads exactly 0%:
+     *
+     *     level      3 notes   4 notes   5 notes
+     *     0.34        3.91%     6.08%     6.68%     <- what this used to be
+     *     0.26        0%        3.21%     5.81%
+     *     0.22        0%        0.02%     3.67%
+     *     0.20        0%        0%        1.38%     <- here
+     *
+     * A plain three-note triad was already distorting at nearly 4%. Softening the limiter instead
+     * was tried and does not work: knee 6 barely moved it (10.35% vs 10.96%), a 400ms release made
+     * it WORSE, and dropping the ratio to 2:1 only reached 3.75% while stopping the limiter from
+     * limiting at all.
+     *
+     * The cost is that these are now quiet for single notes, which is the honest trade — they are
+     * melodic voices played a few notes at a time, and this is clean through four of them. The
+     * systemic fix is polyphony scaling (divide voice gain by sqrt(active voices)), which would fix
+     * all 14 patches that clip on a five-note chord without making anything quieter. That is a
+     * bigger change and needs gliding to avoid zipper noise on every note.
+     */
+    level: 0.2,
   },
   /**
    * A clavinet: plucked and gone in a moment, but bright the whole way. Where Pluck rounds off,
@@ -556,7 +585,9 @@ const SHAPES: Record<Exclude<InstrumentId, 'drums'>, Shape> = {
       { ratio: 2, detune: 0, gain: 0.05 },
     ],
     filter: { from: 4000, to: 3200, q: 0.5 },
-    level: 0.3,
+    /* Same measurement as flute above — purest patch in the set, so it exposes the limiter the
+       same way. 0.30 gave 2.47% at four notes and 5.59% at five; 0.22 gives 0% and 0.26%. */
+    level: 0.22,
   },
   /**
    * Fifths: a chord from a single key.
