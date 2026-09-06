@@ -287,10 +287,24 @@ export function applyPalette(seed: PaletteSeed | null) {
   const tokens = derivePalette(DEFAULT_SEED)
   if (!seed) {
     Object.keys(tokens).forEach((k) => el.style.removeProperty(k))
+    el.style.removeProperty('color-scheme')
     return
   }
   const next = derivePalette(seed)
   Object.entries(next).forEach(([k, v]) => el.style.setProperty(k, v))
+  /**
+   * ⚠️ Tell the browser which way round a CUSTOM palette is.
+   *
+   * The built-in themes declare `color-scheme` in CSS, which is what stops a <select>'s dropdown
+   * opening as a white panel with near-white text on it. A custom palette cannot: its background
+   * is whatever somebody picked, so the answer is only knowable by measuring it.
+   *
+   * The threshold is WCAG relative luminance, the same function the contrast checker already
+   * uses here — not an average of the channels, because green reads far brighter than blue at
+   * identical values and a mid-blue would be called light.
+   */
+  const bg = parseHex(seed.bg)
+  if (bg) el.style.setProperty('color-scheme', luminance(bg) > 0.45 ? 'light' : 'dark')
 }
 
 export function loadPalette(): PaletteSeed | null {

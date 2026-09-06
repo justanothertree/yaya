@@ -40,7 +40,21 @@
    applied to a SUBTREE, only to the whole document. A profile rendered in its owner's look
    needs exactly that, so dark gets an explicit block mirroring the defaults above. Same values,
    addressable. */
+/*
+ * ⚠️ NATIVE CONTROLS NEED TELLING WHICH THEME THEY ARE IN, and nothing here ever told them.
+ *
+ * `color-scheme` was set nowhere in this file, so every browser painted its OWN widgets in
+ * light mode regardless of the theme: a <select>'s dropdown list came up as a white panel with
+ * near-white text on it, readable only under whichever row the mouse was over. Reported as "the
+ * pool selection is all white unless you hover over the text" and "the highlight isn't
+ * highlighting the drop down" — one cause, and it was every select on the site, not one.
+ *
+ * The app's own CSS only ever reaches the CLOSED control. The list it opens, the scrollbars, the
+ * date picker, the focus ring — those are the browser's, and this declaration is the only way to
+ * ask for them in the right colours.
+ */
 [data-theme='dark'] {
+  color-scheme: dark;
   --bg: #08080f;
   --panel: #1a1a28;
   --text: #eeeef8;
@@ -70,6 +84,7 @@
 }
 
 [data-theme='light'] {
+  color-scheme: light;
   --bg: #ffffff;
   --panel: #f7fafc;
   --text: #0f172a;
@@ -100,6 +115,7 @@
 }
 
 [data-theme='alt'] {
+  color-scheme: dark;
   --bg: #0a0a12;
   --panel: #12121e;
   --text: #e6e9ff;
