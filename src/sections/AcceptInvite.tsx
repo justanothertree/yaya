@@ -198,21 +198,40 @@ export function AcceptInvite() {
         <h2 style={{ marginTop: 0 }}>
           {invite.label ? `Welcome, ${invite.label}!` : "You're in!"}
         </h2>
-        <p>Your account is set up and you're signed in.</p>
-        <a
-          href="#circuit"
-          onClick={() => {
-            window.location.hash = 'circuit'
-          }}
-          className="btn"
-          style={{
-            background: 'var(--accent,#7c6af7)',
-            color: 'var(--btn-text)',
-            borderColor: 'transparent',
-          }}
-        >
-          Go to The Circuit
-        </a>
+        <p>
+          Your account is set up and you&apos;re signed in — and you and {site.name} are already
+          connected, so there is nobody to add before anything works.
+        </p>
+        {/* ⚠️ NOT "Go to The Circuit", which is where this used to send everybody. The Circuit
+            is a fitness board, and a brand-new member's is empty — the first thing the site
+            showed someone it had just let in was a blank grid of somebody else's hobby. Home is
+            what this place actually is, and People is the one screen that is immediately full
+            for them, now that using the invite makes the friendship. */}
+        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+          <a
+            href="#home"
+            onClick={() => {
+              window.location.hash = 'home'
+            }}
+            className="btn"
+            style={{
+              background: 'var(--accent,#7c6af7)',
+              color: 'var(--btn-text)',
+              borderColor: 'transparent',
+            }}
+          >
+            Take a look around
+          </a>
+          <a
+            href="#people"
+            onClick={() => {
+              window.location.hash = 'people'
+            }}
+            className="btn"
+          >
+            See who&apos;s here
+          </a>
+        </div>
       </div>
     )
 
