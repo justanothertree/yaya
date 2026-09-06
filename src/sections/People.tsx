@@ -113,6 +113,19 @@ export function People({ authed = false }: { authed?: boolean }) {
   // The directory only lists people you already share something with, so finding someone new
   // is an explicit act: look up their exact handle (they had to share it with you).
   const [found, setFound] = useState<Person[] | null>(null)
+  /**
+   * Unread DMs per person.
+   *
+   * ⚠️ From list_chat_overview — the SAME function the bell reads, rather than a second count
+   * of its own. "Unread" is a subtle predicate (not written by you, not under a lounge
+   * pseudonym of yours, since your last read) and two copies of it would disagree the first
+   * time either was touched, leaving the bell and this page quietly telling you different
+   * numbers.
+   *
+   * ⚠️ Keyed on peer_user_id, not on the room's name. A DM is named after the other person's
+   * first name, and matching rows on that works right up until two friends share one.
+   */
+  const [waiting, setWaiting] = useState<Record<string, number>>({})
   const [looking, setLooking] = useState(false)
 
   const refresh = useCallback(async () => {
@@ -131,6 +144,27 @@ export function People({ authed = false }: { authed?: boolean }) {
   useEffect(() => {
     void refresh()
   }, [refresh])
+
+  useEffect(() => {
+    if (previewMember || !authed) return
+    let live = true
+    void getSupabaseClient()
+      .rpc('list_chat_overview')
+      .then(({ data }) => {
+        if (!live) return
+        const rows = (data ?? []) as { peer_user_id?: string | null; unread?: number }[]
+        const next: Record<string, number> = {}
+        for (const r of rows) {
+          /* ⚠️ defensive on the column, not just the value: before the migration runs this key
+             is simply absent, and the page should show no badges rather than break. */
+          if (r.peer_user_id && (r.unread ?? 0) > 0) next[r.peer_user_id] = r.unread ?? 0
+        }
+        setWaiting(next)
+      })
+    return () => {
+      live = false
+    }
+  }, [authed])
 
   /** run a friendship RPC, then reflect the new standing */
   async function act(username: string, kind: 'add' | 'remove' | 'accept' | 'decline') {
@@ -220,6 +254,18 @@ export function People({ authed = false }: { authed?: boolean }) {
       </p>
     )
 
+  /** how many messages of theirs you have not read; 0 when there is no DM or nothing waiting */
+  const unreadFor = (p: Person) => (p.user_id ? (waiting[p.user_id] ?? 0) : 0)
+  /**
+   * ⚠️ People waiting on you come first, and ONLY within the group they were already in.
+   *
+   * The temptation was a fourth section at the top called "Waiting on you", and it is wrong:
+   * this page is a directory, and a directory whose order changes as messages arrive is one you
+   * cannot learn the shape of. Somebody stays where you expect to find them; they just rise
+   * within their own group and carry a count.
+   */
+  const waitingFirst = (list: Person[]) => [...list].sort((a, b) => unreadFor(b) - unreadFor(a))
+
   const row = (p: Person) => (
     <div key={p.username} className="cz-person">
       <a
@@ -281,8 +327,16 @@ export function People({ authed = false }: { authed?: boolean }) {
           </>
         )}
         {p.rel === 'friend' && (
-          <button className="btn cz-tap" onClick={() => void message(p.username)}>
-            💬 Message
+          <button
+            className={'btn cz-tap' + (unreadFor(p) ? ' ppl-waiting' : '')}
+            onClick={() => void message(p.username)}
+            title={
+              unreadFor(p)
+                ? `${unreadFor(p)} unread — they are waiting on you`
+                : `Message ${p.name}`
+            }
+          >
+            💬 {unreadFor(p) ? `${unreadFor(p)} waiting` : 'Message'}
           </button>
         )}
         {p.rel === 'out' && (
@@ -384,7 +438,7 @@ export function People({ authed = false }: { authed?: boolean }) {
         )}
 
       {section('Wants to be friends', groups.requests)}
-      {section('Your friends', groups.friends, 'No friends yet — add someone below.')}
+      {section('Your friends', waitingFirst(groups.friends), 'No friends yet — add someone below.')}
       {section('Everyone else', groups.others)}
 
       {people.length > 0 &&

@@ -4228,6 +4228,14 @@ select {
   margin-top: 2px;
 }
 
+/* a friend who is waiting on a reply — the button says so instead of looking like every other */
+.ppl-waiting {
+  background: var(--accent, #7c6af7);
+  color: var(--btn-text);
+  border-color: transparent;
+  font-weight: 700;
+}
+
 /* ─ your own presence, on the People page ───────────────────────
    Three small toggles on the title line: the page shows a dot beside everybody else, so the
    control for yours belongs in the same glance rather than three taps away in a preferences
