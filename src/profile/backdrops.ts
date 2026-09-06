@@ -30,6 +30,10 @@ export type BackdropId =
   | 'bubbles'
   | 'flames'
   | 'leaves'
+  | 'garden'
+  | 'birds'
+  | 'galaxy'
+  | 'sheep'
   | 'audio'
   | 'stars'
   | 'rain'
@@ -73,6 +77,10 @@ export const BACKDROPS: Array<[BackdropId, string, string]> = [
   ['bubbles', '🫧', 'Bubbles'],
   ['flames', '🔥', 'Flames'],
   ['leaves', '🍃', 'Leaves'],
+  ['garden', '🌼', 'Garden'],
+  ['birds', '🐦', 'Birds'],
+  ['galaxy', '🌠', 'Galaxy'],
+  ['sheep', '🐑', 'Sheep'],
 ]
 
 export const BACKDROP_IDS = BACKDROPS.map(([id]) => id)
@@ -938,6 +946,298 @@ function confetti(): Effect {
 }
 
 /**
+ * Garden — flowers that grow, open, and lean away as you walk past.
+ *
+ * ⚠️ They GROW rather than appear, which is the whole difference between a garden and a pattern
+ * of dots. A flower is one scalar 0–1 and everything else is derived from it: petals spread, the
+ * stem lengthens, the head brightens. No per-petal state at all.
+ *
+ * ⚠️ Rooted, and never repositioned — a flower that wanders is not a flower. When one finishes
+ * its life it fades and a new bud starts elsewhere, which is two fields reset rather than a new
+ * object allocated every few seconds.
+ */
+function garden(): Effect {
+  type F = { x: number; base: number; g: number; rate: number; petals: number; tone: number }
+  let fs: F[] = []
+  const seed = (w: number, h: number): F => ({
+    x: Math.random() * w,
+    base: h - Math.random() * h * 0.12,
+    g: Math.random() * 0.4,
+    rate: 0.05 + Math.random() * 0.09,
+    petals: 5 + Math.floor(Math.random() * 3),
+    tone: Math.random(),
+  })
+  return {
+    init(w, h, coarse) {
+      fs = Array.from({ length: count(w, h, 5, 46, coarse) }, () => seed(w, h))
+    },
+    step({ ctx, w, h, dt, paint, px, py }) {
+      for (const f of fs) {
+        f.g += f.rate * dt * speedScale()
+        if (f.g > 1.6) Object.assign(f, seed(w, h))
+        const open = Math.max(0, Math.min(1, f.g))
+        // past full bloom it fades instead of growing further
+        const fade = f.g > 1 ? Math.max(0, 1 - (f.g - 1) / 0.6) : 1
+        const stem = 18 + open * 46 * sizeScale()
+        let x = f.x
+        /* ⚠️ the HEAD leans and the base stays put. A rooted thing that slid sideways would read
+           as a balloon on a string rather than something growing out of the ground. */
+        if (px != null && py != null) {
+          const dx = f.x - px
+          const dy = f.base - stem - py
+          const d2 = dx * dx + dy * dy
+          if (d2 < 120 * 120 && d2 > 1) {
+            const d = Math.sqrt(d2)
+            x += (dx / d) * (1 - d / 120) * 22
+          }
+        }
+        const hy = f.base - stem
+        ctx.strokeStyle = rgba(ramped(paint, 0.35), 0.16 * fade)
+        ctx.lineWidth = 1.4
+        ctx.beginPath()
+        ctx.moveTo(f.x, f.base)
+        ctx.quadraticCurveTo((f.x + x) / 2, f.base - stem * 0.6, x, hy)
+        ctx.stroke()
+        const petal = (2.2 + open * 5.5) * sizeScale()
+        ctx.fillStyle = rgba(ramped(paint, f.tone), 0.3 * fade * open)
+        for (let i = 0; i < f.petals; i++) {
+          const a = (i / f.petals) * Math.PI * 2 + f.g
+          ctx.beginPath()
+          ctx.ellipse(
+            x + Math.cos(a) * petal,
+            hy + Math.sin(a) * petal,
+            petal * 0.7,
+            petal * 0.5,
+            a,
+            0,
+            Math.PI * 2,
+          )
+          ctx.fill()
+        }
+        ctx.beginPath()
+        ctx.arc(x, hy, petal * 0.55, 0, Math.PI * 2)
+        ctx.fillStyle = rgba(ramped(paint, 0.9), 0.4 * fade * open)
+        ctx.fill()
+      }
+    },
+  }
+}
+
+/**
+ * Birds — a flock that actually flocks.
+ *
+ * ⚠️ Three rules and no leader: match your neighbours' heading, keep a little distance, drift
+ * back toward the middle. That is the whole of it, and it is why the shape is never the same
+ * twice. A scripted path would need a designer; this needs three lines and looks alive.
+ *
+ * ⚠️ Neighbours are SAMPLED, not searched. Every bird against every bird is O(n²) and this runs
+ * behind the entire site — each steers off a fixed handful instead, which at this density is
+ * indistinguishable and cheap enough to stop thinking about.
+ */
+function birds(): Effect {
+  type B = { x: number; y: number; vx: number; vy: number; flap: number }
+  let bs: B[] = []
+  return {
+    init(w, h, coarse) {
+      bs = Array.from({ length: count(w, h, 4, 34, coarse) }, () => {
+        const a = Math.random() * Math.PI * 2
+        return {
+          x: Math.random() * w,
+          y: Math.random() * h * 0.7,
+          vx: Math.cos(a) * 40,
+          vy: Math.sin(a) * 12,
+          flap: Math.random() * Math.PI * 2,
+        }
+      })
+    },
+    step({ ctx, w, h, dt, paint, px, py }) {
+      const sp = speedScale()
+      for (let i = 0; i < bs.length; i++) {
+        const b = bs[i]
+        let ax = 0
+        let ay = 0
+        for (let k = 1; k <= 3; k++) {
+          const o = bs[(i + k * 3) % bs.length]
+          const dx = o.x - b.x
+          const dy = o.y - b.y
+          const d2 = dx * dx + dy * dy
+          if (d2 < 1) continue
+          // match their heading, but back off when we are on top of each other
+          ax += o.vx * 0.02 + (d2 < 900 ? -dx * 0.05 : dx * 0.002)
+          ay += o.vy * 0.02 + (d2 < 900 ? -dy * 0.05 : dy * 0.002)
+        }
+        ax += (w / 2 - b.x) * 0.02
+        ay += (h * 0.35 - b.y) * 0.02
+        /* scattered by the pointer — a flock that ignored you would read as wallpaper */
+        if (px != null && py != null) {
+          const dx = b.x - px
+          const dy = b.y - py
+          const d2 = dx * dx + dy * dy
+          if (d2 < 140 * 140 && d2 > 1) {
+            const d = Math.sqrt(d2)
+            ax += (dx / d) * (1 - d / 140) * 260
+            ay += (dy / d) * (1 - d / 140) * 260
+          }
+        }
+        b.vx += ax * dt
+        b.vy += ay * dt
+        const v = Math.hypot(b.vx, b.vy)
+        if (v > 90) {
+          b.vx = (b.vx / v) * 90
+          b.vy = (b.vy / v) * 90
+        }
+        b.x += b.vx * dt * sp
+        b.y += b.vy * dt * sp
+        b.flap += dt * 9 * sp
+        const wing = Math.sin(b.flap) * 0.8
+        const r = 4 * sizeScale()
+        ctx.save()
+        ctx.translate(b.x, b.y)
+        ctx.rotate(Math.atan2(b.vy, b.vx))
+        ctx.strokeStyle = rgba(ramped(paint, 0.2 + (i % 5) / 8), 0.32)
+        ctx.lineWidth = 1.5
+        // two strokes from a shared point is the whole bird, and it still reads at four pixels
+        ctx.beginPath()
+        ctx.moveTo(-r, wing * r)
+        ctx.lineTo(0, 0)
+        ctx.lineTo(-r, -wing * r)
+        ctx.stroke()
+        ctx.restore()
+      }
+    },
+  }
+}
+
+/**
+ * Galaxy — a spiral, turning.
+ *
+ * ⚠️ Deliberately not `orbits`, which is rings round a common centre. A galaxy is an ARM: radius
+ * and angle move together, so a star further out is also further round — and it turns
+ * differentially, the inside lapping the outside, which is the reason real ones wind up.
+ *
+ * ⚠️ Positions computed from the clock rather than stepped, the same trick orbits uses. Nothing
+ * to drift, no error to accumulate, and identical on a slow machine.
+ */
+function galaxy(): Effect {
+  let st: Array<{ r: number; a0: number; arm: number; size: number; tone: number }> = []
+  const ARMS = 2
+  return {
+    init(w, h, coarse) {
+      const n = count(w, h, 12, coarse ? 90 : 190, coarse)
+      st = Array.from({ length: n }, (_, i) => ({
+        // ⚠️ pow(random, 0.6) rather than random: uniform in r would crowd the rim, because a
+        // ring's area grows with its radius. This puts more of them near the core, as they are.
+        r: Math.pow(Math.random(), 0.6),
+        a0: Math.random() * 0.5,
+        arm: i % ARMS,
+        size: 0.6 + Math.random() * 1.7,
+        tone: Math.random(),
+      }))
+    },
+    step({ ctx, w, h, t, paint }) {
+      const cx = w / 2
+      const cy = h / 2
+      const reach = Math.min(w, h) * 0.46
+      const spin = t * 0.06 * speedScale()
+      for (const s of st) {
+        const a = s.a0 + (s.arm / ARMS) * Math.PI * 2 + s.r * 4.2 + spin / (0.35 + s.r)
+        const x = cx + Math.cos(a) * s.r * reach
+        // squashed on y, so it reads as a disc seen at an angle rather than a flat pinwheel
+        const y = cy + Math.sin(a) * s.r * reach * 0.62
+        ctx.beginPath()
+        ctx.arc(x, y, s.size * sizeScale(), 0, Math.PI * 2)
+        ctx.fillStyle = rgba(ramped(paint, s.tone), 0.5 * (1 - s.r * 0.75))
+        ctx.fill()
+      }
+    },
+  }
+}
+
+/**
+ * Sheep — a field of them, wandering and stopping to graze.
+ *
+ * ⚠️ The stopping is the whole joke. Something moving at constant speed reads as a screensaver;
+ * something that ambles a few steps, puts its head down, then thinks better of it reads as an
+ * animal. One timer per sheep decides which of those it is doing, and that is the entire
+ * behaviour.
+ */
+function sheep(): Effect {
+  type S = { x: number; y: number; dir: number; till: number; grazing: boolean; size: number }
+  let ss: S[] = []
+  return {
+    init(w, h, coarse) {
+      ss = Array.from({ length: count(w, h, 2.5, 20, coarse) }, () => ({
+        x: Math.random() * w,
+        y: h * (0.45 + Math.random() * 0.5),
+        dir: Math.random() < 0.5 ? -1 : 1,
+        till: Math.random() * 4,
+        grazing: Math.random() < 0.5,
+        size: 7 + Math.random() * 5,
+      }))
+    },
+    step({ ctx, w, dt, paint, px, py }) {
+      const sp = speedScale()
+      for (const s of ss) {
+        s.till -= dt
+        if (s.till <= 0) {
+          s.grazing = !s.grazing
+          s.till = s.grazing ? 2 + Math.random() * 5 : 1.5 + Math.random() * 4
+          if (!s.grazing && Math.random() < 0.4) s.dir *= -1
+        }
+        /* a pointer coming near sends it trotting, and nothing grazes while it is running */
+        let bolt = 0
+        if (px != null && py != null) {
+          const dx = s.x - px
+          const dy = s.y - py
+          const d2 = dx * dx + dy * dy
+          if (d2 < 130 * 130) {
+            bolt = 1 - Math.sqrt(d2) / 130
+            s.dir = dx >= 0 ? 1 : -1
+            s.grazing = false
+            s.till = Math.max(s.till, 1.2)
+          }
+        }
+        if (!s.grazing) s.x += s.dir * (13 + bolt * 90) * dt * sp
+        if (s.x < -30) s.x = w + 30
+        if (s.x > w + 30) s.x = -30
+        const r = s.size * sizeScale()
+        const head = s.grazing ? r * 0.5 : 0
+        ctx.fillStyle = rgba(ramped(paint, 0.85), 0.26)
+        // one ellipse plus three humps: the humps are what make the back read as fleece
+        ctx.beginPath()
+        ctx.ellipse(s.x, s.y, r, r * 0.72, 0, 0, Math.PI * 2)
+        ctx.fill()
+        for (let i = -1; i <= 1; i++) {
+          ctx.beginPath()
+          ctx.arc(s.x + i * r * 0.55, s.y - r * 0.5, r * 0.42, 0, Math.PI * 2)
+          ctx.fill()
+        }
+        ctx.fillStyle = rgba(ramped(paint, 0.15), 0.34)
+        ctx.beginPath()
+        ctx.ellipse(
+          s.x + s.dir * r * 0.95,
+          s.y - r * 0.25 + head,
+          r * 0.36,
+          r * 0.3,
+          0,
+          0,
+          Math.PI * 2,
+        )
+        ctx.fill()
+        ctx.strokeStyle = rgba(ramped(paint, 0.15), 0.28)
+        ctx.lineWidth = 1.3
+        for (let i = -1; i <= 1; i += 2) {
+          ctx.beginPath()
+          ctx.moveTo(s.x + i * r * 0.45, s.y + r * 0.55)
+          ctx.lineTo(s.x + i * r * 0.45, s.y + r * 1.05)
+          ctx.stroke()
+        }
+      }
+    },
+  }
+}
+
+/**
  * Orbits — dots going round a common centre at different radii and speeds.
  *
  * ⚠️ nothing here is stored except the ring each dot belongs to; its POSITION is computed
@@ -1051,6 +1351,14 @@ export function makeEffect(id: BackdropId): Effect | null {
       return confetti()
     case 'orbits':
       return orbits()
+    case 'garden':
+      return garden()
+    case 'birds':
+      return birds()
+    case 'galaxy':
+      return galaxy()
+    case 'sheep':
+      return sheep()
     case 'fog':
       return fog()
     default:
