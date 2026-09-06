@@ -1275,7 +1275,7 @@ export default function App() {
         )
       case 'account-settings':
         return isFinanceAuthed ? (
-          <AccountSettings />
+          <AccountSettings canFinance={canFinance === true} />
         ) : (
           <p className="muted">Sign in to manage your account.</p>
         )
@@ -1958,7 +1958,7 @@ export default function App() {
                     </div>
                   }
                 >
-                  <AccountSettings />
+                  <AccountSettings canFinance={canFinance === true} />
                 </Suspense>
               ) : (
                 <div className="card">

@@ -71,7 +71,7 @@ type MyProfile = {
   zelle: string | null
 }
 
-function MemberProfileCard() {
+function MemberProfileCard({ canFinance }: { canFinance: boolean }) {
   const sb = useMemo(() => getSupabaseClient(), [])
   const [form, setForm] = useState<MyProfile | null>(null)
   const [saving, setSaving] = useState(false)
@@ -94,6 +94,10 @@ function MemberProfileCard() {
 
   const set = (k: keyof MyProfile, v: string) => setForm((f) => (f ? { ...f, [k]: v } : f))
   const val = (k: keyof MyProfile) => form[k] ?? ''
+  /* anything already on file keeps its field on screen, whoever you are — see the note below */
+  const hasSerious = (
+    ['phone', 'birthday', 'address', 'venmo', 'cashapp', 'zelle'] as (keyof MyProfile)[]
+  ).some((k) => (form[k] ?? '') !== '')
 
   async function save(e: React.FormEvent) {
     e.preventDefault()
@@ -179,36 +183,58 @@ function MemberProfileCard() {
           placeholder="kept private"
           autoComplete="email"
         />
-        <Field
-          label="Phone"
-          value={val('phone')}
-          onChange={(v) => set('phone', v)}
-          type="tel"
-          autoComplete="tel"
-        />
-        <Field
-          label="Birthday"
-          value={val('birthday')}
-          onChange={(v) => set('birthday', v)}
-          type="date"
-        />
-        <Field label="Address" value={val('address')} onChange={(v) => set('address', v)} />
       </div>
 
-      <div className="muted" style={sectionLabel}>
-        Payment handles
-      </div>
-      <div
-        style={{
-          display: 'grid',
-          gap: '0.6rem',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
-        }}
-      >
-        <Field label="Venmo" value={val('venmo')} onChange={(v) => set('venmo', v)} />
-        <Field label="Cash App" value={val('cashapp')} onChange={(v) => set('cashapp', v)} />
-        <Field label="Zelle" value={val('zelle')} onChange={(v) => set('zelle', v)} />
-      </div>
+      {/* ⚠️ ONLY FOR THE ACCOUNTS THE INVESTMENTS SIDE ACTUALLY INVOLVES.
+          These fields exist so a fund can identify a real person and settle up with them —
+          phone, date of birth, home address, payment handles. They were shown to everybody, so
+          nine people were asked for their address and their Venmo in order to vote on films.
+          Exactly one ever filled them in, which is the measurement rather than the guess.
+
+          The gate is the finance feature itself (admin, or a family invite — see my_features),
+          not a new rule invented here: the fields belong to that system, so they appear for the
+          people in it.
+
+          ⚠️ `hasSerious` is the escape hatch and is not optional. Anyone who already filled
+          these in before the gate existed must still be able to see and clear them — hiding
+          somebody's home address from them while keeping it on file is worse than asking. */}
+      {(canFinance || hasSerious) && (
+        <>
+          <div className="muted" style={sectionLabel}>
+            Investments details
+          </div>
+          <p className="muted" style={{ margin: '0 0 0.5rem', fontSize: '0.78rem' }}>
+            {canFinance
+              ? 'Only for the investments side — how a payout reaches you. Nobody else on the site sees these.'
+              : 'You filled these in when the form asked everyone. Nothing here is used for your account — clear them if you like.'}
+          </p>
+          <div
+            style={{
+              display: 'grid',
+              gap: '0.6rem',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+            }}
+          >
+            <Field
+              label="Phone"
+              value={val('phone')}
+              onChange={(v) => set('phone', v)}
+              type="tel"
+              autoComplete="tel"
+            />
+            <Field
+              label="Birthday"
+              value={val('birthday')}
+              onChange={(v) => set('birthday', v)}
+              type="date"
+            />
+            <Field label="Address" value={val('address')} onChange={(v) => set('address', v)} />
+            <Field label="Venmo" value={val('venmo')} onChange={(v) => set('venmo', v)} />
+            <Field label="Cash App" value={val('cashapp')} onChange={(v) => set('cashapp', v)} />
+            <Field label="Zelle" value={val('zelle')} onChange={(v) => set('zelle', v)} />
+          </div>
+        </>
+      )}
 
       {notice && (
         <p className="muted" style={{ margin: 0 }}>
@@ -600,7 +626,7 @@ function CircuitsCard() {
 }
 
 // ── Account & security: login email + password ─────────────────────────────
-export function AccountSettings() {
+export function AccountSettings({ canFinance = false }: { canFinance?: boolean } = {}) {
   const financeEnabled = hasFinanceSupabaseEnv()
 
   const [loading, setLoading] = useState(true)
@@ -787,7 +813,7 @@ export function AccountSettings() {
         </article>
       ) : (
         <>
-          <MemberProfileCard />
+          <MemberProfileCard canFinance={canFinance} />
 
           <NicknamesCard />
           <CircuitsCard />
