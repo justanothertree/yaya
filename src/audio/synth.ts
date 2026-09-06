@@ -359,35 +359,19 @@ const SHAPES: Record<Exclude<InstrumentId, 'drums'>, Shape> = {
     ],
     filter: { from: 3000, to: 2100, q: 0.7 },
     /**
-     * ⚠️ LEVEL SET BY MEASUREMENT, NOT BY EAR, and it is lower than it looks like it should be.
+     * ⚠️ Flute and whistle were reported as crackly and every LOUDER patch was fine — organ,
+     * drone, strings, cello and choir all hit the limiter harder and none of them crackle. The
+     * level was never what made these two different; the SPECTRUM is. A patch with a dozen
+     * partials hides the limiter's intermodulation products inside its own harmonics. These are
+     * essentially a sine, so there is nothing for the junk to hide behind and you hear it directly.
      *
-     * Flute and whistle were reported as crackly while every louder patch was fine — organ, drone,
-     * strings, cello and choir all hit the limiter HARDER than these two and none of them crackle.
-     * The level is not what is different; the SPECTRUM is. A patch with a dozen partials hides the
-     * limiter's intermodulation products inside its own harmonics. These two are essentially a
-     * sine, so there is nothing for the junk to hide behind and you hear it directly.
-     *
-     * Rendered through the real limiter offline (threshold -3, ratio 20, attack 2ms, release 120ms)
-     * and measured against a bin-aligned control that reads exactly 0%:
-     *
-     *     level      3 notes   4 notes   5 notes
-     *     0.34        3.91%     6.08%     6.68%     <- what this used to be
-     *     0.26        0%        3.21%     5.81%
-     *     0.22        0%        0.02%     3.67%
-     *     0.20        0%        0%        1.38%     <- here
-     *
-     * A plain three-note triad was already distorting at nearly 4%. Softening the limiter instead
-     * was tried and does not work: knee 6 barely moved it (10.35% vs 10.96%), a 400ms release made
-     * it WORSE, and dropping the ratio to 2:1 only reached 3.75% while stopping the limiter from
-     * limiting at all.
-     *
-     * The cost is that these are now quiet for single notes, which is the honest trade — they are
-     * melodic voices played a few notes at a time, and this is clean through four of them. The
-     * systemic fix is polyphony scaling (divide voice gain by sqrt(active voices)), which would fix
-     * all 14 patches that clip on a five-note chord without making anything quieter. That is a
-     * bigger change and needs gliding to avoid zipper noise on every note.
+     * They were dropped to 0.20/0.22 as a stopgap. Polyphony scaling (see polyTarget) fixes the
+     * cause instead — a five-note chord is now mixed at 1/sqrt(5) — so the levels are back where
+     * they were and single notes are full strength again. Measured through the real limiter:
+     * flute at 0.34 went 3.91% distortion on a three-note chord and 6.68% on five; with scaling
+     * it never reaches the limiter at all up to five voices.
      */
-    level: 0.2,
+    level: 0.34,
   },
   /**
    * A clavinet: plucked and gone in a moment, but bright the whole way. Where Pluck rounds off,
@@ -585,9 +569,9 @@ const SHAPES: Record<Exclude<InstrumentId, 'drums'>, Shape> = {
       { ratio: 2, detune: 0, gain: 0.05 },
     ],
     filter: { from: 4000, to: 3200, q: 0.5 },
-    /* Same measurement as flute above — purest patch in the set, so it exposes the limiter the
-       same way. 0.30 gave 2.47% at four notes and 5.59% at five; 0.22 gives 0% and 0.26%. */
-    level: 0.22,
+    /* Same story as flute above — purest patch in the set, so it exposed the limiter the same
+       way. Back to 0.30 now that polyphony scaling keeps a chord under the threshold. */
+    level: 0.3,
   },
   /**
    * Fifths: a chord from a single key.
@@ -689,6 +673,11 @@ export type Fx = {
 }
 
 type Bus = {
+  /**
+   * Where voices connect. This is the POLYPHONY node, not the part level — see polyGain(). It
+   * sits in front of `level()`'s node so a part's own volume and the headroom compensation stay
+   * independent of each other.
+   */
   in: GainNode
   /** LFO depth for this part; voices connect it to their detune */
   vib: GainNode
@@ -704,6 +693,71 @@ let fxOut: GainNode | null = null
 /** the last node before the fork — fxOut through the limiter. See ensure(). */
 let peak: AudioNode | null = null
 let verbBuf: AudioBuffer | null = null
+/**
+ * POLYPHONY SCALING — how loud one voice is allowed to be, given how many are sounding.
+ *
+ * ⚠️ FOURTEEN OF THE TWENTY-SEVEN PATCHES SUMMED PAST FULL SCALE ON A FIVE-NOTE CHORD, because
+ * every voice was mixed at its full level regardless of how many were already playing. The
+ * limiter caught it, which is what a limiter is for — but a limiter working constantly is a
+ * limiter you can hear, and on the near-sine patches (flute, whistle) you heard it as crackle.
+ * The two of them were dropped ~4dB as a stopgap; this replaces that, and their levels go back.
+ *
+ * 1/sqrt(n) rather than 1/n. Voices at musical intervals are neither perfectly in phase nor
+ * perfectly random, and sqrt is the incoherent-sum assumption that sits between the two: 1/n
+ * would hold total power constant and make every chord quieter than the note it started from,
+ * which is the cure being worse than the disease.
+ *
+ * ⚠️ ASYMMETRIC, and that is the part that makes it usable rather than a swell machine.
+ * noteOff DELETES the voice immediately even though its release is still sounding, so the count
+ * drops to zero the instant you lift a five-note chord. Gliding the gain back up at that speed
+ * would take five decaying tails and boost them 7dB — you would hear the chord bloom as you let
+ * go of it. So the gain falls fast (a new note must not clip) and rises slowly, over ~350ms,
+ * which is longer than most release times: the tail is nearly gone before the compensation has
+ * moved much. That asymmetry is doing the same job as tracking each voice's true end time, for
+ * none of the bookkeeping.
+ *
+ * ⚠️ Counted across ALL parts, not per part. Clipping happens where everything sums — at the
+ * limiter — so a looper stack of eight notes has to make room for your live hands too.
+ *
+ * This does not make every patch clean. Organ is hot enough that five voices still land over
+ * full scale even scaled (1.42 against 3.18 before), and it does not need to be clean: it has a
+ * dozen partials for the artefacts to hide in, which is exactly why it was never the complaint.
+ */
+const POLY_DOWN = 0.012
+const POLY_UP = 0.35
+
+/** The gain one voice should have right now. Never above 1 — this only ever takes away. */
+function polyTarget(): number {
+  return 1 / Math.sqrt(Math.max(1, voices.size))
+}
+
+/**
+ * Push the current polyphony to every part.
+ *
+ * Called after the voice map changes. Cheap enough to be unconditional: it is one setTargetAtTime
+ * per live bus, and there are at most MAX_BUSES of them.
+ */
+function applyPoly(c: AudioContext) {
+  const t = polyTarget()
+  const now = c.currentTime
+  for (const b of buses.values()) {
+    const g = b.in.gain
+    /* ⚠️ Reading .value is safe HERE and would not be a line later. The file's release code has
+       a long note about this: asking the engine for a level and pinning it at a FUTURE instant
+       is what caused a click on every note-off. This reads now and schedules from now, which is
+       the same instant, so there is nothing to drift. */
+    const tau = t < g.value ? POLY_DOWN : POLY_UP
+    try {
+      /* No cancelScheduledValues: successive setTargetAtTime calls already supersede each other
+         from wherever the value has actually got to, which is exactly what ramp() relies on for
+         every other live control. Cancelling first is the branch that made releases click. */
+      g.setTargetAtTime(t, now, tau)
+    } catch {
+      /* context went away mid-gesture */
+    }
+  }
+}
+
 const buses = new Map<string, Bus>()
 
 /** The part your own hands play through. */
@@ -831,6 +885,11 @@ function applyKnobs() {
  */
 function makeBus(c: AudioContext): Bus {
   const input = c.createGain()
+  /* voices ─► poly ─► input ─► fx.  New buses start at whatever the current polyphony says,
+     not at 1, or a layer joining a busy arrangement would jump in 3dB too loud. */
+  const poly = c.createGain()
+  poly.gain.value = polyTarget()
+  poly.connect(input)
   const dry = c.createGain()
   const delay = c.createDelay(1.2)
   const wet = c.createGain()
@@ -944,7 +1003,7 @@ function makeBus(c: AudioContext): Bus {
   }
 
   return {
-    in: input,
+    in: poly,
     vib,
     used: c.currentTime,
     level(v: number) {
@@ -975,7 +1034,7 @@ function makeBus(c: AudioContext): Bus {
       } catch {
         /* already stopped */
       }
-      for (const n of [input, dry, delay, wet, fb, verb, verbWet, vib]) n.disconnect()
+      for (const n of [poly, input, dry, delay, wet, fb, verb, verbWet, vib]) n.disconnect()
     },
   }
 }
@@ -1587,12 +1646,17 @@ export function noteOn(
     },
   }
   voices.set(id, voice)
+  applyPoly(c)
 
   // a patch with no sustain releases itself, so a click-and-hold on a pluck still ends
   if (sh.s <= 0) {
     const life = (sh.a + sh.d + sh.r + 0.1) * 1000
     window.setTimeout(() => {
-      if (voices.get(id) === voice) voices.delete(id)
+      if (voices.get(id) === voice) {
+        voices.delete(id)
+        // a pluck ends itself, so nothing else would give the headroom back
+        if (ctx) applyPoly(ctx)
+      }
     }, life)
     for (const o of oscs) {
       try {
@@ -1628,6 +1692,7 @@ export function noteOff(id: string, when?: number) {
   if (!v) return
   v.stop(Math.max(when ?? 0, c.currentTime + SAFE_START))
   voices.delete(id)
+  applyPoly(c)
 }
 
 /**
@@ -1650,6 +1715,7 @@ export function stopLive() {
     v.stop(c.currentTime + SAFE_START, true)
     voices.delete(id)
   }
+  applyPoly(c)
 }
 
 /** Panic — everything off. Worth having the moment a stuck note happens, which it will. */
@@ -1658,6 +1724,7 @@ export function allNotesOff() {
   if (!c) return
   for (const [, v] of voices) v.stop(c.currentTime + SAFE_START, true)
   voices.clear()
+  applyPoly(c)
 }
 
 export function synthReady(): boolean {
