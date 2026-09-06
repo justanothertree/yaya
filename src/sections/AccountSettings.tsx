@@ -73,6 +73,10 @@ type MyProfile = {
 
 function MemberProfileCard({ canFinance }: { canFinance: boolean }) {
   const sb = useMemo(() => getSupabaseClient(), [])
+  /* opened by hand this visit. Not persisted, because once anything is filled in `hasSerious`
+     keeps the block open by itself — and an empty section that stays expanded forever because
+     you once tapped a button is just the open fields again, slower. */
+  const [opened, setOpened] = useState(false)
   const [form, setForm] = useState<MyProfile | null>(null)
   const [saving, setSaving] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
@@ -198,15 +202,35 @@ function MemberProfileCard({ canFinance }: { canFinance: boolean }) {
           ⚠️ `hasSerious` is the escape hatch and is not optional. Anyone who already filled
           these in before the gate existed must still be able to see and clear them — hiding
           somebody's home address from them while keeping it on file is worse than asking. */}
-      {(canFinance || hasSerious) && (
+      {/* ⚠️ HIDDEN IS NOT REMOVED. A friend may well want to share this — settling up, or taking
+          you up on the investments side — so the way in stays one tap away and says what it is
+          for. What is gone is the ambush: six open boxes asking for a home address from someone
+          who came to vote on films. Opting in is a decision; a form is not. */}
+      {!(canFinance || hasSerious || opened) && (
+        <button
+          type="button"
+          className="btn"
+          onClick={() => setOpened(true)}
+          /* ⚠️ justifySelf, not alignSelf: the card is a grid, so a stretched item fills the
+             row and a quiet opt-in ends up looking like the primary action on the page */
+          style={{ marginTop: '1rem', opacity: 0.75, justifySelf: 'start' }}
+        >
+          ＋ Add contact &amp; payment details
+        </button>
+      )}
+
+      {(canFinance || hasSerious || opened) && (
         <>
           <div className="muted" style={sectionLabel}>
-            Investments details
+            {canFinance ? 'Investments details' : 'Contact & payment details'}
           </div>
           <p className="muted" style={{ margin: '0 0 0.5rem', fontSize: '0.78rem' }}>
+            {/* ⚠️ "nobody else sees these" would be a lie, and it is the exact lie you must not
+                tell on a box asking for somebody's home address. profiles_select is
+                `user_id = auth.uid() OR is_admin()` — checked, not assumed. */}
             {canFinance
-              ? 'Only for the investments side — how a payout reaches you. Nobody else on the site sees these.'
-              : 'You filled these in when the form asked everyone. Nothing here is used for your account — clear them if you like.'}
+              ? 'For the investments side — how a payout reaches you. Only you and whoever runs the site can see them.'
+              : 'Optional, and nothing on the site asks for them. Fill them in if you have been asked to share them directly. Only you and whoever runs the site can see them.'}
           </p>
           <div
             style={{
