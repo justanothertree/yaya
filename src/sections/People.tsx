@@ -10,6 +10,13 @@ import { notificationsChanged } from '../hooks/notifySignal'
 import { getSupabaseClient } from '../finance/client'
 import { previewMember, PREVIEW_PEOPLE, type PreviewPerson } from '../dev/previewMember'
 import { usePresence } from '../hooks/usePresence'
+import {
+  myStatus,
+  onStatusChange,
+  setMyStatus,
+  STATUS_OPTIONS,
+  type MyStatus,
+} from '../hooks/presenceStatus'
 import { avatarStyle } from '../profile/look'
 
 type Rel = 'none' | 'in' | 'out' | 'friend'
@@ -39,6 +46,46 @@ async function loadPeople(): Promise<Person[]> {
     name: p.name,
     rel: rel.get(p.username) ?? 'none',
   }))
+}
+
+/**
+ * Your own status, on the page that shows everybody else's.
+ *
+ * ⚠️ IT LIVED IN THE ACCOUNT MENU, behind the initial, between "Reduce motion" and "Call
+ * sound" — so this page showed a green dot beside every person on it except the one reading it,
+ * and the control for that dot was three taps away in a panel about preferences. Availability is
+ * not a preference like text size; it is a thing you change because of what you are doing right
+ * now, and you change it while looking at who else is around.
+ *
+ * ⚠️ Invisible is offered plainly rather than hidden as an advanced option. Somebody who wants
+ * to be here without being seen should not have to hunt for it, and SeenStatus deliberately has
+ * no such value — nobody can tell the difference between invisible and offline.
+ */
+function MyPresence() {
+  const [mine, setMine] = useState<MyStatus>(() => myStatus())
+  useEffect(() => onStatusChange(() => setMine(myStatus())), [])
+  return (
+    <span className="ppl-me" style={{ marginLeft: 'auto' }}>
+      <span className="muted" style={{ fontSize: '0.78rem' }}>
+        You&apos;re
+      </span>
+      {STATUS_OPTIONS.map(([id, dot, label]) => (
+        <button
+          key={id}
+          className={'ppl-me-btn' + (mine === id ? ' is-on' : '')}
+          aria-pressed={mine === id}
+          onClick={() => setMyStatus(id)}
+          title={
+            id === 'invisible'
+              ? 'Nothing is broadcast at all — not hidden, not sent'
+              : `Show as ${label.toLowerCase()}`
+          }
+        >
+          <span aria-hidden>{dot}</span> {label}
+        </button>
+      ))}
+    </span>
+  )
 }
 
 export function People({ authed = false }: { authed?: boolean }) {
@@ -290,6 +337,7 @@ export function People({ authed = false }: { authed?: boolean }) {
         <span className="muted cz-subtitle" style={{ fontSize: '0.85rem' }}>
           friends, requests, and people in your circles
         </span>
+        <MyPresence />
       </div>
 
       <input
