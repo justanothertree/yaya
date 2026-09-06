@@ -54,6 +54,35 @@ const userFromHash = () =>
 const editFromHash = () =>
   new URLSearchParams(window.location.hash.split('?')[1] ?? '').get('edit') === 'look'
 
+/**
+ * Your own page opens ready to edit.
+ *
+ * ⚠️ IT USED TO OPEN READ-ONLY, and that put three steps in front of changing one word: press
+ * "Customize page", pick the block, then find its field in the inspector at the side. Changing
+ * your status — a sentence — meant knowing all three. There is exactly one person who can edit
+ * this page and they are the person looking at it, so asking them to declare an intention first
+ * is a door with nobody on the other side of it.
+ *
+ * ⚠️ Remembered, not forced. "Done editing" still shows what everyone else sees, and choosing
+ * that sticks — you get your page as a visitor sees it until you ask for the editor again. The
+ * default is edit; the preference is yours.
+ */
+const EDIT_PREF = 'profile_open_in_edit_v1'
+const opensInEdit = (): boolean => {
+  try {
+    return localStorage.getItem(EDIT_PREF) !== 'view'
+  } catch {
+    return true
+  }
+}
+const rememberEditPref = (editing: boolean) => {
+  try {
+    localStorage.setItem(EDIT_PREF, editing ? 'edit' : 'view')
+  } catch {
+    /* private mode: it holds for this visit */
+  }
+}
+
 type Person = { username: string; name: string; is_friend: boolean }
 
 /** viewer's choice: do other people's themes apply on their pages */
@@ -85,6 +114,21 @@ export function Profile({ authed, username }: { authed: boolean; username?: stri
   const [activity, setActivity] = useState<ActivityItem[]>([])
   const [trophies, setTrophies] = useState<ProfileTrophy[]>([])
   const [editing, setEditing] = useState(editFromHash)
+  /**
+   * Open your own page in the editor, once the server has confirmed it IS your own page.
+   *
+   * ⚠️ It cannot be decided at mount: `is_me` arrives with the profile, so the initial state is
+   * the hash and nothing else. Keyed on the username so switching between profiles re-applies
+   * it, and applied once per profile so it never overrules the toggle while you are working.
+   */
+  const openedFor = useRef<string | null>(null)
+  useEffect(() => {
+    if (state.kind !== 'ok' || !state.p.is_me) return
+    const who = state.p.username ?? ''
+    if (openedFor.current === who) return
+    openedFor.current = who
+    if (!editFromHash()) setEditing(opensInEdit())
+  }, [state])
   /**
    * Whether to wear other people's looks at all.
    *
@@ -355,6 +399,7 @@ export function Profile({ authed, username }: { authed: boolean; username?: stri
         <p className="muted">No one to show — open a profile from a member&apos;s name.</p>
       </div>
     )
+
   if (state.kind === 'loading')
     return (
       <div className="card" aria-busy>
@@ -560,8 +605,19 @@ export function Profile({ authed, username }: { authed: boolean; username?: stri
                 </option>
               ))}
             </select>
-            <button className="btn" onClick={() => setEditing((v) => !v)}>
-              {editing ? 'Done editing' : '🎨 Customize page'}
+            <button
+              className="btn"
+              onClick={() =>
+                setEditing((v) => {
+                  rememberEditPref(!v)
+                  return !v
+                })
+              }
+              title={
+                editing ? 'See your page the way everyone else does' : 'Back to arranging your page'
+              }
+            >
+              {editing ? '👁 View as others see it' : '🎨 Edit page'}
             </button>
           </span>
         )}
