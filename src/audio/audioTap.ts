@@ -84,6 +84,25 @@ export function readSpectrum(id: TapId, into: Uint8Array): boolean {
   return true
 }
 
+/**
+ * How a tap is actually sampled, for anyone who needs to turn a bin index into a frequency.
+ *
+ * ⚠️ Bins are NOT abstract. A 2048-point FFT at 48kHz is a bin every 23.4Hz. Measured against
+ * the semitone at each octave: 3.9Hz at C2, 7.8Hz at C3, 15.6Hz at C4 — all narrower than one
+ * bin — and 31.1Hz at C5, the first that a bin can actually separate. So notes are unresolvable
+ * across most of a keyboard, and a display labelling low bins with note names is inventing
+ * precision that is not in the data. Exposing the numbers is what lets a caller be honest.
+ *
+ * ⚠️ Do not "fix" that by raising fftSize on a shared analyser. The visualiser reads this same
+ * tap into a fixed 2048-length array, and readSpectrum refuses a short read — so a bigger FFT
+ * would not look better, it would make the instrument silently vanish from the visualiser.
+ */
+export function tapFormat(id: TapId): { bins: number; fftSize: number; rate: number } | null {
+  const node = sources.get(id)
+  if (!node) return null
+  return { bins: node.frequencyBinCount, fftSize: node.fftSize, rate: node.context.sampleRate }
+}
+
 /** The waveform itself, 0–255 centred on 128, for anything drawing a scope rather than bars. */
 export function readWaveform(id: TapId, into: Uint8Array): boolean {
   const node = sources.get(id)

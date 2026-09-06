@@ -37,6 +37,7 @@ import {
 } from '../audio/library'
 import { remember } from '../audio/capture'
 import { sharedCtx } from '../audio/context'
+import { InstrumentScope } from '../audio/InstrumentScope'
 import { together } from '../party/together'
 import { jam } from '../party/jam'
 import { hueFor } from '../party/party'
@@ -599,6 +600,12 @@ export function InstrumentRoom() {
   return (
     <section className="inst-wrap">
       <AudioHealthStrip />
+      {/* ⚠️ Here rather than behind Canvas mode. Seeing what you play used to mean knowing the
+          account menu hides a Canvas toggle, turning it on, and opening the visualiser in a
+          second window — three steps and a discovery problem, for the most obvious pairing on
+          the site. This is not the visualiser and does not try to be: it answers "what does this
+          patch actually do", which the decorative modes never could. */}
+      <InstrumentScope />
       <div className="inst-bar">
         <div className="fx-style-row inst-picks">
           {INSTRUMENTS.map(([id, icon, name]) => (
