@@ -16,6 +16,7 @@ import { installClickFx, setClickFxEnabled, setClickFxStyle, type FxStyle } from
 import { FX_STYLES } from './ui/fxStyles'
 import { applyCursorSkin, isCursorSkin, type CursorSkin } from './ui/cursorSkin'
 import { ALL_SECTIONS, SECTION_TITLES, navFor, type Section } from './nav/places'
+import { occupancy, usePartyHere } from './party/whereEveryone'
 import { AppearanceDialog } from './components/AppearanceDialog'
 import { BugReport } from './components/BugReport'
 import { installMouseTrail, isTrailStyle, setTrailStyle, type TrailStyle } from './ui/mouseTrail'
@@ -1130,6 +1131,9 @@ export default function App() {
   // edge, let alone a way to reach them. Directional on purpose — fading the left edge
   // while you're scrolled hard-left dims a link that isn't cut off.
   const [navMore, setNavMore] = useState({ l: false, r: false })
+  /* co-presence: empty unless you are sharing your own pointer, which is the whole
+     reciprocity rule — you do not get to watch where people go without being seen */
+  const whoIsWhere = usePartyHere()
   useEffect(() => {
     const el = navLinksRef.current
     if (!el) return
@@ -1625,16 +1629,24 @@ export default function App() {
                * so a room cannot exist in one and not the other.
                */}
               <div className="nav-links" ref={navLinksRef}>
-                {navFor(viewer).map((place) => (
-                  <a
-                    key={place.id}
-                    href={`#${place.id}`}
-                    onClick={() => goTo(place.id)}
-                    aria-current={active === place.id ? 'page' : undefined}
-                  >
-                    {place.label}
-                  </a>
-                ))}
+                {navFor(viewer).map((place) => {
+                  /* who from your call is standing in this room — a ring in their own colour,
+                     drawn inside the link because this strip clips anything that leaves it */
+                  const mark = occupancy(whoIsWhere[place.id])
+                  return (
+                    <a
+                      key={place.id}
+                      href={`#${place.id}`}
+                      onClick={() => goTo(place.id)}
+                      aria-current={active === place.id ? 'page' : undefined}
+                      style={mark?.style}
+                      title={mark?.title}
+                    >
+                      {place.label}
+                      {mark && <span className="sr-only"> — {mark.label}</span>}
+                    </a>
+                  )
+                })}
               </div>
               <button
                 className="nav-arrow nav-arrow-r"

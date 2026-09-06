@@ -291,8 +291,8 @@ export function CallDock() {
           onPrivatePage
             ? 'This page is never shared — your pointer stays private here'
             : pointers
-              ? 'Stop sharing your pointer'
-              : 'Show your pointer to the call, and see theirs. Off again when you reload.'
+              ? 'Stop sharing your pointer and which room you are in'
+              : 'Show your pointer to the call and see theirs, and ring the nav with who is in which room. Off again when you reload.'
         }
       >
         {pointers ? '↖️' : '↗'}

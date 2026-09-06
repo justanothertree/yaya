@@ -55,6 +55,24 @@ const SEND_MS = 1000 / SEND_HZ
 const MIN_MOVE = 3
 /** A pointer with nothing new behind it for this long is treated as gone. */
 const STALE_MS = 6000
+/**
+ * How often to say which room you are in, even standing perfectly still.
+ *
+ * ⚠️ THIS IS A NEW THING LEAVING YOUR MACHINE, and it is worth being blunt about that rather
+ * than filing it under the pointer stream. Until now, going still meant going quiet: no
+ * pointermove, no message. Presence has to keep transmitting while you sit and read, because
+ * "who is where" that forgets you after six seconds of reading is worse than nothing — it would
+ * flicker every friend in and out of the nav bar all evening.
+ *
+ * What makes it acceptable is that it is strictly COARSER than what is already going out. The
+ * pointer stream is fifteen samples a second carrying a position; this is one message every five
+ * seconds carrying a room name and nothing else. It rides the same toggle, the same tab-visible
+ * rule and the same private-routes deny list, so there is no page you can be seen on that you
+ * could not already be seen on.
+ */
+const HERE_MS = 5000
+/** Three missed heartbeats before we decide someone has gone. */
+const HERE_STALE_MS = 16000
 
 /**
  * Pages that never broadcast, whatever the toggle says.
@@ -100,14 +118,32 @@ export type PartyPeer = {
   at: number
 }
 
+/**
+ * Someone in the call, and the room they are standing in.
+ *
+ * ⚠️ SEPARATE FROM PartyPeer ON PURPOSE. A pointer that has not moved in six seconds should stop
+ * being drawn — a cursor frozen mid-page reads as "still here, gone quiet", which is the exact
+ * ambiguity the `gone` message exists to remove. But a PERSON who has not moved in six seconds
+ * is still in the room. Two facts with two different lifetimes, so two maps; folding them into
+ * one would force a single staleness window to be wrong for one of them.
+ */
+export type PartyHere = {
+  id: string
+  name: string
+  route: string
+  at: number
+}
+
 export type PartyState = {
   /** true while WE are broadcasting. Also the gate on receiving — see the reciprocity note. */
   sharing: boolean
   /** everyone else's pointer, keyed by user id */
   peers: Record<string, PartyPeer>
+  /** who is in which room, keyed by user id — outlives their pointer, see PartyHere */
+  here: Record<string, PartyHere>
 }
 
-let state: PartyState = { sharing: false, peers: {} }
+let state: PartyState = { sharing: false, peers: {}, here: {} }
 const listeners = new Set<() => void>()
 
 function set(patch: Partial<PartyState>) {
@@ -190,6 +226,30 @@ function announceGone() {
   sendParty('gone', {})
 }
 
+/**
+ * Say which room you are in.
+ *
+ * ⚠️ Checks the deny list itself rather than trusting the caller. There are four call sites —
+ * the toggle, hashchange, the heartbeat and visibility — and the one that forgets the check is
+ * the one that broadcasts you from your bank page. Cheaper to be certain here once.
+ */
+function announceHere() {
+  if (!state.sharing) return
+  if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return
+  if (routeIsPrivate()) return
+  sendParty('where', { route: currentRoute() })
+}
+
+/** One shape from either message that proves presence, so the two paths cannot disagree. */
+function whereFrom(m: { from: string; name?: unknown }, route: string): PartyHere {
+  return {
+    id: m.from,
+    name: typeof m.name === 'string' ? m.name.slice(0, 40) : 'Someone',
+    route,
+    at: performance.now(),
+  }
+}
+
 export const party = {
   getState: () => state,
   subscribe(fn: () => void) {
@@ -205,10 +265,12 @@ export const party = {
     if (on === state.sharing) return
     if (!on) {
       announceGone()
-      set({ sharing: false, peers: {} })
+      set({ sharing: false, peers: {}, here: {} })
       return
     }
     set({ sharing: true })
+    // say where you are immediately: waiting up to five seconds to appear reads as broken
+    announceHere()
   },
 
   /** Wire the listeners once, at app start. Returns a teardown. */
@@ -220,10 +282,19 @@ export const party = {
       // though the messages are arriving on the channel regardless.
       if (!state.sharing) return
       if (m.kind === 'gone') {
-        if (!state.peers[m.from]) return
+        if (!state.peers[m.from] && !state.here[m.from]) return
         const next = { ...state.peers }
         delete next[m.from]
-        set({ peers: next })
+        const nextHere = { ...state.here }
+        delete nextHere[m.from]
+        set({ peers: next, here: nextHere })
+        return
+      }
+      if (m.kind === 'where') {
+        const b = m.body as { route?: unknown }
+        // somebody else's string, on its way into a lookup and a title attribute
+        if (typeof b?.route !== 'string' || b.route.length > 64) return
+        set({ here: { ...state.here, [m.from]: whereFrom(m, b.route) } })
         return
       }
       if (m.kind !== 'ptr') return
@@ -245,6 +316,8 @@ export const party = {
             at: performance.now(),
           },
         },
+        // a moving pointer is also proof of presence, so it counts as a heartbeat
+        here: { ...state.here, [m.from]: whereFrom(m, b.route) },
       })
     })
 
@@ -252,7 +325,10 @@ export const party = {
     window.addEventListener('pointermove', move, { passive: true })
 
     const onHide = () => {
-      if (state.sharing && document.visibilityState !== 'visible') announceGone()
+      if (!state.sharing) return
+      if (document.visibilityState !== 'visible') announceGone()
+      // coming back has to re-announce, or you stay invisible until you move the mouse
+      else announceHere()
     }
     document.addEventListener('visibilitychange', onHide)
 
@@ -261,22 +337,36 @@ export const party = {
     const onHash = () => {
       const now = routeIsPrivate()
       if (state.sharing && now && !wasPrivate) announceGone()
+      /* ⚠️ Announce on ARRIVAL, not only on the next heartbeat. Changing rooms is the one moment
+         this feature exists to show, and up to five seconds of showing a friend in the room they
+         just left is the difference between "look, they followed me" and a bug. */
+      if (!now) announceHere()
       wasPrivate = now
     }
     window.addEventListener('hashchange', onHash)
+
+    const beat = window.setInterval(announceHere, HERE_MS)
 
     // A peer who crashed or closed the tab never sends `gone`; this is what clears them.
     const sweep = window.setInterval(() => {
       const now = performance.now()
       const live = Object.values(state.peers).filter((p) => now - p.at < STALE_MS)
+      const lively = Object.values(state.here).filter((p) => now - p.at < HERE_STALE_MS)
+      const patch: Partial<PartyState> = {}
       if (live.length !== Object.keys(state.peers).length)
-        set({ peers: Object.fromEntries(live.map((p) => [p.id, p])) })
+        patch.peers = Object.fromEntries(live.map((p) => [p.id, p]))
+      if (lively.length !== Object.keys(state.here).length)
+        patch.here = Object.fromEntries(lively.map((p) => [p.id, p]))
+      if (patch.peers || patch.here) set(patch)
     }, 2000)
 
     // Leaving the call ends the party with it — there is no co-presence without a room.
     const offVoice = voiceSession.subscribe(() => {
-      if (!voiceSession.getState().inCall && (state.sharing || Object.keys(state.peers).length))
-        set({ sharing: false, peers: {} })
+      if (
+        !voiceSession.getState().inCall &&
+        (state.sharing || Object.keys(state.peers).length || Object.keys(state.here).length)
+      )
+        set({ sharing: false, peers: {}, here: {} })
     })
 
     detach = [
@@ -285,6 +375,7 @@ export const party = {
       () => window.removeEventListener('pointermove', move),
       () => document.removeEventListener('visibilitychange', onHide),
       () => window.removeEventListener('hashchange', onHash),
+      () => window.clearInterval(beat),
       () => window.clearInterval(sweep),
     ]
     return () => {

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { navFor, type Viewer } from '../nav/places'
+import { occupancy, usePartyHere } from '../party/whereEveryone'
 
 /**
  * The phone's navigation. A cramped horizontal scroll strip is the wrong shape for a
@@ -86,6 +87,10 @@ export function MobileNav({
     go(d.section, d.tab)
   }
   const isOn = (d: Dest) => active === d.section && !d.tab
+  /* the same rings the desktop nav draws — a room cannot show who is in it on one nav and not
+     the other, which is the mistake this file's own header comment is about */
+  const whoIsWhere = usePartyHere()
+  const ring = (d: Dest) => (d.tab ? null : occupancy(whoIsWhere[d.section]))
 
   const bar: Dest[] = member
     ? [
@@ -187,6 +192,8 @@ export function MobileNav({
             key={d.key}
             className={'mnav-item' + (d.primary ? ' is-primary' : '') + (isOn(d) ? ' is-on' : '')}
             aria-current={isOn(d) ? 'page' : undefined}
+            style={ring(d)?.style}
+            title={ring(d)?.title}
             onClick={() => nav(d)}
           >
             <span className="mnav-ic" aria-hidden>
@@ -228,7 +235,11 @@ export function MobileNav({
                 <button
                   key={d.key}
                   className={'mtile' + (isOn(d) ? ' is-on' : '')}
-                  style={{ animationDelay: `${Math.min(i, 8) * 28}ms` }}
+                  style={{
+                    animationDelay: `${Math.min(i, 8) * 28}ms`,
+                    ...ring(d)?.style,
+                  }}
+                  title={ring(d)?.title}
                   onClick={() => nav(d)}
                 >
                   <span className="mtile-ic" aria-hidden>
