@@ -4220,6 +4220,94 @@ select {
   background: var(--control-bg);
 }
 
+/* ─ what's here ───────────────────────
+   The site's only overview. Rooms as chips, capabilities as rows with a sentence each — the
+   sentence is the point, because "Appearance" alone never told anybody the background was in
+   there. */
+.wh-card {
+  /* ⚠️ opaque, because .card's --surface is not. The old three-line help card sat on the same
+     translucent surface and the page read straight through it; nobody noticed while it held
+     three lines of text. Modal.tsx found this first and says the same thing above its box. */
+  background: var(--panel, #141a2a);
+  max-height: 88vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.wh-lead {
+  margin: 0.9rem 0 0.4rem;
+  font-size: 0.8rem;
+}
+.wh-rooms {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+.wh-room {
+  appearance: none;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--control-bg);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.84rem;
+  /* thumb-sized: this is the one screen a lost visitor is tapping around */
+  min-height: 34px;
+  padding: 0.3rem 0.7rem;
+  cursor: pointer;
+}
+.wh-room:hover {
+  border-color: var(--accent, #7c6af7);
+}
+.wh-things {
+  display: grid;
+  gap: 0.35rem;
+}
+.wh-thing {
+  display: grid;
+  gap: 0.1rem;
+  text-align: left;
+  appearance: none;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--control-bg);
+  color: var(--text);
+  font: inherit;
+  padding: 0.45rem 0.6rem;
+  cursor: pointer;
+}
+.wh-thing:hover {
+  border-color: var(--accent, #7c6af7);
+}
+.wh-thing-hint {
+  font-size: 0.76rem;
+}
+.wh-keys {
+  margin: 0.9rem 0 0.6rem;
+  font-size: 0.76rem;
+}
+.wh-keys kbd {
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0 4px;
+  font-size: 0.72rem;
+}
+/* a link, not a button: it sits in the footer beside the copyright and must not shout */
+.wh-open {
+  appearance: none;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+  margin-left: 10px;
+  padding: 0;
+  opacity: 0.85;
+}
+.wh-open:hover {
+  opacity: 1;
+}
+
 /* ─ the instrument's own scope ───────────────────────
    Short and wide on purpose: it sits above the controls and must never push the keyboard below
    the fold, which is the one thing the room exists for. */

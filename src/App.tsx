@@ -9,6 +9,7 @@ import { EvanCook, homePanes } from './sections/EvanCook'
 import { site } from './config/site'
 import { IconGitHub, IconLinkedIn } from './components/Icons'
 import { SettingsMenu } from './components/SettingsMenu'
+import { WhatsHere } from './components/WhatsHere'
 import { MobileNav } from './components/MobileNav'
 import { AmbientBackdrop } from './components/AmbientBackdrop'
 import { installClickFx, setClickFxEnabled, setClickFxStyle, type FxStyle } from './ui/clickFx'
@@ -2116,6 +2117,12 @@ export default function App() {
           <span>
             © {new Date().getFullYear()} {site.name}
             {buildInfo && <span style={{ marginLeft: 8 }}>· {buildInfo}</span>}
+            {/* ⚠️ A VISIBLE WAY IN. This card was reachable only by pressing `?`, which is no
+                way in at all on a phone and not much of one on a laptop — the overview nobody
+                could open was also the overview that would have told them what exists. */}
+            <button className="wh-open" onClick={() => setHelpOpen(true)}>
+              What&apos;s here?
+            </button>
           </span>
           <span style={{ display: 'inline-flex', gap: 12, alignItems: 'center' }}>
             <a
@@ -2179,40 +2186,18 @@ export default function App() {
 
       {/* Keyboard help overlay */}
       {helpOpen && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-label="Keyboard shortcuts"
-          onClick={() => setHelpOpen(false)}
-          style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'rgba(0,0,0,0.5)',
-            display: 'grid',
-            placeItems: 'center',
-            zIndex: 200,
-          }}
-        >
-          <div
-            className="card"
-            style={{ maxWidth: 480, width: '90%', cursor: 'auto' }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h2 className="section-title" style={{ marginTop: 0 }}>
-              Keyboard shortcuts
-            </h2>
-            <ul style={{ margin: 0, paddingLeft: '1rem' }}>
-              <li>Arrow Left/Right: Previous/Next section</li>
-              <li>Snake: Arrow keys, swipe, or on-screen controls</li>
-              <li>?: Open this help, Esc: Close</li>
-            </ul>
-            <div style={{ marginTop: '0.75rem', textAlign: 'right' }}>
-              <button className="btn" onClick={() => setHelpOpen(false)}>
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
+        <WhatsHere
+          viewer={viewer}
+          onClose={() => setHelpOpen(false)}
+          onGo={(sec) => goTo(sec)}
+          onAppearance={() => setAppearanceOpen(true)}
+          onProfile={me.username ? () => goTo('profile') : null}
+          onReportBug={() => setBugOpen(true)}
+          onToggleCanvas={toggleCanvas}
+          canvasOpen={canvasOpen}
+          canvasCapable={canvasCapable}
+          desktop={desktop}
+        />
       )}
     </div>
   )
