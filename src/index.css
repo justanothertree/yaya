@@ -4220,6 +4220,55 @@ select {
   background: var(--control-bg);
 }
 
+/* ─ have a go ───────────────────────
+   The invitation band under the hero. Cards rather than a list because each one has to carry a
+   sentence, and the sentence is what makes it usable by somebody who does not know what a
+   "visualiser" is. */
+.have-a-go {
+  margin-top: 0.5rem;
+}
+.hag-grid {
+  display: grid;
+  gap: 0.5rem;
+  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+}
+.hag-card {
+  display: grid;
+  gap: 0.2rem;
+  align-content: start;
+  padding: 0.7rem 0.8rem;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  color: inherit;
+  text-decoration: none;
+  transition:
+    border-color 0.15s ease,
+    transform 0.15s ease;
+}
+.hag-card:hover {
+  border-color: var(--accent, #7c6af7);
+  transform: translateY(-1px);
+}
+.hag-top {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 1rem;
+}
+.hag-ic {
+  font-size: 1.15rem;
+}
+.hag-line {
+  font-size: 0.8rem;
+  line-height: 1.45;
+}
+@media (prefers-reduced-motion: reduce) {
+  .hag-card:hover {
+    transform: none;
+  }
+}
+
 /* ─ what's here ───────────────────────
    The site's only overview. Rooms as chips, capabilities as rows with a sentence each — the
    sentence is the point, because "Appearance" alone never told anybody the background was in

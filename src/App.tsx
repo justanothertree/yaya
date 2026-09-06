@@ -1827,7 +1827,7 @@ export default function App() {
           )}
           {active === 'home' && !sharedCanvasShowing && (
             <section id="home">
-              <EvanCook isAdmin={canEditHome} />
+              <EvanCook isAdmin={canEditHome} authed={isFinanceAuthed} />
             </section>
           )}
           {/* Circuit stays mounted whenever the shared canvas is on, even on another page --

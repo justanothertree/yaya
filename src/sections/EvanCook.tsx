@@ -4,6 +4,7 @@
 // informational write-up. Résumé content folds in as About / Skills, with a PDF link.
 import { useEffect, useState, type ReactNode } from 'react'
 import { site } from '../config/site'
+import { TRY_THESE } from '../site/tryThese'
 import { IconGitHub, IconLinkedIn } from '../components/Icons'
 import { skills, type Project, type Shot } from './work'
 import { projectsFor } from '../site/homeContent'
@@ -469,7 +470,59 @@ function Work() {
   )
 }
 
-export function EvanCook({ isAdmin = false }: { isAdmin?: boolean } = {}) {
+/**
+ * Things you can go and do, right under the hero.
+ *
+ * ⚠️ THIS IS THE STRONGEST PORTFOLIO ITEM ON THE PAGE, not a concession to non-technical
+ * visitors, and it took a while to see that. The worry was that easing friends and family in
+ * would cheapen a professional landing page. It is the reverse: anybody hiring has seen a
+ * thousand screenshots and almost never "click this, it runs, right now, in this tab". Live
+ * things beat case studies at being a portfolio, and they happen to be exactly what an aunt
+ * needs too.
+ *
+ * ⚠️ ABOVE the About and Skills prose. It used to be hero → three sections of writing → project
+ * write-ups, so the first clickable thing on a site made of playable rooms was several screens
+ * down, and nothing anywhere said you could play a piano here.
+ */
+function HaveAGo({ authed }: { authed: boolean }) {
+  const items = TRY_THESE.filter((t) => !t.members || authed)
+  return (
+    <section className="have-a-go">
+      <h2 className="section-title" style={{ marginBottom: '0.2rem' }}>
+        Have a go
+      </h2>
+      <p className="muted" style={{ margin: '0 0 0.8rem', fontSize: '0.85rem' }}>
+        Everything here is live — nothing to install, nothing to sign up for.
+      </p>
+      <div className="hag-grid">
+        {items.map((t) => (
+          <a
+            key={t.id}
+            className="hag-card"
+            href={`#${t.id}`}
+            onClick={(e) => {
+              e.preventDefault()
+              window.location.hash = t.id
+            }}
+          >
+            <span className="hag-top">
+              <span aria-hidden className="hag-ic">
+                {t.icon}
+              </span>
+              <strong>{t.title}</strong>
+            </span>
+            <span className="muted hag-line">{t.line}</span>
+          </a>
+        ))}
+      </div>
+    </section>
+  )
+}
+
+export function EvanCook({
+  isAdmin = false,
+  authed = false,
+}: { isAdmin?: boolean; authed?: boolean } = {}) {
   /* ⚠️ Asked for here rather than at app start: this is the only page that needs it, and a fetch
      fired on every load of every section would be a request nobody reads. It is a no-op after the
      first call. */
@@ -491,6 +544,7 @@ export function EvanCook({ isAdmin = false }: { isAdmin?: boolean } = {}) {
         </div>
       )}
       <Hero />
+      <HaveAGo authed={authed} />
       <section className="grid grid-2" style={{ gap: '1rem' }}>
         <AboutCard />
         <SkillsCard />
