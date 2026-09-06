@@ -40,6 +40,9 @@ export type Tool =
   | 'crayon'
   | 'neon'
   | 'triangle'
+  | 'ember'
+  | 'vine'
+  | 'comet'
 
 export const TOOLS: Array<[Tool, string, string]> = [
   ['brush', '🖌', 'Brush'],
@@ -49,6 +52,9 @@ export const TOOLS: Array<[Tool, string, string]> = [
   ['ellipse', '◯', 'Ellipse'],
   ['fill', '🪣', 'Fill'],
   ['spray', '💨', 'Spray'],
+  ['ember', '🔥', 'Ember'],
+  ['vine', '🌿', 'Vine'],
+  ['comet', '☄', 'Comet'],
   ['marker', '🖍', 'Marker'],
   ['nib', '✒', 'Nib'],
   ['pencil', '✏', 'Pencil'],
@@ -445,6 +451,161 @@ function paintOne(ctx: CanvasRenderingContext2D, s: Stroke, w: number, h: number
         Math.PI * 2,
       )
       ctx.stroke()
+      break
+    }
+    /**
+     * Ember — sparks thrown off the line, each one flown forward under gravity and drag.
+     *
+     * ⚠️ SIMULATED, BUT NOT LIVE, and that distinction is the whole reason this fits here. Every
+     * spark's whole flight is integrated at DRAW time from its own index — launch angle, speed
+     * and lifetime all come out of noise(seed), and the loop below is the physics. So the result
+     * is a pure function of the points already in the stroke, which is what lets it survive
+     * everything the format promises: it saves as the same ~80 bytes, replays identically on a
+     * peer's screen, and comes back the same after undo.
+     *
+     * A brush that kept live particle state would break all three at once — there would be
+     * nothing to write to a file, nothing to send, and no way to redraw it.
+     */
+    case 'ember': {
+      const R = Math.max(1, s.w * short)
+      // a hair thinner than the brush, so a spark looks thrown off it rather than drawn beside it
+      ctx.lineWidth = Math.max(1, R * 0.35)
+      for (let i = 0; i + 1 < s.p.length; i += 2) {
+        const cx = X(i)
+        const cy = Y(i + 1)
+        // direction of travel, so sparks come off the line rather than out of a point
+        const dx = i + 3 < s.p.length ? X(i + 2) - cx : 0
+        const dy = i + 3 < s.p.length ? Y(i + 3) - cy : 0
+        const head = Math.atan2(dy, dx)
+        for (let k = 0; k < 3; k++) {
+          const seed = i * 5.17 + k * 2.39
+          const a = head + (noise(seed) - 0.5) * 2.2
+          /* ⚠️ 16R, not the 2.6R this shipped with first. Drag compounds over the eight steps
+             and the displacement is divided by them, so a spark launched at 2.6R travelled 2.5px
+             from a 3px brush — the whole effect rendered as a dotted line. Measured: 16R lands
+             each spark about five brush-widths out, which is what reads as a spark. */
+          const speed = (0.4 + noise(seed + 1.3)) * R * 16
+          const life = 0.35 + noise(seed + 2.9) * 0.65
+          let px = cx
+          let py = cy
+          let vx = Math.cos(a) * speed
+          let vy = Math.sin(a) * speed
+          /* ⚠️ eight steps, not eighty. This runs for every spark of every point of every
+             stroke on every repaint, and the difference between eight and eighty is invisible
+             on a 20px arc and very visible in a frame budget. */
+          const STEPS = 8
+          ctx.beginPath()
+          ctx.moveTo(px, py)
+          for (let n = 0; n < STEPS; n++) {
+            vy += R * 0.09 // gravity
+            vx *= 0.86 // drag
+            vy *= 0.86
+            px += (vx * life) / STEPS
+            py += (vy * life) / STEPS
+            ctx.lineTo(px, py)
+          }
+          if (rainbow) ctx.strokeStyle = wheel(((i / 2) * 8) / TURN)
+          ctx.globalAlpha = s.a * (0.25 + noise(seed + 4.1) * 0.5)
+          ctx.stroke()
+        }
+      }
+      ctx.globalAlpha = s.a
+      break
+    }
+    /**
+     * Vine — tendrils growing sideways off the line and curling as they go.
+     *
+     * ⚠️ Grown PERPENDICULAR to the direction of travel, which is what makes it follow the shape
+     * of what you drew rather than sprouting in a fixed direction. A tendril that always went
+     * "up" would look pasted on the moment you drew a vertical line.
+     *
+     * ⚠️ The curl accumulates along the tendril rather than being a fixed arc, so no two are the
+     * same shape and none of them read as a stamp — which is the failure mode of every decorative
+     * brush that repeats a motif.
+     */
+    case 'vine': {
+      const R = Math.max(1, s.w * short)
+      ctx.lineCap = 'round'
+      /**
+       * ⚠️ THE STEM FIRST, and it was missing. Drawing only the tendrils left a row of detached
+       * curls with nothing joining them — it read as scattered squiggles rather than as a vine,
+       * because a vine is a line that things grow OFF. Found by looking at it; the pixel counts
+       * were perfectly healthy.
+       */
+      ctx.lineWidth = Math.max(1, R * 0.6)
+      ctx.beginPath()
+      ctx.moveTo(X(0), Y(1))
+      for (let i = 2; i + 1 < s.p.length; i += 2) ctx.lineTo(X(i), Y(i + 1))
+      ctx.stroke()
+      ctx.lineWidth = Math.max(1, R * 0.5)
+      for (let i = 0; i + 1 < s.p.length; i += 4) {
+        const cx = X(i)
+        const cy = Y(i + 1)
+        const dx = i + 5 < s.p.length ? X(i + 4) - cx : 1
+        const dy = i + 5 < s.p.length ? Y(i + 5) - cy : 0
+        const head = Math.atan2(dy, dx)
+        for (const side of [-1, 1]) {
+          const seed = i * 3.91 + (side + 1) * 6.13
+          if (noise(seed) < 0.35) continue // not every point sprouts, or it reads as a comb
+          const len = (0.6 + noise(seed + 1.1) * 1.4) * R * 3.2
+          const curl = (noise(seed + 2.2) - 0.5) * 0.9
+          let a = head + side * (Math.PI / 2)
+          let px = cx
+          let py = cy
+          const SEGS = 6
+          ctx.beginPath()
+          ctx.moveTo(px, py)
+          for (let n = 0; n < SEGS; n++) {
+            a += curl
+            px += (Math.cos(a) * len) / SEGS
+            py += (Math.sin(a) * len) / SEGS
+            ctx.lineTo(px, py)
+          }
+          if (rainbow) ctx.strokeStyle = wheel(((i / 2) * 8) / TURN)
+          ctx.stroke()
+          // a leaf at the tip, so the tendril ends in something rather than stopping
+          ctx.beginPath()
+          ctx.ellipse(px, py, R * 0.55, R * 0.3, a, 0, Math.PI * 2)
+          ctx.fill()
+        }
+      }
+      break
+    }
+    /**
+     * Comet — a head, and a tail that lags behind where the line has been.
+     *
+     * ⚠️ The tail is drawn from EARLIER POINTS of the same stroke, not from a copy of it. That
+     * makes the trail follow the real path — it bends through the corners you actually drew,
+     * where an offset copy would cut them. It is also free: the points are already there.
+     *
+     * ⚠️ Widths taper along the tail rather than fading with s.a alone, because a trail that
+     * only fades reads as a blur and one that also narrows reads as motion.
+     */
+    case 'comet': {
+      const R = Math.max(1, s.w * short)
+      const TAIL = 10
+      ctx.lineCap = 'round'
+      for (let i = 0; i + 1 < s.p.length; i += 2) {
+        const cx = X(i)
+        const cy = Y(i + 1)
+        for (let n = 1; n <= TAIL; n++) {
+          const j = i - n * 2
+          if (j < 0) break
+          const t = 1 - n / TAIL
+          ctx.beginPath()
+          ctx.moveTo(X(j), Y(j + 1))
+          ctx.lineTo(cx, cy)
+          ctx.lineWidth = Math.max(0.4, R * t * 0.9)
+          if (rainbow) ctx.strokeStyle = wheel(((i / 2) * 8) / TURN)
+          ctx.globalAlpha = s.a * t * 0.22
+          ctx.stroke()
+        }
+        ctx.globalAlpha = s.a
+        ctx.beginPath()
+        ctx.arc(cx, cy, R * 0.5, 0, Math.PI * 2)
+        ctx.fill()
+      }
+      ctx.globalAlpha = s.a
       break
     }
     /**
