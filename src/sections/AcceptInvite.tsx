@@ -1,5 +1,20 @@
 import { useEffect, useState } from 'react'
 import { getSupabaseClient } from '../finance/client'
+import { site } from '../config/site'
+
+/**
+ * ⚠️ THE SENDER IS NAMED, not "your host".
+ *
+ * One person runs this site and personally sent you the link you are standing on; "ask your
+ * host" is a company hedging about which department to contact, on a page whose whole job is
+ * to feel like being let into somebody's house. `invite.label` is the INVITEE's name — it says
+ * "Hey Sam!" at the top — so the old `label ? 'whoever sent it' : 'your host'` was choosing
+ * between two vaguenesses on the strength of the wrong person's name.
+ *
+ * ⚠️ Revisit this if friends are ever able to invite their own friends: at that point the
+ * sender genuinely varies, and the honest fix is for get_invite_by_token to return who made
+ * it rather than for this copy to guess.
+ */
 
 function getTokenFromHash(): string | null {
   const qs = window.location.hash.split('?')[1] ?? ''
@@ -105,7 +120,7 @@ export function AcceptInvite() {
       <div>
         <h2 style={{ marginTop: 0 }}>Invalid invite</h2>
         <p className="muted">
-          No invite token in this link. Ask your host to send you a fresh invite link.
+          No invite token in this link. Ask {site.name} to send you a fresh one.
         </p>
       </div>
     )
@@ -117,7 +132,7 @@ export function AcceptInvite() {
       <div>
         <h2 style={{ marginTop: 0 }}>Invite not found</h2>
         <p className="muted">
-          This invite link is invalid or expired. Ask your host for a new one.
+          This invite link is invalid or expired. Ask {site.name} for a new one.
         </p>
       </div>
     )
@@ -129,8 +144,8 @@ export function AcceptInvite() {
       <div>
         <h2 style={{ marginTop: 0 }}>This invite has expired</h2>
         <p className="muted">
-          Invites don’t last forever. Ask {invite.label ? 'whoever sent it' : 'your host'} to reopen
-          it — the same link will start working again.
+          Invites don’t last forever. Ask {site.name} to reopen it — the same link will start
+          working again.
         </p>
       </div>
     )
@@ -149,7 +164,7 @@ export function AcceptInvite() {
           >
             Sign in
           </a>{' '}
-          or ask your host for a new link.
+          or ask {site.name} for a new link.
         </p>
       </div>
     )

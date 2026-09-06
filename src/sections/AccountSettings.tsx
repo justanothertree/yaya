@@ -10,6 +10,7 @@ import {
 import { previewMember, PREVIEW_ME, PREVIEW_GROUPS } from '../dev/previewMember'
 import { hasFinanceSupabaseEnv } from '../finance/env'
 import { getSupabaseClient } from '../finance/client'
+import { site } from '../config/site'
 import { VisibilityPicker } from '../components/VisibilityPicker'
 import type { VisibilityTier } from '../circuit/types'
 import { showToast } from '../circuit/toast'
@@ -227,10 +228,13 @@ function MemberProfileCard({ canFinance }: { canFinance: boolean }) {
           <p className="muted" style={{ margin: '0 0 0.5rem', fontSize: '0.78rem' }}>
             {/* ⚠️ "nobody else sees these" would be a lie, and it is the exact lie you must not
                 tell on a box asking for somebody's home address. profiles_select is
-                `user_id = auth.uid() OR is_admin()` — checked, not assumed. */}
+                `user_id = auth.uid() OR is_admin()` — checked, not assumed.
+                ⚠️ NAMED, not "whoever runs the site". One person runs this and everyone here
+                was invited by him; the coy version reads as a company hedging about which
+                department holds your address. It comes from site.name so it cannot drift. */}
             {canFinance
-              ? 'For the investments side — how a payout reaches you. Only you and whoever runs the site can see them.'
-              : 'Optional, and nothing on the site asks for them. Fill them in if you have been asked to share them directly. Only you and whoever runs the site can see them.'}
+              ? `For the investments side — how a payout reaches you. Only you and ${site.name} can see them.`
+              : `Optional, and nothing on the site asks for them. Fill them in if you have been asked to share them directly. Only you and ${site.name} can see them.`}
           </p>
           <div
             style={{
