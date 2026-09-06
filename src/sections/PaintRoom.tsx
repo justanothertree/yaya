@@ -22,6 +22,7 @@ import { gallery, removeArt, saveArt, subscribeGallery, type Art } from '../draw
 import { together } from '../party/together'
 import { drawParty } from '../party/draw'
 import { paintSession } from '../draw/session'
+import { AlsoTogether } from '../ui/AlsoTogether'
 import { useVoiceSession } from '../voice/useVoiceSession'
 
 /**
@@ -841,6 +842,12 @@ export function PaintRoom() {
        a height, and vh is the only sensible guess — but inside a window that guess ignored the
        window, so dragging the bottom edge made it wider and never taller. */
     <section className={'paint-wrap' + (inWindow ? ' is-inwindow' : '')}>
+      {!call.inCall && (
+        <AlsoTogether id="paint">
+          Anyone in a call with you can draw on this page at the same time — same picture, same
+          paper, live.
+        </AlsoTogether>
+      )}
       <div className="paint-bar">
         <div className="fx-style-row paint-tools">
           {TOOLS.map(([id, icon, label]) => (

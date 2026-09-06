@@ -38,6 +38,7 @@ import {
 import { remember } from '../audio/capture'
 import { sharedCtx } from '../audio/context'
 import { InstrumentScope } from '../audio/InstrumentScope'
+import { AlsoTogether } from '../ui/AlsoTogether'
 import { together } from '../party/together'
 import { jam } from '../party/jam'
 import { hueFor } from '../party/party'
@@ -606,6 +607,12 @@ export function InstrumentRoom() {
           the site. This is not the visualiser and does not try to be: it answers "what does this
           patch actually do", which the decorative modes never could. */}
       <InstrumentScope />
+      {!call.inCall && (
+        <AlsoTogether id="instrument">
+          Everyone in a call hears what you play, and you all share one metronome — so you can
+          actually play together rather than take turns.
+        </AlsoTogether>
+      )}
       <div className="inst-bar">
         <div className="fx-style-row inst-picks">
           {INSTRUMENTS.map(([id, icon, name]) => (
