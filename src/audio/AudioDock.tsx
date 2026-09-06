@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { musicEl, musicName, sharedOn, stopMusic, stopShared, onMusicChange } from './musicSource'
 import { onMixerChange, setVolume, volume } from './mixer'
 import { songPlayerState, stopSong, subscribeSongPlayer } from './songPlayer'
+import { liveVoices, stopLive } from './synth'
 
 /**
  * What is playing, wherever you are on the site.
@@ -28,6 +29,34 @@ export function AudioDock({ onOpen }: { onOpen: () => void }) {
    */
   const song = useSyncExternalStore(subscribeSongPlayer, songPlayerState, songPlayerState)
   const [instVol, setInstVol] = useState(() => volume('instrument'))
+
+  /**
+   * Whether the synth is making sound right now — your hands on the keys, not a file or a song.
+   *
+   * ⚠️ THE THIRD WAY THIS SITE MAKES NOISE, and the dock counted the other two. It watched the
+   * <audio> element, the shared tab and the song player, so while you were actually playing the
+   * instrument there was no dock at all — and therefore no volume anywhere except the slider
+   * inside the instrument room, which is no help the moment you have wandered to another page
+   * with the sound still going.
+   *
+   * ⚠️ POLLED, because there is no subscription to hang on it. voices is a Map inside the synth
+   * mutated on every note on and off; giving it a listener means every keypress in a fast run
+   * notifying React. Twice a second is imperceptible for "is a dock on screen" and costs a Map
+   * size read.
+   *
+   * ⚠️ AND IT LINGERS. Held for a few seconds past the last note, because voices hits zero
+   * between every two notes you play — without the tail the dock would strobe in and out through
+   * an entire tune, which is worse than not being there.
+   */
+  const [hands, setHands] = useState(false)
+  useEffect(() => {
+    let until = 0
+    const id = window.setInterval(() => {
+      if (liveVoices() > 0) until = Date.now() + 6000
+      setHands(Date.now() < until)
+    }, 500)
+    return () => window.clearInterval(id)
+  }, [])
 
   /**
    * ⚠️ WHERE THE DOCK SITS, if somebody has moved it. It is fixed above the mobile bar by
@@ -131,7 +160,9 @@ export function AudioDock({ onOpen }: { onOpen: () => void }) {
   const track = musicName()
   const sharing = sharedOn()
   const playingSong = song.playing != null
-  if (!track && !sharing && !playingSong) return null
+  /* ⚠️ Playing the keys IS something playing, and it was the one way this site makes noise that
+     the dock did not count. See the note on `hands` above. */
+  if (!track && !sharing && !playingSong && !hands) return null
 
   /**
    * ⚠️ The SONG takes the dock when one is playing, because it is the thing the visitor
@@ -169,6 +200,49 @@ export function AudioDock({ onOpen }: { onOpen: () => void }) {
           }}
           aria-label="Song volume"
           title={`Volume ${Math.round(instVol * 100)}%`}
+        />
+      </div>
+    )
+
+  /**
+   * ⚠️ Your hands get their own dock, because the general one below is about a TRACK. Falling
+   * through to it would have labelled the instrument "Tab audio" and handed you the music
+   * channel's volume — a slider that moves and changes nothing you can hear.
+   *
+   * The stop button is `stopLive`, which is the genuinely useful handle here: the one thing that
+   * can go wrong while playing is a note left ringing, and until now silencing it meant finding
+   * your way back to the instrument room.
+   */
+  if (hands && !track && !sharing && !playingSong)
+    return (
+      <div {...dockProps} role="status" aria-live="polite">
+        {handle}
+        <span className="audio-dock-name" aria-label="You are playing the instrument">
+          <span aria-hidden>🎹</span>
+          <span className="audio-dock-title">You&apos;re playing</span>
+        </span>
+        <button
+          className="btn audio-dock-btn"
+          onClick={() => stopLive()}
+          aria-label="Silence anything still ringing"
+          title="Silence anything still ringing"
+        >
+          ⏹
+        </button>
+        <input
+          className="audio-dock-vol"
+          type="range"
+          min={0}
+          max={1}
+          step={0.01}
+          value={instVol}
+          onChange={(e) => {
+            const v = Number(e.target.value)
+            setInstVol(v)
+            setVolume('instrument', v)
+          }}
+          aria-label="Instrument volume"
+          title={`Instrument volume ${Math.round(instVol * 100)}%`}
         />
       </div>
     )
