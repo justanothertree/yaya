@@ -4220,6 +4220,14 @@ select {
   background: var(--control-bg);
 }
 
+/* the length coach under an editor field — advice, so it must never look like an error */
+.home-fit {
+  font-size: 0.72rem;
+  line-height: 1.35;
+  display: block;
+  margin-top: 2px;
+}
+
 /* ─ have a go ───────────────────────
    The invitation band under the hero. Cards rather than a list because each one has to carry a
    sentence, and the sentence is what makes it usable by somebody who does not know what a

@@ -28,6 +28,33 @@ import { homeStore, previewHome, saveHome } from './homeStore'
 
 const MAX_PARAGRAPHS = 8
 
+/**
+ * How long this wants to be, said out loud.
+ *
+ * ⚠️ THE OLD FIELDS ONLY HAD maxLength, AND THAT IS WHY THE COPY GREW. A three-row box that
+ * accepts two thousand characters is not neutral — it argues for length, and the hard cap is so
+ * far away it never once told anybody they had written too much. The home blurb drifted into an
+ * eleven-noun inventory with nothing on screen to push back.
+ *
+ * ⚠️ It never blocks and never truncates. `maxLength` is still the only hard limit; this is a
+ * second opinion, and a sentence somebody wants at 240 characters is their business. Going over
+ * changes the colour and nothing else.
+ */
+function Fit({ value, best, what }: { value: string; best: number; what: string }) {
+  const n = value.trim().length
+  const over = n > best
+  return (
+    <span
+      className="muted home-fit"
+      style={over ? { color: 'var(--warn, #d08a2a)' } : undefined}
+      aria-live="off"
+    >
+      {what} · {n}/{best}
+      {over ? ' — long' : ''}
+    </span>
+  )
+}
+
 export function HomeEditor({ onClose }: { onClose?: () => void } = {}) {
   const published = homeStore.getState().published
   const missing = homeStore.getState().missing
@@ -128,6 +155,11 @@ export function HomeEditor({ onClose }: { onClose?: () => void } = {}) {
           maxLength={200}
           onChange={(e) => setHero({ heading: e.target.value })}
         />
+        <Fit
+          value={draft.hero.heading}
+          best={64}
+          what="One line — who you are, not what you built"
+        />
       </label>
       <label className="home-field">
         <span className="muted">Underneath it</span>
@@ -136,6 +168,11 @@ export function HomeEditor({ onClose }: { onClose?: () => void } = {}) {
           value={draft.hero.blurb}
           maxLength={2000}
           onChange={(e) => setHero({ blurb: e.target.value })}
+        />
+        <Fit
+          value={draft.hero.blurb}
+          best={180}
+          what="Two sentences. The rooms introduce themselves below, so no need to list them"
         />
       </label>
 
@@ -160,6 +197,7 @@ export function HomeEditor({ onClose }: { onClose?: () => void } = {}) {
               })
             }
           />
+          <Fit value={text} best={320} what="A short paragraph" />
           {/* a grid cell stretches its child, and a destructive action does not want the full
               width of the panel */}
           <button
