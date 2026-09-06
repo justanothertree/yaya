@@ -160,6 +160,21 @@ export function PaintRoom() {
    * would mean two pictures that only look like one, and a save that quietly dropped half of what
    * is on screen.
    */
+  /**
+   * Start again: no strokes, no selection, nothing to redo — and plain paper.
+   *
+   * ⚠️ THE PAPER IS PART OF THE PICTURE. Clearing used to empty the strokes and leave whatever
+   * colour you had painted the background, so "clear the whole picture" handed you a picture
+   * that was still visibly the old one. If the paper is not a mark, it is not a mark you can
+   * take back either — which is precisely why bg travels over drawParty as its own message.
+   */
+  const wipe = useCallback(() => {
+    setUndone([])
+    setSel([])
+    setStrokes([])
+    setBg(null)
+  }, [])
+
   useEffect(() => drawParty.start(), [])
   useEffect(() => {
     drawParty.setHandler((s) => setStrokes((prev) => [...prev, s]))
@@ -169,11 +184,14 @@ export function PaintRoom() {
       setStrokes((prev) => prev.filter((k) => k.id !== id))
     })
     drawParty.setPaperHandler((c) => setBg(c))
+    drawParty.setClearHandler(() => wipe())
     return () => {
       drawParty.setHandler(null)
       drawParty.setUndoHandler(null)
       drawParty.setPaperHandler(null)
+      drawParty.setClearHandler(null)
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
   useEffect(() => () => drawParty.setOn(false), [])
   /* ⚠️ re-applied on arrival, for the same reason as the instrument room: leaving turns sharing
@@ -1162,12 +1180,19 @@ export function PaintRoom() {
         </button>
         <button
           className="btn"
-          disabled={!strokes.length}
+          /* ⚠️ the paper counts. Clear resets the background too now, so a page with a colour on
+             it and nothing drawn is still a page with something to clear — gating on strokes
+             alone left the one case the fix was reported for unreachable. */
+          disabled={!strokes.length && !bg}
           onClick={() => {
-            if (window.confirm('Clear the whole picture?')) {
-              setUndone([])
-              setSel([])
-              setStrokes([])
+            /* ⚠️ the question names the audience, because the answer changes what it does: while
+               drawing together this clears everybody's page, not just yours */
+            const q = party.on
+              ? 'Clear the whole picture for everyone drawing?'
+              : 'Clear the whole picture?'
+            if (window.confirm(q)) {
+              wipe()
+              drawParty.clear()
             }
           }}
         >

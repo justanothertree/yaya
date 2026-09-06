@@ -52,6 +52,7 @@ let seq = 0
 let onRemote: ((s: Stroke, from: string) => void) | null = null
 let onUndo: ((id: string) => void) | null = null
 let onPaper: ((bg: string | null) => void) | null = null
+let onClear: (() => void) | null = null
 let detach: Array<() => void> = []
 
 export const drawParty = {
@@ -72,6 +73,9 @@ export const drawParty = {
   },
   setPaperHandler(fn: ((bg: string | null) => void) | null) {
     onPaper = fn
+  },
+  setClearHandler(fn: (() => void) | null) {
+    onClear = fn
   },
 
   setOn(on: boolean) {
@@ -121,6 +125,25 @@ export const drawParty = {
     sendParty('art', { bg: bg ?? 0 })
   },
 
+  /**
+   * Start again — everybody.
+   *
+   * ⚠️ CLEARING WAS PRIVATE, and it was the worst kind of private. Undo already travelled and
+   * paper already travelled, but "✕ Clear" only emptied your own array: you got a blank page,
+   * everyone else kept the drawing, and from that moment the two pictures disagreed about
+   * everything with nothing on screen to say so. You would carry on drawing into what you
+   * thought was empty space.
+   *
+   * ⚠️ Not expressible as strokes. The module's whole premise is that strokes never conflict —
+   * paint lands on paint — which is why there is no conflict resolution here. A clear is the
+   * opposite kind of event: it is about the document rather than a mark on it, and it is exactly
+   * why `undo`, `paper` and now this are separate messages rather than clever strokes.
+   */
+  clear() {
+    if (!state.on) return
+    sendParty('art', { clear: true })
+  },
+
   start() {
     if (detach.length) return () => {}
     const off = onParty((m) => {
@@ -131,6 +154,12 @@ export const drawParty = {
         leave?: unknown
         undo?: unknown
         bg?: unknown
+        clear?: unknown
+      }
+      if (b?.clear === true) {
+        if (!allowed(m.from)) return
+        onClear?.()
+        return
       }
       if (typeof b?.undo === 'number') {
         if (!allowed(m.from)) return
