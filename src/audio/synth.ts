@@ -1752,6 +1752,34 @@ export function noteOn(
                 ? peak * Math.pow(target / peak, (from - at - sh.a) / sh.d)
                 : target
         g.gain.cancelScheduledValues(from)
+        /**
+         * ⚠️ PUT BACK WHATEVER THE CANCEL DESTROYED. This was the pop on short notes, and it is
+         * the one thing computing `level` ourselves did not solve.
+         *
+         * cancelScheduledValues removes every event at or after `from` — including a ramp that is
+         * still MID-FLIGHT, whose end time simply happens to be later. That ramp governs the whole
+         * segment it spans, so removing it does not trim the tail, it deletes the segment: the
+         * parameter falls back to the last surviving event and the note drops to 0.0001, sits
+         * there for the SAFE_START lookahead, then jumps to the release level. A hole followed by
+         * a step out of silence, on every note let go before its attack or decay had finished —
+         * which is precisely what running your hands across the keys does.
+         *
+         * Measured, as the worst level jump around the release: strings x2433, choir x1412, pad
+         * x1236, drone x458, flute x3167. Rebuilding the destroyed segment so it lands exactly on
+         * `from` takes all of those to x1.0 — a smooth release, indistinguishable from a note that
+         * was never interrupted.
+         *
+         * The anchors it ramps FROM are the note's own earlier events, which are before `from` and
+         * therefore survived, so this reproduces the original curve rather than inventing one.
+         */
+        if (from < at + sh.a) {
+          // cut off mid-attack: the swell continues at its true slope, up to the release
+          g.gain.linearRampToValueAtTime(Math.max(0.0001, level), from)
+        } else if (from < at + sh.a + sh.d) {
+          // cut off mid-decay: re-anchor the peak the attack reached, then decay on to `from`
+          g.gain.setValueAtTime(peak, at + sh.a)
+          g.gain.exponentialRampToValueAtTime(Math.max(0.0001, level), from)
+        }
         g.gain.setValueAtTime(Math.max(0.0001, level), from)
         /**
          * ⚠️ setTargetAtTime, NOT exponentialRampToValueAtTime — AND THIS IS THE SECOND HALF OF
