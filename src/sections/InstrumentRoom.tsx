@@ -266,7 +266,7 @@ function AudioHealthStrip() {
     <div className="inst-health" style={bad ? { color: '#f46b6b' } : undefined}>
       <div>
         <strong>{h.worst === 'clean' ? 'clean' : h.worst}</strong> · late {h.driftMs}ms · clip{' '}
-        {h.clippedTotal} · squash {h.reductionWorst}dB · peak max {h.peakMax}
+        {h.clippedTotal} · squash {h.reductionWorst}dB · in {h.preMax} · out {h.peakMax}
         <button
           className="btn"
           onClick={() => {

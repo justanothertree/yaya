@@ -692,6 +692,8 @@ type Bus = {
 let fxOut: GainNode | null = null
 /** the last node before the fork — fxOut through the limiter. See ensure(). */
 let peak: AudioNode | null = null
+/** the signal as it arrives at the limiter, before anything is taken off it */
+let preAnalyser: AnalyserNode | null = null
 let verbBuf: AudioBuffer | null = null
 /**
  * POLYPHONY SCALING — how loud one voice is allowed to be, given how many are sounding.
@@ -725,10 +727,67 @@ let verbBuf: AudioBuffer | null = null
  */
 const POLY_DOWN = 0.012
 const POLY_UP = 0.35
+/**
+ * The level the limiter starts working at: -3dBFS, matching its threshold, with a little margin.
+ *
+ * ⚠️ THE CRACKLE WAS INTERMODULATION FROM THE LIMITER, proved rather than guessed. A capture of
+ * the fault contained spectral lines at 73.2, 120.1, 155.3 and 193.4Hz — the exact arithmetic
+ * DIFFERENCES between the notes being played. Linear mixing of sines cannot produce those; only a
+ * nonlinearity can. Reproduced offline with the same nine notes: through the limiter they sit at
+ * -59 to -64dB, and with it bypassed, or with the signal merely kept under threshold, they are at
+ * -180dB, which is numerical zero.
+ *
+ * That is why it needed a pure tone to hear. IMD products are discrete lines, not noise, so they
+ * have nothing to hide behind on a sine and vanish inside the harmonics of a rich patch.
+ *
+ * ⚠️ No limiter setting fixes it. Softer knees and slower attacks do lower the IMD, but only by
+ * letting the peak through — measured, a 40dB knee drops distortion 39dB and raises the output
+ * peak to 2.55, which hard-clips at the converter and is worse. The input has to come down.
+ */
+const LIMIT_AT = 0.7
 
-/** The gain one voice should have right now. Never above 1 — this only ever takes away. */
+/**
+ * Everything still making sound, as the sum of the levels it peaks at.
+ *
+ * ⚠️ NOT A VOICE COUNT, for two reasons this investigation turned up.
+ *
+ * First, noteOff DELETES a voice while its release is still ringing, so counting the map missed
+ * every tail. That is the whole "organ pops on one voice" report: spamming a key retriggers, the
+ * map holds one, and five or six tails are still sounding and still summing. The strip said
+ * `voices 1` and was telling the truth about the wrong thing.
+ *
+ * Second, a count cannot tell a whistle from an organ. Summing the LEVELS makes a mixed
+ * arrangement come out right, and lets the rule below be exact rather than a guess.
+ */
+type Ringing = { until: number; level: number }
+const ringing: Ringing[] = []
+
+function soundingLevel(): number {
+  const now = ctx ? ctx.currentTime : 0
+  for (let i = ringing.length - 1; i >= 0; i--) {
+    if (ringing[i].until <= now) ringing.splice(i, 1)
+  }
+  let sum = 0
+  for (const r of ringing) sum += r.level
+  return sum
+}
+
+/**
+ * The gain one voice should have right now. Never above 1 — this only ever takes away.
+ *
+ * ⚠️ TAKES AWAY ONLY WHAT IS NECESSARY, which is the whole difference from the 1/sqrt(n) version
+ * this replaces. sqrt reduced from the second note onward whether or not anything was close to
+ * distorting, which cost 2.7dB on fast passages and made the instrument feel muted for no benefit
+ * — a real complaint, and a fair one. This holds the sum at the limiter threshold and otherwise
+ * does nothing at all: one note and two notes are now at FULL level, where sqrt had already taken
+ * 3dB off the pair.
+ *
+ * It is also exactly enough. At the threshold the limiter measures zero intermodulation, so this
+ * is the loudest the instrument can be while producing none.
+ */
 function polyTarget(): number {
-  return 1 / Math.sqrt(Math.max(1, voices.size))
+  const sum = soundingLevel()
+  return sum <= LIMIT_AT ? 1 : LIMIT_AT / sum
 }
 
 /**
@@ -1134,6 +1193,15 @@ function ensure(): AudioContext {
   limiter.release.value = 0.12
   fxOut.connect(limiter)
   peak = limiter
+  /**
+   * ⚠️ A SECOND ANALYSER, BEFORE THE LIMITER, because every level the strip showed was measured
+   * AFTER it. A post-limiter peak of 0.219 is compatible with 3.0 going in — the limiter's whole
+   * job is to make those look the same — so "peak max" could never reveal an overdriven mix. This
+   * is the number that decides whether the limiter has to work at all.
+   */
+  preAnalyser = ctx.createAnalyser()
+  preAnalyser.fftSize = 2048
+  fxOut.connect(preAnalyser)
 
   out = makeGain(ctx, 'instrument')
   // the fork: full signal to the analyser and the room, attenuated signal to your speakers
@@ -1544,7 +1612,15 @@ export function noteOn(
     }
   }
 
+  /* held: rings until something stops it. stop() pins a real end time on this same entry, so a
+     note is counted once — while held, and then for exactly as long as its tail lasts. */
+  const mine: Ringing = { until: Infinity, level: sh.level }
+  ringing.push(mine)
+
   const ends = sh.s > 0 ? Infinity : at + sh.a + sh.d + sh.r
+  /* ⚠️ a one-shot returns early from stop(), so nothing there would ever close its entry —
+     bell rings for over two seconds and would have held the headroom down for ever. */
+  if (sh.s <= 0) mine.until = ends
   const voice: Voice = {
     ends,
     stop(t: number, force = false) {
@@ -1562,6 +1638,9 @@ export function noteOn(
        */
       if (sh.s <= 0 && !force) return
       const from = Math.max(t, c.currentTime + SAFE_START)
+      /* the tail is still audible after noteOff drops the voice — keep it in the sum until it
+         has actually decayed, which is what the map could never express */
+      mine.until = from + sh.r
       try {
         /**
          * ⚠️ THIS WAS THE POP, and it got worse the more the sequencer was used.
@@ -1724,6 +1803,7 @@ export function allNotesOff() {
   if (!c) return
   for (const [, v] of voices) v.stop(c.currentTime + SAFE_START, true)
   voices.clear()
+  ringing.length = 0
   applyPoly(c)
 }
 
@@ -1756,6 +1836,26 @@ export function outputTap(): AudioNode | null {
   return peak
 }
 
+/**
+ * Loudest sample arriving at the limiter since the last call, 0..n — CAN exceed 1.
+ *
+ * Reads the pre-limiter analyser, so unlike every other level in the strip this one says how hot
+ * the mix actually is. Above about 0.708 (-3dBFS) the limiter starts working, and a limiter
+ * working on near-sine patches is what the crackle turned out to be.
+ */
+let preScratch: Float32Array<ArrayBuffer> | null = null
+export function preLimitPeak(): number {
+  if (!preAnalyser) return 0
+  if (!preScratch) preScratch = new Float32Array(preAnalyser.fftSize)
+  preAnalyser.getFloatTimeDomainData(preScratch)
+  let m = 0
+  for (let i = 0; i < preScratch.length; i++) {
+    const v = Math.abs(preScratch[i])
+    if (v > m) m = v
+  }
+  return m
+}
+
 export function synthReady(): boolean {
   return ctx != null
 }
@@ -1784,6 +1884,8 @@ export function closeSynth() {
   buses.clear()
   out = null
   analyser = null
+  preAnalyser = null
+  preScratch = null
   noise = null
   // ⚠️ the impulse goes too. It belongs to the AudioContext that made it, and a buffer from a
   // closed context assigned to a new convolver is a silent reverb rather than an error.

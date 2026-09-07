@@ -1,6 +1,6 @@
 import { sharedCtx } from './context'
 import { readWaveform } from './audioTap'
-import { limiterReduction, liveVoices, noteCounts, resetNoteCounts } from './synth'
+import { limiterReduction, liveVoices, noteCounts, preLimitPeak, resetNoteCounts } from './synth'
 
 /**
  * Is the sound actually broken, and in which of the two ways?
@@ -50,6 +50,8 @@ export type AudioHealth = {
   peakMax: number
   /** ms the audio clock has fallen behind the wall clock since the strip started — real dropouts */
   driftMs: number
+  /** loudest sample ARRIVING at the limiter — can exceed 1, and the only honest level here */
+  preMax: number
   /** dB the limiter is pulling off right now — 0 is idle, negative is working */
   reduction: number
   /** the most it has pulled off since the strip started */
@@ -74,6 +76,15 @@ let reductionWorst = 0
  * regardless. Sample both at the same instant and the difference is real lost audio — and it is
  * immune to main-thread jank, because being late to read affects both numbers equally.
  */
+/**
+ * ⚠️ SAMPLED FAST, NOT ONCE A SECOND, and that alone is why the strip read "squash 0dB" on
+ * patches that were audibly crackling. readHealth is polled at 1Hz, so it saw the limiter at one
+ * instant per second and missed everything in between — and limiting on a note lasts tens of
+ * milliseconds. A latched worst is only worth having if the thing doing the latching looks often
+ * enough to catch what it is latching.
+ */
+let fastTimer = 0
+let preMax = 0
 let lastWall = 0
 let lastAudio = 0
 let driftWorst = 0
@@ -150,6 +161,13 @@ export async function startHealth(): Promise<boolean> {
     const mute = ctx.createGain()
     mute.gain.value = 0
     node.connect(mute).connect(ctx.destination)
+    /* 20Hz: often enough to catch a note's worth of limiting, far too cheap to notice */
+    fastTimer = window.setInterval(() => {
+      const p = preLimitPeak()
+      if (p > preMax) preMax = p
+      const r = limiterReduction()
+      if (p > 0.02 && r < reductionWorst) reductionWorst = r
+    }, 50)
     node.port.onmessage = (e: MessageEvent) => {
       const d = e.data as { n: number; elapsed: number; gaps: number }
       const should = Math.round((d.elapsed * ctx.sampleRate) / 128)
@@ -171,12 +189,17 @@ export function resetHealth() {
   peakMax = 0
   reductionWorst = 0
   driftWorst = 0
+  preMax = 0
   lastWall = 0
   lastAudio = 0
   resetNoteCounts()
 }
 
 export function stopHealth() {
+  if (fastTimer) {
+    window.clearInterval(fastTimer)
+    fastTimer = 0
+  }
   try {
     node?.disconnect()
   } catch {
@@ -215,8 +238,8 @@ export function readHealth(): AudioHealth {
    * unguarded would light up LIMITING on a silent page before a note was played — the same
    * "meter that always says something" failure as the clip counter that could never fire.
    */
+  /* the 20Hz sampler above does the latching; this is only for the "now" line */
   const reduction = limiterReduction()
-  if (peak > 0.02 && reduction < reductionWorst) reductionWorst = reduction
 
   /* both clocks read at the same instant, so lateness cancels and only lost audio remains */
   const wall = performance.now()
@@ -242,6 +265,7 @@ export function readHealth(): AudioHealth {
     clippedTotal,
     peakMax: +peakMax.toFixed(3),
     driftMs: Math.round(driftWorst),
+    preMax: +preMax.toFixed(3),
     reduction: +reduction.toFixed(1),
     reductionWorst: +reductionWorst.toFixed(1),
     /* ⚠️ LIMITING ranks below the other two but above clean, because it is the one that was
