@@ -48,6 +48,8 @@ export type AudioHealth = {
   droppedTotal: number
   clippedTotal: number
   peakMax: number
+  /** ms the audio clock has fallen behind the wall clock since the strip started — real dropouts */
+  driftMs: number
   /** dB the limiter is pulling off right now — 0 is idle, negative is working */
   reduction: number
   /** the most it has pulled off since the strip started */
@@ -57,6 +59,26 @@ export type AudioHealth = {
 }
 
 let reductionWorst = 0
+/**
+ * The audio clock against the wall clock — the only pair that diverges when the thread stalls.
+ *
+ * ⚠️ THE WORKLET'S OWN DROPOUT COUNTER COULD NEVER FIRE, and this replaces it. It measured
+ * `elapsed` as `currentTime - t0`, but `currentTime` inside a worklet advances by exactly one
+ * quantum BECAUSE process() ran — so `elapsed * sampleRate / 128` was always precisely the number
+ * of quanta counted, and `expected - counted` was always zero. It was checking the counter against
+ * itself. `gaps` had the same defect: `dt` is exactly 128/sampleRate every call, so a test for
+ * `dt > 1.5 quanta` can never be true. Two detectors, both structurally silent, which is why the
+ * strip has always read "late 0" through audible trouble.
+ *
+ * ctx.currentTime only advances when audio is actually rendered. performance.now() advances
+ * regardless. Sample both at the same instant and the difference is real lost audio — and it is
+ * immune to main-thread jank, because being late to read affects both numbers equally.
+ */
+let lastWall = 0
+let lastAudio = 0
+let driftWorst = 0
+/** Quantisation on currentTime is a few ms; below this is measurement noise, not a dropout. */
+const DRIFT_FLOOR_MS = 15
 let node: AudioWorkletNode | null = null
 let expectedFrom = 0
 let counted = 0
@@ -148,6 +170,9 @@ export function resetHealth() {
   clippedTotal = 0
   peakMax = 0
   reductionWorst = 0
+  driftWorst = 0
+  lastWall = 0
+  lastAudio = 0
   resetNoteCounts()
 }
 
@@ -192,6 +217,16 @@ export function readHealth(): AudioHealth {
    */
   const reduction = limiterReduction()
   if (peak > 0.02 && reduction < reductionWorst) reductionWorst = reduction
+
+  /* both clocks read at the same instant, so lateness cancels and only lost audio remains */
+  const wall = performance.now()
+  const audio = ctx.currentTime
+  if (lastWall && ctx.state === 'running') {
+    const behind = wall - lastWall - (audio - lastAudio) * 1000
+    if (behind > DRIFT_FLOOR_MS) driftWorst += behind
+  }
+  lastWall = wall
+  lastAudio = audio
   const out: AudioHealth = {
     bufferMs: +(ctx.baseLatency * 1000).toFixed(1),
     bufferFrames: Math.round(ctx.baseLatency * ctx.sampleRate),
@@ -206,6 +241,7 @@ export function readHealth(): AudioHealth {
     droppedTotal,
     clippedTotal,
     peakMax: +peakMax.toFixed(3),
+    driftMs: Math.round(driftWorst),
     reduction: +reduction.toFixed(1),
     reductionWorst: +reductionWorst.toFixed(1),
     /* ⚠️ LIMITING ranks below the other two but above clean, because it is the one that was
@@ -215,7 +251,7 @@ export function readHealth(): AudioHealth {
     worst:
       clippedTotal > 0
         ? 'CLIPPING'
-        : droppedTotal > 0
+        : droppedTotal > 0 || driftWorst > DRIFT_FLOOR_MS
           ? 'DROPOUTS'
           : reductionWorst <= -3
             ? 'LIMITING'
