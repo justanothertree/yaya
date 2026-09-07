@@ -759,16 +759,54 @@ const LIMIT_AT = 0.7
  * Second, a count cannot tell a whistle from an organ. Summing the LEVELS makes a mixed
  * arrangement come out right, and lets the rule below be exact rather than a guess.
  */
-type Ringing = { until: number; level: number }
+type Ringing = {
+  at: number
+  a: number
+  d: number
+  /** the level this voice peaks at */
+  peak: number
+  /** absolute sustain level, and the floor a one-shot decays to */
+  target: number
+  /** release time constant, once released */
+  tau: number
+  /** ctx time the release began; Infinity while the key is still down */
+  off: number
+  /** when it stops mattering and the entry can go */
+  until: number
+}
 const ringing: Ringing[] = []
+
+/**
+ * How loud this voice is RIGHT NOW, not how loud it peaks.
+ *
+ * ⚠️ COUNTING THE PEAK MADE BELL DUCK ITSELF INTO SILENCE. Bell is a one-shot: d 2.4s, r 1.4s,
+ * sustain zero. Its entry therefore lived for 3.8 seconds, and the first version counted its full
+ * 0.4 the whole time — so four bell notes summed to 1.6 and pulled the instrument down to 0.44,
+ * on the strength of level that had decayed away almost a second earlier. Every decaying patch
+ * was over-counted; bell just has the longest tail and the highest peak, so it was worst.
+ *
+ * This is the same arithmetic the release code already does, and for the same stated reason: the
+ * envelope is segments we scheduled ourselves from numbers we still hold, so its value at any
+ * instant is arithmetic rather than something to ask the engine for.
+ */
+function levelAt(r: Ringing, now: number): number {
+  if (now <= r.at) return 0
+  let v: number
+  if (now < r.at + r.a) v = r.peak * ((now - r.at) / r.a)
+  else if (now < r.at + r.a + r.d)
+    v = r.peak * Math.pow(r.target / r.peak, (now - r.at - r.a) / r.d)
+  else v = r.target
+  if (now > r.off) v *= Math.exp(-(now - r.off) / r.tau)
+  return v
+}
 
 function soundingLevel(): number {
   const now = ctx ? ctx.currentTime : 0
+  let sum = 0
   for (let i = ringing.length - 1; i >= 0; i--) {
     if (ringing[i].until <= now) ringing.splice(i, 1)
+    else sum += levelAt(ringing[i], now)
   }
-  let sum = 0
-  for (const r of ringing) sum += r.level
   return sum
 }
 
@@ -796,9 +834,32 @@ function polyTarget(): number {
  * Called after the voice map changes. Cheap enough to be unconditional: it is one setTargetAtTime
  * per live bus, and there are at most MAX_BUSES of them.
  */
+let polyTick = 0
+/**
+ * Keep re-evaluating while anything is still ringing.
+ *
+ * ⚠️ Note events alone are not enough now that the sum follows the envelopes. Without this the
+ * gain would freeze at whatever the last keypress computed and only recover on the next one — so
+ * a big chord would hand its headroom back late, and the last note of a phrase would stay ducked
+ * until you played again. Runs only while something is sounding, and stops itself.
+ */
+function polyPulse() {
+  if (polyTick) return
+  polyTick = window.setInterval(() => {
+    if (!ringing.length || !ctx) {
+      window.clearInterval(polyTick)
+      polyTick = 0
+      if (ctx) applyPoly(ctx)
+      return
+    }
+    applyPoly(ctx)
+  }, 60)
+}
+
 function applyPoly(c: AudioContext) {
   const t = polyTarget()
   const now = c.currentTime
+  if (ringing.length) polyPulse()
   for (const b of buses.values()) {
     const g = b.in.gain
     /* ⚠️ Reading .value is safe HERE and would not be a line later. The file's release code has
@@ -1614,7 +1675,16 @@ export function noteOn(
 
   /* held: rings until something stops it. stop() pins a real end time on this same entry, so a
      note is counted once — while held, and then for exactly as long as its tail lasts. */
-  const mine: Ringing = { until: Infinity, level: sh.level }
+  const mine: Ringing = {
+    at,
+    a: sh.a,
+    d: sh.d,
+    peak: sh.level,
+    target: Math.max(0.0001, sh.level * sh.s || 0.0001),
+    tau: Math.max(0.005, sh.r / 5),
+    off: Infinity,
+    until: Infinity,
+  }
   ringing.push(mine)
 
   const ends = sh.s > 0 ? Infinity : at + sh.a + sh.d + sh.r
@@ -1640,7 +1710,8 @@ export function noteOn(
       const from = Math.max(t, c.currentTime + SAFE_START)
       /* the tail is still audible after noteOff drops the voice — keep it in the sum until it
          has actually decayed, which is what the map could never express */
-      mine.until = from + sh.r
+      mine.off = from
+      mine.until = from + sh.r + 0.02
       try {
         /**
          * ⚠️ THIS WAS THE POP, and it got worse the more the sequencer was used.
