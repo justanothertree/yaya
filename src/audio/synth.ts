@@ -1727,6 +1727,27 @@ export function allNotesOff() {
   applyPoly(c)
 }
 
+/**
+ * How hard the limiter is working right now, in dB. 0 is not at all; -6 means it is pulling the
+ * signal down by six decibels at this instant.
+ *
+ * ⚠️ THIS IS THE NUMBER THE HEALTH STRIP WAS MISSING, and its absence is why the strip always
+ * read clean while the instrument audibly crackled. That strip taps the analyser POST-limiter and
+ * counts samples at or above 0.985 — but keeping the signal below that is precisely the
+ * limiter's job, so the clip counter can essentially never fire no matter how badly the mix is
+ * overdriven. The fault and the detector were on opposite sides of the same node.
+ *
+ * DynamicsCompressorNode has exposed `reduction` all along: a read-only dB figure, computed by
+ * the engine, free to read. It is the difference between "the speakers are fine" (true, and
+ * useless) and "the limiter is flattening 6dB off everything you play" (the actual complaint).
+ */
+export function limiterReduction(): number {
+  const l = peak as DynamicsCompressorNode | null
+  return l && typeof (l as DynamicsCompressorNode).reduction === 'number'
+    ? (l as DynamicsCompressorNode).reduction
+    : 0
+}
+
 export function synthReady(): boolean {
   return ctx != null
 }

@@ -1,6 +1,6 @@
 import { sharedCtx } from './context'
 import { readWaveform } from './audioTap'
-import { liveVoices, noteCounts, resetNoteCounts } from './synth'
+import { limiterReduction, liveVoices, noteCounts, resetNoteCounts } from './synth'
 
 /**
  * Is the sound actually broken, and in which of the two ways?
@@ -48,10 +48,15 @@ export type AudioHealth = {
   droppedTotal: number
   clippedTotal: number
   peakMax: number
+  /** dB the limiter is pulling off right now — 0 is idle, negative is working */
+  reduction: number
+  /** the most it has pulled off since the strip started */
+  reductionWorst: number
   /** the worst thing seen since the strip started, not just in the last second */
-  worst: 'clean' | 'DROPOUTS' | 'CLIPPING'
+  worst: 'clean' | 'DROPOUTS' | 'CLIPPING' | 'LIMITING'
 }
 
+let reductionWorst = 0
 let node: AudioWorkletNode | null = null
 let expectedFrom = 0
 let counted = 0
@@ -142,6 +147,7 @@ export function resetHealth() {
   droppedTotal = 0
   clippedTotal = 0
   peakMax = 0
+  reductionWorst = 0
   resetNoteCounts()
 }
 
@@ -173,6 +179,19 @@ export function readHealth(): AudioHealth {
   droppedTotal += dropped
   clippedTotal += clipped
   if (peak > peakMax) peakMax = peak
+  /**
+   * ⚠️ sampled once per read, so this is the limiter's state at THIS instant rather than the
+   * worst of the last second — a fast stab can slip between two reads. The latched worst is what
+   * to trust after the fact, exactly like clippedTotal.
+   *
+   * ⚠️ ONLY LATCHED WHILE SOMETHING IS AUDIBLE, and that guard is load-bearing. `reduction` is a
+   * relaxing envelope, not an instantaneous fact: measured, it reads -13.5dB the moment a
+   * compressor is created and takes about 800ms of silence to unwind toward zero. Latching it
+   * unguarded would light up LIMITING on a silent page before a note was played — the same
+   * "meter that always says something" failure as the clip counter that could never fire.
+   */
+  const reduction = limiterReduction()
+  if (peak > 0.02 && reduction < reductionWorst) reductionWorst = reduction
   const out: AudioHealth = {
     bufferMs: +(ctx.baseLatency * 1000).toFixed(1),
     bufferFrames: Math.round(ctx.baseLatency * ctx.sampleRate),
@@ -187,7 +206,20 @@ export function readHealth(): AudioHealth {
     droppedTotal,
     clippedTotal,
     peakMax: +peakMax.toFixed(3),
-    worst: clippedTotal > 0 ? 'CLIPPING' : droppedTotal > 0 ? 'DROPOUTS' : 'clean',
+    reduction: +reduction.toFixed(1),
+    reductionWorst: +reductionWorst.toFixed(1),
+    /* ⚠️ LIMITING ranks below the other two but above clean, because it is the one that was
+       invisible. A dropout or a genuine clip is a worse fault; a limiter leaning on the mix is
+       the one that produced a year of "it crackles" with a strip that said everything was fine.
+       -1dB is nothing and happens on any loud chord; -3 is being leant on. */
+    worst:
+      clippedTotal > 0
+        ? 'CLIPPING'
+        : droppedTotal > 0
+          ? 'DROPOUTS'
+          : reductionWorst <= -3
+            ? 'LIMITING'
+            : 'clean',
   }
   node?.port.postMessage('read')
   peak = 0
