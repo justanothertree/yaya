@@ -1800,7 +1800,29 @@ export function noteOn(
          * above for notes released on a schedule. tau = r/5, so by `from + r` it has fallen to
          * 0.7% — about -43dB — and the oscillator stop below lands well under the noise.
          */
-        const tau = Math.max(0.005, sh.r / 5)
+        /**
+         * ⚠️ A FLOOR UNDER THE RELEASE, because past a certain speed a tonal note cannot stop
+         * without you hearing it stop. This is not a defect being worked around: rendered
+         * against an exponential decay computed by hand, Web Audio's release matches it to
+         * within 0.07%, so the curve is already mathematically perfect. The audible click is
+         * the physics of ending a near-sine quickly — a fast amplitude change broadens the
+         * spectrum whether the maths is ideal or not.
+         *
+         * Measured as energy away from the note's own partials, against a 33.3% floor from a
+         * steady tone that is not decaying at all: tau 18ms gives 42.2%, tau 40ms 35.5%, tau
+         * 80ms 33.9%. So most of the splatter is gone by 40ms and it is at the floor by 80.
+         *
+         * ⚠️ Which patches this touches is exactly the complaint. Sorted by release speed, the
+         * sustaining patches begin organ (tau 18ms, sustain 1.00), clav, reed, bass, whistle
+         * (36ms), lead, flute (44ms) — and organ, whistle and flute are three of the four
+         * reported. Organ is the extreme on every axis at once: the most level to lose, in the
+         * least time, with the purest spectrum to lose it in. Everything reported as fine is
+         * either a one-shot that never takes this path, or rich enough to mask it.
+         *
+         * Only the fast end moves. Cello at 90ms, strings at 110, pad at 220 and drone at 480
+         * are already past the floor and keep the release they were written with.
+         */
+        const tau = Math.max(0.04, sh.r / 5)
         g.gain.setTargetAtTime(0.0001, from, tau)
         /**
          * ⚠️ AND THEN END IT. setTargetAtTime approaches its target forever and never
