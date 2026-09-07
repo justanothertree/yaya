@@ -113,3 +113,45 @@ export function recordOutput(from: AudioNode, seconds = 5): Promise<void> {
     }, seconds * 1000)
   })
 }
+
+/**
+ * Capture the real graph's output into an array, rather than a file.
+ *
+ * ⚠️ FOR DRIVING THE REAL SYNTH FROM A CONSOLE, which is the only thing that has not been tried
+ * on this bug. Every offline reconstruction of a voice comes back clean, which means the
+ * reconstruction is missing whatever the fault is — so the reconstruction is the wrong tool. This
+ * plays a note through the actual code path, with the actual bus, filter, limiter and poly gain
+ * in place, and hands back the samples.
+ */
+export function captureSamples(from: AudioNode, seconds: number): Promise<Float32Array> {
+  const ctx = sharedCtx()
+  const node = ctx.createScriptProcessor(4096, 1, 1)
+  const got: Float32Array[] = []
+  node.onaudioprocess = (e) => {
+    got.push(new Float32Array(e.inputBuffer.getChannelData(0)))
+  }
+  from.connect(node)
+  const mute = ctx.createGain()
+  mute.gain.value = 0
+  node.connect(mute).connect(ctx.destination)
+  return new Promise((resolve) => {
+    window.setTimeout(() => {
+      try {
+        from.disconnect(node)
+        node.disconnect()
+      } catch {
+        /* already gone */
+      }
+      node.onaudioprocess = null
+      let n = 0
+      for (const c of got) n += c.length
+      const all = new Float32Array(n)
+      let o = 0
+      for (const c of got) {
+        all.set(c, o)
+        o += c.length
+      }
+      resolve(all)
+    }, seconds * 1000)
+  })
+}

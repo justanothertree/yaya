@@ -15,7 +15,7 @@ import {
   drumName,
   outputTap,
 } from '../audio/synth'
-import { recordOutput } from '../audio/recordDebug'
+import { captureSamples, recordOutput } from '../audio/recordDebug'
 import { applyFx, captureFx, makeInstKits, type InstKit } from '../audio/instKit'
 import { KitBar } from '../ui/KitBar'
 import { useTouchOnly } from '../ui/pointerKind'
@@ -247,6 +247,16 @@ function AudioHealthStrip() {
   useEffect(() => {
     if (!healthOn()) return
     let alive = true
+    /* ⚠️ a console handle on the REAL graph, behind the same debug flag. Every offline
+       reconstruction of this instrument comes back clean, so the reconstruction is the wrong
+       tool — this drives the actual code path and hands back the actual samples. */
+    if (healthOn())
+      (window as unknown as Record<string, unknown>).__audio = {
+        noteOn,
+        noteOff,
+        outputTap,
+        captureSamples,
+      }
     void startHealth().then((ok) => {
       if (!ok || !alive) return
       setH(readHealth())
