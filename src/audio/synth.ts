@@ -1748,6 +1748,14 @@ export function limiterReduction(): number {
     : 0
 }
 
+/**
+ * The post-limiter node, for the debug recorder — the same fork the visualiser draws from, so a
+ * capture is the signal your speakers were asked for rather than an idealised one.
+ */
+export function outputTap(): AudioNode | null {
+  return peak
+}
+
 export function synthReady(): boolean {
   return ctx != null
 }

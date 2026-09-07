@@ -13,7 +13,9 @@ import {
   type InstrumentId,
   type Knob,
   drumName,
+  outputTap,
 } from '../audio/synth'
+import { recordOutput } from '../audio/recordDebug'
 import { applyFx, captureFx, makeInstKits, type InstKit } from '../audio/instKit'
 import { KitBar } from '../ui/KitBar'
 import { useTouchOnly } from '../ui/pointerKind'
@@ -240,6 +242,7 @@ function fxWord(fx: Fx): string {
  * precisely why it has to run on the phone.
  */
 function AudioHealthStrip() {
+  const [rec, setRec] = useState(false)
   const [h, setH] = useState<AudioHealth | null>(null)
   useEffect(() => {
     if (!healthOn()) return
@@ -273,6 +276,22 @@ function AudioHealthStrip() {
           style={{ marginLeft: '0.4rem', padding: '0 0.35rem', fontSize: '0.7rem' }}
         >
           reset
+        </button>
+        {/* five seconds of exactly what came out, as a WAV — for when every number says the
+            signal is clean and it audibly is not */}
+        <button
+          className="btn"
+          disabled={rec}
+          onClick={() => {
+            const tap = outputTap()
+            if (!tap) return
+            setRec(true)
+            void recordOutput(tap, 5).finally(() => setRec(false))
+          }}
+          style={{ marginLeft: '0.3rem', padding: '0 0.35rem', fontSize: '0.7rem' }}
+          title="Record 5s of the instrument output to a WAV file"
+        >
+          {rec ? 'recording…' : 'rec 5s'}
         </button>
       </div>
       <div className="muted">
