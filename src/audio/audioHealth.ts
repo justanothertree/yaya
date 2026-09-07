@@ -62,33 +62,38 @@ export type AudioHealth = {
 
 let reductionWorst = 0
 /**
- * The audio clock against the wall clock — the only pair that diverges when the thread stalls.
- *
- * ⚠️ THE WORKLET'S OWN DROPOUT COUNTER COULD NEVER FIRE, and this replaces it. It measured
- * `elapsed` as `currentTime - t0`, but `currentTime` inside a worklet advances by exactly one
- * quantum BECAUSE process() ran — so `elapsed * sampleRate / 128` was always precisely the number
- * of quanta counted, and `expected - counted` was always zero. It was checking the counter against
- * itself. `gaps` had the same defect: `dt` is exactly 128/sampleRate every call, so a test for
- * `dt > 1.5 quanta` can never be true. Two detectors, both structurally silent, which is why the
- * strip has always read "late 0" through audible trouble.
- *
- * ctx.currentTime only advances when audio is actually rendered. performance.now() advances
- * regardless. Sample both at the same instant and the difference is real lost audio — and it is
- * immune to main-thread jank, because being late to read affects both numbers equally.
- */
-/**
- * ⚠️ SAMPLED FAST, NOT ONCE A SECOND, and that alone is why the strip read "squash 0dB" on
- * patches that were audibly crackling. readHealth is polled at 1Hz, so it saw the limiter at one
- * instant per second and missed everything in between — and limiting on a note lasts tens of
- * milliseconds. A latched worst is only worth having if the thing doing the latching looks often
- * enough to catch what it is latching.
+ * ⚠️ SAMPLED FAST, NOT ONCE A SECOND. readHealth is polled at 1Hz, so it saw the limiter at one
+ * instant per second and missed everything between — and limiting on a note lasts tens of
+ * milliseconds. That is why the strip read "squash 0dB" on patches that were audibly crackling.
  */
 let fastTimer = 0
 let preMax = 0
-let lastWall = 0
-let lastAudio = 0
+
+/**
+ * The audio clock against the wall clock — the only pair that diverges when the thread stalls.
+ *
+ * ⚠️ THE WORKLET'S OWN DROPOUT COUNTER COULD NEVER FIRE. It measured `elapsed` as
+ * `currentTime - t0`, but currentTime inside a worklet advances one quantum BECAUSE process()
+ * ran, so expected always equalled counted. Its `gaps` test had the same defect. That is why the
+ * strip read "late 0" through audible trouble.
+ *
+ * ⚠️ AND MY FIRST REPLACEMENT WAS ALSO WRONG — it climbed on a silent page with nothing playing.
+ * It summed every sample's excess into a running total, so two things accumulated that are not
+ * dropouts: timer jitter above the floor, and genuine CLOCK SKEW. A sound card's crystal is not
+ * the system clock's; a hundred parts per million is ordinary, and that alone is six milliseconds
+ * a minute climbing for ever. "It goes up and up without touching a key" is exactly that shape.
+ *
+ * So this measures divergence WITHIN A SHORT WINDOW and keeps the worst one, rather than adding
+ * windows together. Skew over two seconds is a fifth of a millisecond and invisible; a stall of
+ * any real size lands inside one window and shows in full. Jitter cancels instead of banking,
+ * because both clocks are read at the same instant and the window restarts from scratch.
+ */
+let baseWall = 0
+let baseAudio = 0
 let driftWorst = 0
-/** Quantisation on currentTime is a few ms; below this is measurement noise, not a dropout. */
+/** How long a window runs before it restarts — short enough that clock skew cannot build up. */
+const DRIFT_WINDOW_MS = 2000
+/** Below this is jitter and quantisation on currentTime, not lost audio. */
 const DRIFT_FLOOR_MS = 15
 let node: AudioWorkletNode | null = null
 let expectedFrom = 0
@@ -190,8 +195,7 @@ export function resetHealth() {
   reductionWorst = 0
   driftWorst = 0
   preMax = 0
-  lastWall = 0
-  lastAudio = 0
+  baseWall = 0
   resetNoteCounts()
 }
 
@@ -244,12 +248,19 @@ export function readHealth(): AudioHealth {
   /* both clocks read at the same instant, so lateness cancels and only lost audio remains */
   const wall = performance.now()
   const audio = ctx.currentTime
-  if (lastWall && ctx.state === 'running') {
-    const behind = wall - lastWall - (audio - lastAudio) * 1000
-    if (behind > DRIFT_FLOOR_MS) driftWorst += behind
+  if (ctx.state !== 'running') {
+    baseWall = 0
+  } else if (!baseWall) {
+    baseWall = wall
+    baseAudio = audio
+  } else {
+    const behind = wall - baseWall - (audio - baseAudio) * 1000
+    if (behind > DRIFT_FLOOR_MS && behind > driftWorst) driftWorst = behind
+    if (wall - baseWall > DRIFT_WINDOW_MS) {
+      baseWall = wall
+      baseAudio = audio
+    }
   }
-  lastWall = wall
-  lastAudio = audio
   const out: AudioHealth = {
     bufferMs: +(ctx.baseLatency * 1000).toFixed(1),
     bufferFrames: Math.round(ctx.baseLatency * ctx.sampleRate),
