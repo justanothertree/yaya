@@ -823,6 +823,29 @@ function soundingLevel(): number {
  * It is also exactly enough. At the threshold the limiter measures zero intermodulation, so this
  * is the loudest the instrument can be while producing none.
  */
+/** The release time constant actually used — floored, because a faster one clicks by physics. */
+function releaseTau(sh: { r: number }): number {
+  return Math.max(0.04, sh.r / 5)
+}
+
+/**
+ * How long the release actually needs before it can be cut off.
+ *
+ * ⚠️ THIS HAS TO TRACK THE TAU, and it did not, which is a regression I shipped an hour ago. The
+ * release ends with a hard `setValueAtTime(0.0001)` whose original comment reasoned that "by then
+ * the curve is at about 0.7%, some -43dB, far below anything audible". That was true only because
+ * the cutoff sat at `r + 0.02` and tau was `r / 5`, so the cutoff was always five taus out.
+ *
+ * Flooring tau at 40ms broke the arithmetic without moving the cutoff. On organ the curve was
+ * then still at 6.4% when the step landed, turning an inaudible -63.5dBFS join into -34.3dBFS —
+ * 29dB louder, a click at the end of every release, on exactly the patches the floor was meant
+ * to help. Deriving the span from the tau in use keeps the five-tau relationship whatever the
+ * floor does.
+ */
+function releaseSpan(sh: { r: number }): number {
+  return Math.max(sh.r, releaseTau(sh) * 5)
+}
+
 function polyTarget(): number {
   const sum = soundingLevel()
   return sum <= LIMIT_AT ? 1 : LIMIT_AT / sum
@@ -1711,7 +1734,7 @@ export function noteOn(
       /* the tail is still audible after noteOff drops the voice — keep it in the sum until it
          has actually decayed, which is what the map could never express */
       mine.off = from
-      mine.until = from + sh.r + 0.02
+      mine.until = from + releaseSpan(sh) + 0.02
       try {
         /**
          * ⚠️ THIS WAS THE POP, and it got worse the more the sequencer was used.
@@ -1822,7 +1845,7 @@ export function noteOn(
          * Only the fast end moves. Cello at 90ms, strings at 110, pad at 220 and drone at 480
          * are already past the floor and keep the release they were written with.
          */
-        const tau = Math.max(0.04, sh.r / 5)
+        const tau = releaseTau(sh)
         g.gain.setTargetAtTime(0.0001, from, tau)
         /**
          * ⚠️ AND THEN END IT. setTargetAtTime approaches its target forever and never
@@ -1832,13 +1855,13 @@ export function noteOn(
          * the automation off; by then the curve is at about 0.7% of where the release started,
          * some -43dB, so the step down to the floor is far below anything audible.
          */
-        g.gain.setValueAtTime(0.0001, from + sh.r + 0.02)
+        g.gain.setValueAtTime(0.0001, from + releaseSpan(sh) + 0.02)
       } catch {
         /* context went away */
       }
       for (const o of oscs) {
         try {
-          o.stop(from + sh.r + 0.02)
+          o.stop(from + releaseSpan(sh) + 0.02)
         } catch {
           /* already stopped */
         }
