@@ -93,7 +93,20 @@ let baseAudio = 0
 let driftWorst = 0
 /** How long a window runs before it restarts — short enough that clock skew cannot build up. */
 const DRIFT_WINDOW_MS = 2000
-/** Below this is jitter and quantisation on currentTime, not lost audio. */
+/**
+ * Below this is jitter and quantisation on currentTime, not lost audio.
+ *
+ * ⚠️ AND THAT IS A REAL LIMIT, NOT A TUNING CHOICE. A dropout big enough to click is five to ten
+ * milliseconds, which is BELOW what this method can resolve — so "late 0" does not mean "no
+ * dropouts", it means "none longer than about 15ms". Tried at 6ms over 500ms windows and it
+ * reported 16.5ms on a completely healthy idle context: `ctx.currentTime` is only refreshed to
+ * the main thread per render quantum and goes stale by several milliseconds whenever that thread
+ * is busy, while performance.now() does not, and the difference looks exactly like lost audio.
+ *
+ * Kept honest at 15ms rather than made sensitive and wrong. To rule out short dropouts, change
+ * the buffer instead — see the audio_latency override in context.ts — because a meter that
+ * cannot see them cannot clear them either.
+ */
 const DRIFT_FLOOR_MS = 15
 let node: AudioWorkletNode | null = null
 let expectedFrom = 0

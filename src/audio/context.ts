@@ -48,6 +48,26 @@ export function sharedCtx(): AudioContext {
   const coarse = window.matchMedia?.('(hover: none) and (pointer: coarse)').matches ?? false
   const opts: AudioContextOptions = { sampleRate: 48000 }
   if (coarse) opts.latencyHint = 0.02
+  /**
+   * ⚠️ AN OVERRIDE, BECAUSE THE NOTE ABOVE ONLY EVER APPLIED TO PHONES and the same argument may
+   * hold on a desktop. A pop that survives every fix to the signal, is audible only on sustained
+   * pure patches, and does not appear anywhere in a capture of the rendered output, is the shape
+   * of the audio thread being late rather than of anything wrong with what it rendered — torn
+   * output, exactly as described above.
+   *
+   * Set `localStorage.audio_latency` to seconds and reload: '0.05' is a comfortable desktop
+   * buffer, '0' forces the browser's smallest. Removing the key restores the behaviour above.
+   *
+   * ⚠️ This is a DIAGNOSTIC, not a default. Raising it costs key-to-sound latency on every note,
+   * which is the thing an instrument can least afford — so it stays opt-in until it is shown to
+   * be the answer, and if it is, the right fix is to raise it only as far as it needs to go.
+   */
+  try {
+    const want = localStorage.getItem('audio_latency')
+    if (want !== null && Number.isFinite(Number(want))) opts.latencyHint = Number(want)
+  } catch {
+    /* private mode: keep whatever the device rule chose */
+  }
   try {
     ctx = new Ctor(opts)
   } catch {
