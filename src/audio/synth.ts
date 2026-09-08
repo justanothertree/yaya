@@ -1855,7 +1855,35 @@ export function noteOn(
          * the automation off; by then the curve is at about 0.7% of where the release started,
          * some -43dB, so the step down to the floor is far below anything audible.
          */
-        g.gain.setValueAtTime(0.0001, from + releaseSpan(sh) + 0.02)
+        /**
+         * ⚠️ LAND ON EXACTLY ZERO, RATHER THAN STEPPING TO 0.0001 AND STOPPING.
+         *
+         * This was a hard `setValueAtTime(0.0001)` at the same instant the oscillators stop and
+         * the nodes disconnect — reasoned to be inaudible because the curve is at about 0.7% by
+         * then. It is quiet, but it is a STEP, and a step is broadband no matter how small: it
+         * lands in the one moment of the note when nothing is left to mask it.
+         *
+         * Measured on organ, the worst sample-to-sample step per 20ms of the tail runs 0.000716,
+         * 0.000416, 0.000273 — decaying smoothly — and then JUMPS to 0.000567 in the slice
+         * containing this cut, before collapsing to 0.000088 after. A third of the remaining
+         * signal, discarded in one sample.
+         *
+         * That also matches the shape of the report: it happens on every instrument, but it is
+         * only reliably audible on the sustained near-sine patches, where the tail is a clean
+         * tone and a broadband tick has nothing to hide in.
+         *
+         * So the last stretch is ramped to true zero instead. The anchor is computed from the
+         * release curve rather than read from the engine — the same reasoning as the release
+         * itself: setTargetAtTime is a shape we chose from numbers we still hold, so its value at
+         * any instant is arithmetic. Landing at 0 makes stopping the oscillators silent by
+         * construction, because there is nothing left to cut.
+         */
+        const fade = 0.02
+        const tEnd = from + releaseSpan(sh) + 0.02
+        const tFade = tEnd - fade
+        const vFade = 0.0001 + (Math.max(0.0001, level) - 0.0001) * Math.exp(-(tFade - from) / tau)
+        g.gain.setValueAtTime(Math.max(0.0000001, vFade), tFade)
+        g.gain.linearRampToValueAtTime(0, tEnd)
       } catch {
         /* context went away */
       }
