@@ -299,7 +299,12 @@ export function readHealth(): AudioHealth {
     worst:
       clippedTotal > 0
         ? 'CLIPPING'
-        : droppedTotal > 0 || driftWorst > DRIFT_FLOOR_MS
+        : /* ⚠️ droppedTotal is NOT consulted, deliberately. It comes from the worklet counter
+             that compares currentTime against itself and is therefore always zero — but it was
+             still in this condition after the display moved to the drift figure, so the strip
+             could read "DROPOUTS · late 0ms": a verdict from a dead counter next to a number
+             that disagreed with it. Only the measure that can actually fire decides. */
+          driftWorst > DRIFT_FLOOR_MS
           ? 'DROPOUTS'
           : reductionWorst <= -3
             ? 'LIMITING'

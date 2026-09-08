@@ -243,6 +243,14 @@ function fxWord(fx: Fx): string {
  */
 function AudioHealthStrip() {
   const [rec, setRec] = useState(false)
+  const bufMs = (() => {
+    try {
+      const v = localStorage.getItem('audio_latency')
+      return v === null ? 'auto' : String(Math.round(Number(v) * 1000))
+    } catch {
+      return 'auto'
+    }
+  })()
   const [h, setH] = useState<AudioHealth | null>(null)
   useEffect(() => {
     if (!healthOn()) return
@@ -287,6 +295,35 @@ function AudioHealthStrip() {
         >
           reset
         </button>
+        {/**
+         * ⚠️ THE BUFFER, AS A CONTROL RATHER THAN A CONSOLE INCANTATION. A pop that survives every
+         * fix to the signal and is absent from a recording of the rendered output is the shape of
+         * the audio thread running late — the case every DAW answers by raising the buffer. It
+         * needs a REAL reload to take effect, which is the trap: setting the value and changing
+         * the hash leaves the old AudioContext alive and looks like the setting does nothing.
+         * Verified here: default is 481 frames, and 50ms gives 2405.
+         */}
+        <select
+          className="btn"
+          value={bufMs}
+          onChange={(e) => {
+            try {
+              if (e.target.value === 'auto') localStorage.removeItem('audio_latency')
+              else localStorage.setItem('audio_latency', String(Number(e.target.value) / 1000))
+            } catch {
+              /* private mode: nothing to remember it in */
+            }
+            location.reload()
+          }}
+          style={{ marginLeft: '0.3rem', fontSize: '0.7rem' }}
+          title="Audio buffer. Bigger is safer against dropouts and slower to respond."
+          aria-label="Audio buffer size"
+        >
+          <option value="auto">buffer: auto</option>
+          <option value="20">buffer: 20ms</option>
+          <option value="50">buffer: 50ms</option>
+          <option value="100">buffer: 100ms</option>
+        </select>
         {/* five seconds of exactly what came out, as a WAV — for when every number says the
             signal is clean and it audibly is not */}
         <button
