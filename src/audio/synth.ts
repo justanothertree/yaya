@@ -1774,36 +1774,47 @@ export function noteOn(
               : from < at + sh.a + sh.d
                 ? peak * Math.pow(target / peak, (from - at - sh.a) / sh.d)
                 : target
-        g.gain.cancelScheduledValues(from)
         /**
-         * ⚠️ PUT BACK WHATEVER THE CANCEL DESTROYED. This was the pop on short notes, and it is
-         * the one thing computing `level` ourselves did not solve.
+         * ⚠️ PUT BACK WHATEVER THE CANCEL DESTROYED, WITHOUT DATING ANYTHING IN THE PAST.
          *
-         * cancelScheduledValues removes every event at or after `from` — including a ramp that is
-         * still MID-FLIGHT, whose end time simply happens to be later. That ramp governs the whole
+         * cancelScheduledValues removes every event at or after `from` — including a ramp still
+         * MID-FLIGHT whose end time merely happens to be later. Such a ramp governs the whole
          * segment it spans, so removing it does not trim the tail, it deletes the segment: the
-         * parameter falls back to the last surviving event and the note drops to 0.0001, sits
-         * there for the SAFE_START lookahead, then jumps to the release level. A hole followed by
-         * a step out of silence, on every note let go before its attack or decay had finished —
-         * which is precisely what running your hands across the keys does.
+         * parameter falls back to the last surviving event, the note drops to 0.0001, sits there
+         * for the SAFE_START lookahead, then jumps to the release level. A hole followed by a step
+         * out of silence, on every note let go before its attack or decay had finished.
          *
-         * Measured, as the worst level jump around the release: strings x2433, choir x1412, pad
-         * x1236, drone x458, flute x3167. Rebuilding the destroyed segment so it lands exactly on
-         * `from` takes all of those to x1.0 — a smooth release, indistinguishable from a note that
-         * was never interrupted.
+         * ⚠️ THE REPAIR IS ANCHORED AT `now`, NOT AT THE NOTE'S OWN OLD EVENTS, and that is a
+         * Firefox lesson this file has already learned once. The version before this re-created
+         * the destroyed segment by writing a setValueAtTime at `at + sh.a` — a moment in the PAST
+         * — and an exponentialRamp across an extreme ratio. Chrome tolerates both. Firefox is far
+         * stricter about automation dated behind the render position, and the note above about
+         * cancelAndHoldAtTime describes exactly this trap: "no issues in Chrome, still issues in
+         * Firefox — one engine running code the other never sees." Reported here as rapid whistle
+         * keys sounding more like crackling than like whistle, on Firefox only.
          *
-         * The anchors it ramps FROM are the note's own earlier events, which are before `from` and
-         * therefore survived, so this reproduces the original curve rather than inventing one.
+         * So: hold the value the envelope genuinely has NOW, then ramp it to where the envelope
+         * would have been at `from`. Only the SAFE_START window is reconstructed — six
+         * milliseconds, across which every one of these envelopes is straight to well within a
+         * decibel — and everything before `now` is already rendered and cannot be affected.
+         * No event is dated in the past, no ratio is extreme, and both engines see one shape.
          */
-        if (from < at + sh.a) {
-          // cut off mid-attack: the swell continues at its true slope, up to the release
+        const envAt = (t: number) =>
+          t <= at
+            ? 0.0001
+            : t < at + sh.a
+              ? 0.0001 + (peak - 0.0001) * ((t - at) / sh.a)
+              : t < at + sh.a + sh.d
+                ? peak * Math.pow(target / peak, (t - at - sh.a) / sh.d)
+                : target
+        const nowT = c.currentTime
+        g.gain.cancelScheduledValues(from)
+        if (from > nowT) {
+          g.gain.setValueAtTime(Math.max(0.0001, envAt(nowT)), nowT)
           g.gain.linearRampToValueAtTime(Math.max(0.0001, level), from)
-        } else if (from < at + sh.a + sh.d) {
-          // cut off mid-decay: re-anchor the peak the attack reached, then decay on to `from`
-          g.gain.setValueAtTime(peak, at + sh.a)
-          g.gain.exponentialRampToValueAtTime(Math.max(0.0001, level), from)
+        } else {
+          g.gain.setValueAtTime(Math.max(0.0001, level), from)
         }
-        g.gain.setValueAtTime(Math.max(0.0001, level), from)
         /**
          * ⚠️ setTargetAtTime, NOT exponentialRampToValueAtTime — AND THIS IS THE SECOND HALF OF
          * THE POP, the one that holding the right level at the release does not fix.

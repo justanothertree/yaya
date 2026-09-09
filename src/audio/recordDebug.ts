@@ -169,6 +169,17 @@ export function captureSamples(from: AudioNode, seconds: number): Promise<Float3
  * the 30 frames around it means a note's own onset — which is broadband but gradual over several
  * frames — does not register, while a single-sample edge does.
  */
+/**
+ * ⚠️ TRUSTWORTHY ON SMOOTH PATCHES, NOISY ON BUZZY ONES. It looks for a steep edge, and a
+ * sawtooth or square wave is made of steep edges — a pad note reports about twenty "ticks" that
+ * are simply its own waveform. Verified that this is not the quiet-fade artefact: it survives the
+ * absolute floor above.
+ *
+ * That is a limit worth stating rather than papering over, and it happens not to matter here:
+ * every patch this was built for — organ, flute, whistle, bell — is sine-based, where the only
+ * steep edge in the signal is one that should not be there. Read a count on sawtooth, square or
+ * triangle patches (pad, strings, cello, lead, reed, bass, keys) as meaningless.
+ */
 export type Tick = { atMs: number; ratio: number; peakStep: number }
 
 export function findTicks(x: Float32Array, rate: number, threshold = 6): Tick[] {
@@ -199,6 +210,20 @@ export function findTicks(x: Float32Array, rate: number, threshold = 6): Tick[] 
     }
     hf[k] = c ? Math.sqrt(s / c) : 0
   }
+  /**
+   * ⚠️ A RATIO ALONE FIRES ON SILENCE. Dividing by the median of the neighbourhood makes the test
+   * scale-free, which is what lets it work at any volume — and also means that in a very quiet
+   * passage the median is near zero and any wobble reads as an enormous ratio. Measured: a pad
+   * note released 200ms into its 500ms attack reported twenty-one "ticks", every one of them the
+   * quiet onset rather than an edge.
+   *
+   * So a frame must ALSO carry real high-frequency energy, relative to the loudest in the take.
+   * A genuine click is a large event; nothing in a fade is.
+   */
+  let loudest = 0
+  for (let k = 0; k < n; k++) if (hf[k] > loudest) loudest = hf[k]
+  const floor = loudest * 0.02
+
   const out: Tick[] = []
   const win: number[] = []
   for (let k = 20; k < n - 20; k++) {
@@ -207,7 +232,7 @@ export function findTicks(x: Float32Array, rate: number, threshold = 6): Tick[] 
     win.sort((a, b) => a - b)
     const med = win[Math.floor(win.length / 2)]
     const ratio = hf[k] / Math.max(med, 1e-12)
-    if (ratio < threshold) continue
+    if (ratio < threshold || hf[k] < floor) continue
     const i0 = k * F
     let step = 0
     for (let i = i0 + 1; i < i0 + F && i < x.length; i++)
