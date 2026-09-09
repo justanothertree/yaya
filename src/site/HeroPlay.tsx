@@ -14,14 +14,14 @@ import type { InstrumentId } from '../audio/synth'
  * first accidental two-finger press, and that is the press that decides whether they keep going.
  *
  * ⚠️ THE SYNTH IS IMPORTED ON FIRST TOUCH, never on render — though be honest about what that
- * buys today, which is nothing. Measured on the built bundle: synth.ts is already in the entry
- * chunk, because App imports AudioDock eagerly and AudioDock imports the synth for liveVoices and
- * stopLive. So the deferral here saves a visitor zero bytes right now.
+ * buys today, which is nothing. synth.ts is already in the entry chunk and the build says why:
+ * NINE modules import it statically, AudioDock and looper and songFile and songPlayer among them,
+ * and App pulls the dock in eagerly. So the deferral here saves a visitor zero bytes right now,
+ * and getting those bytes back is a nine-importer job, not a one-line fix.
  *
  * It stays dynamic anyway, for one reason: the front page must never be the REASON the synth
- * ships. If the dock is ever fixed to stop dragging it into the entry chunk, that is a change to
- * one other file and this page follows for free; a static import here would silently pin the
- * whole module to first paint and make that fix impossible without coming back.
+ * ships. A static import here would quietly make the home page one of those importers, so the
+ * day somebody untangles the rest, this page would be the thing still pinning it to first paint.
  *
  * ⚠️ NO SOUND UNTIL A DELIBERATE PRESS — not merely because autoplay is blocked. A front page
  * that makes noise at you is the fastest way there is to lose somebody.
