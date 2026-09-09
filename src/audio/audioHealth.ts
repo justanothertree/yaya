@@ -147,6 +147,29 @@ registerProcessor('audio-health', H)
  * navigation, and `?audio_debug=0` clears it again; asking somebody to open devtools on a handset
  * is asking them not to bother.
  */
+/**
+ * The investigation tools — the bare test tones, the tick catcher, the buffer selector and the
+ * console handle on the synth.
+ *
+ * ⚠️ SEPARATE FROM THE STRIP, and off unless asked for. The strip is a status line that earned
+ * being on by default: it is one row of numbers and it has found real faults. What got added
+ * during the crackle hunt is different — half a dozen buttons that play bare sine waves, reload
+ * the page to change the audio buffer, and hang noteOn/noteOff on `window`. That is a workbench,
+ * and a workbench does not belong in a room Evan's friends walk into.
+ *
+ * `localStorage.audio_lab = '1'` brings it back, and everything in it still works.
+ */
+export function labOn(): boolean {
+  try {
+    const q = new URLSearchParams(location.search).get('audio_lab')
+    if (q === '1') localStorage.setItem('audio_lab', '1')
+    if (q === '0') localStorage.removeItem('audio_lab')
+    return localStorage.getItem('audio_lab') === '1'
+  } catch {
+    return false
+  }
+}
+
 export function healthOn(): boolean {
   try {
     const q = new URLSearchParams(location.search).get('audio_debug')
@@ -314,7 +337,12 @@ export function readHealth(): AudioHealth {
              still in this condition after the display moved to the drift figure, so the strip
              could read "DROPOUTS · late 0ms": a verdict from a dead counter next to a number
              that disagreed with it. Only the measure that can actually fire decides. */
-          driftWorst > DRIFT_FLOOR_MS
+          /* ⚠️ the VERDICT needs more than the floor. Reported repeatedly as
+             "DROPOUTS · late 18ms" on a machine that was not dropping anything — 18ms is barely
+             over a 15ms floor that exists to absorb currentTime's own staleness, and this method
+             cannot resolve the 5-10ms dropouts that actually click anyway. Showing the number is
+             honest; shouting DROPOUTS at it is not. */
+          driftWorst > 40
           ? 'DROPOUTS'
           : reductionWorst <= -3
             ? 'LIMITING'

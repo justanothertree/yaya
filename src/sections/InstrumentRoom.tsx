@@ -30,6 +30,7 @@ import { KitBar } from '../ui/KitBar'
 import { useTouchOnly } from '../ui/pointerKind'
 import {
   healthOn,
+  labOn,
   readHealth,
   resetHealth,
   startHealth,
@@ -253,6 +254,7 @@ function fxWord(fx: Fx): string {
 function AudioHealthStrip() {
   const [rec, setRec] = useState(false)
   const [ticks, setTicks] = useState('')
+  const lab = labOn()
   const bufMs = (() => {
     try {
       const v = localStorage.getItem('audio_latency')
@@ -268,7 +270,7 @@ function AudioHealthStrip() {
     /* ⚠️ a console handle on the REAL graph, behind the same debug flag. Every offline
        reconstruction of this instrument comes back clean, so the reconstruction is the wrong
        tool — this drives the actual code path and hands back the actual samples. */
-    if (healthOn())
+    if (labOn())
       (window as unknown as Record<string, unknown>).__audio = {
         noteOn,
         noteOff,
@@ -305,124 +307,129 @@ function AudioHealthStrip() {
         >
           reset
         </button>
-        {/**
-         * ⚠️ THE BUFFER, AS A CONTROL RATHER THAN A CONSOLE INCANTATION. A pop that survives every
-         * fix to the signal and is absent from a recording of the rendered output is the shape of
-         * the audio thread running late — the case every DAW answers by raising the buffer. It
-         * needs a REAL reload to take effect, which is the trap: setting the value and changing
-         * the hash leaves the old AudioContext alive and looks like the setting does nothing.
-         * Verified here: default is 481 frames, and 50ms gives 2405.
-         */}
-        <select
-          className="btn"
-          value={bufMs}
-          onChange={(e) => {
-            try {
-              if (e.target.value === 'auto') localStorage.removeItem('audio_latency')
-              else localStorage.setItem('audio_latency', String(Number(e.target.value) / 1000))
-            } catch {
-              /* private mode: nothing to remember it in */
-            }
-            location.reload()
-          }}
-          style={{ marginLeft: '0.3rem', fontSize: '0.7rem' }}
-          title="Audio buffer. Bigger is safer against dropouts and slower to respond."
-          aria-label="Audio buffer size"
-        >
-          <option value="auto">buffer: auto</option>
-          <option value="20">buffer: 20ms</option>
-          <option value="50">buffer: 50ms</option>
-          <option value="100">buffer: 100ms</option>
-        </select>
-        {/**
-         * ⚠️ RECORDS WHILE YOU PLAY, THEN SAYS WHERE THE TICKS WERE. Script-driven notes are
-         * metronome-regular and caught the artefact twice in a hundred presses; a person playing
-         * hits it constantly. So this goes where the hands are — play through it, and it reports
-         * how many single-sample edges it found and when, then hands over the WAV.
-         */}
-        <button
-          className="btn"
-          disabled={rec}
-          onClick={() => {
-            const tap = outputTap()
-            if (!tap) return
-            setRec(true)
-            setTicks('listening…')
-            void captureSamples(tap, 15)
-              .then((x) => {
-                const found = findTicks(x, sharedCtx().sampleRate)
-                setTicks(
-                  found.length
-                    ? `${found.length} tick${found.length === 1 ? '' : 's'}, worst step ` +
-                        `${Math.max(...found.map((t) => t.peakStep)).toFixed(3)}: ` +
-                        found
-                          .slice(0, 6)
-                          .map((t) => `${t.atMs}ms ×${t.ratio}`)
-                          .join(', ')
-                    : 'no ticks found in 15s',
-                )
-                /* ⚠️ hand the recording over whenever it caught something. A count says a fault
-                   exists; only the samples say what it is, and the person who can provoke it is
-                   not the person who can read it. */
-                if (found.length) downloadSamples(x, `ticks-${found.length}.wav`)
-              })
-              .finally(() => setRec(false))
-          }}
-          style={{ marginLeft: '0.3rem', padding: '0 0.35rem', fontSize: '0.7rem' }}
-          title="Record 15s while you play, then report every click it can find"
-        >
-          catch pop 15s
-        </button>
-        {/**
-         * ⚠️ THE BISECTION. Hammer this on the browser where it is worst. It is one oscillator
-         * and one gain straight to the destination — none of the instrument's chain — so if it
-         * clicks, nothing we wrote is the cause; if it is clean, the cause is ours and can be
-         * found by adding the chain back a piece at a time.
-         */}
-        <button
-          className="btn"
-          onPointerDown={() => plainToneOn(440)}
-          onPointerUp={() => plainToneOff()}
-          onPointerLeave={() => plainToneOff()}
-          style={{ marginLeft: '0.3rem', padding: '0 0.35rem', fontSize: '0.7rem' }}
-          title="A bare sine straight to the speakers — no filter, limiter, reverb or bus. Hammer it."
-        >
-          plain tone
-        </button>
-        {/**
-         * ⚠️ THE SAME TONE WITH NO NODE CHURN. The plain tone still clicks, so nothing in its
-         * signal is at fault — what is left is that it builds and tears down two nodes on every
-         * press. Here the oscillator is made once and never stopped, and a press only moves a
-         * gain. Clean here but not there means the cause is graph mutation, and the fix is a
-         * voice pool for the whole instrument.
-         */}
-        <button
-          className="btn"
-          onPointerDown={() => pooledToneOn(440)}
-          onPointerUp={() => pooledToneOff()}
-          onPointerLeave={() => pooledToneOff()}
-          style={{ marginLeft: '0.3rem', padding: '0 0.35rem', fontSize: '0.7rem' }}
-          title="Same bare tone, but nothing is created or destroyed per press. Hammer it."
-        >
-          pooled tone
-        </button>
-        {ticks && <span style={{ marginLeft: '0.4rem' }}>{ticks}</span>}
-        {/* five seconds of exactly what came out, as a WAV — for when every number says the
-            signal is clean and it audibly is not */}
-        <button
-          className="btn"
-          disabled={rec}
-          onClick={() => {
-            const tap = outputTap()
-            if (!tap) return
-            setRec(true)
-            void recordOutput(tap, 5).finally(() => setRec(false))
-          }}
-          style={{ marginLeft: '0.3rem', padding: '0 0.35rem', fontSize: '0.7rem' }}
-          title="Record 5s of the instrument output to a WAV file"
-        >
-          {rec ? 'recording…' : 'rec 5s'}
-        </button>
+        {/* the workbench from the crackle investigation — off unless audio_lab is set */}
+        {lab && (
+          <>
+            {/**
+             * ⚠️ THE BUFFER, AS A CONTROL RATHER THAN A CONSOLE INCANTATION. A pop that survives every
+             * fix to the signal and is absent from a recording of the rendered output is the shape of
+             * the audio thread running late — the case every DAW answers by raising the buffer. It
+             * needs a REAL reload to take effect, which is the trap: setting the value and changing
+             * the hash leaves the old AudioContext alive and looks like the setting does nothing.
+             * Verified here: default is 481 frames, and 50ms gives 2405.
+             */}
+            <select
+              className="btn"
+              value={bufMs}
+              onChange={(e) => {
+                try {
+                  if (e.target.value === 'auto') localStorage.removeItem('audio_latency')
+                  else localStorage.setItem('audio_latency', String(Number(e.target.value) / 1000))
+                } catch {
+                  /* private mode: nothing to remember it in */
+                }
+                location.reload()
+              }}
+              style={{ marginLeft: '0.3rem', fontSize: '0.7rem' }}
+              title="Audio buffer. Bigger is safer against dropouts and slower to respond."
+              aria-label="Audio buffer size"
+            >
+              <option value="auto">buffer: auto</option>
+              <option value="20">buffer: 20ms</option>
+              <option value="50">buffer: 50ms</option>
+              <option value="100">buffer: 100ms</option>
+            </select>
+            {/**
+             * ⚠️ RECORDS WHILE YOU PLAY, THEN SAYS WHERE THE TICKS WERE. Script-driven notes are
+             * metronome-regular and caught the artefact twice in a hundred presses; a person playing
+             * hits it constantly. So this goes where the hands are — play through it, and it reports
+             * how many single-sample edges it found and when, then hands over the WAV.
+             */}
+            <button
+              className="btn"
+              disabled={rec}
+              onClick={() => {
+                const tap = outputTap()
+                if (!tap) return
+                setRec(true)
+                setTicks('listening…')
+                void captureSamples(tap, 15)
+                  .then((x) => {
+                    const found = findTicks(x, sharedCtx().sampleRate)
+                    setTicks(
+                      found.length
+                        ? `${found.length} tick${found.length === 1 ? '' : 's'}, worst step ` +
+                            `${Math.max(...found.map((t) => t.peakStep)).toFixed(3)}: ` +
+                            found
+                              .slice(0, 6)
+                              .map((t) => `${t.atMs}ms ×${t.ratio}`)
+                              .join(', ')
+                        : 'no ticks found in 15s',
+                    )
+                    /* ⚠️ hand the recording over whenever it caught something. A count says a fault
+                     exists; only the samples say what it is, and the person who can provoke it is
+                     not the person who can read it. */
+                    if (found.length) downloadSamples(x, `ticks-${found.length}.wav`)
+                  })
+                  .finally(() => setRec(false))
+              }}
+              style={{ marginLeft: '0.3rem', padding: '0 0.35rem', fontSize: '0.7rem' }}
+              title="Record 15s while you play, then report every click it can find"
+            >
+              catch pop 15s
+            </button>
+            {/**
+             * ⚠️ THE BISECTION. Hammer this on the browser where it is worst. It is one oscillator
+             * and one gain straight to the destination — none of the instrument's chain — so if it
+             * clicks, nothing we wrote is the cause; if it is clean, the cause is ours and can be
+             * found by adding the chain back a piece at a time.
+             */}
+            <button
+              className="btn"
+              onPointerDown={() => plainToneOn(440)}
+              onPointerUp={() => plainToneOff()}
+              onPointerLeave={() => plainToneOff()}
+              style={{ marginLeft: '0.3rem', padding: '0 0.35rem', fontSize: '0.7rem' }}
+              title="A bare sine straight to the speakers — no filter, limiter, reverb or bus. Hammer it."
+            >
+              plain tone
+            </button>
+            {/**
+             * ⚠️ THE SAME TONE WITH NO NODE CHURN. The plain tone still clicks, so nothing in its
+             * signal is at fault — what is left is that it builds and tears down two nodes on every
+             * press. Here the oscillator is made once and never stopped, and a press only moves a
+             * gain. Clean here but not there means the cause is graph mutation, and the fix is a
+             * voice pool for the whole instrument.
+             */}
+            <button
+              className="btn"
+              onPointerDown={() => pooledToneOn(440)}
+              onPointerUp={() => pooledToneOff()}
+              onPointerLeave={() => pooledToneOff()}
+              style={{ marginLeft: '0.3rem', padding: '0 0.35rem', fontSize: '0.7rem' }}
+              title="Same bare tone, but nothing is created or destroyed per press. Hammer it."
+            >
+              pooled tone
+            </button>
+            {ticks && <span style={{ marginLeft: '0.4rem' }}>{ticks}</span>}
+            {/* five seconds of exactly what came out, as a WAV — for when every number says the
+              signal is clean and it audibly is not */}
+            <button
+              className="btn"
+              disabled={rec}
+              onClick={() => {
+                const tap = outputTap()
+                if (!tap) return
+                setRec(true)
+                void recordOutput(tap, 5).finally(() => setRec(false))
+              }}
+              style={{ marginLeft: '0.3rem', padding: '0 0.35rem', fontSize: '0.7rem' }}
+              title="Record 5s of the instrument output to a WAV file"
+            >
+              {rec ? 'recording…' : 'rec 5s'}
+            </button>
+          </>
+        )}
       </div>
       <div className="muted">
         {/* ⚠️ WHICH BUILD THIS IS. Several reports in this investigation may have been made
