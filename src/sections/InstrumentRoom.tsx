@@ -20,6 +20,8 @@ import {
   findTicks,
   plainToneOff,
   plainToneOn,
+  pooledToneOff,
+  pooledToneOn,
   recordOutput,
 } from '../audio/recordDebug'
 import { applyFx, captureFx, makeInstKits, type InstKit } from '../audio/instKit'
@@ -380,6 +382,23 @@ function AudioHealthStrip() {
           title="A bare sine straight to the speakers — no filter, limiter, reverb or bus. Hammer it."
         >
           plain tone
+        </button>
+        {/**
+         * ⚠️ THE SAME TONE WITH NO NODE CHURN. The plain tone still clicks, so nothing in its
+         * signal is at fault — what is left is that it builds and tears down two nodes on every
+         * press. Here the oscillator is made once and never stopped, and a press only moves a
+         * gain. Clean here but not there means the cause is graph mutation, and the fix is a
+         * voice pool for the whole instrument.
+         */}
+        <button
+          className="btn"
+          onPointerDown={() => pooledToneOn(440)}
+          onPointerUp={() => pooledToneOff()}
+          onPointerLeave={() => pooledToneOff()}
+          style={{ marginLeft: '0.3rem', padding: '0 0.35rem', fontSize: '0.7rem' }}
+          title="Same bare tone, but nothing is created or destroyed per press. Hammer it."
+        >
+          pooled tone
         </button>
         {ticks && <span style={{ marginLeft: '0.4rem' }}>{ticks}</span>}
         {/* five seconds of exactly what came out, as a WAV — for when every number says the

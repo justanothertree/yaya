@@ -300,3 +300,54 @@ export function plainToneOff(immediate = false) {
     /* context went away */
   }
 }
+
+/**
+ * The same bare tone, but with NO NODES CREATED OR DESTROYED per press.
+ *
+ * ⚠️ THIS IS THE NEXT BISECTION, and the plain tone above is what forced it. That one is one
+ * oscillator and one gain straight to the destination, with straight-line automation ending at
+ * exactly zero — and it still clicks on Firefox. Nothing in its SIGNAL can be at fault, so what
+ * is left is the one thing it still does on every press: build two nodes, wire them into a
+ * running graph, and tear them down again.
+ *
+ * Mutating a live audio graph is not free, and it is the classic difference between engines —
+ * which fits a fault that is constant on Firefox and intermittent on Chrome, and that gets worse
+ * the faster you play, because faster playing means more churn per second.
+ *
+ * So here the oscillator is created ONCE and never stopped. It runs for the life of the page at
+ * whatever pitch is asked for, and a press only moves a gain. Zero allocation, zero connection,
+ * zero teardown.
+ *
+ * If this is clean while the plain tone is not, the cause is node churn and the fix is a fixed
+ * voice pool for the whole instrument. If it clicks too, then even a gain ramp on a settled graph
+ * is not safe on this machine, and the problem is below Web Audio entirely.
+ */
+let poolOsc: OscillatorNode | null = null
+let poolGain: GainNode | null = null
+
+export function pooledToneOn(freq = 440) {
+  const ctx = sharedCtx()
+  if (!poolOsc || !poolGain) {
+    const o = ctx.createOscillator()
+    const g = ctx.createGain()
+    o.type = 'sine'
+    g.gain.value = 0
+    o.connect(g).connect(ctx.destination)
+    o.start()
+    poolOsc = o
+    poolGain = g
+  }
+  const t = ctx.currentTime
+  poolOsc.frequency.setValueAtTime(freq, t)
+  poolGain.gain.cancelScheduledValues(t)
+  poolGain.gain.setValueAtTime(poolGain.gain.value, t)
+  poolGain.gain.linearRampToValueAtTime(0.2, t + 0.01)
+}
+
+export function pooledToneOff() {
+  if (!poolGain) return
+  const t = sharedCtx().currentTime
+  poolGain.gain.cancelScheduledValues(t)
+  poolGain.gain.setValueAtTime(poolGain.gain.value, t)
+  poolGain.gain.linearRampToValueAtTime(0, t + 0.08)
+}
