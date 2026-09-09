@@ -43,18 +43,32 @@ export type HomeDoc = {
 }
 
 /** The page as it reads today, so an unedited site is byte-for-byte the page that was here. */
+/**
+ * ⚠️ THIS IS THE PUBLISHED COPY, DELIBERATELY — not a placeholder the live text drifted away from.
+ *
+ * The page renders these instantly and swaps in whatever the server has once it arrives, which is
+ * right: a front page one version behind beats a front page with empty headings, or with none at
+ * all if the fetch fails. But it only works silently while the two AGREE. They had drifted — a
+ * different headline and a blurb three times the length — so every visitor saw the repo's version
+ * for as long as the round trip took and then watched it change under them.
+ *
+ * So when the home text is edited and published, it is pasted back here. Two sources of truth is
+ * the underlying problem and the editor is under review; until that is settled, keeping them
+ * identical costs one paste and removes the flash entirely.
+ */
 export const DEFAULT_HOME: HomeDoc = {
   v: 1,
   hero: {
-    heading: 'I build tools for the people around me.',
+    heading:
+      'The internets number one Claude Maxer. Creating fun tools that anyone can use, together.',
     blurb:
-      'A workout tracker my friends use every day. An investing tracker for my family. Games I wanted to exist. It all runs here, and I build it with AI.',
+      'Real time calls with streaming. A workout tracker my friends use every day. A data driven investment tracker for my family. Games I want to exist. A digital audio workspace and music player with reactive visuals. A paint studio. Personalized profile pages. Customized website themes. It all runs here, and I build it with AI.',
   },
   about: {
     heading: 'About',
     paragraphs: [
       'The Circuit started as a spreadsheet my friends and I used to score our workouts. Then a single HTML file. Now it’s the biggest thing on this site and they still use it daily.',
-      'That’s how all of it goes — something small that a few people actually want, rebuilt properly. I work with AI the whole way through, so this site is also a record of what building that way is like. Still prototyping. Always adding.',
+      'That’s how all of it goes — ideas that I want to exist as my own, built together brick by brick. I work with AI the whole way through, so this site is also a record of what building that way is like. Still prototyping. Always adding.',
     ],
   },
   projects: { order: [], hidden: [], edits: {} },
