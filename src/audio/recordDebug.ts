@@ -255,9 +255,37 @@ export function findTicks(x: Float32Array, rate: number, threshold = 6): Tick[] 
  * fault is below everything we wrote and no amount of envelope work will touch it. If it is
  * clean while the instrument is not, the fault is ours, and the pieces can be added back one at
  * a time until it appears — which is a search that terminates.
+ *
+ * ⚠️ BOTH TEST TONES SCHEDULE AHEAD AND COMPUTE THEIR OWN LEVEL, and the first versions did
+ * neither — which made them useless as a test and very nearly produced a wrong conclusion.
+ *
+ * They scheduled at `ctx.currentTime`, which is BEHIND the render head: the engine is already
+ * some way into the next block, so an event stamped now is dated in the past and gets applied
+ * with whatever discontinuity that implies. The real synth has guarded against this since long
+ * before I arrived — that is what SAFE_START is for — and my bisection tools threw the guard
+ * away. They also read `gain.value` during an active ramp to anchor the release, which is the
+ * precise trap the note above cancelAndHoldAtTime describes: asking the engine for a level
+ * instead of working it out.
+ *
+ * So a tone that clicked told us nothing about the engine; it may only have been repeating the
+ * bug the instrument itself already avoids. Now both schedule at now + SAFE, and the release
+ * anchor is computed from the ramp we ourselves wrote.
  */
+const TONE_SAFE = 0.006
+const TONE_ATTACK = 0.01
+const TONE_PEAK = 0.2
+const TONE_FADE = 0.08
+
+/** Where our own attack ramp has got to at time t — arithmetic, not asked of the engine. */
+function toneLevelAt(onAt: number, t: number): number {
+  if (t <= onAt) return 0
+  if (t >= onAt + TONE_ATTACK) return TONE_PEAK
+  return (TONE_PEAK * (t - onAt)) / TONE_ATTACK
+}
+
 let plainOsc: OscillatorNode | null = null
 let plainGain: GainNode | null = null
+let plainOnAt = 0
 
 export function plainToneOn(freq = 440) {
   const ctx = sharedCtx()
@@ -267,10 +295,11 @@ export function plainToneOn(freq = 440) {
   o.type = 'sine'
   o.frequency.value = freq
   o.connect(g).connect(ctx.destination)
-  const t = ctx.currentTime
+  const t = ctx.currentTime + TONE_SAFE
   g.gain.setValueAtTime(0, t)
-  g.gain.linearRampToValueAtTime(0.2, t + 0.01)
+  g.gain.linearRampToValueAtTime(TONE_PEAK, t + TONE_ATTACK)
   o.start(t)
+  plainOnAt = t
   plainOsc = o
   plainGain = g
 }
@@ -282,11 +311,15 @@ export function plainToneOff(immediate = false) {
   plainGain = null
   if (!o || !g) return
   const ctx = sharedCtx()
-  const t = ctx.currentTime
-  const fade = immediate ? 0.005 : 0.08
+  const t = ctx.currentTime + TONE_SAFE
+  const fade = immediate ? 0.005 : TONE_FADE
   try {
-    // hold what it is at, then a straight line to true zero — nothing else
-    g.gain.setValueAtTime(g.gain.value, t)
+    g.gain.cancelScheduledValues(t)
+    /* re-ramp onto the surviving setValueAtTime(0, onAt) when the release lands inside the
+       attack, rather than inserting an anchor — otherwise the cancel deletes the attack ramp,
+       the value falls back to 0, and it jumps to full level. See the same note in synth.ts. */
+    if (t < plainOnAt + TONE_ATTACK) g.gain.linearRampToValueAtTime(toneLevelAt(plainOnAt, t), t)
+    else g.gain.setValueAtTime(toneLevelAt(plainOnAt, t), t)
     g.gain.linearRampToValueAtTime(0, t + fade)
     o.stop(t + fade + 0.01)
     o.onended = () => {
@@ -302,28 +335,13 @@ export function plainToneOff(immediate = false) {
 }
 
 /**
- * The same bare tone, but with NO NODES CREATED OR DESTROYED per press.
- *
- * ⚠️ THIS IS THE NEXT BISECTION, and the plain tone above is what forced it. That one is one
- * oscillator and one gain straight to the destination, with straight-line automation ending at
- * exactly zero — and it still clicks on Firefox. Nothing in its SIGNAL can be at fault, so what
- * is left is the one thing it still does on every press: build two nodes, wire them into a
- * running graph, and tear them down again.
- *
- * Mutating a live audio graph is not free, and it is the classic difference between engines —
- * which fits a fault that is constant on Firefox and intermittent on Chrome, and that gets worse
- * the faster you play, because faster playing means more churn per second.
- *
- * So here the oscillator is created ONCE and never stopped. It runs for the life of the page at
- * whatever pitch is asked for, and a press only moves a gain. Zero allocation, zero connection,
- * zero teardown.
- *
- * If this is clean while the plain tone is not, the cause is node churn and the fix is a fixed
- * voice pool for the whole instrument. If it clicks too, then even a gain ramp on a settled graph
- * is not safe on this machine, and the problem is below Web Audio entirely.
+ * The same bare tone with NO NODES CREATED OR DESTROYED per press — the oscillator is made once
+ * and never stopped, so a press only moves a gain. Zero allocation, zero connection, zero
+ * teardown, and the only difference from the plain tone above is graph churn.
  */
 let poolOsc: OscillatorNode | null = null
 let poolGain: GainNode | null = null
+let poolOnAt = 0
 
 export function pooledToneOn(freq = 440) {
   const ctx = sharedCtx()
@@ -337,17 +355,19 @@ export function pooledToneOn(freq = 440) {
     poolOsc = o
     poolGain = g
   }
-  const t = ctx.currentTime
+  const t = ctx.currentTime + TONE_SAFE
   poolOsc.frequency.setValueAtTime(freq, t)
   poolGain.gain.cancelScheduledValues(t)
-  poolGain.gain.setValueAtTime(poolGain.gain.value, t)
-  poolGain.gain.linearRampToValueAtTime(0.2, t + 0.01)
+  poolGain.gain.setValueAtTime(0, t)
+  poolGain.gain.linearRampToValueAtTime(TONE_PEAK, t + TONE_ATTACK)
+  poolOnAt = t
 }
 
 export function pooledToneOff() {
   if (!poolGain) return
-  const t = sharedCtx().currentTime
+  const t = sharedCtx().currentTime + TONE_SAFE
   poolGain.gain.cancelScheduledValues(t)
-  poolGain.gain.setValueAtTime(poolGain.gain.value, t)
-  poolGain.gain.linearRampToValueAtTime(0, t + 0.08)
+  if (t < poolOnAt + TONE_ATTACK) poolGain.gain.linearRampToValueAtTime(toneLevelAt(poolOnAt, t), t)
+  else poolGain.gain.setValueAtTime(toneLevelAt(poolOnAt, t), t)
+  poolGain.gain.linearRampToValueAtTime(0, t + TONE_FADE)
 }

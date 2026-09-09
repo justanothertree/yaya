@@ -1799,19 +1799,34 @@ export function noteOn(
          * decibel — and everything before `now` is already rendered and cannot be affected.
          * No event is dated in the past, no ratio is extreme, and both engines see one shape.
          */
-        const envAt = (t: number) =>
-          t <= at
-            ? 0.0001
-            : t < at + sh.a
-              ? 0.0001 + (peak - 0.0001) * ((t - at) / sh.a)
-              : t < at + sh.a + sh.d
-                ? peak * Math.pow(target / peak, (t - at - sh.a) / sh.d)
-                : target
-        const nowT = c.currentTime
         g.gain.cancelScheduledValues(from)
-        if (from > nowT) {
-          g.gain.setValueAtTime(Math.max(0.0001, envAt(nowT)), nowT)
+        /**
+         * ⚠️ RE-RAMP FROM THE EVENT THAT SURVIVED, rather than inserting a new anchor. This is
+         * the click on short notes, and it is the one rapid playing lands on constantly.
+         *
+         * cancelScheduledValues removes every event at or after `from`, including a ramp still
+         * mid-flight. Release a note inside its attack and the attack ramp goes — but the
+         * `setValueAtTime(0.0001, at)` that started it does NOT, because `at` is earlier. So the
+         * gain holds at 0.0001 from the note's start until whatever is scheduled next, and then
+         * jumps. Measured on organ across its 12ms attack, as a multiple of the steepest step the
+         * waveform can legally take: held 1ms x2.4, 3ms x7.1, 5ms x11.3, 8ms x11.3 — a jump from
+         * near-silence to full level in one sample. From 12ms on, x1.0.
+         *
+         * A ramp to `level` at `from` anchored on that surviving event reproduces the original
+         * segment EXACTLY, because level is defined as the envelope's own value at `from`: the
+         * attack is a straight line from the same anchor, and an exponential from peak to level
+         * over the shortened span is the same curve as one from peak to target over the full
+         * decay, evaluated up to `from`.
+         *
+         * ⚠️ And nothing here is dated in the past. The anchors are events the note scheduled for
+         * itself when it started, which is ordinary; the earlier attempt at this INSERTED a
+         * setValueAtTime behind the render head, which is the Firefox trap the cancelAndHold note
+         * above describes. Ramping onto an existing anchor avoids both faults at once.
+         */
+        if (from < at + sh.a) {
           g.gain.linearRampToValueAtTime(Math.max(0.0001, level), from)
+        } else if (from < at + sh.a + sh.d) {
+          g.gain.exponentialRampToValueAtTime(Math.max(0.0001, level), from)
         } else {
           g.gain.setValueAtTime(Math.max(0.0001, level), from)
         }
