@@ -1,8 +1,7 @@
-import { Suspense, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { lazyRetry } from './lazyRetry'
 import { ErrorBoundary } from './ErrorBoundary'
 import { PresenceBeacon } from './components/PresenceBeacon'
-import { homeStore } from './site/homeStore'
 import type { ReactNode } from 'react'
 import { ContactForm } from './sections/ContactForm'
 import { EvanCook, homePanes } from './sections/EvanCook'
@@ -232,7 +231,6 @@ export default function App() {
    * so it would otherwise ship unverified. DEV only — the constant folds away in a production
    * build — and the server still decides who may actually publish, so this grants nothing.
    */
-  const canEditHome = isAdmin || (import.meta.env.DEV && DEV_PREVIEW === 'home')
   // 'finance' feature flag for this account: null = still loading (don't redirect yet).
   // A cached true paints the tab immediately; a cached false stays "loading" so a
   // deep link to #investments can't be bounced before the server weighs in.
@@ -382,14 +380,6 @@ export default function App() {
   })
   useEffect(() => installClickFx(), [])
   useEffect(() => installMouseTrail(), [])
-  /**
-   * ⚠️ Subscribed here purely so CANVAS MODE keeps up. homePanes() builds the home windows outside
-   * the React tree and therefore reads the home document straight from the store; without a
-   * subscription somewhere in the tree, those windows would keep the text they were built with
-   * while the same page rendered normally showed the newer copy. Rare enough to be free — the
-   * document changes on load and when an admin edits it.
-   */
-  useSyncExternalStore(homeStore.subscribe, () => homeStore.getState().doc)
   const [appearanceOpen, setAppearanceOpen] = useState(false)
   const [bugOpen, setBugOpen] = useState(false)
   /* held here so the cog AND the phone's bottom bar can open the same panel — see SettingsMenu */
@@ -1397,7 +1387,7 @@ export default function App() {
     ...circuitCanvasPanes.map((p) => ({ id: p.id, title: p.title, group: 'The Circuit' })),
     // Home's cards are windows in their own right — they were missing from the first pass, so
     // the one page that is ALREADY several windows was the one you couldn't compose from.
-    ...homePanes({ isAdmin: canEditHome }).map((p) => ({
+    ...homePanes().map((p) => ({
       id: p.id,
       title: p.title,
       group: 'Home',
@@ -1441,9 +1431,7 @@ export default function App() {
       togglePin(existing)
       return
     }
-    const home = id.startsWith('home:')
-      ? homePanes({ isAdmin: canEditHome }).find((p) => p.id === id)
-      : null
+    const home = id.startsWith('home:') ? homePanes().find((p) => p.id === id) : null
     if (home) {
       togglePin(home)
       return
@@ -1521,7 +1509,7 @@ export default function App() {
     if (!desktop || !canvasOpen) return
     if (active === 'circuit' || active === 'invite') return
     if (active === 'home') {
-      const fresh = homePanes({ isAdmin: canEditHome })
+      const fresh = homePanes()
       setPinned((prev) => {
         const missing = fresh.filter((p) => !prev.some((x) => x.id === p.id))
         return missing.length ? [...prev, ...missing] : prev
@@ -1842,7 +1830,7 @@ export default function App() {
           )}
           {active === 'home' && !sharedCanvasShowing && (
             <section id="home">
-              <EvanCook isAdmin={canEditHome} authed={isFinanceAuthed} />
+              <EvanCook authed={isFinanceAuthed} />
             </section>
           )}
           {/* Circuit stays mounted whenever the shared canvas is on, even on another page --

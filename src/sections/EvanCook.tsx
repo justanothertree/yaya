@@ -2,14 +2,13 @@
 // Home, Projects, and Resume sections. Each project has a click-through slideshow
 // of slides (real screenshots when present, themed poster tiles otherwise) plus an
 // informational write-up. Résumé content folds in as About / Skills, with a PDF link.
-import { useEffect, useState, type ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import { site } from '../config/site'
 import { TRY_THESE } from '../site/tryThese'
 import { IconGitHub, IconLinkedIn } from '../components/Icons'
-import { skills, type Project, type Shot } from './work'
-import { projectsFor } from '../site/homeContent'
-import { homeStore, loadHome, useHomeDoc } from '../site/homeStore'
-import { HomeEditor } from '../site/HomeEditor'
+import { projects, skills, type Project, type Shot } from './work'
+import { HOME } from '../site/homeContent'
+import { HeroPlay } from '../site/HeroPlay'
 import { readableOn } from '../theme/customTheme'
 
 const STATUS_LABEL: Record<Project['status'], string> = {
@@ -314,91 +313,78 @@ function ProjectCard({ project }: { project: Project }) {
   )
 }
 
+/**
+ * ⚠️ NOT A CARD ANY MORE, and that is most of the "squarish" complaint answered.
+ *
+ * The page was seven bordered rectangles of equal weight stacked down a column, which reads as a
+ * form rather than as somebody's front door. The hero now has no box around it: the type is the
+ * structure, and the only bordered thing in it is the toy — so the eye lands on the one part that
+ * is asking to be touched instead of on a border.
+ */
 function Hero() {
-  const doc = useHomeDoc()
   return (
-    <section className="card" style={{ overflow: 'hidden' }}>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem', alignItems: 'flex-end' }}>
-        <div style={{ flex: 1, minWidth: 260 }}>
-          <p
-            className="muted"
-            style={{
-              margin: 0,
-              fontWeight: 700,
-              letterSpacing: '0.08em',
-              textTransform: 'uppercase',
-              fontSize: '0.74rem',
-            }}
+    <section className="home-hero">
+      <p className="home-eyebrow">{site.name}</p>
+      <h1 className="home-h1">{HOME.hero.heading}</h1>
+      <p className="home-lede muted">{HOME.hero.blurb}</p>
+      <HeroPlay />
+      <div className="no-print home-cta">
+        <button
+          className="btn"
+          onClick={() =>
+            document
+              .getElementById('projects-showcase')
+              ?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+          }
+        >
+          See my work
+        </button>
+        <button
+          className="btn btn-ghost"
+          onClick={() => window.print()}
+          title="Print or save this page as a PDF résumé"
+        >
+          Résumé (PDF)
+        </button>
+        <a className="btn btn-ghost" href="#contact">
+          Get in touch
+        </a>
+        <span className="home-socials">
+          <a
+            className="icon-link"
+            href={site.socials.github}
+            target="_blank"
+            rel="noreferrer"
+            aria-label="GitHub"
           >
-            {site.name}
-          </p>
-          <h1 style={{ margin: '0.3rem 0 0.5rem', lineHeight: 1.1 }}>{doc.hero.heading}</h1>
-          <p className="muted" style={{ margin: 0, fontSize: '1.02rem' }}>
-            {doc.hero.blurb}
-          </p>
-          <div
-            className="no-print"
-            style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginTop: '1rem' }}
+            <IconGitHub />
+          </a>
+          <a
+            className="icon-link"
+            href={site.socials.linkedin}
+            target="_blank"
+            rel="noreferrer"
+            aria-label="LinkedIn"
           >
-            <button
-              className="btn"
-              onClick={() =>
-                document
-                  .getElementById('projects-showcase')
-                  ?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-              }
-            >
-              See my work
-            </button>
-            <button
-              className="btn btn-ghost"
-              onClick={() => window.print()}
-              title="Print or save this page as a PDF résumé"
-            >
-              Résumé (PDF)
-            </button>
-            <a className="btn btn-ghost" href="#contact">
-              Get in touch
-            </a>
-          </div>
-          <div className="no-print" style={{ display: 'flex', gap: '0.5rem', marginTop: '0.9rem' }}>
-            <a
-              className="icon-link"
-              href={site.socials.github}
-              target="_blank"
-              rel="noreferrer"
-              aria-label="GitHub"
-            >
-              <IconGitHub />
-            </a>
-            <a
-              className="icon-link"
-              href={site.socials.linkedin}
-              target="_blank"
-              rel="noreferrer"
-              aria-label="LinkedIn"
-            >
-              <IconLinkedIn />
-            </a>
-          </div>
-        </div>
+            <IconLinkedIn />
+          </a>
+        </span>
       </div>
     </section>
   )
 }
 
 function AboutCard() {
-  const doc = useHomeDoc()
   return (
     <div className="card">
-      <h2 className="section-title">{doc.about.heading}</h2>
-      {doc.about.paragraphs.map((text, i) => (
+      <h2 className="section-title">{HOME.about.heading}</h2>
+      {HOME.about.paragraphs.map((text, i) => (
         <p
           key={i}
           className="muted"
           style={{
             lineHeight: 1.6,
-            marginBottom: i === doc.about.paragraphs.length - 1 ? 0 : undefined,
+            marginBottom: i === HOME.about.paragraphs.length - 1 ? 0 : undefined,
           }}
         >
           {text}
@@ -452,7 +438,6 @@ function SkillsCard() {
 }
 
 function Work() {
-  const doc = useHomeDoc()
   return (
     <section id="projects-showcase" style={{ scrollMarginTop: 'var(--nav-h)' }}>
       <h2 className="section-title" style={{ marginBottom: '0.25rem' }}>
@@ -462,7 +447,7 @@ function Work() {
         All of it runs here. Click through the slides.
       </p>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', marginTop: '1rem' }}>
-        {projectsFor(doc).map((p) => (
+        {projects.map((p) => (
           <ProjectCard key={p.id} project={p} />
         ))}
       </div>
@@ -494,17 +479,32 @@ function HaveAGo({ authed }: { authed: boolean }) {
       <p className="muted" style={{ margin: '0 0 0.8rem', fontSize: '0.85rem' }}>
         Everything here is live — nothing to install, nothing to sign up for.
       </p>
+      {/**
+       * ⚠️ WIDTHS RUN 2,1,1,2 AND REPEAT, which is the other half of "squarish" answered.
+       *
+       * Six identically sized tiles gave every room the same weight and left the eye nowhere to
+       * land. The pattern matters more than it looks: each PAIR sums to the three columns, so it
+       * tiles with no ragged hole at six cards (a member) and at four (a first-time visitor, who
+       * cannot open the two members-only rooms). A single fixed "big first card" only looks right
+       * at one of those counts, and the visitor is the one this page is for.
+       */}
       <div className="hag-grid">
-        {items.map((t) => (
+        {items.map((t, i) => (
           <a
             key={t.id}
-            className="hag-card"
+            className={'hag-card' + (i === 0 ? ' is-feature' : '')}
+            data-span={[2, 1, 1, 2][i % 4]}
             href={`#${t.id}`}
             onClick={(e) => {
               e.preventDefault()
               window.location.hash = t.id
             }}
           >
+            {/* texture, not information: the same glyph blown up and running off the corner, so a
+                card is a shape rather than a rectangle of text */}
+            <span className="hag-bleed" aria-hidden>
+              {t.icon}
+            </span>
             <span className="hag-top">
               <span aria-hidden className="hag-ic">
                 {t.icon}
@@ -512,6 +512,9 @@ function HaveAGo({ authed }: { authed: boolean }) {
               <strong>{t.title}</strong>
             </span>
             <span className="muted hag-line">{t.line}</span>
+            <span className="hag-go" aria-hidden>
+              →
+            </span>
           </a>
         ))}
       </div>
@@ -519,41 +522,18 @@ function HaveAGo({ authed }: { authed: boolean }) {
   )
 }
 
-export function EvanCook({
-  isAdmin = false,
-  authed = false,
-}: { isAdmin?: boolean; authed?: boolean } = {}) {
-  /* ⚠️ Asked for here rather than at app start: this is the only page that needs it, and a fetch
-     fired on every load of every section would be a request nobody reads. It is a no-op after the
-     first call. */
-  useEffect(() => loadHome(), [])
-  const [editing, setEditing] = useState(false)
+export function EvanCook({ authed = false }: { authed?: boolean } = {}) {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-      {/* ⚠️ Only for an admin, and the gate is only cosmetic — the server decides who may
-          actually write, so this button appearing to anybody else would still change nothing. */}
-      {isAdmin && (
-        <div className="home-edit-bar">
-          <button
-            className={'btn' + (editing ? ' is-on' : '')}
-            aria-pressed={editing}
-            onClick={() => setEditing((v) => !v)}
-          >
-            {editing ? '✓ Done editing' : '✎ Edit this page'}
-          </button>
-        </div>
-      )}
+    <div className="home-page">
       <Hero />
       <HaveAGo authed={authed} />
-      <section className="grid grid-2" style={{ gap: '1rem' }}>
+      {/* ⚠️ 3fr/2fr rather than the old equal halves. Two identical columns of prose is the same
+          symmetry problem as the tiles, and these two are not equally interesting. */}
+      <section className="home-split">
         <AboutCard />
         <SkillsCard />
       </section>
       <Work />
-      {/* ⚠️ BELOW the page, not above it. The panel writes into the same store the page renders
-          from, so everything you change is happening in the real thing directly above — putting
-          the controls first would push the page you are editing off the screen. */}
-      {isAdmin && editing && <HomeEditor onClose={() => setEditing(false)} />}
     </div>
   )
 }
@@ -562,29 +542,15 @@ export function EvanCook({
 // file's section components, so it lives here despite the fast-refresh lint preference.
 export type HomePane = { id: string; title: string; node: ReactNode }
 // eslint-disable-next-line react-refresh/only-export-components
-export function homePanes({ isAdmin = false }: { isAdmin?: boolean } = {}): HomePane[] {
+export function homePanes(): HomePane[] {
   return [
     { id: 'home:hero', title: '👋 Intro', node: <Hero /> },
     { id: 'home:about', title: 'About', node: <AboutCard /> },
     { id: 'home:skills', title: 'Skills', node: <SkillsCard /> },
-    /* ⚠️ The SAME text the normal page renders. Canvas mode builds its windows from this
-       function, outside the React tree, so it reads the store directly — App subscribes so these
-       are rebuilt when the document arrives. */
-    ...projectsFor(homeStore.getState().doc).map((p) => ({
+    ...projects.map((p) => ({
       id: `home:proj:${p.id}`,
       title: p.title,
       node: <ProjectCard project={p} />,
     })),
-    /**
-     * ⚠️ The editor is a WINDOW here, not a panel under the page, because in canvas mode there is
-     * no page under anything. Without this, turning canvas on hid the only way to edit the very
-     * text the canvas is displaying — and canvas is not a mode you leave to do one thing.
-     *
-     * No Done button in this form: closing the window is how you leave a window, and a second
-     * way out inside it would be a button that disagrees with the ✕ in its own title bar.
-     */
-    ...(isAdmin
-      ? [{ id: 'home:edit', title: '✎ Edit this page', node: <HomeEditor /> } as HomePane]
-      : []),
   ]
 }
