@@ -15,7 +15,13 @@ import {
   drumName,
   outputTap,
 } from '../audio/synth'
-import { captureSamples, findTicks, recordOutput } from '../audio/recordDebug'
+import {
+  captureSamples,
+  findTicks,
+  plainToneOff,
+  plainToneOn,
+  recordOutput,
+} from '../audio/recordDebug'
 import { applyFx, captureFx, makeInstKits, type InstKit } from '../audio/instKit'
 import { KitBar } from '../ui/KitBar'
 import { useTouchOnly } from '../ui/pointerKind'
@@ -358,6 +364,22 @@ function AudioHealthStrip() {
           title="Record 15s while you play, then report every click it can find"
         >
           catch pop 15s
+        </button>
+        {/**
+         * ⚠️ THE BISECTION. Hammer this on the browser where it is worst. It is one oscillator
+         * and one gain straight to the destination — none of the instrument's chain — so if it
+         * clicks, nothing we wrote is the cause; if it is clean, the cause is ours and can be
+         * found by adding the chain back a piece at a time.
+         */}
+        <button
+          className="btn"
+          onPointerDown={() => plainToneOn(440)}
+          onPointerUp={() => plainToneOff()}
+          onPointerLeave={() => plainToneOff()}
+          style={{ marginLeft: '0.3rem', padding: '0 0.35rem', fontSize: '0.7rem' }}
+          title="A bare sine straight to the speakers — no filter, limiter, reverb or bus. Hammer it."
+        >
+          plain tone
         </button>
         {ticks && <span style={{ marginLeft: '0.4rem' }}>{ticks}</span>}
         {/* five seconds of exactly what came out, as a WAV — for when every number says the

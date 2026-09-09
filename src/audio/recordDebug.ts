@@ -242,3 +242,61 @@ export function findTicks(x: Float32Array, rate: number, threshold = 6): Tick[] 
   }
   return out
 }
+
+/**
+ * The simplest note this browser can make, for bisecting the click.
+ *
+ * ⚠️ IT BYPASSES EVERYTHING THE INSTRUMENT DOES. One oscillator, one gain, straight to the
+ * destination: no per-part bus, no filter, no limiter, no reverb, no polyphony gain, no
+ * partials, no cancelScheduledValues, and an envelope of two straight lines that ends at exactly
+ * zero. There is nothing here that could click except the engine itself.
+ *
+ * That makes it a bisection rather than another guess. If this crackles on rapid presses, the
+ * fault is below everything we wrote and no amount of envelope work will touch it. If it is
+ * clean while the instrument is not, the fault is ours, and the pieces can be added back one at
+ * a time until it appears — which is a search that terminates.
+ */
+let plainOsc: OscillatorNode | null = null
+let plainGain: GainNode | null = null
+
+export function plainToneOn(freq = 440) {
+  const ctx = sharedCtx()
+  plainToneOff(true)
+  const o = ctx.createOscillator()
+  const g = ctx.createGain()
+  o.type = 'sine'
+  o.frequency.value = freq
+  o.connect(g).connect(ctx.destination)
+  const t = ctx.currentTime
+  g.gain.setValueAtTime(0, t)
+  g.gain.linearRampToValueAtTime(0.2, t + 0.01)
+  o.start(t)
+  plainOsc = o
+  plainGain = g
+}
+
+export function plainToneOff(immediate = false) {
+  const o = plainOsc
+  const g = plainGain
+  plainOsc = null
+  plainGain = null
+  if (!o || !g) return
+  const ctx = sharedCtx()
+  const t = ctx.currentTime
+  const fade = immediate ? 0.005 : 0.08
+  try {
+    // hold what it is at, then a straight line to true zero — nothing else
+    g.gain.setValueAtTime(g.gain.value, t)
+    g.gain.linearRampToValueAtTime(0, t + fade)
+    o.stop(t + fade + 0.01)
+    o.onended = () => {
+      try {
+        g.disconnect()
+      } catch {
+        /* already gone */
+      }
+    }
+  } catch {
+    /* context went away */
+  }
+}
