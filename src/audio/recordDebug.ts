@@ -155,3 +155,65 @@ export function captureSamples(from: AudioNode, seconds: number): Promise<Float3
     }, seconds * 1000)
   })
 }
+
+/**
+ * A tick, as the analysis that finds one.
+ *
+ * ⚠️ THE FAULT IS RARE AND THE PLAYER IS NOT. Driving notes from a script produces
+ * metronome-regular timing and, across nearly a hundred presses, caught the artefact twice —
+ * where the person actually playing hits it constantly. So the tool has to go where the hands
+ * are: record while somebody plays, then say exactly where the ticks were.
+ *
+ * A tick is a millisecond whose HIGH-FREQUENCY content stands far above its own neighbourhood.
+ * Second-differencing emphasises high frequencies, and comparing each frame against the MEDIAN of
+ * the 30 frames around it means a note's own onset — which is broadband but gradual over several
+ * frames — does not register, while a single-sample edge does.
+ */
+export type Tick = { atMs: number; ratio: number; peakStep: number }
+
+export function findTicks(x: Float32Array, rate: number, threshold = 6): Tick[] {
+  const F = Math.round(rate / 1000)
+  const n = Math.floor(x.length / F)
+  /**
+   * ⚠️ THE SECOND DIFFERENCE IS TAKEN OVER THE WHOLE SIGNAL FIRST, then binned — not computed
+   * per frame. Framing it first left a two-sample hole at every boundary, because d[i] needs
+   * x[i-1] and x[i-2] and the loop could not reach back across the edge. That is four percent of
+   * all sample positions where a discontinuity was INVISIBLE, and a scheduled envelope event
+   * lands at an arbitrary offset, so it is a coin toss whether the detector sees it.
+   *
+   * Caught by feeding it a step of known size at a known instant: it reported nothing, and the
+   * step had landed at offset 0 of its frame. A detector that misses the thing it was built to
+   * find is worse than none, and this is the fifth time in this investigation that a meter has
+   * had a blind spot exactly where the fault lives.
+   */
+  const d = new Float64Array(x.length)
+  for (let i = 2; i < x.length; i++) d[i] = x[i] - 2 * x[i - 1] + x[i - 2]
+  const hf = new Float64Array(n)
+  for (let k = 0; k < n; k++) {
+    const i0 = k * F
+    let s = 0
+    let c = 0
+    for (let i = i0; i < i0 + F && i < x.length; i++) {
+      s += d[i] * d[i]
+      c++
+    }
+    hf[k] = c ? Math.sqrt(s / c) : 0
+  }
+  const out: Tick[] = []
+  const win: number[] = []
+  for (let k = 20; k < n - 20; k++) {
+    win.length = 0
+    for (let j = k - 15; j <= k + 15; j++) win.push(hf[j])
+    win.sort((a, b) => a - b)
+    const med = win[Math.floor(win.length / 2)]
+    const ratio = hf[k] / Math.max(med, 1e-12)
+    if (ratio < threshold) continue
+    const i0 = k * F
+    let step = 0
+    for (let i = i0 + 1; i < i0 + F && i < x.length; i++)
+      step = Math.max(step, Math.abs(x[i] - x[i - 1]))
+    out.push({ atMs: k, ratio: +ratio.toFixed(1), peakStep: +step.toFixed(5) })
+    k += 10 // one report per event, not per frame of it
+  }
+  return out
+}

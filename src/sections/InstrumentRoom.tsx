@@ -15,7 +15,7 @@ import {
   drumName,
   outputTap,
 } from '../audio/synth'
-import { captureSamples, recordOutput } from '../audio/recordDebug'
+import { captureSamples, findTicks, recordOutput } from '../audio/recordDebug'
 import { applyFx, captureFx, makeInstKits, type InstKit } from '../audio/instKit'
 import { KitBar } from '../ui/KitBar'
 import { useTouchOnly } from '../ui/pointerKind'
@@ -243,6 +243,7 @@ function fxWord(fx: Fx): string {
  */
 function AudioHealthStrip() {
   const [rec, setRec] = useState(false)
+  const [ticks, setTicks] = useState('')
   const bufMs = (() => {
     try {
       const v = localStorage.getItem('audio_latency')
@@ -324,6 +325,41 @@ function AudioHealthStrip() {
           <option value="50">buffer: 50ms</option>
           <option value="100">buffer: 100ms</option>
         </select>
+        {/**
+         * ⚠️ RECORDS WHILE YOU PLAY, THEN SAYS WHERE THE TICKS WERE. Script-driven notes are
+         * metronome-regular and caught the artefact twice in a hundred presses; a person playing
+         * hits it constantly. So this goes where the hands are — play through it, and it reports
+         * how many single-sample edges it found and when, then hands over the WAV.
+         */}
+        <button
+          className="btn"
+          disabled={rec}
+          onClick={() => {
+            const tap = outputTap()
+            if (!tap) return
+            setRec(true)
+            setTicks('listening…')
+            void captureSamples(tap, 15)
+              .then((x) => {
+                const found = findTicks(x, sharedCtx().sampleRate)
+                setTicks(
+                  found.length
+                    ? `${found.length} tick${found.length === 1 ? '' : 's'}: ` +
+                        found
+                          .slice(0, 8)
+                          .map((t) => `${t.atMs}ms ×${t.ratio}`)
+                          .join(', ')
+                    : 'no ticks found in 15s',
+                )
+              })
+              .finally(() => setRec(false))
+          }}
+          style={{ marginLeft: '0.3rem', padding: '0 0.35rem', fontSize: '0.7rem' }}
+          title="Record 15s while you play, then report every click it can find"
+        >
+          catch pop 15s
+        </button>
+        {ticks && <span style={{ marginLeft: '0.4rem' }}>{ticks}</span>}
         {/* five seconds of exactly what came out, as a WAV — for when every number says the
             signal is clean and it audibly is not */}
         <button
