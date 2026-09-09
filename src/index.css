@@ -8163,3 +8163,27 @@ a.cz-msg-author:focus-visible {
   border-radius: 10px;
   background: var(--control-bg, rgba(127, 127, 127, 0.12));
 }
+
+/* ── canvas: the one-time nudge toward Fit all ──
+   Fit all is what turns a pile of overlapping windows into something readable, and it was being
+   discovered only by word of mouth. It glows until it has been used once, then never again. */
+.btn.cz-hint {
+  border-color: var(--accent, #7c6af7);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent, #7c6af7) 40%, transparent);
+  animation: cz-hint-pulse 2.4s ease-in-out infinite;
+}
+@keyframes cz-hint-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent, #7c6af7) 35%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 5px color-mix(in srgb, var(--accent, #7c6af7) 12%, transparent);
+  }
+}
+/* somebody who asked for less motion gets the ring without the breathing */
+@media (prefers-reduced-motion: reduce) {
+  .btn.cz-hint {
+    animation: none;
+  }
+}

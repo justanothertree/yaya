@@ -165,6 +165,9 @@ function handleStyle(dir: Dir): React.CSSProperties {
   }
 }
 
+/** Remembered once used — the glow is a first-run nudge, not a permanent decoration. */
+const FIT_HINT_KEY = 'canvas_fit_hint_v1'
+
 export function CircuitCanvas({
   panes,
   focusPane,
@@ -176,8 +179,19 @@ export function CircuitCanvas({
   launcherOpenIds = [],
   onToggleWindow,
   onDropLink,
+  onExit,
 }: {
   panes: CanvasPane[]
+  /**
+   * Leave canvas, from inside canvas.
+   *
+   * ⚠️ THERE WAS NO WAY OUT IN HERE AT ALL. Canvas is entered from the cog and from What's here,
+   * and it replaces the page with a plane of windows — but the only switch to turn it off stayed
+   * behind the cog, which is not where somebody looks when they are lost. Reported exactly that
+   * way: turning it on from What's here is "a bit confusing if you did not know what it would do
+   * or how to get back". A mode you can enter by accident needs a door on the inside.
+   */
+  onExit?: () => void
   focusPane?: { id: string; nonce: number } | null
   /** ids of panes the user pinned — they follow them across tabs */
   pinnedIds?: string[]
@@ -262,6 +276,25 @@ export function CircuitCanvas({
    * whether it's front, behind, or minimized. Click a row's title to jump to it (or open it, if
    * it wasn't); the switch on the right adds or fully removes it, independent of that.
    */
+  /**
+   * ⚠️ FIT ALL IS THE ONE CONTROL THAT MAKES CANVAS MAKE SENSE, and nothing said so.
+   *
+   * Evan's own words about showing friends: "when I tell my friends about canvas I always tell
+   * them the fit all button is the secret sauce." That is a feature being carried by word of
+   * mouth — which works for the people he talks to and for nobody else. Arriving here from
+   * What's here, you get a plane of overlapping windows and no idea that one button tidies the
+   * whole thing into something you can read.
+   *
+   * So it glows, once, until it is used. Not a tour, not a modal — the control itself, asking to
+   * be pressed. After that it never mentions it again.
+   */
+  const [hintFit, setHintFit] = useState(() => {
+    try {
+      return localStorage.getItem(FIT_HINT_KEY) !== '1'
+    } catch {
+      return false
+    }
+  })
   const [winMenuOpen, setWinMenuOpen] = useState(false)
   const [winMenuAnchor, setWinMenuAnchor] = useState<{ left: number; top: number } | null>(null)
   const [winMenuQuery, setWinMenuQuery] = useState('')
@@ -1775,12 +1808,25 @@ export function CircuitCanvas({
         ⊞ Tile
       </button>
       <button
-        className="btn"
-        onClick={fitTile}
+        className={'btn' + (hintFit ? ' cz-hint' : '')}
+        onClick={() => {
+          setHintFit(false)
+          try {
+            localStorage.setItem(FIT_HINT_KEY, '1')
+          } catch {
+            /* private mode: it will offer again next visit, which is harmless */
+          }
+          fitTile()
+        }}
         title="Fit every window to its content and arrange them around the centre — pan to explore"
       >
         ▣ Fit all
       </button>
+      {onExit && (
+        <button className="btn" onClick={onExit} title="Go back to the normal page">
+          ✕ Exit canvas
+        </button>
+      )}
     </div>
   )
 

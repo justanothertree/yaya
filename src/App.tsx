@@ -1830,6 +1830,9 @@ export default function App() {
                 launchableWindows={launchableWindows()}
                 launcherOpenIds={pinnedIds}
                 onToggleWindow={toggleWindow}
+                /* a door on the inside — canvas can be entered from What's here by someone who
+                   does not yet know what it is, and the only way out was behind the cog */
+                onExit={() => setCanvasChoice(false)}
                 onDropLink={(url) => {
                   const u = profileFromUrl(url)
                   if (u) openProfileWindow(u)
