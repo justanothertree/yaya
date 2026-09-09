@@ -233,6 +233,25 @@ export function findTicks(x: Float32Array, rate: number, threshold = 6): Tick[] 
   let loudest = 0
   for (let k = 0; k < n; k++) if (hf[k] > loudest) loudest = hf[k]
   const floor = loudest * 0.02
+  /**
+   * ⚠️ AND THE FRAME MUST CONTAIN AUDIBLE SIGNAL, not just audible high frequency.
+   *
+   * Reported from a real run: four ticks at ratios of 2414, 3349 and — twice — about fifty
+   * MILLION, with a worst step of 0.000. A ratio that large is not a discovery, it is a division:
+   * in a near-silent stretch the neighbourhood median is essentially zero, so any frame at all
+   * reads as infinitely above it. The high-frequency floor above does not catch this, because it
+   * is set by the loudest moment in the take and a quiet passage can still clear two percent of
+   * it while being inaudible.
+   *
+   * A click nobody can hear is not the fault we are looking for, so a frame must also carry
+   * amplitude — one percent of the recording's peak, which is -40dB and generous.
+   */
+  let peakAmp = 0
+  for (let i = 0; i < x.length; i++) {
+    const v = Math.abs(x[i])
+    if (v > peakAmp) peakAmp = v
+  }
+  const ampFloor = peakAmp * 0.01
 
   const out: Tick[] = []
   const win: number[] = []
@@ -243,6 +262,15 @@ export function findTicks(x: Float32Array, rate: number, threshold = 6): Tick[] 
     const med = win[Math.floor(win.length / 2)]
     const ratio = hf[k] / Math.max(med, 1e-12)
     if (ratio < threshold || hf[k] < floor) continue
+    let frameAmp = 0
+    for (let i = k * F; i < (k + 1) * F && i < x.length; i++) {
+      const v = Math.abs(x[i])
+      if (v > frameAmp) frameAmp = v
+    }
+    if (frameAmp < ampFloor) {
+      k += 2
+      continue
+    }
     const i0 = k * F
     /**
      * ⚠️ A NOTE ONSET IS ALSO A BURST OF HIGH FREQUENCY, and without this the detector cannot

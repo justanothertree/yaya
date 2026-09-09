@@ -180,9 +180,19 @@ export async function startHealth(): Promise<boolean> {
     mute.gain.value = 0
     node.connect(mute).connect(ctx.destination)
     /* 20Hz: often enough to catch a note's worth of limiting, far too cheap to notice */
+    /**
+     * ⚠️ NOTHING IS LATCHED FOR THE FIRST SECOND. `reduction` is a relaxing envelope, not an
+     * instantaneous fact — it reads about -13dB the moment a compressor is created and needs
+     * roughly 800ms of quiet to unwind. Latching during that window produced readings like
+     * "squash -16.5dB" beside "in 0.341", which cannot both be true: the threshold is 0.708, so
+     * an input peaking at 0.341 causes no reduction at all. The number was the compressor waking
+     * up, and it made a working meter look broken and a broken one look meaningful.
+     */
+    const armedAt = performance.now() + 1000
     fastTimer = window.setInterval(() => {
       const p = preLimitPeak()
       if (p > preMax) preMax = p
+      if (performance.now() < armedAt) return
       const r = limiterReduction()
       if (p > 0.02 && r < reductionWorst) reductionWorst = r
     }, 50)
