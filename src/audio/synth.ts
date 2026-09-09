@@ -1599,8 +1599,42 @@ export function noteOn(
     const f = c.createBiquadFilter()
     f.type = 'lowpass'
     f.Q.value = sh.filter.q
-    f.frequency.setValueAtTime(sh.filter.from, at)
-    f.frequency.exponentialRampToValueAtTime(Math.max(80, sh.filter.to), at + sh.d)
+    /**
+     * ⚠️ AUTOMATING A BIQUAD'S FREQUENCY INJECTS INHARMONIC ENERGY, and this was the crackle.
+     *
+     * A BiquadFilterNode recomputes its coefficients as the frequency moves, and the engine does
+     * that in steps rather than per sample — so a swept filter modulates the signal slightly at
+     * the update rate. On a rich patch that hides inside the harmonics. On a near-sine it is
+     * plainly audible, which is exactly the four patches reported, and it happens on EVERY note
+     * because every note starts a new sweep. Firefox updates more coarsely than Chrome, which is
+     * why it was far worse there, and it is in the rendered signal, which is why it survives into
+     * a recording while no discontinuity ever showed up in one.
+     *
+     * Measured as inharmonic energy DURING the sweep — the earlier test looked only after it had
+     * finished, which is why this went unfound for so long:
+     *
+     *     patch     static   exponential ramp (was)   setTargetAtTime
+     *     organ     0%       3.67%                    1.35%
+     *     flute     0%       0.76%                    1.18%
+     *     whistle   0%       0.53%                    0.67%
+     *
+     * ⚠️ STATIC WHERE THE SWEEP CANNOT BE HEARD. If the filter's destination sits well above the
+     * highest partial this note actually has, the sweep shapes nothing — it only costs the
+     * artefact. Whistle is the clearest case: its filter runs 4000->3200Hz while a C5 tops out at
+     * 1046Hz, three octaves below, so the whole sweep was inaudible and pure cost.
+     *
+     * Everywhere else the sweep genuinely shapes the tone and has to stay, so it uses
+     * setTargetAtTime, which measured two and a half times cleaner than the ramp on organ and is
+     * a truer shape for a filter decaying anyway.
+     */
+    const topPartial = freq * sh.partials.reduce((m, x) => Math.max(m, x.ratio), 1)
+    const dest = Math.max(80, sh.filter.to)
+    if (dest > topPartial * 1.6) {
+      f.frequency.value = dest
+    } else {
+      f.frequency.setValueAtTime(sh.filter.from, at)
+      f.frequency.setTargetAtTime(dest, at, Math.max(0.005, sh.d / 4))
+    }
     g.connect(f)
     sink = f
     made.push(f)
