@@ -881,19 +881,39 @@ function polyPulse() {
 
 function applyPoly(c: AudioContext) {
   const t = polyTarget()
-  const now = c.currentTime
+  /**
+   * ⚠️ SCHEDULED AHEAD, AND THIS LINE WAS THE CRACKLE. It used to pass `c.currentTime`, with a
+   * comment of mine claiming that reading and scheduling at "the same instant" left nothing to
+   * drift. That is wrong, and it is the one mistake this file warns about most loudly.
+   *
+   * currentTime is not the render position — the engine is already some way into the next block.
+   * setTargetAtTime given a start time in the PAST is evaluated partway along its own curve, so
+   * the gain does not begin gliding, it JUMPS to wherever the curve had already got to. With
+   * POLY_DOWN at 12ms and about 10ms of buffer that is 1 - e^(-10/12), or 57% of the way to the
+   * target, in a single sample — and this runs on every note on, every note off, and every 60ms
+   * besides.
+   *
+   * Found in a recording from the machine that could provoke it. Seven isolated steps, each one
+   * the waveform moving smoothly, jumping in ONE sample, then continuing smoothly at the same
+   * slope — a pure value discontinuity of 0.107 to 0.128, a quarter to nearly half the local
+   * amplitude. The jumps are multiplications: the ratios across them are 0.55, 0.58, 0.58, 0.60,
+   * 0.60 and 0.36, which is a gain stepping rather than a signal breaking, and 0.57 is exactly
+   * what the arithmetic above predicts.
+   *
+   * It explains the whole shape of the report: it fires on note events, gets worse the faster you
+   * play, happens on every instrument, is plainest on the pure patches where a level step has
+   * nothing to hide behind, is in the rendered signal so it survives into a recording, and is
+   * untouched by buffer size. Firefox runs further ahead, so it jumps further.
+   */
+  const now = c.currentTime + SAFE_START
   if (ringing.length) polyPulse()
   for (const b of buses.values()) {
     const g = b.in.gain
-    /* ⚠️ Reading .value is safe HERE and would not be a line later. The file's release code has
-       a long note about this: asking the engine for a level and pinning it at a FUTURE instant
-       is what caused a click on every note-off. This reads now and schedules from now, which is
-       the same instant, so there is nothing to drift. */
     const tau = t < g.value ? POLY_DOWN : POLY_UP
     try {
       /* No cancelScheduledValues: successive setTargetAtTime calls already supersede each other
-         from wherever the value has actually got to, which is exactly what ramp() relies on for
-         every other live control. Cancelling first is the branch that made releases click. */
+         from wherever the value has actually got to, which is what ramp() relies on for every
+         other live control. Cancelling first is the branch that made releases click. */
       g.setTargetAtTime(t, now, tau)
     } catch {
       /* context went away mid-gesture */
