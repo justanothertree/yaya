@@ -15,6 +15,8 @@ import { frameCount, paintDrawing, readDrawing, type Drawing } from '../draw/str
  */
 
 const SHUFFLE_MS = 7000
+/** How tall a picture may make its block, as a multiple of its width. */
+const MAX_RATIO = 1.25
 
 export function ArtBlock({ cfg }: { cfg: Record<string, unknown> }) {
   const host = useRef<HTMLDivElement>(null)
@@ -126,7 +128,23 @@ export function ArtBlock({ cfg }: { cfg: Record<string, unknown> }) {
       const w = Math.round(box.clientWidth)
       if (w < 1) return
       const ratio = current.ratio > 0.05 && current.ratio < 20 ? current.ratio : 0.6
-      const h = Math.max(60, Math.round(w * ratio))
+      /**
+       * ⚠️ THE BLOCK IS CAPPED, AND THE PICTURE IS FITTED INSIDE IT rather than the block being
+       * whatever shape the paper was.
+       *
+       * Height was taken straight from the drawing's own ratio, which is up to 20 — so a tall
+       * sketch made a block twenty times as tall as it is wide. Measured on the live profile: a
+       * ratio of 3.35, which in a full-width block around 800px is a 2680px tall panel, and at
+       * dpr 2 a backing store of 1600x5360. That is 8.6 megapixels repainted on every resize and
+       * every animation frame — the stretch and the lag are the same fact.
+       *
+       * So the panel stops at MAX_RATIO and a taller picture is drawn NARROWER to keep its
+       * shape, centred, with the page showing either side. Letterboxing preserves what was drawn;
+       * squashing it to fit would not, and a page is not the place to distort somebody's work.
+       */
+      const h = Math.max(60, Math.round(w * Math.min(ratio, MAX_RATIO)))
+      // the picture keeps its own proportions inside that panel
+      const pw = ratio > MAX_RATIO ? Math.round(h / ratio) : w
       const dpr = Math.min(window.devicePixelRatio || 1, 2)
       el.style.width = w + 'px'
       el.style.height = h + 'px'
@@ -135,7 +153,11 @@ export function ArtBlock({ cfg }: { cfg: Record<string, unknown> }) {
         el.height = Math.round(h * dpr)
       }
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
-      paintDrawing(ctx, current, w, h, { frame: frameRef.current })
+      ctx.clearRect(0, 0, w, h)
+      ctx.save()
+      ctx.translate(Math.round((w - pw) / 2), 0)
+      paintDrawing(ctx, current, pw, h, { frame: frameRef.current })
+      ctx.restore()
       lastW = w
     }
     draw()
