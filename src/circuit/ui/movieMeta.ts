@@ -32,9 +32,29 @@ export function ratersIn(people: Person[], group?: string | null): Person[] {
    * visitor. Falling back keeps the sandbox internally consistent — it writes and reads its own
    * ratings under the same key — while a real member gets a real account id.
    */
-  return peopleInGroup(people, group ?? '').map((p) =>
-    p.ownerUserId ? { ...p, id: p.ownerUserId } : p,
-  )
+  /**
+   * ⚠️ ONE ENTRY PER ACCOUNT, because two person rows can point at the same one.
+   *
+   * Swapping in the account id makes that collision visible: tIN had both a "Tin" row carrying 46
+   * logs and a later "Ramtin" row carrying none, both with his owner_user_id — so the board drew
+   * two columns with the SAME id. Duplicate React keys, `hidden` applying to both at once, and a
+   * column that would not hide and multiplied when toggled.
+   *
+   * The account is the identity for a rating, so two rows sharing one is one rater however the
+   * people table got that way. Deduped here rather than trusted not to happen, because a merged
+   * account, a re-invite or a second device can all produce it again.
+   *
+   * The row carrying history wins: keeping the one with a real id over a generated one would be
+   * arbitrary, but "the one people have actually logged against" is the row the rest of the app
+   * already treats as that person.
+   */
+  const seen = new Map<string, Person>()
+  for (const p of peopleInGroup(people, group ?? '')) {
+    const keyed = p.ownerUserId ? { ...p, id: p.ownerUserId } : p
+    const had = seen.get(keyed.id)
+    if (!had) seen.set(keyed.id, keyed)
+  }
+  return [...seen.values()]
 }
 
 /**
