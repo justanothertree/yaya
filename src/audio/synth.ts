@@ -1157,9 +1157,20 @@ function makeBus(c: AudioContext): Bus {
   lfo.connect(vib)
   lfo.start()
 
+  /**
+   * ⚠️ SCHEDULED AHEAD, for the same reason applyPoly is — this is the other instance of the
+   * bug and it runs on every note, because busFor calls set(fx) each time one starts.
+   *
+   * currentTime is not the render position. setTargetAtTime given a start time already passed is
+   * evaluated partway along its own curve, so the parameter JUMPS to wherever the curve had got
+   * to rather than gliding from where it is. At tau 0.02 with about 10ms of buffer that is
+   * 1 - e^(-10/20), or 39% of the distance, in one sample. Harmless while nothing is changing,
+   * and a click the moment anything is — a knob moved mid-note, a layer's level set, a peer's
+   * reverb arriving in a jam.
+   */
   const ramp = (p: AudioParam, v: number) => {
     try {
-      p.setTargetAtTime(v, c.currentTime, 0.02)
+      p.setTargetAtTime(v, c.currentTime + SAFE_START, 0.02)
     } catch {
       p.value = v
     }
