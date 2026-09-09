@@ -244,10 +244,38 @@ export function findTicks(x: Float32Array, rate: number, threshold = 6): Tick[] 
     const ratio = hf[k] / Math.max(med, 1e-12)
     if (ratio < threshold || hf[k] < floor) continue
     const i0 = k * F
+    /**
+     * ⚠️ A NOTE ONSET IS ALSO A BURST OF HIGH FREQUENCY, and without this the detector cannot
+     * tell one from a click. It reported 193 "ticks" in fifteen seconds of real playing — about
+     * thirteen a second, which is simply the note rate — and every waveform printed at those
+     * instants was a smooth curve, with steps of one to five percent of the local amplitude.
+     *
+     * The difference is CONCENTRATION. A click is one bad sample: nearly all of the frame's
+     * second-difference energy sits in it, so the crest factor is enormous. An onset is a fast
+     * but continuous swell, spread across hundreds of samples, so its crest factor is ordinary.
+     * Requiring a high crest keeps the thing that is a discontinuity and drops the thing that is
+     * merely loud and sudden.
+     */
     let step = 0
+    let sum = 0
+    let cnt = 0
+    for (let i = i0; i < i0 + F && i < x.length; i++) {
+      const ad = Math.abs(d[i])
+      if (ad > step) step = ad
+      sum += d[i] * d[i]
+      cnt++
+    }
+    const rms = Math.sqrt(sum / Math.max(cnt, 1))
+    /* 4.5 chosen by sweep against this exact recording and an injected step: at 5.0 real
+       steps start being missed, at 4.0 sixty-one onsets get through. Here, 196 -> 2. */
+    if (step < rms * 4.5) {
+      k += 2
+      continue
+    }
+    let jump = 0
     for (let i = i0 + 1; i < i0 + F && i < x.length; i++)
-      step = Math.max(step, Math.abs(x[i] - x[i - 1]))
-    out.push({ atMs: k, ratio: +ratio.toFixed(1), peakStep: +step.toFixed(5) })
+      jump = Math.max(jump, Math.abs(x[i] - x[i - 1]))
+    out.push({ atMs: k, ratio: +ratio.toFixed(1), peakStep: +jump.toFixed(5) })
     k += 10 // one report per event, not per frame of it
   }
   return out
