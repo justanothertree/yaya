@@ -17,6 +17,7 @@ import {
 } from '../audio/synth'
 import {
   captureSamples,
+  downloadSamples,
   findTicks,
   plainToneOff,
   plainToneOn,
@@ -352,13 +353,18 @@ function AudioHealthStrip() {
                 const found = findTicks(x, sharedCtx().sampleRate)
                 setTicks(
                   found.length
-                    ? `${found.length} tick${found.length === 1 ? '' : 's'}: ` +
+                    ? `${found.length} tick${found.length === 1 ? '' : 's'}, worst step ` +
+                        `${Math.max(...found.map((t) => t.peakStep)).toFixed(3)}: ` +
                         found
-                          .slice(0, 8)
+                          .slice(0, 6)
                           .map((t) => `${t.atMs}ms ×${t.ratio}`)
                           .join(', ')
                     : 'no ticks found in 15s',
                 )
+                /* ⚠️ hand the recording over whenever it caught something. A count says a fault
+                   exists; only the samples say what it is, and the person who can provoke it is
+                   not the person who can read it. */
+                if (found.length) downloadSamples(x, `ticks-${found.length}.wav`)
               })
               .finally(() => setRec(false))
           }}
@@ -419,8 +425,13 @@ function AudioHealthStrip() {
         </button>
       </div>
       <div className="muted">
-        buffer {h.bufferMs}ms · now: late {h.dropped} gaps {h.gaps} peak {h.peak} squash{' '}
-        {h.reduction}dB · voices {h.voices} · notes {h.on}/{h.off}
+        {/* ⚠️ WHICH BUILD THIS IS. Several reports in this investigation may have been made
+            against a build that predated the fix being discussed, and there was no way to tell
+            from either side — which turns a real result into an ambiguous one. The deploy already
+            stamps the commit; it just was not shown anywhere. */}
+        build {import.meta.env.VITE_APP_VERSION || 'dev'} · buffer {h.bufferMs}ms · now: late{' '}
+        {h.dropped} gaps {h.gaps} peak {h.peak} squash {h.reduction}dB · voices {h.voices} · notes{' '}
+        {h.on}/{h.off}
       </div>
     </div>
   )

@@ -123,6 +123,16 @@ export function recordOutput(from: AudioNode, seconds = 5): Promise<void> {
  * plays a note through the actual code path, with the actual bus, filter, limiter and poly gain
  * in place, and hands back the samples.
  */
+/** Hand a captured buffer over as a WAV download, so a caught fault can be analysed off-machine. */
+export function downloadSamples(x: Float32Array, name: string) {
+  const url = URL.createObjectURL(toWav(x, sharedCtx().sampleRate))
+  const a = document.createElement('a')
+  a.href = url
+  a.download = name
+  a.click()
+  setTimeout(() => URL.revokeObjectURL(url), 10000)
+}
+
 export function captureSamples(from: AudioNode, seconds: number): Promise<Float32Array> {
   const ctx = sharedCtx()
   const node = ctx.createScriptProcessor(4096, 1, 1)
