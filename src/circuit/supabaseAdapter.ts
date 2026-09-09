@@ -229,6 +229,26 @@ const rowToRating = (r: RatingRow): Rating => ({
   review: r.review ?? undefined,
 })
 
+/**
+ * A write, or a thrown error — never a quiet nothing.
+ *
+ * ⚠️ EVERY WRITE IN THIS FILE IGNORED ITS RESULT, all thirteen of them. supabase-js does not
+ * throw on a rejected write: it resolves with `{ data: null, error }`. So `await sb.from(...)
+ * .upsert(...)` succeeds no matter what the server said — a row blocked by RLS, a constraint
+ * violation, a dropped connection, all indistinguishable from a save.
+ *
+ * The store already knows what to do about a failure: runOp catches and calls persistFailed,
+ * which tells the person their change did not stick. It could never fire, because nothing ever
+ * rejected. Ratings stopped saving for a month and the app said nothing.
+ */
+async function must<T extends { error: { message: string } | null }>(
+  q: PromiseLike<T>,
+): Promise<T> {
+  const res = await q
+  if (res.error) throw new Error(res.error.message)
+  return res
+}
+
 export function createSupabaseAdapter(): CircuitAdapter {
   const sb = getSupabaseClient()
 
@@ -296,68 +316,72 @@ export function createSupabaseAdapter(): CircuitAdapter {
       return s
     },
     async savePerson(p: Person) {
-      await sb.from('circuit_people').upsert(personToRow(p))
+      await must(sb.from('circuit_people').upsert(personToRow(p)))
     },
     async deletePerson(id: ID) {
-      await sb.from('circuit_people').delete().eq('id', id)
+      await must(sb.from('circuit_people').delete().eq('id', id))
     },
     async saveLog(l: DayLog) {
-      await sb.from('circuit_logs').upsert(logToRow(l))
+      await must(sb.from('circuit_logs').upsert(logToRow(l)))
     },
     async deleteLog(id: ID) {
-      await sb.from('circuit_logs').delete().eq('id', id)
+      await must(sb.from('circuit_logs').delete().eq('id', id))
     },
     async saveMovie(m: Movie) {
-      await sb.from('circuit_movies').upsert(movieToRow(m))
+      await must(sb.from('circuit_movies').upsert(movieToRow(m)))
     },
     async deleteMovie(id: ID) {
-      await sb.from('circuit_movies').delete().eq('id', id)
+      await must(sb.from('circuit_movies').delete().eq('id', id))
     },
     async saveWatchlist(w: WatchlistItem) {
-      await sb.from('circuit_watchlist').upsert(wlToRow(w))
+      await must(sb.from('circuit_watchlist').upsert(wlToRow(w)))
     },
     async deleteWatchlist(id: ID) {
-      await sb.from('circuit_watchlist').delete().eq('id', id)
+      await must(sb.from('circuit_watchlist').delete().eq('id', id))
     },
     async savePool(p: Pool) {
-      await sb.from('pools').upsert(poolToRow(p))
+      await must(sb.from('pools').upsert(poolToRow(p)))
     },
     async deletePool(id: ID) {
-      await sb.from('pools').delete().eq('id', id)
+      await must(sb.from('pools').delete().eq('id', id))
     },
     /* ⚠️ ignoreDuplicates, not a plain insert. Tapping "I'm in" twice quickly, or a tap racing
        its own realtime echo, must be a no-op rather than a unique-violation toast telling
        somebody their vote did not save when it plainly did. */
     async saveVote(v: PoolVote) {
-      await sb
-        .from('pool_votes')
-        .upsert({ item_id: v.itemId, user_id: v.userId }, { ignoreDuplicates: true })
+      await must(
+        sb
+          .from('pool_votes')
+          .upsert({ item_id: v.itemId, user_id: v.userId }, { ignoreDuplicates: true }),
+      )
     },
     async deleteVote(id: ID) {
       const [itemId, userId] = id.split('::')
       if (!itemId || !userId) return
-      await sb.from('pool_votes').delete().eq('item_id', itemId).eq('user_id', userId)
+      await must(sb.from('pool_votes').delete().eq('item_id', itemId).eq('user_id', userId))
     },
     /* ⚠️ upsert on the PAIR, which is what stops one person's save touching another's. The old
        path wrote the whole film row including everybody's ratings; this writes one row and
        cannot reach any other. */
     async saveRating(r: Rating) {
-      await sb.from('circuit_ratings').upsert(
-        {
-          movie_id: r.movieId,
-          user_id: r.userId,
-          score: r.score,
-          icons: r.icons ?? null,
-          review: r.review ?? null,
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: 'movie_id,user_id' },
+      await must(
+        sb.from('circuit_ratings').upsert(
+          {
+            movie_id: r.movieId,
+            user_id: r.userId,
+            score: r.score,
+            icons: r.icons ?? null,
+            review: r.review ?? null,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: 'movie_id,user_id' },
+        ),
       )
     },
     async deleteRating(id: ID) {
       const [movieId, userId] = id.split('::')
       if (!movieId || !userId) return
-      await sb.from('circuit_ratings').delete().eq('movie_id', movieId).eq('user_id', userId)
+      await must(sb.from('circuit_ratings').delete().eq('movie_id', movieId).eq('user_id', userId))
     },
     subscribe(onExternalChange) {
       emitExternal = onExternalChange
