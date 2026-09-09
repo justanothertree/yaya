@@ -13,6 +13,7 @@ import { MovieDetail } from './MovieDetail'
 import { Modal } from './Modal'
 import { MovieStats } from './MovieStats'
 import { canRateAs, ratersIn, scoreColor } from './movieMeta'
+import { peekPersistedUserId } from '../../finance/auth'
 import { kindEmoji, kindsPresent } from '../reviewKinds'
 
 type SortKey = 'avg' | 'alpha' | 'rt' | 'date'
@@ -112,7 +113,22 @@ export function Movies({
       const i = circle.findIndex((p) => p.id === id)
       return i === -1 ? circle.length : i
     }
-    return state.people.filter((p) => present.has(p.id)).sort((a, b) => order(a.id) - order(b.id))
+    /**
+     * ⚠️ FILTER THE ACCOUNT-KEYED LIST, NOT THE RAW PEOPLE. `present` is built from
+     * `movie.ratings`, whose keys became ACCOUNT ids when ratings became rows — while
+     * `state.people[].id` is still the circuit_people id. The two never match, so this returned
+     * an empty list for everyone: no rater columns, nothing to rate in, and a Columns button that
+     * opened onto nothing. ratersIn already does the swap; it was only being used for ordering.
+     *
+     * ⚠️ And YOU are always here, rated or not. Every candidate had to have a score already,
+     * which cannot heal: with no column to rate in you never get a rating, so the board stays
+     * empty for a circuit that has not started yet. Your own column appears whether or not you
+     * have used it.
+     */
+    const me = peekPersistedUserId()
+    const everyone = ratersIn(state.people, '')
+    const keep = everyone.filter((p) => present.has(p.id) || (!!me && p.id === me))
+    return keep.sort((a, b) => order(a.id) - order(b.id))
   }, [inGroup, state.people, viewGroup])
 
   const [hidden, setHidden] = useState<Set<string>>(() => {

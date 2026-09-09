@@ -12,6 +12,7 @@ import {
   ratersIn,
   scoreColor,
 } from './movieMeta'
+import { peekPersistedUserId } from '../../finance/auth'
 import { MovieRate } from './MovieRate'
 import { MoviePersonProfile } from './MoviePersonProfile'
 import type { Movie, Person } from '../types'
@@ -35,7 +36,14 @@ export function MovieDetail({ movie, onClose }: { movie: Movie; onClose: () => v
       const i = circle.findIndex((p) => p.id === id)
       return i === -1 ? circle.length : i
     }
-    return people.filter((p) => ids.has(p.id)).sort((a, b) => order(a.id) - order(b.id))
+    /* ⚠️ the same account-vs-person id mismatch the board had: `ids` is account-keyed (from
+       ratersIn and from movie.ratings), while people[].id is the circuit_people id, so filtering
+       the raw list matched nobody and the detail view showed an average with no raters under it.
+       ratersIn('') is every person, account-keyed — the right pool to filter. */
+    const everyone = ratersIn(people, '')
+    const me = peekPersistedUserId()
+    if (me) ids.add(me)
+    return everyone.filter((p) => ids.has(p.id)).sort((a, b) => order(a.id) - order(b.id))
   }, [people, movie.ratings, movie.groupId])
 
   const scores = raters.map((p) => movie.ratings[p.id]?.score).filter((s): s is number => s != null)
