@@ -754,6 +754,18 @@ export function AudioVisualizer() {
       clickX: 0,
       clickY: 0,
     }
+    // the pointer folded into the kaleidoscope's source wedge, reused rather than rebuilt
+    const folded = {
+      x: 0,
+      y: 0,
+      inside: false,
+      vx: 0,
+      vy: 0,
+      down: false,
+      sinceClick: 99,
+      clickX: 0,
+      clickY: 0,
+    }
     // the auto-path's pointer, reused rather than rebuilt each frame
     const auto = {
       x: 0,
@@ -1067,6 +1079,66 @@ export function AudioVisualizer() {
        * else on the screen the moment the picture was turned, and the further it had spun the
        * further off it would be.
        */
+      /**
+       * ⚠️ THE POINTER IS FOLDED INTO THE SOURCE WEDGE, rather than the source wedge being moved
+       * to the pointer. This is the whole difference between a kaleidoscope and a snap.
+       *
+       * The previous attempt picked the sector the pointer was in and rotated THAT into every
+       * wedge. It fixed the real complaint — draw outside sector zero and nothing appeared — but
+       * the sector index is a whole number, so crossing a boundary rotated the entire source
+       * region by a full wedge at once. Your own trail looked continuous because it sits at the
+       * seam; everything else in the picture jumped. Reported as the mirrors shifting and
+       * rotating while circling the middle.
+       *
+       * So the mirrors stop moving and the INPUT is folded instead, which is what a real
+       * kaleidoscope does: an object at angle θ is seen at ±θ in every wedge, and the mirrors
+       * themselves never go anywhere.
+       *
+       * ⚠️ THE FOLD REFLECTS, it does not wrap, and that is what makes it smooth. Rotating by
+       * whole sectors alone would hand back a sawtooth that jumps from +seg/2 to −seg/2 at every
+       * boundary. Odd wedges are drawn flipped by the compositor below, so the fold flips with
+       * them — and then approaching a boundary from either side arrives at the same place, which
+       * is continuity rather than an accident. Velocity is reflected too, so a mode reading
+       * direction sees the mirrored one rather than the original pointing the wrong way.
+       *
+       * ⚠️ AN ODD MIRROR COUNT KEEPS ONE SEAM, and no arrangement of this fold can remove it.
+       * Alternately flipped wedges do not close up around an odd number: go once round and you
+       * come back with the opposite handedness, so somewhere two unflipped wedges must meet.
+       * Reflection is what buys continuity and reflection needs an even count — a real
+       * kaleidoscope with three mirrors shows SIX wedges for exactly this reason.
+       *
+       * Measured by sweeping the angle in 4000 steps and counting the jumps: 2, 4, 6 and 8 have
+       * none at all; 3 has one, out of the three it used to have. Only 3 is offered in the UI of
+       * the odd counts, so this is one catch in one setting rather than the every-boundary snap
+       * that was there before. Making it truly seamless means "3" drawing six wedges, which is a
+       * different picture and somebody's decision rather than a fix.
+       */
+      if (mirror > 1) {
+        const wedge = (Math.PI * 2) / mirror
+        const rx = seen.x - vw / 2
+        const ry = seen.y - vh / 2
+        const k = Math.round(Math.atan2(ry, rx) / wedge)
+        const ca = Math.cos(-k * wedge)
+        const sa = Math.sin(-k * wedge)
+        /* ⚠️ the parity of the WEDGE the compositor will draw, not of the raw sector count. They
+           differ once k wraps past the last wedge, and with an odd mirror count that disagreement
+           is a whole-sector jump — caught by sweeping the angle and watching for one. */
+        const i = ((k % mirror) + mirror) % mirror
+        const flip = i % 2 !== 0 ? -1 : 1
+        const cx2 = seen.clickX - vw / 2
+        const cy2 = seen.clickY - vh / 2
+        folded.x = vw / 2 + (rx * ca - ry * sa)
+        folded.y = vh / 2 + (rx * sa + ry * ca) * flip
+        folded.vx = seen.vx * ca - seen.vy * sa
+        folded.vy = (seen.vx * sa + seen.vy * ca) * flip
+        folded.clickX = vw / 2 + (cx2 * ca - cy2 * sa)
+        folded.clickY = vh / 2 + (cx2 * sa + cy2 * ca) * flip
+        folded.inside = seen.inside
+        folded.down = seen.down
+        folded.sinceClick = seen.sinceClick
+        seen = folded
+      }
+
       const turning = Math.abs(spn) > 0.001
       if (turning) {
         if (seen.inside) {
@@ -1208,33 +1280,23 @@ export function AudioVisualizer() {
         const seg = (Math.PI * 2) / mirror
         const reach = Math.hypot(w, h)
         /**
-         * ⚠️ THE SOURCE WEDGE FOLLOWS THE POINTER, and without this the mirror ignored you
-         * everywhere but one slice.
+         * ⚠️ THE SOURCE WEDGE IS FIXED, at angle zero, and it must stay that way.
          *
-         * Each wedge draws the buffer rotated by its own angle and clips it to its own wedge, so
-         * what every wedge actually shows is the SAME source sector — the one at angle zero,
-         * pointing right from the middle. Draw anywhere else and your line was clipped away in
-         * all of them: the kaleidoscope was live only in one twelfth of the picture and dead in
-         * the rest, which is exactly "it should mirror my mouse whatever section it is in".
+         * It used to follow the pointer, to answer a real complaint: every wedge shows the same
+         * source sector, so drawing anywhere else was clipped away in all of them and the
+         * kaleidoscope was live in one slice and dead in the rest. Chasing the pointer fixed
+         * that and bought a worse problem — the sector is a whole number, so crossing a boundary
+         * swung the entire source region round by a full wedge and the picture snapped.
          *
-         * Picking the sector the pointer is actually in, and rotating THAT into every position,
-         * costs one angle and makes the whole circle follow your hand. Falls back to sector zero
-         * when nothing is pointing, so an untouched picture looks exactly as it always did.
+         * The pointer is folded into this wedge before the modes draw instead (see the fold
+         * above), so what lands here is already in the right place and there is nothing for the
+         * compositor to chase. Mirrors that never move cannot snap.
          */
-        let from = 0
-        if (seen.inside) {
-          /* ⚠️ measured against the BUFFER's centre, not the view's. vw = w / z, so with any
-             zoom on, a pointer at the right-hand edge sits at w/2 in buffer coordinates — which
-             is exactly the view's centre, and every angle would come out wrong in a way that
-             only appears once somebody touches the zoom. */
-          const a = Math.atan2(seen.y - vh / 2, seen.x - vw / 2)
-          from = Math.round(a / seg)
-        }
         for (let i = 0; i < mirror; i++) {
           view.save()
           view.translate(cx, cy)
-          /* rotate the SOURCE sector into this wedge's place, rather than this wedge's angle
-             into the source's — the difference is whether the mirror follows you or waits */
+          /* this wedge's angle, then the flip that makes it a MIRROR of its neighbour rather
+             than another copy of it — the fold above is built to match this exact convention */
           view.rotate(i * seg)
           if (i % 2) view.scale(1, -1)
           view.beginPath()
@@ -1242,7 +1304,6 @@ export function AudioVisualizer() {
           view.arc(0, 0, reach, -seg / 2, seg / 2)
           view.closePath()
           view.clip()
-          view.rotate(-from * seg)
           view.translate(-cx, -cy)
           view.drawImage(buf, 0, 0, w, h)
           view.restore()
