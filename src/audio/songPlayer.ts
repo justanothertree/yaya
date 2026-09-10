@@ -35,8 +35,18 @@ const LOOKAHEAD = 0.2
 const TICK_MS = 40
 const BEATS_PER_BAR = 4
 
-type State = { playing: string | null }
-let state: State = { playing: null }
+/**
+ * ⚠️ `look` rides with `playing` rather than living in its own store, because it is not a
+ * separate fact — it is "what the thing currently playing wants to look like", and the two must
+ * never disagree. A second store would be able to hold a look for a track that stopped, which is
+ * exactly the stale-state bug that shows somebody the wrong thing.
+ *
+ * It is opaque here on purpose. This module schedules notes; what a look MEANS is the visual
+ * block's business, and the player has no reason to know the difference between a palette and a
+ * mirror count.
+ */
+type State = { playing: string | null; look: unknown | null }
+let state: State = { playing: null, look: null }
 const listeners = new Set<() => void>()
 
 function set(next: State) {
@@ -186,7 +196,7 @@ export function stopSong() {
   timer = 0
   current = null
   releaseAll()
-  if (state.playing) set({ playing: null })
+  if (state.playing) set({ playing: null, look: null })
 }
 
 /**
@@ -196,7 +206,7 @@ export function stopSong() {
  * second play button meant, and on a profile with three of them it would be a mess nobody could
  * untangle without reloading.
  */
-export function playSong(id: string, song: Song, onEnd?: () => void) {
+export function playSong(id: string, song: Song, onEnd?: () => void, look?: unknown) {
   stopSong()
   resumeAudio()
   const c = sharedCtx()
@@ -205,7 +215,7 @@ export function playSong(id: string, song: Song, onEnd?: () => void) {
   origin = c.currentTime + 0.08
   scheduledTo = origin
   endOfPass = onEnd ?? null
-  set({ playing: id })
+  set({ playing: id, look: look ?? null })
   tick()
   timer = window.setInterval(tick, TICK_MS)
 }

@@ -4,7 +4,13 @@ import { getSupabaseClient } from '../finance/client'
 import { useTouchOnly } from '../ui/pointerKind'
 import { BANNER_STYLES, bannerBackground, type BannerStyle } from '../profile/look'
 import { SongBlock, VisualBlock } from '../profile/ProfileMusic'
-import { songFromConfig, songsFromConfig } from '../profile/songBlockConfig'
+import {
+  looksFromConfig,
+  setLook,
+  songFromConfig,
+  songsFromConfig,
+} from '../profile/songBlockConfig'
+
 import { packSong } from '../audio/songFile'
 import { ArtBlock } from '../profile/ProfileArt'
 import { gallery, subscribeGallery, type Art } from '../draw/gallery'
@@ -267,6 +273,8 @@ function BlockView({
         <SongBlock
           id={block.id ?? `song-${songs[0].name}`}
           songs={songs}
+          /* aligned with `songs` by position — see looksFromConfig */
+          looks={looksFromConfig(cfg)}
           autoplay={cfg.autoplay === true}
         />
       )
@@ -681,6 +689,8 @@ function SongPicker({
     ...(Array.isArray(value.songs) ? value.songs : []),
   ]
   const picked = songsFromConfig(value).map((x) => x.name)
+  /* aligned with `picked` by position — see looksFromConfig */
+  const looks = looksFromConfig(value)
   if (!items.length)
     return (
       <p className="muted" style={{ margin: 0, fontSize: '0.85rem' }}>
@@ -702,12 +712,62 @@ function SongPicker({
           {picked.map((n, at) => (
             <li key={at}>
               <span className="profile-song-trackname">{n}</span>
+              {/**
+               * ⚠️ THE LOOK BELONGS TO THE TRACK, which is the whole point of putting it here
+               * rather than on the visualiser block. That block has one setting, so a playlist
+               * of six played all six through it.
+               *
+               * ⚠️ Mode and palette only. Every dial the visual block has could go here and it
+               * would be unusable — twelve tracks times seven sliders is not an editor. These
+               * two are what change the look; the rest stay the page's design, and the merge is
+               * per field, so a track saying only "green" keeps everything else.
+               *
+               * ⚠️ Blank means "leave it alone", not a value. That is what keeps this additive:
+               * every existing block has no looks at all and plays exactly as it did.
+               */}
+              <select
+                className="viz-select"
+                aria-label={`Look for ${n}`}
+                title="Play this track through a particular visualiser mode"
+                value={(looks[at]?.mode as string) ?? ''}
+                onChange={(e) => onChange(setLook(value, at, 'mode', e.target.value))}
+              >
+                <option value="">Block's look</option>
+                {VISUALS.map(([id, icon, label]) => (
+                  <option key={id} value={id}>
+                    {icon} {label}
+                  </option>
+                ))}
+              </select>
+              <select
+                className="viz-select"
+                aria-label={`Colours for ${n}`}
+                title="Play this track in a particular palette"
+                value={(looks[at]?.palette as string) ?? ''}
+                onChange={(e) => onChange(setLook(value, at, 'palette', e.target.value))}
+              >
+                <option value="">Block's colours</option>
+                {PALETTES.map((pal) => (
+                  <option key={pal.id} value={pal.id}>
+                    {pal.label}
+                  </option>
+                ))}
+              </select>
               <button
                 className="btn btn-ghost"
                 title="Take this one out"
                 onClick={() => {
                   const rest = queue.filter((_, k) => k !== at)
-                  onChange({ ...value, song: undefined, songs: rest.length ? rest : undefined })
+                  /* ⚠️ the looks move with the tracks. They are joined by POSITION, so dropping
+                     a track without dropping its look shifts every later track onto the wrong
+                     one — silently, and only visibly once something plays. */
+                  const restLooks = looks.filter((_, k) => k !== at)
+                  onChange({
+                    ...value,
+                    song: undefined,
+                    songs: rest.length ? rest : undefined,
+                    looks: restLooks.some(Boolean) ? restLooks : undefined,
+                  })
                 }}
               >
                 ✕

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { songNotes, type Song } from '../audio/songFile'
+import { readLook, type SongLook } from './songBlockConfig'
 import { sharedCtx } from '../audio/context'
 import {
   seekSong,
@@ -108,11 +109,20 @@ function drawSongMap(
 export function SongBlock({
   id,
   songs,
+  looks = [],
   autoplay,
 }: {
   id: string
   /** one song is a loop; several is a playlist — see the note on endOfPass in songPlayer */
   songs: Song[]
+  /**
+   * How each track wants to look, by position — see looksFromConfig.
+   *
+   * ⚠️ Handed to the PLAYER rather than read by the visualiser, because only the player knows
+   * which track started. A visual block is a separate block that may not even be on the page,
+   * and it finds out the same way it finds out anything else: from what is playing.
+   */
+  looks?: Array<SongLook | null>
   /** start as the page opens, if the browser will allow it — see below */
   autoplay?: boolean
 }) {
@@ -157,10 +167,10 @@ export function SongBlock({
     if (!next) return
     setTrack(n)
     if (!many) {
-      playSong(id, next)
+      playSong(id, next, undefined, looks[n] ?? null)
       return
     }
-    playSong(id, next, () => startAt((n + 1) % list.length))
+    playSong(id, next, () => startAt((n + 1) % list.length), looks[n] ?? null)
   }
 
   const armed = useRef(false)
@@ -340,10 +350,32 @@ export function VisualBlock({ cfg }: { cfg: Record<string, unknown> }) {
   const box = useRef<HTMLDivElement>(null)
   const cv = useRef<HTMLCanvasElement>(null)
 
+  /**
+   * ⚠️ THE PLAYING TRACK'S LOOK WINS, field by field, over this block's own settings.
+   *
+   * A visual block used to have exactly one look, so a playlist of six tracks played all six
+   * through it. A look belongs to the music rather than to the surface drawing it, so a track
+   * that carries one lends it to whatever is on screen while it plays, and the block goes back
+   * to its own the moment that track stops.
+   *
+   * ⚠️ Merged per FIELD, not swapped wholesale. A track that only names a palette should keep
+   * this block's mode and its mirror count, because those are still the page's design — the
+   * track is saying "but in green", not "replace everything you were".
+   *
+   * ⚠️ Re-checked against VISUALS here, exactly as cfg.mode is, and for the same reason: a look
+   * arrives from stored config that somebody could have edited, and songBlockConfig deliberately
+   * validates only its shape.
+   */
+  const player = useSyncExternalStore(subscribeSongPlayer, songPlayerState, songPlayerState)
+  const live = readLook(player.look)
+  const pick = <K extends keyof SongLook>(k: K): SongLook[K] | undefined =>
+    live?.[k] ?? (cfg[k as string] as SongLook[K] | undefined)
+
+  const wanted = pick('mode')
   const modeId = (
-    typeof cfg.mode === 'string' && VISUALS.some(([id]) => id === cfg.mode) ? cfg.mode : 'bars'
+    typeof wanted === 'string' && VISUALS.some(([id]) => id === wanted) ? wanted : 'bars'
   ) as VisualId
-  const paletteId = typeof cfg.palette === 'string' ? cfg.palette : 'theme'
+  const paletteId = typeof pick('palette') === 'string' ? (pick('palette') as string) : 'theme'
   /**
    * The same modifiers the visualiser page has.
    *
@@ -352,11 +384,12 @@ export function VisualBlock({ cfg }: { cfg: Record<string, unknown> }) {
    * clipped composites per frame, which is a page that freezes a visitor's browser rather than
    * a page that looks unusual.
    */
-  const mirror = Math.round(dial(cfg.mirror, 1, 8, 1))
-  const trailCfg = typeof cfg.trail === 'number' ? dial(cfg.trail, 0, 0.97, 0) : null
-  const bloom = dial(cfg.bloom, 0, 1, 0.25)
-  const punch = dial(cfg.punch, 0, 1, 0)
-  const echo = dial(cfg.echo, 0, 1, 0)
+  const mirror = Math.round(dial(pick('mirror'), 1, 8, 1))
+  const trailPick = pick('trail')
+  const trailCfg = typeof trailPick === 'number' ? dial(trailPick, 0, 0.97, 0) : null
+  const bloom = dial(pick('bloom'), 0, 1, 0.25)
+  const punch = dial(pick('punch'), 0, 1, 0)
+  const echo = dial(pick('echo'), 0, 1, 0)
 
   useEffect(() => {
     const el = cv.current
