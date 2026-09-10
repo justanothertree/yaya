@@ -1,4 +1,5 @@
 import type { LeaderboardEntry, TrophyCounts } from './types'
+import { getSupabaseClientOrNull } from '../finance/client'
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 
 const LS_KEY = 'snake.leaderboard.v2'
@@ -23,6 +24,24 @@ function envs() {
     playerTable: env.VITE_PLAYER_TABLE || 'player_registry',
     nameCol: env.VITE_LEADERBOARD_NAME_COLUMN || 'player_name',
     trophiesTable: env.VITE_TROPHIES_TABLE || 'trophies',
+  }
+}
+
+/**
+ * The signed-in member's access token, or null when nobody is signed in.
+ *
+ * ⚠️ Read from the APP's client, which is the only one that has a session — see the note in
+ * submitScore. Signed-out play is the normal case here and must keep working, so "no token" is
+ * an ordinary answer rather than an error.
+ */
+async function accessToken(): Promise<string | null> {
+  const sb = getSupabaseClientOrNull()
+  if (!sb) return null
+  try {
+    const { data } = await sb.auth.getSession()
+    return data.session?.access_token ?? null
+  } catch {
+    return null
   }
 }
 
@@ -155,7 +174,27 @@ export async function submitScore(
   },
 ): Promise<SubmitResult> {
   const { url, anon } = envs()
-  const client = getClient()
+  /**
+   * ⚠️ THE APP'S CLIENT FOR WRITING, NOT THIS FILE'S — and this was the whole bug.
+   *
+   * getClient() builds its own client with `persistSession: false` and its own storageKey, so it
+   * never carries a session. That is right for READING a board anybody may read, and fatal for
+   * writing: submit_score refuses a CLAIMED handle unless auth.uid() matches its owner, and
+   * through a session-less client auth.uid() is always null. So every score posted under a handle
+   * whose owner had claimed it came back refused, and the game told that member their own name
+   * "belongs to a member — sign in as them". Claiming your handle was what stopped your scores
+   * saving, which is the opposite of what claiming is for.
+   *
+   * Measured on the live board before the fix: over a month, the only score_history rows under
+   * claimed names arrived in PAIRS at one identical microsecond — multiplayer race results, which
+   * take a different route entirely (finalize_round_rpc writes every player in one transaction and
+   * identifies them from the room's player list rather than from auth.uid(), so claiming a handle
+   * never blocked those). Solo runs by anyone who had claimed a name are simply absent.
+   *
+   * Reads below deliberately keep using getClient(): they need no session, and pointing them at
+   * the shared client would couple the game to the app's auth for no gain.
+   */
+  const client = getSupabaseClientOrNull() ?? getClient()
   const name = (entry.username || '').trim()
   // Server-authoritative: every score goes through the submit_score RPC (direct table writes are
   // locked down). It finds-or-creates the player, records history, and keeps only each player's
@@ -183,9 +222,13 @@ export async function submitScore(
   }
   if (name && url && anon) {
     try {
+      /* ⚠️ the same trap as above, one layer down: `Bearer <anon key>` makes auth.uid() null, so
+         this fallback refused exactly the scores the RPC path did. The member's own token has to
+         ride along or the fallback is only a slower way to lose the run. */
+      const token = await accessToken()
       const res = await fetch(`${url}/rest/v1/rpc/submit_score`, {
         method: 'POST',
-        headers: sbHeaders(anon),
+        headers: sbHeaders(anon, token ? { Authorization: `Bearer ${token}` } : undefined),
         body: JSON.stringify(params),
       })
       if (res.ok) {
