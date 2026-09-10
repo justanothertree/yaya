@@ -10,6 +10,7 @@ import {
 import { previewMember, PREVIEW_ME, PREVIEW_GROUPS } from '../dev/previewMember'
 import { hasFinanceSupabaseEnv } from '../finance/env'
 import { getSupabaseClient } from '../finance/client'
+import type { SupabaseClient } from '@supabase/supabase-js'
 import { site } from '../config/site'
 import { VisibilityPicker } from '../components/VisibilityPicker'
 import type { VisibilityTier } from '../circuit/types'
@@ -57,6 +58,135 @@ function Field({
   )
 }
 
+/**
+ * Your handle, and a way to change it.
+ *
+ * ⚠️ IT USED TO SAY "set at sign-up", which was true and was not a design decision. Renaming was
+ * IMPOSSIBLE: profiles.username is a foreign key to player_registry(player_name) and it was ON
+ * UPDATE NO ACTION, so updating the registry broke the reference and updating profiles first had
+ * nothing to point at. The label was the shape of a database constraint showing through the UI.
+ * See docs/2026-09-09-tin-is-ramtin.sql, which made the key cascade.
+ *
+ * ⚠️ THE SERVER DOES THE VALIDATING. The checks here exist to answer instantly, not to decide —
+ * player_registry takes no client writes at all, and rename_my_handle re-checks length, charset,
+ * ownership and uniqueness before touching anything. A handle is unique across everybody, so the
+ * only honest arbiter is the unique index; anything this file believes is a guess about a value
+ * somebody else may be taking at the same moment.
+ */
+function HandleRow({
+  sb,
+  username,
+  onRenamed,
+}: {
+  sb: SupabaseClient
+  username: string
+  onRenamed: (name: string) => void
+}) {
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState(username)
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+
+  const open = () => {
+    setDraft(username)
+    setErr(null)
+    setEditing(true)
+  }
+
+  /* the same rules the function enforces, so the common mistakes answer without a round trip */
+  const trimmed = draft.trim()
+  const localProblem =
+    trimmed.length < 2 || trimmed.length > 16
+      ? 'A handle is 2 to 16 characters.'
+      : !/^[A-Za-z0-9][A-Za-z0-9 _-]*$/.test(trimmed)
+        ? 'Use letters, numbers, spaces, - and _, starting with a letter or number.'
+        : null
+
+  async function submit() {
+    if (localProblem || trimmed === username) return setEditing(false)
+    setBusy(true)
+    setErr(null)
+    try {
+      const { data, error } = await sb.rpc('rename_my_handle', { p_new: trimmed })
+      if (error) throw error
+      onRenamed(typeof data === 'string' && data ? data : trimmed)
+      setEditing(false)
+    } catch (e: unknown) {
+      const msg = normalizeError(e)
+      /* ⚠️ the one error worth translating: before the migration runs, PostgREST reports the
+         function as missing, and "Could not find the function" tells nobody anything. */
+      setErr(
+        /rename_my_handle|schema cache|does not exist/i.test(msg)
+          ? 'Renaming is not switched on yet — the database migration has not been run.'
+          : msg,
+      )
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  if (!editing)
+    return (
+      <span className="muted" style={{ fontSize: '0.82rem' }}>
+        @{username}{' '}
+        <button
+          type="button"
+          className="btn btn-ghost"
+          onClick={open}
+          style={{ padding: '1px 8px', fontSize: '0.75rem' }}
+        >
+          Change
+        </button>
+      </span>
+    )
+
+  return (
+    <span
+      style={{ display: 'inline-flex', gap: '0.35rem', alignItems: 'center', flexWrap: 'wrap' }}
+    >
+      <input
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        autoFocus
+        maxLength={16}
+        aria-label="Your handle"
+        /* ⚠️ NOT a submit inside the profile form — this sits inside that <form>, so Enter here
+           would otherwise save the whole profile instead of the handle. */
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault()
+            void submit()
+          }
+          if (e.key === 'Escape') setEditing(false)
+        }}
+        style={{ width: '11rem', fontSize: '0.85rem' }}
+      />
+      <button
+        type="button"
+        className="btn"
+        disabled={busy || !!localProblem || trimmed === username}
+        onClick={() => void submit()}
+        style={{ padding: '2px 10px', fontSize: '0.78rem' }}
+      >
+        {busy ? '…' : 'Save'}
+      </button>
+      <button
+        type="button"
+        className="btn btn-ghost"
+        onClick={() => setEditing(false)}
+        style={{ padding: '2px 10px', fontSize: '0.78rem' }}
+      >
+        Cancel
+      </button>
+      {(err || localProblem) && (
+        <span className="muted" style={{ fontSize: '0.75rem', color: 'var(--danger, #e5484d)' }}>
+          {err ?? localProblem}
+        </span>
+      )}
+    </span>
+  )
+}
+
 // ── Profile: all your info ─────────────────────────────────────────────────
 type MyProfile = {
   username: string | null
@@ -84,6 +214,25 @@ function MemberProfileCard({ canFinance }: { canFinance: boolean }) {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
+    /* ⚠️ The one card in this file that had no preview branch, so it was the one card that
+       could not be looked at without a real session — including the handle editor inside it.
+       Same harness and same rule as the others: a stand-in identity, no real auth touched. */
+    if (previewMember) {
+      setForm({
+        username: PREVIEW_ME.username,
+        first_name: 'Preview',
+        middle_name: null,
+        last_name: 'You',
+        email: PREVIEW_ME.email,
+        phone: null,
+        birthday: null,
+        address: null,
+        venmo: null,
+        cashapp: null,
+        zelle: null,
+      })
+      return
+    }
     void (async () => {
       try {
         const { data } = await sb.rpc('get_my_profile')
@@ -149,9 +298,11 @@ function MemberProfileCard({ canFinance }: { canFinance: boolean }) {
       <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.6rem', flexWrap: 'wrap' }}>
         <h3 style={{ margin: 0 }}>Your info</h3>
         {form.username && (
-          <span className="muted" style={{ fontSize: '0.82rem' }}>
-            @{form.username} <span style={{ opacity: 0.6 }}>· set at sign-up</span>
-          </span>
+          <HandleRow
+            sb={sb}
+            username={form.username}
+            onRenamed={(name) => setForm((f) => (f ? { ...f, username: name } : f))}
+          />
         )}
       </div>
 
@@ -492,6 +643,13 @@ function NicknamesCard() {
       <h3 style={{ margin: 0 }}>What people call you</h3>
       <p className="muted" style={{ margin: 0, fontSize: '0.85rem' }}>
         Your name is the default everywhere. Override it per place — clear a field to go back.
+      </p>
+      {/* ⚠️ A POINTER, NOT A SECOND FIELD. Everything in this card is a free-text override that
+          can be blank and can collide; the handle is the one globally unique name, and editing
+          it lives with the identity it belongs to. But "what am I called" is the question that
+          brings somebody here, so leaving them to guess is how it ends up reported as missing. */}
+      <p className="muted" style={{ margin: 0, fontSize: '0.8rem', opacity: 0.75 }}>
+        Looking for your @handle? It is the unique one, up under <strong>Your info</strong>.
       </p>
       {field('Nickname', 'Used anywhere you have no more specific name.', nickname, setNickname)}
       {field(
