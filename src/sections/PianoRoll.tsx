@@ -344,10 +344,76 @@ export function PianoRoll({
     list.some((o) => o.midi === midi && t < o.t + o.dur - 1e-6 && t + step > o.t + 1e-6)
 
   /** Write back through the looper, which is the single source of truth. */
-  const commit = useCallback(
+  const write = useCallback(
     (next: Note[]) => setLayerEvents(layer.id, toEvents(next, layer.len)),
     [layer.id, layer.len],
   )
+
+  /**
+   * ⚠️ UNDO, which this editor did not have.
+   *
+   * It had cut, copy, paste, select-all and three ways to delete a note — and no way to take any
+   * of it back. That is the wrong thing to be missing here in particular: the gestures this roll
+   * is built around are destructive and easy to fire by accident. Dragging a phrase moves every
+   * note in it, the right-hand edge of a note resizes instead of moving, and right-click or
+   * double-click deletes with no confirmation. Every one of those is a good design decision only
+   * if the mistake costs nothing.
+   *
+   * ⚠️ ONE ENTRY PER COMPLETED ACTION, which comes free from where commit sits. A drag writes
+   * once when you let go rather than on every frame (see the note on the drag preview), so the
+   * stack records "you moved that phrase", not four hundred intermediate positions.
+   *
+   * ⚠️ Snapshots of the note list, not a log of operations. The list is tens of notes — the
+   * whole reason this is divs and not canvas — so copying it is free, and a snapshot cannot
+   * disagree with itself the way an inverse-operation log can once two edits overlap.
+   */
+  const HISTORY_LIMIT = 60
+  const undoStack = useRef<Note[][]>([])
+  const redoStack = useRef<Note[][]>([])
+  const [hist, setHist] = useState({ undo: 0, redo: 0 })
+  const syncHist = () => setHist({ undo: undoStack.current.length, redo: redoStack.current.length })
+
+  const commit = useCallback(
+    (next: Note[]) => {
+      undoStack.current.push(notes)
+      if (undoStack.current.length > HISTORY_LIMIT) undoStack.current.shift()
+      /* a new edit ends the redo branch, same as every editor */
+      redoStack.current.length = 0
+      syncHist()
+      write(next)
+    },
+    [notes, write],
+  )
+
+  /* ⚠️ Selection is dropped on the way through: it is identified by pitch-and-start, and after
+     stepping back the note it named may not be there any more. See the note on `sel`. */
+  const undo = useCallback(() => {
+    const prev = undoStack.current.pop()
+    if (!prev) return
+    redoStack.current.push(notes)
+    syncHist()
+    setSel(null)
+    setPicks([])
+    write(prev)
+  }, [notes, write])
+
+  const redo = useCallback(() => {
+    const next = redoStack.current.pop()
+    if (!next) return
+    undoStack.current.push(notes)
+    syncHist()
+    setSel(null)
+    setPicks([])
+    write(next)
+  }, [notes, write])
+
+  /* ⚠️ A different take is a different history. Undoing into the previous layer's notes would
+     write them onto this one, which is worse than having no undo at all. */
+  useEffect(() => {
+    undoStack.current = []
+    redoStack.current = []
+    setHist({ undo: 0, redo: 0 })
+  }, [layer.id])
 
   /**
    * Hear what you just did.
@@ -677,6 +743,19 @@ export function PianoRoll({
       if (t && /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)) return
       const mod = e.ctrlKey || e.metaKey
       const k = e.key.toLowerCase()
+      /* ⚠️ before everything else, and NOT gated on a selection — undo is the one shortcut you
+         reach for when the last thing you did was wrong, which is exactly when nothing is
+         usefully selected. Shift+Z and Y both redo, because both are muscle memory somewhere. */
+      if (mod && k === 'z' && !e.shiftKey) {
+        e.preventDefault()
+        undo()
+        return
+      }
+      if (mod && ((k === 'z' && e.shiftKey) || k === 'y')) {
+        e.preventDefault()
+        redo()
+        return
+      }
       if (mod && k === 'c' && picks.length) {
         e.preventDefault()
         copyPicked()
@@ -758,6 +837,30 @@ export function PianoRoll({
         <span className="muted roll-hint">
           Click to add · drag to move · drag the grip to resize ·{' '}
           <strong>right-click or double-click a note to delete it</strong>
+        </span>
+        {/* ⚠️ OUTSIDE the selection group, because undo is what you want when the last thing you
+            did was wrong — and at that moment there is usually nothing selected. Buttons as well
+            as Ctrl+Z: a shortcut nobody is told about is not a way out on a laptop trackpad, and
+            on a phone there is no keyboard to press it on at all. */}
+        <span className="roll-hist" role="group" aria-label="Undo and redo">
+          <button
+            className="btn"
+            onClick={undo}
+            disabled={!hist.undo}
+            title="Undo the last change (Ctrl+Z)"
+            aria-label="Undo"
+          >
+            ↶
+          </button>
+          <button
+            className="btn"
+            onClick={redo}
+            disabled={!hist.redo}
+            title="Redo (Ctrl+Shift+Z)"
+            aria-label="Redo"
+          >
+            ↷
+          </button>
         </span>
         {/* ⚠️ Sits with the editor's own tools, not with Snap out in the room. They read as one
             setting when they are next to each other, and being one setting is the thing that was
