@@ -191,29 +191,46 @@ export function Profile({ authed, username }: { authed: boolean; username?: stri
     return () => window.removeEventListener('hashchange', onHash)
   }, [pinned])
 
-  // blocks + activity, alongside the main profile fetch below. Reset (not left stale) on every
-  // navigation between profiles, and dropped when leaving edit mode isn't required -- editing
-  // resets itself because it's keyed off `u` too, below.
+  /**
+   * Blocks + activity, alongside the main profile fetch below.
+   *
+   * ⚠️ CLEARED FIRST, ON EVERY NAVIGATION — and this comment used to CLAIM that while the code
+   * did not do it. What actually happened: these arrays kept the PREVIOUS profile's contents
+   * while the new fetch was in flight, so walking from somebody else's page back to your own
+   * showed you THEIR blocks on YOUR profile. Reported exactly that way.
+   *
+   * It was not only cosmetic, which is why this is a reset and not a loading flag. The editor
+   * below is seeded `initial={blocks}` and autosaves — so opening edit mode while somebody
+   * else's blocks were still on screen would have written their blocks onto your profile.
+   *
+   * ⚠️ And every setter now CLEARS on a null or non-array reply instead of leaving the old
+   * value. `if (data)` was the other half of the same bug: a profile with nothing to show, or a
+   * call that failed, left the last profile's data on screen indefinitely rather than briefly.
+   */
   useEffect(() => {
     if (!authed || !u) return
     let live = true
     setEditing(false)
+    setBlocks([])
+    setActivity([])
+    setTrophies([])
+    setAchievements([])
     const sb = getSupabaseClient()
     void sb.rpc('get_profile_blocks', { p_username: u }).then(({ data }) => {
-      if (live && data) setBlocks(data as ProfileBlock[])
+      if (live) setBlocks(Array.isArray(data) ? (data as ProfileBlock[]) : [])
     })
     void sb.rpc('get_member_activity', { p_username: u, p_limit: 20 }).then(({ data }) => {
-      if (live && data) setActivity(data as ActivityItem[])
+      if (live) setActivity(Array.isArray(data) ? (data as ActivityItem[]) : [])
     })
     // ⚠️ Separate from the activity feed on purpose: that one is time-ordered and capped at 20,
     // so trophies older than a member's last twenty events silently vanished from their profile.
     void sb.rpc('get_member_trophies', { p_username: u }).then(({ data }) => {
       /* ⚠️ read defensively: before the migration runs this RPC does not exist, and a profile
        that fails to render because an achievement list is missing would be a poor trade */
-      void sb
-        .rpc('list_achievements', { p_username: u })
-        .then(({ data }) => setAchievements(Array.isArray(data) ? (data as Achievement[]) : []))
-      if (live && data) setTrophies(data as ProfileTrophy[])
+      void sb.rpc('list_achievements', { p_username: u }).then(({ data }) => {
+        if (live) setAchievements(Array.isArray(data) ? (data as Achievement[]) : [])
+      })
+      if (live) setTrophies(Array.isArray(data) ? (data as ProfileTrophy[]) : [])
     })
     return () => {
       live = false

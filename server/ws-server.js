@@ -288,7 +288,34 @@ function makeRand(seed) {
 function spawnApples(room) {
   const grid = (room.settings || DEFAULT_SETTINGS).grid || 30
   const want = (room.settings || DEFAULT_SETTINGS).apples || 2
-  const taken = (p) => room.apples.some((a) => a.x === p.x && a.y === p.y)
+  /**
+   * ⚠️ SNAKES COUNT AS TAKEN, not just other apples — this checked apples alone and nothing
+   * else, so the relay would drop an apple straight inside somebody's snake. Reported from a
+   * race: "apple spawned inside one of our snakes".
+   *
+   * The relay already knows every body: st.body is the player's CURRENT occupancy as cell keys,
+   * replaced on every preview (see the state handler), which is exactly what solid-bodies
+   * collision reads. It was simply never consulted here.
+   *
+   * Skipped, deliberately, and for the same reasons the collision check skips them: spectators
+   * occupy nothing, and a disconnected or crashed player is not on the board — room.state is
+   * never deleted on disconnect, so without those two an abandoned tab would keep a slice of
+   * the board apple-free for the rest of the round.
+   *
+   * ⚠️ room.crashed only exists in solid-bodies rooms, so it is checked rather than assumed.
+   * Missing bodies degrade to the old behaviour rather than throwing.
+   */
+  const occupied = new Set()
+  if (room.state) {
+    for (const [pid, pst] of room.state) {
+      if (!pst || !Array.isArray(pst.body) || pst.spectate) continue
+      if (room.clients && !room.clients.has(pid)) continue
+      if (room.crashed && room.crashed.has(pid)) continue
+      for (const k of pst.body) occupied.add(k)
+    }
+  }
+  const taken = (p) =>
+    room.apples.some((a) => a.x === p.x && a.y === p.y) || occupied.has(cellKey(p.x, p.y))
   // Bounded: a full board would otherwise spin here forever.
   let guard = grid * grid * 4
   while (room.apples.length < want && guard-- > 0) {
