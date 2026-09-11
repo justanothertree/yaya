@@ -7176,6 +7176,66 @@ a.cz-msg-author:focus-visible {
   width: min(100%, calc(clamp(18rem, 74vh, 100vh) * var(--paint-ar)));
 }
 
+/**
+ * ⚠️ ON A PHONE, FULLSCREEN HAS TO EARN ITSELF — "the full screen paint doesn't really do much
+ * at all". It did not, because the page simply grew: the same stacked rows of controls took the
+ * same share of a taller screen and the paper was still a slot between them.
+ *
+ * So the paper is GUARANTEED most of the screen and the controls take the rest, scrolling if
+ * they need to. Nothing about the drawing changes; coordinates are fractions of the board, so a
+ * bigger board is the same picture with more room.
+ *
+ * ⚠️ `flex: 1 0 auto` with a min-height, NOT `1 1 auto` with min-height 0 — which is what I
+ * wrote first and measured at twenty-two pixels tall. On a phone the control rows alone are
+ * taller than the screen, so a board that is allowed to shrink gets squeezed to nothing by them:
+ * "take whatever is left" only works when something is left. Refusing to shrink, and letting the
+ * column scroll instead, is what actually hands the space to the paper.
+ */
+@media (max-width: 40rem) {
+  .paint-wrap:fullscreen {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    height: 100vh;
+    padding: 0.4rem;
+    overflow: auto;
+  }
+  .paint-wrap:fullscreen .paint-board {
+    flex: 1 0 auto;
+    min-height: 62vh;
+    height: auto;
+    width: 100%;
+    max-width: 100%;
+  }
+  /**
+   * ⚠️ THE SAME PATTERN AS THE ORDINARY RULE, with 62vh where the clamp goes — width from the
+   * height it is allowed, height from the aspect. Two wrong versions got measured before this
+   * one: a min-height plus aspect-ratio, where the min-height wins and the aspect is ignored
+   * outright; and a fixed height with a clamped width, where a 16:9 asking for 894px on a 314px
+   * screen has its width clamped while its height stays put, so the shape breaks exactly where
+   * it matters most. Keeping aspect-ratio is what lets the height follow when the width runs out
+   * of room — which on a phone is nearly always.
+   */
+  .paint-wrap:fullscreen .paint-board.has-shape {
+    flex: 0 0 auto;
+    align-self: center;
+    min-height: 0;
+    height: auto;
+    width: min(100%, calc(62vh * var(--paint-ar)));
+    aspect-ratio: var(--paint-ar);
+  }
+  /* the tools keep their size and share one scrolling strip */
+  .paint-wrap:fullscreen .paint-bar,
+  .paint-wrap:fullscreen .paint-row,
+  .paint-wrap:fullscreen .paint-shape-row {
+    flex: 0 0 auto;
+  }
+  /* not drawing, and it is the tallest thing on the page */
+  .paint-wrap:fullscreen .also-together {
+    display: none;
+  }
+}
+
 .paint-board {
   position: relative;
   height: clamp(18rem, 58vh, 40rem);

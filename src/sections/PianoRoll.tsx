@@ -780,6 +780,14 @@ export function PianoRoll({
         dropPicks()
         return
       }
+      /* ⚠️ A SECOND ESCAPE LEAVES THE TOOL, before the one below closes the editor. One press
+         clears what the box caught; a second says you are done selecting and want to place notes
+         again. Without it the only way out was finding the ⬚ button, which is the same
+         complaint the paint room's selection had. */
+      if (e.key === 'Escape' && selecting) {
+        setSelecting(false)
+        return
+      }
       if ((e.key === 'Delete' || e.key === 'Backspace') && picks.length) {
         e.preventDefault()
         deletePicked()

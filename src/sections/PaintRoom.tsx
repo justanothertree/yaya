@@ -964,6 +964,11 @@ export function PaintRoom() {
         erase()
       } else if (e.key === 'Escape' && sel.length) {
         drop()
+      } else if (e.key === 'Escape' && selecting) {
+        /* ⚠️ the SECOND Escape leaves the tool. One press clears what you have caught, which is
+           what you want when the box grabbed the wrong thing; a second says you are finished
+           selecting altogether. Getting out used to mean finding the ⬚ button again. */
+        setSelecting(false)
       }
     }
     window.addEventListener('keydown', key)
@@ -1011,6 +1016,15 @@ export function PaintRoom() {
               aria-pressed={tool === id}
               onClick={() => {
                 setTool(id)
+                /**
+                 * ⚠️ CHOOSING A BRUSH LEAVES THE SELECTION TOOL, which is how every paint
+                 * program behaves and what was missing here. Selecting stayed on until you went
+                 * back and switched it off by hand, so finishing with a selection and wanting to
+                 * draw meant hunting for the ⬚ again — reported as jarring, and it is: reaching
+                 * for a brush IS saying you are done selecting.
+                 */
+                setSelecting(false)
+                drop()
                 /* closes on a phone, where it is a menu; harmless on a desktop, where the row
                    is always open and this flag is not read */
                 setToolsOpen(false)
