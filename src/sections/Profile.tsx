@@ -711,7 +711,11 @@ export function Profile({ authed, username }: { authed: boolean; username?: stri
             </button>
           </span>
         )}
-        {!p.is_me && (
+        {/* ⚠️ AND SIGNED IN. Every button in here posts something as you — add friend, message,
+          accept — so to a signed-out visitor on the demo page they were four controls that could
+          only fail. The home page now sends first-time visitors straight here, and a dead
+          "Add friend" is the first thing they would have pressed. */}
+        {!p.is_me && authed && (
           <span className="profile-head-actions">
             {p.friend_status === 'friends' && (
               <>
@@ -826,7 +830,11 @@ export function Profile({ authed, username }: { authed: boolean; username?: stri
             <h3 style={{ marginTop: 0 }}>🎬 Movies</h3>
             <p style={{ margin: 0 }}>
               <strong style={{ fontSize: '1.6rem' }}>{p.movies_rated}</strong>{' '}
-              <span className="muted">movies rated in your shared circuits</span>
+              {/* ⚠️ "your" needs a you. Signed out there is no shared circuit to be counted
+                against, and the number is simply how many they have rated. */}
+              <span className="muted">
+                {authed ? 'movies rated in your shared circuits' : 'movies rated'}
+              </span>
             </p>
           </div>
         )}
@@ -932,7 +940,13 @@ export function Profile({ authed, username }: { authed: boolean; username?: stri
        */}
       {nothingYet.length > 0 && (
         <p className="muted" style={{ margin: 0, fontSize: '0.88rem' }}>
-          {p.is_me ? 'Nothing on your page yet — ' : 'Nothing in common yet — '}
+          {p.is_me
+            ? 'Nothing on your page yet — '
+            : authed
+              ? 'Nothing in common yet — '
+              : /* ⚠️ in common WITH WHOM? Signed out the reader is not one of the two being
+                   compared, so it just reads as a fault. */
+                'Nothing here yet — '}
           {nothingYet.join(', ')}.
         </p>
       )}

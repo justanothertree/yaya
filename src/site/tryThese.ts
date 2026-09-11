@@ -35,6 +35,14 @@ export type Invite = {
   line: string
   /** signed-in only — shown to members, hidden from visitors who could not open it anyway */
   members?: boolean
+  /**
+   * Where it actually goes, when that is more than a room name.
+   *
+   * ⚠️ `id` stays required even with this set, because `id` is what the compiler checks — an
+   * invitation still cannot point at a room that does not exist. This only carries the extra bit
+   * after it, like the `?demo=1` that makes the profile page show THE demo profile to a stranger.
+   */
+  href?: string
 }
 
 export const TRY_THESE: Invite[] = [
@@ -43,6 +51,22 @@ export const TRY_THESE: Invite[] = [
     icon: '🎹',
     title: 'Play an instrument',
     line: 'Your computer keyboard is the keys. Pick a sound and press something — it shows you the shape of what you played.',
+  },
+  {
+    /**
+     * ⚠️ THE ONE ROOM A VISITOR COULD NOT OTHERWISE SEE. Profiles are the point of the site
+     * and there was nothing about them on the home page at all — they live behind a sign-in, so
+     * the only honest way to show one is the demo: a real profile, served to anybody, which only
+     * ever returns the single row flagged is_demo and only its public blocks.
+     */
+    id: 'profile',
+    href: '#profile?demo=1',
+    /* ⚠️ NOT 🪪. It is an Emoji 14 character and Segoe UI Emoji on Windows 10 has no glyph
+       for it, so it rendered as an empty tofu box — blown up to fill the corner by .hag-bleed.
+       Check a new icon actually draws before trusting it. */
+    icon: '🧑',
+    title: 'Have a look at a page',
+    line: "Everyone here gets one — your theme, your music, your scores, whatever you pin to it. This one's mine.",
   },
   {
     id: 'paint',
@@ -74,6 +98,13 @@ export const TRY_THESE: Invite[] = [
     icon: '⭐',
     title: 'Decide together',
     line: 'Rate films and food, or throw options in a pool and let the wheel choose for everyone at once.',
+    members: true,
+  },
+  {
+    id: 'chat',
+    icon: '🎧',
+    title: 'Call your people',
+    line: 'Talk and share your screen, and the call follows you around the site while you draw or play.',
     members: true,
   },
 ]

@@ -4437,6 +4437,11 @@ button.appearance-slider-val:not(:disabled):focus-visible {
     grid-column: span 2;
   }
 }
+/* the odd one out takes the whole row — 1/-1 rather than span 3, so it is right at two columns
+   and at three without knowing which it is */
+.hag-card[data-span='full'] {
+  grid-column: 1 / -1;
+}
 @media (min-width: 62rem) {
   .hag-grid {
     grid-template-columns: repeat(3, 1fr);

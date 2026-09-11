@@ -483,21 +483,28 @@ function HaveAGo({ authed }: { authed: boolean }) {
        * ⚠️ WIDTHS RUN 2,1,1,2 AND REPEAT, which is the other half of "squarish" answered.
        *
        * Six identically sized tiles gave every room the same weight and left the eye nowhere to
-       * land. The pattern matters more than it looks: each PAIR sums to the three columns, so it
-       * tiles with no ragged hole at six cards (a member) and at four (a first-time visitor, who
-       * cannot open the two members-only rooms). A single fixed "big first card" only looks right
-       * at one of those counts, and the visitor is the one this page is for.
+       * land. The pattern matters more than it looks: each PAIR sums to the three columns, so the
+       * rhythm reads as deliberate rather than ragged.
+       *
+       * ⚠️ AN ODD COUNT CANNOT PAIR UP, so the last card takes a row to itself. This used to
+       * be a bare 2,1,1,2 cycle that happened to be safe because both counts were even — four for
+       * a visitor, six for a member — which is exactly the kind of thing that breaks silently the
+       * next time an invitation is added. Adding the profile (everyone) and calls (members) made
+       * it five and eight, and the five left a hole.
        */}
       <div className="hag-grid">
         {items.map((t, i) => (
           <a
             key={t.id}
             className={'hag-card' + (i === 0 ? ' is-feature' : '')}
-            data-span={[2, 1, 1, 2][i % 4]}
-            href={`#${t.id}`}
+            data-span={
+              items.length % 2 === 1 && i === items.length - 1 ? 'full' : [2, 1, 1, 2][i % 4]
+            }
+            href={t.href ?? `#${t.id}`}
             onClick={(e) => {
               e.preventDefault()
-              window.location.hash = t.id
+              /* the whole target, not just the room — the profile invitation carries ?demo=1 */
+              window.location.hash = (t.href ?? `#${t.id}`).replace(/^#/, '')
             }}
           >
             {/* texture, not information: the same glyph blown up and running off the corner, so a
