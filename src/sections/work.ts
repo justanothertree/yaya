@@ -63,7 +63,6 @@ export const projects: Project[] = [
     accent: '#22c55e',
     blurb: [
       'Nothing here is a screenshot of something that ran once. It’s one React and Supabase app with real accounts, so the outside is a portfolio and the inside is the set of tools my friends and family actually sign in to use.',
-      'The newer half of it is about doing things together rather than alone: drawing on the same page, playing the same round, and windows you can share so somebody else watches yours change as you change it.',
     ],
     highlights: [
       'One codebase: the board, reviews, Snake, calls, a synth, a paint studio, a visualiser, profiles',

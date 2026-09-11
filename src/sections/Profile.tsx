@@ -1,5 +1,5 @@
 import { useContext, useEffect, useRef, useState } from 'react'
-import { getSupabaseClient } from '../finance/client'
+import { getSupabaseClient, getSupabaseClientOrNull } from '../finance/client'
 import { avatarStyle } from '../profile/look'
 import type { ProfileData } from '../profile/profileData'
 import { previewMember, PREVIEW_PROFILES } from '../dev/previewMember'
@@ -52,6 +52,17 @@ const userFromHash = () =>
  * copy of the controls, and this is what makes that link land somewhere useful instead of on a
  * page with a button you still have to find.
  */
+/**
+ * `#profile?demo=1` shows THE demo profile, to anybody, signed in or not.
+ *
+ * ⚠️ A flag rather than a name. The server function takes no argument at all (see
+ * docs/2026-09-11-demo-profile.sql) precisely so an anonymous caller cannot walk the members
+ * table by guessing usernames, and this side matches it: there is nothing here to point at
+ * somebody else either.
+ */
+const demoFromHash = () =>
+  new URLSearchParams(window.location.hash.split('?')[1] ?? '').get('demo') === '1'
+
 const editFromHash = () =>
   new URLSearchParams(window.location.hash.split('?')[1] ?? '').get('edit') === 'look'
 
@@ -117,6 +128,16 @@ export function Profile({ authed, username }: { authed: boolean; username?: stri
   /* every module's achievements, earned and locked, derived server-side — see
      docs/2026-09-06-achievements-are-derived.sql */
   const [achievements, setAchievements] = useState<Achievement[]>([])
+  /**
+   * ⚠️ FOLLOWS THE HASH, exactly like `u` does, and for the same reason: a hash change does not
+   * remount this component. Fixed at mount it stuck — walking from the demo to a real profile
+   * kept showing the demo, or its empty state, for whoever you clicked next.
+   *
+   * It was fixed at mount on a safety argument that does not survive contact: the flag only
+   * chooses WHICH function to call, and the demo one takes no argument, so the server decides
+   * what the demo is no matter what this says. The boundary is over there, not here.
+   */
+  const [demo, setDemo] = useState(demoFromHash)
   const [editing, setEditing] = useState(editFromHash)
   /**
    * Open your own page in the editor, once the server has confirmed it IS your own page.
@@ -185,6 +206,7 @@ export function Profile({ authed, username }: { authed: boolean; username?: stri
     if (pinned) return
     const onHash = () => {
       setU(userFromHash())
+      setDemo(demoFromHash())
       if (editFromHash()) setEditing(true)
     }
     window.addEventListener('hashchange', onHash)
@@ -409,7 +431,45 @@ export function Profile({ authed, username }: { authed: boolean; username?: stri
     }
   }, [authed])
 
-  if (!authed)
+  /**
+   * The demo profile, for anybody at all.
+   *
+   * ⚠️ Its own fetch rather than a branch inside the others, because they are all gated on
+   * being signed in and the whole point of this one is that it is not. One call returns the
+   * profile and its public blocks together; there is no activity, no trophies and no
+   * achievements, and that is deliberate rather than unfinished — a stranger is being shown a
+   * page, not given a feed.
+   */
+  useEffect(() => {
+    if (!demo) return
+    let live = true
+    setState({ kind: 'loading' })
+    const sb = getSupabaseClientOrNull()
+    if (!sb) {
+      setState({ kind: 'missing' })
+      return
+    }
+    void sb.rpc('get_demo_profile').then(({ data, error }) => {
+      if (!live) return
+      if (error || !data) {
+        /* not switched on yet, or nobody has volunteered: say so plainly rather than looking broken */
+        setState({ kind: 'missing' })
+        return
+      }
+      const row = data as ProfileData & { blocks?: ProfileBlock[] }
+      setState({ kind: 'ok', p: row })
+      setBlocks(Array.isArray(row.blocks) ? row.blocks : [])
+      setActivity([])
+      setTrophies([])
+      setAchievements([])
+      setEditing(false)
+    })
+    return () => {
+      live = false
+    }
+  }, [demo])
+
+  if (!authed && !demo)
     return (
       <div>
         <h2 className="section-title">Profile</h2>
@@ -418,7 +478,7 @@ export function Profile({ authed, username }: { authed: boolean; username?: stri
         </p>
       </div>
     )
-  if (!u)
+  if (!u && !demo)
     return (
       <div>
         <h2 className="section-title">Profile</h2>
@@ -436,7 +496,11 @@ export function Profile({ authed, username }: { authed: boolean; username?: stri
     return (
       <div>
         <h2 className="section-title">Profile</h2>
-        <p className="muted">No member named “{u}”.</p>
+        {/* ⚠️ the demo has no username to be missing, so saying one is not there reads as a
+            broken link rather than a feature nobody has switched on yet */}
+        <p className="muted">
+          {demo ? 'There is no demo page at the moment.' : `No member named “${u}”.`}
+        </p>
       </div>
     )
   if (state.kind === 'error')

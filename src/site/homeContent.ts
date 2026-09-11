@@ -28,13 +28,13 @@ export const HOME: {
     heading:
       'The internets number one Claude Maxer. Creating fun tools that anyone can use, together.',
     blurb:
-      'Real time calls with screen sharing. A workout board my friends use every day. A data driven investment tracker for my family. Games I want to exist. A synth you play with your keyboard, and a step editor to fix what you played. A paint studio you can draw in together. A music visualiser you can tune, save and hang on your page. Profiles people make their own. It all runs here, in one app, and I build it with AI.',
+      'Tools and toys my friends and family use every day. Everything here is live — press something.',
   },
   about: {
     heading: 'About',
     paragraphs: [
       'The Circuit started as a spreadsheet my friends and I used to score our workouts. Then a single HTML file. Now it’s the biggest thing on this site and they still use it daily.',
-      'That’s how all of it goes — ideas that I want to exist as my own, built together brick by brick. It’s eight rooms now: the board, the reviews, Snake, calls, the synth, the paint studio, the visualiser and everyone’s own page. I work with AI the whole way through, so this site is also a record of what building that way is like. Still prototyping. Always adding.',
+      'That’s how all of it goes — ideas I want to exist, built brick by brick. I work with AI the whole way through, so this site is also a record of what building that way is like.',
     ],
   },
 }
