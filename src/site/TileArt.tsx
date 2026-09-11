@@ -22,7 +22,7 @@ import { BANNER_STYLES, hueFor } from '../profile/look'
  * like. That is the tile whose whole claim is "everyone's looks different".
  */
 
-export type TileArtKind = 'keys' | 'profile' | 'viz' | 'circuit' | 'ratings' | 'calls'
+export type TileArtKind = 'profile' | 'viz' | 'circuit' | 'ratings' | 'calls'
 
 /** the four looks the profile card cycles — picked to be different in KIND, not four gradients */
 const CYCLE = ['aurora', 'bands', 'rings', 'ember'] as const
@@ -31,71 +31,11 @@ export function TileArt({ kind }: { kind: TileArtKind }) {
   if (kind === 'profile') return <ProfileArt />
   return (
     <svg className="hag-art" viewBox="0 0 320 104" aria-hidden preserveAspectRatio="xMidYMid slice">
-      {kind === 'keys' && <Keys />}
       {kind === 'viz' && <Viz />}
       {kind === 'circuit' && <Bars />}
       {kind === 'ratings' && <Wheel />}
       {kind === 'calls' && <Levels />}
     </svg>
-  )
-}
-
-/**
- * A note grid with a playhead crossing it.
- *
- * ⚠️ NOT A SECOND ROW OF KEYS. The hero already has twelve keys that actually sound, so a
- * painted row down here was the same hook again and lost the comparison to the real one sitting
- * directly above it — a picture of a thing cannot beat the thing. This shows what the hook does
- * not: the grid you put notes in, which is the reason to go to the studio at all.
- */
-function Keys() {
-  /* a short phrase — [when, pitch, how long], written out rather than generated so it reads as a
-     line somebody played rather than as noise */
-  const notes: Array<[number, number, number]> = [
-    [0, 5, 2],
-    [2, 3, 2],
-    [4, 2, 1],
-    [5, 4, 3],
-    [8, 1, 2],
-    [10, 3, 2],
-    [12, 0, 4],
-    [16, 4, 2],
-    [18, 2, 2],
-    [20, 5, 3],
-    [24, 3, 4],
-  ]
-  const CW = 320 / 28
-  const RH = 104 / 7
-  return (
-    <g>
-      {/* the rows, so it reads as ruled paper rather than floating bricks */}
-      {Array.from({ length: 7 }, (_, r) => (
-        <rect
-          key={`r${r}`}
-          x={0}
-          y={r * RH}
-          width={320}
-          height={RH - 1}
-          fill="currentColor"
-          opacity={r % 2 ? 0.05 : 0.02}
-        />
-      ))}
-      {notes.map(([t, pitch, len], i) => (
-        <rect
-          key={i}
-          className="hag-art-note"
-          x={t * CW + 1}
-          y={pitch * RH + 2}
-          width={len * CW - 2}
-          height={RH - 5}
-          rx={2.5}
-          /* the delay matches where the note SITS, so the playhead appears to light each one as
-             it reaches it rather than the two animations drifting apart */
-          style={{ animationDelay: `${(t / 28) * 4}s` }}
-        />
-      ))}
-      <rect className="hag-art-head" x={0} y={0} width={2} height={104} fill="currentColor" />
-    </g>
   )
 }
 

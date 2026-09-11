@@ -9155,38 +9155,32 @@ a.cz-msg-author:focus-visible {
   pointer-events: none;
 }
 
-/* the instrument's note grid — see TileArt for why this is not a second row of keys */
-.hag-art-note {
+/* the sequencer — see HomeSequencer for why this is not a second row of keys */
+.hag-seq {
+  cursor: pointer;
+  /* ⚠️ Taller than the other art, and it overrides --tile-art-h on purpose: this is the only
+     picture on the page you have to HIT, and the cell size is the whole of whether that works.
+     At the shared height a cell was under half a fingertip. */
+  height: 156px;
+  /* ⚠️ The tap maths divides the BOX by COLS and ROWS, so the drawing has to fill the box
+     exactly — with the usual `slice` the picture is scaled and cropped and every tap lands a
+     cell or two off what the finger was over. A grid is the one shape that can stretch without
+     anybody noticing. */
+}
+.hag-seq-note {
   fill: currentColor;
-  opacity: 0.3;
-}
-.hag-art-head {
   opacity: 0.55;
+  transition: opacity 0.12s ease;
 }
-@media (prefers-reduced-motion: no-preference) {
-  .hag-art-note {
-    animation: hag-note 4s linear infinite;
-  }
-  .hag-art-head {
-    animation: hag-head 4s linear infinite;
-  }
+.hag-seq-note.is-lit {
+  opacity: 1;
 }
-@keyframes hag-note {
-  0%,
-  100% {
-    opacity: 0.3;
-  }
-  2%,
-  10% {
-    opacity: 1;
-  }
+.hag-seq-head {
+  transition: x 0.09s linear;
 }
-@keyframes hag-head {
-  from {
-    transform: translateX(0);
-  }
-  to {
-    transform: translateX(320px);
+@media (prefers-reduced-motion: reduce) {
+  .hag-seq-head {
+    transition: none;
   }
 }
 

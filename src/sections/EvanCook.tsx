@@ -7,6 +7,7 @@ import { site } from '../config/site'
 import { TRY_THESE } from '../site/tryThese'
 import { HomeScribble } from '../site/HomeScribble'
 import { HomeSnake } from '../site/HomeSnake'
+import { HomeSequencer } from '../site/HomeSequencer'
 import { TileArt } from '../site/TileArt'
 import { IconGitHub, IconLinkedIn } from '../components/Icons'
 import { projects, skills, type Project, type Shot } from './work'
@@ -579,6 +580,8 @@ function HaveAGo({ authed }: { authed: boolean }) {
                   <HomeScribble />
                 ) : t.live === 'snake' ? (
                   <HomeSnake />
+                ) : t.live === 'keys' ? (
+                  <HomeSequencer />
                 ) : (
                   <TileArt kind={t.live} />
                 )}

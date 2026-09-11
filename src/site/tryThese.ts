@@ -63,6 +63,13 @@ export type Invite = {
 
 export const TRY_THESE: Invite[] = [
   /**
+   * ⚠️ EVERY LINE FOLLOWS THE HERO'S CAPTION, which is the one on this page that works:
+   * "Press one, or drag across them — there are no wrong notes. There is a whole studio of this
+   * behind the Instrument tab." Three moves — what to DO with the thing in front of you, why you
+   * cannot get it wrong, and where the full version lives. Describing a feature does none of
+   * those, which is why the descriptions read as advertising however plainly they were written.
+   */
+  /**
    * ⚠️ THE ORDER IS THE LAYOUT. Widths run 2,1,1,2 and repeat (see EvanCook), so positions 0
    * and 3 are the wide ones — and the two tiles that NEED width are the pad you drag on and the
    * profile, which has a whole page to show and was unreadable in a third of a row. Reordering is
@@ -74,7 +81,7 @@ export const TRY_THESE: Invite[] = [
     open: 'Open the studio',
     icon: '🎨',
     title: 'Draw something',
-    line: 'Layers, frames and undo. Two people in it at once are drawing on the same canvas.',
+    line: 'Drag across it — the ink fades on its own, so there is nothing to ruin. The studio behind it has layers, frames, undo, and room for two people on one canvas.',
   },
   {
     id: 'visualizer',
@@ -82,7 +89,7 @@ export const TRY_THESE: Invite[] = [
     open: 'Put a song on',
     icon: '🎚️',
     title: 'Watch music move',
-    line: 'Play a song and the screen moves with it. Mirrors, depth, 3D — I kept adding ways for it to look and saving the ones I liked.',
+    line: 'That is what it does to a drum loop. Put your own song on in the visualiser and it does it to that — mirrors, depth, 3D, and it keeps the looks you liked.',
   },
   {
     id: 'instrument',
@@ -93,7 +100,7 @@ export const TRY_THESE: Invite[] = [
        twice and read as the weaker copy of it, so this tile shows the part the hook does not: the
        editor you write a line in and keep. */
     title: 'Write a tune down',
-    line: 'The keys at the top are one sound. In here there are more, and a grid you can put notes in and keep.',
+    line: 'Tap any square to drop a note in — it is all one scale, so nothing you add can clash. The studio has more sounds and keeps what you write.',
   },
   {
     /**
@@ -110,7 +117,7 @@ export const TRY_THESE: Invite[] = [
        Check a new icon actually draws before trusting it. */
     icon: '🧑',
     title: 'See a profile page',
-    line: 'Mine, as a visitor sees it. Everyone builds one out of blocks — a song, a drawing, scores, a guestbook. Add someone from their page and you can message them, call them, or draw and play together.',
+    line: 'Four of the looks, cycling. Everyone builds a page out of blocks — a song, a drawing, scores, a guestbook — and from somebody’s page you can add them, message them, call them, or draw and play together.',
   },
   {
     id: 'snake',
@@ -118,7 +125,7 @@ export const TRY_THESE: Invite[] = [
     open: 'Play it properly',
     icon: '🎮',
     title: 'Play Snake',
-    line: 'This one is playing itself. Tap it to take over. The full version keeps scores and lets people race each other.',
+    line: 'It is playing itself — tap anywhere and it goes where you pointed. It hands itself back when you stop. The full one keeps scores and lets people race each other.',
   },
   {
     id: 'circuit',
@@ -135,7 +142,7 @@ export const TRY_THESE: Invite[] = [
     open: 'Open the pool',
     icon: '⭐',
     title: 'Decide what to watch',
-    line: 'Rate films and food with the people you watch and eat with. Or throw options in a pool and let the wheel pick one for everybody at once.',
+    line: 'When nobody can decide, everyone throws an option in a pool and the wheel picks — that is it spinning. Afterwards you rate what you actually watched.',
     members: true,
   },
   {
@@ -144,7 +151,7 @@ export const TRY_THESE: Invite[] = [
     open: 'Open chat',
     icon: '🎧',
     title: 'Talk and share a screen',
-    line: 'Voice and screen share. The call stays up as you move around the site, so you can talk while you draw or play.',
+    line: 'Somebody talking. The call stays up as you move around the site, so it is the same conversation whether you are drawing, playing or looking at the board.',
     members: true,
   },
 ]
