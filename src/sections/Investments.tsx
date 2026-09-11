@@ -2,6 +2,7 @@
 // cost + dollars/day, plus current value and gain/loss from the daily price sweep). Admins
 // also get "All accounts" (view as any member) and the trades ledger.
 import { useEffect, useMemo, useState } from 'react'
+import { errText } from '../ui/errText'
 import {
   fetchMyPortfolio,
   fetchAllPortfolios,
@@ -87,7 +88,7 @@ export function Investments({ demo = false }: { demo?: boolean }) {
           )
         }
       } catch (e: unknown) {
-        if (alive) setError(e instanceof Error ? e.message : String(e))
+        if (alive) setError(errText(e))
       }
     })()
     return () => {
@@ -184,7 +185,16 @@ export function Investments({ demo = false }: { demo?: boolean }) {
         </article>
       )}
 
-      {mode === 'mine' ? (
+      {/**
+       * ⚠️ AN ERROR ENDS THE LOADING, rather than sitting above it.
+       *
+       * `accounts === null` means "not here yet" and drives a "Loading your portfolio…" card, but
+       * a failed load leaves it null forever — so the page showed the reason it could not load in
+       * red and, directly underneath, claimed to still be loading. Two states that contradict
+       * each other, and the spinner is the more believable one, so it reads as a page that has
+       * hung rather than one that has something to tell you.
+       */}
+      {error ? null : mode === 'mine' ? (
         <>
           {/* one account = the card says it all; the roll-up banner is for multi-account views */}
           {mine && mine.length > 1 && <ScheduleSummary accounts={mine} />}
@@ -378,7 +388,7 @@ function AllAccounts({
       setBulkVal('')
       setBulkOpen(false)
     } catch (e) {
-      setBulkMsg(e instanceof Error ? e.message : String(e))
+      setBulkMsg(errText(e))
     } finally {
       setBulkBusy(false)
     }
@@ -646,7 +656,9 @@ function AccountForm({
       } catch (e) {
         setWarn(
           `Account saved, but Investments could not be switched on for them` +
-            `${e instanceof Error ? ` (${e.message})` : ''}. ` +
+            /* a Supabase error is not an Error instance, so the reason was being dropped here
+               in the one place somebody most needs it — see errText */
+            ` (${errText(e, 'reason unknown')}). ` +
             `They will not see the page until it is enabled from Admin → Members.`,
         )
       }
@@ -670,7 +682,7 @@ function AccountForm({
       }
       await onSaved()
     } catch (e2: unknown) {
-      setErr(e2 instanceof Error ? e2.message : String(e2))
+      setErr(errText(e2))
     } finally {
       setBusy(false)
     }
@@ -684,7 +696,7 @@ function AccountForm({
       await adminDeleteAccount(account.id)
       await onDeleted()
     } catch (e2: unknown) {
-      setErr(e2 instanceof Error ? e2.message : String(e2))
+      setErr(errText(e2))
     } finally {
       setBusy(false)
     }
@@ -1503,7 +1515,7 @@ function TradesLedger({ accounts }: { accounts: AccountPortfolio[] | null }) {
     setErr(null)
     setSymbolDesignation(pos.symbol, pos.platform, !pos.isFamily)
       .then(load)
-      .catch((e: unknown) => setErr(e instanceof Error ? e.message : String(e)))
+      .catch((e: unknown) => setErr(errText(e)))
       .finally(() => setBusySym(null))
   }
 
@@ -1518,11 +1530,11 @@ function TradesLedger({ accounts }: { accounts: AccountPortfolio[] | null }) {
         setFixVal('')
         return load()
       })
-      .catch((e: unknown) => setErr(e instanceof Error ? e.message : String(e)))
+      .catch((e: unknown) => setErr(errText(e)))
       .finally(() => setBusySym(null))
   }
   useEffect(() => {
-    void load().catch((e: unknown) => setErr(e instanceof Error ? e.message : String(e)))
+    void load().catch((e: unknown) => setErr(errText(e)))
   }, [])
 
   /**
@@ -1960,7 +1972,7 @@ function SetPriceForm({ symbols }: { symbols: string[] }) {
             setPrice('')
             setMsg(`✓ ${symbol} price set — shown on the portfolio cards`)
           })
-          .catch((e2: unknown) => setMsg(e2 instanceof Error ? e2.message : String(e2)))
+          .catch((e2: unknown) => setMsg(errText(e2)))
           .finally(() => setBusy(false))
       }}
       style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}
@@ -2031,7 +2043,7 @@ function AssignForm({
         setErr(null)
         onAssign(accountId, parsed)
           .then(() => setUnits(''))
-          .catch((e2: unknown) => setErr(e2 instanceof Error ? e2.message : String(e2)))
+          .catch((e2: unknown) => setErr(errText(e2)))
           .finally(() => setBusy(false))
       }}
       style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}

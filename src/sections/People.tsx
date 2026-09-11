@@ -6,6 +6,7 @@
 // come first (they're the only rows with a decision attached), then your friends, then
 // everyone else.
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { errText } from '../ui/errText'
 import { notificationsChanged, onNotificationsChanged } from '../hooks/notifySignal'
 import { getSupabaseClient } from '../finance/client'
 import { previewMember, PREVIEW_PEOPLE, type PreviewPerson } from '../dev/previewMember'
@@ -137,7 +138,7 @@ export function People({ authed = false }: { authed?: boolean }) {
     try {
       setPeople(await loadPeople())
     } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Could not load members')
+      setErr(errText(e, 'Could not load members'))
     }
   }, [authed])
 

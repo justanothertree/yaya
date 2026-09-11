@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { errText } from '../ui/errText'
 import { usd } from '../finance/portfolio'
 import {
   fetchTaxStatus,
@@ -39,7 +40,7 @@ export function TaxView() {
     let alive = true
     void fetchTaxStatus().then(
       (s) => alive && setStatus(s),
-      (e: unknown) => alive && setError(e instanceof Error ? e.message : String(e)),
+      (e: unknown) => alive && setError(errText(e)),
     )
     return () => {
       alive = false

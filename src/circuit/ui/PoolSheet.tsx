@@ -11,6 +11,7 @@
 // thing a guest gets to widen. A member's version of this sheet shows the roster and one button:
 // leave.
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { errText } from '../../ui/errText'
 import { circuitStore } from '../store'
 import { getSupabaseClientOrNull } from '../../finance/client'
 import { Modal } from './Modal'
@@ -135,7 +136,7 @@ export function PoolSheet({
       }
       onClose()
     } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Could not save')
+      setErr(errText(e, 'Could not save'))
     } finally {
       setBusy(false)
     }
@@ -149,7 +150,7 @@ export function PoolSheet({
       await circuitStore.deletePool(pool.id)
       onClose()
     } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Could not delete')
+      setErr(errText(e, 'Could not delete'))
     } finally {
       setBusy(false)
     }

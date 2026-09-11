@@ -44,3 +44,6 @@ src/circuit/seed.ts
 
 # import dry-run output, written next to whatever CSV you point it at
 *.parsed.json
+
+# local Claude Code tooling (launch config, task locks) — not part of the site
+.claude/
