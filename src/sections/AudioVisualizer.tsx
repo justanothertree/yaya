@@ -700,6 +700,22 @@ export function AudioVisualizer() {
     const glow = document.createElement('canvas')
     const gctx = glow.getContext('2d')
 
+    /**
+     * The kaleidoscope, built once a frame so the effects on top of it composite the MIRRORED
+     * picture rather than one raw wedge of it.
+     *
+     * ⚠️ Depth and Split used to draw straight from `buf`, and they ran BEFORE the mirror. So
+     * the receding copies and the colour fringes were single unmirrored images sitting under a
+     * mirrored sharp one — reported as depth still being "within the single mirror". Bloom never
+     * had the bug, because it reads the finished canvas instead, which is the arrangement the
+     * other two now follow.
+     *
+     * ⚠️ Only allocated when there is mirroring to do. With the mirror off, `source()` hands
+     * back `buf` untouched and this canvas stays 0x0 — the common case pays nothing.
+     */
+    const mir = document.createElement('canvas')
+    const mctx = mir.getContext('2d')
+
     // how hard the last beat hit, decaying — see the punch composite below
     let hit = 0
     // the spin the feedback copy carries, so an echo tunnel turns instead of just receding
@@ -862,6 +878,11 @@ export function AudioVisualizer() {
       }
       glow.width = Math.max(1, Math.round((w * dpr) / 3))
       glow.height = Math.max(1, Math.round((h * dpr) / 3))
+      /* sized with the buffer it mirrors, and only while mirroring is on — see `mir` */
+      if (mir.width) {
+        mir.width = Math.round(w * dpr)
+        mir.height = Math.round(h * dpr)
+      }
       /**
        * ⚠️ THE BACKING BUFFER IS SET HERE; THE CSS SIZE IS NOT.
        *
@@ -1222,6 +1243,51 @@ export function AudioVisualizer() {
       }
 
       /**
+       * ⚠️ THE MIRROR IS BUILT FIRST, and everything below composites its result.
+       *
+       * Depth and Split used to draw from `buf` and run before the kaleidoscope, so both were
+       * unmirrored copies of one wedge sitting underneath a mirrored sharp image — "depth is
+       * still within the single mirror". The mirror is part of the PICTURE; depth and split are
+       * things done to a picture, so they have to come after it.
+       *
+       * With the mirror off this is `buf` and nothing extra happens at all.
+       */
+      const source = (() => {
+        if (mirror <= 1) return buf
+        if (mir.width !== buf.width || mir.height !== buf.height) {
+          mir.width = buf.width
+          mir.height = buf.height
+        }
+        if (!mctx) return buf
+        mctx.setTransform(1, 0, 0, 1, 0, 0)
+        mctx.clearRect(0, 0, mir.width, mir.height)
+        mctx.save()
+        mctx.scale(dpr, dpr)
+        const cx = w / 2
+        const cy = h / 2
+        const seg = (Math.PI * 2) / mirror
+        const reach = Math.hypot(w, h)
+        for (let i = 0; i < mirror; i++) {
+          mctx.save()
+          mctx.translate(cx, cy)
+          /* this wedge's angle, then the flip that makes it a MIRROR of its neighbour rather
+             than another copy of it — the pointer fold above is built to match this convention */
+          mctx.rotate(i * seg)
+          if (i % 2) mctx.scale(1, -1)
+          mctx.beginPath()
+          mctx.moveTo(0, 0)
+          mctx.arc(0, 0, reach, -seg / 2, seg / 2)
+          mctx.closePath()
+          mctx.clip()
+          mctx.translate(-cx, -cy)
+          mctx.drawImage(buf, 0, 0, w, h)
+          mctx.restore()
+        }
+        mctx.restore()
+        return mir
+      })()
+
+      /**
        * Depth: the same frame composited again at smaller scales, dimmer, behind itself.
        *
        * ⚠️ Drawn SMALLEST FIRST. These are meant to read as copies receding away from you, so
@@ -1241,7 +1307,7 @@ export function AudioVisualizer() {
         view.save()
         view.globalAlpha = alpha
         view.translate((w * (1 - scale)) / 2, (h * (1 - scale)) / 2)
-        view.drawImage(buf, 0, 0, w * scale, h * scale)
+        view.drawImage(source, 0, 0, w * scale, h * scale)
         view.restore()
       }
 
@@ -1263,52 +1329,28 @@ export function AudioVisualizer() {
         view.globalCompositeOperation = 'lighter'
         view.globalAlpha = 0.4 + spl * 0.35
         view.filter = 'hue-rotate(-28deg)'
-        view.drawImage(buf, -off, 0, w, h)
+        view.drawImage(source, -off, 0, w, h)
         view.filter = 'hue-rotate(28deg)'
-        view.drawImage(buf, off, 0, w, h)
+        view.drawImage(source, off, 0, w, h)
         view.filter = 'none'
         view.restore()
       }
 
-      if (mirror <= 1) {
-        view.drawImage(buf, 0, 0, w, h)
-      } else {
-        // Kaleidoscope: clip to a wedge, draw the whole buffer through it, repeat around the
-        // circle. Alternate wedges are flipped so neighbouring edges meet rather than butting.
-        const cx = w / 2
-        const cy = h / 2
-        const seg = (Math.PI * 2) / mirror
-        const reach = Math.hypot(w, h)
-        /**
-         * ⚠️ THE SOURCE WEDGE IS FIXED, at angle zero, and it must stay that way.
-         *
-         * It used to follow the pointer, to answer a real complaint: every wedge shows the same
-         * source sector, so drawing anywhere else was clipped away in all of them and the
-         * kaleidoscope was live in one slice and dead in the rest. Chasing the pointer fixed
-         * that and bought a worse problem — the sector is a whole number, so crossing a boundary
-         * swung the entire source region round by a full wedge and the picture snapped.
-         *
-         * The pointer is folded into this wedge before the modes draw instead (see the fold
-         * above), so what lands here is already in the right place and there is nothing for the
-         * compositor to chase. Mirrors that never move cannot snap.
-         */
-        for (let i = 0; i < mirror; i++) {
-          view.save()
-          view.translate(cx, cy)
-          /* this wedge's angle, then the flip that makes it a MIRROR of its neighbour rather
-             than another copy of it — the fold above is built to match this exact convention */
-          view.rotate(i * seg)
-          if (i % 2) view.scale(1, -1)
-          view.beginPath()
-          view.moveTo(0, 0)
-          view.arc(0, 0, reach, -seg / 2, seg / 2)
-          view.closePath()
-          view.clip()
-          view.translate(-cx, -cy)
-          view.drawImage(buf, 0, 0, w, h)
-          view.restore()
-        }
-      }
+      /**
+       * ⚠️ THE SOURCE WEDGE IS FIXED, at angle zero, and it must stay that way.
+       *
+       * It used to follow the pointer, to answer a real complaint: every wedge shows the same
+       * source sector, so drawing anywhere else was clipped away in all of them and the
+       * kaleidoscope was live in one slice and dead in the rest. Chasing the pointer fixed that
+       * and bought a worse problem — the sector is a whole number, so crossing a boundary swung
+       * the entire source region round by a full wedge and the picture snapped.
+       *
+       * The pointer is folded into that wedge before the modes draw (see the fold above), so
+       * what lands there is already in the right place and there is nothing to chase. Mirrors
+       * that never move cannot snap. The wedges themselves are assembled into `source` further
+       * up, so by here the picture is already mirrored and this is one blit.
+       */
+      view.drawImage(source, 0, 0, w, h)
       /**
        * Bloom, added LAST and additively.
        *
