@@ -576,9 +576,50 @@
     max-height: calc(100dvh - var(--nav-h, 54px) - 24px);
   }
 }
+.snake-side-head {
+  display: flex;
+  align-items: stretch;
+  border-bottom: 1px solid var(--border);
+}
 .snake-side-tabs {
   display: flex;
-  border-bottom: 1px solid var(--border);
+  flex: 1;
+  min-width: 0;
+}
+/* the arrow that says the bar opens — see the container query below, it only exists narrow */
+.snake-side-toggle {
+  flex: 0 0 auto;
+  padding: 8px 12px;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+.snake-side-toggle:hover {
+  color: var(--text);
+}
+/**
+ * NARROW: THE PANEL IS A DISCLOSURE, AND STARTS SHUT.
+ *
+ * ⚠️ Under 860px the panel stacks beneath the board, and open by default that was a screen
+ * and a half of settings under a game that fits on one — a phone measured 2065px of page. Shut,
+ * it is a labelled bar you tap.
+ *
+ * ⚠️ The override below is not optional. Without it a stale `data-open` would hide the panel
+ * beside the board too, where there is no visible way to open it: the arrow is display:none at
+ * that width because at that width there is nothing to open.
+ */
+.snake-stage-side:not([data-open]) .snake-side-body {
+  display: none;
+}
+@container (min-width: 860px) {
+  .snake-side-toggle {
+    display: none;
+  }
+  .snake-stage-side:not([data-open]) .snake-side-body {
+    display: block;
+  }
 }
 .snake-side-tab {
   flex: 1;
@@ -757,4 +798,28 @@
 .view-size-value {
   min-width: 6ch;
   font-variant-numeric: tabular-nums;
+}
+
+/* ── the leaderboard header ─────────────────────────────────────────────────
+   Which board, then which period: one line each. As a single wrapping row of seven buttons a
+   phone broke it into three ragged lines that split the groups apart, so neither question read
+   as a question. */
+.snake-board-head {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.snake-board-head-top,
+.snake-board-periods {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+@media (max-width: 40rem) {
+  /* four period tabs on one line at 375px — they only just fit, hence the tighter padding */
+  .snake-board-periods .btn {
+    padding: 5px 8px;
+    font-size: 0.78rem;
+  }
 }

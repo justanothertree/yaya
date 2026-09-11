@@ -358,6 +358,19 @@ export function GameManager({
   const [tronWinner, setTronWinner] = useState<{ id: string; name?: string } | null>(null)
   /** which view the panel beside the board is showing */
   const [sideTab, setSideTab] = useState<SideTab>('players')
+  /**
+   * Is the panel open? Only below the split, where it sits UNDER the board.
+   *
+   * ⚠️ Starts closed, and that is the whole point. Beside the board the panel costs nothing,
+   * but stacked under it on a phone the settings were a wall of buttons the length of a second
+   * screen — 2065px of page for a game that fits in one. Closed, the tab bar is a line under
+   * the board that says what is in there.
+   *
+   * ⚠️ The desktop layout ignores this entirely (see game.css): the panel is always open at
+   * container widths that can hold it, so resizing can never strand somebody with a panel they
+   * cannot see a way to open.
+   */
+  const [sideOpen, setSideOpen] = useState(false)
 
   const chatSeqRef = useRef(0)
   const chatInputRef = useRef<HTMLInputElement | null>(null)
@@ -3541,19 +3554,41 @@ export function GameManager({
             toolbar and into a versus-only panel would have taken the apple count and the edge
             rule away from single player entirely. */}
           {showSide && (
-            <aside className="snake-stage-side">
-              <div className="snake-side-tabs" role="tablist">
-                {sideTabs.map(([k, label]) => (
-                  <button
-                    key={k}
-                    className={'snake-side-tab' + (activeSideTab === k ? ' is-on' : '')}
-                    role="tab"
-                    aria-selected={activeSideTab === k}
-                    onClick={() => setSideTab(k)}
-                  >
-                    {label}
-                  </button>
-                ))}
+            <aside className="snake-stage-side" data-open={sideOpen || undefined}>
+              <div className="snake-side-head">
+                <div className="snake-side-tabs" role="tablist">
+                  {sideTabs.map(([k, label]) => (
+                    <button
+                      key={k}
+                      className={'snake-side-tab' + (activeSideTab === k ? ' is-on' : '')}
+                      role="tab"
+                      aria-selected={activeSideTab === k}
+                      /* The tab you are already on toggles the panel shut. In solo there is only
+                         ever one tab, so this is what makes the bar itself the handle — tapping
+                         Settings opens settings and tapping it again puts them away. */
+                      onClick={() => {
+                        if (k === activeSideTab) setSideOpen((v) => !v)
+                        else {
+                          setSideTab(k)
+                          setSideOpen(true)
+                        }
+                      }}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                {/* The arrow is the only thing that says the bar opens. Hidden above the split,
+                  where the panel is always open and there is nothing to say. */}
+                <button
+                  type="button"
+                  className="snake-side-toggle"
+                  aria-expanded={sideOpen}
+                  aria-label={sideOpen ? 'Hide panel' : 'Show panel'}
+                  onClick={() => setSideOpen((v) => !v)}
+                >
+                  {sideOpen ? '▾' : '▸'}
+                </button>
               </div>
 
               {activeSideTab === 'players' && (
@@ -4213,74 +4248,83 @@ export function GameManager({
 
       {/* Leaderboard */}
       <div className="card" style={{ marginTop: 8, padding: 10 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-          <h3 className="section-title" style={{ margin: 0 }}>
-            Top 15
-          </h3>
-          {/* Which board. Survival, race and tron are not comparable — a race stops the moment
+        {/**
+         * ⚠️ TWO LINES, NOT ONE WRAPPING LINE. Seven buttons on one flex row wrapped into three
+         * ragged rows on a phone, split mid-group, and left the `|` divider orphaned at the end of
+         * a line with nothing to divide. Which board and which period are two questions, so they
+         * get a line each and the divider is not needed.
+         */}
+        <div className="snake-board-head">
+          <div className="snake-board-head-top">
+            <h3 className="section-title" style={{ margin: 0 }}>
+              Top 15
+            </h3>
+            {/* Which board. Survival, race and tron are not comparable — a race stops the moment
               somebody reaches the target, so its scores are bounded by the target rather than by
               how long anyone survived — and putting them in one column was the thing game_mode
               existed to prevent. Hunger, apple count, grid and speed stay modifiers and do NOT
               split the board: a key per combination shatters one leaderboard into dozens holding
               a single entry each, which stops being a leaderboard. */}
-          {BOARD_MODES.map((m) => (
+            {BOARD_MODES.map((m) => (
+              <button
+                key={m}
+                className="btn"
+                aria-pressed={board === m}
+                data-active={board === m || undefined}
+                onClick={() => setBoard(m)}
+                title={`${BOARD_LABELS[m]} scores`}
+              >
+                {BOARD_LABELS[m]}
+              </button>
+            ))}
+          </div>
+
+          <div className="snake-board-periods">
+            {(
+              [
+                { k: 'all', label: 'All time' },
+                { k: 'month', label: 'This month' },
+                { k: 'today', label: 'Today' },
+              ] as Array<{ k: LeaderboardPeriod; label: string }>
+            ).map((p) => (
+              <button
+                key={p.k}
+                className="btn"
+                aria-pressed={!showMine && period === p.k}
+                data-active={(!showMine && period === p.k) || undefined}
+                onClick={() => {
+                  setShowMine(false)
+                  setPeriod(p.k)
+                }}
+              >
+                {p.label}
+              </button>
+            ))}
             <button
-              key={m}
               className="btn"
-              aria-pressed={board === m}
-              data-active={board === m || undefined}
-              onClick={() => setBoard(m)}
-              title={`${BOARD_LABELS[m]} scores`}
+              aria-pressed={showMine}
+              data-active={showMine || undefined}
+              // A fourth tab, not a toggle. It used to flip, so a second click dropped you
+              // back to whichever period was underneath — the three beside it are
+              // idempotent, so it read as a bug rather than a feature.
+              onClick={() => setShowMine(true)}
+              title="Every run you've played, not just your best"
             >
-              {BOARD_LABELS[m]}
+              My runs
             </button>
-          ))}
-          <span aria-hidden style={{ opacity: 0.35 }}>
-            |
-          </span>
-          {(
-            [
-              { k: 'all', label: 'All time' },
-              { k: 'month', label: 'This month' },
-              { k: 'today', label: 'Today' },
-            ] as Array<{ k: LeaderboardPeriod; label: string }>
-          ).map((p) => (
+            {/* ⚠️ No marginLeft:auto spacer. Pushed right, Debug left a hole beside the period
+              tabs on a phone and wrapped onto its own line anyway. Ghost rather than solid
+              because it is the one control here nobody came for. */}
             <button
-              key={p.k}
-              className="btn"
-              aria-pressed={!showMine && period === p.k}
-              data-active={(!showMine && period === p.k) || undefined}
-              onClick={() => {
-                setShowMine(false)
-                setPeriod(p.k)
-              }}
+              className="btn btn-ghost"
+              aria-pressed={showDebug}
+              data-active={showDebug || undefined}
+              onClick={() => setShowDebug((v) => !v)}
+              title="Show debug info"
             >
-              {p.label}
+              Debug
             </button>
-          ))}
-          <button
-            className="btn"
-            aria-pressed={showMine}
-            data-active={showMine || undefined}
-            // A fourth tab, not a toggle. It used to flip, so a second click dropped you
-            // back to whichever period was underneath — the three beside it are
-            // idempotent, so it read as a bug rather than a feature.
-            onClick={() => setShowMine(true)}
-            title="Every run you've played, not just your best"
-          >
-            My runs
-          </button>
-          {/* Filters removed per request */}
-          <div style={{ marginLeft: 'auto' }} />
-          <button
-            className="btn"
-            aria-pressed={showDebug}
-            data-active={showDebug || undefined}
-            onClick={() => setShowDebug((v) => !v)}
-            title="Show debug info"
-          >
-            Debug
-          </button>
+          </div>
         </div>
         {myRank != null && (
           <div className="muted" style={{ marginTop: 6 }}>
