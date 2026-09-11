@@ -1,4 +1,5 @@
 import { Suspense, useEffect, useMemo, useRef, useState } from 'react'
+import { applyLook, registerLookApplier } from './ui/looks'
 import { lazyRetry } from './lazyRetry'
 import { ErrorBoundary } from './ErrorBoundary'
 import { PresenceBeacon } from './components/PresenceBeacon'
@@ -1377,6 +1378,38 @@ export default function App() {
     }
     if (customPalette) setCustomPalette(false)
   }
+
+  /**
+   * ⚠️ How anything else applies a look. The setters live here, so the registry in ui/looks.ts
+   * is handed the one function that knows how rather than every surface being handed the
+   * fourteen callbacks it would otherwise need — see registerLookApplier for the argument.
+   */
+  useEffect(
+    () =>
+      registerLookApplier((l) =>
+        applyLook(l, {
+          onTheme: chooseTheme,
+          onCustomPalette: setCustomPalette,
+          onBackground: chooseBackground,
+          sparksOn,
+          onToggleSparks: toggleSparks,
+          onSparksStyle: setSparksStyle,
+          onTrailStyle: chooseTrail,
+          setCursor,
+        }),
+      ),
+    [
+      chooseTheme,
+      setCustomPalette,
+      chooseBackground,
+      sparksOn,
+      toggleSparks,
+      setSparksStyle,
+      chooseTrail,
+      setCursor,
+    ],
+  )
+
   // Pinned windows follow you across tabs. We keep the pane OBJECTS (not just ids) so a
   // window pinned on one tab can still render on another after its own page unmounted —
   // the node re-mounts and reads the same live store.

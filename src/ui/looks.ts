@@ -389,6 +389,36 @@ function write(next: Look[]) {
   listeners.forEach((l) => l())
 }
 
+/**
+ * How a look gets applied, registered once by App.
+ *
+ * ⚠️ APPLYING NEEDS THE DIALOG'S SETTERS, and the profile page has none of them. Threading
+ * fourteen callbacks from App through Profile and into a block just so a visitor can press a
+ * swatch would put the appearance plumbing in the signature of everything in between — and the
+ * next thing that wants to offer a look would have to do it again.
+ *
+ * ⚠️ So App registers the one function that knows how, and anything can ask. `canApplyLook`
+ * exists because a button that silently does nothing is worse than a button that is not there:
+ * where nobody has registered (a test, a future surface), the block shows the looks without
+ * pretending they are pressable.
+ */
+let applier: ((l: Look) => void) | null = null
+
+export function registerLookApplier(fn: (l: Look) => void): () => void {
+  applier = fn
+  return () => {
+    if (applier === fn) applier = null
+  }
+}
+
+export const canApplyLook = () => !!applier
+
+export function applyLookNow(l: Look): boolean {
+  if (!applier) return false
+  applier(l)
+  return true
+}
+
 export const myLooks = () => mine
 export function subscribeLooks(fn: () => void) {
   listeners.add(fn)

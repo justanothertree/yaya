@@ -9565,3 +9565,68 @@ a.cz-msg-author:focus-visible {
   flex-wrap: wrap;
   margin: 0;
 }
+
+/* ── looks published on a profile ───────────────────────────────────────────
+   ⚠️ The swatch shows the LOOK'S colours, not the page's — a row of tiles painted in the current
+   theme would say nothing about what pressing one does, which is the only question being asked.
+   Same reasoning as the cards in the Appearance dialog. */
+.plooks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+.plook {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 4px 10px 4px 4px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--control-bg, rgba(127, 127, 127, 0.08));
+  color: var(--text);
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.plook:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+.plook:disabled {
+  cursor: default;
+  opacity: 0.75;
+}
+.plook.is-on {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent) inset;
+}
+.plook-chip {
+  display: grid;
+  place-items: center;
+  width: 1.6rem;
+  height: 1.6rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  font-size: 0.68rem;
+  font-weight: 800;
+}
+.plook-note {
+  margin: 0.55rem 0 0;
+  font-size: 0.78rem;
+}
+.plooks-pick-row {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.2rem 0;
+  font-size: 0.85rem;
+}
+@media (max-width: 40rem) {
+  /* pressable with a thumb, like every other control in the editor */
+  .plook {
+    min-height: 40px;
+  }
+  .plooks-pick-row {
+    min-height: 40px;
+  }
+}

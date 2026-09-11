@@ -1,4 +1,12 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
+import {
+  applyLookNow,
+  canApplyLook,
+  myLooks,
+  readLook,
+  subscribeLooks,
+  type Look,
+} from '../ui/looks'
 import { createPortal } from 'react-dom'
 import { getSupabaseClient } from '../finance/client'
 import { useTouchOnly } from '../ui/pointerKind'
@@ -85,6 +93,7 @@ export type ProfileBlock = {
     | 'song'
     | 'visualizer'
     | 'art'
+    | 'looks'
   size: 'small' | 'medium' | 'large'
   config: Record<string, unknown>
   visibility: Tier
@@ -157,7 +166,7 @@ const configSize = (config: Record<string, unknown>) => {
  * something you can act on, and it stops being used the moment the server accepts the type — no
  * second edit needed here, because the error it keys off simply stops happening.
  */
-const NEEDS_SERVER_SUPPORT: Array<ProfileBlock['block_type']> = ['art']
+const NEEDS_SERVER_SUPPORT: Array<ProfileBlock['block_type']> = ['art', 'looks']
 
 /**
  * Does this block get a line to itself?
@@ -215,6 +224,7 @@ const BLOCK_LABEL: Record<ProfileBlock['block_type'], string> = {
   song: '🎵 Song',
   visualizer: '◉ Visualiser',
   art: '🖼 Art',
+  looks: '🎭 Looks',
 }
 
 /**
@@ -313,6 +323,8 @@ function BlockView({
     /* ⚠️ Strokes, not an image — the visitor's browser draws it. See ProfileArt. */
     case 'art':
       return <ArtBlock cfg={cfg} />
+    case 'looks':
+      return <LooksBlock block={block} />
     case 'bio': {
       const text = typeof cfg.text === 'string' ? cfg.text : ''
       if (!text.trim()) return null
@@ -506,6 +518,137 @@ export function ProfileBlocksView({
             isMe={isMe}
           />
         </div>
+      ))}
+    </div>
+  )
+}
+
+/**
+ * Themes you found, for somebody else to wear.
+ *
+ * ⚠️ THE POINT IS THAT THEY ARE PRESSABLE. A screenshot of a theme is a screenshot; the site
+ * already knows how to put one on, so a look on a profile should be one press away from being
+ * yours. Fourteen million combinations exist and nobody clicks their way to a good one —
+ * somebody else having already found it is the realistic way most of them ever get seen.
+ *
+ * ⚠️ AND IT IS NOT PERMANENT. Pressing one changes the visitor's own settings, which is a real
+ * change to their site and has to be undoable in the obvious place — the appearance dialog, where
+ * every one of these settings already lives. Saying so is the whole of the warning it needs.
+ *
+ * ⚠️ Falls back to showing them UNPRESSABLE where nothing has registered an applier, rather
+ * than rendering a button that silently does nothing.
+ */
+function LooksBlock({ block }: { block: ProfileBlock }) {
+  const raw = Array.isArray(block.config?.looks) ? (block.config.looks as unknown[]) : []
+  const looks = raw.map(readLook).filter((l): l is Look => !!l)
+  const live = canApplyLook()
+  const [worn, setWorn] = useState<string | null>(null)
+  if (!looks.length) return null
+  return (
+    <div className={'card profile-block is-' + block.size}>
+      <h3 style={{ marginTop: 0 }}>{BLOCK_LABEL.looks}</h3>
+      <div className="plooks">
+        {looks.map((l) => (
+          <button
+            key={l.name}
+            className={'plook' + (worn === l.name ? ' is-on' : '')}
+            disabled={!live}
+            title={live ? `Put ${l.name} on` : l.name}
+            onClick={() => {
+              if (!applyLookNow(l)) return
+              setWorn(l.name)
+            }}
+          >
+            <span
+              className="plook-chip"
+              aria-hidden
+              style={
+                l.palette
+                  ? {
+                      background: l.palette.bg,
+                      color: l.palette.text,
+                      borderColor: l.palette.accent,
+                    }
+                  : undefined
+              }
+            >
+              {l.palette ? 'Aa' : l.theme === 'light' ? '☀' : l.theme === 'alt' ? '◐' : '🌙'}
+            </span>
+            <span className="plook-name">{l.name}</span>
+          </button>
+        ))}
+      </div>
+      <p className="muted plook-note">
+        {worn
+          ? `That is ${worn} — change it back under the cog, in Appearance.`
+          : live
+            ? 'Press one to put it on. Everything in Appearance, under the cog, changes it back.'
+            : 'Themes I found and kept.'}
+      </p>
+    </div>
+  )
+}
+
+/**
+ * Choosing which of your saved looks go on the page.
+ *
+ * ⚠️ IT PUBLISHES COPIES, not references. A look lives in the author's own localStorage, so a
+ * profile that pointed at one would show nothing to anybody else — the whole point is that a
+ * visitor can wear it. The copy is what gets stored, which also means editing a look later does
+ * not silently change what is already published; re-pick it.
+ *
+ * ⚠️ AND IT COUNTS THE BYTES. config is capped at 16000 characters by the server, and it
+ * refuses the WHOLE page when one block is over — so the cap is reached here, with a sentence,
+ * rather than as "invalid block" on the next autosave.
+ */
+function LooksPicker({
+  value,
+  onChange,
+}: {
+  value: Record<string, unknown>
+  onChange: (config: Record<string, unknown>) => void
+}) {
+  const mine = useSyncExternalStore(subscribeLooks, myLooks, myLooks)
+  const chosen = Array.isArray(value.looks) ? (value.looks as unknown[]) : []
+  const names = new Set(chosen.map((l) => readLook(l)?.name).filter(Boolean) as string[])
+
+  const toggle = (l: Look) => {
+    const next = names.has(l.name)
+      ? chosen.filter((c) => readLook(c)?.name !== l.name)
+      : [...chosen, l]
+    const cfg = { ...value, looks: next }
+    if (configSize(cfg) > CONFIG_LIMIT) return
+    onChange(cfg)
+  }
+
+  if (!mine.length)
+    return (
+      <p className="muted">
+        No saved looks yet — make one under the cog, in Appearance → Looks, and it will appear here.
+      </p>
+    )
+
+  return (
+    <div className="plooks-pick">
+      <p className="muted" style={{ margin: '0 0 0.4rem', fontSize: '0.82rem' }}>
+        Pick the ones to show. Visitors can press any of them to put it on.
+      </p>
+      {mine.map((l) => (
+        <label key={l.name} className="plooks-pick-row">
+          <input type="checkbox" checked={names.has(l.name)} onChange={() => toggle(l)} />
+          <span
+            className="plook-chip"
+            aria-hidden
+            style={
+              l.palette
+                ? { background: l.palette.bg, color: l.palette.text, borderColor: l.palette.accent }
+                : undefined
+            }
+          >
+            {l.palette ? 'Aa' : l.theme === 'light' ? '☀' : l.theme === 'alt' ? '◐' : '🌙'}
+          </span>
+          <span>{l.name}</span>
+        </label>
       ))}
     </div>
   )
@@ -1085,6 +1228,10 @@ function BlockFields({
     case 'art':
       return (
         <ArtPicker value={block.config} onChange={(config) => onChange({ ...block, config })} />
+      )
+    case 'looks':
+      return (
+        <LooksPicker value={block.config} onChange={(config) => onChange({ ...block, config })} />
       )
     case 'visualizer':
       return (
