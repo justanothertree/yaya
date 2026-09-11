@@ -34,8 +34,14 @@ import { startIdleWatch } from './hooks/presenceStatus'
 import { useVoiceSession } from './voice/useVoiceSession'
 import { NotificationBell } from './components/NotificationBell'
 import { hasFinanceSupabaseEnv } from './finance/env'
-import { getSessionUser, onAuthStateChange, peekPersistedUserId, signOut } from './finance/auth'
-import { getSupabaseClient } from './finance/client'
+import {
+  getSessionUser,
+  onAuthStateChange,
+  peekPersistedUserId,
+  readLiveSession,
+  signOut,
+} from './finance/auth'
+import { forgetPersistedSession, getSupabaseClient } from './finance/client'
 import { previewMember, PREVIEW_ME, PREVIEW_VOICE_IN } from './dev/previewMember'
 
 // Lazy-load heavier sections (declared at module scope so they don't remount on each App render)
@@ -787,15 +793,39 @@ export default function App() {
       onSignedOut()
     }
 
-    // local session read (no network) — near-instant confirm of the optimistic boot
-    void getSessionUser()
-      .then((u) => {
+    // reads the stored session, refreshing it if it has expired — confirms the optimistic boot
+    void readLiveSession()
+      .then(({ user: u, dead }) => {
         if (!alive) return
         if (u) {
           uidRef.current = u.id
           setIsFinanceAuthed(true)
           onSignedIn()
-        } else confirmSignedOut()
+        } else {
+          /**
+           * ⚠️ THROW THE DEAD TOKEN AWAY, or this comes back on every single load.
+           *
+           * getSession() has ALREADY awaited whatever refresh was in flight, so a null here is
+           * not the transient kind the listener above has to tolerate — it is the refresh having
+           * finished and produced nothing. But supabase-js leaves the `sb-<ref>-auth-token` blob
+           * in localStorage when a refresh token is rejected, and peekPersistedUserId() counts a
+           * blob with any refresh token at all as a signed-in member. So the next load booted
+           * optimistically signed-in all over again, and whether you got the page or
+           * "permission denied for function get_my_portfolio" came down to which resolved first:
+           * this check, or the gated fetch the page had already started. A coin flip, every
+           * time, with no way out of it — the UI offered no sign-in because as far as it knew
+           * you already were.
+           *
+           * ⚠️ Only on this branch, and only when the server actually REFUSED us (`dead`). A
+           * refresh that failed because the network was not there leaves the token alone, or a
+           * member opening the site on a train would be logged out for good and unable to sign
+           * back in. confirmSignedOut() is also reached from auth EVENTS, where a null session
+           * really can be a refresh mid-flight, and clearing there is what used to flash
+           * "Sign in" at signed-in members.
+           */
+          if (dead) forgetPersistedSession()
+          confirmSignedOut()
+        }
       })
       .catch(() => {
         if (alive) confirmSignedOut()

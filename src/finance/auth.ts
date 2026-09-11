@@ -1,5 +1,5 @@
 import type { Session, User } from '@supabase/supabase-js'
-import { getSupabaseClient } from './client'
+import { getSupabaseClient, isSessionDefinitelyDead } from './client'
 
 /**
  * Session helpers.
@@ -22,6 +22,20 @@ export async function getSessionUser(): Promise<User | null> {
   const sb = getSupabaseClient()
   const { data } = await sb.auth.getSession()
   return data.session?.user ?? null
+}
+
+/**
+ * The live session's user — and, when there isn't one, whether that is FINAL.
+ *
+ * ⚠️ getSessionUser() throws the error away, which is the whole difficulty: "no session"
+ * covers both a refresh the server rejected and a refresh that never left the building. The
+ * caller has to tell them apart before deciding whether to bin the stored token.
+ */
+export async function readLiveSession(): Promise<{ user: User | null; dead: boolean }> {
+  const sb = getSupabaseClient()
+  const { data, error } = await sb.auth.getSession()
+  if (data.session?.user) return { user: data.session.user, dead: false }
+  return { user: null, dead: isSessionDefinitelyDead(error) }
 }
 
 /** Synchronous peek at the persisted session's user id — no client, no network, no
@@ -48,6 +62,21 @@ export function peekPersistedUserId(): string | null {
     /* ignore */
   }
   return null
+}
+
+/**
+ * Did this fail because of WHO WE ARE, rather than because of what we asked for?
+ *
+ * ⚠️ Postgres words, not ours. 42501 is insufficient_privilege, which PostgREST returns as
+ * 403, and its message is the literal "permission denied for function get_my_portfolio" — which
+ * is what the Investments page printed in red at a member whose session had quietly died. The
+ * shape is worth naming because the words are not something to show anybody.
+ */
+export function isAuthDenial(e: unknown): boolean {
+  const code = (e as { code?: unknown })?.code
+  if (code === '42501' || code === 'PGRST301') return true
+  const msg = (e as { message?: unknown })?.message
+  return typeof msg === 'string' && /permission denied for |jwt (expired|.*invalid)/i.test(msg)
 }
 
 /**

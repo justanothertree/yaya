@@ -3,6 +3,7 @@
 // also get "All accounts" (view as any member) and the trades ledger.
 import { useEffect, useMemo, useState } from 'react'
 import { errText } from '../ui/errText'
+import { isAuthDenial } from '../finance/auth'
 import {
   fetchMyPortfolio,
   fetchAllPortfolios,
@@ -51,6 +52,8 @@ export function Investments({ demo = false }: { demo?: boolean }) {
   const [isAdmin, setIsAdmin] = useState(false)
   const [mode, setMode] = useState<'mine' | 'all' | 'trades' | 'tax'>('mine')
   const [error, setError] = useState<string | null>(null)
+  /** the error is "you are not signed in", so the card offers the way back rather than just words */
+  const [expired, setExpired] = useState(false)
   const [tl, setTl] = useState<Timeline | null>(null)
   const [tlAll, setTlAll] = useState<Timeline | null>(null)
 
@@ -88,7 +91,14 @@ export function Investments({ demo = false }: { demo?: boolean }) {
           )
         }
       } catch (e: unknown) {
-        if (alive) setError(errText(e))
+        if (!alive) return
+        /* The client is already ending a dead session behind us (see finance/client.ts); this is
+           only what the page says in the beat before the UI drops to signed-out. */
+        const gone = isAuthDenial(e)
+        setError(
+          gone ? 'Your session has ended — sign in again to see your portfolio.' : errText(e),
+        )
+        setExpired(gone)
       }
     })()
     return () => {
@@ -180,8 +190,24 @@ export function Investments({ demo = false }: { demo?: boolean }) {
       )}
 
       {error && (
-        <article className="card">
+        <article
+          className="card"
+          style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}
+        >
           <p style={{ margin: 0, color: 'var(--accent-2)' }}>{error}</p>
+          {expired && (
+            <a
+              className="btn"
+              href="#signin"
+              style={{
+                background: 'var(--accent,#7c6af7)',
+                color: 'var(--btn-text)',
+                borderColor: 'transparent',
+              }}
+            >
+              Sign in
+            </a>
+          )}
         </article>
       )}
 
