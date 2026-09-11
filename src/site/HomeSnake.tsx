@@ -17,6 +17,14 @@ import { useCallback, useEffect, useRef } from 'react'
  * three sections down is a battery cost for nothing, and this page now has enough on it that
  * "nobody will notice one more" stops being true.
  *
+ * ⚠️ BUT NOT VIA IntersectionObserver, which was the first attempt and froze the board solid.
+ * In an embedded view the observer reported nothing at all — not false, NOTHING — so the loop
+ * paused on mount and had no event that could ever start it again. A pause whose only resume
+ * signal is an observer that may never speak is not a pause, it is a hang, and it looks exactly
+ * like a broken tile. A rect against the viewport is one layout read, answers the same question,
+ * and cannot fail to answer it; the interval below then guarantees a recovery even if every
+ * event were missed.
+ *
  * ⚠️ ARROW KEYS ARE NOT BOUND TO THE WINDOW. They page between sections of this site — the
  * visualiser's pin and the profile editor's grip have both been bitten by it — so steering only
  * takes the keys while the board itself has focus, and it swallows them when it does.
@@ -198,29 +206,36 @@ export function HomeSnake() {
         raf.current = requestAnimationFrame(loop)
       }
     }
-    const io =
-      typeof IntersectionObserver === 'undefined'
-        ? null
-        : new IntersectionObserver(
-            (es) => {
-              visible.current = es.some((e) => e.isIntersecting)
-              if (visible.current) start()
-            },
-            { threshold: 0.05 },
-          )
-    if (io && ref.current) io.observe(ref.current)
-    /* ⚠️ no observer means we cannot know, and a board that never moves is worse than one that
-       runs while scrolled past — so fall back to always on rather than always off. */
-    if (!io) start()
-    else start()
+    /** on screen at all? one rect read, no observer to go quiet on us */
+    const onScreen = () => {
+      const c = ref.current
+      if (!c) return false
+      if (document.hidden) return false
+      const r = c.getBoundingClientRect()
+      return r.bottom > 0 && r.top < (window.innerHeight || 0) && r.width > 0
+    }
+    const check = () => {
+      visible.current = onScreen()
+      if (visible.current) start()
+    }
+    check()
+    window.addEventListener('scroll', check, { passive: true })
+    window.addEventListener('resize', check)
+    document.addEventListener('visibilitychange', check)
+    /* the belt to the braces: even with every event missed, this picks it up within a second, and
+       an idle 1Hz rect read is nothing next to a 60Hz game loop */
+    const poll = window.setInterval(check, 1000)
 
     const ro = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(() => fit())
     if (ro && ref.current) ro.observe(ref.current)
     window.addEventListener('resize', fit)
     return () => {
-      io?.disconnect()
       ro?.disconnect()
+      window.clearInterval(poll)
+      window.removeEventListener('scroll', check)
+      window.removeEventListener('resize', check)
       window.removeEventListener('resize', fit)
+      document.removeEventListener('visibilitychange', check)
       cancelAnimationFrame(raf.current)
       raf.current = 0
     }
