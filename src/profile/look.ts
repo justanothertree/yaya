@@ -115,6 +115,35 @@ export const TINT_HUES: readonly number[] = Array.from(
 )
 
 /**
+ * What to CALL each swatch.
+ *
+ * ⚠️ "Colour 135" is not a colour to anybody. The swatches were labelled with their raw hue,
+ * which reads out as a number to a screen reader and tells a sighted person nothing on hover
+ * either — so the one control here that is purely visual had no non-visual form at all. Twelve
+ * stops thirty degrees apart land close enough to the common names to just use them.
+ */
+const TINT_NAMES = [
+  'Red',
+  'Orange',
+  'Yellow',
+  'Lime',
+  'Green',
+  'Teal',
+  'Cyan',
+  'Blue',
+  'Indigo',
+  'Violet',
+  'Magenta',
+  'Pink',
+]
+
+/** The name of a swatch hue — index derived the same way TINT_HUES builds it. */
+export function tintName(hue: number): string {
+  const i = Math.round((hue - 15) / (360 / HUE_STOPS))
+  return TINT_NAMES[((i % HUE_STOPS) + HUE_STOPS) % HUE_STOPS]
+}
+
+/**
  * Resolve a block's saved colour.
  *
  * `tint` is a hue, or the word 'mine' for the person's own derived hue, or absent for a plain

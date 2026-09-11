@@ -9,6 +9,7 @@ import {
   bannerBackground,
   blockLook,
   blockLookAttrs,
+  tintName,
   type BannerStyle,
 } from '../profile/look'
 import { SongBlock, VisualBlock } from '../profile/ProfileMusic'
@@ -1805,7 +1806,8 @@ export function ProfileBlocksEditor({
                                   'profile-tint-swatch' +
                                   (selected.config?.tint === h ? ' is-on' : '')
                                 }
-                                aria-label={'Colour ' + Math.round(h)}
+                                aria-label={tintName(h)}
+                                title={tintName(h)}
                                 aria-pressed={selected.config?.tint === h}
                                 style={{ ['--blk-h']: String(h) } as React.CSSProperties}
                                 onClick={() => setCfg({ tint: h })}
