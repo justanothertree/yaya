@@ -38,11 +38,19 @@ export type Invite = {
   /**
    * This invitation IS the thing, rather than a description of it.
    *
-   * ⚠️ Costs a visitor nothing: the only live tile so far is canvas 2D and pointer events,
-   * both already in the browser. The moment one of these needs a chunk, the front page has become
-   * the reason that chunk ships — which is the trap HeroPlay's dynamic import exists to avoid.
+   * ⚠️ Costs a visitor nothing: no imports, no audio, no data. Six of the eight are SVG with
+   * CSS keyframes and run no script at all; only the two you can touch — the scribble pad and the
+   * snake board — have a loop. The moment one of these needs a chunk, the front page has become
+   * the reason that chunk ships, which is the trap HeroPlay's dynamic import exists to avoid.
+   *
+   * ⚠️ The members-only rooms get ORNAMENT, not a readout. A visitor cannot be shown real
+   * circuit scores or a real pool — that is what members-only means — so those tiles carry bars
+   * with no numbers and a wheel with no words. Inventing a scoreboard and letting it read as
+   * somebody's is worse than a plain rectangle.
    */
-  live?: 'scribble'
+  live?: 'scribble' | 'snake' | 'keys' | 'profile' | 'viz' | 'circuit' | 'ratings' | 'calls'
+  /** what the link under a live tile says */
+  open?: string
   /**
    * Where it actually goes, when that is more than a room name.
    *
@@ -56,9 +64,11 @@ export type Invite = {
 export const TRY_THESE: Invite[] = [
   {
     id: 'instrument',
+    live: 'keys',
+    open: 'Open the studio',
     icon: '🎹',
     title: 'Play an instrument',
-    line: 'Your computer keyboard is the keys. Pick a sound and press something — it shows you the shape of what you played.',
+    line: 'Your computer keyboard is the keys. Pick a sound and press something.',
   },
   {
     /**
@@ -68,6 +78,8 @@ export const TRY_THESE: Invite[] = [
      * ever returns the single row flagged is_demo and only its public blocks.
      */
     id: 'profile',
+    live: 'profile',
+    open: 'See the whole page',
     href: '#profile?demo=1',
     /* ⚠️ NOT 🪪. It is an Emoji 14 character and Segoe UI Emoji on Windows 10 has no glyph
        for it, so it rendered as an empty tofu box — blown up to fill the corner by .hag-bleed.
@@ -78,6 +90,8 @@ export const TRY_THESE: Invite[] = [
   },
   {
     id: 'visualizer',
+    live: 'viz',
+    open: 'Put a song on',
     icon: '🎚️',
     title: 'Watch music move',
     line: 'Put a song on and the screen moves with it. Dozens of looks, some in 3D.',
@@ -90,18 +104,23 @@ export const TRY_THESE: Invite[] = [
      */
     id: 'paint',
     live: 'scribble',
+    open: 'Open the studio',
     icon: '🎨',
     title: 'Draw something',
     line: 'Layers, frames, and friends drawing on the same page as you.',
   },
   {
     id: 'snake',
+    live: 'snake',
+    open: 'Play it properly',
     icon: '🎮',
     title: 'Play Snake',
-    line: 'The one you remember, with a scoreboard — and other people in it if anybody else is around.',
+    line: "That one is playing itself — tap it and it's yours. The real one has a scoreboard, and other people.",
   },
   {
     id: 'circuit',
+    live: 'circuit',
+    open: 'Open the board',
     icon: '🏆',
     title: 'Score your day',
     line: 'The workout board my friends and I have used daily for a year. Log it, total it, argue about it.',
@@ -109,6 +128,8 @@ export const TRY_THESE: Invite[] = [
   },
   {
     id: 'ratings',
+    live: 'ratings',
+    open: 'Open the pool',
     icon: '⭐',
     title: 'Decide together',
     line: 'Rate films and food, or throw options in a pool and let the wheel choose for everyone at once.',
@@ -116,6 +137,8 @@ export const TRY_THESE: Invite[] = [
   },
   {
     id: 'chat',
+    live: 'calls',
+    open: 'Open chat',
     icon: '🎧',
     title: 'Call your people',
     line: 'Talk and share your screen, and the call follows you around the site while you draw or play.',

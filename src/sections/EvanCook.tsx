@@ -6,6 +6,8 @@ import { useState, type ReactNode } from 'react'
 import { site } from '../config/site'
 import { TRY_THESE } from '../site/tryThese'
 import { HomeScribble } from '../site/HomeScribble'
+import { HomeSnake } from '../site/HomeSnake'
+import { TileArt } from '../site/TileArt'
 import { IconGitHub, IconLinkedIn } from '../components/Icons'
 import { projects, skills, type Project, type Shot } from './work'
 import { HOME } from '../site/homeContent'
@@ -526,15 +528,21 @@ function HaveAGo({ authed }: { authed: boolean }) {
            * stops being the link and grows a real one, which is also the honest shape — the pad
            * is the invitation now, and "open the studio" is a separate thing you may want next.
            */
-          if (t.live === 'scribble') {
+          if (t.live) {
             return (
               <div key={t.id} className="hag-card is-live" data-span={span}>
                 {bleed}
                 {head}
-                <HomeScribble />
+                {t.live === 'scribble' ? (
+                  <HomeScribble />
+                ) : t.live === 'snake' ? (
+                  <HomeSnake />
+                ) : (
+                  <TileArt kind={t.live} />
+                )}
                 <span className="muted hag-line">{t.line}</span>
                 <a className="hag-open" href={href} onClick={go}>
-                  Open the studio →
+                  {t.open ?? 'Open it'} →
                 </a>
               </div>
             )

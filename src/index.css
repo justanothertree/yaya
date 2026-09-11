@@ -8857,10 +8857,11 @@ a.cz-msg-author:focus-visible {
 .hag-card.is-live {
   cursor: default;
 }
+.hag-art,
 .hag-pad {
   display: block;
   width: 100%;
-  height: 110px;
+  height: var(--tile-art-h, 104px);
   margin: 0.45rem 0 0.15rem;
   border-radius: var(--r-sm, 8px);
   background: rgba(127, 127, 127, 0.08);
@@ -8884,4 +8885,211 @@ a.cz-msg-author:focus-visible {
 }
 .hag-open:hover {
   text-decoration: underline;
+}
+
+/* ── the living pictures on the Have a go tiles ─────────────────────────────
+   ⚠️ SVG + KEYFRAMES, NO SCRIPT. Eight rAF loops on the page that has to load fastest would be
+   eight loops still running while the reader is three sections further down. These run on the
+   compositor, cost no main thread, and stop by themselves under prefers-reduced-motion — which
+   is also why every animation below lives inside that media query rather than being switched
+   off by one. Only the scribble pad and the snake board have a loop, because only those two
+   respond to a hand. */
+.hag-art {
+  color: var(--accent, #7c6af7);
+  border-radius: var(--r-sm, 8px);
+  background: rgba(127, 127, 127, 0.08);
+  margin: 0.45rem 0 0.15rem;
+  overflow: hidden;
+}
+.hag-board {
+  cursor: pointer;
+  /* ⚠️ NO touch-action:none here, unlike the pad. Steering is a TAP, so the board never needs to
+     swallow a drag — and a second scroll-blocking island on a phone is one too many. */
+}
+.hag-board:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.hag-art-key {
+  fill: currentColor;
+  opacity: 0.22;
+}
+.hag-art-bar,
+.hag-art-level {
+  fill: currentColor;
+  opacity: 0.55;
+}
+/* ⚠️ Visible with nothing running. The animation is what fades these in and out, so an
+   opacity:0 base means a reader with motion turned off sees an empty tile. */
+.hag-art-ring,
+.hag-art-ping {
+  opacity: 0.4;
+}
+
+/* the profile card, wearing four real looks in turn */
+.hag-art-profile {
+  position: relative;
+}
+.hag-mini {
+  position: absolute;
+  inset: 0;
+  display: block;
+  opacity: 0;
+  padding: 0.55rem 0.7rem;
+}
+/* ⚠️ the FIRST one is visible with no animation running, so a reader who has asked for less
+   motion gets a real profile card rather than an empty grey box */
+.hag-mini:first-child {
+  opacity: 1;
+}
+.hag-mini-face {
+  position: absolute;
+  left: 0.7rem;
+  top: 50%;
+  width: 2.1rem;
+  height: 2.1rem;
+  margin-top: -1.05rem;
+  border-radius: 999px;
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.5);
+}
+.hag-mini-bar {
+  position: absolute;
+  left: 3.5rem;
+  top: 50%;
+  margin-top: -0.85rem;
+  width: 42%;
+  height: 0.55rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.85);
+}
+.hag-mini-bar.is-short {
+  margin-top: 0.25rem;
+  width: 26%;
+  background: rgba(255, 255, 255, 0.55);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .hag-art-key {
+    animation: hag-key 2.4s ease-in-out infinite;
+  }
+  .hag-art-wave {
+    animation: hag-wave 3.2s ease-in-out infinite;
+  }
+  .hag-art-ring {
+    opacity: 0;
+    animation: hag-ring 2.5s ease-out infinite;
+  }
+  .hag-art-core {
+    animation: hag-core 1.25s ease-in-out infinite;
+  }
+  .hag-art-bar {
+    animation: hag-bar 3.6s ease-in-out infinite;
+  }
+  .hag-art-wheel {
+    animation: hag-spin 5s cubic-bezier(0.15, 0.85, 0.2, 1) infinite;
+    transform-origin: 0 0;
+  }
+  .hag-art-ping {
+    opacity: 0;
+    animation: hag-ping 1.8s ease-out infinite;
+  }
+  .hag-art-level {
+    animation: hag-level 0.9s ease-in-out infinite alternate;
+  }
+  .hag-mini {
+    animation: hag-look 9.6s ease-in-out infinite;
+  }
+  .hag-mini:first-child {
+    opacity: 0;
+  }
+}
+
+@keyframes hag-key {
+  0%,
+  70%,
+  100% {
+    opacity: 0.22;
+  }
+  8% {
+    opacity: 0.95;
+  }
+}
+@keyframes hag-wave {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-4px);
+  }
+}
+@keyframes hag-ring {
+  0% {
+    r: 8;
+    opacity: 0.65;
+  }
+  100% {
+    r: 46;
+    opacity: 0;
+  }
+}
+@keyframes hag-core {
+  0%,
+  100% {
+    r: 5;
+  }
+  50% {
+    r: 8;
+  }
+}
+@keyframes hag-bar {
+  0%,
+  100% {
+    transform: scaleY(0.35);
+  }
+  45%,
+  60% {
+    transform: scaleY(1);
+  }
+}
+@keyframes hag-spin {
+  0% {
+    transform: rotate(0deg);
+  }
+  70%,
+  100% {
+    transform: rotate(430deg);
+  }
+}
+@keyframes hag-ping {
+  0% {
+    r: 15;
+    opacity: 0.6;
+  }
+  100% {
+    r: 34;
+    opacity: 0;
+  }
+}
+@keyframes hag-level {
+  from {
+    transform: scaleY(0.3);
+  }
+  to {
+    transform: scaleY(1);
+  }
+}
+/* four looks, each holding for most of its quarter and crossing over quickly */
+@keyframes hag-look {
+  0%,
+  22% {
+    opacity: 1;
+  }
+  25%,
+  97% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
 }
