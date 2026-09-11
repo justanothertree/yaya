@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { errText } from '../ui/errText'
 import { getSupabaseClient } from '../finance/client'
 import { UsagePanel } from '../components/UsagePanel'
 import { FundPanel } from '../components/FundPanel'
@@ -82,7 +83,15 @@ const inviteLink = (token: string) => `${SITE_URL}/#invite?token=${token}`
 export function AdminPanel() {
   const sb = getSupabaseClient()
   const [tab, setTab] = useState<
-    'invites' | 'members' | 'snake' | 'fund' | 'import' | 'reconcile' | 'messages' | 'usage'
+    | 'invites'
+    | 'members'
+    | 'snake'
+    | 'fund'
+    | 'import'
+    | 'reconcile'
+    | 'messages'
+    | 'usage'
+    | 'bugs'
   >('invites')
   const [invites, setInvites] = useState<Invite[]>([])
   const [members, setMembers] = useState<Member[]>([])
@@ -103,6 +112,8 @@ export function AdminPanel() {
   }>({ first_name: '', email: '', role: 'friend' })
   const [savingMember, setSavingMember] = useState(false)
   const [features, setFeatures] = useState<Record<string, boolean>>({})
+  /** unhandled reports, so the tab says whether it is worth opening */
+  const [bugsWaiting, setBugsWaiting] = useState(0)
   /**
    * What is waiting on him, asked once when the panel opens.
    *
@@ -402,7 +413,17 @@ export function AdminPanel() {
         {/* Operational, not social — what the paid services are costing, in the one place
             that already requires being the operator to see. */}
         {tabBtn('usage', 'Usage')}
+        {/**
+         * ⚠️ THERE WAS NOWHERE TO READ THESE. The report dialog has been on every page for a
+         * while, writing to bug_report with a `handled` flag plainly meant for a screen like this
+         * — and the screen was never built, so the only way to see what anybody had sent was the
+         * database's own table editor. Reports nobody reads are worse than no report button: they
+         * teach the people who use them that telling you is pointless.
+         */}
+        {tabBtn('bugs', `Bugs${bugsWaiting ? ` (${bugsWaiting})` : ''}`)}
       </div>
+
+      {tab === 'bugs' && <BugsPanel onCount={setBugsWaiting} />}
 
       {tab === 'fund' && <FundPanel />}
 
@@ -1125,6 +1146,128 @@ export function AdminPanel() {
           )}
         </div>
       )}
+    </div>
+  )
+}
+
+type BugRow = {
+  id: string
+  body: string
+  route: string | null
+  viewport: string | null
+  browser: string | null
+  created_at: string
+  handled: boolean
+  reporter: string | null
+}
+
+/**
+ * What people have reported, and a way to say you have dealt with it.
+ *
+ * ⚠️ UNHANDLED FIRST, THEN NEWEST. Sorting purely by date buries the one still waiting under
+ * everything already dealt with, which is how a list like this stops being looked at — and the
+ * `handled` column existed from the start precisely so it would not have to be.
+ *
+ * ⚠️ NO STATUSES BEYOND THAT. A workflow with three states needs somebody to maintain the
+ * states; this needs one person to know what is still on him. Handled or not is the whole model,
+ * and delete is there for the tests and the duplicates.
+ */
+function BugsPanel({ onCount }: { onCount: (n: number) => void }) {
+  const [rows, setRows] = useState<BugRow[]>([])
+  const [names, setNames] = useState<Record<string, string>>({})
+  const [loading, setLoading] = useState(true)
+  const [err, setErr] = useState<string | null>(null)
+  const [busy, setBusy] = useState<string | null>(null)
+
+  const load = async () => {
+    setLoading(true)
+    setErr(null)
+    const sb = getSupabaseClient()
+    const { data, error } = await sb
+      .from('bug_report')
+      .select('id, body, route, viewport, browser, created_at, handled, reporter')
+      .order('handled', { ascending: true })
+      .order('created_at', { ascending: false })
+    if (error) {
+      setErr(errText(error, 'Could not load the reports'))
+      setLoading(false)
+      return
+    }
+    const list = (data ?? []) as BugRow[]
+    setRows(list)
+    onCount(list.filter((r) => !r.handled).length)
+
+    /* ⚠️ Names in a second query, not a join. PostgREST can only embed across a declared
+       foreign key, and bug_report.reporter points at auth.users rather than at profiles — so the
+       embed silently returns nothing rather than failing, which is the worst of both. */
+    const ids = [...new Set(list.map((r) => r.reporter).filter(Boolean))] as string[]
+    if (ids.length) {
+      const { data: who } = await sb.from('profiles').select('user_id, username').in('user_id', ids)
+      const map: Record<string, string> = {}
+      for (const p of (who ?? []) as Array<{ user_id: string; username: string | null }>) {
+        if (p.username) map[p.user_id] = p.username
+      }
+      setNames(map)
+    }
+    setLoading(false)
+  }
+
+  useEffect(() => {
+    void load()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const setHandled = async (id: string, handled: boolean) => {
+    setBusy(id)
+    const { error } = await getSupabaseClient().from('bug_report').update({ handled }).eq('id', id)
+    setBusy(null)
+    if (error) return setErr(errText(error, 'Could not update that report'))
+    await load()
+  }
+
+  const remove = async (id: string) => {
+    setBusy(id)
+    const { error } = await getSupabaseClient().from('bug_report').delete().eq('id', id)
+    setBusy(null)
+    if (error) return setErr(errText(error, 'Could not delete that report'))
+    await load()
+  }
+
+  if (loading) return <p className="muted">Loading reports…</p>
+  if (err) return <p style={{ color: '#f46b6b' }}>{err}</p>
+  if (!rows.length) return <p className="muted">Nothing reported yet.</p>
+
+  return (
+    <div className="bug-list">
+      {rows.map((r) => (
+        <article key={r.id} className={'card bug-row' + (r.handled ? ' is-done' : '')}>
+          <p className="bug-row-meta muted">
+            <strong>{r.reporter ? (names[r.reporter] ?? 'a member') : 'signed out'}</strong>
+            {' · '}
+            {new Date(r.created_at).toLocaleString()}
+            {r.route ? ` · #${r.route}` : ''}
+            {r.browser ? ` · ${r.browser}` : ''}
+            {r.viewport ? ` · ${r.viewport}` : ''}
+          </p>
+          <p className="bug-row-body">{r.body}</p>
+          <p className="bug-row-tools">
+            <button
+              className="btn"
+              disabled={busy === r.id}
+              onClick={() => void setHandled(r.id, !r.handled)}
+            >
+              {r.handled ? 'Reopen' : 'Mark handled'}
+            </button>
+            <button
+              className="btn btn-ghost"
+              disabled={busy === r.id}
+              onClick={() => void remove(r.id)}
+            >
+              Delete
+            </button>
+          </p>
+        </article>
+      ))}
     </div>
   )
 }

@@ -4105,6 +4105,10 @@ select {
    fit controls and a preview side by side. */
 .appearance-sheet {
   width: min(52rem, 100%);
+  /* ⚠️ Its own ceiling rather than the shared .pal-sheet's 90vh. This dialog carries six tabs of
+     wildly different heights, and the tallest two need the extra few percent to land inside the
+     window instead of behind a scroll. Scoped here so the palette picker keeps the cap it had. */
+  max-height: 96vh;
 }
 .appearance-tabs {
   display: flex;
@@ -4147,7 +4151,15 @@ select {
   display: grid;
   gap: 0.7rem;
   align-content: start;
-  height: min(26rem, 52vh);
+  /**
+   * ⚠️ IT TAKES WHAT THE DIALOG HAS, rather than a fixed 52vh. Measured at 1100x620: the sheet
+   * was 480px tall inside a 558px ceiling and the body sat at 322 of it — so a third of the
+   * dialog was empty while Click and Trail hid 105 and 109 pixels of controls behind a scroll
+   * nobody is told about. The same mistake as the visualiser panel, in a different file: a height
+   * chosen once, for one window size.
+   */
+  flex: 1 1 auto;
+  min-height: 6rem;
   overflow-y: auto;
   overscroll-behavior: contain;
   /* room for a scrollbar without the content jumping sideways when one appears */
@@ -9521,4 +9533,35 @@ a.cz-msg-author:focus-visible {
     min-height: 36px;
     padding: 6px 12px;
   }
+}
+
+/* ── bug reports, in the admin panel ────────────────────────────────────────
+   ⚠️ Unhandled first, then newest — a plain date sort buries the one still waiting under
+   everything already dealt with, which is how a list like this stops being read. */
+.bug-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+}
+.bug-row {
+  border-left: 3px solid var(--accent);
+}
+.bug-row.is-done {
+  border-left-color: var(--border);
+  opacity: 0.62;
+}
+.bug-row-meta {
+  margin: 0 0 0.35rem;
+  font-size: 0.78rem;
+}
+.bug-row-body {
+  margin: 0 0 0.6rem;
+  white-space: pre-wrap;
+  line-height: 1.5;
+}
+.bug-row-tools {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  margin: 0;
 }
