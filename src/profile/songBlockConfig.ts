@@ -133,3 +133,26 @@ export function setLook(
   looks[at] = Object.keys(next).length ? next : null
   return { ...cfg, looks: looks.some(Boolean) ? looks : undefined }
 }
+
+/**
+ * Put a whole saved look on one track, replacing whatever it had.
+ *
+ * ⚠️ THE VALUES ARE COPIED IN, not a reference to the preset. Presets live in the browser that
+ * made them, so a block pointing at one by name would render differently for every visitor and
+ * not at all for most — the profile has to carry what it means on its own.
+ *
+ * ⚠️ Straight through readLook, which is what keeps this honest: a preset is a snapshot of the
+ * whole visualiser panel and carries settings a profile block has no idea about — source, gain,
+ * the auto-path. readLook keeps the seven a visual block actually honours, clamps them, and
+ * drops the rest, so nothing arrives here that cannot be drawn.
+ */
+export function applyLookPreset(
+  cfg: Record<string, unknown>,
+  at: number,
+  preset: unknown,
+): Record<string, unknown> {
+  const looks = looksFromConfig(cfg)
+  while (looks.length <= at) looks.push(null)
+  looks[at] = readLook(preset)
+  return { ...cfg, looks: looks.some(Boolean) ? looks : undefined }
+}

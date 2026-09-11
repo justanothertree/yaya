@@ -5,11 +5,13 @@ import { useTouchOnly } from '../ui/pointerKind'
 import { BANNER_STYLES, bannerBackground, type BannerStyle } from '../profile/look'
 import { SongBlock, VisualBlock } from '../profile/ProfileMusic'
 import {
+  applyLookPreset,
   looksFromConfig,
   setLook,
   songFromConfig,
   songsFromConfig,
 } from '../profile/songBlockConfig'
+import { readPresets } from '../audio/vizPresets'
 
 import { packSong } from '../audio/songFile'
 import { ArtBlock } from '../profile/ProfileArt'
@@ -691,6 +693,10 @@ function SongPicker({
   const picked = songsFromConfig(value).map((x) => x.name)
   /* aligned with `picked` by position — see looksFromConfig */
   const looks = looksFromConfig(value)
+  /* ⚠️ Read once per render rather than held in state: the only thing that changes this list is
+     saving a look in the visualiser, which happens on a different page and therefore a different
+     mount of this editor. Somebody's own browser, somebody's own looks. */
+  const savedLooks = readPresets()
   if (!items.length)
     return (
       <p className="muted" style={{ margin: 0, fontSize: '0.85rem' }}>
@@ -725,6 +731,29 @@ function SongPicker({
                * ⚠️ Blank means "leave it alone", not a value. That is what keeps this additive:
                * every existing block has no looks at all and plays exactly as it did.
                */}
+              {savedLooks.length > 0 && (
+                /* ⚠️ Sets every field at once, which is why it sits BEFORE the two below: the
+                   usual gesture is "this track looks like that saved arrangement", and the mode
+                   and palette pickers are then there to adjust it rather than to build it from
+                   nothing. */
+                <select
+                  className="viz-select"
+                  aria-label={`Apply a saved look to ${n}`}
+                  title="Use one of the looks you saved in the visualiser"
+                  value=""
+                  onChange={(e) => {
+                    const hit = savedLooks.find((x) => x.id === e.target.value)
+                    if (hit) onChange(applyLookPreset(value, at, hit.s))
+                  }}
+                >
+                  <option value="">From a saved look…</option>
+                  {savedLooks.map((x) => (
+                    <option key={x.id} value={x.id}>
+                      {x.name}
+                    </option>
+                  ))}
+                </select>
+              )}
               <select
                 className="viz-select"
                 aria-label={`Look for ${n}`}

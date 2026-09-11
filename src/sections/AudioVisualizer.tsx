@@ -28,6 +28,7 @@ import {
 import { makeFeatureReader } from '../audio/audioFeatures'
 import { PALETTES, paletteById } from '../audio/palettes'
 import { PATHS, pathPoint, type PathId } from '../audio/autoPath'
+import { deletePreset, readPresets, savePreset, type VizPreset } from '../audio/vizPresets'
 import { gallery, subscribeGallery } from '../draw/gallery'
 import { bakeSize, bakeSprite, type Sprite } from '../audio/artSprite'
 import { useSharedWindow } from '../party/useSharedWindow'
@@ -213,6 +214,14 @@ export function AudioVisualizer() {
     const v = Number(localStorage.getItem(MIRROR_KEY))
     return MIRRORS.some(([n]) => n === v) ? v : 1
   })
+  /**
+   * Saved arrangements. Kept in component state as well as localStorage so the list updates the
+   * moment you save one — the store is the truth, this is what the row is drawn from.
+   */
+  const [presets, setPresets] = useState<VizPreset[]>(() => readPresets())
+  const [presetName, setPresetName] = useState('')
+  const [chosen, setChosen] = useState('')
+
   const [panel, setPanel] = useState(() => {
     try {
       return localStorage.getItem(PANEL_KEY) !== '0'
@@ -325,9 +334,13 @@ export function AudioVisualizer() {
    * else's. Volume is left out for the same reason — following somebody must never change how
    * loud your machine is.
    */
-  const party = useSharedWindow(
-    'visualizer',
-    'Visualiser',
+  /**
+   * ⚠️ NAMED, rather than written inline into useSharedWindow, because presets want exactly the
+   * same two things: a snapshot of how this window is arranged, and a checked way to put one
+   * back. Sharing the pair means a preset can never carry a setting a peer could not, and a
+   * control added to the panel joins both at once.
+   */
+  const readSettings = useCallback(
     () => ({
       mode,
       src,
@@ -361,39 +374,61 @@ export function AudioVisualizer() {
        */
       artStyle,
     }),
-    (d) => {
-      if (!d || typeof d !== 'object') return
-      const v = d as Record<string, unknown>
-      // everything off the wire is checked against the same tables the UI offers, so a patched
-      // peer cannot put this window into a state it has no controls for
-      if (typeof v.mode === 'string' && VISUAL_IDS.includes(v.mode as VisualId))
-        setMode(v.mode as VisualId)
-      if (v.artStyle === 'swarm' || v.artStyle === 'totem' || v.artStyle === 'bars')
-        setArtStyle(v.artStyle)
-      if (typeof v.src === 'string' && TAP_IDS.includes(v.src as SrcChoice))
-        setSrc(v.src as SrcChoice)
-      if (typeof v.palette === 'string' && PALETTE_IDS.includes(v.palette)) setPalette(v.palette)
-      if (typeof v.path === 'string' && PATH_IDS.includes(v.path as PathId))
-        setPath(v.path as PathId)
-      if (typeof v.mirror === 'number' && MIRRORS.some(([n]) => n === v.mirror)) setMirror(v.mirror)
-      const num = (k: string, lo: number, hi: number, set: (n: number) => void) => {
-        const x = v[k]
-        if (typeof x === 'number' && Number.isFinite(x)) set(Math.max(lo, Math.min(hi, x)))
-      }
-      num('gain', 0.2, 4, setGain)
-      num('trail', 0, 0.97, setTrail)
-      num('zoom', 0.3, 3, setZoom)
-      num('depth', 0, 1, setDepth)
-      num('spin', -1, 1, setSpin)
-      num('shake', 0, 1, setShake)
-      num('split', 0, 1, setSplit)
-      num('pathSpeed', 0.02, 1, setPathSpeed)
-      num('bloom', 0, 1, setBloom)
-      num('bright', 0, 0.6, setBright)
-      num('punch', 0, 1, setPunch)
-      num('echo', 0, 1, setEcho)
-    },
+    [
+      mode,
+      src,
+      gain,
+      mirror,
+      trail,
+      palette,
+      zoom,
+      depth,
+      spin,
+      shake,
+      split,
+      path,
+      pathSpeed,
+      bloom,
+      bright,
+      punch,
+      echo,
+      artStyle,
+    ],
   )
+
+  const applySettings = useCallback((d: unknown) => {
+    if (!d || typeof d !== 'object') return
+    const v = d as Record<string, unknown>
+    // everything off the wire is checked against the same tables the UI offers, so a patched
+    // peer cannot put this window into a state it has no controls for
+    if (typeof v.mode === 'string' && VISUAL_IDS.includes(v.mode as VisualId))
+      setMode(v.mode as VisualId)
+    if (v.artStyle === 'swarm' || v.artStyle === 'totem' || v.artStyle === 'bars')
+      setArtStyle(v.artStyle)
+    if (typeof v.src === 'string' && TAP_IDS.includes(v.src as SrcChoice))
+      setSrc(v.src as SrcChoice)
+    if (typeof v.palette === 'string' && PALETTE_IDS.includes(v.palette)) setPalette(v.palette)
+    if (typeof v.path === 'string' && PATH_IDS.includes(v.path as PathId)) setPath(v.path as PathId)
+    if (typeof v.mirror === 'number' && MIRRORS.some(([n]) => n === v.mirror)) setMirror(v.mirror)
+    const num = (k: string, lo: number, hi: number, set: (n: number) => void) => {
+      const x = v[k]
+      if (typeof x === 'number' && Number.isFinite(x)) set(Math.max(lo, Math.min(hi, x)))
+    }
+    num('gain', 0.2, 4, setGain)
+    num('trail', 0, 0.97, setTrail)
+    num('zoom', 0.3, 3, setZoom)
+    num('depth', 0, 1, setDepth)
+    num('spin', -1, 1, setSpin)
+    num('shake', 0, 1, setShake)
+    num('split', 0, 1, setSplit)
+    num('pathSpeed', 0.02, 1, setPathSpeed)
+    num('bloom', 0, 1, setBloom)
+    num('bright', 0, 0.6, setBright)
+    num('punch', 0, 1, setPunch)
+    num('echo', 0, 1, setEcho)
+  }, [])
+
+  const party = useSharedWindow('visualizer', 'Visualiser', readSettings, applySettings)
 
   /**
    * ⚠️ Pulled out of `party` so the effect below depends on VALUES rather than on the object the
@@ -1900,6 +1935,74 @@ export function AudioVisualizer() {
                   <span aria-hidden>{icon}</span> {label}
                 </button>
               ))}
+            </div>
+            {/**
+             * ⚠️ ABOVE THE TABS' CONTENT AND OUTSIDE THEM, because a preset is the whole
+             * arrangement rather than one section of it — filing it under Look or Motion would
+             * be saying it belongs to that tab, and loading one changes all four.
+             */}
+            <div className="viz-presets" role="group" aria-label="Saved looks">
+              <select
+                className="viz-select"
+                value={chosen}
+                aria-label="Load a saved look"
+                onChange={(e) => {
+                  const hit = presets.find((x) => x.id === e.target.value)
+                  setChosen(e.target.value)
+                  if (hit) {
+                    applySettings(hit.s)
+                    /* so Save overwrites the one you just loaded rather than making a twin */
+                    setPresetName(hit.name)
+                  }
+                }}
+              >
+                <option value="">{presets.length ? 'Load a look…' : 'No saved looks yet'}</option>
+                {presets.map((x) => (
+                  <option key={x.id} value={x.id}>
+                    {x.name}
+                  </option>
+                ))}
+              </select>
+              <input
+                className="viz-preset-name"
+                value={presetName}
+                placeholder="name this look"
+                maxLength={40}
+                aria-label="Name for the look you are saving"
+                onChange={(e) => setPresetName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key !== 'Enter' || !presetName.trim()) return
+                  e.preventDefault()
+                  const next = savePreset(presetName, readSettings())
+                  setPresets(next)
+                  setChosen(next.find((x) => x.name === presetName.trim())?.id ?? '')
+                }}
+              />
+              <button
+                className="btn"
+                disabled={!presetName.trim()}
+                title="Save every setting on this panel under that name"
+                onClick={() => {
+                  const next = savePreset(presetName, readSettings())
+                  setPresets(next)
+                  setChosen(next.find((x) => x.name === presetName.trim())?.id ?? '')
+                }}
+              >
+                Save
+              </button>
+              <button
+                className="btn btn-ghost"
+                disabled={!chosen}
+                title="Forget the loaded look"
+                aria-label="Delete this saved look"
+                onClick={() => {
+                  setPresets(deletePreset(chosen))
+                  setChosen('')
+                  setPresetName('')
+                }}
+              >
+                ✕
+              </button>
             </div>
             {tab === 'modes' && (
               <div className="viz-modes" role="group" aria-label="Visual style">
