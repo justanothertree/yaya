@@ -1,5 +1,5 @@
 import { Suspense, useEffect, useMemo, useRef, useState } from 'react'
-import { applyLook, registerLookApplier } from './ui/looks'
+import { applyLook, registerLookApplier, type Look } from './ui/looks'
 import { lazyRetry } from './lazyRetry'
 import { ErrorBoundary } from './ErrorBoundary'
 import { PresenceBeacon } from './components/PresenceBeacon'
@@ -1380,35 +1380,29 @@ export default function App() {
   }
 
   /**
-   * ⚠️ How anything else applies a look. The setters live here, so the registry in ui/looks.ts
-   * is handed the one function that knows how rather than every surface being handed the
-   * fourteen callbacks it would otherwise need — see registerLookApplier for the argument.
+   * ⚠️ How anything else applies a look. The setters live here, so the registry in ui/looks.ts is
+   * handed the one function that knows how, rather than every surface being handed the fourteen
+   * callbacks it would otherwise need — see registerLookApplier for the argument.
+   *
+   * ⚠️ REGISTERED ONCE, THROUGH A REF. These setters are rebuilt on every render, so depending on
+   * them re-ran this effect — unregistering and re-registering the applier — on every render of
+   * the whole app. It worked, because the last registration wins, but it is churn on every
+   * keystroke anywhere, and four lint warnings saying so. The ref is reassigned each render
+   * instead: the registration is stable and what it calls is always current.
    */
-  useEffect(
-    () =>
-      registerLookApplier((l) =>
-        applyLook(l, {
-          onTheme: chooseTheme,
-          onCustomPalette: setCustomPalette,
-          onBackground: chooseBackground,
-          sparksOn,
-          onToggleSparks: toggleSparks,
-          onSparksStyle: setSparksStyle,
-          onTrailStyle: chooseTrail,
-          setCursor,
-        }),
-      ),
-    [
-      chooseTheme,
-      setCustomPalette,
-      chooseBackground,
+  const applyRef = useRef<(l: Look) => void>(() => {})
+  applyRef.current = (l) =>
+    applyLook(l, {
+      onTheme: chooseTheme,
+      onCustomPalette: setCustomPalette,
+      onBackground: chooseBackground,
       sparksOn,
-      toggleSparks,
-      setSparksStyle,
-      chooseTrail,
+      onToggleSparks: toggleSparks,
+      onSparksStyle: setSparksStyle,
+      onTrailStyle: chooseTrail,
       setCursor,
-    ],
-  )
+    })
+  useEffect(() => registerLookApplier((l) => applyRef.current(l)), [])
 
   // Pinned windows follow you across tabs. We keep the pane OBJECTS (not just ids) so a
   // window pinned on one tab can still render on another after its own page unmounted —
