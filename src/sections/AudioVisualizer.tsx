@@ -716,6 +716,10 @@ export function AudioVisualizer() {
     const mir = document.createElement('canvas')
     const mctx = mir.getContext('2d')
 
+    /* where the picture waits while the buffer is being resized under it — see resize() */
+    const keep = document.createElement('canvas')
+    const kctx = keep.getContext('2d')
+
     // how hard the last beat hit, decaying — see the punch composite below
     let hit = 0
     // the spin the feedback copy carries, so an echo tunnel turns instead of just receding
@@ -872,16 +876,69 @@ export function AudioVisualizer() {
       dpr = Math.min(window.devicePixelRatio || 1, 2) * qual
       w = Math.max(1, cssW)
       h = Math.max(1, cssH)
-      for (const c of [cv, buf]) {
-        c.width = Math.round(w * dpr)
-        c.height = Math.round(h * dpr)
+      /**
+       * ⚠️ THE PICTURE SURVIVES THE RESIZE, and this is the difference between a quality step
+       * you never notice and one that throws your drawing away.
+       *
+       * Setting width or height on a canvas wipes it — that is what the attribute does, not a
+       * side effect worth arguing with. `buf` is the only surface holding anything worth keeping:
+       * trails, the feedback tunnel, rain's whole scrolling history. Everything else here is
+       * rebuilt from scratch every frame.
+       *
+       * So a quality step used to erase the picture, and a step the probe then UNDID erased it
+       * twice inside a second — which lands exactly when a trailed visual has built up enough to
+       * be worth looking at, because that is also when it is costing the most. Reported as the
+       * visual resetting right as it gets good.
+       *
+       * Copying it out and back scales the history into the new resolution instead. It goes
+       * slightly softer on a step down, which is the honest cost of drawing fewer pixels, and it
+       * does not go away. Window resizes keep their trails now too.
+       */
+      const px = Math.round(w * dpr)
+      const py = Math.round(h * dpr)
+      /**
+       * ⚠️ ONLY WHEN THE SIZE ACTUALLY CHANGED, and this is not an optimisation.
+       *
+       * Assigning canvas.width clears the canvas even when you assign the SAME number back. The
+       * ResizeObserver calls this on every observed change and a single window drag fires it many
+       * times, so the old unconditional assignment was wiping the buffer on each of them — and
+       * the second call through would also skip the copy above, because by then the dimensions
+       * match and there is nothing to preserve. Measured: the picture survived the first call and
+       * was erased by the one immediately after it.
+       */
+      if (buf.width !== px || buf.height !== py) {
+        let kept: HTMLCanvasElement | null = null
+        if (buf.width > 0 && buf.height > 0) {
+          keep.width = buf.width
+          keep.height = buf.height
+          kctx?.setTransform(1, 0, 0, 1, 0, 0)
+          kctx?.drawImage(buf, 0, 0)
+          kept = keep
+        }
+        buf.width = px
+        buf.height = py
+        if (kept && ctx) {
+          ctx.setTransform(1, 0, 0, 1, 0, 0)
+          ctx.drawImage(kept, 0, 0, px, py)
+        }
       }
-      glow.width = Math.max(1, Math.round((w * dpr) / 3))
-      glow.height = Math.max(1, Math.round((h * dpr) / 3))
+      /* the visible canvas holds nothing between frames, so it only needs the size */
+      if (cv.width !== px || cv.height !== py) {
+        cv.width = px
+        cv.height = py
+      }
+      /* both are rebuilt from scratch every frame, so clearing them costs nothing — but the
+         same "assigning the same number still clears" rule applies, so skip the work anyway */
+      const gw = Math.max(1, Math.round((w * dpr) / 3))
+      const gh = Math.max(1, Math.round((h * dpr) / 3))
+      if (glow.width !== gw || glow.height !== gh) {
+        glow.width = gw
+        glow.height = gh
+      }
       /* sized with the buffer it mirrors, and only while mirroring is on — see `mir` */
-      if (mir.width) {
-        mir.width = Math.round(w * dpr)
-        mir.height = Math.round(h * dpr)
+      if (mir.width && (mir.width !== px || mir.height !== py)) {
+        mir.width = px
+        mir.height = py
       }
       /**
        * ⚠️ THE BACKING BUFFER IS SET HERE; THE CSS SIZE IS NOT.
@@ -1413,7 +1470,20 @@ export function AudioVisualizer() {
           }
           probe = null
         }
-      } else if (pace > 21 && qual > 0.5 && held > 90) {
+        /**
+         * ⚠️ 24ms, not 21, and two and a half seconds of it rather than one and a half.
+         *
+         * 21ms is 47fps — a rich trailed scene sits there quite happily and does not look broken,
+         * so the old cap was stepping in on visuals that were merely expensive rather than
+         * actually struggling. 24ms is 42fps, which is where a picture starts to feel like it is
+         * dragging rather than just working hard, and the longer hold stops one heavy moment in
+         * the music from counting as a trend.
+         *
+         * Worth raising only because the step is cheap now: with the picture surviving the
+         * resize, being wrong about this costs some sharpness for a few seconds instead of
+         * somebody's drawing.
+         */
+      } else if (pace > 24 && qual > 0.5 && held > 150) {
         probe = { before: pace, at: qual }
         qual = Math.max(0.5, qual - 0.25)
         held = 0
