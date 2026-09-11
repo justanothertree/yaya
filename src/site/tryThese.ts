@@ -54,7 +54,7 @@ export const TRY_THESE: Invite[] = [
     id: 'visualizer',
     icon: '🎚️',
     title: 'Watch music move',
-    line: 'Put a song on and the screen moves with it. There are a lot of looks to try.',
+    line: 'Put a song on and the screen moves with it. Dozens of looks, including a few in 3D — tune one, save it, and pin it to a track on your page.',
   },
   {
     id: 'snake',
