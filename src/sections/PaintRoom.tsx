@@ -169,6 +169,10 @@ export function PaintRoom() {
   const [paperOpen, setPaperOpen] = useState(false)
   /* only read on narrow screens, where the brush row becomes a menu */
   const [toolsOpen, setToolsOpen] = useState(false)
+  /* the shade pad, folded — see the note where it is rendered */
+  const [colourOpen, setColourOpen] = useState(false)
+  /* symmetry and echo, folded — set once per picture, twelve buttons wide */
+  const [fxOpen, setFxOpen] = useState(false)
   /**
    * The paper's shape, as width over height — or free, meaning whatever the window leaves.
    *
@@ -980,12 +984,6 @@ export function PaintRoom() {
        a height, and vh is the only sensible guess — but inside a window that guess ignored the
        window, so dragging the bottom edge made it wider and never taller. */
     <section className={'paint-wrap' + (inWindow ? ' is-inwindow' : '')} ref={wrap}>
-      {!call.inCall && (
-        <AlsoTogether id="paint">
-          Anyone in a call with you can draw on this page at the same time — same picture, same
-          paper, live.
-        </AlsoTogether>
-      )}
       {/**
        * ⚠️ EIGHTEEN BRUSHES IS A SCROLL ON A PHONE, so there it is one button that opens them.
        *
@@ -1086,9 +1084,12 @@ export function PaintRoom() {
             </button>
           </>
         )}
-      </div>
-
-      <div className="paint-row paint-stack">
+        {/* ⚠️ ONE ROW WITH THE LAYERS, not a row of its own. Selecting had a line to itself
+            holding a single button most of the time, and the layers line beside it was nearly as
+            empty — two thirty-nine pixel rows for about a hundred and fifty pixels of controls,
+            paid for by the picture. They also belong together: both are about WHICH strokes you
+            are working on rather than how the next one will look. */}
+        <span className="paint-row-divide" aria-hidden />
         <span className="muted paint-stack-label">Layers</span>
         {Array.from({ length: layers }, (_, i) => layers - 1 - i).map((i) => (
           <span key={i} className={'paint-layer' + (layer === i ? ' is-on' : '')}>
@@ -1267,12 +1268,41 @@ export function PaintRoom() {
          * colours is the same job. Reusing it also means one place to improve rather than two
          * that drift.
          */}
-        <span className="paint-colour">
-          <ShadePad
-            label="Colour"
-            value={colour === NONE || colour === RAINBOW ? '#22c55e' : colour}
-            onChange={setColour}
-          />
+        {/**
+         * ⚠️ FOLDED AWAY LIKE THE PAPER, and for a reason the screenshot made obvious: the pad is
+         * about a hundred and fifty pixels tall and it was open all the time, which made it far
+         * and away the largest thing between the tools and the paper. The controls were taking
+         * more of the screen than the drawing.
+         *
+         * ⚠️ The swatches immediately to the left do NOT fold, which is what makes this safe.
+         * Changing colour is most of what anybody does in here, and that is what those are for;
+         * the pad is for mixing a shade the swatches do not have, which is a thing you go looking
+         * for. The chip shows the colour you are on, so folding the controls does not fold the
+         * state away with them.
+         */}
+        <span className="paint-colour paint-fold">
+          <button
+            className={'btn paint-fold-open' + (colourOpen ? ' is-on' : '')}
+            aria-expanded={colourOpen}
+            onClick={() => setColourOpen((v) => !v)}
+            title="Mix a colour the swatches do not have"
+          >
+            <span
+              className="paint-fold-chip"
+              aria-hidden
+              style={colour === NONE || colour === RAINBOW ? undefined : { background: colour }}
+            />
+            Mix
+          </button>
+          {colourOpen && (
+            <span className="paint-fold-pop">
+              <ShadePad
+                label="Colour"
+                value={colour === NONE || colour === RAINBOW ? '#22c55e' : colour}
+                onChange={setColour}
+              />
+            </span>
+          )}
         </span>
         {/**
          * ⚠️ PAPER IS FOLDED AWAY, and the reason is how often each one is wanted rather than
@@ -1284,22 +1314,22 @@ export function PaintRoom() {
          * only the controls for it. That also takes a whole pad out of a toolbar that had grown
          * bulky enough to be worth complaining about.
          */}
-        <span className="paint-colour paint-paper">
+        <span className="paint-colour paint-fold">
           <button
-            className={'btn paint-paper-open' + (paperOpen ? ' is-on' : '')}
+            className={'btn paint-fold-open' + (paperOpen ? ' is-on' : '')}
             aria-expanded={paperOpen}
             onClick={() => setPaperOpen((v) => !v)}
             title="The backdrop behind the picture — everything else here is paint"
           >
             <span
-              className="paint-paper-chip"
+              className="paint-fold-chip"
               aria-hidden
               style={bg ? { background: bg } : undefined}
             />
             Paper
           </button>
           {paperOpen && (
-            <span className="paint-paper-pop">
+            <span className="paint-fold-pop">
               <ShadePad
                 label="Paper"
                 value={bg ?? '#111111'}
@@ -1349,49 +1379,84 @@ export function PaintRoom() {
           />
           <span className="appearance-slider-val">{Math.round(width * 1000)}</span>
         </label>
-        {/* ⚠️ A MODIFIER, not a tool: it applies to whichever of the fifteen tools is selected, so
+        {/**
+         * ⚠️ FOLDED, because these two are the least reached for and cost the most room.
+         *
+         * Symmetry and Echo are twelve buttons between them, and on a 1024px screen they were
+         * most of what pushed the main row onto a third line — measured at 133px for that row
+         * alone. They are also modifiers you set once for a picture and then leave, unlike the
+         * colour and the size, which change constantly. Behind one button they cost 37px instead,
+         * and the button says when either is on so a mandala is never a mystery.
+         */}
+        <span className="paint-fold">
+          <button
+            className={'btn paint-fold-open' + (fxOpen ? ' is-on' : '')}
+            aria-expanded={fxOpen}
+            onClick={() => setFxOpen((v) => !v)}
+            title="Mirroring and trailing copies"
+          >
+            Effects
+            {symmetry || echo ? (
+              <span className="paint-fold-badge">
+                {symmetry ? `×${symmetry}` : ''}
+                {symmetry && echo ? ' ' : ''}
+                {echo ? `≈${echo}` : ''}
+              </span>
+            ) : null}
+          </button>
+          {fxOpen && (
+            <span className="paint-fold-pop paint-fold-wide">
+              {/* ⚠️ A MODIFIER, not a tool: it applies to whichever of the fifteen tools is selected, so
             one control multiplies the whole toolbar rather than adding one more thing to it. It
             is remembered per stroke, so turning it off later leaves what you already drew. */}
-        <label className="inst-pick">
-          <span className="muted" title="Mirror what you draw around the middle of the picture">
-            Symmetry
-          </span>
-          <span className="paint-sym-row">
-            {SYMMETRIES.map((n) => (
-              <button
-                key={n}
-                className={'btn' + (symmetry === n ? ' is-on' : '')}
-                aria-pressed={symmetry === n}
-                onClick={() => setSymmetry(n)}
-                title={n === 0 ? 'No mirroring' : `${n} mirrored segments`}
-              >
-                {n === 0 ? 'Off' : n}
-              </button>
-            ))}
-          </span>
-        </label>
-        {/* the second modifier, and it composes with the first: an echoed mandala is one stroke
+              <label className="inst-pick">
+                <span
+                  className="muted"
+                  title="Mirror what you draw around the middle of the picture"
+                >
+                  Symmetry
+                </span>
+                <span className="paint-sym-row">
+                  {SYMMETRIES.map((n) => (
+                    <button
+                      key={n}
+                      className={'btn' + (symmetry === n ? ' is-on' : '')}
+                      aria-pressed={symmetry === n}
+                      onClick={() => setSymmetry(n)}
+                      title={n === 0 ? 'No mirroring' : `${n} mirrored segments`}
+                    >
+                      {n === 0 ? 'Off' : n}
+                    </button>
+                  ))}
+                </span>
+              </label>
+              {/* the second modifier, and it composes with the first: an echoed mandala is one stroke
             drawn twelve times, twice over, from two numbers in the file */}
-        <label className="inst-pick">
-          <span className="muted" title="Fading copies trailing the way you drew">
-            Echo
-          </span>
-          <span className="paint-sym-row">
-            {ECHOES.map((n) => (
-              <button
-                key={n}
-                className={'btn' + (echo === n ? ' is-on' : '')}
-                aria-pressed={echo === n}
-                onClick={() => setEcho(n)}
-                title={
-                  n === 0 ? 'No trailing copies' : `${n} trailing ${n === 1 ? 'copy' : 'copies'}`
-                }
-              >
-                {n === 0 ? 'Off' : n}
-              </button>
-            ))}
-          </span>
-        </label>
+              <label className="inst-pick">
+                <span className="muted" title="Fading copies trailing the way you drew">
+                  Echo
+                </span>
+                <span className="paint-sym-row">
+                  {ECHOES.map((n) => (
+                    <button
+                      key={n}
+                      className={'btn' + (echo === n ? ' is-on' : '')}
+                      aria-pressed={echo === n}
+                      onClick={() => setEcho(n)}
+                      title={
+                        n === 0
+                          ? 'No trailing copies'
+                          : `${n} trailing ${n === 1 ? 'copy' : 'copies'}`
+                      }
+                    >
+                      {n === 0 ? 'Off' : n}
+                    </button>
+                  ))}
+                </span>
+              </label>
+            </span>
+          )}
+        </span>
         {/* ⚠️ NAMED BRUSHES WERE REMOVED — "the name this brush is kind of pointless".
             The argument for them was that six controls make a way of drawing rather than a
             setting, which is true and still was not worth the row: naming a brush is a thing you
@@ -1461,48 +1526,6 @@ export function PaintRoom() {
         >
           ⤢ Fit
         </button>
-        <button
-          className={'btn' + (galleryOpen ? ' is-on' : '')}
-          aria-pressed={galleryOpen}
-          onClick={() => setGalleryOpen((v) => !v)}
-          title="Pictures you have kept"
-        >
-          🖼 Gallery{saved.length ? ` · ${saved.length}` : ''}
-        </button>
-        <button
-          className="btn"
-          disabled={!strokes.length}
-          onClick={() => {
-            const name = window.prompt('Name this picture', '')?.trim() ?? ''
-            if (!name) return
-            const item = saveArt({ ...drawingRef.current, name })
-            setNote(item ? `Kept “${item.name}”` : 'Nothing to keep yet.')
-            window.setTimeout(() => setNote(null), 4000)
-            if (item) setGalleryOpen(true)
-          }}
-        >
-          ⬇ Keep
-        </button>
-        {call.inCall && (
-          <button
-            className={'btn' + (party.on ? ' is-on' : '')}
-            aria-pressed={party.on}
-            onClick={() => drawParty.setOn(!party.on)}
-            title={
-              party.on
-                ? 'Stop sending your strokes to the call'
-                : 'Draw together — finished strokes go to everyone in the call'
-            }
-          >
-            {party.on ? '◉ Drawing together' : '◎ Draw together'}
-          </button>
-        )}
-        {party.on && Object.keys(party.peers).length > 0 && (
-          <span className="muted paint-peers">with {Object.values(party.peers).join(', ')}</span>
-        )}
-        <span className="muted paint-count">
-          {strokes.length} stroke{strokes.length === 1 ? '' : 's'}
-        </span>
       </div>
 
       {/* ⚠️ The board is transparent, not white. A drawing has no background of its own, which is
@@ -1586,6 +1609,52 @@ export function PaintRoom() {
             ))}
           </select>
         </label>
+        {/* ⚠️ MOVED DOWN FROM THE BRUSH ROW. Keeping a picture, opening the gallery and the
+            stroke count are about the DOCUMENT, which is what this row already is — and that row
+            had fourteen controls in it, twice its own width, so it wrapped onto three lines and
+            pushed the paper off the bottom of the screen. */}
+        <button
+          className={'btn' + (galleryOpen ? ' is-on' : '')}
+          aria-pressed={galleryOpen}
+          onClick={() => setGalleryOpen((v) => !v)}
+          title="Pictures you have kept"
+        >
+          🖼 Gallery{saved.length ? ` · ${saved.length}` : ''}
+        </button>
+        <button
+          className="btn"
+          disabled={!strokes.length}
+          onClick={() => {
+            const name = window.prompt('Name this picture', '')?.trim() ?? ''
+            if (!name) return
+            const item = saveArt({ ...drawingRef.current, name })
+            setNote(item ? `Kept “${item.name}”` : 'Nothing to keep yet.')
+            window.setTimeout(() => setNote(null), 4000)
+            if (item) setGalleryOpen(true)
+          }}
+        >
+          ⬇ Keep
+        </button>
+        {call.inCall && (
+          <button
+            className={'btn' + (party.on ? ' is-on' : '')}
+            aria-pressed={party.on}
+            onClick={() => drawParty.setOn(!party.on)}
+            title={
+              party.on
+                ? 'Stop sending your strokes to the call'
+                : 'Draw together — finished strokes go to everyone in the call'
+            }
+          >
+            {party.on ? '◉ Drawing together' : '◎ Draw together'}
+          </button>
+        )}
+        {party.on && Object.keys(party.peers).length > 0 && (
+          <span className="muted paint-peers">with {Object.values(party.peers).join(', ')}</span>
+        )}
+        <span className="muted paint-count">
+          {strokes.length} stroke{strokes.length === 1 ? '' : 's'}
+        </span>
         <span className="muted paint-dims" role="status">
           {dims.w > 0 ? `${dims.w}×${dims.h}` : '—'}
           {dims.h > 0 ? ` · ${(dims.w / dims.h).toFixed(2)}:1` : ''}
@@ -1628,6 +1697,14 @@ export function PaintRoom() {
         />
       </div>
 
+      {/* ⚠️ BELOW THE PICTURE. It is a standing note rather than a control, and thirty-five
+          pixels of it sat between the tools and the paper on every visit. */}
+      {!call.inCall && (
+        <AlsoTogether id="paint">
+          Anyone in a call with you can draw on this page at the same time — same picture, same
+          paper, live.
+        </AlsoTogether>
+      )}
       <p className="muted paint-note">
         Drawings are kept as the strokes you made, not as an image — so they redraw sharp at any
         size, undo is free, and one fits in a profile without being hosted anywhere. Nothing here is

@@ -7124,6 +7124,28 @@ a.cz-msg-author:focus-visible {
 /* ⚠️ The checkerboard is the point, not decoration: a drawing is TRANSPARENT, so this is
    the page showing you where the paint ends. Alpha is a goal feature and you cannot judge
    it against an opaque board. */
+/**
+ * ⚠️ SHORT SLIDERS IN HERE, because three long ones were most of the toolbar.
+ *
+ * Measured at 1024px: Opacity, Size and Zoom came to 706px between them in a 919px row, which is
+ * what pushed the controls onto three lines and the paper down the page. None of them needs that
+ * much travel — opacity and size are judged by looking at the picture, not by reading the number,
+ * and the number is printed beside each one anyway.
+ */
+.paint-row .appearance-slider input[type='range'] {
+  width: 5.5rem;
+  min-width: 0;
+}
+
+/* a hairline between the two groups now sharing a row — see the note in PaintRoom */
+.paint-row-divide {
+  width: 1px;
+  align-self: stretch;
+  min-height: 1.2rem;
+  background: var(--border);
+  margin-inline: 0.3rem;
+}
+
 /* ── the paper's shape, said out loud ────────────────────────────────────────
    A row above the board: what shape the paper is, how big it really is, and a way to fill the
    screen with the room. */
@@ -8115,6 +8137,36 @@ a.cz-msg-author:focus-visible {
 /* ── paper, folded ───────────────────────────────────────────────────────────
    A swatch that says what the paper is and opens the controls for it, rather than a second pad
    sitting next to the brush's looking exactly as important. */
+/**
+ * ⚠️ ONE LINE THAT SCROLLS, not a grid that wraps — measured at 1024px wide, eighteen tiles
+ * stacked icon-over-label wrapped onto two rows and took 142 pixels, the largest single thing
+ * between the tools and the paper. Laid out along the line with the label beside the icon they
+ * are about forty, and every brush is still visible and still named.
+ *
+ * ⚠️ Desktop only. On a phone the row is a menu (below) and a grid is the right shape for it —
+ * a horizontal scroll inside a page that already scrolls vertically is a thumb fighting itself.
+ */
+@media (min-width: 40.0625rem) {
+  .fx-style-row.paint-tools {
+    display: flex;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    gap: 0.3rem;
+    padding-block: 0.2rem;
+    scrollbar-width: thin;
+  }
+  .paint-tools .fx-style-btn {
+    flex: 0 0 auto;
+    flex-direction: row;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.25rem 0.55rem;
+  }
+  .paint-tools .fx-style-label {
+    font-size: 0.74rem;
+  }
+}
+
 /* ── brushes: a row on a desktop, a menu on a phone ──────────────────────────
    One list either way — see the note in PaintRoom. The button is the whole control on narrow
    screens and does not exist on wide ones. */
@@ -8153,16 +8205,16 @@ a.cz-msg-author:focus-visible {
   color: var(--accent);
 }
 
-.paint-paper {
+.paint-fold {
   position: relative;
 }
-.paint-paper-open {
+.paint-fold-open {
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
 }
 /* the chequer shows through when the paper is None, which is what transparent means here */
-.paint-paper-chip {
+.paint-fold-chip {
   width: 0.85rem;
   height: 0.85rem;
   border-radius: 3px;
@@ -8188,7 +8240,18 @@ a.cz-msg-author:focus-visible {
  * Stacked rather than in a row for the same reason: the pad wants the full width of the popover
  * and the None button underneath it, not a share of the same line.
  */
-.paint-paper-pop {
+/* wide enough for two rows of modifier buttons, unlike the shade pads */
+.paint-fold-wide {
+  width: 17rem;
+}
+.paint-fold-badge {
+  margin-left: 0.3rem;
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  opacity: 0.85;
+}
+
+.paint-fold-pop {
   position: absolute;
   z-index: 5;
   top: calc(100% + 0.35rem);
@@ -8207,7 +8270,7 @@ a.cz-msg-author:focus-visible {
 /* ⚠️ on a phone it opens UNDER the row rather than over it: a popover pinned to a wrapping
    toolbar lands off the side of the screen as often as not */
 @media (max-width: 40rem) {
-  .paint-paper-pop {
+  .paint-fold-pop {
     position: static;
     box-shadow: none;
     padding: 0.35rem 0;
