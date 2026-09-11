@@ -4132,6 +4132,26 @@ select {
   font-family: var(--mono);
   font-size: 0.78rem;
 }
+/* ⚠️ The spin readout is a button, so it has to shed every button default and keep looking like
+   the number beside every other slider — underlined only on hover, which is the one hint that it
+   can be pressed. Disabled at still, because there is nothing to stop. */
+button.appearance-slider-val {
+  appearance: none;
+  border: 0;
+  padding: 0;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+}
+button.appearance-slider-val:disabled {
+  cursor: default;
+  opacity: 0.65;
+}
+button.appearance-slider-val:not(:disabled):hover,
+button.appearance-slider-val:not(:disabled):focus-visible {
+  text-decoration: underline;
+  color: var(--accent);
+}
 
 .appearance-note {
   margin: 0;

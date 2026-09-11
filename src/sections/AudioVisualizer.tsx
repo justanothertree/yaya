@@ -1128,9 +1128,32 @@ export function AudioVisualizer() {
        * ⚠️ The angle accumulates from ELAPSED TIME, not from a frame count. A dropped frame or a
        * 120Hz screen would otherwise change how fast the picture turns.
        */
-      spinA += dt * spn * 1.2
+      /**
+       * ⚠️ SQUARED, so the slider has somewhere to go at the top without losing the bottom.
+       *
+       * It was linear at 1.2 rad/s flat out — one turn every five seconds at the very end of the
+       * travel, which is why the whole slider felt like one slow setting and most of it seemed to
+       * do nothing. Squaring spends the resolution where the interesting settings are: a drift
+       * slow enough to lay history down as a spirograph still sits under the first third, the
+       * midpoint lands within a hair of where it used to (0.75 rad/s against 0.6), and the last
+       * quarter now actually whirls.
+       */
+      spinA += dt * Math.sign(spn) * spn * spn * 3
 
-      if (ech > 0.01) {
+      /**
+       * ⚠️ NOT ON A MODE THAT OWNS ITS BUFFER, for the same reason the trail fade is not.
+       *
+       * Echo draws the buffer back onto itself at up to 0.78 alpha, which compounds: every pixel
+       * takes its neighbour's alpha on top of its own, every frame. On an ordinary mode the trail
+       * fade pulls that back down and the two settle into a feedback tunnel, which is the whole
+       * point of it. Rain has no fade by design — its buffer is a scrolling spectrogram, a record
+       * rather than a trail — so nothing counteracts it and the picture goes solid ink within a
+       * second or two. Reported as rain being easy to turn fully white with some settings.
+       *
+       * A feedback copy of a record is not a meaningful effect anyway; it is the same mistake as
+       * fading it. The slider is disabled and reads n/a on these modes, exactly as Trail does.
+       */
+      if (ech > 0.01 && !owns) {
         swirl += dt * 0.35 * ech
         ctx.save()
         ctx.globalAlpha = 0.28 + ech * 0.5
@@ -1531,11 +1554,32 @@ export function AudioVisualizer() {
      * Velocity is worked out here rather than in a mode, because it needs the time between two
      * real events — a mode only sees frames, and two frames can pass with no movement at all.
      */
+    /**
+     * Where the pointer is in the SURFACE's own coordinates, not the screen's.
+     *
+     * ⚠️ getBoundingClientRect is the VISUAL box and clientX is unzoomed viewport space, so the
+     * difference between them is in visual pixels — while everything that draws works in the
+     * box's LAYOUT pixels (box.clientWidth, which is what resize() measures for the same reason).
+     * Inside a canvas window those disagree: a pane body carries a zoom between 0.6 and 1
+     * (scaleFor in CircuitCanvas), so the cursor arrived at 60% of the distance it should and the
+     * visuals answered somewhere up and to the left of the actual mouse. Reported as the
+     * visualiser window not hovering the mouse correctly in canvas mode.
+     *
+     * ⚠️ The factor is MEASURED rather than imported. Dividing layout by visual gives 1/zoom
+     * whatever produced it — a pane zoom, a page zoom, an ancestor transform — and is exactly 1
+     * everywhere else, so the normal page is untouched. Per axis, so a non-uniform transform
+     * cannot skew it, and guarded because a hidden box measures zero.
+     */
+    const toSurface = (e: PointerEvent, r: DOMRect) => {
+      const sx = r.width > 0 ? box.clientWidth / r.width : 1
+      const sy = r.height > 0 ? box.clientHeight / r.height : 1
+      return { x: (e.clientX - r.left) * sx, y: (e.clientY - r.top) * sy }
+    }
+
     let lastMove = performance.now()
     const onMove = (e: PointerEvent) => {
       const r = box.getBoundingClientRect()
-      const nx = e.clientX - r.left
-      const ny = e.clientY - r.top
+      const { x: nx, y: ny } = toSurface(e, r)
       const now = performance.now()
       const gap = Math.max(0.008, (now - lastMove) / 1000)
       lastMove = now
@@ -1556,8 +1600,11 @@ export function AudioVisualizer() {
       const q = ptr.current
       q.down = true
       q.sinceClick = 0
-      q.clickX = e.clientX - r.left
-      q.clickY = e.clientY - r.top
+      /* same correction as onMove — a click that lands somewhere else than the cursor is the
+         same bug wearing different clothes, and the modes that answer clicks felt it worse */
+      const p = toSurface(e, r)
+      q.clickX = p.x
+      q.clickY = p.y
     }
     /**
      * Double-tap the picture to go fullscreen, and back.
@@ -2185,15 +2232,35 @@ export function AudioVisualizer() {
                      */
                     onChange={(e) => {
                       const v = Number(e.target.value)
-                      setSpin(Math.abs(v) < 0.05 ? 0 : v)
+                      /* ⚠️ 0.12, not 0.05. A twentieth of the travel is about three pixels on
+                         this slider — a catch you have to already know about to find. Somebody
+                         testing simply could not work out how to stop it. Six per cent a side is
+                         findable by dragging and still leaves the whole slow end usable, because
+                         the curve above puts the gentle spins well inside the first third. */
+                      setSpin(Math.abs(v) < 0.12 ? 0 : v)
                     }}
                     onDoubleClick={() => setSpin(0)}
                   />
-                  <span className="appearance-slider-val">
+                  {/* ⚠️ The readout IS the stop button, rather than a new control beside it: the
+                      one thing people needed was a way to stop that they could SEE, and the
+                      number was already the thing their eye was on. Double-click still works and
+                      the detent still catches — this is the version you do not have to be told
+                      about. preventDefault so the label does not forward the click to the range
+                      and nudge the value on the way past. */}
+                  <button
+                    type="button"
+                    className="appearance-slider-val viz-spin-stop"
+                    title={spin === 0 ? 'Not spinning' : 'Stop spinning'}
+                    disabled={spin === 0}
+                    onClick={(e) => {
+                      e.preventDefault()
+                      setSpin(0)
+                    }}
+                  >
                     {spin === 0
                       ? 'still'
                       : `${spin > 0 ? '↻' : '↺'} ${Math.round(Math.abs(spin) * 100)}`}
-                  </span>
+                  </button>
                 </label>
               </div>
             )}
@@ -2375,15 +2442,20 @@ export function AudioVisualizer() {
                   >
                     Echo
                   </span>
+                  {/* ⚠️ Off on modes that own their buffer, exactly as Trail is — feeding a
+                      scrolling record back into itself only saturates it. See the frame loop. */}
                   <input
                     type="range"
                     min={0}
                     max={1}
                     step={0.01}
                     value={echo}
+                    disabled={ownsItsBuffer(mode)}
                     onChange={(e) => setEcho(Number(e.target.value))}
                   />
-                  <span className="appearance-slider-val">{Math.round(echo * 100)}</span>
+                  <span className="appearance-slider-val">
+                    {ownsItsBuffer(mode) ? 'n/a' : Math.round(echo * 100)}
+                  </span>
                 </label>
               </div>
             )}
