@@ -62,19 +62,43 @@ export type Invite = {
 }
 
 export const TRY_THESE: Invite[] = [
+  /**
+   * ⚠️ THE ORDER IS THE LAYOUT. Widths run 2,1,1,2 and repeat (see EvanCook), so positions 0
+   * and 3 are the wide ones — and the two tiles that NEED width are the pad you drag on and the
+   * profile, which has a whole page to show and was unreadable in a third of a row. Reordering is
+   * how they get it; there is no per-tile width setting to forget to keep in step.
+   */
+  {
+    id: 'paint',
+    live: 'scribble',
+    open: 'Open the studio',
+    icon: '🎨',
+    title: 'Draw something',
+    line: 'Layers, frames and undo. Two people in it at once are drawing on the same canvas.',
+  },
+  {
+    id: 'visualizer',
+    live: 'viz',
+    open: 'Put a song on',
+    icon: '🎚️',
+    title: 'Watch music move',
+    line: 'Play a song and the screen moves with it. Mirrors, depth, 3D — I kept adding ways for it to look and saving the ones I liked.',
+  },
   {
     id: 'instrument',
     live: 'keys',
     open: 'Open the studio',
     icon: '🎹',
-    title: 'Play an instrument',
-    line: 'Your computer keyboard is the keys. Pick a sound and press something.',
+    /* ⚠️ The hero already HAS playable keys. A second row of keys down here was the same hook
+       twice and read as the weaker copy of it, so this tile shows the part the hook does not: the
+       editor you write a line in and keep. */
+    title: 'Write a tune down',
+    line: 'The keys at the top are one sound. In here there are more, and a grid you can put notes in and keep.',
   },
   {
     /**
-     * ⚠️ THE ONE ROOM A VISITOR COULD NOT OTHERWISE SEE. Profiles are the point of the site
-     * and there was nothing about them on the home page at all — they live behind a sign-in, so
-     * the only honest way to show one is the demo: a real profile, served to anybody, which only
+     * ⚠️ THE ONE ROOM A VISITOR COULD NOT OTHERWISE SEE. Profiles live behind a sign-in, so
+     * the only honest way to show one is the demo: a real profile served to anybody, which only
      * ever returns the single row flagged is_demo and only its public blocks.
      */
     id: 'profile',
@@ -85,29 +109,8 @@ export const TRY_THESE: Invite[] = [
        for it, so it rendered as an empty tofu box — blown up to fill the corner by .hag-bleed.
        Check a new icon actually draws before trusting it. */
     icon: '🧑',
-    title: 'Have a look at a page',
-    line: "Everyone here gets one — your theme, your music, your scores, whatever you pin to it. This one's mine.",
-  },
-  {
-    id: 'visualizer',
-    live: 'viz',
-    open: 'Put a song on',
-    icon: '🎚️',
-    title: 'Watch music move',
-    line: 'Put a song on and the screen moves with it. Dozens of looks, some in 3D.',
-  },
-  {
-    /**
-     * ⚠️ THE PAD IS THE POINT, so the sentence stops describing what drawing is like. It sits
-     * in a wide slot rather than a narrow one because a third of a row is not enough surface to
-     * want to drag across — which is the entire behaviour being invited.
-     */
-    id: 'paint',
-    live: 'scribble',
-    open: 'Open the studio',
-    icon: '🎨',
-    title: 'Draw something',
-    line: 'Layers, frames, and friends drawing on the same page as you.',
+    title: 'See a profile page',
+    line: 'Mine, as a visitor sees it. Everyone builds one out of blocks — a song, a drawing, scores, a guestbook. Add someone from their page and you can message them, call them, or draw and play together.',
   },
   {
     id: 'snake',
@@ -115,15 +118,15 @@ export const TRY_THESE: Invite[] = [
     open: 'Play it properly',
     icon: '🎮',
     title: 'Play Snake',
-    line: "That one is playing itself — tap it and it's yours. The real one has a scoreboard, and other people.",
+    line: 'This one is playing itself. Tap it to take over. The full version keeps scores and lets people race each other.',
   },
   {
     id: 'circuit',
     live: 'circuit',
     open: 'Open the board',
     icon: '🏆',
-    title: 'Score your day',
-    line: 'The workout board my friends and I have used daily for a year. Log it, total it, argue about it.',
+    title: 'Log a workout',
+    line: 'The board my friends and I have used every day for a year. Log it, total it, argue about it.',
     members: true,
   },
   {
@@ -131,8 +134,8 @@ export const TRY_THESE: Invite[] = [
     live: 'ratings',
     open: 'Open the pool',
     icon: '⭐',
-    title: 'Decide together',
-    line: 'Rate films and food, or throw options in a pool and let the wheel choose for everyone at once.',
+    title: 'Decide what to watch',
+    line: 'Rate films and food with the people you watch and eat with. Or throw options in a pool and let the wheel pick one for everybody at once.',
     members: true,
   },
   {
@@ -140,8 +143,8 @@ export const TRY_THESE: Invite[] = [
     live: 'calls',
     open: 'Open chat',
     icon: '🎧',
-    title: 'Call your people',
-    line: 'Talk and share your screen, and the call follows you around the site while you draw or play.',
+    title: 'Talk and share a screen',
+    line: 'Voice and screen share. The call stays up as you move around the site, so you can talk while you draw or play.',
     members: true,
   },
 ]

@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useRef, type PointerEvent as ReactPointerEvent } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type PointerEvent as ReactPointerEvent,
+} from 'react'
 
 /**
  * The front door's second toy: a pad you can actually draw on.
@@ -63,6 +69,13 @@ export function HomeScribble() {
   /** advanced per stroke, so two strokes in a row are never the same colour */
   const hue = useRef(Math.floor(Math.random() * 360))
   const raf = useRef(0)
+  /**
+   * ⚠️ AN EMPTY PAD READS AS A BROKEN TILE, not as an invitation. It is a bordered rectangle with
+   * nothing in it, next to seven tiles that are all doing something — so it needs to say what it
+   * wants, once, and then never again. Gone on the first mark and it does not come back, because
+   * a hint that reappears is a hint that is arguing with you.
+   */
+  const [marked, setMarked] = useState(false)
 
   const ctx = () => ref.current?.getContext('2d') ?? null
 
@@ -179,6 +192,7 @@ export function HomeScribble() {
     /* a tap with no drag is a one-point stroke, drawn as a dot — a careful tap that left nothing
        would read as a dead surface */
     strokes.current.push({ hue: hue.current, pts: [at(e)], touched: performance.now() })
+    setMarked(true)
     wake()
   }
 
@@ -206,16 +220,19 @@ export function HomeScribble() {
   }
 
   return (
-    <canvas
-      ref={ref}
-      className="hag-pad"
-      /* ⚠️ touch-action lives in CSS, not here — without it a finger scrolls the page instead of
-         drawing, which is the whole of the feature on the device most people arrive on. */
-      onPointerDown={down}
-      onPointerMove={move}
-      onPointerUp={up}
-      onPointerCancel={up}
-      aria-label="A scratch pad — drag to draw"
-    />
+    <span className="hag-pad-wrap">
+      <canvas
+        ref={ref}
+        className="hag-pad"
+        /* ⚠️ touch-action lives in CSS, not here — without it a finger scrolls the page instead of
+           drawing, which is the whole of the feature on the device most people arrive on. */
+        onPointerDown={down}
+        onPointerMove={move}
+        onPointerUp={up}
+        onPointerCancel={up}
+        aria-label="A scratch pad — drag to draw"
+      />
+      {!marked && <span className="hag-pad-hint">drag here</span>}
+    </span>
   )
 }
