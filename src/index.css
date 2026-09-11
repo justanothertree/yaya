@@ -9248,3 +9248,132 @@ a.cz-msg-author:focus-visible {
 .proj-card {
   padding-left: calc(var(--card-pad) - 3px);
 }
+
+/* ── the demos ──────────────────────────────────────────────────────────────
+   ⚠️ NO CARD. Each of these used to be a bordered box with a rectangle of art inside it, which is
+   exactly why they read as "blocks" rather than as demos — a box around a live thing says "here
+   is a picture of a feature". The one demo on this page that never had the problem is the hero's
+   keys: a band with a caption under it and no box at all. So these are bands too. */
+.demos-lede {
+  margin: 0 0 0.6rem;
+  font-size: 0.9rem;
+}
+.demos-grid {
+  display: grid;
+  gap: 1.5rem 1.1rem;
+  grid-template-columns: 1fr;
+  margin-top: 0.9rem;
+}
+@media (min-width: 40rem) {
+  .demos-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .demo[data-span='2'] {
+    grid-column: span 2;
+  }
+}
+@media (min-width: 62rem) {
+  .demos-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+.demo[data-span='full'] {
+  grid-column: 1 / -1;
+}
+.demo {
+  --tile-art-h: 108px;
+  min-width: 0;
+}
+.demo[data-span='2'],
+.demo[data-span='full'] {
+  --tile-art-h: 184px;
+}
+@media (max-width: 40rem) {
+  .demo[data-span='2'],
+  .demo[data-span='full'] {
+    --tile-art-h: 136px;
+  }
+}
+/* the art is the thing — it gets the rounded edge that used to belong to the card */
+.demo-art > * {
+  margin: 0;
+  border-radius: var(--r-md, 12px);
+  border: 1px solid var(--border);
+}
+.demo-title {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0.55rem 0 0.15rem;
+  font-size: 1rem;
+}
+.demo-ic {
+  font-size: 1.05rem;
+}
+.demo-line {
+  margin: 0 0 0.4rem;
+  font-size: 0.86rem;
+  line-height: 1.5;
+}
+.demo-go {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--accent);
+  text-decoration: none;
+}
+.demo-go:hover {
+  text-decoration: underline;
+}
+
+/* the case study, folded into the demo it belongs to */
+.demo-notes {
+  margin-top: 0.5rem;
+}
+.demo-notes > summary {
+  cursor: pointer;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--muted);
+  padding: 0.2rem 0;
+}
+.demo-notes > summary:hover {
+  color: var(--text);
+}
+.demo-notes-body {
+  padding-left: 0.75rem;
+  margin-top: 0.4rem;
+}
+.demo-notes-body p,
+.demo-notes-body li {
+  font-size: 0.85rem;
+  line-height: 1.55;
+}
+.demo-notes-head {
+  margin: 0 0 0.4rem;
+}
+.demo-notes-body ul {
+  margin: 0.3rem 0 0.6rem;
+  padding-left: 1.1rem;
+}
+.demo-tags,
+.demo-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin: 0.4rem 0 0;
+}
+.demo-tag {
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 2px 9px;
+  border-radius: 8px;
+  background: var(--b1, rgba(127, 127, 127, 0.1));
+  border: 1px solid var(--border, rgba(127, 127, 127, 0.18));
+}
+@media (max-width: 40rem) {
+  .demo-notes > summary {
+    min-height: 40px;
+    display: flex;
+    align-items: center;
+  }
+}

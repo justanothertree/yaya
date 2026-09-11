@@ -52,6 +52,15 @@ export type Invite = {
   /** what the link under a live tile says */
   open?: string
   /**
+   * The id of the project in work.ts this demo IS.
+   *
+   * ⚠️ THE SAME THING WAS ON THE PAGE TWICE. Snake and the Circuit each had a live demo up
+   * here and a write-up down in Selected work — the same subject in two registers, several
+   * screens apart, so the page read as two lists arguing about which one was the real one. The
+   * demo is the thing; the write-up is what went into it; they belong together.
+   */
+  project?: string
+  /**
    * Where it actually goes, when that is more than a room name.
    *
    * ⚠️ `id` stays required even with this set, because `id` is what the compiler checks — an
@@ -121,6 +130,7 @@ export const TRY_THESE: Invite[] = [
   },
   {
     id: 'snake',
+    project: 'snake',
     live: 'snake',
     open: 'Play it properly',
     icon: '🎮',
@@ -129,6 +139,7 @@ export const TRY_THESE: Invite[] = [
   },
   {
     id: 'circuit',
+    project: 'circuit',
     live: 'circuit',
     open: 'Open the board',
     icon: '🏆',

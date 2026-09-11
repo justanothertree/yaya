@@ -13,7 +13,6 @@ import { IconGitHub, IconLinkedIn } from '../components/Icons'
 import { projects, skills, type Project } from './work'
 import { HOME } from '../site/homeContent'
 import { HeroPlay } from '../site/HeroPlay'
-import { readableOn } from '../theme/customTheme'
 
 const STATUS_LABEL: Record<Project['status'], string> = {
   live: 'Live',
@@ -39,125 +38,6 @@ const STATUS_LABEL: Record<Project['status'], string> = {
  *
  * What replaces the poster is the project's own accent as a rule down the edge of the card —
  * decoration that is honest about being decoration.
- */
-function ProjectCard({ project }: { project: Project }) {
-  return (
-    <article className="card proj-card" style={{ borderLeft: `3px solid ${project.accent}` }}>
-      <div className="proj-body">
-        <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
-            <h3 style={{ margin: 0, fontSize: '1.3rem' }}>{project.title}</h3>
-            <span
-              style={{
-                fontSize: '0.68rem',
-                fontWeight: 800,
-                textTransform: 'uppercase',
-                letterSpacing: '0.05em',
-                padding: '2px 8px',
-                borderRadius: 20,
-                color: project.accent,
-                background: project.accent + '22',
-                border: `1px solid ${project.accent}55`,
-              }}
-            >
-              {STATUS_LABEL[project.status]}
-            </span>
-            {project.period && (
-              <span className="muted" style={{ fontSize: '0.78rem' }}>
-                {project.period}
-              </span>
-            )}
-          </div>
-          <p style={{ margin: '0.5rem 0 0.75rem', fontWeight: 600 }}>{project.tagline}</p>
-
-          {project.blurb.map((para, i) => (
-            <p key={i} className="muted" style={{ margin: '0 0 0.6rem', lineHeight: 1.55 }}>
-              {para}
-            </p>
-          ))}
-
-          <ul style={{ margin: '0.4rem 0 0.9rem', paddingLeft: '1.1rem' }}>
-            {project.highlights.map((h, i) => (
-              <li key={i} className="muted" style={{ marginBottom: 2 }}>
-                {h}
-              </li>
-            ))}
-          </ul>
-
-          <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', marginBottom: '0.9rem' }}>
-            {project.tags.map((t) => (
-              <span
-                key={t}
-                style={{
-                  fontSize: '0.72rem',
-                  fontWeight: 600,
-                  padding: '2px 9px',
-                  borderRadius: 8,
-                  background: 'var(--b1, rgba(127,127,127,0.1))',
-                  border: '1px solid var(--border, rgba(127,127,127,0.18))',
-                }}
-              >
-                {t}
-              </span>
-            ))}
-          </div>
-
-          {project.links.length > 0 && (
-            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-              {project.links.map((l) =>
-                l.external ? (
-                  <a
-                    key={l.href}
-                    className="btn"
-                    href={l.href}
-                    target="_blank"
-                    rel="noreferrer"
-                    style={
-                      l.primary
-                        ? {
-                            background: project.accent,
-                            color: readableOn(project.accent),
-                            borderColor: 'transparent',
-                          }
-                        : undefined
-                    }
-                  >
-                    {l.label} ↗
-                  </a>
-                ) : (
-                  <a
-                    key={l.href}
-                    className="btn"
-                    href={l.href}
-                    style={
-                      l.primary
-                        ? {
-                            background: project.accent,
-                            color: readableOn(project.accent),
-                            borderColor: 'transparent',
-                          }
-                        : undefined
-                    }
-                  >
-                    {l.label}
-                  </a>
-                ),
-              )}
-            </div>
-          )}
-        </div>
-      </div>
-    </article>
-  )
-}
-
-/**
- * ⚠️ NOT A CARD ANY MORE, and that is most of the "squarish" complaint answered.
- *
- * The page was seven bordered rectangles of equal weight stacked down a column, which reads as a
- * form rather than as somebody's front door. The hero now has no box around it: the type is the
- * structure, and the only bordered thing in it is the toy — so the eye lands on the one part that
- * is asking to be touched instead of on a border.
  */
 function Hero() {
   return (
@@ -317,62 +197,102 @@ function SkillsCard() {
   )
 }
 
-function Work() {
+/**
+ * What went into one of these — the case study, folded into the demo it belongs to.
+ *
+ * ⚠️ A <details>, not a panel with state. It is the one disclosure on this page that nobody
+ * needs open to understand what they are looking at: the demo above it has already done that
+ * job. Native means it is keyboard reachable, findable by the browser's own in-page search even
+ * while shut, and costs no script.
+ */
+function ProjectNotes({ id }: { id: string }) {
+  const project = projects.find((p) => p.id === id)
+  if (!project) return null
   return (
-    <section id="projects-showcase" style={{ scrollMarginTop: 'var(--nav-h)' }}>
-      <h2 className="section-title" style={{ marginBottom: '0.25rem' }}>
-        Selected work
-      </h2>
-      <p className="muted" style={{ marginTop: 0 }}>
-        All of it runs here — you have already used some of it further up.
-      </p>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', marginTop: '1rem' }}>
-        {projects.map((p) => (
-          <ProjectCard key={p.id} project={p} />
+    <details className="demo-notes">
+      <summary>What went into it</summary>
+      <div className="demo-notes-body" style={{ borderLeft: `3px solid ${project.accent}` }}>
+        <p className="demo-notes-head">
+          <strong>{project.title}</strong>{' '}
+          <span className="muted">
+            {STATUS_LABEL[project.status]}
+            {project.period ? ` · ${project.period}` : ''}
+          </span>
+        </p>
+        {project.blurb.map((para, i) => (
+          <p key={i} className="muted">
+            {para}
+          </p>
         ))}
+        <ul>
+          {project.highlights.map((h, i) => (
+            <li key={i} className="muted">
+              {h}
+            </li>
+          ))}
+        </ul>
+        <p className="demo-tags">
+          {project.tags.map((t) => (
+            <span key={t} className="demo-tag">
+              {t}
+            </span>
+          ))}
+        </p>
+        {/* ⚠️ The EXTERNAL links survive the fold. The rest are "#circuit"-style and duplicate
+            the demo's own button, but evancook.dev's is the repository — the one link on this
+            page an employer is actually looking for, and deleting the card would have taken it
+            with it. */}
+        {project.links.some((l) => l.external) && (
+          <p className="demo-links">
+            {project.links
+              .filter((l) => l.external)
+              .map((l) => (
+                <a
+                  key={l.href}
+                  className="btn btn-ghost"
+                  href={l.href}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  {l.label} ↗
+                </a>
+              ))}
+          </p>
+        )}
       </div>
-    </section>
+    </details>
   )
 }
 
 /**
- * Things you can go and do, right under the hero.
+ * Everything on this site, running.
  *
- * ⚠️ THIS IS THE STRONGEST PORTFOLIO ITEM ON THE PAGE, not a concession to non-technical
- * visitors, and it took a while to see that. The worry was that easing friends and family in
- * would cheapen a professional landing page. It is the reverse: anybody hiring has seen a
- * thousand screenshots and almost never "click this, it runs, right now, in this tab". Live
- * things beat case studies at being a portfolio, and they happen to be exactly what an aunt
- * needs too.
+ * ⚠️ THEY ARE NOT TILES ANY MORE. Each one was a bordered card with a rectangle of art inside
+ * it, which is why they read as blocks rather than as demos — a box around a live thing says
+ * "here is a picture of a feature", and the one demo on this page that never had that problem is
+ * the hero's keys, which is a band with a caption under it and no box at all. So: no border, no
+ * card, the demo itself full width of its column, and the words underneath it.
  *
- * ⚠️ ABOVE the About and Skills prose. It used to be hero → three sections of writing → project
- * write-ups, so the first clickable thing on a site made of playable rooms was several screens
- * down, and nothing anywhere said you could play a piano here.
+ * ⚠️ WIDTHS STILL RUN 2,1,1,2, so the eye has somewhere to land. Each PAIR sums to the three
+ * columns, and an odd count cannot pair up — so the last one takes a row to itself rather than
+ * leaving a hole.
  */
-function HaveAGo({ authed }: { authed: boolean }) {
+function Demos({ authed }: { authed: boolean }) {
   const items = TRY_THESE.filter((t) => !t.members || authed)
+  const platform = projects.find((p) => p.id === 'platform')
+  const shown = new Set(items.map((t) => t.project).filter(Boolean))
+  const orphans = projects.filter((p) => p.id !== 'platform' && !shown.has(p.id))
   return (
-    <section className="have-a-go">
+    <section className="demos" id="projects-showcase" style={{ scrollMarginTop: 'var(--nav-h)' }}>
       <h2 className="section-title" style={{ marginBottom: '0.2rem' }}>
-        Have a go
+        What I have built
       </h2>
-      <p className="muted" style={{ margin: '0 0 0.8rem', fontSize: '0.85rem' }}>
-        Everything here is live — nothing to install, nothing to sign up for.
-      </p>
-      {/**
-       * ⚠️ WIDTHS RUN 2,1,1,2 AND REPEAT, which is the other half of "squarish" answered.
-       *
-       * Six identically sized tiles gave every room the same weight and left the eye nowhere to
-       * land. The pattern matters more than it looks: each PAIR sums to the three columns, so the
-       * rhythm reads as deliberate rather than ragged.
-       *
-       * ⚠️ AN ODD COUNT CANNOT PAIR UP, so the last card takes a row to itself. This used to
-       * be a bare 2,1,1,2 cycle that happened to be safe because both counts were even — four for
-       * a visitor, six for a member — which is exactly the kind of thing that breaks silently the
-       * next time an invitation is added. Adding the profile (everyone) and calls (members) made
-       * it five and eight, and the five left a hole.
-       */}
-      <div className="hag-grid">
+      {/* ⚠️ evancook.dev's own write-up, as the opening line. It described the whole site
+          rather than one room, so as a card among the rooms it was a thing describing its own
+          container. Here it is the sentence the section starts with. */}
+      <p className="muted demos-lede">{platform?.tagline}</p>
+      {platform && <ProjectNotes id={platform.id} />}
+      <div className="demos-grid">
         {items.map((t, i) => {
           const href = t.href ?? `#${t.id}`
           const span =
@@ -382,69 +302,48 @@ function HaveAGo({ authed }: { authed: boolean }) {
             /* the whole target, not just the room — the profile invitation carries ?demo=1 */
             window.location.hash = href.replace(/^#/, '')
           }
-          /* texture, not information: the same glyph blown up and running off the corner, so a
-             card is a shape rather than a rectangle of text */
-          const bleed = (
-            <span className="hag-bleed" aria-hidden>
-              {t.icon}
-            </span>
-          )
-          const head = (
-            <span className="hag-top">
-              <span aria-hidden className="hag-ic">
-                {t.icon}
-              </span>
-              <strong>{t.title}</strong>
-            </span>
-          )
-
-          /**
-           * ⚠️ A LIVE TILE IS A DIV, NOT A LINK. An <a> that contains a drawing surface is
-           * broken twice over: every stroke ends in a navigation, and a control nested inside a
-           * link is not something a keyboard or a screen reader can reach on its own. So the card
-           * stops being the link and grows a real one, which is also the honest shape — the pad
-           * is the invitation now, and "open the studio" is a separate thing you may want next.
-           */
-          if (t.live) {
-            return (
-              <div key={t.id} className="hag-card is-live" data-span={span}>
-                {bleed}
-                {head}
+          return (
+            <div key={t.id} className="demo" data-span={span}>
+              {/**
+               * ⚠️ A DEMO IS A DIV, NOT A LINK. An <a> wrapping a drawing surface is broken
+               * twice over: every stroke ends in a navigation, and a control nested inside a link
+               * is not reachable on its own by a keyboard or a screen reader.
+               */}
+              <div className="demo-art">
                 {t.live === 'scribble' ? (
                   <HomeScribble />
                 ) : t.live === 'snake' ? (
                   <HomeSnake />
                 ) : t.live === 'keys' ? (
                   <HomeSequencer />
-                ) : (
+                ) : t.live ? (
                   <TileArt kind={t.live} />
-                )}
-                <span className="muted hag-line">{t.line}</span>
-                <a className="hag-open" href={href} onClick={go}>
-                  {t.open ?? 'Open it'} →
-                </a>
+                ) : null}
               </div>
-            )
-          }
-
-          return (
-            <a
-              key={t.id}
-              className={'hag-card' + (i === 0 ? ' is-feature' : '')}
-              data-span={span}
-              href={href}
-              onClick={go}
-            >
-              {bleed}
-              {head}
-              <span className="muted hag-line">{t.line}</span>
-              <span className="hag-go" aria-hidden>
-                →
-              </span>
-            </a>
+              <p className="demo-title">
+                <span aria-hidden className="demo-ic">
+                  {t.icon}
+                </span>
+                <strong>{t.title}</strong>
+              </p>
+              <p className="muted demo-line">{t.line}</p>
+              <a className="demo-go" href={href} onClick={go}>
+                {t.open ?? 'Open it'} →
+              </a>
+              {t.project && <ProjectNotes id={t.project} />}
+            </div>
           )
         })}
       </div>
+      {/**
+       * ⚠️ A project a visitor cannot be SHOWN still needs somewhere to live. Dollar-a-Day is
+       * real money in real accounts, so there is no honest public demo of it — and folding the
+       * cards into the demos without catching this would have quietly deleted a project from the
+       * portfolio rather than merging it.
+       */}
+      {orphans.map((o) => (
+        <ProjectNotes key={o.id} id={o.id} />
+      ))}
     </section>
   )
 }
@@ -453,14 +352,13 @@ export function EvanCook({ authed = false }: { authed?: boolean } = {}) {
   return (
     <div className="home-page">
       <Hero />
-      <HaveAGo authed={authed} />
       {/* ⚠️ 3fr/2fr rather than the old equal halves. Two identical columns of prose is the same
           symmetry problem as the tiles, and these two are not equally interesting. */}
       <section className="home-split">
         <AboutMe />
         <SkillsCard />
       </section>
-      <Work />
+      <Demos authed={authed} />
     </div>
   )
 }
@@ -474,10 +372,12 @@ export function homePanes(): HomePane[] {
     { id: 'home:hero', title: '👋 Intro', node: <Hero /> },
     { id: 'home:about', title: 'About', node: <AboutMe /> },
     { id: 'home:skills', title: 'Skills', node: <SkillsCard /> },
+    /* ⚠️ The write-ups, not the cards — the cards are gone. A project's pane is its notes now,
+       which is the same content the demo carries folded up. */
     ...projects.map((p) => ({
       id: `home:proj:${p.id}`,
       title: p.title,
-      node: <ProjectCard project={p} />,
+      node: <ProjectNotes id={p.id} />,
     })),
   ]
 }

@@ -65,6 +65,20 @@ export const HOME: {
         ],
       },
       {
+        q: 'How did I get into this?',
+        a: [
+          'A spreadsheet. My friends and I wanted to score our workouts against each other, so I made one — then it became a single HTML file so it worked on a phone, then it needed accounts, then it needed to sync between us, and by then it was an app.',
+          'Everything since has gone the same way. Nothing here started as a project; each one started as something I wanted to exist, built at the smallest size that worked, and it grew because people kept opening it.',
+        ],
+      },
+      {
+        q: 'What am I into?',
+        a: [
+          'Most of what I like ends up in here, so the list is the site: lifting and running, films on a Friday, music, drawing, and games.',
+          'The thread through all of it is that it is shared. Almost nothing here is single player — the workout board is a league, the film ratings are an argument, the paint canvas takes two people at once, and the snake game has other people in it.',
+        ],
+      },
+      {
         q: 'How is it built?',
         a: [
           'One React app. Every project runs inside it rather than linking out somewhere, so a game, a paint studio and a workout board share the same navigation, the same account and the same theme — and you can pop any of them into its own floating window.',
