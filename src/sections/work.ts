@@ -1,18 +1,11 @@
 // Portfolio data for the unified "Evan Cook" page. Real projects, written from the
-// actual codebase. Each shot is a slide in the project's click-through slideshow:
-// it renders `src` (a real screenshot under /shots) when present, otherwise a themed
-// poster tile generated from {label, accent} — so the slideshow looks intentional
-// before real screenshots are dropped in. Add screenshots by setting `src` on a shot.
-
-export interface Shot {
-  /** Short label shown on the generated poster / as the slide caption. */
-  label: string
-  /** Optional real screenshot path, e.g. "/shots/circuit-board.png". */
-  src?: string
-  /** Optional longer caption under the slide. */
-  caption?: string
-}
-
+// actual codebase.
+//
+// ⚠️ NO SCREENSHOT FIELD, deliberately. There used to be one, with a generated gradient
+// "poster" standing in until a real image was supplied — and no real image ever was, so every
+// card shipped a coloured rectangle with a word on it. A placeholder that never gets replaced is
+// not a placeholder, it is the design. If real captures are ever taken, add the field back and
+// render them; until then the live demos further up the page are the pictures.
 export interface Project {
   id: string
   title: string
@@ -25,7 +18,6 @@ export interface Project {
   highlights: string[]
   links: { href: string; label: string; external?: boolean; primary?: boolean }[]
   accent: string
-  shots: Shot[]
 }
 
 export const projects: Project[] = [
@@ -46,12 +38,6 @@ export const projects: Project[] = [
       'Pop any panel into a draggable window, like a small desktop',
     ],
     links: [{ href: '#circuit', label: 'Open the app', primary: true }],
-    shots: [
-      { label: 'Board', caption: 'Live standings, streaks, and quick-log.' },
-      { label: 'Charts', caption: 'Cumulative race + per-category donuts.' },
-      { label: 'Movies', caption: 'A sortable leaderboard of every rating.' },
-      { label: 'Canvas', caption: 'Pop panels into draggable windows.' },
-    ],
   },
   {
     id: 'platform',
@@ -73,11 +59,6 @@ export const projects: Project[] = [
     links: [
       { href: 'https://github.com/justanothertree/yaya', label: 'View the repo', external: true },
     ],
-    shots: [
-      { label: 'Portfolio', caption: 'The page you’re reading now.' },
-      { label: 'Auth + RLS', caption: 'Members-only modules behind sign-in.' },
-      { label: 'Themes', caption: 'Dark, light, and alt palettes.' },
-    ],
   },
   {
     id: 'snake',
@@ -96,10 +77,6 @@ export const projects: Project[] = [
       'A leaderboard anyone can post to, no account needed',
     ],
     links: [{ href: '#snake', label: 'Play now', primary: true }],
-    shots: [
-      { label: 'Snake', caption: 'Canvas game with wrap-around edges.' },
-      { label: 'Rooms', caption: 'Share a link, play together.' },
-    ],
   },
   {
     id: 'finance',
@@ -118,10 +95,6 @@ export const projects: Project[] = [
       'Tracks how far ahead or behind schedule each account is',
     ],
     links: [{ href: '#investments', label: 'Try the demo', primary: true }],
-    shots: [
-      { label: 'Allocations', caption: 'Split one trade across the family.' },
-      { label: 'My slice', caption: 'Each member sees only their own.' },
-    ],
   },
 ]
 

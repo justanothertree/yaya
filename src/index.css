@@ -9238,3 +9238,13 @@ a.cz-msg-author:focus-visible {
     min-height: 40px;
   }
 }
+
+/* ⚠️ The two-column .proj-grid existed to stand a slideshow beside the write-up. With the posters
+   gone there is one column of prose, and a measure that runs the full width of a wide card is a
+   measure nobody finishes reading. */
+.proj-body {
+  max-width: 62ch;
+}
+.proj-card {
+  padding-left: calc(var(--card-pad) - 3px);
+}

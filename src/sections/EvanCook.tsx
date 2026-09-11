@@ -10,7 +10,7 @@ import { HomeSnake } from '../site/HomeSnake'
 import { HomeSequencer } from '../site/HomeSequencer'
 import { TileArt } from '../site/TileArt'
 import { IconGitHub, IconLinkedIn } from '../components/Icons'
-import { projects, skills, type Project, type Shot } from './work'
+import { projects, skills, type Project } from './work'
 import { HOME } from '../site/homeContent'
 import { HeroPlay } from '../site/HeroPlay'
 import { readableOn } from '../theme/customTheme'
@@ -21,195 +21,29 @@ const STATUS_LABEL: Record<Project['status'], string> = {
   planned: 'Planned',
 }
 
-// A themed poster used as a slide when no real screenshot is supplied.
-function Poster({ accent, label }: { accent: string; label: string }) {
-  return (
-    <svg viewBox="0 0 320 200" style={{ width: '100%', height: '100%', display: 'block' }}>
-      <defs>
-        <linearGradient id={`g-${label}`} x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0%" stopColor={accent} stopOpacity="0.85" />
-          <stop offset="100%" stopColor={accent} stopOpacity="0.28" />
-        </linearGradient>
-      </defs>
-      <rect width="320" height="200" fill={`url(#g-${label})`} />
-      <rect width="320" height="200" fill="rgba(0,0,0,0.18)" />
-      {/* faint dot grid for texture */}
-      <g fill="rgba(255,255,255,0.10)">
-        {Array.from({ length: 7 }, (_, r) =>
-          Array.from({ length: 11 }, (_, c) => (
-            <circle key={`${r}-${c}`} cx={16 + c * 29} cy={20 + r * 28} r={1.5} />
-          )),
-        )}
-      </g>
-      <text
-        x="160"
-        y="108"
-        textAnchor="middle"
-        fontSize="26"
-        fontWeight="800"
-        fill="#fff"
-        style={{ letterSpacing: '0.5px' }}
-      >
-        {label}
-      </text>
-    </svg>
-  )
-}
-
-function Slideshow({ project }: { project: Project }) {
-  const [i, setI] = useState(0)
-  const [zoom, setZoom] = useState(false)
-  /**
-   * Pictures that did not load.
-   *
-   * ⚠️ A SCREENSHOT PATH IS TYPED BY HAND, so it can be wrong — and the place it would be wrong
-   * is the public front page, where a broken-image icon is the first thing a visitor sees. The
-   * generated poster was always the fallback for "no picture yet"; a picture that fails to arrive
-   * is the same situation, so it falls back the same way instead of leaving a hole.
-   */
-  const [broken, setBroken] = useState<Set<string>>(() => new Set())
-  const shots = project.shots.length ? project.shots : ([{ label: project.title }] as Shot[])
-  const shot = shots[i]
-  const picture = shot.src && !broken.has(shot.src) ? shot.src : null
-  const go = (d: number) => setI((p) => (p + d + shots.length) % shots.length)
-
-  return (
-    <div>
-      <div
-        className="proj-media"
-        style={{
-          position: 'relative',
-          aspectRatio: '16 / 10',
-          // natural scale: the shot fills whatever holds it, at its own ratio. Capping it
-          // to stop a canvas window from scrolling was the wrong trade — a window that's
-          // too short for its content is what ▭ fit-to-content and dragging are for.
-          width: '100%',
-          borderRadius: 12,
-          overflow: 'hidden',
-          border: `1px solid ${project.accent}44`,
-          background: 'var(--b1, rgba(127,127,127,0.06))',
-        }}
-      >
-        {picture ? (
-          <img
-            src={picture}
-            alt={shot.label}
-            onClick={() => setZoom(true)}
-            onError={() => setBroken((b) => new Set(b).add(picture))}
-            style={{ width: '100%', height: '100%', objectFit: 'cover', cursor: 'zoom-in' }}
-          />
-        ) : (
-          <Poster accent={project.accent} label={shot.label} />
-        )}
-
-        {shots.length > 1 && (
-          <>
-            <button
-              className="btn btn-ghost"
-              aria-label="Previous slide"
-              onClick={() => go(-1)}
-              style={{ position: 'absolute', top: '50%', left: 8, transform: 'translateY(-50%)' }}
-            >
-              ‹
-            </button>
-            <button
-              className="btn btn-ghost"
-              aria-label="Next slide"
-              onClick={() => go(1)}
-              style={{ position: 'absolute', top: '50%', right: 8, transform: 'translateY(-50%)' }}
-            >
-              ›
-            </button>
-          </>
-        )}
-      </div>
-
-      {/* caption + dots */}
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: '0.6rem',
-          marginTop: '0.5rem',
-          minHeight: 22,
-        }}
-      >
-        <span className="muted" style={{ fontSize: '0.8rem', flex: 1 }}>
-          {shot.caption || shot.label}
-        </span>
-        {shots.length > 1 && (
-          <span style={{ display: 'inline-flex', gap: 5 }}>
-            {shots.map((_, di) => (
-              <button
-                key={di}
-                className="cz-tap"
-                aria-label={`Go to slide ${di + 1}`}
-                onClick={() => setI(di)}
-                style={{
-                  // a roomy transparent tap target (thumb-friendly) around a small dot —
-                  // 7px buttons were untappable on a phone; .cz-tap grows it again on mobile
-                  width: 28,
-                  height: 22,
-                  display: 'inline-grid',
-                  placeItems: 'center',
-                  border: 'none',
-                  padding: 0,
-                  background: 'transparent',
-                  cursor: 'pointer',
-                }}
-              >
-                <span
-                  aria-hidden
-                  style={{
-                    width: di === i ? 9 : 7,
-                    height: di === i ? 9 : 7,
-                    borderRadius: '50%',
-                    transition: 'width 0.15s, height 0.15s',
-                    background: di === i ? project.accent : 'var(--border, rgba(127,127,127,0.35))',
-                  }}
-                />
-              </button>
-            ))}
-          </span>
-        )}
-      </div>
-
-      {zoom && picture && (
-        <div
-          onClick={() => setZoom(false)}
-          style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'rgba(0,0,0,0.9)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            cursor: 'zoom-out',
-            zIndex: 1500,
-          }}
-        >
-          {/* the same picture the slide is showing, so a fallen-back slide cannot open a
-              broken one full-screen */}
-          <img
-            src={picture}
-            alt={shot.label}
-            onError={() => setBroken((b) => new Set(b).add(picture))}
-            style={{ maxWidth: '94vw', maxHeight: '92vh', borderRadius: 10 }}
-          />
-        </div>
-      )}
-    </div>
-  )
-}
-
+/**
+ * ⚠️ THE POSTERS ARE GONE, and nothing pretends to be a screenshot in their place.
+ *
+ * Each project card opened with a slideshow of generated gradient tiles — a purple rectangle
+ * with the word "Board" on it standing in for the Circuit — because real screenshots had never
+ * been taken. The code said so out loud: "a themed poster used as a slide when no real
+ * screenshot is supplied." On the half of the page an employer actually reads, three coloured
+ * rectangles with one word each is worse than no picture at all: it looks like a template
+ * somebody did not finish.
+ *
+ * ⚠️ And the page does not need them. Every one of these projects is running LIVE in Have a
+ * go, a few hundred pixels up — you can draw in the paint studio and play the snake board
+ * before you reach this section. A picture of a thing you have already used is not evidence of
+ * anything. So the two halves stop competing, which is the "fighting balance" this fixes: up
+ * there the work SHOWS itself, down here it explains itself.
+ *
+ * What replaces the poster is the project's own accent as a rule down the edge of the card —
+ * decoration that is honest about being decoration.
+ */
 function ProjectCard({ project }: { project: Project }) {
   return (
-    <article
-      className="card"
-      style={{ display: 'grid', gap: '1rem', gridTemplateColumns: '1fr', alignItems: 'start' }}
-    >
-      <div className="proj-grid" style={{ display: 'grid', gap: '1.25rem' }}>
-        <Slideshow project={project} />
+    <article className="card proj-card" style={{ borderLeft: `3px solid ${project.accent}` }}>
+      <div className="proj-body">
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
             <h3 style={{ margin: 0, fontSize: '1.3rem' }}>{project.title}</h3>
@@ -490,7 +324,7 @@ function Work() {
         Selected work
       </h2>
       <p className="muted" style={{ marginTop: 0 }}>
-        All of it runs here. Click through the slides.
+        All of it runs here — you have already used some of it further up.
       </p>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', marginTop: '1rem' }}>
         {projects.map((p) => (
