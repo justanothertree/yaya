@@ -371,6 +371,17 @@ export function GameManager({
    * cannot see a way to open.
    */
   const [sideOpen, setSideOpen] = useState(false)
+  /**
+   * ⚠️ MULTIPLAYER OPENS IT. In versus the LOBBY LIST lives in this panel, and narrow the panel
+   * starts shut — so on a phone tapping Multiplayer looked like it did nothing at all. Solo has
+   * only settings in there, which nobody needs to be shown.
+   *
+   * ⚠️ Keyed on the mode changing, not on `mode` being versus, so closing the panel yourself
+   * afterwards sticks instead of springing back open on the next render.
+   */
+  useEffect(() => {
+    setSideOpen(mode === 'versus')
+  }, [mode])
 
   const chatSeqRef = useRef(0)
   const chatInputRef = useRef<HTMLInputElement | null>(null)
