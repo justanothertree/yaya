@@ -20,9 +20,32 @@
 
 export type HomeText = { heading: string; blurb: string }
 
+/**
+ * One thread of the about block: a question somebody might actually ask, and the answer.
+ *
+ * ⚠️ QUESTIONS IN A VISITOR'S WORDS, not headings in mine. "Background" and "Experience" are
+ * labels on a form; "What is all this?" is the thing somebody is actually thinking on the way
+ * past. The block is explorable rather than a wall of prose because a stranger reads one answer
+ * and leaves, and they should get to pick which one.
+ *
+ * ⚠️ ADDING ONE IS ONE OBJECT. That is the whole design: the threads here are only the ones
+ * that could be written from what already exists — the Circuit's history, how the site is put
+ * together, and what it is for. The ones about a PERSON (where I came from, what I am into, what
+ * I have done before) are not here because nobody but Evan can write them, and a portfolio with
+ * invented biography on it is worse than a short one. Add them here and they appear.
+ */
+export type AboutThread = {
+  /** the question, as a visitor would put it */
+  q: string
+  /** the answer, one entry per paragraph */
+  a: string[]
+  /** where to go if this one landed */
+  go?: { label: string; href: string; external?: boolean }
+}
+
 export const HOME: {
   hero: HomeText
-  about: { heading: string; paragraphs: string[] }
+  about: { heading: string; lede: string; threads: AboutThread[] }
 } = {
   hero: {
     heading:
@@ -31,10 +54,31 @@ export const HOME: {
       'Tools and toys my friends and family use every day. Everything here is live — press something.',
   },
   about: {
-    heading: 'About',
-    paragraphs: [
-      'The Circuit started as a spreadsheet my friends and I used to score our workouts. Then a single HTML file. Now it’s the biggest thing on this site and they still use it daily.',
-      'That’s how all of it goes — ideas I want to exist, built brick by brick. I work with AI the whole way through, so this site is also a record of what building that way is like.',
+    heading: 'About me',
+    lede: 'Pick whichever one you were going to ask.',
+    threads: [
+      {
+        q: 'What is all this?',
+        a: [
+          'The Circuit started as a spreadsheet my friends and I used to score our workouts. Then a single HTML file. Now it’s the biggest thing on this site and they still use it daily.',
+          'That’s how all of it goes — ideas I want to exist, built brick by brick. Nothing here is a demo of something else; every one of them is a thing somebody actually uses.',
+        ],
+      },
+      {
+        q: 'How is it built?',
+        a: [
+          'One React app. Every project runs inside it rather than linking out somewhere, so a game, a paint studio and a workout board share the same navigation, the same account and the same theme — and you can pop any of them into its own floating window.',
+          'Supabase behind it, with who-can-see-what decided by the database rather than by the page asking nicely. The repository is public, so the security has to hold up when anybody can read exactly how it works.',
+          'I work with AI the whole way through, so this site is also a record of what building that way is like.',
+        ],
+      },
+      {
+        q: 'Who is it for?',
+        a: [
+          'My friends and my family first — they are the ones in the Circuit every day and in the chat every evening.',
+          'Which sets the bar for everything else: if somebody who does not care about software cannot open a page and work it out without me stood next to them, it is not finished.',
+        ],
+      },
     ],
   },
 }

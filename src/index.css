@@ -9189,3 +9189,58 @@ a.cz-msg-author:focus-visible {
     transform: translateX(320px);
   }
 }
+
+/* ── about me, as questions you open ────────────────────────────────────────
+   ⚠️ The answer is keyed on the question in the component, so it is a NEW element each time and
+   the fade below actually runs. Animating a paragraph whose text was edited in place does
+   nothing — the element never entered, so there is no entrance to animate. */
+.about-lede {
+  margin: 0 0 0.7rem;
+  font-size: 0.86rem;
+}
+.about-qs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-bottom: 0.8rem;
+}
+.about-q {
+  font-size: 0.85rem;
+  text-align: left;
+}
+.about-q.is-on {
+  /* the solid .btn default already marks it; this only stops the ghost border ghosting through */
+  border: 1px solid transparent;
+}
+.about-a > p {
+  line-height: 1.6;
+}
+.about-a > p:last-of-type {
+  margin-bottom: 0;
+}
+.about-go {
+  margin-top: 0.7rem;
+  font-size: 0.82rem;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .about-a {
+    animation: about-in 0.28s ease-out;
+  }
+}
+@keyframes about-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@media (max-width: 40rem) {
+  /* the questions are the control here, so they get a finger-sized target rather than the
+     0.85rem chip they are on a mouse */
+  .about-q {
+    min-height: 40px;
+  }
+}

@@ -377,22 +377,64 @@ function Hero() {
   )
 }
 
-function AboutCard() {
+/**
+ * About me, as a set of questions you open.
+ *
+ * ⚠️ TWO PARAGRAPHS OF PROSE WAS THE WRONG SHAPE for the one section a stranger reads about a
+ * person. It says everything at once to somebody who wanted one thing, and it cannot grow — a
+ * third paragraph makes it a wall, and the fourth means nobody reads any of them. Questions let
+ * the reader take only what they came for, and the section stays the same size however much is
+ * behind it.
+ *
+ * ⚠️ THE FIRST ONE IS OPEN. A row of closed questions is a row of buttons, and a section that
+ * shows nothing until you press something is a section most people walk past. Something is always
+ * being answered.
+ */
+function AboutMe() {
+  const [open, setOpen] = useState(0)
+  const thread = HOME.about.threads[open]
   return (
-    <div className="card">
-      <h2 className="section-title">{HOME.about.heading}</h2>
-      {HOME.about.paragraphs.map((text, i) => (
-        <p
-          key={i}
-          className="muted"
-          style={{
-            lineHeight: 1.6,
-            marginBottom: i === HOME.about.paragraphs.length - 1 ? 0 : undefined,
-          }}
-        >
-          {text}
-        </p>
-      ))}
+    <div className="card about-me">
+      <h2 className="section-title" style={{ marginBottom: '0.2rem' }}>
+        {HOME.about.heading}
+      </h2>
+      <p className="muted about-lede">{HOME.about.lede}</p>
+      <div className="about-qs" role="tablist" aria-label="About me">
+        {HOME.about.threads.map((t, i) => (
+          <button
+            key={t.q}
+            role="tab"
+            aria-selected={i === open}
+            /* ⚠️ Ghost when closed, solid when open — the OTHER way round it was unreadable.
+               `.btn` is a solid accent button in this codebase, so three questions were three
+               loud green chips and the open one was marked by a border colour nobody could pick
+               out. The open one should be the one that looks pressed. */
+            className={'btn about-q' + (i === open ? ' is-on' : ' btn-ghost')}
+            onClick={() => setOpen(i)}
+          >
+            {t.q}
+          </button>
+        ))}
+      </div>
+      {/* ⚠️ Keyed on the question, so React replaces the answer rather than editing the old one
+          in place — which is what lets it fade in and makes the switch legible instead of the text
+          silently becoming different text. */}
+      <div className="about-a" key={thread.q}>
+        {thread.a.map((para, i) => (
+          <p key={i} className="muted">
+            {para}
+          </p>
+        ))}
+        {thread.go && (
+          <a
+            className="btn btn-ghost about-go"
+            href={thread.go.href}
+            {...(thread.go.external ? { target: '_blank', rel: 'noreferrer' } : {})}
+          >
+            {thread.go.label} →
+          </a>
+        )}
+      </div>
     </div>
   )
 }
@@ -578,7 +620,7 @@ export function EvanCook({ authed = false }: { authed?: boolean } = {}) {
       {/* ⚠️ 3fr/2fr rather than the old equal halves. Two identical columns of prose is the same
           symmetry problem as the tiles, and these two are not equally interesting. */}
       <section className="home-split">
-        <AboutCard />
+        <AboutMe />
         <SkillsCard />
       </section>
       <Work />
@@ -593,7 +635,7 @@ export type HomePane = { id: string; title: string; node: ReactNode }
 export function homePanes(): HomePane[] {
   return [
     { id: 'home:hero', title: '👋 Intro', node: <Hero /> },
-    { id: 'home:about', title: 'About', node: <AboutCard /> },
+    { id: 'home:about', title: 'About', node: <AboutMe /> },
     { id: 'home:skills', title: 'Skills', node: <SkillsCard /> },
     ...projects.map((p) => ({
       id: `home:proj:${p.id}`,
