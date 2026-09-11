@@ -7,9 +7,8 @@ import {
   useSyncExternalStore,
   type CSSProperties,
 } from 'react'
-import { KitBar } from '../ui/KitBar'
 import { ShadePad } from '../theme/ColorField'
-import { loadLastKit, paintKits, saveLastKit, type PaintKit } from '../draw/paintKit'
+import { loadLastKit, saveLastKit } from '../draw/paintKit'
 import {
   NONE,
   RAINBOW,
@@ -168,6 +167,8 @@ export function PaintRoom() {
   const [colour, setColour] = useState(() => LAST?.colour ?? '#22c55e')
   /* folded away by default — see the note where it is rendered */
   const [paperOpen, setPaperOpen] = useState(false)
+  /* only read on narrow screens, where the brush row becomes a menu */
+  const [toolsOpen, setToolsOpen] = useState(false)
   /**
    * The paper's shape, as width over height — or free, meaning whatever the window leaves.
    *
@@ -186,7 +187,16 @@ export function PaintRoom() {
   })
   /** the board's real pixel size, so the shape you are drawing on is never a guess */
   const [dims, setDims] = useState({ w: 0, h: 0 })
-  const [alpha, setAlpha] = useState(() => LAST?.alpha ?? 1)
+  /**
+   * ⚠️ ALWAYS FULL AT THE START, and deliberately not restored from the last session.
+   *
+   * Every other brush setting is worth remembering — the tool, the colour, the width are all
+   * things you were in the middle of. Opacity is not like them: it is turned down for one
+   * particular effect and then it is done, and coming back a day later to paint that is quietly
+   * see-through is confusing in a way that a remembered brush width never is. The value still
+   * goes into a saved kit, where it was chosen on purpose.
+   */
+  const [alpha, setAlpha] = useState(1)
   const [width, setWidth] = useState(() => LAST?.width ?? 0.008)
   /** kaleidoscope segments for strokes drawn from now on — see Stroke.k */
   const [symmetry, setSymmetry] = useState(() => LAST?.symmetry ?? 0)
@@ -580,6 +590,70 @@ export function PaintRoom() {
     setLayer(layers)
   }
   /**
+   * Move a layer past its neighbour, taking its strokes with it.
+   *
+   * ⚠️ A LAYER IS A NUMBER ON A STROKE, not a container — see Stroke.l — so reordering is a swap
+   * of that number on both sides rather than moving anything. The name, the hidden flag and which
+   * layer you are drawing on all follow, or the row you just moved would be wearing its
+   * neighbour's label.
+   *
+   * ⚠️ `s.l ?? 0` everywhere, because absent means the bottom layer. Comparing s.l directly would
+   * quietly leave every stroke from before layers existed behind on layer zero.
+   */
+  const moveLayer = (i: number, dir: 1 | -1) => {
+    const j = i + dir
+    if (j < 0 || j >= layers) return
+    setStrokes((list) =>
+      list.map((st) => {
+        const at = st.l ?? 0
+        if (at === i) return { ...st, l: j }
+        if (at === j) return { ...st, l: i }
+        return st
+      }),
+    )
+    setLayerNames((n) => {
+      const c = [...n]
+      while (c.length < layers) c.push('')
+      const a = c[i]
+      c[i] = c[j]
+      c[j] = a
+      return c
+    })
+    setHidden((h) => h.map((n) => (n === i ? j : n === j ? i : n)))
+    setLayer((cur) => (cur === i ? j : cur === j ? i : cur))
+  }
+
+  /**
+   * Remove a layer and everything drawn on it.
+   *
+   * ⚠️ ASKS FIRST WHEN THERE IS SOMETHING TO LOSE, because undo cannot bring it back. Undo here
+   * steps back one stroke at a time (see undo) — it is not a snapshot history — so a layer with
+   * forty strokes on it is forty presses away even in principle, and in practice gone. An empty
+   * layer is nothing to lose and goes without a question.
+   *
+   * ⚠️ Everything above it shifts DOWN a number, or the strokes on those layers would be
+   * pointing at a layer that is no longer there and would all collapse onto the bottom.
+   */
+  const removeLayer = (i: number) => {
+    if (layers <= 1) return
+    const count = strokes.filter((st) => (st.l ?? 0) === i).length
+    if (count && !window.confirm(`Delete ${nameOf(i)} and the ${count} strokes on it?`)) return
+    setUndone([])
+    setStrokes((list) =>
+      list
+        .filter((st) => (st.l ?? 0) !== i)
+        .map((st) => {
+          const at = st.l ?? 0
+          return at > i ? { ...st, l: at - 1 } : st
+        }),
+    )
+    setLayerNames((n) => n.filter((_, k) => k !== i))
+    setHidden((h) => h.filter((n) => n !== i).map((n) => (n > i ? n - 1 : n)))
+    setLayer((cur) => Math.min(cur > i ? cur - 1 : cur, layers - 2))
+    setSel([])
+  }
+
+  /**
    * ⚠️ Starting an animation puts you on frame 1, not frame 0.
    *
    * Everything already drawn has no frame, so it shows on all of them — it has become the
@@ -589,9 +663,18 @@ export function PaintRoom() {
    */
   const startFrames = () => setFrame((f) => (f === null ? Math.max(1, frames) : null))
 
+  /**
+   * ⚠️ STOPS THE ANIMATION FIRST, or it does not work at all.
+   *
+   * The play loop writes `frame` on every tick, so a new frame chosen while it is running is
+   * overwritten before you ever see it — the button appeared to do nothing while the animation
+   * carried on, which is exactly how it was reported. And stopping is what you wanted anyway:
+   * you add a frame in order to draw on it.
+   */
   const addFrame = () => {
     const at = Math.max(frames, (frame ?? 0) + 1)
     if (at >= 60) return
+    setPlaying(false)
     setFrame(at)
   }
 
@@ -898,14 +981,40 @@ export function PaintRoom() {
           paper, live.
         </AlsoTogether>
       )}
+      {/**
+       * ⚠️ EIGHTEEN BRUSHES IS A SCROLL ON A PHONE, so there it is one button that opens them.
+       *
+       * The row is fine on a desktop and stays exactly as it was — every brush visible, one press
+       * each. On a narrow screen the same row pushed the paper down the page and had to be
+       * scrolled past to reach anything else, which is the complaint. The button names the brush
+       * you are on, so the state is still on screen when the list is not.
+       *
+       * ⚠️ One list, shown or hidden by a media query, rather than two renderings of it. Two
+       * would drift, and the second copy would be the one nobody tested.
+       */}
       <div className="paint-bar">
-        <div className="fx-style-row paint-tools">
+        <button
+          className="btn paint-tool-open"
+          aria-expanded={toolsOpen}
+          onClick={() => setToolsOpen((v) => !v)}
+          title="Choose a brush"
+        >
+          <span aria-hidden>{TOOLS.find(([id]) => id === tool)?.[1]}</span>
+          {TOOLS.find(([id]) => id === tool)?.[2] ?? 'Brush'}
+          <span aria-hidden>{toolsOpen ? '▴' : '▾'}</span>
+        </button>
+        <div className={'fx-style-row paint-tools' + (toolsOpen ? ' is-open' : '')}>
           {TOOLS.map(([id, icon, label]) => (
             <button
               key={id}
               className={'fx-style-btn' + (tool === id ? ' is-on' : '')}
               aria-pressed={tool === id}
-              onClick={() => setTool(id)}
+              onClick={() => {
+                setTool(id)
+                /* closes on a phone, where it is a menu; harmless on a desktop, where the row
+                   is always open and this flag is not read */
+                setToolsOpen(false)
+              }}
             >
               <span aria-hidden>{icon}</span>
               <span className="fx-style-label">{label}</span>
@@ -986,6 +1095,35 @@ export function PaintRoom() {
               title={hidden.includes(i) ? 'Show this layer' : 'Hide this layer'}
             >
               {hidden.includes(i) ? '🚫' : '👁'}
+            </button>
+            {/* ⚠️ Up means further FORWARD in the picture, which is up this list too — the rows
+                are drawn highest first, so the arrows point the way the layer actually moves. */}
+            <button
+              className="paint-layer-move"
+              onClick={() => moveLayer(i, 1)}
+              disabled={i >= layers - 1}
+              title={`Move ${nameOf(i)} in front`}
+              aria-label={`Move ${nameOf(i)} in front`}
+            >
+              ▲
+            </button>
+            <button
+              className="paint-layer-move"
+              onClick={() => moveLayer(i, -1)}
+              disabled={i <= 0}
+              title={`Move ${nameOf(i)} behind`}
+              aria-label={`Move ${nameOf(i)} behind`}
+            >
+              ▼
+            </button>
+            <button
+              className="paint-layer-move"
+              onClick={() => removeLayer(i)}
+              disabled={layers <= 1}
+              title={`Delete ${nameOf(i)}`}
+              aria-label={`Delete ${nameOf(i)}`}
+            >
+              ✕
             </button>
           </span>
         ))}
@@ -1240,32 +1378,15 @@ export function PaintRoom() {
             ))}
           </span>
         </label>
-        {/* ⚠️ SIX CONTROLS ARE ENOUGH TO BE WORTH A NAME. Tool, colour, alpha, width, symmetry
-            and echo make a way of drawing rather than a setting, and rebuilding one from memory
-            is the thing that stops people trying the others. Saved palettes made the same case
-            for three numbers. */}
-        <KitBar
-          store={paintKits}
-          placeholder="Name this brush"
-          capture={(name) => ({ name, tool, colour, alpha, width, symmetry, echo })}
-          apply={(k: PaintKit) => {
-            setTool(k.tool)
-            setColour(k.colour)
-            setAlpha(k.alpha)
-            setWidth(k.width)
-            setSymmetry(k.symmetry)
-            setEcho(k.echo)
-          }}
-          describe={(k) =>
-            [
-              TOOLS.find(([id]) => id === k.tool)?.[2] ?? k.tool,
-              k.symmetry ? `${k.symmetry}-fold` : null,
-              k.echo ? `echo ${k.echo}` : null,
-            ]
-              .filter(Boolean)
-              .join(' · ')
-          }
-        />
+        {/* ⚠️ NAMED BRUSHES WERE REMOVED — "the name this brush is kind of pointless".
+            The argument for them was that six controls make a way of drawing rather than a
+            setting, which is true and still was not worth the row: naming a brush is a thing you
+            have to decide to do before you can benefit from it, and nobody did. The tool, colour,
+            width, symmetry and echo you were last using are still restored on their own (see
+            saveLastKit), which is the part people actually relied on.
+
+            paintKits is left in place and untouched, so anything already saved is still there and
+            putting this back is a few lines rather than a rebuild. */}
         <button className="btn" onClick={undo} disabled={!strokes.length} title="Undo (Ctrl+Z)">
           ↶ Undo
         </button>

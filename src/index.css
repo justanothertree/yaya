@@ -8055,6 +8055,44 @@ a.cz-msg-author:focus-visible {
 /* ── paper, folded ───────────────────────────────────────────────────────────
    A swatch that says what the paper is and opens the controls for it, rather than a second pad
    sitting next to the brush's looking exactly as important. */
+/* ── brushes: a row on a desktop, a menu on a phone ──────────────────────────
+   One list either way — see the note in PaintRoom. The button is the whole control on narrow
+   screens and does not exist on wide ones. */
+.paint-tool-open {
+  display: none;
+  align-items: center;
+  gap: 0.35rem;
+}
+@media (max-width: 40rem) {
+  .paint-tool-open {
+    display: inline-flex;
+  }
+  .paint-tools {
+    display: none;
+  }
+  .paint-tools.is-open {
+    display: grid;
+  }
+}
+
+.paint-layer-move {
+  appearance: none;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 0 2px;
+  font-size: 0.68rem;
+  line-height: 1;
+}
+.paint-layer-move:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+.paint-layer-move:not(:disabled):hover {
+  color: var(--accent);
+}
+
 .paint-paper {
   position: relative;
 }
@@ -8081,14 +8119,25 @@ a.cz-msg-author:focus-visible {
     3px -3px,
     -3px 0;
 }
+/**
+ * ⚠️ AN EXPLICIT WIDTH, and it is not cosmetic. .cf-pad sets a height and no width, because it
+ * is a block that fills whatever holds it — and an absolutely positioned box shrinks to fit its
+ * contents, so the two together gave a shade pad six pixels wide. Measured: 6px against the
+ * brush pad's 135. The palette was not misbehaving, it had no room to exist in.
+ *
+ * Stacked rather than in a row for the same reason: the pad wants the full width of the popover
+ * and the None button underneath it, not a share of the same line.
+ */
 .paint-paper-pop {
   position: absolute;
   z-index: 5;
   top: calc(100% + 0.35rem);
   left: 0;
-  display: inline-flex;
-  align-items: center;
-  gap: 0.3rem;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  width: 12rem;
+  gap: 0.35rem;
   padding: 0.45rem;
   border: 1px solid var(--border);
   border-radius: 10px;
@@ -8103,6 +8152,7 @@ a.cz-msg-author:focus-visible {
     box-shadow: none;
     padding: 0.35rem 0;
     border: 0;
+    width: 100%;
   }
 }
 
