@@ -9630,3 +9630,56 @@ a.cz-msg-author:focus-visible {
     min-height: 40px;
   }
 }
+
+/* ── paint, under a thumb ───────────────────────────────────────────────────
+   ⚠️ MEASURED, NOT GUESSED. At 375px, 25 of the paint room's 43 controls were under 28px — far
+   and away the worst room on the site (the visualiser had 9 of 38, the instrument 5 of 51). The
+   colour swatches were 22×22 and the layer row's move and delete glyphs were 13–15px WIDE. A
+   fingertip contact patch is around 40px; a 13px target is not a small button, it is a button you
+   press by accident or not at all.
+
+   ⚠️ Only below 40rem. On a mouse these sizes are fine and the compactness is the point — a
+   swatch row that fits fourteen colours on one line is easier to scan than one that wraps three
+   times. This is not a redesign, it is the same controls at a size a hand can use. */
+@media (max-width: 40rem) {
+  .paint-swatches {
+    gap: 6px;
+  }
+  .paint-swatch {
+    width: 36px;
+    height: 36px;
+    border-radius: 6px;
+  }
+  /* the layer pill: name, eye, up, down, delete — all of them were 23px tall */
+  .paint-layer-pick,
+  .paint-layer-eye,
+  .paint-layer-move {
+    min-height: 40px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .paint-layer-move {
+    /* 13px wide is the worst target in the room; these are glyph-only so they need width too */
+    min-width: 34px;
+    padding: 0 6px;
+    font-size: 0.8rem;
+  }
+  .paint-layer-eye {
+    min-width: 40px;
+  }
+  .paint-layer-pick {
+    padding-inline: 0.7rem;
+  }
+  /* ⚠️ And the row that matters most: Gallery, Keep, Tools and fullscreen are the room's primary
+     actions and every one of them was 21–22px tall. Something in this row overrides .btn's own
+     padding, so the minimum has to be stated here. */
+  .paint-shape-row .btn {
+    min-height: 40px;
+  }
+  /* the dismiss on the "also drawing here" notice — 14×18 is a miss, not a button */
+  .also-together-x {
+    min-width: 32px;
+    min-height: 32px;
+  }
+}
