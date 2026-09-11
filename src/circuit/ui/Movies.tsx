@@ -235,7 +235,9 @@ export function Movies({
         <button className="btn" onClick={() => setAdding(true)}>
           ＋ Add
         </button>
-        <span style={{ display: 'inline-flex', gap: '0.35rem', marginLeft: 'auto' }}>
+        {/* ⚠️ No marginLeft:auto. Pushed right it left a hole beside the title on a phone and
+            still wrapped to its own line anyway, so the gap bought nothing. */}
+        <span className="cz-view-tools" style={{ display: 'inline-flex', gap: '0.35rem' }}>
           {(
             [
               ['board', '📋 Board'],
@@ -296,43 +298,31 @@ export function Movies({
         </div>
       )}
 
-      {view === 'board' && (
-        <div style={{ marginTop: '0.6rem' }}>
-          <button
-            className="btn btn-ghost"
-            onClick={() => setShowCols((v) => !v)}
-            style={{ fontSize: '0.82rem' }}
-            aria-expanded={showCols}
-          >
-            👁 Columns
-            {hidden.size ? ` (${allRaters.length - hidden.size}/${allRaters.length})` : ''}
-          </button>
-          {showCols && (
-            <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap', marginTop: '0.5rem' }}>
-              {allRaters.map((p) => {
-                const on = !hidden.has(p.id)
-                return (
-                  <button
-                    key={p.id}
-                    className="btn"
-                    onClick={() => toggleCol(p.id)}
-                    title={on ? `Hide ${p.name}` : `Show ${p.name}`}
-                    style={{
-                      borderColor: p.color,
-                      color: on ? '#fff' : p.color,
-                      background: on ? p.color : 'transparent',
-                      fontWeight: 700,
-                      opacity: on ? 1 : 0.55,
-                      fontSize: '0.8rem',
-                    }}
-                  >
-                    {on ? '✓ ' : ''}
-                    {p.name}
-                  </button>
-                )
-              })}
-            </div>
-          )}
+      {/* the rater toggles, under the row that opens them */}
+      {view === 'board' && showCols && (
+        <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap', marginTop: '0.5rem' }}>
+          {allRaters.map((p) => {
+            const on = !hidden.has(p.id)
+            return (
+              <button
+                key={p.id}
+                className="btn"
+                onClick={() => toggleCol(p.id)}
+                title={on ? `Hide ${p.name}` : `Show ${p.name}`}
+                style={{
+                  borderColor: p.color,
+                  color: on ? '#fff' : p.color,
+                  background: on ? p.color : 'transparent',
+                  fontWeight: 700,
+                  opacity: on ? 1 : 0.55,
+                  fontSize: '0.8rem',
+                }}
+              >
+                {on ? '✓ ' : ''}
+                {p.name}
+              </button>
+            )
+          })}
         </div>
       )}
 
@@ -342,16 +332,32 @@ export function Movies({
         </div>
       )}
 
+      {/**
+       * ⚠️ ONE ROW OF VIEW CONTROLS, left aligned. Columns had a line, the sorts had another,
+       * and the sorts hugged the right edge — so on a phone this was two rows with a hole in
+       * each. They answer the same question, which is what the board shows, so they belong on
+       * the same line and the line should start where the eye already is.
+       */}
       {view === 'board' && (
         <span
+          className="cz-view-tools"
           style={{
             display: 'flex',
             gap: '0.35rem',
             flexWrap: 'wrap',
-            justifyContent: 'flex-end',
-            marginTop: '0.7rem',
+            alignItems: 'center',
+            marginTop: '0.6rem',
           }}
         >
+          <button
+            className="btn btn-ghost"
+            onClick={() => setShowCols((v) => !v)}
+            style={{ fontSize: '0.82rem' }}
+            aria-expanded={showCols}
+          >
+            👁 Columns
+            {hidden.size ? ` (${allRaters.length - hidden.size}/${allRaters.length})` : ''}
+          </button>
           {(
             [
               ['avg', 'Avg'],

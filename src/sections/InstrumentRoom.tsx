@@ -505,6 +505,8 @@ export function InstrumentRoom() {
     return Number.isFinite(v) && v >= 0 && v <= 11 ? v : 0
   })
   const [held, setHeld] = useState<number[]>([])
+  /* only read on narrow screens, where the instrument grid becomes a menu */
+  const [picksOpen, setPicksOpen] = useState(false)
   const loop = useSyncExternalStore(subscribeLoop, loopState, loopState)
   const [vol, setVol] = useState(() => volume('instrument'))
   useEffect(() => onMixerChange(() => setVol(volume('instrument'))), [])
@@ -774,8 +776,28 @@ export function InstrumentRoom() {
           actually play together rather than take turns.
         </AlsoTogether>
       )}
+      {/**
+       * ⚠️ A MENU ON A PHONE, exactly like the paint room's brushes and for the same measurement:
+       * two dozen instruments in a four-wide grid is six rows and about seven hundred pixels of
+       * picker, so the keys are the only thing on screen and everything else — the knobs, the
+       * looper, the recorder — is below a wall you have to scroll past to reach.
+       *
+       * The grid is untouched on a desktop, where it fits and browsing it is the point. One list
+       * either way, shown or hidden by a media query: two renderings would drift, and the second
+       * would be the one nobody tested.
+       */}
       <div className="inst-bar">
-        <div className="fx-style-row inst-picks">
+        <button
+          className="btn inst-pick-open"
+          aria-expanded={picksOpen}
+          onClick={() => setPicksOpen((v) => !v)}
+          title="Choose an instrument"
+        >
+          <span aria-hidden>{INSTRUMENTS.find(([id]) => id === inst)?.[1]}</span>
+          {INSTRUMENTS.find(([id]) => id === inst)?.[2] ?? 'Keys'}
+          <span aria-hidden>{picksOpen ? '▴' : '▾'}</span>
+        </button>
+        <div className={'fx-style-row inst-picks' + (picksOpen ? ' is-open' : '')}>
           {INSTRUMENTS.map(([id, icon, name]) => (
             <button
               key={id}
@@ -787,6 +809,9 @@ export function InstrumentRoom() {
                 stopLive()
                 setHeld([])
                 setInst(id)
+                /* closes on a phone, where it is a menu; ignored on a desktop, where the grid is
+                   always open and this flag is not read */
+                setPicksOpen(false)
               }}
             >
               <span aria-hidden>{icon}</span>

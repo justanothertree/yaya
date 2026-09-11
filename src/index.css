@@ -7163,6 +7163,60 @@ a.cz-msg-author:focus-visible {
   }
 }
 
+/**
+ * ⚠️ PUSHED RIGHT ON A DESKTOP, PACKED LEFT ON A PHONE.
+ *
+ * margin-left:auto puts a control at the far end of a row, which is right when the row has room.
+ * When it wraps it does not stop being "at the far end" — it lands alone on its own line with
+ * the whole width as a gap beside it, which is what the circuit picker and the undo pair were
+ * doing on a phone. Moved out of the inline styles so a media query can take it back.
+ */
+.cz-head-filter,
+.cz-tool-end {
+  margin-left: auto;
+}
+@media (max-width: 40rem) {
+  .cz-head-filter,
+  .cz-tool-end {
+    margin-left: 0;
+  }
+}
+
+/* ── instruments: a grid on a desktop, a menu on a phone ──────────────────────
+   Same shape as the paint room's brushes — see the note in InstrumentRoom. */
+.inst-pick-open {
+  display: none;
+  align-items: center;
+  gap: 0.35rem;
+}
+@media (max-width: 40rem) {
+  .inst-pick-open {
+    display: inline-flex;
+  }
+  .inst-picks {
+    display: none;
+  }
+  .inst-picks.is-open {
+    display: grid;
+  }
+}
+
+/**
+ * ⚠️ VIEW CONTROLS SHRINK ON A PHONE, so they stop wrapping into a stack of half-empty lines.
+ *
+ * Measured at 375x812: Board/Stats took a line, Columns and the sorts took two more, and "Date"
+ * sat alone on the last one — 640px of chrome before the first film. These are not primary
+ * actions; they say how the board is shown, and at full button size they were costing more
+ * screen than the board.
+ */
+@media (max-width: 40rem) {
+  .cz-view-tools .btn,
+  .cz-view-tools .btn-ghost {
+    padding: 4px 9px;
+    font-size: 0.78rem;
+  }
+}
+
 /* a hairline between the two groups now sharing a row — see the note in PaintRoom */
 .paint-row-divide {
   width: 1px;

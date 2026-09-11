@@ -435,11 +435,7 @@ export function Circuit({
             {/* the circuit filter rides up here on the title line rather than taking a row of
                 its own below the tabs — and because it lives in the header it now shows on
                 every tab, including the Log, instead of appearing and vanishing */}
-            {groupPicker && (
-              <span className="cz-head-filter" style={{ marginLeft: 'auto' }}>
-                {groupPicker}
-              </span>
-            )}
+            {groupPicker && <span className="cz-head-filter">{groupPicker}</span>}
           </div>
 
           {!authed && <DemoBanner />}
@@ -467,10 +463,10 @@ export function Circuit({
               ))}
             </span>
             <span
+              className="cz-tool-end"
               style={{
                 display: 'inline-flex',
                 gap: '0.5rem',
-                marginLeft: 'auto',
                 alignItems: 'center',
               }}
             >
