@@ -1739,27 +1739,39 @@ export function AudioVisualizer() {
       q.clickY = p.y
     }
     /**
-     * Double-tap the picture to go fullscreen, and back.
+     * Double-tap or double-click the picture to go fullscreen, and back.
      *
-     * ⚠️ TOUCH ONLY. With a mouse there is already a button and the F key, and a stray
-     * double-click on the canvas is something people do — several modes answer clicks, so
-     * stealing that gesture would fight them. On a phone there is no F key, the button is small,
-     * and double-tapping the picture is what every video player has trained people to do.
+     * ⚠️ IT USED TO BE TOUCH ONLY, on the reasoning that a mouse already has a button and the F
+     * key, and that several modes answer clicks so taking the gesture would fight them. Asked for
+     * on desktop anyway, which settles it: the button is easy to miss on a big screen and every
+     * video player has trained people to try this. The cost is real and worth saying — a mode
+     * that answers clicks still gets both of them — but it is a gesture somebody has to mean.
+     *
+     * ⚠️ BOTH PRESSES HAVE TO LAND IN THE SAME PLACE, which is what keeps it from firing during
+     * ordinary play. Clicking twice in quick succession while working a mode means two different
+     * spots; a double-click means one. Twenty-four pixels is generous enough for a shaky hand and
+     * far tighter than the distance a mode's second click would usually be.
      *
      * ⚠️ Not on the controls or the pin: tapping twice on a slider is ordinary use of a slider,
      * and a second tap on the pin is how you would grab it again after nudging it.
      */
     let lastTap = 0
+    let lastTapX = 0
+    let lastTapY = 0
     const onUp = (e: PointerEvent) => {
       ptr.current.down = false
-      if (e.pointerType !== 'touch') return
       const t = e.target
       if (t instanceof Element && t.closest('.viz-controls, .viz-anchor, .viz-float')) return
       const now = performance.now()
-      if (now - lastTap < DOUBLE_TAP_MS) {
+      const near = Math.hypot(e.clientX - lastTapX, e.clientY - lastTapY) < 24
+      if (now - lastTap < DOUBLE_TAP_MS && near) {
         lastTap = 0
         goFullRef.current?.()
-      } else lastTap = now
+        return
+      }
+      lastTap = now
+      lastTapX = e.clientX
+      lastTapY = e.clientY
     }
     /**
      * The wheel zooms.

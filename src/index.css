@@ -7124,6 +7124,58 @@ a.cz-msg-author:focus-visible {
 /* ⚠️ The checkerboard is the point, not decoration: a drawing is TRANSPARENT, so this is
    the page showing you where the paint ends. Alpha is a goal feature and you cannot judge
    it against an opaque board. */
+/* ── the paper's shape, said out loud ────────────────────────────────────────
+   A row above the board: what shape the paper is, how big it really is, and a way to fill the
+   screen with the room. */
+.paint-shape-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.4rem;
+}
+.paint-shape {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.82rem;
+}
+.paint-dims {
+  font-family: var(--mono);
+  font-size: 0.76rem;
+  margin-left: auto;
+}
+.paint-shape-row .btn {
+  padding: 2px 10px;
+}
+
+/**
+ * ⚠️ WIDTH FROM THE HEIGHT, not the other way round, or a fixed shape breaks on a narrow screen.
+ * The height this room wants is the clamp below; a chosen aspect then asks for that height times
+ * its ratio, and takes the full width instead when there is not that much room. Setting width to
+ * 100% and letting aspect-ratio pick the height would overflow tall shapes off the bottom.
+ */
+.paint-board.has-shape {
+  height: auto;
+  width: min(100%, calc(clamp(18rem, 58vh, 40rem) * var(--paint-ar)));
+  aspect-ratio: var(--paint-ar);
+  margin-inline: auto;
+}
+
+/* fullscreen: the picture takes the room that is left once the tools have had theirs */
+.paint-wrap:fullscreen {
+  padding: 0.6rem;
+  overflow: auto;
+  background: var(--bg);
+}
+.paint-wrap:fullscreen .paint-board {
+  height: clamp(18rem, 74vh, 100vh);
+}
+.paint-wrap:fullscreen .paint-board.has-shape {
+  height: auto;
+  width: min(100%, calc(clamp(18rem, 74vh, 100vh) * var(--paint-ar)));
+}
+
 .paint-board {
   position: relative;
   height: clamp(18rem, 58vh, 40rem);

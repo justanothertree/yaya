@@ -1,4 +1,12 @@
-import { useCallback, useContext, useEffect, useRef, useState, useSyncExternalStore } from 'react'
+import {
+  useCallback,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type CSSProperties,
+} from 'react'
 import { KitBar } from '../ui/KitBar'
 import { ShadePad } from '../theme/ColorField'
 import { loadLastKit, paintKits, saveLastKit, type PaintKit } from '../draw/paintKit'
@@ -66,8 +74,27 @@ const SWATCHES = [
  */
 const LAST = loadLastKit()
 
+/**
+ * Shapes the paper can be held to, as width over height.
+ *
+ * ⚠️ Named by what they are FOR rather than by their numbers, because "3:2" tells you the
+ * arithmetic and not the decision. Free stays first and stays the default: it is what the room
+ * has always done, and a fixed shape is a thing to reach for rather than a thing to be given.
+ */
+const PAPER_SHAPES: Array<[string, string, number]> = [
+  ['free', 'Free', 0],
+  ['16/9', 'Wide 16:9', 16 / 9],
+  ['3/2', 'Photo 3:2', 3 / 2],
+  ['4/3', 'Classic 4:3', 4 / 3],
+  ['1/1', 'Square', 1],
+  ['3/4', 'Portrait 3:4', 3 / 4],
+  ['9/16', 'Phone 9:16', 9 / 16],
+]
+
 export function PaintRoom() {
   const host = useRef<HTMLDivElement>(null)
+  /** the whole room, so fullscreen keeps the tools with the picture */
+  const wrap = useRef<HTMLElement>(null)
   const view = useRef<HTMLCanvasElement>(null)
   /** everything committed, rendered once and reused while a stroke is in progress */
   const base = useRef<HTMLCanvasElement | null>(null)
@@ -141,6 +168,24 @@ export function PaintRoom() {
   const [colour, setColour] = useState(() => LAST?.colour ?? '#22c55e')
   /* folded away by default — see the note where it is rendered */
   const [paperOpen, setPaperOpen] = useState(false)
+  /**
+   * The paper's shape, as width over height — or free, meaning whatever the window leaves.
+   *
+   * ⚠️ FREE IS WHAT IT ALWAYS DID, and it is the reason art came out a shape nobody chose. The
+   * board fills the width and takes a clamped height, so its aspect is a leftover: whatever is
+   * beside the controls, on whatever screen, after they wrap. On a phone that is tall and narrow,
+   * and the drawing saved with that shape because the shape IS the document. Picking one makes
+   * the paper a decision instead of a consequence.
+   */
+  const [shape, setShape] = useState(() => {
+    try {
+      return localStorage.getItem('paint_shape_v1') ?? 'free'
+    } catch {
+      return 'free'
+    }
+  })
+  /** the board's real pixel size, so the shape you are drawing on is never a guess */
+  const [dims, setDims] = useState({ w: 0, h: 0 })
   const [alpha, setAlpha] = useState(() => LAST?.alpha ?? 1)
   const [width, setWidth] = useState(() => LAST?.width ?? 0.008)
   /** kaleidoscope segments for strokes drawn from now on — see Stroke.k */
@@ -221,6 +266,8 @@ export function PaintRoom() {
     apply()
     return together.subscribe(apply)
   }, [])
+
+  const shapeAr = PAPER_SHAPES.find(([id]) => id === shape)?.[2] || 0
 
   /** the drawing, as it would be saved */
   const drawingRef = useRef<Drawing>({
@@ -352,6 +399,7 @@ export function PaintRoom() {
       const h = Math.round(r.height)
       if (w === size.current.w && h === size.current.h && dpr === size.current.dpr) return
       size.current = { w, h, dpr }
+      setDims({ w, h })
       for (const c of [v, base.current!]) {
         c.width = Math.round(w * dpr)
         c.height = Math.round(h * dpr)
@@ -843,7 +891,7 @@ export function PaintRoom() {
     /* ⚠️ In a canvas window the board takes the height it is GIVEN. Outside one it has to pick
        a height, and vh is the only sensible guess — but inside a window that guess ignored the
        window, so dragging the bottom edge made it wider and never taller. */
-    <section className={'paint-wrap' + (inWindow ? ' is-inwindow' : '')}>
+    <section className={'paint-wrap' + (inWindow ? ' is-inwindow' : '')} ref={wrap}>
       {!call.inCall && (
         <AlsoTogether id="paint">
           Anyone in a call with you can draw on this page at the same time — same picture, same
@@ -1373,10 +1421,66 @@ export function PaintRoom() {
           profile block will put behind the strokes, so what you draw against is what other
           people will see it against. With no paper the checkerboard shows through, which is how
           you can tell transparent from white. */}
+      {/**
+       * ⚠️ THE SHAPE AND THE SIZE, said out loud, right above the paper.
+       *
+       * The board's aspect used to be whatever was left over once the controls had wrapped, and
+       * the aspect IS the document — coordinates are fractions of it. So art came out a shape
+       * nobody chose, and differently on a phone than on a desktop. Naming the shape makes it a
+       * decision; printing the pixels means you never have to infer it from looking.
+       */}
+      <div className="paint-shape-row">
+        <label className="paint-shape">
+          <span className="muted">Paper</span>
+          <select
+            className="viz-select"
+            value={shape}
+            onChange={(e) => {
+              setShape(e.target.value)
+              try {
+                localStorage.setItem('paint_shape_v1', e.target.value)
+              } catch {
+                /* private mode: it holds for this visit */
+              }
+            }}
+          >
+            {PAPER_SHAPES.map(([id, label]) => (
+              <option key={id} value={id}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <span className="muted paint-dims" role="status">
+          {dims.w > 0 ? `${dims.w}×${dims.h}` : '—'}
+          {dims.h > 0 ? ` · ${(dims.w / dims.h).toFixed(2)}:1` : ''}
+        </span>
+        <button
+          className="btn"
+          onClick={() => {
+            const el = wrap.current
+            if (!el) return
+            if (document.fullscreenElement) void document.exitFullscreen().catch(() => {})
+            else void el.requestFullscreen?.().catch(() => {})
+          }}
+          title="Fill the screen with the room — the tools come too"
+        >
+          ⛶
+        </button>
+      </div>
       <div
-        className={'paint-board' + (bg ? ' has-paper' : '')}
+        className={'paint-board' + (bg ? ' has-paper' : '') + (shapeAr ? ' has-shape' : '')}
         ref={host}
-        style={bg ? { background: bg } : undefined}
+        style={
+          shapeAr
+            ? ({
+                ...(bg ? { background: bg } : null),
+                '--paint-ar': String(shapeAr),
+              } as CSSProperties)
+            : bg
+              ? { background: bg }
+              : undefined
+        }
       >
         <canvas
           ref={view}
