@@ -108,10 +108,9 @@ export function PalettePicker({
   useEffect(() => {
     savePalette(seed)
     if (active) applyPalette(seed)
-    // The palette lives in localStorage, not in React state, so nothing upstream can observe an
-    // edit to the COLOURS (only the on/off flag). App republishes the profile look on this —
-    // same event shape as `yaya:canvas`.
-    window.dispatchEvent(new CustomEvent('yaya:palette'))
+    /* ⚠️ No dispatch here any more — savePalette does it, so every writer announces rather than
+       just this one. It was the only notifier for a long time, which is why applying a saved Look
+       could leave the profile showing the colours you had before it. */
   }, [seed, active])
 
   const derived = derivePalette(seed)

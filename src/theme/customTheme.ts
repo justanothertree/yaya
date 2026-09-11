@@ -335,11 +335,30 @@ export function loadPalette(): PaletteSeed | null {
   }
 }
 
+/**
+ * Write the palette, and SAY SO.
+ *
+ * ⚠️ THE ANNOUNCEMENT BELONGS HERE, NOT IN THE CALLER. The palette lives in localStorage rather
+ * than React state, so nothing upstream can observe an edit to the COLOURS — only the on/off
+ * flag. App republishes your profile look on the `yaya:palette` event, and for a long time the
+ * only thing that fired it was the palette picker's own effect. So any OTHER way of changing the
+ * colours wrote them locally and left the profile showing the old ones.
+ *
+ * Applying a saved Look is exactly that other way, and the Looks block on profiles made it easy
+ * to hit: apply a look that differs only in its palette, on the theme you are already using, and
+ * nothing in the publish effect's dependencies changes — the write never fires. Announcing from
+ * the writer means every caller notifies, including the ones nobody has written yet.
+ */
 export function savePalette(seed: PaletteSeed | null) {
   try {
     if (seed) localStorage.setItem(KEY, JSON.stringify(seed))
     else localStorage.removeItem(KEY)
   } catch {
     /* private mode — it just won't persist */
+  }
+  try {
+    window.dispatchEvent(new CustomEvent('yaya:palette'))
+  } catch {
+    /* no window (a test, a worker): nothing is listening anyway */
   }
 }

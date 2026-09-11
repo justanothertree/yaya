@@ -1,0 +1,33 @@
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Drop the old 3-argument set_my_profile_look.
+--
+-- ⚠️ TWO OF THEM ARE LIVE RIGHT NOW. When look_backdrop was added, the function gained a fourth
+-- parameter with a DEFAULT — and the original three-argument version was never dropped, so both
+-- exist:
+--
+--     set_my_profile_look(p_theme text, p_palette jsonb, p_flair text)
+--     set_my_profile_look(p_theme text, p_palette jsonb, p_flair text, p_backdrop text DEFAULT NULL)
+--
+-- The old one sets look_theme, look_palette and look_flair and NEVER TOUCHES look_backdrop.
+--
+-- ⚠️ WHY THIS IS A "SOMETIMES". The current bundle sends all four arguments by name, so PostgREST
+-- matches the four-parameter version and everything works. A browser running an OLDER CACHED
+-- BUNDLE sends three — and that call lands on the old function, which quietly writes everything
+-- except the backdrop. Same person, same settings, and whether their backdrop reaches their
+-- profile depends on which copy of the javascript their browser is holding. That is exactly the
+-- shape of "it updates sometimes", and it is likeliest when several people are on at once,
+-- because that is when several different cached bundles are in play.
+--
+-- ⚠️ It is also a latent ambiguity. A three-argument call is resolvable today only because the
+-- old function exists to take it; the moment it is gone, such a call errors loudly instead of
+-- silently doing three quarters of the job — which is the better failure by a distance.
+--
+-- Safe to run more than once: the signature is named exactly, and `if exists` covers a re-run.
+-- ─────────────────────────────────────────────────────────────────────────────
+
+drop function if exists public.set_my_profile_look(text, jsonb, text);
+
+-- Check it took: expect exactly one row, with four arguments.
+--   select oid::regprocedure as signature
+--     from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+--    where n.nspname = 'public' and p.proname = 'set_my_profile_look';
