@@ -8914,10 +8914,6 @@ a.cz-msg-author:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
-.hag-art-key {
-  fill: currentColor;
-  opacity: 0.22;
-}
 .hag-art-bar,
 .hag-art-level {
   fill: currentColor;
@@ -9021,12 +9017,6 @@ a.cz-msg-author:focus-visible {
 }
 
 @media (prefers-reduced-motion: no-preference) {
-  .hag-art-key {
-    animation: hag-key 2.4s ease-in-out infinite;
-  }
-  .hag-art-wave {
-    animation: hag-wave 3.2s ease-in-out infinite;
-  }
   .hag-art-ring {
     opacity: 0;
     animation: hag-ring 2.5s ease-out infinite;
@@ -9056,25 +9046,6 @@ a.cz-msg-author:focus-visible {
   }
 }
 
-@keyframes hag-key {
-  0%,
-  70%,
-  100% {
-    opacity: 0.22;
-  }
-  8% {
-    opacity: 0.95;
-  }
-}
-@keyframes hag-wave {
-  0%,
-  100% {
-    transform: translateY(0);
-  }
-  50% {
-    transform: translateY(-4px);
-  }
-}
 @keyframes hag-ring {
   0% {
     r: 8;

@@ -59,7 +59,6 @@ export function HomeSnake() {
   const snake = useRef<P[]>([])
   const dir = useRef<P>({ x: 1, y: 0 })
   const apple = useRef<P>({ x: 0, y: 0 })
-  const score = useRef(0)
   const cols = useRef(26)
   /** when a person last steered; 0 means the autopilot has it */
   const humanAt = useRef(0)
@@ -83,7 +82,14 @@ export function HomeSnake() {
       { x: 2, y: 5 },
     ]
     dir.current = { x: 1, y: 0 }
-    score.current = 0
+    /**
+     * ⚠️ THE AUTOPILOT GETS IT BACK ON A DEATH, rather than the person keeping it for the rest
+     * of HANDBACK_MS. Tap once and wander off and the snake held your last direction, drove into
+     * the wall, restarted, drove into the same wall again — three or four times over six seconds.
+     * A board restarting on a loop looks broken; one playing itself looks alive. Tapping again
+     * takes it straight back.
+     */
+    humanAt.current = 0
     place()
   }, [place])
 
@@ -124,10 +130,8 @@ export function HomeSnake() {
     if (n.x < 0 || n.y < 0 || n.x >= cols.current || n.y >= ROWS) return reset()
     if (snake.current.slice(0, -1).some((s) => s.x === n.x && s.y === n.y)) return reset()
     snake.current.unshift(n)
-    if (n.x === apple.current.x && n.y === apple.current.y) {
-      score.current++
-      place()
-    } else snake.current.pop()
+    if (n.x === apple.current.x && n.y === apple.current.y) place()
+    else snake.current.pop()
   }, [place, reset])
 
   const draw = useCallback(() => {
@@ -241,11 +245,13 @@ export function HomeSnake() {
     }
   }, [reset, fit, draw, loop])
 
+  /** Takes the turn, or says it could not — see the tap handler for why the answer matters. */
   const steer = (d: P) => {
     // no reversing into yourself — the one input that turns a game into an instant death
-    if (d.x === -dir.current.x && d.y === -dir.current.y) return
+    if (d.x === -dir.current.x && d.y === -dir.current.y) return false
     dir.current = d
     humanAt.current = performance.now()
+    return true
   }
 
   return (
@@ -277,11 +283,20 @@ export function HomeSnake() {
         const h = snake.current[0]
         const dx = gx - (h.x + 0.5)
         const dy = gy - (h.y + 0.5)
-        steer(
-          Math.abs(dx) > Math.abs(dy)
-            ? { x: Math.sign(dx) || 1, y: 0 }
-            : { x: 0, y: Math.sign(dy) || 1 },
-        )
+        const across: P = { x: Math.sign(dx) || 1, y: 0 }
+        const down: P = { x: 0, y: Math.sign(dy) || 1 }
+        /**
+         * ⚠️ TRY THE OTHER AXIS WHEN THE FIRST IS A REVERSE.
+         *
+         * Taking only the dominant axis made the whole half of the board BEHIND the head a dead
+         * zone: moving right, every tap to the left resolved to "go left", which is the one turn
+         * that is refused, so the tap did nothing whatsoever. Including taps like left-and-up,
+         * where "up" is plainly what was meant. A tile that ignores you reads as broken, not as
+         * strict. Only one axis can ever be the reverse, so the fallback always lands.
+         */
+        if (!steer(Math.abs(dx) > Math.abs(dy) ? across : down)) {
+          steer(Math.abs(dx) > Math.abs(dy) ? down : across)
+        }
       }}
     />
   )
