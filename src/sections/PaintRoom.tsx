@@ -139,6 +139,8 @@ export function PaintRoom() {
 
   const [tool, setTool] = useState<Tool>(() => LAST?.tool ?? 'brush')
   const [colour, setColour] = useState(() => LAST?.colour ?? '#22c55e')
+  /* folded away by default — see the note where it is rendered */
+  const [paperOpen, setPaperOpen] = useState(false)
   const [alpha, setAlpha] = useState(() => LAST?.alpha ?? 1)
   const [width, setWidth] = useState(() => LAST?.width ?? 0.008)
   /** kaleidoscope segments for strokes drawn from now on — see Stroke.k */
@@ -1072,27 +1074,52 @@ export function PaintRoom() {
             onChange={setColour}
           />
         </span>
-        <span className="paint-colour">
-          {/* ⚠️ the paper is the one part of the picture that is not a stroke, so it needs
-              saying out loud — everything else reaches the room by being drawn */}
-          <ShadePad
-            label="Paper"
-            value={bg ?? '#111111'}
-            onChange={(c) => {
-              setBg(c)
-              drawParty.paper(c)
-            }}
-          />
+        {/**
+         * ⚠️ PAPER IS FOLDED AWAY, and the reason is how often each one is wanted rather than
+         * how important they are. Two identical pads side by side read as one choice with two
+         * halves, so the wrong half got hit — and changing the paper is the rarer intention by a
+         * long way, while changing the brush is most of what anybody does in here.
+         *
+         * ⚠️ The swatch still SHOWS the current paper, so folding it does not hide the state —
+         * only the controls for it. That also takes a whole pad out of a toolbar that had grown
+         * bulky enough to be worth complaining about.
+         */}
+        <span className="paint-colour paint-paper">
           <button
-            className={'btn' + (bg === null ? ' is-on' : '')}
-            onClick={() => {
-              setBg(null)
-              drawParty.paper(null)
-            }}
-            title="No paper — the picture stays transparent"
+            className={'btn paint-paper-open' + (paperOpen ? ' is-on' : '')}
+            aria-expanded={paperOpen}
+            onClick={() => setPaperOpen((v) => !v)}
+            title="The backdrop behind the picture — everything else here is paint"
           >
-            None
+            <span
+              className="paint-paper-chip"
+              aria-hidden
+              style={bg ? { background: bg } : undefined}
+            />
+            Paper
           </button>
+          {paperOpen && (
+            <span className="paint-paper-pop">
+              <ShadePad
+                label="Paper"
+                value={bg ?? '#111111'}
+                onChange={(c) => {
+                  setBg(c)
+                  drawParty.paper(c)
+                }}
+              />
+              <button
+                className={'btn' + (bg === null ? ' is-on' : '')}
+                onClick={() => {
+                  setBg(null)
+                  drawParty.paper(null)
+                }}
+                title="No paper — the picture stays transparent"
+              >
+                None
+              </button>
+            </span>
+          )}
         </span>
         <label className="appearance-slider">
           {/* Renamed: "Alpha" read as a mode when it is really just how thin the paint is.

@@ -8000,6 +8000,60 @@ a.cz-msg-author:focus-visible {
   max-width: 9rem;
 }
 
+/* ── paper, folded ───────────────────────────────────────────────────────────
+   A swatch that says what the paper is and opens the controls for it, rather than a second pad
+   sitting next to the brush's looking exactly as important. */
+.paint-paper {
+  position: relative;
+}
+.paint-paper-open {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+/* the chequer shows through when the paper is None, which is what transparent means here */
+.paint-paper-chip {
+  width: 0.85rem;
+  height: 0.85rem;
+  border-radius: 3px;
+  border: 1px solid var(--border);
+  background-image:
+    linear-gradient(45deg, rgba(127, 127, 127, 0.5) 25%, transparent 25%),
+    linear-gradient(-45deg, rgba(127, 127, 127, 0.5) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, rgba(127, 127, 127, 0.5) 75%),
+    linear-gradient(-45deg, transparent 75%, rgba(127, 127, 127, 0.5) 75%);
+  background-size: 6px 6px;
+  background-position:
+    0 0,
+    0 3px,
+    3px -3px,
+    -3px 0;
+}
+.paint-paper-pop {
+  position: absolute;
+  z-index: 5;
+  top: calc(100% + 0.35rem);
+  left: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.45rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-elev, var(--b1));
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+}
+/* ⚠️ on a phone it opens UNDER the row rather than over it: a popover pinned to a wrapping
+   toolbar lands off the side of the screen as often as not */
+@media (max-width: 40rem) {
+  .paint-paper-pop {
+    position: static;
+    box-shadow: none;
+    padding: 0.35rem 0;
+    border: 0;
+  }
+}
+
 /* the governor saying so — see AudioVisualizer's renderQ */
 .viz-quality {
   grid-column: 1 / -1;

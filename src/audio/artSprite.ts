@@ -31,7 +31,11 @@ export const bakeSize = (w: number, h: number): number =>
   Math.round(Math.max(128, Math.min(640, Math.min(w, h) * 0.55)))
 
 export function bakeSprite(d: Drawing, px: number): Sprite | null {
-  const ratio = d.ratio > 0.05 && d.ratio < 20 ? d.ratio : 1
+  /* ⚠️ Drawing.ratio is WIDTH over height; Sprite.ratio is height over width, which is what the
+     modes want so they can size a stamp from its width. Inverting here is the whole difference
+     between a wide drawing stamping wide and stamping tall — see the note on Drawing.ratio. */
+  const wh = d.ratio > 0.05 && d.ratio < 20 ? d.ratio : 1
+  const ratio = 1 / wh
   const w = Math.max(8, Math.round(px))
   const h = Math.max(8, Math.round(px * ratio))
   const frames = Math.max(1, frameCount(d))

@@ -127,7 +127,11 @@ export function ArtBlock({ cfg }: { cfg: Record<string, unknown> }) {
     const draw = () => {
       const w = Math.round(box.clientWidth)
       if (w < 1) return
-      const ratio = current.ratio > 0.05 && current.ratio < 20 ? current.ratio : 0.6
+      /* ⚠️ WIDTH OVER HEIGHT — see the note on Drawing.ratio. This read it as height over
+         width, so every landscape drawing was rendered as a tall thin panel and the picture
+         inside it squeezed to match. The fallback is a landscape 3:2, the same default
+         readDrawing uses, rather than the 0.6 that only made sense upside down. */
+      const wh = current.ratio > 0.05 && current.ratio < 20 ? current.ratio : 1.5
       /**
        * ⚠️ THE BLOCK IS CAPPED, AND THE PICTURE IS FITTED INSIDE IT rather than the block being
        * whatever shape the paper was.
@@ -142,9 +146,13 @@ export function ArtBlock({ cfg }: { cfg: Record<string, unknown> }) {
        * shape, centred, with the page showing either side. Letterboxing preserves what was drawn;
        * squashing it to fit would not, and a page is not the place to distort somebody's work.
        */
-      const h = Math.max(60, Math.round(w * Math.min(ratio, MAX_RATIO)))
+      /* MAX_RATIO is still "how tall the panel may get, as a multiple of its width", so as a
+         width-over-height number the cap is its reciprocal: anything narrower than this is
+         letterboxed rather than allowed to make a very tall block. */
+      const shown = Math.max(wh, 1 / MAX_RATIO)
+      const h = Math.max(60, Math.round(w / shown))
       // the picture keeps its own proportions inside that panel
-      const pw = ratio > MAX_RATIO ? Math.round(h / ratio) : w
+      const pw = wh < 1 / MAX_RATIO ? Math.round(h * wh) : w
       const dpr = Math.min(window.devicePixelRatio || 1, 2)
       el.style.width = w + 'px'
       el.style.height = h + 'px'

@@ -140,6 +140,17 @@ export type Drawing = {
   v: 1
   name: string
   /** the shape of the page it was made on, so a replay knows its proportions */
+  /**
+   * The paper's shape as WIDTH OVER HEIGHT — 1.5 is a landscape 3:2, 0.75 is a portrait 3:4.
+   *
+   * ⚠️ Say it here because it was not said anywhere, and two readers had guessed the other way
+   * round. PaintRoom writes w/h (see drawingRef), every drawing ever saved holds w/h, and the
+   * profile block and the sprite baker were both computing height as width TIMES this — which
+   * turns a wide picture into a tall thin one and a tall one into a wide one. Reported as art
+   * coming out taller and skinnier than it was drawn.
+   *
+   * Height from a width is therefore `w / ratio`, never `w * ratio`.
+   */
   ratio: number
   /**
    * What sits BEHIND the paint, or null for nothing.
