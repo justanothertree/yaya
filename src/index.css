@@ -9264,17 +9264,12 @@ a.cz-msg-author:focus-visible {
   grid-template-columns: 1fr;
   margin-top: 0.9rem;
 }
+/* ⚠️ TWO COLUMNS, NOT THREE. At three, a full-width demo sat beside two halves of a different
+   size and everything read as a packing problem. At two, anything side by side is the same width
+   as the thing next to it — which is the only arrangement that looks chosen rather than fitted. */
 @media (min-width: 40rem) {
   .demos-grid {
     grid-template-columns: repeat(2, 1fr);
-  }
-  .demo[data-span='2'] {
-    grid-column: span 2;
-  }
-}
-@media (min-width: 62rem) {
-  .demos-grid {
-    grid-template-columns: repeat(3, 1fr);
   }
 }
 .demo[data-span='full'] {
@@ -9284,12 +9279,10 @@ a.cz-msg-author:focus-visible {
   --tile-art-h: 108px;
   min-width: 0;
 }
-.demo[data-span='2'],
 .demo[data-span='full'] {
   --tile-art-h: 184px;
 }
 @media (max-width: 40rem) {
-  .demo[data-span='2'],
   .demo[data-span='full'] {
     --tile-art-h: 136px;
   }
@@ -9421,4 +9414,67 @@ a.cz-msg-author:focus-visible {
   margin: 0 0 0.5rem;
   font-weight: 600;
   font-size: 0.9rem;
+}
+
+/* ── skills you can press ───────────────────────────────────────────────────
+   ⚠️ Buttons, not spans — they do something, so a keyboard has to be able to reach them. The
+   note is keyed on the chip in the component, so it is a new element each time and the fade
+   below actually runs. */
+.skills-lede {
+  margin: 0 0 0.7rem;
+  font-size: 0.82rem;
+}
+.skills-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+}
+.skills-group-name {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 0.35rem;
+}
+.skills-chips {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+.skill-chip {
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: 8px;
+  background: var(--b1, rgba(127, 127, 127, 0.1));
+  border: 1px solid var(--border, rgba(127, 127, 127, 0.18));
+  color: var(--text);
+  cursor: pointer;
+}
+.skill-chip:hover {
+  border-color: var(--border-strong, var(--accent));
+}
+.skill-chip.is-on {
+  background: var(--accent);
+  color: var(--btn-text);
+  border-color: transparent;
+}
+.skill-note {
+  margin: 0.8rem 0 0;
+  font-size: 0.85rem;
+  line-height: 1.55;
+  padding-left: 0.7rem;
+  border-left: 2px solid var(--accent);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .skill-note {
+    animation: about-in 0.28s ease-out;
+  }
+}
+@media (max-width: 40rem) {
+  /* the chips are the control here, so they get a finger-sized target */
+  .skill-chip {
+    min-height: 36px;
+    padding: 6px 12px;
+  }
 }

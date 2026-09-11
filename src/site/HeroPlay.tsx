@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, type PointerEvent as ReactPointerEvent } from 'react'
 import type { InstrumentId } from '../audio/synth'
+import { HomeSequencer } from './HomeSequencer'
 
 /**
  * The front door's one toy: twelve keys that actually play, with strings above them that ring.
@@ -311,9 +312,17 @@ export function HeroPlay() {
           </button>
         ))}
       </div>
+      {/**
+       * ⚠️ THE KEYS AND THE GRID ARE ONE TOY. They were at opposite ends of the page — keys in
+       * the hero, a sequencer four screens down — which made them read as two separate small
+       * instruments rather than as the two halves of one: press a key to hear it, put it in the
+       * grid to keep it. Side by side the second answers the question the first raises.
+       */}
+      <HomeSequencer />
       <p className="hero-play-hint muted">
-        Press one, or drag across them — there are no wrong notes. There is a whole studio of this
-        behind the <a href="#instrument">Instrument</a> tab.
+        Press a key — there are no wrong notes. Then tap the grid to put one in the line, and it
+        plays as the bar comes round. The whole studio is behind the{' '}
+        <a href="#instrument">Instrument</a> tab.
       </p>
     </div>
   )

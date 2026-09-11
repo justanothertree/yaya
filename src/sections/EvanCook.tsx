@@ -10,7 +10,7 @@ import { HomeSnake } from '../site/HomeSnake'
 import { HomeSequencer } from '../site/HomeSequencer'
 import { TileArt } from '../site/TileArt'
 import { IconGitHub, IconLinkedIn } from '../components/Icons'
-import { projects, skills, type Project } from './work'
+import { projects, skills, SKILL_NOTES, type Project } from './work'
 import { HOME } from '../site/homeContent'
 import { HeroPlay } from '../site/HeroPlay'
 
@@ -154,57 +154,59 @@ function AboutMe() {
   )
 }
 
+/**
+ * The chips say what they were actually for.
+ *
+ * ⚠️ A ROW OF CHIPS IS A CLAIM WITH NO EVIDENCE. "React 19" in a rounded rectangle tells a
+ * reader nothing they could not guess from the page being a website, and every portfolio on earth
+ * has the same row. Pressing one now says where it is used HERE — which is checkable, because
+ * the repository is public and they can go and look.
+ *
+ * ⚠️ Buttons, not spans. They do something, so they have to be reachable by a keyboard and
+ * announce themselves as pressable; a clickable <span> is the single most common way a page
+ * becomes unusable without a mouse.
+ */
 function SkillsCard() {
+  const [open, setOpen] = useState<string | null>(null)
+  const note = open ? SKILL_NOTES[open] : null
   return (
-    <div className="card">
-      <h2 className="section-title">Skills</h2>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.8rem' }}>
+    <div className="card skills-card">
+      <h2 className="section-title" style={{ marginBottom: '0.15rem' }}>
+        Skills
+      </h2>
+      <p className="muted skills-lede">Press one to see what it actually did here.</p>
+      <div className="skills-groups">
         {skills.map((s) => (
           <div key={s.group}>
-            <div
-              className="muted"
-              style={{
-                fontSize: '0.7rem',
-                fontWeight: 700,
-                textTransform: 'uppercase',
-                letterSpacing: '0.05em',
-                marginBottom: '0.35rem',
-              }}
-            >
-              {s.group}
-            </div>
-            <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+            <div className="skills-group-name muted">{s.group}</div>
+            <div className="skills-chips">
               {s.items.map((it) => (
-                <span
+                <button
                   key={it}
-                  style={{
-                    fontSize: '0.78rem',
-                    fontWeight: 600,
-                    padding: '3px 10px',
-                    borderRadius: 8,
-                    background: 'var(--b1, rgba(127,127,127,0.1))',
-                    border: '1px solid var(--border, rgba(127,127,127,0.18))',
-                  }}
+                  type="button"
+                  className={'skill-chip' + (open === it ? ' is-on' : '')}
+                  aria-pressed={open === it}
+                  onClick={() => setOpen((cur) => (cur === it ? null : it))}
                 >
                   {it}
-                </span>
+                </button>
               ))}
             </div>
           </div>
         ))}
       </div>
+      {/* ⚠️ Keyed on the chip, so React replaces the paragraph rather than editing the old one
+          in place — which is what lets it fade in, and makes the change legible instead of the
+          text silently becoming different text. */}
+      {note && (
+        <p className="muted skill-note" key={open}>
+          <strong>{open}</strong> — {note}
+        </p>
+      )}
     </div>
   )
 }
 
-/**
- * What went into one of these — the case study, folded into the demo it belongs to.
- *
- * ⚠️ A <details>, not a panel with state. It is the one disclosure on this page that nobody
- * needs open to understand what they are looking at: the demo above it has already done that
- * job. Native means it is keyboard reachable, findable by the browser's own in-page search even
- * while shut, and costs no script.
- */
 function ProjectNotes({ id, inline = false }: { id: string; inline?: boolean }) {
   const project = projects.find((p) => p.id === id)
   if (!project) return null
@@ -304,10 +306,12 @@ function ProjectNotes({ id, inline = false }: { id: string; inline?: boolean }) 
  * section an argument: what you can do alone, then what needs somebody else. That is the site's
  * thesis rather than a sorting convenience.
  *
- * ⚠️ WIDTHS RUN 2,1,1,2 WITHIN EACH RUN, restarting per group. Each PAIR sums to the three
- * columns and an odd count cannot pair up, so the last of a run takes a row to itself rather than
- * leaving a hole. Restarting matters: carrying the cycle across a heading would drop a stray
- * single at the top of the next run.
+ * ⚠️ WIDTH COMES FROM THE DEMO, NOT ITS POSITION. It used to be a 2,1,1,2 cycle keyed on the
+ * index, so what sat beside what was an accident of ordering — a big drawing pad next to a small
+ * ring of circles, two different kinds of thing at two different sizes. That is most of what
+ * "slapped together" was pointing at. Two columns now: the ones you can touch and the one showing
+ * a whole page take a row to themselves, and the ambient ones pair off against each other at
+ * equal width, which is the only pairing that ever looks deliberate.
  */
 function Demos({ authed }: { authed: boolean }) {
   const items = TRY_THESE.filter((t) => !t.members || authed)
@@ -332,10 +336,9 @@ function Demos({ authed }: { authed: boolean }) {
             <h3 className="demo-run-title">{g.title}</h3>
             <p className="muted demo-run-lead">{g.lead}</p>
             <div className="demos-grid">
-              {run.map((t, i) => {
+              {run.map((t) => {
                 const href = t.href ?? `#${t.id}`
-                const span =
-                  run.length % 2 === 1 && i === run.length - 1 ? 'full' : [2, 1, 1, 2][i % 4]
+                const span = t.wide ? 'full' : '1'
                 const go = (e: { preventDefault: () => void }) => {
                   e.preventDefault()
                   /* the whole target, not just the room — the profile invitation carries ?demo=1 */

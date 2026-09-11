@@ -52,6 +52,17 @@ export type Invite = {
   /** what the link under a live tile says */
   open?: string
   /**
+   * Does this one take the whole row?
+   *
+   * ⚠️ WIDTH BY WHAT IT NEEDS, NOT BY POSITION. It used to come from a 2,1,1,2 cycle keyed on
+   * the index, so what ended up beside what was an accident of ordering — a big drawing pad next
+   * to a small ring of circles, two things of different kinds at different sizes, which is most
+   * of what "slapped together" was pointing at. The grid is two columns now and this decides:
+   * the ones you can touch, and the one showing a whole page, take a row; the ambient ones pair
+   * up with each other at equal width.
+   */
+  wide?: boolean
+  /**
    * Which run of the section this belongs to.
    *
    * ⚠️ EIGHT THINGS IN ONE FLAT GRID IS A LIST, NOT A PAGE. Every demo had the same weight and
@@ -102,6 +113,7 @@ export const TRY_THESE: Invite[] = [
    */
   {
     id: 'paint',
+    wide: true,
     group: 'make',
     live: 'scribble',
     open: 'Open the studio',
@@ -111,6 +123,11 @@ export const TRY_THESE: Invite[] = [
   },
   {
     id: 'visualizer',
+    /* ⚠️ Wide, because a HALF ON ITS OWN is the stranded look this was meant to end: its run only
+       has two demos and the other one takes a row, so at half width this sat beside a gap.
+       Halves earn their width by pairing off — the circuit and the pool are the only two that
+       do — and anything without a partner takes the row. */
+    wide: true,
     group: 'make',
     live: 'viz',
     open: 'Put a song on',
@@ -119,24 +136,13 @@ export const TRY_THESE: Invite[] = [
     line: 'That is what it does to a drum loop. Put your own song on in the visualiser and it does it to that — mirrors, depth, 3D, and it keeps the looks you liked.',
   },
   {
-    id: 'instrument',
-    group: 'make',
-    live: 'keys',
-    open: 'Open the studio',
-    icon: '🎹',
-    /* ⚠️ The hero already HAS playable keys. A second row of keys down here was the same hook
-       twice and read as the weaker copy of it, so this tile shows the part the hook does not: the
-       editor you write a line in and keep. */
-    title: 'Write a tune down',
-    line: 'Tap any square to drop a note in — it is all one scale, so nothing you add can clash. The studio has more sounds and keeps what you write.',
-  },
-  {
     /**
      * ⚠️ THE ONE ROOM A VISITOR COULD NOT OTHERWISE SEE. Profiles live behind a sign-in, so
      * the only honest way to show one is the demo: a real profile served to anybody, which only
      * ever returns the single row flagged is_demo and only its public blocks.
      */
     id: 'profile',
+    wide: true,
     group: 'together',
     live: 'profile',
     open: 'See the whole page',
@@ -150,6 +156,7 @@ export const TRY_THESE: Invite[] = [
   },
   {
     id: 'snake',
+    wide: true,
     group: 'together',
     project: 'snake',
     live: 'snake',
@@ -181,6 +188,7 @@ export const TRY_THESE: Invite[] = [
   },
   {
     id: 'chat',
+    wide: true,
     group: 'together',
     live: 'calls',
     open: 'Open chat',
