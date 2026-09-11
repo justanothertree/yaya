@@ -79,6 +79,28 @@ const MIRROR_KEY = 'viz_mirror_v1'
 const PALETTE_KEY = 'viz_palette_v1'
 const ZOOM_KEY = 'viz_zoom_v1'
 const SPIN_KEY = 'viz_spin_v1'
+const SWAY_KEY = 'viz_sway_v1'
+const SWAY_ON_KEY = 'viz_sway_on_v1'
+/**
+ * Dials that can move on their own, with the range they live in and how far they swing.
+ *
+ * ⚠️ ONE SPEED FOR ALL OF THEM, and a different PHASE each. Per-dial speeds would be a second
+ * slider per row and would still mostly be set to the same number; what actually makes several
+ * moving dials look alive rather than mechanical is that they do not cross zero together, which
+ * costs nothing and needs no control at all.
+ *
+ * ⚠️ Amplitude is per dial rather than a share of the range, because the ranges are not
+ * comparable — a third of zoom's 0.3..3 is an enormous lurch, a third of bloom's 0..1 is a gentle
+ * breath. These are the numbers that look like breathing on each one.
+ */
+const SWAY_DIALS: Array<[string, string, number, number, number]> = [
+  ['bloom', 'Bloom', 0, 1, 0.3],
+  ['depth', 'Depth', 0, 1, 0.3],
+  ['zoom', 'Zoom', 0.3, 3, 0.35],
+  ['spin', 'Spin', -1, 1, 0.4],
+  ['split', 'Split', 0, 1, 0.3],
+]
+const SWAY_IDS = SWAY_DIALS.map(([id]) => id)
 const SHAKE_KEY = 'viz_shake_v1'
 const SPLIT_KEY = 'viz_split_v1'
 const ANCHOR_KEY = 'viz_anchor_v1'
@@ -233,6 +255,16 @@ export function AudioVisualizer() {
   const [depth, setDepth] = useState(() => storedNumber(DEPTH_KEY, 0, 1) ?? 0)
   /* signed: negative turns the other way, and 0 in the middle is the off position */
   const [spin, setSpin] = useState(() => storedNumber(SPIN_KEY, -1, 1) ?? 0)
+  /** how fast the swaying dials breathe; 0 is off */
+  const [sway, setSway] = useState(() => storedNumber(SWAY_KEY, 0, 1) ?? 0)
+  const [swayOn, setSwayOn] = useState<string[]>(() => {
+    try {
+      const raw = JSON.parse(localStorage.getItem(SWAY_ON_KEY) || '[]')
+      return Array.isArray(raw) ? raw.filter((x) => SWAY_IDS.includes(x)) : []
+    } catch {
+      return []
+    }
+  })
   const [shake, setShake] = useState(() => storedNumber(SHAKE_KEY, 0, 1) ?? 0)
   const [split, setSplit] = useState(() => storedNumber(SPLIT_KEY, 0, 1) ?? 0)
   /**
@@ -359,6 +391,8 @@ export function AudioVisualizer() {
       bright,
       punch,
       echo,
+      sway,
+      swayOn,
       /**
        * ⚠️ THE ARRANGEMENT TRAVELS; WHICH DRAWING DOES NOT.
        *
@@ -393,6 +427,8 @@ export function AudioVisualizer() {
       punch,
       echo,
       artStyle,
+      sway,
+      swayOn,
     ],
   )
 
@@ -455,6 +491,8 @@ export function AudioVisualizer() {
     mirror,
     trail,
     palette,
+    sway,
+    swayOn,
     zoom,
     depth,
     spin,
@@ -501,6 +539,8 @@ export function AudioVisualizer() {
    * The loop reads the current value instead, so they take effect instantly without a restart.
    */
   const dials = useRef({
+    sway,
+    swayOn,
     zoom,
     depth,
     path,
@@ -516,6 +556,8 @@ export function AudioVisualizer() {
     split,
   })
   dials.current = {
+    sway,
+    swayOn,
     zoom,
     depth,
     path,
@@ -563,6 +605,8 @@ export function AudioVisualizer() {
       localStorage.setItem(ZOOM_KEY, String(zoom))
       localStorage.setItem(DEPTH_KEY, String(depth))
       localStorage.setItem(SPIN_KEY, String(spin))
+      localStorage.setItem(SWAY_KEY, String(sway))
+      localStorage.setItem(SWAY_ON_KEY, JSON.stringify(swayOn))
       localStorage.setItem(SHAKE_KEY, String(shake))
       localStorage.setItem(SPLIT_KEY, String(split))
       if (anchor) localStorage.setItem(ANCHOR_KEY, JSON.stringify(anchor))
@@ -591,6 +635,8 @@ export function AudioVisualizer() {
     mirror,
     trail,
     palette,
+    sway,
+    swayOn,
     zoom,
     depth,
     spin,
@@ -1018,19 +1064,48 @@ export function AudioVisualizer() {
       const dt = Math.min(0.05, Math.max(0, (now - last) / 1000))
       last = now
       const {
-        zoom: z,
-        depth: dep,
+        sway: swaySpeed,
+        swayOn: swaying,
+        zoom: zRaw,
+        depth: depRaw,
         path: pathId,
         pathSpeed: pspeed,
-        bloom: blm,
+        bloom: blmRaw,
         bright: bri,
         punch: pun,
         echo: ech,
-        spin: spn,
+        spin: spnRaw,
         anchor: anc,
         shake: shk,
-        split: spl,
+        split: splRaw,
       } = dials.current
+      /**
+       * Dials that move on their own.
+       *
+       * ⚠️ Applied HERE, where the loop reads them, and never written back to the sliders. The
+       * slider is the setting; this is the picture breathing around it. Writing it back would
+       * fight your hand every frame, lose the number you chose the moment you looked away, and
+       * save that drift into a preset.
+       *
+       * ⚠️ CLAMPED to each dial's own range rather than scaled to fit inside it. A setting near
+       * the end of its travel then swings as far as it can and rests against the stop, which is
+       * what you would expect; shrinking the swing instead would make the effect quietly die
+       * exactly where somebody had deliberately pushed a dial hard.
+       */
+      const swayAt = (key: string, base: number) => {
+        if (swaySpeed <= 0 || !swaying.includes(key)) return base
+        const d = SWAY_DIALS.find(([id]) => id === key)
+        if (!d) return base
+        const [, , lo, hi, amp] = d
+        const phase = SWAY_IDS.indexOf(key) * 1.7
+        const v = base + amp * Math.sin((now / 1000) * swaySpeed * 1.6 + phase)
+        return Math.max(lo, Math.min(hi, v))
+      }
+      const z = swayAt('zoom', zRaw)
+      const dep = swayAt('depth', depRaw)
+      const blm = swayAt('bloom', blmRaw)
+      const spn = swayAt('spin', spnRaw)
+      const spl = swayAt('split', splRaw)
       // one assignment a frame, rather than rebuilding ink: the modes read it through hue()
       ink.lift = bri
       // cheap: returns immediately unless the chosen drawing actually changed
@@ -1413,11 +1488,23 @@ export function AudioVisualizer() {
        * costs one extra blit per layer and gives the eye the cue it actually uses: things further
        * away are smaller, fainter, and behind.
        */
-      const echoes = dep > 0.02 ? Math.round(1 + dep * 3) : 0
-      for (let e = echoes; e >= 1; e--) {
-        const k = e / (echoes + 1)
+      /**
+       * ⚠️ LAYERS FADE IN; THEY DO NOT APPEAR. The count used to be Math.round(1 + dep * 3), an
+       * integer, so a whole extra copy of the picture popped into existence at three points along
+       * the travel and nothing much happened between them. That is the "all the way on or all the
+       * way off" — the slider was really four settings pretending to be continuous.
+       *
+       * The four layers are always considered now and each one ramps up over its own quarter of
+       * the travel, so depth grows by a copy getting gradually less transparent rather than by one
+       * arriving whole.
+       */
+      const LAYERS = 4
+      for (let e = dep > 0.02 ? LAYERS : 0; e >= 1; e--) {
+        const k = e / (LAYERS + 1)
+        const reach = Math.max(0, Math.min(1, dep * LAYERS - (e - 1)))
+        if (reach <= 0) continue
         const scale = 1 - k * 0.55 * dep
-        const alpha = (1 - k) * 0.55 * dep
+        const alpha = (1 - k) * 0.55 * dep * reach
         if (alpha <= 0.01) continue
         view.save()
         view.globalAlpha = alpha
@@ -1485,7 +1572,17 @@ export function AudioVisualizer() {
         gctx.filter = 'none'
         view.save()
         view.globalCompositeOperation = 'lighter'
-        view.globalAlpha = 0.35 + blm * 0.75
+        /**
+         * ⚠️ FROM NEARLY NOTHING, AND IT NEVER SATURATES. This was 0.35 + blm * 0.75, which is
+         * two faults in one line: the faintest setting the slider offers already landed at 35%
+         * glow, so switching it on was a step rather than a start; and it reached full opacity at
+         * 0.87, so the last eighth of the travel had nowhere left to go. Between a cliff at one
+         * end and a ceiling at the other there was not much slider left in the middle.
+         *
+         * A small floor keeps the lowest setting visible — it should do SOMETHING — and the
+         * curve spends the rest of the travel on the range people actually tune in.
+         */
+        view.globalAlpha = 0.05 + Math.pow(blm, 1.4) * 0.85
         view.drawImage(glow, 0, 0, w, h)
         view.restore()
       }
@@ -2369,6 +2466,53 @@ export function AudioVisualizer() {
             )}
             {/* The pointer driven by arithmetic instead of a hand — for watching rather than
                 playing. Yours takes over the moment it is over the picture. */}
+            {/**
+             * ⚠️ ONE ROW rather than a toggle beside every slider. Five dials times a switch and
+             * a speed each is ten more controls in a panel that already needed tabs to fit — and
+             * they would nearly all be set the same. One speed, and chips saying which dials it
+             * moves, is the same expressiveness in a fifth of the space.
+             */}
+            {tab === 'motion' && (
+              <div className="viz-row viz-row-wide">
+                <label className="appearance-slider">
+                  <span
+                    className="muted"
+                    title="Let the chosen dials drift up and down on their own"
+                  >
+                    Sway
+                  </span>
+                  <input
+                    type="range"
+                    min={0}
+                    max={1}
+                    step={0.01}
+                    value={sway}
+                    onChange={(e) => setSway(Number(e.target.value))}
+                  />
+                  <span className="appearance-slider-val">
+                    {sway === 0 ? 'off' : Math.round(sway * 100)}
+                  </span>
+                </label>
+                <span className="viz-sway-keys" role="group" aria-label="Which dials sway">
+                  {SWAY_DIALS.map(([id, label]) => (
+                    <button
+                      key={id}
+                      className={'btn' + (swayOn.includes(id) ? ' is-on' : '')}
+                      aria-pressed={swayOn.includes(id)}
+                      disabled={sway === 0}
+                      title={`Let ${label} drift on its own`}
+                      onClick={() =>
+                        setSwayOn((prev) =>
+                          prev.includes(id) ? prev.filter((k) => k !== id) : [...prev, id],
+                        )
+                      }
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </span>
+              </div>
+            )}
             {tab === 'motion' && (
               <div className="viz-row viz-row-wide">
                 <span className="muted viz-tool-label">Motion</span>

@@ -2869,6 +2869,15 @@ section[id] {
    One row, above the tabs, because a look is the whole arrangement rather than one tab of it.
    Wraps on a phone; the name field gives up its width first since the two selects have to stay
    readable. */
+.viz-sway-keys {
+  display: inline-flex;
+  gap: 0.25rem;
+  flex-wrap: wrap;
+}
+.viz-sway-keys .btn {
+  padding: 1px 8px;
+  font-size: 0.74rem;
+}
 .viz-presets {
   display: flex;
   gap: 0.35rem;
