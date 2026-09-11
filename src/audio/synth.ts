@@ -2049,7 +2049,37 @@ export function noteOff(id: string, when?: number) {
  * Live notes are the ones this room's hands make: `k:` from the computer keyboard, `p:` from a
  * pointer. A layer's are `L…` and a jam's are `jam:…`, and neither is ours to end.
  */
+/**
+ * Anything that GENERATES notes on its own, so it can be told to stop generating them.
+ *
+ * ⚠️ STOPPING VOICES IS NOT STOPPING A PLAYER. stopLive silences what is sounding right now,
+ * which is the whole job when the sound comes from a held key — but a thing that plays a note
+ * every 150ms simply plays the next one, so the dock's stop button did nothing you could hear for
+ * longer than a step. Found on the home page sequencer: pressing stop made it stutter, not stop.
+ *
+ * So there are two halves and both are needed. The voices die here, and every registered loop is
+ * told to put itself away.
+ */
+const stopSubs = new Set<() => void>()
+
+/** Register a loop to be switched off by stopLive / allNotesOff. Returns the unsubscribe. */
+export function onStopAll(fn: () => void): () => void {
+  stopSubs.add(fn)
+  return () => stopSubs.delete(fn)
+}
+
+function tellLoopsToStop() {
+  for (const fn of [...stopSubs]) {
+    try {
+      fn()
+    } catch {
+      /* one bad listener must not stop the rest being silenced */
+    }
+  }
+}
+
 export function stopLive() {
+  tellLoopsToStop()
   const c = ctx
   if (!c) return
   for (const [id, v] of [...voices]) {
@@ -2062,6 +2092,7 @@ export function stopLive() {
 
 /** Panic — everything off. Worth having the moment a stuck note happens, which it will. */
 export function allNotesOff() {
+  tellLoopsToStop()
   const c = ctx
   if (!c) return
   for (const [, v] of voices) v.stop(c.currentTime + SAFE_START, true)

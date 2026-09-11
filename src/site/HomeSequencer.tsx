@@ -46,6 +46,24 @@ const FX = { echo: 0.18, echoTime: 0.28, space: 0.32, vibrato: 0, glide: 0 }
 const GAIN = 0.38
 
 type SynthMod = typeof import('../audio/synth')
+/**
+ * ⚠️ Subscribing needs the module, so this waits for whatever load is already happening rather
+ * than starting one. Before a single tap there is no synth and nothing to stop, so there is
+ * nothing to miss — and the front page still does not pull the synth in on render.
+ */
+function onStopAll(fn: () => void): () => void {
+  let off: (() => void) | null = null
+  let dead = false
+  withSynth((s) => {
+    if (dead) return
+    off = s.onStopAll(fn)
+  })
+  return () => {
+    dead = true
+    off?.()
+  }
+}
+
 let mod: SynthMod | null = null
 let pending: Promise<SynthMod> | null = null
 /** ⚠️ imported on first touch, never on render — the front page must not be why the synth ships */
@@ -76,6 +94,19 @@ export function HomeSequencer() {
   notesRef.current = notes
   /** 0 = silent. Otherwise the time of the last tap. */
   const armedAt = useRef(0)
+  /**
+   * Stop making noise, now, and release whatever is still ringing.
+   *
+   * ⚠️ A REF SO THE LISTENERS BELOW NEVER GO STALE. They are registered once, for the life of
+   * the component, and a closure captured at that moment would be disarming the first render's
+   * state forever.
+   */
+  const hush = useRef(() => {})
+  hush.current = () => {
+    if (!armedAt.current) return
+    armedAt.current = 0
+    withSynth((s) => s.allNotesOff())
+  }
   const visible = useRef(false)
 
   const still =
@@ -126,12 +157,37 @@ export function HomeSequencer() {
       }
     }
     check()
+
+    /**
+     * ⚠️ THE DOCK'S STOP BUTTON HAD TO REACH IN HERE. stopLive silences the voices that are
+     * sounding, which is the whole job for a held key — but this thing plays a fresh note every
+     * 150ms, so stopping the sound just made it stutter and carry on. Pressing stop has to stop
+     * the PLAYER, not the notes.
+     */
+    const offStop = onStopAll(() => hush.current())
+
+    /**
+     * ⚠️ AND CLICKING ANYWHERE ELSE PUTS IT AWAY. A loop that keeps going while you read the
+     * rest of the page is a page that follows you around. Leaving is the ordinary way people stop
+     * something, so it is wired to mean that — pointerdown rather than click, so it lands even
+     * when the press is on something that swallows the click.
+     */
+    const elsewhere = (e: Event) => {
+      const el = svg.current
+      const t = e.target
+      if (!el || (t instanceof Node && el.contains(t))) return
+      hush.current()
+    }
+    document.addEventListener('pointerdown', elsewhere, true)
+
     window.addEventListener('scroll', check, { passive: true })
     window.addEventListener('resize', check)
     document.addEventListener('visibilitychange', check)
     /* the same belt-and-braces as the snake board: no observer to go quiet on us */
     const poll = window.setInterval(check, 1000)
     return () => {
+      offStop()
+      document.removeEventListener('pointerdown', elsewhere, true)
       window.clearInterval(timer)
       window.clearInterval(poll)
       window.removeEventListener('scroll', check)
