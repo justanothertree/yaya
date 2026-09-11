@@ -8851,3 +8851,37 @@ a.cz-msg-author:focus-visible {
     height: 1.75rem;
   }
 }
+
+/* ── the live invitation ────────────────────────────────────────────────────
+   One of the "Have a go" tiles is the thing rather than a description of it. */
+.hag-card.is-live {
+  cursor: default;
+}
+.hag-pad {
+  display: block;
+  width: 100%;
+  height: 110px;
+  margin: 0.45rem 0 0.15rem;
+  border-radius: var(--r-sm, 8px);
+  background: rgba(127, 127, 127, 0.08);
+  border: 1px dashed var(--border);
+  cursor: crosshair;
+  /* ⚠️ WITHOUT THIS A FINGER SCROLLS THE PAGE INSTEAD OF DRAWING, which is the whole feature
+     on the device most people arrive on. It is also why the pad is a contained strip rather than
+     the whole card: everything outside it still scrolls normally, so nobody gets stuck trying to
+     get past the tile. */
+  touch-action: none;
+}
+.hag-card.is-live:hover .hag-pad {
+  border-color: var(--border-strong, var(--border));
+}
+.hag-open {
+  align-self: start;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--accent);
+  text-decoration: none;
+}
+.hag-open:hover {
+  text-decoration: underline;
+}

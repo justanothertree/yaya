@@ -5,6 +5,7 @@
 import { useState, type ReactNode } from 'react'
 import { site } from '../config/site'
 import { TRY_THESE } from '../site/tryThese'
+import { HomeScribble } from '../site/HomeScribble'
 import { IconGitHub, IconLinkedIn } from '../components/Icons'
 import { projects, skills, type Project, type Shot } from './work'
 import { HOME } from '../site/homeContent'
@@ -493,37 +494,69 @@ function HaveAGo({ authed }: { authed: boolean }) {
        * it five and eight, and the five left a hole.
        */}
       <div className="hag-grid">
-        {items.map((t, i) => (
-          <a
-            key={t.id}
-            className={'hag-card' + (i === 0 ? ' is-feature' : '')}
-            data-span={
-              items.length % 2 === 1 && i === items.length - 1 ? 'full' : [2, 1, 1, 2][i % 4]
-            }
-            href={t.href ?? `#${t.id}`}
-            onClick={(e) => {
-              e.preventDefault()
-              /* the whole target, not just the room — the profile invitation carries ?demo=1 */
-              window.location.hash = (t.href ?? `#${t.id}`).replace(/^#/, '')
-            }}
-          >
-            {/* texture, not information: the same glyph blown up and running off the corner, so a
-                card is a shape rather than a rectangle of text */}
+        {items.map((t, i) => {
+          const href = t.href ?? `#${t.id}`
+          const span =
+            items.length % 2 === 1 && i === items.length - 1 ? 'full' : [2, 1, 1, 2][i % 4]
+          const go = (e: { preventDefault: () => void }) => {
+            e.preventDefault()
+            /* the whole target, not just the room — the profile invitation carries ?demo=1 */
+            window.location.hash = href.replace(/^#/, '')
+          }
+          /* texture, not information: the same glyph blown up and running off the corner, so a
+             card is a shape rather than a rectangle of text */
+          const bleed = (
             <span className="hag-bleed" aria-hidden>
               {t.icon}
             </span>
+          )
+          const head = (
             <span className="hag-top">
               <span aria-hidden className="hag-ic">
                 {t.icon}
               </span>
               <strong>{t.title}</strong>
             </span>
-            <span className="muted hag-line">{t.line}</span>
-            <span className="hag-go" aria-hidden>
-              →
-            </span>
-          </a>
-        ))}
+          )
+
+          /**
+           * ⚠️ A LIVE TILE IS A DIV, NOT A LINK. An <a> that contains a drawing surface is
+           * broken twice over: every stroke ends in a navigation, and a control nested inside a
+           * link is not something a keyboard or a screen reader can reach on its own. So the card
+           * stops being the link and grows a real one, which is also the honest shape — the pad
+           * is the invitation now, and "open the studio" is a separate thing you may want next.
+           */
+          if (t.live === 'scribble') {
+            return (
+              <div key={t.id} className="hag-card is-live" data-span={span}>
+                {bleed}
+                {head}
+                <HomeScribble />
+                <span className="muted hag-line">{t.line}</span>
+                <a className="hag-open" href={href} onClick={go}>
+                  Open the studio →
+                </a>
+              </div>
+            )
+          }
+
+          return (
+            <a
+              key={t.id}
+              className={'hag-card' + (i === 0 ? ' is-feature' : '')}
+              data-span={span}
+              href={href}
+              onClick={go}
+            >
+              {bleed}
+              {head}
+              <span className="muted hag-line">{t.line}</span>
+              <span className="hag-go" aria-hidden>
+                →
+              </span>
+            </a>
+          )
+        })}
       </div>
     </section>
   )

@@ -36,6 +36,14 @@ export type Invite = {
   /** signed-in only — shown to members, hidden from visitors who could not open it anyway */
   members?: boolean
   /**
+   * This invitation IS the thing, rather than a description of it.
+   *
+   * ⚠️ Costs a visitor nothing: the only live tile so far is canvas 2D and pointer events,
+   * both already in the browser. The moment one of these needs a chunk, the front page has become
+   * the reason that chunk ships — which is the trap HeroPlay's dynamic import exists to avoid.
+   */
+  live?: 'scribble'
+  /**
    * Where it actually goes, when that is more than a room name.
    *
    * ⚠️ `id` stays required even with this set, because `id` is what the compiler checks — an
@@ -69,16 +77,22 @@ export const TRY_THESE: Invite[] = [
     line: "Everyone here gets one — your theme, your music, your scores, whatever you pin to it. This one's mine.",
   },
   {
-    id: 'paint',
-    icon: '🎨',
-    title: 'Draw something',
-    line: 'A paint studio with layers and frames. Friends can draw on the same page at the same time.',
-  },
-  {
     id: 'visualizer',
     icon: '🎚️',
     title: 'Watch music move',
     line: 'Put a song on and the screen moves with it. Dozens of looks, some in 3D.',
+  },
+  {
+    /**
+     * ⚠️ THE PAD IS THE POINT, so the sentence stops describing what drawing is like. It sits
+     * in a wide slot rather than a narrow one because a third of a row is not enough surface to
+     * want to drag across — which is the entire behaviour being invited.
+     */
+    id: 'paint',
+    live: 'scribble',
+    icon: '🎨',
+    title: 'Draw something',
+    line: 'Layers, frames, and friends drawing on the same page as you.',
   },
   {
     id: 'snake',
