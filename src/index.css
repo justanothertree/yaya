@@ -5753,6 +5753,17 @@ button.appearance-slider-val:not(:disabled):focus-visible {
   .profile-editrow-settings .profile-editrow-size {
     display: none;
   }
+  /* ⚠️ COLOUR IS NOT WIDTH. It was written as .profile-editrow-size to begin with and the rule
+     above swallowed it whole, so a phone got no colour picker at all — present in the DOM,
+     measured 0px wide. Width is hidden down here because it provably does nothing at one column;
+     a colour does exactly what it does at every other width. */
+  .profile-editrow-settings .profile-editrow-look {
+    display: block;
+  }
+  /* finger-sized, like the selects beside them */
+  .profile-editrow-look .profile-width-row .btn {
+    min-height: 40px;
+  }
   .profile-editrow-settings select.btn {
     min-height: 40px;
   }
@@ -8757,5 +8768,86 @@ a.cz-msg-author:focus-visible {
 @media (prefers-reduced-motion: reduce) {
   .btn.cz-hint {
     animation: none;
+  }
+}
+
+/* ── a block can wear a colour ──────────────────────────────────────────────
+   Everything that made a page somebody's used to sit AROUND the blocks — the banner, the
+   backdrop, the accent — so eight identical grey cards were the actual content of every page.
+   One hue per block, picked from the same twelve stops the identity colours use, in three
+   finishes that differ in kind rather than in degree.
+
+   ⚠️ Scoped to the SLOT, not the card, because ten block types each build their own card and
+   the width setting has already been silently dropped by three of them for exactly that reason.
+   ⚠️ --blk-h is a bare number, so it can be composed into hsl() here rather than each caller
+   having to know the saturation and lightness that keep text readable. */
+.profile-slot[data-finish] > .profile-block,
+.profile-canvas-cell[data-finish] > .profile-block {
+  border-color: hsl(var(--blk-h) 70% 55% / 0.5);
+}
+.profile-slot[data-finish='soft'] > .profile-block,
+.profile-canvas-cell[data-finish='soft'] > .profile-block {
+  background:
+    linear-gradient(160deg, hsl(var(--blk-h) 75% 52% / 0.18), hsl(var(--blk-h) 75% 52% / 0.04)),
+    var(--surface);
+}
+.profile-slot[data-finish='edge'] > .profile-block,
+.profile-canvas-cell[data-finish='edge'] > .profile-block {
+  border-color: hsl(var(--blk-h) 85% 62% / 0.9);
+  box-shadow:
+    inset 0 0 0 1px hsl(var(--blk-h) 85% 62% / 0.3),
+    0 0 18px hsl(var(--blk-h) 85% 55% / 0.18),
+    0 10px 30px rgba(0, 0, 0, 0.25);
+}
+/* ⚠️ The solid panel is dark and carries white text in BOTH themes, exactly as the avatar
+   circle does and for the same reason: its contrast must not drift with whatever palette the
+   viewer is using. A light-theme visitor sees the same panel the author was looking at. */
+.profile-slot[data-finish='solid'] > .profile-block,
+.profile-canvas-cell[data-finish='solid'] > .profile-block {
+  background: linear-gradient(155deg, hsl(var(--blk-h) 58% 30%), hsl(var(--blk-h) 62% 17%));
+  border-color: hsl(var(--blk-h) 60% 48% / 0.65);
+  color: #fff;
+}
+.profile-slot[data-finish='solid'] > .profile-block .muted,
+.profile-canvas-cell[data-finish='solid'] > .profile-block .muted {
+  color: rgba(255, 255, 255, 0.72);
+}
+.profile-slot[data-finish='solid'] > .profile-block a,
+.profile-canvas-cell[data-finish='solid'] > .profile-block a {
+  color: #fff;
+}
+
+/* the picker */
+.profile-tint-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  align-items: center;
+}
+.profile-tint-swatch {
+  width: 1.5rem;
+  height: 1.5rem;
+  padding: 0;
+  border-radius: 999px;
+  cursor: pointer;
+  border: 2px solid transparent;
+  background: linear-gradient(140deg, hsl(var(--blk-h) 72% 58%), hsl(var(--blk-h) 70% 40%));
+}
+.profile-tint-swatch.is-on {
+  border-color: var(--text);
+  transform: scale(1.12);
+}
+.profile-tint-swatch:hover {
+  transform: scale(1.12);
+}
+.profile-tint-none.is-on,
+.profile-tint-mine.is-on {
+  outline: 2px solid var(--accent);
+}
+@media (max-width: 40rem) {
+  /* the swatches are the row that would squeeze — keep them thumb-sized and let them wrap */
+  .profile-tint-swatch {
+    width: 1.75rem;
+    height: 1.75rem;
   }
 }

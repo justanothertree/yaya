@@ -2,7 +2,15 @@ import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from '
 import { createPortal } from 'react-dom'
 import { getSupabaseClient } from '../finance/client'
 import { useTouchOnly } from '../ui/pointerKind'
-import { BANNER_STYLES, bannerBackground, type BannerStyle } from '../profile/look'
+import {
+  BANNER_STYLES,
+  BLOCK_FINISHES,
+  TINT_HUES,
+  bannerBackground,
+  blockLook,
+  blockLookAttrs,
+  type BannerStyle,
+} from '../profile/look'
 import { SongBlock, VisualBlock } from '../profile/ProfileMusic'
 import {
   applyLookPreset,
@@ -159,6 +167,24 @@ const NEEDS_SERVER_SUPPORT: Array<ProfileBlock['block_type']> = ['art']
  * do not know, so it costs nothing to carry.
  */
 const blockAlone = (b: ProfileBlock) => b.config?.alone === true
+
+/**
+ * Which blocks are worth offering a colour for.
+ *
+ * ⚠️ Left out: the three whose card is ENTIRELY filled by their own artwork. A banner is a
+ * generated gradient edge to edge, and a wash underneath it is a control that appears to do
+ * nothing — which is worse than not offering it, because the reader concludes the feature is
+ * broken rather than inapplicable.
+ */
+const CAN_TINT: ReadonlySet<ProfileBlock['block_type']> = new Set([
+  'bio',
+  'stats',
+  'activity',
+  'guestbook',
+  'status',
+  'trophies',
+  'song',
+])
 
 const TIER_LABEL: Record<Tier, string> = {
   public: 'Anyone',
@@ -467,6 +493,7 @@ export function ProfileBlocksView({
         <div
           key={b.id ?? i}
           className={'profile-slot is-' + b.size + (blockAlone(b) ? ' is-alone' : '')}
+          {...blockLookAttrs(b.config, username)}
         >
           <BlockView
             block={b}
@@ -1465,6 +1492,8 @@ export function ProfileBlocksEditor({
               (blockAlone(b) ? ' is-alone' : '') +
               (liftIdx != null && liftIdx !== i ? ' is-drop' : '')
             }
+            /* the editor shows the page, so a colour has to show up here as you pick it */
+            {...blockLookAttrs(b.config, username)}
           >
             <button
               type="button"
@@ -1721,6 +1750,89 @@ export function ProfileBlocksEditor({
                     setBlocks((all) => all.map((x, idx) => (idx === openIdx ? next : x)))
                   }
                 />
+
+                {/**
+                 * ⚠️ COLOUR, AND WHAT THE COLOUR DOES — two rows, not one.
+                 *
+                 * A page was the same grey card eight times over. The swatch decides WHICH colour
+                 * and the finish decides HOW MUCH of it, and they have to be separate: one row of
+                 * "blue wash / blue outline / blue solid / green wash / ..." is thirty-six buttons
+                 * saying the same two things badly.
+                 *
+                 * ⚠️ The finish row is not rendered at all while the block wears no colour.
+                 * Greyed-out it would be three controls that look available and do nothing, which
+                 * is the exact thing this page is being rid of.
+                 */}
+                {CAN_TINT.has(selected.block_type) &&
+                  (() => {
+                    const look = blockLook(selected.config, username)
+                    const setCfg = (patch: Record<string, unknown>) =>
+                      setBlocks((all) =>
+                        all.map((x, idx) =>
+                          idx === openIdx ? { ...x, config: { ...x.config, ...patch } } : x,
+                        ),
+                      )
+                    return (
+                      <div className="profile-editrow-settings">
+                        <label className="profile-editrow-look">
+                          <span className="muted">Colour</span>
+                          <span className="profile-tint-row">
+                            <button
+                              className={
+                                'btn profile-tint-none' + (look.hue == null ? ' is-on' : '')
+                              }
+                              aria-pressed={look.hue == null}
+                              title="No colour — a plain card"
+                              onClick={() => setCfg({ tint: null })}
+                            >
+                              None
+                            </button>
+                            <button
+                              className={
+                                'btn profile-tint-mine' +
+                                (selected.config?.tint === 'mine' ? ' is-on' : '')
+                              }
+                              aria-pressed={selected.config?.tint === 'mine'}
+                              title="Your own colour — follows you if it ever changes"
+                              onClick={() => setCfg({ tint: 'mine' })}
+                            >
+                              Mine
+                            </button>
+                            {TINT_HUES.map((h) => (
+                              <button
+                                key={h}
+                                className={
+                                  'profile-tint-swatch' +
+                                  (selected.config?.tint === h ? ' is-on' : '')
+                                }
+                                aria-label={'Colour ' + Math.round(h)}
+                                aria-pressed={selected.config?.tint === h}
+                                style={{ ['--blk-h']: String(h) } as React.CSSProperties}
+                                onClick={() => setCfg({ tint: h })}
+                              />
+                            ))}
+                          </span>
+                        </label>
+                        {look.hue != null && (
+                          <label className="profile-editrow-look">
+                            <span className="muted">How much of it</span>
+                            <span className="profile-width-row">
+                              {BLOCK_FINISHES.map((f) => (
+                                <button
+                                  key={f.id}
+                                  className={'btn' + (look.finish === f.id ? ' is-on' : '')}
+                                  aria-pressed={look.finish === f.id}
+                                  onClick={() => setCfg({ finish: f.id })}
+                                >
+                                  {f.label}
+                                </button>
+                              ))}
+                            </span>
+                          </label>
+                        )}
+                      </div>
+                    )
+                  })()}
 
                 <div className="profile-editrow-settings">
                   {/* ⚠️ three buttons rather than one that cycles. A cycling button cannot show

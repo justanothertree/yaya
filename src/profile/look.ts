@@ -78,6 +78,79 @@ export function avatarStyle(username: string): React.CSSProperties {
 }
 
 /**
+ * WHAT ONE BLOCK WEARS.
+ *
+ * A page used to be the same grey card repeated eight times. Everything that made it yours —
+ * your colour, your banner, your backdrop — was around the blocks, never in them, so two very
+ * different people's pages read as the same page with different words in it.
+ *
+ * ⚠️ PICKED, NOT TYPED, and built from ONE hue like everything else here. That is not
+ * timidity: a colour field lets somebody put grey text on a grey card and there is no undo for
+ * a taste, whereas a swatch cannot produce a page that does not work. It is also why finishes
+ * are a closed set — the wash, the outline and the solid panel are three different-in-kind
+ * looks rather than three numbers to nudge.
+ *
+ * ⚠️ Stored in the block's own `config`, which is free-form jsonb the server already accepts
+ * (the same reasoning as `alone`). No migration, nothing to run before this can be tried, and a
+ * reader that does not know these keys ignores them.
+ */
+export type BlockFinish = 'soft' | 'edge' | 'solid'
+
+export const BLOCK_FINISHES: ReadonlyArray<{ id: BlockFinish; label: string }> = [
+  { id: 'soft', label: 'Wash' },
+  { id: 'edge', label: 'Outline' },
+  { id: 'solid', label: 'Solid' },
+]
+
+/**
+ * The swatches.
+ *
+ * ⚠️ The SAME twelve stops the identity colours use, for the same reason: hues any closer
+ * together do not read as two colours, they read as one colour rendered slightly wrong. It also
+ * means a block tinted "mine" sits in the same family as the picked ones rather than beside them.
+ */
+export const TINT_HUES: readonly number[] = Array.from(
+  { length: HUE_STOPS },
+  (_, i) => i * (360 / HUE_STOPS) + 15,
+)
+
+/**
+ * Resolve a block's saved colour.
+ *
+ * `tint` is a hue, or the word 'mine' for the person's own derived hue, or absent for a plain
+ * card — which stays the default, because a page where every block shouts is a page where
+ * nothing does.
+ */
+export function blockLook(
+  config: Record<string, unknown> | null | undefined,
+  username: string,
+): { hue: number | null; finish: BlockFinish } {
+  const t = config?.tint
+  const hue =
+    t === 'mine' ? hueFor(username) : typeof t === 'number' && t >= 0 && t < 360 ? t : null
+  const f = config?.finish
+  const finish: BlockFinish = f === 'edge' || f === 'solid' ? f : 'soft'
+  return { hue, finish }
+}
+
+/**
+ * The two attributes a slot needs to wear that colour — or nothing at all when it wears none.
+ *
+ * ⚠️ On the SLOT rather than on the block, because there are ten block types and each one
+ * builds its own card. Putting this on the wrapper is the same lesson the width setting already
+ * learned here: the song, art and visualiser blocks silently ignored their own width for exactly
+ * as long as each type was expected to remember to apply it.
+ */
+export function blockLookAttrs(
+  config: Record<string, unknown> | null | undefined,
+  username: string,
+): { 'data-finish'?: BlockFinish; style?: React.CSSProperties } {
+  const { hue, finish } = blockLook(config, username)
+  if (hue == null) return {}
+  return { 'data-finish': finish, style: { ['--blk-h']: String(hue) } as React.CSSProperties }
+}
+
+/**
  * The banner looks.
  *
  * Each is a pure CSS background built from ONE hue, so every style works in every colour and the
