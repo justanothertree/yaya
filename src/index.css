@@ -3028,6 +3028,20 @@ section[id] {
   height: clamp(20rem, 78vh, 56rem);
 }
 /**
+ * ⚠️ AND WITH THE PANEL SHOWN THE STAGE GROWS TO PAY FOR IT. The panel lives inside the
+ * stage, so sizing it to fit every tab took the space straight out of the canvas — measured, the
+ * picture fell from 320px to 197px, which is a poor trade on the one page you came to look at
+ * something. Taller stage, and the canvas is back to roughly what it was with the controls fully
+ * visible above it.
+ */
+.viz-wrap:not(.is-bare) .viz-stage {
+  /* ⚠️ AND IT HAS TO KNOW WHERE IT STARTS. 78vh is a share of the screen, but the stage begins
+     about 230px down it — under the nav, the heading and the status line — so 78vh put its
+     bottom 41px past the fold and you were still scrolling to reach the last control. The second
+     term is the honest one: whatever is left of the window from here down. */
+  height: min(clamp(26rem, 78vh, 48rem), calc(100dvh - 245px));
+}
+/**
  * ⚠️ INSIDE A CANVAS WINDOW, vh IS THE WRONG UNIT.
  *
  * The stage asks for 62vh, which is a sensible share of the SCREEN and meaningless inside a
@@ -3129,15 +3143,45 @@ section[id] {
   flex-direction: column;
   gap: 0.5rem;
   flex: 0 0 auto;
-  /* Sized to the SECOND-tallest section, not the tallest. Modes, Look and Motion fit exactly;
-     Sound is the one outlier and scrolls a little rather than making every other tab carry its
-     height as empty space. */
-  height: 12rem;
+  /**
+   * ⚠️ ONE HEIGHT PER WIDTH, SIZED TO THE TALLEST TAB AT THAT WIDTH.
+   *
+   * It was a flat 12rem, picked as the SECOND-tallest section on the reasoning that one outlier
+   * scrolling beats every other tab carrying its height as empty space. Measured, that left 88px
+   * of Modes below the fold behind a scrollbar most people will never look for — and a control
+   * you cannot see is a control you do not have.
+   *
+   * Content-height is NOT the fix, and the note above says why: the panel and the picture share
+   * the stage, so a panel that resizes per tab rebuilds the canvas on every tab press, reseeding
+   * particles and wiping the spectrogram. The height has to stay constant while you flick
+   * between tabs. So it stays fixed — just fixed at a figure that actually fits.
+   *
+   * ⚠️ MEASURED, not guessed. The tallest tab is Modes, and it needs 297px at 1280 wide, 365px
+   * from about 860 to 1200, and then climbs as the rows wrap — 433 at 700, 501 at 560, 705 at
+   * 420, 940 at 375. Nothing fits a phone, and 940px of controls should not: below the widths
+   * where it can fit, it caps and scrolls, which is the honest answer rather than a panel taller
+   * than the screen.
+   */
+  height: min(45vh, 372px);
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-gutter: stable;
   padding: 0.5rem 0.6rem 0.6rem;
   border-top: 1px solid var(--border);
+}
+/* the widths where every tab genuinely fits — see the measurements above */
+/* ⚠️ px, not rem. This site's root font-size is FLUID, so the 19rem first written here
+   measured 335px — the same trap the snake stage's column widths document. The figures above are
+   measured pixels and have to stay pixels to mean anything. */
+@media (min-width: 54rem) {
+  .viz-controls {
+    height: 372px;
+  }
+}
+@media (min-width: 75rem) {
+  .viz-controls {
+    height: 304px;
+  }
 }
 /* one row of small tabs, so the panel is a strip rather than a wall */
 .viz-tabs {
