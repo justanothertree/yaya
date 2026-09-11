@@ -22,6 +22,9 @@ import type { Sprite } from './artSprite'
 
 export type VisualId =
   | 'bars'
+  | 'warp'
+  | 'landscape'
+  | 'solid'
   | 'wave'
   | 'radial'
   | 'rain'
@@ -57,6 +60,9 @@ export type VisualId =
 /** id, icon, label, and how much of the previous frame lingers by default (0 = none, 1 = all). */
 export const VISUALS: Array<[VisualId, string, string, number]> = [
   ['bars', '📊', 'Bars', 0],
+  ['warp', '✨', 'Warp', 0.72],
+  ['landscape', '🗻', 'Landscape', 0],
+  ['solid', '🧊', 'Solid', 0.22],
   ['wave', '〰️', 'Wave', 0],
   ['radial', '◎', 'Radial', 0],
   ['rain', '🌧', 'Rain', 1],
@@ -228,6 +234,280 @@ function hue(ink: Ink, t: number, alpha = 1): string {
 /** Read a bin by FRACTION of the spectrum, so a mode never hard-codes an index. */
 const at = (spec: Uint8Array, bins: number, frac: number) =>
   spec[Math.min(bins - 1, Math.max(0, Math.floor(frac * bins)))] / 255
+
+// -- three dimensions, on a two dimensional canvas ---------------------------
+
+/**
+ * One point of perspective.
+ *
+ * ⚠️ THE ONLY 3D MATHS IN THE FILE, shared by the three modes below rather than written out in
+ * each. A camera at the origin looking down +z, a point divided by its depth, and the result
+ * scaled by the smaller side so the picture keeps its proportions in any window. That is the
+ * whole of it - there is no matrix stack, no z-buffer and no lighting, because every one of those
+ * would be machinery in service of something none of these modes need.
+ *
+ * ⚠️ Returns the SCALE as well as the position, because everything that reads as distance comes
+ * from it: line width, brightness and size all follow the same number, which is why these look
+ * three dimensional rather than merely projected.
+ */
+const project = (
+  x: number,
+  y: number,
+  z: number,
+  w: number,
+  h: number,
+  cx: number,
+  cy: number,
+): [number, number, number] => {
+  const s = Math.min(w, h) / Math.max(0.05, z)
+  return [cx + x * s, cy + y * s, s / Math.min(w, h)]
+}
+
+/** Turn a point about Y then X. Two angles is all these modes ever need. */
+const spin3 = (
+  x: number,
+  y: number,
+  z: number,
+  ay: number,
+  ax: number,
+): [number, number, number] => {
+  const cy1 = Math.cos(ay)
+  const sy1 = Math.sin(ay)
+  const x1 = x * cy1 - z * sy1
+  const z1 = x * sy1 + z * cy1
+  const cx1 = Math.cos(ax)
+  const sx1 = Math.sin(ax)
+  return [x1, y * cx1 - z1 * sx1, y * sx1 + z1 * cx1]
+}
+
+/**
+ * Warp - a field of points flying past the camera.
+ *
+ * ⚠️ Each point is drawn as the LINE from where it was to where it is, not as a dot. A dot
+ * field moving quickly reads as noise; the streak is what the eye turns into speed, and it costs
+ * the same one stroke. Length follows the level for free, because a louder frame moves them
+ * further between frames.
+ */
+function warp(): Visual {
+  type Star = { x: number; y: number; z: number; pz: number }
+  let stars: Star[] = []
+  const seed = (s: Star, z: number) => {
+    s.x = (Math.random() - 0.5) * 2.4
+    s.y = (Math.random() - 0.5) * 2.4
+    s.z = z
+    s.pz = z
+  }
+  return {
+    init() {
+      stars = Array.from({ length: 260 }, () => {
+        const s = { x: 0, y: 0, z: 0, pz: 0 }
+        seed(s, 0.05 + Math.random() * 1.6)
+        return s
+      })
+    },
+    draw({ ctx, w, h, dt, f, p, ink }) {
+      const [cx, cy] = centre(p, w, h)
+      /* silence still drifts, so the shape is legible before anything plays */
+      const speed = 0.18 + f.level * 2.6 + f.bass * 1.2
+      ctx.lineCap = 'round'
+      for (const s of stars) {
+        s.pz = s.z
+        s.z -= dt * speed
+        if (s.z < 0.05) {
+          seed(s, 1.6)
+          continue
+        }
+        const [x1, y1, k] = project(s.x, s.y, s.z, w, h, cx, cy)
+        const [x0, y0] = project(s.x, s.y, s.pz, w, h, cx, cy)
+        /* off the side of the screen is cheaper to skip than to stroke */
+        if (x1 < -w || x1 > w * 2 || y1 < -h || y1 > h * 2) continue
+        ctx.beginPath()
+        ctx.moveTo(x0, y0)
+        ctx.lineTo(x1, y1)
+        ctx.lineWidth = Math.max(0.4, k * 2.6)
+        ctx.globalAlpha = Math.min(1, k * 1.8)
+        ctx.strokeStyle = hue(ink, Math.min(1, k * 1.4))
+        ctx.stroke()
+      }
+      ctx.globalAlpha = 1
+    },
+  }
+}
+
+/**
+ * Landscape - the spectrum as ground, in perspective, scrolling away from you.
+ *
+ * ⚠️ IT KEEPS A HISTORY, which is what makes it a landscape rather than a graph on a slant.
+ * Each row is one past frame of the spectrum, and the rows march into the distance - so the
+ * picture shows the last few seconds of the music as terrain you are flying over. Terrain draws
+ * the spectrum as hills; this draws TIME as hills, and that is the whole difference between them.
+ */
+function landscape(): Visual {
+  const COLS = 28
+  const ROWS = 22
+  let rows: number[][] = []
+  let carry = 0
+  return {
+    init() {
+      rows = Array.from({ length: ROWS }, () => new Array(COLS).fill(0))
+      carry = 0
+    },
+    draw({ ctx, w, h, dt, spec, bins, f, p, ink }) {
+      /* a new row at a steady rate rather than per frame, so the speed does not follow the
+         refresh rate of whatever screen this happens to be on */
+      carry += dt
+      if (carry > 0.055) {
+        carry = 0
+        const next = new Array(COLS)
+        for (let c = 0; c < COLS; c++) {
+          /* curved, because an FFT is linear in Hz and music is not - same reasoning as bars */
+          next[c] = at(spec, bins, Math.pow(c / COLS, 1.7))
+        }
+        rows.unshift(next)
+        rows.length = ROWS
+      }
+      const [cx] = centre(p, w, h)
+      const horizon = h * 0.34
+      for (let r = ROWS - 1; r >= 0; r--) {
+        const row = rows[r]
+        if (!row) continue
+        /* depth from just in front of you out to the horizon */
+        const z = 0.35 + (r / ROWS) * 1.85
+        ctx.beginPath()
+        let peak = 0
+        for (let c = 0; c < COLS; c++) {
+          const v = row[c]
+          if (v > peak) peak = v
+          const [x, y] = project(
+            (c / (COLS - 1) - 0.5) * 2.2,
+            0.55 - v * 0.85,
+            z,
+            w,
+            h,
+            cx,
+            horizon,
+          )
+          if (c === 0) ctx.moveTo(x, y)
+          else ctx.lineTo(x, y)
+        }
+        const near = 1 - r / ROWS
+        ctx.lineWidth = Math.max(0.5, 2.2 * near)
+        ctx.globalAlpha = 0.15 + near * 0.75
+        ctx.strokeStyle = hue(ink, Math.min(1, peak * 0.7 + f.bass * 0.3))
+        ctx.stroke()
+      }
+      ctx.globalAlpha = 1
+    },
+  }
+}
+
+/**
+ * Solid - a wireframe turning in space, breathing with the music.
+ *
+ * ⚠️ Edges are drawn FARTHEST FIRST and faded by depth, which is the cheapest thing that reads
+ * as solidity: with every edge the same weight a wireframe cube flips inside out as you watch it
+ * - the Necker illusion - and the eye never settles. Sorting and fading costs one sort of twelve
+ * items and removes the flicker entirely.
+ *
+ * ⚠️ An octahedron on a heavy beat and a cube otherwise, so the shape itself answers the music,
+ * which no amount of colour does as clearly.
+ */
+function solid(): Visual {
+  const CUBE: Array<[number, number, number]> = [
+    [-1, -1, -1],
+    [1, -1, -1],
+    [1, 1, -1],
+    [-1, 1, -1],
+    [-1, -1, 1],
+    [1, -1, 1],
+    [1, 1, 1],
+    [-1, 1, 1],
+  ]
+  const CUBE_E: Array<[number, number]> = [
+    [0, 1],
+    [1, 2],
+    [2, 3],
+    [3, 0],
+    [4, 5],
+    [5, 6],
+    [6, 7],
+    [7, 4],
+    [0, 4],
+    [1, 5],
+    [2, 6],
+    [3, 7],
+  ]
+  const OCTA: Array<[number, number, number]> = [
+    [0, -1.3, 0],
+    [1.3, 0, 0],
+    [0, 0, 1.3],
+    [-1.3, 0, 0],
+    [0, 0, -1.3],
+    [0, 1.3, 0],
+  ]
+  const OCTA_E: Array<[number, number]> = [
+    [0, 1],
+    [0, 2],
+    [0, 3],
+    [0, 4],
+    [5, 1],
+    [5, 2],
+    [5, 3],
+    [5, 4],
+    [1, 2],
+    [2, 3],
+    [3, 4],
+    [4, 1],
+  ]
+  let ay = 0
+  let ax = 0
+  let morph = 0
+  return {
+    init() {
+      ay = 0
+      ax = 0
+      morph = 0
+    },
+    draw({ ctx, w, h, dt, f, p, ink }) {
+      const [cx, cy] = centre(p, w, h)
+      ay += dt * (0.35 + f.mid * 1.6)
+      ax += dt * (0.18 + f.treble * 0.9)
+      /* the shape answers a beat and eases back, rather than snapping between the two */
+      morph += ((f.beatStrength > 0.45 ? 1 : 0) - morph) * Math.min(1, dt * 4)
+      const pts = morph > 0.5 ? OCTA : CUBE
+      const edges = morph > 0.5 ? OCTA_E : CUBE_E
+      /* ⚠️ Small, and far enough back to stay whole. Scaled to fill the frame it was edge to
+         edge before the eye could read it as a shape at all — a wireframe only looks solid while
+         you can see the whole of it turning, so the silhouette matters more than the size. */
+      const size = 0.26 + f.level * 0.2
+      const dist = 3.1 - f.bass * 0.35
+      const seen = pts.map(([x, y, z]) => spin3(x * size, y * size, z * size, ay, ax))
+      const drawn = edges
+        .map(([a, b]) => {
+          const pa = seen[a]
+          const pb = seen[b]
+          return { a: pa, b: pb, mid: (pa[2] + pb[2]) / 2 }
+        })
+        /* farthest first - see the note above */
+        .sort((m, n) => n.mid - m.mid)
+      ctx.lineCap = 'round'
+      for (const e of drawn) {
+        const [x0, y0] = project(e.a[0], e.a[1], e.a[2] + dist, w, h, cx, cy)
+        const [x1, y1, k] = project(e.b[0], e.b[1], e.b[2] + dist, w, h, cx, cy)
+        /* 0 at the back, 1 at the front */
+        const near = Math.min(1, Math.max(0, (1.2 - e.mid) / 1.6))
+        ctx.beginPath()
+        ctx.moveTo(x0, y0)
+        ctx.lineTo(x1, y1)
+        ctx.lineWidth = Math.max(0.6, k * 5 * (0.35 + near))
+        ctx.globalAlpha = 0.25 + near * 0.75
+        ctx.strokeStyle = hue(ink, Math.min(1, near * 0.6 + f.level * 0.5))
+        ctx.stroke()
+      }
+      ctx.globalAlpha = 1
+    },
+  }
+}
 
 // ── the original four ────────────────────────────────────────────────────────
 
@@ -2104,6 +2384,9 @@ function spiral(): Visual {
 
 const MAKERS: Record<VisualId, () => Visual> = {
   bars,
+  warp,
+  landscape,
+  solid,
   wave,
   radial,
   rain,

@@ -307,6 +307,18 @@ export function PaintRoom() {
     return () => window.removeEventListener('pointerdown', away, true)
   }, [paperOpen, colourOpen, fxOpen])
 
+  /**
+   * ⚠️ FULLSCREEN STARTS WITH THE TOOLS AWAY, because that is what going fullscreen was for.
+   * Arriving at a wall of controls on a bigger screen is the thing that made it feel pointless.
+   * Leaving puts them back, so the ordinary page is never mysteriously bare — and the button is
+   * still there in both states, so this is a starting position rather than a rule.
+   */
+  useEffect(() => {
+    const onFull = () => setToolsHidden(!!document.fullscreenElement)
+    document.addEventListener('fullscreenchange', onFull)
+    return () => document.removeEventListener('fullscreenchange', onFull)
+  }, [])
+
   const toggleFull = () => {
     const el = wrap.current
     if (!el) return
