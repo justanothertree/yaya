@@ -4,7 +4,7 @@
 // informational write-up. Résumé content folds in as About / Skills, with a PDF link.
 import { useState, type ReactNode } from 'react'
 import { site } from '../config/site'
-import { TRY_THESE } from '../site/tryThese'
+import { GROUPS, TRY_THESE } from '../site/tryThese'
 import { HomeScribble } from '../site/HomeScribble'
 import { HomeSnake } from '../site/HomeSnake'
 import { HomeSequencer } from '../site/HomeSequencer'
@@ -205,61 +205,88 @@ function SkillsCard() {
  * job. Native means it is keyboard reachable, findable by the browser's own in-page search even
  * while shut, and costs no script.
  */
-function ProjectNotes({ id }: { id: string }) {
+function ProjectNotes({ id, inline = false }: { id: string; inline?: boolean }) {
   const project = projects.find((p) => p.id === id)
   if (!project) return null
+  const body = (
+    <div className="demo-notes-body" style={{ borderLeft: `3px solid ${project.accent}` }}>
+      {project.blurb.map((para, i) => (
+        <p key={i} className="muted">
+          {para}
+        </p>
+      ))}
+      <ul>
+        {project.highlights.map((h, i) => (
+          <li key={i} className="muted">
+            {h}
+          </li>
+        ))}
+      </ul>
+      <p className="demo-tags">
+        {project.tags.map((t) => (
+          <span key={t} className="demo-tag">
+            {t}
+          </span>
+        ))}
+      </p>
+      {project.links.some((l) => l.external) && (
+        <p className="demo-links">
+          {project.links
+            .filter((l) => l.external)
+            .map((l) => (
+              <a
+                key={l.href}
+                className="btn btn-ghost"
+                href={l.href}
+                target="_blank"
+                rel="noreferrer"
+              >
+                {l.label} ↗
+              </a>
+            ))}
+        </p>
+      )}
+    </div>
+  )
+
+  const head = (
+    <>
+      <strong>{project.title}</strong>{' '}
+      <span className="muted">
+        {STATUS_LABEL[project.status]}
+        {project.period ? ` · ${project.period}` : ''}
+      </span>
+    </>
+  )
+
+  /**
+   * ⚠️ INLINE WHEN THERE IS NOTHING ABOVE IT TO BE "IT".
+   *
+   * Every one of these was a <details> labelled "What went into it", and three ended up stacked
+   * at the foot of the page with no demo above any of them — three identical dropdowns in a row,
+   * each about a thing the reader could not see. Signed out that is exactly what happens: the
+   * Circuit's demo is members-only so its write-up falls through to the leftovers beside
+   * Dollar-a-Day, and evancook.dev's sat bare at the top for the same reason.
+   *
+   * So a write-up with nothing above it is not folded at all — it is a titled block that says
+   * what it is. Only the ones attached to something visible stay a disclosure, and those NAME the
+   * thing now rather than saying "it".
+   */
+  if (inline) {
+    return (
+      <article className="demo-solo">
+        <p className="demo-notes-head">{head}</p>
+        <p className="demo-solo-tagline">{project.tagline}</p>
+        {body}
+      </article>
+    )
+  }
+
   return (
     <details className="demo-notes">
-      <summary>What went into it</summary>
-      <div className="demo-notes-body" style={{ borderLeft: `3px solid ${project.accent}` }}>
-        <p className="demo-notes-head">
-          <strong>{project.title}</strong>{' '}
-          <span className="muted">
-            {STATUS_LABEL[project.status]}
-            {project.period ? ` · ${project.period}` : ''}
-          </span>
-        </p>
-        {project.blurb.map((para, i) => (
-          <p key={i} className="muted">
-            {para}
-          </p>
-        ))}
-        <ul>
-          {project.highlights.map((h, i) => (
-            <li key={i} className="muted">
-              {h}
-            </li>
-          ))}
-        </ul>
-        <p className="demo-tags">
-          {project.tags.map((t) => (
-            <span key={t} className="demo-tag">
-              {t}
-            </span>
-          ))}
-        </p>
-        {/* ⚠️ The EXTERNAL links survive the fold. The rest are "#circuit"-style and duplicate
-            the demo's own button, but evancook.dev's is the repository — the one link on this
-            page an employer is actually looking for, and deleting the card would have taken it
-            with it. */}
-        {project.links.some((l) => l.external) && (
-          <p className="demo-links">
-            {project.links
-              .filter((l) => l.external)
-              .map((l) => (
-                <a
-                  key={l.href}
-                  className="btn btn-ghost"
-                  href={l.href}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  {l.label} ↗
-                </a>
-              ))}
-          </p>
-        )}
-      </div>
+      <summary>What went into {project.title}</summary>
+      <p className="demo-notes-head">{head}</p>
+      {body}
     </details>
   )
 }
@@ -267,83 +294,107 @@ function ProjectNotes({ id }: { id: string }) {
 /**
  * Everything on this site, running.
  *
- * ⚠️ THEY ARE NOT TILES ANY MORE. Each one was a bordered card with a rectangle of art inside
- * it, which is why they read as blocks rather than as demos — a box around a live thing says
- * "here is a picture of a feature", and the one demo on this page that never had that problem is
- * the hero's keys, which is a band with a caption under it and no box at all. So: no border, no
- * card, the demo itself full width of its column, and the words underneath it.
+ * ⚠️ THEY ARE NOT TILES. Each was a bordered card with a rectangle of art inside it, which is
+ * why they read as blocks rather than demos — a box around a live thing says "here is a picture
+ * of a feature". The one demo on this page that never had the problem is the hero's keys: a band
+ * with a caption under it and no box at all. So these are bands too.
  *
- * ⚠️ WIDTHS STILL RUN 2,1,1,2, so the eye has somewhere to land. Each PAIR sums to the three
- * columns, and an odd count cannot pair up — so the last one takes a row to itself rather than
- * leaving a hole.
+ * ⚠️ AND THEY ARE IN RUNS. Eight in one flat grid was a list — every demo the same weight,
+ * each following the last for no reason a reader could see. Two groups with a line each gives the
+ * section an argument: what you can do alone, then what needs somebody else. That is the site's
+ * thesis rather than a sorting convenience.
+ *
+ * ⚠️ WIDTHS RUN 2,1,1,2 WITHIN EACH RUN, restarting per group. Each PAIR sums to the three
+ * columns and an odd count cannot pair up, so the last of a run takes a row to itself rather than
+ * leaving a hole. Restarting matters: carrying the cycle across a heading would drop a stray
+ * single at the top of the next run.
  */
 function Demos({ authed }: { authed: boolean }) {
   const items = TRY_THESE.filter((t) => !t.members || authed)
   const platform = projects.find((p) => p.id === 'platform')
   const shown = new Set(items.map((t) => t.project).filter(Boolean))
-  const orphans = projects.filter((p) => p.id !== 'platform' && !shown.has(p.id))
+  const leftovers = projects.filter((p) => p.id !== 'platform' && !shown.has(p.id))
   return (
     <section className="demos" id="projects-showcase" style={{ scrollMarginTop: 'var(--nav-h)' }}>
       <h2 className="section-title" style={{ marginBottom: '0.2rem' }}>
         What I have built
       </h2>
-      {/* ⚠️ evancook.dev's own write-up, as the opening line. It described the whole site
-          rather than one room, so as a card among the rooms it was a thing describing its own
-          container. Here it is the sentence the section starts with. */}
+      {/* ⚠️ evancook.dev's tagline, and NOT its write-up. That write-up said the same thing as
+          the "How is it built?" thread in About, and as a bare dropdown up here it was one of the
+          three unlabelled ones. The repository link it carried is already in the hero. */}
       <p className="muted demos-lede">{platform?.tagline}</p>
-      {platform && <ProjectNotes id={platform.id} />}
-      <div className="demos-grid">
-        {items.map((t, i) => {
-          const href = t.href ?? `#${t.id}`
-          const span =
-            items.length % 2 === 1 && i === items.length - 1 ? 'full' : [2, 1, 1, 2][i % 4]
-          const go = (e: { preventDefault: () => void }) => {
-            e.preventDefault()
-            /* the whole target, not just the room — the profile invitation carries ?demo=1 */
-            window.location.hash = href.replace(/^#/, '')
-          }
-          return (
-            <div key={t.id} className="demo" data-span={span}>
-              {/**
-               * ⚠️ A DEMO IS A DIV, NOT A LINK. An <a> wrapping a drawing surface is broken
-               * twice over: every stroke ends in a navigation, and a control nested inside a link
-               * is not reachable on its own by a keyboard or a screen reader.
-               */}
-              <div className="demo-art">
-                {t.live === 'scribble' ? (
-                  <HomeScribble />
-                ) : t.live === 'snake' ? (
-                  <HomeSnake />
-                ) : t.live === 'keys' ? (
-                  <HomeSequencer />
-                ) : t.live ? (
-                  <TileArt kind={t.live} />
-                ) : null}
-              </div>
-              <p className="demo-title">
-                <span aria-hidden className="demo-ic">
-                  {t.icon}
-                </span>
-                <strong>{t.title}</strong>
-              </p>
-              <p className="muted demo-line">{t.line}</p>
-              <a className="demo-go" href={href} onClick={go}>
-                {t.open ?? 'Open it'} →
-              </a>
-              {t.project && <ProjectNotes id={t.project} />}
+
+      {GROUPS.map((g) => {
+        const run = items.filter((t) => t.group === g.id)
+        if (!run.length) return null
+        return (
+          <div key={g.id} className="demo-run">
+            <h3 className="demo-run-title">{g.title}</h3>
+            <p className="muted demo-run-lead">{g.lead}</p>
+            <div className="demos-grid">
+              {run.map((t, i) => {
+                const href = t.href ?? `#${t.id}`
+                const span =
+                  run.length % 2 === 1 && i === run.length - 1 ? 'full' : [2, 1, 1, 2][i % 4]
+                const go = (e: { preventDefault: () => void }) => {
+                  e.preventDefault()
+                  /* the whole target, not just the room — the profile invitation carries ?demo=1 */
+                  window.location.hash = href.replace(/^#/, '')
+                }
+                return (
+                  <div key={t.id} className="demo" data-span={span}>
+                    {/**
+                     * ⚠️ A DEMO IS A DIV, NOT A LINK. An <a> wrapping a drawing surface is
+                     * broken twice over: every stroke ends in a navigation, and a control nested
+                     * inside a link is not reachable on its own by a keyboard or screen reader.
+                     */}
+                    <div className="demo-art">
+                      {t.live === 'scribble' ? (
+                        <HomeScribble />
+                      ) : t.live === 'snake' ? (
+                        <HomeSnake />
+                      ) : t.live === 'keys' ? (
+                        <HomeSequencer />
+                      ) : t.live ? (
+                        <TileArt kind={t.live} />
+                      ) : null}
+                    </div>
+                    <p className="demo-title">
+                      <span aria-hidden className="demo-ic">
+                        {t.icon}
+                      </span>
+                      <strong>{t.title}</strong>
+                    </p>
+                    <p className="muted demo-line">{t.line}</p>
+                    <a className="demo-go" href={href} onClick={go}>
+                      {t.open ?? 'Open it'} →
+                    </a>
+                    {t.project && <ProjectNotes id={t.project} />}
+                  </div>
+                )
+              })}
             </div>
-          )
-        })}
-      </div>
+          </div>
+        )
+      })}
+
       {/**
-       * ⚠️ A project a visitor cannot be SHOWN still needs somewhere to live. Dollar-a-Day is
-       * real money in real accounts, so there is no honest public demo of it — and folding the
-       * cards into the demos without catching this would have quietly deleted a project from the
-       * portfolio rather than merging it.
+       * ⚠️ A PROJECT WITH NO DEMO STILL NEEDS SOMEWHERE TO LIVE, and it is not a dropdown.
+       * Dollar-a-Day is real money in real accounts so there is no honest public demo, and signed
+       * out the Circuit has none either — its demo is members-only. Both are written out in full
+       * here, titled, rather than hidden behind a label saying "it".
        */}
-      {orphans.map((o) => (
-        <ProjectNotes key={o.id} id={o.id} />
-      ))}
+      {leftovers.length > 0 && (
+        <div className="demo-run">
+          <h3 className="demo-run-title">Also here</h3>
+          <p className="muted demo-run-lead">No demo for these — you would need an account.</p>
+          <div className="demo-solos">
+            {leftovers.map((o) => (
+              <ProjectNotes key={o.id} id={o.id} inline />
+            ))}
+          </div>
+        </div>
+      )}
     </section>
   )
 }
@@ -354,11 +405,15 @@ export function EvanCook({ authed = false }: { authed?: boolean } = {}) {
       <Hero />
       {/* ⚠️ 3fr/2fr rather than the old equal halves. Two identical columns of prose is the same
           symmetry problem as the tiles, and these two are not equally interesting. */}
+      {/* ⚠️ PROOF BEFORE CONTEXT. The hero ends on "everything here is live — press something",
+          and what followed was an About card: the page made an offer and then changed the
+          subject. The demos answer the sentence directly above them now, and who I am is what you
+          read once you have already pressed something. */}
+      <Demos authed={authed} />
       <section className="home-split">
         <AboutMe />
         <SkillsCard />
       </section>
-      <Demos authed={authed} />
     </div>
   )
 }

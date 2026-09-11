@@ -52,6 +52,16 @@ export type Invite = {
   /** what the link under a live tile says */
   open?: string
   /**
+   * Which run of the section this belongs to.
+   *
+   * ⚠️ EIGHT THINGS IN ONE FLAT GRID IS A LIST, NOT A PAGE. Every demo had the same weight and
+   * followed the one before it for no reason a reader could see — which is what "slapped
+   * together" means in practice: no argument was being made about the order. Two runs with a line
+   * each gives the section a shape, and the split is the actual thesis of the site — things you
+   * make on your own, then things that need somebody else.
+   */
+  group: 'make' | 'together'
+  /**
    * The id of the project in work.ts this demo IS.
    *
    * ⚠️ THE SAME THING WAS ON THE PAGE TWICE. Snake and the Circuit each had a live demo up
@@ -70,6 +80,12 @@ export type Invite = {
   href?: string
 }
 
+/** The runs, in the order the page makes them. */
+export const GROUPS: ReadonlyArray<{ id: 'make' | 'together'; title: string; lead: string }> = [
+  { id: 'make', title: 'Make something', lead: 'No account, no install — these work right here.' },
+  { id: 'together', title: 'With other people', lead: 'The reason the site has accounts at all.' },
+]
+
 export const TRY_THESE: Invite[] = [
   /**
    * ⚠️ EVERY LINE FOLLOWS THE HERO'S CAPTION, which is the one on this page that works:
@@ -86,6 +102,7 @@ export const TRY_THESE: Invite[] = [
    */
   {
     id: 'paint',
+    group: 'make',
     live: 'scribble',
     open: 'Open the studio',
     icon: '🎨',
@@ -94,6 +111,7 @@ export const TRY_THESE: Invite[] = [
   },
   {
     id: 'visualizer',
+    group: 'make',
     live: 'viz',
     open: 'Put a song on',
     icon: '🎚️',
@@ -102,6 +120,7 @@ export const TRY_THESE: Invite[] = [
   },
   {
     id: 'instrument',
+    group: 'make',
     live: 'keys',
     open: 'Open the studio',
     icon: '🎹',
@@ -118,6 +137,7 @@ export const TRY_THESE: Invite[] = [
      * ever returns the single row flagged is_demo and only its public blocks.
      */
     id: 'profile',
+    group: 'together',
     live: 'profile',
     open: 'See the whole page',
     href: '#profile?demo=1',
@@ -130,6 +150,7 @@ export const TRY_THESE: Invite[] = [
   },
   {
     id: 'snake',
+    group: 'together',
     project: 'snake',
     live: 'snake',
     open: 'Play it properly',
@@ -139,6 +160,7 @@ export const TRY_THESE: Invite[] = [
   },
   {
     id: 'circuit',
+    group: 'together',
     project: 'circuit',
     live: 'circuit',
     open: 'Open the board',
@@ -149,6 +171,7 @@ export const TRY_THESE: Invite[] = [
   },
   {
     id: 'ratings',
+    group: 'together',
     live: 'ratings',
     open: 'Open the pool',
     icon: '⭐',
@@ -158,6 +181,7 @@ export const TRY_THESE: Invite[] = [
   },
   {
     id: 'chat',
+    group: 'together',
     live: 'calls',
     open: 'Open chat',
     icon: '🎧',

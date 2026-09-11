@@ -9377,3 +9377,48 @@ a.cz-msg-author:focus-visible {
     align-items: center;
   }
 }
+
+/* the two runs, which give the section a shape instead of a list */
+.demo-run {
+  margin-top: 1.6rem;
+}
+.demo-run-title {
+  margin: 0;
+  font-size: 0.82rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.demo-run-lead {
+  margin: 0.15rem 0 0;
+  font-size: 0.86rem;
+}
+/* a hairline under the run heading, so the eye knows a new run started */
+.demo-run-title::after {
+  content: '';
+  display: block;
+  height: 1px;
+  margin-top: 0.4rem;
+  background: linear-gradient(90deg, var(--border), transparent);
+}
+
+/* a write-up with no demo above it: a titled block, not a mystery dropdown */
+.demo-solos {
+  display: grid;
+  gap: 1rem;
+  margin-top: 0.9rem;
+}
+@media (min-width: 62rem) {
+  .demo-solos {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+.demo-solo {
+  min-width: 0;
+}
+.demo-solo-tagline {
+  margin: 0 0 0.5rem;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
