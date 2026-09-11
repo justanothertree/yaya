@@ -173,6 +173,8 @@ export function PaintRoom() {
   const [colourOpen, setColourOpen] = useState(false)
   /* symmetry and echo, folded — set once per picture, twelve buttons wide */
   const [fxOpen, setFxOpen] = useState(false)
+  /* everything above the paper, folded away — see the note by the button */
+  const [toolsHidden, setToolsHidden] = useState(false)
   /**
    * The paper's shape, as width over height — or free, meaning whatever the window leaves.
    *
@@ -282,6 +284,35 @@ export function PaintRoom() {
   }, [])
 
   const shapeAr = PAPER_SHAPES.find(([id]) => id === shape)?.[2] || 0
+
+  /**
+   * ⚠️ A CLICK ANYWHERE ELSE CLOSES THEM. A popover you can only shut by finding the button that
+   * opened it is a popover that is open by accident most of the time — and with three of them
+   * (paper, the mix pad, effects) they end up stacked over each other and over the paper.
+   *
+   * `pointerdown`, not click: it has to close before the canvas starts a stroke underneath, or
+   * the first press after finishing with a colour is spent dismissing something.
+   */
+  useEffect(() => {
+    if (!paperOpen && !colourOpen && !fxOpen) return
+    const away = (e: PointerEvent) => {
+      const t = e.target
+      if (t instanceof Element && t.closest('.paint-fold')) return
+      setPaperOpen(false)
+      setColourOpen(false)
+      setFxOpen(false)
+    }
+    /* capture, so it runs before the board's own pointerdown handler */
+    window.addEventListener('pointerdown', away, true)
+    return () => window.removeEventListener('pointerdown', away, true)
+  }, [paperOpen, colourOpen, fxOpen])
+
+  const toggleFull = () => {
+    const el = wrap.current
+    if (!el) return
+    if (document.fullscreenElement) void document.exitFullscreen().catch(() => {})
+    else void el.requestFullscreen?.().catch(() => {})
+  }
 
   /** the drawing, as it would be saved */
   const drawingRef = useRef<Drawing>({
@@ -865,11 +896,44 @@ export function PaintRoom() {
       const dy = my - shove.current.y
       shove.current = { x: mx, y: my }
       // ⚠️ moved in place rather than re-added, so the indices the selection holds stay valid
-      setStrokes((prev) =>
-        prev.map((k, i) =>
-          sel.includes(i) ? { ...k, p: k.p.map((n, j) => n + (j % 2 ? dy : dx)) } : k,
-        ),
-      )
+      setStrokes((prev) => {
+        /**
+         * ⚠️ THE SELECTION CANNOT BE PUSHED OFF THE PAPER — "if I drag the strokes off the
+         * screen they exist still but are gone."
+         *
+         * Exactly that: coordinates are fractions of the paper and nothing stopped them leaving
+         * 0..1, so the strokes stayed in the file, stayed in the saved drawing, and were simply
+         * nowhere anybody could see or reach them. Undo is per stroke and a drag is one move of
+         * many strokes, so getting them back was not realistic either.
+         *
+         * A corner of the selection always stays on the paper. The pointer is still tracked
+         * normally while it is out there, so dragging past the edge and coming back picks the
+         * strokes up again rather than leaving them stuck where you gave up.
+         */
+        let minX = Infinity
+        let minY = Infinity
+        let maxX = -Infinity
+        let maxY = -Infinity
+        for (const i of sel) {
+          const k = prev[i]
+          if (!k) continue
+          for (let j = 0; j + 1 < k.p.length; j += 2) {
+            if (k.p[j] < minX) minX = k.p[j]
+            if (k.p[j] > maxX) maxX = k.p[j]
+            if (k.p[j + 1] < minY) minY = k.p[j + 1]
+            if (k.p[j + 1] > maxY) maxY = k.p[j + 1]
+          }
+        }
+        if (!Number.isFinite(minX)) return prev
+        /** how much of the selection has to stay on the paper, as a fraction of it */
+        const KEEP = 0.04
+        const cx = Math.max(KEEP - maxX, Math.min(1 - KEEP - minX, dx))
+        const cy = Math.max(KEEP - maxY, Math.min(1 - KEEP - minY, dy))
+        if (!cx && !cy) return prev
+        return prev.map((k, i) =>
+          sel.includes(i) ? { ...k, p: k.p.map((n, j) => n + (j % 2 ? cy : cx)) } : k,
+        )
+      })
       return
     }
     const s = live.current
@@ -983,7 +1047,12 @@ export function PaintRoom() {
     /* ⚠️ In a canvas window the board takes the height it is GIVEN. Outside one it has to pick
        a height, and vh is the only sensible guess — but inside a window that guess ignored the
        window, so dragging the bottom edge made it wider and never taller. */
-    <section className={'paint-wrap' + (inWindow ? ' is-inwindow' : '')} ref={wrap}>
+    <section
+      className={
+        'paint-wrap' + (inWindow ? ' is-inwindow' : '') + (toolsHidden ? ' tools-hidden' : '')
+      }
+      ref={wrap}
+    >
       {/**
        * ⚠️ EIGHTEEN BRUSHES IS A SCROLL ON A PHONE, so there it is one button that opens them.
        *
@@ -1659,14 +1728,26 @@ export function PaintRoom() {
           {dims.w > 0 ? `${dims.w}×${dims.h}` : '—'}
           {dims.h > 0 ? ` · ${(dims.w / dims.h).toFixed(2)}:1` : ''}
         </span>
+        {/**
+         * ⚠️ THE TOOLS FOLD AWAY, the way the visualiser's panel does — asked for because
+         * fullscreen still had a wall of controls above the paper. It is most useful there, and
+         * it costs nothing on the ordinary page, so it is not hidden behind a media query: the
+         * moment you want the whole room to be picture, one press does it.
+         *
+         * ⚠️ This row stays, whatever happens, because the way back is in it. A control that can
+         * hide the control that un-hides it is a trap.
+         */}
+        <button
+          className={'btn' + (toolsHidden ? ' is-on' : '')}
+          aria-pressed={toolsHidden}
+          onClick={() => setToolsHidden((v) => !v)}
+          title={toolsHidden ? 'Show the tools' : 'Hide the tools and draw'}
+        >
+          {toolsHidden ? '⌄ Tools' : '⌃ Tools'}
+        </button>
         <button
           className="btn"
-          onClick={() => {
-            const el = wrap.current
-            if (!el) return
-            if (document.fullscreenElement) void document.exitFullscreen().catch(() => {})
-            else void el.requestFullscreen?.().catch(() => {})
-          }}
+          onClick={toggleFull}
           title="Fill the screen with the room — the tools come too"
         >
           ⛶
@@ -1675,6 +1756,11 @@ export function PaintRoom() {
       <div
         className={'paint-board' + (bg ? ' has-paper' : '') + (shapeAr ? ' has-shape' : '')}
         ref={host}
+        /* ⚠️ Asked for, and the cost is honest: a double-click here also leaves two dots, because
+           the board is a drawing surface and every press on it paints. The browser's own
+           double-click rules do the work, so two deliberate presses in one spot go fullscreen and
+           two strokes anywhere apart do not — and undo takes the dots back. */
+        onDoubleClick={toggleFull}
         style={
           shapeAr
             ? ({

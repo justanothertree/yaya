@@ -7137,6 +7137,32 @@ a.cz-msg-author:focus-visible {
   min-width: 0;
 }
 
+/**
+ * ⚠️ EVERYTHING ABOVE THE PAPER GOES, except the row holding the way back — see the note by the
+ * button. In fullscreen this is what turns the room into a picture; on the ordinary page it is
+ * the same press for the same reason.
+ */
+.paint-wrap.tools-hidden .paint-bar,
+.paint-wrap.tools-hidden .paint-row {
+  display: none;
+}
+/* with the tools gone there is room, so the paper takes it */
+.paint-wrap.tools-hidden .paint-board {
+  height: clamp(18rem, 74vh, 52rem);
+}
+.paint-wrap.tools-hidden .paint-board.has-shape {
+  height: auto;
+  width: min(100%, calc(clamp(18rem, 74vh, 52rem) * var(--paint-ar)));
+}
+@media (max-width: 40rem) {
+  .paint-wrap:fullscreen.tools-hidden .paint-board {
+    min-height: 84vh;
+  }
+  .paint-wrap:fullscreen.tools-hidden .paint-board.has-shape {
+    width: min(100%, calc(84vh * var(--paint-ar)));
+  }
+}
+
 /* a hairline between the two groups now sharing a row — see the note in PaintRoom */
 .paint-row-divide {
   width: 1px;

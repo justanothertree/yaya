@@ -1761,6 +1761,15 @@ export function AudioVisualizer() {
     const onUp = (e: PointerEvent) => {
       ptr.current.down = false
       const t = e.target
+      /**
+       * ⚠️ ONLY OVER THE PICTURE. The listener is on the WINDOW so that releasing outside the
+       * canvas still ends a drag — without that a pointer let go over the page would leave the
+       * visualiser thinking a button was held. But the double-click belongs to the picture alone,
+       * and dropping the touch-only gate without adding this made a double-click ANYWHERE on the
+       * page go fullscreen: in the nav, on a slider, in another window on the canvas. Reported
+       * exactly that way.
+       */
+      if (!(t instanceof Node) || !box.contains(t)) return
       if (t instanceof Element && t.closest('.viz-controls, .viz-anchor, .viz-float')) return
       const now = performance.now()
       const near = Math.hypot(e.clientX - lastTapX, e.clientY - lastTapY) < 24
