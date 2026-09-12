@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, type PointerEvent as ReactPointerEvent } from 'react'
 import type { InstrumentId } from '../audio/synth'
-import { HomeSequencer } from './HomeSequencer'
+import { HomeSequencer, type SeqNote } from './HomeSequencer'
 import { withSynth } from './homeSynth'
 
 /**
@@ -228,6 +228,28 @@ export function HeroPlay() {
     startRef.current?.()
   }, [])
 
+  /**
+   * The sequencer's notes ring the strings too.
+   *
+   * ⚠️ THEY DID NOT, AND THE TWO SIT IN THE SAME BOX. Pressing a key sent a wave down a
+   * string; the line playing the very same marimba four inches below did nothing at all — so the
+   * strings read as decoration attached to the keys rather than as the sound of the instrument.
+   * They are one toy (see the note by <HomeSequencer/> below), and now they look like it.
+   *
+   * ⚠️ The sequencer hands over fractions, not rows: it has five pitches and the strings have
+   * four, and the conversion belongs here, where both numbers are known.
+   */
+  const pluck = useCallback((n: SeqNote) => {
+    const w = band.current?.clientWidth ?? 0
+    plucks.current.push({
+      x: n.at * w,
+      /* highest pitch on the top string, which is how the keys already map */
+      row: Math.round((1 - n.pitch) * (ROWS - 1)),
+      t0: performance.now() / 1000,
+    })
+    startRef.current?.()
+  }, [])
+
   const release = useCallback((i: number) => {
     if (!held.current.delete(i)) return
     mark(i, false)
@@ -309,7 +331,7 @@ export function HeroPlay() {
        * instruments rather than as the two halves of one: press a key to hear it, put it in the
        * grid to keep it. Side by side the second answers the question the first raises.
        */}
-      <HomeSequencer />
+      <HomeSequencer onNote={pluck} />
       <p className="hero-play-hint muted">
         Press a key — there are no wrong notes. Then tap the grid to put one in the line, and it
         plays as the bar comes round. The whole studio is behind the{' '}

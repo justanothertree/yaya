@@ -59,7 +59,23 @@ const SEED: Array<[number, number]> = [
 ]
 const keyOf = (c: number, r: number) => c * ROWS + r
 
-export function HomeSequencer() {
+/**
+ * One note the line just played, in its own terms rather than anybody else's.
+ *
+ * ⚠️ FRACTIONS, NOT PIXELS OR ROW NUMBERS. The strings above this live in HeroPlay, are a
+ * different height, and have a different number of rows — four against five. Handing over grid
+ * coordinates would mean this file knowing how that canvas is laid out, and the two going wrong
+ * the first time either changes size. `at` is how far across its own width the note sits and
+ * `pitch` is how high it is, both 0 to 1; converting those is the listener's business.
+ */
+export type SeqNote = { at: number; pitch: number }
+
+/**
+ * @param onNote told about every note that sounds, so something else can react to it — which is
+ * how the hero's strings ring for the sequencer as well as for the keys. Optional: the sequencer
+ * is complete on its own and does not care whether anybody is listening.
+ */
+export function HomeSequencer({ onNote }: { onNote?: (n: SeqNote) => void } = {}) {
   const svg = useRef<SVGSVGElement | null>(null)
   const [notes, setNotes] = useState<Set<number>>(() => new Set(SEED.map(([c, r]) => keyOf(c, r))))
   const [col, setCol] = useState(0)
@@ -86,17 +102,30 @@ export function HomeSequencer() {
     typeof window !== 'undefined' &&
     (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false)
 
-  const play = useCallback((c: number) => {
-    for (let r = 0; r < ROWS; r++) {
-      if (!notesRef.current.has(keyOf(c, r))) continue
-      const id = `seq:${c}:${r}`
-      withSynth((s) => {
-        s.noteOn(id, INSTRUMENT, PITCHES[r], undefined, { key: PART, fx: FX, gain: GAIN })
-        /* marimba decays on its own, but every voice still has to be released or they pile up */
-        window.setTimeout(() => withSynth((t) => t.noteOff(id)), 320)
-      })
-    }
-  }, [])
+  /* ⚠️ A ref, so `play` keeps its empty dependency list and the interval below is never torn
+     down and rebuilt just because a parent re-rendered with a new closure. */
+  const tell = useRef(onNote)
+  tell.current = onNote
+  const ring = useCallback(
+    (c: number, r: number) => tell.current?.({ at: (c + 0.5) / COLS, pitch: 1 - r / (ROWS - 1) }),
+    [],
+  )
+
+  const play = useCallback(
+    (c: number) => {
+      for (let r = 0; r < ROWS; r++) {
+        if (!notesRef.current.has(keyOf(c, r))) continue
+        ring(c, r)
+        const id = `seq:${c}:${r}`
+        withSynth((s) => {
+          s.noteOn(id, INSTRUMENT, PITCHES[r], undefined, { key: PART, fx: FX, gain: GAIN })
+          /* marimba decays on its own, but every voice still has to be released or they pile up */
+          window.setTimeout(() => withSynth((t) => t.noteOff(id)), 320)
+        })
+      }
+    },
+    [ring],
+  )
 
   useEffect(() => {
     let timer = 0
@@ -200,6 +229,7 @@ export function HomeSequencer() {
         next.add(k)
         /* the note you just placed sounds NOW, rather than whenever the line next comes round —
            a grid that answers a quarter of a second later does not feel connected to your finger */
+        ring(c, row)
         const id = `seq:tap:${k}`
         withSynth((s) => {
           s.noteOn(id, INSTRUMENT, PITCHES[row], undefined, { key: PART, fx: FX, gain: GAIN })
