@@ -148,7 +148,7 @@ export const TRY_THESE: Invite[] = [
     open: 'See the whole page',
     href: '#profile?demo=1',
     /* ⚠️ NOT 🪪. It is an Emoji 14 character and Segoe UI Emoji on Windows 10 has no glyph
-       for it, so it rendered as an empty tofu box — blown up to fill the corner by .hag-bleed.
+       for it, so it rendered as an empty tofu box, blown up large by the tile art.
        Check a new icon actually draws before trusting it. */
     icon: '🧑',
     title: 'See a profile page',

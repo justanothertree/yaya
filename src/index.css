@@ -2071,17 +2071,6 @@ li {
   border-color: var(--border-strong);
 }
 
-/* Project showcase card: stack on mobile, slideshow + write-up side by side on wide screens */
-.proj-grid {
-  grid-template-columns: 1fr;
-}
-@media (min-width: 860px) {
-  .proj-grid {
-    grid-template-columns: 1.05fr 1fr;
-    align-items: start;
-  }
-}
-
 /* Avoid bottom glitches between sections by ensuring content fills viewport.
    --nav-h is kept exact by JS (ResizeObserver on the nav); this is just the
    pre-hydration fallback, tuned to the leaner bar. */
@@ -2122,11 +2111,6 @@ section[id] {
   display: grid;
   grid-template-columns: 1fr;
   gap: var(--stack);
-}
-@media (min-width: 900px) {
-  .grid-2 {
-    grid-template-columns: 1.2fr 0.8fr;
-  }
 }
 
 .card {
@@ -3488,9 +3472,7 @@ select {
   .no-print {
     display: none !important;
   }
-  .proj-grid {
-    grid-template-columns: 1fr 1.2fr !important;
-  }
+
   a[href]::after {
     content: '';
   }
@@ -4062,12 +4044,7 @@ select {
   border: 2px solid currentColor;
   background: none;
 }
-/* the little ring a droplet makes where it lands */
-.click-fx-ripple-sm {
-  width: 18px;
-  height: 18px;
-  border-width: 1px;
-}
+
 /* a petal: an ellipse rather than a circle, so a ring of them reads as a flower */
 .click-fx-petal {
   width: 9px;
@@ -4347,14 +4324,6 @@ button.appearance-slider-val:not(:disabled):focus-visible {
   background: var(--control-bg);
 }
 
-/* the length coach under an editor field — advice, so it must never look like an error */
-.home-fit {
-  font-size: 0.72rem;
-  line-height: 1.35;
-  display: block;
-  margin-top: 2px;
-}
-
 /* a friend who is waiting on a reply — the button says so instead of looking like every other */
 .ppl-waiting {
   background: var(--accent, #7c6af7);
@@ -4465,127 +4434,6 @@ button.appearance-slider-val:not(:disabled):focus-visible {
 }
 .profile-acts.is-near {
   margin-bottom: 0.7rem;
-}
-
-/* ─ have a go ───────────────────────
-   The invitation band under the hero. Cards rather than a list because each one has to carry a
-   sentence, and the sentence is what makes it usable by somebody who does not know what a
-   "visualiser" is. */
-.have-a-go {
-  margin-top: 0.5rem;
-}
-
-/* ⚠️ A ZIGZAG, NOT A TABLE — this is the "squarish" note answered directly.
-   Widths run 2,1,1,2 and repeat, so every pair of cards adds up to the three columns exactly.
-   That means the rhythm reads as deliberate at SIX cards (a member) and at FOUR (a first-time
-   visitor, who cannot open the two members-only rooms) — both tile with no ragged hole, which a
-   single fixed "big first card" does not. */
-.hag-grid {
-  display: grid;
-  gap: 0.6rem;
-  grid-template-columns: 1fr;
-}
-@media (min-width: 40rem) {
-  .hag-grid {
-    grid-template-columns: repeat(2, 1fr);
-  }
-  .hag-card[data-span='2'] {
-    grid-column: span 2;
-  }
-}
-/* the odd one out takes the whole row — 1/-1 rather than span 3, so it is right at two columns
-   and at three without knowing which it is */
-.hag-card[data-span='full'] {
-  grid-column: 1 / -1;
-}
-@media (min-width: 62rem) {
-  .hag-grid {
-    grid-template-columns: repeat(3, 1fr);
-    grid-auto-rows: minmax(6.5rem, auto);
-  }
-}
-.hag-card {
-  position: relative;
-  overflow: hidden;
-  display: grid;
-  gap: 0.25rem;
-  align-content: start;
-  padding: 0.85rem 0.95rem 1.35rem;
-  border: 1px solid var(--border);
-  /* ⚠️ one corner left square. A uniform radius on a uniform box is still a box; breaking one
-     corner is what stops a row of them reading as a table, and it costs nothing. */
-  border-radius: 16px 16px 16px 4px;
-  background: var(--surface);
-  color: inherit;
-  text-decoration: none;
-  transition:
-    border-color 0.15s ease,
-    transform 0.15s ease;
-}
-.hag-card:hover {
-  border-color: var(--accent, #7c6af7);
-  transform: translateY(-2px);
-}
-/* the one they have just had their hands on in the hero */
-.hag-card.is-feature .hag-top {
-  font-size: 1.12rem;
-}
-.hag-card.is-feature .hag-ic {
-  font-size: 1.4rem;
-}
-/* ⚠️ TEXTURE, NOT ILLUSTRATION — grayscale and very low, and both parts are load-bearing.
-   In full colour at 0.07 an emoji still reads as a picture: the piano glyph on the first card
-   landed directly under the real playable keyboard in the hero and looked like a second, broken
-   one. Drained of colour it goes back to being a shape in the corner. */
-.hag-bleed {
-  position: absolute;
-  right: -0.75rem;
-  bottom: -1rem;
-  font-size: 4.5rem;
-  line-height: 1;
-  opacity: 0.05;
-  filter: grayscale(1);
-  pointer-events: none;
-  user-select: none;
-}
-.hag-top {
-  display: flex;
-  align-items: center;
-  gap: 0.45rem;
-  font-size: 1rem;
-}
-.hag-ic {
-  font-size: 1.15rem;
-}
-.hag-line {
-  font-size: 0.82rem;
-  line-height: 1.45;
-  position: relative;
-}
-.hag-go {
-  position: absolute;
-  left: 0.95rem;
-  bottom: 0.6rem;
-  font-size: 0.9rem;
-  color: var(--accent);
-  opacity: 0;
-  transform: translateX(-4px);
-  transition:
-    opacity 0.15s ease,
-    transform 0.15s ease;
-}
-.hag-card:hover .hag-go,
-.hag-card:focus-visible .hag-go {
-  opacity: 1;
-  transform: none;
-}
-@media (prefers-reduced-motion: reduce) {
-  .hag-card:hover {
-    transform: none;
-  }
-  .hag-go {
-    transition: none;
-  }
 }
 
 /* ─ the front door ────────────────────────────────────────────────────────────
@@ -4958,13 +4806,7 @@ button.appearance-slider-val:not(:disabled):focus-visible {
   font-weight: 700;
   opacity: 0.75;
 }
-.cz-add-where {
-  display: flex;
-  align-items: center;
-  gap: 0.35rem;
-  flex-wrap: wrap;
-  font-size: 0.78rem;
-}
+
 /* ⚠️ On a phone the strip is ONE swipeable row, not six wrapped ones. Ten suggestions wrapped
    is most of a screen of chrome sitting above the pool they exist to fill — you scrolled past
    the shortcut to reach the thing it was a shortcut to. Same strip treatment as the sub-tabs,
@@ -5508,24 +5350,6 @@ button.appearance-slider-val:not(:disabled):focus-visible {
   }
 }
 
-/* The Windows menu — one combined list (open-panes taskbar + site-wide add/remove catalog,
-   see CircuitCanvas.tsx) behind a normal button inside the canvas toolbar, same row as
-   Tile/Fit all — not a floating overlay. That button used to be `position: fixed`, and every
-   corner it was ever moved to eventually collided with something else that also wanted a corner
-   — the minimap, the share stage, a maximized window's own title-bar controls, the toolbar
-   wrapping to another row and moving the "safe" spot out from under it. A normal flex child in
-   an existing row can't collide with anything; it just takes its own space. Only the dropdown
-   panel still floats, positioned against the button itself. (Class names kept their old
-   `winlauncher-*` prefix even though the standalone WindowLauncher component they came from is
-   gone — renaming every class was a bigger diff for no behavior change.) */
-.winlauncher-count {
-  margin-left: 0.4rem;
-  padding: 0 0.4rem;
-  border-radius: 999px;
-  background: var(--accent);
-  color: var(--btn-text, #fff);
-  font-size: 0.78em;
-}
 .winlauncher-panel {
   z-index: 900030;
   /* was 18rem -- a title, a status badge and a switch all fighting for room in 288px is why
@@ -5823,11 +5647,7 @@ button.appearance-slider-val:not(:disabled):focus-visible {
   .profile-editrow-settings select.btn {
     min-height: 40px;
   }
-  /* The row header is the primary target now — the whole label opens the block — and it
-     measured 32px. Two-part selector for the same reason as above. */
-  .profile-editrow-head .profile-editrow-toggle {
-    min-height: 40px;
-  }
+
   /* 13 emoji at 38x28 in a wrapping row is a miss every time. */
   .profile-mood {
     min-width: 40px;
@@ -6405,51 +6225,7 @@ button.appearance-slider-val:not(:disabled):focus-visible {
   font-weight: 700;
   flex-shrink: 0;
 }
-/* One row per block. It used to carry five controls permanently — up, down, size, who-can-see,
-   remove — which measured 113px of chrome per block, 678px across six, and took 2.5 phone
-   screens to arrange a page whose list you could never actually see. The header is now the
-   three things you do while SCANNING; everything you do while EDITING is inside the block you
-   opened. A collapsed row still says which one it is (see blockSummary). */
-.profile-editrow-head {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-/* The label IS the toggle: a whole-row target beats a caret you have to hit. */
-.profile-editrow-toggle {
-  flex: 1 1 auto;
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  padding: 0.35rem 0;
-  background: none;
-  border: 0;
-  color: inherit;
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-.profile-editrow-caret {
-  opacity: 0.6;
-  font-size: 0.8em;
-}
-/* One line, ellipsised — a preview that wraps would defeat the point of collapsing. */
-.profile-editrow-sum {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 0.82rem;
-}
-.profile-editrow[data-open] .profile-editrow-head {
-  margin-bottom: 0.5rem;
-}
-.profile-editrow-actions {
-  display: flex;
-  gap: 0.25rem;
-  flex-shrink: 0;
-}
+
 /* Once-per-block settings, named. They were two nameless controls in the toolbar: a button that
    said "medium" and a dropdown that said "Friends". */
 .profile-editrow-settings {
@@ -6466,46 +6242,11 @@ button.appearance-slider-val:not(:disabled):focus-visible {
   gap: 3px;
   font-size: 0.78rem;
 }
-.profile-editrow-actions .btn {
-  padding: 0.15rem 0.45rem;
-  font-size: 0.85rem;
-}
+
 .profile-editrow-textarea {
   width: 100%;
   resize: vertical;
   font: inherit;
-}
-/**
- * The live preview inside an edit row.
- *
- * BlockView renders each block as a `.card`, which nested inside the row's own card reads as a
- * box in a box. Strip the inner chrome and let the row be the frame — the point is that what
- * you see here is what a reader sees, not a smaller copy of it. Width is neutralised too: a
- * row is one column wide whatever the block's grid span is.
- */
-.profile-editrow-preview {
-  margin-top: 0.15rem;
-}
-/* Only while open: says what the thing below it IS, now that controls come first. */
-.profile-editrow-previewlabel {
-  font-size: 0.72rem;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  margin: 0.6rem 0 0.3rem;
-  padding-top: 0.5rem;
-  border-top: 1px solid var(--b1, rgba(127, 127, 127, 0.12));
-}
-.profile-editrow-preview > .profile-block {
-  background: none;
-  border: 0;
-  box-shadow: none;
-  padding: 0;
-  grid-column: auto;
-}
-/* …except the banner, which IS a filled box and would otherwise lose its own edges. */
-.profile-editrow-preview > .profile-block:has(.profile-banner-art) {
-  border-radius: var(--r-md, 12px);
-  overflow: hidden;
 }
 
 /* The dollar-a-day summary's figures. Equal columns so nothing strands itself next to empty
@@ -6702,30 +6443,6 @@ table.reconcile tfoot .reconcile-total td {
   border-bottom: 1px solid var(--border);
 }
 
-/* Click-flair style picker — lives in its own dialog (.fx-sheet), same pattern as the palette
-   editor's .pal-sheet, instead of inline in the cog menu: a dozen tiles there meant scrolling
-   the whole account menu every time flair was on. Narrower than .pal-sheet since a grid of small
-   square tiles doesn't need the palette editor's side-by-side room. */
-.fx-sheet {
-  width: min(26rem, 100%);
-  max-height: min(88vh, 38rem);
-}
-/* Open room to test a burst in. Tall enough that an effect which throws pieces outward has
-   somewhere to land — judging flair from a spark half-hidden behind the next tile is the
-   thing this fixes. */
-.fx-testpad {
-  display: grid;
-  place-items: center;
-  min-height: 7.5rem;
-  margin-top: 0.5rem;
-  border: 1px dashed var(--border);
-  border-radius: 10px;
-  background: var(--card2, rgba(127, 127, 127, 0.06));
-  font-size: 0.78rem;
-  /* the point is to click INTO it, so nothing here should look hittable */
-  cursor: crosshair;
-  user-select: none;
-}
 .fx-style-row {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(min(4.6rem, 100%), 1fr));
@@ -6976,11 +6693,7 @@ a.cz-msg-author:focus-visible {
   font-size: 1rem;
   min-width: 2.4rem;
 }
-.profile-song-note {
-  font-size: 0.7rem;
-  margin-left: auto;
-  opacity: 0.75;
-}
+
 /* ⚠️ An EXPLICIT height per size, rather than min-height plus height:100%.
    That pair is circular — the canvas asks the card how tall it is, the card is sized by its
    contents — so in a stretching grid row the block took the row's height instead of its own.
@@ -7002,11 +6715,6 @@ a.cz-msg-author:focus-visible {
   display: block;
   width: 100%;
   height: 100%;
-}
-/* In the editor the preview is a thumbnail of the real thing, not the real thing at full size —
-   the list is meant to be scannable as "what people see, in order". */
-.profile-editrow-preview .profile-visual {
-  height: 7rem;
 }
 
 /* ── The instrument on a phone ────────────────────────────────────────────────
@@ -8281,10 +7989,6 @@ a.cz-msg-author:focus-visible {
   align-items: center;
   gap: 0.3rem;
 }
-.paint-colour .shade-pad,
-.paint-colour .colour-pad {
-  max-width: 9rem;
-}
 
 /* ── paper, folded ───────────────────────────────────────────────────────────
    A swatch that says what the paper is and opens the controls for it, rather than a second pad
@@ -8908,11 +8612,6 @@ a.cz-msg-author:focus-visible {
   }
 }
 
-/* ── the live invitation ────────────────────────────────────────────────────
-   One of the "Have a go" tiles is the thing rather than a description of it. */
-.hag-card.is-live {
-  cursor: default;
-}
 /* ⚠️ TALLER ON A WIDE TILE. One fixed height gave a 650px-wide tile a 6:1 letterbox — a pad too
    shallow to want to draw in, and a snake board that read as a strip rather than a game. The width
    comes from data-span, so the height follows it (see the --tile-art-h rules below). */
@@ -8932,19 +8631,6 @@ a.cz-msg-author:focus-visible {
      the whole card: everything outside it still scrolls normally, so nobody gets stuck trying to
      get past the tile. */
   touch-action: none;
-}
-.hag-card.is-live:hover .hag-pad {
-  border-color: var(--border-strong, var(--border));
-}
-.hag-open {
-  align-self: start;
-  font-size: 0.82rem;
-  font-weight: 600;
-  color: var(--accent);
-  text-decoration: none;
-}
-.hag-open:hover {
-  text-decoration: underline;
 }
 
 /* ── the living pictures on the Have a go tiles ─────────────────────────────
@@ -9173,20 +8859,6 @@ a.cz-msg-author:focus-visible {
   }
 }
 
-/* the wide slots get a canvas rather than a slot */
-.hag-card[data-span='2'],
-.hag-card[data-span='full'] {
-  --tile-art-h: 184px;
-}
-@media (max-width: 40rem) {
-  /* one column down here, so EVERY tile is wide — they would all jump to 184px at once, which is
-     most of a phone screen, eight times over */
-  .hag-card[data-span='2'],
-  .hag-card[data-span='full'] {
-    --tile-art-h: 136px;
-  }
-}
-
 .hag-pad-wrap {
   position: relative;
 }
@@ -9293,16 +8965,6 @@ a.cz-msg-author:focus-visible {
   .about-q {
     min-height: 40px;
   }
-}
-
-/* ⚠️ The two-column .proj-grid existed to stand a slideshow beside the write-up. With the posters
-   gone there is one column of prose, and a measure that runs the full width of a wide card is a
-   measure nobody finishes reading. */
-.proj-body {
-  max-width: 62ch;
-}
-.proj-card {
-  padding-left: calc(var(--card-pad) - 3px);
 }
 
 /* ── the demos ──────────────────────────────────────────────────────────────
