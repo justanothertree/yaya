@@ -11,11 +11,16 @@ import { BANNER_STYLES, hueFor } from '../profile/look'
  * asked for less motion. Only the two tiles you can actually TOUCH — the scribble pad and the
  * snake board — earn a script.
  *
- * ⚠️ NOTHING HERE IS A FAKE READOUT. The members-only rooms (the circuit, the ratings pool, a
- * call) cannot show a visitor real data — that is the whole reason they are members-only — so
- * these are plainly ornamental: bars with no numbers, a wheel with no words, levels with no
- * names. A home page that invents a scoreboard and presents it as somebody's is worse than a
- * home page with a plain rectangle on it.
+ * ⚠️ NOTHING HERE IS A FAKE READOUT. These are plainly ornamental — bars with no numbers, a
+ * wheel with no words, levels with no names — because a home page that invents a scoreboard and
+ * presents it as somebody's is worse than a home page with a plain rectangle on it.
+ *
+ * ⚠️ THE REASON IS NO LONGER "a visitor cannot be shown real data". The Circuit and the pool
+ * are open to everybody now and both are full of Evan's real numbers. It is a BUNDLE reason: that
+ * data is publicSeed, ~9,000 lines of it, reached through the circuit chunk. Reading it here would
+ * drag the lot onto the front page to draw two dozen little bars, which is the trap this whole
+ * file exists to avoid. Ornament costs nothing; the real thing is one press away.
+ * (Only the call is genuinely unshowable — those are other people's faces and voices.)
  *
  * ⚠️ The profile one is NOT ornamental and deliberately so: it is built from the real
  * BANNER_STYLES and the real hueFor(), so the thing cycling there is exactly what a page looks

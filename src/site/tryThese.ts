@@ -212,10 +212,10 @@ export const TRY_THESE: Invite[] = [
      * the rest of the group's data never reaches the bundle. Circuit then renders with
      * `demo={!authed}`. You get real numbers to drag about and nothing you do leaves your browser.
      *
-     * ⚠️ The pool next door stays members-only, and for a real reason rather than by habit:
-     * publicSeed carries people, logs, movies and the watchlist but NO pools, so the one thing
-     * that invitation is about — everyone throwing an option in and the wheel picking — would
-     * be an empty wheel.
+     * ⚠️ The pool next door is public for the same reason. It spins over the WATCHLIST, not
+     * the pools table, and publicSeed carries 101 titles and 61 reviews — Watchlist even has a
+     * stand-in pool built for exactly this case, because the demo board has no accounts and so no
+     * audience to own one.
      */
     line: 'The board my friends and I have used every day for a year. Open it and my real numbers are there to mess with — log, total, drag it about. Nothing you do touches ours.',
   },
@@ -225,8 +225,7 @@ export const TRY_THESE: Invite[] = [
     live: 'ratings',
     icon: '⭐',
     title: 'Decide what to watch',
-    line: 'When nobody can decide, everyone throws an option in a pool and the wheel picks — that is it spinning. Afterwards you rate what you actually watched.',
-    members: true,
+    line: 'When nobody can decide, everyone throws an option in and the wheel picks. Give it a spin — my list is already in there, and what I thought of everything we have got through.',
   },
   {
     id: 'chat',

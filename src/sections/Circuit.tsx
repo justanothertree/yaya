@@ -9,8 +9,6 @@ import { Board } from '../circuit/ui/Board'
 import { Log } from '../circuit/ui/Log'
 import { Feed } from '../circuit/ui/Feed'
 import { Charts } from '../circuit/ui/Charts'
-import { Movies } from '../circuit/ui/Movies'
-import { Watchlist } from '../circuit/ui/Watchlist'
 import { Toast } from '../circuit/ui/Toast'
 import type { CanvasPane } from '../circuit/ui/CircuitCanvas'
 import { CircuitsPanel } from '../circuit/ui/CircuitsPanel'
@@ -20,7 +18,7 @@ import { useScrollFade } from '../hooks/useScrollFade'
 import { previewMember, PREVIEW_GROUPS } from '../dev/previewMember'
 import { hasJoinCodeInUrl, parkJoinCode } from '../circuit/inviteLink'
 
-type Tab = 'board' | 'log' | 'feed' | 'charts' | 'movies' | 'watchlist' | 'chat' | 'circuits'
+type Tab = 'board' | 'log' | 'feed' | 'charts' | 'chat' | 'circuits'
 
 const isDesktop = () => typeof window !== 'undefined' && window.innerWidth >= 820
 
@@ -29,14 +27,19 @@ const isDesktop = () => typeof window !== 'undefined' && window.innerWidth >= 82
 // sub-tab you were on last (navigating away unmounts this component, so it's persisted).
 const TAB_KEY = 'circuit_tab'
 function initialTab(authed: boolean): Tab {
-  // Members get the fitness-only Circuit — Reviews/Watchlist moved to the Ratings
-  // destination. The signed-out demo keeps them so a visitor can try everything in one place.
+  /**
+   * ⚠️ THE SAME CIRCUIT FOR EVERYBODY NOW. Reviews and the Pool moved to Ratings for members
+   * and the signed-out demo kept a copy of them, on the stated grounds that "a visitor can try
+   * everything in one place" — which was true only because Ratings was hidden from the nav. It
+   * is not hidden any more, so keeping them here is the same two tabs in two rooms, and a visitor
+   * learning the site would meet the Pool twice and have no way to tell which one was the real one.
+   */
   const valid: Tab[] = [
     'board',
     'log',
     'feed',
     'charts',
-    ...(authed ? (['circuits'] as Tab[]) : (['movies', 'watchlist'] as Tab[])),
+    ...(authed ? (['circuits'] as Tab[]) : []),
   ]
   const q = new URLSearchParams(window.location.hash.split('?')[1] ?? '')
   const fromLink = q.get('tab') as Tab | null
@@ -126,7 +129,7 @@ export function Circuit({
         'log',
         'feed',
         'charts',
-        ...(authed ? (['circuits'] as Tab[]) : (['movies', 'watchlist'] as Tab[])),
+        ...(authed ? (['circuits'] as Tab[]) : []),
       ]
       if (t && valid.includes(t)) setTab(t)
     }
@@ -270,14 +273,9 @@ export function Circuit({
     { id: 'log', label: '✏️ Log' },
     { id: 'feed', label: '📋 Feed' },
     { id: 'charts', label: '📊 Charts' },
-    // Reviews/Watchlist live under Ratings for members; the demo keeps them here.
-    // Chat + circuit management are members-only.
-    ...(authed
-      ? [{ id: 'circuits' as Tab, label: '👥 Circuits' }]
-      : [
-          { id: 'movies' as Tab, label: '📝 Reviews' },
-          { id: 'watchlist' as Tab, label: '🎲 Pool' },
-        ]),
+    // Reviews and the Pool live under Ratings, for everybody — see initialTab.
+    // Chat and circuit management are members-only.
+    ...(authed ? [{ id: 'circuits' as Tab, label: '👥 Circuits' }] : []),
   ]
   // On a phone six chips can't fit, and two of them don't belong in a daily strip anyway:
   // Chat is a bottom-bar destination and Circuits is management (it lives in the ☰ launcher).
@@ -324,20 +322,7 @@ export function Circuit({
       title: '📊 Charts',
       node: <Charts onDayClick={requestLog} viewGroup={activeGroup} />,
     },
-    ...(authed
-      ? [{ id: 'chat', title: '💬 Chat', node: <Chat authed voiceIn={voiceIn} /> }]
-      : [
-          {
-            id: 'movies',
-            title: '📝 Reviews',
-            node: <Movies viewGroup={activeGroup} groups={groups} />,
-          },
-          {
-            id: 'watchlist',
-            title: '🎲 Pool',
-            node: <Watchlist />,
-          },
-        ]),
+    ...(authed ? [{ id: 'chat', title: '💬 Chat', node: <Chat authed voiceIn={voiceIn} /> }] : []),
   ]
 
   // shared circuit picker — shown in the toolbar and above the canvas when you're in 2+
@@ -504,8 +489,6 @@ export function Circuit({
             )}
             {tab === 'charts' && <Charts onDayClick={requestLog} viewGroup={activeGroup} />}
             {tab === 'chat' && <Chat authed={authed} voiceIn={voiceIn} />}
-            {tab === 'movies' && <Movies viewGroup={activeGroup} groups={groups} />}
-            {tab === 'watchlist' && <Watchlist />}
             {tab === 'circuits' && <CircuitsPanel />}
           </div>
         </section>

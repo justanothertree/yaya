@@ -50,13 +50,28 @@ const member = (v: Viewer) => v.financeOn && v.authed && !v.suspended
 
 /**
  * ⚠️ THE ORDER HERE IS THE ORDER EVERYWHERE — the desktop strip, the launcher grid, and the
- * left/right arrow keys. It reads outward: home, then the members' rooms, then the things
- * anybody can play with, then how to reach me.
+ * left/right arrow keys. It reads outward: home, then the rooms built for the group, then the
+ * things anybody can play with on their own, then how to reach me. (The group rooms are not all
+ * members-only any more — see the Circuit — but they are still the ones that are ABOUT a group,
+ * which is what the grouping was ever for.)
  */
 export const PLACES = [
   { id: 'home', label: 'Home', icon: '🏠', title: 'Home', nav: () => true },
-  { id: 'circuit', label: 'Circuit', icon: '🏆', title: 'The Circuit', nav: member },
-  { id: 'ratings', label: 'Ratings', icon: '⭐', title: 'Ratings', nav: member },
+  /**
+   * ⚠️ OPEN TO EVERYBODY, because they always were — the nav was the only thing pretending
+   * otherwise. Both rooms already rendered for a signed-out visitor who typed the hash: Circuit
+   * wires a localStorage sandbox seeded from publicSeed and passes `demo={!authed}`, Ratings
+   * reads the same store, and DemoBanner has been sitting there the whole time explaining that
+   * edits live only in this browser. Hiding the LINK did not hide anything; it only meant the one
+   * part of the site with a proper public demo was the part nobody could find.
+   *
+   * ⚠️ Nothing about what leaves the database changes here. The public board comes from
+   * circuit_public, which is already one of the handful of anon-callable functions and returns
+   * only what a member has chosen to make public. People and Chat stay members-only, because
+   * those are other people's names and other people's messages.
+   */
+  { id: 'circuit', label: 'Circuit', icon: '🏆', title: 'The Circuit', nav: () => true },
+  { id: 'ratings', label: 'Ratings', icon: '⭐', title: 'Ratings', nav: () => true },
   { id: 'chat', label: 'Chat', icon: '💬', title: 'Chat', nav: member },
   { id: 'people', label: 'People', icon: '🧑‍🤝‍🧑', title: 'People', nav: member },
   {
