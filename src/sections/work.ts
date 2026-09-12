@@ -69,10 +69,10 @@ export const projects: Project[] = [
     tags: ['Canvas', 'WebSockets', 'React', 'TypeScript'],
     accent: '#2ec4b6',
     blurb: [
-      'My first project here, picked because it was small enough to actually finish. Then I added multiplayer rooms anyway. Built from scratch on a canvas — keyboard, swipe, or an on-screen D-pad.',
+      'My first project here, picked because it was small enough to actually finish. Then I added multiplayer rooms anyway. Built from scratch on a canvas — arrow keys on a desktop, swipe on a phone.',
     ],
     highlights: [
-      'Keyboard, swipe and D-pad controls',
+      'Keyboard and swipe controls',
       'Share a link and play together',
       'A leaderboard anyone can post to, no account needed',
     ],

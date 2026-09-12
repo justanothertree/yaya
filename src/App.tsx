@@ -2077,7 +2077,7 @@ export default function App() {
             </section>
           )}
           {!sharedCanvasShowing && active === 'snake' && (
-            <section id="snake" className="card reveal show-dpad">
+            <section id="snake" className="card reveal">
               {/* Its own boundary, not the page-wide one: a shared fallback would blank whatever
                 else is mounted while the game chunk arrives. */}
               <Suspense fallback={<div aria-busy>Loading the game…</div>}>
