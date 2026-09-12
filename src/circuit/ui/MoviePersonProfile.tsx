@@ -3,7 +3,7 @@
 import { useMemo } from 'react'
 import { useCircuit } from '../store'
 import { Modal } from './Modal'
-import { ratersIn, scoreColor } from './movieMeta'
+import { ratersIn, scoreColor, useMoviesWithRatings } from './movieMeta'
 
 const mean = (a: number[]) => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : 0)
 
@@ -41,7 +41,11 @@ export function MoviePersonProfile({
   /** whose circle to compare against — '' means everyone you can see */
   viewGroup?: string
 }) {
-  const { movies, people } = useCircuit()
+  /* ⚠️ the MERGED list, not state.movies — ratings are rows and a review's own map is empty
+     for anybody signed in, so the raw list made this say "No ratings yet" to people with
+     hundreds of them. See useMoviesWithRatings. */
+  const movies = useMoviesWithRatings()
+  const { people } = useCircuit()
   /* who this person is measured against: their circle, not a fixed five. Generosity and taste
      matches are comparisons, so who is in the comparison decides what the numbers mean. */
   const peers = useMemo(() => ratersIn(people, viewGroup).map((p) => p.id), [people, viewGroup])
@@ -113,7 +117,7 @@ export function MoviePersonProfile({
   return (
     <Modal title={<span style={{ color }}>{personName}</span>} onClose={onClose}>
       {n === 0 ? (
-        <p className="muted">No movie ratings yet.</p>
+        <p className="muted">No ratings yet.</p>
       ) : (
         <>
           <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>

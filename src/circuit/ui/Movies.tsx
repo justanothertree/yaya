@@ -12,9 +12,9 @@ import { MoviePersonProfile } from './MoviePersonProfile'
 import { MovieDetail } from './MovieDetail'
 import { Modal } from './Modal'
 import { MovieStats } from './MovieStats'
-import { canRateAs, ratersIn, scoreColor } from './movieMeta'
+import { canRateAs, ratersIn, scoreColor, useMoviesWithRatings } from './movieMeta'
 import { peekPersistedUserId } from '../../finance/auth'
-import { kindEmoji, kindsPresent } from '../reviewKinds'
+import { kindEmoji, kindOf, kindsPresent } from '../reviewKinds'
 
 type SortKey = 'avg' | 'alpha' | 'rt' | 'date'
 
@@ -48,33 +48,9 @@ export function Movies({
   const [confirmDel, setConfirmDel] = useState<Movie | null>(null)
   const [view, setView] = useState<'board' | 'stats'>('board')
 
-  /**
-   * Films with everybody's ratings folded back on, then scoped to the viewed circuit.
-   *
-   * ⚠️ THE ONE PLACE THE TWO HALVES MEET. Ratings are rows now — a film's row no longer carries
-   * them — because the old single map was rewritten whole on every save and quietly erased
-   * whoever else was reviewing at that moment. Reassembling here means MovieDetail, MovieStats,
-   * MoviePersonProfile and the board all keep doing `movie.ratings[rater.id]` untouched, and
-   * the fix cost one line rather than five files.
-   *
-   * ⚠️ The film's own map is the BASE, rows are laid over it. The signed-out demo has no rating
-   * rows at all — its ratings ride inside each seeded film — so starting from `{}` would empty
-   * the public board.
-   */
-  const withRatings = useMemo(() => {
-    const rows = state.ratings ?? []
-    if (rows.length === 0) return state.movies
-    const byMovie = new Map<string, Movie['ratings']>()
-    for (const r of rows) {
-      const into = byMovie.get(r.movieId) ?? {}
-      into[r.userId] = { score: r.score, icons: r.icons, review: r.review }
-      byMovie.set(r.movieId, into)
-    }
-    return state.movies.map((m) => {
-      const mine = byMovie.get(m.id)
-      return mine ? { ...m, ratings: { ...m.ratings, ...mine } } : m
-    })
-  }, [state.movies, state.ratings])
+  /* ⚠️ The merge lives in movieMeta now, because three other files needed it and were
+     quietly reading the unmerged list instead. This used to be its only home. */
+  const withRatings = useMoviesWithRatings()
 
   // scope to the viewed circuit (shared filter) — '' shows everything you can see
   const inGroup = useMemo(() => moviesInGroup(withRatings, viewGroup), [withRatings, viewGroup])
@@ -89,6 +65,23 @@ export function Movies({
   }, [inGroup])
   const multiKind = kindCounts.size > 1
   const [kindFilter, setKindFilter] = useState('')
+  /**
+   * What the first column is called.
+   *
+   * ⚠️ IT SAID "Movie" OVER EVERYTHING. Reviews have been generic for a while — a review is a
+   * rated thing with a kind, and reviewKinds ships movie, food, beer, drink, restaurant, game and
+   * other, plus any category somebody types — but the board still headed the column with the kind
+   * that happened to be first. A game sat under a column labelled Movie, which makes the whole
+   * board look like it is for films and the game look like a mistake.
+   *
+   * Filtered to one kind, it says that kind. Holding one kind, same. Holding several, there is no
+   * honest single word for the column, so it says what every row has: a title.
+   */
+  const titleCol = kindFilter
+    ? kindOf(kindFilter).label
+    : kindCounts.size === 1
+      ? kindOf([...kindCounts.keys()][0]).label
+      : 'Title'
   // RT% is a film-only score. Show the column when films are actually in view — either the
   // filter is on movies, or there's no filter and movies are present.
   const showRt = kindFilter === 'movie' || (kindFilter === '' && kindCounts.has('movie'))
@@ -395,7 +388,7 @@ export function Movies({
             <thead>
               <tr style={{ textAlign: 'left' }}>
                 <th style={{ ...stickyTh, opacity: 0.6, width: 28 }}>#</th>
-                <th style={stickyTh}>Movie</th>
+                <th style={stickyTh}>{titleCol}</th>
                 {raters.map((p) => (
                   <th key={p.id} style={{ ...stickyTh, textAlign: 'center', color: p.color }}>
                     <span

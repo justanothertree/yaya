@@ -2,7 +2,7 @@
 import { useMemo } from 'react'
 import { useCircuit } from '../store'
 import { moviesInGroup } from '../groupFilter'
-import { ratersIn, scoreColor } from './movieMeta'
+import { ratersIn, scoreColor, useMoviesWithRatings } from './movieMeta'
 import type { Person } from '../types'
 
 const mean = (a: number[]) => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : 0)
@@ -52,7 +52,10 @@ function Fact({
 }
 
 export function MovieStats({ viewGroup = '' }: { viewGroup?: string } = {}) {
-  const { movies: allMovies, people } = useCircuit()
+  /* ⚠️ merged, for the reason in useMoviesWithRatings — the raw store list left this whole
+     page empty for a signed-in member. */
+  const allMovies = useMoviesWithRatings()
+  const { people } = useCircuit()
   const movies = useMemo(() => moviesInGroup(allMovies, viewGroup), [allMovies, viewGroup])
   const raters = useMemo(() => ratersIn(people, viewGroup), [people, viewGroup])
 

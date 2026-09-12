@@ -1,11 +1,20 @@
 // Full-richness movie rating sheet: score + vibes + sentiment + rewatch + recommend
 // + tip-of-the-cap + tags + hot-take, for one person on one movie. Writes via the store.
 import { useMemo, useState } from 'react'
-import { circuitStore, useCircuit } from '../store'
+import { circuitStore } from '../store'
 import { ratingId } from '../types'
 import type { Movie, MovieReview } from '../types'
 import { Modal } from './Modal'
-import { MV_ICONS, REC, REWATCH, SENTIMENT, TAG_PRESETS, TIPS, scoreColor } from './movieMeta'
+import {
+  MV_ICONS,
+  REC,
+  REWATCH,
+  SENTIMENT,
+  TAG_PRESETS,
+  TIPS,
+  scoreColor,
+  useMoviesWithRatings,
+} from './movieMeta'
 
 const sectionLabel: React.CSSProperties = {
   fontSize: '0.72rem',
@@ -75,7 +84,9 @@ export function MovieRate({
   const [customTag, setCustomTag] = useState('')
 
   // this person's other rated movies, ranked — to show where the current score lands
-  const allMovies = useCircuit().movies
+  /* ⚠️ merged: on the raw list this ranking was always empty for a signed-in rater, so the
+     "where does this score land" panel showed nothing next to the score being set. */
+  const allMovies = useMoviesWithRatings()
   const ranked = useMemo(
     () =>
       allMovies

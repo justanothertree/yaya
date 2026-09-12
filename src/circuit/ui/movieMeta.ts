@@ -1,8 +1,46 @@
 // Movie rating vocabulary (mirrors the standalone app) + shared helpers.
+import { useMemo } from 'react'
 import { peopleInGroup } from '../groupFilter'
-import { circuitStore } from '../store'
+import { circuitStore, useCircuit } from '../store'
 import { peekPersistedUserId } from '../../finance/auth'
-import type { Person } from '../types'
+import type { Movie, Person } from '../types'
+
+/**
+ * Every review with everybody's scores folded back onto it.
+ *
+ * ⚠️ THE MERGE HAS TO LIVE SOMEWHERE EVERY READER GOES THROUGH. Ratings are rows now, and a
+ * review's own `ratings` map is empty for anybody signed in — so reading `state.movies` straight
+ * out of the store and then doing `movie.ratings[someone.id]` finds nothing, silently. It does not
+ * throw and it does not look broken; it looks like nobody has rated anything.
+ *
+ * ⚠️ WHICH IS EXACTLY WHAT HAPPENED, in three places at once. Movies.tsx did this merge
+ * privately and its own comment claimed MovieDetail, MovieStats and MoviePersonProfile "keep doing
+ * movie.ratings[rater.id] untouched" — true only of MovieDetail, which is handed a merged film as
+ * a prop. The other two call useCircuit() themselves, as does MovieRate. All three read the raw
+ * list, so a signed-in member got "No movie ratings yet." on their own profile, an empty Stats
+ * page, and no ranking beside the score they were setting. The demo board was fine throughout,
+ * because its ratings ride inside each seeded film — which is why this survived so long.
+ *
+ * ⚠️ The film's own map is the BASE and rows are laid over it, for that same reason: start
+ * from `{}` and the public board empties.
+ */
+export function useMoviesWithRatings(): Movie[] {
+  const state = useCircuit()
+  return useMemo(() => {
+    const rows = state.ratings ?? []
+    if (rows.length === 0) return state.movies
+    const byMovie = new Map<string, Movie['ratings']>()
+    for (const r of rows) {
+      const into = byMovie.get(r.movieId) ?? {}
+      into[r.userId] = { score: r.score, icons: r.icons, review: r.review }
+      byMovie.set(r.movieId, into)
+    }
+    return state.movies.map((m) => {
+      const mine = byMovie.get(m.id)
+      return mine ? { ...m, ratings: { ...m.ratings, ...mine } } : m
+    })
+  }, [state.movies, state.ratings])
+}
 
 /**
  * Who can rate and vote here.
