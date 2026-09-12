@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { InstrumentId } from '../audio/synth'
+import { onStopAll, withSynth } from './homeSynth'
 
 /**
  * A little sequencer on the front page: a line already playing, that you can add notes to.
@@ -44,34 +45,6 @@ const INSTRUMENT: InstrumentId = 'marimba'
 const PART = 'home-seq'
 const FX = { echo: 0.18, echoTime: 0.28, space: 0.32, vibrato: 0, glide: 0 }
 const GAIN = 0.38
-
-type SynthMod = typeof import('../audio/synth')
-/**
- * ⚠️ Subscribing needs the module, so this waits for whatever load is already happening rather
- * than starting one. Before a single tap there is no synth and nothing to stop, so there is
- * nothing to miss — and the front page still does not pull the synth in on render.
- */
-function onStopAll(fn: () => void): () => void {
-  let off: (() => void) | null = null
-  let dead = false
-  withSynth((s) => {
-    if (dead) return
-    off = s.onStopAll(fn)
-  })
-  return () => {
-    dead = true
-    off?.()
-  }
-}
-
-let mod: SynthMod | null = null
-let pending: Promise<SynthMod> | null = null
-/** ⚠️ imported on first touch, never on render — the front page must not be why the synth ships */
-function withSynth(fn: (s: SynthMod) => void) {
-  if (mod) return fn(mod)
-  if (!pending) pending = import('../audio/synth').then((m) => (mod = m))
-  void pending.then(fn)
-}
 
 /** where the line starts — a phrase rather than a scatter, so it sounds like something */
 const SEED: Array<[number, number]> = [
@@ -144,10 +117,25 @@ export function HomeSequencer() {
       return r.bottom > 0 && r.top < (window.innerHeight || 0) && r.width > 0
     }
     const check = () => {
-      const on = onScreen()
-      /* ⚠️ With motion turned down the line does not creep on its own — but it must still run once
-         somebody has tapped, or their notes would never sound. */
-      const wanted = on && (!still || !!armedAt.current)
+      /**
+       * ⚠️ ARMED BEATS OFF-SCREEN, and that was a real rough edge rather than a nicety. The
+       * playhead used to stop the instant this scrolled out of view — so somebody who tapped a
+       * few notes, liked it, and scrolled down to read the rest of the page had their music cut
+       * off mid-bar by the act of scrolling. The rule was only ever meant to be the one below it:
+       * a loop goes quiet after QUIET_AFTER with nobody touching it.
+       *
+       * ⚠️ And it is what wires the page together. HomeViz draws whatever the synth is
+       * playing, three sections down — so a line started up here is still moving that picture
+       * when you reach it. That only works if scrolling towards it does not silence it first.
+       *
+       * ⚠️ A HIDDEN TAB IS DIFFERENT from an off-screen tile: browsers clamp setInterval to a
+       * second or more in a background tab, so carrying on there would not be music, it would be a
+       * note every second or so. That stops regardless.
+       *
+       * ⚠️ With motion turned down the line does not creep on its own — but it must still run
+       * once somebody has tapped, or their notes would never sound.
+       */
+      const wanted = !document.hidden && (!!armedAt.current || (onScreen() && !still))
       if (wanted === visible.current) return
       visible.current = wanted
       if (wanted) timer = window.setInterval(tick, STEP_MS)
