@@ -8,6 +8,7 @@ import { GROUPS, TRY_THESE } from '../site/tryThese'
 import { HomeScribble } from '../site/HomeScribble'
 import { HomeSnake } from '../site/HomeSnake'
 import { HomeSequencer } from '../site/HomeSequencer'
+import { HomeViz } from '../site/HomeViz'
 import { TileArt } from '../site/TileArt'
 import { IconGitHub, IconLinkedIn } from '../components/Icons'
 import { projects, skills, SKILL_NOTES, type Project } from './work'
@@ -358,6 +359,8 @@ function Demos({ authed }: { authed: boolean }) {
                         <HomeSnake />
                       ) : t.live === 'keys' ? (
                         <HomeSequencer />
+                      ) : t.live === 'viz' ? (
+                        <HomeViz />
                       ) : t.live ? (
                         <TileArt kind={t.live} />
                       ) : null}

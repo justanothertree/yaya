@@ -38,10 +38,12 @@ export type Invite = {
   /**
    * This invitation IS the thing, rather than a description of it.
    *
-   * ⚠️ Costs a visitor nothing: no imports, no audio, no data. Six of the eight are SVG with
-   * CSS keyframes and run no script at all; only the two you can touch — the scribble pad and the
-   * snake board — have a loop. The moment one of these needs a chunk, the front page has become
-   * the reason that chunk ships, which is the trap HeroPlay's dynamic import exists to avoid.
+   * ⚠️ Costs a visitor nothing UNTIL THEY ASK FOR SOMETHING. The ornamental ones are SVG with
+   * CSS keyframes and run no script at all; the pad and the snake board have a loop because you can
+   * touch them; and the visualiser reads the analyser the synth already publishes — but only once
+   * a note has sounded somewhere on the page, and it loads the synth the same way the hero's keys
+   * do, on a deliberate press. The moment one of these needs a chunk on RENDER, the front page has
+   * become the reason that chunk ships, which is the trap homeSynth.ts exists to avoid.
    *
    * ⚠️ The members-only rooms get ORNAMENT, not a readout. A visitor cannot be shown real
    * circuit scores or a real pool — that is what members-only means — so those tiles carry bars
@@ -133,7 +135,7 @@ export const TRY_THESE: Invite[] = [
     open: 'Put a song on',
     icon: '🎚️',
     title: 'Watch music move',
-    line: 'That is what it does to a drum loop. Put your own song on in the visualiser and it does it to that — mirrors, depth, 3D, and it keeps the looks you liked.',
+    line: 'Press play — that is the drum loop being drawn as it sounds, not a picture of one. Put your own song on in the visualiser and it does that to yours: mirrors, depth, 3D, and it keeps the looks you liked.',
   },
   {
     /**

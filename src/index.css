@@ -8883,6 +8883,81 @@ a.cz-msg-author:focus-visible {
   pointer-events: none;
 }
 
+/* ── the visualiser tile, drawing the page's own audio ──────────────────────
+   ⚠️ TWO LAYERS, NOT TWO TILES. The CSS art underneath is the resting state and the canvas on
+   top is the live one, so waking up is a crossfade in place — swapping one ELEMENT for another
+   would relayout the whole run every time somebody played a note, and the page would twitch. */
+.hag-viz {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: var(--tile-art-h, 108px);
+  margin: 0.45rem 0 0.15rem;
+  border-radius: var(--r-sm, 8px);
+  background: rgba(127, 127, 127, 0.08);
+  overflow: hidden;
+  /* what the canvas reads with getComputedStyle, so the bars follow the theme like everything else */
+  color: var(--accent, #7c6af7);
+}
+.hag-viz > .hag-art,
+.hag-viz > .hag-viz-cv {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  transition: opacity 0.4s ease;
+}
+.hag-viz-cv {
+  opacity: 0;
+  pointer-events: none;
+}
+.hag-viz.is-lit > .hag-viz-cv {
+  opacity: 1;
+}
+.hag-viz.is-lit > .hag-art {
+  opacity: 0;
+}
+/* ⚠️ THE TILE NEEDS ITS OWN WAY TO MAKE A SOUND. Reading the shared tap means this comes alive
+   when the hero's keys play — but those are three sections up, and by the time somebody has
+   scrolled down to here they have usually stopped. Without a button the best thing on the page is
+   invisible to anyone who did not happen to leave a loop running upstairs. */
+.hag-viz-go {
+  position: absolute;
+  right: 0.45rem;
+  bottom: 0.45rem;
+  padding: 0.24rem 0.62rem;
+  font: inherit;
+  font-size: 0.74rem;
+  line-height: 1.45;
+  color: var(--text);
+  background: color-mix(in srgb, var(--bg) 72%, transparent);
+  border: 1px solid var(--border-strong, var(--border));
+  border-radius: 999px;
+  cursor: pointer;
+  /* a fingertip target on the device most people arrive on, without a big chip on a small tile */
+  min-height: 30px;
+}
+.hag-viz-go:hover {
+  border-color: var(--accent);
+}
+.hag-viz-go:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+/* ⚠️ 40px on a phone, the floor the paint room's controls were raised to. 30px reads fine on a
+   desktop tile and is under half a fingertip on the device most people arrive on — and this is the
+   only control on the whole demo, so missing it means the tile does nothing. */
+@media (max-width: 40rem) {
+  .hag-viz-go {
+    min-height: 40px;
+    padding: 0.3rem 0.75rem;
+  }
+}
+
 /* the sequencer — see HomeSequencer for why this is not a second row of keys */
 .hag-seq {
   cursor: pointer;
