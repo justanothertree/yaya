@@ -8713,31 +8713,60 @@ a.cz-msg-author:focus-visible {
   border-radius: 999px;
   box-shadow: 0 0 0 2px var(--surface, #111);
 }
-.hag-mini-name {
+/* ⚠️ A NAME, NOT A GREY PILL. The pill stood in for a name and made the picture unreadable:
+   a gradient with a dot and a rectangle under it is not recognisable as a person's page to anybody
+   who has not already seen one. */
+.hag-mini-who {
   position: absolute;
   left: 3.1rem;
-  bottom: -0.3rem;
-  width: 4.4rem;
-  height: 0.5rem;
-  border-radius: 999px;
-  background: var(--text);
-  opacity: 0.5;
+  bottom: -1.15rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.05rem;
+  line-height: 1.15;
+}
+.hag-mini-name {
+  font-weight: 800;
+  font-size: 0.82rem;
+  color: var(--text);
+}
+.hag-mini-sub {
+  font-size: 0.6rem;
+  color: var(--muted);
+  letter-spacing: 0.02em;
 }
 .hag-mini-blocks {
   display: grid;
-  grid-template-columns: 1.5fr 1fr 0.8fr;
-  gap: 0.4rem;
-  padding: 1.25rem 0.7rem 0.6rem;
+  grid-template-columns: 1.4fr 1fr 0.9fr;
+  gap: 0.45rem;
+  padding: 1.6rem 0.7rem 0.6rem;
 }
 .hag-mini-block {
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 0.35rem;
+  gap: 0.3rem;
   border-radius: var(--r-sm, 8px);
   background: rgba(127, 127, 127, 0.16);
   border: 1px solid var(--border);
   overflow: hidden;
+  min-width: 0;
+}
+.hag-mini-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+}
+/* ⚠️ THE LABEL IS THE POINT. The blocks ARE the room — a page is built out of them and
+   everybody's set is different — and three unlabelled shapes say none of that. */
+.hag-mini-tag {
+  font-size: 0.58rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
 }
 /* a song block: a play triangle and a waveform */
 .hag-mini-play {
@@ -8765,9 +8794,9 @@ a.cz-msg-author:focus-visible {
   opacity: 0.8;
 }
 /* a score block */
-.hag-mini-block.is-num {
+.hag-mini-row.is-num {
   font-weight: 800;
-  font-size: 0.85rem;
+  font-size: 0.9rem;
 }
 
 @media (prefers-reduced-motion: no-preference) {
@@ -8938,7 +8967,9 @@ a.cz-msg-author:focus-visible {
    it and the two read as one object. A different width here and it goes back to looking like a
    separate demo that happens to have been moved, which is the thing this was meant to stop. */
 .hero-seen {
-  --tile-art-h: 128px;
+  /* ⚠️ Tall enough not to be a letterbox: 44rem of width over 128px was better than 6:1 but
+     still a strip with a caption under it, which is the same complaint the demos had. */
+  --tile-art-h: 176px;
   max-width: 44rem;
   margin: 1rem 0 0;
 }
@@ -8949,7 +8980,7 @@ a.cz-msg-author:focus-visible {
 }
 @media (max-width: 40rem) {
   .hero-seen {
-    --tile-art-h: 104px;
+    --tile-art-h: 132px;
   }
 }
 
@@ -9046,33 +9077,48 @@ a.cz-msg-author:focus-visible {
   margin: 0 0 0.6rem;
   font-size: 0.9rem;
 }
+/* ⚠️ ONE COLUMN OF BANDS, NOT A GRID OF TILES.
+   Widths used to come from a per-demo setting, and both settings were wrong in their own way: a
+   half with nothing to pair off against sat beside a visible gap, and a full-width one was a strip
+   — 1100 by 184 is SIX TO ONE, a letterbox with a caption under it, which is what "short and
+   wide" was pointing at. Neither is fixable by picking better widths, because the packing changes
+   every time the list does: sign in and three more demos appear, and whatever paired off before
+   does not any more.
+   So there is no packing. Every demo is a band, its picture beside its words at the same size as
+   the one above it, and adding or removing one cannot strand its neighbour. */
 .demos-grid {
   display: grid;
-  gap: 2.1rem 1.1rem;
+  gap: 2.4rem;
   grid-template-columns: 1fr;
   margin-top: 1rem;
 }
-/* ⚠️ TWO COLUMNS, NOT THREE. At three, a full-width demo sat beside two halves of a different
-   size and everything read as a packing problem. At two, anything side by side is the same width
-   as the thing next to it — which is the only arrangement that looks chosen rather than fitted. */
-@media (min-width: 40rem) {
-  .demos-grid {
-    grid-template-columns: repeat(2, 1fr);
-  }
-}
-.demo[data-span='full'] {
-  grid-column: 1 / -1;
-}
 .demo {
-  --tile-art-h: 108px;
+  /* stacked, on a phone: the picture is the full width so it needs real height under it */
+  --tile-art-h: 168px;
   min-width: 0;
 }
-.demo[data-span='full'] {
-  --tile-art-h: 184px;
-}
-@media (max-width: 40rem) {
-  .demo[data-span='full'] {
-    --tile-art-h: 136px;
+/* ⚠️ 58rem, NOT 40rem. Below this the copy column would be under 15rem and the words would
+   set in a gutter beside the picture. Stacked is better than cramped. */
+@media (min-width: 58rem) {
+  .demo {
+    --tile-art-h: 236px;
+    display: grid;
+    grid-template-columns: minmax(0, 1.5fr) minmax(15rem, 1fr);
+    column-gap: 1.6rem;
+    align-content: start;
+  }
+  /* ⚠️ span 20 rather than 1 / -1: with no explicit rows, -1 is the same line as 1 and the
+     picture collapses to a single row beside the title. The copy never runs to twenty children. */
+  .demo > .demo-art {
+    grid-column: 1;
+    grid-row: 1 / span 20;
+  }
+  .demo > *:not(.demo-art) {
+    grid-column: 2;
+  }
+  /* the words start level with the top of the picture rather than a line below it */
+  .demo > .demo-title {
+    margin-top: 0.1rem;
   }
 }
 /* the art is the thing — it gets the rounded edge that used to belong to the card */

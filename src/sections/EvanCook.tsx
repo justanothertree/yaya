@@ -418,7 +418,7 @@ function Demos({ authed }: { authed: boolean }) {
             <p className="muted demo-run-lead">{g.lead}</p>
             <div className="demos-grid">
               {run.map((t) => (
-                <div key={t.id} className="demo" data-span={t.wide ? 'full' : '1'}>
+                <div key={t.id} className="demo">
                   {/**
                    * ⚠️ A DEMO IS A DIV, NOT A LINK. An <a> wrapping a drawing surface is
                    * broken twice over: every stroke ends in a navigation, and a control nested
@@ -446,13 +446,18 @@ function Demos({ authed }: { authed: boolean }) {
       {/**
        * ⚠️ A PROJECT WITH NO DEMO STILL NEEDS SOMEWHERE TO LIVE, and it is not a dropdown.
        * Dollar-a-Day is real money in real accounts so there is no honest public demo, and signed
-       * out the Circuit has none either — its demo is members-only. Both are written out in full
        * here, titled, rather than hidden behind a label saying "it".
+       *
+       * ⚠️ AND THE REASON GIVEN WAS WRONG. It said "you would need an account", which was only
+       * ever true of the Circuit — and not even of that: signed out, the Circuit wires a
+       * localStorage sandbox seeded from publicSeed and renders with `demo={!authed}`, so a visitor
+       * gets real numbers to drag about that never leave their browser. The one project genuinely
+       * left is Dollar-a-Day, and the reason is not accounts, it is that faking money is dishonest.
        */}
       {leftovers.length > 0 && (
         <div className="demo-run">
           <h3 className="demo-run-title">Also here</h3>
-          <p className="muted demo-run-lead">No demo for these — you would need an account.</p>
+          <p className="muted demo-run-lead">Nothing to press — these are written up instead.</p>
           <div className="demo-solos">
             {leftovers.map((o) => (
               <ProjectNotes key={o.id} id={o.id} inline />

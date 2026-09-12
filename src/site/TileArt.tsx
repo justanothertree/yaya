@@ -157,6 +157,23 @@ function Levels() {
  * ⚠️ Built from the REAL banner CSS and the REAL derived hue, so this is not an impression of
  * a profile — it is one. If the banner set changes, this changes with it.
  */
+/**
+ * Four people's pages, cycling.
+ *
+ * ⚠️ IT HAD TO SAY WHAT IT WAS. This was a gradient, a dot, a grey pill where a name goes and
+ * three abstract shapes — which reads as "some coloured rectangles", not "a page somebody built".
+ * A visitor who cannot tell what they are looking at learns nothing from it cycling four times.
+ *
+ * ⚠️ So there are WORDS in it now: a real name on the banner, what you can do from somebody's
+ * page, and a label on each block saying what kind of block it is. Text is the only thing at this
+ * size that cannot be misread, and the blocks are the whole idea of the room — a page is built
+ * out of them, and everybody's is different.
+ *
+ * ⚠️ Still the real BANNER_STYLES and the real hueFor, so the looks cycling here are exactly
+ * what a page looks like rather than four gradients somebody picked for a picture.
+ */
+const FOLK = ['Ada', 'Bo', 'Cleo', 'Dmitri']
+
 function ProfileArt() {
   const hues = ['ada', 'bo', 'cleo', 'dmitri'].map(hueFor)
   return (
@@ -168,29 +185,41 @@ function ProfileArt() {
             style={{ background: BANNER_STYLES[style].css(hues[i]) }}
           >
             <span className="hag-mini-face" style={{ background: `hsl(${hues[i]} 72% 52%)` }} />
-            <span className="hag-mini-name" />
+            <span className="hag-mini-who">
+              <span className="hag-mini-name">{FOLK[i]}</span>
+              <span className="hag-mini-sub">add · message · call</span>
+            </span>
           </span>
           <span className="hag-mini-blocks">
-            {/* a song, a drawing, a number — the three kinds of block a page actually carries */}
+            {/* the kinds of block a page actually carries, named so they are not just shapes */}
             <span className="hag-mini-block">
-              <span
-                className="hag-mini-play"
-                style={{ borderLeftColor: `hsl(${hues[i]} 80% 62%)` }}
-              />
-              <span className="hag-mini-wave" />
+              <span className="hag-mini-row">
+                <span
+                  className="hag-mini-play"
+                  style={{ borderLeftColor: `hsl(${hues[i]} 80% 62%)` }}
+                />
+                <span className="hag-mini-wave" />
+              </span>
+              <span className="hag-mini-tag">song</span>
             </span>
             <span className="hag-mini-block">
-              <span
-                className="hag-mini-daub"
-                style={{ background: `hsl(${(hues[i] + 70) % 360} 75% 58%)` }}
-              />
-              <span
-                className="hag-mini-daub is-two"
-                style={{ background: `hsl(${(hues[i] + 160) % 360} 75% 58%)` }}
-              />
+              <span className="hag-mini-row">
+                <span
+                  className="hag-mini-daub"
+                  style={{ background: `hsl(${(hues[i] + 70) % 360} 75% 58%)` }}
+                />
+                <span
+                  className="hag-mini-daub is-two"
+                  style={{ background: `hsl(${(hues[i] + 160) % 360} 75% 58%)` }}
+                />
+              </span>
+              <span className="hag-mini-tag">drawing</span>
             </span>
-            <span className="hag-mini-block is-num" style={{ color: `hsl(${hues[i]} 80% 66%)` }}>
-              225
+            <span className="hag-mini-block">
+              <span className="hag-mini-row is-num" style={{ color: `hsl(${hues[i]} 80% 66%)` }}>
+                225
+              </span>
+              <span className="hag-mini-tag">score</span>
             </span>
           </span>
         </span>

@@ -63,17 +63,6 @@ export type Invite = {
    */
   slot?: 'hero'
   /**
-   * Does this one take the whole row?
-   *
-   * ⚠️ WIDTH BY WHAT IT NEEDS, NOT BY POSITION. It used to come from a 2,1,1,2 cycle keyed on
-   * the index, so what ended up beside what was an accident of ordering — a big drawing pad next
-   * to a small ring of circles, two things of different kinds at different sizes, which is most
-   * of what "slapped together" was pointing at. The grid is two columns now and this decides:
-   * the ones you can touch, and the one showing a whole page, take a row; the ambient ones pair
-   * up with each other at equal width.
-   */
-  wide?: boolean
-  /**
    * Which run of the section this belongs to.
    *
    * ⚠️ EIGHT THINGS IN ONE FLAT GRID IS A LIST, NOT A PAGE. Every demo had the same weight and
@@ -115,8 +104,23 @@ export const DEMOS_LEAD =
 
 /** The runs, in the order the page makes them. */
 export const GROUPS: ReadonlyArray<{ id: 'make' | 'together'; title: string; lead: string }> = [
-  { id: 'make', title: 'Make something', lead: 'No account, no install — these work right here.' },
-  { id: 'together', title: 'With other people', lead: 'The reason the site has accounts at all.' },
+  /**
+   * ⚠️ NOT "MAKE SOMETHING" ANY MORE. Snake sits in this run because the board works with no
+   * account, which is what the lead says — but you do not MAKE anything playing snake, so the
+   * heading and the thing under it disagreed. The run was never about creating; it is about what
+   * you can do here, now, by yourself.
+   */
+  { id: 'make', title: 'On your own', lead: 'No account, no install — these work right here.' },
+  /**
+   * ⚠️ "The reason the site has accounts at all" was a sentence about the SITE'S plumbing,
+   * said to somebody who does not care how it is wired. These rooms are worth opening because of
+   * who is in them, so the lead says who.
+   */
+  {
+    id: 'together',
+    title: 'With other people',
+    lead: 'The rooms my friends and family are actually in, every day.',
+  },
 ]
 
 export const TRY_THESE: Invite[] = [
@@ -128,14 +132,15 @@ export const TRY_THESE: Invite[] = [
    * those, which is why the descriptions read as advertising however plainly they were written.
    */
   /**
-   * ⚠️ THE ORDER IS THE LAYOUT. Widths run 2,1,1,2 and repeat (see EvanCook), so positions 0
-   * and 3 are the wide ones — and the two tiles that NEED width are the pad you drag on and the
-   * profile, which has a whole page to show and was unreadable in a third of a row. Reordering is
-   * how they get it; there is no per-tile width setting to forget to keep in step.
+   * ⚠️ THEY ARE ALL THE SAME WIDTH NOW, and the per-tile setting that decided it is gone.
+   * Width was a field on each invitation, so which demo sat beside which was a thing to keep in
+   * step by hand — and it went wrong every time the list changed: a half with nothing to pair
+   * with sat beside a visible gap, and a full-width one was a 6:1 letterbox on a wide screen.
+   * Every demo is a band now, its picture beside its words, so there is no packing to get wrong
+   * and adding or removing one cannot strand its neighbour.
    */
   {
     id: 'paint',
-    wide: true,
     group: 'make',
     live: 'scribble',
     icon: '🎨',
@@ -145,7 +150,6 @@ export const TRY_THESE: Invite[] = [
   {
     id: 'visualizer',
     slot: 'hero',
-    wide: true,
     group: 'make',
     live: 'viz',
     icon: '🎚️',
@@ -162,7 +166,6 @@ export const TRY_THESE: Invite[] = [
      * ever returns the single row flagged is_demo and only its public blocks.
      */
     id: 'profile',
-    wide: true,
     group: 'together',
     live: 'profile',
     href: '#profile?demo=1',
@@ -175,7 +178,6 @@ export const TRY_THESE: Invite[] = [
   },
   {
     id: 'snake',
-    wide: true,
     /**
      * ⚠️ "MAKE SOMETHING" MEANS "NO ACCOUNT NEEDED", WHICH IS EXACTLY WHAT THIS IS. It sat
      * under "With other people" because the ROOM keeps scores and lets people race each other —
@@ -201,8 +203,21 @@ export const TRY_THESE: Invite[] = [
     live: 'circuit',
     icon: '🏆',
     title: 'Log a workout',
-    line: 'The board my friends and I have used every day for a year. Log it, total it, argue about it.',
-    members: true,
+    /**
+     * ⚠️ IT WAS MEMBERS-ONLY AND IT NEVER NEEDED TO BE, so the one project with a real
+     * public sandbox was listed under "No demo for these — you would need an account".
+     *
+     * Signed out, connectCircuit wires a localStorage adapter seeded from publicSeed — Evan's
+     * own slice of the board, generated at build time and deliberately NOT importing seed.ts, so
+     * the rest of the group's data never reaches the bundle. Circuit then renders with
+     * `demo={!authed}`. You get real numbers to drag about and nothing you do leaves your browser.
+     *
+     * ⚠️ The pool next door stays members-only, and for a real reason rather than by habit:
+     * publicSeed carries people, logs, movies and the watchlist but NO pools, so the one thing
+     * that invitation is about — everyone throwing an option in and the wheel picking — would
+     * be an empty wheel.
+     */
+    line: 'The board my friends and I have used every day for a year. Open it and my real numbers are there to mess with — log, total, drag it about. Nothing you do touches ours.',
   },
   {
     id: 'ratings',
@@ -215,7 +230,6 @@ export const TRY_THESE: Invite[] = [
   },
   {
     id: 'chat',
-    wide: true,
     group: 'together',
     live: 'calls',
     icon: '🎧',
