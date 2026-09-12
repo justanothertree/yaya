@@ -12,6 +12,7 @@ export const REVIEW_KINDS: ReviewKind[] = [
   { id: 'drink', label: 'Drink', plural: 'Drinks', emoji: '🥤' },
   { id: 'restaurant', label: 'Restaurant', plural: 'Restaurants', emoji: '🍽️' },
   { id: 'game', label: 'Game', plural: 'Games', emoji: '🎮' },
+  { id: 'music', label: 'Music', plural: 'Music', emoji: '🎵' },
   { id: 'other', label: 'Other', plural: 'Other', emoji: '⭐' },
 ]
 

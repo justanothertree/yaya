@@ -15,6 +15,8 @@ import {
 import { peekPersistedUserId } from '../../finance/auth'
 import { MovieRate } from './MovieRate'
 import { MoviePersonProfile } from './MoviePersonProfile'
+import { kindOf, kindsPresent } from '../reviewKinds'
+import { circuitStore } from '../store'
 import type { Movie, Person } from '../types'
 
 export function MovieDetail({ movie, onClose }: { movie: Movie; onClose: () => void }) {
@@ -46,6 +48,8 @@ export function MovieDetail({ movie, onClose }: { movie: Movie; onClose: () => v
     return everyone.filter((p) => ids.has(p.id)).sort((a, b) => order(a.id) - order(b.id))
   }, [people, movie.ratings, movie.groupId])
 
+  /* only a signed-in member can retag; the demo sandbox has no account to attribute it to */
+  const canEdit = !!peekPersistedUserId()
   const scores = raters.map((p) => movie.ratings[p.id]?.score).filter((s): s is number => s != null)
   const avg = scores.length ? scores.reduce((a, b) => a + b, 0) / scores.length : null
 
@@ -120,6 +124,42 @@ export function MovieDetail({ movie, onClose }: { movie: Movie; onClose: () => v
           <span className="muted" style={{ fontSize: '0.78rem' }}>
             {scores.length} of {raters.length} rated
           </span>
+          {/**
+           * ⚠️ THE CATEGORY WAS WRITE-ONCE, and that is why the board looked like it was only
+           * for films. A review has been "a rated thing with a kind" for a while — reviewKinds ships
+           * movie, food, beer, drink, restaurant, game, music and other, plus anything somebody
+           * types — but the only place a kind could ever be set was the Add sheet. So every review
+           * made before kinds existed, and every one where the chip was missed on the way in, was
+           * stuck reading as a movie for good, with nothing anywhere to change it.
+           *
+           * ⚠️ Signed-in only, and the database has the final word: this is one more write that
+           * RLS decides on, and a refusal rolls the store back and toasts like any other.
+           */}
+          {canEdit && (
+            <label
+              className="muted"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.3rem',
+                fontSize: '0.78rem',
+              }}
+              title="What kind of thing is this?"
+            >
+              <span aria-hidden>{kindOf(movie.kind).emoji}</span>
+              <select
+                value={movie.kind ?? 'movie'}
+                onChange={(e) => void circuitStore.saveMovie({ ...movie, kind: e.target.value })}
+                style={{ fontSize: '0.78rem' }}
+              >
+                {kindsPresent([movie.kind ?? '']).map((k) => (
+                  <option key={k.id} value={k.id}>
+                    {k.emoji} {k.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
         </div>
 
         {/* Gut reactions */}
