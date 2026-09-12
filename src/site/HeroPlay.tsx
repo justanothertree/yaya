@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, type PointerEvent as ReactPointerEvent } from 'react'
 import type { InstrumentId } from '../audio/synth'
 import { HomeSequencer } from './HomeSequencer'
+import { withSynth } from './homeSynth'
 
 /**
  * The front door's one toy: twelve keys that actually play, with strings above them that ring.
@@ -42,16 +43,6 @@ const INSTRUMENT: InstrumentId = 'marimba'
 const PART = 'home-hero'
 const FX = { echo: 0.16, echoTime: 0.26, space: 0.3, vibrato: 0, glide: 0 }
 const GAIN = 0.5
-
-type SynthMod = typeof import('../audio/synth')
-let mod: SynthMod | null = null
-let pending: Promise<SynthMod> | null = null
-/** ⚠️ Called straight through once loaded, so no key press after the first has an async hop in it. */
-function withSynth(fn: (s: SynthMod) => void) {
-  if (mod) return fn(mod)
-  if (!pending) pending = import('../audio/synth').then((m) => (mod = m))
-  void pending.then(fn)
-}
 
 const ROWS = 4
 const LIFE = 2.6
