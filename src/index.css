@@ -4440,10 +4440,15 @@ button.appearance-slider-val:not(:disabled):focus-visible {
    ⚠️ THE HERO IS NOT A CARD. The page was seven bordered rectangles of equal weight stacked down
    a column — a form, not somebody's front door. Here the type carries the structure and the only
    bordered thing is the toy, so the eye lands on the part that is asking to be touched. */
+/* ⚠️ THE GAPS ARE THE PUNCTUATION. At 2rem between sections and 1.6rem between runs, the
+   hero, the demos and the write-ups all ran together into one column of stuff at one rhythm —
+   which is most of what "slapped together" keeps pointing at. Nothing here is a box (see the note
+   by .demos); the separation is space and a rule, because a border around each chapter would put
+   the page back to the grid of cards it started as. */
 .home-page {
   display: flex;
   flex-direction: column;
-  gap: 2rem;
+  gap: 3rem;
 }
 .home-hero {
   padding-top: 0.25rem;
@@ -4494,14 +4499,21 @@ button.appearance-slider-val:not(:disabled):focus-visible {
     order: 3;
     margin-top: 1.1rem;
   }
-  .home-lede {
+  /* ⚠️ EVERY CHILD OF THE HERO NEEDS AN ORDER HERE, and forgetting one is silent. `order`
+     defaults to 0, which sorts BEFORE every numbered sibling — so the visualiser, added later
+     with no order of its own, jumped to the very top of the page above the name and the headline,
+     and only on a phone. Anything new inside .home-hero has to be given a number in this list. */
+  .hero-seen {
     order: 4;
+  }
+  .home-lede {
+    order: 5;
     font-size: 0.95rem;
     line-height: 1.55;
     margin-top: 1.1rem;
   }
   .home-cta {
-    order: 5;
+    order: 6;
   }
 }
 .home-cta {
@@ -8921,40 +8933,23 @@ a.cz-msg-author:focus-visible {
 .hag-viz.is-lit > .hag-art {
   opacity: 0;
 }
-/* ⚠️ THE TILE NEEDS ITS OWN WAY TO MAKE A SOUND. Reading the shared tap means this comes alive
-   when the hero's keys play — but those are three sections up, and by the time somebody has
-   scrolled down to here they have usually stopped. Without a button the best thing on the page is
-   invisible to anyone who did not happen to leave a loop running upstairs. */
-.hag-viz-go {
-  position: absolute;
-  right: 0.45rem;
-  bottom: 0.45rem;
-  padding: 0.24rem 0.62rem;
-  font: inherit;
-  font-size: 0.74rem;
-  line-height: 1.45;
-  color: var(--text);
-  background: color-mix(in srgb, var(--bg) 72%, transparent);
-  border: 1px solid var(--border-strong, var(--border));
-  border-radius: 999px;
-  cursor: pointer;
-  /* a fingertip target on the device most people arrive on, without a big chip on a small tile */
-  min-height: 30px;
+/* ── the visualiser, attached to the hero rather than adrift in the grid ─────
+   ⚠️ THE SAME max-width AS .hero-play, so the picture lines up edge to edge with the keys above
+   it and the two read as one object. A different width here and it goes back to looking like a
+   separate demo that happens to have been moved, which is the thing this was meant to stop. */
+.hero-seen {
+  --tile-art-h: 128px;
+  max-width: 44rem;
+  margin: 1rem 0 0;
 }
-.hag-viz-go:hover {
-  border-color: var(--accent);
+.hero-seen-line {
+  margin: 0.55rem 0 0.15rem;
+  font-size: 0.86rem;
+  line-height: 1.5;
 }
-.hag-viz-go:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-}
-/* ⚠️ 40px on a phone, the floor the paint room's controls were raised to. 30px reads fine on a
-   desktop tile and is under half a fingertip on the device most people arrive on — and this is the
-   only control on the whole demo, so missing it means the tile does nothing. */
 @media (max-width: 40rem) {
-  .hag-viz-go {
-    min-height: 40px;
-    padding: 0.3rem 0.75rem;
+  .hero-seen {
+    --tile-art-h: 104px;
   }
 }
 
@@ -9053,9 +9048,9 @@ a.cz-msg-author:focus-visible {
 }
 .demos-grid {
   display: grid;
-  gap: 1.5rem 1.1rem;
+  gap: 2.1rem 1.1rem;
   grid-template-columns: 1fr;
-  margin-top: 0.9rem;
+  margin-top: 1rem;
 }
 /* ⚠️ TWO COLUMNS, NOT THREE. At three, a full-width demo sat beside two halves of a different
    size and everything read as a packing problem. At two, anything side by side is the same width
@@ -9101,14 +9096,53 @@ a.cz-msg-author:focus-visible {
   font-size: 0.86rem;
   line-height: 1.5;
 }
+/* ⚠️ ONE ROW SAYING BOTH THINGS. What you are touching is a preview, and here is the room it
+   is a preview OF, named the way the nav names it. They belong together: a disclosure on its own
+   sounds like a disclaimer, and a link on its own leaves somebody thinking the taste was the meal. */
+.demo-foot {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  margin: 0.45rem 0 0;
+}
+.demo-preview {
+  font-size: 0.64rem;
+  font-weight: 800;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 1px 8px;
+  /* it labels the thing above it and is never the thing you meant to press */
+  user-select: none;
+}
 .demo-go {
-  font-size: 0.82rem;
-  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.32rem;
+  font-size: 0.84rem;
+  font-weight: 700;
   color: var(--accent);
   text-decoration: none;
 }
+.demo-go-ic {
+  font-size: 0.95rem;
+}
 .demo-go:hover {
   text-decoration: underline;
+}
+.demo-go:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+@media (max-width: 40rem) {
+  /* the only way out of a demo, so it gets a fingertip rather than an 0.84rem line of text */
+  .demo-go {
+    min-height: 40px;
+  }
 }
 
 /* the case study, folded into the demo it belongs to */
@@ -9166,7 +9200,10 @@ a.cz-msg-author:focus-visible {
 
 /* the two runs, which give the section a shape instead of a list */
 .demo-run {
-  margin-top: 1.6rem;
+  margin-top: 2.75rem;
+}
+.demo-run:first-of-type {
+  margin-top: 1.25rem;
 }
 .demo-run-title {
   margin: 0;
@@ -9185,8 +9222,10 @@ a.cz-msg-author:focus-visible {
   content: '';
   display: block;
   height: 1px;
-  margin-top: 0.4rem;
-  background: linear-gradient(90deg, var(--border), transparent);
+  margin-top: 0.45rem;
+  /* reaches most of the way across now: at a quarter width it read as an underline on the word
+     rather than as the start of a new chapter */
+  background: linear-gradient(90deg, var(--border-strong, var(--border)) 40%, transparent);
 }
 
 /* a write-up with no demo above it: a titled block, not a mystery dropdown */

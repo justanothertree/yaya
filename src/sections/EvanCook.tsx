@@ -4,7 +4,8 @@
 // informational write-up. Résumé content folds in as About / Skills, with a PDF link.
 import { useState, type ReactNode } from 'react'
 import { site } from '../config/site'
-import { GROUPS, TRY_THESE } from '../site/tryThese'
+import { DEMOS_LEAD, GROUPS, TRY_THESE, type Invite } from '../site/tryThese'
+import { PLACES } from '../nav/places'
 import { HomeScribble } from '../site/HomeScribble'
 import { HomeSnake } from '../site/HomeSnake'
 import { HomeSequencer } from '../site/HomeSequencer'
@@ -14,6 +15,9 @@ import { IconGitHub, IconLinkedIn } from '../components/Icons'
 import { projects, skills, SKILL_NOTES, type Project } from './work'
 import { HOME } from '../site/homeContent'
 import { HeroPlay } from '../site/HeroPlay'
+
+/** the invitations that belong to the hero rather than to the grid — see the note in Hero() */
+const HERO_SLOT = TRY_THESE.filter((t) => t.slot === 'hero')
 
 const STATUS_LABEL: Record<Project['status'], string> = {
   live: 'Live',
@@ -47,6 +51,22 @@ function Hero() {
       <h1 className="home-h1">{HOME.hero.heading}</h1>
       <p className="home-lede muted">{HOME.hero.blurb}</p>
       <HeroPlay />
+      {/**
+       * ⚠️ THE VISUALISER BELONGS TO THE HERO, not to the grid below. Down there it competed
+       * with this for the same job — both were "here is a tool, have a go" — and the hero won, so
+       * it read as a lesser repeat of the thing four inches above it. It is not a separate demo:
+       * it is the other half of this one. Press a key, the strings ring, the line plays, and this
+       * is what the visualiser does with it. Which is also why it needed no play button of its own.
+       */}
+      {HERO_SLOT.map((t) => (
+        <div key={t.id} className="hero-seen">
+          <div className="demo-art">
+            <DemoArt t={t} />
+          </div>
+          <p className="muted hero-seen-line">{t.line}</p>
+          <DemoFoot t={t} />
+        </div>
+      ))}
       <div className="no-print home-cta">
         <button
           className="btn"
@@ -295,6 +315,65 @@ function ProjectNotes({ id, inline = false }: { id: string; inline?: boolean }) 
 }
 
 /**
+ * What the nav calls each room.
+ *
+ * ⚠️ TAKEN FROM PLACES RATHER THAN WRITTEN OUT. Every demo used to carry its own `open`
+ * phrase — "Open the studio", "Put a song on", "Play it properly" — which read nicely and named
+ * nothing a visitor could then go and find. The tab along the top says Paint; the link under the
+ * pad said "Open the studio"; connecting the two was left to the reader. Now the link IS the tab's
+ * own word, so a demo and its room cannot drift apart and there is no second place to keep in step.
+ */
+const TAB_LABEL: Record<string, string> = Object.fromEntries(PLACES.map((p) => [p.id, p.label]))
+
+function DemoArt({ t }: { t: Invite }) {
+  return t.live === 'scribble' ? (
+    <HomeScribble />
+  ) : t.live === 'snake' ? (
+    <HomeSnake />
+  ) : t.live === 'keys' ? (
+    <HomeSequencer />
+  ) : t.live === 'viz' ? (
+    <HomeViz />
+  ) : t.live ? (
+    <TileArt kind={t.live} />
+  ) : null
+}
+
+/**
+ * The door out of a demo, and the admission that it is one.
+ *
+ * ⚠️ THE TASTE MUST NOT BE MISTAKEN FOR THE MEAL. These work, which is the risk: somebody
+ * plays the snake board for a minute, decides they have seen Snake, and never opens the room with
+ * the scores and the other people in it. So every one says `preview` out loud, in the same place,
+ * every time — the repetition is the feature, because a label you only notice sometimes is a
+ * label nobody relies on.
+ *
+ * ⚠️ AND THE DOOR IS NAMED AFTER THE TAB. "Open 🎨 Paint" is the word on the nav strip and
+ * the icon from the invitation, so pressing it lands somewhere the reader has already seen the
+ * name of — and they can get back without this page.
+ */
+function DemoFoot({ t }: { t: Invite }) {
+  const href = t.href ?? `#${t.id}`
+  const go = (e: { preventDefault: () => void }) => {
+    e.preventDefault()
+    /* the whole target, not just the room — the profile invitation carries ?demo=1 */
+    window.location.hash = href.replace(/^#/, '')
+  }
+  return (
+    <p className="demo-foot">
+      <span className="demo-preview">preview</span>
+      <a className="demo-go" href={href} onClick={go}>
+        Open{' '}
+        <span aria-hidden className="demo-go-ic">
+          {t.icon}
+        </span>
+        {TAB_LABEL[t.id] ?? t.title} <span aria-hidden>→</span>
+      </a>
+    </p>
+  )
+}
+
+/**
  * Everything on this site, running.
  *
  * ⚠️ THEY ARE NOT TILES. Each was a bordered card with a rectangle of art inside it, which is
@@ -315,8 +394,7 @@ function ProjectNotes({ id, inline = false }: { id: string; inline?: boolean }) 
  * equal width, which is the only pairing that ever looks deliberate.
  */
 function Demos({ authed }: { authed: boolean }) {
-  const items = TRY_THESE.filter((t) => !t.members || authed)
-  const platform = projects.find((p) => p.id === 'platform')
+  const items = TRY_THESE.filter((t) => (!t.members || authed) && !t.slot)
   const shown = new Set(items.map((t) => t.project).filter(Boolean))
   const leftovers = projects.filter((p) => p.id !== 'platform' && !shown.has(p.id))
   return (
@@ -324,10 +402,12 @@ function Demos({ authed }: { authed: boolean }) {
       <h2 className="section-title" style={{ marginBottom: '0.2rem' }}>
         What I have built
       </h2>
-      {/* ⚠️ evancook.dev's tagline, and NOT its write-up. That write-up said the same thing as
-          the "How is it built?" thread in About, and as a bare dropdown up here it was one of the
-          three unlabelled ones. The repository link it carried is already in the hero. */}
-      <p className="muted demos-lede">{platform?.tagline}</p>
+      {/* ⚠️ SAYS THESE ARE PREVIEWS, because that is the one thing a visitor can get wrong
+          here. They work, which is the risk — somebody plays the snake board for a minute, decides
+          they have seen Snake, and never opens the room with the scores and the other people in it.
+          (This used to be evancook.dev's tagline, which said what the hero and About both already
+          say: one app, everything live.) */}
+      <p className="muted demos-lede">{DEMOS_LEAD}</p>
 
       {GROUPS.map((g) => {
         const run = items.filter((t) => t.group === g.id)
@@ -337,48 +417,27 @@ function Demos({ authed }: { authed: boolean }) {
             <h3 className="demo-run-title">{g.title}</h3>
             <p className="muted demo-run-lead">{g.lead}</p>
             <div className="demos-grid">
-              {run.map((t) => {
-                const href = t.href ?? `#${t.id}`
-                const span = t.wide ? 'full' : '1'
-                const go = (e: { preventDefault: () => void }) => {
-                  e.preventDefault()
-                  /* the whole target, not just the room — the profile invitation carries ?demo=1 */
-                  window.location.hash = href.replace(/^#/, '')
-                }
-                return (
-                  <div key={t.id} className="demo" data-span={span}>
-                    {/**
-                     * ⚠️ A DEMO IS A DIV, NOT A LINK. An <a> wrapping a drawing surface is
-                     * broken twice over: every stroke ends in a navigation, and a control nested
-                     * inside a link is not reachable on its own by a keyboard or screen reader.
-                     */}
-                    <div className="demo-art">
-                      {t.live === 'scribble' ? (
-                        <HomeScribble />
-                      ) : t.live === 'snake' ? (
-                        <HomeSnake />
-                      ) : t.live === 'keys' ? (
-                        <HomeSequencer />
-                      ) : t.live === 'viz' ? (
-                        <HomeViz />
-                      ) : t.live ? (
-                        <TileArt kind={t.live} />
-                      ) : null}
-                    </div>
-                    <p className="demo-title">
-                      <span aria-hidden className="demo-ic">
-                        {t.icon}
-                      </span>
-                      <strong>{t.title}</strong>
-                    </p>
-                    <p className="muted demo-line">{t.line}</p>
-                    <a className="demo-go" href={href} onClick={go}>
-                      {t.open ?? 'Open it'} →
-                    </a>
-                    {t.project && <ProjectNotes id={t.project} />}
+              {run.map((t) => (
+                <div key={t.id} className="demo" data-span={t.wide ? 'full' : '1'}>
+                  {/**
+                   * ⚠️ A DEMO IS A DIV, NOT A LINK. An <a> wrapping a drawing surface is
+                   * broken twice over: every stroke ends in a navigation, and a control nested
+                   * inside a link is not reachable on its own by a keyboard or screen reader.
+                   */}
+                  <div className="demo-art">
+                    <DemoArt t={t} />
                   </div>
-                )
-              })}
+                  <p className="demo-title">
+                    <span aria-hidden className="demo-ic">
+                      {t.icon}
+                    </span>
+                    <strong>{t.title}</strong>
+                  </p>
+                  <p className="muted demo-line">{t.line}</p>
+                  <DemoFoot t={t} />
+                  {t.project && <ProjectNotes id={t.project} />}
+                </div>
+              ))}
             </div>
           </div>
         )

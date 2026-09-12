@@ -1,11 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { InstrumentId } from '../audio/synth'
 import { hasTap, readSpectrum, subscribeTaps, tapFormat } from '../audio/audioTap'
-import { onStopAll, withSynth } from './homeSynth'
 import { TileArt } from './TileArt'
 
 /**
- * The front page, wired to itself: this draws the sound the rest of the page is making.
+ * The same sound the hero is making, seen instead of heard.
  *
  * ⚠️ THE CAPTION USED TO BE A LIE. "That is what it does to a drum loop" pointed at an SVG with
  * CSS keyframes — five circles breathing on a timer, with no drum loop and no audio anywhere near
@@ -18,11 +16,16 @@ import { TileArt } from './TileArt'
  * here. So this costs no new context, no new node and no new data: it reads bins somebody else
  * already computed, in a frame it was going to draw anyway.
  *
- * ⚠️ WHICH MAKES THE PAGE ONE INSTRUMENT. The hero's keys and the sequencer feed this same tap,
- * so a line started at the top of the page is still moving this picture three sections down. That
- * is the argument the site makes about itself — the rooms are one app, not a menu of separate
- * things — and until now the front page demonstrated the opposite, with eight demos that had never
- * heard of each other.
+ * ⚠️ IT HAS NO SOUND OF ITS OWN, AND THAT IS THE POINT. It shipped with a button that played a
+ * drum loop, so the front page had two instruments on it — a keyboard with a sequencer, and this,
+ * with its own separate thing to press. Two sources meant two of everything: two ways to start a
+ * sound, two loops to stop, two stop rules to keep in step. Sitting where it does now, directly
+ * under the grid that IS the source, a second play button is just a worse copy of the one above it.
+ *
+ * ⚠️ WHICH IS ALSO WHY IT MOVED. In the demo grid it competed with the hero for the same job —
+ * both were "here is a tool, have a go" — and the hero won, so this read as a second-rate repeat
+ * of it. Under the hero it is not a separate demo at all: it is the other half of one. You press,
+ * the strings ring, the line plays, and this is what the visualiser does with it.
  *
  * ⚠️ NOTHING RUNS UNTIL SOMETHING SOUNDS, and the cheap states are the common ones: with no synth
  * loaded there are no timers at all and the CSS art is what you see; once a tap exists an 8Hz poll
@@ -60,59 +63,10 @@ const WATCH_MS = 125
  */
 const FALL = Math.LN2 / 0.11
 
-/* ── the loop the button plays ──────────────────────────────────────────────
-   ⚠️ REAL NOTES THROUGH THE REAL SYNTH, which is the whole point: the picture is drawn from the
-   analyser, so a faked loop would draw nothing at all. The kit is synthesised (see hitDrum), so
-   this ships no samples — midi % 12 picks the piece: 0 kick, 2 snare, 6 closed hat, 8 open hat. */
-const KICK = 60
-const SNARE = 62
-const HAT = 66
-const OPEN_HAT = 68
-const DRUMS: InstrumentId = 'drums'
-/** low enough to give the middle of the picture something to draw */
-const BASS: InstrumentId = 'bass'
-
-const STEPS = 16
-/** 150ms a step is 100bpm in sixteenths — the same clock the sequencer upstairs runs on */
-const STEP_MS = 150
-/** one bar: kick and snare, with hats on the eighths */
-const HITS: number[][] = [
-  [KICK, HAT],
-  [],
-  [HAT],
-  [KICK],
-  [SNARE, HAT],
-  [],
-  [KICK, HAT],
-  [],
-  [HAT],
-  [],
-  [KICK, HAT],
-  [],
-  [SNARE, HAT],
-  [],
-  [HAT],
-  [OPEN_HAT],
-]
-/** step → midi: C pentatonic roots walking under it */
-const BASS_LINE: Record<number, number> = { 0: 36, 6: 36, 8: 43, 12: 40 }
-
-/** its own part, so this never inherits whatever the instrument room was left set to */
-const PART = 'home-viz'
-const FX = { echo: 0.1, echoTime: 0.22, space: 0.24, vibrato: 0, glide: 0 }
-const GAIN = 0.45
-/**
- * ⚠️ IT STOPS ITSELF. A loop still going while somebody reads the rest of the page is the same
- * rudeness as autoplay, arriving late. Ten bars is long enough to watch the picture and short
- * enough that wandering off ends it.
- */
-const LOOP_MAX = 24000
-
 export function HomeViz() {
   const wrap = useRef<HTMLSpanElement | null>(null)
   const cv = useRef<HTMLCanvasElement | null>(null)
   const [lit, setLit] = useState(false)
-  const [playing, setPlaying] = useState(false)
 
   /** filled once and reused — a Uint8Array per frame is the classic visualiser stutter */
   const spec = useRef<Uint8Array>(new Uint8Array(BINS))
@@ -121,11 +75,6 @@ export function HomeViz() {
   const lastFrame = useRef(0)
   const loudAt = useRef(0)
   const ink = useRef('#7c6af7')
-
-  const running = useRef(false)
-  const stepTimer = useRef(0)
-  const startedAt = useRef(0)
-  const step = useRef(0)
 
   /** the bin range each column answers for, worked out once */
   const edges = useRef<number[]>([])
@@ -239,8 +188,8 @@ export function HomeViz() {
    * Watch for sound, cheaply, and only while there is something to watch.
    *
    * ⚠️ NO TIMER AT ALL BEFORE THE SYNTH EXISTS. subscribeTaps says the moment one registers —
-   * which on this page is the moment somebody presses a key upstairs — so the common visit, where
-   * nobody touches anything, runs nothing whatsoever.
+   * which on this page is the moment somebody presses a key just above — so the common visit,
+   * where nobody touches anything, runs nothing whatsoever.
    */
   useEffect(() => {
     let poll = 0
@@ -296,94 +245,13 @@ export function HomeViz() {
     }
   }, [fit])
 
-  /* ── the loop ──────────────────────────────────────────────────────────── */
-
-  /** ⚠️ A ref so the listeners below never go stale: they are registered once, for the life of
-      the component, and a closure captured then would be stopping the first render forever. */
-  const stop = useRef(() => {})
-  stop.current = () => {
-    if (!running.current) return
-    running.current = false
-    setPlaying(false)
-    window.clearInterval(stepTimer.current)
-    stepTimer.current = 0
-    withSynth((s) => s.allNotesOff())
-  }
-
-  const tickStep = useCallback(() => {
-    if (performance.now() - startedAt.current > LOOP_MAX) return stop.current()
-    const at = step.current % STEPS
-    step.current = at + 1
-    withSynth((s) => {
-      for (const m of HITS[at]) {
-        s.noteOn(`viz:d:${at}:${m}`, DRUMS, m, undefined, { key: PART, fx: FX, gain: GAIN })
-      }
-      const b = BASS_LINE[at]
-      if (b == null) return
-      const id = `viz:b:${at}`
-      s.noteOn(id, BASS, b, undefined, { key: PART, fx: FX, gain: GAIN })
-      /* every voice has to be released or they pile up, whatever its own envelope does */
-      window.setTimeout(() => withSynth((t) => t.noteOff(id)), 380)
-    })
-  }, [])
-
-  const toggle = () => {
-    if (running.current) return stop.current()
-    /**
-     * ⚠️ EVERYTHING INSIDE withSynth, INCLUDING THE STOP. On the very first press the module is
-     * still loading, so a stopLive() called out here would land after the interval had started and
-     * silence the very loop it was meant to make room for.
-     */
-    withSynth((s) => {
-      /* one sound source at a time — this puts the sequencer upstairs away before starting */
-      s.stopLive()
-      if (running.current) return
-      running.current = true
-      setPlaying(true)
-      startedAt.current = performance.now()
-      step.current = 0
-      tickStep()
-      stepTimer.current = window.setInterval(tickStep, STEP_MS)
-    })
-  }
-
-  useEffect(() => {
-    /* ⚠️ The dock's stop button has to stop the PLAYER, not the notes: silencing a thing that
-       plays a fresh note every 150ms only makes it stutter and carry on. */
-    const offStop = onStopAll(() => stop.current())
-    /* ⚠️ And pressing anywhere else puts it away — the rule the sequencer keeps, because leaving
-       is how people stop something. pointerdown rather than click, so it lands even when the press
-       is on something that swallows the click. */
-    const elsewhere = (e: Event) => {
-      const el = wrap.current
-      const t = e.target
-      if (!el || (t instanceof Node && el.contains(t))) return
-      stop.current()
-    }
-    document.addEventListener('pointerdown', elsewhere, true)
-    return () => {
-      offStop()
-      document.removeEventListener('pointerdown', elsewhere, true)
-      stop.current()
-    }
-  }, [])
-
   return (
     <span ref={wrap} className={'hag-viz' + (lit ? ' is-lit' : '')}>
       {/* ⚠️ The art stays, as the resting state. It is a compositor animation costing no main
-          thread that goes still by itself for a reader who asked for less motion — exactly what a
-          tile nobody has made a sound at should be. The canvas takes over on top of it. */}
+          thread that goes still by itself for a reader who asked for less motion — exactly what
+          this should be before anybody has made a sound. The canvas takes over on top of it. */}
       <TileArt kind="viz" />
       <canvas ref={cv} className="hag-viz-cv" aria-hidden />
-      <button
-        type="button"
-        className="hag-viz-go"
-        onClick={toggle}
-        aria-pressed={playing}
-        title={playing ? 'Stop the loop' : 'Play a drum loop through the synth'}
-      >
-        {playing ? '■ Stop' : '▶ Play a loop'}
-      </button>
     </span>
   )
 }

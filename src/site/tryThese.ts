@@ -51,8 +51,17 @@ export type Invite = {
    * somebody's is worse than a plain rectangle.
    */
   live?: 'scribble' | 'snake' | 'keys' | 'profile' | 'viz' | 'circuit' | 'ratings' | 'calls'
-  /** what the link under a live tile says */
-  open?: string
+  /**
+   * Where this one is shown.
+   *
+   * ⚠️ 'hero' MEANS IT IS NOT A DEMO OF ITS OWN. The visualiser sat in the grid competing
+   * with the hero for the same job — both were "here is a tool, have a go" — and the hero won,
+   * so it read as a second-rate repeat of the thing four inches above it. It is not a separate
+   * demo at all: it is the other half of one. You press a key, the strings ring, the line plays,
+   * and that is what the visualiser does with it. So it sits under the hero, and the grid below
+   * is everything the hero is NOT already showing off.
+   */
+  slot?: 'hero'
   /**
    * Does this one take the whole row?
    *
@@ -93,6 +102,17 @@ export type Invite = {
   href?: string
 }
 
+/**
+ * What the section is, said once at the top.
+ *
+ * ⚠️ NOBODY SHOULD MISTAKE THE TASTE FOR THE MEAL. These are small and they work, which is
+ * exactly the risk: somebody plays the snake board for a minute, decides they have seen Snake, and
+ * never opens the room with the scores and the other people in it. Every demo carries a `preview`
+ * tag and a door named after the tab it opens; this is the same thing said in a sentence first.
+ */
+export const DEMOS_LEAD =
+  'Each one is a small live piece of a real room — have a go, then open the proper one.'
+
 /** The runs, in the order the page makes them. */
 export const GROUPS: ReadonlyArray<{ id: 'make' | 'together'; title: string; lead: string }> = [
   { id: 'make', title: 'Make something', lead: 'No account, no install — these work right here.' },
@@ -118,24 +138,22 @@ export const TRY_THESE: Invite[] = [
     wide: true,
     group: 'make',
     live: 'scribble',
-    open: 'Open the studio',
     icon: '🎨',
     title: 'Draw something',
     line: 'Drag across it — the ink fades on its own, so there is nothing to ruin. The studio behind it has layers, frames, undo, and room for two people on one canvas.',
   },
   {
     id: 'visualizer',
-    /* ⚠️ Wide, because a HALF ON ITS OWN is the stranded look this was meant to end: its run only
-       has two demos and the other one takes a row, so at half width this sat beside a gap.
-       Halves earn their width by pairing off — the circuit and the pool are the only two that
-       do — and anything without a partner takes the row. */
+    slot: 'hero',
     wide: true,
     group: 'make',
     live: 'viz',
-    open: 'Put a song on',
     icon: '🎚️',
     title: 'Watch music move',
-    line: 'Press play — that is the drum loop being drawn as it sounds, not a picture of one. Put your own song on in the visualiser and it does that to yours: mirrors, depth, 3D, and it keeps the looks you liked.',
+    /* ⚠️ It says "that" because it IS that — the picture is drawn from the analyser the keys
+       above are feeding, so the sentence is checkable by pressing one. It had a play button of its
+       own and that made the front page two instruments; the grid above is the source now. */
+    line: 'Play something above and it draws itself — that is the sound you just made, mirrored. Put a whole song through the visualiser and it does the same to that, with depth and 3D.',
   },
   {
     /**
@@ -147,7 +165,6 @@ export const TRY_THESE: Invite[] = [
     wide: true,
     group: 'together',
     live: 'profile',
-    open: 'See the whole page',
     href: '#profile?demo=1',
     /* ⚠️ NOT 🪪. It is an Emoji 14 character and Segoe UI Emoji on Windows 10 has no glyph
        for it, so it rendered as an empty tofu box, blown up large by the tile art.
@@ -159,10 +176,20 @@ export const TRY_THESE: Invite[] = [
   {
     id: 'snake',
     wide: true,
-    group: 'together',
+    /**
+     * ⚠️ "MAKE SOMETHING" MEANS "NO ACCOUNT NEEDED", WHICH IS EXACTLY WHAT THIS IS. It sat
+     * under "With other people" because the ROOM keeps scores and lets people race each other —
+     * but the other run's own lead says "No account, no install — these work right here", and the
+     * board below works right here for anybody.
+     *
+     * ⚠️ It was also the arithmetic. Once the visualiser moved up to the hero, "Make something"
+     * had ONE demo in it and this run had five — a heading, a lead and a rule introducing a single
+     * tile, which is the lopsided look the runs exist to prevent. What is left over there is the
+     * honest set: the things that genuinely cannot work without an account.
+     */
+    group: 'make',
     project: 'snake',
     live: 'snake',
-    open: 'Play it properly',
     icon: '🎮',
     title: 'Play Snake',
     line: 'It is playing itself — tap anywhere and it goes where you pointed. It hands itself back when you stop. The full one keeps scores and lets people race each other.',
@@ -172,7 +199,6 @@ export const TRY_THESE: Invite[] = [
     group: 'together',
     project: 'circuit',
     live: 'circuit',
-    open: 'Open the board',
     icon: '🏆',
     title: 'Log a workout',
     line: 'The board my friends and I have used every day for a year. Log it, total it, argue about it.',
@@ -182,7 +208,6 @@ export const TRY_THESE: Invite[] = [
     id: 'ratings',
     group: 'together',
     live: 'ratings',
-    open: 'Open the pool',
     icon: '⭐',
     title: 'Decide what to watch',
     line: 'When nobody can decide, everyone throws an option in a pool and the wheel picks — that is it spinning. Afterwards you rate what you actually watched.',
@@ -193,7 +218,6 @@ export const TRY_THESE: Invite[] = [
     wide: true,
     group: 'together',
     live: 'calls',
-    open: 'Open chat',
     icon: '🎧',
     title: 'Talk and share a screen',
     line: 'Somebody talking. The call stays up as you move around the site, so it is the same conversation whether you are drawing, playing or looking at the board.',
