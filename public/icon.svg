@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="evancook.dev">
+  <!--
+    The site's own icon, replacing the Vite logo that shipped as the favicon AND as the only
+    entry in site.webmanifest's icon list. The manifest says display:standalone and the site
+    tells people the Circuit is installed to a phone home screen, so the placeholder was the
+    thing sitting on a home screen next to real apps.
+
+    Drawn rather than exported: flat shapes, no gradients, legible at 16px, and the accent is
+    the same --accent the rest of the site is built on (#22c55e).
+  -->
+  <rect width="64" height="64" rx="14" fill="#0b0f19" />
+  <!-- a bar chart rising, which is the one shape this site is actually about: things counted
+       together and going up. Also reads at 16px, where letters do not. -->
+  <rect x="13" y="36" width="9" height="15" rx="3" fill="#22c55e" opacity="0.55" />
+  <rect x="27.5" y="27" width="9" height="24" rx="3" fill="#22c55e" opacity="0.78" />
+  <rect x="42" y="16" width="9" height="35" rx="3" fill="#22c55e" />
+</svg>

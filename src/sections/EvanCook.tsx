@@ -252,11 +252,18 @@ function ProjectNotes({ id, inline = false }: { id: string; inline?: boolean }) 
           </span>
         ))}
       </p>
-      {project.links.some((l) => l.external) && (
+      {/**
+       * ⚠️ THE INTERNAL ONES USED TO BE THROWN AWAY. This filtered to `external`, so every
+       * link pointing into the site was dead data that nothing could ever render — and one of them
+       * mattered: Dollar-a-Day's "Try the demo". That demo exists, works signed out and is plainly
+       * labelled sample data, and the only project write-up with no demo above it was the one
+       * quietly hiding the way in. Its room is not in the nav either, so this was the single route
+       * a reader had.
+       */}
+      {project.links.length > 0 && (
         <p className="demo-links">
-          {project.links
-            .filter((l) => l.external)
-            .map((l) => (
+          {project.links.map((l) =>
+            l.external ? (
               <a
                 key={l.href}
                 className="btn btn-ghost"
@@ -266,7 +273,20 @@ function ProjectNotes({ id, inline = false }: { id: string; inline?: boolean }) 
               >
                 {l.label} ↗
               </a>
-            ))}
+            ) : (
+              <a
+                key={l.href}
+                className="btn btn-ghost"
+                href={l.href}
+                onClick={(e) => {
+                  e.preventDefault()
+                  window.location.hash = l.href.replace(/^#/, '')
+                }}
+              >
+                {l.label} →
+              </a>
+            ),
+          )}
         </p>
       )}
     </div>
@@ -457,7 +477,7 @@ function Demos({ authed }: { authed: boolean }) {
       {leftovers.length > 0 && (
         <div className="demo-run">
           <h3 className="demo-run-title">Also here</h3>
-          <p className="muted demo-run-lead">Nothing to press — these are written up instead.</p>
+          <p className="muted demo-run-lead">Written up rather than demoed up here.</p>
           <div className="demo-solos">
             {leftovers.map((o) => (
               <ProjectNotes key={o.id} id={o.id} inline />
