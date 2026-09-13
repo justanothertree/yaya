@@ -49,8 +49,24 @@ export function MoviePersonProfile({
   /* who this person is measured against: their circle, not a fixed five. Generosity and taste
      matches are comparisons, so who is in the comparison decides what the numbers mean. */
   const peers = useMemo(() => ratersIn(people, viewGroup).map((p) => p.id), [people, viewGroup])
+  /**
+   * ⚠️ TWO ID SPACES, AND THIS WAS READING THE WRONG ONE. ratersIn swaps each person's id
+   * for their ACCOUNT id, because that is what a rating is keyed by since ratings became rows — so
+   * `peers` is account-keyed. Building the names straight off `people` keys them by
+   * circuit_people.id instead, so every single lookup missed and `|| id` printed the raw uuid:
+   *
+   *     🤝 Closest to a5688739-1b6d-4071-8b0c-b81a4caddc86 (avg 4.9 apart, 64 shared)
+   *
+   * Same list, same swap, and the names come out of the same objects the ids did.
+   *
+   * ⚠️ EVERYONE, not the viewed circuit. A taste match can name somebody you no longer share
+   * a circuit with — the comparison is over films you have both rated, not over membership — and
+   * scoping the names to `viewGroup` would put the uuid back for exactly those people. MovieDetail
+   * makes the same call for the same reason.
+   */
   const nameById = useMemo(
-    () => Object.fromEntries(people.map((p) => [p.id, p.name])) as Record<string, string>,
+    () =>
+      Object.fromEntries(ratersIn(people, '').map((p) => [p.id, p.name])) as Record<string, string>,
     [people],
   )
 
