@@ -1727,8 +1727,21 @@ html {
   font-size: calc(clamp(1rem, 0.925rem + 0.22vw, 1.25rem) * var(--ui-scale, 1));
 }
 
-html,
-body {
+/**
+ * ⚠️ ON html ONLY, AND THAT IS NOT A TIDY-UP — IT IS WHY position:sticky NEVER WORKED.
+ *
+ * `overflow-x: hidden` on BODY is not a horizontal clamp with no side effects. By spec, once one
+ * axis is not `visible` the other computes to `auto`, so body quietly became a scroll container.
+ * Measured: body clientHeight and scrollHeight were both 4008 — it never scrolls, html does
+ * (htmlScrollTop 843 while bodyScrollTop stayed 0). A sticky element sticks to its nearest
+ * SCROLLING ancestor, which was therefore a box that cannot scroll, so it simply rode the page
+ * up and out of view. Anything sticky anywhere on this site was silently doing nothing.
+ *
+ * html keeps the clamp, so nothing can be dragged off the side, and html is the element that
+ * actually scrolls — its overflow is the viewport's, which is exactly what sticky wants to
+ * measure against.
+ */
+html {
   overflow-x: hidden;
 }
 body {
@@ -1742,7 +1755,9 @@ body {
     Arial;
   /* ground moved to html (see above) — body must stay transparent so the ambient
      backdrop at z -1 shows through */
-  overflow-x: hidden; /* Prevent horizontal overflow */
+  /* ⚠️ NOT overflow-x HERE EITHER — see the note on html above. It reads as a harmless
+     horizontal clamp and is the thing that made body a scroll container, which is what stopped
+     every position:sticky on the site from sticking. html carries the clamp. */
   overscroll-behavior-x: contain;
   color: var(--text);
 }
@@ -8987,6 +9002,55 @@ a.cz-msg-author:focus-visible {
    and enough height to be the thing you are looking at rather than a strip under some controls. */
 .inst-theatre {
   margin: 0.2rem 0 1rem;
+}
+
+/* ── and on a wide screen it moves to the right of everything ──────────────
+   ⚠️ PLACED BY THE GRID, NOT BY MOVING THE MARKUP. Everything in this room is already a direct
+   child of .inst-wrap — the health strip, the scope, the picker, the knobs, the keys, the looper
+   — so a two-column grid can send one child to the right and auto-place the other forty on the
+   left. Rebuilding the JSX into two columns would have meant restructuring eight hundred lines to
+   change where one panel sits.
+
+   ⚠️ AND IT IS STICKY, which is the entire point. The keys are most of a screen further down
+   than the visuals; a column that scrolls away with the page would put them on screen together
+   for about a second. It spans the rows rather than sitting in one so the sticky item has a tall
+   area to move within, which is what makes it hold while the left side scrolls past.
+
+   ⚠️ 78rem, because the left column still has to hold the keyboard. Narrower than that and the
+   keys start losing octaves to make room for a picture of themselves, so below it the two stack
+   and the theatre goes back to being a full-width band. */
+@media (min-width: 78rem) {
+  /* ⚠️ NEVER INSIDE A CANVAS WINDOW, and this is the trap a media query sets. It asks how
+     wide the SCREEN is; a window on the canvas is as wide as somebody dragged it. Measured: on a
+     1400px viewport the instrument's own window was 438px, so the right column claimed its 22rem
+     minimum and the room — keys and all — was left with a column 0px wide. The window already
+     stands its theatre down (see inCanvas), so there is nothing to put on the right there anyway. */
+  .inst-wrap:not(.is-incanvas) {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(22rem, 30rem);
+    column-gap: 1.25rem;
+    align-content: start;
+  }
+  .inst-wrap:not(.is-incanvas) > .inst-theatre {
+    grid-column: 2;
+    /* a tall area to be sticky inside; the room never has this many children */
+    grid-row: 1 / span 200;
+    align-self: start;
+    position: sticky;
+    top: calc(var(--nav-h, 56px) + 0.75rem);
+    margin: 0;
+  }
+  .inst-wrap:not(.is-incanvas) > *:not(.inst-theatre) {
+    grid-column: 1;
+    min-width: 0;
+  }
+  /* taller in a column of its own, where it is not competing with the keys for vertical room */
+  .inst-theatre-stage .viz-wrap.is-bare .viz-stage {
+    height: clamp(18rem, 52vh, 32rem);
+  }
+  .inst-theatre-stage .viz-wrap:not(.is-bare) .viz-stage {
+    height: clamp(30rem, 74vh, 46rem);
+  }
 }
 .inst-theatre-head {
   display: flex;

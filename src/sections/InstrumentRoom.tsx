@@ -807,7 +807,7 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
   const keys = Array.from({ length: SPAN }, (_, i) => noteAt(i))
 
   return (
-    <section className="inst-wrap">
+    <section className={'inst-wrap' + (inCanvas ? ' is-incanvas' : '')}>
       <AudioHealthStrip />
       {/* ⚠️ Here rather than behind Canvas mode. Seeing what you play used to mean knowing the
           account menu hides a Canvas toggle, turning it on, and opening the visualiser in a
