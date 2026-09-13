@@ -8962,6 +8962,59 @@ a.cz-msg-author:focus-visible {
 .hag-viz.is-lit > .hag-art {
   opacity: 0;
 }
+/* ── the end of the home page ───────────────────────────────────
+   ⚠️ CENTRED, WHICH NOTHING ELSE ON THE PAGE IS. Every band above is left-aligned and full
+   width, so centring this reads as "different kind of thing" without a rule or a box to say it —
+   and boxes are the thing this page spent weeks getting rid of. The hairline above is the only
+   ornament, and it stops short of both edges so it reads as a close rather than a divider. */
+.home-end {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 0.55rem;
+  padding: 2.6rem 1rem 0.5rem;
+  position: relative;
+}
+.home-end::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(18rem, 55%);
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--border-strong, var(--border)), transparent);
+}
+.home-end-h {
+  margin: 0;
+  font-size: clamp(1.25rem, 1.05rem + 0.9vw, 1.7rem);
+  text-wrap: balance;
+}
+.home-end-line {
+  margin: 0;
+  /* a readable measure rather than the full page width — centred prose set wide is unreadable */
+  max-width: 34rem;
+  font-size: 0.95rem;
+  line-height: 1.6;
+}
+.home-end-go {
+  margin-top: 0.5rem;
+  /* the one action on the page that is worth being a solid button this far down */
+  padding: 0.55rem 1.4rem;
+  font-size: 0.95rem;
+}
+@media (max-width: 40rem) {
+  .home-end {
+    padding-top: 2rem;
+  }
+  .home-end-go {
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+  }
+}
+
 /* ── the visualiser, attached to the hero rather than adrift in the grid ─────
    ⚠️ THE SAME max-width AS .hero-play, so the picture lines up edge to edge with the keys above
    it and the two read as one object. A different width here and it goes back to looking like a

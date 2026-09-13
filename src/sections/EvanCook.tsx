@@ -489,6 +489,33 @@ function Demos({ authed }: { authed: boolean }) {
   )
 }
 
+/**
+ * The end of the page.
+ *
+ * ⚠️ CENTRED, WHICH NOTHING ELSE HERE IS. Every band above is left-aligned and full
+ * width, so a centred one reads as a different kind of thing without needing a rule or a box to
+ * say so. That is the whole job: tell somebody they have reached the end, and give them the one
+ * thing worth doing at the moment they have finished reading.
+ */
+function Ending() {
+  return (
+    <section className="home-end">
+      <h2 className="home-end-h">{HOME.close.heading}</h2>
+      <p className="muted home-end-line">{HOME.close.line}</p>
+      <a
+        className="btn home-end-go"
+        href={HOME.close.action.href}
+        onClick={(e) => {
+          e.preventDefault()
+          window.location.hash = HOME.close.action.href.replace(/^#/, '')
+        }}
+      >
+        {HOME.close.action.label}
+      </a>
+    </section>
+  )
+}
+
 export function EvanCook({ authed = false }: { authed?: boolean } = {}) {
   return (
     <div className="home-page">
@@ -504,6 +531,7 @@ export function EvanCook({ authed = false }: { authed?: boolean } = {}) {
         <AboutMe />
         <SkillsCard />
       </section>
+      <Ending />
     </div>
   )
 }

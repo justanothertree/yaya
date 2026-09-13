@@ -46,6 +46,7 @@ export type AboutThread = {
 export const HOME: {
   hero: HomeText
   about: { heading: string; lede: string; threads: AboutThread[] }
+  close: { heading: string; line: string; action: { label: string; href: string } }
 } = {
   hero: {
     heading:
@@ -94,5 +95,23 @@ export const HOME: {
         ],
       },
     ],
+  },
+  /**
+   * The end of the page, which it did not have.
+   *
+   * ⚠️ IT STOPPED RATHER THAN ENDED. The last thing on the home page was the Skills card,
+   * and then the site-wide footer — a copyright line and two icons that are on every page and so
+   * say nothing about this one. Somebody who read the whole thing got no signal that they had
+   * finished and nothing to do next, which is the one moment they are most likely to act.
+   *
+   * ⚠️ ONE ACTION, NOT FOUR. The hero already offers work, résumé, contact and socials,
+   * because at the top nobody knows yet which of those they want. At the bottom they have read it
+   * and there is only one thing left worth offering, so repeating the row would be four ways of
+   * burying it.
+   */
+  close: {
+    heading: 'That is all of it.',
+    line: 'Everything up there is running right now, and every bit of it started as something I wanted to exist. If you want to talk about any of it — or you want one of your own — say hello.',
+    action: { label: 'Say hello', href: '#contact' },
   },
 }
