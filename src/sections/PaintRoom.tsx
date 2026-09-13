@@ -761,8 +761,11 @@ export function PaintRoom() {
        bulk message would be a second way for a stroke to arrive, with its own validation to get
        right, to save a handful of sends that happen once per frame. */
     for (const k of made) drawParty.send(k)
-    // left selected, because the whole point is that the next thing you do is move it
+    /* ⚠️ Selected AND the select tool turned on, because "move it instead of redrawing it" is
+       the entire feature and leaving you to go and find the tool is leaving the job half done.
+       A selection you cannot drag is just an outline. */
     setSel(made.map((_, i) => strokes.length + i))
+    setSelecting(true)
   }
   /**
    * Make a layer hold still across every frame, or put it back on the frame you are on.
@@ -1355,7 +1358,7 @@ export function PaintRoom() {
                 observable effect — every stroke shows on the one picture either way. */}
             {frame !== null && (
               <button
-                className={'paint-layer-eye' + (layerHolds(i) ? ' is-on' : '')}
+                className={'paint-layer-eye paint-layer-hold' + (layerHolds(i) ? ' is-on' : '')}
                 aria-pressed={layerHolds(i)}
                 onClick={() => holdLayer(i, !layerHolds(i))}
                 disabled={!strokes.some((k) => (k.l ?? 0) === i)}
@@ -1367,7 +1370,11 @@ export function PaintRoom() {
                       : `Keep ${nameOf(i)} in every frame, so you never redraw it`
                 }
               >
-                {layerHolds(i) ? '↻' : '→'}
+                {/* ⚠️ ONE GLYPH, LIT OR NOT. It was ↻ against →, and → does not say "only on
+                    this frame" to anybody — it is a second symbol to learn for the state that is
+                    simply the absence of the first. Lit or unlit is the same pattern every other
+                    toggle in the room uses. */}
+                ↻
               </button>
             )}
             {/* ⚠️ Up means further FORWARD in the picture, which is up this list too — the rows

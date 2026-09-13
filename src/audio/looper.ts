@@ -1121,13 +1121,27 @@ export function undoLast() {
  * accident, and turning that into a layer would litter the stack. This is the deliberate version
  * of the same thing, which is a different intention entirely.
  */
+/**
+ * ⚠️ TWELVE LAYERS, AND A FULL STACK SAYS SO RATHER THAN SWALLOWING THE PRESS.
+ *
+ * Every one of these used to append and then `.slice(0, 12)`, which at eleven layers works and at
+ * twelve does nothing at all — no layer, no error, a button that has simply stopped responding.
+ * That is the worst shape a limit can take: the one person who hits it is the one who has built
+ * the most, and what they learn is that the room broke.
+ *
+ * They return an empty id now, so a caller can say so.
+ */
+export const MAX_LAYERS = 12
+export const layersFull = () => state.layers.length >= MAX_LAYERS
+
 export function addEmptyLayer(instrument: InstrumentId): string {
+  if (layersFull()) return ''
   const id = `${Date.now()}-blank`
   set({
     layers: [
       ...state.layers,
       { id, instrument, events: [], muted: false, fx: fxSnapshot(), len: loopLength() },
-    ].slice(0, 12),
+    ],
   })
   return id
 }
@@ -1303,7 +1317,7 @@ export function setLayerInstrument(id: string, instrument: InstrumentId) {
 export function putSharedLayer(layer: Layer) {
   const at = state.layers.findIndex((l) => l.id === layer.id)
   if (at === -1) {
-    if (state.layers.length >= 12) return
+    if (layersFull()) return
     set({ layers: [...state.layers, layer] })
     return
   }
@@ -1352,12 +1366,13 @@ export function setLayersShared(on: boolean) {
  * that only applies to beats.
  */
 export function addPatternLayer(events: LoopEvent[], len: number): string {
+  if (layersFull()) return ''
   const id = `${Date.now()}-beat`
   set({
     layers: [
       ...state.layers,
       { id, instrument: 'drums' as InstrumentId, events, muted: false, fx: fxSnapshot(), len },
-    ].slice(0, 12),
+    ],
   })
   return id
 }
@@ -1389,7 +1404,7 @@ export function splitDrumLayer(id: string): number {
   if (l.instrument !== 'drums') return 0
   const pieces = [...new Set(l.events.map((e) => ((e.midi % 12) + 12) % 12))].sort((a, b) => a - b)
   if (pieces.length < 2) return 0
-  if (state.layers.length - 1 + pieces.length > 12) return 0
+  if (state.layers.length - 1 + pieces.length > MAX_LAYERS) return 0
   releaseLayer(id)
   const made: Layer[] = pieces.map((p, i) => ({
     ...l,

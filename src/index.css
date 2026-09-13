@@ -3006,9 +3006,21 @@ section[id] {
   gap: 0.35rem;
   flex-wrap: wrap;
 }
+/* ⚠️ NOT CHIP-SIZED. These started at the same 2px padding as the sway chips and came out
+   twenty pixels tall on a phone — on the one row in the room built for somebody who does not play
+   an instrument, and who is most likely holding a phone. A compact size is right for a dense panel
+   of settings you already understand; it is wrong for the first thing anybody presses. */
 .inst-start .btn {
-  padding: 2px 10px;
-  font-size: 0.78rem;
+  padding: 0.35rem 0.8rem;
+  font-size: 0.82rem;
+}
+@media (hover: none) and (pointer: coarse) {
+  .inst-start .btn,
+  .inst-beats .btn {
+    min-height: 2.4rem;
+    padding-left: 0.9rem;
+    padding-right: 0.9rem;
+  }
 }
 .inst-start-bpm {
   font-variant-numeric: tabular-nums;
@@ -3041,8 +3053,19 @@ section[id] {
   letter-spacing: 0.04em;
 }
 .inst-beats .btn {
-  padding: 2px 10px;
-  font-size: 0.78rem;
+  padding: 0.3rem 0.7rem;
+  font-size: 0.8rem;
+}
+
+/* ── "this layer is in every frame" — lit when it is ─────────────────────── */
+.paint-layer-hold.is-on {
+  color: var(--accent);
+}
+.paint-layer-hold:not(.is-on) {
+  opacity: 0.5;
+}
+.paint-layer-hold:disabled {
+  opacity: 0.25;
 }
 
 /* which drum a split row plays */

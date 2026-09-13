@@ -102,6 +102,7 @@ import {
   clearLayerBars,
   addEmptyLayer,
   addPatternLayer,
+  MAX_LAYERS,
   splitDrumLayer,
   soleDrumPiece,
   setBars,
@@ -1383,10 +1384,32 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
             first. */}
         <button
           className="btn"
-          onClick={() => setEditing(addEmptyLayer(live.current.inst))}
-          title="Add an empty layer and draw notes into it"
+          onClick={() => setEditing(addEmptyLayer(live.current.inst) || null)}
+          disabled={loop.layers.length >= MAX_LAYERS}
+          title={
+            loop.layers.length >= MAX_LAYERS
+              ? `That is all ${MAX_LAYERS} layers — delete one to add another`
+              : 'Add an empty layer and draw notes into it'
+          }
         >
           ✎ New part
+        </button>
+        {/* ⚠️ HERE TOO, not only in the start row. The start row disappears the moment you have
+            a layer — and so, with it, did the only way to reach the beats, so adding a drum part
+            to something you had already begun was impossible. A doorway that closes behind you is
+            worse than no doorway: the feature looks like it was imagined rather than built. */}
+        <button
+          className={'btn' + (beatsOpen ? ' is-on' : '')}
+          aria-pressed={beatsOpen}
+          onClick={() => setBeatsOpen((v) => !v)}
+          disabled={loop.layers.length >= MAX_LAYERS}
+          title={
+            loop.layers.length >= MAX_LAYERS
+              ? `That is all ${MAX_LAYERS} layers — delete one to add another`
+              : 'Drop in a drum pattern you can then change'
+          }
+        >
+          🥁 Beats
         </button>
         <button
           className={'btn' + (libOpen ? ' is-on' : '')}
@@ -1568,10 +1591,11 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
                   className="btn btn-ghost"
                   onClick={() => {
                     const { events, len } = patternEvents(p, loop.bpm)
-                    addPatternLayer(events, len)
+                    if (!addPatternLayer(events, len)) return
                     setBeatsOpen(false)
                     if (!loop.playing) startLoop()
                   }}
+                  disabled={loop.layers.length >= MAX_LAYERS}
                   title={`${p.name} — ${Object.keys(p.grid).join(', ')}`}
                 >
                   {p.name}
@@ -1587,6 +1611,10 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
             /**
              * ⚠️ EVERY CONTROL WORKS ON EVERY PART, INCLUDING SOMEBODY ELSE'S.
              *
+             * (There is no `is-theirs` on the row either. It was added when these were read-only,
+             * and `.inst-key.is-theirs` already means "a key somebody else is holding" — one class
+             * name for two unrelated ideas, the second of which had no styling at all.)
+             *
              * These were briefly disabled on a peer's row, because at the time an edit to their
              * take changed only your copy — a silent disagreement about the arrangement, which is
              * the exact thing sharing the layers was meant to end. The fix was never to take the
@@ -1594,14 +1622,11 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
              * reach the fader. So the edit travels instead (see canonicalId), and the name below
              * stays only to say whose playing it is.
              */
-            const theirs = !!l.from
             return (
               <li
                 key={l.id}
                 className={
-                  (l.muted ? 'is-muted' : '') +
-                  (loop.replacing === l.id ? ' is-replacing' : '') +
-                  (theirs ? ' is-theirs' : '')
+                  (l.muted ? 'is-muted' : '') + (loop.replacing === l.id ? ' is-replacing' : '')
                 }
               >
                 {/**
@@ -1814,9 +1839,28 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
                     <button
                       className="btn"
                       onClick={() => splitDrumLayer(l.id)}
-                      title="Give each drum its own row, so they stop sharing one volume and one set of effects"
+                      /* ⚠️ Says WHY rather than going dead. A split needs one row per piece, so
+                         it is the person with the fullest arrangement who finds the button does
+                         nothing — exactly the person owed an explanation. */
+                      disabled={
+                        loop.layers.length -
+                          1 +
+                          new Set(l.events.map((e) => ((e.midi % 12) + 12) % 12)).size >
+                        MAX_LAYERS
+                      }
+                      title={
+                        loop.layers.length -
+                          1 +
+                          new Set(l.events.map((e) => ((e.midi % 12) + 12) % 12)).size >
+                        MAX_LAYERS
+                          ? `Not enough room — this kit needs a row per drum and there are only ${MAX_LAYERS}`
+                          : 'Give each drum its own row, so they stop sharing one volume and one set of effects'
+                      }
                     >
-                      ⇲
+                      {/* ⚠️ A WORD. ⇲ means nothing — it was chosen because it is small, and a
+                          rare, deliberate, irreversible-ish action is the last place to save four
+                          characters at the cost of anybody knowing what the button does. */}
+                      Split
                     </button>
                   )}
                 <button className="btn" onClick={() => toggleMute(l.id)} title="Mute this layer">
