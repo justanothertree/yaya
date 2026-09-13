@@ -471,7 +471,16 @@ function AudioHealthStrip() {
   )
 }
 
-export function InstrumentRoom() {
+/**
+ * @param inCanvas true when this is a window on the shared canvas rather than the page.
+ *
+ * ⚠️ THE EMBEDDED THEATRE STANDS DOWN THERE, and it has to. On the canvas the visualiser is
+ * a window in its own right — bigger, movable, and able to stay open while you walk to another
+ * tab, which is the whole reason to pop it out. Rendering it again INSIDE this window means two
+ * full pipelines drawing at once (measured: two .viz-wrap mounted on one screen), for the second
+ * copy of a thing the user has already put somewhere better.
+ */
+export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}) {
   const [inst, setInst] = useState<InstrumentId>(() => {
     try {
       const v = localStorage.getItem(INST_KEY)
@@ -816,9 +825,13 @@ export function InstrumentRoom() {
       <section className="inst-theatre">
         <div className="inst-theatre-head">
           <span className="inst-theatre-title">Visuals</span>
+          {inCanvas && (
+            <span className="muted inst-theatre-note">Open as its own window on the canvas.</span>
+          )}
           <button
             type="button"
             className="btn btn-ghost inst-theatre-toggle"
+            hidden={inCanvas}
             aria-expanded={showViz}
             onClick={() => {
               setShowViz((v) => {
@@ -834,7 +847,7 @@ export function InstrumentRoom() {
             {showViz ? 'Hide' : 'Show'}
           </button>
         </div>
-        {showViz && (
+        {showViz && !inCanvas && (
           <div className="inst-theatre-stage">
             <Suspense fallback={<div className="muted inst-theatre-wait">Loading visuals…</div>}>
               <EmbeddedVisualizer />

@@ -1312,7 +1312,7 @@ export default function App() {
       case 'visualizer':
         return <AudioVisualizer />
       case 'instrument':
-        return <InstrumentRoom />
+        return <InstrumentRoom inCanvas />
       case 'paint':
         return <PaintRoom />
       case 'contact':
@@ -2096,6 +2096,43 @@ export default function App() {
                 What the sound looks like. Watch your own mic, the ringtone, or everyone else while
                 you’re in a call — nothing is recorded or sent anywhere.
               </p>
+              {/**
+               * ⚠️ THE THING IT COULD ALREADY DO, SAID OUT LOUD.
+               *
+               * A canvas window keeps rendering while you move around the site — livePanes hands a
+               * pinned single-canvas pane a fresh node every render, and React updates props
+               * rather than remounting, so it keeps whatever state it had. So a visualiser that
+               * stays alive on the instrument page has been possible the whole time.
+               *
+               * It just took knowing that the account menu hides a Canvas toggle, turning it on,
+               * and then finding this window in the launcher. Three steps, two of them
+               * undiscoverable — InstrumentScope's own header complained about exactly this. One
+               * press does all three from the page you are already looking at.
+               *
+               * ⚠️ Desktop only, because the canvas is. On a phone the instrument room has the
+               * visualiser embedded in it instead, which is the same want answered differently.
+               */}
+              {desktop && !canvasOpen && (
+                <p className="no-print viz-popout-row">
+                  <button
+                    className="btn btn-ghost"
+                    onClick={() => {
+                      setCanvasChoice(true)
+                      openAndFocus({
+                        id: 'visualizer',
+                        title: canvasTitleFor.visualizer ?? '🎚️ Visualiser',
+                        node: canvasNodeFor('visualizer'),
+                      })
+                    }}
+                    title="Keep it running in its own window while you move around the site"
+                  >
+                    ⧉ Pop it out
+                  </button>
+                  <span className="muted viz-popout-hint">
+                    Keeps playing while you go and use the instrument.
+                  </span>
+                </p>
+              )}
               {/* Its own boundary, like the game: a page-wide fallback would blank the rest of the
                 page while this chunk arrives. */}
               <Suspense fallback={<div aria-busy>Loading…</div>}>

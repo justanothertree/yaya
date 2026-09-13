@@ -8962,6 +8962,18 @@ a.cz-msg-author:focus-visible {
 .hag-viz.is-lit > .hag-art {
   opacity: 0;
 }
+/* the one-press way to keep the visualiser running while you go and play something */
+.viz-popout-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  margin: 0 0 0.7rem;
+}
+.viz-popout-hint {
+  font-size: 0.82rem;
+}
+
 /* ── the scope, and the visualiser itself, in the room where you play ──────
    ⚠️ THE SCOPE STAYS FULL WIDTH. It is a readout: a spectrum squeezed into half a row is a
    smear, which is the one thing it exists not to be. */
@@ -8993,6 +9005,9 @@ a.cz-msg-author:focus-visible {
 .inst-theatre-toggle {
   font-size: 0.78rem;
   padding: 0.25rem 0.7rem;
+}
+.inst-theatre-note {
+  font-size: 0.78rem;
 }
 .inst-theatre-wait {
   padding: 1.2rem 0;
