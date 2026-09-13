@@ -8,6 +8,7 @@
 import { useSyncExternalStore } from 'react'
 import type { CircuitAdapter } from './adapter'
 import { showToast } from './toast'
+import { isAuthDenial } from '../finance/auth'
 import type {
   CircuitState,
   DayLog,
@@ -162,7 +163,23 @@ function createCircuitStore(): CircuitStore {
    */
   const persistFailed = (what: string, err: unknown) => {
     console.error(`[circuit] ${what} failed`, err)
-    showToast('Not saved — check your connection')
+    /**
+     * ⚠️ "CHECK YOUR CONNECTION" WAS A GUESS, and for the commonest cause it was the wrong
+     * guess pointing at the wrong fix. A write refused because the session has expired looks
+     * nothing like a flaky network from the database's side — Postgres returns 42501, PostgREST
+     * turns that into PGRST301, and the message is the literal "permission denied for ..." — but
+     * both arrived here as one sentence telling somebody to check a connection that was fine.
+     * They reload, the session is still dead, it fails again, and nothing on screen ever says the
+     * word "sign in".
+     *
+     * isAuthDenial already knew the difference; Investments has used it for exactly this since
+     * the dead-session work. The Circuit simply never asked.
+     */
+    showToast(
+      isAuthDenial(err)
+        ? 'Not saved — your session has ended. Sign in again.'
+        : 'Not saved — check your connection',
+    )
     const a = adapter
     if (a)
       void a
