@@ -23,6 +23,8 @@ import {
   ECHOES,
   frameCount,
   layerCount,
+  packDrawing,
+  readDrawing,
 } from '../draw/strokes'
 import { InCanvasWindow } from '../circuit/ui/canvasContext'
 import { gallery, removeArt, saveArt, subscribeGallery, type Art } from '../draw/gallery'
@@ -266,11 +268,46 @@ export function PaintRoom() {
     })
     drawParty.setPaperHandler((c) => setBg(c))
     drawParty.setClearHandler(() => wipe())
+    /**
+     * ⚠️ THROUGH readDrawing, which is the same door a stranger's gallery file comes
+     * through. This is a whole picture handed over by a peer and it ends up in canvas calls and
+     * possibly on somebody's profile, so it gets a file's validation rather than a friend's
+     * benefit of the doubt: known tools, hex colours, clamped numbers, bounded point counts.
+     */
+    drawParty.setPictureHandler(({ packed, ids }) => {
+      const d = readDrawing(packed)
+      if (!d) return
+      /* ⚠️ Only onto a blank page, checked again HERE and not only where we asked. The
+         ask and the answer are seconds apart and you may well have started drawing in between —
+         and the rule is that joining never destroys your own work.
+
+         ⚠️ Read from the ref, not inside a setStrokes updater. An updater has to be pure:
+         React is free to run it twice, and the four setters this needs alongside it would then
+         fire twice for one message. drawingRef is written on every render, so it is the current
+         picture at the moment the message lands. */
+      if (drawingRef.current.strokes.length) return
+      setBg(d.bg)
+      setUndone([])
+      setSel([])
+      if (d.layers?.length) setLayerNames(d.layers)
+      /* the names let a later "take back the one I called this" find the right stroke — see the
+         rename in draw.ts. A stroke with no name simply cannot be undone from afar. */
+      setStrokes(d.strokes.map((k, i) => (ids[i] ? { ...k, id: ids[i] } : k)))
+    })
+    /* null while your own page is blank: "I have nothing" and "I have an empty page" are the
+       same answer, and it keeps two blank arrivals from sending each other nothing at length */
+    drawParty.setPictureSource(() => {
+      const d = drawingRef.current
+      if (!d.strokes.length && !d.bg) return null
+      return { packed: packDrawing(d), ids: d.strokes.map((k) => k.id) }
+    })
     return () => {
       drawParty.setHandler(null)
       drawParty.setUndoHandler(null)
       drawParty.setPaperHandler(null)
       drawParty.setClearHandler(null)
+      drawParty.setPictureHandler(null)
+      drawParty.setPictureSource(null)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -278,7 +315,21 @@ export function PaintRoom() {
   /* ⚠️ re-applied on arrival, for the same reason as the instrument room: leaving turns sharing
      off, so a preference that was only read once would stop being true the moment you wandered */
   useEffect(() => {
-    const apply = () => drawParty.setOn(together.getState().on)
+    const apply = () => {
+      const on = together.getState().on
+      const was = drawParty.getState().on
+      drawParty.setOn(on)
+      /**
+       * ⚠️ ASK THE MOMENT SHARING COMES ON, because that is the only moment anybody knows
+       * you have just arrived. Strokes travel forward from when you started listening, so without
+       * this you sit in front of a blank page while everyone else looks at a drawing — two
+       * pictures, no sign of it, and every stroke afterwards widening the gap.
+       *
+       * Nothing is asked for if you already have something: you are not joining their picture,
+       * you are bringing your own. See catchUp.
+       */
+      if (on && !was) drawParty.catchUp()
+    }
     apply()
     return together.subscribe(apply)
   }, [])

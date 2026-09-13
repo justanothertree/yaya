@@ -48,11 +48,66 @@ function allowed(peer: string): boolean {
   return true
 }
 
+/**
+ * ⚠️ TURNING SHARING ON USED TO PUT YOU IN FRONT OF A BLANK PAGE.
+ *
+ * Only finished strokes travel, and only from the moment you are listening — so everything drawn
+ * before you arrived simply did not exist for you. Two people were then drawing on two different
+ * pictures, with nothing on screen to say so, and every stroke after that made the gap wider. It
+ * is the same failure clearing and undo each had, one layer up: the room had messages for
+ * CHANGES and none for the state those changes are changes to.
+ *
+ * So a blank arrival asks, and whoever has the picture sends it.
+ *
+ * ⚠️ ONLY WHEN YOUR PAGE IS BLANK, and that is a rule about consent rather than about bytes. If
+ * you have drawn something, you are not joining their picture — you are bringing your own, and
+ * replacing it with theirs would destroy work to fix a synchronisation problem. Two people who
+ * each already have a drawing stay as they are; there is no honest merge of two different
+ * pictures, and pretending otherwise would pick a winner silently.
+ */
+const ASK_FOR_MS = 12000
+/**
+ * Packed JSON, split so no single message is enormous.
+ *
+ * ⚠️ SIZED FROM THE FORMAT'S OWN MAXIMUM, not from a comfortable-looking number. A drawing
+ * tops out at MAX_STROKES, which packs to roughly a megabyte — so the pair below has to cover
+ * that, or the largest pictures would be the ones that silently sent nothing and the feature
+ * would fail exactly where a blank page is most obvious. Measured: 240 strokes of 60 points packs
+ * to 63kB, so a full one is about 23 of these.
+ *
+ * ⚠️ FEWER, BIGGER MESSAGES rather than many small ones. The chunking exists to stay under
+ * a per-message size limit; a hundred sends in a tight loop trades that for a per-second rate
+ * limit, which drops messages instead of rejecting them and would leave a transfer permanently
+ * one chunk short.
+ */
+const CHUNK = 48000
+/** Only ever a limit on what a peer may make US hold while a transfer is in flight. */
+const MAX_CHUNKS = 40
+
+let asking = 0
+let parts: string[] = []
+let partIds: unknown[] = []
+let partsOf = 0
+let answerTimer: ReturnType<typeof setTimeout> | null = null
+
+function resetCatchUp() {
+  asking = 0
+  parts = []
+  partIds = []
+  partsOf = 0
+  if (answerTimer) clearTimeout(answerTimer)
+  answerTimer = null
+}
+
 let seq = 0
 let onRemote: ((s: Stroke, from: string) => void) | null = null
 let onUndo: ((id: string) => void) | null = null
 let onPaper: ((bg: string | null) => void) | null = null
 let onClear: (() => void) | null = null
+/** the whole picture, for somebody who just arrived to a drawing already in progress */
+type Picture = { packed: unknown; ids: Array<string | undefined> }
+let onPicture: ((pic: Picture) => void) | null = null
+let myPicture: (() => Picture | null) | null = null
 let detach: Array<() => void> = []
 
 export const drawParty = {
@@ -77,10 +132,37 @@ export const drawParty = {
   setClearHandler(fn: (() => void) | null) {
     onClear = fn
   },
+  /** ⚠️ Takes a PACKED drawing straight off the wire — the room hands it to readDrawing, the
+      same validator a file from a stranger's gallery goes through. Nothing here trusts it. */
+  setPictureHandler(fn: ((pic: Picture) => void) | null) {
+    onPicture = fn
+  },
+  /** What to send somebody who arrives to a drawing already in progress. Null means "I have
+      nothing", which is also the answer while your own page is blank. */
+  setPictureSource(fn: (() => Picture | null) | null) {
+    myPicture = fn
+  },
+
+  /**
+   * "I just got here and my page is blank — does anyone have the picture?"
+   *
+   * ⚠️ ASKED BY THE NEWCOMER, not offered by the room. An offer would mean everybody pushing
+   * their whole drawing at everybody else every time somebody's sharing switch flipped, and the
+   * one person who needs it is the only one who knows they need it. Asking also makes the
+   * accept window narrow: a picture that arrives while nobody asked is dropped.
+   */
+  catchUp() {
+    if (!state.on) return
+    resetCatchUp()
+    asking = Date.now()
+    sendParty('art', { want: 1 })
+  },
 
   setOn(on: boolean) {
     if (on === state.on) return
     if (!on) sendParty('art', { leave: true })
+    // a transfer in flight is about a room you are no longer in
+    if (!on) resetCatchUp()
     set({ on, peers: on ? state.peers : {} })
   },
 
@@ -155,6 +237,101 @@ export const drawParty = {
         undo?: unknown
         bg?: unknown
         clear?: unknown
+        want?: unknown
+        pic?: unknown
+        i?: unknown
+        of?: unknown
+        ids?: unknown
+      }
+      /**
+       * Somebody arrived to a blank page and wants what is already drawn.
+       *
+       * ⚠️ ANSWERED BY ONE PERSON, WITHOUT ELECTING ONE. Everyone able to answer waits a
+       * short random moment and drops out the instant they see somebody else's first chunk. No
+       * coordinator, no tie-break on peer ids, nothing to be wrong when a peer list is
+       * momentarily out of date — and in a room of two, which is nearly every room, it costs one
+       * unnoticeable delay.
+       */
+      if (b?.want === 1) {
+        if (!allowed(m.from)) return
+        const mine = myPicture?.()
+        if (!mine) return
+        if (answerTimer) clearTimeout(answerTimer)
+        answerTimer = setTimeout(
+          () => {
+            answerTimer = null
+            if (!state.on) return
+            let text: string
+            try {
+              text = JSON.stringify(mine.packed)
+            } catch {
+              return
+            }
+            const of = Math.ceil(text.length / CHUNK)
+            if (of < 1 || of > MAX_CHUNKS) return
+            for (let i = 0; i < of; i++) {
+              sendParty('art', {
+                pic: text.slice(i * CHUNK, (i + 1) * CHUNK),
+                i,
+                of,
+                // ⚠️ only with the first chunk: the names are small next to the picture, and
+                // repeating them on every chunk would be the largest thing in some messages
+                ...(i === 0 ? { ids: mine.ids } : {}),
+              })
+            }
+          },
+          150 + Math.floor(Math.random() * 450),
+        )
+        return
+      }
+      if (typeof b?.pic === 'string') {
+        /**
+         * ⚠️ ACCEPTED ONLY WHILE WE ASKED. An unsolicited picture is a peer replacing your
+         * drawing, which is the one thing this module must never let anybody do — so the window
+         * is opened by catchUp() and closed the moment a picture lands or twelve seconds pass.
+         */
+        if (!asking || Date.now() - asking > ASK_FOR_MS) return
+        const i = b.i
+        const of = b.of
+        if (typeof i !== 'number' || typeof of !== 'number') return
+        if (!Number.isInteger(i) || !Number.isInteger(of)) return
+        if (of < 1 || of > MAX_CHUNKS || i < 0 || i >= of) return
+        if (b.pic.length > CHUNK) return
+        // somebody else answered first, and two half-transfers interleaved would be neither
+        if (partsOf && partsOf !== of) return
+        partsOf = of
+        parts[i] = b.pic
+        if (Array.isArray(b.ids)) partIds = b.ids
+        for (let k = 0; k < of; k++) if (parts[k] === undefined) return
+        const text = parts.join('')
+        resetCatchUp()
+        let packed: unknown
+        try {
+          packed = JSON.parse(text)
+        } catch {
+          return
+        }
+        /**
+         * ⚠️ THE SENDER'S OWN STROKES ARRIVE CALLED "me:". Every stroke is named for who made
+         * it so undo can travel, and the sender's copy of its own strokes is named from its own
+         * side of the conversation. Left alone, a later "take back me:4" from them would find
+         * nothing here, and the two pictures would part company over exactly the thing this
+         * whole message exists to prevent. The transport stamped `from`, so the rename needs no
+         * trust and no knowledge of anybody's id.
+         */
+        const ids = partIds.map((v) =>
+          typeof v === 'string'
+            ? v.startsWith('me:')
+              ? `${m.from}:${v.slice(3)}`
+              : v.slice(0, 60)
+            : undefined,
+        )
+        try {
+          onPicture?.({ packed, ids })
+        } catch {
+          /* a room that cannot take a picture keeps its own */
+        }
+        return
       }
       if (b?.clear === true) {
         if (!allowed(m.from)) return

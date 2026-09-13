@@ -295,10 +295,12 @@ function NumField({
           const d = drag.current
           if (!d || d.id !== e.pointerId) return
           drag.current = null
-          setDraft((cur) => {
-            if (cur !== null) onCommit(clamp(Number(cur)))
-            return null
-          })
+          /* ⚠️ NOT inside a setDraft updater. An updater has to be pure — React is free to
+             run it twice — and committing from in there re-tempoed the whole arrangement while
+             another component was rendering, which React says out loud. `draft` from this render
+             is the number under your hand, because every move re-rendered to show it. */
+          if (draft !== null) onCommit(clamp(Number(draft)))
+          setDraft(null)
         }}
         onPointerCancel={() => {
           drag.current = null
