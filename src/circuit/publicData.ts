@@ -1,8 +1,19 @@
 // Signed-out public board data. The home-page demo seeds its local sandbox from this:
 // a dummy "Example" persona to freely tinker with, plus everyone who opted their Circuit
-// into the public board (visibility = 'public') fetched live via the anon RPC circuit_public(). Movies
-// / watchlist stay from the bundled Evan slice so those tabs still have content. Falls back
-// to the bundled slice if there's no backend or the fetch fails.
+// into the public board (visibility = 'public') fetched live via the anon RPC circuit_public().
+//
+// ⚠️ MOVIES AND WATCHLIST COME FROM THE RPC TOO. This used to say they "stay from the
+// bundled Evan slice", and that stopped being true when the board started returning them — see
+// `slice.movies ?? publicSeed.movies` below, where the bundle is the FALLBACK and not the source.
+// The stale sentence cost real time: it is the reason a category that was missing from the RPC's
+// result got chased into the bundled seed instead, which was never where it came from.
+//
+// ⚠️ SO WHAT THE RPC SELECTS IS WHAT THE DEMO SHOWS. If circuit_public() omits a column,
+// every signed-out visitor sees the type's default for it however fresh the bundle is — which is
+// why every review reads as a film there while the live table has games, food and drinks in it.
+//
+// Falls back to the bundled slice if there's no backend or the fetch fails, which is also what a
+// visitor sees for the first paint before the round trip lands.
 import type { CircuitState, DayLog, Movie, Person, WatchlistItem } from './types'
 import { emptyCircuitState } from './types'
 import { getSupabaseClient } from '../finance/client'

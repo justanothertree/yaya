@@ -31,6 +31,8 @@ const USER = envOf('PUBLIC_SEED_USER_ID') ?? argOf('--user')
  * sandbox expects, since ratersIn falls back to person.id when there is no account behind it.
  */
 const LOCAL_ID = '2'
+/** include icons and the written review with each score — off by default, see the note below */
+const RICH = process.argv.includes('--rich')
 
 function envOf(key) {
   for (const f of ['.env.local', '.env']) {
@@ -124,7 +126,20 @@ const publicSeed = {
         kind: m.kind ?? 'movie',
         ...(m.date ? { date: m.date } : {}),
         ...(m.rt ? { rt: m.rt } : {}),
-        ratings: { [LOCAL_ID]: { score: r.score, icons: r.icons ?? [], review: r.review ?? null } },
+        /**
+         * ⚠️ THE SCORE AND NOTHING ELSE, which is what has always shipped. A rating row also
+         * carries `icons` and a whole `review` object — sentiment, rewatch, recommend, tags and a
+         * written hot-take. That is somebody's writing about films they watched with their
+         * friends, and putting it in a bundle every visitor downloads is a decision rather than a
+         * detail. The demo needs a number to draw a board with; it does not need the prose.
+         *
+         * Pass --rich to include them, and look at what lands before committing it.
+         */
+        ratings: {
+          [LOCAL_ID]: RICH
+            ? { score: r.score, icons: r.icons ?? [], review: r.review ?? null }
+            : { score: r.score },
+        },
       }
     }),
   /* ⚠️ Titles only, and deliberately the whole list. Pool options are shared suggestions rather
