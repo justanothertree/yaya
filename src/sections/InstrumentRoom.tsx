@@ -39,6 +39,7 @@ import {
 } from '../audio/audioHealth'
 import { onMixerChange, setVolume, volume } from '../audio/mixer'
 import { PianoRoll } from './PianoRoll'
+import { SnapPicker } from '../audio/SnapPicker'
 import { toSong, songNotes, songToLayers } from '../audio/songFile'
 import {
   library,
@@ -1393,20 +1394,10 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
           title="How long the loop is — type it, or drag the word up and down"
         />
 
-        {/* Snapping is on by default at eighths. Nobody playing into a loop for fun wants their
-            first take to expose exactly how far off the beat they were, and Off is one click
-            away for anyone who does. */}
-        <label className="inst-pick">
-          <span className="muted" title="Snap what you play to the grid">
-            Snap
-          </span>
-          <select value={loop.quantize} onChange={(e) => setQuantize(Number(e.target.value))}>
-            <option value={0}>Off</option>
-            <option value={4}>1/4</option>
-            <option value={8}>1/8</option>
-            <option value={16}>1/16</option>
-          </select>
-        </label>
+        {/* ⚠️ The SAME control the note editor shows, from one component — it used to be a
+            dropdown here and nothing at all in there, so opening the editor looked like snap had
+            turned into the Length buttons. See SnapPicker. */}
+        <SnapPicker value={loop.quantize} onPick={setQuantize} />
 
         {loop.layers.length > 0 && (
           <button className="btn" onClick={undoLast} title="Take back the last thing you recorded">

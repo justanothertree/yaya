@@ -5,9 +5,11 @@ import {
   seekTo,
   setLayerEvents,
   setMetronome,
+  setQuantize,
   subscribeLoop,
   type Layer,
 } from '../audio/looper'
+import { SnapPicker } from '../audio/SnapPicker'
 import { noteOff, noteOn } from '../audio/synth'
 
 /**
@@ -63,7 +65,11 @@ const HANDLE = 0.3
  * snap, and it stays the default so nothing changes for anyone who never opens this.
  */
 const LENGTHS: Array<[number | null, string]> = [
-  [null, 'Snap'],
+  /* ⚠️ "Grid", NOT "Snap". This option means "one cell, whatever a cell currently is", and
+     calling it Snap was survivable only while snap had no control of its own in this toolbar.
+     Now that it does, the old label put a button called Snap immediately beside a group called
+     Snap that did something else — which is the confusion this whole row exists to end. */
+  [null, 'Grid'],
   [16, '1/16'],
   [8, '1/8'],
   [4, '1/4'],
@@ -167,6 +173,20 @@ export function PianoRoll({
   const isPicked = (n: Note) => picks.some((p) => p.midi === n.midi && Math.abs(p.t - n.t) < 1e-6)
   const picked = () => notes.filter(isPicked)
   const [drag, setDrag] = useState<Drag>(null)
+  /**
+   * A note being drawn, before you have let go of it.
+   *
+   * ⚠️ IT USED TO LAND ON POINTER-DOWN, so where a note went was decided by the first pixel
+   * your finger touched rather than the last. Press slightly wrong and the note was already
+   * placed and already wrong; and because nothing was tracking the drag, holding the button and
+   * moving did what an unhandled drag on a page of divs does — it tried to drag the grid itself
+   * around, which is what "the drag tries to drag the note editor background" is.
+   *
+   * So pressing starts a preview, moving steers it, and RELEASING is the only thing that writes.
+   * That also makes a plain click behave exactly as before: press and release in one cell is a
+   * gesture that never moved.
+   */
+  const [draw, setDraw] = useState<{ col: number; row: number } | null>(null)
   const gridRef = useRef<HTMLDivElement>(null)
   const headRef = useRef<HTMLDivElement>(null)
 
@@ -227,6 +247,10 @@ export function PianoRoll({
   const [octave, setOctave] = useState(0)
   useEffect(() => setOctave(0), [layer.id])
   const span = baseHi - baseLo
+  /* the ends of the slide, so the slider has no dead travel at either end: past these the
+     clamp below pins `lo` and moving the control would do nothing */
+  const octMin = Math.ceil(-baseLo / 12)
+  const octMax = Math.floor((127 - span - baseLo) / 12)
   const lo = Math.max(0, Math.min(127 - span, baseLo + octave * 12))
   const hi = lo + span
   const canUp = hi < 127
@@ -237,6 +261,37 @@ export function PianoRoll({
     return r
   }, [lo, hi])
   const cols = Math.max(1, Math.round(layer.len / step))
+
+  /**
+   * ⚠️ PLAY A NOTE OFF THE TOP AND THE VIEW COMES TO IT.
+   *
+   * The roll already lights the row of whatever your hands are on — but only if that row happens
+   * to be on screen, and the window is two octaves of an eighty-eight key instrument. Reach for
+   * something above or below it and the one hint the editor gives you silently stops existing,
+   * which reads as the highlight being broken rather than as the note being elsewhere.
+   *
+   * ⚠️ BUT NEVER MID-GESTURE. The whole reason this window does not resize itself is that a
+   * grid which moves under your hand makes a correct placement look wrong (see baseLo). A slide
+   * you did not ask for, arriving while you are dragging a note, is that same bug with a different
+   * cause — so anything in progress wins, and the view catches up on the next note you play.
+   */
+  const heldKey = held.join(',')
+  useEffect(() => {
+    if (drag || draw || band.current) return
+    const out = held.find((m) => m < lo || m > hi)
+    if (out == null) return
+    setOctave((cur) => {
+      const curLo = Math.max(0, Math.min(127 - span, baseLo + cur * 12))
+      if (out >= curLo && out <= curLo + span) return cur
+      // whole octaves, so the labelled C rows stay where the eye expects them
+      const by =
+        out > curLo + span ? Math.ceil((out - (curLo + span)) / 12) : -Math.ceil((curLo - out) / 12)
+      return Math.max(octMin, Math.min(octMax, cur + by))
+    })
+    // ⚠️ keyed on what is HELD, not on lo/hi: depending on the window would re-run this every
+    // time it moved, which is the shape of a loop rather than of a reaction.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [heldKey])
 
   /**
    * ⚠️ THE TAKE IS FITTED TO THE PANEL, not drawn at a fixed size and left to overflow. Eight
@@ -562,6 +617,14 @@ export function PianoRoll({
   }
 
   const onMove = (e: React.PointerEvent) => {
+    if (draw) {
+      const c = cellFrom(e)
+      if (!c || (c.col === draw.col && c.row === draw.row)) return
+      // the pitch under the hand, same as dragging a note gives you
+      if (c.row !== draw.row) audition(Math.max(lo, Math.min(hi, hi - c.row)))
+      setDraw(c)
+      return
+    }
     if (band.current) {
       const c = cellFrom(e)
       if (!c) return
@@ -589,6 +652,10 @@ export function PianoRoll({
   /** ⚠️ The ONLY place a drag writes anything. See the note on Drag. */
   const endDrag = () => {
     erasing.current = false
+    if (draw) {
+      endDraw()
+      return
+    }
     if (band.current) {
       const r = band.current
       band.current = null
@@ -637,20 +704,36 @@ export function PianoRoll({
     }
     const midi = hi - c.row
     if (midi < lo || midi > hi || c.col < 0 || c.col >= cols) return
+    // the preview starts here and the release decides where it lands — see `draw`
+    setDraw({ col: c.col, row: c.row })
+    audition(midi)
+    /* ⚠️ CAPTURE THE POINTER, so steering the note keeps working past the edge of the grid
+       and the browser stops treating the gesture as a drag of the page. */
+    ;(e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId)
+  }
+
+  /**
+   * Put the note where the gesture ENDED. Everything refused here was refused on pointer-down
+   * before; it is the same set of rules asked at the moment they can actually be answered.
+   */
+  const endDraw = () => {
+    const c = draw
+    setDraw(null)
+    if (!c) return
+    const midi = hi - c.row
     const t = c.col * step
-    // ⚠️ clicking where a note already is must not drop a second one on top of it — the click
-    // fell through the note element's own handler only because it was a miss, and a miss on an
-    // occupied cell means the pointer was in the gap, not that you wanted two notes there
+    if (midi < lo || midi > hi || c.col < 0 || c.col >= cols) return
+    // ⚠️ releasing where a note already is must not drop a second one on top of it — the
+    // press fell through the note element's own handler only because it was a miss, and a miss on
+    // an occupied cell means the pointer was in the gap, not that you wanted two notes there
     if (occupied(notes, midi, t)) return
     /* clamped to what is left of the take: a bar-long note drawn in the last beat would
        otherwise be trimmed by the scheduler anyway, and silently coming out shorter than the
        button you pressed is worse than visibly hitting the end */
     const n: Note = { midi, t, dur: Math.min(newDur, loopLen - t) }
-    audition(midi)
-    const next = [...notes, n]
     // select the note you just made, by identity — see the note on `sel`
     setSel({ midi: n.midi, t: n.t })
-    commit(next)
+    commit([...notes, n])
   }
 
   const dropPicks = () => setPicks([])
@@ -721,6 +804,42 @@ export function PianoRoll({
   const setPickedLength = (dur: number) => {
     if (!picks.length) return
     commit(notes.map((n) => (isPicked(n) ? { ...n, dur: Math.min(dur, loopLen - n.t) } : n)))
+  }
+
+  /**
+   * Move the picked notes onto a grid — tidying a part you have already played, which is the
+   * moment you actually want snapping and the one moment it was never available.
+   *
+   * ⚠️ Off leaves them alone rather than doing something clever. "Off" in this row means
+   * "no grid", and the only honest reading of "put these on no grid" is that nothing happens —
+   * the timing they have IS the un-snapped timing, and there is no earlier version to go back to.
+   *
+   * ⚠️ A NOTE THAT WOULD LAND ON ANOTHER OF ITS OWN PITCH STAYS PUT. Two notes a hair
+   * apart snap onto the same slot, and the overlap rule would then trim one to meet the other —
+   * so tidying a fast run would quietly eat half of it. Refusing is the same answer dragging
+   * already gives, and it leaves the ones it could not move visibly where they were rather than
+   * silently gone.
+   */
+  const setPickedSnap = (q: number) => {
+    if (!picks.length || !q) return
+    const grid = gridStep(bpm, q)
+    const out = notes.map((n) => ({ ...n }))
+    const moved: Array<{ midi: number; t: number }> = []
+    for (let i = 0; i < out.length; i++) {
+      if (!isPicked(notes[i])) continue
+      const t = Math.max(0, Math.min(loopLen - 1e-6, Math.round(out[i].t / grid) * grid))
+      const want = { ...out[i], t, dur: Math.min(out[i].dur, loopLen - t) }
+      if (hits(out, i, want)) {
+        moved.push({ midi: out[i].midi, t: out[i].t })
+        continue
+      }
+      out[i] = want
+      moved.push({ midi: want.midi, t: want.t })
+    }
+    commit(out)
+    // the selection follows the notes it named, or it would point at where they used to be
+    setPicks(moved)
+    setSel(moved.length ? moved[0] : null)
   }
 
   /** Delete one note, whichever way you asked for it to go. */
@@ -960,7 +1079,7 @@ export function PianoRoll({
                 picks.length
                   ? `Make the ${picks.length} picked note${picks.length === 1 ? '' : 's'} ${label} long`
                   : v == null
-                    ? 'Same as the snap'
+                    ? 'One cell of the grid'
                     : `Draw ${label}-length notes`
               }
             >
@@ -968,6 +1087,15 @@ export function PianoRoll({
             </button>
           ))}
         </span>
+        {/* ⚠️ The same doorway argument the Click button makes below: snap lived out in the
+            room's toolbar, which is above the layer list and off screen by the time the editor is
+            open — and here it gains a second meaning the room has no use for, because here there
+            can be notes picked to apply it to. One component, so the two can never drift. */}
+        <SnapPicker
+          value={quantize}
+          onPick={setQuantize}
+          applyTo={{ count: picks.length, onApply: setPickedSnap }}
+        />
         <button
           className="btn"
           onClick={removeSelected}
@@ -995,6 +1123,32 @@ export function PianoRoll({
       </div>
 
       <div className="roll-body">
+        {/**
+         * ⚠️ MOVING TWO OCTAVES USED TO BE TWO BUTTONS AND A COUNT OF CLICKS. ▲ and ▼
+         * are still there and still right for one step, but "go and find where the bass is"
+         * through them is a press, a look, a press, a look. A slider is the whole reachable range
+         * in one grab, and it says where you are in it without being read.
+         *
+         * Beside the keys because that is what it moves — a control for the pitch axis belongs on
+         * the pitch axis, and it inherits the row alignment already worked out for that column.
+         */}
+        {octMax > octMin && (
+          <div className="roll-octslide">
+            <div className="roll-ruler-pad" />
+            <input
+              type="range"
+              className="roll-oct-range"
+              min={octMin}
+              max={octMax}
+              step={1}
+              value={Math.max(octMin, Math.min(octMax, octave))}
+              onChange={(e) => setOctave(Number(e.target.value))}
+              style={{ height: rows.length * ROW_H }}
+              aria-label="Which octaves are shown"
+              title={`Slide to move the keyboard — showing ${nameOf(lo)}–${nameOf(hi)}`}
+            />
+          </div>
+        )}
         <div className="roll-keys" aria-hidden>
           {/* ⚠️ the ruler adds height on the right only, so without this the key names sit
               one strip lower than the rows they label. Same height, same place, no cleverness. */}
@@ -1032,7 +1186,12 @@ export function PianoRoll({
             className="roll-grid"
             style={{ width: cols * cellW, height: rows.length * ROW_H }}
             onPointerDown={onGridDown}
-            onPointerLeave={endDrag}
+            /* ⚠️ NOT while drawing. The pointer is captured for that gesture, so moves keep
+               arriving past the edge of the grid — ending it here would place the note the moment
+               your hand strayed off the top row, which is exactly when you are still aiming. */
+            onPointerLeave={() => {
+              if (!draw) endDrag()
+            }}
             onContextMenu={(e) => e.preventDefault()}
             onPointerMove={onMove}
             onPointerUp={endDrag}
@@ -1085,6 +1244,25 @@ export function PianoRoll({
                   width: (Math.abs(bandBox.c1 - bandBox.c0) + 1) * cellW,
                   height: (Math.abs(bandBox.r1 - bandBox.r0) + 1) * ROW_H,
                 }}
+              />
+            )}
+            {draw && (
+              /* ⚠️ A GHOST, so "it lands where you let go" is something you can see rather
+                 than a rule you have to be told. It is drawn at the same size the real note will
+                 be, and it turns red where one cannot go — which answers "why did nothing
+                 happen?" before it happens instead of after. */
+              <div
+                className={
+                  'roll-ghost' +
+                  (occupied(notes, hi - draw.row, draw.col * step) ? ' is-blocked' : '')
+                }
+                style={{
+                  left: draw.col * cellW,
+                  top: draw.row * ROW_H,
+                  width: Math.max(6, (newDur / step) * cellW - 1),
+                  height: ROW_H - 1,
+                }}
+                aria-hidden
               />
             )}
             {shown.map((n, i) => (

@@ -149,7 +149,18 @@ let state: State = {
   bpm: 96,
   bars: 2,
   metronome: true,
-  quantize: 8,
+  /**
+   * ⚠️ OFF, AND IT USED TO BE EIGHTHS. The old default was argued for on the grounds that
+   * nobody playing into a loop for fun wants their first take to expose how far off the beat they
+   * were — which is true, and still the wrong default, because it moved every note somebody
+   * played without them having asked or been told. A take that comes back subtly different from
+   * what you played reads as the recorder being broken, not as a setting being on.
+   *
+   * Snapping is now something you turn on, and since it can also be applied to notes you have
+   * ALREADY played (see SnapPicker's applyTo) nothing is lost by starting off: tidying a part
+   * afterwards is a button, rather than a decision that had to be made before you played it.
+   */
+  quantize: 0,
   layers: [],
   position: 0,
   countIn: 0,

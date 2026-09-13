@@ -8357,6 +8357,17 @@ a.cz-msg-author:focus-visible {
   text-align: center;
 }
 
+/* ── snap, in both rooms that have it, from one component (see SnapPicker) ──── */
+.snap-pick {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+.snap-pick .btn {
+  padding: 1px 8px;
+  font-size: 0.74rem;
+}
+
 /* the bug reporter — see components/BugReport.tsx */
 .bug-card {
   max-width: 30rem;
@@ -8421,10 +8432,49 @@ a.cz-msg-author:focus-visible {
   border-radius: 2px;
   z-index: 3;
 }
+/* ⚠️ The note you have not let go of yet. Dashed and translucent because it is a gesture rather
+   than content — the same language .roll-band already speaks — and pointer-events: none so the
+   preview can never become the thing the pointer is over. */
+.roll-ghost {
+  position: absolute;
+  pointer-events: none;
+  border: 1px dashed var(--accent);
+  background: color-mix(in oklab, var(--accent), transparent 72%);
+  border-radius: 3px;
+  z-index: 4;
+}
+/* "this one cannot go here" said before you let go, rather than by nothing happening after */
+.roll-ghost.is-blocked {
+  border-color: var(--red, #ff5566);
+  background: color-mix(in oklab, var(--red, #ff5566), transparent 72%);
+}
 .roll-note.is-picked {
   outline: 2px solid var(--accent);
   outline-offset: -1px;
   filter: brightness(1.25);
+}
+
+/* ── the octave slider, down the side of the keys ─────────────────────────────
+   ⚠️ A VERTICAL RANGE, the standard way: `writing-mode: vertical-rl` with `direction: rtl` so
+   the high notes are at the top, matching the rows it scrolls. The old `-webkit-appearance:
+   slider-vertical` is kept after it for WebKit builds that predate the standard property — it is
+   ignored where the modern one works, and it is the difference between a usable control and a
+   1-pixel-wide line on an older iPad. */
+.roll-octslide {
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 auto;
+  align-items: center;
+}
+.roll-oct-range {
+  writing-mode: vertical-rl;
+  direction: rtl;
+  -webkit-appearance: slider-vertical;
+  width: 1.1rem;
+  margin: 0;
+  accent-color: var(--accent);
+  cursor: ns-resize;
+  touch-action: none;
 }
 
 /* the bar ruler above the layer rows — same cell width as .inst-bar-cell so the columns line up */
