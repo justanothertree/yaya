@@ -1,4 +1,4 @@
-import { onParty, sendParty, voiceSession } from '../voice/voiceSession'
+import { myPeerId, onParty, sendParty, voiceSession } from '../voice/voiceSession'
 import {
   INSTRUMENTS,
   fxSnapshot,
@@ -12,7 +12,7 @@ import { sharedCtx } from '../audio/context'
 import {
   dropLayersFrom,
   loopState,
-  putGuestLayer,
+  putSharedLayer,
   removeLayer,
   setLayersShared,
   setLookahead,
@@ -262,7 +262,46 @@ let rig: Array<() => void> = []
  * layer that arrived from somebody always has one — so a received layer cannot be re-sent by
  * construction rather than by a flag that has to be cleared correctly.
  */
-/** what we last sent for each of our own layers, so an unchanged one is not re-sent */
+/**
+ * ⚠️ ONE NAME PER LAYER, THE SAME ON EVERY MACHINE — `<author>:<their own id>`.
+ *
+ * The first version namespaced a take on ARRIVAL, from the id the transport stamped, so nobody
+ * could replace a layer in somebody else's name. That was the right shape while a layer belonged
+ * to whoever recorded it, and it stopped being right the moment anyone at the desk could mute and
+ * mix any part: an edit has to be able to reach the author, and it cannot if the only name it can
+ * be sent under is the sender's own.
+ *
+ * So the name is chosen by the author and travels verbatim. Everyone — including the author —
+ * refers to a layer by it, which also means the "is this mine?" question is answered by reading
+ * the name rather than by tracking it: a canonical id beginning with our own peer id IS one of
+ * ours, and that is a fact nothing has to be kept in step with.
+ */
+function canonicalId(l: Layer): string | null {
+  if (l.from) return l.id
+  const me = myPeerId()
+  return me ? `${me}:${l.id}` : null
+}
+
+/** The local layer a canonical name refers to here, or null if it is not for us. */
+function localIdFor(lid: string): { id: string; from?: string } | null {
+  const cut = lid.indexOf(':')
+  if (cut <= 0 || cut === lid.length - 1) return null
+  const author = lid.slice(0, cut)
+  const me = myPeerId()
+  // ours, under the name the room knows it by
+  if (me && author === me) return { id: lid.slice(cut + 1) }
+  return { id: lid, from: author }
+}
+
+/**
+ * What the room already knows about each layer, by canonical id.
+ *
+ * ⚠️ WRITTEN ON RECEIPT AS WELL AS ON SEND, and that is the whole echo guard. The list is
+ * diffed against this, so recording the version that just arrived means our own diff sees no
+ * change and does not bounce it straight back — which, with three people, is a message that never
+ * stops. The first version needed no guard because received layers were never sent; now that
+ * anybody can edit anything, this is what replaces that.
+ */
 const sentLayers = new Map<string, string>()
 /**
  * The layer array we last looked at.
@@ -297,21 +336,25 @@ function shareLayers() {
   const s = loopState()
   if (s.layers === seenLayers) return
   seenLayers = s.layers
-  const mine = s.layers.filter((l) => !l.from)
-  const live = new Set(mine.map((l) => l.id))
-  for (const id of [...sentLayers.keys()]) {
-    if (live.has(id)) continue
-    sentLayers.delete(id)
-    sendParty('jam:drop', { id })
+  /* ⚠️ EVERY layer, not only our own. Muting somebody's part is an edit like any other and
+     has to leave this machine; the map above is what stops it going round for ever. */
+  const named = s.layers
+    .map((l) => ({ l, lid: canonicalId(l) }))
+    .filter((x): x is { l: Layer; lid: string } => x.lid !== null)
+  const live = new Set(named.map((x) => x.lid))
+  for (const lid of [...sentLayers.keys()]) {
+    if (live.has(lid)) continue
+    sentLayers.delete(lid)
+    sendParty('jam:drop', { lid })
   }
-  for (const l of mine) {
+  for (const { l, lid } of named) {
     const print = layerFingerprint(l)
-    if (sentLayers.get(l.id) === print) continue
-    sentLayers.set(l.id, print)
+    if (sentLayers.get(lid) === print) continue
+    sentLayers.set(lid, print)
     /* ⚠️ Through toSong and packSong — the same pair a file goes through — so the far end can
        read it with readSong and get a stranger's data validated by code written for exactly
        that. A second, friendlier codec for peers would be a second thing to keep correct. */
-    sendParty('jam:layer', { id: l.id, song: packSong(toSong('', s.bpm, s.bars, [l], l.id)) })
+    sendParty('jam:layer', { lid, song: packSong(toSong('', s.bpm, s.bars, [l], l.id)) })
   }
   // and the scheduler stops broadcasting the notes of anything the room now holds
   setLayersShared(true)
@@ -454,22 +497,39 @@ export const jam = {
        */
       if (m.kind === 'jam:layer' && state.on) {
         if (!allowed(m.from)) return
-        const b = m.body as { id?: unknown; song?: unknown }
-        if (typeof b?.id !== 'string' || b.id.length > 60) return
+        const b = m.body as { lid?: unknown; song?: unknown }
+        if (typeof b?.lid !== 'string' || b.lid.length > 120) return
+        const where = localIdFor(b.lid)
+        if (!where) return
         const song = readSong(b.song)
         const one = song && songToLayers(song)[0]
         if (!one) return
-        putGuestLayer({
+        const layer: Layer = {
           ...one,
-          id: `${m.from}:${b.id}`,
-          from: m.from,
-          // we have the take; nobody should be streaming its notes at us as well
+          id: where.id,
+          from: where.from,
+          // it is in the room, so nobody should be streaming its notes at us as well
           shared: true,
-        })
+        }
+        putSharedLayer(layer)
+        /* ⚠️ Remember it as though we had sent it. Our own diff runs the moment this lands,
+           and without this it would see a layer that differs from what we last sent and send it
+           straight back — which with three people is a message that never stops. Fingerprinted
+           from the layer AS APPLIED, because readSong normalises, and a fingerprint of what
+           arrived rather than of what we hold would differ from the next local read. */
+        sentLayers.set(b.lid, layerFingerprint(layer))
         return
       }
-      /* Somebody has just joined. Forget what we think they have and offer everything again —
-         cheap, because a take is a few hundred bytes and this happens once per arrival. */
+      if (m.kind === 'jam:drop' && state.on) {
+        if (!allowed(m.from)) return
+        const b = m.body as { lid?: unknown }
+        if (typeof b?.lid !== 'string') return
+        const where = localIdFor(b.lid)
+        if (!where) return
+        sentLayers.delete(b.lid)
+        removeLayer(where.id)
+        return
+      }
       if (m.kind === 'jam:want' && state.on) {
         if (!allowed(m.from)) return
         sentLayers.clear()

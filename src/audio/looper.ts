@@ -1284,7 +1284,13 @@ export function setLayerInstrument(id: string, instrument: InstrumentId) {
  */
 
 /**
- * Put a peer's take into the arrangement, or replace the copy already there.
+ * Put a take into the arrangement, or replace the one already there.
+ *
+ * ⚠️ USED FOR YOUR OWN LAYERS TOO, which is what "the room shares one arrangement" means.
+ * It started out as somewhere to put a PEER's take, and then anyone at the desk being able to
+ * mute and mix any part made that distinction wrong: an edit somebody else made to your layer
+ * arrives here exactly like a layer of theirs does, and the only difference is the id it lands
+ * under. The caller decides that; this replaces whatever is there.
  *
  * ⚠️ REPLACED IN PLACE, keeping its position in the stack. A peer muting their own layer sends
  * the layer again, and a version that removed and re-appended would make the list jump every
@@ -1294,7 +1300,7 @@ export function setLayerInstrument(id: string, instrument: InstrumentId) {
  * their first take cannot collide on it. Nothing here makes that true; it is asserted there, on
  * the id the transport stamped, which is the only value a message cannot lie about.
  */
-export function putGuestLayer(layer: Layer) {
+export function putSharedLayer(layer: Layer) {
   const at = state.layers.findIndex((l) => l.id === layer.id)
   if (at === -1) {
     if (state.layers.length >= 12) return

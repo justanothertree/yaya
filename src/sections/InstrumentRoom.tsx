@@ -1480,15 +1480,16 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
         <ul className="inst-layers">
           {loop.layers.map((l, i) => {
             /**
-             * ⚠️ SOMEBODY ELSE'S TAKE IS THEIRS TO CHANGE, and that is a correctness rule
-             * before it is a courtesy. Their layer plays here from a copy; changing the copy
-             * changes what YOU hear and nothing of what they hear, so a mute would be a silent
-             * disagreement about the arrangement — exactly the drifting-apart that sharing the
-             * layers was for. Until an edit can travel back to its author, the honest state of
-             * these controls is off, with the reason on them rather than left to be discovered.
+             * ⚠️ EVERY CONTROL WORKS ON EVERY PART, INCLUDING SOMEBODY ELSE'S.
+             *
+             * These were briefly disabled on a peer's row, because at the time an edit to their
+             * take changed only your copy — a silent disagreement about the arrangement, which is
+             * the exact thing sharing the layers was meant to end. The fix was never to take the
+             * controls away: if you are jamming you are at one desk, and at a desk anybody can
+             * reach the fader. So the edit travels instead (see canonicalId), and the name below
+             * stays only to say whose playing it is.
              */
             const theirs = !!l.from
-            const why = `${jamNames[l.from ?? ''] ?? 'They'} recorded this — only they can change it`
             return (
               <li
                 key={l.id}
@@ -1511,8 +1512,7 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
                   className={'inst-layer-name' + (editing === l.id ? ' is-open' : '')}
                   aria-expanded={editing === l.id}
                   onClick={() => setEditing((e) => (e === l.id ? null : l.id))}
-                  disabled={theirs}
-                  title={theirs ? why : editing === l.id ? 'Hide these notes' : 'Show these notes'}
+                  title={editing === l.id ? 'Hide these notes' : 'Show these notes'}
                 >
                   {i + 1}.
                   <span className="muted"> {l.events.filter((e) => e.on).length} notes</span>
@@ -1537,8 +1537,7 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
                   className="inst-layer-inst"
                   value={l.instrument}
                   onChange={(e) => setLayerInstrument(l.id, e.target.value as InstrumentId)}
-                  disabled={theirs}
-                  title={theirs ? why : 'Play this take on a different instrument'}
+                  title="Play this take on a different instrument"
                 >
                   {INSTRUMENTS.map(([id, , name]) => (
                     <option key={id} value={id}>
@@ -1672,18 +1671,16 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
                     value={l.gain ?? 1}
                     onChange={(e) => setLayerGain(l.id, Number(e.target.value))}
                     onKeyDown={(e) => e.stopPropagation()}
-                    disabled={theirs}
                   />
                 </label>
                 <button
                   className="btn inst-layer-fx"
                   onClick={() => setLayerFx(l.id)}
-                  disabled={theirs}
                   title={
                     `This layer plays with echo ${Math.round(l.fx.echo * 100)}, ` +
                     `space ${Math.round(l.fx.space * 100)}, ` +
-                    `vibrato ${Math.round(l.fx.vibrato * 100)}.` +
-                    (theirs ? ` ${why}.` : ' Click to give it the settings you have now.')
+                    `vibrato ${Math.round(l.fx.vibrato * 100)}. ` +
+                    'Click to give it the settings you have now.'
                   }
                 >
                   {fxWord(l.fx)}
@@ -1694,25 +1691,14 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
                 <button
                   className="btn"
                   onClick={() => armRecord(l.id)}
-                  disabled={theirs}
-                  title={theirs ? why : 'Record this layer again, keeping its place'}
+                  title="Record this layer again, keeping its place"
                 >
                   ⏺
                 </button>
-                <button
-                  className="btn"
-                  onClick={() => toggleMute(l.id)}
-                  disabled={theirs}
-                  title={theirs ? why : 'Mute this layer'}
-                >
+                <button className="btn" onClick={() => toggleMute(l.id)} title="Mute this layer">
                   {l.muted ? '🔇' : '🔊'}
                 </button>
-                <button
-                  className="btn"
-                  onClick={() => removeLayer(l.id)}
-                  disabled={theirs}
-                  title={theirs ? why : 'Delete this layer'}
-                >
+                <button className="btn" onClick={() => removeLayer(l.id)} title="Delete this layer">
                   ✕
                 </button>
               </li>

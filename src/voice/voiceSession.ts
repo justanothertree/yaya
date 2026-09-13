@@ -595,6 +595,18 @@ const partyListeners = new Set<(payload: PartyEnvelope) => void>()
 
 export type PartyEnvelope = { from: string; name: string; kind: string; body: unknown }
 
+/**
+ * Our own id in the call, or null when not in one.
+ *
+ * ⚠️ THE SAME id the transport stamps on every message as `from`, which is the whole reason
+ * to expose it: a peer that needs to tell its OWN things apart from everybody else's — the jam
+ * naming layers so a room can share one arrangement — has to be able to write the name the far
+ * end will read it back under. Anything else would be a second identity to keep in step.
+ */
+export function myPeerId(): string | null {
+  return meId
+}
+
 export function sendParty(kind: string, body: unknown) {
   if (!chan || !meId) return
   void chan.send({

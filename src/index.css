@@ -2983,11 +2983,9 @@ section[id] {
   border: 1px solid var(--border);
   border-radius: 6px;
 }
-/* ⚠️ A row you can hear but not change. Dimming the whole row would say "broken"; this says
-   "not yours" — the part still plays at full volume, which is the point of it being here. */
-.inst-layers li.is-theirs > *:not(.inst-layer-name) {
-  opacity: 0.55;
-}
+/* ⚠️ NOT DIMMED. It was, while a peer's row was read-only — and now that every control on it
+   works, dimming would say "you cannot touch this" about the one thing the room exists to let you
+   touch. Whose part it is, is said by the name and nothing else. */
 
 /* whose take it is, on a layer that came from somebody else in the room */
 .inst-layer-who {
