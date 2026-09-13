@@ -3,6 +3,10 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+    <!-- ⚠️ iOS IGNORES THE MANIFEST'S ICONS and looks for this exact link, so without it
+         "Add to Home Screen" saved a screenshot of the page instead of an icon. 180×180 and
+         opaque: iOS composites transparency onto black and rounds the corners itself. -->
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="manifest" href="/site.webmanifest" />
     <link rel="robots" href="/robots.txt" />
@@ -24,11 +28,23 @@
       content="A workout board, ratings, a synth, a paint studio, a visualiser, profiles and Snake — all live in one app."
     />
     <meta property="og:type" content="website" />
-    <!-- Open Graph image: path matches current asset in /public -->
-    <meta property="og:image" content="/og-image.png" />
+    <!--
+      ⚠️ ABSOLUTE, because Open Graph says so. A scraper reads this markup detached from the
+      page it came from, so "/og-image.png" is a path with no host on it — some resolve it against
+      og:url and some simply drop the image, which is a link preview with no picture and nothing
+      to say why.
+
+      ⚠️ AND THE SIZE HERE IS NOW TRUE. It said 1200×630 while the file was 1536×1024, so
+      every scraper that lays out from the declared box got a 3:2 image in a 1.91:1 hole. The file
+      is cropped to the ratio it always claimed — off the top and bottom, where the margins were,
+      so nothing in it is lost — and quantised: 1.65MB to 188kB, on the one asset that is fetched
+      by a machine every time somebody pastes the link.
+    -->
+    <meta property="og:image" content="https://evancook.dev/og-image.png" />
     <meta property="og:image:type" content="image/png" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Evan Cook — IT, systems and web development" />
     <meta name="theme-color" content="#0b0f19" />
   </head>
   <body>

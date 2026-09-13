@@ -6,7 +6,14 @@
     thing sitting on a home screen next to real apps.
 
     Drawn rather than exported: flat shapes, no gradients, legible at 16px, and the accent is
-    the same --accent the rest of the site is built on (#22c55e).
+    the same accent custom property the rest of the site is built on (#22c55e).
+
+    ⚠️ NO DOUBLE HYPHEN ANYWHERE IN THIS COMMENT. The line above used to name the custom
+    property in code form, which starts with two hyphens — and two hyphens in a row end an XML comment: the file was not well-formed, so every browser REFUSED
+    TO RENDER IT. Not degraded — refused. The favicon fell back to the browser default and the
+    manifest, which lists this as its only icon, had none at all, which is the placeholder
+    problem above all over again with no placeholder. An SVG is served as XML and parsed
+    strictly, so a comment can end a file.
   -->
   <rect width="64" height="64" rx="14" fill="#0b0f19" />
   <!-- a bar chart rising, which is the one shape this site is actually about: things counted
