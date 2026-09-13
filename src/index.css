@@ -8962,79 +8962,70 @@ a.cz-msg-author:focus-visible {
 .hag-viz.is-lit > .hag-art {
   opacity: 0;
 }
-/* ── the scope and the pretty one, side by side under the keys ────────────
-   ⚠️ STACKED UNTIL THERE IS ROOM FOR BOTH. Below 62rem a two-column split gives each about
-   20rem, and a spectrum that narrow is a smear rather than a readout — which is the one thing
-   the scope exists to avoid. They are the same height when side by side so the row reads as one
-   object rather than two panels that happen to be adjacent. */
+/* ── the scope, and the visualiser itself, in the room where you play ──────
+   ⚠️ THE SCOPE STAYS FULL WIDTH. It is a readout: a spectrum squeezed into half a row is a
+   smear, which is the one thing it exists not to be. */
 .inst-watch {
-  display: grid;
-  gap: 0.75rem;
-  grid-template-columns: 1fr;
-  margin: 0.6rem 0;
+  margin: 0.6rem 0 0.9rem;
 }
-@media (min-width: 62rem) {
-  .inst-watch {
-    grid-template-columns: 1fr 1fr;
-    align-items: stretch;
-  }
+
+/* ⚠️ A STAGE, NOT A WIDGET. The first attempt was a small bordered box beside the scope and it
+   read as exactly that — something fitted into a gap rather than something to watch. This is the
+   real visualiser, so it gets the shape the real visualiser has: its own band, its own heading,
+   and enough height to be the thing you are looking at rather than a strip under some controls. */
+.inst-theatre {
+  margin: 0.2rem 0 1rem;
 }
-.inst-visual {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-}
-.inst-visual-head {
+.inst-theatre-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 0.5rem;
-  margin-bottom: 0.3rem;
+  margin-bottom: 0.4rem;
 }
-.inst-visual-title {
+.inst-theatre-title {
   font-size: 0.72rem;
   font-weight: 800;
   letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--muted);
 }
-.inst-visual-pick {
+.inst-theatre-toggle {
   font-size: 0.78rem;
-  padding: 0.2rem 0.4rem;
-  max-width: 12rem;
+  padding: 0.25rem 0.7rem;
 }
-/* ⚠️ The canvas is absolutely positioned inside this, so its ATTRIBUTES can never feed back
-   into layout — the loop the profile art block was caught by, where measuring the parent and
-   multiplying by devicePixelRatio grew the parent, which grew the canvas. */
-.inst-visual-stage {
-  position: relative;
-  flex: 1 1 auto;
-  min-height: 150px;
-  border-radius: var(--r-sm, 8px);
-  border: 1px solid var(--border);
-  background: rgba(0, 0, 0, 0.35);
-  overflow: hidden;
+.inst-theatre-wait {
+  padding: 1.2rem 0;
+  font-size: 0.85rem;
 }
-.inst-visual-stage > canvas {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  display: block;
-  touch-action: none;
+/* ⚠️ THE STAGE IS SHORTER HERE THAN ON ITS OWN PAGE, and it has to be said in specificity
+   rather than hoped for. The visualiser sizes itself for a room where it is the only thing on
+   screen — `min(clamp(26rem, 78vh, 48rem), 100dvh - 245px)` — and that is most of a screen. Here
+   it shares the page with the keys, which are the reason you came, so it takes a share and the
+   keys stay reachable without scrolling past a kaleidoscope to find them. */
+.inst-theatre-stage .viz-wrap {
+  height: auto;
 }
-.inst-visual-hint {
-  position: absolute;
-  inset: 0;
-  display: grid;
-  place-items: center;
-  font-size: 0.8rem;
-  letter-spacing: 0.08em;
-  pointer-events: none;
+.inst-theatre-stage .viz-wrap.is-bare .viz-stage {
+  height: clamp(15rem, 42vh, 26rem);
+}
+/* ⚠️ AND THE OPEN STATE HAS TO BE TALLER, which is the whole reason the room's own rule exists.
+   The controls panel lives INSIDE the stage, so pinning both states to one height does not shrink
+   the picture, it deletes it — measured here at exactly 0px tall with the panel open, against 321
+   closed. The room pays for the panel with roughly ten extra rem; this pays the same way, just
+   from a shorter starting point, because the keys are still the reason you are on this page. */
+.inst-theatre-stage .viz-wrap:not(.is-bare) .viz-stage {
+  height: clamp(26rem, 62vh, 40rem);
 }
 @media (max-width: 40rem) {
-  .inst-visual-pick {
-    min-height: 36px;
+  .inst-theatre-stage .viz-wrap.is-bare .viz-stage {
+    height: clamp(13rem, 38vh, 20rem);
+  }
+  .inst-theatre-stage .viz-wrap:not(.is-bare) .viz-stage {
+    height: clamp(24rem, 66vh, 34rem);
+  }
+  .inst-theatre-toggle {
+    min-height: 40px;
   }
 }
 

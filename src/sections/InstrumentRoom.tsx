@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
+import { Suspense, useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import {
   INSTRUMENTS,
   allNotesOff,
@@ -50,7 +50,33 @@ import {
 import { remember } from '../audio/capture'
 import { sharedCtx } from '../audio/context'
 import { InstrumentScope } from '../audio/InstrumentScope'
-import { InstrumentVisual } from '../audio/InstrumentVisual'
+import { lazyRetry } from '../lazyRetry'
+
+/**
+ * ⚠️ THE REAL VISUALISER, not a second one.
+ *
+ * This room briefly had a hand-rolled panel that built a Frame and called a mode directly. It
+ * drew, but it was always going to be the lesser one: mirrors, depth, bloom, spin and sway are
+ * not mode code, they are a buffer pipeline inside AudioVisualizer — and those are exactly the
+ * dials that make a mode worth watching. Reimplementing them would have duplicated the most
+ * performance-sensitive code on the site to produce a worse copy, which is how a site ends up
+ * with two visualisers and neither of them good.
+ *
+ * So this is the same component the Visualiser tab renders, and every control it has works here,
+ * because they ARE the same controls: it reads and writes the same localStorage keys, so a look
+ * tuned in either place is the look in both.
+ *
+ * ⚠️ Its source already defaults to "all", which mixes every live tap — so what you play
+ * reaches it with no wiring, and a call or a backing track you had going still does too.
+ *
+ * ⚠️ LAZY, and the toggle is remembered. It is a real chunk, and somebody who came to play
+ * the keys on a phone should not download a kaleidoscope to do it.
+ */
+const EmbeddedVisualizer = lazyRetry(
+  () => import('./AudioVisualizer'),
+  (m) => m.AudioVisualizer,
+)
+const SHOW_VIZ_KEY = 'inst_show_viz_v1'
 import { AlsoTogether } from '../ui/AlsoTogether'
 import { together } from '../party/together'
 import { jam } from '../party/jam'
@@ -567,6 +593,15 @@ export function InstrumentRoom() {
    * disabled "Jam" button to someone playing alone would advertise a feature whose entry point
    * is somewhere else entirely — the call button, on another page.
    */
+  /* remembered, because whether you want the kaleidoscope up while playing is a preference and
+     not a per-visit decision */
+  const [showViz, setShowViz] = useState(() => {
+    try {
+      return localStorage.getItem(SHOW_VIZ_KEY) !== '0'
+    } catch {
+      return true
+    }
+  })
   const call = useVoiceSession()
   const jamming = useSyncExternalStore(jam.subscribe, jam.getState, jam.getState)
   useEffect(() => jam.start(), [])
@@ -777,8 +812,36 @@ export function InstrumentRoom() {
           playing a three-step discovery problem in the first place. */}
       <div className="inst-watch">
         <InstrumentScope />
-        <InstrumentVisual />
       </div>
+      <section className="inst-theatre">
+        <div className="inst-theatre-head">
+          <span className="inst-theatre-title">Visuals</span>
+          <button
+            type="button"
+            className="btn btn-ghost inst-theatre-toggle"
+            aria-expanded={showViz}
+            onClick={() => {
+              setShowViz((v) => {
+                try {
+                  localStorage.setItem(SHOW_VIZ_KEY, v ? '0' : '1')
+                } catch {
+                  /* private window */
+                }
+                return !v
+              })
+            }}
+          >
+            {showViz ? 'Hide' : 'Show'}
+          </button>
+        </div>
+        {showViz && (
+          <div className="inst-theatre-stage">
+            <Suspense fallback={<div className="muted inst-theatre-wait">Loading visuals…</div>}>
+              <EmbeddedVisualizer />
+            </Suspense>
+          </div>
+        )}
+      </section>
       {!call.inCall && (
         <AlsoTogether id="instrument">
           Everyone in a call hears what you play, and you all share one metronome — so you can
