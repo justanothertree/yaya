@@ -9120,13 +9120,17 @@ a.cz-msg-author:focus-visible {
      1400px viewport the instrument's own window was 438px, so the right column claimed its 22rem
      minimum and the room — keys and all — was left with a column 0px wide. The window already
      stands its theatre down (see inCanvas), so there is nothing to put on the right there anyway. */
-  .inst-wrap:not(.is-incanvas) {
+  /* ⚠️ ONLY WHEN THERE IS A STAGE TO PUT THERE. With the visuals hidden the head still has
+     its Show button, and leaving the grid on meant that one small row held a thirty-rem column
+     open — the instrument sat squashed against a wide empty gap, which reads as broken rather
+     than as hidden. */
+  .inst-wrap.has-visuals:not(.is-incanvas) {
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(22rem, 30rem);
     column-gap: 1.25rem;
     align-content: start;
   }
-  .inst-wrap:not(.is-incanvas) > .inst-theatre {
+  .inst-wrap.has-visuals:not(.is-incanvas) > .inst-theatre {
     grid-column: 2;
     /* a tall area to be sticky inside; the room never has this many children */
     grid-row: 1 / span 200;
@@ -9135,7 +9139,7 @@ a.cz-msg-author:focus-visible {
     top: calc(var(--nav-h, 56px) + 0.75rem);
     margin: 0;
   }
-  .inst-wrap:not(.is-incanvas) > *:not(.inst-theatre) {
+  .inst-wrap.has-visuals:not(.is-incanvas) > *:not(.inst-theatre) {
     grid-column: 1;
     min-width: 0;
   }
@@ -9146,6 +9150,10 @@ a.cz-msg-author:focus-visible {
   .inst-theatre-stage .viz-wrap:not(.is-bare) .viz-stage {
     height: clamp(30rem, 74vh, 46rem);
   }
+}
+/* collapsed: a quiet one-line row, not a section heading introducing an absence */
+.inst-wrap:not(.has-visuals) .inst-theatre {
+  margin: 0.2rem 0 0.6rem;
 }
 .inst-theatre-head {
   display: flex;

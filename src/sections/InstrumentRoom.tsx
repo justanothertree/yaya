@@ -808,10 +808,21 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
     [],
   )
 
+  /**
+   * ⚠️ ONE TRUTH FOR "IS THERE A STAGE", because the layout has to agree with the content.
+   * Hiding the visuals used to leave the column standing: the head with its Show button still sat
+   * in column two, so the grid kept reserving thirty rem for it and the whole instrument stayed
+   * shoved to the left of a wide empty gap. Hidden has to mean the room is one column again.
+   */
+  const visualsShown = showViz && !inCanvas && !vizFloating
   const keys = Array.from({ length: SPAN }, (_, i) => noteAt(i))
 
   return (
-    <section className={'inst-wrap' + (inCanvas ? ' is-incanvas' : '')}>
+    <section
+      className={
+        'inst-wrap' + (inCanvas ? ' is-incanvas' : '') + (visualsShown ? ' has-visuals' : '')
+      }
+    >
       <AudioHealthStrip />
       {/* ⚠️ Here rather than behind Canvas mode. Seeing what you play used to mean knowing the
           account menu hides a Canvas toggle, turning it on, and opening the visualiser in a
@@ -855,7 +866,7 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
             {showViz ? 'Hide' : 'Show'}
           </button>
         </div>
-        {showViz && !inCanvas && !vizFloating && (
+        {visualsShown && (
           <div className="inst-theatre-stage">
             <Suspense fallback={<div className="muted inst-theatre-wait">Loading visuals…</div>}>
               <EmbeddedVisualizer />

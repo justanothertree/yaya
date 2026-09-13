@@ -108,11 +108,63 @@ export function AudioDock({ onOpen }: { onOpen: () => void }) {
     window.addEventListener('pointermove', move)
     window.addEventListener('pointerup', up)
   }
+  /**
+   * Where it sits when nobody has moved it: the gap in the nav beside the name.
+   *
+   * ⚠️ THAT GAP IS NOT ALWAYS THERE, which is the whole reason this is measured rather than
+   * written as a coordinate. The nav is a brand and then a strip of links that grows with how many
+   * rooms you can see — signed in on a narrow laptop there is no space beside the name at all, and
+   * a dock parked at a hard-coded x would sit on top of the links. So it asks: is the space between
+   * the brand and the links wide enough to hold me? Only then does it go there.
+   *
+   * ⚠️ AND IT IS A DEFAULT, NOT A SAVE. Nothing is written to storage here, and a stored
+   * spot always wins — moving it once means it stays where you put it, and this never argues.
+   * Recomputed on resize, because the gap opens and closes as the window does.
+   */
+  const [navSpot, setNavSpot] = useState<{ x: number; y: number } | null>(null)
+  useEffect(() => {
+    if (spot) return
+    /* ⚠️ compares before it sets, because this runs on every change that can bring the dock
+       into existence — setting a fresh object each time would re-render, which would measure
+       again, forever */
+    const same = (next: { x: number; y: number } | null) =>
+      setNavSpot((cur) =>
+        cur === next || (cur && next && cur.x === next.x && cur.y === next.y) ? cur : next,
+      )
+    const measure = () => {
+      const brand = document.querySelector('.nav .brand')
+      const right = document.querySelector('.nav .nav-right')
+      const el = dock.current
+      if (!brand || !right || !el) return same(null)
+      const b = brand.getBoundingClientRect()
+      const r = right.getBoundingClientRect()
+      const w = el.offsetWidth || 240
+      const h = el.offsetHeight || 44
+      const gap = r.left - b.right
+      /* a little air either side, so it never looks wedged between the two */
+      if (gap < w + 24) return same(null)
+      same({ x: Math.round(b.right + 12), y: Math.round(b.top + (b.height - h) / 2) })
+    }
+    measure()
+    window.addEventListener('resize', measure)
+    /* the strip's width changes with who is signed in, so re-measure a beat after mount too */
+    const t = window.setTimeout(measure, 600)
+    return () => {
+      window.removeEventListener('resize', measure)
+      window.clearTimeout(t)
+    }
+    /* ⚠️ `hands` and `song` are in here because the dock DOES NOT EXIST until one of them is
+       true. Measuring only on mount measured a ref that was still null, decided there was no room,
+       and never looked again — so the nav spot was correct code that could never run. */
+  }, [spot, hands, song])
+
   /* ⚠️ clamped on every render, not only on drop: the window can be resized between visits */
-  const placed = spot
+  /* a spot you chose always wins over the one measured from the nav */
+  const at = spot ?? navSpot
+  const placed = at
     ? {
-        x: Math.max(4, Math.min(window.innerWidth - 120, spot.x)),
-        y: Math.max(4, Math.min(window.innerHeight - 44, spot.y)),
+        x: Math.max(4, Math.min(window.innerWidth - 120, at.x)),
+        y: Math.max(4, Math.min(window.innerHeight - 44, at.y)),
       }
     : null
   const dockProps = {
