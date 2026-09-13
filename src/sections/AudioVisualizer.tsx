@@ -26,7 +26,8 @@ import {
   type VisualId,
 } from '../audio/visualModes'
 import { makeFeatureReader } from '../audio/audioFeatures'
-import { PALETTES, paletteById } from '../audio/palettes'
+import { PALETTES } from '../audio/palettes'
+import { readInk as readInkShared } from '../audio/ink'
 import { PATHS, pathPoint, type PathId } from '../audio/autoPath'
 import { deletePreset, readPresets, savePreset, type VizPreset } from '../audio/vizPresets'
 import { gallery, subscribeGallery } from '../draw/gallery'
@@ -880,24 +881,10 @@ export function AudioVisualizer() {
       clickY: 0,
     }
 
-    const readInk = (): Ink => {
-      const s = getComputedStyle(cv)
-      const read = (name: string, fallback: [number, number, number]) => {
-        const v = s.getPropertyValue(name).trim()
-        const m = /^#?([0-9a-f]{6})$/i.exec(v)
-        if (!m) return fallback
-        const n = parseInt(m[1], 16)
-        return [(n >> 16) & 255, (n >> 8) & 255, n & 255] as [number, number, number]
-      }
-      return {
-        accent: read('--accent', [34, 197, 94]),
-        accent2: read('--accent-2', [239, 68, 68]),
-        ink: read('--text', [238, 238, 248]),
-        // empty for Theme, which is what makes hue() fall back to the accent pair
-        stops: paletteById(palette).stops,
-        lift: 0, // replaced every frame from the dial below
-      }
-    }
+    /* ⚠️ Shared with the panel beside the instrument — see audio/ink.ts. Two surfaces run
+       these modes now, and every mode asks for colour the same way, so a second copy of this
+       would not recolour one drawing, it would recolour all of them. */
+    const readInk = (): Ink => readInkShared(cv, palette)
     let ink = readInk()
 
     /**

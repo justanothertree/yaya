@@ -8962,6 +8962,82 @@ a.cz-msg-author:focus-visible {
 .hag-viz.is-lit > .hag-art {
   opacity: 0;
 }
+/* ── the scope and the pretty one, side by side under the keys ────────────
+   ⚠️ STACKED UNTIL THERE IS ROOM FOR BOTH. Below 62rem a two-column split gives each about
+   20rem, and a spectrum that narrow is a smear rather than a readout — which is the one thing
+   the scope exists to avoid. They are the same height when side by side so the row reads as one
+   object rather than two panels that happen to be adjacent. */
+.inst-watch {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: 1fr;
+  margin: 0.6rem 0;
+}
+@media (min-width: 62rem) {
+  .inst-watch {
+    grid-template-columns: 1fr 1fr;
+    align-items: stretch;
+  }
+}
+.inst-visual {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.inst-visual-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.3rem;
+}
+.inst-visual-title {
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.inst-visual-pick {
+  font-size: 0.78rem;
+  padding: 0.2rem 0.4rem;
+  max-width: 12rem;
+}
+/* ⚠️ The canvas is absolutely positioned inside this, so its ATTRIBUTES can never feed back
+   into layout — the loop the profile art block was caught by, where measuring the parent and
+   multiplying by devicePixelRatio grew the parent, which grew the canvas. */
+.inst-visual-stage {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 150px;
+  border-radius: var(--r-sm, 8px);
+  border: 1px solid var(--border);
+  background: rgba(0, 0, 0, 0.35);
+  overflow: hidden;
+}
+.inst-visual-stage > canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  touch-action: none;
+}
+.inst-visual-hint {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: 0.8rem;
+  letter-spacing: 0.08em;
+  pointer-events: none;
+}
+@media (max-width: 40rem) {
+  .inst-visual-pick {
+    min-height: 36px;
+  }
+}
+
 /* ── the end of the home page ───────────────────────────────────
    ⚠️ CENTRED, WHICH NOTHING ELSE ON THE PAGE IS. Every band above is left-aligned and full
    width, so centring this reads as "different kind of thing" without a rule or a box to say it —

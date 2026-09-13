@@ -50,6 +50,7 @@ import {
 import { remember } from '../audio/capture'
 import { sharedCtx } from '../audio/context'
 import { InstrumentScope } from '../audio/InstrumentScope'
+import { InstrumentVisual } from '../audio/InstrumentVisual'
 import { AlsoTogether } from '../ui/AlsoTogether'
 import { together } from '../party/together'
 import { jam } from '../party/jam'
@@ -769,7 +770,15 @@ export function InstrumentRoom() {
           second window — three steps and a discovery problem, for the most obvious pairing on
           the site. This is not the visualiser and does not try to be: it answers "what does this
           patch actually do", which the decorative modes never could. */}
-      <InstrumentScope />
+      {/* ⚠️ THE PAIR, not one or the other. The scope answers "what is this patch doing";
+          the visual beside it is the reason people open the visualiser at all. Both want the same
+          sound and neither answers the other's question, so they sit side by side rather than
+          behind a toggle — and neither needs Canvas mode, which is what made watching your own
+          playing a three-step discovery problem in the first place. */}
+      <div className="inst-watch">
+        <InstrumentScope />
+        <InstrumentVisual />
+      </div>
       {!call.inCall && (
         <AlsoTogether id="instrument">
           Everyone in a call hears what you play, and you all share one metronome — so you can
