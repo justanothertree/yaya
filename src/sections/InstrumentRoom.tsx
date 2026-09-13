@@ -225,6 +225,108 @@ const ROOT_KEY = 'instrument_root_v1'
 const SPAN = 25
 
 /**
+ * A number you type, committed once you have finished typing it — and draggable, because tempo
+ * is looked for rather than known.
+ *
+ * ⚠️ A CONTROLLED NUMBER INPUT CANNOT CLAMP ON EVERY KEYSTROKE. BPM is clamped to 40–200, so
+ * pressing "1" on the way to 120 committed 40 and put "40" in the box — the reported symptom was
+ * "typing any single number key sets bpm to 40", and every tempo ended up whatever the default
+ * was because changing it appeared not to work.
+ *
+ * It was worse than a stuck field: setBpm scales every event in the arrangement so a part keeps
+ * its place against the bar lines, so each keystroke also restarted the loop and re-timed the
+ * whole song. A half-typed number is not a number yet, and nothing that expensive should run on
+ * one.
+ *
+ * So the text being typed is local and the value is committed on blur or Enter; Escape puts the
+ * real one back. The arrows and the wheel still commit immediately, because those only ever
+ * produce whole valid values.
+ *
+ * ⚠️ THE DRAG COMMITS ON RELEASE, not continuously. Sliding through 60 tempos would mean sixty
+ * restarts and sixty rescales of every note in the arrangement. The number follows your hand the
+ * whole way — that is the part you are steering by — and the song moves once, when you let go.
+ */
+function NumField({
+  value,
+  min,
+  max,
+  onCommit,
+  label,
+  title,
+}: {
+  value: number
+  min: number
+  max: number
+  onCommit: (n: number) => void
+  label: string
+  title?: string
+}) {
+  // null means "not being edited" — the field shows the real value
+  const [draft, setDraft] = useState<string | null>(null)
+  const drag = useRef<{ id: number; y: number; from: number } | null>(null)
+  const clamp = (n: number) => Math.max(min, Math.min(max, Math.round(n)))
+
+  const commit = (raw: string) => {
+    setDraft(null)
+    const n = Number(raw)
+    if (raw.trim() !== '' && Number.isFinite(n)) onCommit(clamp(n))
+  }
+
+  return (
+    <label className="inst-pick" title={title}>
+      {/* ⚠️ The LABEL is the grip, not the box. Dragging on the input itself would fight text
+          selection and the caret, and the one thing a number field must keep is the ability to
+          select what is in it. */}
+      <span
+        className="muted inst-num-grip"
+        onPointerDown={(e) => {
+          e.preventDefault()
+          drag.current = { id: e.pointerId, y: e.clientY, from: value }
+          e.currentTarget.setPointerCapture(e.pointerId)
+        }}
+        onPointerMove={(e) => {
+          const d = drag.current
+          if (!d || d.id !== e.pointerId) return
+          // up is more, and 3px a step: fine enough to land on a number, coarse enough to throw
+          setDraft(String(clamp(d.from + (d.y - e.clientY) / 3)))
+        }}
+        onPointerUp={(e) => {
+          const d = drag.current
+          if (!d || d.id !== e.pointerId) return
+          drag.current = null
+          setDraft((cur) => {
+            if (cur !== null) onCommit(clamp(Number(cur)))
+            return null
+          })
+        }}
+        onPointerCancel={() => {
+          drag.current = null
+          setDraft(null)
+        }}
+      >
+        {label}
+      </span>
+      <input
+        className="inst-num"
+        type="number"
+        min={min}
+        max={max}
+        value={draft ?? String(value)}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={(e) => commit(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') e.currentTarget.blur()
+          else if (e.key === 'Escape') {
+            setDraft(null)
+            e.currentTarget.blur()
+          }
+        }}
+      />
+    </label>
+  )
+}
+
+/**
  * One effect, as a slider.
  *
  * Reads the synth rather than holding the value, so the knob and the audio can never disagree —
@@ -1273,29 +1375,23 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
           🎯 Click
         </button>
 
-        <label className="inst-pick">
-          <span className="muted">BPM</span>
-          <input
-            className="inst-num"
-            type="number"
-            min={40}
-            max={200}
-            value={loop.bpm}
-            onChange={(e) => setBpm(Number(e.target.value))}
-          />
-        </label>
+        <NumField
+          label="BPM"
+          value={loop.bpm}
+          min={40}
+          max={200}
+          onCommit={setBpm}
+          title="How fast the loop runs — type it, or drag the word up and down"
+        />
 
-        <label className="inst-pick">
-          <span className="muted">Bars</span>
-          <input
-            className="inst-num"
-            type="number"
-            min={1}
-            max={32}
-            value={loop.bars}
-            onChange={(e) => setBars(Number(e.target.value))}
-          />
-        </label>
+        <NumField
+          label="Bars"
+          value={loop.bars}
+          min={1}
+          max={32}
+          onCommit={setBars}
+          title="How long the loop is — type it, or drag the word up and down"
+        />
 
         {/* Snapping is on by default at eighths. Nobody playing into a loop for fun wants their
             first take to expose exactly how far off the beat they were, and Off is one click

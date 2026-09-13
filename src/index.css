@@ -2962,6 +2962,18 @@ section[id] {
 .inst-transport {
   gap: 0.4rem;
 }
+/* ⚠️ THE WORD IS THE GRIP. Dragging on the input itself would fight the caret and text
+   selection, so the label beside it takes the drag — which also means the affordance sits on the
+   thing that names the value rather than on a box that already looks typeable. */
+.inst-num-grip {
+  cursor: ns-resize;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.inst-num-grip:hover {
+  color: var(--text);
+}
 .inst-num {
   width: 3.6rem;
   font: inherit;
