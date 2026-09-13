@@ -108,6 +108,28 @@ function inverseOf(s: CircuitState, op: Op): Op {
   return { kind: 'delete', coll: op.coll, id }
 }
 
+/**
+ * Why a write did not land, in the one sentence there is room for.
+ *
+ * ⚠️ THE ROW-POLICY CASE HAS TO BE TESTED FIRST, because it shares SQLSTATE 42501 with a
+ * genuine auth denial and isAuthDenial matches on that code. Checking auth first would tell
+ * somebody their session had ended while they were perfectly signed in — which is worse than the
+ * "check your connection" it replaced, because it sends them off to sign in again and again.
+ *
+ * ⚠️ AND A REFUSED ROW IS NOT THE USER'S FAULT, so the message does not ask them to do
+ * anything. A policy that says no to a write the UI offered is a bug in the rules or in what the
+ * page sent; nobody can fix it by retrying, and pretending otherwise is how somebody ends up
+ * typing the same review five times. (See docs/2026-09-13-a-review-could-never-be-added.sql for
+ * the one that prompted this: every new review had been refused for weeks.)
+ */
+function reasonFor(err: unknown): string {
+  const msg = String((err as { message?: unknown })?.message ?? '')
+  if (/row-level security|violates row-level/i.test(msg))
+    return 'Not saved — the database refused it. That is a bug here, not something you did.'
+  if (isAuthDenial(err)) return 'Not saved — your session has ended. Sign in again.'
+  return 'Not saved — check your connection'
+}
+
 function createCircuitStore(): CircuitStore {
   let state: CircuitState = emptyCircuitState()
   let adapter: CircuitAdapter | null = null
@@ -175,11 +197,7 @@ function createCircuitStore(): CircuitStore {
      * isAuthDenial already knew the difference; Investments has used it for exactly this since
      * the dead-session work. The Circuit simply never asked.
      */
-    showToast(
-      isAuthDenial(err)
-        ? 'Not saved — your session has ended. Sign in again.'
-        : 'Not saved — check your connection',
-    )
+    showToast(reasonFor(err))
     const a = adapter
     if (a)
       void a
