@@ -30,6 +30,7 @@ import { InCanvasWindow } from '../circuit/ui/canvasContext'
 import { gallery, removeArt, saveArt, subscribeGallery, type Art } from '../draw/gallery'
 import { together } from '../party/together'
 import { drawParty } from '../party/draw'
+import { applyLayerOp, type LayerOp, type Stack } from '../draw/layerOps'
 import { paintSession } from '../draw/session'
 import { AlsoTogether } from '../ui/AlsoTogether'
 import { useVoiceSession } from '../voice/useVoiceSession'
@@ -274,6 +275,11 @@ export function PaintRoom() {
      * possibly on somebody's profile, so it gets a file's validation rather than a friend's
      * benefit of the doubt: known tools, hex colours, clamped numbers, bounded point counts.
      */
+    /* ⚠️ The same transform the press runs, applied to this side's own stack — see
+       applyLayerOp. `false` because a change that came off the wire must not be sent back out;
+       two people echoing each other's reorders is a loop that ends with the layers somewhere
+       neither of them asked for. */
+    drawParty.setLayerHandler((op) => runLayerOp(op, false))
     drawParty.setPictureHandler(({ packed, ids }) => {
       const d = readDrawing(packed)
       if (!d) return
@@ -308,6 +314,7 @@ export function PaintRoom() {
       drawParty.setClearHandler(null)
       drawParty.setPictureHandler(null)
       drawParty.setPictureSource(null)
+      drawParty.setLayerHandler(null)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -394,6 +401,17 @@ export function PaintRoom() {
     fps,
     strokes,
   }
+
+  /**
+   * The stack as it is right now.
+   *
+   * ⚠️ A REF, for the same reason drawingRef above is one: the transform runs from a press
+   * AND from a message off the wire, and the wire handler is installed once with no dependencies.
+   * Closing over state would hand a peer's change the layer list as it stood when the room
+   * opened — which is a change applied to the wrong picture, silently.
+   */
+  const stackRef = useRef<Stack>({ strokes, names: layerNames, hidden, layer })
+  stackRef.current = { strokes, names: layerNames, hidden, layer }
 
   /**
    * Put `base` on screen, cropped to whatever the view is showing.
@@ -677,14 +695,29 @@ export function PaintRoom() {
   const frames = frameCount(drawingRef.current)
   const nameOf = (i: number) => layerNames[i]?.trim() || `Layer ${i + 1}`
 
+  /**
+   * Every change to the stack goes through here, and only through here.
+   *
+   * ⚠️ APPLIED AND SENT IN ONE PLACE, so "does this travel?" is not a question you have to ask
+   * about each button. The four of them used to hold their own copies of the arithmetic, which is
+   * also why none of them travelled: adding sharing would have meant four more messages and four
+   * more chances to describe the change slightly differently at the other end. Now there is one
+   * transform (applyLayerOp) and one message.
+   */
+  const runLayerOp = useCallback((op: LayerOp, send: boolean) => {
+    const next = applyLayerOp(stackRef.current, op, layerCount(drawingRef.current))
+    setStrokes(next.strokes)
+    setLayerNames(next.names)
+    setHidden(next.hidden)
+    setLayer(next.layer)
+    if (send) drawParty.layers(op)
+  }, [])
+
   const addLayer = () => {
     if (layers >= 12) return
-    setLayerNames((n) => {
-      const next = [...n]
-      while (next.length < layers) next.push('')
-      next.push('')
-      return next
-    })
+    runLayerOp({ k: 'add' }, true)
+    /* ⚠️ Only the person who pressed it moves to the new layer — see applyLayerOp. Taking a
+       peer's brush off what they were drawing on is not sharing, it is interfering. */
     setLayer(layers)
   }
   /**
@@ -699,26 +732,9 @@ export function PaintRoom() {
    * quietly leave every stroke from before layers existed behind on layer zero.
    */
   const moveLayer = (i: number, dir: 1 | -1) => {
-    const j = i + dir
-    if (j < 0 || j >= layers) return
-    setStrokes((list) =>
-      list.map((st) => {
-        const at = st.l ?? 0
-        if (at === i) return { ...st, l: j }
-        if (at === j) return { ...st, l: i }
-        return st
-      }),
-    )
-    setLayerNames((n) => {
-      const c = [...n]
-      while (c.length < layers) c.push('')
-      const a = c[i]
-      c[i] = c[j]
-      c[j] = a
-      return c
-    })
-    setHidden((h) => h.map((n) => (n === i ? j : n === j ? i : n)))
-    setLayer((cur) => (cur === i ? j : cur === j ? i : cur))
+    const to = i + dir
+    if (to < 0 || to >= layers) return
+    runLayerOp({ k: 'move', i, to }, true)
   }
 
   /**
@@ -735,20 +751,16 @@ export function PaintRoom() {
   const removeLayer = (i: number) => {
     if (layers <= 1) return
     const count = strokes.filter((st) => (st.l ?? 0) === i).length
+    /* ⚠️ ASKS FIRST WHEN THERE IS SOMETHING TO LOSE, because undo cannot bring it back — it
+       steps back one stroke at a time rather than being a snapshot history, so a layer with forty
+       strokes on it is forty presses away even in principle. An empty layer goes without a
+       question. The question is asked HERE and not at the other end: the peer is being told what
+       happened, and asking them to approve a decision somebody already made is how you get two
+       different pictures, which is the thing this travels to prevent. */
     if (count && !window.confirm(`Delete ${nameOf(i)} and the ${count} strokes on it?`)) return
     setUndone([])
-    setStrokes((list) =>
-      list
-        .filter((st) => (st.l ?? 0) !== i)
-        .map((st) => {
-          const at = st.l ?? 0
-          return at > i ? { ...st, l: at - 1 } : st
-        }),
-    )
-    setLayerNames((n) => n.filter((_, k) => k !== i))
-    setHidden((h) => h.filter((n) => n !== i).map((n) => (n > i ? n - 1 : n)))
-    setLayer((cur) => Math.min(cur > i ? cur - 1 : cur, layers - 2))
     setSel([])
+    runLayerOp({ k: 'remove', i }, true)
   }
 
   /**
@@ -1236,9 +1248,7 @@ export function PaintRoom() {
             <button
               className="paint-layer-eye"
               aria-pressed={!hidden.includes(i)}
-              onClick={() =>
-                setHidden((h) => (h.includes(i) ? h.filter((n) => n !== i) : [...h, i]))
-              }
+              onClick={() => runLayerOp({ k: 'hide', i, on: !hidden.includes(i) }, true)}
               title={hidden.includes(i) ? 'Show this layer' : 'Hide this layer'}
             >
               {hidden.includes(i) ? '🚫' : '👁'}

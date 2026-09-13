@@ -1,5 +1,6 @@
 import { onParty, sendParty, voiceSession } from '../voice/voiceSession'
 import { readStroke, type Stroke } from '../draw/strokes'
+import { readLayerOp, type LayerOp } from '../draw/layerOps'
 
 /**
  * Drawing on the same page as somebody else.
@@ -107,6 +108,7 @@ let onClear: (() => void) | null = null
 /** the whole picture, for somebody who just arrived to a drawing already in progress */
 type Picture = { packed: unknown; ids: Array<string | undefined> }
 let onPicture: ((pic: Picture) => void) | null = null
+let onLayers: ((op: LayerOp) => void) | null = null
 let myPicture: (() => Picture | null) | null = null
 let detach: Array<() => void> = []
 
@@ -141,6 +143,24 @@ export const drawParty = {
       nothing", which is also the answer while your own page is blank. */
   setPictureSource(fn: (() => Picture | null) | null) {
     myPicture = fn
+  },
+
+  setLayerHandler(fn: ((op: LayerOp) => void) | null) {
+    onLayers = fn
+  },
+
+  /**
+   * Rearranging the layers, for everybody.
+   *
+   * ⚠️ THE ONE CHANGE NOBODY CAN SEE GO WRONG. A stroke that does not arrive is one stroke
+   * missing. A reorder or a delete that does not arrive REWRITES which layer existing strokes sit
+   * on — so the same picture is painted in a different order on one screen, or is missing a layer
+   * on another, and neither person has anything on screen telling them the two have parted. See
+   * applyLayerOp, which both ends run so they cannot disagree about what the change meant.
+   */
+  layers(op: LayerOp) {
+    if (!state.on) return
+    sendParty('art', { lay: op })
   },
 
   /**
@@ -242,6 +262,13 @@ export const drawParty = {
         i?: unknown
         of?: unknown
         ids?: unknown
+        lay?: unknown
+      }
+      if (b && 'lay' in b) {
+        if (!allowed(m.from)) return
+        const op = readLayerOp(b.lay)
+        if (op) onLayers?.(op)
+        return
       }
       /**
        * Somebody arrived to a blank page and wants what is already drawn.
