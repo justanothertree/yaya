@@ -9,8 +9,18 @@ import {
   type InstrumentId,
 } from '../audio/synth'
 import { sharedCtx } from '../audio/context'
-import { setLookahead, setScheduleListener } from '../audio/looper'
-import { packSong, readSong, type Song } from '../audio/songFile'
+import {
+  dropLayersFrom,
+  loopState,
+  putGuestLayer,
+  removeLayer,
+  setLayersShared,
+  setLookahead,
+  setScheduleListener,
+  subscribeLoop,
+  type Layer,
+} from '../audio/looper'
+import { packSong, readSong, songToLayers, toSong, type Song } from '../audio/songFile'
 import { clock, toLocalTime } from './clock'
 import { transport } from './transport'
 
@@ -206,6 +216,11 @@ function stopAllFor(peer: string) {
   for (const v of voices.get(peer) ?? []) noteOff(v)
   voices.delete(peer)
   rate.delete(peer)
+  /* ⚠️ Their recorded parts go with their live notes, and for the same reason: this runs when
+     somebody leaves or the call drops, and a take nobody in the room can reach is a loop playing
+     forever with no controls attached to it. Their notes stopping while their bassline kept
+     going would be the strangest possible half-departure. */
+  dropLayersFrom(peer)
   if (!state.players[peer]) return
   const next = { ...state.players }
   delete next[peer]
@@ -215,6 +230,92 @@ function stopAllFor(peer: string) {
 let detach: Array<() => void> = []
 /** what setOn(true) started, torn down by setOn(false) */
 let rig: Array<() => void> = []
+
+/**
+ * ── sharing the arrangement, not just the sound ─────────────────────────────
+ *
+ * ⚠️ THIS OVERTURNS A DECISION transport.ts still explains, so here is why. It said recorded
+ * layers stay private and you hear each other because the notes are broadcast as they play —
+ * "a jam rather than a shared document". That was a real choice and it worked, and three things
+ * were wrong with it once people actually used it:
+ *
+ *   · a loop that never changes was re-sent every time it came round, for as long as the jam
+ *     lasted, because the far end had no copy to play from;
+ *   · nothing of yours appeared in anybody's arrangement, so they could not see your part, mix
+ *     it, mute it, or build on it — the one thing a four-person jam is for;
+ *   · and it is why the lookahead is half a second. Notes have to leave early enough to survive
+ *     the trip, which means muting a layer takes that long to be heard by anyone else.
+ *
+ * A take is a small, finished, unchanging thing. Sending it once and letting every machine play
+ * it from its own clock is both less traffic and better timing: a shared layer is sample-accurate
+ * on every machine instead of arriving 40–150ms late, every bar, forever. Live playing still
+ * streams as notes, because a note you are playing right now genuinely has nowhere else to come
+ * from — see the latency note at the top of this file.
+ *
+ * ⚠️ ONE SUBSCRIPTION RATHER THAN A CALL AT EVERY EDIT. Committing a take, muting, changing the
+ * volume, rearranging the bars, deleting — every one of those changes a layer, and hanging a
+ * send off each is five call sites that have to be found again when a sixth is added. This
+ * watches the layer list the same way transport.ts watches the transport, and sends what
+ * actually differs.
+ *
+ * ⚠️ NO ECHO GUARD NEEDED, unlike the transport's. Only layers with no `from` are sent, and a
+ * layer that arrived from somebody always has one — so a received layer cannot be re-sent by
+ * construction rather than by a flag that has to be cleared correctly.
+ */
+/** what we last sent for each of our own layers, so an unchanged one is not re-sent */
+const sentLayers = new Map<string, string>()
+/**
+ * The layer array we last looked at.
+ *
+ * ⚠️ THE CHEAP GUARD, AND IT IS NOT AN OPTIMISATION. subscribeLoop fires on every change to
+ * loop state, and that includes `set({ position })` — which the scheduler writes on EVERY tick to
+ * move the playhead. Without this, fingerprinting the layers would run tens of times a second and
+ * JSON.stringify the whole arrangement each time, on the thread that is trying to schedule audio.
+ *
+ * A reference comparison is exact here rather than a heuristic: every mutation of the list goes
+ * through `set({ layers: [...] })`, which is a new array, and nothing else in the looper mutates
+ * one in place. So an unchanged reference means unchanged layers, and it costs one comparison.
+ */
+let seenLayers: readonly Layer[] | null = null
+
+function layerFingerprint(l: Layer): string {
+  // everything that changes what is heard or how it is arranged; `id` is the map key already
+  return JSON.stringify([
+    l.instrument,
+    l.events,
+    l.muted,
+    l.len,
+    l.gain ?? 1,
+    l.play ?? null,
+    l.plan ?? null,
+    l.fx,
+  ])
+}
+
+function shareLayers() {
+  if (!state.on) return
+  const s = loopState()
+  if (s.layers === seenLayers) return
+  seenLayers = s.layers
+  const mine = s.layers.filter((l) => !l.from)
+  const live = new Set(mine.map((l) => l.id))
+  for (const id of [...sentLayers.keys()]) {
+    if (live.has(id)) continue
+    sentLayers.delete(id)
+    sendParty('jam:drop', { id })
+  }
+  for (const l of mine) {
+    const print = layerFingerprint(l)
+    if (sentLayers.get(l.id) === print) continue
+    sentLayers.set(l.id, print)
+    /* ⚠️ Through toSong and packSong — the same pair a file goes through — so the far end can
+       read it with readSong and get a stranger's data validated by code written for exactly
+       that. A second, friendlier codec for peers would be a second thing to keep correct. */
+    sendParty('jam:layer', { id: l.id, song: packSong(toSong('', s.bpm, s.bars, [l], l.id)) })
+  }
+  // and the scheduler stops broadcasting the notes of anything the room now holds
+  setLayersShared(true)
+}
 
 export const jam = {
   getState: () => state,
@@ -240,6 +341,14 @@ export const jam = {
       setScheduleListener(null)
       setLookahead(0)
       setBroadcastAudio(true)
+      /* ⚠️ Every borrowed part goes, and mine go back to being broadcast. Keeping other
+         people's takes after leaving the room would be walking off with their work in an
+         arrangement they can no longer change; leaving mine marked shared would mean the next jam
+         played them to nobody, because the flag says the room already has them. */
+      for (const peer of Object.keys(state.players)) dropLayersFrom(peer)
+      setLayersShared(false)
+      sentLayers.clear()
+      seenLayers = null
       set({ on: false, players: {}, offer: null })
       return
     }
@@ -254,13 +363,19 @@ export const jam = {
     beat = window.setInterval(() => {
       if (state.on) sendParty('jam:held', { held: [...myHeld] })
     }, 1000)
-    rig = [clock.start(), transport.start()]
+    /* ⚠️ The layer watch is part of the rig, so it comes down with everything else rather
+       than being a subscription somebody has to remember to cancel. It fires once immediately,
+       which is the catch-up: whatever you already had recorded when you joined is offered to the
+       room the same way a new take is. */
+    rig = [clock.start(), transport.start(), subscribeLoop(shareLayers)]
     setLookahead(0.5)
     // your loops become notes for everyone else, stamped with when they are due
     setScheduleListener((n) => jam.play(n.midi, n.on, n.inst, { at: n.at, part: n.part, fx: n.fx }))
     // and stop being audio, so nobody hears them twice — see setBroadcastAudio
     setBroadcastAudio(false)
     set({ on: true })
+    // `on` has to be true before this runs — shareLayers refuses while the jam is off
+    shareLayers()
   },
 
   /** Put a song on the table for the room. A no-op unless jamming is on. */
@@ -313,6 +428,45 @@ export const jam = {
        * class of input. Trusting it here because it came from a friend would be trusting the
        * network, not the friend.
        */
+      /**
+       * A peer's take, to be held and played from our own clock rather than heard as a stream.
+       *
+       * ⚠️ READ WITH readSong, the file reader, because that is what this is: a stranger's
+       * JSON that becomes oscillators. It already clamps every length, checks the instrument
+       * against the list this build has, and caps events per layer and in total — it was written
+       * for exactly this input, and the fact that it arrived from a friend is a fact about the
+       * friend, not about the network.
+       *
+       * ⚠️ THE ID IS BUILT FROM THE SENDER'S, namespaced with the id the transport stamped.
+       * Two people whose first take is called the same thing cannot collide, and nobody can
+       * replace a layer in somebody else's name, because the only id a message can produce is
+       * one prefixed with its own.
+       */
+      if (m.kind === 'jam:layer' && state.on) {
+        if (!allowed(m.from)) return
+        const b = m.body as { id?: unknown; song?: unknown }
+        if (typeof b?.id !== 'string' || b.id.length > 60) return
+        const song = readSong(b.song)
+        const one = song && songToLayers(song)[0]
+        if (!one) return
+        putGuestLayer({
+          ...one,
+          id: `${m.from}:${b.id}`,
+          from: m.from,
+          // we have the take; nobody should be streaming its notes at us as well
+          shared: true,
+        })
+        return
+      }
+      if (m.kind === 'jam:drop' && state.on) {
+        if (!allowed(m.from)) return
+        const b = m.body as { id?: unknown }
+        if (typeof b?.id !== 'string') return
+        /* ⚠️ Namespaced with the sender's own id, same as above — which is also what stops
+           "delete this layer" being a message anybody can aim at anybody else's part. */
+        removeLayer(`${m.from}:${b.id}`)
+        return
+      }
       if (m.kind === 'jam:song' && state.on) {
         const song = readSong(m.body)
         if (song) set({ offer: { from: m.from, name: m.name || 'Someone', song } })

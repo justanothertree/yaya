@@ -82,6 +82,32 @@ export type Layer = {
    */
   play?: boolean[]
   /**
+   * Who recorded it, when the room is sharing layers — absent means you did.
+   *
+   * ⚠️ PROVENANCE, NOT OWNERSHIP. It is here so a part can be labelled with a name, and so
+   * that when somebody drops out of the call their bassline goes with them instead of looping
+   * forever with nobody able to explain where it came from. It does not gate editing: the whole
+   * point of sharing the arrangement is that it is one arrangement.
+   *
+   * ⚠️ NOT SAVED. packSong lists the fields it writes, so this does not reach a file — which
+   * is right: a song you kept from a jam is yours, and re-opening it should not leave parts
+   * belonging to somebody who is not in the room.
+   */
+  from?: string
+  /**
+   * True once every machine in the room has this layer and is playing it from its own clock.
+   *
+   * ⚠️ WHICH IS EXACTLY WHEN IT MUST STOP BEING BROADCAST. A jam streams your loops to the
+   * room as notes (see setScheduleListener) because nobody else has the take. Once they do, doing
+   * both means every note arrives twice — once played locally on time, once over the wire a
+   * tenth of a second later, which is not a doubled note but a flam. So this is the flag the
+   * scheduler checks, and it is the one place the two mechanisms are kept from overlapping.
+   *
+   * Also not saved, for the same reason as `from`: a layer loaded from a file is yours alone
+   * again, and yours alone is exactly the state where broadcasting is correct.
+   */
+  shared?: boolean
+  /**
    * The effect settings this take was played with.
    *
    * ⚠️ STORED ON THE LAYER, not read from the knobs at playback. The knobs are live, so a part
@@ -435,14 +461,16 @@ function scheduleWindow(from: number, to: number) {
               noteOff(id, at)
               sounding.get(layer.id)?.delete(id)
             }
-            onSchedule?.({
-              midi: e.midi,
-              on: e.on,
-              inst: layer.instrument,
-              at,
-              part: `L${layer.id}`,
-              fx: layer.fx,
-            })
+            // ⚠️ not once the room has the take itself — see Layer.shared
+            if (!layer.shared)
+              onSchedule?.({
+                midi: e.midi,
+                on: e.on,
+                inst: layer.instrument,
+                at,
+                part: `L${layer.id}`,
+                fx: layer.fx,
+              })
           }
         }
         continue
@@ -527,14 +555,16 @@ function scheduleWindow(from: number, to: number) {
             noteOff(id, at)
             sounding.get(layer.id)?.delete(id)
           }
-          onSchedule?.({
-            midi: e.midi,
-            on: e.on,
-            inst: layer.instrument,
-            at,
-            part: `L${layer.id}`,
-            fx: layer.fx,
-          })
+          // ⚠️ not once the room has the take itself — see Layer.shared
+          if (!layer.shared)
+            onSchedule?.({
+              midi: e.midi,
+              on: e.on,
+              inst: layer.instrument,
+              at,
+              part: `L${layer.id}`,
+              fx: layer.fx,
+            })
         }
       }
     }
@@ -1243,4 +1273,62 @@ export function setLayerEvents(id: string, events: LoopEvent[]) {
 
 export function setLayerInstrument(id: string, instrument: InstrumentId) {
   set({ layers: state.layers.map((l) => (l.id === id ? { ...l, instrument } : l)) })
+}
+
+/**
+ * ── the room's arrangement ──────────────────────────────────────────────────
+ *
+ * These three exist for jam.ts and nothing else. They are here rather than there because the
+ * layer list lives here, and a second module reaching in to splice it would be a second place
+ * that has to know about releaseLayer, the twelve-layer cap and what `set` notifies.
+ */
+
+/**
+ * Put a peer's take into the arrangement, or replace the copy already there.
+ *
+ * ⚠️ REPLACED IN PLACE, keeping its position in the stack. A peer muting their own layer sends
+ * the layer again, and a version that removed and re-appended would make the list jump every
+ * time anybody touched anything — which in a four-person jam is constantly.
+ *
+ * ⚠️ THE ID IS ALREADY NAMESPACED by the caller (see jam.ts), so two people who both recorded
+ * their first take cannot collide on it. Nothing here makes that true; it is asserted there, on
+ * the id the transport stamped, which is the only value a message cannot lie about.
+ */
+export function putGuestLayer(layer: Layer) {
+  const at = state.layers.findIndex((l) => l.id === layer.id)
+  if (at === -1) {
+    if (state.layers.length >= 12) return
+    set({ layers: [...state.layers, layer] })
+    return
+  }
+  // whatever is sounding belongs to the version being replaced
+  releaseLayer(layer.id)
+  set({ layers: state.layers.map((l, i) => (i === at ? layer : l)) })
+}
+
+/**
+ * Everything that came from one person, gone.
+ *
+ * ⚠️ CALLED WHEN THEY LEAVE, and it is the difference between a jam ending and a jam leaving a
+ * bassline looping in an empty room with nobody who can stop it — the controls for a part belong
+ * to the arrangement, but the part stops being anybody's the moment its author is gone.
+ */
+export function dropLayersFrom(peer: string) {
+  const going = state.layers.filter((l) => l.from === peer)
+  if (!going.length) return
+  for (const l of going) releaseLayer(l.id)
+  set({ layers: state.layers.filter((l) => l.from !== peer) })
+}
+
+/**
+ * Mark which of my layers the room now has a copy of, so the scheduler stops broadcasting them.
+ *
+ * ⚠️ ALL OF THEM AT ONCE, rather than one call per layer, because the answer is always "every
+ * layer I have, yes or no": sharing is a room-wide mode, not a per-part choice. Turning it off
+ * has to put every layer back to broadcasting, or a jam that stopped sharing would go silent for
+ * everyone except its author.
+ */
+export function setLayersShared(on: boolean) {
+  if (!state.layers.some((l) => !!l.shared !== on && !l.from)) return
+  set({ layers: state.layers.map((l) => (l.from ? l : { ...l, shared: on || undefined })) })
 }

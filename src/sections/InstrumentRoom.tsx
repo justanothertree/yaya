@@ -770,6 +770,10 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
     if (item) setLibOpen(true)
   }
 
+  /** peer id → their name, so a shared layer can say whose take it is */
+  const jamNames: Record<string, string> = {}
+  for (const p of Object.values(jamming.players)) jamNames[p.id] = p.name
+
   /** midi number → the hue of whoever is holding it, for the keyboard below */
   const theirNotes = new Map<number, number>()
   for (const p of Object.values(jamming.players))
@@ -1497,6 +1501,19 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
                 title={editing === l.id ? 'Hide these notes' : 'Show these notes'}
               >
                 {i + 1}.<span className="muted"> {l.events.filter((e) => e.on).length} notes</span>
+                {/* ⚠️ WHOSE PART IT IS, when it is not yours. Layers from the room sit in the
+                    same list and work the same way — that is the point of sharing them — but an
+                    arrangement where you cannot tell your bassline from your friend's is one
+                    where you mute theirs looking for yours. Absent for your own, because every
+                    row saying "you" is a column of noise. */}
+                {l.from && (
+                  <span
+                    className="inst-layer-who"
+                    title={`Recorded by ${jamNames[l.from] ?? 'someone in the room'}`}
+                  >
+                    {jamNames[l.from] ?? 'Someone'}
+                  </span>
+                )}
               </button>
 
               {/* Re-voice without replaying: the notes were right, the sound was not. Storing

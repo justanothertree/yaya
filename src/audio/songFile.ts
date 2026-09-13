@@ -371,6 +371,18 @@ export function songNotes(s: Song): number {
  * loop into a song that already came from the same file, would otherwise produce two layers
  * claiming the same identity — and releasing one would silence the other.
  */
+/**
+ * A song back into layers the looper can hold.
+ *
+ * ⚠️ EVERY FIELD THE FORMAT CARRIES, and two of them were being dropped here. `gain` and
+ * `plan` are written by toSong, survive packSong, and are read back by readSong — and then this,
+ * the last step before the layers reach the looper, quietly left them behind. So opening a saved
+ * song lost every layer's volume and the order its bars were arranged in: the file was right the
+ * whole time, and the loss happened on the way in.
+ *
+ * It reads as the save having failed, which is the worst version of this bug — you go back and
+ * re-do the mix rather than suspecting the loader.
+ */
 export function songToLayers(s: Song): Layer[] {
   const stamp = Date.now()
   return s.layers.map((l, i) => ({
@@ -380,6 +392,8 @@ export function songToLayers(s: Song): Layer[] {
     muted: l.muted,
     fx: l.fx,
     len: l.len,
+    gain: l.gain,
     play: l.play,
+    plan: l.plan,
   }))
 }

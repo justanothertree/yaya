@@ -2983,6 +2983,20 @@ section[id] {
   border: 1px solid var(--border);
   border-radius: 6px;
 }
+/* whose take it is, on a layer that came from somebody else in the room */
+.inst-layer-who {
+  margin-left: 0.4rem;
+  padding: 0 0.35rem;
+  border-radius: 999px;
+  font-size: 0.62rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--btn-text);
+  background: var(--accent);
+  vertical-align: 0.1em;
+}
+
 /* armed and recording have to look different at a glance — one means "about to", the other
    means "right now", and confusing them costs you a take */
 .inst-rec.is-armed {
