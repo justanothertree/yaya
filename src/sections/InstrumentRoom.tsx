@@ -51,7 +51,7 @@ import { remember } from '../audio/capture'
 import { sharedCtx } from '../audio/context'
 import { InstrumentScope } from '../audio/InstrumentScope'
 import { lazyRetry } from '../lazyRetry'
-import { useVizFloating } from '../audio/floatingViz'
+import { useVizFloating, vizFloat } from '../audio/floatingViz'
 
 /**
  * ⚠️ THE REAL VISUALISER, not a second one.
@@ -846,6 +846,20 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
                 ? 'Floating over the page — drag it anywhere.'
                 : 'Open as its own window on the canvas.'}
             </span>
+          )}
+          {/* ⚠️ THE SAME CHOICE THE VISUALISER PAGE OFFERS, offered where you actually want
+              it. Popping it out from here means it follows you off this page, which is the point
+              of the floating panel — and having to walk to the Visualiser tab to get that is the
+              same discovery problem the pop-out was built to end. */}
+          {!inCanvas && !vizFloating && (
+            <button
+              type="button"
+              className="btn btn-ghost inst-theatre-toggle"
+              onClick={() => vizFloat.open()}
+              title="Float it over the page, so it follows you off this one"
+            >
+              ⧉ Pop out
+            </button>
           )}
           <button
             type="button"

@@ -8977,6 +8977,44 @@ a.cz-msg-author:focus-visible {
 .hag-viz.is-lit > .hag-art {
   opacity: 0;
 }
+/* ── settings BESIDE the picture, not out of it ──────────────────────
+   ⚠️ THE SNAKE BOARD ALREADY SOLVED THIS. Its panel sits beside the board where there is room
+   and only stacks under it where there is not, so opening the settings costs the game nothing.
+   The visualiser's panel is a sibling of the picture inside one flex column, so opening it came
+   straight out of the canvas — the stage grew to compensate, which is a bigger page rather than a
+   fix, and the picture still lost height.
+
+   ⚠️ NO JSX MOVED: the panel is already .viz-surface's sibling, so only the direction changes.
+   This is the most performance-sensitive file on the site and the smallest change that gets the
+   result is the right one.
+
+   ⚠️ SCOPED TO #visualizer, WHICH IS THE POINT OF THE SELECTOR. The first attempt applied this
+   everywhere at 64rem and excluded the narrow homes, and both halves of that were wrong: a media
+   query asks how wide the SCREEN is, while the floating panel is as wide as somebody dragged it
+   and the instrument's column is thirty rem at most. The exclusions then lost on specificity
+   (0,2,0 against 0,3,0) and the instrument's picture was squeezed to 142px beside a 395px panel;
+   raising them to win left `height: auto` behind and the picture went to 0. Naming the one place
+   that has room cannot leak into the two that do not, and needs no exclusions to maintain. */
+@media (min-width: 64rem) {
+  #visualizer .viz-wrap .viz-stage {
+    flex-direction: row;
+  }
+  #visualizer .viz-wrap .viz-controls {
+    /* a column of its own rather than a band across the bottom */
+    height: auto;
+    width: 22rem;
+    flex: 0 0 22rem;
+    border-top: 0;
+    border-left: 1px solid var(--border);
+  }
+  /* ⚠️ AND THE STAGE STOPS PAYING FOR THE PANEL. Once the panel takes width, "taller with the
+     controls shown" is compensating for a cost that no longer exists, so the picture keeps its
+     full height whether the settings are open or not. */
+  #visualizer .viz-wrap:not(.is-bare) .viz-stage {
+    height: clamp(20rem, 78vh, 56rem);
+  }
+}
+
 /* ── the visualiser, floating over whatever page you are on ─────────────
    ⚠️ ABOVE THE NAV, BELOW THE DIALOGS. The nav sits under 10000 and modals start at 900000, so
    this belongs between them: it must cover the page and the bars you are walking past, and it
@@ -9053,6 +9091,14 @@ a.cz-msg-author:focus-visible {
   height: auto;
   flex: 1 1 auto;
   min-height: 0;
+}
+/* ⚠️ THE PANEL NEVER TAKES MORE THAN HALF. In a window you sized yourself the controls are
+   as tall as they are anywhere else, so in a short one they leave almost nothing: measured at
+   600x460 with the settings open, the picture was 93px. A share rather than a fixed height means
+   a small window stays a window showing something, and the panel scrolls its own overflow as it
+   already does everywhere else. */
+.vizwin-body .viz-wrap .viz-controls {
+  max-height: 52%;
 }
 .vizwin-grip {
   position: absolute;
