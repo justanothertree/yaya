@@ -39,6 +39,7 @@ import {
 } from '../audio/audioHealth'
 import { onMixerChange, setVolume, volume } from '../audio/mixer'
 import { PianoRoll } from './PianoRoll'
+import { DRUM_PATTERNS, drumGenres, patternEvents } from '../audio/drumPatterns'
 import { SnapPicker } from '../audio/SnapPicker'
 import { toSong, songNotes, songToLayers } from '../audio/songFile'
 import {
@@ -99,6 +100,7 @@ import {
   addLayers,
   clearLayerBars,
   addEmptyLayer,
+  addPatternLayer,
   setBars,
   setBpm,
   setLayerInstrument,
@@ -224,6 +226,21 @@ const ROOT_KEY = 'instrument_root_v1'
 
 /** Two octaves, matching the four typing rows exactly so every key on screen has a key to press. */
 const SPAN = 25
+
+/**
+ * Tempos as words, because "how fast?" is not a question about numbers.
+ *
+ * ⚠️ FOUR, NOT TWELVE. The point is to be choosable in a second by somebody who does not
+ * know what 96 means — a list long enough to need reading is the same blank page with more steps
+ * on it. The number field beside them is still there for anybody who does know, and the chosen
+ * value is shown so the two never feel like different settings.
+ */
+const TEMPOS: Array<[number, string]> = [
+  [70, 'Slow'],
+  [90, 'Steady'],
+  [120, 'Upbeat'],
+  [140, 'Fast'],
+]
 
 /**
  * A number you type, committed once you have finished typing it — and draggable, because tempo
@@ -770,6 +787,8 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
     if (item) setLibOpen(true)
   }
 
+  const [beatsOpen, setBeatsOpen] = useState(false)
+
   /** peer id → their name, so a shared layer can say whose take it is */
   const jamNames: Record<string, string> = {}
   for (const p of Object.values(jamming.players)) jamNames[p.id] = p.name
@@ -1308,6 +1327,54 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
          * this asks "keep what just happened" rather than "start keeping things". The whole
          * value is that you decide AFTER hearing it, which is when you actually know.
          */}
+        {/**
+         * ⚠️ THE FIRST TWO DECISIONS, IN FRONT OF YOU, ONCE.
+         *
+         * Every song on this site is at the default tempo. Part of that was a real bug — typing a
+         * number could not change it — but the rest is that nothing ever suggested choosing one,
+         * and a tempo picked after you have recorded a part is a tempo you have already committed
+         * to. It is the first decision and it was the least visible thing in the room.
+         *
+         * The beat beside it is the same problem from the other end: the room assumes you can
+         * play something, and somebody who cannot play drums has nothing to build against. One
+         * bar of something makes every other control in here suddenly worth using.
+         *
+         * ⚠️ IT GOES AWAY THE MOMENT THERE IS A LAYER, and never comes back on its own. This is
+         * scaffolding for the blank page, not a panel — leaving it up would mean paying for a
+         * beginner's row on every session forever, which is how a room gets cluttered by
+         * features that were only ever meant to be a start.
+         */}
+        {!loop.layers.length && (
+          <div className="inst-start">
+            <span className="inst-start-step">
+              <span className="muted">1. How fast?</span>
+              {TEMPOS.map(([n, label]) => (
+                <button
+                  key={n}
+                  className={'btn' + (loop.bpm === n ? ' is-on' : ' btn-ghost')}
+                  aria-pressed={loop.bpm === n}
+                  onClick={() => setBpm(n)}
+                  title={`${label} — ${n} beats a minute`}
+                >
+                  {label}
+                </button>
+              ))}
+              <span className="muted inst-start-bpm">{loop.bpm}</span>
+            </span>
+            <span className="inst-start-step">
+              <span className="muted">2. A beat to build on</span>
+              <button
+                className={'btn' + (beatsOpen ? ' is-on' : '')}
+                aria-pressed={beatsOpen}
+                onClick={() => setBeatsOpen((v) => !v)}
+                title="Drop in a drum pattern you can then change"
+              >
+                🥁 Pick a beat
+              </button>
+              <span className="muted inst-start-or">or just play</span>
+            </span>
+          </div>
+        )}
         {/* Start a part by drawing it rather than by playing it. The editor was only reachable
             through a recording, which meant placing four notes by hand required performing them
             first. */}
@@ -1474,6 +1541,41 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
               </button>
             )
           })}
+        </div>
+      )}
+      {/**
+       * The beat picker.
+       *
+       * ⚠️ GROUPED BY GENRE AND NAMED BY FEEL, not by tempo or time signature. Somebody who does
+       * not play drums cannot choose between "16th hats at 95bpm" and "shuffled 8ths"; they can
+       * absolutely choose between Reggae and Metal. The grouping is derived from the patterns
+       * themselves so adding one never means editing a second list.
+       */}
+      {beatsOpen && (
+        <div className="inst-beats card">
+          <p className="muted inst-beats-lede">
+            Drops in as an ordinary layer — change it, mute pieces, or open its notes.
+          </p>
+          {drumGenres().map((genre) => (
+            <div key={genre} className="inst-beats-row">
+              <span className="muted inst-beats-genre">{genre}</span>
+              {DRUM_PATTERNS.filter((p) => p.genre === genre).map((p) => (
+                <button
+                  key={p.id}
+                  className="btn btn-ghost"
+                  onClick={() => {
+                    const { events, len } = patternEvents(p, loop.bpm)
+                    addPatternLayer(events, len)
+                    setBeatsOpen(false)
+                    if (!loop.playing) startLoop()
+                  }}
+                  title={`${p.name} — ${Object.keys(p.grid).join(', ')}`}
+                >
+                  {p.name}
+                </button>
+              ))}
+            </div>
+          ))}
         </div>
       )}
       {loop.layers.length > 0 && (

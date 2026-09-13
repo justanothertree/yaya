@@ -2987,6 +2987,64 @@ section[id] {
    works, dimming would say "you cannot touch this" about the one thing the room exists to let you
    touch. Whose part it is, is said by the name and nothing else. */
 
+/* ── the blank page: the two decisions that come before anything else ────────── */
+.inst-start {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 1.2rem;
+  align-items: center;
+  width: 100%;
+  padding: 0.5rem 0.6rem;
+  margin-bottom: 0.4rem;
+  border: 1px dashed var(--border-strong, var(--border));
+  border-radius: 10px;
+  background: color-mix(in oklab, var(--accent), transparent 94%);
+}
+.inst-start-step {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+.inst-start .btn {
+  padding: 2px 10px;
+  font-size: 0.78rem;
+}
+.inst-start-bpm {
+  font-variant-numeric: tabular-nums;
+  font-size: 0.78rem;
+}
+.inst-start-or {
+  font-size: 0.75rem;
+}
+
+/* the beat picker — one row per genre, so the list is scanned rather than read */
+.inst-beats {
+  margin: 0.4rem 0 0.6rem;
+  padding: 0.6rem;
+}
+.inst-beats-lede {
+  margin: 0 0 0.5rem;
+  font-size: 0.78rem;
+}
+.inst-beats-row {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin-bottom: 0.35rem;
+}
+.inst-beats-genre {
+  flex: 0 0 5rem;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.inst-beats .btn {
+  padding: 2px 10px;
+  font-size: 0.78rem;
+}
+
 /* whose take it is, on a layer that came from somebody else in the room */
 .inst-layer-who {
   margin-left: 0.4rem;

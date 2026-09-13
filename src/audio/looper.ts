@@ -1338,3 +1338,26 @@ export function setLayersShared(on: boolean) {
   if (!state.layers.some((l) => !!l.shared !== on && !l.from)) return
   set({ layers: state.layers.map((l) => (l.from ? l : { ...l, shared: on || undefined })) })
 }
+
+/**
+ * Drop a ready-made beat in as a layer of its own.
+ *
+ * ⚠️ AN ORDINARY LAYER, deliberately — not a pattern player. It gets an id, an instrument, events
+ * and fx exactly as a recorded take does, so mute, volume, the bar grid, re-voicing and the note
+ * editor all work on it the moment it lands. A beat you cannot take apart is a toy; a beat that
+ * is simply a take you did not have to play is somewhere to start.
+ *
+ * ⚠️ fxSnapshot(), the same as a take gets, so it picks up whatever the knobs say right now and
+ * can then be changed like any other layer. Dry-by-default would be a second rule about effects
+ * that only applies to beats.
+ */
+export function addPatternLayer(events: LoopEvent[], len: number): string {
+  const id = `${Date.now()}-beat`
+  set({
+    layers: [
+      ...state.layers,
+      { id, instrument: 'drums' as InstrumentId, events, muted: false, fx: fxSnapshot(), len },
+    ].slice(0, 12),
+  })
+  return id
+}
