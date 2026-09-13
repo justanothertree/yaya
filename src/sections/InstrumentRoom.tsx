@@ -475,9 +475,16 @@ function AudioHealthStrip() {
     )
   return (
     <div className="inst-health" style={bad ? { color: '#f46b6b' } : undefined}>
-      <div>
-        <strong>{h.worst === 'clean' ? 'clean' : h.worst}</strong> · late {h.driftMs}ms · clip{' '}
-        {h.clippedTotal} · squash {h.reductionWorst}dB · in {h.preMax} · out {h.peakMax}
+      <div
+        title={
+          'in and squash are latched from a 20Hz sampler and are solid. ' +
+          'clip and out are computed from 2048 samples once a second — 4.3% of the audio — so a ' +
+          'zero there means "none seen", not "none happened". Measured: on one unchanging drum ' +
+          'loop, out read 0.055 one second and 0.828 the next while in sat still at 0.819.'
+        }
+      >
+        <strong>{h.worst === 'clean' ? 'clean' : h.worst}</strong> · late {h.driftMs}ms · clip ~
+        {h.clippedTotal} · squash {h.reductionWorst}dB · in {h.preMax} · out ~{h.peakMax}
         <button
           className="btn"
           onClick={() => {
@@ -617,9 +624,14 @@ function AudioHealthStrip() {
             against a build that predated the fix being discussed, and there was no way to tell
             from either side — which turns a real result into an ambiguous one. The deploy already
             stamps the commit; it just was not shown anywhere. */}
-        build {import.meta.env.VITE_APP_VERSION || 'dev'} · buffer {h.bufferMs}ms · now: late{' '}
-        {h.dropped} gaps {h.gaps} peak {h.peak} squash {h.reduction}dB · voices {h.voices} · notes{' '}
-        {h.on}/{h.off}
+        {/* ⚠️ `dropped` IS GONE FROM HERE, because it can only ever be zero. It comes from the
+            worklet counter that compares currentTime against itself — the verdict above already
+            refuses to consult it for exactly that reason ("a verdict from a dead counter"), and
+            yet it was still being printed as "late 0", beside a REAL late figure in milliseconds
+            on the line above. Two numbers with one name, one of which cannot move. A meter that
+            always reads zero is not reassurance, it is a broken gauge that looks like one. */}
+        build {import.meta.env.VITE_APP_VERSION || 'dev'} · buffer {h.bufferMs}ms · now: gaps{' '}
+        {h.gaps} peak ~{h.peak} squash {h.reduction}dB · voices {h.voices} · notes {h.on}/{h.off}
       </div>
     </div>
   )

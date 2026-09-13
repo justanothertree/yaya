@@ -33,9 +33,27 @@ export type AudioHealth = {
   dropped: number
   /** times the gap between quanta was more than a quantum and a half */
   gaps: number
-  /** loudest sample seen since the last read, 0..1 */
+  /**
+   * Loudest sample seen since the last read, 0..1.
+   *
+   * ⚠️ A 4.3% SAMPLE, NOT A MEASUREMENT, and the difference matters when you are trusting
+   * it. This comes from the analyser tap's 2048 bytes, read once per call — 43ms out of every
+   * second at 48kHz — so it sees whatever happened to be in that window. Measured on ONE
+   * unchanging drum loop across six consecutive reads: 0.117, 0.625, 0.055, 0.531, 0.109, 0.828,
+   * while preMax below sat still at 0.819 the whole time. peakMax latches the highest of them, so
+   * it creeps toward the truth over a while; a single read is close to noise.
+   *
+   * It is also 8-bit: the analyser hands back bytes, so the finest step here is 1/128.
+   */
   peak: number
-  /** samples at or above 0.985 — the flattened tops of a clipped waveform */
+  /**
+   * Samples at or above 0.985 — the flattened tops of a clipped waveform.
+   *
+   * ⚠️ COUNTED IN THE SAME 4.3% WINDOW, so zero means "none seen", not "none happened".
+   * Fixing that honestly means feeding the limiter's output into the worklet, which has no audio
+   * input at all today — it is connected output-only, and only counts render quanta. Until then
+   * the number earns a `~` on screen rather than a confidence it has not got.
+   */
   clipped: number
   /** notes actually started and stopped at the synth since the last read */
   on: number
