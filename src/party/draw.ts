@@ -111,6 +111,7 @@ let onClear: (() => void) | null = null
 type Picture = { packed: unknown; ids: Array<string | undefined>; hidden: number[] }
 let onPicture: ((pic: Picture) => void) | null = null
 let onLayers: ((op: LayerOp) => void) | null = null
+let onReel: ((r: { frame: number | null; fps: number }) => void) | null = null
 let myPicture: (() => Picture | null) | null = null
 let detach: Array<() => void> = []
 
@@ -149,6 +150,28 @@ export const drawParty = {
 
   setLayerHandler(fn: ((op: LayerOp) => void) | null) {
     onLayers = fn
+  },
+  setReelHandler(fn: ((r: { frame: number | null; fps: number }) => void) | null) {
+    onReel = fn
+  },
+
+  /**
+   * Which frame the room is looking at, and how fast it plays.
+   *
+   * ⚠️ THE FRAME IS SHARED, UNLIKE THE LAYER YOU ARE DRAWING ON, and the difference is worth
+   * saying because they look like the same kind of thing. Two people on different LAYERS of one
+   * picture both see everything either of them draws — that is collaboration. Two people on
+   * different FRAMES see different pictures, which is not a shared canvas at all; it is the state
+   * this whole module exists to prevent, reached by pressing a button that looks harmless.
+   *
+   * ⚠️ PLAYING IS NOT SHARED, though, and is the one exception. The play loop writes the
+   * frame on every tick, so broadcasting it would be a message per frame per person; and watching
+   * it back is a preview you take and then return from, not a change to the picture. Your view
+   * rejoins theirs when you stop.
+   */
+  reel(frame: number | null, fps: number) {
+    if (!state.on) return
+    sendParty('art', { reel: { f: frame, fps } })
   },
 
   /**
@@ -266,6 +289,28 @@ export const drawParty = {
         ids?: unknown
         hid?: unknown
         lay?: unknown
+        reel?: unknown
+      }
+      if (b && 'reel' in b) {
+        if (!allowed(m.from)) return
+        const r = b.reel as { f?: unknown; fps?: unknown }
+        if (!r || typeof r !== 'object') return
+        /* clamped to the editor's own limits — 60 frames and 24fps — because these SIZE things:
+           a frame number is used to step through, and an fps of nought is a timer that never
+           fires while an enormous one is a render loop with no brakes */
+        const f =
+          r.f === null
+            ? null
+            : typeof r.f === 'number' && Number.isInteger(r.f) && r.f >= 0 && r.f < 60
+              ? r.f
+              : undefined
+        if (f === undefined) return
+        const fps =
+          typeof r.fps === 'number' && Number.isFinite(r.fps)
+            ? Math.max(1, Math.min(24, Math.round(r.fps)))
+            : 8
+        onReel?.({ frame: f, fps })
+        return
       }
       if (b && 'lay' in b) {
         if (!allowed(m.from)) return

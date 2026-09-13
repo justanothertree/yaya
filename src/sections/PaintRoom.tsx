@@ -280,6 +280,13 @@ export function PaintRoom() {
        two people echoing each other's reorders is a loop that ends with the layers somewhere
        neither of them asked for. */
     drawParty.setLayerHandler((op) => runLayerOp(op, false))
+    /* ⚠️ Stops your playback, deliberately. Somebody stepped to a frame to look at it, and
+       arriving there while your own preview keeps rolling means you never see what they meant. */
+    drawParty.setReelHandler(({ frame: f, fps: n }) => {
+      setPlaying(false)
+      setFrame(f)
+      setFps(n)
+    })
     drawParty.setPictureHandler(({ packed, ids, hidden: theirHidden }) => {
       const d = readDrawing(packed)
       if (!d) return
@@ -317,6 +324,7 @@ export function PaintRoom() {
       drawParty.setPictureHandler(null)
       drawParty.setPictureSource(null)
       drawParty.setLayerHandler(null)
+      drawParty.setReelHandler(null)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -695,6 +703,80 @@ export function PaintRoom() {
 
   const layers = layerCount(drawingRef.current)
   const frames = frameCount(drawingRef.current)
+
+  /**
+   * Does this layer hold still across every frame?
+   *
+   * ⚠️ DERIVED FROM THE STROKES, not stored anywhere, and that is what makes it free. A
+   * stroke with no frame already shows on all of them — it is how everything drawn before you
+   * pressed Frames becomes the background — so "this layer does not change" is not a new idea
+   * needing a new field, a new place in the file format and a new thing to keep in sync. It is a
+   * question the strokes can already answer.
+   *
+   * Which also means it needs no sharing of its own: the strokes carry it, and the strokes
+   * already travel.
+   */
+  const layerHolds = (i: number) => {
+    const on = strokes.filter((k) => (k.l ?? 0) === i)
+    return on.length > 0 && on.every((k) => k.f === undefined)
+  }
+
+  /**
+   * ⚠️ A NEW STROKE GOES ON THE FRAME YOU ARE ON, even on a layer that currently holds still.
+   *
+   * It inherited the layer's held-ness for about ten minutes, on the reasoning that adding to the
+   * background should stay in the background. Tested, and it is a trap: everything drawn before
+   * you press Frames is frameless, so the layer you start on ALWAYS reads as held — and the first
+   * pose you draw was silently made part of the background too, on the layer you were most likely
+   * to animate on. A feature that quietly refuses to animate is worse than one that needs a
+   * second press.
+   *
+   * So nothing is inherited, the ↻ button says what is actually true of the strokes, and folding
+   * a new mark into the background is a press you can see.
+   */
+  const frameForNew = () => frame ?? undefined
+
+  /**
+   * Put every mark from the frame before this one onto this one.
+   *
+   * ⚠️ THE ANSWER TO "I DO NOT WANT TO REDRAW IT". The other half is the layer that holds
+   * still, and the two cover different things: a background belongs on a held layer, but a pose
+   * that is ALMOST the last one is not background — it is the last one, moved. So this copies it
+   * and leaves it selected, and the move is a drag rather than a redraw.
+   *
+   * ⚠️ ONLY ONTO AN EMPTY FRAME. Copying on top of work already here would be additive and
+   * silent — twice as many strokes, all overlapping, and no way back but undo pressed as many
+   * times as the frame is long.
+   */
+  const copyPrevFrame = () => {
+    const at = frame ?? 0
+    if (at <= 0) return
+    const made: Stroke[] = strokes
+      .filter((k) => k.f === at - 1)
+      .map((k) => ({ ...k, f: at, p: [...k.p], id: drawParty.mark() }))
+    if (!made.length) return
+    setUndone([])
+    setStrokes((prev) => [...prev, ...made])
+    /* ⚠️ Each one sent on its own, through the same door a drawn stroke goes through. A
+       bulk message would be a second way for a stroke to arrive, with its own validation to get
+       right, to save a handful of sends that happen once per frame. */
+    for (const k of made) drawParty.send(k)
+    // left selected, because the whole point is that the next thing you do is move it
+    setSel(made.map((_, i) => strokes.length + i))
+  }
+  /**
+   * Make a layer hold still across every frame, or put it back on the frame you are on.
+   *
+   * ⚠️ IT EDITS THE STROKES, which is why it needs nothing of its own to share: a held
+   * stroke is one with no frame, the strokes already travel, and layerHolds reads the answer back
+   * off them. Turning it off puts them on the CURRENT frame rather than the one they came from,
+   * because they came from all of them — there is no earlier answer to restore.
+   */
+  const holdLayer = (i: number, on: boolean) => {
+    setUndone([])
+    runLayerOp({ k: 'hold', i, f: on ? null : (frame ?? 0) }, true)
+  }
+
   const nameOf = (i: number) => layerNames[i]?.trim() || `Layer ${i + 1}`
 
   /**
@@ -773,7 +855,22 @@ export function PaintRoom() {
    * background with no way to tell them apart afterwards, whereas frame 1 makes "the bit that
    * stays" and "the bit that moves" two different places from the first stroke.
    */
-  const startFrames = () => setFrame((f) => (f === null ? Math.max(1, frames) : null))
+  /**
+   * Move the room's reel: which frame is showing, and how fast it plays back.
+   *
+   * ⚠️ SENT FROM THE BUTTON, not from an effect watching `frame`. The play loop writes the
+   * frame every tick, so anything watching the value would broadcast a message per frame per
+   * person — and an effect would also fire on a frame that ARRIVED, sending it straight back.
+   * Only a press travels, which makes both problems not exist rather than guarded against.
+   */
+  const goFrame = (next: number | null, nextFps = fps) => {
+    setPlaying(false)
+    setFrame(next)
+    if (nextFps !== fps) setFps(nextFps)
+    drawParty.reel(next, nextFps)
+  }
+
+  const startFrames = () => goFrame(frame === null ? Math.max(1, frames) : null)
 
   /**
    * ⚠️ STOPS THE ANIMATION FIRST, or it does not work at all.
@@ -786,8 +883,7 @@ export function PaintRoom() {
   const addFrame = () => {
     const at = Math.max(frames, (frame ?? 0) + 1)
     if (at >= 60) return
-    setPlaying(false)
-    setFrame(at)
+    goFrame(at)
   }
 
   /**
@@ -944,7 +1040,7 @@ export function PaintRoom() {
       k: symmetry,
       e: echo,
       l: layer,
-      f: frame ?? undefined,
+      f: frameForNew(),
       p: isFreehand(tool) ? [x, y] : [x, y, x, y],
     }
     preview()
@@ -1255,6 +1351,25 @@ export function PaintRoom() {
             >
               {hidden.includes(i) ? '🚫' : '👁'}
             </button>
+            {/* ⚠️ ONLY WHILE ANIMATING, because off an animation it would be a switch with no
+                observable effect — every stroke shows on the one picture either way. */}
+            {frame !== null && (
+              <button
+                className={'paint-layer-eye' + (layerHolds(i) ? ' is-on' : '')}
+                aria-pressed={layerHolds(i)}
+                onClick={() => holdLayer(i, !layerHolds(i))}
+                disabled={!strokes.some((k) => (k.l ?? 0) === i)}
+                title={
+                  !strokes.some((k) => (k.l ?? 0) === i)
+                    ? 'Draw something on this layer first'
+                    : layerHolds(i)
+                      ? `${nameOf(i)} is in every frame — put it back on this one only`
+                      : `Keep ${nameOf(i)} in every frame, so you never redraw it`
+                }
+              >
+                {layerHolds(i) ? '↻' : '→'}
+              </button>
+            )}
             {/* ⚠️ Up means further FORWARD in the picture, which is up this list too — the rows
                 are drawn highest first, so the arrows point the way the layer actually moves. */}
             <button
@@ -1313,7 +1428,7 @@ export function PaintRoom() {
           <>
             <button
               className="btn"
-              onClick={() => setFrame((f) => Math.max(0, (f ?? 0) - 1))}
+              onClick={() => goFrame(Math.max(0, (frame ?? 0) - 1))}
               disabled={(frame ?? 0) <= 0}
               title="Previous frame"
             >
@@ -1324,7 +1439,7 @@ export function PaintRoom() {
             </span>
             <button
               className="btn"
-              onClick={() => setFrame((f) => Math.min(frames - 1, (f ?? 0) + 1))}
+              onClick={() => goFrame(Math.min(frames - 1, (frame ?? 0) + 1))}
               disabled={(frame ?? 0) >= frames - 1}
               title="Next frame"
             >
@@ -1332,6 +1447,26 @@ export function PaintRoom() {
             </button>
             <button className="btn" onClick={addFrame} title="Add a frame after this one">
               + frame
+            </button>
+            {/* ⚠️ The pair that answer "do I have to draw all this again". This one is for a
+                pose that is nearly the last one; the ↻ on a layer row is for the parts that never
+                change at all. Disabled with work already here, because copying on top of it would
+                double every stroke silently. */}
+            <button
+              className="btn"
+              onClick={copyPrevFrame}
+              disabled={
+                (frame ?? 0) <= 0 ||
+                strokes.some((k) => k.f === frame) ||
+                !strokes.some((k) => k.f === (frame ?? 0) - 1)
+              }
+              title={
+                strokes.some((k) => k.f === frame)
+                  ? 'There is already something on this frame'
+                  : 'Copy the frame before this one, so you can move it instead of redrawing it'
+              }
+            >
+              ⧉ From last
             </button>
             <label className="paint-onion" title="How many earlier frames show through behind">
               <span className="muted">Onion</span>
@@ -1361,7 +1496,11 @@ export function PaintRoom() {
                 max={24}
                 step={1}
                 value={fps}
-                onChange={(e) => setFps(Number(e.target.value))}
+                onChange={(e) => {
+                  const n = Number(e.target.value)
+                  setFps(n)
+                  drawParty.reel(frame, n)
+                }}
               />
             </label>
           </>

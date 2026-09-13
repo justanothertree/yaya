@@ -40,6 +40,20 @@ export type LayerOp =
   | { k: 'move'; i: number; to: number }
   | { k: 'remove'; i: number }
   | { k: 'hide'; i: number; on: boolean }
+  /**
+   * Put every stroke on this layer onto one frame, or onto all of them.
+   *
+   * ⚠️ IT IS AN OP, not a flag, and that is what makes "this layer never changes" cost
+   * nothing to store, nothing to save and nothing to sync on its own. A stroke with no frame
+   * already shows on every one — it is how anything drawn before you pressed Frames becomes the
+   * background — so holding a layer still is an edit to strokes that already travel, and reading
+   * it back is a question the strokes answer (see layerHolds).
+   *
+   * ⚠️ THE FRAME TRAVELS WITH IT. `null` means every frame; a number means that one. Letting
+   * each end use its OWN current frame would put the same layer on frame 2 here and frame 5
+   * there, from one press.
+   */
+  | { k: 'hold'; i: number; f: number | null }
 
 export type Stack = {
   strokes: Stroke[]
@@ -85,6 +99,16 @@ export function applyLayerOp(stack: Stack, op: LayerOp, layers: number): Stack {
       strokes,
       names,
       hidden: op.on ? [...hidden, op.i] : hidden.filter((x) => x !== op.i),
+      layer,
+    }
+  }
+
+  if (op.k === 'hold') {
+    const f = op.f === null ? undefined : op.f
+    return {
+      strokes: strokes.map((s) => (at(s) === op.i ? { ...s, f } : s)),
+      names,
+      hidden,
       layer,
     }
   }
@@ -152,6 +176,18 @@ export function readLayerOp(raw: unknown): LayerOp | null {
   if (o.k === 'remove') {
     const i = whole(o.i)
     return i === null ? null : { k: 'remove', i }
+  }
+  if (o.k === 'hold') {
+    const i = whole(o.i)
+    if (i === null) return null
+    if (o.f === null) return { k: 'hold', i, f: null }
+    /* ⚠️ REJECTED, NOT DEFAULTED. Bounded by MAX_FRAMES because the number becomes a frame
+       index and the editor sizes its frame list from the largest one it can see — but a junk
+       value must not fall back to `null`, because null is a real instruction here ("every
+       frame"), and quietly promoting a malformed message into a layer-wide edit is worse than
+       dropping it. */
+    if (typeof o.f !== 'number' || !Number.isInteger(o.f) || o.f < 0 || o.f >= 60) return null
+    return { k: 'hold', i, f: o.f }
   }
   return null
 }
