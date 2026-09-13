@@ -376,6 +376,16 @@ export const jam = {
     set({ on: true })
     // `on` has to be true before this runs — shareLayers refuses while the jam is off
     shareLayers()
+    /**
+     * ⚠️ AND ASK FOR THEIRS, or arriving second means arriving to an empty arrangement.
+     *
+     * shareLayers only sends what has CHANGED since it last looked, which is exactly right while
+     * a jam runs and exactly wrong when somebody new turns up: everyone else's takes were sent
+     * before you were listening, and nothing about them has changed since, so nobody would send
+     * them again. The same hole the paint room had, and the same answer — the one person who
+     * knows they have just arrived is the one who asks.
+     */
+    sendParty('jam:want', {})
   },
 
   /** Put a song on the table for the room. A no-op unless jamming is on. */
@@ -456,6 +466,15 @@ export const jam = {
           // we have the take; nobody should be streaming its notes at us as well
           shared: true,
         })
+        return
+      }
+      /* Somebody has just joined. Forget what we think they have and offer everything again —
+         cheap, because a take is a few hundred bytes and this happens once per arrival. */
+      if (m.kind === 'jam:want' && state.on) {
+        if (!allowed(m.from)) return
+        sentLayers.clear()
+        seenLayers = null
+        shareLayers()
         return
       }
       if (m.kind === 'jam:drop' && state.on) {

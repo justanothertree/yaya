@@ -280,7 +280,7 @@ export function PaintRoom() {
        two people echoing each other's reorders is a loop that ends with the layers somewhere
        neither of them asked for. */
     drawParty.setLayerHandler((op) => runLayerOp(op, false))
-    drawParty.setPictureHandler(({ packed, ids }) => {
+    drawParty.setPictureHandler(({ packed, ids, hidden: theirHidden }) => {
       const d = readDrawing(packed)
       if (!d) return
       /* ⚠️ Only onto a blank page, checked again HERE and not only where we asked. The
@@ -296,6 +296,8 @@ export function PaintRoom() {
       setUndone([])
       setSel([])
       if (d.layers?.length) setLayerNames(d.layers)
+      // which layers are switched off is part of the shared view, not of the saved picture
+      setHidden(theirHidden)
       /* the names let a later "take back the one I called this" find the right stroke — see the
          rename in draw.ts. A stroke with no name simply cannot be undone from afar. */
       setStrokes(d.strokes.map((k, i) => (ids[i] ? { ...k, id: ids[i] } : k)))
@@ -305,7 +307,7 @@ export function PaintRoom() {
     drawParty.setPictureSource(() => {
       const d = drawingRef.current
       if (!d.strokes.length && !d.bg) return null
-      return { packed: packDrawing(d), ids: d.strokes.map((k) => k.id) }
+      return { packed: packDrawing(d), ids: d.strokes.map((k) => k.id), hidden }
     })
     return () => {
       drawParty.setHandler(null)

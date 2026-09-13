@@ -88,6 +88,7 @@ const MAX_CHUNKS = 40
 let asking = 0
 let parts: string[] = []
 let partIds: unknown[] = []
+let partHidden: unknown[] = []
 let partsOf = 0
 let answerTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -95,6 +96,7 @@ function resetCatchUp() {
   asking = 0
   parts = []
   partIds = []
+  partHidden = []
   partsOf = 0
   if (answerTimer) clearTimeout(answerTimer)
   answerTimer = null
@@ -106,7 +108,7 @@ let onUndo: ((id: string) => void) | null = null
 let onPaper: ((bg: string | null) => void) | null = null
 let onClear: (() => void) | null = null
 /** the whole picture, for somebody who just arrived to a drawing already in progress */
-type Picture = { packed: unknown; ids: Array<string | undefined> }
+type Picture = { packed: unknown; ids: Array<string | undefined>; hidden: number[] }
 let onPicture: ((pic: Picture) => void) | null = null
 let onLayers: ((op: LayerOp) => void) | null = null
 let myPicture: (() => Picture | null) | null = null
@@ -262,6 +264,7 @@ export const drawParty = {
         i?: unknown
         of?: unknown
         ids?: unknown
+        hid?: unknown
         lay?: unknown
       }
       if (b && 'lay' in b) {
@@ -303,7 +306,11 @@ export const drawParty = {
                 of,
                 // ⚠️ only with the first chunk: the names are small next to the picture, and
                 // repeating them on every chunk would be the largest thing in some messages
-                ...(i === 0 ? { ids: mine.ids } : {}),
+                /* ⚠️ hidden rides along because packDrawing does not carry it — it is not part
+                   of the saved picture, it is part of the shared VIEW of it, and a newcomer who
+                   could see layers everybody else had switched off would be looking at a
+                   different arrangement from the first second. */
+                ...(i === 0 ? { ids: mine.ids, hid: mine.hidden } : {}),
               })
             }
           },
@@ -329,6 +336,7 @@ export const drawParty = {
         partsOf = of
         parts[i] = b.pic
         if (Array.isArray(b.ids)) partIds = b.ids
+        if (Array.isArray(b.hid)) partHidden = b.hid
         for (let k = 0; k < of; k++) if (parts[k] === undefined) return
         const text = parts.join('')
         resetCatchUp()
@@ -353,8 +361,13 @@ export const drawParty = {
               : v.slice(0, 60)
             : undefined,
         )
+        /* clamped to real layer numbers: this list SIZES nothing, but it is compared against
+           layer indices, and junk in it is a layer that can never be shown again */
+        const hidden = partHidden
+          .filter((v): v is number => typeof v === 'number' && Number.isInteger(v))
+          .filter((v) => v >= 0 && v < 12)
         try {
-          onPicture?.({ packed, ids })
+          onPicture?.({ packed, ids, hidden })
         } catch {
           /* a room that cannot take a picture keeps its own */
         }

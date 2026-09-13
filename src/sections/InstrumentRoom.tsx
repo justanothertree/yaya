@@ -1478,214 +1478,246 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
       )}
       {loop.layers.length > 0 && (
         <ul className="inst-layers">
-          {loop.layers.map((l, i) => (
-            <li
-              key={l.id}
-              className={
-                (l.muted ? 'is-muted' : '') + (loop.replacing === l.id ? ' is-replacing' : '')
-              }
-            >
-              {/**
-               * ⚠️ THE NAME IS THE SWITCH, and there is no pencil any more.
-               *
-               * Editing a take was behind a ✎ next to five other small buttons, which is a lot of
-               * looking for the thing you most want to do with a layer. The row already names the
-               * layer and counts its notes — "3. 14 notes" is exactly the handle for "show me
-               * those fourteen notes", so it may as well be the control. Pressing the open one
-               * again closes it, because a toggle you cannot un-toggle is a trap.
-               */}
-              <button
-                className={'inst-layer-name' + (editing === l.id ? ' is-open' : '')}
-                aria-expanded={editing === l.id}
-                onClick={() => setEditing((e) => (e === l.id ? null : l.id))}
-                title={editing === l.id ? 'Hide these notes' : 'Show these notes'}
+          {loop.layers.map((l, i) => {
+            /**
+             * ⚠️ SOMEBODY ELSE'S TAKE IS THEIRS TO CHANGE, and that is a correctness rule
+             * before it is a courtesy. Their layer plays here from a copy; changing the copy
+             * changes what YOU hear and nothing of what they hear, so a mute would be a silent
+             * disagreement about the arrangement — exactly the drifting-apart that sharing the
+             * layers was for. Until an edit can travel back to its author, the honest state of
+             * these controls is off, with the reason on them rather than left to be discovered.
+             */
+            const theirs = !!l.from
+            const why = `${jamNames[l.from ?? ''] ?? 'They'} recorded this — only they can change it`
+            return (
+              <li
+                key={l.id}
+                className={
+                  (l.muted ? 'is-muted' : '') +
+                  (loop.replacing === l.id ? ' is-replacing' : '') +
+                  (theirs ? ' is-theirs' : '')
+                }
               >
-                {i + 1}.<span className="muted"> {l.events.filter((e) => e.on).length} notes</span>
-                {/* ⚠️ WHOSE PART IT IS, when it is not yours. Layers from the room sit in the
+                {/**
+                 * ⚠️ THE NAME IS THE SWITCH, and there is no pencil any more.
+                 *
+                 * Editing a take was behind a ✎ next to five other small buttons, which is a lot of
+                 * looking for the thing you most want to do with a layer. The row already names the
+                 * layer and counts its notes — "3. 14 notes" is exactly the handle for "show me
+                 * those fourteen notes", so it may as well be the control. Pressing the open one
+                 * again closes it, because a toggle you cannot un-toggle is a trap.
+                 */}
+                <button
+                  className={'inst-layer-name' + (editing === l.id ? ' is-open' : '')}
+                  aria-expanded={editing === l.id}
+                  onClick={() => setEditing((e) => (e === l.id ? null : l.id))}
+                  disabled={theirs}
+                  title={theirs ? why : editing === l.id ? 'Hide these notes' : 'Show these notes'}
+                >
+                  {i + 1}.
+                  <span className="muted"> {l.events.filter((e) => e.on).length} notes</span>
+                  {/* ⚠️ WHOSE PART IT IS, when it is not yours. Layers from the room sit in the
                     same list and work the same way — that is the point of sharing them — but an
                     arrangement where you cannot tell your bassline from your friend's is one
                     where you mute theirs looking for yours. Absent for your own, because every
                     row saying "you" is a column of noise. */}
-                {l.from && (
-                  <span
-                    className="inst-layer-who"
-                    title={`Recorded by ${jamNames[l.from] ?? 'someone in the room'}`}
-                  >
-                    {jamNames[l.from] ?? 'Someone'}
-                  </span>
-                )}
-              </button>
-
-              {/* Re-voice without replaying: the notes were right, the sound was not. Storing
-                  notes rather than audio is what makes this a dropdown instead of a re-take. */}
-              <select
-                className="inst-layer-inst"
-                value={l.instrument}
-                onChange={(e) => setLayerInstrument(l.id, e.target.value as InstrumentId)}
-                title="Play this take on a different instrument"
-              >
-                {INSTRUMENTS.map(([id, , name]) => (
-                  <option key={id} value={id}>
-                    {name}
-                  </option>
-                ))}
-              </select>
-
-              {/**
-               * What this take SOUNDS like, and a way to change your mind.
-               *
-               * The settings are frozen onto the layer when you commit it, which is the whole
-               * point — but frozen with no way back would mean replaying a part you were happy
-               * with just to give it more room. This shows what it kept and re-stamps the
-               * current knobs onto it, so changing the reverb costs a click rather than a
-               * performance.
-               */}
-              {/**
-               * The arrangement: which bars this layer plays in.
-               *
-               * ⚠️ Every bar is ON until you turn one off, so a take you just recorded behaves
-               * exactly as it always did and structure is something you opt into. This is the
-               * difference between a stack of loops all playing at once and a track — the
-               * tiling underneath already repeats a one-bar drum part across thirty-two bars,
-               * so the only thing missing was a way to say "not here".
-               */}
-              {/**
-               * The track: a row of bars you can put in an order.
-               *
-               * ⚠️ EACH CELL NAMES THE BAR IT PLAYS, not merely whether it plays. That one
-               * change is what turns a mute strip into an arrangement — "bar 3 of this take
-               * sounds here" can be moved, where "on" can only be switched off.
-               *
-               * Two ways to move one, because they suit different hands. Dragging is what a
-               * mouse expects. On a touchscreen an HTML5 drag never starts, so a tap picks a
-               * bar up and a second tap puts it down — which also happens to be easier than
-               * dragging on a small screen even where dragging works.
-               */}
-              <span className="inst-arrange" role="group" aria-label="The bars this layer plays">
-                {layerPlan(l).map((src, b) => {
-                  /* has this layer actually been rearranged, or is it just playing in order? */
-                  const arranged = !!l.plan
-                  const held = lifted?.id === l.id && lifted.bar === b
-                  return (
-                    <button
-                      key={b}
-                      className={
-                        'inst-bar-cell' + (src != null ? ' is-on' : '') + (held ? ' is-lifted' : '')
-                      }
-                      aria-pressed={src != null}
-                      draggable={!touch && src != null}
-                      onDragStart={(e) => {
-                        e.dataTransfer.setData('text/bar', String(b))
-                        setLifted({ id: l.id, bar: b })
-                      }}
-                      onDragOver={(e) => {
-                        if (e.dataTransfer.types.includes('text/bar')) e.preventDefault()
-                      }}
-                      onDrop={(e) => {
-                        e.preventDefault()
-                        const from = Number(e.dataTransfer.getData('text/bar'))
-                        if (Number.isFinite(from)) moveLayerBar(l.id, from, b)
-                        setLifted(null)
-                      }}
-                      onDragEnd={() => setLifted(null)}
-                      onClick={() => {
-                        if (lifted && lifted.id === l.id) {
-                          if (lifted.bar === b) toggleLayerSlot(l.id, b)
-                          else moveLayerBar(l.id, lifted.bar, b)
-                          setLifted(null)
-                        } else if (src == null) {
-                          toggleLayerSlot(l.id, b)
-                        } else {
-                          setLifted({ id: l.id, bar: b })
-                        }
-                      }}
-                      title={
-                        src == null
-                          ? `Bar ${b + 1}: silent — tap to fill it`
-                          : lifted && lifted.id === l.id
-                            ? `Put bar ${lifted.bar + 1} here`
-                            : `Bar ${b + 1} plays part ${src + 1} of ${takeBars(l)} — tap to pick it up`
-                      }
+                  {l.from && (
+                    <span
+                      className="inst-layer-who"
+                      title={`Recorded by ${jamNames[l.from] ?? 'someone in the room'}`}
                     >
-                      {/**
-                       * ⚠️ QUIET UNTIL IT HAS SOMETHING TO SAY. Numbering every cell made the
-                       * common case harder to read: a take that plays straight through says
-                       * 1 2 3 4, which is four numbers to tell you nothing happened. So a layer
-                       * nobody has rearranged looks exactly as it always did — a row of blocks,
-                       * on or off — and the numbers appear only once the order stops being the
-                       * obvious one, which is the only time they explain anything.
-                       */}
-                      {arranged ? (src == null ? '·' : src + 1) : ''}
-                    </button>
-                  )
-                })}
-                {(l.play || l.plan) && (
-                  <button
-                    className="btn inst-bar-all"
-                    onClick={() => clearLayerBars(l.id)}
-                    title="Play in every bar again"
-                  >
-                    all
-                  </button>
-                )}
-              </span>
+                      {jamNames[l.from] ?? 'Someone'}
+                    </span>
+                  )}
+                </button>
 
-              {/* Keeping ONE layer. This is the drum-loop case: a part worth reusing is almost
+                {/* Re-voice without replaying: the notes were right, the sound was not. Storing
+                  notes rather than audio is what makes this a dropdown instead of a re-take. */}
+                <select
+                  className="inst-layer-inst"
+                  value={l.instrument}
+                  onChange={(e) => setLayerInstrument(l.id, e.target.value as InstrumentId)}
+                  disabled={theirs}
+                  title={theirs ? why : 'Play this take on a different instrument'}
+                >
+                  {INSTRUMENTS.map(([id, , name]) => (
+                    <option key={id} value={id}>
+                      {name}
+                    </option>
+                  ))}
+                </select>
+
+                {/**
+                 * What this take SOUNDS like, and a way to change your mind.
+                 *
+                 * The settings are frozen onto the layer when you commit it, which is the whole
+                 * point — but frozen with no way back would mean replaying a part you were happy
+                 * with just to give it more room. This shows what it kept and re-stamps the
+                 * current knobs onto it, so changing the reverb costs a click rather than a
+                 * performance.
+                 */}
+                {/**
+                 * The arrangement: which bars this layer plays in.
+                 *
+                 * ⚠️ Every bar is ON until you turn one off, so a take you just recorded behaves
+                 * exactly as it always did and structure is something you opt into. This is the
+                 * difference between a stack of loops all playing at once and a track — the
+                 * tiling underneath already repeats a one-bar drum part across thirty-two bars,
+                 * so the only thing missing was a way to say "not here".
+                 */}
+                {/**
+                 * The track: a row of bars you can put in an order.
+                 *
+                 * ⚠️ EACH CELL NAMES THE BAR IT PLAYS, not merely whether it plays. That one
+                 * change is what turns a mute strip into an arrangement — "bar 3 of this take
+                 * sounds here" can be moved, where "on" can only be switched off.
+                 *
+                 * Two ways to move one, because they suit different hands. Dragging is what a
+                 * mouse expects. On a touchscreen an HTML5 drag never starts, so a tap picks a
+                 * bar up and a second tap puts it down — which also happens to be easier than
+                 * dragging on a small screen even where dragging works.
+                 */}
+                <span className="inst-arrange" role="group" aria-label="The bars this layer plays">
+                  {layerPlan(l).map((src, b) => {
+                    /* has this layer actually been rearranged, or is it just playing in order? */
+                    const arranged = !!l.plan
+                    const held = lifted?.id === l.id && lifted.bar === b
+                    return (
+                      <button
+                        key={b}
+                        className={
+                          'inst-bar-cell' +
+                          (src != null ? ' is-on' : '') +
+                          (held ? ' is-lifted' : '')
+                        }
+                        aria-pressed={src != null}
+                        draggable={!touch && src != null}
+                        onDragStart={(e) => {
+                          e.dataTransfer.setData('text/bar', String(b))
+                          setLifted({ id: l.id, bar: b })
+                        }}
+                        onDragOver={(e) => {
+                          if (e.dataTransfer.types.includes('text/bar')) e.preventDefault()
+                        }}
+                        onDrop={(e) => {
+                          e.preventDefault()
+                          const from = Number(e.dataTransfer.getData('text/bar'))
+                          if (Number.isFinite(from)) moveLayerBar(l.id, from, b)
+                          setLifted(null)
+                        }}
+                        onDragEnd={() => setLifted(null)}
+                        onClick={() => {
+                          if (lifted && lifted.id === l.id) {
+                            if (lifted.bar === b) toggleLayerSlot(l.id, b)
+                            else moveLayerBar(l.id, lifted.bar, b)
+                            setLifted(null)
+                          } else if (src == null) {
+                            toggleLayerSlot(l.id, b)
+                          } else {
+                            setLifted({ id: l.id, bar: b })
+                          }
+                        }}
+                        title={
+                          src == null
+                            ? `Bar ${b + 1}: silent — tap to fill it`
+                            : lifted && lifted.id === l.id
+                              ? `Put bar ${lifted.bar + 1} here`
+                              : `Bar ${b + 1} plays part ${src + 1} of ${takeBars(l)} — tap to pick it up`
+                        }
+                      >
+                        {/**
+                         * ⚠️ QUIET UNTIL IT HAS SOMETHING TO SAY. Numbering every cell made the
+                         * common case harder to read: a take that plays straight through says
+                         * 1 2 3 4, which is four numbers to tell you nothing happened. So a layer
+                         * nobody has rearranged looks exactly as it always did — a row of blocks,
+                         * on or off — and the numbers appear only once the order stops being the
+                         * obvious one, which is the only time they explain anything.
+                         */}
+                        {arranged ? (src == null ? '·' : src + 1) : ''}
+                      </button>
+                    )
+                  })}
+                  {(l.play || l.plan) && (
+                    <button
+                      className="btn inst-bar-all"
+                      onClick={() => clearLayerBars(l.id)}
+                      title="Play in every bar again"
+                    >
+                      all
+                    </button>
+                  )}
+                </span>
+
+                {/* Keeping ONE layer. This is the drum-loop case: a part worth reusing is almost
                   never a whole song, and a library of one-layer loops is what makes the next
                   song faster to start than the last one. */}
-              <button
-                className="btn"
-                onClick={() => keep('loop', l.id)}
-                title="Keep this layer as a loop you can reuse"
-              >
-                ⬇
-              </button>
+                <button
+                  className="btn"
+                  onClick={() => keep('loop', l.id)}
+                  title="Keep this layer as a loop you can reuse"
+                >
+                  ⬇
+                </button>
 
-              {/* ⚠️ On the row, not behind a dialog. Balancing parts is done BY EAR, which means
+                {/* ⚠️ On the row, not behind a dialog. Balancing parts is done BY EAR, which means
                   moving one while the others play — a slider you have to open something to reach
                   is a slider you use once and then stop using. */}
-              <label className="inst-layer-vol" title="How loud this layer is">
-                <span className="sr-only">Layer volume</span>
-                <input
-                  type="range"
-                  min={0}
-                  max={1.5}
-                  step={0.05}
-                  value={l.gain ?? 1}
-                  onChange={(e) => setLayerGain(l.id, Number(e.target.value))}
-                  onKeyDown={(e) => e.stopPropagation()}
-                />
-              </label>
-              <button
-                className="btn inst-layer-fx"
-                onClick={() => setLayerFx(l.id)}
-                title={
-                  `This layer plays with echo ${Math.round(l.fx.echo * 100)}, ` +
-                  `space ${Math.round(l.fx.space * 100)}, ` +
-                  `vibrato ${Math.round(l.fx.vibrato * 100)}. ` +
-                  'Click to give it the settings you have now.'
-                }
-              >
-                {fxWord(l.fx)}
-              </button>
+                <label className="inst-layer-vol" title="How loud this layer is">
+                  <span className="sr-only">Layer volume</span>
+                  <input
+                    type="range"
+                    min={0}
+                    max={1.5}
+                    step={0.05}
+                    value={l.gain ?? 1}
+                    onChange={(e) => setLayerGain(l.id, Number(e.target.value))}
+                    onKeyDown={(e) => e.stopPropagation()}
+                    disabled={theirs}
+                  />
+                </label>
+                <button
+                  className="btn inst-layer-fx"
+                  onClick={() => setLayerFx(l.id)}
+                  disabled={theirs}
+                  title={
+                    `This layer plays with echo ${Math.round(l.fx.echo * 100)}, ` +
+                    `space ${Math.round(l.fx.space * 100)}, ` +
+                    `vibrato ${Math.round(l.fx.vibrato * 100)}.` +
+                    (theirs ? ` ${why}.` : ' Click to give it the settings you have now.')
+                  }
+                >
+                  {fxWord(l.fx)}
+                </button>
 
-              {/* The third way to fix a take, after undo and re-voice: play it again over the
+                {/* The third way to fix a take, after undo and re-voice: play it again over the
                   top. The layer keeps its place in the stack rather than jumping to the end. */}
-              <button
-                className="btn"
-                onClick={() => armRecord(l.id)}
-                title="Record this layer again, keeping its place"
-              >
-                ⏺
-              </button>
-              <button className="btn" onClick={() => toggleMute(l.id)} title="Mute this layer">
-                {l.muted ? '🔇' : '🔊'}
-              </button>
-              <button className="btn" onClick={() => removeLayer(l.id)} title="Delete this layer">
-                ✕
-              </button>
-            </li>
-          ))}
+                <button
+                  className="btn"
+                  onClick={() => armRecord(l.id)}
+                  disabled={theirs}
+                  title={theirs ? why : 'Record this layer again, keeping its place'}
+                >
+                  ⏺
+                </button>
+                <button
+                  className="btn"
+                  onClick={() => toggleMute(l.id)}
+                  disabled={theirs}
+                  title={theirs ? why : 'Mute this layer'}
+                >
+                  {l.muted ? '🔇' : '🔊'}
+                </button>
+                <button
+                  className="btn"
+                  onClick={() => removeLayer(l.id)}
+                  disabled={theirs}
+                  title={theirs ? why : 'Delete this layer'}
+                >
+                  ✕
+                </button>
+              </li>
+            )
+          })}
           {/* Outside the row it belongs to: a grid this wide inside a flex row would either
               squash the row or overflow it, and it reads better as a panel under the stack
               anyway — the list stays a list. */}

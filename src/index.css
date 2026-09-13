@@ -2983,6 +2983,12 @@ section[id] {
   border: 1px solid var(--border);
   border-radius: 6px;
 }
+/* ⚠️ A row you can hear but not change. Dimming the whole row would say "broken"; this says
+   "not yours" — the part still plays at full volume, which is the point of it being here. */
+.inst-layers li.is-theirs > *:not(.inst-layer-name) {
+  opacity: 0.55;
+}
+
 /* whose take it is, on a layer that came from somebody else in the room */
 .inst-layer-who {
   margin-left: 0.4rem;
