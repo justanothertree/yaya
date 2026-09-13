@@ -446,6 +446,33 @@ function AudioHealthStrip() {
   }, [])
   if (!h) return null
   const bad = h.worst !== 'clean'
+  /**
+   * ⚠️ THREE STATES, NOT TWO, because "not clean" covers two very different things.
+   *
+   * Measuring stays on for everybody — a counter per audio quantum and one scan a second, and it
+   * is how the crackle was found rather than guessed at. What was wrong was SHOWING it always:
+   * "clean · late 0ms · clip 0 · squash 0dB · in 0 · out 0" and a reset button as the second
+   * thing in a room whose whole goal is that somebody who does not care about software can open
+   * it and work it out.
+   *
+   * But hiding everything except faults would undo a deliberate decision: LIMITING was made
+   * visible precisely because a limiter leaning on the mix is what produced a year of "it
+   * crackles" while the strip said everything was fine. So it still shows — in words, quietly.
+   *
+   * ⚠️ AND IT IS NOT A FAULT. Measured: one plain drum beat alone latches about -14dB of
+   * reduction, because a kick transient is exactly what a fast limiter grabs. Painting that red
+   * next to numbers nobody can act on would teach everybody to ignore the strip, which costs more
+   * than showing it ever bought. Clipping and dropouts keep the red technical readout; being
+   * leant on gets one sentence saying what to do about it.
+   */
+  if (!bad && !lab) return null
+  const onlyLoud = !lab && h.worst === 'LIMITING'
+  if (onlyLoud)
+    return (
+      <p className="muted inst-health-soft">
+        The mix is loud enough to be squashed — pull a layer&rsquo;s volume down if it sounds flat.
+      </p>
+    )
   return (
     <div className="inst-health" style={bad ? { color: '#f46b6b' } : undefined}>
       <div>
@@ -1580,7 +1607,7 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
       {beatsOpen && (
         <div className="inst-beats card">
           <p className="muted inst-beats-lede">
-            Drops in as an ordinary layer — change it, mute pieces, or open its notes.
+            Yours to change afterwards — mute a drum, move its bars, or open the notes.
           </p>
           {drumGenres().map((genre) => (
             <div key={genre} className="inst-beats-row">

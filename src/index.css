@@ -2987,6 +2987,12 @@ section[id] {
    works, dimming would say "you cannot touch this" about the one thing the room exists to let you
    touch. Whose part it is, is said by the name and nothing else. */
 
+/* the quiet half of the audio health strip — advice, not a readout */
+.inst-health-soft {
+  margin: 0.2rem 0 0.4rem;
+  font-size: 0.75rem;
+}
+
 /* ── the blank page: the two decisions that come before anything else ────────── */
 .inst-start {
   display: flex;

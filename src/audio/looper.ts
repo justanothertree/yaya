@@ -1365,13 +1365,36 @@ export function setLayersShared(on: boolean) {
  * can then be changed like any other layer. Dry-by-default would be a second rule about effects
  * that only applies to beats.
  */
+/**
+ * ⚠️ A BEAT COMES IN UNDER ONE, and this number was measured rather than chosen.
+ *
+ * The kit is balanced piece against piece, but a pattern plays several of them AT ONCE — kick and
+ * hat on the same sixteenth, snare across them — and those sum. At full gain a single plain rock
+ * beat read `in 1.249` and pulled 16.3dB out of the limiter on its own, and two patterns together
+ * clipped outright at 2.49. The first thing a beginner does in this room would have been to
+ * squash the mix flat before playing a note over it.
+ *
+ * It is also the right shape musically: a beat is the thing you play OVER, so it wants to sit
+ * under whatever comes next rather than arrive at the front. And because it is Layer.gain, the
+ * fader on the row is right there if you disagree.
+ */
+const BEAT_GAIN = 0.55
+
 export function addPatternLayer(events: LoopEvent[], len: number): string {
   if (layersFull()) return ''
   const id = `${Date.now()}-beat`
   set({
     layers: [
       ...state.layers,
-      { id, instrument: 'drums' as InstrumentId, events, muted: false, fx: fxSnapshot(), len },
+      {
+        id,
+        instrument: 'drums' as InstrumentId,
+        events,
+        muted: false,
+        fx: fxSnapshot(),
+        len,
+        gain: BEAT_GAIN,
+      },
     ],
   })
   return id

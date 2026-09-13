@@ -212,6 +212,27 @@ function allowed(peer: string): boolean {
   return true
 }
 
+/**
+ * Let go of somebody's parts — WITHOUT telling the room we deleted them.
+ *
+ * ⚠️ THIS ORDER IS THE WHOLE FUNCTION, and getting it wrong deleted other people's music.
+ *
+ * shareLayers works by diffing the layer list against what the room already knows, and anything
+ * that has disappeared is announced as a drop. That is right when you delete a part: everybody
+ * should lose it. It is catastrophically wrong when a layer disappears because its AUTHOR left,
+ * or because you did — the cleanup removes their takes from your list, the diff sees layers that
+ * have vanished, and it broadcasts "delete these" under the canonical ids, which every other
+ * machine faithfully obeys. Including theirs. Leaving a jam wiped everyone else's recordings.
+ *
+ * The two cases are indistinguishable to a diff, so the cleanup has to say which it is. Forgetting
+ * the ids first means the diff has nothing to report: not "these are gone", but "these were never
+ * ours to talk about".
+ */
+function forgetAndDrop(peer: string) {
+  for (const lid of [...sentLayers.keys()]) if (lid.startsWith(`${peer}:`)) sentLayers.delete(lid)
+  dropLayersFrom(peer)
+}
+
 function stopAllFor(peer: string) {
   for (const v of voices.get(peer) ?? []) noteOff(v)
   voices.delete(peer)
@@ -220,7 +241,7 @@ function stopAllFor(peer: string) {
      somebody leaves or the call drops, and a take nobody in the room can reach is a loop playing
      forever with no controls attached to it. Their notes stopping while their bassline kept
      going would be the strangest possible half-departure. */
-  dropLayersFrom(peer)
+  forgetAndDrop(peer)
   if (!state.players[peer]) return
   const next = { ...state.players }
   delete next[peer]
@@ -388,7 +409,7 @@ export const jam = {
          people's takes after leaving the room would be walking off with their work in an
          arrangement they can no longer change; leaving mine marked shared would mean the next jam
          played them to nobody, because the flag says the room already has them. */
-      for (const peer of Object.keys(state.players)) dropLayersFrom(peer)
+      for (const peer of Object.keys(state.players)) forgetAndDrop(peer)
       setLayersShared(false)
       sentLayers.clear()
       seenLayers = null
