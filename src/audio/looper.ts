@@ -1361,3 +1361,55 @@ export function addPatternLayer(events: LoopEvent[], len: number): string {
   })
   return id
 }
+
+/**
+ * Turn one drum take into one layer per piece.
+ *
+ * ⚠️ THE ANSWER TO "THEY ALL SHARE THE SAME ECHO", and it is deliberately not a new mechanism.
+ * A layer already owns its effects and its volume, and the kit is only stuck sharing them because
+ * a kit is usually played onto ONE layer. Splitting hands each piece the thing that already
+ * exists — its own bus, its own fx, its own fader, its own row in the arrangement — instead of
+ * inventing per-piece effects inside a layer, which would mean a second kind of effects, a second
+ * place in the file format, and a mixer nested inside a mixer.
+ *
+ * "Without getting out of hand" is the constraint you named, and this is where it bites: the cost
+ * is layer slots, and it is a cost you can SEE. A four-piece beat becomes four rows. Refused
+ * rather than truncated if they would not fit, because a split that silently dropped the hats
+ * would be worse than one that did not happen.
+ *
+ * ⚠️ EVERY PIECE KEEPS WHAT THE TAKE HAD — fx, gain, arrangement, length — so the moment after
+ * splitting sounds identical to the moment before. A split that changed the sound would be an
+ * edit pretending to be a reorganisation, and you would have to rebuild the mix to get back to
+ * where you already were.
+ */
+export function splitDrumLayer(id: string): number {
+  const at = state.layers.findIndex((l) => l.id === id)
+  if (at === -1) return 0
+  const l = state.layers[at]
+  if (l.instrument !== 'drums') return 0
+  const pieces = [...new Set(l.events.map((e) => ((e.midi % 12) + 12) % 12))].sort((a, b) => a - b)
+  if (pieces.length < 2) return 0
+  if (state.layers.length - 1 + pieces.length > 12) return 0
+  releaseLayer(id)
+  const made: Layer[] = pieces.map((p, i) => ({
+    ...l,
+    id: `${id}-${p}-${i}`,
+    events: l.events.filter((e) => ((e.midi % 12) + 12) % 12 === p),
+  }))
+  set({ layers: [...state.layers.slice(0, at), ...made, ...state.layers.slice(at + 1)] })
+  return made.length
+}
+
+/**
+ * Which drum piece a layer is, once it holds only one — for a row that can then say "Kick"
+ * instead of "3.".
+ *
+ * ⚠️ DERIVED, so it is right without being stored. It is true of a split layer, and equally true
+ * of a take where you only ever hit the snare, which is the same thing arrived at by playing
+ * rather than by pressing a button.
+ */
+export function soleDrumPiece(l: Layer): number | null {
+  if (l.instrument !== 'drums' || !l.events.length) return null
+  const first = ((l.events[0].midi % 12) + 12) % 12
+  return l.events.every((e) => ((e.midi % 12) + 12) % 12 === first) ? first : null
+}

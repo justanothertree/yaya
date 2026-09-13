@@ -13,6 +13,7 @@ import {
   type InstrumentId,
   type Knob,
   drumName,
+  DRUMS,
   outputTap,
 } from '../audio/synth'
 import {
@@ -101,6 +102,8 @@ import {
   clearLayerBars,
   addEmptyLayer,
   addPatternLayer,
+  splitDrumLayer,
+  soleDrumPiece,
   setBars,
   setBpm,
   setLayerInstrument,
@@ -1617,6 +1620,13 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
                   title={editing === l.id ? 'Hide these notes' : 'Show these notes'}
                 >
                   {i + 1}.
+                  {/* ⚠️ A kit layer holding one piece says which — derived, so it is equally
+                      true of a split row and of a take where you only ever hit the snare. After a
+                      split, "3." and "4." are indistinguishable, and mixing them against each
+                      other is the entire point of having split it. */}
+                  {soleDrumPiece(l) !== null && (
+                    <span className="inst-layer-piece"> {DRUMS[soleDrumPiece(l) as number]}</span>
+                  )}
                   <span className="muted"> {l.events.filter((e) => e.on).length} notes</span>
                   {/* ⚠️ WHOSE PART IT IS, when it is not yours. Layers from the room sit in the
                     same list and work the same way — that is the point of sharing them — but an
@@ -1797,6 +1807,18 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
                 >
                   ⏺
                 </button>
+                {/* ⚠️ Only on a kit take with more than one piece in it, because that is the
+                    only case where it does anything — see splitDrumLayer. */}
+                {l.instrument === 'drums' &&
+                  new Set(l.events.map((e) => ((e.midi % 12) + 12) % 12)).size > 1 && (
+                    <button
+                      className="btn"
+                      onClick={() => splitDrumLayer(l.id)}
+                      title="Give each drum its own row, so they stop sharing one volume and one set of effects"
+                    >
+                      ⇲
+                    </button>
+                  )}
                 <button className="btn" onClick={() => toggleMute(l.id)} title="Mute this layer">
                   {l.muted ? '🔇' : '🔊'}
                 </button>

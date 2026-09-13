@@ -3045,6 +3045,12 @@ section[id] {
   font-size: 0.78rem;
 }
 
+/* which drum a split row plays */
+.inst-layer-piece {
+  color: var(--accent);
+  font-weight: 600;
+}
+
 /* whose take it is, on a layer that came from somebody else in the room */
 .inst-layer-who {
   margin-left: 0.4rem;
