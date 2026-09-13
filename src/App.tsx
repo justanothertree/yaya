@@ -1,6 +1,8 @@
 import { Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { applyLook, registerLookApplier, type Look } from './ui/looks'
 import { lazyRetry } from './lazyRetry'
+import { VizFloat } from './audio/VizFloat'
+import { vizFloat, useVizFloating } from './audio/floatingViz'
 import { ErrorBoundary } from './ErrorBoundary'
 import { PresenceBeacon } from './components/PresenceBeacon'
 import type { ReactNode } from 'react'
@@ -287,6 +289,8 @@ export default function App() {
   const bumpScale = (d: number) =>
     setUiScale((s) => Math.min(SCALE_MAX, Math.max(SCALE_MIN, Math.round((s + d) * 100) / 100)))
   // Optional canvas mode (desktop): turn the current page into draggable/resizable windows.
+  /* one panel over the page, independent of canvas mode — see audio/floatingViz.ts */
+  const vizFloating = useVizFloating()
   const [desktop, setDesktop] = useState(
     () => typeof window !== 'undefined' && window.innerWidth >= 820,
   )
@@ -2112,32 +2116,36 @@ export default function App() {
                * ⚠️ Desktop only, because the canvas is. On a phone the instrument room has the
                * visualiser embedded in it instead, which is the same want answered differently.
                */}
-              {desktop && !canvasOpen && (
+              {!vizFloating && (
                 <p className="no-print viz-popout-row">
                   <button
                     className="btn btn-ghost"
-                    onClick={() => {
-                      setCanvasChoice(true)
-                      openAndFocus({
-                        id: 'visualizer',
-                        title: canvasTitleFor.visualizer ?? '🎚️ Visualiser',
-                        node: canvasNodeFor('visualizer'),
-                      })
-                    }}
-                    title="Keep it running in its own window while you move around the site"
+                    onClick={() => vizFloat.open()}
+                    title="Float it over the page, so it keeps playing wherever you go"
                   >
                     ⧉ Pop it out
                   </button>
                   <span className="muted viz-popout-hint">
-                    Keeps playing while you go and use the instrument.
+                    Floats over the page and keeps playing while you go and use the instrument.
                   </span>
                 </p>
               )}
-              {/* Its own boundary, like the game: a page-wide fallback would blank the rest of the
-                page while this chunk arrives. */}
-              <Suspense fallback={<div aria-busy>Loading…</div>}>
-                <AudioVisualizer />
-              </Suspense>
+              {/**
+               * ⚠️ NOT WHILE IT IS FLOATING. Two of these on one screen is two full render
+               * pipelines and two copies of the same controls writing the same settings — and the
+               * one you popped out is the one you asked for.
+               */}
+              {vizFloating ? (
+                <p className="muted viz-popout-row">
+                  It is floating over the page — close that window to bring it back here.
+                </p>
+              ) : (
+                /* Its own boundary, like the game: a page-wide fallback would blank the rest of
+                   the page while this chunk arrives. */
+                <Suspense fallback={<div aria-busy>Loading…</div>}>
+                  <AudioVisualizer />
+                </Suspense>
+              )}
             </section>
           )}
           {!sharedCanvasShowing && active === 'instrument' && (
@@ -2189,6 +2197,8 @@ export default function App() {
           clip: 'rect(1px,1px,1px,1px)',
         }}
       />
+      {/* above the router so it survives every tab change — that is the whole feature */}
+      <VizFloat />
       <footer
         className="container"
         style={{

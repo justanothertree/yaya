@@ -8977,6 +8977,101 @@ a.cz-msg-author:focus-visible {
 .hag-viz.is-lit > .hag-art {
   opacity: 0;
 }
+/* ── the visualiser, floating over whatever page you are on ─────────────
+   ⚠️ ABOVE THE NAV, BELOW THE DIALOGS. The nav sits under 10000 and modals start at 900000, so
+   this belongs between them: it must cover the page and the bars you are walking past, and it
+   must never cover a dialog that is asking you something. */
+.vizwin {
+  position: fixed;
+  z-index: 500000;
+  display: flex;
+  flex-direction: column;
+  min-width: 260px;
+  min-height: 200px;
+  border: 1px solid var(--border-strong, var(--border));
+  border-radius: 12px;
+  background: var(--panel, #14141f);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.55);
+  overflow: hidden;
+}
+.vizwin-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.35rem 0.4rem 0.35rem 0.7rem;
+  cursor: grab;
+  background: rgba(127, 127, 127, 0.14);
+  border-bottom: 1px solid var(--border);
+  /* ⚠️ or a finger drags the PAGE out from under the window instead of moving it */
+  touch-action: none;
+  user-select: none;
+}
+.vizwin-bar:active {
+  cursor: grabbing;
+}
+.vizwin-title {
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+.vizwin-x {
+  border: 0;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 0.95rem;
+  line-height: 1;
+  padding: 0.3rem 0.45rem;
+  border-radius: 6px;
+  min-width: 32px;
+  min-height: 32px;
+}
+.vizwin-x:hover {
+  color: var(--text);
+  background: rgba(127, 127, 127, 0.18);
+}
+.vizwin-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+  padding: 0.4rem;
+}
+.vizwin-wait {
+  padding: 1rem;
+  font-size: 0.85rem;
+}
+/* ⚠️ The visualiser sizes itself for a page where it is the only thing on screen. In here the
+   WINDOW decides, and the stage takes what is left after the title bar. */
+.vizwin-body .viz-wrap {
+  height: 100%;
+}
+.vizwin-body .viz-wrap .viz-stage,
+.vizwin-body .viz-wrap:not(.is-bare) .viz-stage,
+.vizwin-body .viz-wrap.is-bare .viz-stage {
+  height: auto;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.vizwin-grip {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 22px;
+  height: 22px;
+  cursor: nwse-resize;
+  touch-action: none;
+  background: linear-gradient(
+    135deg,
+    transparent 0 45%,
+    var(--border-strong, var(--border)) 45% 55%,
+    transparent 55% 70%,
+    var(--border-strong, var(--border)) 70% 80%,
+    transparent 80%
+  );
+}
+
 /* the one-press way to keep the visualiser running while you go and play something */
 .viz-popout-row {
   display: flex;

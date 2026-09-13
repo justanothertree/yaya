@@ -51,6 +51,7 @@ import { remember } from '../audio/capture'
 import { sharedCtx } from '../audio/context'
 import { InstrumentScope } from '../audio/InstrumentScope'
 import { lazyRetry } from '../lazyRetry'
+import { useVizFloating } from '../audio/floatingViz'
 
 /**
  * ⚠️ THE REAL VISUALISER, not a second one.
@@ -604,6 +605,9 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
    */
   /* remembered, because whether you want the kaleidoscope up while playing is a preference and
      not a per-visit decision */
+  /* if it is floating over the page, that IS the visualiser — a second one in here would be two
+     pipelines drawing the same sound, and the floating one is the one they asked for */
+  const vizFloating = useVizFloating()
   const [showViz, setShowViz] = useState(() => {
     try {
       return localStorage.getItem(SHOW_VIZ_KEY) !== '0'
@@ -825,13 +829,17 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
       <section className="inst-theatre">
         <div className="inst-theatre-head">
           <span className="inst-theatre-title">Visuals</span>
-          {inCanvas && (
-            <span className="muted inst-theatre-note">Open as its own window on the canvas.</span>
+          {(inCanvas || vizFloating) && (
+            <span className="muted inst-theatre-note">
+              {vizFloating
+                ? 'Floating over the page — drag it anywhere.'
+                : 'Open as its own window on the canvas.'}
+            </span>
           )}
           <button
             type="button"
             className="btn btn-ghost inst-theatre-toggle"
-            hidden={inCanvas}
+            hidden={inCanvas || vizFloating}
             aria-expanded={showViz}
             onClick={() => {
               setShowViz((v) => {
@@ -847,7 +855,7 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
             {showViz ? 'Hide' : 'Show'}
           </button>
         </div>
-        {showViz && !inCanvas && (
+        {showViz && !inCanvas && !vizFloating && (
           <div className="inst-theatre-stage">
             <Suspense fallback={<div className="muted inst-theatre-wait">Loading visuals…</div>}>
               <EmbeddedVisualizer />
