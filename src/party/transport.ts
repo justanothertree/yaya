@@ -17,11 +17,17 @@ import { loopOrigin, loopState, setTransport, subscribeLoop } from '../audio/loo
  * the whole of a metronome — a click at the origin plus a click every beat after it — so agreeing
  * on those four things is agreeing on the beat, and there is nothing else to send.
  *
- * ⚠️ RECORDED LAYERS ARE NOT SHARED, on purpose. Your loops stay yours; you hear each other's
- * because the notes are broadcast as they play (see jam.ts), not because anyone's arrangement is
- * being copied onto anyone else's machine. That keeps the thing a jam rather than a shared
- * document, and it means somebody muting a layer changes what the room hears without silently
- * editing a part you recorded.
+ * ⚠️ RECORDED LAYERS ARE SHARED NOW, AND THIS PARAGRAPH USED TO SAY THE OPPOSITE. It argued
+ * that your loops stay yours and you hear each other only because the notes are broadcast as they
+ * play — "a jam rather than a shared document". Left standing it would be the worst kind of
+ * comment: a confident explanation of a decision that has been reversed, in the file somebody
+ * reads FIRST to find out what is shared.
+ *
+ * What changed the answer was that a take is finished and unchanging, so streaming it costs a
+ * copy of the same notes every bar forever AND arrives late, while sending it once lets every
+ * machine play it from this transport — which is the thing that made it possible. The layers
+ * ride in jam.ts (see shareLayers); this file still owns only the beat they are played against,
+ * and that division is unchanged.
  *
  *
  * WHO IS IN CHARGE
