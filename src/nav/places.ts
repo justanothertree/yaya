@@ -75,18 +75,33 @@ export const PLACES = [
   { id: 'chat', label: 'Chat', icon: '💬', title: 'Chat', nav: member },
   { id: 'people', label: 'People', icon: '🧑‍🤝‍🧑', title: 'People', nav: member },
   {
+    id: 'investments',
+    label: 'Investments',
+    icon: '📈',
+    title: 'Investments',
+    /**
+     * ⚠️ SIGNED OUT SEES THE SAMPLE; SIGNED IN YOU NEED IT SWITCHED ON.
+     *
+     * Not `() => true`, and the difference matters. A member without canFinance has nothing
+     * behind this tab — the route already bounces them and the canvas pane says "Investments
+     * aren't enabled for your account" — so offering it to them is a door onto a wall. A visitor
+     * DOES have something behind it: Investments renders `demo`, which returns before any query
+     * runs and fills the page from DEMO_PORTFOLIO. Fabricated accounts, a "Sample data" banner,
+     * and not one network call — checked, because this is the room about family money and the
+     * cost of being wrong here is not a layout bug.
+     *
+     * ⚠️ It sits with the other rooms that are ABOUT people rather than after Sign in, which
+     * is an action rather than a place. Signed out the strip now reads Home, Circuit, Ratings,
+     * Investments, Sign in — rooms first, then what to do about them.
+     */
+    nav: (v) => (v.authed ? member(v) && v.canFinance : true),
+  },
+  {
     id: 'signin',
     label: 'Sign in',
     icon: '🔑',
     title: 'Sign in',
     nav: (v) => v.financeOn && !v.authed,
-  },
-  {
-    id: 'investments',
-    label: 'Investments',
-    icon: '📈',
-    title: 'Investments',
-    nav: (v) => member(v) && v.canFinance,
   },
   {
     id: 'account-settings',
