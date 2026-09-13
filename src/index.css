@@ -2626,6 +2626,33 @@ section[id] {
   opacity: 0.6;
   cursor: not-allowed;
 }
+/**
+ * ⚠️ `.is-on` WAS NEVER STYLED, AND THIRTY-THREE TOGGLES SAID IT.
+ *
+ * The visualiser's sway chips, Mirror and art styles; the instrument's Jam, Loop, Library and
+ * metronome; paint's select, frames, playback, symmetry and echo; the piano roll's note length;
+ * the profile block editor; the settings menu's status and theme; the call dock's roster,
+ * pointers and share — every one of them marks its state with `'btn' + is-on`, and `.is-on` is
+ * declared two dozen times in this file WITHOUT ONE OF THEM BEING `.btn.is-on`. Each use is
+ * scoped to its own component class, so the bare pairing matched nothing.
+ *
+ * Which means the markup was right the whole way through — aria-pressed is set, a screen reader
+ * announces the state correctly — and a sighted person had nothing at all. Every one of those
+ * buttons looked the same pressed as unpressed.
+ *
+ * ⚠️ A RING RATHER THAN A RECOLOUR, because `.btn` is already solid accent. Anything that
+ * changed the fill would have to be louder than a solid accent button to read as "more on", and
+ * a rule touching thirty-three buttons in seven rooms is the last place to start shouting. This
+ * only adds.
+ *
+ * ⚠️ currentColor, so it is correct without knowing anything about the button. A solid `.btn`
+ * sets `color: var(--btn-text)` and a `.btn-ghost` sets `color: var(--text)`, so the ring is a
+ * softened version of whatever that button's own text already contrasts against — right on both
+ * variants, in both themes, with no second palette to keep in step.
+ */
+.btn.is-on {
+  box-shadow: inset 0 0 0 2px color-mix(in oklab, currentColor, transparent 45%);
+}
 
 .snake-wrap {
   display: grid;
@@ -2864,10 +2891,18 @@ section[id] {
   grid-template-columns: repeat(auto-fit, minmax(min(11rem, 100%), 1fr));
   gap: 0.5rem 0.9rem;
 }
-.inst-knob /* ── saved visualiser looks ──────────────────────────────────────────────────
-   One row, above the tabs, because a look is the whole arrangement rather than one tab of it.
-   Wraps on a phone; the name field gives up its width first since the two selects have to stay
-   readable. */
+/* ── which dials sway ────────────────────────────────────────────────────────
+   ⚠️ THIS RULE NEVER APPLIED. An orphaned `.inst-knob` selector sat where its declaration
+   block used to be, and because the banner comment for the NEXT section fell between the two, that
+   selector quietly married itself to this one: the browser read `.inst-knob .viz-sway-keys`, a
+   descendant that exists nowhere. A selector list broken by a comment is invisible in review and
+   silent at runtime — nothing is misspelt, nothing errors, the rule simply never matches.
+
+   ⚠️ AND THE CHIPS HAD NO SELECTED STATE AT ALL. They are marked `.btn.is-on`, but `.is-on`
+   is never styled on its own anywhere in this file — every one of its two dozen uses is scoped to
+   its own component. So aria-pressed was true, a screen reader said so, and the chip looked
+   exactly like its neighbours: the one control on the panel where you could not see what you had
+   turned on. */
 .viz-sway-keys {
   display: inline-flex;
   gap: 0.25rem;
@@ -2877,6 +2912,27 @@ section[id] {
   padding: 1px 8px;
   font-size: 0.74rem;
 }
+/* ⚠️ No fill of its own: the shared `.btn.is-on` ring does that job now, and an "on" chip is
+   simply a normal solid `.btn` while an "off" one is a ghost — the site's existing pair for loud
+   and quiet, rather than a third look invented here. See the chips' className. */
+/* ⚠️ Colour is not the only signal. These chips are small and sit shoulder to shoulder, and a
+   tinted border beside an untinted one is exactly the pair that disappears for the ~8% of men who
+   cannot separate those hues. The dot says the same thing again in shape. */
+.viz-sway-keys .btn.is-on::before {
+  content: '●';
+  margin-right: 0.3em;
+  font-size: 0.7em;
+  vertical-align: 0.12em;
+  color: var(--accent);
+}
+.viz-sway-keys .btn:disabled {
+  opacity: 0.45;
+}
+
+/* ── saved visualiser looks ──────────────────────────────────────────────────
+   One row, above the tabs, because a look is the whole arrangement rather than one tab of it.
+   Wraps on a phone; the name field gives up its width first since the two selects have to stay
+   readable. */
 .viz-presets {
   display: flex;
   gap: 0.35rem;

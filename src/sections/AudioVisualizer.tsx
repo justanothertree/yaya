@@ -1,6 +1,7 @@
 import { useCallback, useContext, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import {
   TAPS,
+  hasTap,
   binCount,
   fftSize,
   liveTaps,
@@ -179,6 +180,33 @@ const TAB_IDS = VIZ_TABS.map(([id]) => id)
 const ALL = 'all' as const
 type SrcChoice = TapId | typeof ALL
 const TAP_IDS = [ALL, ...TAPS.map((t) => t.id)] as SrcChoice[]
+
+/**
+ * ⚠️ ONE MICROPHONE IN THE PICKER, BECAUSE THERE IS ONE MICROPHONE.
+ *
+ * The registry holds two mic taps and it is right to: 'mic' is the CALL's analyser and dies when
+ * the call does, 'local' is one this page opened and must survive somebody else hanging up. That
+ * is a lifetime distinction between two producers, and it belongs in the registry — not in front
+ * of a visitor, who met “Your mic”, “This mic” and a “Use my mic” button and had three controls
+ * for one microphone with nothing on screen saying which was which.
+ *
+ * So the picker offers one chip, under the id of the tap that can exist without this page asking
+ * for anything. It reads as live if EITHER tap is, pressing it opens a microphone when neither
+ * is, and the frame reads whichever one is actually there — see micTap.
+ */
+const PICK_TAPS = TAPS.filter((t) => t.id !== 'local').map((t) =>
+  t.id === 'mic' ? { ...t, label: 'My mic' } : t,
+)
+const isMic = (s: SrcChoice) => s === 'mic' || s === 'local'
+/**
+ * Which mic analyser to actually read. Prefers the one this page opened: it is the one that is
+ * still there after the call ends, so the picture does not go flat the moment somebody hangs up.
+ *
+ * ⚠️ Resolved per FRAME, not in the effect's deps. It is two Map lookups next to a full
+ * canvas repaint, and it cannot go stale — which a dependency on “is the mic live” could, in the
+ * gap between a call ending and React hearing about it.
+ */
+const micTap = (): TapId => (hasTap('local') ? 'local' : 'mic')
 
 /**
  * One output level.
@@ -1098,10 +1126,12 @@ export function AudioVisualizer() {
       // cheap: returns immediately unless the chosen drawing actually changed
       freshenSprite()
       const all = src === ALL
-      const bins = Math.min(spec.length, all ? binCountAll() : binCount(src))
-      const waveN = Math.min(wav.length, all ? fftSizeAll() : fftSize(src))
-      const gotSpec = all ? readSpectrumAll(spec, scratch) : readSpectrum(src, spec)
-      const gotWave = all ? readWaveformAll(wav, scratch) : readWaveform(src, wav)
+      // one chip in the picker, two possible analysers behind it — see micTap
+      const pick = isMic(src) ? micTap() : (src as TapId)
+      const bins = Math.min(spec.length, all ? binCountAll() : binCount(pick))
+      const waveN = Math.min(wav.length, all ? fftSizeAll() : fftSize(pick))
+      const gotSpec = all ? readSpectrumAll(spec, scratch) : readSpectrum(pick, spec)
+      const gotWave = all ? readWaveformAll(wav, scratch) : readWaveform(pick, wav)
       if (!gotSpec) spec.fill(0)
       if (!gotWave) wav.fill(128)
       if (gain !== 1 && gotSpec) {
@@ -1836,8 +1866,27 @@ export function AudioVisualizer() {
   // "All" is live whenever anything is; a single source is live only if it is
   goFullRef.current = goFull
 
-  const nothingOn = src === ALL ? liveSet.length === 0 : !liveSet.includes(src)
-  const srcLabel = src === ALL ? 'anything' : (TAPS.find((t) => t.id === src)?.label ?? src)
+  const micLive = liveSet.includes('mic') || liveSet.includes('local')
+  const nothingOn =
+    src === ALL ? liveSet.length === 0 : isMic(src) ? !micLive : !liveSet.includes(src)
+  const srcLabel = isMic(src)
+    ? 'your mic'
+    : src === ALL
+      ? 'anything'
+      : (TAPS.find((t) => t.id === src)?.label ?? src)
+
+  /**
+   * Turning the microphone on is now what PICKING it does, rather than a second button you had to
+   * find afterwards — so the chip and the empty state can both call this and mean the same thing.
+   */
+  const askForMic = async () => {
+    if (micBusy || micOn) return
+    setMicBusy(true)
+    const ok = await startLocalMic()
+    setMicBusy(false)
+    setMicOn(ok)
+    setMicDenied(!ok)
+  }
 
   return (
     /**
@@ -1981,8 +2030,10 @@ export function AudioVisualizer() {
             Nothing playing on <strong>{srcLabel}</strong> yet.
             {src === ALL
               ? ' Drop a track on this page, use your mic, or play the instrument.'
-              : src === 'local'
-                ? ' Turn the mic on below.'
+              : isMic(src)
+                ? micDenied
+                  ? ' The browser said no to the microphone.'
+                  : ' Press My mic again to turn it on.'
                 : src === 'ring'
                   ? ' Try the ringtone below.'
                   : src === 'music'
@@ -2186,18 +2237,33 @@ export function AudioVisualizer() {
                     All{liveSet.length > 1 ? ` (${liveSet.length})` : ''}
                   </span>
                 </button>
-                {TAPS.map((t) => {
-                  const on = liveSet.includes(t.id)
+                {PICK_TAPS.map((t) => {
+                  const mic = t.id === 'mic'
+                  const on = mic ? micLive : liveSet.includes(t.id)
+                  const chosen = mic ? isMic(src) : src === t.id
                   return (
                     <button
                       key={t.id}
-                      className={'fx-style-btn viz-src' + (src === t.id ? ' is-on' : '')}
-                      aria-pressed={src === t.id}
-                      onClick={() => setSrc(t.id)}
-                      title={on ? 'Live now' : 'Nothing playing'}
+                      className={'fx-style-btn viz-src' + (chosen ? ' is-on' : '')}
+                      aria-pressed={chosen}
+                      disabled={mic && micBusy}
+                      onClick={() => {
+                        setSrc(t.id)
+                        // picking the microphone is what turns the microphone on
+                        if (mic && !on) void askForMic()
+                      }}
+                      title={
+                        mic
+                          ? on
+                            ? 'Live now'
+                            : 'Turn your microphone on and watch it'
+                          : on
+                            ? 'Live now'
+                            : 'Nothing playing'
+                      }
                     >
                       <span className={'viz-dot' + (on ? ' is-live' : '')} aria-hidden />
-                      <span className="fx-style-label">{t.label}</span>
+                      <span className="fx-style-label">{mic && micBusy ? 'Asking…' : t.label}</span>
                     </button>
                   )
                 })}
@@ -2505,7 +2571,7 @@ export function AudioVisualizer() {
                   {SWAY_DIALS.map(([id, label]) => (
                     <button
                       key={id}
-                      className={'btn' + (swayOn.includes(id) ? ' is-on' : '')}
+                      className={'btn' + (swayOn.includes(id) ? ' is-on' : ' btn-ghost')}
                       aria-pressed={swayOn.includes(id)}
                       disabled={sway === 0}
                       title={`Let ${label} drift on its own`}
@@ -2725,7 +2791,7 @@ export function AudioVisualizer() {
                   {MIRRORS.map(([n, label]) => (
                     <button
                       key={n}
-                      className={'btn' + (mirror === n ? ' is-on' : '')}
+                      className={'btn' + (mirror === n ? ' is-on' : ' btn-ghost')}
                       aria-pressed={mirror === n}
                       data-active={mirror === n || undefined}
                       onClick={() => setMirror(n)}
@@ -2740,28 +2806,25 @@ export function AudioVisualizer() {
 
             {tab === 'sound' && (
               <div className="viz-row viz-row-wide">
-                <button
-                  className="btn"
-                  aria-pressed={micOn}
-                  disabled={micBusy}
-                  onClick={async () => {
-                    if (micOn) {
+                {/* ⚠️ ONLY WHILE IT IS ON. Turning the mic on is the My mic chip's job now, so
+                    what is left here are the two things you can only want once it IS on — and a
+                    row that is empty until then is a row nobody has to read. Stopping it stays a
+                    real button rather than a second press of the chip: this page is holding your
+                    microphone open, and the way to close it should not be something to discover. */}
+                {micOn && (
+                  <button
+                    className="btn"
+                    onClick={() => {
                       stopLocalMic()
                       setMicOn(false)
                       setHearing(false)
                       setMicDenied(false)
-                      return
-                    }
-                    setMicBusy(true)
-                    const ok = await startLocalMic()
-                    setMicBusy(false)
-                    setMicOn(ok)
-                    setMicDenied(!ok)
-                    if (ok) setSrc('local')
-                  }}
-                >
-                  {micOn ? '⏹ Stop mic' : micBusy ? 'Asking…' : '🎙 Use my mic'}
-                </button>
+                    }}
+                    title="Close the microphone this page opened"
+                  >
+                    ⏹ Stop mic
+                  </button>
+                )}
 
                 {micOn && (
                   <button
