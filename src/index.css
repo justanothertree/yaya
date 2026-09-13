@@ -3041,6 +3041,27 @@ section[id] {
   height: min(clamp(26rem, 78vh, 48rem), calc(100dvh - 245px));
 }
 /**
+ * ⚠️ AND ON THE VISUALISER PAGE THE PICTURE ENDS WHERE THE WINDOW DOES.
+ *
+ * Every height above is a share of the SCREEN, but the stage does not start at the top of the
+ * screen — it starts about 190px down it, under the nav, the card padding and the heading row. So
+ * 78vh reached the fold on a 900px screen and went well past it on a 768px laptop, and “see the
+ * whole visualiser” meant scrolling on the one page that is nothing but a picture. This is the
+ * honest second term: whatever is left of the window from where the stage actually begins.
+ *
+ * ⚠️ max-height, NOT another height. There are three height rules on this stage already
+ * (bare, with-panel, and with-panel-beside-it at 64rem); a fourth would have to beat all of them
+ * and be kept in step with all of them. A cap applies to whichever one wins.
+ *
+ * ⚠️ SCOPED TO #visualizer, because it is the only stage whose start is a known place on a
+ * page. The instrument room’s panel and the floating window are sized by their own boxes — they
+ * already override vh for exactly that reason — and a screen-relative cap would be as wrong
+ * there as the screen-relative heights were.
+ */
+#visualizer .viz-stage {
+  max-height: calc(100dvh - 200px);
+}
+/**
  * ⚠️ INSIDE A CANVAS WINDOW, vh IS THE WRONG UNIT.
  *
  * The stage asks for 62vh, which is a sensible share of the SCREEN and meaningless inside a
@@ -9118,16 +9139,38 @@ a.cz-msg-author:focus-visible {
   );
 }
 
-/* the one-press way to keep the visualiser running while you go and play something */
-.viz-popout-row {
+/* The visualiser page's heading row: the title, and the one-press way to keep the visualiser
+   running while you go and play something, on the same line as it.
+
+   ⚠️ THE HEADER IS IN FRONT OF THE PICTURE, so every line it takes is a line of the
+   thing the page exists to show. It was four stacked blocks — heading, blurb, button, and a
+   sentence about the button — which on a laptop pushed the visualiser under the fold. Two rows
+   now, and the sentence about the button lives in the button's tooltip. */
+.viz-head {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 0.6rem;
   flex-wrap: wrap;
+  margin: 0 0 0.3rem;
+}
+.viz-head h2 {
+  margin: 0;
+}
+.viz-lede,
+.viz-floating-note {
   margin: 0 0 0.7rem;
 }
-.viz-popout-hint {
-  font-size: 0.82rem;
+/* The same trade the instrument room makes on a phone held sideways (see the .inst-wrap rules):
+   on a 390px-tall screen the heading and the lede are ~100px of prose standing in front of the
+   one thing the page is, and the picture wins. */
+@media (orientation: landscape) and (max-height: 560px) {
+  .viz-head h2 {
+    font-size: 1.05rem;
+  }
+  .viz-lede {
+    display: none;
+  }
 }
 
 /* ── the scope, and the visualiser itself, in the room where you play ──────

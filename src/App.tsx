@@ -2095,48 +2095,51 @@ export default function App() {
           )}
           {!sharedCanvasShowing && active === 'visualizer' && (
             <section id="visualizer" className="card reveal">
-              <h2>🎚️ Visualiser</h2>
-              <p className="muted">
-                What the sound looks like. Watch your own mic, the ringtone, or everyone else while
-                you’re in a call — nothing is recorded or sent anywhere.
-              </p>
               {/**
-               * ⚠️ THE THING IT COULD ALREADY DO, SAID OUT LOUD.
+               * ⚠️ THE HEADING SHARES ITS ROW, because everything this page is for sits below it.
                *
-               * A canvas window keeps rendering while you move around the site — livePanes hands a
-               * pinned single-canvas pane a fresh node every render, and React updates props
-               * rather than remounting, so it keeps whatever state it had. So a visualiser that
-               * stays alive on the instrument page has been possible the whole time.
+               * A heading, a two-line blurb, a button, and a sentence explaining the button is
+               * four stacked blocks of prose in front of a picture — enough, on a laptop, to push
+               * the visualiser itself under the fold, so the first thing you did on the page
+               * about watching sound was scroll away from it. The button moves up beside the
+               * heading and keeps its explanation in its tooltip, which is where the explanation
+               * of a button belongs.
                *
-               * It just took knowing that the account menu hides a Canvas toggle, turning it on,
-               * and then finding this window in the launcher. Three steps, two of them
-               * undiscoverable — InstrumentScope's own header complained about exactly this. One
-               * press does all three from the page you are already looking at.
-               *
-               * ⚠️ Desktop only, because the canvas is. On a phone the instrument room has the
-               * visualiser embedded in it instead, which is the same want answered differently.
+               * ⚠️ IT SAYS OUT LOUD WHAT THE SITE COULD ALREADY DO. A canvas window keeps
+               * rendering while you move around — livePanes hands a pinned single-canvas pane a
+               * fresh node every render, and React updates props rather than remounting, so it
+               * keeps whatever state it had. A visualiser that stays alive on the instrument page
+               * has been possible the whole time. It just took knowing the account menu hides a
+               * Canvas toggle, turning it on, and then finding this window in the launcher: three
+               * steps, two of them undiscoverable — InstrumentScope's own header complained about
+               * exactly this. One press does all three from the page you are already looking at.
                */}
-              {!vizFloating && (
-                <p className="no-print viz-popout-row">
+              <div className="viz-head">
+                <h2>🎚️ Visualiser</h2>
+                {!vizFloating && (
                   <button
-                    className="btn btn-ghost"
+                    className="btn btn-ghost no-print"
                     onClick={() => vizFloat.open()}
-                    title="Float it over the page, so it keeps playing wherever you go"
+                    title="Float it over the page, so it keeps playing while you go and use the instrument"
                   >
                     ⧉ Pop it out
                   </button>
-                  <span className="muted viz-popout-hint">
-                    Floats over the page and keeps playing while you go and use the instrument.
-                  </span>
-                </p>
-              )}
+                )}
+              </div>
+              <p className="muted viz-lede">
+                What the sound looks like — your mic, the ringtone, or everyone in a call. Nothing
+                is recorded or sent anywhere.
+              </p>
               {/**
                * ⚠️ NOT WHILE IT IS FLOATING. Two of these on one screen is two full render
                * pipelines and two copies of the same controls writing the same settings — and the
                * one you popped out is the one you asked for.
+               *
+               * ⚠️ Its own class, not viz-lede: the lede is the first thing dropped on a short
+               * screen, and this line is the whole page while the window is out.
                */}
               {vizFloating ? (
-                <p className="muted viz-popout-row">
+                <p className="muted viz-floating-note">
                   It is floating over the page — close that window to bring it back here.
                 </p>
               ) : (
