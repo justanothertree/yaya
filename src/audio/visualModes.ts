@@ -126,6 +126,23 @@ export type Ink = {
    * 0 is exactly the old behaviour, for anyone who liked it.
    */
   lift: number
+  /**
+   * How far the whole ramp has been slid along, 0-1, so the colours MOVE.
+   *
+   * ⚠️ ONE NUMBER IN ONE PLACE REACHES EVERY MODE, which is the same reason the ramps
+   * themselves were worth more than another mode would be. Every visual asks for colour through
+   * hue() — "give me the colour for 0.7" — so sliding what 0.7 MEANS makes all twenty-odd of
+   * them morph at once, without a single mode knowing anything about it.
+   *
+   * ⚠️ REFLECTED AT THE ENDS, NOT WRAPPED, and that is not a detail. Only one ramp is cyclic
+   * — Spectrum starts and ends on red — so wrapping 1 back to 0 on any of the other twenty-six
+   * snaps from its bright end to its dark one, once per cycle, forever. Reflection turns the same
+   * slide into a breath: out to the bright end, back to the dark, continuous everywhere. It is the
+   * same trick the kaleidoscope fold uses, for the same reason.
+   *
+   * 0 is a ramp that does not move, which is what every visual did until now.
+   */
+  morph: number
 }
 
 /**
@@ -216,8 +233,13 @@ export const readLift = (): number => {
  * same file, one code path.
  */
 function hue(ink: Ink, t: number, alpha = 1): string {
+  let raw = Math.max(0, Math.min(1, t))
+  if (ink.morph) {
+    /* ping-pong, so a ramp that is not a loop has no seam to jump at — see Ink.morph */
+    const p = (((raw + ink.morph) % 2) + 2) % 2
+    raw = p > 1 ? 2 - p : p
+  }
   // the floor lift, one multiply-add: see Ink.lift for why the ramps need it
-  const raw = Math.max(0, Math.min(1, t))
   const k = ink.lift + raw * (1 - ink.lift)
   const c: RGB = ink.stops.length
     ? sample(ink.stops, k)

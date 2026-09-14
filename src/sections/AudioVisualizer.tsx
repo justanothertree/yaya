@@ -130,6 +130,7 @@ const ARTSTYLE_KEY = 'viz_artstyle_v1'
 const PUNCH_KEY = 'viz_punch_v1'
 const ECHO_KEY = 'viz_echo_v1'
 const STAMP_KEY = 'viz_stamp_v1'
+const MORPH_KEY = 'viz_morph_v1'
 const TRAIL_KEY = 'viz_trail_v1'
 
 const MIRRORS: Array<[number, string]> = [
@@ -401,6 +402,20 @@ export function AudioVisualizer() {
    * long it is held.
    */
   const [stamp, setStamp] = useState(() => storedNumber(STAMP_KEY, 0, 1) ?? 0)
+  /**
+   * Morph — how fast the whole ramp slides along, so the colours move.
+   *
+   * ⚠️ THE SOUND STILL PICKS THE POSITION; THIS MOVES WHAT THE POSITION MEANS. Loudness,
+   * depth and band all keep choosing a number between 0 and 1 exactly as they did — they are what
+   * makes a visual read as the music. Sliding the ramp underneath them changes the palette over
+   * time without touching that relationship, which is the difference between colours that morph
+   * and colours that have been overridden.
+   *
+   * ⚠️ ONE NUMBER, EVERY MODE. It ends up on Ink and is applied inside hue(), which is the
+   * single place all twenty-odd visuals ask for colour — so this is worth more than any one mode
+   * would be, for the same reason the ramps themselves were.
+   */
+  const [morph, setMorph] = useState(() => storedNumber(MORPH_KEY, 0, 1) ?? 0)
   const [tab, setTab] = useState<VizTab>(() => readStored(TAB_KEY, TAB_IDS, 'modes'))
   const [full, setFull] = useState(false)
 
@@ -443,6 +458,7 @@ export function AudioVisualizer() {
       punch,
       echo,
       stamp,
+      morph,
       sway,
       swayOn,
       /**
@@ -479,6 +495,7 @@ export function AudioVisualizer() {
       punch,
       echo,
       stamp,
+      morph,
       artStyle,
       sway,
       swayOn,
@@ -558,6 +575,10 @@ export function AudioVisualizer() {
     punch,
     echo,
     stamp,
+    morph,
+    morph,
+    morph,
+    morph,
     stamp,
     stamp,
     stamp,
@@ -607,6 +628,7 @@ export function AudioVisualizer() {
     punch,
     echo,
     stamp,
+    morph,
     artStyle,
     spin,
     anchor,
@@ -625,6 +647,7 @@ export function AudioVisualizer() {
     punch,
     echo,
     stamp,
+    morph,
     artStyle,
     spin,
     anchor,
@@ -681,6 +704,7 @@ export function AudioVisualizer() {
       localStorage.setItem(PUNCH_KEY, String(punch))
       localStorage.setItem(ECHO_KEY, String(echo))
       localStorage.setItem(STAMP_KEY, String(stamp))
+      localStorage.setItem(MORPH_KEY, String(morph))
       localStorage.setItem(TRAIL_KEY, String(trail))
       localStorage.setItem(PANEL_KEY, panel ? '1' : '0')
     } catch {
@@ -710,6 +734,8 @@ export function AudioVisualizer() {
     bright,
     punch,
     echo,
+    stamp,
+    morph,
     artId,
     artStyle,
     tab,
@@ -867,6 +893,8 @@ export function AudioVisualizer() {
     let swirl = 0
     /** how far the picture has turned so far, in radians */
     let spinA = 0
+    /* how far the ramp has slid; reflected at the ends inside hue() — see Ink.morph */
+    let morphAt = 0
     /** which way the current knock threw the picture, held for its whole decay */
     let shakeDir = 0
 
@@ -1121,6 +1149,7 @@ export function AudioVisualizer() {
         punch: pun,
         echo: ech,
         stamp: stmp,
+        morph: mrph,
         spin: spnRaw,
         anchor: anc,
         shake: shk,
@@ -1155,6 +1184,16 @@ export function AudioVisualizer() {
       const spl = swayAt('split', splRaw)
       // one assignment a frame, rather than rebuilding ink: the modes read it through hue()
       ink.lift = bri
+      /**
+       * ⚠️ ACCUMULATED FROM ELAPSED TIME, not from a frame count — the same rule the spin and
+       * the sway already follow. A dropped frame or a 120Hz screen would otherwise change how fast
+       * the colours move, which is the one thing a "speed" must not depend on.
+       *
+       * Squared, so the slider has somewhere slow to live: the bottom third is a drift you notice
+       * over a whole song, and the top is a wash that turns while you watch it.
+       */
+      morphAt += dt * mrph * mrph * 0.35
+      ink.morph = mrph > 0 ? morphAt : 0
       // cheap: returns immediately unless the chosen drawing actually changed
       freshenSprite()
       const all = src === ALL
@@ -2858,6 +2897,23 @@ export function AudioVisualizer() {
                   <span className="appearance-slider-val">
                     {ownsItsBuffer(mode) ? 'n/a' : Math.round(echo * 100)}
                   </span>
+                </label>
+                <label className="appearance-slider">
+                  <span
+                    className="muted"
+                    title="Slide the whole palette along, so the colours morph over time"
+                  >
+                    Morph
+                  </span>
+                  <input
+                    type="range"
+                    min={0}
+                    max={1}
+                    step={0.01}
+                    value={morph}
+                    onChange={(e) => setMorph(Number(e.target.value))}
+                  />
+                  <span className="appearance-slider-val">{Math.round(morph * 100)}</span>
                 </label>
                 <label className="appearance-slider">
                   <span
