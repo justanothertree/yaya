@@ -1695,6 +1695,9 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
                   onClick={() => setEditing((e) => (e === l.id ? null : l.id))}
                   title={editing === l.id ? 'Hide these notes' : 'Show these notes'}
                 >
+                  <span className="inst-layer-caret" aria-hidden>
+                    {editing === l.id ? '▾' : '▸'}
+                  </span>
                   {i + 1}.
                   {/* ⚠️ A kit layer holding one piece says which — derived, so it is equally
                       true of a split row and of a take where you only ever hit the snare. After a
@@ -1926,24 +1929,8 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
           {/* Outside the row it belongs to: a grid this wide inside a flex row would either
               squash the row or overflow it, and it reads better as a panel under the stack
               anyway — the list stays a list. */}
-          {editing &&
-            (() => {
-              const l = loop.layers.find((x) => x.id === editing)
-              if (!l) return null
-              return (
-                <li className="inst-roll-host">
-                  <PianoRoll
-                    layer={l}
-                    bpm={loop.bpm}
-                    quantize={loop.quantize}
-                    position={loop.position}
-                    loopLen={loopLength()}
-                    held={held}
-                    onClose={() => setEditing(null)}
-                  />
-                </li>
-              )
-            })()}
+          {/* ⚠️ The note editor used to be an <li> here, between the layers and everything
+              below them. See where it went. */}
           <li className="inst-layers-all">
             <button className="btn" onClick={clearLayers}>
               Clear all
@@ -2066,6 +2053,41 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
         Open the <strong>🎚️ Visualiser</strong> and pick <strong>Instrument</strong> as the source
         to watch yourself play — or set the Audio background and it follows you around the site.
       </p>
+
+      {/**
+       * The note editor — BELOW THE KEYBOARD, not inside the layer list.
+       *
+       * ⚠️ BECAUSE A PIANO ROLL IS FIVE HUNDRED PIXELS AND IT WAS OPENING ABOVE YOUR HANDS.
+       * As an <li> among the layers, every layer you opened pushed the knobs, the keys and
+       * everything else down the page by the height of a grid — you pressed one thing and the
+       * room moved. Reported as "opening or closing a layer shifts the entire page down".
+       *
+       * ⚠️ AND TWO SCROLL TRICKS FAILED BEFORE THIS. Pinning the pressed row and scrolling by
+       * however far it moved fixes nothing, because the row does NOT move — it is everything
+       * below that does — and it measured as a 498px correction for a shift of zero. Scrolling
+       * the editor into view instead pushed the row you had just pressed off the top, leaving a
+       * grid of notes with nothing naming it. Both were attempts to hide a layout problem with
+       * scrolling, and the layout was the thing to change: down here, opening a layer moves
+       * nothing at all. The page simply gets longer at the end.
+       */}
+      {editing &&
+        (() => {
+          const l = loop.layers.find((x) => x.id === editing)
+          if (!l) return null
+          return (
+            <div className="inst-roll-host">
+              <PianoRoll
+                layer={l}
+                bpm={loop.bpm}
+                quantize={loop.quantize}
+                position={loop.position}
+                loopLen={loopLength()}
+                held={held}
+                onClose={() => setEditing(null)}
+              />
+            </div>
+          )
+        })()}
     </section>
   )
 }

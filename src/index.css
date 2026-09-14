@@ -4533,20 +4533,33 @@ button.appearance-slider-val:not(:disabled):focus-visible {
   font-size: 0.74rem;
 }
 
-/* the layer name is the control that opens its notes */
+/* the layer name is the control that opens its notes
+   ⚠️ IT LOOKED LIKE A LABEL, and the border it had only appeared on HOVER — which does not
+   exist on a phone at all, and on a desktop means the one control that opens the note editor is
+   invisible until you happen to pass over it. Reported as "the layer itself that you have to
+   click to reveal the note editor is not obvious", and it is the most-used control in the room.
+   It rests with a visible edge and wears a caret now, so it reads as a thing that opens. */
 .inst-layer-name {
   appearance: none;
-  border: 1px solid transparent;
+  border: 1px solid var(--border);
   border-radius: 7px;
-  background: none;
+  background: var(--control-bg);
   color: inherit;
   font: inherit;
   text-align: left;
-  padding: 0.15rem 0.35rem;
+  padding: 0.15rem 0.4rem;
   cursor: pointer;
 }
 .inst-layer-name:hover {
-  border-color: var(--border);
+  border-color: var(--border-strong);
+}
+.inst-layer-caret {
+  display: inline-block;
+  width: 0.8em;
+  color: var(--muted);
+}
+.inst-layer-name.is-open .inst-layer-caret {
+  color: var(--accent);
 }
 .inst-layer-name.is-open {
   border-color: var(--accent, #7c6af7);
