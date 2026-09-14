@@ -2072,6 +2072,33 @@ export function AudioVisualizer() {
             onKeyDownCapture={() => party.following && party.stopFollowing()}
           >
             {/**
+             * ⚠️ A WAY OUT ON THE TRAY ITSELF, IN FULLSCREEN.
+             *
+             * The arrow that works this tray lives in the top corner, and the note beside it
+             * explains why: the tray is pinned across the BOTTOM in fullscreen, so an arrow down
+             * there would be underneath the thing it hides. That argument is sound, and it is
+             * only about the arrow that brings the tray BACK — which genuinely cannot live on a
+             * tray that is away. Dismissing it is the other half, and for that the far corner is
+             * just somewhere else to look, which is how it was reported.
+             *
+             * So: this one only closes, and only exists while the tray is open and fullscreen.
+             * The corner pair keeps its job of bringing things back, and neither control is ever
+             * hidden by what it controls.
+             */}
+            {full && (
+              <button
+                className="btn viz-icon viz-controls-shut"
+                onClick={() => {
+                  setDucked(false)
+                  setPanel(false)
+                }}
+                title="Hide the controls (H)"
+                aria-label="Hide the controls"
+              >
+                ⬇
+              </button>
+            )}
+            {/**
              * ⚠️ TABS, because the panel had grown to nine rows and a sixteen-tile grid.
              *
              * On a page that cost screen space; in fullscreen it was worse than that — the

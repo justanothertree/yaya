@@ -705,6 +705,8 @@ function paintOne(ctx: CanvasRenderingContext2D, s: Stroke, w: number, h: number
       ctx.lineJoin = 'miter'
       ctx.lineWidth = Math.max(1, s.w * short) * 2.2
       ctx.globalAlpha = s.a * 0.55
+      /* found by checking every case rather than by waiting to be told about this one too */
+      if (rainbow) ctx.strokeStyle = spanWheel()
       ctx.beginPath()
       ctx.moveTo(X(0), Y(1))
       if (s.p.length === 2) ctx.lineTo(X(0), Y(1) + 0.01)
@@ -780,6 +782,9 @@ function paintOne(ctx: CanvasRenderingContext2D, s: Stroke, w: number, h: number
       if (R < 0.5) break
       const rot = Math.atan2(ry, rx)
       const POINTS = 5
+      /* ⚠️ the last tool that was still painting flat red on rainbow. A star is drawn from its
+         CENTRE outward, so its bounding box is the circle it fits in rather than the drag. */
+      if (rainbow) ctx.strokeStyle = boxWheel(ctx, cx - R, cy - R, cx + R, cy + R, TURN)
       ctx.beginPath()
       for (let i = 0; i < POINTS * 2; i++) {
         const r = i % 2 === 0 ? R : R * 0.42

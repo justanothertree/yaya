@@ -3435,6 +3435,20 @@ section[id] {
   backdrop-filter: blur(14px);
   border-top: 1px solid var(--border-strong);
 }
+/* the tray's own way out — see the note in AudioVisualizer. Pinned to its top-right corner so it
+   sits on the tray rather than over the picture, and out of the way of the tabs on the left. */
+.viz-controls-shut {
+  position: absolute;
+  top: 0.3rem;
+  right: 0.4rem;
+  z-index: 3;
+  opacity: 0.75;
+}
+.viz-controls-shut:hover,
+.viz-controls-shut:focus-visible {
+  opacity: 1;
+}
+
 /* ⚠️ The controls are a TRAY you put away, not something that hides itself.
    They used to fade out after a few seconds of stillness, like a video player — but a
    visualiser is not a video: moving the mouse is half of what you are doing here, so the chrome
@@ -8461,6 +8475,25 @@ a.cz-msg-author:focus-visible {
     border: 0;
     width: 100%;
   }
+}
+/**
+ * ⚠️ AND THE SAME IN FULLSCREEN, FOR A DIFFERENT REASON. The tools are an overlay now, and an
+ * overlay has to scroll or its last row is unreachable — but a scroll container CLIPS anything
+ * absolutely positioned that reaches past its edge. So Effects opened and its symmetry and echo
+ * were cut off below the panel: the button worked, and nothing appeared. Reported as "the effects
+ * button doesn't reveal the symmetry echo".
+ *
+ * Opening inline is the answer the phone rule above already found, and it costs the panel a
+ * scroll rather than a popover nobody can see. The alternative is taking the clip off the panel,
+ * which trades this for tools that run off the bottom of the screen.
+ */
+.paint-wrap:fullscreen .paint-fold-pop,
+.paint-wrap.is-full .paint-fold-pop {
+  position: static;
+  box-shadow: none;
+  padding: 0.35rem 0;
+  border: 0;
+  width: 100%;
 }
 
 /* the governor saying so — see AudioVisualizer's renderQ */
