@@ -429,8 +429,31 @@ const MORPH_RAMPS: RGB[][] = PALETTES.filter((p) => p.stops.length > 1).map((p) 
   Array.from({ length: MORPH_STOPS }, (_, i) => sample(p.stops, i / (MORPH_STOPS - 1))),
 )
 
-/** Which palettes the tour visits, in order — for a UI that wants to name where it is. */
-export const morphNames: string[] = PALETTES.filter((p) => p.stops.length > 1).map((p) => p.label)
+/** Every palette the tour COULD visit, in order. */
+const MORPH_LIST = PALETTES.filter((p) => p.stops.length > 1)
+export const morphNames: string[] = MORPH_LIST.map((p) => p.label)
+/** Ids in the same order, so a chosen set can be turned into positions. */
+export const morphIds: string[] = MORPH_LIST.map((p) => p.id)
+
+/**
+ * The positions a tour visits, from a chosen set of ids.
+ *
+ * ⚠️ AN EMPTY CHOICE MEANS ALL OF THEM, not none. Nobody turns a tour on in order to watch
+ * nothing happen, and "I have not picked yet" and "I have picked nothing" are the same gesture
+ * from the outside — so the useful reading is the only one offered.
+ *
+ * ⚠️ AND ONE PALETTE IS NOT A TOUR EITHER. A single choice would crossfade a ramp with
+ * itself, which is a still picture with extra arithmetic; it holds on that palette instead, which
+ * is at least what was asked for.
+ */
+export function morphOrder(ids: string[]): number[] {
+  if (!ids.length) return MORPH_LIST.map((_, i) => i)
+  const out: number[] = []
+  MORPH_LIST.forEach((p, i) => {
+    if (ids.includes(p.id)) out.push(i)
+  })
+  return out.length ? out : MORPH_LIST.map((_, i) => i)
+}
 
 /** Where a palette sits in the tour, so morphing can START from the one you chose. */
 export function morphIndexOf(id: string): number {
@@ -446,13 +469,13 @@ export function morphIndexOf(id: string): number {
  * allocating eight arrays each time is exactly the per-frame garbage the rest of this file is
  * careful to avoid. The caller keeps one array and gets it back filled.
  */
-export function morphRamp(phase: number, into: RGB[]): RGB[] {
-  const n = MORPH_RAMPS.length
+export function morphRamp(phase: number, into: RGB[], order: number[]): RGB[] {
+  const n = order.length
   const base = ((Math.floor(phase) % n) + n) % n
   const next = (base + 1) % n
   const f = phase - Math.floor(phase)
-  const a = MORPH_RAMPS[base]
-  const b = MORPH_RAMPS[next]
+  const a = MORPH_RAMPS[order[base]]
+  const b = MORPH_RAMPS[order[next]]
   for (let i = 0; i < MORPH_STOPS; i++) {
     const s = into[i] ?? (into[i] = [0, 0, 0])
     s[0] = Math.round(a[i][0] + (b[i][0] - a[i][0]) * f)
@@ -464,9 +487,16 @@ export function morphRamp(phase: number, into: RGB[]): RGB[] {
 }
 
 /** Which palette is showing right now, for a label that says where the tour has got to. */
-export function morphLabel(phase: number): string {
-  const n = morphNames.length
+export function morphLabel(phase: number, order: number[]): string {
+  const n = order.length
   const base = ((Math.floor(phase) % n) + n) % n
   const f = phase - Math.floor(phase)
-  return f < 0.5 ? morphNames[base] : morphNames[(base + 1) % n]
+  return morphNames[order[f < 0.5 ? base : (base + 1) % n]]
+}
+
+/** Where a palette sits in a chosen tour, so it can still START from the one you have selected. */
+export function morphStart(id: string, order: number[]): number {
+  const at = morphIds.indexOf(id)
+  const k = order.indexOf(at)
+  return k < 0 ? 0 : k
 }

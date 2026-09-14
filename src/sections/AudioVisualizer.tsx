@@ -1,4 +1,12 @@
-import { useCallback, useContext, useEffect, useRef, useState, useSyncExternalStore } from 'react'
+import {
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from 'react'
 import {
   TAPS,
   hasTap,
@@ -27,7 +35,14 @@ import {
   type VisualId,
 } from '../audio/visualModes'
 import { makeFeatureReader } from '../audio/audioFeatures'
-import { PALETTES, morphIndexOf, morphLabel, morphRamp, type RGB } from '../audio/palettes'
+import {
+  PALETTES,
+  morphLabel,
+  morphOrder,
+  morphRamp,
+  morphStart,
+  type RGB,
+} from '../audio/palettes'
 import { readInk as readInkShared } from '../audio/ink'
 import { PATHS, pathPoint, type PathId } from '../audio/autoPath'
 import { deletePreset, readPresets, savePreset, type VizPreset } from '../audio/vizPresets'
@@ -131,6 +146,7 @@ const PUNCH_KEY = 'viz_punch_v1'
 const ECHO_KEY = 'viz_echo_v1'
 const STAMP_KEY = 'viz_stamp_v1'
 const MORPH_KEY = 'viz_morph_v1'
+const MORPH_PICK_KEY = 'viz_morph_pick_v1'
 const TRAIL_KEY = 'viz_trail_v1'
 
 const MIRRORS: Array<[number, string]> = [
@@ -429,6 +445,28 @@ export function AudioVisualizer() {
    * that changes every few seconds.
    */
   const [morphNow, setMorphNow] = useState('')
+  /**
+   * Which palettes the tour visits. Empty means all of them.
+   *
+   * ⚠️ THE SWATCHES DO THIS, rather than a second grid of twenty-seven of them. While Morph is
+   * off they pick your palette exactly as they always have; while it is on they pick who is IN the
+   * tour — one control with one meaning at a time, and the meaning is tied to something already
+   * visible on screen. A separate picker would have been the same twenty-seven buttons twice, and
+   * the copy nobody used would be the one that drifted.
+   */
+  const [morphPick, setMorphPick] = useState<string[]>(() => {
+    try {
+      const raw = JSON.parse(localStorage.getItem(MORPH_PICK_KEY) || '[]')
+      return Array.isArray(raw) ? raw.filter((v): v is string => typeof v === 'string') : []
+    } catch {
+      return []
+    }
+  })
+  /* the positions it walks, rebuilt only when the choice changes — the frame loop must not
+     filter a list of twenty-seven every frame to find out where it is */
+  const morphTour = useMemo(() => morphOrder(morphPick), [morphPick])
+  /* the swatches change job while the tour runs — one flag, read in three places */
+  const touring = morph > 0
   const [tab, setTab] = useState<VizTab>(() => readStored(TAB_KEY, TAB_IDS, 'modes'))
   const [full, setFull] = useState(false)
 
@@ -642,6 +680,7 @@ export function AudioVisualizer() {
     echo,
     stamp,
     morph,
+    morphTour,
     artStyle,
     spin,
     anchor,
@@ -661,6 +700,7 @@ export function AudioVisualizer() {
     echo,
     stamp,
     morph,
+    morphTour,
     artStyle,
     spin,
     anchor,
@@ -718,6 +758,7 @@ export function AudioVisualizer() {
       localStorage.setItem(ECHO_KEY, String(echo))
       localStorage.setItem(STAMP_KEY, String(stamp))
       localStorage.setItem(MORPH_KEY, String(morph))
+      localStorage.setItem(MORPH_PICK_KEY, JSON.stringify(morphPick))
       localStorage.setItem(TRAIL_KEY, String(trail))
       localStorage.setItem(PANEL_KEY, panel ? '1' : '0')
     } catch {
@@ -749,6 +790,7 @@ export function AudioVisualizer() {
     echo,
     stamp,
     morph,
+    morphPick,
     artId,
     artStyle,
     tab,
@@ -908,7 +950,6 @@ export function AudioVisualizer() {
     let spinA = 0
     /* how far along the tour of palettes, in palettes; the fraction is the crossfade */
     let morphAt = 0
-    const morphFrom = morphIndexOf(palette)
     /* one array, refilled each frame — see morphRamp on why it does not allocate */
     const morphBuf: RGB[] = []
     /* the last name announced, so the label is written once per palette rather than per frame */
@@ -1168,6 +1209,7 @@ export function AudioVisualizer() {
         echo: ech,
         stamp: stmp,
         morph: mrph,
+        morphTour: tour,
         spin: spnRaw,
         anchor: anc,
         shake: shk,
@@ -1225,8 +1267,12 @@ export function AudioVisualizer() {
        */
       if (mrph > 0) {
         morphAt += dt * mrph * mrph * 0.25
-        ink.stops = morphRamp(morphFrom + morphAt, morphBuf)
-        const name = morphLabel(morphFrom + morphAt)
+        /* ⚠️ the START is looked up per frame rather than fixed when the loop began, because
+           removing the palette you started on has to move the tour rather than leave it pointing
+           at a position that is no longer in the list */
+        const phase = morphStart(palette, tour) + morphAt
+        ink.stops = morphRamp(phase, morphBuf, tour)
+        const name = morphLabel(phase, tour)
         if (name !== morphShown) {
           morphShown = name
           setMorphNow(name)
@@ -2575,29 +2621,64 @@ export function AudioVisualizer() {
                 the hue before the shape. A ramp changes all of them at once. */}
             {tab === 'look' && (
               <div className="viz-row viz-row-wide">
-                <span className="muted viz-tool-label">Colour</span>
+                {/* ⚠️ THE LABEL SAYS WHICH JOB THESE ARE DOING. The swatches pick your palette
+                    normally and pick the tour's members while Morph is on — one control, one
+                    meaning at a time — so the row has to say which, or it is a grid that silently
+                    changed what it does. */}
+                <span className="muted viz-tool-label">{touring ? 'In the tour' : 'Colour'}</span>
                 <div className="viz-palettes">
-                  {PALETTES.map((p) => (
-                    <button
-                      key={p.id}
-                      className={'viz-swatch' + (palette === p.id ? ' is-on' : '')}
-                      aria-pressed={palette === p.id}
-                      onClick={() => setPalette(p.id)}
-                      title={p.label}
-                      style={
-                        p.stops.length
-                          ? {
-                              background: `linear-gradient(90deg, ${p.stops
-                                .map((c) => `rgb(${c[0]},${c[1]},${c[2]})`)
-                                .join(',')})`,
-                            }
-                          : // Theme has no colours of its own, so its swatch shows yours
-                            { background: 'linear-gradient(90deg, var(--accent), var(--accent-2))' }
-                      }
-                    >
-                      <span className="viz-swatch-label">{p.label}</span>
-                    </button>
-                  ))}
+                  {PALETTES.map((p) => {
+                    /* Theme has no colours of its own, so it cannot be blended with anything — it
+                       is simply not a stop on a tour. See MORPH_LIST. */
+                    const tourable = p.stops.length > 1
+                    const inTour = !morphPick.length || morphPick.includes(p.id)
+                    const on = touring ? tourable && inTour : palette === p.id
+                    return (
+                      <button
+                        key={p.id}
+                        className={'viz-swatch' + (on ? ' is-on' : '')}
+                        aria-pressed={on}
+                        disabled={touring && !tourable}
+                        onClick={() =>
+                          touring
+                            ? setMorphPick((prev) => {
+                                /* ⚠️ an empty list means ALL, so the first removal has to write the
+                                 list out in full rather than starting from nothing — otherwise
+                                 turning one off would turn every other one off with it */
+                                const base = prev.length
+                                  ? prev
+                                  : PALETTES.filter((q) => q.stops.length > 1).map((q) => q.id)
+                                return base.includes(p.id)
+                                  ? base.filter((q) => q !== p.id)
+                                  : [...base, p.id]
+                              })
+                            : setPalette(p.id)
+                        }
+                        title={
+                          touring
+                            ? tourable
+                              ? `${p.label} — ${inTour ? 'in the tour, press to drop it' : 'press to add it'}`
+                              : `${p.label} borrows your own colours, so it cannot be part of a tour`
+                            : p.label
+                        }
+                        style={
+                          p.stops.length
+                            ? {
+                                background: `linear-gradient(90deg, ${p.stops
+                                  .map((c) => `rgb(${c[0]},${c[1]},${c[2]})`)
+                                  .join(',')})`,
+                              }
+                            : // Theme has no colours of its own, so its swatch shows yours
+                              {
+                                background:
+                                  'linear-gradient(90deg, var(--accent), var(--accent-2))',
+                              }
+                        }
+                      >
+                        <span className="viz-swatch-label">{p.label}</span>
+                      </button>
+                    )
+                  })}
                 </div>
               </div>
             )}
