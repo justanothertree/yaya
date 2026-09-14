@@ -1380,9 +1380,44 @@ export function setLayersShared(on: boolean) {
  */
 const BEAT_GAIN = 0.55
 
-export function addPatternLayer(events: LoopEvent[], len: number): string {
+/**
+ * Is this layer one the beat picker put here? The id says so, and nothing else has to.
+ *
+ * ⚠️ DERIVED FROM THE ID rather than stored on the layer, because "came from the picker" must
+ * NOT survive the layer being saved, sent to a peer, or reopened from a file. A take that came
+ * back from a song is yours; only the one sitting in the picker's slot right now is the one the
+ * picker is allowed to replace.
+ */
+const BEAT_MARK = '-beat:'
+export const beatPatternOf = (l: Layer): string | null => {
+  const at = l.id.indexOf(BEAT_MARK)
+  return at === -1 ? null : l.id.slice(at + BEAT_MARK.length)
+}
+
+/**
+ * ⚠️ PICKING A BEAT SWAPS THE BEAT, it does not add one.
+ *
+ * The picker used to append, so choosing Funk to hear what it sounded like left Rock playing
+ * underneath it — two kits at once, which is both a mess and the thing that made two patterns
+ * clip. Reported as "it is easy to stack them, which I don't think anyone wants", and that is
+ * exactly right: the gesture is "what should the beat be", not "add another drummer".
+ *
+ * ⚠️ IT KEEPS ITS PLACE IN THE STACK, so the list does not jump while you audition four of
+ * them in a row — and it keeps the volume you set, because having to rebalance after every
+ * audition is how you stop auditioning.
+ */
+export function addPatternLayer(events: LoopEvent[], len: number, pattern = ''): string {
+  const at = state.layers.findIndex((l) => beatPatternOf(l) !== null)
+  const id = `${Date.now()}-beat:${pattern}`
+  if (at !== -1) {
+    const old = state.layers[at]
+    releaseLayer(old.id)
+    set({
+      layers: state.layers.map((l, i) => (i === at ? { ...l, id, events, len, muted: false } : l)),
+    })
+    return id
+  }
   if (layersFull()) return ''
-  const id = `${Date.now()}-beat`
   set({
     layers: [
       ...state.layers,

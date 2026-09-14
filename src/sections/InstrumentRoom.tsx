@@ -104,6 +104,7 @@ import {
   addPatternLayer,
   MAX_LAYERS,
   splitDrumLayer,
+  beatPatternOf,
   soleDrumPiece,
   setBars,
   setBpm,
@@ -1008,9 +1009,14 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
       <div className="inst-watch">
         <InstrumentScope />
       </div>
-      <section className="inst-theatre">
+      {/* ⚠️ HIDDEN MEANS HIDDEN, INCLUDING ITS OWN HEADING. Switching the visuals off still
+          left a full row reading "Visuals / ⧉ Pop out / Show" — three controls and a title
+          standing where the thing you just dismissed used to be. Turning something off should
+          give the space back, or the switch does not do what it says. Collapsed it is one small
+          button; the pop-out moves into the panel it belongs to, which is where it is useful. */}
+      <section className={'inst-theatre' + (visualsShown ? '' : ' is-shut')}>
         <div className="inst-theatre-head">
-          <span className="inst-theatre-title">Visuals</span>
+          {visualsShown && <span className="inst-theatre-title">Visuals</span>}
           {(inCanvas || vizFloating) && (
             <span className="muted inst-theatre-note">
               {vizFloating
@@ -1022,7 +1028,7 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
               it. Popping it out from here means it follows you off this page, which is the point
               of the floating panel — and having to walk to the Visualiser tab to get that is the
               same discovery problem the pop-out was built to end. */}
-          {!inCanvas && !vizFloating && (
+          {!inCanvas && !vizFloating && visualsShown && (
             <button
               type="button"
               className="btn btn-ghost inst-theatre-toggle"
@@ -1048,7 +1054,7 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
               })
             }}
           >
-            {showViz ? 'Hide' : 'Show'}
+            {showViz ? 'Hide' : '▸ Visuals'}
           </button>
         </div>
         {visualsShown && (
@@ -1619,7 +1625,8 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
       {beatsOpen && (
         <div className="inst-beats card">
           <p className="muted inst-beats-lede">
-            Yours to change afterwards — mute a drum, move its bars, or open the notes.
+            Picking one swaps the beat rather than adding a second — try a few. Yours to change
+            afterwards: mute a drum, move its bars, or open the notes.
           </p>
           {drumGenres().map((genre) => (
             <div key={genre} className="inst-beats-row">
@@ -1627,14 +1634,19 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
               {DRUM_PATTERNS.filter((p) => p.genre === genre).map((p) => (
                 <button
                   key={p.id}
-                  className="btn btn-ghost"
+                  className={
+                    'btn' + (loop.layers.some((l) => beatPatternOf(l) === p.id) ? '' : ' btn-ghost')
+                  }
+                  aria-pressed={loop.layers.some((l) => beatPatternOf(l) === p.id)}
                   onClick={() => {
                     const { events, len } = patternEvents(p, loop.bpm)
-                    if (!addPatternLayer(events, len)) return
-                    setBeatsOpen(false)
+                    if (!addPatternLayer(events, len, p.id)) return
                     if (!loop.playing) startLoop()
                   }}
-                  disabled={loop.layers.length >= MAX_LAYERS}
+                  disabled={
+                    loop.layers.length >= MAX_LAYERS &&
+                    !loop.layers.some((l) => beatPatternOf(l) !== null)
+                  }
                   title={`${p.name} — ${Object.keys(p.grid).join(', ')}`}
                 >
                   {p.name}

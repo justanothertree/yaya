@@ -2987,6 +2987,20 @@ section[id] {
    works, dimming would say "you cannot touch this" about the one thing the room exists to let you
    touch. Whose part it is, is said by the name and nothing else. */
 
+/* ⚠️ Switched off, it is one small button and nothing else — no band, no border, no heading
+   for a thing that is not there. See the note on the section. */
+.inst-theatre.is-shut {
+  margin: 0 0 0.4rem;
+  border: 0;
+  background: none;
+  padding: 0;
+}
+.inst-theatre.is-shut .inst-theatre-head {
+  padding: 0;
+  border: 0;
+  min-height: 0;
+}
+
 /* the quiet half of the audio health strip — advice, not a readout */
 .inst-health-soft {
   margin: 0.2rem 0 0.4rem;

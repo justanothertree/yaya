@@ -35,6 +35,13 @@ export type DrumPattern = {
 }
 
 /**
+ * ⚠️ AND THEY ARE SPARSER THAN THE FIRST ATTEMPT. Several were written at sixteenths on every
+ * voice — a hat on all sixteen, a closed hat under an open one, a cowbell on every beat — which
+ * measured fine and sounded like a wall. Reported as "overbearingly crowded", and it is the
+ * predictable failure of writing drums as grids: filling a row is easier than leaving it empty,
+ * and every hit you add is one somebody has to hear. A starting point has to leave room for the
+ * thing you are about to play over it, so where a pattern could be read at eighths it is.
+ *
  * ⚠️ EVERY GENRE EARNS ITS PLACE BY SOUNDING DIFFERENT, not by being named. Ten variations on a
  * backbeat with different labels is a longer list that helps nobody choose. These differ in the
  * thing that actually identifies them: where the kick falls against the snare, and what is
@@ -58,7 +65,7 @@ export const DRUM_PATTERNS: DrumPattern[] = [
     grid: {
       Kick: 'x...x...x...x...',
       Snare: '....x.......x...',
-      'Closed hat': 'xxxxxxxxxxxxxxxx',
+      'Closed hat': 'x.x.x.x.x.x.x.x.',
     },
   },
   {
@@ -112,7 +119,7 @@ export const DRUM_PATTERNS: DrumPattern[] = [
       Snare: '........x.......',
       /* ⚠️ the rolls are the genre. A trap pattern with even hats is just a slow backbeat —
          the doubled and tripled sixteenths are the thing anybody would name it by. */
-      'Closed hat': 'x.xxx.x.x.xxxx.x',
+      'Closed hat': 'x.x.x.xxx.x.x.x.',
     },
   },
   {
@@ -122,8 +129,9 @@ export const DRUM_PATTERNS: DrumPattern[] = [
     grid: {
       Kick: 'x...x...x...x...',
       Clap: '....x.......x...',
+      /* ⚠️ the OFFBEAT open hat is the genre, and it only reads as one if the downbeats are
+         left alone — the closed hat that used to fill them made sixteen hits of metal a bar */
       'Open hat': '..x...x...x...x.',
-      'Closed hat': 'x.x.x.x.x.x.x.x.',
     },
   },
   {
@@ -143,7 +151,7 @@ export const DRUM_PATTERNS: DrumPattern[] = [
     grid: {
       Kick: 'x..x..x...x..x..',
       Snare: '....x.......x...',
-      'Closed hat': 'xxx.xxx.xxx.xxx.',
+      'Closed hat': 'x.x.x.x.x.x.x.x.',
       Rim: '..x.......x.....',
     },
   },
@@ -198,8 +206,8 @@ export const DRUM_PATTERNS: DrumPattern[] = [
     grid: {
       Kick: 'x..x..x.x..x..x.',
       'Low tom': '....x.......x...',
-      'Closed hat': 'xxxxxxxxxxxxxxxx',
-      Cowbell: 'x...x...x...x...',
+      'Closed hat': 'x.x.x.x.x.x.x.x.',
+      Cowbell: 'x.......x.......',
     },
   },
   {

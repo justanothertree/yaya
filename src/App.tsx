@@ -503,8 +503,27 @@ export default function App() {
    * `customPalette` only says whether it's ON, so editing the colours while it's already on
    * changes nothing this effect can see. PalettePicker bumps the tick when it writes.
    */
+  /**
+   * ⚠️ NEVER ON THE FIRST RUN, AND THAT IS THE WHOLE OF THIS COMMENT.
+   *
+   * This mirrors your local choices up so your profile can wear them — but every one of those
+   * choices lives in localStorage, which is per BROWSER. Open the site on a new phone, a second
+   * laptop, or a private window, and the effect fired on mount with that machine's empty defaults
+   * and published them: six hundred milliseconds after signing in, the look on your profile was
+   * replaced by "dark, no palette, no flair, no backdrop", silently, having chosen nothing.
+   *
+   * The mount run carries no intention. Somebody arriving somewhere new has not expressed a
+   * preference; they have merely loaded a page. Only a CHANGE is a decision, so only a change
+   * publishes — which also means a plain reload on your usual machine stops writing a row that
+   * already said the same thing.
+   */
+  const lookMirrored = useRef(false)
   useEffect(() => {
     if (!isFinanceAuthed) return
+    if (!lookMirrored.current) {
+      lookMirrored.current = true
+      return
+    }
     const t = setTimeout(() => {
       void getSupabaseClient()
         .rpc('set_my_profile_look', {

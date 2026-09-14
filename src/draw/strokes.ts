@@ -426,11 +426,42 @@ function paintOne(ctx: CanvasRenderingContext2D, s: Stroke, w: number, h: number
    * speed of your hand would decide the colours. One turn per 1.2 short-sides of travel means a
    * stroke looks the same however it was drawn.
    */
+  const TURN = short * 1.2
   const paint = rainbow ? wheel(0) : erasing ? '#000000' : s.c
+  /**
+   * A rainbow across whatever this stroke covers — for the tools that are not drawn segment by
+   * segment.
+   *
+   * ⚠️ FIVE TOOLS WERE PAINTING FLAT RED ON RAINBOW, and the cause was the same in each: the
+   * colour is chosen once at the top as `wheel(0)`, and only the freehand default case ever
+   * replaces it per segment. Pencil, crayon, arrow and triangle never looked at `rainbow` at all,
+   * and a line technically did — but a line is two points, so "one hue per segment" is one hue.
+   *
+   * ⚠️ A GRADIENT, not per-segment, because that is what rect and ellipse already do (see
+   * boxWheel) and because several of these draw their path in batched passes that cannot carry a
+   * colour each. Same look, one helper, and nothing new to learn about which tools rainbow
+   * differently from which.
+   */
+  const spanWheel = () => {
+    let x0 = Infinity
+    let y0 = Infinity
+    let x1 = -Infinity
+    let y1 = -Infinity
+    for (let i = 0; i + 1 < s.p.length; i += 2) {
+      const x = X(i)
+      const y = Y(i + 1)
+      if (x < x0) x0 = x
+      if (y < y0) y0 = y
+      if (x > x1) x1 = x
+      if (y > y1) y1 = y
+    }
+    // a dot has no span to run a gradient along, and a zero-length one throws
+    if (!(x1 > x0 || y1 > y0)) return wheel(0)
+    return boxWheel(ctx, x0, y0, x1, y1, TURN)
+  }
   ctx.strokeStyle = paint
   ctx.fillStyle = paint
   if (erasing) ctx.globalCompositeOperation = 'destination-out'
-  const TURN = short * 1.2
 
   switch (s.t) {
     case 'fill':
@@ -704,6 +735,7 @@ function paintOne(ctx: CanvasRenderingContext2D, s: Stroke, w: number, h: number
     case 'pencil': {
       ctx.lineWidth = Math.max(0.4, s.w * short * 0.45)
       ctx.lineCap = 'round'
+      if (rainbow) ctx.strokeStyle = spanWheel()
       ctx.beginPath()
       for (let i = 0; i + 1 < s.p.length; i += 2) {
         const j = noise(i * 2.17) - 0.5
@@ -765,6 +797,7 @@ function paintOne(ctx: CanvasRenderingContext2D, s: Stroke, w: number, h: number
       const head = Math.min(len * 0.32, Math.max(6, s.w * short * 4))
       ctx.lineCap = 'round'
       ctx.lineJoin = 'round'
+      if (rainbow) ctx.strokeStyle = boxWheel(ctx, x0, y0, x1, y1, TURN)
       ctx.beginPath()
       ctx.moveTo(x0, y0)
       ctx.lineTo(x1, y1)
@@ -789,6 +822,7 @@ function paintOne(ctx: CanvasRenderingContext2D, s: Stroke, w: number, h: number
       const base = Math.max(1, s.w * short)
       ctx.lineCap = 'round'
       ctx.globalAlpha = s.a * 0.5
+      if (rainbow) ctx.strokeStyle = spanWheel()
       for (let pass = 0; pass < 3; pass++) {
         ctx.lineWidth = base * (0.9 - pass * 0.22)
         const ox = (noise(pass * 9.1) - 0.5) * base * 0.7
@@ -862,6 +896,7 @@ function paintOne(ctx: CanvasRenderingContext2D, s: Stroke, w: number, h: number
       const t = Math.min(y0, y1)
       const b = Math.max(y0, y1)
       ctx.lineJoin = 'round'
+      if (rainbow) ctx.strokeStyle = boxWheel(ctx, l, t, r, b, TURN)
       ctx.beginPath()
       ctx.moveTo((l + r) / 2, t)
       ctx.lineTo(r, b)
@@ -873,6 +908,18 @@ function paintOne(ctx: CanvasRenderingContext2D, s: Stroke, w: number, h: number
     default: {
       // brush, eraser and line are all a polyline; a line just happens to have two points
       if (rainbow) {
+        /* ⚠️ A LINE IS TWO POINTS, so "one hue per segment" is one hue for the whole thing —
+           which is why a rainbow line came out flat red while a rainbow brush stroke did not. Two
+           points get the gradient the shape tools use; anything longer keeps the per-segment walk,
+           which follows the path rather than its bounding box. */
+        if (s.p.length === 4) {
+          ctx.strokeStyle = boxWheel(ctx, X(0), Y(1), X(2), Y(3), TURN)
+          ctx.beginPath()
+          ctx.moveTo(X(0), Y(1))
+          ctx.lineTo(X(2), Y(3))
+          ctx.stroke()
+          break
+        }
         /* segment by segment, because one path can only carry one colour — and the joins do not
            show, since round caps at this width overlap by more than a segment's length */
         let travelled = 0
