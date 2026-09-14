@@ -7176,8 +7176,14 @@ a.cz-msg-author:focus-visible {
  * button. In fullscreen this is what turns the room into a picture; on the ordinary page it is
  * the same press for the same reason.
  */
-.paint-wrap.tools-hidden .paint-bar,
-.paint-wrap.tools-hidden .paint-row {
+/* the panel holding everything that is not the paper */
+.paint-tools-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  min-width: 0;
+}
+.paint-wrap.tools-hidden .paint-tools-panel {
   display: none;
 }
 /* with the tools gone there is room, so the paper takes it */
@@ -7188,14 +7194,9 @@ a.cz-msg-author:focus-visible {
   height: auto;
   width: min(100%, calc(clamp(18rem, 74vh, 52rem) * var(--paint-ar)));
 }
-@media (max-width: 40rem) {
-  .paint-wrap:fullscreen.tools-hidden .paint-board {
-    min-height: 84vh;
-  }
-  .paint-wrap:fullscreen.tools-hidden .paint-board.has-shape {
-    width: min(100%, calc(84vh * var(--paint-ar)));
-  }
-}
+/* ⚠️ The phone-only 84vh override that used to be here is gone: it existed to claw space back
+   from the controls, and in fullscreen the board now simply takes everything they are not using.
+   A second number competing with flex would only be able to make it smaller. */
 
 /**
  * ⚠️ PUSHED RIGHT ON A DESKTOP, PACKED LEFT ON A PHONE.
@@ -7298,18 +7299,82 @@ a.cz-msg-author:focus-visible {
   margin-inline: auto;
 }
 
-/* fullscreen: the picture takes the room that is left once the tools have had theirs */
-.paint-wrap:fullscreen {
+/**
+ * Fullscreen: the picture takes the screen, and the tools float over it.
+ *
+ * ⚠️ THE BOARD USED TO BE 74vh WITH THE TOOLS ALREADY HIDDEN, which left about a quarter of
+ * the screen empty below it — reported as "a lot of unused screen space at the bottom, about the
+ * size of the controls menu", which is exactly what it was: a gap the height of the panel, held
+ * open for a panel that was not there. A vh number cannot know whether the tools are showing. So
+ * the board stops guessing and takes what is actually left, which is what flex is for.
+ *
+ * ⚠️ AND THE TOOLS STOP COMPETING FOR THAT SPACE. In fullscreen they are lifted out of the
+ * flow and float over the picture, so revealing them costs you a view of part of the drawing for
+ * as long as you are using them rather than permanently shrinking the drawing. The row with the
+ * way back stays in the flow, because a control that can hide the control that un-hides it is a
+ * trap — and because its position must not jump when the panel above it stops taking room.
+ */
+.paint-wrap:fullscreen,
+.paint-wrap.is-full {
   padding: 0.6rem;
-  overflow: auto;
+  overflow: hidden;
   background: var(--bg);
+  position: relative;
+  height: 100%;
 }
-.paint-wrap:fullscreen .paint-board {
-  height: clamp(18rem, 74vh, 100vh);
-}
-.paint-wrap:fullscreen .paint-board.has-shape {
+/**
+ * ⚠️ A FLOOR ON THE BOARD, because the phone block below records `flex: 1 1 auto` with
+ * `min-height: 0` being measured at twenty-two pixels tall. That happened when rows of controls
+ * were in the flow competing for the same column — a premise the overlay above removes, since the
+ * only flow siblings left are the board and the one row that stays. The floor costs nothing when
+ * the premise holds and stops the same collapse if anything is ever put back in that column.
+ */
+.paint-wrap:fullscreen .paint-board,
+.paint-wrap.is-full .paint-board {
   height: auto;
-  width: min(100%, calc(clamp(18rem, 74vh, 100vh) * var(--paint-ar)));
+  flex: 1 1 auto;
+  min-height: 50vh;
+}
+.paint-wrap:fullscreen .paint-board.has-shape,
+.paint-wrap.is-full .paint-board.has-shape {
+  height: 100%;
+  width: auto;
+  flex: 1 1 auto;
+  min-height: 0;
+  aspect-ratio: var(--paint-ar);
+  margin-inline: auto;
+}
+/**
+ * ⚠️ AND THE PROSE GOES. Two paragraphs sit after the board — the "anyone in a call can draw
+ * with you" banner and the note under it — and in fullscreen they were still in the column,
+ * competing with the picture for the height and then being clipped off the bottom anyway. Neither
+ * is something you read while drawing, and the phone rules already dropped the first of them for
+ * exactly this reason; the desktop ones simply never did.
+ */
+.paint-wrap:fullscreen .also-together,
+.paint-wrap.is-full .also-together,
+.paint-wrap:fullscreen .paint-note,
+.paint-wrap.is-full .paint-note {
+  display: none;
+}
+.paint-wrap:fullscreen .paint-tools-panel,
+.paint-wrap.is-full .paint-tools-panel {
+  position: absolute;
+  top: 0.6rem;
+  left: 0.6rem;
+  right: 0.6rem;
+  z-index: 5;
+  /* ⚠️ Its own scroll, capped. On a short screen the full set of tools is taller than the
+     window, and an overlay that runs off the bottom is one whose last row cannot be reached. */
+  max-height: calc(100% - 1.2rem);
+  overflow: auto;
+  padding: 0.6rem;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  /* opaque enough to read a label against a drawing, which is the whole job */
+  background: color-mix(in oklab, var(--panel), transparent 8%);
+  backdrop-filter: blur(6px);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
 }
 
 /**
@@ -7328,15 +7393,19 @@ a.cz-msg-author:focus-visible {
  * column scroll instead, is what actually hands the space to the paper.
  */
 @media (max-width: 40rem) {
-  .paint-wrap:fullscreen {
+  .paint-wrap:fullscreen,
+  .paint-wrap.is-full {
     display: flex;
     flex-direction: column;
     gap: 0.3rem;
     height: 100vh;
     padding: 0.4rem;
-    overflow: auto;
+    /* ⚠️ no longer `auto`: the rows that used to make this column taller than the screen are
+       an overlay now, with a scroll of their own. Nothing here is off the bottom to scroll to. */
+    overflow: hidden;
   }
-  .paint-wrap:fullscreen .paint-board {
+  .paint-wrap:fullscreen .paint-board,
+  .paint-wrap.is-full .paint-board {
     flex: 1 0 auto;
     min-height: 62vh;
     height: auto;
@@ -7352,7 +7421,8 @@ a.cz-msg-author:focus-visible {
    * it matters most. Keeping aspect-ratio is what lets the height follow when the width runs out
    * of room — which on a phone is nearly always.
    */
-  .paint-wrap:fullscreen .paint-board.has-shape {
+  .paint-wrap:fullscreen .paint-board.has-shape,
+  .paint-wrap.is-full .paint-board.has-shape {
     flex: 0 0 auto;
     align-self: center;
     min-height: 0;
@@ -7363,11 +7433,15 @@ a.cz-msg-author:focus-visible {
   /* the tools keep their size and share one scrolling strip */
   .paint-wrap:fullscreen .paint-bar,
   .paint-wrap:fullscreen .paint-row,
-  .paint-wrap:fullscreen .paint-shape-row {
+  .paint-wrap:fullscreen .paint-shape-row,
+  .paint-wrap.is-full .paint-bar,
+  .paint-wrap.is-full .paint-row,
+  .paint-wrap.is-full .paint-shape-row {
     flex: 0 0 auto;
   }
   /* not drawing, and it is the tallest thing on the page */
-  .paint-wrap:fullscreen .also-together {
+  .paint-wrap:fullscreen .also-together,
+  .paint-wrap.is-full .also-together {
     display: none;
   }
 }

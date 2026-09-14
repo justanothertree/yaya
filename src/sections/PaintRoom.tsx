@@ -383,8 +383,21 @@ export function PaintRoom() {
    * Leaving puts them back, so the ordinary page is never mysteriously bare — and the button is
    * still there in both states, so this is a starting position rather than a rule.
    */
+  /**
+   * ⚠️ AND A CLASS BESIDE THE PSEUDO-CLASS. The fullscreen layout is styled off `:fullscreen`,
+   * which is correct and which nothing outside a real fullscreen session can produce — including
+   * every way of checking the layout short of a person pressing the button and looking. A class
+   * carrying the same fact makes the rules reachable, which is the difference between a layout
+   * that was tested and one that was reasoned about. It is set from the same event, so the two
+   * can never disagree about whether we are fullscreen.
+   */
+  const [isFull, setIsFull] = useState(false)
   useEffect(() => {
-    const onFull = () => setToolsHidden(!!document.fullscreenElement)
+    const onFull = () => {
+      const on = !!document.fullscreenElement
+      setToolsHidden(on)
+      setIsFull(on)
+    }
     document.addEventListener('fullscreenchange', onFull)
     return () => document.removeEventListener('fullscreenchange', onFull)
   }, [])
@@ -1437,7 +1450,10 @@ export function PaintRoom() {
        window, so dragging the bottom edge made it wider and never taller. */
     <section
       className={
-        'paint-wrap' + (inWindow ? ' is-inwindow' : '') + (toolsHidden ? ' tools-hidden' : '')
+        'paint-wrap' +
+        (inWindow ? ' is-inwindow' : '') +
+        (toolsHidden ? ' tools-hidden' : '') +
+        (isFull ? ' is-full' : '')
       }
       ref={wrap}
     >
@@ -1452,525 +1468,534 @@ export function PaintRoom() {
        * ⚠️ One list, shown or hidden by a media query, rather than two renderings of it. Two
        * would drift, and the second copy would be the one nobody tested.
        */}
-      <div className="paint-bar">
-        <button
-          className="btn paint-tool-open"
-          aria-expanded={toolsOpen}
-          onClick={() => setToolsOpen((v) => !v)}
-          title="Choose a brush"
-        >
-          <span aria-hidden>{TOOLS.find(([id]) => id === tool)?.[1]}</span>
-          {TOOLS.find(([id]) => id === tool)?.[2] ?? 'Brush'}
-          <span aria-hidden>{toolsOpen ? '▴' : '▾'}</span>
-        </button>
-        <div className={'fx-style-row paint-tools' + (toolsOpen ? ' is-open' : '')}>
-          {/* ⚠️ Retired ones are hidden here rather than deleted from TOOLS — the packed format
+      {/**
+       * Everything that is not the paper, as ONE panel.
+       *
+       * ⚠️ IT WAS TWO SIBLINGS, and that is why fullscreen could not do anything better with
+       * them than take a slice of the picture. Two rows in the column flow can be hidden, but they
+       * cannot be lifted OVER the drawing without overlapping each other — so wrapping them is
+       * what makes the overlay below possible at all, and it costs one element.
+       */}
+      <div className="paint-tools-panel">
+        <div className="paint-bar">
+          <button
+            className="btn paint-tool-open"
+            aria-expanded={toolsOpen}
+            onClick={() => setToolsOpen((v) => !v)}
+            title="Choose a brush"
+          >
+            <span aria-hidden>{TOOLS.find(([id]) => id === tool)?.[1]}</span>
+            {TOOLS.find(([id]) => id === tool)?.[2] ?? 'Brush'}
+            <span aria-hidden>{toolsOpen ? '▴' : '▾'}</span>
+          </button>
+          <div className={'fx-style-row paint-tools' + (toolsOpen ? ' is-open' : '')}>
+            {/* ⚠️ Retired ones are hidden here rather than deleted from TOOLS — the packed format
               stores a tool as an index into that list, so removing one repaints every saved
               drawing. See RETIRED_TOOLS. */}
-          {TOOLS.filter(([id]) => !RETIRED_TOOLS.has(id)).map(([id, icon, label]) => (
-            <button
-              key={id}
-              className={'fx-style-btn' + (tool === id ? ' is-on' : '')}
-              aria-pressed={tool === id}
-              onClick={() => {
-                setTool(id)
-                /**
-                 * ⚠️ CHOOSING A BRUSH LEAVES THE SELECTION TOOL, which is how every paint
-                 * program behaves and what was missing here. Selecting stayed on until you went
-                 * back and switched it off by hand, so finishing with a selection and wanting to
-                 * draw meant hunting for the ⬚ again — reported as jarring, and it is: reaching
-                 * for a brush IS saying you are done selecting.
-                 */
-                setSelecting(false)
-                drop()
-                /* closes on a phone, where it is a menu; harmless on a desktop, where the row
+            {TOOLS.filter(([id]) => !RETIRED_TOOLS.has(id)).map(([id, icon, label]) => (
+              <button
+                key={id}
+                className={'fx-style-btn' + (tool === id ? ' is-on' : '')}
+                aria-pressed={tool === id}
+                onClick={() => {
+                  setTool(id)
+                  /**
+                   * ⚠️ CHOOSING A BRUSH LEAVES THE SELECTION TOOL, which is how every paint
+                   * program behaves and what was missing here. Selecting stayed on until you went
+                   * back and switched it off by hand, so finishing with a selection and wanting to
+                   * draw meant hunting for the ⬚ again — reported as jarring, and it is: reaching
+                   * for a brush IS saying you are done selecting.
+                   */
+                  setSelecting(false)
+                  drop()
+                  /* closes on a phone, where it is a menu; harmless on a desktop, where the row
                    is always open and this flag is not read */
-                setToolsOpen(false)
-              }}
-            >
-              <span aria-hidden>{icon}</span>
-              <span className="fx-style-label">{label}</span>
-            </button>
-          ))}
+                  setToolsOpen(false)
+                }}
+              >
+                <span aria-hidden>{icon}</span>
+                <span className="fx-style-label">{label}</span>
+              </button>
+            ))}
+          </div>
         </div>
-      </div>
 
-      <div className="paint-row paint-select">
-        <button
-          className={'btn' + (selecting ? ' is-on' : '')}
-          aria-pressed={selecting}
-          onClick={() => {
-            setSelecting((v) => !v)
-            drop()
-          }}
-          title="Drag a box round some strokes, then move, copy or cut them"
-        >
-          ⬚ Select
-        </button>
-        {selecting && (
-          <>
-            <button className="btn" onClick={selectAll} title="Select everything you can see">
-              All
-            </button>
-            <span className="muted paint-select-count">
-              {sel.length ? `${sel.length} picked` : 'drag a box'}
-            </span>
-            <button className="btn" onClick={copy} disabled={!sel.length} title="Copy (Ctrl+C)">
-              Copy
-            </button>
-            <button className="btn" onClick={cut} disabled={!sel.length} title="Cut (Ctrl+X)">
-              Cut
-            </button>
-            {/* ⚠️ paste lands on the layer and frame you are on now — see paste() */}
-            <button
-              className="btn"
-              onClick={paste}
-              disabled={!clip.length}
-              title={
-                frame === null
-                  ? 'Paste (Ctrl+V)'
-                  : 'Paste onto this frame (Ctrl+V) — the way to build the next pose'
-              }
-            >
-              Paste{clip.length ? ` · ${clip.length}` : ''}
-            </button>
-            <button
-              className="btn"
-              onClick={erase}
-              disabled={!sel.length}
-              title="Delete the selection"
-            >
-              ✕
-            </button>
-          </>
-        )}
-        {/* ⚠️ ONE ROW WITH THE LAYERS, not a row of its own. Selecting had a line to itself
+        <div className="paint-row paint-select">
+          <button
+            className={'btn' + (selecting ? ' is-on' : '')}
+            aria-pressed={selecting}
+            onClick={() => {
+              setSelecting((v) => !v)
+              drop()
+            }}
+            title="Drag a box round some strokes, then move, copy or cut them"
+          >
+            ⬚ Select
+          </button>
+          {selecting && (
+            <>
+              <button className="btn" onClick={selectAll} title="Select everything you can see">
+                All
+              </button>
+              <span className="muted paint-select-count">
+                {sel.length ? `${sel.length} picked` : 'drag a box'}
+              </span>
+              <button className="btn" onClick={copy} disabled={!sel.length} title="Copy (Ctrl+C)">
+                Copy
+              </button>
+              <button className="btn" onClick={cut} disabled={!sel.length} title="Cut (Ctrl+X)">
+                Cut
+              </button>
+              {/* ⚠️ paste lands on the layer and frame you are on now — see paste() */}
+              <button
+                className="btn"
+                onClick={paste}
+                disabled={!clip.length}
+                title={
+                  frame === null
+                    ? 'Paste (Ctrl+V)'
+                    : 'Paste onto this frame (Ctrl+V) — the way to build the next pose'
+                }
+              >
+                Paste{clip.length ? ` · ${clip.length}` : ''}
+              </button>
+              <button
+                className="btn"
+                onClick={erase}
+                disabled={!sel.length}
+                title="Delete the selection"
+              >
+                ✕
+              </button>
+            </>
+          )}
+          {/* ⚠️ ONE ROW WITH THE LAYERS, not a row of its own. Selecting had a line to itself
             holding a single button most of the time, and the layers line beside it was nearly as
             empty — two thirty-nine pixel rows for about a hundred and fifty pixels of controls,
             paid for by the picture. They also belong together: both are about WHICH strokes you
             are working on rather than how the next one will look. */}
-        <span className="paint-row-divide" aria-hidden />
-        <span className="muted paint-stack-label">Layers</span>
-        {Array.from({ length: layers }, (_, i) => layers - 1 - i).map((i) => (
-          <span key={i} className={'paint-layer' + (layer === i ? ' is-on' : '')}>
-            <button
-              className="paint-layer-pick"
-              aria-pressed={layer === i}
-              onClick={() => setLayer(i)}
-              title={`Draw on ${nameOf(i)}`}
-            >
-              {nameOf(i)}
-            </button>
-            <button
-              className="paint-layer-eye"
-              aria-pressed={!hidden.includes(i)}
-              onClick={() => runLayerOp({ k: 'hide', i, on: !hidden.includes(i) }, true)}
-              title={hidden.includes(i) ? 'Show this layer' : 'Hide this layer'}
-            >
-              {hidden.includes(i) ? '🚫' : '👁'}
-            </button>
-            {/* ⚠️ ONLY WHILE ANIMATING, because off an animation it would be a switch with no
-                observable effect — every stroke shows on the one picture either way. */}
-            {frame !== null && (
+          <span className="paint-row-divide" aria-hidden />
+          <span className="muted paint-stack-label">Layers</span>
+          {Array.from({ length: layers }, (_, i) => layers - 1 - i).map((i) => (
+            <span key={i} className={'paint-layer' + (layer === i ? ' is-on' : '')}>
               <button
-                className={'paint-layer-eye paint-layer-hold' + (layerHolds(i) ? ' is-on' : '')}
-                aria-pressed={layerHolds(i)}
-                onClick={() => holdLayer(i, !layerHolds(i))}
-                disabled={!strokes.some((k) => (k.l ?? 0) === i)}
-                title={
-                  !strokes.some((k) => (k.l ?? 0) === i)
-                    ? 'Draw something on this layer first'
-                    : layerHolds(i)
-                      ? `${nameOf(i)} is in every frame — put it back on this one only`
-                      : `Keep ${nameOf(i)} in every frame, so you never redraw it`
-                }
+                className="paint-layer-pick"
+                aria-pressed={layer === i}
+                onClick={() => setLayer(i)}
+                title={`Draw on ${nameOf(i)}`}
               >
-                {/* ⚠️ ONE GLYPH, LIT OR NOT. It was ↻ against →, and → does not say "only on
+                {nameOf(i)}
+              </button>
+              <button
+                className="paint-layer-eye"
+                aria-pressed={!hidden.includes(i)}
+                onClick={() => runLayerOp({ k: 'hide', i, on: !hidden.includes(i) }, true)}
+                title={hidden.includes(i) ? 'Show this layer' : 'Hide this layer'}
+              >
+                {hidden.includes(i) ? '🚫' : '👁'}
+              </button>
+              {/* ⚠️ ONLY WHILE ANIMATING, because off an animation it would be a switch with no
+                observable effect — every stroke shows on the one picture either way. */}
+              {frame !== null && (
+                <button
+                  className={'paint-layer-eye paint-layer-hold' + (layerHolds(i) ? ' is-on' : '')}
+                  aria-pressed={layerHolds(i)}
+                  onClick={() => holdLayer(i, !layerHolds(i))}
+                  disabled={!strokes.some((k) => (k.l ?? 0) === i)}
+                  title={
+                    !strokes.some((k) => (k.l ?? 0) === i)
+                      ? 'Draw something on this layer first'
+                      : layerHolds(i)
+                        ? `${nameOf(i)} is in every frame — put it back on this one only`
+                        : `Keep ${nameOf(i)} in every frame, so you never redraw it`
+                  }
+                >
+                  {/* ⚠️ ONE GLYPH, LIT OR NOT. It was ↻ against →, and → does not say "only on
                     this frame" to anybody — it is a second symbol to learn for the state that is
                     simply the absence of the first. Lit or unlit is the same pattern every other
                     toggle in the room uses. */}
-                ↻
-              </button>
-            )}
-            {/* ⚠️ Up means further FORWARD in the picture, which is up this list too — the rows
+                  ↻
+                </button>
+              )}
+              {/* ⚠️ Up means further FORWARD in the picture, which is up this list too — the rows
                 are drawn highest first, so the arrows point the way the layer actually moves. */}
-            <button
-              className="paint-layer-move"
-              onClick={() => moveLayer(i, 1)}
-              disabled={i >= layers - 1}
-              title={`Move ${nameOf(i)} in front`}
-              aria-label={`Move ${nameOf(i)} in front`}
-            >
-              ▲
-            </button>
-            <button
-              className="paint-layer-move"
-              onClick={() => moveLayer(i, -1)}
-              disabled={i <= 0}
-              title={`Move ${nameOf(i)} behind`}
-              aria-label={`Move ${nameOf(i)} behind`}
-            >
-              ▼
-            </button>
-            <button
-              className="paint-layer-move"
-              onClick={() => removeLayer(i)}
-              disabled={layers <= 1}
-              title={`Delete ${nameOf(i)}`}
-              aria-label={`Delete ${nameOf(i)}`}
-            >
-              ✕
-            </button>
-          </span>
-        ))}
-        <button
-          className="btn"
-          onClick={addLayer}
-          disabled={layers >= 12}
-          title="Add a layer above"
-        >
-          + layer
-        </button>
-
-        <span className="paint-stack-gap" aria-hidden />
-
-        <button
-          className={'btn' + (frame !== null ? ' is-on' : '')}
-          aria-pressed={frame !== null}
-          onClick={startFrames}
-          title={
-            frame !== null
-              ? 'Back to drawing one picture'
-              : 'Animate — what you have drawn so far stays behind every frame'
-          }
-        >
-          🎬 Frames
-        </button>
-        {frame !== null && (
-          <>
-            <button
-              className="btn"
-              onClick={() => goFrame(Math.max(0, (frame ?? 0) - 1))}
-              disabled={(frame ?? 0) <= 0}
-              title="Previous frame"
-            >
-              ◀
-            </button>
-            <span className="muted paint-frame-at">
-              {(frame ?? 0) + 1} / {Math.max(frames, (frame ?? 0) + 1)}
+              <button
+                className="paint-layer-move"
+                onClick={() => moveLayer(i, 1)}
+                disabled={i >= layers - 1}
+                title={`Move ${nameOf(i)} in front`}
+                aria-label={`Move ${nameOf(i)} in front`}
+              >
+                ▲
+              </button>
+              <button
+                className="paint-layer-move"
+                onClick={() => moveLayer(i, -1)}
+                disabled={i <= 0}
+                title={`Move ${nameOf(i)} behind`}
+                aria-label={`Move ${nameOf(i)} behind`}
+              >
+                ▼
+              </button>
+              <button
+                className="paint-layer-move"
+                onClick={() => removeLayer(i)}
+                disabled={layers <= 1}
+                title={`Delete ${nameOf(i)}`}
+                aria-label={`Delete ${nameOf(i)}`}
+              >
+                ✕
+              </button>
             </span>
-            <button
-              className="btn"
-              onClick={() => goFrame(Math.min(frames - 1, (frame ?? 0) + 1))}
-              disabled={(frame ?? 0) >= frames - 1}
-              title="Next frame"
-            >
-              ▶
-            </button>
-            <button className="btn" onClick={addFrame} title="Add a frame after this one">
-              + frame
-            </button>
-            {/* ⚠️ The pair that answer "do I have to draw all this again". This one is for a
+          ))}
+          <button
+            className="btn"
+            onClick={addLayer}
+            disabled={layers >= 12}
+            title="Add a layer above"
+          >
+            + layer
+          </button>
+
+          <span className="paint-stack-gap" aria-hidden />
+
+          <button
+            className={'btn' + (frame !== null ? ' is-on' : '')}
+            aria-pressed={frame !== null}
+            onClick={startFrames}
+            title={
+              frame !== null
+                ? 'Back to drawing one picture'
+                : 'Animate — what you have drawn so far stays behind every frame'
+            }
+          >
+            🎬 Frames
+          </button>
+          {frame !== null && (
+            <>
+              <button
+                className="btn"
+                onClick={() => goFrame(Math.max(0, (frame ?? 0) - 1))}
+                disabled={(frame ?? 0) <= 0}
+                title="Previous frame"
+              >
+                ◀
+              </button>
+              <span className="muted paint-frame-at">
+                {(frame ?? 0) + 1} / {Math.max(frames, (frame ?? 0) + 1)}
+              </span>
+              <button
+                className="btn"
+                onClick={() => goFrame(Math.min(frames - 1, (frame ?? 0) + 1))}
+                disabled={(frame ?? 0) >= frames - 1}
+                title="Next frame"
+              >
+                ▶
+              </button>
+              <button className="btn" onClick={addFrame} title="Add a frame after this one">
+                + frame
+              </button>
+              {/* ⚠️ The pair that answer "do I have to draw all this again". This one is for a
                 pose that is nearly the last one; the ↻ on a layer row is for the parts that never
                 change at all. Disabled with work already here, because copying on top of it would
                 double every stroke silently. */}
-            <button
-              className="btn"
-              onClick={copyPrevFrame}
-              disabled={
-                (frame ?? 0) <= 0 ||
-                strokes.some((k) => k.f === frame) ||
-                !strokes.some((k) => k.f === (frame ?? 0) - 1)
-              }
-              title={
-                strokes.some((k) => k.f === frame)
-                  ? 'There is already something on this frame'
-                  : 'Copy the frame before this one, so you can move it instead of redrawing it'
-              }
-            >
-              ⧉ From last
-            </button>
-            <label className="paint-onion" title="How many earlier frames show through behind">
-              <span className="muted">Onion</span>
-              <input
-                type="range"
-                min={0}
-                max={4}
-                step={1}
-                value={onion}
-                onChange={(e) => setOnion(Number(e.target.value))}
-              />
-            </label>
-            <button
-              className={'btn' + (playing ? ' is-on' : '')}
-              aria-pressed={playing}
-              onClick={() => setPlaying((v) => !v)}
-              disabled={frames < 2}
-              title={playing ? 'Stop' : 'Play the animation'}
-            >
-              {playing ? '⏸' : '▶️'}
-            </button>
-            <label className="paint-onion" title="Frames a second">
-              <span className="muted">{fps}fps</span>
-              <input
-                type="range"
-                min={1}
-                max={24}
-                step={1}
-                value={fps}
-                onChange={(e) => {
-                  const n = Number(e.target.value)
-                  setFps(n)
-                  drawParty.reel(frame, n)
-                }}
-              />
-            </label>
-          </>
-        )}
-      </div>
+              <button
+                className="btn"
+                onClick={copyPrevFrame}
+                disabled={
+                  (frame ?? 0) <= 0 ||
+                  strokes.some((k) => k.f === frame) ||
+                  !strokes.some((k) => k.f === (frame ?? 0) - 1)
+                }
+                title={
+                  strokes.some((k) => k.f === frame)
+                    ? 'There is already something on this frame'
+                    : 'Copy the frame before this one, so you can move it instead of redrawing it'
+                }
+              >
+                ⧉ From last
+              </button>
+              <label className="paint-onion" title="How many earlier frames show through behind">
+                <span className="muted">Onion</span>
+                <input
+                  type="range"
+                  min={0}
+                  max={4}
+                  step={1}
+                  value={onion}
+                  onChange={(e) => setOnion(Number(e.target.value))}
+                />
+              </label>
+              <button
+                className={'btn' + (playing ? ' is-on' : '')}
+                aria-pressed={playing}
+                onClick={() => setPlaying((v) => !v)}
+                disabled={frames < 2}
+                title={playing ? 'Stop' : 'Play the animation'}
+              >
+                {playing ? '⏸' : '▶️'}
+              </button>
+              <label className="paint-onion" title="Frames a second">
+                <span className="muted">{fps}fps</span>
+                <input
+                  type="range"
+                  min={1}
+                  max={24}
+                  step={1}
+                  value={fps}
+                  onChange={(e) => {
+                    const n = Number(e.target.value)
+                    setFps(n)
+                    drawParty.reel(frame, n)
+                  }}
+                />
+              </label>
+            </>
+          )}
+        </div>
 
-      <div className="paint-row">
-        <span className="paint-swatches" role="group" aria-label="Colour">
-          {/* ⚠️ Transparency sits in the SWATCH ROW, not as a tool. It is a colour you can load
+        <div className="paint-row">
+          <span className="paint-swatches" role="group" aria-label="Colour">
+            {/* ⚠️ Transparency sits in the SWATCH ROW, not as a tool. It is a colour you can load
               into anything: brush with it and you rub out, fill with it and you clear a region,
               draw a box in it and you cut an outline. Reaching it only through an eraser tool
               meant the bucket could never be given nothing, so an area could be painted but not
               un-painted. */}
-          <button
-            className={'paint-swatch paint-swatch-none' + (colour === NONE ? ' is-on' : '')}
-            aria-label="Transparent"
-            aria-pressed={colour === NONE}
-            title="Transparent — paint or fill with nothing"
-            onClick={() => pickColour(NONE)}
-          />
-          {/* Next to transparency because it is the same kind of thing: a colour any tool can be
-              loaded with, rather than a mode the tools have to know about. */}
-          <button
-            className={'paint-swatch paint-swatch-rainbow' + (colour === RAINBOW ? ' is-on' : '')}
-            aria-label="Rainbow"
-            aria-pressed={colour === RAINBOW}
-            title="Rainbow — the colour moves along as you draw"
-            onClick={() => pickColour(RAINBOW)}
-          />
-          {SWATCHES.map((c) => (
             <button
-              key={c}
-              className={'paint-swatch' + (colour === c ? ' is-on' : '')}
-              style={{ background: c }}
-              aria-label={c}
-              aria-pressed={colour === c}
-              onClick={() => pickColour(c)}
+              className={'paint-swatch paint-swatch-none' + (colour === NONE ? ' is-on' : '')}
+              aria-label="Transparent"
+              aria-pressed={colour === NONE}
+              title="Transparent — paint or fill with nothing"
+              onClick={() => pickColour(NONE)}
             />
-          ))}
-        </span>
-        {/**
-         * ⚠️ THE SITE'S OWN PAD, not the operating system's colour dialog.
-         *
-         * `input type=color` hands the choice to a native window that looks like nothing else
-         * here, covers what you are painting, and on some platforms is a modal you have to
-         * dismiss before you can see whether the colour was right. The theme already has a pad
-         * built for exactly this — hue rail, shade square, live — and a paint room choosing
-         * colours is the same job. Reusing it also means one place to improve rather than two
-         * that drift.
-         */}
-        {/**
-         * ⚠️ FOLDED AWAY LIKE THE PAPER, and for a reason the screenshot made obvious: the pad is
-         * about a hundred and fifty pixels tall and it was open all the time, which made it far
-         * and away the largest thing between the tools and the paper. The controls were taking
-         * more of the screen than the drawing.
-         *
-         * ⚠️ The swatches immediately to the left do NOT fold, which is what makes this safe.
-         * Changing colour is most of what anybody does in here, and that is what those are for;
-         * the pad is for mixing a shade the swatches do not have, which is a thing you go looking
-         * for. The chip shows the colour you are on, so folding the controls does not fold the
-         * state away with them.
-         */}
-        <span className="paint-colour paint-fold">
-          <button
-            className={'btn paint-fold-open' + (colourOpen ? ' is-on' : '')}
-            aria-expanded={colourOpen}
-            onClick={() => setColourOpen((v) => !v)}
-            title="Mix a colour the swatches do not have"
-          >
-            <span
-              className="paint-fold-chip"
-              aria-hidden
-              style={colour === NONE || colour === RAINBOW ? undefined : { background: colour }}
+            {/* Next to transparency because it is the same kind of thing: a colour any tool can be
+              loaded with, rather than a mode the tools have to know about. */}
+            <button
+              className={'paint-swatch paint-swatch-rainbow' + (colour === RAINBOW ? ' is-on' : '')}
+              aria-label="Rainbow"
+              aria-pressed={colour === RAINBOW}
+              title="Rainbow — the colour moves along as you draw"
+              onClick={() => pickColour(RAINBOW)}
             />
-            Mix
-          </button>
-          {colourOpen && (
-            <span className="paint-fold-pop">
-              <ShadePad
-                label="Colour"
-                value={colour === NONE || colour === RAINBOW ? '#22c55e' : colour}
-                onChange={pickColour}
-              />
-            </span>
-          )}
-        </span>
-        {/**
-         * ⚠️ PAPER IS FOLDED AWAY, and the reason is how often each one is wanted rather than
-         * how important they are. Two identical pads side by side read as one choice with two
-         * halves, so the wrong half got hit — and changing the paper is the rarer intention by a
-         * long way, while changing the brush is most of what anybody does in here.
-         *
-         * ⚠️ The swatch still SHOWS the current paper, so folding it does not hide the state —
-         * only the controls for it. That also takes a whole pad out of a toolbar that had grown
-         * bulky enough to be worth complaining about.
-         */}
-        <span className="paint-colour paint-fold">
-          <button
-            className={'btn paint-fold-open' + (paperOpen ? ' is-on' : '')}
-            aria-expanded={paperOpen}
-            onClick={() => setPaperOpen((v) => !v)}
-            title="The backdrop behind the picture — everything else here is paint"
-          >
-            <span
-              className="paint-fold-chip"
-              aria-hidden
-              style={bg ? { background: bg } : undefined}
-            />
-            Paper
-          </button>
-          {paperOpen && (
-            <span className="paint-fold-pop">
-              <ShadePad
-                label="Paper"
-                value={bg ?? '#111111'}
-                onChange={(c) => {
-                  setBg(c)
-                  drawParty.paper(c)
-                }}
-              />
+            {SWATCHES.map((c) => (
               <button
-                className={'btn' + (bg === null ? ' is-on' : '')}
-                onClick={() => {
-                  setBg(null)
-                  drawParty.paper(null)
-                }}
-                title="No paper — the picture stays transparent"
-              >
-                None
-              </button>
-            </span>
-          )}
-        </span>
-        <label className="appearance-slider">
-          {/* Renamed: "Alpha" read as a mode when it is really just how thin the paint is.
-              Transparency proper is the swatch above. */}
-          <span className="muted" title="How thin the paint is — 100 is solid">
-            Opacity
+                key={c}
+                className={'paint-swatch' + (colour === c ? ' is-on' : '')}
+                style={{ background: c }}
+                aria-label={c}
+                aria-pressed={colour === c}
+                onClick={() => pickColour(c)}
+              />
+            ))}
           </span>
-          <input
-            type="range"
-            min={0.05}
-            max={1}
-            step={0.01}
-            value={alpha}
-            onChange={(e) => {
-              const a = Number(e.target.value)
-              setAlpha(a)
-              restyle({ a })
-            }}
-          />
-          <span className="appearance-slider-val">{Math.round(alpha * 100)}</span>
-        </label>
-        <label className="appearance-slider">
-          <span className="muted">Size</span>
-          <input
-            type="range"
-            min={0.0015}
-            max={0.09}
-            step={0.0005}
-            value={width}
-            onChange={(e) => {
-              const w = Number(e.target.value)
-              setWidth(w)
-              restyle({ w })
-            }}
-          />
-          <span className="appearance-slider-val">{Math.round(width * 1000)}</span>
-        </label>
-        {/**
-         * ⚠️ FOLDED, because these two are the least reached for and cost the most room.
-         *
-         * Symmetry and Echo are twelve buttons between them, and on a 1024px screen they were
-         * most of what pushed the main row onto a third line — measured at 133px for that row
-         * alone. They are also modifiers you set once for a picture and then leave, unlike the
-         * colour and the size, which change constantly. Behind one button they cost 37px instead,
-         * and the button says when either is on so a mandala is never a mystery.
-         */}
-        <span className="paint-fold">
-          <button
-            className={'btn paint-fold-open' + (fxOpen ? ' is-on' : '')}
-            aria-expanded={fxOpen}
-            onClick={() => setFxOpen((v) => !v)}
-            title="Mirroring and trailing copies"
-          >
-            Effects
-            {symmetry || echo ? (
-              <span className="paint-fold-badge">
-                {symmetry ? `×${symmetry}` : ''}
-                {symmetry && echo ? ' ' : ''}
-                {echo ? `≈${echo}` : ''}
+          {/**
+           * ⚠️ THE SITE'S OWN PAD, not the operating system's colour dialog.
+           *
+           * `input type=color` hands the choice to a native window that looks like nothing else
+           * here, covers what you are painting, and on some platforms is a modal you have to
+           * dismiss before you can see whether the colour was right. The theme already has a pad
+           * built for exactly this — hue rail, shade square, live — and a paint room choosing
+           * colours is the same job. Reusing it also means one place to improve rather than two
+           * that drift.
+           */}
+          {/**
+           * ⚠️ FOLDED AWAY LIKE THE PAPER, and for a reason the screenshot made obvious: the pad is
+           * about a hundred and fifty pixels tall and it was open all the time, which made it far
+           * and away the largest thing between the tools and the paper. The controls were taking
+           * more of the screen than the drawing.
+           *
+           * ⚠️ The swatches immediately to the left do NOT fold, which is what makes this safe.
+           * Changing colour is most of what anybody does in here, and that is what those are for;
+           * the pad is for mixing a shade the swatches do not have, which is a thing you go looking
+           * for. The chip shows the colour you are on, so folding the controls does not fold the
+           * state away with them.
+           */}
+          <span className="paint-colour paint-fold">
+            <button
+              className={'btn paint-fold-open' + (colourOpen ? ' is-on' : '')}
+              aria-expanded={colourOpen}
+              onClick={() => setColourOpen((v) => !v)}
+              title="Mix a colour the swatches do not have"
+            >
+              <span
+                className="paint-fold-chip"
+                aria-hidden
+                style={colour === NONE || colour === RAINBOW ? undefined : { background: colour }}
+              />
+              Mix
+            </button>
+            {colourOpen && (
+              <span className="paint-fold-pop">
+                <ShadePad
+                  label="Colour"
+                  value={colour === NONE || colour === RAINBOW ? '#22c55e' : colour}
+                  onChange={pickColour}
+                />
               </span>
-            ) : null}
-          </button>
-          {fxOpen && (
-            <span className="paint-fold-pop paint-fold-wide">
-              {/* ⚠️ A MODIFIER, not a tool: it applies to whichever of the fifteen tools is selected, so
+            )}
+          </span>
+          {/**
+           * ⚠️ PAPER IS FOLDED AWAY, and the reason is how often each one is wanted rather than
+           * how important they are. Two identical pads side by side read as one choice with two
+           * halves, so the wrong half got hit — and changing the paper is the rarer intention by a
+           * long way, while changing the brush is most of what anybody does in here.
+           *
+           * ⚠️ The swatch still SHOWS the current paper, so folding it does not hide the state —
+           * only the controls for it. That also takes a whole pad out of a toolbar that had grown
+           * bulky enough to be worth complaining about.
+           */}
+          <span className="paint-colour paint-fold">
+            <button
+              className={'btn paint-fold-open' + (paperOpen ? ' is-on' : '')}
+              aria-expanded={paperOpen}
+              onClick={() => setPaperOpen((v) => !v)}
+              title="The backdrop behind the picture — everything else here is paint"
+            >
+              <span
+                className="paint-fold-chip"
+                aria-hidden
+                style={bg ? { background: bg } : undefined}
+              />
+              Paper
+            </button>
+            {paperOpen && (
+              <span className="paint-fold-pop">
+                <ShadePad
+                  label="Paper"
+                  value={bg ?? '#111111'}
+                  onChange={(c) => {
+                    setBg(c)
+                    drawParty.paper(c)
+                  }}
+                />
+                <button
+                  className={'btn' + (bg === null ? ' is-on' : '')}
+                  onClick={() => {
+                    setBg(null)
+                    drawParty.paper(null)
+                  }}
+                  title="No paper — the picture stays transparent"
+                >
+                  None
+                </button>
+              </span>
+            )}
+          </span>
+          <label className="appearance-slider">
+            {/* Renamed: "Alpha" read as a mode when it is really just how thin the paint is.
+              Transparency proper is the swatch above. */}
+            <span className="muted" title="How thin the paint is — 100 is solid">
+              Opacity
+            </span>
+            <input
+              type="range"
+              min={0.05}
+              max={1}
+              step={0.01}
+              value={alpha}
+              onChange={(e) => {
+                const a = Number(e.target.value)
+                setAlpha(a)
+                restyle({ a })
+              }}
+            />
+            <span className="appearance-slider-val">{Math.round(alpha * 100)}</span>
+          </label>
+          <label className="appearance-slider">
+            <span className="muted">Size</span>
+            <input
+              type="range"
+              min={0.0015}
+              max={0.09}
+              step={0.0005}
+              value={width}
+              onChange={(e) => {
+                const w = Number(e.target.value)
+                setWidth(w)
+                restyle({ w })
+              }}
+            />
+            <span className="appearance-slider-val">{Math.round(width * 1000)}</span>
+          </label>
+          {/**
+           * ⚠️ FOLDED, because these two are the least reached for and cost the most room.
+           *
+           * Symmetry and Echo are twelve buttons between them, and on a 1024px screen they were
+           * most of what pushed the main row onto a third line — measured at 133px for that row
+           * alone. They are also modifiers you set once for a picture and then leave, unlike the
+           * colour and the size, which change constantly. Behind one button they cost 37px instead,
+           * and the button says when either is on so a mandala is never a mystery.
+           */}
+          <span className="paint-fold">
+            <button
+              className={'btn paint-fold-open' + (fxOpen ? ' is-on' : '')}
+              aria-expanded={fxOpen}
+              onClick={() => setFxOpen((v) => !v)}
+              title="Mirroring and trailing copies"
+            >
+              Effects
+              {symmetry || echo ? (
+                <span className="paint-fold-badge">
+                  {symmetry ? `×${symmetry}` : ''}
+                  {symmetry && echo ? ' ' : ''}
+                  {echo ? `≈${echo}` : ''}
+                </span>
+              ) : null}
+            </button>
+            {fxOpen && (
+              <span className="paint-fold-pop paint-fold-wide">
+                {/* ⚠️ A MODIFIER, not a tool: it applies to whichever of the fifteen tools is selected, so
             one control multiplies the whole toolbar rather than adding one more thing to it. It
             is remembered per stroke, so turning it off later leaves what you already drew. */}
-              <label className="inst-pick">
-                <span
-                  className="muted"
-                  title="Mirror what you draw around the middle of the picture"
-                >
-                  Symmetry
-                </span>
-                <span className="paint-sym-row">
-                  {SYMMETRIES.map((n) => (
-                    <button
-                      key={n}
-                      className={'btn' + (symmetry === n ? ' is-on' : '')}
-                      aria-pressed={symmetry === n}
-                      onClick={() => setSymmetry(n)}
-                      title={n === 0 ? 'No mirroring' : `${n} mirrored segments`}
-                    >
-                      {n === 0 ? 'Off' : n}
-                    </button>
-                  ))}
-                </span>
-              </label>
-              {/* the second modifier, and it composes with the first: an echoed mandala is one stroke
+                <label className="inst-pick">
+                  <span
+                    className="muted"
+                    title="Mirror what you draw around the middle of the picture"
+                  >
+                    Symmetry
+                  </span>
+                  <span className="paint-sym-row">
+                    {SYMMETRIES.map((n) => (
+                      <button
+                        key={n}
+                        className={'btn' + (symmetry === n ? ' is-on' : '')}
+                        aria-pressed={symmetry === n}
+                        onClick={() => setSymmetry(n)}
+                        title={n === 0 ? 'No mirroring' : `${n} mirrored segments`}
+                      >
+                        {n === 0 ? 'Off' : n}
+                      </button>
+                    ))}
+                  </span>
+                </label>
+                {/* the second modifier, and it composes with the first: an echoed mandala is one stroke
             drawn twelve times, twice over, from two numbers in the file */}
-              <label className="inst-pick">
-                <span className="muted" title="Fading copies trailing the way you drew">
-                  Echo
-                </span>
-                <span className="paint-sym-row">
-                  {ECHOES.map((n) => (
-                    <button
-                      key={n}
-                      className={'btn' + (echo === n ? ' is-on' : '')}
-                      aria-pressed={echo === n}
-                      onClick={() => setEcho(n)}
-                      title={
-                        n === 0
-                          ? 'No trailing copies'
-                          : `${n} trailing ${n === 1 ? 'copy' : 'copies'}`
-                      }
-                    >
-                      {n === 0 ? 'Off' : n}
-                    </button>
-                  ))}
-                </span>
-              </label>
-            </span>
-          )}
-        </span>
-        {/* ⚠️ NAMED BRUSHES WERE REMOVED — "the name this brush is kind of pointless".
+                <label className="inst-pick">
+                  <span className="muted" title="Fading copies trailing the way you drew">
+                    Echo
+                  </span>
+                  <span className="paint-sym-row">
+                    {ECHOES.map((n) => (
+                      <button
+                        key={n}
+                        className={'btn' + (echo === n ? ' is-on' : '')}
+                        aria-pressed={echo === n}
+                        onClick={() => setEcho(n)}
+                        title={
+                          n === 0
+                            ? 'No trailing copies'
+                            : `${n} trailing ${n === 1 ? 'copy' : 'copies'}`
+                        }
+                      >
+                        {n === 0 ? 'Off' : n}
+                      </button>
+                    ))}
+                  </span>
+                </label>
+              </span>
+            )}
+          </span>
+          {/* ⚠️ NAMED BRUSHES WERE REMOVED — "the name this brush is kind of pointless".
             The argument for them was that six controls make a way of drawing rather than a
             setting, which is true and still was not worth the row: naming a brush is a thing you
             have to decide to do before you can benefit from it, and nobody did. The tool, colour,
@@ -1979,127 +2004,128 @@ export function PaintRoom() {
 
             paintKits is left in place and untouched, so anything already saved is still there and
             putting this back is a few lines rather than a rebuild. */}
-        <button className="btn" onClick={undo} disabled={!strokes.length} title="Undo (Ctrl+Z)">
-          ↶ Undo
-        </button>
-        <button
-          className="btn"
-          onClick={redo}
-          disabled={!undone.length}
-          title="Redo (Ctrl+Shift+Z)"
-        >
-          ↷ Redo
-        </button>
-        <button
-          className="btn"
-          /* ⚠️ the paper counts. Clear resets the background too now, so a page with a colour on
+          <button className="btn" onClick={undo} disabled={!strokes.length} title="Undo (Ctrl+Z)">
+            ↶ Undo
+          </button>
+          <button
+            className="btn"
+            onClick={redo}
+            disabled={!undone.length}
+            title="Redo (Ctrl+Shift+Z)"
+          >
+            ↷ Redo
+          </button>
+          <button
+            className="btn"
+            /* ⚠️ the paper counts. Clear resets the background too now, so a page with a colour on
              it and nothing drawn is still a page with something to clear — gating on strokes
              alone left the one case the fix was reported for unreachable. */
-          disabled={!strokes.length && !bg}
-          onClick={() => {
-            /* ⚠️ the question names the audience, because the answer changes what it does: while
+            disabled={!strokes.length && !bg}
+            onClick={() => {
+              /* ⚠️ the question names the audience, because the answer changes what it does: while
                drawing together this clears everybody's page, not just yours */
-            const q = party.on
-              ? 'Clear the whole picture for everyone drawing?'
-              : 'Clear the whole picture?'
-            if (window.confirm(q)) {
-              wipe()
-              drawParty.clear()
-            }
-          }}
-        >
-          ✕ Clear
-        </button>
-        <label className="appearance-slider">
-          <span className="muted" title="Or spin the wheel over the picture">
-            Zoom
-          </span>
-          <input
-            type="range"
-            min={1}
-            max={12}
-            step={0.1}
-            value={scale}
-            onChange={(e) => {
-              const next = Number(e.target.value)
-              clampOffset(next)
-              setScale(next)
+              const q = party.on
+                ? 'Clear the whole picture for everyone drawing?'
+                : 'Clear the whole picture?'
+              if (window.confirm(q)) {
+                wipe()
+                drawParty.clear()
+              }
             }}
-          />
-          <span className="appearance-slider-val">{scale.toFixed(1)}×</span>
-        </label>
-        <button
-          className="btn"
-          disabled={scale === 1 && !off.current.x && !off.current.y}
-          onClick={() => {
-            off.current = { x: 0, y: 0 }
-            setScale(1)
-          }}
-          title="Back to the whole picture"
-        >
-          ⤢ Fit
-        </button>
-      </div>
+          >
+            ✕ Clear
+          </button>
+          <label className="appearance-slider">
+            <span className="muted" title="Or spin the wheel over the picture">
+              Zoom
+            </span>
+            <input
+              type="range"
+              min={1}
+              max={12}
+              step={0.1}
+              value={scale}
+              onChange={(e) => {
+                const next = Number(e.target.value)
+                clampOffset(next)
+                setScale(next)
+              }}
+            />
+            <span className="appearance-slider-val">{scale.toFixed(1)}×</span>
+          </label>
+          <button
+            className="btn"
+            disabled={scale === 1 && !off.current.x && !off.current.y}
+            onClick={() => {
+              off.current = { x: 0, y: 0 }
+              setScale(1)
+            }}
+            title="Back to the whole picture"
+          >
+            ⤢ Fit
+          </button>
+        </div>
 
-      {/* ⚠️ The board is transparent, not white. A drawing has no background of its own, which is
+        {/* ⚠️ The board is transparent, not white. A drawing has no background of its own, which is
           what lets the same picture sit on a light profile and a dark one — so the checkerboard
           behind it is the page telling you where the paint ends and the page begins. */}
-      {note && (
-        <p className="muted paint-note" role="status">
-          {note}
-        </p>
-      )}
+        {note && (
+          <p className="muted paint-note" role="status">
+            {note}
+          </p>
+        )}
 
-      {galleryOpen && (
-        <div className="paint-row paint-gallery">
-          {!saved.length ? (
-            <span className="muted">
-              Nothing kept yet. Draw something, then press <strong>Keep</strong>.
-            </span>
-          ) : (
-            <ul className="paint-gallery-list">
-              {saved.map((a: Art) => (
-                <li key={a.id}>
-                  <span className="paint-gallery-name">🖼 {a.name}</span>
-                  <span className="muted paint-gallery-meta">{a.art.strokes.length} strokes</span>
-                  <button
-                    className="btn"
-                    onClick={() => {
-                      setUndone([])
-                      setBg(a.art.bg)
-                      setStrokes(a.art.strokes)
-                    }}
-                    title="Open this, replacing what is on the board"
-                  >
-                    Open
-                  </button>
-                  <button
-                    className="btn"
-                    onClick={() => {
-                      if (window.confirm(`Delete “${a.name}”?`)) removeArt(a.id)
-                    }}
-                  >
-                    ✕
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      )}
+        {galleryOpen && (
+          <div className="paint-row paint-gallery">
+            {!saved.length ? (
+              <span className="muted">
+                Nothing kept yet. Draw something, then press <strong>Keep</strong>.
+              </span>
+            ) : (
+              <ul className="paint-gallery-list">
+                {saved.map((a: Art) => (
+                  <li key={a.id}>
+                    <span className="paint-gallery-name">🖼 {a.name}</span>
+                    <span className="muted paint-gallery-meta">{a.art.strokes.length} strokes</span>
+                    <button
+                      className="btn"
+                      onClick={() => {
+                        setUndone([])
+                        setBg(a.art.bg)
+                        setStrokes(a.art.strokes)
+                      }}
+                      title="Open this, replacing what is on the board"
+                    >
+                      Open
+                    </button>
+                    <button
+                      className="btn"
+                      onClick={() => {
+                        if (window.confirm(`Delete “${a.name}”?`)) removeArt(a.id)
+                      }}
+                    >
+                      ✕
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
 
-      {/* ⚠️ The paper is a BACKDROP, not paint. See `bg` above — this is the same colour a
+        {/* ⚠️ The paper is a BACKDROP, not paint. See `bg` above — this is the same colour a
           profile block will put behind the strokes, so what you draw against is what other
           people will see it against. With no paper the checkerboard shows through, which is how
           you can tell transparent from white. */}
-      {/**
-       * ⚠️ THE SHAPE AND THE SIZE, said out loud, right above the paper.
-       *
-       * The board's aspect used to be whatever was left over once the controls had wrapped, and
-       * the aspect IS the document — coordinates are fractions of it. So art came out a shape
-       * nobody chose, and differently on a phone than on a desktop. Naming the shape makes it a
-       * decision; printing the pixels means you never have to infer it from looking.
-       */}
+        {/**
+         * ⚠️ THE SHAPE AND THE SIZE, said out loud, right above the paper.
+         *
+         * The board's aspect used to be whatever was left over once the controls had wrapped, and
+         * the aspect IS the document — coordinates are fractions of it. So art came out a shape
+         * nobody chose, and differently on a phone than on a desktop. Naming the shape makes it a
+         * decision; printing the pixels means you never have to infer it from looking.
+         */}
+      </div>
       <div className="paint-shape-row">
         <label className="paint-shape">
           <span className="muted">Paper</span>
