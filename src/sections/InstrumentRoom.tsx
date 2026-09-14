@@ -1966,6 +1966,31 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
        * never see a pointerenter. touch-action is none in the CSS for the same reason: on a
        * phone the browser would otherwise decide a drag across the keys is a scroll.
        */}
+      {/**
+       * ⚠️ ON THE KEYBOARD, WHICH IS WHERE IT WAS ASKED FOR AND WHERE I FIRST PUT IT WRONG.
+       *
+       * It went beside the note editor's key column: a vertical slider next to a grid of rows,
+       * which is the pitch axis of the EDITOR. What was wanted was this — a way to run up and
+       * down the actual keyboard you play, without pressing − and + and counting. The two look
+       * alike described in a sentence and are not the same control at all.
+       *
+       * Horizontal, because these keys are, and it sits under them so the thing it moves is
+       * directly above your hand. A drum kit repeats every octave, so it is pointless there.
+       */}
+      {inst !== 'drums' && (
+        <input
+          type="range"
+          className="inst-keyslide no-print"
+          min={1}
+          max={6}
+          step={1}
+          value={octave}
+          onChange={(e) => setOctave(Number(e.target.value))}
+          onKeyDown={(e) => e.stopPropagation()}
+          aria-label="Slide up and down the keyboard"
+          title={`Octave ${octave} — slide to reach higher or lower keys`}
+        />
+      )}
       <div
         className="inst-keys"
         data-kit={inst === 'drums' ? '1' : undefined}

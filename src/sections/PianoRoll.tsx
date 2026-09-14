@@ -1123,32 +1123,10 @@ export function PianoRoll({
       </div>
 
       <div className="roll-body">
-        {/**
-         * ⚠️ MOVING TWO OCTAVES USED TO BE TWO BUTTONS AND A COUNT OF CLICKS. ▲ and ▼
-         * are still there and still right for one step, but "go and find where the bass is"
-         * through them is a press, a look, a press, a look. A slider is the whole reachable range
-         * in one grab, and it says where you are in it without being read.
-         *
-         * Beside the keys because that is what it moves — a control for the pitch axis belongs on
-         * the pitch axis, and it inherits the row alignment already worked out for that column.
-         */}
-        {octMax > octMin && (
-          <div className="roll-octslide">
-            <div className="roll-ruler-pad" />
-            <input
-              type="range"
-              className="roll-oct-range"
-              min={octMin}
-              max={octMax}
-              step={1}
-              value={Math.max(octMin, Math.min(octMax, octave))}
-              onChange={(e) => setOctave(Number(e.target.value))}
-              style={{ height: rows.length * ROW_H }}
-              aria-label="Which octaves are shown"
-              title={`Slide to move the keyboard — showing ${nameOf(lo)}–${nameOf(hi)}`}
-            />
-          </div>
-        )}
+        {/* ⚠️ THE SLIDER THAT WAS HERE HAS MOVED TO THE KEYBOARD ITSELF, which is where it
+            was asked for. Beside this key column it was the pitch axis of the EDITOR — a
+            different thing that reads the same in a sentence — and it broke the row it sat in.
+            ▲ and ▼ above still move this window an octave at a time. */}
         <div className="roll-keys" aria-hidden>
           {/* ⚠️ the ruler adds height on the right only, so without this the key names sit
               one strip lower than the rows they label. Same height, same place, no cleverness. */}

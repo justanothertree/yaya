@@ -8579,6 +8579,120 @@ a.cz-msg-author:focus-visible {
   filter: brightness(1.25);
 }
 
+/* ── sliding up and down the keyboard ────────────────────────────────
+   Under the keys and as wide as them, so the control sits on the thing it moves. It replaced a
+   VERTICAL one beside the note editor's key column, which was the right idea on the wrong
+   keyboard — and which broke that toolbar's row while it was there. */
+.inst-keyslide {
+  display: block;
+  width: 100%;
+  margin: 0 0 0.3rem;
+  accent-color: var(--accent);
+  cursor: ew-resize;
+}
+@media (hover: none) and (pointer: coarse) {
+  .inst-keyslide {
+    height: 1.6rem;
+  }
+}
+
+/* ── snap, in both rooms that have it, from one component (see SnapPicker) ──── */
+.snap-pick {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+.snap-pick .btn {
+  padding: 1px 8px;
+  font-size: 0.74rem;
+}
+
+/* the bug reporter — see components/BugReport.tsx */
+.bug-card {
+  max-width: 30rem;
+  width: min(30rem, calc(100vw - 2rem));
+}
+.bug-text {
+  width: 100%;
+  box-sizing: border-box;
+  background: var(--bg);
+  color: inherit;
+  border: 1px solid var(--line, rgba(255, 255, 255, 0.18));
+  border-radius: 0.5rem;
+  padding: 0.5rem;
+  font: inherit;
+  resize: vertical;
+}
+.bug-ctx {
+  font-size: 0.75rem;
+  line-height: 1.4;
+}
+.bug-err {
+  font-size: 0.8rem;
+  color: #ff8a8a;
+}
+
+/* Is the computer keyboard armed? — see InstrumentRoom's keysLive.
+   ⚠️ NOT .inst-keys: that name is already the keyboard container itself, so this pill's
+   border and half opacity would have been applied to every piano key on the page. */
+.inst-keylight {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.78rem;
+  padding: 0.15rem 0.45rem;
+  border-radius: 999px;
+  border: 1px solid var(--line, rgba(255, 255, 255, 0.16));
+  opacity: 0.55;
+}
+.inst-keylight.is-live {
+  opacity: 1;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent) inset;
+}
+
+/* selecting notes in the editor — see PianoRoll's picks */
+.roll-hist,
+.roll-pick {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+.roll-pick-count {
+  font-size: 0.75rem;
+  min-width: 4.5rem;
+  text-align: center;
+}
+.roll-band {
+  position: absolute;
+  pointer-events: none;
+  border: 1px dashed rgba(255, 255, 255, 0.9);
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 2px;
+  z-index: 3;
+}
+/* ⚠️ The note you have not let go of yet. Dashed and translucent because it is a gesture rather
+   than content — the same language .roll-band already speaks — and pointer-events: none so the
+   preview can never become the thing the pointer is over. */
+.roll-ghost {
+  position: absolute;
+  pointer-events: none;
+  border: 1px dashed var(--accent);
+  background: color-mix(in oklab, var(--accent), transparent 72%);
+  border-radius: 3px;
+  z-index: 4;
+}
+/* "this one cannot go here" said before you let go, rather than by nothing happening after */
+.roll-ghost.is-blocked {
+  border-color: var(--red, #ff5566);
+  background: color-mix(in oklab, var(--red, #ff5566), transparent 72%);
+}
+.roll-note.is-picked {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+  filter: brightness(1.25);
+}
+
 /* ── the octave slider, down the side of the keys ─────────────────────────────
    ⚠️ A VERTICAL RANGE, the standard way: `writing-mode: vertical-rl` with `direction: rtl` so
    the high notes are at the top, matching the rows it scrolls. The old `-webkit-appearance:

@@ -19,6 +19,7 @@ import {
   type Stroke,
   type Tool,
   isFreehand,
+  RETIRED_TOOLS,
   SYMMETRIES,
   ECHOES,
   frameCount,
@@ -780,6 +781,34 @@ export function PaintRoom() {
     runLayerOp({ k: 'hold', i, f: on ? null : (frame ?? 0) }, true)
   }
 
+  /**
+   * The colour, opacity and width controls, acting on what you have SELECTED.
+   *
+   * ⚠️ THE SAME TRADE THE NOTE EDITOR'S LENGTH BUTTONS MAKE: while things are lit, a control
+   * that could plainly act on them should, and with nothing lit it goes back to setting what you
+   * draw next. Picking a colour with a selection live and watching it change only the NEXT stroke
+   * is the version that makes you undo, reselect and go looking for a menu.
+   *
+   * ⚠️ IT STILL SETS THE TOOL TOO. You almost always want the thing you just recoloured and
+   * the thing you draw next to match — and a control that stops setting the tool while something
+   * is selected is a control whose meaning depends on state you might not have noticed.
+   *
+   * ⚠️ Strokes with no id are restyled locally and not announced. An id is the name the room
+   * knows a stroke by; one loaded from a gallery file has never had one, which is the same limit
+   * undo has always had rather than a new one.
+   */
+  const restyle = (patch: { c?: string; a?: number; w?: number }) => {
+    if (!sel.length) return
+    const ids = sel.map((i) => strokes[i]?.id).filter((v): v is string => !!v)
+    setUndone([])
+    if (ids.length) runLayerOp({ k: 'style', ids, ...patch }, true)
+    else setStrokes((prev) => prev.map((st, i) => (sel.includes(i) ? { ...st, ...patch } : st)))
+  }
+  const pickColour = (c: string) => {
+    setColour(c)
+    restyle({ c })
+  }
+
   const nameOf = (i: number) => layerNames[i]?.trim() || `Layer ${i + 1}`
 
   /**
@@ -1252,7 +1281,10 @@ export function PaintRoom() {
           <span aria-hidden>{toolsOpen ? '▴' : '▾'}</span>
         </button>
         <div className={'fx-style-row paint-tools' + (toolsOpen ? ' is-open' : '')}>
-          {TOOLS.map(([id, icon, label]) => (
+          {/* ⚠️ Retired ones are hidden here rather than deleted from TOOLS — the packed format
+              stores a tool as an index into that list, so removing one repaints every saved
+              drawing. See RETIRED_TOOLS. */}
+          {TOOLS.filter(([id]) => !RETIRED_TOOLS.has(id)).map(([id, icon, label]) => (
             <button
               key={id}
               className={'fx-style-btn' + (tool === id ? ' is-on' : '')}
@@ -1526,7 +1558,7 @@ export function PaintRoom() {
             aria-label="Transparent"
             aria-pressed={colour === NONE}
             title="Transparent — paint or fill with nothing"
-            onClick={() => setColour(NONE)}
+            onClick={() => pickColour(NONE)}
           />
           {/* Next to transparency because it is the same kind of thing: a colour any tool can be
               loaded with, rather than a mode the tools have to know about. */}
@@ -1535,7 +1567,7 @@ export function PaintRoom() {
             aria-label="Rainbow"
             aria-pressed={colour === RAINBOW}
             title="Rainbow — the colour moves along as you draw"
-            onClick={() => setColour(RAINBOW)}
+            onClick={() => pickColour(RAINBOW)}
           />
           {SWATCHES.map((c) => (
             <button
@@ -1544,7 +1576,7 @@ export function PaintRoom() {
               style={{ background: c }}
               aria-label={c}
               aria-pressed={colour === c}
-              onClick={() => setColour(c)}
+              onClick={() => pickColour(c)}
             />
           ))}
         </span>
@@ -1589,7 +1621,7 @@ export function PaintRoom() {
               <ShadePad
                 label="Colour"
                 value={colour === NONE || colour === RAINBOW ? '#22c55e' : colour}
-                onChange={setColour}
+                onChange={pickColour}
               />
             </span>
           )}
@@ -1653,7 +1685,11 @@ export function PaintRoom() {
             max={1}
             step={0.01}
             value={alpha}
-            onChange={(e) => setAlpha(Number(e.target.value))}
+            onChange={(e) => {
+              const a = Number(e.target.value)
+              setAlpha(a)
+              restyle({ a })
+            }}
           />
           <span className="appearance-slider-val">{Math.round(alpha * 100)}</span>
         </label>
@@ -1665,7 +1701,11 @@ export function PaintRoom() {
             max={0.09}
             step={0.0005}
             value={width}
-            onChange={(e) => setWidth(Number(e.target.value))}
+            onChange={(e) => {
+              const w = Number(e.target.value)
+              setWidth(w)
+              restyle({ w })
+            }}
           />
           <span className="appearance-slider-val">{Math.round(width * 1000)}</span>
         </label>

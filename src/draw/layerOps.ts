@@ -54,6 +54,21 @@ export type LayerOp =
    * there, from one press.
    */
   | { k: 'hold'; i: number; f: number | null }
+  /**
+   * Restyle strokes that are already drawn — the colour, opacity and width controls acting on a
+   * selection instead of on the next stroke.
+   *
+   * ⚠️ BY ID, not by index, and that is the only way it can travel. An index means a position
+   * in MY array, which is not anybody else's; a stroke's id is the name the room already uses to
+   * take one back (see drawParty.undo). A stroke with no id — one loaded from a gallery file
+   * rather than drawn or received — is restyled locally and cannot be named to anyone, which is
+   * the same limit undo has always had.
+   *
+   * ⚠️ EVERY FIELD OPTIONAL, because these are three separate controls. Sending the whole
+   * style on each would mean moving the opacity slider also re-applied whatever colour happened to
+   * be loaded, which is not what anybody pressed.
+   */
+  | { k: 'style'; ids: string[]; c?: string; a?: number; w?: number }
 
 export type Stack = {
   strokes: Stroke[]
@@ -107,6 +122,25 @@ export function applyLayerOp(stack: Stack, op: LayerOp, layers: number): Stack {
     const f = op.f === null ? undefined : op.f
     return {
       strokes: strokes.map((s) => (at(s) === op.i ? { ...s, f } : s)),
+      names,
+      hidden,
+      layer,
+    }
+  }
+
+  if (op.k === 'style') {
+    const want = new Set(op.ids)
+    return {
+      strokes: strokes.map((st) =>
+        st.id && want.has(st.id)
+          ? {
+              ...st,
+              ...(op.c !== undefined ? { c: op.c } : {}),
+              ...(op.a !== undefined ? { a: op.a } : {}),
+              ...(op.w !== undefined ? { w: op.w } : {}),
+            }
+          : st,
+      ),
       names,
       hidden,
       layer,
@@ -176,6 +210,26 @@ export function readLayerOp(raw: unknown): LayerOp | null {
   if (o.k === 'remove') {
     const i = whole(o.i)
     return i === null ? null : { k: 'remove', i }
+  }
+  if (o.k === 'style') {
+    if (!Array.isArray(o.ids)) return null
+    /* ⚠️ The same caps the stroke reader uses, because this ends up in a canvas call and in a
+       picture somebody may save: a known colour word or a six-digit hex, and numbers clamped to
+       the ranges readStroke itself clamps them to. */
+    const ids = o.ids
+      .slice(0, 4000)
+      .filter((v): v is string => typeof v === 'string' && v.length > 0 && v.length <= 60)
+    if (!ids.length) return null
+    const op: LayerOp = { k: 'style', ids }
+    if (
+      typeof o.c === 'string' &&
+      (o.c === 'none' || o.c === 'rainbow' || /^#[0-9a-f]{6}$/i.test(o.c))
+    )
+      op.c = o.c
+    if (typeof o.a === 'number' && Number.isFinite(o.a)) op.a = Math.max(0.02, Math.min(1, o.a))
+    if (typeof o.w === 'number' && Number.isFinite(o.w))
+      op.w = Math.max(0.0015, Math.min(0.25, o.w))
+    return op.c === undefined && op.a === undefined && op.w === undefined ? null : op
   }
   if (o.k === 'hold') {
     const i = whole(o.i)
