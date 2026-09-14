@@ -181,6 +181,24 @@ export function PaintRoom() {
   /* everything above the paper, folded away — see the note by the button */
   const [toolsHidden, setToolsHidden] = useState(false)
   /**
+   * Watching the picture draw itself.
+   *
+   * ⚠️ IT COSTS NOTHING TO STORE, and that is not a happy accident — it is what the format has
+   * been for since the beginning. A drawing here is an ORDERED LIST OF STROKES, not an image, so
+   * the recording of how it was made is the file. Replaying is reading the list you already have,
+   * in the order it is already in. No second format, nothing extra saved, nothing to keep in step,
+   * and it works on anything in the gallery the moment you open it.
+   *
+   * ⚠️ A COUNT, NOT A CLOCK. The state is how many strokes are showing; the speed only decides
+   * how fast that number climbs. Which means scrubbing, pausing and finishing early are all just
+   * setting a number, and a replay can never drift out of step with the picture.
+   */
+  const [replayAt, setReplayAt] = useState<number | null>(null)
+  const [replaySpeed, setReplaySpeed] = useState(12)
+  /* repaint reads it from a ref, because the timer below drives it far faster than a render */
+  const replayRef = useRef<number | null>(null)
+  replayRef.current = replayAt
+  /**
    * The paper's shape, as width over height — or free, meaning whatever the window leaves.
    *
    * ⚠️ FREE IS WHAT IT ALWAYS DID, and it is the reason art came out a shape nobody chose. The
@@ -563,19 +581,24 @@ export function PaintRoom() {
      * you began, instead of drifting through a hundred compounded multiplications. The same
      * reasoning the note editor's drag already uses.
      */
+    /* ⚠️ The replay slices the SAME list the picture is drawn from, so there is no second
+       render path to keep correct — a half-played drawing is just a drawing with fewer strokes. */
+    const upTo = replayRef.current
     const g = grip.current
     const m = gripLive.current
     const shown =
-      g && m
-        ? {
-            ...drawingRef.current,
-            strokes: drawingRef.current.strokes.map((k, i) =>
-              selRef.current.includes(i) && g.from[i]
-                ? { ...k, p: xformPoints(g.from[i].p, m) }
-                : k,
-            ),
-          }
-        : drawingRef.current
+      upTo !== null
+        ? { ...drawingRef.current, strokes: drawingRef.current.strokes.slice(0, Math.floor(upTo)) }
+        : g && m
+          ? {
+              ...drawingRef.current,
+              strokes: drawingRef.current.strokes.map((k, i) =>
+                selRef.current.includes(i) && g.from[i]
+                  ? { ...k, p: xformPoints(g.from[i].p, m) }
+                  : k,
+              ),
+            }
+          : drawingRef.current
     paintDrawing(bc, shown, w, h, {
       frame: frame ?? undefined,
       hidden,
@@ -1108,6 +1131,41 @@ export function PaintRoom() {
     return out
   }
 
+  /**
+   * ⚠️ ONE TIMER, AT A FIXED RATE, ADVANCING BY A FRACTION. Ticking once per stroke would
+   * make the interval itself the speed control, and at sixty strokes a second that is a 16ms
+   * timer whose jitter IS the timing. A steady 30Hz tick that adds speed/30 strokes each time
+   * keeps the pace honest at every setting, and the count is floored only when it is read.
+   *
+   * ⚠️ AND IT STOPS AT THE END rather than looping. A replay is a thing you watch finish; a
+   * loop would leave the picture flickering back to empty behind whatever you did next.
+   */
+  useEffect(() => {
+    if (replayAt === null) return
+    const total = strokes.length
+    if (!total) {
+      setReplayAt(null)
+      return
+    }
+    let at = replayAt
+    const id = window.setInterval(() => {
+      at += replaySpeed / 30
+      if (at >= total) {
+        setReplayAt(null)
+        return
+      }
+      setReplayAt(at)
+    }, 1000 / 30)
+    return () => window.clearInterval(id)
+    // ⚠️ deliberately NOT depending on replayAt: this effect owns the count while it runs, and
+    // re-arming the interval on every tick would restart the clock thirty times a second.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [replayAt === null, replaySpeed, strokes.length])
+
+  useEffect(() => {
+    repaint()
+  }, [replayAt, repaint])
+
   const drop = () => setSel([])
   /* ⚠️ through a ref: blit is a useCallback on [scale] and must not be rebuilt per drag event */
   markRef.current = band.current ?? selBox()
@@ -1172,6 +1230,9 @@ export function PaintRoom() {
 
   const onDown = (e: React.PointerEvent) => {
     e.preventDefault()
+    /* ⚠️ Touching the paper ends the replay rather than drawing into a half-shown picture —
+       which would look like the rest of your strokes had been lost. */
+    if (replayRef.current !== null) setReplayAt(null)
     // middle button, or any button while zoomed out of reach, drags the picture around
     if (e.button === 1 || e.button === 2) {
       pan.current = { x: e.clientX, y: e.clientY }
@@ -2215,6 +2276,40 @@ export function PaintRoom() {
         >
           {toolsHidden ? '⌄ Tools' : '⌃ Tools'}
         </button>
+        {/**
+         * ⚠️ FREE, AND THAT IS WHY IT EXISTS. You asked whether a stroke-by-stroke replay would
+         * cost too much space: it costs NONE. A drawing here has always been an ordered list of
+         * strokes rather than an image, so the recording of how it was made IS the file — this
+         * reads the list you already have, in the order it is already in. Nothing is saved,
+         * nothing is duplicated, and it works on anything in the gallery the moment you open it.
+         *
+         * Offered only once there is something to watch, because a replay of one stroke is a
+         * button that appears to do nothing.
+         */}
+        {strokes.length > 1 && (
+          <button
+            className={'btn' + (replayAt !== null ? ' is-on' : '')}
+            aria-pressed={replayAt !== null}
+            onClick={() => setReplayAt((v) => (v === null ? 0 : null))}
+            title={replayAt !== null ? 'Stop and show the whole picture' : 'Watch it draw itself'}
+          >
+            {replayAt !== null ? '⏹ Replay' : '▶ Replay'}
+          </button>
+        )}
+        {replayAt !== null && (
+          <label className="appearance-slider paint-replay-speed" title="Strokes a second">
+            <span className="muted">Speed</span>
+            <input
+              type="range"
+              min={1}
+              max={60}
+              step={1}
+              value={replaySpeed}
+              onChange={(e) => setReplaySpeed(Number(e.target.value))}
+            />
+            <span className="appearance-slider-val">{replaySpeed}</span>
+          </label>
+        )}
         <button
           className="btn"
           onClick={toggleFull}

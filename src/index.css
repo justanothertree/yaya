@@ -7299,6 +7299,11 @@ a.cz-msg-author:focus-visible {
 .paint-shape-row .btn {
   padding: 2px 10px;
 }
+/* short, like the other sliders in this room — see the note on .paint-row's ranges */
+.paint-replay-speed input[type='range'] {
+  width: 5rem;
+  min-width: 0;
+}
 
 /**
  * ⚠️ WIDTH FROM THE HEIGHT, not the other way round, or a fixed shape breaks on a narrow screen.
