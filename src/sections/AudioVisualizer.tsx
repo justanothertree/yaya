@@ -2626,7 +2626,7 @@ export function AudioVisualizer() {
                     meaning at a time — so the row has to say which, or it is a grid that silently
                     changed what it does. */}
                 <span className="muted viz-tool-label">{touring ? 'In the tour' : 'Colour'}</span>
-                <div className="viz-palettes">
+                <div className={'viz-palettes' + (touring ? ' is-touring' : '')}>
                   {PALETTES.map((p) => {
                     /* Theme has no colours of its own, so it cannot be blended with anything — it
                        is simply not a stop on a tour. See MORPH_LIST. */

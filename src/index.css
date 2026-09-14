@@ -3588,6 +3588,43 @@ section[id] {
   border-color: var(--accent);
   box-shadow: 0 0 0 2px color-mix(in oklab, var(--accent), transparent 70%);
 }
+
+/**
+ * ⚠️ WHILE CHOOSING A TOUR, THE OUT ONES GO GREY — the in ones are not marked harder.
+ *
+ * Membership was shown the way selection is: an accent ring. That works when exactly one of
+ * twenty-seven is lit, and fails completely when twenty-five are: a thin accent-coloured ring has
+ * to be picked out against twenty-seven colourful gradients, and the question you are actually
+ * asking is "which ones are OFF". Reported as being tough to see what is selected.
+ *
+ * So the signal is inverted. Draining the excluded ones makes the chosen ones read as "the
+ * colourful ones", which needs no comparison at all — and it scales the right way, because the
+ * fewer you pick the more obvious the picking becomes.
+ *
+ * ⚠️ And a tick as well as the colour, for the same reason the sway chips have a dot: these
+ * are small, they sit shoulder to shoulder, and a difference carried only by saturation is one
+ * that disappears for the ~8% of men who cannot separate those hues.
+ */
+.viz-palettes.is-touring .viz-swatch:not(.is-on) {
+  filter: grayscale(1) brightness(0.5);
+  opacity: 0.45;
+}
+.viz-palettes.is-touring .viz-swatch.is-on::after {
+  content: '✓';
+  position: absolute;
+  top: -1px;
+  right: 2px;
+  font-size: 0.62rem;
+  font-weight: 700;
+  color: #fff;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
+}
+/* a palette that can never be in a tour reads as unavailable rather than merely unpicked */
+.viz-palettes.is-touring .viz-swatch:disabled {
+  filter: grayscale(1) brightness(0.35);
+  opacity: 0.3;
+  cursor: not-allowed;
+}
 /* the label rides on the gradient, so it needs its own contrast rather than the theme's */
 .viz-swatch-label {
   position: absolute;
