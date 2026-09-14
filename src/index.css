@@ -3429,7 +3429,21 @@ section[id] {
   left: 0;
   right: 0;
   bottom: 0;
-  max-height: 34vh;
+  /**
+   * ⚠️ 34vh WAS BELOW WHAT THE TRAY IS MEASURED TO NEED, so it scrolled on nearly every
+   * laptop. The height above is not a guess — it is measured per width, 372px narrow and 304px
+   * wide, chosen so the tallest tab FITS. Capping that at a third of the screen throws the
+   * measurement away: 34vh is 306px at 900 tall, 261px at 768, 272px at 800. Anything under about
+   * 895px tall got a scrollbar over controls that were sized to fit, and a control you have to
+   * find behind a scrollbar is one you do not have — which is the same sentence the height rule
+   * above already uses to explain itself.
+   *
+   * 70vh instead, which on any real screen is far more than the tray asks for, so the measured
+   * height wins and nothing scrolls. It still exists, because a very short window should not be
+   * blanked from edge to edge by a panel — but it is now a backstop rather than the thing that
+   * decides the size.
+   */
+  max-height: 70vh;
   overflow-y: auto;
   background: color-mix(in oklab, var(--panel), transparent 34%);
   backdrop-filter: blur(14px);
