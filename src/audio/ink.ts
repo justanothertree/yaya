@@ -35,7 +35,5 @@ export function readInk(el: Element, paletteId: string): Ink {
     stops: paletteById(paletteId).stops,
     // the visualiser replaces this every frame from its Lift dial; surfaces without one leave it
     lift: 0,
-    // likewise the Morph dial: a surface that does not offer one gets a ramp that holds still
-    morph: 0,
   }
 }

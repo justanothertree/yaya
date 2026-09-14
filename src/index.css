@@ -3474,6 +3474,11 @@ section[id] {
   backdrop-filter: blur(14px);
   border-top: 1px solid var(--border-strong);
 }
+/* the Morph readout is a palette NAME, not a number, so it needs room the numeric ones do not */
+.viz-controls .appearance-slider-val {
+  min-width: 3.2rem;
+}
+
 /* the tray's own way out — see the note in AudioVisualizer. Pinned to its top-right corner so it
    sits on the tray rather than over the picture, and out of the way of the tabs on the left. */
 .viz-controls-shut {

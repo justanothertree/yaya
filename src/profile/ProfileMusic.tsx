@@ -438,7 +438,6 @@ export function VisualBlock({ cfg }: { cfg: Record<string, unknown> }) {
         accent2: read('--accent-2', [239, 68, 68]),
         ink: read('--text', [238, 238, 248]),
         stops: paletteById(paletteId).stops,
-        morph: 0,
         lift: readLift(),
       }
     }

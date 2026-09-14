@@ -190,10 +190,9 @@ export function audioBackdrop(): Effect {
         },
         // paint carries the viewer's accents; the ramp comes from their chosen palette, so the
         // background and the module can never end up different colours
-        /* morph: the backdrop takes the visualiser's SETTINGS, and a moving ramp behind a page
-           you are reading is a different decision from one behind a visual you are watching — so
-           it is not carried across until somebody asks for it there */
-        ink: { ...paint, stops: paletteById(paletteId).stops, lift: mods.readLift(), morph: 0 },
+        /* the backdrop takes the visualiser's palette but not its palette TOUR: a page somebody is
+           reading in front of should not change colour under them */
+        ink: { ...paint, stops: paletteById(paletteId).stops, lift: mods.readLift() },
       })
 
       /**

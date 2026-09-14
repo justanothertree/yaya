@@ -404,3 +404,69 @@ export function sample(stops: RGB[], t: number): RGB {
     Math.round(a[2] + (b[2] - a[2]) * f),
   ]
 }
+
+/**
+ * ── morphing between whole palettes ─────────────────────────────────────────
+ *
+ * ⚠️ THIS IS A DIFFERENT IDEA FROM SLIDING ALONG ONE RAMP, and the first attempt was the other
+ * one. Sliding the sample position within a palette keeps you inside Ember for ever — the colours
+ * move, but they are the same five colours, so what it reads as is "the picture is cycling" rather
+ * than "the palette is changing". What was actually wanted is Ember becoming Ocean becoming Neon.
+ *
+ * ⚠️ RESAMPLED TO A FIXED WIDTH FIRST. The palettes have different numbers of stops, and two ramps
+ * can only be blended stop-for-stop if they have the same number of them. Eight is enough that no
+ * palette loses a feature it had — the most any of them uses is five — and small enough that a
+ * blend is 24 numbers rather than a loop over a gradient.
+ *
+ * ⚠️ AND 'theme' IS NOT IN THE CYCLE. It has no colours of its own; it borrows the viewer's accent
+ * pair (see PALETTES), so it cannot be blended with anything and including it would put a
+ * two-colour gap in the middle of a tour of twenty-six ramps.
+ */
+const MORPH_STOPS = 8
+
+/** Every palette that has colours, resampled to a common width. Built once. */
+const MORPH_RAMPS: RGB[][] = PALETTES.filter((p) => p.stops.length > 1).map((p) =>
+  Array.from({ length: MORPH_STOPS }, (_, i) => sample(p.stops, i / (MORPH_STOPS - 1))),
+)
+
+/** Which palettes the tour visits, in order — for a UI that wants to name where it is. */
+export const morphNames: string[] = PALETTES.filter((p) => p.stops.length > 1).map((p) => p.label)
+
+/** Where a palette sits in the tour, so morphing can START from the one you chose. */
+export function morphIndexOf(id: string): number {
+  const list = PALETTES.filter((p) => p.stops.length > 1)
+  const at = list.findIndex((p) => p.id === id)
+  return at < 0 ? 0 : at
+}
+
+/**
+ * The ramp at a point in the tour: `phase` counts palettes, its fraction is the crossfade.
+ *
+ * ⚠️ WRITES INTO A BUFFER THE CALLER OWNS. This runs once a frame for the life of a session, and
+ * allocating eight arrays each time is exactly the per-frame garbage the rest of this file is
+ * careful to avoid. The caller keeps one array and gets it back filled.
+ */
+export function morphRamp(phase: number, into: RGB[]): RGB[] {
+  const n = MORPH_RAMPS.length
+  const base = ((Math.floor(phase) % n) + n) % n
+  const next = (base + 1) % n
+  const f = phase - Math.floor(phase)
+  const a = MORPH_RAMPS[base]
+  const b = MORPH_RAMPS[next]
+  for (let i = 0; i < MORPH_STOPS; i++) {
+    const s = into[i] ?? (into[i] = [0, 0, 0])
+    s[0] = Math.round(a[i][0] + (b[i][0] - a[i][0]) * f)
+    s[1] = Math.round(a[i][1] + (b[i][1] - a[i][1]) * f)
+    s[2] = Math.round(a[i][2] + (b[i][2] - a[i][2]) * f)
+  }
+  into.length = MORPH_STOPS
+  return into
+}
+
+/** Which palette is showing right now, for a label that says where the tour has got to. */
+export function morphLabel(phase: number): string {
+  const n = morphNames.length
+  const base = ((Math.floor(phase) % n) + n) % n
+  const f = phase - Math.floor(phase)
+  return f < 0.5 ? morphNames[base] : morphNames[(base + 1) % n]
+}

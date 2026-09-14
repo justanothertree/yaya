@@ -27,7 +27,7 @@ import {
   type VisualId,
 } from '../audio/visualModes'
 import { makeFeatureReader } from '../audio/audioFeatures'
-import { PALETTES } from '../audio/palettes'
+import { PALETTES, morphIndexOf, morphLabel, morphRamp, type RGB } from '../audio/palettes'
 import { readInk as readInkShared } from '../audio/ink'
 import { PATHS, pathPoint, type PathId } from '../audio/autoPath'
 import { deletePreset, readPresets, savePreset, type VizPreset } from '../audio/vizPresets'
@@ -416,6 +416,19 @@ export function AudioVisualizer() {
    * would be, for the same reason the ramps themselves were.
    */
   const [morph, setMorph] = useState(() => storedNumber(MORPH_KEY, 0, 1) ?? 0)
+  /**
+   * Which palette the tour has reached, for the reader rather than the renderer.
+   *
+   * ⚠️ THE WHOLE COMPLAINT ABOUT THE FIRST VERSION WAS THAT IT WAS NOT CLEAR WHAT IT DID.
+   * A slider that changes colours slowly is indistinguishable from a slider that does nothing
+   * until you have watched it for a while and guessed. Naming the palette as it arrives turns it
+   * into something you can read in a second.
+   *
+   * ⚠️ Set from the frame loop, so it is throttled HARD — only when the name actually changes.
+   * A state write per frame would re-render this component sixty times a second to print a word
+   * that changes every few seconds.
+   */
+  const [morphNow, setMorphNow] = useState('')
   const [tab, setTab] = useState<VizTab>(() => readStored(TAB_KEY, TAB_IDS, 'modes'))
   const [full, setFull] = useState(false)
 
@@ -893,8 +906,13 @@ export function AudioVisualizer() {
     let swirl = 0
     /** how far the picture has turned so far, in radians */
     let spinA = 0
-    /* how far the ramp has slid; reflected at the ends inside hue() — see Ink.morph */
+    /* how far along the tour of palettes, in palettes; the fraction is the crossfade */
     let morphAt = 0
+    const morphFrom = morphIndexOf(palette)
+    /* one array, refilled each frame — see morphRamp on why it does not allocate */
+    const morphBuf: RGB[] = []
+    /* the last name announced, so the label is written once per palette rather than per frame */
+    let morphShown = ''
     /** which way the current knock threw the picture, held for its whole decay */
     let shakeDir = 0
 
@@ -1192,8 +1210,31 @@ export function AudioVisualizer() {
        * Squared, so the slider has somewhere slow to live: the bottom third is a drift you notice
        * over a whole song, and the top is a wash that turns while you watch it.
        */
-      morphAt += dt * mrph * mrph * 0.35
-      ink.morph = mrph > 0 ? morphAt : 0
+      /**
+       * ⚠️ THE RAMP IS SWAPPED, NOT SLID. The first version moved the sample position along
+       * whichever palette you had chosen: the colours changed, the PALETTE did not, and what it
+       * looked like was Ember cycling rather than Ember becoming Ocean. This walks the tour —
+       * `phase` counts palettes and its fraction crossfades to the next — and hands hue() a
+       * genuinely different ramp, which is what "shift between the palettes" meant.
+       *
+       * ⚠️ STARTING FROM THE ONE YOU PICKED, so choosing Neon and turning Morph up begins at
+       * Neon rather than jumping to wherever the list happens to start.
+       *
+       * Accumulated from elapsed time like the spin and the sway, and squared so the bottom of
+       * the slider is a change you notice across a song rather than a strobe.
+       */
+      if (mrph > 0) {
+        morphAt += dt * mrph * mrph * 0.25
+        ink.stops = morphRamp(morphFrom + morphAt, morphBuf)
+        const name = morphLabel(morphFrom + morphAt)
+        if (name !== morphShown) {
+          morphShown = name
+          setMorphNow(name)
+        }
+      } else if (ink.stops === morphBuf) {
+        /* the tour was on and is not now: put the palette you actually chose back */
+        ink = readInk()
+      }
       // cheap: returns immediately unless the chosen drawing actually changed
       freshenSprite()
       const all = src === ALL
@@ -1958,6 +1999,27 @@ export function AudioVisualizer() {
 
   // "All" is live whenever anything is; a single source is live only if it is
   goFullRef.current = goFull
+
+  /**
+   * ⚠️ ECHO AND STAMP BOTH NEED SOMETHING LEFT TO WORK ON, and neither said so.
+   *
+   * Every frame clears by Trail's amount and THEN the mode draws. With Trail at zero the clear is
+   * total, so there is no previous frame for Echo to copy outward or for Stamp to hold in place:
+   * both sliders moved and nothing happened, on a panel where everything else does something
+   * immediately. Reported, exactly, as "it's not clear what morph or stamp is doing — do they
+   * only work while trails are above like 50%".
+   *
+   * The answer was yes and it was invisible. This is the same shape as the ownsItsBuffer rule
+   * beside it: a control that cannot act says so, rather than being a slider you have to work out
+   * the precondition for. Not a hard gate at 50% — any trail at all gives them something, and the
+   * threshold is only where the effect stops being visible at all.
+   */
+  const noHistory = trail < 0.04
+  /* ⚠️ NAMES THE TAB. Trails lives under Motion and these two under Look, so "turn Trail up"
+     on its own sends somebody hunting through four tabs for a control that is not in the one they
+     are reading. A precondition is only useful if it says where to satisfy it. */
+  const needsTrail =
+    'Turn Trails up in ✨ Motion first — with no trail there is no previous frame to work on'
 
   const micLive = liveSet.includes('mic') || liveSet.includes('local')
   const nothingOn =
@@ -2891,17 +2953,18 @@ export function AudioVisualizer() {
                     max={1}
                     step={0.01}
                     value={echo}
-                    disabled={ownsItsBuffer(mode)}
+                    disabled={ownsItsBuffer(mode) || noHistory}
+                    title={noHistory && !ownsItsBuffer(mode) ? needsTrail : undefined}
                     onChange={(e) => setEcho(Number(e.target.value))}
                   />
                   <span className="appearance-slider-val">
-                    {ownsItsBuffer(mode) ? 'n/a' : Math.round(echo * 100)}
+                    {ownsItsBuffer(mode) ? 'n/a' : noHistory ? 'Trails' : Math.round(echo * 100)}
                   </span>
                 </label>
                 <label className="appearance-slider">
                   <span
                     className="muted"
-                    title="Slide the whole palette along, so the colours morph over time"
+                    title="Drift through the palettes — Ember into Ocean into Neon, from the one you picked"
                   >
                     Morph
                   </span>
@@ -2913,7 +2976,9 @@ export function AudioVisualizer() {
                     value={morph}
                     onChange={(e) => setMorph(Number(e.target.value))}
                   />
-                  <span className="appearance-slider-val">{Math.round(morph * 100)}</span>
+                  <span className="appearance-slider-val">
+                    {morph > 0 ? morphNow || '…' : 'off'}
+                  </span>
                 </label>
                 <label className="appearance-slider">
                   <span
@@ -2928,11 +2993,12 @@ export function AudioVisualizer() {
                     max={1}
                     step={0.01}
                     value={stamp}
-                    disabled={ownsItsBuffer(mode)}
+                    disabled={ownsItsBuffer(mode) || noHistory}
+                    title={noHistory && !ownsItsBuffer(mode) ? needsTrail : undefined}
                     onChange={(e) => setStamp(Number(e.target.value))}
                   />
                   <span className="appearance-slider-val">
-                    {ownsItsBuffer(mode) ? 'n/a' : Math.round(stamp * 100)}
+                    {ownsItsBuffer(mode) ? 'n/a' : noHistory ? 'Trails' : Math.round(stamp * 100)}
                   </span>
                 </label>
               </div>
