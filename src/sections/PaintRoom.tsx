@@ -166,6 +166,7 @@ export function PaintRoom() {
   const band = useRef<{ x0: number; y0: number; x1: number; y1: number } | null>(null)
   const shove = useRef<{ x: number; y: number } | null>(null)
   const markRef = useRef<{ x0: number; y0: number; x1: number; y1: number } | null>(null)
+  const selRef = useRef<number[]>([])
 
   const [tool, setTool] = useState<Tool>(() => LAST?.tool ?? 'brush')
   const [colour, setColour] = useState(() => LAST?.colour ?? '#22c55e')
@@ -492,6 +493,37 @@ export function PaintRoom() {
         px(box.x1) - px(box.x0) + 2,
         py(box.y1) - py(box.y0) + 2,
       )
+      /**
+       * ⚠️ HANDLES ONLY ON A REAL SELECTION, never on the rectangle you are dragging out.
+       * markRef carries both — the band while you are catching things, the box once you have —
+       * and putting grab points on a band being drawn would offer you a corner of something that
+       * does not exist yet.
+       *
+       * ⚠️ Drawn in SCREEN pixels, not scaled with the zoom. A handle is something to hit with
+       * a finger, so it wants to be the same size to the hand at every zoom level; scaling it with
+       * the picture makes it unusably small exactly when you have zoomed out to see the whole
+       * thing you are about to rotate.
+       */
+      if (!band.current) {
+        const g = gripPoints(box)
+        const R = 5
+        vc.lineWidth = 1.5
+        for (const [hx, hy] of [...g.corners, g.rotate]) {
+          vc.beginPath()
+          vc.arc(px(hx), py(hy), R, 0, Math.PI * 2)
+          vc.fillStyle = 'rgba(255,255,255,0.95)'
+          vc.fill()
+          vc.strokeStyle = 'rgba(0,0,0,0.6)'
+          vc.stroke()
+        }
+        /* a stalk from the top edge to the rotate knob, so it reads as attached rather than as a
+           stray dot floating above the picture */
+        vc.beginPath()
+        vc.moveTo(px((box.x0 + box.x1) / 2), py(box.y0))
+        vc.lineTo(px(g.rotate[0]), py(g.rotate[1]) + R)
+        vc.strokeStyle = 'rgba(255,255,255,0.65)'
+        vc.stroke()
+      }
       vc.restore()
     }
     vc.setTransform(dpr, 0, 0, dpr, 0, 0)
@@ -511,7 +543,27 @@ export function PaintRoom() {
      * frame you are on and which layers you have hidden are things about looking, not about the
      * picture. Save the file and none of it travels; it is the same drawing seen from here.
      */
-    paintDrawing(bc, drawingRef.current, w, h, {
+    /**
+     * ⚠️ WHILE A HANDLE IS HELD, THE PICTURE IS DRAWN FROM THE SNAPSHOT, transformed. Not
+     * from the current strokes, and not by applying each move on top of the last: recomputing one
+     * edit from where the gesture started is what makes dragging out and back land exactly where
+     * you began, instead of drifting through a hundred compounded multiplications. The same
+     * reasoning the note editor's drag already uses.
+     */
+    const g = grip.current
+    const m = gripLive.current
+    const shown =
+      g && m
+        ? {
+            ...drawingRef.current,
+            strokes: drawingRef.current.strokes.map((k, i) =>
+              selRef.current.includes(i) && g.from[i]
+                ? { ...k, p: xformPoints(g.from[i].p, m) }
+                : k,
+            ),
+          }
+        : drawingRef.current
+    paintDrawing(bc, shown, w, h, {
       frame: frame ?? undefined,
       hidden,
       onion: frame === null || playing ? 0 : onion,
@@ -966,9 +1018,89 @@ export function PaintRoom() {
     return x1 > x0 || y1 > y0 ? { x0, y0, x1, y1 } : null
   }
 
+  /**
+   * Scaling and rotating what you have caught.
+   *
+   * ⚠️ ONE GESTURE, ONE MATRIX, APPLIED ON RELEASE — the same shape the note editor's drag has,
+   * and for the same reason. The live picture is recomputed from the selection AS IT WAS when the
+   * grip was taken, so dragging is a preview of one edit rather than hundreds stacked on each
+   * other: drag out and back and you are exactly where you started, with no drift accumulated
+   * through a hundred tiny multiplications.
+   *
+   * ⚠️ AND CORNERS ANCHOR ON THE OPPOSITE CORNER, which is what makes a drag feel like pulling
+   * the box rather than moving it. Rotating pivots on the centre, because a corner pivot sends
+   * the thing you are looking at off the page on the first degree.
+   */
+  const grip = useRef<{
+    kind: 'scale' | 'rotate'
+    /** the corner being dragged, and the one it pivots on */
+    ax: number
+    ay: number
+    box: { x0: number; y0: number; x1: number; y1: number }
+    from: Stroke[]
+  } | null>(null)
+
+  /** where the handles are, in 0-1 space: four corners plus a rotate knob above the top edge */
+  const gripPoints = (b: { x0: number; y0: number; x1: number; y1: number }) => ({
+    corners: [
+      [b.x0, b.y0],
+      [b.x1, b.y0],
+      [b.x1, b.y1],
+      [b.x0, b.y1],
+    ] as Array<[number, number]>,
+    rotate: [(b.x0 + b.x1) / 2, b.y0 - 0.045] as [number, number],
+  })
+
+  /** The matrix a pointer at (x, y) implies for the grip in progress. */
+  const gripMatrix = (x: number, y: number): [number, number, number, number, number, number] => {
+    const g = grip.current!
+    if (g.kind === 'rotate') {
+      const cx = (g.box.x0 + g.box.x1) / 2
+      const cy = (g.box.y0 + g.box.y1) / 2
+      const a0 = Math.atan2(g.ay - cy, g.ax - cx)
+      const a1 = Math.atan2(y - cy, x - cx)
+      const t = a1 - a0
+      const cos = Math.cos(t)
+      const sin = Math.sin(t)
+      /* rotate about (cx, cy): translate to origin, rotate, translate back */
+      return [cos, sin, -sin, cos, cx - cx * cos + cy * sin, cy - cx * sin - cy * cos]
+    }
+    /* scale from the opposite corner, which stays put */
+    const px = g.ax
+    const py = g.ay
+    const w0 = g.box.x1 - g.box.x0
+    const h0 = g.box.y1 - g.box.y0
+    /* ⚠️ A FLOOR, NOT A CLAMP TO ZERO. A selection squashed to nothing cannot be dragged back
+       out — every point would already be the same point — so the smallest it will go is a
+       thousandth of the paper, which still looks collapsed and is still recoverable. */
+    const sx = w0 > 1e-4 ? Math.max(0.001, Math.abs(x - px) / w0) * Math.sign(x - px || 1) : 1
+    const sy = h0 > 1e-4 ? Math.max(0.001, Math.abs(y - py) / h0) * Math.sign(y - py || 1) : 1
+    const fx = g.ax === g.box.x0 ? 1 : -1
+    const fy = g.ay === g.box.y0 ? 1 : -1
+    const a = sx * fx
+    const d = sy * fy
+    return [a, 0, 0, d, px - px * a, py - py * d]
+  }
+
+  /** the matrix the grip currently implies, for the preview only — never committed from here */
+  const gripLive = useRef<[number, number, number, number, number, number] | null>(null)
+  const xformPoints = (p: number[], m: [number, number, number, number, number, number]) => {
+    const out = p.slice()
+    for (let i = 0; i + 1 < out.length; i += 2) {
+      const x = out[i]
+      const y = out[i + 1]
+      out[i] = Math.max(-0.5, Math.min(1.5, m[0] * x + m[2] * y + m[4]))
+      out[i + 1] = Math.max(-0.5, Math.min(1.5, m[1] * x + m[3] * y + m[5]))
+    }
+    return out
+  }
+
   const drop = () => setSel([])
   /* ⚠️ through a ref: blit is a useCallback on [scale] and must not be rebuilt per drag event */
   markRef.current = band.current ?? selBox()
+  /* the selection, for repaint — which runs from a ref during a drag and would otherwise close
+     over whatever it was when the callback was last built */
+  selRef.current = sel
   const selectAll = () => setSel(inBand({ x0: -1, y0: -1, x1: 2, y1: 2 }))
   const copy = () => {
     if (!sel.length) return
@@ -1051,6 +1183,33 @@ export function PaintRoom() {
     if (selecting) {
       const box = selBox()
       const pad = 0.02
+      /* ⚠️ HANDLES FIRST. They sit ON the edge of the box, so the move test below would
+         otherwise swallow every one of them — you would grab a corner and the whole selection
+         would slide instead of stretching. */
+      if (box) {
+        const g = gripPoints(box)
+        const near = (p: [number, number]) =>
+          Math.abs(x - p[0]) < 0.022 && Math.abs(y - p[1]) < 0.022
+        const from = strokes.map((k) => ({ ...k, p: [...k.p] }))
+        if (near(g.rotate)) {
+          grip.current = { kind: 'rotate', ax: x, ay: y, box, from }
+          preview()
+          return
+        }
+        const c = g.corners.find(near)
+        if (c) {
+          /* the corner it pivots on is the one diagonally opposite the one you took */
+          grip.current = {
+            kind: 'scale',
+            ax: c[0] === box.x0 ? box.x1 : box.x0,
+            ay: c[1] === box.y0 ? box.y1 : box.y0,
+            box,
+            from,
+          }
+          preview()
+          return
+        }
+      }
       if (box && x >= box.x0 - pad && x <= box.x1 + pad && y >= box.y0 - pad && y <= box.y1 + pad) {
         shove.current = { x, y }
       } else {
@@ -1093,6 +1252,12 @@ export function PaintRoom() {
       band.current.x1 = bx
       band.current.y1 = by
       preview()
+      return
+    }
+    if (grip.current) {
+      const [gx, gy] = at(e)
+      gripLive.current = gripMatrix(gx, gy)
+      repaint()
       return
     }
     if (shove.current) {
@@ -1167,6 +1332,24 @@ export function PaintRoom() {
       const tiny = Math.abs(r.x1 - r.x0) < 0.005 && Math.abs(r.y1 - r.y0) < 0.005
       setSel(tiny ? [] : inBand(r))
       preview()
+      return
+    }
+    if (grip.current) {
+      const m = gripLive.current
+      const g = grip.current
+      grip.current = null
+      gripLive.current = null
+      repaint()
+      if (!m) return
+      setUndone([])
+      const ids = sel.map((i) => g.from[i]?.id).filter((v): v is string => !!v)
+      /* ⚠️ Same as restyle: named strokes travel, unnamed ones are edited here only. An id is
+         what the room calls a stroke, and one loaded from a gallery file has never had one. */
+      if (ids.length) runLayerOp({ k: 'xform', ids, m }, true)
+      else
+        setStrokes((prev) =>
+          prev.map((k, i) => (sel.includes(i) ? { ...k, p: xformPoints(k.p, m) } : k)),
+        )
       return
     }
     if (shove.current) {

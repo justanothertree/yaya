@@ -69,6 +69,19 @@ export type LayerOp =
    * be loaded, which is not what anybody pressed.
    */
   | { k: 'style'; ids: string[]; c?: string; a?: number; w?: number }
+  /**
+   * Move, scale and rotate strokes that are already drawn — as one affine matrix.
+   *
+   * ⚠️ A MATRIX RATHER THAN THE RESULTING POINTS, which is the difference between six numbers
+   * and every coordinate of everything you selected. A stroke can carry two thousand points; a
+   * handful of them dragged across the page would be a message of tens of kilobytes for a gesture
+   * anybody can repeat by accident.
+   *
+   * ⚠️ AND ONE OPERATION COVERS ALL THREE, so there is no "scale op" that has to agree with a
+   * "rotate op" about what happens when you do both. [a, b, c, d, e, f] is the same layout canvas
+   * and SVG use: x' = a·x + c·y + e, y' = b·x + d·y + f.
+   */
+  | { k: 'xform'; ids: string[]; m: [number, number, number, number, number, number] }
 
 export type Stack = {
   strokes: Stroke[]
@@ -141,6 +154,29 @@ export function applyLayerOp(stack: Stack, op: LayerOp, layers: number): Stack {
             }
           : st,
       ),
+      names,
+      hidden,
+      layer,
+    }
+  }
+
+  if (op.k === 'xform') {
+    const want = new Set(op.ids)
+    const [a, b, c, d, e, f] = op.m
+    return {
+      strokes: strokes.map((st) => {
+        if (!st.id || !want.has(st.id)) return st
+        const p = st.p.slice()
+        for (let i = 0; i + 1 < p.length; i += 2) {
+          const x = p[i]
+          const y = p[i + 1]
+          /* ⚠️ clamped to the same range readStroke allows, because a transform is the one edit
+             that can push a point arbitrarily far and these become canvas coordinates */
+          p[i] = Math.max(-0.5, Math.min(1.5, a * x + c * y + e))
+          p[i + 1] = Math.max(-0.5, Math.min(1.5, b * x + d * y + f))
+        }
+        return { ...st, p }
+      }),
       names,
       hidden,
       layer,
@@ -230,6 +266,19 @@ export function readLayerOp(raw: unknown): LayerOp | null {
     if (typeof o.w === 'number' && Number.isFinite(o.w))
       op.w = Math.max(0.0015, Math.min(0.25, o.w))
     return op.c === undefined && op.a === undefined && op.w === undefined ? null : op
+  }
+  if (o.k === 'xform') {
+    if (!Array.isArray(o.ids) || !Array.isArray(o.m) || o.m.length !== 6) return null
+    const ids = o.ids
+      .slice(0, 4000)
+      .filter((v): v is string => typeof v === 'string' && v.length > 0 && v.length <= 60)
+    if (!ids.length) return null
+    /* ⚠️ Every term finite and bounded. An unbounded scale is not a drawing edit, it is a way
+       to turn every point into the same coordinate; the clamp in the transform above stops the
+       damage either way, but a matrix that cannot be sane is better refused than applied. */
+    const m = o.m.map((v) => (typeof v === 'number' && Number.isFinite(v) ? v : NaN))
+    if (m.some((v) => Number.isNaN(v) || Math.abs(v) > 1000)) return null
+    return { k: 'xform', ids, m: m as [number, number, number, number, number, number] }
   }
   if (o.k === 'hold') {
     const i = whole(o.i)
