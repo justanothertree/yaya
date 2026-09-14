@@ -3449,11 +3449,29 @@ section[id] {
    both costs paid out of the thing you went fullscreen to see. It used to be allowed half the
    screen and was nearly solid — a blanked rectangle across the bottom whatever the zoom. Tabs
    keep it to a strip, and it is see-through enough to watch the visuals continue behind it. */
+/**
+ * ⚠️ THE SAME SIDE IT IS ON WHEN YOU ARE NOT FULLSCREEN. On the page the panel is a column to
+ * the RIGHT of the picture; in fullscreen it was a strip across the bottom, so going fullscreen
+ * moved every control you had just been using to the opposite edge of the screen. Fullscreen
+ * should make the picture bigger, not rearrange the room.
+ *
+ * It also settles the height argument that produced two previous fixes: a full-height column asks
+ * nothing of a vh cap, so the tallest tab fits at any screen height without one. The 70vh backstop
+ * is gone with the reason for it.
+ */
 .viz-stage[data-full] .viz-controls {
   position: absolute;
-  left: 0;
+  left: auto;
   right: 0;
+  top: 0;
   bottom: 0;
+  width: 22rem;
+  /* never more than half the picture, however narrow the screen */
+  max-width: 45vw;
+  /* the measured per-width heights are for a horizontal strip; a column takes what it is given */
+  height: auto;
+  border-top: 0;
+  border-left: 1px solid var(--border-strong);
   /**
    * ⚠️ 34vh WAS BELOW WHAT THE TRAY IS MEASURED TO NEED, so it scrolled on nearly every
    * laptop. The height above is not a guess — it is measured per width, 372px narrow and 304px
@@ -3468,11 +3486,30 @@ section[id] {
    * blanked from edge to edge by a panel — but it is now a backstop rather than the thing that
    * decides the size.
    */
-  max-height: 70vh;
+  max-height: none;
   overflow-y: auto;
   background: color-mix(in oklab, var(--panel), transparent 34%);
   backdrop-filter: blur(14px);
-  border-top: 1px solid var(--border-strong);
+}
+
+/**
+ * ⚠️ AND ON A SHORT OR NARROW SCREEN IT GOES BACK TO THE BOTTOM. A 22rem column on a phone
+ * held sideways is most of the width, and the picture behind it stops being the thing you are
+ * looking at. The strip is the right shape when the screen is wider than it is tall by a lot.
+ */
+@media (max-width: 56rem) {
+  .viz-stage[data-full] .viz-controls {
+    left: 0;
+    right: 0;
+    top: auto;
+    bottom: 0;
+    width: auto;
+    max-width: none;
+    height: auto;
+    max-height: 60vh;
+    border-left: 0;
+    border-top: 1px solid var(--border-strong);
+  }
 }
 /* the Morph readout is a palette NAME, not a number, so it needs room the numeric ones do not */
 .viz-controls .appearance-slider-val {
@@ -3506,8 +3543,25 @@ section[id] {
  * like it did not exist. The top corner is clear whether the tray is open or away, so the
  * control never has to compete with what it controls.
  */
+/**
+ * ⚠️ AND THE CORNER PAIR MOVES TO THE LEFT, because the tray is on the right now.
+ *
+ * The note above explains why they were put top-right: the tray was pinned across the BOTTOM, so
+ * the bottom corner was underneath the thing these control. That reasoning has not changed — the
+ * clear corner has. Left alone they would sit on top of the tray, which is the same fault in a new
+ * place: a control competing with what it controls.
+ */
 .viz-stage[data-full] .viz-float {
   opacity: 0.5;
+  right: auto;
+  left: 0.5rem;
+}
+@media (max-width: 56rem) {
+  /* back to the bottom strip, so the top-right corner is clear again */
+  .viz-stage[data-full] .viz-float {
+    left: auto;
+    right: 0.5rem;
+  }
 }
 .viz-stage[data-full] .viz-float:hover,
 .viz-stage[data-full] .viz-float:focus-within {
