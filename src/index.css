@@ -3397,10 +3397,35 @@ section[id] {
   }
 }
 /* one row of small tabs, so the panel is a strip rather than a wall */
+/**
+ * ⚠️ THE TABS DO NOT SCROLL WITH WHAT THEY SWITCH. They sit INSIDE the panel's scroller, so
+ * on any width where the tallest tab does not fit — Modes needs 433px at 700 wide against a 372px
+ * panel — scrolling down to reach a control carried the tabs off the top with it. Reported as the
+ * menu jumping up when Modes is chosen, and it is the same complaint either way round: the row you
+ * steer with must stay where you left it.
+ *
+ * Sticky rather than moved out of the scroller, because the panel's height is measured as one box
+ * (see .viz-controls) and lifting a row out of it would put that measurement out by the height of
+ * the row. It needs its own background, or the content slides visibly underneath it.
+ */
 .viz-tabs {
   display: flex;
   gap: 0.2rem;
   flex-wrap: wrap;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  /* the panel's own ground, so nothing shows through as it passes behind */
+  background: var(--panel);
+  /* out to the panel's padding, so a control scrolling past does not appear beside the tabs */
+  margin: -0.5rem -0.6rem 0;
+  padding: 0.5rem 0.6rem 0.35rem;
+}
+/* in fullscreen the tray is translucent over the picture, so the tabs match it rather than
+   punching an opaque rectangle through the only see-through panel on the site */
+.viz-stage[data-full] .viz-tabs {
+  background: transparent;
+  backdrop-filter: blur(14px);
 }
 .viz-tab {
   appearance: none;

@@ -129,6 +129,7 @@ const ART_KEY = 'viz_art_v1'
 const ARTSTYLE_KEY = 'viz_artstyle_v1'
 const PUNCH_KEY = 'viz_punch_v1'
 const ECHO_KEY = 'viz_echo_v1'
+const STAMP_KEY = 'viz_stamp_v1'
 const TRAIL_KEY = 'viz_trail_v1'
 
 const MIRRORS: Array<[number, string]> = [
@@ -379,6 +380,27 @@ export function AudioVisualizer() {
   artRef.current = chosenArt
   const [punch, setPunch] = useState(() => storedNumber(PUNCH_KEY, 0, 1) ?? 0)
   const [echo, setEcho] = useState(() => storedNumber(ECHO_KEY, 0, 1) ?? 0)
+  /**
+   * Stamp — the frame held in place instead of drifting away from itself.
+   *
+   * ⚠️ IT IS ECHO WITH THE MOVEMENT TAKEN OUT, and that turns out to be a different effect
+   * rather than a weaker one. Echo copies the picture back slightly LARGER and slightly turned,
+   * so every repetition is a copy of a copy sliding outward — tunnels, spirals, and a drawing
+   * that leaves itself behind. Asked for: something that "doesn't drift off but paints over".
+   *
+   * ⚠️ AND AN IN-PLACE COPY IS NOT A NO-OP HERE, which is the only reason this works. Source
+   * and destination are the same pixels, so the COLOUR cannot change — but this buffer is
+   * genuinely transparent (Trail erases with destination-out rather than painting a background),
+   * and copying it onto itself adds opacity back. So stamp does not smear the picture sideways;
+   * it holds against the fade, in place, where each mark was actually drawn.
+   *
+   * ⚠️ WHICH IS ALSO WHY IT DOES NOT GO WHITE. A drifting echo lays slightly-offset copies
+   * over each other and the overlaps average toward the bright end of the ramp — and fifteen of
+   * the twenty-seven palettes end within a hair of white, so "the bright end" is white. Nothing
+   * overlaps anything it was not already on top of here, so a mark keeps its own colour however
+   * long it is held.
+   */
+  const [stamp, setStamp] = useState(() => storedNumber(STAMP_KEY, 0, 1) ?? 0)
   const [tab, setTab] = useState<VizTab>(() => readStored(TAB_KEY, TAB_IDS, 'modes'))
   const [full, setFull] = useState(false)
 
@@ -420,6 +442,7 @@ export function AudioVisualizer() {
       bright,
       punch,
       echo,
+      stamp,
       sway,
       swayOn,
       /**
@@ -455,6 +478,7 @@ export function AudioVisualizer() {
       bright,
       punch,
       echo,
+      stamp,
       artStyle,
       sway,
       swayOn,
@@ -533,6 +557,10 @@ export function AudioVisualizer() {
     bright,
     punch,
     echo,
+    stamp,
+    stamp,
+    stamp,
+    stamp,
     artStyle,
     sharingViz,
     pushViz,
@@ -578,6 +606,7 @@ export function AudioVisualizer() {
     bright,
     punch,
     echo,
+    stamp,
     artStyle,
     spin,
     anchor,
@@ -595,6 +624,7 @@ export function AudioVisualizer() {
     bright,
     punch,
     echo,
+    stamp,
     artStyle,
     spin,
     anchor,
@@ -650,6 +680,7 @@ export function AudioVisualizer() {
       localStorage.setItem(ARTSTYLE_KEY, artStyle)
       localStorage.setItem(PUNCH_KEY, String(punch))
       localStorage.setItem(ECHO_KEY, String(echo))
+      localStorage.setItem(STAMP_KEY, String(stamp))
       localStorage.setItem(TRAIL_KEY, String(trail))
       localStorage.setItem(PANEL_KEY, panel ? '1' : '0')
     } catch {
@@ -1089,6 +1120,7 @@ export function AudioVisualizer() {
         bright: bri,
         punch: pun,
         echo: ech,
+        stamp: stmp,
         spin: spnRaw,
         anchor: anc,
         shake: shk,
@@ -1289,6 +1321,28 @@ export function AudioVisualizer() {
         const es = 1 + 0.035 * ech
         ctx.scale(es, es)
         ctx.translate(-vw / 2, -vh / 2)
+        ctx.drawImage(ctx.canvas, 0, 0, vw, vh)
+        ctx.restore()
+      }
+
+      /**
+       * Stamp: the same copy, with nowhere to go.
+       *
+       * ⚠️ NO TRANSLATE, NO ROTATE, NO SCALE — and that is the entire difference from Echo
+       * above. It cannot change any pixel's COLOUR, because the source and the destination are the
+       * same pixels; what it changes is opacity, because Trail erases with destination-out and
+       * leaves this buffer genuinely transparent. So a mark is held where it was drawn instead of
+       * being pushed outward by a copy of itself.
+       *
+       * ⚠️ Kept UNDER one, deliberately. At full opacity the copy would cancel the fade
+       * completely and the picture would never clear — which is the "solid ink within a second"
+       * failure the note above describes for modes that own their buffer. Topping out at 0.7 means
+       * the strongest setting still loses a little every frame, so a held picture eventually
+       * yields to what you are playing now.
+       */
+      if (stmp > 0.01 && !owns) {
+        ctx.save()
+        ctx.globalAlpha = stmp * 0.7
         ctx.drawImage(ctx.canvas, 0, 0, vw, vh)
         ctx.restore()
       }
@@ -2803,6 +2857,26 @@ export function AudioVisualizer() {
                   />
                   <span className="appearance-slider-val">
                     {ownsItsBuffer(mode) ? 'n/a' : Math.round(echo * 100)}
+                  </span>
+                </label>
+                <label className="appearance-slider">
+                  <span
+                    className="muted"
+                    title="The frame held where it was drawn — paints over instead of drifting off"
+                  >
+                    Stamp
+                  </span>
+                  <input
+                    type="range"
+                    min={0}
+                    max={1}
+                    step={0.01}
+                    value={stamp}
+                    disabled={ownsItsBuffer(mode)}
+                    onChange={(e) => setStamp(Number(e.target.value))}
+                  />
+                  <span className="appearance-slider-val">
+                    {ownsItsBuffer(mode) ? 'n/a' : Math.round(stamp * 100)}
                   </span>
                 </label>
               </div>
