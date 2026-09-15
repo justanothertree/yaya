@@ -1138,8 +1138,8 @@ export function PaintRoom() {
   const [typing, setTyping] = useState<{
     line: [number, number, number, number]
     words: string
-    scale: number
   } | null>(null)
+  const typeBox = useRef<HTMLTextAreaElement>(null)
 
   const startPetWizard = () => {
     setSelecting(false)
@@ -1232,7 +1232,10 @@ export function PaintRoom() {
       l: layer,
       f: frameForNew(),
       x: typing.words,
-      p: [x0, y0, x0 + (x1 - x0) * typing.scale, y0 + (y1 - y0) * typing.scale],
+      /* ⚠️ exactly the line you dragged. Size and angle are the drag, and after it is placed
+         they are the selection handles — which is two ways of saying "drag it", rather than a
+         third set of buttons doing the same job worse. */
+      p: [x0, y0, x1, y1],
     }
   }
 
@@ -1240,22 +1243,40 @@ export function PaintRoom() {
     if (!typing) return
     live.current = pendingText()
     preview()
+    /* ⚠️ Pressing a swatch moves the focus onto that button, so the next letter would be typed
+       into nothing. Taking it back on every picker change is what lets the colour be chosen
+       mid-word — which is the whole reason the words are live in the first place. */
+    typeBox.current?.focus()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [typing, colour, alpha, symmetry, echo])
 
   const placeText = () => {
     const s = pendingText()
     setTyping(null)
+    setNote(null)
     if (!s || !s.x?.trim()) {
       live.current = null
       preview()
       return
     }
-    commit({ ...s, x: s.x.trim().slice(0, 120) })
+    /**
+     * ⚠️ IT ARRIVES SELECTED, with the select tool on. Asked for directly, and it is the right
+     * answer to both of the things buttons were doing badly: the corner handles resize it and the
+     * knob turns it, so the size and the angle you dragged are a starting point rather than a
+     * decision you are stuck with. commit appends, so the new stroke is at the end of the list as
+     * it stands now.
+     */
+    const at = strokes.length
+    commit({ ...s, x: s.x.trim().slice(0, 240) })
+    setSel([at])
+    setSelecting(true)
   }
+
+  const dropTextNote = () => setNote(null)
 
   const dropText = () => {
     setTyping(null)
+    dropTextNote()
     live.current = null
     preview()
   }
@@ -1902,7 +1923,8 @@ export function PaintRoom() {
        * the picture before you commit to it.
        */
       live.current = null
-      setTyping({ line, words: '', scale: 1 })
+      setTyping({ line, words: '' })
+      setNote('Type. Shift+Enter for a new line, Enter to place.')
       preview()
       return
     }
@@ -2943,75 +2965,42 @@ export function PaintRoom() {
         </button>
       </div>
       {typing && (
-        /* ⚠️ Above the paper rather than floating over the spot you clicked. An overlay pinned to
-           the baseline has to follow the zoom and the pan, can land off screen, and covers the
-           words it is there to help you write. */
-        <div className="paint-row paint-typing">
-          {/**
-           * ⚠️ A TEXT BOX, THE WAY PAINT'S IS. Shift+Enter starts a line, Enter places, and
-           * clicking off it onto the paper places it too — so the keys mean what they mean
-           * everywhere else rather than what this one control decided.
-           *
-           * ⚠️ It grows with the words instead of scrolling, because the thing you are writing
-           * is on the paper in front of you and the box is only how you reach it.
-           */}
-          <textarea
-            className="paint-typing-box"
-            autoFocus
-            rows={Math.min(5, typing.words.split('\n').length)}
-            value={typing.words}
-            maxLength={240}
-            placeholder="Type. Shift+Enter for a new line, Enter to place."
-            aria-label="The words to put on the picture"
-            onChange={(e) => setTyping((v) => (v ? { ...v, words: e.target.value } : v))}
-            onKeyDown={(e) => {
-              /* ⚠️ stopped as well as handled: the room listens for Escape and Ctrl+Z on the
-                 window, and a half-typed word is not a selection to drop or an edit to undo */
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault()
-                e.stopPropagation()
-                placeText()
-              } else if (e.key === 'Escape') {
-                e.preventDefault()
-                e.stopPropagation()
-                dropText()
-              } else if (e.key === 'Enter') {
-                /* Shift+Enter is a new line, and the window must not hear it either */
-                e.stopPropagation()
-              }
-            }}
-          />
-          {/* ⚠️ Size is the LINE, not a font size, because the words are scaled to span it — so
-              this stretches the baseline you dragged rather than introducing a second idea of how
-              big text is. Colour and opacity need no control here: they are the room's own, and
-              the pending stroke is rebuilt from them. */}
-          <button
-            className="btn"
-            onClick={() =>
-              setTyping((v) => (v ? { ...v, scale: Math.max(0.25, v.scale / 1.25) } : v))
+        /**
+         * ⚠️ NOTHING TO LOOK AT, ON PURPOSE. The bar that used to sit here showed you the words
+         * you could already see on the paper, and offered a size you could already set by
+         * dragging. What is left is a field with no appearance, which exists for the two things a
+         * window keydown listener cannot do: raise the keyboard on a phone, and let an IME
+         * compose a character.
+         *
+         * ⚠️ IT TAKES THE FOCUS BACK whenever a picker is touched — choosing a colour mid-word
+         * moves the focus to that button, and the next letter would go nowhere. See the effect
+         * beside pendingText.
+         */
+        <textarea
+          ref={typeBox}
+          className="paint-typing-hidden"
+          autoFocus
+          value={typing.words}
+          maxLength={240}
+          aria-label="The words to put on the picture"
+          onChange={(e) => setTyping((v) => (v ? { ...v, words: e.target.value } : v))}
+          onKeyDown={(e) => {
+            /* ⚠️ stopped as well as handled: the room listens for Escape and Ctrl+Z on the
+               window, and a half-typed word is not a selection to drop or an edit to undo */
+            if (e.key === 'Enter' && !e.shiftKey) {
+              e.preventDefault()
+              e.stopPropagation()
+              placeText()
+            } else if (e.key === 'Escape') {
+              e.preventDefault()
+              e.stopPropagation()
+              dropText()
+            } else if (e.key === 'Enter') {
+              /* Shift+Enter is a new line, and the window must not hear it either */
+              e.stopPropagation()
             }
-            title="Smaller"
-          >
-            A−
-          </button>
-          <button
-            className="btn"
-            onClick={() => setTyping((v) => (v ? { ...v, scale: Math.min(4, v.scale * 1.25) } : v))}
-            title="Bigger"
-          >
-            A+
-          </button>
-          <button className="btn" onClick={placeText} disabled={!typing.words.trim()}>
-            ✓ Place
-          </button>
-          <button className="btn btn-ghost" onClick={dropText}>
-            Cancel
-          </button>
-          <span className="muted paint-typing-tip">
-            Pick a colour or the opacity while you type — it changes on the paper as you go.
-            Clicking the paper places it.
-          </span>
-        </div>
+          }}
+        />
       )}
       {petStep && (
         /* ⚠️ Directly above the paper, because every instruction on it is about what to do on

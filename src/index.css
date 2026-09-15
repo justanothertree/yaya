@@ -7639,31 +7639,19 @@ a.cz-msg-author:focus-visible {
   gap: 0.5rem;
 }
 
-/* ── writing words onto the picture ───────────────────────────────── */
-.paint-typing {
-  align-items: center;
-  gap: 0.4rem;
-  padding: 0.5rem 0.7rem;
-  margin-bottom: 0.5rem;
-  border: 1px solid var(--accent, #7c6af7);
-  border-radius: 10px;
-}
-.paint-typing-box {
-  flex: 1;
-  min-width: 10rem;
-  max-width: 26rem;
-  font: inherit;
-  padding: 0.35rem 0.5rem;
-  border-radius: 8px;
-  border: 1px solid var(--border);
-  background: var(--panel, transparent);
-  color: inherit;
-  /* it grows a row at a time with the text; nothing here should be dragged by a corner */
+/* ── writing words onto the picture ─────────────────────────────────
+   ⚠️ There is nothing to see: the words appear on the paper, and this only exists so a phone
+   raises its keyboard and an IME has somewhere to compose. Not display:none and not
+   visibility:hidden — neither can hold the focus, which is the one thing it is for. */
+.paint-typing-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  border: 0;
+  opacity: 0;
+  pointer-events: none;
   resize: none;
-  line-height: 1.35;
-}
-.paint-typing-tip {
-  font-size: 0.74rem;
 }
 
 /* ── the pet guide ─────────────────────────────────────────────
