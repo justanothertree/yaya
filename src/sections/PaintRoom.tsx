@@ -1198,10 +1198,15 @@ export function PaintRoom() {
   )
 
   /** what the wizard has understood so far, in the pet's own words */
-  const petParts = layerNames
-    .map((n, i) => ({ n, i }))
-    .filter((x) => (x.n ?? '').trim() && strokes.some((k) => (k.l ?? 0) === x.i))
-    .map((x) => partOf(x.n))
+  /* ⚠️ the word you typed, deduped by what it does — see the same note in PetsRoom */
+  const petParts = [
+    ...new Map(
+      layerNames
+        .map((n, i) => ({ n: (n ?? '').trim(), i }))
+        .filter((x) => x.n && strokes.some((k) => (k.l ?? 0) === x.i))
+        .map((x) => [partOf(x.n), `${x.n.toLowerCase().slice(0, 18)} ${PART_DOES[partOf(x.n)]}`]),
+    ).values(),
+  ]
 
   const addLayer = () => {
     if (layers >= 12) return
@@ -2878,7 +2883,7 @@ export function PaintRoom() {
                 {frameCount(petPreview) > 1
                   ? `Playing your ${frameCount(petPreview)} frames — a drawing with frames is animated by them rather than by its layer names.`
                   : petParts.length
-                    ? `So far: ${[...new Set(petParts)].map((k) => `${k} ${PART_DOES[k]}`).join(', ')}`
+                    ? `So far: ${petParts.join(', ')}`
                     : 'Nothing is named yet, so all of it just breathes.'}
               </span>
             </div>

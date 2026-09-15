@@ -29,7 +29,21 @@ import type { Drawing, Stroke } from '../draw/strokes'
  * body, or on a pet that does not move much.
  */
 
-export type PartKind = 'body' | 'head' | 'wing' | 'leg' | 'tail' | 'ear' | 'eye' | 'arm' | 'antenna'
+export type PartKind =
+  | 'body'
+  | 'head'
+  | 'wing'
+  | 'leg'
+  | 'tail'
+  | 'ear'
+  | 'eye'
+  | 'arm'
+  | 'antenna'
+  | 'mouth'
+  | 'pulse'
+  | 'spin'
+  | 'flame'
+  | 'float'
 
 /**
  * What each name means, in the words people actually use.
@@ -40,6 +54,16 @@ export type PartKind = 'body' | 'head' | 'wing' | 'leg' | 'tail' | 'ear' | 'eye'
  */
 const WORDS: Array<[PartKind, string[]]> = [
   ['eye', ['eye', 'pupil', 'blink']],
+  /**
+   * ⚠️ ORDER IS CORRECTNESS HERE, not taste, because these are SUBSTRINGS. "heart" contains
+   * "ear" and "gear" contains "ear" — put the ear entry first and a heart becomes an ear and a
+   * gear twitches. Anything whose word contains a shorter word below it has to come above it.
+   */
+  ['pulse', ['heart', 'pulse', 'glow', 'gem', 'core']],
+  ['spin', ['wheel', 'rotor', 'propeller', 'gear', 'fan']],
+  ['flame', ['flame', 'fire', 'torch', 'candle']],
+  ['float', ['halo', 'aura', 'balloon', 'ghost', 'cloud', 'bubble', 'float']],
+  ['mouth', ['mouth', 'jaw', 'tongue']],
   ['wing', ['wing', 'flap']],
   ['antenna', ['antenna', 'antennae', 'feeler', 'whisker']],
   ['ear', ['ear']],
@@ -51,7 +75,21 @@ const WORDS: Array<[PartKind, string[]]> = [
 ]
 
 /** the words worth typing, in the order the room lists them — body is what everything else is */
-export const PART_WORDS: string[] = ['wing', 'head', 'leg', 'tail', 'ear', 'eye', 'arm', 'antenna']
+export const PART_WORDS: string[] = [
+  'wing',
+  'head',
+  'leg',
+  'tail',
+  'ear',
+  'eye',
+  'arm',
+  'antenna',
+  'mouth',
+  'heart',
+  'wheel',
+  'flame',
+  'halo',
+]
 
 export function partOf(name: string | undefined): PartKind {
   const n = (name ?? '').toLowerCase()
@@ -70,6 +108,11 @@ export const PART_DOES: Record<PartKind, string> = {
   eye: 'blinks',
   arm: 'sways',
   antenna: 'wobbles',
+  mouth: 'opens and closes',
+  pulse: 'beats',
+  spin: 'spins',
+  flame: 'flickers',
+  float: 'drifts',
 }
 
 export type Box = { x0: number; y0: number; x1: number; y1: number }
@@ -189,10 +232,31 @@ export function rigOf(d: Drawing): Part[] {
     if (!box) continue
     const name = d.layers?.[layer] ?? ''
     const kind = partOf(name)
-    /* the corner of its own box closest to the middle: clamp the centre INTO the box */
-    const px = Math.max(box.x0, Math.min(box.x1, cx))
-    const py = Math.max(box.y0, Math.min(box.y1, cy))
-    const mid = (box.x0 + box.x1) / 2
+    /**
+     * Where it turns.
+     *
+     * ⚠️ THE JOINT RULE IS NOT RIGHT FOR EVERYTHING, which only became true once there were
+     * parts that are not limbs. A wheel hinged at the edge nearest the body does not spin, it
+     * swings like a pendulum; a heart that beats about its corner lunges instead of pulsing; a
+     * flame is anchored at its base and waves at the top; a jaw hinges at the back. The nearest
+     * point to the middle is the right answer for anything that hangs OFF the creature, and the
+     * wrong one for anything that sits IN it.
+     */
+    const mx = (box.x0 + box.x1) / 2
+    const my = (box.y0 + box.y1) / 2
+    const px =
+      kind === 'spin' || kind === 'pulse' || kind === 'flame' || kind === 'mouth'
+        ? mx
+        : Math.max(box.x0, Math.min(box.x1, cx))
+    const py =
+      kind === 'spin' || kind === 'pulse'
+        ? my
+        : kind === 'flame'
+          ? box.y1
+          : kind === 'mouth'
+            ? box.y0
+            : Math.max(box.y0, Math.min(box.y1, cy))
+    const mid = mx
     parts.push({
       kind,
       layer,
@@ -254,6 +318,28 @@ export function poseOf(part: Part, t: number, energy = 1): Pose {
       return { ...STILL, sy: 1 - blink(t) * 0.92 }
     case 'tail':
       return { ...STILL, rot: Math.sin(t * 3.4) * 0.28 * e }
+    /* ⚠️ Not a sine — a wheel goes round. The only motion here that does not come back. */
+    case 'spin':
+      return { ...STILL, rot: t * 3.2 * e }
+    case 'pulse':
+      return { ...STILL, sx: 1 + Math.sin(t * 3) * 0.13 * e, sy: 1 + Math.sin(t * 3) * 0.13 * e }
+    /* ⚠️ Fast and small, and taller before it is wider — which is what reads as a flame rather
+       than as something being squeezed. Anchored at its base, see the pivot above. */
+    case 'flame':
+      return {
+        ...STILL,
+        sx: 1 - Math.sin(t * 11 + 0.6) * 0.06 * e,
+        sy: 1 + Math.sin(t * 11) * 0.11 * e,
+        rot: Math.sin(t * 7.5) * 0.07 * e,
+      }
+    /* ⚠️ Slower and further than the body's breath, so a halo reads as hanging in the air
+       rather than as part of the creature moving with it. */
+    case 'float':
+      return { ...STILL, dy: Math.sin(t * 1.1 + ph) * -0.03 * e }
+    /* ⚠️ It shuts rather than gapes: 0 to 1 squashed onto the hinge at its top edge, so the
+       mouth you drew is the mouth at its widest and everything else is it closing. */
+    case 'mouth':
+      return { ...STILL, sy: 1 - (0.5 + 0.5 * Math.sin(t * 2.6)) * 0.55 * e }
     case 'head':
       return {
         ...STILL,

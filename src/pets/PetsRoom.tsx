@@ -72,9 +72,20 @@ export function PetsRoom() {
   useEffect(() => () => window.clearTimeout(calmTimer.current), [])
 
   const parts = useMemo(() => (chosen ? rigOf(chosen.art) : []), [chosen])
+  /**
+   * ⚠️ IT SAYS THE WORD YOU TYPED, not the kind it matched. A layer called `wheel` matches the
+   * spin kind, and reading "spin — spins" back at somebody who wrote "wheel" is the engine talking
+   * about itself. An unnamed layer has no word of its own, so it falls back to the kind.
+   */
   const known = useMemo(() => {
-    const seen = new Map<PartKind, number>()
-    for (const p of parts) seen.set(p.kind, (seen.get(p.kind) ?? 0) + 1)
+    const seen = new Map<PartKind, { n: number; word: string }>()
+    for (const p of parts) {
+      const had = seen.get(p.kind)
+      seen.set(p.kind, {
+        n: (had?.n ?? 0) + 1,
+        word: had?.word ?? (p.name === 'unnamed' ? p.kind : p.name.toLowerCase().slice(0, 18)),
+      })
+    }
     return [...seen]
   }, [parts])
   const unnamed = parts.filter((p) => p.name === 'unnamed').length
@@ -253,9 +264,9 @@ export function PetsRoom() {
                 <strong>{chosen.name}</strong>
                 {/* the rig, in the words of this person's own drawing — see the note at the top */}
                 <ul className="pets-parts">
-                  {known.map(([kind, n]) => (
+                  {known.map(([kind, { n, word }]) => (
                     <li key={kind}>
-                      <span className="pets-part">{kind}</span>
+                      <span className="pets-part">{word}</span>
                       <span className="muted">
                         {n > 1 ? ` ×${n} — ` : ' — '}
                         {PART_DOES[kind]}
@@ -307,6 +318,7 @@ export function PetsRoom() {
                   </button>
                   {/* ⚠️ Only once one is actually in the corner. How big the corner pet should be
                       is not a question worth asking somebody who has not got one. */}
+                  {following && <span className="muted pets-size-for">size</span>}
                   {following &&
                     CORNER_SIZES.map(([label, mult]) => (
                       <button
@@ -360,6 +372,14 @@ export function PetsRoom() {
                   </button>
                   {/* ⚠️ one size for both, because the two files are the same creature and nobody
                       wants to answer the same question twice a press apart */}
+                  {/**
+                   * ⚠️ THE PIXELS ARE IN THE LABEL, and that is not decoration. This row and the
+                   * corner-size row both said Small / Medium / Big, a few lines apart on one
+                   * screen, meaning two completely different things — reported as "there are two
+                   * sets of buttons and only the new ones work". Three identical words twice is
+                   * the bug; saying what these ones are makes them a different control at a
+                   * glance, and matches how the paint room's own download panel reads.
+                   */}
                   {PET_WIDTHS.map(([label, w]) => (
                     <button
                       key={w}
@@ -368,7 +388,7 @@ export function PetsRoom() {
                       onClick={() => setWidth(w)}
                       title={`${label} — ${w} pixels across`}
                     >
-                      {label}
+                      {label} · {w}px
                     </button>
                   ))}
                 </div>

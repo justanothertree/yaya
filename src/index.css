@@ -7609,6 +7609,11 @@ a.cz-msg-author:focus-visible {
 }
 /* the two file buttons and the size that applies to both — a different kind of thing from
    "keep me company" and "let it go", so a different line */
+/* the one word that says which Small/Medium/Big this is */
+.pets-size-for {
+  font-size: 0.76rem;
+  margin-left: 0.2rem;
+}
 .pets-files {
   display: flex;
   flex-wrap: wrap;
