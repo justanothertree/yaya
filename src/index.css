@@ -7417,6 +7417,69 @@ a.cz-msg-author:focus-visible {
   margin-inline: 0.3rem;
 }
 
+/* ── taking the picture away with you ────────────────────────────────
+   A panel between the button and the paper. It is a column rather than a wrapping row, because
+   every line in it answers a different question and a wrap would mix them up. */
+.paint-save {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.5rem;
+  padding: 0.7rem;
+  margin-bottom: 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.paint-save-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+.paint-save-kinds,
+.paint-save-sizes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+.paint-save-go {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+}
+.paint-save-what {
+  margin: 0;
+  font-size: 0.8rem;
+  /* the one line that has to be read rather than scanned, so it gets a measure */
+  max-width: 46rem;
+}
+.paint-save-made {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  flex-wrap: wrap;
+  font-size: 0.8rem;
+}
+/* ⚠️ A CHECKERBOARD BEHIND IT, because a PNG with no paper is transparent and a transparent
+   picture on a dark panel looks like a picture that failed to load. */
+.paint-save-made img {
+  width: min(15rem, 60vw);
+  height: auto;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background-color: #fff;
+  background-image:
+    linear-gradient(45deg, #d6d6d6 25%, transparent 25%),
+    linear-gradient(-45deg, #d6d6d6 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #d6d6d6 75%),
+    linear-gradient(-45deg, transparent 75%, #d6d6d6 75%);
+  background-size: 14px 14px;
+  background-position:
+    0 0,
+    0 7px,
+    7px -7px,
+    -7px 0;
+}
+
 /* ── the paper's shape, said out loud ────────────────────────────────────────
    A row above the board: what shape the paper is, how big it really is, and a way to fill the
    screen with the room. */

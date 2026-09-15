@@ -29,6 +29,7 @@ import {
 } from '../draw/strokes'
 import { InCanvasWindow } from '../circuit/ui/canvasContext'
 import { gallery, removeArt, saveArt, subscribeGallery, type Art } from '../draw/gallery'
+import { SaveArt } from '../draw/SaveArt'
 import { together } from '../party/together'
 import { drawParty } from '../party/draw'
 import { applyLayerOp, type LayerOp, type Stack } from '../draw/layerOps'
@@ -239,6 +240,14 @@ export function PaintRoom() {
 
   const live = useRef<Stroke | null>(null)
   const [galleryOpen, setGalleryOpen] = useState(false)
+  /**
+   * The picture the download panel is pointed at — the board, or one out of the gallery.
+   *
+   * ⚠️ A DRAWING, NOT A FLAG, so one panel serves both. The board and a kept picture are the same
+   * kind of thing and the panel only ever needed one of them; a boolean plus "which gallery item"
+   * would be two states that can disagree about what is being saved.
+   */
+  const [saving, setSaving] = useState<Drawing | null>(null)
   const saved = useSyncExternalStore(subscribeGallery, gallery, gallery)
   const call = useVoiceSession()
   const party = useSyncExternalStore(drawParty.subscribe, drawParty.getState, drawParty.getState)
@@ -2169,6 +2178,13 @@ export function PaintRoom() {
                     </button>
                     <button
                       className="btn"
+                      onClick={() => setSaving(a.art)}
+                      title={`Save “${a.name}” as a picture or an animation`}
+                    >
+                      ⤓
+                    </button>
+                    <button
+                      className="btn"
                       onClick={() => {
                         if (window.confirm(`Delete “${a.name}”?`)) removeArt(a.id)
                       }}
@@ -2242,6 +2258,21 @@ export function PaintRoom() {
           }}
         >
           ⬇ Keep
+        </button>
+        {/**
+         * ⚠️ A DIFFERENT WORD AND A DIFFERENT ARROW FROM KEEP, deliberately. Keep puts a picture
+         * in the gallery on this site; this puts a file on your device. Two buttons a thumb apart
+         * that both say ⬇ would be the same button as far as anybody reading quickly is
+         * concerned, and the one that writes to your downloads folder is the wrong one to guess.
+         */}
+        <button
+          className={'btn' + (saving ? ' is-on' : '')}
+          aria-pressed={!!saving}
+          disabled={!strokes.length}
+          onClick={() => setSaving((v) => (v ? null : { ...drawingRef.current, name: '' }))}
+          title="Save this as a picture or an animation you can send"
+        >
+          ⤓ Download
         </button>
         {call.inCall && (
           <button
@@ -2326,6 +2357,7 @@ export function PaintRoom() {
           ⛶
         </button>
       </div>
+      {saving && <SaveArt art={saving} onClose={() => setSaving(null)} />}
       <div
         className={'paint-board' + (bg ? ' has-paper' : '') + (shapeAr ? ' has-shape' : '')}
         ref={host}
