@@ -139,13 +139,20 @@ export const BLOCK_FINISHES: ReadonlyArray<{ id: BlockFinish; label: string }> =
  * whether or not a tint was picked — see blockLookAttrs, which used to return nothing at all for
  * an untinted block.
  */
-export type BlockShape = 'round' | 'square' | 'pillow' | 'cut'
+export type BlockShape = 'round' | 'square' | 'pillow' | 'cut' | 'leaf' | 'arch' | 'pill'
 
 export const BLOCK_SHAPES: ReadonlyArray<{ id: BlockShape; label: string }> = [
   { id: 'round', label: 'Rounded' },
   { id: 'square', label: 'Square' },
   { id: 'pillow', label: 'Pillow' },
   { id: 'cut', label: 'Cut' },
+  /* ⚠️ The three added later are ASYMMETRIC, which is the point of adding them: four symmetric
+     shapes differ only in how round they are, and a page of them still reads as a page of cards.
+     A leaf and an arch have a top and a bottom, so two of them side by side look composed rather
+     than repeated. */
+  { id: 'leaf', label: 'Leaf' },
+  { id: 'arch', label: 'Arch' },
+  { id: 'pill', label: 'Pill' },
 ]
 
 /**
@@ -342,7 +349,32 @@ export function blockHeading(config: Record<string, unknown> | null | undefined)
 /** A block's shape, defaulting to the rounded rectangle every page has always had. */
 export function blockShape(config: Record<string, unknown> | null | undefined): BlockShape {
   const v = config?.shape
-  return v === 'square' || v === 'pillow' || v === 'cut' ? v : 'round'
+  return BLOCK_SHAPES.some((x) => x.id === v && x.id !== 'round') ? (v as BlockShape) : 'round'
+}
+
+/**
+ * A degree or two off square.
+ *
+ * ⚠️ TINY ON PURPOSE. The whole effect is "somebody placed this by hand" and it is gone by
+ * about four degrees, where it stops reading as placed and starts reading as broken. Five steps,
+ * none of them larger than two.
+ *
+ * ⚠️ IT GOES ON THE SLOT, NOT THE CARD. `.card:hover` already sets a transform to lift the
+ * block, and two transforms on one element means the last one wins — a tilted block would have
+ * snapped straight on hover, or never lifted. Rotating the wrapper leaves the card's own
+ * transform entirely alone.
+ */
+export const BLOCK_TILTS: ReadonlyArray<{ id: number; label: string }> = [
+  { id: -2, label: '↶↶' },
+  { id: -1, label: '↶' },
+  { id: 0, label: 'Straight' },
+  { id: 1, label: '↷' },
+  { id: 2, label: '↷↷' },
+]
+
+export function blockTilt(config: Record<string, unknown> | null | undefined): number {
+  const v = config?.tilt
+  return typeof v === 'number' && BLOCK_TILTS.some((t) => t.id === v) ? v : 0
 }
 
 /**
@@ -421,6 +453,7 @@ export function blockLookAttrs(
   'data-shape'?: BlockShape
   'data-edge'?: BlockEdge
   'data-backdrop'?: BannerStyle
+  'data-tilt'?: string
   style?: React.CSSProperties
 } {
   const { hue, finish } = blockLook(config, username)
@@ -431,12 +464,14 @@ export function blockLookAttrs(
   const edge = blockEdge(config)
   const font = blockFont(config)
   const backdrop = blockBackdrop(config)
+  const tilt = blockTilt(config)
   /* ⚠️ The face rides as a CSS VARIABLE rather than a data attribute, because unlike shape
      and edge it is a value and not a switch — one rule reads it and every block type inherits,
      instead of seven selectors that would each have to be repeated for the slot and the cell. */
   const face = BLOCK_FONTS.find((f) => f.id === font)?.stack
   const vars: Record<string, string> = {}
   if (face) vars['--blk-font'] = face
+  if (tilt) vars['--blk-tilt'] = `${tilt}deg`
   if (backdrop) {
     /* the block's own hue when it has one, so the pattern and the tint are one decision */
     const h = hue ?? hueFor(username)
@@ -446,6 +481,7 @@ export function blockLookAttrs(
     ...(shape === 'round' ? {} : { 'data-shape': shape }),
     ...(edge === 'plain' ? {} : { 'data-edge': edge }),
     ...(backdrop ? { 'data-backdrop': backdrop } : {}),
+    ...(tilt ? { 'data-tilt': '1' } : {}),
   }
   /**
    * ⚠️ THE VARIABLES SURVIVE WHETHER OR NOT THERE IS A COLOUR, and this is the THIRD time that

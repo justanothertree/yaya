@@ -8428,6 +8428,25 @@ a.cz-msg-author:focus-visible {
   border-color: var(--accent, #7c6af7);
   color: var(--accent, #7c6af7);
 }
+/**
+ * ⚠️ FINGER-SIZED WHERE THERE ARE FINGERS.
+ *
+ * Measured at 375px: the tray pull was 24×19 and the twelve colour swatches were 28×28. The
+ * pull's own note says it exists so that closing the tray is "a proper target" rather than a
+ * small chevron — it was the smallest control on the panel, and it is the one you reach for when
+ * the panel is covering the thing you are editing.
+ *
+ * 34px matches what the block toolbar already uses on touch, so this is the existing answer
+ * applied where it had been missed rather than a new number.
+ */
+@media (hover: none) and (pointer: coarse) {
+  .profile-inspector-pull {
+    min-width: 34px;
+    min-height: 34px;
+    font-size: 0.95rem;
+  }
+}
+
 @media (hover: none) and (pointer: coarse) {
   /**
    * ⚠️ HIDDEN BY WHAT THEY DO, not by what they are not.
@@ -9396,6 +9415,15 @@ a.cz-msg-author:focus-visible {
 .profile-shape-btn.is-pillow {
   border-radius: 14px;
 }
+.profile-shape-btn.is-leaf {
+  border-radius: 12px 2px 12px 2px;
+}
+.profile-shape-btn.is-arch {
+  border-radius: 999px 999px 4px 4px;
+}
+.profile-shape-btn.is-pill {
+  border-radius: 999px;
+}
 .profile-shape-btn.is-cut {
   border-radius: 0;
   clip-path: polygon(0 0, calc(100% - 7px) 0, 100% 7px, 100% 100%, 7px 100%, 0 calc(100% - 7px));
@@ -9534,6 +9562,42 @@ a.cz-msg-author:focus-visible {
 }
 /* ⚠️ A clip rather than a border-radius, because that is the only way to take a corner OFF.
    The overflow it implies is why this one also hides anything a block draws outside itself. */
+.profile-slot[data-shape='leaf'] > .profile-block,
+.profile-canvas-cell[data-shape='leaf'] > .profile-block {
+  border-radius: 28px 4px 28px 4px !important;
+}
+.profile-slot[data-shape='arch'] > .profile-block,
+.profile-canvas-cell[data-shape='arch'] > .profile-block {
+  border-radius: 999px 999px 10px 10px !important;
+}
+/* ⚠️ A pill needs room to be one: at 999px a short card becomes a lozenge and a tall one just
+   rounds its corners, which is the honest behaviour and why this is offered rather than enforced. */
+.profile-slot[data-shape='pill'] > .profile-block,
+.profile-canvas-cell[data-shape='pill'] > .profile-block {
+  border-radius: 999px !important;
+  padding-left: 1.6rem;
+  padding-right: 1.6rem;
+}
+
+/**
+ * A degree or two off square — see BLOCK_TILTS.
+ *
+ * ⚠️ ON THE WRAPPER, because `.card:hover` sets its own transform to lift the block and two
+ * transforms on one element means the last one wins. Rotating the slot leaves that lift intact,
+ * so a tilted block still rises under the pointer.
+ *
+ * ⚠️ Nothing is clipped and no space is reserved: a two-degree rotation of a card inside its
+ * own grid cell overhangs by a few pixels into the gap, which is the entire effect. Any larger
+ * and it would need the grid's help.
+ */
+.profile-slot[data-tilt],
+.profile-canvas-cell[data-tilt] {
+  transform: rotate(var(--blk-tilt, 0deg));
+}
+@media (prefers-reduced-motion: reduce) {
+  /* a static rotation is not motion, so it stays — this is only here to say that was considered */
+}
+
 .profile-slot[data-shape='cut'] > .profile-block,
 .profile-canvas-cell[data-shape='cut'] > .profile-block {
   border-radius: 0 !important;
@@ -9611,7 +9675,11 @@ a.cz-msg-author:focus-visible {
   outline: 2px solid var(--accent);
 }
 @media (max-width: 40rem) {
-  /* the swatches are the row that would squeeze — keep them thumb-sized and let them wrap */
+  /* the swatches are the row that would squeeze — keep them thumb-sized and let them wrap.
+     ⚠️ 28px measured, which is under the 34px the block toolbar uses on touch, and that is the
+     intended trade: twelve of these wrap into a palette you scan and dab at, where one chevron
+     you must hit to uncover your own work is a different problem with a different answer. Left
+     deliberately after being measured, rather than raised to match a number from elsewhere. */
   .profile-tint-swatch {
     width: 1.75rem;
     height: 1.75rem;

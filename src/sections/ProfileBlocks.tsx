@@ -16,6 +16,7 @@ import {
   BLOCK_FINISHES,
   BLOCK_FONTS,
   BLOCK_SHAPES,
+  BLOCK_TILTS,
   TEXT_ALIGNS,
   TEXT_SIZES,
   blockBackdrop,
@@ -24,6 +25,7 @@ import {
   blockHeading,
   blockKeepEmpty,
   blockShape,
+  blockTilt,
   textAlign,
   tierSees,
   textSize,
@@ -220,6 +222,7 @@ const LOOK_KEYS = [
   'textSize',
   'align',
   'backdrop',
+  'tilt',
 ] as const
 
 const HAS_OWN_WORDS = new Set<ProfileBlock['block_type']>(['bio', 'status', 'free'])
@@ -2990,6 +2993,24 @@ export function ProfileBlocksEditor({
                           onClick={() => setOpenCfg({ shape: sh.id === 'round' ? null : sh.id })}
                         >
                           {sh.label}
+                        </button>
+                      ))}
+                    </span>
+                  </label>
+                  {/* ⚠️ Beside the shape, because it is the same question — what outline does this
+                      have — and because a tilt is the one setting whose effect you cannot judge
+                      from the control, only from the page behind it. */}
+                  <label className="profile-editrow-look">
+                    <span className="muted">Tilt</span>
+                    <span className="profile-width-row">
+                      {BLOCK_TILTS.map((t) => (
+                        <button
+                          key={t.id}
+                          className={'btn' + (blockTilt(selected.config) === t.id ? ' is-on' : '')}
+                          aria-pressed={blockTilt(selected.config) === t.id}
+                          onClick={() => setOpenCfg({ tilt: t.id === 0 ? null : t.id }, 'the tilt')}
+                        >
+                          {t.label}
                         </button>
                       ))}
                     </span>
