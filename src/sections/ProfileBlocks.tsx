@@ -1711,11 +1711,77 @@ export function ProfileBlocksEditor({
   snakeBest: { score: number; game_mode: string | null } | null
   onSaved: (blocks: ProfileBlock[]) => void
 }) {
-  const [blocks, setBlocks] = useState<ProfileBlock[]>(initial)
+  const [blocks, setBlocksRaw] = useState<ProfileBlock[]>(initial)
   const [err, setErr] = useState<string | null>(null)
   const [status, setStatus] = useState<'idle' | 'saving' | 'saved'>('idle')
-  /** the block you just removed, and the list it came from, so it can come straight back */
-  const [undo, setUndo] = useState<{ blocks: ProfileBlock[]; label: string } | null>(null)
+
+  /**
+   * EVERY change to the page, undoable.
+   *
+   * ⚠️ BECAUSE EXPERIMENTING WAS NOT SAFE, AND THAT IS WHAT MADE THIS A SETTINGS SCREEN RATHER
+   * THAN SOMETHING TO PLAY WITH. There were seven controls on a block — face, shape, edge, colour,
+   * finish, width, alignment — and one way back from any of them: remember what it was and put it
+   * back by hand. So the honest move was to change nothing, which is the opposite of the reason
+   * all those controls exist. A page you can always get back from is a page worth trying things on.
+   *
+   * ⚠️ THE WRAPPER KEEPS setBlocks' SIGNATURE, so all fifteen existing call sites work
+   * unchanged and simply gain a history entry; the ones worth naming pass a label. Rewriting
+   * fifteen call sites to thread a new argument would have been fifteen chances to miss one, and
+   * a missed one is a change that silently cannot be undone.
+   *
+   * ⚠️ COALESCED BY TIME AND LABEL. Dragging a hue slider is one intention and hundreds of
+   * setStates; without this, undo would walk back through a drag one pixel at a time and never
+   * reach the thing before it.
+   */
+  type Step = { blocks: ProfileBlock[]; label: string }
+  const [past, setPast] = useState<Step[]>([])
+  const [future, setFuture] = useState<Step[]>([])
+  const blocksRef = useRef(blocks)
+  blocksRef.current = blocks
+  const pastRef = useRef<Step[]>(past)
+  pastRef.current = past
+  const lastPush = useRef(0)
+
+  const setBlocks = useCallback(
+    (next: ProfileBlock[] | ((b: ProfileBlock[]) => ProfileBlock[]), label = 'that change') => {
+      const cur = blocksRef.current
+      const value = typeof next === 'function' ? next(cur) : next
+      /* ⚠️ Computed from refs and pushed OUTSIDE the updater. Calling setState inside another
+         setState's updater is the "cannot update a component while rendering" trap, and React is
+         free to run an updater twice — which would file two history entries for one press. */
+      const now = Date.now()
+      const top = pastRef.current[pastRef.current.length - 1]
+      const coalesce = now - lastPush.current < 600 && top?.label === label
+      lastPush.current = now
+      if (!coalesce) setPast((p) => [...p.slice(-49), { blocks: cur, label }])
+      setFuture([])
+      setBlocksRaw(value)
+    },
+    [],
+  )
+
+  const stepBack = useCallback(() => {
+    const p = pastRef.current
+    if (!p.length) return
+    const step = p[p.length - 1]
+    setPast(p.slice(0, -1))
+    setFuture((f) => [...f, { blocks: blocksRef.current, label: step.label }])
+    setBlocksRaw(step.blocks)
+    lastPush.current = 0
+    setOpenIdx(null)
+    setLiftIdx(null)
+  }, [])
+
+  const stepForward = useCallback(() => {
+    setFuture((f) => {
+      if (!f.length) return f
+      const step = f[f.length - 1]
+      setPast((p) => [...p, { blocks: blocksRef.current, label: step.label }])
+      setBlocksRaw(step.blocks)
+      lastPush.current = 0
+      return f.slice(0, -1)
+    })
+  }, [])
   /** the block type the server refused, so the rest of the page can still be saved without it */
   const [blocked, setBlocked] = useState<ProfileBlock['block_type'] | null>(null)
   /** which block is selected; its fields appear underneath the page rather than inside it */
@@ -1845,7 +1911,6 @@ export function ProfileBlocksEditor({
    * while a way back lets you simply look.
    */
   const applyStarter = (st: Starter) => {
-    setUndo({ blocks, label: `the ${st.name} layout` })
     setOpenIdx(null)
     setLiftIdx(null)
     setAdding(false)
@@ -1856,6 +1921,7 @@ export function ProfileBlocksEditor({
         config: b.alone ? { alone: true } : {},
         visibility: defaultTier(b.type),
       })),
+      `the ${st.name} layout`,
     )
   }
   /** drop `from` into `to`, closing the gap it leaves — the reorder a drag performs */
@@ -1890,16 +1956,21 @@ export function ProfileBlocksEditor({
    * and is the part an inheritance system makes surprising.
    */
   const setEveryCfg = (patch: Record<string, unknown>) =>
-    setBlocks((all) => all.map((x) => ({ ...x, config: { ...x.config, ...patch } })))
+    setBlocks(
+      (all) => all.map((x) => ({ ...x, config: { ...x.config, ...patch } })),
+      'that look everywhere',
+    )
 
   /** merge into the open block's config — shared, because two rows of the inspector write it */
-  const setOpenCfg = (patch: Record<string, unknown>) =>
-    setBlocks((all) =>
-      all.map((x, idx) => (idx === openIdx ? { ...x, config: { ...x.config, ...patch } } : x)),
+  const setOpenCfg = (patch: Record<string, unknown>, label?: string) =>
+    setBlocks(
+      (all) =>
+        all.map((x, idx) => (idx === openIdx ? { ...x, config: { ...x.config, ...patch } } : x)),
+      label ?? Object.keys(patch)[0] ?? 'that change',
     )
 
   const setSizeAt = (i: number, size: ProfileBlock['size']) =>
-    setBlocks((all) => all.map((x, idx) => (idx === i ? { ...x, size } : x)))
+    setBlocks((all) => all.map((x, idx) => (idx === i ? { ...x, size } : x)), 'the width')
 
   const move = (i: number, dir: -1 | 1) => {
     const j = i + dir
@@ -1917,16 +1988,42 @@ export function ProfileBlocksEditor({
    * Removing is the one thing here that can lose work, and it now persists on its own — so it
    * is the one thing that keeps an explicit way back rather than an explicit way forward.
    */
+  /**
+   * One more of that, exactly as it is.
+   *
+   * ⚠️ THE WAY PEOPLE ACTUALLY BUILD A PAGE, once anything on it looks right. Getting a bio
+   * to a serif, huge, centred, square, wine-tinted panel takes seven decisions; wanting a second
+   * one below it should take zero, and without this it took seven more and they would not quite
+   * match. It lands NEXT to its original rather than at the end, because a copy belongs beside
+   * the thing it was copied from — finding it at the bottom of a long page is the same journey
+   * arrange mode exists to remove.
+   *
+   * ⚠️ The id is dropped. It names a row the server owns; a copy is a new block and asking
+   * for it to be saved under the original's name is asking for one of them to disappear.
+   */
+  const duplicateAt = (i: number) => {
+    if (blocks.length >= 20) return
+    const src = blocks[i]
+    const copy: ProfileBlock = {
+      block_type: src.block_type,
+      size: src.size,
+      config: JSON.parse(JSON.stringify(src.config ?? {})),
+      visibility: src.visibility,
+    }
+    setOpenIdx(i + 1)
+    setBlocks(
+      (all) => [...all.slice(0, i + 1), copy, ...all.slice(i + 1)],
+      `copying ${BLOCK_LABEL[src.block_type]}`,
+    )
+  }
+
   const removeAt = (i: number) => {
     const gone = blocks[i]
-    setUndo({ blocks, label: `removing ${BLOCK_LABEL[gone.block_type]}` })
     setOpenIdx((cur) => (cur === i ? null : cur != null && cur > i ? cur - 1 : cur))
-    setBlocks((all) => all.filter((_, idx) => idx !== i))
-  }
-  const undoRemove = () => {
-    if (!undo) return
-    setBlocks(undo.blocks)
-    setUndo(null)
+    setBlocks(
+      (all) => all.filter((_, idx) => idx !== i),
+      `removing ${BLOCK_LABEL[gone.block_type]}`,
+    )
   }
 
   /**
@@ -2056,6 +2153,25 @@ export function ProfileBlocksEditor({
     [],
   )
 
+  /**
+   * ⚠️ The shortcut everybody's hands already know, and it has to not fire while they are
+   * typing — a textarea has its own undo, and stealing it mid-sentence would throw away a
+   * paragraph to get back a colour.
+   */
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== 'z') return
+      const el = e.target as HTMLElement | null
+      const tag = el?.tagName
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || el?.isContentEditable) return
+      e.preventDefault()
+      if (e.shiftKey) stepForward()
+      else stepBack()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [stepBack, stepForward])
+
   const selected = openIdx != null ? blocks[openIdx] : null
 
   /**
@@ -2080,6 +2196,26 @@ export function ProfileBlocksEditor({
             : 'This is the page itself, at the widths it really uses. Click a block to change what is in it, drag the handle to move it.'}
         </p>
         {/* ⚠️ Only worth offering once there is something to arrange. One block has no order. */}
+        {/* ⚠️ NAMED, not just arrows. "Undo" is a promise you have to take on trust; "Undo
+            colour" is one you can check before you press it, which is the difference between
+            being able to experiment and being willing to. */}
+        <button
+          className="btn btn-ghost"
+          onClick={stepBack}
+          disabled={!past.length}
+          title={past.length ? `Undo ${past[past.length - 1].label}` : 'Nothing to undo yet'}
+        >
+          ↶ Undo{past.length ? ` ${past[past.length - 1].label}` : ''}
+        </button>
+        {future.length > 0 && (
+          <button
+            className="btn btn-ghost"
+            onClick={stepForward}
+            title={`Redo ${future[future.length - 1].label}`}
+          >
+            ↷ Redo
+          </button>
+        )}
         {!arranging && (
           <button
             className={'btn' + (starters ? ' is-on' : '')}
@@ -2262,6 +2398,14 @@ export function ProfileBlocksEditor({
                   onClick={() => setAloneAt(i, !blockAlone(b))}
                 >
                   ⇔
+                </button>
+                <button
+                  className="btn"
+                  title={'Make another ' + BLOCK_LABEL[b.block_type] + ' just like this one'}
+                  disabled={blocks.length >= 20}
+                  onClick={() => duplicateAt(i)}
+                >
+                  ⧉
                 </button>
                 <button
                   className="btn btn-ghost"
@@ -2850,11 +2994,6 @@ export function ProfileBlocksEditor({
             }}
           >
             Take the {BLOCK_LABEL[blocked]} block out and save the rest
-          </button>
-        )}
-        {undo && (
-          <button className="btn btn-ghost" onClick={undoRemove}>
-            Undo {undo.label}
           </button>
         )}
       </div>
