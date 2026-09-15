@@ -440,6 +440,53 @@ export function Profile({ authed, username }: { authed: boolean; username?: stri
    * achievements, and that is deliberate rather than unfinished — a stranger is being shown a
    * page, not given a feed.
    */
+  /**
+   * Somebody's page, opened by a stranger following a link.
+   *
+   * ⚠️ A SECOND ANONYMOUS DOOR, and a narrower one than it looks. get_public_profile answers
+   * only for a profile whose owner set public_page on itself, returns only public-tier blocks,
+   * and gives a name nobody has and a member who has not opted in the same null through the same
+   * path — so it cannot be used to ask who is on the site. See
+   * docs/2026-09-15-a-page-you-can-link.sql, which argues with the demo migration rather than
+   * quietly widening it.
+   *
+   * ⚠️ Tried BEFORE giving up, not instead of signing in. A stranger who lands on a page
+   * nobody published still gets the sign-in prompt, which is what every profile did until now.
+   */
+  const [publicTried, setPublicTried] = useState(false)
+  useEffect(() => {
+    if (authed || demo || !u) return
+    let live = true
+    setPublicTried(false)
+    setState({ kind: 'loading' })
+    const sb = getSupabaseClientOrNull()
+    if (!sb) {
+      setPublicTried(true)
+      setState({ kind: 'missing' })
+      return
+    }
+    void sb.rpc('get_public_profile', { p_username: u }).then(({ data, error }) => {
+      if (!live) return
+      setPublicTried(true)
+      if (error || !data) {
+        /* not published, not a member, or the function is not deployed yet — all the same
+           answer to a stranger, deliberately */
+        setState({ kind: 'missing' })
+        return
+      }
+      const row = data as ProfileData & { blocks?: ProfileBlock[] }
+      setState({ kind: 'ok', p: row })
+      setBlocks(Array.isArray(row.blocks) ? row.blocks : [])
+      setActivity([])
+      setTrophies([])
+      setAchievements([])
+      setEditing(false)
+    })
+    return () => {
+      live = false
+    }
+  }, [authed, demo, u])
+
   useEffect(() => {
     if (!demo) return
     let live = true
@@ -469,13 +516,23 @@ export function Profile({ authed, username }: { authed: boolean; username?: stri
     }
   }, [demo])
 
-  if (!authed && !demo)
+  /* ⚠️ Only once the public attempt has ANSWERED. Turning a stranger away while the call is
+     still in flight shows the sign-in wall for a moment on every published page, which is the
+     one visitor this feature exists for. */
+  if (!authed && !demo && (!u || (publicTried && state.kind !== 'ok')))
     return (
       <div>
         <h2 className="section-title">Profile</h2>
         <p className="muted">
-          Profiles are for members — <a href="#signin">sign in</a> to see who&apos;s who.
+          {u ? 'This page is not published — ' : 'Profiles are for members — '}
+          <a href="#signin">sign in</a> to see who&apos;s who.
         </p>
+      </div>
+    )
+  if (!authed && !demo && !publicTried)
+    return (
+      <div className="card" aria-busy>
+        Loading profile…
       </div>
     )
   if (!u && !demo)
@@ -785,6 +842,9 @@ export function Profile({ authed, username }: { authed: boolean; username?: stri
           onSaved={(saved) => setBlocks(saved)}
         />
       ) : (
+        /* ⚠️ `guest` is anyone signed OUT, not just the demo. A friend's published page has
+           the same locked contents the demo has — the guestbook and the activity feed are
+           members' business on every page, however the visitor arrived at it. */
         <ProfileBlocksView
           blocks={blocks}
           activity={activity}
@@ -793,7 +853,7 @@ export function Profile({ authed, username }: { authed: boolean; username?: stri
           snakeBest={p.snake_best}
           username={p.username}
           isMe={p.is_me}
-          guest={demo}
+          guest={!authed}
         />
       )}
 
