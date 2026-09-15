@@ -34,7 +34,16 @@ import type { Stroke } from './strokes'
  * operations do not race. A real fix is a version vector, which is a different project.
  */
 export type LayerOp =
-  | { k: 'add' }
+  /**
+   * @param name what to call it, for an add that already knows.
+   *
+   * ⚠️ ONE OP RATHER THAN AN ADD FOLLOWED BY A NAME, and the reason is a real bug rather than
+   * tidiness. runLayerOp computes from a ref that is refreshed on render, so two ops fired from
+   * one handler both see the stack as it was BEFORE either — and `name` refuses an index that is
+   * past the layer count it can see, so the second one silently did nothing. The pet guide's new
+   * layer came out called "Layer 2". Anything that has to happen together has to be one op.
+   */
+  | { k: 'add'; name?: string }
   /** swap with the neighbour at `to` — an index rather than a direction, so it cannot mean
       something different on a screen whose list is drawn the other way up */
   | { k: 'move'; i: number; to: number }
@@ -129,7 +138,7 @@ export function applyLayerOp(stack: Stack, op: LayerOp, layers: number): Stack {
   if (op.k === 'add') {
     if (layers >= 12) return stack
     const n = padded()
-    n.push('')
+    n.push(op.name ?? '')
     // ⚠️ `layer` deliberately untouched. The person who pressed + moves to the new layer; a peer
     // watching it appear does not get their brush taken off what they were drawing on.
     return { strokes, names: n, hidden, layer }
@@ -255,7 +264,8 @@ export function readLayerOp(raw: unknown): LayerOp | null {
   const o = raw as Record<string, unknown>
   const whole = (v: unknown) =>
     typeof v === 'number' && Number.isInteger(v) && v >= 0 && v < 12 ? v : null
-  if (o.k === 'add') return { k: 'add' }
+  if (o.k === 'add')
+    return { k: 'add', ...(typeof o.name === 'string' ? { name: o.name.slice(0, 24) } : {}) }
   if (o.k === 'hide') {
     const i = whole(o.i)
     return i === null || typeof o.on !== 'boolean' ? null : { k: 'hide', i, on: o.on }

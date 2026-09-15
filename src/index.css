@@ -7628,6 +7628,37 @@ a.cz-msg-author:focus-visible {
   gap: 0.5rem;
 }
 
+/* ── the pet guide ─────────────────────────────────────────────
+   A column, not a wrapping row: every line answers a different question and a wrap mixes them. */
+.paint-pet-guide {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.4rem;
+  padding: 0.65rem 0.8rem;
+  margin-bottom: 0.5rem;
+  border: 1px solid var(--accent, #7c6af7);
+  border-radius: 10px;
+  font-size: 0.84rem;
+}
+.paint-pet-guide .muted {
+  font-size: 0.8rem;
+  max-width: 46rem;
+}
+.paint-pet-guide code {
+  padding: 0 3px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+/* the eight words, as a row of presses rather than a sentence to read */
+.paint-pet-parts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+.paint-pet-so-far {
+  font-size: 0.76rem;
+}
+
 /* ── taking the picture away with you ────────────────────────────────
    A panel between the button and the paper. It is a column rather than a wrapping row, because
    every line in it answers a different question and a wrap would mix them up. */

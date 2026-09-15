@@ -34,6 +34,8 @@ import { together } from '../party/together'
 import { drawParty } from '../party/draw'
 import { applyLayerOp, type LayerOp, type Stack } from '../draw/layerOps'
 import { paintSession } from '../draw/session'
+import { savePet } from '../pets/pets'
+import { PART_DOES, PART_WORDS, partOf } from '../pets/rig'
 import { AlsoTogether } from '../ui/AlsoTogether'
 import { useVoiceSession } from '../voice/useVoiceSession'
 
@@ -1053,6 +1055,97 @@ export function PaintRoom() {
     setLayer(next.layer)
     if (send) drawParty.layers(op)
   }, [])
+
+  /**
+   * THE PET WIZARD.
+   *
+   * ⚠️ IT LIVES IN PAINT, NOT IN THE PETS ROOM, and that was the question worth settling first.
+   * Every step of making a pet except the very last one is DRAWING — body, add a layer, draw a
+   * part, name it, repeat. All of that needs the paint room's tools and the paint room's state.
+   * A wizard on the Pets page could only say "now go somewhere else and do six things, then come
+   * back", which is exactly what the written instructions already say and exactly what was not
+   * enough. The one Pets-side step, adopting it, is a single function call and can happen from
+   * here.
+   *
+   * ⚠️ IT NAMES THE PART BEFORE YOU DRAW IT, which is the whole reason it teaches anything.
+   * "Draw something, then tell me what it was" leaves you staring at a blank layer; "now draw a
+   * wing" is an instruction. It also means the thing that makes a pet move — the layer's name —
+   * gets set by pressing the word rather than by remembering to.
+   *
+   * ⚠️ IT WATCHES RATHER THAN ASKING. There is no Next button: the step is done when the layer
+   * it is waiting on has a stroke on it, which the room already knows. A wizard you have to
+   * confirm your way through is a form.
+   */
+  type PetStep =
+    | { phase: 'body'; layer: number }
+    | { phase: 'pick' }
+    | { phase: 'draw'; part: string; layer: number }
+  const [petStep, setPetStep] = useState<PetStep | null>(null)
+
+  const startPetWizard = () => {
+    setSelecting(false)
+    if (frame !== null) goFrame(null)
+    /* ⚠️ The room remembers the tool you left on (saveLastKit), so "draw the body" could arrive
+       with Text selected — and the first drag would open a prompt instead of drawing. Only the two
+       that cannot make a body are overridden; a marker or a crayon is a fine way to draw one. */
+    if (tool === 'text' || tool === 'fill') setTool('brush')
+    /* whatever is already on the board is the body — starting over would throw away work */
+    if (strokes.some((k) => (k.l ?? 0) === layer)) {
+      nameLayerIfBlank(layer, 'body')
+      setPetStep({ phase: 'pick' })
+    } else {
+      setPetStep({ phase: 'body', layer })
+    }
+  }
+
+  const nameLayerIfBlank = (i: number, to: string) => {
+    if ((layerNames[i] ?? '').trim()) return
+    runLayerOp({ k: 'name', i, name: to }, true)
+  }
+
+  const petAddPart = (part: string) => {
+    if (layers >= 12) return
+    const at = layers
+    mark(`a ${part} layer`)
+    /* ⚠️ ONE op, not an add and then a name — see the note on LayerOp.add */
+    runLayerOp({ k: 'add', name: part }, true)
+    setLayer(at)
+    setPetStep({ phase: 'draw', part, layer: at })
+  }
+
+  /* ⚠️ the step advances when the drawing says so, not when a button is pressed */
+  useEffect(() => {
+    if (!petStep) return
+    if (petStep.phase === 'body' && strokes.some((k) => (k.l ?? 0) === petStep.layer)) {
+      nameLayerIfBlank(petStep.layer, 'body')
+      setPetStep({ phase: 'pick' })
+    }
+    if (petStep.phase === 'draw' && strokes.some((k) => (k.l ?? 0) === petStep.layer)) {
+      setPetStep({ phase: 'pick' })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [strokes, petStep])
+
+  const finishPet = () => {
+    const name = window.prompt('What is your pet called?', '')?.trim() ?? ''
+    if (!name) return
+    const art = { ...drawingRef.current, name }
+    saveArt(art)
+    const made = savePet(name, art)
+    setPetStep(null)
+    setNote(
+      made
+        ? `${made.name} is yours — find them in 🐾 Pets.`
+        : 'That could not be kept — is there anything on the page?',
+    )
+    window.setTimeout(() => setNote(null), 6000)
+  }
+
+  /** what the wizard has understood so far, in the pet's own words */
+  const petParts = layerNames
+    .map((n, i) => ({ n, i }))
+    .filter((x) => (x.n ?? '').trim() && strokes.some((k) => (k.l ?? 0) === x.i))
+    .map((x) => partOf(x.n))
 
   const addLayer = () => {
     if (layers >= 12) return
@@ -2509,6 +2602,20 @@ export function PaintRoom() {
         >
           ⬇ Keep
         </button>
+        {/* ⚠️ Beside Keep because it ENDS in a keep — it is the same job with the steps said out
+            loud, and the pet falls out at the end. */}
+        <button
+          className={'btn' + (petStep ? ' is-on' : '')}
+          aria-pressed={!!petStep}
+          onClick={() => (petStep ? setPetStep(null) : startPetWizard())}
+          title={
+            petStep
+              ? 'Stop the guide — your drawing stays exactly as it is'
+              : 'Walk me through making a creature that moves'
+          }
+        >
+          🐾 Make a pet
+        </button>
         {/**
          * ⚠️ A DIFFERENT WORD AND A DIFFERENT ARROW FROM KEEP, deliberately. Keep puts a picture
          * in the gallery on this site; this puts a file on your device. Two buttons a thumb apart
@@ -2607,6 +2714,68 @@ export function PaintRoom() {
           ⛶
         </button>
       </div>
+      {petStep && (
+        /* ⚠️ Directly above the paper, because every instruction on it is about what to do on
+           the paper. A guide somewhere else is a thing to keep looking away at. */
+        <div className="paint-row paint-pet-guide">
+          {petStep.phase === 'body' && (
+            <>
+              <strong>1 · Draw the body.</strong>
+              <span className="muted">
+                Just the middle of the creature — head, wings and legs come next, each on their own
+                layer. This step finishes itself the moment you draw something.
+              </span>
+            </>
+          )}
+
+          {petStep.phase === 'draw' && (
+            <>
+              <strong>Draw the {petStep.part}.</strong>
+              <span className="muted">
+                You are on a new layer called <code>{petStep.part}</code>, so this part{' '}
+                {PART_DOES[partOf(petStep.part)]} on its own. Draw it where it belongs on the body.
+              </span>
+              <button className="btn btn-ghost" onClick={() => setPetStep({ phase: 'pick' })}>
+                Skip this one
+              </button>
+            </>
+          )}
+
+          {petStep.phase === 'pick' && (
+            <>
+              <strong>Add a part that moves.</strong>
+              <span className="muted">
+                Press one, then draw it. Each becomes its own layer, and the name is what makes it
+                move.
+              </span>
+              <span className="paint-pet-parts">
+                {PART_WORDS.map((w) => (
+                  <button
+                    key={w}
+                    className="btn"
+                    disabled={layers >= 12}
+                    onClick={() => petAddPart(w)}
+                    title={`A layer called ${w} — it ${PART_DOES[partOf(w)]}`}
+                  >
+                    {w}
+                  </button>
+                ))}
+              </span>
+              <button className="btn" disabled={!strokes.length} onClick={finishPet}>
+                ✓ That is everything
+              </button>
+            </>
+          )}
+
+          {/* ⚠️ What it has understood, as you go. The rig is invisible — you cannot tell by
+              looking whether a layer got named — so the guide keeps saying what it has. */}
+          {petParts.length > 0 && (
+            <span className="muted paint-pet-so-far">
+              So far: {[...new Set(petParts)].map((k) => `${k} ${PART_DOES[k]}`).join(', ')}
+            </span>
+          )}
+        </div>
+      )}
       {saving && <SaveArt art={saving} onClose={() => setSaving(null)} />}
       <div
         className={'paint-board' + (bg ? ' has-paper' : '') + (shapeAr ? ' has-shape' : '')}
