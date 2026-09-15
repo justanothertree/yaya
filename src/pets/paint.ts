@@ -1,5 +1,5 @@
 import { frameCount, paintDrawing, paintStroke, type Drawing } from '../draw/strokes'
-import { bodyPose, inkBox, poseOf, type Part } from './rig'
+import { bodyPose, inkBox, poseOf, TUNE, type Mood, type Part } from './rig'
 
 /**
  * A pet, painted at one instant.
@@ -19,6 +19,8 @@ export type PetPaint = {
   energy?: number
   /** -1 to face the other way */
   facing?: number
+  /** what it is doing, and where it is looking. Absent is idle and straight ahead. */
+  mood?: Mood
 }
 
 export function paintPet(
@@ -27,8 +29,15 @@ export function paintPet(
   parts: Part[],
   w: number,
   h: number,
-  { t, energy = 1, facing = 1 }: PetPaint,
+  { t, energy = 1, facing = 1, mood }: PetPaint,
 ) {
+  /* ⚠️ A stance is the same rig with the clock and the amplitude scaled — see TUNE. Nothing
+     below branches on which stance it is, so a part added later works in all of them. */
+  const tune = TUNE[mood?.stance ?? 'idle']
+  const rt = t * tune.rate
+  const re = energy * tune.swing
+  const lookX = Math.max(-1, Math.min(1, mood?.lookX ?? 0))
+  const lookY = Math.max(-1, Math.min(1, mood?.lookY ?? 0))
   ctx.clearRect(0, 0, w, h)
   ctx.save()
   if (facing < 0) {
@@ -64,32 +73,49 @@ export function paintPet(
   const frames = frameCount(art)
   if (frames > 1) {
     const fps = Math.max(1, Math.min(24, art.fps ?? 8))
-    const f = energy > 0 ? Math.floor(t * fps) % frames : 0
+    const f = energy > 0 ? Math.floor(rt * fps) % frames : 0
     crop()
     paintDrawing(ctx, art, w, h, { frame: f })
     ctx.restore()
     return
   }
 
-  const body = bodyPose(t, energy)
+  const body = bodyPose(rt, re)
   /* the whole pet leans and drifts about its own middle, then the parts move within it */
   ctx.translate(w / 2, h / 2)
-  ctx.rotate(body.rot)
+  /* ⚠️ The lean applies even at zero energy: a stance is a POSE, and reduced motion means a
+     still creature rather than one that forgets it was crouching. */
+  ctx.rotate(body.rot + tune.lean)
+  ctx.scale(tune.squashX, tune.squashY)
   ctx.translate(-w / 2, -h / 2)
-  ctx.translate(0, body.dy * h)
+  ctx.translate(0, (body.dy + tune.drop) * h)
   /* ⚠️ AFTER the body's lean, so the pet turns about the middle of what you can see rather
      than about the middle of a page that is no longer on screen */
   crop()
 
   /* parts arrive in layer order, which is the order the picture is drawn in — see rigOf */
   for (const part of parts) {
-    const pose = poseOf(part, t, energy)
+    const pose = poseOf(part, rt, re)
+    /**
+     * ⚠️ LOOKING IS THE HEAD AND THE EYES AND NOTHING ELSE, which is what makes it read as a
+     * glance rather than as the whole creature sliding. The eyes move further than the head does,
+     * because that is what eyes do.
+     *
+     * ⚠️ AND SLEEP SHUTS THEM HERE rather than inside poseOf, so the pose functions stay pure
+     * functions of time and this stays the one place that knows what a stance is.
+     */
+    const looks = part.kind === 'head' || part.kind === 'eye'
+    const reach = part.kind === 'eye' ? 0.026 : 0.012
+    const dx = pose.dx + (looks ? lookX * reach : 0)
+    const dy = pose.dy + (looks ? lookY * reach * 0.8 : 0)
+    const rot = pose.rot + (part.kind === 'head' ? lookX * 0.09 : 0)
+    const sy = tune.shut && part.kind === 'eye' ? 0.08 : pose.sy
     const px = part.px * w
     const py = part.py * h
     ctx.save()
-    ctx.translate(px + pose.dx * w, py + pose.dy * h)
-    ctx.rotate(pose.rot)
-    ctx.scale(pose.sx, pose.sy)
+    ctx.translate(px + dx * w, py + dy * h)
+    ctx.rotate(rot)
+    ctx.scale(pose.sx, sy)
     ctx.translate(-px, -py)
     for (const s of part.strokes) paintStroke(ctx, s, w, h)
     ctx.restore()

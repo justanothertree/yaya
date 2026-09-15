@@ -290,9 +290,14 @@ const STILL: Pose = { rot: 0, dx: 0, dy: 0, sx: 1, sy: 1 }
  *
  * @param energy 0 is asleep, 1 is wide awake — everything scales by it, so one number is the
  * difference between a pet dozing in the corner and one that has just been prodded.
+ *
+ * ⚠️ IT GOES ABOVE 1, and the ceiling used to be 1, which silently threw away every stance
+ * that moves MORE than idle: run asks for 1.7 and alert for 1.15, and both were clamped back to
+ * exactly idle's amplitude, so the only thing those stances actually did was run the clock faster.
+ * Measured before the fix — a running leg swung no further than a standing one.
  */
 export function poseOf(part: Part, t: number, energy = 1): Pose {
-  const e = Math.max(0, Math.min(1, energy))
+  const e = Math.max(0, Math.min(2, energy))
   const s = part.side
   const ph = part.phase
   switch (part.kind) {
@@ -366,6 +371,89 @@ function twitch(t: number, ph: number): number {
 function blink(t: number): number {
   const p = t % 4.3
   return p < 0.14 ? Math.sin((p / 0.14) * Math.PI) : 0
+}
+
+/**
+ * What the creature is DOING, as a modulation of the rig rather than as more drawing.
+ *
+ * ⚠️ NO SECOND SET OF PICTURES, and that is the whole reason this is cheap. Asked how hard it
+ * would be to "manage putting the drawings together" for idle, run, crouch and sleep — the answer
+ * is that none of them need a drawing. The rig already knows which layer is a leg and which is an
+ * eye, so running is the same legs faster and further with the body leaning into it, sleeping is
+ * everything slowed almost to nothing with the eyes shut and the body settled down, and crouching
+ * is the body squashed and lowered. One creature, five things it can be doing, zero extra work
+ * from whoever drew it.
+ *
+ * ⚠️ IT IS A TUNING, NOT A BRANCH. Every stance is the same poseOf called with time and energy
+ * scaled, plus a whole-body adjustment — so a stance cannot forget about a part, and a part added
+ * later works in every stance without anybody revisiting this table.
+ */
+export type Stance = 'idle' | 'alert' | 'run' | 'crouch' | 'sleep'
+
+export type Mood = {
+  stance: Stance
+  /** where it is looking, -1 to 1 on each axis. 0,0 is straight ahead. */
+  lookX?: number
+  lookY?: number
+}
+
+export type Tune = {
+  /** how fast the clock runs for it */
+  rate: number
+  /** how far everything moves, on top of energy */
+  swing: number
+  /** the whole creature leaning, in radians */
+  lean: number
+  /** and settling, in 0–1 space */
+  drop: number
+  squashX: number
+  squashY: number
+  /** eyes shut */
+  shut: boolean
+}
+
+export const STANCES: Array<[Stance, string]> = [
+  ['idle', 'Idle'],
+  ['alert', 'Alert'],
+  ['run', 'Run'],
+  ['crouch', 'Crouch'],
+  ['sleep', 'Sleep'],
+]
+
+export const TUNE: Record<Stance, Tune> = {
+  idle: { rate: 1, swing: 1, lean: 0, drop: 0, squashX: 1, squashY: 1, shut: false },
+  /* braced and quick, standing a little taller — the pose before it does something */
+  alert: {
+    rate: 1.55,
+    swing: 1.15,
+    lean: -0.05,
+    drop: -0.012,
+    squashX: 0.98,
+    squashY: 1.04,
+    shut: false,
+  },
+  /* legs and arms at two and a half times, leaning into it, bobbing harder */
+  run: { rate: 2.5, swing: 1.7, lean: 0.14, drop: 0, squashX: 1.02, squashY: 0.98, shut: false },
+  /* down and wide, and slower because a crouch is a held pose */
+  crouch: {
+    rate: 0.7,
+    swing: 0.55,
+    lean: 0.05,
+    drop: 0.055,
+    squashX: 1.1,
+    squashY: 0.76,
+    shut: false,
+  },
+  /* almost still, settled, eyes shut. Not stopped: a sleeping thing still breathes. */
+  sleep: {
+    rate: 0.32,
+    swing: 0.3,
+    lean: 0.03,
+    drop: 0.035,
+    squashX: 1.04,
+    squashY: 0.94,
+    shut: true,
+  },
 }
 
 /** The whole pet's own drift, so it is not a rigid thing with moving parts. */

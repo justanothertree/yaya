@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef } from 'react'
 import type { Drawing } from '../draw/strokes'
 import { paintPet } from './paint'
-import { petRatio, rigOf } from './rig'
+import { petRatio, rigOf, type Mood } from './rig'
 
 /**
  * A pet, alive, at whatever size it is given.
@@ -20,6 +20,8 @@ export function PetView({
   size,
   energy = 1,
   facing = 1,
+  stance = 'idle',
+  watch = false,
   className,
   label,
 }: {
@@ -28,6 +30,9 @@ export function PetView({
   size: number
   energy?: number
   facing?: number
+  stance?: Mood['stance']
+  /** follow the pointer with its head and eyes while it is over this pet */
+  watch?: boolean
   className?: string
   label?: string
 }) {
@@ -50,13 +55,35 @@ export function PetView({
    * poking it would be a glitch.
    */
   const t0 = useRef(performance.now())
-  /* read live inside the loop, so a change of energy does not tear the loop down */
-  const live = useRef({ energy, facing })
-  live.current = { energy, facing }
+  /**
+   * ⚠️ READ LIVE INSIDE THE LOOP, so none of this tears the loop down — and the look in
+   * particular could not work any other way: it changes on every pointermove, and restarting an
+   * animation sixty times a second is not an animation.
+   */
+  const live = useRef({ energy, facing, stance, look: { x: 0, y: 0 } })
+  live.current = { ...live.current, energy, facing, stance }
 
   /* ⚠️ the BOOLEAN, not the number. Crossing between still and moving has to restart the loop;
      every other change of energy is picked up through the ref on the next frame. */
   const moving = energy > 0
+
+  /**
+   * ⚠️ IT LOOKS AT YOUR POINTER, which is the one thing here that is a reaction rather than a
+   * clock — and the only reason a creature in the corner feels like it has noticed you. Written
+   * straight into the ref the loop reads, never into state: this fires on every pointermove.
+   */
+  const follow = (e: React.PointerEvent) => {
+    if (!watch) return
+    const r = e.currentTarget.getBoundingClientRect()
+    if (!r.width || !r.height) return
+    live.current.look = {
+      x: Math.max(-1, Math.min(1, ((e.clientX - r.left) / r.width) * 2 - 1)),
+      y: Math.max(-1, Math.min(1, ((e.clientY - r.top) / r.height) * 2 - 1)),
+    }
+  }
+  const away = () => {
+    live.current.look = { x: 0, y: 0 }
+  }
 
   useEffect(() => {
     const el = cv.current
@@ -75,6 +102,11 @@ export function PetView({
         t,
         energy: live.current.energy,
         facing: live.current.facing,
+        mood: {
+          stance: live.current.stance,
+          lookX: live.current.look.x,
+          lookY: live.current.look.y,
+        },
       })
 
     /**
@@ -92,9 +124,23 @@ export function PetView({
     }
     raf = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(raf)
-  }, [art, parts, w, h, moving])
+    /**
+     * ⚠️ THE STANCE IS A DEPENDENCY, unlike energy and the look. Those change while the loop is
+     * running and get picked up on the next frame through the ref — but a still pet has no next
+     * frame, so at zero energy (which is what reduced motion gets) changing the stance would have
+     * repainted nothing at all. It is a rare, deliberate press, so restarting the loop for it
+     * costs nothing, and the clock lives in a ref so the creature does not snap back to t=0.
+     */
+  }, [art, parts, w, h, moving, stance])
 
   return (
-    <canvas ref={cv} className={className} aria-label={label ?? art.name ?? 'Pet'} role="img" />
+    <canvas
+      ref={cv}
+      className={className}
+      aria-label={label ?? art.name ?? 'Pet'}
+      role="img"
+      onPointerMove={watch ? follow : undefined}
+      onPointerLeave={watch ? away : undefined}
+    />
   )
 }

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { gallery, subscribeGallery, type Art } from '../draw/gallery'
 import { PetView } from './PetView'
-import { PART_DOES, PART_WORDS, rigOf, type PartKind } from './rig'
+import { PART_DOES, PART_WORDS, STANCES, rigOf, type PartKind, type Mood } from './rig'
 import { pets, removePet, renamePet, savePet, subscribePets, type Pet } from './pets'
 import { companion, cornerSize, setCompanion, subscribeCompanion } from './companion'
 import { PET_WIDTHS, petGif, petSeconds, petStill } from './petFile'
@@ -61,6 +61,7 @@ export function PetsRoom() {
 
   const chosen: Pet | undefined = mine.find((p) => p.id === openId) ?? mine[0]
 
+  const [stance, setStance] = useState<Mood['stance']>('idle')
   const [energy, setEnergy] = useState(REST)
   const calmTimer = useRef(0)
   const prod = () => {
@@ -256,12 +257,36 @@ export function PetsRoom() {
                   art={chosen.art}
                   size={220}
                   energy={still ? 0 : energy}
+                  stance={stance}
+                  watch
                   label={`${chosen.name}, waving about`}
                 />
               </button>
 
               <div className="pets-facts">
                 <strong>{chosen.name}</strong>
+                {/**
+                 * ⚠️ NONE OF THESE NEEDED A SECOND DRAWING. Running is the same legs faster and
+                 * further with the body leaning into it; sleeping is everything slowed almost to
+                 * nothing with the eyes shut. The rig already knows which layer is a leg, so the
+                 * creature somebody drew once can do all five — see TUNE in rig.ts.
+                 */}
+                <div className="pets-stances">
+                  {STANCES.map(([id, label]) => (
+                    <button
+                      key={id}
+                      className={'btn btn-ghost' + (stance === id ? ' is-on' : '')}
+                      aria-pressed={stance === id}
+                      onClick={() => setStance(id)}
+                      title={`Show ${chosen.name} ${label.toLowerCase()}`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                <span className="muted pets-hint">
+                  It follows your pointer with its head and eyes while you are over it.
+                </span>
                 {/* the rig, in the words of this person's own drawing — see the note at the top */}
                 <ul className="pets-parts">
                   {known.map(([kind, { n, word }]) => (
