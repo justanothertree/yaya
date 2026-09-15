@@ -477,10 +477,20 @@ export function Profile({ authed, username }: { authed: boolean; username?: stri
       const row = data as ProfileData & { blocks?: ProfileBlock[] }
       setState({ kind: 'ok', p: row })
       setBlocks(Array.isArray(row.blocks) ? row.blocks : [])
-      setActivity([])
       setTrophies([])
       setAchievements([])
       setEditing(false)
+      /**
+       * ⚠️ A SECOND CALL, because activity is a second decision.
+       *
+       * get_public_profile deliberately carries none: publishing a page and publishing what you
+       * have been doing are separate switches, and folding the feed into the page payload would
+       * have made one imply the other. This asks for it separately and takes [] for an answer,
+       * which is what it gets unless both switches are on.
+       */
+      void sb.rpc('get_public_activity', { p_username: u, p_limit: 20 }).then(({ data: a }) => {
+        if (live) setActivity(Array.isArray(a) ? (a as ActivityItem[]) : [])
+      })
     })
     return () => {
       live = false

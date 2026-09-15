@@ -531,10 +531,11 @@ function BlockView({
             </ul>
           ) : (
             <p className="muted" style={{ margin: 0 }}>
-              {/* ⚠️ get_demo_profile deliberately carries no activity — "a stranger is being
-                  shown a page, not given a feed" — so for a signed-out reader this block is
-                  always empty, and "nothing to show yet" was the wrong half of the truth. */}
-              {guest ? 'Sign in to see what they have been up to.' : 'Nothing to show yet.'}
+              {/* ⚠️ A GUEST CAN NOW HAVE ACTIVITY, so this stopped being "you are locked out"
+                  and became genuinely ambiguous: get_public_activity returns [] both for a feed
+                  that is members-only and for one that is public and empty, and the client cannot
+                  tell those apart. So the wording is true either way rather than picking one. */}
+              {guest ? 'Nothing public here — sign in to see more.' : 'Nothing to show yet.'}
             </p>
           )}
         </div>
