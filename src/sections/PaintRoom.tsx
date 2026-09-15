@@ -149,8 +149,9 @@ export function PaintRoom() {
    * bg, hidden and layer names, and packDrawing writes the fields it lists. A history cannot
    * reach a file, a gallery item, a profile block or a peer.
    */
-  const [past, setPast] = useState<Array<{ label: string; strokes: Stroke[] }>>([])
-  const [future, setFuture] = useState<Array<{ label: string; strokes: Stroke[] }>>([])
+  type Step = { label: string; strokes: Stroke[]; names: string[] }
+  const [past, setPast] = useState<Step[]>([])
+  const [future, setFuture] = useState<Step[]>([])
   /* read by mark() and by undo/redo, which run from handlers rather than from a render */
   const strokesNow = useRef<Stroke[]>(strokes)
   strokesNow.current = strokes
@@ -163,8 +164,12 @@ export function PaintRoom() {
    * coverage complete rather than hopeful: every mutation already had to say "and now redo is
    * meaningless", so every mutation already had a line to replace.
    */
+  /* ⚠️ AND THE LAYER NAMES. They were outside the history while they were decoration; they
+     are the rig a pet is read from now (see pets/rig.ts), so losing one to a mis-tap is work
+     lost. Twelve short strings is nothing next to the stroke array beside it. */
+  const namesNow = useRef<string[]>([])
   const markAs = useCallback((label: string, snap: Stroke[]) => {
-    setPast((p) => [...p.slice(-(HISTORY - 1)), { label, strokes: snap }])
+    setPast((p) => [...p.slice(-(HISTORY - 1)), { label, strokes: snap, names: namesNow.current }])
     setFuture([])
   }, [])
   const mark = useCallback((label: string) => markAs(label, strokesNow.current), [markAs])
@@ -178,6 +183,7 @@ export function PaintRoom() {
   const [layerNames, setLayerNames] = useState<string[]>(
     () => paintSession.restore()?.layerNames ?? [],
   )
+  namesNow.current = layerNames
   /**
    * ⚠️ NULL MEANS "NOT ANIMATING", and that is the default so the room stays a paint
    * program until you ask for more. A stroke drawn while this is null gets no frame at all,
@@ -1620,13 +1626,15 @@ export function PaintRoom() {
    * deep copy taken for a drag preview. Identity would find nothing in common with it and append
    * every peer stroke a second time.
    */
-  const restore = (snap: Stroke[]) => {
+  const restore = (step: Step) => {
+    const snap = step.strokes
     const cur = strokesNow.current
     const known = new Set(snap.map((k) => k.id).filter(Boolean))
     const since = cur.filter((k) => !isMine(k) && k.id && !known.has(k.id))
     const next = since.length ? [...snap, ...since] : snap
     setSel([])
     setStrokes(next)
+    setLayerNames(step.names)
     // ⚠️ outside the updater: React may run an updater twice, and this one leaves the machine
     tellRoom(cur, next)
   }
@@ -1635,16 +1643,22 @@ export function PaintRoom() {
     const step = past[past.length - 1]
     if (!step) return
     setPast((p) => p.slice(0, -1))
-    setFuture((f) => [...f, { label: step.label, strokes: strokesNow.current }])
-    restore(step.strokes)
+    setFuture((f) => [
+      ...f,
+      { label: step.label, strokes: strokesNow.current, names: namesNow.current },
+    ])
+    restore(step)
   }
 
   const redo = () => {
     const step = future[future.length - 1]
     if (!step) return
     setFuture((f) => f.slice(0, -1))
-    setPast((p) => [...p, { label: step.label, strokes: strokesNow.current }])
-    restore(step.strokes)
+    setPast((p) => [
+      ...p,
+      { label: step.label, strokes: strokesNow.current, names: namesNow.current },
+    ])
+    restore(step)
   }
 
   useEffect(() => {
@@ -1828,6 +1842,34 @@ export function PaintRoom() {
                 title={`Draw on ${nameOf(i)}`}
               >
                 {nameOf(i)}
+              </button>
+              {/**
+               * ⚠️ THE NAME IS THE RIG NOW, which is why this is a control of its own rather
+               * than a double-click on the label. A pet's parts are read from its layer names
+               * (pets/rig.ts), so naming a layer `wing` is the difference between a picture that
+               * bobs and a bird that flaps — and a gesture with no button cannot be found by
+               * somebody who has not been told, and does not exist at all on a phone.
+               *
+               * ⚠️ THE PROMPT SAYS WHICH WORDS DO SOMETHING. It is the only moment where that
+               * fact is useful, and the alternative is a page of documentation nobody opens.
+               */}
+              <button
+                className="paint-layer-eye"
+                onClick={() => {
+                  const to = window
+                    .prompt(
+                      'Name this layer — wing, head, leg, tail, ear, eye, arm and antenna give it movement in the Pets room.',
+                      layerNames[i] ?? '',
+                    )
+                    ?.trim()
+                  if (to === undefined) return
+                  mark(`renaming ${nameOf(i)}`)
+                  runLayerOp({ k: 'name', i, name: to.slice(0, 24) }, true)
+                }}
+                title={`Rename ${nameOf(i)}`}
+                aria-label={`Rename ${nameOf(i)}`}
+              >
+                ✎
               </button>
               <button
                 className="paint-layer-eye"

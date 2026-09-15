@@ -39,6 +39,21 @@ export type LayerOp =
       something different on a screen whose list is drawn the other way up */
   | { k: 'move'; i: number; to: number }
   | { k: 'remove'; i: number }
+  /**
+   * Give a layer a name.
+   *
+   * ⚠️ THE NAMES WERE READ, SAVED AND SHOWN, AND COULD NEVER BE SET. Drawing.layers has
+   * carried them since the frame editor arrived, nameOf() falls back to "Layer 3" when one is
+   * missing, and the only thing that ever called setLayerNames was a picture arriving from a peer
+   * — whose names had nowhere to come from either. So every layer on the site was unnamed, and
+   * the Pets room, which reads those names as a creature's skeleton, could only ever find a body.
+   *
+   * ⚠️ AN OP RATHER THAN LOCAL STATE, like every other thing you can do to a layer here. A
+   * rename that did not travel would mean the same layer was called different things on two
+   * screens in the same shared picture — and it is the names that decide how a pet moves, so the
+   * two would disagree about the creature, not just about a label.
+   */
+  | { k: 'name'; i: number; name: string }
   | { k: 'hide'; i: number; on: boolean }
   /**
    * Put every stroke on this layer onto one frame, or onto all of them.
@@ -117,6 +132,13 @@ export function applyLayerOp(stack: Stack, op: LayerOp, layers: number): Stack {
     n.push('')
     // ⚠️ `layer` deliberately untouched. The person who pressed + moves to the new layer; a peer
     // watching it appear does not get their brush taken off what they were drawing on.
+    return { strokes, names: n, hidden, layer }
+  }
+
+  if (op.k === 'name') {
+    if (op.i >= layers) return stack
+    const n = padded()
+    n[op.i] = op.name
     return { strokes, names: n, hidden, layer }
   }
 
@@ -246,6 +268,12 @@ export function readLayerOp(raw: unknown): LayerOp | null {
   if (o.k === 'remove') {
     const i = whole(o.i)
     return i === null ? null : { k: 'remove', i }
+  }
+  if (o.k === 'name') {
+    const i = whole(o.i)
+    if (i === null || typeof o.name !== 'string') return null
+    /* the same 24 characters readDrawing allows, so a name that travels is a name that saves */
+    return { k: 'name', i, name: o.name.slice(0, 24) }
   }
   if (o.k === 'style') {
     if (!Array.isArray(o.ids)) return null
