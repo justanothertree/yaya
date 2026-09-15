@@ -793,6 +793,7 @@ export function Profile({ authed, username }: { authed: boolean; username?: stri
           snakeBest={p.snake_best}
           username={p.username}
           isMe={p.is_me}
+          guest={demo}
         />
       )}
 

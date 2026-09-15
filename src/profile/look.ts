@@ -128,6 +128,43 @@ export const BLOCK_SHAPES: ReadonlyArray<{ id: BlockShape; label: string }> = [
   { id: 'cut', label: 'Cut' },
 ]
 
+/**
+ * HOW A BLOCK SITS ON THE PAGE — its edge and its shadow, as one choice.
+ *
+ * ⚠️ A SEPARATE AXIS FROM THE FINISH, which is about a colour: wash, outline and solid are
+ * three ways of wearing a hue and all three are unavailable on a block with no hue. This is about
+ * the card itself and applies to every block whether or not it is tinted — the same reasoning
+ * that put shape outside the colour gate.
+ *
+ * ⚠️ ONE CHOICE RATHER THAN A BORDER CONTROL AND A SHADOW CONTROL. Border weight and
+ * elevation are not independent in practice: a heavy border with a big shadow is two competing
+ * claims about where the edge of the card is, and offering them separately mostly produces that.
+ * Four ways a card can sit, each internally consistent.
+ */
+export type BlockEdge = 'plain' | 'hair' | 'heavy' | 'lift' | 'inset'
+
+export const BLOCK_EDGES: ReadonlyArray<{ id: BlockEdge; label: string }> = [
+  { id: 'plain', label: 'Plain' },
+  { id: 'hair', label: 'Hairline' },
+  { id: 'heavy', label: 'Heavy' },
+  { id: 'lift', label: 'Lifted' },
+  { id: 'inset', label: 'Inset' },
+]
+
+/** A block's edge, defaulting to whatever the card already looked like. */
+export function blockEdge(config: Record<string, unknown> | null | undefined): BlockEdge {
+  const v = config?.edge
+  return v === 'hair' || v === 'heavy' || v === 'lift' || v === 'inset' ? v : 'plain'
+}
+
+/** A block's saved heading, or null for the one its type prints by default. */
+export function blockHeading(config: Record<string, unknown> | null | undefined): string | null {
+  const v = config?.heading
+  if (typeof v !== 'string') return null
+  const clean = v.trim().slice(0, 60)
+  return clean || null
+}
+
 /** A block's shape, defaulting to the rounded rectangle every page has always had. */
 export function blockShape(config: Record<string, unknown> | null | undefined): BlockShape {
   const v = config?.shape
@@ -205,13 +242,22 @@ export function blockLook(
 export function blockLookAttrs(
   config: Record<string, unknown> | null | undefined,
   username: string,
-): { 'data-finish'?: BlockFinish; 'data-shape'?: BlockShape; style?: React.CSSProperties } {
+): {
+  'data-finish'?: BlockFinish
+  'data-shape'?: BlockShape
+  'data-edge'?: BlockEdge
+  style?: React.CSSProperties
+} {
   const { hue, finish } = blockLook(config, username)
   const shape = blockShape(config)
   /* ⚠️ The shape survives the early return. This used to be `if (hue == null) return {}`,
      which was right while everything here was a way of wearing a colour — and would have made a
      square block silently impossible unless you also tinted it. */
-  const shaped = shape === 'round' ? {} : { 'data-shape': shape }
+  const edge = blockEdge(config)
+  const shaped = {
+    ...(shape === 'round' ? {} : { 'data-shape': shape }),
+    ...(edge === 'plain' ? {} : { 'data-edge': edge }),
+  }
   if (hue == null) return shaped
   return {
     ...shaped,

@@ -12,8 +12,11 @@ import { getSupabaseClient } from '../finance/client'
 import { useTouchOnly } from '../ui/pointerKind'
 import {
   BANNER_STYLES,
+  BLOCK_EDGES,
   BLOCK_FINISHES,
   BLOCK_SHAPES,
+  blockEdge,
+  blockHeading,
   blockShape,
   TINT_HUES,
   bannerBackground,
@@ -181,6 +184,19 @@ const NEEDS_SERVER_SUPPORT: Array<ProfileBlock['block_type']> = ['art', 'looks']
 const blockAlone = (b: ProfileBlock) => b.config?.alone === true
 
 /**
+ * The block types that print a heading, and so can be given a different one.
+ *
+ * ⚠️ Not every type has one. A bio is its text, a banner is a picture, a song is a player —
+ * offering a heading field for those would be a control that types into nothing.
+ */
+const HAS_HEADING = new Set<ProfileBlock['block_type']>([
+  'stats',
+  'trophies',
+  'activity',
+  'guestbook',
+])
+
+/**
  * Which blocks are worth offering a colour for.
  *
  * ⚠️ Left out: the three whose card is ENTIRELY filled by their own artwork. A banner is a
@@ -288,6 +304,7 @@ function BlockView({
   snakeBest,
   username,
   isMe,
+  guest,
 }: {
   block: ProfileBlock
   activity: ActivityItem[]
@@ -298,6 +315,14 @@ function BlockView({
   username: string
   /** the guestbook's compose box addresses you differently on your own page */
   isMe: boolean
+  /**
+   * ⚠️ THE VIEWER IS NOT SIGNED IN, which several blocks have to know because their contents
+   * come from RPCs granted to `authenticated` and theirs alone. A public block reaches a stranger
+   * — get_demo_profile hands it over — and then fetches nothing, so it renders as an empty shell
+   * of itself. Saying which of "there is nothing here" and "you cannot see what is here" is true
+   * is the difference between a page that looks unfinished and one that looks shut.
+   */
+  guest?: boolean
 }) {
   const cfg = block.config
   switch (block.block_type) {
@@ -352,7 +377,10 @@ function BlockView({
     case 'stats':
       return (
         <div className={'card profile-block is-' + block.size}>
-          <h3 style={{ marginTop: 0 }}>📊 Stats</h3>
+          {/* ⚠️ YOUR WORDS IF YOU WROTE ANY, the type's name otherwise. A guestbook that says
+              "leave me something rude" is a different invitation from one that says "Guestbook",
+              and the heading is the cheapest place on a page to sound like a person. */}
+          <h3 style={{ marginTop: 0 }}>{blockHeading(cfg) ?? '📊 Stats'}</h3>
           <p style={{ margin: 0 }}>
             {snakeBest ? (
               <>
@@ -397,7 +425,10 @@ function BlockView({
         .slice(0, 3)
       return (
         <div className={'card profile-block is-' + block.size}>
-          <h3 style={{ marginTop: 0 }}>🏆 Trophies</h3>
+          {/* ⚠️ YOUR WORDS IF YOU WROTE ANY, the type's name otherwise. A guestbook that says
+              "leave me something rude" is a different invitation from one that says "Guestbook",
+              and the heading is the cheapest place on a page to sound like a person. */}
+          <h3 style={{ marginTop: 0 }}>{blockHeading(cfg) ?? '🏆 Trophies'}</h3>
           {got.length > 0 && (
             <div className="profile-acts">
               {got.map((a) => (
@@ -445,20 +476,34 @@ function BlockView({
             </div>
           ) : (
             <p className="muted" style={{ margin: 0 }}>
-              {isMe ? 'No trophies yet — go win a round.' : 'None yet.'}
+              {guest
+                ? 'Sign in to see these.'
+                : isMe
+                  ? 'No trophies yet — go win a round.'
+                  : 'None yet.'}
             </p>
           )}
         </div>
       )
     }
     case 'guestbook':
-      return <Guestbook username={username} isMe={isMe} />
+      return (
+        <Guestbook
+          username={username}
+          isMe={isMe}
+          guest={guest}
+          heading={blockHeading(cfg) ?? undefined}
+        />
+      )
     case 'activity': {
       const limit = typeof cfg.limit === 'number' ? cfg.limit : 10
       const items = activity.slice(0, limit)
       return (
         <div className={'card profile-block is-' + block.size}>
-          <h3 style={{ marginTop: 0 }}>🕓 Activity</h3>
+          {/* ⚠️ YOUR WORDS IF YOU WROTE ANY, the type's name otherwise. A guestbook that says
+              "leave me something rude" is a different invitation from one that says "Guestbook",
+              and the heading is the cheapest place on a page to sound like a person. */}
+          <h3 style={{ marginTop: 0 }}>{blockHeading(cfg) ?? '🕓 Activity'}</h3>
           {items.length ? (
             <ul style={{ margin: 0, paddingLeft: '1.1rem' }}>
               {items.map((a, i) => (
@@ -467,7 +512,10 @@ function BlockView({
             </ul>
           ) : (
             <p className="muted" style={{ margin: 0 }}>
-              Nothing to show yet.
+              {/* ⚠️ get_demo_profile deliberately carries no activity — "a stranger is being
+                  shown a page, not given a feed" — so for a signed-out reader this block is
+                  always empty, and "nothing to show yet" was the wrong half of the truth. */}
+              {guest ? 'Sign in to see what they have been up to.' : 'Nothing to show yet.'}
             </p>
           )}
         </div>
@@ -485,6 +533,7 @@ export function ProfileBlocksView({
   snakeBest,
   username,
   isMe = false,
+  guest = false,
 }: {
   blocks: ProfileBlock[]
   activity: ActivityItem[]
@@ -493,6 +542,8 @@ export function ProfileBlocksView({
   snakeBest: { score: number; game_mode: string | null } | null
   username: string
   isMe?: boolean
+  /** nobody is signed in — see BlockView */
+  guest?: boolean
 }) {
   if (!blocks.length) return null
   return (
@@ -511,6 +562,7 @@ export function ProfileBlocksView({
           {...blockLookAttrs(b.config, username)}
         >
           <BlockView
+            guest={guest}
             block={b}
             activity={activity}
             trophies={trophies}
@@ -667,20 +719,41 @@ function LooksPicker({
  * only ever changes what people are willing to write, which is precisely the "corporate fluff"
  * this site exists without.
  */
-function Guestbook({ username, isMe }: { username: string; isMe: boolean }) {
+function Guestbook({
+  username,
+  isMe,
+  guest,
+  heading,
+}: {
+  username: string
+  isMe: boolean
+  guest?: boolean
+  heading?: string
+}) {
   const [notes, setNotes] = useState<ProfileNote[]>([])
   const [draft, setDraft] = useState('')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   const [loaded, setLoaded] = useState(false)
 
+  /**
+   * ⚠️ NOT ATTEMPTED WHEN SIGNED OUT. list_profile_notes is granted to `authenticated` and
+   * nobody else, so a stranger's call is refused — and the refusal was thrown away, leaving an
+   * empty list that the box below then described as "be the first to write something". To
+   * somebody who cannot write. The block is public, its CONTENTS are not, and those are two
+   * different facts that were being reported as one.
+   */
   const load = useCallback(async () => {
+    if (guest) {
+      setLoaded(true)
+      return
+    }
     const { data, error } = await getSupabaseClient().rpc('list_profile_notes', {
       p_username: username,
     })
     if (!error) setNotes((data as ProfileNote[]) ?? [])
     setLoaded(true)
-  }, [username])
+  }, [username, guest])
 
   useEffect(() => {
     setLoaded(false)
@@ -713,26 +786,32 @@ function Guestbook({ username, isMe }: { username: string; isMe: boolean }) {
 
   return (
     <div className="card profile-block is-large">
-      <h3 style={{ marginTop: 0 }}>💬 Guestbook</h3>
+      <h3 style={{ marginTop: 0 }}>{heading ?? '💬 Guestbook'}</h3>
       {/* Writing on your own page is allowed — it's your page, and a first note stops a new
           guestbook from looking broken. */}
-      <div style={{ display: 'flex', gap: '0.4rem', marginBottom: '0.6rem' }}>
-        <input
-          value={draft}
-          onChange={(e) => setDraft(e.target.value.slice(0, 500))}
-          onKeyDown={(e) => e.key === 'Enter' && void post()}
-          placeholder={isMe ? 'Leave a note on your own page…' : `Say something to ${username}…`}
-          aria-label="Write a note"
-          style={{ flex: 1 }}
-        />
-        <button className="btn" onClick={() => void post()} disabled={!draft.trim() || busy}>
-          {busy ? '…' : 'Post'}
-        </button>
-      </div>
+      {!guest && (
+        <div style={{ display: 'flex', gap: '0.4rem', marginBottom: '0.6rem' }}>
+          <input
+            value={draft}
+            onChange={(e) => setDraft(e.target.value.slice(0, 500))}
+            onKeyDown={(e) => e.key === 'Enter' && void post()}
+            placeholder={isMe ? 'Leave a note on your own page…' : `Say something to ${username}…`}
+            aria-label="Write a note"
+            style={{ flex: 1 }}
+          />
+          <button className="btn" onClick={() => void post()} disabled={!draft.trim() || busy}>
+            {busy ? '…' : 'Post'}
+          </button>
+        </div>
+      )}
       {err && <p style={{ color: '#f46b6b', margin: '0 0 0.5rem', fontSize: '0.82rem' }}>{err}</p>}
       {notes.length === 0 && loaded && (
         <p className="muted" style={{ margin: 0, fontSize: '0.88rem' }}>
-          {isMe ? 'Nothing yet — your friends can write here.' : 'Be the first to write something.'}
+          {guest
+            ? 'Notes here are between members — sign in to read them or leave one.'
+            : isMe
+              ? 'Nothing yet — your friends can write here.'
+              : 'Be the first to write something.'}
         </p>
       )}
       <div style={{ display: 'grid', gap: '0.5rem' }}>
@@ -2228,6 +2307,45 @@ export function ProfileBlocksEditor({
                  * one off is the most visible thing on the page, and gating it behind the colour
                  * rule would have hidden it exactly where it does the most.
                  */}
+                {/* ⚠️ WHAT THIS BLOCK IS CALLED, for the four types that print a heading.
+                    Placeholder shows the default, so leaving it empty is a visible choice rather
+                    than a blank that might mean anything. */}
+                {HAS_HEADING.has(selected.block_type) && (
+                  <div className="profile-editrow-settings">
+                    <label className="profile-editrow-look">
+                      <span className="muted">Heading</span>
+                      <input
+                        value={blockHeading(selected.config) ?? ''}
+                        placeholder={BLOCK_LABEL[selected.block_type]}
+                        maxLength={60}
+                        onChange={(e) => setOpenCfg({ heading: e.target.value || null })}
+                      />
+                    </label>
+                  </div>
+                )}
+
+                <div className="profile-editrow-settings">
+                  <label className="profile-editrow-look">
+                    <span className="muted">Edge</span>
+                    <span className="profile-width-row">
+                      {BLOCK_EDGES.map((ed) => (
+                        <button
+                          key={ed.id}
+                          className={
+                            'btn profile-edge-btn is-' +
+                            ed.id +
+                            (blockEdge(selected.config) === ed.id ? ' is-on' : '')
+                          }
+                          aria-pressed={blockEdge(selected.config) === ed.id}
+                          onClick={() => setOpenCfg({ edge: ed.id === 'plain' ? null : ed.id })}
+                        >
+                          {ed.label}
+                        </button>
+                      ))}
+                    </span>
+                  </label>
+                </div>
+
                 <div className="profile-editrow-settings">
                   <label className="profile-editrow-look">
                     <span className="muted">Shape</span>
