@@ -18,13 +18,37 @@
 
 const KEY = 'pet_companion_v1'
 
+/**
+ * What the screen suggests a corner pet should be, before the person's own preference.
+ *
+ * ⚠️ A FRACTION OF THE SHORT SIDE. It was a fixed 104 pixels — a reasonable ornament on a
+ * laptop, a third of the width of a phone, and a speck on a big monitor. Reported as "very tiny
+ * compared to my screen", which it was, on the screen it was being looked at on. The floor and
+ * the ceiling stop a phone getting a creature it has to look around and a wall display getting a
+ * poster.
+ *
+ * ⚠️ HERE RATHER THAN IN THE COMPONENT, because fast refresh only works when a component file
+ * exports components — and because the rule and the multiplier that scales it are one idea.
+ */
+export const cornerSize = (shortSide: number) =>
+  Math.max(88, Math.min(260, Math.round(shortSide * 0.18)))
+
 export type Companion = {
   on: boolean
   /** which pet, by name. Absent or unknown falls back to the first one you have. */
   name: string | null
+  /**
+   * How big, as a multiple of the size the screen suggests.
+   *
+   * ⚠️ A MULTIPLIER AND NOT A PIXEL COUNT, because the thing it adjusts is already relative
+   * to the screen — a number of pixels that is right on a laptop is a speck on a big monitor and
+   * a third of a phone. Storing "a bit bigger than the default" survives moving between them;
+   * storing 140 does not.
+   */
+  size: number
 }
 
-const OFF: Companion = { on: false, name: null }
+const OFF: Companion = { on: false, name: null, size: 1 }
 
 let cache: Companion | null = null
 const listeners = new Set<() => void>()
@@ -43,6 +67,10 @@ export function companion(): Companion {
       cache = {
         on: o.on === true,
         name: typeof o.name === 'string' ? o.name.slice(0, 40) : null,
+        size:
+          typeof o.size === 'number' && Number.isFinite(o.size)
+            ? Math.max(0.6, Math.min(2, o.size))
+            : 1,
       }
       return cache
     }

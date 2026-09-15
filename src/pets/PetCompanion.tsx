@@ -1,6 +1,6 @@
 import { useEffect, useState, useSyncExternalStore } from 'react'
 import { PetView } from './PetView'
-import { companion, setCompanion, subscribeCompanion } from './companion'
+import { companion, cornerSize, setCompanion, subscribeCompanion } from './companion'
 import { pets, subscribePets } from './pets'
 
 /**
@@ -19,13 +19,31 @@ import { pets, subscribePets } from './pets'
  * ⚠️ IT SITS ABOVE WHATEVER ELSE IS PINNED DOWN THERE, using --bottom-guard the way the call dock
  * does — that is 0 on a desktop and the phone's nav bar height on a phone, so it needs no
  * breakpoint and cannot end up underneath the navigation.
+ *
+ * ⚠️ ITS SIZE COMES FROM THE SCREEN, NOT FROM A NUMBER. It was a fixed 104 pixels, which is a
+ * reasonable ornament on a laptop, a third of the width of a phone, and a speck on a big monitor
+ * — reported as "very tiny compared to my screen", which it was, on the screen it was being
+ * looked at on. A fraction of the SHORT side tracks all three, and the floor and ceiling stop a
+ * phone getting a creature it has to look around and a wall display getting a poster.
  */
+
+/** the short side of the window, live, because a pet should not need a reload to fit */
+function useShortSide(): number {
+  const [n, setN] = useState(() => Math.min(window.innerWidth, window.innerHeight))
+  useEffect(() => {
+    const on = () => setN(Math.min(window.innerWidth, window.innerHeight))
+    window.addEventListener('resize', on)
+    return () => window.removeEventListener('resize', on)
+  }, [])
+  return n
+}
 
 const REST = 0.45
 
 export function PetCompanion() {
   const want = useSyncExternalStore(subscribeCompanion, companion, companion)
   const mine = useSyncExternalStore(subscribePets, pets, pets)
+  const shortSide = useShortSide()
 
   const [still, setStill] = useState(
     () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false,
@@ -60,10 +78,7 @@ export function PetCompanion() {
       >
         <PetView
           art={pet.art}
-          /* ⚠️ 88 before the crop landed, when most of that was empty paper. A creature now fills
-             it, so the corner is bigger in effect than this number suggests — and a little larger
-             again, because "really small" was the first thing said about it. */
-          size={104}
+          size={Math.round(cornerSize(shortSide) * want.size)}
           energy={still ? 0 : awake ? 1 : REST}
           label={`${pet.name}, in the corner`}
         />

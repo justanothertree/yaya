@@ -3,7 +3,7 @@ import { gallery, subscribeGallery, type Art } from '../draw/gallery'
 import { PetView } from './PetView'
 import { PART_DOES, PART_WORDS, rigOf, type PartKind } from './rig'
 import { pets, removePet, renamePet, savePet, subscribePets, type Pet } from './pets'
-import { companion, setCompanion, subscribeCompanion } from './companion'
+import { companion, cornerSize, setCompanion, subscribeCompanion } from './companion'
 import { PET_WIDTHS, petGif, petSeconds, petStill } from './petFile'
 import { fileNameFor, save, sizeLabel } from '../draw/export'
 import { packDrawing } from '../draw/strokes'
@@ -26,6 +26,13 @@ import { packPet } from './pets'
  * printed too. That list is the entire documentation for the feature, and it is written in the
  * words of the person's own drawing.
  */
+
+/* ⚠️ multiples of what the screen suggests, not pixel counts — see Companion.size */
+const CORNER_SIZES: Array<[string, number]> = [
+  ['Small', 0.7],
+  ['Medium', 1],
+  ['Big', 1.5],
+]
 
 const REST = 0.55
 const PROD = 1
@@ -298,6 +305,20 @@ export function PetsRoom() {
                   >
                     {following ? '◉ In the corner' : '◎ Keep me company'}
                   </button>
+                  {/* ⚠️ Only once one is actually in the corner. How big the corner pet should be
+                      is not a question worth asking somebody who has not got one. */}
+                  {following &&
+                    CORNER_SIZES.map(([label, mult]) => (
+                      <button
+                        key={label}
+                        className={'btn btn-ghost' + (follows.size === mult ? ' is-on' : '')}
+                        aria-pressed={follows.size === mult}
+                        onClick={() => setCompanion({ size: mult })}
+                        title={`${label} — about ${Math.round(cornerSize(Math.min(window.innerWidth, window.innerHeight)) * mult)} pixels on this screen`}
+                      >
+                        {label}
+                      </button>
+                    ))}
                   <button
                     className="btn btn-ghost"
                     onClick={() => {
