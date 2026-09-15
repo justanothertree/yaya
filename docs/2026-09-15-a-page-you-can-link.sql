@@ -142,14 +142,30 @@ grant execute on function public.get_public_profile(text) to anon, authenticated
 --   update public.profiles set public_page = false where lower(username) = lower('evan');
 --
 --
--- ── HOW TO CHECK IT ─────────────────────────────────────────────────────────────────────────
--- What a stranger receives, and nothing else:
+-- ── LOOK BEFORE YOU SWITCH IT ON ────────────────────────────────────────────────────────────
+--
+-- ⚠️ get_public_profile RETURNS NULL UNTIL public_page IS SET, so it cannot be used to preview
+-- what publishing would expose — asking it first is asking the wrong question in the wrong
+-- order. This is the query to run BEFORE the update above, and it needs no function and changes
+-- nothing:
+--
+--   select b.position, b.block_type, b.visibility,
+--          left(b.config::text, 200) as config_head
+--     from public.profile_blocks b
+--     join public.profiles p on p.user_id = b.user_id
+--    where lower(p.username::text) = lower('evan')
+--      and b.visibility = 'public'
+--    order by b.position;
+--
+-- Every row it returns is a block that would be readable by anyone with the link. "Public" was a
+-- setting made when only members could see the page at all, so read that list with the open
+-- internet in mind rather than trusting the label it was given under the old meaning.
+--
+--
+-- ── HOW TO CHECK IT AFTERWARDS ──────────────────────────────────────────────────────────────
+-- What a stranger actually receives, once you have opted in:
 --
 --   select jsonb_pretty(public.get_public_profile('evan'));
---
--- ⚠️ Read the `blocks` array in that output before handing the link to anyone. Every block in it
--- is one marked public — but "public" was a setting made when only members could see the page at
--- all, so it is worth looking at with the open internet in mind rather than trusting the label.
 --
 -- A name nobody has, and a real member who has not opted in, must look identical:
 --
