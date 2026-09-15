@@ -107,6 +107,7 @@ export type ProfileBlock = {
     | 'visualizer'
     | 'art'
     | 'looks'
+    | 'free'
   size: 'small' | 'medium' | 'large'
   config: Record<string, unknown>
   visibility: Tier
@@ -198,13 +199,16 @@ const blockAlone = (b: ProfileBlock) => b.config?.alone === true
  * offering a heading field for those would be a control that types into nothing.
  */
 /** Blocks whose content is a run of words somebody typed, and so can be set in type. */
-const HAS_OWN_WORDS = new Set<ProfileBlock['block_type']>(['bio', 'status'])
+const HAS_OWN_WORDS = new Set<ProfileBlock['block_type']>(['bio', 'status', 'free'])
 
 const HAS_HEADING = new Set<ProfileBlock['block_type']>([
   'stats',
   'trophies',
   'activity',
   'guestbook',
+  /* ⚠️ A free block has no heading of its own to replace, so this is the one type where the
+     field ADDS a line rather than renaming one — which is what lets it be a titled panel. */
+  'free',
 ])
 
 /**
@@ -217,6 +221,9 @@ const HAS_HEADING = new Set<ProfileBlock['block_type']>([
  */
 const CAN_TINT: ReadonlySet<ProfileBlock['block_type']> = new Set([
   'bio',
+  /* ⚠️ A free block above all: a coloured band with no words in it is most of what one is
+     FOR, and without a tint the only blank block you could make was grey. */
+  'free',
   'stats',
   'activity',
   'guestbook',
@@ -244,6 +251,7 @@ export type ActivityItem = {
 
 const BLOCK_LABEL: Record<ProfileBlock['block_type'], string> = {
   bio: '📝 Bio',
+  free: '🧩 Free',
   banner: '🖼️ Banner',
   stats: '📊 Stats',
   activity: '🕓 Activity',
@@ -375,6 +383,31 @@ function BlockView({
               those are attributes of the box, chosen from closed lists, and none of them is a
               way to put markup on somebody else's page. */}
           <p style={{ margin: 0, whiteSpace: 'pre-wrap', ...textStyle(cfg) }}>{text}</p>
+        </div>
+      )
+    }
+    /**
+     * Anything you like, in a box.
+     *
+     * ⚠️ ITS OWN TYPE RATHER THAN A BIO WEARING A HAT, and the difference is entirely the
+     * name. A bio already grew a face, a size, an alignment and the option to hold no words at
+     * all, so the CAPABILITY has been there — and nobody hunting for a way to put a title, a pull
+     * quote or a coloured band on their page was ever going to look under "📝 Bio". A block is
+     * found by what it is called, so the thing that was missing was a name.
+     *
+     * ⚠️ Still a plain text node, like the bio. It can say anything and can never RENDER
+     * anything; everything else it wears comes from closed lists.
+     */
+    case 'free': {
+      const text = typeof cfg.text === 'string' ? cfg.text : ''
+      const head = blockHeading(cfg)
+      if (!text.trim() && !head && !blockKeepEmpty(cfg)) return null
+      return (
+        <div className={'card profile-block is-' + block.size}>
+          {head && <h3 style={{ marginTop: 0, ...textStyle(cfg) }}>{head}</h3>}
+          {text.trim() && (
+            <p style={{ margin: 0, whiteSpace: 'pre-wrap', ...textStyle(cfg) }}>{text}</p>
+          )}
         </div>
       )
     }
@@ -1011,7 +1044,7 @@ function isBlockEmpty(block: ProfileBlock): boolean {
   /* ⚠️ A block kept on purpose is not unfinished, and telling its owner to "click to fill it
      in" is the editor arguing with a decision they already made. */
   if (blockKeepEmpty(block.config)) return false
-  if (block.block_type === 'bio') return !txt
+  if (block.block_type === 'bio' || block.block_type === 'free') return !txt
   if (block.block_type === 'status') return !txt
   if (block.block_type === 'song') return !songFromConfig(block.config)
   if (block.block_type === 'art')
@@ -1521,11 +1554,16 @@ function BlockFields({
       return (
         <VisualPicker value={block.config} onChange={(config) => onChange({ ...block, config })} />
       )
+    case 'free':
     case 'bio':
       return (
         <textarea
           className="profile-editrow-textarea"
-          placeholder="Say something about yourself…"
+          placeholder={
+            block.block_type === 'free'
+              ? 'Anything at all — or nothing, and let it be a shape…'
+              : 'Say something about yourself…'
+          }
           value={typeof block.config.text === 'string' ? block.config.text : ''}
           onChange={(e) => setCfg({ text: e.target.value.slice(0, 2000) })}
           rows={4}

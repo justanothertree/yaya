@@ -1,0 +1,49 @@
+-- 2026-09-15 — a block that is not about anything
+--
+-- ✅ APPLIED as migration `profile_blocks_accept_a_free_block`. One word added to one allowlist.
+--
+--
+-- ⚠️ THE CAPABILITY ALREADY EXISTED AND NOBODY COULD FIND IT. The bio block had grown a face, a
+-- size, an alignment and the option to hold no words at all, so it could already be a title, a
+-- pull quote or a coloured band. But a block is found by what it is CALLED, and nobody looking
+-- for a way to put a shape on their page was ever going to reach for "📝 Bio". Asked directly:
+-- "did we add the free block?" — the honest answer was no, because a feature nobody can name is
+-- not one they have.
+--
+-- So this is a naming change that happens to need a migration. The free block carries nothing new:
+-- the same config a bio carries, checked by the same 16000-character cap, rendered by the same
+-- plain text node that can say anything and can never render anything.
+--
+-- ⚠️ THE ALLOWLIST IS IN THE FUNCTION, NOT ON THE TABLE. `profile_blocks.block_type` is plain
+-- `text` with no check constraint — every block type this site has is enforced by
+-- save_my_profile_blocks and nowhere else. Worth knowing before looking for a constraint to alter:
+-- there isn't one, and adding a type is a `create or replace` of that function.
+
+-- The full body is in the applied migration; the change is inside the `not in (...)` list:
+--
+--     'bio','banner','stats','activity','guestbook','status','trophies',
+--     'song','visualizer','art','looks',
+--     'free'                                  -- <- the addition
+--
+-- Everything else in that function is unchanged, including the 20-block cap, the size and
+-- visibility checks, and the delete-then-reinsert that gives a save its ordering.
+
+
+-- ── ON THE CLIENT ───────────────────────────────────────────────────────────────────────────
+--
+-- 'free' joins HAS_OWN_WORDS (so it gets a face, a size and an alignment), HAS_HEADING (the one
+-- type where a heading ADDS a line rather than renaming one, which is what lets it be a titled
+-- panel), CAN_TINT (a coloured band with no words in it is most of what one is for, and without
+-- this the only blank block you could make was grey), and isBlockEmpty (empty and not kept on
+-- purpose is still nothing, because that is a block somebody has not finished).
+--
+--
+-- ── HOW TO CHECK IT ─────────────────────────────────────────────────────────────────────────
+-- That the server takes one, without going near the UI:
+--
+--   select public.save_my_profile_blocks(
+--     '[{"block_type":"free","size":"medium","visibility":"private",
+--        "config":{"keep":true,"tint":195}}]'::jsonb);
+--
+-- ⚠️ That REPLACES the caller's blocks — it is how the save works. Run it only as a throwaway
+-- account, or not at all: the UI path is the honest test and it is one click.
