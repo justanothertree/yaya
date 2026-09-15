@@ -9372,6 +9372,32 @@ a.cz-msg-author:focus-visible {
   clip-path: polygon(0 0, calc(100% - 7px) 0, 100% 7px, 100% 100%, 7px 100%, 0 calc(100% - 7px));
 }
 
+/* "Use this look everywhere" — set apart from the row it follows, because it acts on the page
+   rather than on the block every other control in that panel is about */
+.profile-apply-all {
+  display: block;
+  margin-top: 0.35rem;
+}
+.profile-apply-all .btn {
+  font-size: 0.75rem;
+}
+
+/**
+ * What a block is set in — see BLOCK_FONTS.
+ *
+ * ⚠️ ONE RULE, reading a variable the slot carries. Seven faces as seven selectors would be
+ * fourteen rules (slot and cell) that every future face has to be added to; a variable means the
+ * set can grow in TypeScript alone.
+ *
+ * ⚠️ The var is only SET when a face was chosen, so blocks left on "Page" inherit the site
+ * font through the normal cascade rather than through a fallback value here that would have to be
+ * kept in step with the body rule.
+ */
+.profile-slot > .profile-block,
+.profile-canvas-cell > .profile-block {
+  font-family: var(--blk-font, inherit);
+}
+
 /**
  * How a block sits on the page — see BLOCK_EDGES.
  *

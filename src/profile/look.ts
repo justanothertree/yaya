@@ -151,6 +151,116 @@ export const BLOCK_EDGES: ReadonlyArray<{ id: BlockEdge; label: string }> = [
   { id: 'inset', label: 'Inset' },
 ]
 
+/**
+ * WHAT A BLOCK IS SET IN.
+ *
+ * ⚠️ SYSTEM STACKS, NOT WEBFONTS, and that is a decision rather than a shortcut. A webfont is
+ * a download before the page can be read correctly, a flash while it arrives, and a third party
+ * watching who loaded it — three costs paid by every visitor to every page, for a choice one
+ * person made once. These are faces already on the machine, so a page set in one renders in the
+ * first frame, offline, with nobody told about it.
+ *
+ * ⚠️ The trade is honest and worth stating: a stack resolves to different actual faces on
+ * Windows, a Mac and a phone. What survives everywhere is the CHARACTER — a serif stays a serif,
+ * a slab stays heavy, mono stays fixed-width — which is what the choice is really about. A page
+ * that must be identical on every machine cannot be built out of type at all without paying the
+ * costs above.
+ *
+ * ⚠️ DIFFERENT IN KIND, the same rule the shapes and edges follow. Seven faces that read as
+ * seven decisions, not a dropdown of every family installed.
+ */
+export type BlockFont = 'page' | 'serif' | 'slab' | 'mono' | 'round' | 'grotesk' | 'condensed'
+
+export const BLOCK_FONTS: ReadonlyArray<{ id: BlockFont; label: string; stack: string }> = [
+  { id: 'page', label: 'Page', stack: '' },
+  {
+    id: 'serif',
+    label: 'Serif',
+    stack: "'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, 'Times New Roman', serif",
+  },
+  {
+    id: 'slab',
+    label: 'Slab',
+    stack: "Rockwell, 'Roboto Slab', 'Bookman Old Style', Georgia, serif",
+  },
+  { id: 'mono', label: 'Mono', stack: "'Courier New', ui-monospace, SFMono-Regular, monospace" },
+  {
+    id: 'round',
+    label: 'Rounded',
+    stack:
+      "'SF Pro Rounded', ui-rounded, 'Segoe UI Variable', 'Trebuchet MS', system-ui, sans-serif",
+  },
+  {
+    id: 'grotesk',
+    label: 'Grotesk',
+    stack: "'Helvetica Neue', Helvetica, Arial, 'Liberation Sans', sans-serif",
+  },
+  {
+    id: 'condensed',
+    label: 'Condensed',
+    stack:
+      "'Haettenschweiler', 'Arial Narrow', 'Liberation Sans Narrow', 'Avenir Next Condensed', sans-serif",
+  },
+]
+
+/**
+ * HOW BIG THE WORDS ARE, and which way they sit.
+ *
+ * ⚠️ THIS IS WHAT TURNS A BIO INTO A FREEFORM BLOCK, which is why it exists rather than a new
+ * block type. A new type means a migration before anything can be tried, and the bio is already
+ * a box of text you write — the only reason it could not be a pull quote, a title card or a
+ * three-word statement was that its type was fixed at one size, left-aligned. With a face, a
+ * size and an alignment it is all of those, and somebody can put several on a page.
+ *
+ * ⚠️ Four sizes rather than a number, for the reason every other control here gives: a
+ * slider produces five hundred pages differing by a pixel, and one of the five hundred is
+ * unreadable.
+ */
+export type TextSize = 'normal' | 'small' | 'big' | 'huge'
+export type TextAlign = 'left' | 'center' | 'right'
+
+export const TEXT_SIZES: ReadonlyArray<{ id: TextSize; label: string; em: number }> = [
+  { id: 'small', label: 'Small', em: 0.85 },
+  { id: 'normal', label: 'Normal', em: 1 },
+  { id: 'big', label: 'Big', em: 1.5 },
+  { id: 'huge', label: 'Huge', em: 2.4 },
+]
+
+export const TEXT_ALIGNS: ReadonlyArray<{ id: TextAlign; label: string }> = [
+  { id: 'left', label: '☰ Left' },
+  { id: 'center', label: '☲ Centre' },
+  { id: 'right', label: '☱ Right' },
+]
+
+export function textSize(config: Record<string, unknown> | null | undefined): TextSize {
+  const v = config?.textSize
+  return v === 'small' || v === 'big' || v === 'huge' ? v : 'normal'
+}
+
+export function textAlign(config: Record<string, unknown> | null | undefined): TextAlign {
+  const v = config?.align
+  return v === 'center' || v === 'right' ? v : 'left'
+}
+
+/** The inline style a run of somebody's own words wears. */
+export function textStyle(config: Record<string, unknown> | null | undefined): React.CSSProperties {
+  const em = TEXT_SIZES.find((t) => t.id === textSize(config))?.em ?? 1
+  return {
+    fontSize: em === 1 ? undefined : `${em}em`,
+    /* ⚠️ Big type needs tighter leading or it reads as separate lines rather than a phrase —
+       the default 1.5 that suits body copy looks broken at 2.4em. */
+    lineHeight: em >= 1.5 ? 1.15 : undefined,
+    textAlign: textAlign(config),
+  }
+}
+
+/** A block's face, defaulting to whatever the page is set in. */
+export function blockFont(config: Record<string, unknown> | null | undefined): BlockFont {
+  const v = config?.font
+  const hit = BLOCK_FONTS.find((f) => f.id === v)
+  return hit && hit.id !== 'page' ? hit.id : 'page'
+}
+
 /** A block's edge, defaulting to whatever the card already looked like. */
 export function blockEdge(config: Record<string, unknown> | null | undefined): BlockEdge {
   const v = config?.edge
@@ -254,15 +364,24 @@ export function blockLookAttrs(
      which was right while everything here was a way of wearing a colour — and would have made a
      square block silently impossible unless you also tinted it. */
   const edge = blockEdge(config)
+  const font = blockFont(config)
+  /* ⚠️ The face rides as a CSS VARIABLE rather than a data attribute, because unlike shape
+     and edge it is a value and not a switch — one rule reads it and every block type inherits,
+     instead of seven selectors that would each have to be repeated for the slot and the cell. */
+  const face = BLOCK_FONTS.find((f) => f.id === font)?.stack
+  const vars: Record<string, string> = {}
+  if (face) vars['--blk-font'] = face
   const shaped = {
     ...(shape === 'round' ? {} : { 'data-shape': shape }),
     ...(edge === 'plain' ? {} : { 'data-edge': edge }),
   }
-  if (hue == null) return shaped
+  if (hue == null) {
+    return face ? { ...shaped, style: vars as React.CSSProperties } : shaped
+  }
   return {
     ...shaped,
     'data-finish': finish,
-    style: { ['--blk-h']: String(hue) } as React.CSSProperties,
+    style: { ...vars, ['--blk-h']: String(hue) } as React.CSSProperties,
   }
 }
 

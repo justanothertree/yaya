@@ -14,10 +14,17 @@ import {
   BANNER_STYLES,
   BLOCK_EDGES,
   BLOCK_FINISHES,
+  BLOCK_FONTS,
   BLOCK_SHAPES,
+  TEXT_ALIGNS,
+  TEXT_SIZES,
   blockEdge,
+  blockFont,
   blockHeading,
   blockShape,
+  textAlign,
+  textSize,
+  textStyle,
   TINT_HUES,
   bannerBackground,
   blockLook,
@@ -189,6 +196,9 @@ const blockAlone = (b: ProfileBlock) => b.config?.alone === true
  * ⚠️ Not every type has one. A bio is its text, a banner is a picture, a song is a player —
  * offering a heading field for those would be a control that types into nothing.
  */
+/** Blocks whose content is a run of words somebody typed, and so can be set in type. */
+const HAS_OWN_WORDS = new Set<ProfileBlock['block_type']>(['bio', 'status'])
+
 const HAS_HEADING = new Set<ProfileBlock['block_type']>([
   'stats',
   'trophies',
@@ -357,8 +367,11 @@ function BlockView({
       if (!text.trim()) return null
       return (
         <div className={'card profile-block is-' + block.size}>
-          {/* plain text node, never HTML -- a bio can say anything, it can never RENDER anything */}
-          <p style={{ margin: 0, whiteSpace: 'pre-wrap' }}>{text}</p>
+          {/* ⚠️ STILL A PLAIN TEXT NODE. A bio can say anything and can never RENDER anything —
+              which is exactly why it is safe to let it choose a face, a size and an alignment:
+              those are attributes of the box, chosen from closed lists, and none of them is a
+              way to put markup on somebody else's page. */}
+          <p style={{ margin: 0, whiteSpace: 'pre-wrap', ...textStyle(cfg) }}>{text}</p>
         </div>
       )
     }
@@ -410,7 +423,7 @@ function BlockView({
           <span className="profile-status-emoji" aria-hidden>
             {emoji}
           </span>
-          <p style={{ margin: 0 }}>{text}</p>
+          <p style={{ margin: 0, ...textStyle(cfg) }}>{text}</p>
         </div>
       )
     }
@@ -1755,16 +1768,48 @@ export function ProfileBlocksEditor({
   /** the add-a-block palette, which is seven buttons you are mostly not pressing */
   const [adding, setAdding] = useState(false)
 
+  /**
+   * The look the page mostly has, for a block that has just arrived.
+   *
+   * ⚠️ BECAUSE "USE THIS LOOK EVERYWHERE" ONLY REACHES THE BLOCKS THAT EXIST. Square off a
+   * page of ten, add an eleventh, and it arrives rounded — so every addition quietly undoes the
+   * consistency you just pressed a button for, and you have to press it again forever. A new
+   * block joining the majority is what somebody means by "my page is square".
+   *
+   * ⚠️ The MOST COMMON value, not the first block's. A page with one deliberate odd block out
+   * would otherwise hand its oddity to everything added afterwards.
+   */
+  const prevailing = (key: string, fallback: string) => {
+    const counts = new Map<string, number>()
+    for (const b of blocks) {
+      const v = typeof b.config?.[key] === 'string' ? (b.config[key] as string) : fallback
+      counts.set(v, (counts.get(v) ?? 0) + 1)
+    }
+    let best = fallback
+    let most = 0
+    for (const [v, n] of counts) if (n > most) [best, most] = [v, n]
+    return best === fallback ? null : best
+  }
+
   const addBlock = (type: ProfileBlock['block_type']) => {
     // Straight into editing it: you added a block because you have something to put in it.
     setOpenIdx(blocks.length)
     setAdding(false)
+    const inherited: Record<string, unknown> = {}
+    for (const [key, dflt] of [
+      ['font', 'page'],
+      ['shape', 'round'],
+      ['edge', 'plain'],
+    ] as const) {
+      const v = prevailing(key, dflt)
+      if (v) inherited[key] = v
+    }
     setBlocks((b) => [
       ...b,
       {
         block_type: type,
         size: 'medium',
-        config: {},
+        config: inherited,
         visibility: defaultTier(type),
       },
     ])
@@ -1809,6 +1854,22 @@ export function ProfileBlocksEditor({
         idx === i ? { ...x, config: { ...x.config, alone: alone || undefined } } : x,
       ),
     )
+
+  /**
+   * The same choice, on every block at once.
+   *
+   * ⚠️ A PRESS, NOT AN INHERITED DEFAULT, and the difference is what keeps this simple. A
+   * page-level default means every reader has to resolve "the block's value, or the page's, or
+   * the built-in", and every block needs a third state meaning "not set" that looks identical to
+   * the default until the page changes under it. Writing the value onto each block instead means
+   * there is one place a block's look comes from — its own config — and "make the page
+   * consistent" is a thing you do rather than a rule the code enforces forever.
+   *
+   * Overriding one afterwards is then just editing that one, which is what anybody would expect
+   * and is the part an inheritance system makes surprising.
+   */
+  const setEveryCfg = (patch: Record<string, unknown>) =>
+    setBlocks((all) => all.map((x) => ({ ...x, config: { ...x.config, ...patch } })))
 
   /** merge into the open block's config — shared, because two rows of the inspector write it */
   const setOpenCfg = (patch: Record<string, unknown>) =>
@@ -2436,6 +2497,96 @@ export function ProfileBlocksEditor({
                         maxLength={60}
                         onChange={(e) => setOpenCfg({ heading: e.target.value || null })}
                       />
+                    </label>
+                  </div>
+                )}
+
+                <div className="profile-editrow-settings">
+                  <label className="profile-editrow-look">
+                    <span className="muted">Type</span>
+                    <span className="profile-width-row">
+                      {BLOCK_FONTS.map((f) => (
+                        <button
+                          key={f.id}
+                          className={'btn' + (blockFont(selected.config) === f.id ? ' is-on' : '')}
+                          aria-pressed={blockFont(selected.config) === f.id}
+                          /* ⚠️ the button is SET IN the face it sets — seven words in a row say
+                             nothing about what a slab is */
+                          style={f.stack ? { fontFamily: f.stack } : undefined}
+                          onClick={() => setOpenCfg({ font: f.id === 'page' ? null : f.id })}
+                        >
+                          {f.label}
+                        </button>
+                      ))}
+                    </span>
+                  </label>
+                  {/* ⚠️ One press to make the page agree with itself — see setEveryCfg. Offered
+                      for the three that are about the page rather than about this block; a
+                      heading or a section applied to everything would be nonsense. */}
+                  <span className="profile-apply-all">
+                    <button
+                      className="btn btn-ghost"
+                      title="Give every block on the page this type, shape and edge"
+                      onClick={() =>
+                        setEveryCfg({
+                          font:
+                            blockFont(selected.config) === 'page'
+                              ? null
+                              : blockFont(selected.config),
+                          shape:
+                            blockShape(selected.config) === 'round'
+                              ? null
+                              : blockShape(selected.config),
+                          edge:
+                            blockEdge(selected.config) === 'plain'
+                              ? null
+                              : blockEdge(selected.config),
+                        })
+                      }
+                    >
+                      Use this look everywhere
+                    </button>
+                  </span>
+                </div>
+
+                {/* ⚠️ ONLY WHERE THE WORDS ARE SOMEBODY'S OWN. A size and an alignment on a
+                    trophy shelf or a visualiser would be two controls acting on nothing — these
+                    style a run of text that was typed, which is the bio and the status. */}
+                {HAS_OWN_WORDS.has(selected.block_type) && (
+                  <div className="profile-editrow-settings">
+                    <label className="profile-editrow-look">
+                      <span className="muted">Words</span>
+                      <span className="profile-width-row">
+                        {TEXT_SIZES.map((t) => (
+                          <button
+                            key={t.id}
+                            className={'btn' + (textSize(selected.config) === t.id ? ' is-on' : '')}
+                            aria-pressed={textSize(selected.config) === t.id}
+                            onClick={() =>
+                              setOpenCfg({ textSize: t.id === 'normal' ? null : t.id })
+                            }
+                          >
+                            {t.label}
+                          </button>
+                        ))}
+                      </span>
+                    </label>
+                    <label className="profile-editrow-look">
+                      <span className="muted">Sits</span>
+                      <span className="profile-width-row">
+                        {TEXT_ALIGNS.map((a) => (
+                          <button
+                            key={a.id}
+                            className={
+                              'btn' + (textAlign(selected.config) === a.id ? ' is-on' : '')
+                            }
+                            aria-pressed={textAlign(selected.config) === a.id}
+                            onClick={() => setOpenCfg({ align: a.id === 'left' ? null : a.id })}
+                          >
+                            {a.label}
+                          </button>
+                        ))}
+                      </span>
                     </label>
                   </div>
                 )}
