@@ -35,7 +35,7 @@ import { ArtBlock } from '../profile/ProfileArt'
 import { gallery, subscribeGallery, type Art } from '../draw/gallery'
 import { frameCount, packDrawing, readDrawing } from '../draw/strokes'
 import { library, subscribeLibrary, type LibraryItem } from '../audio/library'
-import { VISUALS } from '../audio/visualModes'
+import { ART_STYLES, VISUALS } from '../audio/visualModes'
 import { PALETTES } from '../audio/palettes'
 
 /**
@@ -1123,6 +1123,10 @@ function VisualPicker({
 }) {
   const mode = typeof value.mode === 'string' ? value.mode : 'bars'
   const palette = typeof value.palette === 'string' ? value.palette : 'theme'
+  const items = useSyncExternalStore(subscribeGallery, gallery, gallery)
+  const [tooBig, setTooBig] = useState<string | null>(null)
+  const chosenName = value.art ? (readDrawing(value.art)?.name ?? null) : null
+  const artStyle = typeof value.artStyle === 'string' ? value.artStyle : 'swarm'
   return (
     <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap', alignItems: 'center' }}>
       <label className="inst-pick" style={{ display: 'flex', gap: '0.4rem' }}>
@@ -1139,6 +1143,68 @@ function VisualPicker({
           ))}
         </select>
       </label>
+      {/**
+       * ⚠️ WHICH DRAWING, and only when Your art is the style — the same rule the visualiser
+       * page follows. Picking Your art here used to be a dead end: the mode needs a picture and
+       * there was nowhere to name one, so the block rendered the style with nothing in it.
+       *
+       * ⚠️ THE STROKES ARE COPIED IN, not referenced by id. A visitor cannot read your gallery
+       * — it is yours — so an id would resolve to nothing on every machine but your own. The art
+       * block settled this the same way, and it is why a chosen drawing keeps working after you
+       * delete it from the gallery.
+       */}
+      {mode === 'art' &&
+        (items.length === 0 ? (
+          <span className="muted" style={{ fontSize: '0.8rem' }}>
+            Nothing in your gallery — draw something in Paint and press Keep.
+          </span>
+        ) : (
+          <>
+            <label className="inst-pick" style={{ display: 'flex', gap: '0.4rem' }}>
+              <span className="muted">Drawing</span>
+              <select
+                className="viz-select"
+                value={chosenName ?? ''}
+                onChange={(e) => {
+                  const hit = items.find((a: Art) => a.name === e.target.value)
+                  const next = { ...value, art: hit ? packDrawing(hit.art) : undefined }
+                  /* ⚠️ Checked HERE rather than left to the save. The server measures the same
+                     thing and refuses the whole block with "invalid block" — a message about the
+                     wrong layer, arriving after you pressed Done, about a drawing you would have
+                     to guess at. A detailed picture is the one that trips it. */
+                  if (configSize(next) > CONFIG_LIMIT) {
+                    setTooBig(hit?.name ?? '')
+                    return
+                  }
+                  setTooBig(null)
+                  onChange(next)
+                }}
+              >
+                <option value="">Choose one…</option>
+                {items.map((a: Art) => (
+                  <option key={a.id} value={a.name}>
+                    {a.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {ART_STYLES.map(([id, label]) => (
+              <button
+                key={id}
+                className={'btn' + (artStyle === id ? ' is-on' : '')}
+                aria-pressed={artStyle === id}
+                onClick={() => onChange({ ...value, artStyle: id })}
+              >
+                {label}
+              </button>
+            ))}
+            {tooBig !== null && (
+              <span className="muted" style={{ fontSize: '0.75rem' }}>
+                “{tooBig}” has too many strokes for one block — try a simpler drawing.
+              </span>
+            )}
+          </>
+        ))}
       <label className="inst-pick" style={{ display: 'flex', gap: '0.4rem' }}>
         <span className="muted">Colour</span>
         <select

@@ -1334,16 +1334,21 @@ export function setLayerInstrument(id: string, instrument: InstrumentId) {
  * their first take cannot collide on it. Nothing here makes that true; it is asserted there, on
  * the id the transport stamped, which is the only value a message cannot lie about.
  */
-export function putSharedLayer(layer: Layer) {
+export function putSharedLayer(layer: Layer): boolean {
   const at = state.layers.findIndex((l) => l.id === layer.id)
   if (at === -1) {
-    if (layersFull()) return
+    /* ⚠️ REPORTED, not just refused. A take that does not fit is a part of the song that
+       simply is not there — silently, on one machine, while the person who recorded it hears it
+       fine on theirs. That is the exact shape of failure this whole module exists to avoid, so
+       the caller is told and says so out loud. */
+    if (layersFull()) return false
     set({ layers: [...state.layers, layer] })
-    return
+    return true
   }
   // whatever is sounding belongs to the version being replaced
   releaseLayer(layer.id)
   set({ layers: state.layers.map((l, i) => (i === at ? layer : l)) })
+  return true
 }
 
 /**

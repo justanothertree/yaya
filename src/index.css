@@ -3050,6 +3050,13 @@ section[id] {
   font-size: 0.75rem;
 }
 
+/* how many of the twelve slots are used — quiet until it matters, see inst-layers-count */
+.inst-layers-count {
+  margin: 0.5rem 0 0.15rem;
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+}
+
 /* the beat picker — one row per genre, so the list is scanned rather than read */
 .inst-beats {
   margin: 0.4rem 0 0.6rem;

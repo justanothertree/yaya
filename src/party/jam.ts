@@ -21,6 +21,7 @@ import {
   type Layer,
 } from '../audio/looper'
 import { packSong, readSong, songToLayers, toSong, type Song } from '../audio/songFile'
+import { showToast } from '../circuit/toast'
 import { clock, toLocalTime } from './clock'
 import { transport } from './transport'
 
@@ -561,7 +562,13 @@ export const jam = {
           // it is in the room, so nobody should be streaming its notes at us as well
           shared: true,
         }
-        putSharedLayer(layer)
+        if (!putSharedLayer(layer)) {
+          /* ⚠️ The desk is full and their part is not in the song. Said once, by name, rather
+             than left as a take that exists for them and not for us — see putSharedLayer. */
+          const who = state.names[m.from]
+          showToast(`No room for ${who ? `${who}'s` : 'their'} take — delete a layer`)
+          return
+        }
         /* ⚠️ Remember it as though we had sent it. Our own diff runs the moment this lands,
            and without this it would see a layer that differs from what we last sent and send it
            straight back — which with three people is a message that never stops. Fingerprinted

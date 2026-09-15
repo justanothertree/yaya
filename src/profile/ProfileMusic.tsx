@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { songNotes, type Song } from '../audio/songFile'
 import { readLook, type SongLook } from './songBlockConfig'
 import { sharedCtx } from '../audio/context'
@@ -15,10 +15,14 @@ import {
   makeVisual,
   defaultTrail,
   readLift,
+  ART_STYLES,
   VISUALS,
+  type ArtStyle,
   type Ink,
   type VisualId,
 } from '../audio/visualModes'
+import { bakeSprite, type Sprite } from '../audio/artSprite'
+import { readDrawing } from '../draw/strokes'
 import { makeFeatureReader } from '../audio/audioFeatures'
 import { paletteById } from '../audio/palettes'
 import { binCount, fftSize, readSpectrum, readWaveform } from '../audio/audioTap'
@@ -391,6 +395,29 @@ export function VisualBlock({ cfg }: { cfg: Record<string, unknown> }) {
   const punch = dial(pick('punch'), 0, 1, 0)
   const echo = dial(pick('echo'), 0, 1, 0)
 
+  /**
+   * The drawing a "Your art" block is built around.
+   *
+   * ⚠️ READ FROM THE BLOCK, not through `pick`. Every other setting here can be lent to the
+   * block by whatever track is playing, because a look is a handful of numbers about how a thing
+   * should appear. A drawing is not that — it is the SUBJECT, chosen once when the block was
+   * made, and a track that happened to carry one would be replacing the picture rather than
+   * recolouring it.
+   *
+   * ⚠️ THE STROKES TRAVEL, not a rendered image — same as the art block. readDrawing is the
+   * validator a gallery file from a stranger goes through, and this config is exactly that: it
+   * was stored on a profile and is being drawn on a visitor's machine.
+   */
+  /* ⚠️ Memoised, or this is a NEW object every render — and it is a dependency of the effect
+     that owns the canvas loop, so an unstable one would tear down and rebuild the whole
+     visualiser on every single render of the page. */
+  const drawing = useMemo(() => readDrawing((cfg as { art?: unknown }).art), [cfg])
+  const rawStyle = (cfg as { artStyle?: unknown }).artStyle
+  const artStyle: ArtStyle =
+    typeof rawStyle === 'string' && ART_STYLES.some(([id]) => id === rawStyle)
+      ? (rawStyle as ArtStyle)
+      : 'swarm'
+
   useEffect(() => {
     const el = cv.current
     const host = box.current
@@ -416,6 +443,20 @@ export function VisualBlock({ cfg }: { cfg: Record<string, unknown> }) {
     const glow = document.createElement('canvas')
     const gctx = glow.getContext('2d')
     if (!bctx) return
+    /* ⚠️ Baked once per size, exactly as the visualiser page does it — rasterising strokes is
+       real work and a block that redid it every frame would cost a visitor their battery. */
+    let sprite: Sprite | null = null
+    let bakedAt = 0
+    const freshenSprite = () => {
+      if (!drawing) {
+        sprite = null
+        return
+      }
+      const want = Math.max(64, Math.min(512, Math.round(Math.min(w, h))))
+      if (sprite && Math.abs(want - bakedAt) / Math.max(1, bakedAt) < 0.25) return
+      sprite = bakeSprite(drawing, want)
+      bakedAt = want
+    }
     let hit = 0
     let swirl = 0
     let w = 0
@@ -531,6 +572,7 @@ export function VisualBlock({ cfg }: { cfg: Record<string, unknown> }) {
         bctx.restore()
       }
 
+      if (modeId === 'art') freshenSprite()
       visual.draw({
         ctx: bctx,
         w,
@@ -543,6 +585,8 @@ export function VisualBlock({ cfg }: { cfg: Record<string, unknown> }) {
         f,
         p: pointer,
         ink: paint,
+        art: sprite,
+        artStyle,
       })
 
       // ── the composite ──────────────────────────────────────────────────
@@ -624,7 +668,7 @@ export function VisualBlock({ cfg }: { cfg: Record<string, unknown> }) {
       document.removeEventListener('visibilitychange', onVis)
       offPlayer()
     }
-  }, [modeId, paletteId, mirror, trailCfg, bloom, punch, echo])
+  }, [modeId, paletteId, mirror, trailCfg, bloom, punch, echo, drawing, artStyle])
 
   return (
     <div className="card profile-block profile-visual" ref={box}>

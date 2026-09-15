@@ -81,6 +81,7 @@ const EmbeddedVisualizer = lazyRetry(
   (m) => m.AudioVisualizer,
 )
 const SHOW_VIZ_KEY = 'inst_show_viz_v1'
+import { Toast } from '../circuit/ui/Toast'
 import { AlsoTogether } from '../ui/AlsoTogether'
 import { together } from '../party/together'
 import { jam } from '../party/jam'
@@ -1663,6 +1664,16 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
         </div>
       )}
       {loop.layers.length > 0 && (
+        <p className="muted inst-layers-count">
+          {/* ⚠️ THE CEILING HAS TO BE VISIBLE BEFORE YOU REACH IT. There are twelve slots and
+              nothing said so — the first anybody heard of it was a button going dead, or, once
+              takes started outliving the people who recorded them, somebody's part quietly not
+              arriving. A count is one line and answers it in advance. */}
+          {loop.layers.length} of {MAX_LAYERS} layers
+          {loop.layers.length >= MAX_LAYERS && ' — delete one to add another'}
+        </p>
+      )}
+      {loop.layers.length > 0 && (
         <ul className="inst-layers">
           {loop.layers.map((l, i) => {
             /**
@@ -1926,7 +1937,25 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
                 <button className="btn" onClick={() => toggleMute(l.id)} title="Mute this layer">
                   {l.muted ? '🔇' : '🔊'}
                 </button>
-                <button className="btn" onClick={() => removeLayer(l.id)} title="Delete this layer">
+                {/* ⚠️ DELETING SOMEBODY ELSE'S TAKE ASKS FIRST, and names them. It has always
+                    been allowed — every control works on every part, which is the point of one
+                    desk — but it is the only one of them that cannot be undone, and now that a
+                    take outlives its author's presence it is also the only way to clear a slot
+                    they left behind. Worth a sentence; not worth a different button. */}
+                <button
+                  className="btn"
+                  onClick={() => {
+                    const who = l.from ? (jamNames[l.from] ?? 'someone in the room') : null
+                    if (who && !window.confirm(`Delete ${who}'s part? This cannot be undone.`))
+                      return
+                    removeLayer(l.id)
+                  }}
+                  title={
+                    l.from
+                      ? `Delete ${jamNames[l.from] ? `${jamNames[l.from]}'s` : 'their'} part — for everyone`
+                      : 'Delete this layer'
+                  }
+                >
                   ✕
                 </button>
               </li>
@@ -2094,6 +2123,9 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
             </div>
           )
         })()}
+      {/* ⚠️ The room needs its own, like Circuit and Ratings: showToast has no host of its
+          own, so a message sent from here — a take that would not fit — went nowhere at all. */}
+      <Toast />
     </section>
   )
 }
