@@ -839,6 +839,20 @@ function isBlockEmpty(block: ProfileBlock): boolean {
  * makes it work for visitors: the page carries the notes, so it does not matter that the library
  * it came from is on somebody's laptop.
  */
+/**
+ * ⚠️ A LIBRARY LIVES IN ONE BROWSER; A BLOCK DOES NOT.
+ *
+ * Songs, drawings and looks are kept in localStorage (see library.ts and gallery.ts) while what
+ * goes ON a block is COPIED into its config and stored on the server. So the two disagree the
+ * moment you open the editor anywhere but the machine you made the thing on — and every picker
+ * here used to answer that disagreement by bailing out with "nothing in your library yet", before
+ * it had looked at the block at all.
+ *
+ * Reported exactly that way: a song made in Firefox plays perfectly on the profile in Chrome, and
+ * the editor in Chrome says the block is empty. It is not empty and nothing has been lost — the
+ * editor was describing the wrong thing. What is in the block is always shown; the local library
+ * is only what you can ADD FROM, and when it is empty that is what gets said.
+ */
 function SongPicker({
   value,
   onChange,
@@ -868,7 +882,7 @@ function SongPicker({
      saving a look in the visualiser, which happens on a different page and therefore a different
      mount of this editor. Somebody's own browser, somebody's own looks. */
   const savedLooks = readPresets()
-  if (!items.length)
+  if (!items.length && !picked.length)
     return (
       <p className="muted" style={{ margin: 0, fontSize: '0.85rem' }}>
         Nothing in your library yet. Make something in the Instrument room and press{' '}
@@ -976,24 +990,31 @@ function SongPicker({
           ))}
         </ol>
       )}
-      <select
-        className="viz-select"
-        value=""
-        onChange={(e) => {
-          const add = items.find((i: LibraryItem) => i.song.name === e.target.value)
-          if (!add) return
-          // ⚠️ the COMPACT form goes into the block — see packSong. The readable one is roughly
-          // five times larger and a normal four-layer song does not fit in a profile block at all
-          onChange({ ...value, song: undefined, songs: [...queue, packSong(add.song)] })
-        }}
-      >
-        <option value="">{picked.length ? 'Add another…' : 'Pick one…'}</option>
-        {items.map((i: LibraryItem) => (
-          <option key={i.id} value={i.song.name}>
-            {i.kind === 'loop' ? '🔁' : '🎵'} {i.name}
-          </option>
-        ))}
-      </select>
+      {!items.length ? (
+        <span className="muted" style={{ fontSize: '0.75rem' }}>
+          Added from another browser — they play fine, but this one&apos;s library is empty so there
+          is nothing here to add.
+        </span>
+      ) : (
+        <select
+          className="viz-select"
+          value=""
+          onChange={(e) => {
+            const add = items.find((i: LibraryItem) => i.song.name === e.target.value)
+            if (!add) return
+            // ⚠️ the COMPACT form goes into the block — see packSong. The readable one is roughly
+            // five times larger and a normal four-layer song does not fit in a profile block at all
+            onChange({ ...value, song: undefined, songs: [...queue, packSong(add.song)] })
+          }}
+        >
+          <option value="">{picked.length ? 'Add another…' : 'Pick one…'}</option>
+          {items.map((i: LibraryItem) => (
+            <option key={i.id} value={i.song.name}>
+              {i.kind === 'loop' ? '🔁' : '🎵'} {i.name}
+            </option>
+          ))}
+        </select>
+      )}
       {tooBig && (
         <span className="muted" style={{ fontSize: '0.75rem' }}>
           This one is long — it may not fit on a page. Try a shorter take.
@@ -1039,7 +1060,7 @@ function ArtPicker({
   const used = configSize({ ...value, art: chosen })
   const names = chosen.map((a) => readDrawing(a)?.name ?? '?')
 
-  if (!items.length)
+  if (!items.length && !chosen.length)
     return (
       <p className="muted" style={{ margin: 0, fontSize: '0.85rem' }}>
         Nothing in your gallery yet. Draw something in the Paint room and press{' '}
@@ -1049,6 +1070,13 @@ function ArtPicker({
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+      {/* what the block HOLDS, which is not the same list as what this browser can offer */}
+      {!items.length && (
+        <span className="muted" style={{ fontSize: '0.75rem' }}>
+          {names.join(', ')} — added from another browser. They show fine; this one&apos;s gallery
+          is empty so there is nothing here to add.
+        </span>
+      )}
       <div className="fx-style-row">
         {items.map((a: Art) => {
           const on = names.includes(a.name)
@@ -1156,7 +1184,9 @@ function VisualPicker({
       {mode === 'art' &&
         (items.length === 0 ? (
           <span className="muted" style={{ fontSize: '0.8rem' }}>
-            Nothing in your gallery — draw something in Paint and press Keep.
+            {chosenName
+              ? `“${chosenName}” — added from another browser. It shows fine; this one's gallery is empty so there is nothing here to swap to.`
+              : 'Nothing in your gallery — draw something in Paint and press Keep.'}
           </span>
         ) : (
           <>

@@ -16,6 +16,8 @@ import { site } from '../config/site'
 import { VisibilityPicker } from '../components/VisibilityPicker'
 import type { VisibilityTier } from '../circuit/types'
 import { showToast } from '../circuit/toast'
+import { Toast } from '../circuit/ui/Toast'
+import { backupName, countBackup, makeBackup, restoreBackup } from '../backup'
 
 function normalizeError(err: unknown): string {
   if (!err) return 'Unknown error'
@@ -812,6 +814,105 @@ function CircuitsCard() {
   )
 }
 
+/**
+ * Songs, drawings and looks — out of this browser and back into another.
+ *
+ * ⚠️ BECAUSE THESE THREE LIVE NOWHERE ELSE. The song library, the paint gallery and the saved
+ * looks are localStorage, which is documented in each of them as a deliberate first step — and
+ * the bill came due twice in a week: songs made weeks earlier gone with no browser change and
+ * nothing cleared, which is a browser evicting site data and is entirely ordinary; and a song
+ * made in one browser impossible to edit from another, because the library is not there.
+ *
+ * ⚠️ IT IS NOT THE FIX. A library on the server is, and that is a migration against a live
+ * database. This is what makes the fix something to get right rather than something to rush: work
+ * you can carry to another machine and put back after a wipe is not one browser setting from gone.
+ */
+function BackupCard() {
+  const [busy, setBusy] = useState(false)
+  const file = useRef<HTMLInputElement>(null)
+  const mine = makeBackup()
+  const total = mine.songs.length + mine.art.length + mine.looks.length
+
+  const download = () => {
+    const blob = new Blob([JSON.stringify(mine)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = backupName()
+    a.click()
+    /* the object URL holds the whole backup in memory until it is let go of */
+    setTimeout(() => URL.revokeObjectURL(url), 1000)
+  }
+
+  const load = async (f: File) => {
+    setBusy(true)
+    try {
+      const raw: unknown = JSON.parse(await f.text())
+      const has = countBackup(raw)
+      if (!has) {
+        showToast('That is not a backup file')
+        return
+      }
+      const got = restoreBackup(raw)
+      const added = got.songs + got.art + got.looks
+      showToast(
+        added
+          ? `Added ${added} — ${got.songs} songs, ${got.art} drawings, ${got.looks} looks`
+          : 'Everything in that file was already here',
+      )
+    } catch {
+      showToast('That file could not be read')
+    } finally {
+      setBusy(false)
+      if (file.current) file.current.value = ''
+    }
+  }
+
+  return (
+    <article className="card" style={{ display: 'grid', gap: 10 }}>
+      <h3 style={{ margin: 0 }}>Your songs, drawings and looks</h3>
+      <p className="muted" style={{ margin: 0, fontSize: '0.82rem' }}>
+        These are kept in this browser only — not on your account. Clearing site data loses them,
+        and browsers sometimes do it on their own. Keep a copy, and use it to move them to another
+        computer.
+      </p>
+      <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
+        <button className="btn" type="button" onClick={download} disabled={!total}>
+          ⬇ Save a copy
+        </button>
+        <button
+          className="btn btn-ghost"
+          type="button"
+          onClick={() => file.current?.click()}
+          disabled={busy}
+        >
+          {busy ? 'Adding…' : '⬆ Put one back'}
+        </button>
+        <input
+          ref={file}
+          type="file"
+          accept="application/json,.json"
+          style={{ display: 'none' }}
+          onChange={(e) => {
+            const f = e.target.files?.[0]
+            if (f) void load(f)
+          }}
+        />
+        <span className="muted" style={{ fontSize: '0.78rem' }}>
+          {total
+            ? `${mine.songs.length} songs · ${mine.art.length} drawings · ${mine.looks.length} looks`
+            : 'Nothing kept in this browser yet'}
+        </span>
+      </div>
+      {/* ⚠️ Adds, never replaces — see restoreBackup. Said out loud because the thing people
+          fear about pressing "put one back" is losing what is already there. */}
+      <p className="muted" style={{ margin: 0, fontSize: '0.75rem' }}>
+        Putting one back adds what is missing and leaves everything you already have alone.
+      </p>
+    </article>
+  )
+}
+
 // ── Account & security: login email + password ─────────────────────────────
 export function AccountSettings({ canFinance = false }: { canFinance?: boolean } = {}) {
   const financeEnabled = hasFinanceSupabaseEnv()
@@ -1065,6 +1166,7 @@ export function AccountSettings({ canFinance = false }: { canFinance?: boolean }
 
           <NicknamesCard />
           <CircuitsCard />
+          <BackupCard />
 
           {/* Account & security */}
           <form className="card" onSubmit={handleSaveEmail} style={{ display: 'grid', gap: 10 }}>
@@ -1120,6 +1222,9 @@ export function AccountSettings({ canFinance = false }: { canFinance?: boolean }
           </article>
         </>
       )}
+      {/* ⚠️ This page has called showToast since the Snake-name setting shipped and has never
+          had a host for it, so that confirmation has never once been seen. */}
+      <Toast />
     </section>
   )
 }
