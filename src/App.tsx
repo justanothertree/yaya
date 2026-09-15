@@ -482,6 +482,21 @@ export default function App() {
     window.addEventListener('yaya:palette', onPalette)
     return () => window.removeEventListener('yaya:palette', onPalette)
   }, [])
+  /**
+   * ⚠️ paletteTick, AND THAT IS THE BUG THIS FILE ALREADY DESCRIBES ONE EFFECT DOWN.
+   *
+   * savePalette announces itself precisely because the palette lives in localStorage and not in
+   * React state — see the note on it, which spells out the failure: "apply a look that differs
+   * only in its palette, on the theme you are already using, and nothing in the effect's
+   * dependencies changes". That was found and fixed for the effect that PUBLISHES the look to a
+   * profile, and this one, which is the one that actually paints the page, was left on
+   * [customPalette] alone.
+   *
+   * So going from one custom-palette look to another custom-palette look wrote the new colours,
+   * told the profile about them, and did not put them on the screen: customPalette was already
+   * true, so nothing here re-ran. The colours then appeared the moment anything else touched the
+   * palette — opening the Colour tab, most often — which is exactly how it was reported.
+   */
   useEffect(() => {
     try {
       localStorage.setItem('theme.custom.on', customPalette ? '1' : '0')
@@ -491,7 +506,7 @@ export default function App() {
     // Applying (and clearing) lives here so it survives a reload and so turning it off from
     // anywhere puts the built-in theme straight back.
     applyPalette(customPalette ? loadPalette() : null)
-  }, [customPalette])
+  }, [customPalette, paletteTick])
 
   /**
    * Publish the look you actually use, so your profile can wear it.
