@@ -9412,6 +9412,50 @@ a.cz-msg-author:focus-visible {
 }
 
 /**
+ * A pattern behind a block — see blockBackdrop.
+ *
+ * ⚠️ A WASH GOES OVER IT, and that is the whole difficulty. The eight patterns were written
+ * to sit behind a banner, which holds no words; put one behind a bio and the text is on top of a
+ * gradient that was never asked to be legible. The flat layer above keeps the card readable while
+ * the pattern still reads as a pattern.
+ *
+ * ⚠️ IT IS BUILT FROM --panel, NOT --surface, AND THAT COST AN HOUR. `--surface` in this
+ * theme is a GRADIENT, not a colour — `linear-gradient(180deg, ...)` — so
+ * `color-mix(in oklab, var(--surface), transparent 14%)` is not a colour expression, the whole
+ * background-image declaration is invalid at computed-value time, and the property falls all the
+ * way back to `none`. Not to the card's background: to nothing. The rule matched, the variable
+ * was present and correct, and the element painted as if none of it existed. `--panel` is a real
+ * colour and both themes define one.
+ *
+ * ⚠️ 25%, which is a judgement rather than a measurement: opaque enough that light text on a
+ * dark panel stays readable over the brightest of the eight, sheer enough that the pattern is
+ * still a pattern rather than a rumour. A block with no words could take far less — but CSS
+ * cannot know whether one has words, and a wash that is safe everywhere beats one that is
+ * beautiful on the spacers and illegible on the bios.
+ *
+ * ⚠️ Layered in ONE background-image rather than a pseudo-element, so it cannot be clipped
+ * differently from the card by data-shape's clip-path, and needs no stacking context of its own.
+ */
+.profile-slot[data-backdrop] > .profile-block,
+.profile-canvas-cell[data-backdrop] > .profile-block {
+  background-image:
+    linear-gradient(
+      color-mix(in oklab, var(--panel), transparent 25%),
+      color-mix(in oklab, var(--panel), transparent 25%)
+    ),
+    var(--blk-bg);
+  background-size: cover;
+  background-position: center;
+}
+
+/* the picker's buttons wear the pattern they set, at chip size */
+.profile-backdrop-btn {
+  min-width: 3.4rem;
+  background-size: cover;
+  background-position: center;
+}
+
+/**
  * What a block is set in — see BLOCK_FONTS.
  *
  * ⚠️ ONE RULE, reading a variable the slot carries. Seven faces as seven selectors would be

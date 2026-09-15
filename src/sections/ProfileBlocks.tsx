@@ -18,6 +18,7 @@ import {
   BLOCK_SHAPES,
   TEXT_ALIGNS,
   TEXT_SIZES,
+  blockBackdrop,
   blockEdge,
   blockFont,
   blockHeading,
@@ -29,6 +30,7 @@ import {
   textStyle,
   TINT_HUES,
   bannerBackground,
+  hueFor,
   blockLook,
   blockLookAttrs,
   tintName,
@@ -209,7 +211,16 @@ const blockAlone = (b: ProfileBlock) => b.config?.alone === true
  * say different things in different places. Copying a width along with a colour would make the
  * second block change size, which is not what anybody means by "make it look like that one".
  */
-const LOOK_KEYS = ['font', 'shape', 'edge', 'tint', 'finish', 'textSize', 'align'] as const
+const LOOK_KEYS = [
+  'font',
+  'shape',
+  'edge',
+  'tint',
+  'finish',
+  'textSize',
+  'align',
+  'backdrop',
+] as const
 
 const HAS_OWN_WORDS = new Set<ProfileBlock['block_type']>(['bio', 'status', 'free'])
 
@@ -2888,6 +2899,55 @@ export function ProfileBlocksEditor({
                         onChange={(e) => setOpenCfg({ keep: e.target.checked || null })}
                       />
                       <span className="muted">Keep it on the page with no words in it</span>
+                    </label>
+                  </div>
+                )}
+
+                {/**
+                 * ⚠️ NOT ON A BANNER, which has had its own picker for these since it was built —
+                 * two pattern controls on one block, disagreeing about which pattern it wears, is
+                 * worse than the feature is good.
+                 *
+                 * ⚠️ THE EIGHT THE BANNER ALREADY HAD, now reachable from every other block. They cost a
+                 * style id to store rather than an image, which is the only reason a pattern can
+                 * live inside a block's 16000-character config where a drawing cannot.
+                 */}
+                {selected.block_type !== 'banner' && (
+                  <div className="profile-editrow-settings">
+                    <label className="profile-editrow-look">
+                      <span className="muted">Pattern</span>
+                      <span className="profile-width-row">
+                        <button
+                          className={'btn' + (blockBackdrop(selected.config) ? '' : ' is-on')}
+                          aria-pressed={!blockBackdrop(selected.config)}
+                          onClick={() => setOpenCfg({ backdrop: null }, 'the pattern')}
+                        >
+                          None
+                        </button>
+                        {(Object.keys(BANNER_STYLES) as BannerStyle[]).map((id) => (
+                          <button
+                            key={id}
+                            className={
+                              'btn profile-backdrop-btn' +
+                              (blockBackdrop(selected.config) === id ? ' is-on' : '')
+                            }
+                            aria-pressed={blockBackdrop(selected.config) === id}
+                            title={BANNER_STYLES[id].label}
+                            onClick={() => setOpenCfg({ backdrop: id }, 'the pattern')}
+                            /* ⚠️ the chip wears the pattern in the hue this block would use, so the
+                             choice is made by looking rather than by reading eight words */
+                            style={{
+                              backgroundImage: BANNER_STYLES[id].css(
+                                typeof selected.config?.tint === 'number'
+                                  ? (selected.config.tint as number)
+                                  : hueFor(username),
+                              ),
+                            }}
+                          >
+                            <span className="sr-only">{BANNER_STYLES[id].label}</span>
+                          </button>
+                        ))}
+                      </span>
                     </label>
                   </div>
                 )}

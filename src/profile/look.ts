@@ -294,6 +294,30 @@ export function textStyle(config: Record<string, unknown> | null | undefined): R
   }
 }
 
+/**
+ * A PATTERN BEHIND A BLOCK, from the same eight the banner already draws.
+ *
+ * ⚠️ REUSED, NOT INVENTED. aurora, dusk, rays, grid, bands, bubbles, rings and ember are
+ * already written, already built from one hue so every one works in every colour, and already
+ * deliberately different in kind rather than eight gradients. They were reachable by exactly one
+ * block type, which is the whole reason a page could only be as varied as its cards were
+ * coloured.
+ *
+ * ⚠️ AND THEY COST NOTHING TO STORE. A style id and the hue the block already has — no image,
+ * no upload, nothing counted against the 16000-character cap a block's config lives under. That
+ * cap is why a drawing cannot be a background here and a pattern can.
+ *
+ * ⚠️ THE HUE IS THE BLOCK'S OWN when it has one, so a pattern is not a second colour decision
+ * fighting the first. A block with no tint falls back to its owner's colour, which is what the
+ * banner has always done.
+ */
+export function blockBackdrop(
+  config: Record<string, unknown> | null | undefined,
+): BannerStyle | null {
+  const v = config?.backdrop
+  return isBannerStyle(v) ? v : null
+}
+
 /** A block's face, defaulting to whatever the page is set in. */
 export function blockFont(config: Record<string, unknown> | null | undefined): BlockFont {
   const v = config?.font
@@ -396,6 +420,7 @@ export function blockLookAttrs(
   'data-finish'?: BlockFinish
   'data-shape'?: BlockShape
   'data-edge'?: BlockEdge
+  'data-backdrop'?: BannerStyle
   style?: React.CSSProperties
 } {
   const { hue, finish } = blockLook(config, username)
@@ -405,23 +430,41 @@ export function blockLookAttrs(
      square block silently impossible unless you also tinted it. */
   const edge = blockEdge(config)
   const font = blockFont(config)
+  const backdrop = blockBackdrop(config)
   /* ⚠️ The face rides as a CSS VARIABLE rather than a data attribute, because unlike shape
      and edge it is a value and not a switch — one rule reads it and every block type inherits,
      instead of seven selectors that would each have to be repeated for the slot and the cell. */
   const face = BLOCK_FONTS.find((f) => f.id === font)?.stack
   const vars: Record<string, string> = {}
   if (face) vars['--blk-font'] = face
+  if (backdrop) {
+    /* the block's own hue when it has one, so the pattern and the tint are one decision */
+    const h = hue ?? hueFor(username)
+    vars['--blk-bg'] = BANNER_STYLES[backdrop].css(h)
+  }
   const shaped = {
     ...(shape === 'round' ? {} : { 'data-shape': shape }),
     ...(edge === 'plain' ? {} : { 'data-edge': edge }),
+    ...(backdrop ? { 'data-backdrop': backdrop } : {}),
   }
-  if (hue == null) {
-    return face ? { ...shaped, style: vars as React.CSSProperties } : shaped
+  /**
+   * ⚠️ THE VARIABLES SURVIVE WHETHER OR NOT THERE IS A COLOUR, and this is the THIRD time that
+   * has had to be said here. The function began as "how a block wears a hue", so it returned
+   * nothing at all without one; shape had to be rescued from that early return, and then the
+   * pattern was written straight back into it — a block with a pattern and no tint got its
+   * data-backdrop attribute and none of the gradient the attribute exists to reveal.
+   *
+   * So the rule is now structural rather than remembered: collect what is set, attach it if there
+   * is any. A fourth thing added here cannot repeat this.
+   */
+  if (hue != null) {
+    vars['--blk-h'] = String(hue)
   }
+  const style = Object.keys(vars).length ? (vars as React.CSSProperties) : undefined
   return {
     ...shaped,
-    'data-finish': finish,
-    style: { ...vars, ['--blk-h']: String(hue) } as React.CSSProperties,
+    ...(hue == null ? {} : { 'data-finish': finish }),
+    ...(style ? { style } : {}),
   }
 }
 
