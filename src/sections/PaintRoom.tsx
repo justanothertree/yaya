@@ -1641,6 +1641,21 @@ export function PaintRoom() {
     /* ⚠️ Touching the paper ends the replay rather than drawing into a half-shown picture —
        which would look like the rest of your strokes had been lost. */
     if (replayRef.current !== null) setReplayAt(null)
+    /**
+     * ⚠️ CLICKING OFF A TEXT BOX PLACES IT, the way Paint's does — and the press is then spent,
+     * because a click that both commits the words and starts the next box is one press doing two
+     * things, which is how you end up with an empty text box you did not ask for.
+     *
+     * ⚠️ An EMPTY box is thrown away instead, and the press carries on into a normal drag. There
+     * is nothing to commit, so making you click twice would just be a rule for its own sake.
+     */
+    if (typing) {
+      if (typing.words.trim()) {
+        placeText()
+        return
+      }
+      dropText()
+    }
     // middle button, or any button while zoomed out of reach, drags the picture around
     if (e.button === 1 || e.button === 2) {
       pan.current = { x: e.clientX, y: e.clientY }
@@ -2932,18 +2947,27 @@ export function PaintRoom() {
            the baseline has to follow the zoom and the pan, can land off screen, and covers the
            words it is there to help you write. */
         <div className="paint-row paint-typing">
-          <input
+          {/**
+           * ⚠️ A TEXT BOX, THE WAY PAINT'S IS. Shift+Enter starts a line, Enter places, and
+           * clicking off it onto the paper places it too — so the keys mean what they mean
+           * everywhere else rather than what this one control decided.
+           *
+           * ⚠️ It grows with the words instead of scrolling, because the thing you are writing
+           * is on the paper in front of you and the box is only how you reach it.
+           */}
+          <textarea
             className="paint-typing-box"
             autoFocus
+            rows={Math.min(5, typing.words.split('\n').length)}
             value={typing.words}
-            maxLength={120}
-            placeholder="Type, and watch it land…"
+            maxLength={240}
+            placeholder="Type. Shift+Enter for a new line, Enter to place."
             aria-label="The words to put on the picture"
             onChange={(e) => setTyping((v) => (v ? { ...v, words: e.target.value } : v))}
             onKeyDown={(e) => {
               /* ⚠️ stopped as well as handled: the room listens for Escape and Ctrl+Z on the
                  window, and a half-typed word is not a selection to drop or an edit to undo */
-              if (e.key === 'Enter') {
+              if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault()
                 e.stopPropagation()
                 placeText()
@@ -2951,6 +2975,9 @@ export function PaintRoom() {
                 e.preventDefault()
                 e.stopPropagation()
                 dropText()
+              } else if (e.key === 'Enter') {
+                /* Shift+Enter is a new line, and the window must not hear it either */
+                e.stopPropagation()
               }
             }}
           />
@@ -2982,6 +3009,7 @@ export function PaintRoom() {
           </button>
           <span className="muted paint-typing-tip">
             Pick a colour or the opacity while you type — it changes on the paper as you go.
+            Clicking the paper places it.
           </span>
         </div>
       )}

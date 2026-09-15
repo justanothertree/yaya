@@ -7658,6 +7658,9 @@ a.cz-msg-author:focus-visible {
   border: 1px solid var(--border);
   background: var(--panel, transparent);
   color: inherit;
+  /* it grows a row at a time with the text; nothing here should be dragged by a corner */
+  resize: none;
+  line-height: 1.35;
 }
 .paint-typing-tip {
   font-size: 0.74rem;

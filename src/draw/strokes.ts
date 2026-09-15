@@ -334,13 +334,24 @@ export function readStroke(raw: unknown): Stroke | null {
      profile and is drawn in a stranger's browser. Canvas text is not an injection surface the way
      innerHTML is, but an unbounded string is still a payload, and a newline in fillText is drawn
      as a space by some engines and a box by others. */
+  /**
+   * ⚠️ NEWLINES ARE KEPT NOW, and only because paintOne splits on them before anything reaches
+   * fillText — which draws a newline as a space on one engine and a box on another. Every other
+   * control character still becomes a space. The cap went from 120 to 240 when this became a text
+   * box rather than a line of words; a block of text is still a few hundred bytes.
+   */
   let words = ''
   if (typeof o.x === 'string')
-    for (const ch of o.x.slice(0, 120)) {
+    for (const ch of o.x.slice(0, 240)) {
       const n = ch.codePointAt(0) ?? 0
-      words += n < 32 || n === 127 ? ' ' : ch
+      words += n === 10 ? '\n' : n < 32 || n === 127 ? ' ' : ch
     }
-  words = words.trim()
+  words = words
+    .split('\n')
+    .slice(0, 12)
+    .map((l) => l.trimEnd())
+    .join('\n')
+    .trim()
 
   return {
     t: o.t as Tool,
@@ -388,7 +399,39 @@ export function strokeBox(s: Stroke, w: number, h: number) {
     if (y > y1) y1 = y
   }
 
-  if (s.t === 'star' && s.p.length > 3) {
+  /**
+   * ⚠️ TEXT HAS A BLOCK, NOT A LINE. Its points are the baseline, which has no height at all —
+   * so the selection box round a piece of text was a flat sliver, and round a multi-line one it
+   * missed every line but the first. The height is worked out from the letters rather than
+   * measured, because strokeBox has no canvas to measure with: a line of n characters is roughly
+   * n × 0.52 of the font size wide, which inverts to a font size, which gives a block height.
+   */
+  if (s.t === 'text' && s.x && s.p.length > 3) {
+    const ax = s.p[0] * w
+    const ay = s.p[1] * h
+    const bx = s.p[2] * w
+    const by = s.p[3] * h
+    const len = Math.hypot(bx - ax, by - ay)
+    const lines = s.x.split('\n')
+    const m = textMeter()
+    let wide = 1
+    if (m) for (const ln of lines) wide = Math.max(wide, m.measureText(ln).width || 1)
+    else for (const ln of lines) wide = Math.max(wide, ln.length * 52)
+    /* the same scale paintOne uses: the widest line spans the baseline */
+    const k = len / wide
+    const up = TEXT_ASCENT * k
+    const down = ((lines.length - 1) * TEXT_STEP + TEXT_DESCENT) * k
+    const a = Math.atan2(by - ay, bx - ax)
+    const nx = -Math.sin(a)
+    const ny = Math.cos(a)
+    for (const [ex, ey] of [
+      [ax, ay],
+      [bx, by],
+    ] as Array<[number, number]>) {
+      add(ex - nx * up, ey - ny * up)
+      add(ex + nx * down, ey + ny * down)
+    }
+  } else if (s.t === 'star' && s.p.length > 3) {
     /* centre and radius, not corner to corner — see the star case in paintOne */
     const cx = s.p[0] * w
     const cy = s.p[1] * h
@@ -458,6 +501,31 @@ export function strokeBox(s: Stroke, w: number, h: number) {
  */
 const TEXT_FACE =
   '"Avenir Next", "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif'
+
+/** the three numbers the layout is built from, at the nominal 100px the text is measured at */
+const TEXT_STEP = 115
+const TEXT_ASCENT = 78
+const TEXT_DESCENT = 24
+
+/**
+ * One offscreen context, for asking how wide a line of text is without drawing it.
+ *
+ * ⚠️ MEASURED, NOT GUESSED. strokeBox worked the block's height out from a characters-per-width
+ * fudge, which put the selection box round a one-line text at more than twice the height of the
+ * letters. measureText is exact, and one 8×8 canvas reused for every call costs nothing — the
+ * same reasoning as the scratch canvas the onion skin uses.
+ */
+let meter: CanvasRenderingContext2D | null = null
+function textMeter(): CanvasRenderingContext2D | null {
+  if (!meter && typeof document !== 'undefined') {
+    const c = document.createElement('canvas')
+    c.width = 8
+    c.height = 8
+    meter = c.getContext('2d')
+    if (meter) meter.font = `600 100px ${TEXT_FACE}`
+  }
+  return meter
+}
 
 /** A rainbow across a shape's bounding box, so a box or ellipse is not one flat hue. */
 function boxWheel(
@@ -643,11 +711,23 @@ function paintOne(ctx: CanvasRenderingContext2D, s: Stroke, w: number, h: number
       ctx.rotate(Math.atan2(by - ay, bx - ax))
       ctx.font = `600 100px ${TEXT_FACE}`
       ctx.textBaseline = 'alphabetic'
-      const wide = ctx.measureText(s.x).width || 1
+      /**
+       * ⚠️ THE WIDEST LINE SPANS THE BASELINE, and the rest sit under it at that same scale.
+       * Scaling each line to the line you dragged would give every line a different letter size,
+       * which is a ransom note rather than a paragraph.
+       *
+       * ⚠️ The first line sits ON the baseline, so a one-line text is exactly what it always
+       * was and nothing anybody has already drawn moves.
+       */
+      const lines = s.x.split('\n')
+      let wide = 1
+      for (const ln of lines) wide = Math.max(wide, ctx.measureText(ln).width || 1)
       const k = len / wide
       ctx.scale(k, k)
-      ctx.fillStyle = rainbow ? boxWheel(ctx, 0, -100, wide, 0, TURN / k) : paint
-      ctx.fillText(s.x, 0, 0)
+      ctx.fillStyle = rainbow
+        ? boxWheel(ctx, 0, -100, wide, (lines.length - 1) * TEXT_STEP, TURN / k)
+        : paint
+      for (let i = 0; i < lines.length; i++) ctx.fillText(lines[i], 0, i * TEXT_STEP)
       ctx.restore()
       break
     }
