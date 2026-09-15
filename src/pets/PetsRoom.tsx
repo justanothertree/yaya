@@ -4,6 +4,10 @@ import { PetView } from './PetView'
 import { PART_DOES, rigOf, type PartKind } from './rig'
 import { pets, removePet, renamePet, savePet, subscribePets, type Pet } from './pets'
 import { companion, setCompanion, subscribeCompanion } from './companion'
+import { PET_WIDTHS, petGif, petSeconds, petStill } from './petFile'
+import { fileNameFor, save, sizeLabel } from '../draw/export'
+import { packDrawing } from '../draw/strokes'
+import { packPet } from './pets'
 
 /**
  * The room the pets live in.
@@ -68,6 +72,49 @@ export function PetsRoom() {
   }, [parts])
   const unnamed = parts.filter((p) => p.name === 'unnamed').length
   const following = follows.on && (follows.name === chosen?.name || !follows.name)
+
+  /**
+   * The drawing this pet was made from, if it has changed since.
+   *
+   * ⚠️ A PET HOLDS A COPY, and it has to — it syncs to the account and gets embedded in a
+   * profile block, so a pointer at a gallery item would break both. The cost of that copy is that
+   * fixing a pet used to mean: notice the rig read it wrong, go to Paint, open the drawing, rename
+   * a layer, Keep over it, come back, let the pet go, adopt it again. Six steps to change one
+   * word, on a feature whose entire premise is "name a layer and see what happens".
+   *
+   * ⚠️ OFFERED ONLY WHEN THERE IS SOMETHING TO TAKE, compared on the packed bytes rather than
+   * on a timestamp. A button that is always there is one you have to press to find out whether it
+   * would do anything.
+   */
+  const fresher = useMemo(() => {
+    if (!chosen) return null
+    const src = drawings.find((a) => a.name.toLowerCase() === chosen.name.toLowerCase())
+    if (!src) return null
+    const same = JSON.stringify(packDrawing(src.art)) === JSON.stringify(packPet(chosen).a)
+    return same ? null : src
+  }, [chosen, drawings])
+
+  const [width, setWidth] = useState<number>(PET_WIDTHS[1][1])
+  const [busy, setBusy] = useState<string | null>(null)
+  const grab = async (kind: 'still' | 'moving') => {
+    if (!chosen) return
+    setBusy(kind === 'still' ? 'Drawing…' : 'Frame 1…')
+    try {
+      const blob =
+        kind === 'still'
+          ? await petStill(chosen, width)
+          : await petGif(chosen, width, (a, b) => setBusy(`Frame ${a} of ${b}…`))
+      if (!blob) return
+      const name = fileNameFor(
+        { ...chosen.art, name: chosen.name },
+        kind === 'still' ? 'png' : 'gif',
+      )
+      save(blob, name)
+      say(`Saved ${name} · ${sizeLabel(blob.size)}`)
+    } finally {
+      setBusy(null)
+    }
+  }
 
   const say = (msg: string) => {
     setNote(msg)
@@ -170,6 +217,21 @@ export function PetsRoom() {
                       : `${unnamed} unnamed layer${unnamed === 1 ? '' : 's'} — those parts just breathe.`}
                   </span>
                 )}
+                {fresher && (
+                  <button
+                    className="btn"
+                    onClick={() => {
+                      const made = savePet(chosen.name, fresher.art)
+                      if (made) {
+                        setOpenId(made.id)
+                        say(`${made.name} caught up with your drawing.`)
+                      }
+                    }}
+                    title={`Your drawing “${fresher.name}” has changed — take the new version`}
+                  >
+                    ↻ Update from the drawing
+                  </button>
+                )}
                 <div className="pets-acts">
                   {/**
                    * ⚠️ THE ONE CONTROL THAT PUTS SOMETHING ON EVERY OTHER PAGE, so it says exactly
@@ -210,6 +272,38 @@ export function PetsRoom() {
                   >
                     Let it go
                   </button>
+                </div>
+                {/* ⚠️ ITS OWN LINE. With the size chips inline the row was eight buttons — three
+                    things you can do to a pet and five that are about making a file — all the same
+                    weight, wrapping to four lines on a phone. Two kinds of thing, two rows. */}
+                <div className="pets-files">
+                  <button
+                    className="btn btn-ghost"
+                    disabled={!!busy}
+                    onClick={() => void grab('still')}
+                  >
+                    {busy && busy.startsWith('Drawing') ? busy : '⤓ Picture'}
+                  </button>
+                  <button
+                    className="btn btn-ghost"
+                    disabled={!!busy}
+                    onClick={() => void grab('moving')}
+                  >
+                    {busy && busy.startsWith('Frame') ? busy : `⤓ Moving · ${petSeconds}s`}
+                  </button>
+                  {/* ⚠️ one size for both, because the two files are the same creature and nobody
+                      wants to answer the same question twice a press apart */}
+                  {PET_WIDTHS.map(([label, w]) => (
+                    <button
+                      key={w}
+                      className={'btn btn-ghost' + (width === w ? ' is-on' : '')}
+                      aria-pressed={width === w}
+                      onClick={() => setWidth(w)}
+                      title={`${label} — ${w} pixels across`}
+                    >
+                      {label}
+                    </button>
+                  ))}
                 </div>
               </div>
             </div>

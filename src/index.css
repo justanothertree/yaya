@@ -7577,6 +7577,14 @@ a.cz-msg-author:focus-visible {
   font-size: 0.76rem;
   max-width: 34rem;
 }
+/* the two file buttons and the size that applies to both — a different kind of thing from
+   "keep me company" and "let it go", so a different line */
+.pets-files {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  align-items: center;
+}
 .pets-acts,
 .pets-adopt {
   display: flex;
