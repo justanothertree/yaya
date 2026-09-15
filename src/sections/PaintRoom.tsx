@@ -28,6 +28,7 @@ import {
   packDrawing,
   readDrawing,
   strokeBox,
+  floodFill,
 } from '../draw/strokes'
 import { InCanvasWindow } from '../circuit/ui/canvasContext'
 import { gallery, removeArt, saveArt, subscribeGallery, type Art } from '../draw/gallery'
@@ -1374,7 +1375,10 @@ export function PaintRoom() {
        * selection that misses for one that grabs things you did not point at.
        */
       if (!w || !h) return
-      if (k.t !== 'star' && (k.k ?? 0) < 2) return
+      /* ⚠️ A FILL IS AN AREA, and until it carried one its only point was the spot you clicked —
+         so a band round the shape you filled caught the outline and left the colour behind, which
+         is exactly how a fill gets separated from the thing it fills. */
+      if (k.t !== 'star' && k.t !== 'fill' && (k.k ?? 0) < 2) return
       const b = strokeBox(k, w, h)
       if (b.x1 >= lo.x && b.x0 <= hi.x && b.y1 >= lo.y && b.y0 <= hi.y) out.push(i)
     })
@@ -1629,7 +1633,28 @@ export function PaintRoom() {
       return
     }
     if (tool === 'fill') {
-      commit({ t: 'fill', c: colour, a: alpha, w: width, k: 0, e: 0, p: [x, y] })
+      /**
+       * ⚠️ MEASURED NOW, AGAINST THE PICTURE AS IT IS. A fill is replayed over whatever is
+       * under it, so if the strokes that bounded it are moved later it finds a different shape —
+       * and an opened boundary turns a filled box into a filled page. Recording the region it
+       * actually covered, here, at the one moment the boundary is known, gives the replay
+       * somewhere to stop.
+       *
+       * ⚠️ `measure` leaves base alone; this reads the canvas and writes nothing.
+       */
+      const bc = base.current?.getContext('2d')
+      const ext = bc
+        ? floodFill(bc, x, y, colour === NONE ? null : colour, alpha, null, true)
+        : null
+      commit({
+        t: 'fill',
+        c: colour,
+        a: alpha,
+        w: width,
+        k: 0,
+        e: 0,
+        p: ext ? [x, y, ext.x0, ext.y0, ext.x1, ext.y1] : [x, y],
+      })
       return
     }
     live.current = {

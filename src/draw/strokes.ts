@@ -652,7 +652,24 @@ function paintOne(ctx: CanvasRenderingContext2D, s: Stroke, w: number, h: number
       break
     }
     case 'fill':
-      floodFill(ctx, X(0), Y(1), erasing ? null : rainbow ? wheel((X(0) + Y(1)) / TURN) : s.c, s.a)
+      /* ⚠️ points 2–5, when it has them, are the region this fill covered when it was made —
+         see floodFill. They are POINTS rather than a separate field so a transform moves them
+         with the seed for free, and so the selection can see a fill as an area. */
+      floodFill(
+        ctx,
+        X(0),
+        Y(1),
+        erasing ? null : rainbow ? wheel((X(0) + Y(1)) / TURN) : s.c,
+        s.a,
+        s.p.length >= 6
+          ? {
+              x0: Math.min(s.p[2], s.p[4]),
+              y0: Math.min(s.p[3], s.p[5]),
+              x1: Math.max(s.p[2], s.p[4]),
+              y1: Math.max(s.p[3], s.p[5]),
+            }
+          : null,
+      )
       break
     case 'rect': {
       const x0 = X(0)
@@ -1419,13 +1436,27 @@ export function paintDrawing(
  * The tolerance exists because anti-aliased edges are not exactly the colour they look; without
  * it a fill stops dead at the soft edge of a brush stroke and leaves a halo.
  */
-function floodFill(
+/**
+ * @param limit the region the flood may touch, in 0–1 space, or null for the whole canvas
+ * @param measure true to work out where it WOULD go without changing a pixel
+ * @returns where it went, in 0–1 space, or null if it went nowhere
+ *
+ * ⚠️ THE LIMIT IS WHY A FILL SURVIVES ITS SHAPE MOVING. A fill is an operation replayed over
+ * whatever is underneath it, so moving the strokes that bounded it changes what it finds — and an
+ * opened boundary means it stops being a shape and becomes the whole page. Measured: move a filled
+ * box out from under its own seed and the fill goes from 11% of the picture to 87% of it. Carrying
+ * the region it covered the first time means the worst a moved boundary can now do is leave the
+ * colour where it was, instead of swallowing the drawing.
+ */
+export function floodFill(
   ctx: CanvasRenderingContext2D,
   cssX: number,
   cssY: number,
   hex: string | null,
   alpha: number,
-) {
+  limit?: { x0: number; y0: number; x1: number; y1: number } | null,
+  measure = false,
+): { x0: number; y0: number; x1: number; y1: number } | null {
   /**
    * ⚠️ DEVICE PIXELS, NOT CSS PIXELS — and getting this wrong is why only the top-left of the
    * picture could be filled.
@@ -1442,12 +1473,22 @@ function floodFill(
   const t = ctx.getTransform()
   const sx = Math.round(cssX * t.a + t.e)
   const sy = Math.round(cssY * t.d + t.f)
-  if (sx < 0 || sy < 0 || sx >= W || sy >= H) return
+  if (sx < 0 || sy < 0 || sx >= W || sy >= H) return null
+  /* the limit in device pixels, with a little slack for the soft edge a brush leaves */
+  const lim = limit
+    ? {
+        x0: Math.max(0, Math.floor(limit.x0 * W) - 6),
+        y0: Math.max(0, Math.floor(limit.y0 * H) - 6),
+        x1: Math.min(W - 1, Math.ceil(limit.x1 * W) + 6),
+        y1: Math.min(H - 1, Math.ceil(limit.y1 * H) + 6),
+      }
+    : null
+  if (lim && (sx < lim.x0 || sx > lim.x1 || sy < lim.y0 || sy > lim.y1)) return null
   let img: ImageData
   try {
     img = ctx.getImageData(0, 0, W, H)
   } catch {
-    return // a tainted canvas; nothing here should taint it, but a fill is not worth throwing over
+    return null // a tainted canvas; nothing should taint it, but a fill is not worth throwing over
   }
   const d = img.data
   const at = (x: number, y: number) => (y * W + x) * 4
@@ -1462,7 +1503,7 @@ function floodFill(
   const g = hex ? parseInt(hex.slice(3, 5), 16) : 0
   const b = hex ? parseInt(hex.slice(5, 7), 16) : 0
   const a = hex ? Math.round(alpha * 255) : 0
-  if (t0 === r && t1 === g && t2 === b && t3 === a) return // already this colour
+  if (!measure && t0 === r && t1 === g && t2 === b && t3 === a) return null // already this colour
 
   const TOL = 32
   const match = (i: number) =>
@@ -1513,10 +1554,14 @@ function floodFill(
     const py = (cell / W) | 0
     const px = cell - py * W
     if (seen[cell] || !match(at(px, py))) continue
+    if (lim && (py < lim.y0 || py > lim.y1)) continue
+    const edgeL = lim ? lim.x0 : 0
+    const edgeR = lim ? lim.x1 : W - 1
+    if (px < edgeL || px > edgeR) continue
     let x0 = px
-    while (x0 > 0 && !seen[py * W + (x0 - 1)] && match(at(x0 - 1, py))) x0--
+    while (x0 > edgeL && !seen[py * W + (x0 - 1)] && match(at(x0 - 1, py))) x0--
     let x1 = px
-    while (x1 < W - 1 && !seen[py * W + (x1 + 1)] && match(at(x1 + 1, py))) x1++
+    while (x1 < edgeR && !seen[py * W + (x1 + 1)] && match(at(x1 + 1, py))) x1++
     for (let x = x0; x <= x1; x++) {
       const i = at(x, py)
       d[i] = r
@@ -1540,6 +1585,10 @@ function floodFill(
       }
     }
   }
-  if (hiX < loX) return // nothing matched; the seed itself was already the target colour
-  ctx.putImageData(img, 0, 0, loX, loY, hiX - loX + 1, hiY - loY + 1)
+  if (hiX < loX) return null // nothing matched; the seed itself was already the target colour
+  /* ⚠️ measuring leaves the canvas alone: `img` is a copy out of getImageData, so skipping the
+     write-back means nothing was changed — which is what lets the room ask "where would this go"
+     before committing the stroke that will do it. */
+  if (!measure) ctx.putImageData(img, 0, 0, loX, loY, hiX - loX + 1, hiY - loY + 1)
+  return { x0: loX / W, y0: loY / H, x1: hiX / W, y1: hiY / H }
 }
