@@ -10,15 +10,20 @@ import {
   sizeOf,
   stillOf,
 } from './export'
-import type { Drawing } from './strokes'
+import { frameCount, type Drawing } from './strokes'
 
 /**
  * Take the picture away with you.
  *
- * ⚠️ IT IS THE REPLAY BUTTON, AS A FILE. The room already offers "watch it draw itself" and
- * people already press it, so the animation here needs no explaining — it is the thing they have
- * seen, in a format they can send to somebody. Naming it after the feature it comes from is worth
- * more than naming it after the file format.
+ * ⚠️ THREE THINGS, NAMED AFTER WHAT THEY ARE. The two moving ones used to share a button
+ * called "Animation" and the drawing decided which you got — so on a flat picture that button
+ * made a replay, and the frames export was unreachable and looked absent. It was reported as
+ * missing. The right answer for a given drawing is still obvious, but which one you are getting
+ * has to be legible before you press it, and the one you cannot have has to say why rather than
+ * vanish — a button that is not there teaches nothing.
+ *
+ * ⚠️ ▶ REPLAY IS NAMED AFTER THE ROOM'S OWN BUTTON. People already press "watch it draw
+ * itself" and know what it does; naming the file after the feature beats naming it after GIF.
  *
  * ⚠️ "DOWNLOAD" RATHER THAN A SECOND ARROW. Keep is ⬇ and puts a picture in the gallery on this
  * site; this puts a file on your device, and those are different enough that they must not look
@@ -28,16 +33,25 @@ import type { Drawing } from './strokes'
  * "saved 6 KB" tells you neither. Playing it back in the panel is the only honest confirmation —
  * and it is the same file the browser just wrote, held by its own object URL until this closes.
  */
+type Kind = 'still' | 'timelapse' | 'frames'
+
+/* a six-frame animation at its own speed comes out at exactly 1.0, which read as "1 seconds" */
+const secs = (n: number) => (n === 1 ? '1 second' : `${n} seconds`)
+
 export function SaveArt({ art, onClose }: { art: Drawing; onClose: () => void }) {
-  const [kind, setKind] = useState<'still' | 'motion'>('still')
+  const [kind, setKind] = useState<Kind>('still')
   const [width, setWidth] = useState<number | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
   const [made, setMade] = useState<{ url: string; name: string; bytes: number } | null>(null)
   /** null means "whatever this drawing's own answer is" — see motionOf */
   const [speed, setSpeed] = useState<number | null>(null)
 
-  const motion = useMemo(() => motionOf(art, speed ?? undefined), [art, speed])
-  const widths = kind === 'motion' ? MOTION_WIDTHS : STILL_WIDTHS
+  const replay = useMemo(() => motionOf(art, 'timelapse', speed ?? undefined), [art, speed])
+  const anim = useMemo(() => motionOf(art, 'frames', speed ?? undefined), [art, speed])
+  const motion = kind === 'timelapse' ? replay : kind === 'frames' ? anim : null
+  /* only to explain a disabled button — motionOf already decides what is possible */
+  const frames = useMemo(() => frameCount(art), [art])
+  const widths = kind === 'still' ? STILL_WIDTHS : MOTION_WIDTHS
   const px = width ?? widths[1][1]
   const shape = sizeOf(art, px)
 
@@ -45,10 +59,22 @@ export function SaveArt({ art, onClose }: { art: Drawing; onClose: () => void })
      when the panel closes or makes another */
   useEffect(() => () => void (made && URL.revokeObjectURL(made.url)), [made])
 
-  /* a drawing with one stroke has nothing to animate, so the choice cannot stay where it was */
+  /* pointed at a different picture that cannot do what was selected — the choice cannot stay */
   useEffect(() => {
-    if (!motion && kind === 'motion') setKind('still')
+    if (kind !== 'still' && !motion) setKind('still')
   }, [motion, kind])
+
+  /**
+   * ⚠️ BOTH RESET WHEN THE KIND CHANGES, for different reasons. The widths are two different
+   * lists — 2400 is a still size and would make a GIF nobody could send. And the speeds are two
+   * different UNITS on two different ranges: 12 is a reasonable strokes-a-second and 12 frames a
+   * second is a different request entirely, on a dial that stops at 24 rather than 60.
+   */
+  const pick = (next: Kind) => {
+    if ((next === 'still') !== (kind === 'still')) setWidth(null)
+    if (next !== kind) setSpeed(null)
+    setKind(next)
+  }
 
   /* ⚠️ A speed does not survive a change of picture. 40 strokes a second is the default for a
      two-hundred-stroke drawing and nonsense for a four-stroke one, and the panel stays mounted
@@ -62,7 +88,13 @@ export function SaveArt({ art, onClose }: { art: Drawing; onClose: () => void })
       const blob =
         kind === 'still'
           ? await stillOf(art, px)
-          : await motionGifOf(art, px, motion?.speed, (a, b) => setBusy(`Frame ${a} of ${b}…`))
+          : await motionGifOf(
+              art,
+              px,
+              kind === 'frames' ? 'frames' : 'timelapse',
+              motion?.speed,
+              (a, b) => setBusy(`Frame ${a} of ${b}…`),
+            )
       if (!blob) {
         setBusy(null)
         return
@@ -86,25 +118,45 @@ export function SaveArt({ art, onClose }: { art: Drawing; onClose: () => void })
         </button>
       </div>
 
+      {/**
+       * ⚠️ THE ONE YOU CANNOT HAVE STAYS ON SCREEN AND SAYS WHY. Hiding it would make the
+       * panel tidier and would be the reason the frames export went unnoticed in the first place:
+       * a control that is absent teaches nothing, while one that is greyed out and explains
+       * itself tells you both that the feature exists and what to do to reach it.
+       */}
       <div className="paint-save-kinds">
         <button
           className={'btn' + (kind === 'still' ? ' is-on' : '')}
           aria-pressed={kind === 'still'}
-          onClick={() => {
-            setKind('still')
-            setWidth(null)
-          }}
+          onClick={() => pick('still')}
         >
           🖼 Picture
         </button>
         <button
-          className={'btn' + (kind === 'motion' ? ' is-on' : '')}
-          aria-pressed={kind === 'motion'}
-          disabled={!motion}
-          onClick={() => {
-            setKind('motion')
-            setWidth(null)
-          }}
+          className={'btn' + (kind === 'timelapse' ? ' is-on' : '')}
+          aria-pressed={kind === 'timelapse'}
+          disabled={!replay}
+          title={
+            replay
+              ? 'Watch it draw itself, stroke by stroke'
+              : frames > 1
+                ? 'This one has frames — 🎞 Animation plays them'
+                : 'One stroke, so there is nothing to watch being drawn'
+          }
+          onClick={() => pick('timelapse')}
+        >
+          ▶ Replay
+        </button>
+        <button
+          className={'btn' + (kind === 'frames' ? ' is-on' : '')}
+          aria-pressed={kind === 'frames'}
+          disabled={!anim}
+          title={
+            anim
+              ? 'Play through the frames you drew'
+              : 'This picture has no frames. Draw some with ⧉ Frames in the paint room, then come back.'
+          }
+          onClick={() => pick('frames')}
         >
           🎞 Animation
         </button>
@@ -116,26 +168,24 @@ export function SaveArt({ art, onClose }: { art: Drawing; onClose: () => void })
             A PNG of the finished picture, {shape.w}×{shape.h}.
             {!art.bg && ' The paper is transparent, so it will sit on any background.'}
           </>
-        ) : motion?.kind === 'frames' ? (
+        ) : kind === 'frames' && anim ? (
           <>
-            A GIF of your animation — {motion.steps} frames, about {motion.seconds} seconds, and it
+            A GIF that plays through your {anim.steps} frames — about {secs(anim.seconds)}, and it
             loops.
           </>
-        ) : (
+        ) : replay ? (
           <>
-            A GIF of it drawing itself, the same as ▶ Replay — {motion?.steps} steps over about{' '}
-            {motion?.seconds} seconds, and it loops.
+            A GIF of it drawing itself, the same as ▶ Replay — {replay.steps} steps over about{' '}
+            {secs(replay.seconds)}, and it loops.
           </>
-        )}
-        {kind === 'motion' &&
-          !art.bg &&
-          ' A GIF cannot be transparent, so the paper will be white.'}
+        ) : null}
+        {kind !== 'still' && !art.bg && ' A GIF cannot be transparent, so the paper will be white.'}
       </p>
 
       {/* ⚠️ Right under the sentence it changes. Dragging it rewrites the "about N seconds"
           above, which is the only readout that means anything — "12 strokes a second" is a number
           you have to imagine, and "about 3.4 seconds" is one you can picture. */}
-      {kind === 'motion' && motion && (
+      {kind !== 'still' && motion && (
         <label className="appearance-slider paint-save-speed">
           <span className="muted">
             {motion.unit === 'frames' ? 'Frames a second' : 'Strokes a second'}

@@ -10,9 +10,12 @@ import { frameCount, paintDrawing, type Drawing } from './strokes'
  * capture, no second representation to keep in step. A paint program that stored bitmaps could
  * not offer this at all without having decided to record from the start.
  *
- * ⚠️ TWO KINDS OF GIF, PICKED FROM THE DRAWING. One made in the frame editor already has frames
- * and a speed, and its GIF is simply that animation. A flat one has an ORDER, and its GIF is the
- * time-lapse. Both are honest readings of what is there, and neither needed a setting.
+ * ⚠️ TWO KINDS OF GIF, AND THE CALLER NAMES WHICH. They were inferred from the drawing at
+ * first — frames if it had them, the replay if it did not — which is the right answer and the
+ * wrong interface. Both arrived under one button called "Animation", so on a flat picture that
+ * button produced a replay and there was no way to see that a frames export existed at all. It
+ * was reported as missing, which it was: a feature you cannot name is one you do not have. They
+ * are two buttons now, each enabled exactly when it means something.
  *
  * ⚠️ NOTHING IS UPLOADED. A file is made in the tab and handed to the browser. This is the piece
  * of "exporting art" that needs no storage, no bucket and no bill — worth being explicit about,
@@ -88,8 +91,10 @@ export async function stillOf(d: Drawing, width: number): Promise<Blob | null> {
   return new Promise((done) => s.c.toBlob((b) => done(b), 'image/png'))
 }
 
+export type MotionKind = 'frames' | 'timelapse'
+
 export type Motion = {
-  kind: 'frames' | 'timelapse'
+  kind: MotionKind
   /** how many images the GIF will hold */
   steps: number
   /** how long it runs for, in seconds */
@@ -113,12 +118,17 @@ const tenth = (v: number) => Math.round(v * 10) / 10
  * about to do rather than the person finding out from the result, and so the speed control can
  * show the length changing as it moves.
  *
+ * @param kind which of the two to describe. Null back means this drawing cannot do that one —
+ * a picture with no frames has no animation, and a picture with frames is not replayed stroke by
+ * stroke because `paintDrawing` shows one frame at a time, so a replay of one would be the first
+ * frame being drawn and nothing else. The panel says which instead of hiding the button.
  * @param speed frames a second for an animation, strokes a second for a replay. Omitted means
  * the drawing's own answer.
  */
-export function motionOf(d: Drawing, speed?: number): Motion | null {
+export function motionOf(d: Drawing, kind: MotionKind, speed?: number): Motion | null {
   const frames = frameCount(d)
-  if (frames > 1) {
+  if (kind === 'frames') {
+    if (frames < 2) return null
     /**
      * ⚠️ ITS OWN fps IS THE DEFAULT, NOT THE RULE. The speed a walk cycle was drawn at is
      * almost always the speed it should play at — but a GIF is a thing you send to somebody, and
@@ -130,7 +140,7 @@ export function motionOf(d: Drawing, speed?: number): Motion | null {
     const s = clamp(Math.round(speed ?? d.fps ?? 8), min, max)
     const delay = Math.max(2, Math.round(100 / s))
     return {
-      kind: 'frames',
+      kind,
       steps: frames,
       speed: s,
       min,
@@ -141,7 +151,7 @@ export function motionOf(d: Drawing, speed?: number): Motion | null {
     }
   }
   const n = d.strokes.length
-  if (n < 2) return null
+  if (n < 2 || frames > 1) return null
   const min = 1
   const max = 60
   /**
@@ -158,7 +168,7 @@ export function motionOf(d: Drawing, speed?: number): Motion | null {
      floor — a shorter delay is treated as 10 by most viewers, which would be slower, not faster. */
   const delay = clamp(Math.round(((n / s) * 100) / steps), 2, 200)
   return {
-    kind: 'timelapse',
+    kind,
     steps,
     speed: s,
     min,
@@ -182,10 +192,11 @@ export type Progress = (done: number, total: number) => void
 export async function motionGifOf(
   d: Drawing,
   width: number,
+  kind: MotionKind,
   speed?: number,
   onStep?: Progress,
 ): Promise<Blob | null> {
-  const plan = motionOf(d, speed)
+  const plan = motionOf(d, kind, speed)
   if (!plan) return null
   const s = surface(d, width, true)
   if (!s) return null
