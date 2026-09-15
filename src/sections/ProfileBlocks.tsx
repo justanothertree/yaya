@@ -2402,7 +2402,7 @@ export function ProfileBlocksEditor({
             {openIdx === i && (
               <span className="profile-canvas-tools">
                 <button
-                  className="btn"
+                  className="btn profile-tool-wide"
                   title="A third of the width"
                   aria-pressed={b.size === 'small'}
                   onClick={() => setSizeAt(i, 'small')}
@@ -2410,7 +2410,7 @@ export function ProfileBlocksEditor({
                   ▮
                 </button>
                 <button
-                  className="btn"
+                  className="btn profile-tool-wide"
                   title="Half the width"
                   aria-pressed={b.size === 'medium'}
                   onClick={() => setSizeAt(i, 'medium')}
@@ -2418,7 +2418,7 @@ export function ProfileBlocksEditor({
                   ▮▮
                 </button>
                 <button
-                  className="btn"
+                  className="btn profile-tool-wide"
                   title="The whole width"
                   aria-pressed={b.size === 'large'}
                   onClick={() => setSizeAt(i, 'large')}
@@ -2426,7 +2426,7 @@ export function ProfileBlocksEditor({
                   ▮▮▮
                 </button>
                 <button
-                  className={'btn' + (blockAlone(b) ? ' is-on' : '')}
+                  className={'btn profile-tool-wide' + (blockAlone(b) ? ' is-on' : '')}
                   aria-pressed={blockAlone(b)}
                   title={
                     blockAlone(b)

@@ -8410,9 +8410,19 @@ a.cz-msg-author:focus-visible {
   color: var(--accent, #7c6af7);
 }
 @media (hover: none) and (pointer: coarse) {
-  /* ⚠️ the width buttons do nothing below 700px, where the grid is a single column by design —
-     so they are hidden rather than left there to be pressed with no effect */
-  .profile-canvas-tools .btn:not(.btn-ghost) {
+  /**
+   * ⚠️ HIDDEN BY WHAT THEY DO, not by what they are not.
+   *
+   * This was `.btn:not(.btn-ghost)`, which meant "everything except the delete button" — a
+   * description of the toolbar at one moment rather than of the rule. The rule is that width and
+   * ⇔ do nothing below 700px, where the grid is a single column by design, so pressing them has
+   * no effect and leaving them is worse than hiding them.
+   *
+   * The next button added was ⧉ copy, which works perfectly well on a phone and vanished anyway.
+   * Opting IN to being hidden is the safer default: a control that appears where it should not is
+   * noticed immediately, one that silently disappears on phones is not.
+   */
+  .profile-canvas-tools .profile-tool-wide {
     display: none;
   }
   .profile-canvas-tools .btn {

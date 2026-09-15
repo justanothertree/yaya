@@ -18,6 +18,17 @@ Then say what changed, **what was verified**, and what risk or decision is left.
 
 > Do not claim something works because the code looks correct.
 
+**Before the push, not after it.** Evan deploys to test — he tries things on evancook.dev rather
+than locally — so the honest division is: verify everything checkable here, push, and then say
+plainly what is left that only he can exercise. A bug found on the live site that a dev-server
+click would have caught is a bug that was shipped, whatever happens next.
+
+**Check what your own change made untrue.** Shipping a cause and its consequence in one sitting is
+normal here, and the consequence is usually a sentence somewhere: the Account card still said the
+library lives "in this browser only" an hour after the library started syncing, and a section's tab
+still rendered after its only block became one that draws nothing. After a change lands, look for
+what it just made stale — copy, empty states, the thing a neighbouring feature assumed.
+
 - **`npm run typecheck` is the only real typecheck.** The root `tsconfig.json` has `files: []` plus
   references, so `tsc --noEmit` checks **zero files** and passes on anything. `npm run typecheck`
   runs `tsc -b`.
@@ -105,6 +116,16 @@ a phone.
 
 **Root font-size is fluid**, so `rem` is not a reliable unit for anything measured in pixels.
 
+**A new control counts as a UI change.** It is easy to remember the viewport pass for a layout and
+skip it for "just a button" — but buttons are what crowd a tile, overflow a toolbar and end up
+under a thumb. The block toolbar carries six of them on a cell that is 61px tall.
+
+**Browsers this cannot reach.** The Browser pane is Chromium, so responsive behaviour and touch
+emulation are testable and **Firefox and Safari are not**. This project has already been bitten by
+a Firefox-specific audio trap — `667366c`, automation dated in the past — so anything touching Web
+Audio, canvas timing, or recent CSS syntax should be handed over as _"needs a look in Firefox"_
+rather than reported as verified. Say which it is; do not let the two blur.
+
 ## 7 · Performance
 
 Identify obvious problems; do not optimise prematurely. Known shapes here: per-frame canvas work
@@ -135,7 +156,24 @@ Solve the requested problem completely, including improvements directly relevant
 unrelated issue gets fixed only if it is small, clearly safe and adjacent; otherwise name it
 separately rather than expanding scope.
 
-## 11 · A note on the owner's notes
+## 11 · How this repository remembers
+
+Three places, each with a job, and keeping them separate is what stops any of them rotting:
+
+- **`CLAUDE.md`** — the standard. Rules that outlive any one change.
+- **`docs/YYYY-MM-DD-*.sql` and `*.md`** — why a specific change was made, marked ✅ APPLIED with
+  its migration name once it is live. These are the project's memory of reasoning.
+- **Commit messages** — long, and deliberately so. They explain the failure a change fixes, not
+  just the change. Conventional Commits, and commitlint rejects a capitalised subject.
+
+`npm run lint && npm run build` runs on pre-push, so the remote cannot receive a broken tree.
+
+The one thing that does **not** belong in any of them is a list that has to be maintained by hand
+to stay true. `docs/rpc-inventory.md` used to be a table of 116 functions; it drifted in four weeks
+and was wrong in both directions. It is now the queries that answer the questions, which cannot go
+stale.
+
+## 12 · A note on the owner's notes
 
 Evan's testing notes are a **log, not a backlog** — most items are already fixed by the time they
 are written down. Check against `git log -S` and the code before building anything from them. This
