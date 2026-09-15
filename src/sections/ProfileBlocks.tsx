@@ -57,6 +57,8 @@ import { readPresets } from '../audio/vizPresets'
 
 import { packSong } from '../audio/songFile'
 import { ArtBlock } from '../profile/ProfileArt'
+import { CONFIG_LIMIT, configSize } from '../profile/blockSize'
+import { PetBlock, PetPicker } from '../pets/PetBlock'
 import { gallery, subscribeGallery, type Art } from '../draw/gallery'
 import { frameCount, packDrawing, readDrawing } from '../draw/strokes'
 import { library, subscribeLibrary, type LibraryItem } from '../audio/library'
@@ -118,6 +120,7 @@ export type ProfileBlock = {
     | 'song'
     | 'visualizer'
     | 'art'
+    | 'pet'
     | 'looks'
     | 'free'
   size: 'small' | 'medium' | 'large'
@@ -137,48 +140,6 @@ type ProfileNote = {
   can_delete: boolean
 }
 
-/** Must stay in step with the length() guard in save_my_profile_blocks. */
-const CONFIG_LIMIT = 16000
-
-/**
- * How big the server will think this block's config is.
- *
- * ⚠️ THE WHOLE CONFIG, because that is what `length(e->>'config')` measures on the other end. The
- * two pickers each measured only their own field — the song, or the chosen drawings — so both
- * under-reported, and a block could be shown as using 62% of its room while the config it would
- * actually send was over the cap. The save then failed with "invalid block", a message about the
- * SHAPE of the data for a problem that is really "this is too long".
- */
-/**
- * Postgres writes jsonb back with a space after every `:` and every `,`; JSON.stringify does not.
- *
- * ⚠️ THIS IS NOT A ROUNDING ERROR ON A PACKED DRAWING. A drawing is thousands of
- * comma-separated numbers, so it is very nearly one extra character per number — measured at 25.6%
- * on a twelve-stroke drawing, which means a config the meter showed as 15,999 of 16,000 arrives as
- * about 20,100 and is refused. The error is 'invalid block', a message about the SHAPE of the data
- * for a problem that is really "this is too long", which is the worst possible way to be told.
- *
- * Counted from the VALUE rather than by scanning the text, so a comma inside a string is not
- * mistaken for a separator. Verified exact against Postgres on a sample containing both.
- */
-const separators = (v: unknown): number => {
-  if (Array.isArray(v)) return Math.max(0, v.length - 1) + v.reduce((n, x) => n + separators(x), 0)
-  if (v && typeof v === 'object') {
-    const keys = Object.keys(v as object)
-    return (
-      Math.max(0, keys.length - 1) +
-      keys.length +
-      keys.reduce((n, k) => n + separators((v as Record<string, unknown>)[k]), 0)
-    )
-  }
-  return 0
-}
-
-const configSize = (config: Record<string, unknown>) => {
-  const c = config ?? {}
-  return JSON.stringify(c).length + separators(c)
-}
-
 /**
  * Block types the SERVER may not accept yet.
  *
@@ -192,7 +153,7 @@ const configSize = (config: Record<string, unknown>) => {
  * something you can act on, and it stops being used the moment the server accepts the type — no
  * second edit needed here, because the error it keys off simply stops happening.
  */
-const NEEDS_SERVER_SUPPORT: Array<ProfileBlock['block_type']> = ['art', 'looks']
+const NEEDS_SERVER_SUPPORT: Array<ProfileBlock['block_type']> = ['art', 'looks', 'pet']
 
 /**
  * Does this block get a line to itself?
@@ -294,6 +255,7 @@ const BLOCK_LABEL: Record<ProfileBlock['block_type'], string> = {
   song: '🎵 Song',
   visualizer: '◉ Visualiser',
   art: '🖼 Art',
+  pet: '🐾 Pet',
   looks: '🎭 Looks',
 }
 
@@ -402,6 +364,10 @@ function BlockView({
     /* ⚠️ Strokes, not an image — the visitor's browser draws it. See ProfileArt. */
     case 'art':
       return <ArtBlock cfg={cfg} />
+    /* ⚠️ The same, and moving: a pet is a drawing whose layer names say how it moves, read
+       and animated in the visitor's own tab. See pets/rig.ts. */
+    case 'pet':
+      return <PetBlock cfg={cfg} />
     case 'looks':
       return <LooksBlock block={block} />
     case 'bio': {
@@ -1096,6 +1062,8 @@ function isBlockEmpty(block: ProfileBlock): boolean {
   if (block.block_type === 'song') return !songFromConfig(block.config)
   if (block.block_type === 'art')
     return !(Array.isArray(block.config.art) && block.config.art.length)
+  if (block.block_type === 'pet')
+    return !(Array.isArray(block.config.pets) && block.config.pets.length)
   return false
 }
 
@@ -1634,6 +1602,10 @@ function BlockFields({
     case 'art':
       return (
         <ArtPicker value={block.config} onChange={(config) => onChange({ ...block, config })} />
+      )
+    case 'pet':
+      return (
+        <PetPicker value={block.config} onChange={(config) => onChange({ ...block, config })} />
       )
     case 'looks':
       return (

@@ -7417,6 +7417,37 @@ a.cz-msg-author:focus-visible {
   margin-inline: 0.3rem;
 }
 
+/* a pet block: a little group of characters, not a picture stretched to the block's width */
+.profile-pets {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 0.8rem;
+}
+.profile-pet {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.15rem;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  padding: 0;
+  cursor: pointer;
+  border-radius: 12px;
+  line-height: 0;
+}
+.profile-pet-name {
+  font-size: 0.72rem;
+  line-height: 1.2;
+  max-width: 8rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* ── pets ────────────────────────────────────────────────
    A strip of everyone you have, then the one you picked, big, beside what the rig understood. */
 .pets-room {
