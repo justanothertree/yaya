@@ -7639,6 +7639,30 @@ a.cz-msg-author:focus-visible {
   gap: 0.5rem;
 }
 
+/* ── writing words onto the picture ───────────────────────────────── */
+.paint-typing {
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.5rem 0.7rem;
+  margin-bottom: 0.5rem;
+  border: 1px solid var(--accent, #7c6af7);
+  border-radius: 10px;
+}
+.paint-typing-box {
+  flex: 1;
+  min-width: 10rem;
+  max-width: 26rem;
+  font: inherit;
+  padding: 0.35rem 0.5rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--panel, transparent);
+  color: inherit;
+}
+.paint-typing-tip {
+  font-size: 0.74rem;
+}
+
 /* ── the pet guide ─────────────────────────────────────────────
    A column, not a wrapping row: every line answers a different question and a wrap mixes them. */
 .paint-pet-guide {

@@ -1126,6 +1126,21 @@ export function PaintRoom() {
     | { phase: 'draw'; part: string; layer: number }
   const [petStep, setPetStep] = useState<PetStep | null>(null)
 
+  /**
+   * Words being written onto the picture, before they are a stroke.
+   *
+   * ⚠️ IT IS THE LIVE STROKE, not a separate preview. The pending text is written into
+   * `live.current` — the same slot a half-drawn brush stroke uses — so it is painted by the same
+   * code that paints the finished thing, at the same place, in the same colour and opacity. There
+   * is no second rendering path that could disagree with the first, which is the failure mode
+   * every "preview" feature has.
+   */
+  const [typing, setTyping] = useState<{
+    line: [number, number, number, number]
+    words: string
+    scale: number
+  } | null>(null)
+
   const startPetWizard = () => {
     setSelecting(false)
     if (frame !== null) goFrame(null)
@@ -1198,6 +1213,52 @@ export function PaintRoom() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [strokes, layerNames, bg, fps],
   )
+
+  /**
+   * ⚠️ REBUILT FROM THE PICKERS EVERY TIME, which is what makes the colour and the size live:
+   * the pending stroke is never stored, it is derived, so changing a swatch changes the words on
+   * the paper on the next repaint without anything having to remember to tell it.
+   */
+  const pendingText = (): Stroke | null => {
+    if (!typing) return null
+    const [x0, y0, x1, y1] = typing.line
+    return {
+      t: 'text',
+      c: colour,
+      a: alpha,
+      w: width,
+      k: symmetry,
+      e: echo,
+      l: layer,
+      f: frameForNew(),
+      x: typing.words,
+      p: [x0, y0, x0 + (x1 - x0) * typing.scale, y0 + (y1 - y0) * typing.scale],
+    }
+  }
+
+  useEffect(() => {
+    if (!typing) return
+    live.current = pendingText()
+    preview()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [typing, colour, alpha, symmetry, echo])
+
+  const placeText = () => {
+    const s = pendingText()
+    setTyping(null)
+    if (!s || !s.x?.trim()) {
+      live.current = null
+      preview()
+      return
+    }
+    commit({ ...s, x: s.x.trim().slice(0, 120) })
+  }
+
+  const dropText = () => {
+    setTyping(null)
+    live.current = null
+    preview()
+  }
 
   /** what the wizard has understood so far, in the pet's own words */
   /* ⚠️ the word you typed, deduped by what it does — see the same note in PetsRoom */
@@ -1815,14 +1876,19 @@ export function PaintRoom() {
     if (s.t === 'text') {
       const dx = (s.p[2] ?? s.p[0]) - s.p[0]
       const dy = (s.p[3] ?? s.p[1]) - s.p[1]
-      if (Math.hypot(dx, dy) < 0.02) s.p = [s.p[0], s.p[1], s.p[0] + 0.28, s.p[1]]
-      const say = window.prompt('What should it say?')?.trim().slice(0, 120)
-      if (!say) {
-        live.current = null
-        preview()
-        return
-      }
-      commit({ ...s, x: say })
+      const line: [number, number, number, number] =
+        Math.hypot(dx, dy) < 0.02
+          ? [s.p[0], s.p[1], s.p[0] + 0.28, s.p[1]]
+          : [s.p[0], s.p[1], s.p[2], s.p[3]]
+      /**
+       * ⚠️ NOT A PROMPT. A browser dialog is modal, unstyled, and — the reason it actually had
+       * to go — it stops you touching anything else, so the colour and the size cannot be changed
+       * while the words are being written. The whole point of text on a drawing is seeing it in
+       * the picture before you commit to it.
+       */
+      live.current = null
+      setTyping({ line, words: '', scale: 1 })
+      preview()
       return
     }
     commit(s)
@@ -2861,6 +2927,64 @@ export function PaintRoom() {
           ⛶
         </button>
       </div>
+      {typing && (
+        /* ⚠️ Above the paper rather than floating over the spot you clicked. An overlay pinned to
+           the baseline has to follow the zoom and the pan, can land off screen, and covers the
+           words it is there to help you write. */
+        <div className="paint-row paint-typing">
+          <input
+            className="paint-typing-box"
+            autoFocus
+            value={typing.words}
+            maxLength={120}
+            placeholder="Type, and watch it land…"
+            aria-label="The words to put on the picture"
+            onChange={(e) => setTyping((v) => (v ? { ...v, words: e.target.value } : v))}
+            onKeyDown={(e) => {
+              /* ⚠️ stopped as well as handled: the room listens for Escape and Ctrl+Z on the
+                 window, and a half-typed word is not a selection to drop or an edit to undo */
+              if (e.key === 'Enter') {
+                e.preventDefault()
+                e.stopPropagation()
+                placeText()
+              } else if (e.key === 'Escape') {
+                e.preventDefault()
+                e.stopPropagation()
+                dropText()
+              }
+            }}
+          />
+          {/* ⚠️ Size is the LINE, not a font size, because the words are scaled to span it — so
+              this stretches the baseline you dragged rather than introducing a second idea of how
+              big text is. Colour and opacity need no control here: they are the room's own, and
+              the pending stroke is rebuilt from them. */}
+          <button
+            className="btn"
+            onClick={() =>
+              setTyping((v) => (v ? { ...v, scale: Math.max(0.25, v.scale / 1.25) } : v))
+            }
+            title="Smaller"
+          >
+            A−
+          </button>
+          <button
+            className="btn"
+            onClick={() => setTyping((v) => (v ? { ...v, scale: Math.min(4, v.scale * 1.25) } : v))}
+            title="Bigger"
+          >
+            A+
+          </button>
+          <button className="btn" onClick={placeText} disabled={!typing.words.trim()}>
+            ✓ Place
+          </button>
+          <button className="btn btn-ghost" onClick={dropText}>
+            Cancel
+          </button>
+          <span className="muted paint-typing-tip">
+            Pick a colour or the opacity while you type — it changes on the paper as you go.
+          </span>
+        </div>
+      )}
       {petStep && (
         /* ⚠️ Directly above the paper, because every instruction on it is about what to do on
            the paper. A guide somewhere else is a thing to keep looking away at. */
