@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import {
+  cameFromPasswordReset,
   getUser,
   onAuthStateChange,
   sendPasswordReset,
@@ -146,6 +147,14 @@ export function SignIn() {
         </article>
       ) : (
         <form className="card" onSubmit={handleSignIn} style={{ display: 'grid', gap: 10 }}>
+          {/* Sent here BY a reset link, and still signed out — so the link was spent. App only
+              routes here on that branch; a good link lands on Account instead. */}
+          {cameFromPasswordReset() && !resetSent && (
+            <p style={{ margin: 0, color: 'var(--accent-2)', fontSize: '0.88rem' }}>
+              That link didn&apos;t work — reset links expire, and each one only works once. Send
+              yourself a fresh one below.
+            </p>
+          )}
           <label style={{ display: 'grid', gap: 6 }}>
             <span className="muted">Email</span>
             <input

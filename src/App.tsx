@@ -38,6 +38,8 @@ import { useVoiceSession } from './voice/useVoiceSession'
 import { NotificationBell } from './components/NotificationBell'
 import { hasFinanceSupabaseEnv } from './finance/env'
 import {
+  cameFromPasswordReset,
+  forgetResetMark,
   getSessionUser,
   onAuthStateChange,
   peekPersistedUserId,
@@ -817,6 +819,24 @@ export default function App() {
       onSignedOut()
     }
 
+    /**
+     * Landing from a password-reset email.
+     *
+     * ⚠️ AFTER readLiveSession, never before and never from an auth EVENT. supabase-js takes the
+     * tokens out of the URL asynchronously and finishes by doing `window.location.hash = ''` — a
+     * route set before that lands is wiped by it, and the reader ends up on the home page holding
+     * a working session and no idea why. readLiveSession awaits that same initialisation, so by
+     * the time it answers the address bar has settled and the hash is ours to set.
+     */
+    const landReset = (signedIn: boolean) => {
+      if (!cameFromPasswordReset()) return
+      forgetResetMark()
+      /* ⚠️ No session means the link was already spent — expired, or opened by the mail
+         provider's link scanner before the person got to it. Sign in says so and offers a fresh
+         one, which is an answer; the home page is not. */
+      setActive(signedIn ? 'account-settings' : 'signin')
+    }
+
     // reads the stored session, refreshing it if it has expired — confirms the optimistic boot
     void readLiveSession()
       .then(({ user: u, dead }) => {
@@ -825,6 +845,7 @@ export default function App() {
           uidRef.current = u.id
           setIsFinanceAuthed(true)
           onSignedIn()
+          landReset(true)
         } else {
           /**
            * ⚠️ THROW THE DEAD TOKEN AWAY, or this comes back on every single load.
@@ -849,10 +870,13 @@ export default function App() {
            */
           if (dead) forgetPersistedSession()
           confirmSignedOut()
+          landReset(false)
         }
       })
       .catch(() => {
-        if (alive) confirmSignedOut()
+        if (!alive) return
+        confirmSignedOut()
+        landReset(false)
       })
 
     const { data } = onAuthStateChange((event, session) => {

@@ -121,6 +121,30 @@ export async function updateUserPassword(password: string): Promise<User> {
 }
 
 /**
+ * The mark a reset link lands with — see sendPasswordReset for why it is a QUERY and not a hash.
+ *
+ * ⚠️ READ AT IMPORT, because App takes it out of the address bar as soon as it has acted on it,
+ * and SignIn is lazy — by the time that chunk arrives the URL is already clean. Both read this
+ * constant instead of the URL, so they cannot disagree about how the page was opened.
+ */
+const LANDED_FROM_RESET =
+  typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('reset') === '1'
+
+/** Was this page opened from a password-reset email? */
+export function cameFromPasswordReset(): boolean {
+  return LANDED_FROM_RESET
+}
+
+/** Take `?reset=1` out of the address bar once it has been acted on, so a refresh is an ordinary load. */
+export function forgetResetMark(): void {
+  if (typeof window === 'undefined') return
+  const url = new URL(window.location.href)
+  if (!url.searchParams.has('reset')) return
+  url.searchParams.delete('reset')
+  window.history.replaceState(window.history.state, '', url.toString())
+}
+
+/**
  * Send a password-reset email.
  *
  * ⚠️ Deliberately says nothing about whether the address exists. Answering that turns the sign-in
@@ -128,12 +152,22 @@ export async function updateUserPassword(password: string): Promise<User> {
  * one person's friends and family is a real leak — "is <name> in this circle?" — not a
  * theoretical one. The caller shows the same sentence either way.
  *
- * `redirectTo` lands them on Account, which already has the change-password form; Supabase turns
- * the link into a session on arrival, so they're signed in by the time they get there.
+ * ⚠️ THE DESTINATION IS A QUERY PARAM, AND IT HAS TO BE. This used to ask for
+ * `…/#account-settings`, and it had never once worked: supabase-js runs the IMPLICIT flow (still
+ * the library default), which hands back the session in the URL FRAGMENT — so the browser was
+ * given `/#account-settings#access_token=…`. A URL has exactly one fragment, everything after the
+ * FIRST `#`, so the library parsed `account-settings#access_token=…` and found its first key was
+ * named `account-settings#access_token`. No key called `access_token` meant it did not recognise
+ * the page as a callback at all: no session, no error, no message, and a route this app has never
+ * heard of. A query param cannot collide with the fragment, so the tokens get it to themselves.
+ *
+ * ⚠️ And the address must be on the project's Redirect URLs allow-list, or GoTrue silently
+ * DISCARDS it and falls back to the Site URL — which is how every link this ever sent ended up
+ * pointing at `http://localhost:3000`, a dev server on the reader's own machine.
  */
 export async function sendPasswordReset(email: string): Promise<void> {
   const sb = getSupabaseClient()
-  const redirectTo = `${window.location.origin}${window.location.pathname}#account-settings`
+  const redirectTo = `${window.location.origin}${window.location.pathname}?reset=1`
   const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo })
   // Rate limiting and genuinely broken configuration are worth surfacing; "no such user" is not,
   // and Supabase does not report it here anyway.
