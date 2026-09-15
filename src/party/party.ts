@@ -1,4 +1,5 @@
 import { onParty, sendParty, voiceSession } from '../voice/voiceSession'
+import { together } from './together'
 
 /**
  * Seeing each other move around the site.
@@ -360,6 +361,25 @@ export const party = {
       if (patch.peers || patch.here) set(patch)
     }, 2000)
 
+    /**
+     * ⚠️ THE POINTER IS PART OF "SHARE EVERYTHING", and it has no switch of its own any more.
+     *
+     * It had one, sitting next to the one that means all of it, and the pair read as a puzzle:
+     * you turned on sharing everything and your cursor still was not there, because the cursor
+     * was the one thing "everything" did not cover. Showing where you are pointing is the
+     * smallest and most obviously co-presence thing on the list — if anything belongs under that
+     * switch it is this.
+     *
+     * ⚠️ Subscribed FROM HERE, like every other room, because together.ts holds a preference
+     * and must not know what any of this means — see the note at the top of that file.
+     *
+     * ⚠️ One consequence worth saying: the switch is remembered across visits and this now
+     * follows it, so the pointer no longer goes quiet on reload. It is still only ever sent to
+     * people you are in a call with, and PRIVATE_ROUTES still withdraws you regardless.
+     */
+    const offAll = together.subscribe(() => party.setSharing(together.getState().on))
+    if (together.getState().on) party.setSharing(true)
+
     // Leaving the call ends the party with it — there is no co-presence without a room.
     const offVoice = voiceSession.subscribe(() => {
       if (
@@ -372,6 +392,7 @@ export const party = {
     detach = [
       off,
       offVoice,
+      offAll,
       () => window.removeEventListener('pointermove', move),
       () => document.removeEventListener('visibilitychange', onHide),
       () => window.removeEventListener('hashchange', onHash),

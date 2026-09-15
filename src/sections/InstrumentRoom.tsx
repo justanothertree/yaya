@@ -833,8 +833,14 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
 
   const [beatsOpen, setBeatsOpen] = useState(false)
 
-  /** peer id → their name, so a shared layer can say whose take it is */
-  const jamNames: Record<string, string> = {}
+  /**
+   * peer id → their name, so a shared layer can say whose take it is.
+   *
+   * ⚠️ The name book FIRST, then whoever is playing right now. Reading only `players` meant a
+   * take was labelled "Someone" the moment its author stopped playing — or left, while their
+   * part carried on in the arrangement. The book remembers; players is only who is at the keys.
+   */
+  const jamNames: Record<string, string> = { ...jamming.names }
   for (const p of Object.values(jamming.players)) jamNames[p.id] = p.name
 
   /** midi number → the hue of whoever is holding it, for the keyboard below */
@@ -1060,7 +1066,7 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
         {visualsShown && (
           <div className="inst-theatre-stage">
             <Suspense fallback={<div className="muted inst-theatre-wait">Loading visuals…</div>}>
-              <EmbeddedVisualizer />
+              <EmbeddedVisualizer embedded />
             </Suspense>
           </div>
         )}

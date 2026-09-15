@@ -740,8 +740,28 @@ export function captureLast(): { ok: boolean; notes: number; bpm: number; tempoS
   let phase: number
 
   if (state.playing) {
+    /**
+     * ⚠️ A BAR ENDING AT THE LAST NOTE, not at the moment you pressed the button.
+     *
+     * A rolling window loses the downbeat, every single time, and reported exactly that way:
+     * "capture always misses the first note of the bar". Play a phrase from the top of a bar, let
+     * it come round, reach for the button — by the time you press it the window [now - len, now]
+     * has already slid past where the phrase started, so the first note falls out of the back of
+     * it while everything after survives. The gap is your reaction time, which is never zero, so
+     * the note is never there.
+     *
+     * So the bar is measured back from the LAST NOTE rather than from the button. Same length,
+     * same loop alignment — `phase` is still loopStart, so everything lands where it was played
+     * against the grid — but the gap between finishing and pressing no longer eats the front of
+     * the phrase. Reaching for the button slowly costs nothing now, which is the point: you press
+     * it because you liked what you heard, and that decision is always made afterwards.
+     *
+     * ⚠️ `to` stays at NOW rather than at the last note, or every note still held when you
+     * stopped would be cut to zero length and filtered out as a stray. Nothing is double-counted
+     * by reaching forward: `last` is the last note-ON, so everything after it is a release.
+     */
     len = loopLength()
-    from = now - len
+    from = last - len
     to = now
     phase = loopStart
   } else {
@@ -1338,6 +1358,22 @@ export function dropLayersFrom(peer: string) {
   if (!going.length) return
   for (const l of going) releaseLayer(l.id)
   set({ layers: state.layers.filter((l) => l.from !== peer) })
+}
+
+/**
+ * Every take that came from somebody else, gone — for walking out of the jam yourself.
+ *
+ * ⚠️ NOT dropLayersFrom PER PEER, because the peer list is not a reliable list of whose
+ * work you are holding. Somebody who recorded a bassline and then sat quietly is not in it (it is
+ * filled in by live notes), and somebody whose departure was already processed has been taken out
+ * of it — so leaving used to walk off with exactly the takes it should have released. `from` is
+ * set on arrival and never on a layer of our own, so it answers the question directly.
+ */
+export function dropBorrowedLayers() {
+  const going = state.layers.filter((l) => l.from)
+  if (!going.length) return
+  for (const l of going) releaseLayer(l.id)
+  set({ layers: state.layers.filter((l) => !l.from) })
 }
 
 /**

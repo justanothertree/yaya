@@ -255,7 +255,16 @@ function VolumeRow({ c, label }: { c: Channel; label: string }) {
   )
 }
 
-export function AudioVisualizer() {
+/**
+ * `embedded` — the small panel inside the instrument room rather than the page of its own.
+ *
+ * ⚠️ IT ONLY TURNS OFF THE DOUBLE-CLICK GESTURE, and that is the whole reason it exists.
+ * Reported as firing by accident "most of the time" — while reaching for the keys, and while
+ * trying to work the picture itself. On its own page the gesture is what every video player has
+ * trained people to try; in a panel beside a keyboard it is a surprise attached to an ordinary
+ * click, and there is a ⛶ button an arm's length away either way.
+ */
+export function AudioVisualizer({ embedded = false }: { embedded?: boolean } = {}) {
   const host = useRef<HTMLDivElement>(null)
   const stage = useRef<HTMLDivElement>(null)
   const canvas = useRef<HTMLCanvasElement>(null)
@@ -1955,6 +1964,14 @@ export function AudioVisualizer() {
     let lastTap = 0
     let lastTapX = 0
     let lastTapY = 0
+    let wasStill = false
+    let downX = 0
+    let downY = 0
+    const onDownPos = (e: PointerEvent) => {
+      downX = e.clientX
+      downY = e.clientY
+    }
+    window.addEventListener('pointerdown', onDownPos, true)
     const onUp = (e: PointerEvent) => {
       ptr.current.down = false
       const t = e.target
@@ -1968,14 +1985,19 @@ export function AudioVisualizer() {
        */
       if (!(t instanceof Node) || !box.contains(t)) return
       if (t instanceof Element && t.closest('.viz-controls, .viz-anchor, .viz-float')) return
+      /* ⚠️ A DRAG IS NOT HALF A DOUBLE-CLICK. Comparing only where the two presses ENDED let
+         a mode being worked — two strokes finishing near each other — read as the gesture. Both
+         have to be a press and a release in the same spot, which is what a click is. */
+      const still = Math.hypot(e.clientX - downX, e.clientY - downY) < 6
       const now = performance.now()
       const near = Math.hypot(e.clientX - lastTapX, e.clientY - lastTapY) < 24
-      if (now - lastTap < DOUBLE_TAP_MS && near) {
+      if (!embedded && still && wasStill && now - lastTap < DOUBLE_TAP_MS && near) {
         lastTap = 0
         goFullRef.current?.()
         return
       }
-      lastTap = now
+      lastTap = still ? now : 0
+      wasStill = still
       lastTapX = e.clientX
       lastTapY = e.clientY
     }
@@ -2010,6 +2032,7 @@ export function AudioVisualizer() {
       box.removeEventListener('pointermove', onMove)
       box.removeEventListener('pointerleave', onLeave)
       box.removeEventListener('pointerdown', onDown)
+      window.removeEventListener('pointerdown', onDownPos, true)
       window.removeEventListener('pointerup', onUp)
     }
   }, [mode, src, gain, reduced, trail, mirror, palette])

@@ -3,7 +3,7 @@ import { useVoiceSession } from './useVoiceSession'
 import type { VoicePeer } from './voiceSession'
 import { callWord, peerWord, speakingNames } from './callWords'
 import { CallRoster } from './CallRoster'
-import { party, routeIsPrivate } from '../party/party'
+import { routeIsPrivate } from '../party/party'
 import { together } from '../party/together'
 import { shared } from '../party/shared'
 
@@ -107,7 +107,6 @@ export function CallDock() {
    *
    * Set above the early return so both tokens still clear when the call ends.
    */
-  const pointers = useSyncExternalStore(party.subscribe, party.getState, party.getState).sharing
   const shareAll = useSyncExternalStore(together.subscribe, together.getState, together.getState).on
   const sharedState = useSyncExternalStore(shared.subscribe, shared.getState, shared.getState)
   /**
@@ -248,9 +247,11 @@ export function CallDock() {
         onClick={() => together.setOn(!shareAll)}
         aria-pressed={shareAll}
         title={
-          shareAll
-            ? 'Sharing everything you open — the instrument, the drawing, the visualiser'
-            : 'Share everything you open with the call, instead of switching each room on'
+          onPrivatePage
+            ? 'This page is never shared — you stay private here'
+            : shareAll
+              ? 'Sharing your pointer and everything you open — the instrument, the drawing, the visualiser'
+              : 'Share your pointer and everything you open with the call, instead of switching each room on'
         }
       >
         {shareAll ? '🤝' : '🫱'}
@@ -282,21 +283,6 @@ export function CallDock() {
           </button>
         )
       })}
-      <button
-        className={'btn' + (pointers ? ' is-on' : '')}
-        onClick={() => party.setSharing(!pointers)}
-        aria-pressed={pointers}
-        disabled={!pointers && onPrivatePage}
-        title={
-          onPrivatePage
-            ? 'This page is never shared — your pointer stays private here'
-            : pointers
-              ? 'Stop sharing your pointer and which room you are in'
-              : 'Show your pointer to the call and see theirs, and ring the nav with who is in which room. Off again when you reload.'
-        }
-      >
-        {pointers ? '↖️' : '↗'}
-      </button>
       <button
         className={'btn' + (sharing ? ' is-on' : '')}
         onClick={() => (sharing ? stopShare() : void startShare())}

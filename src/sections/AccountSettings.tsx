@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
+  cameFromPasswordReset,
   getSessionUser,
   onAuthStateChange,
   peekPersistedUserId,
@@ -834,6 +835,26 @@ export function AccountSettings({ canFinance = false }: { canFinance?: boolean }
     [newPassword, confirmPassword],
   )
 
+  /**
+   * Arrived from a reset link, rather than having come here to change a setting.
+   *
+   * ⚠️ THE FORM WAS THE FIFTH CARD DOWN. The link signs you in and lands you on this page,
+   * which is correct and is also exactly where somebody stops: signed in, apparently finished,
+   * with the thing they actually came to do below the fold behind the profile, the nicknames,
+   * the circuits and the login email. They forget, and the old password — the one they could
+   * not remember — is still the password. So on this one arrival the form comes to the top,
+   * says what it is for, and takes the cursor.
+   */
+  const resetting = cameFromPasswordReset()
+  const pwForm = useRef<HTMLFormElement>(null)
+  useEffect(() => {
+    if (!resetting || loading) return
+    const el = pwForm.current
+    if (!el) return
+    el.scrollIntoView({ block: 'start', behavior: 'smooth' })
+    el.querySelector('input')?.focus()
+  }, [resetting, loading])
+
   useEffect(() => {
     if (!financeEnabled) {
       setLoading(false)
@@ -958,6 +979,45 @@ export function AccountSettings({ canFinance = false }: { canFinance?: boolean }
     }
   }
 
+  /* one definition, rendered at the top on a reset arrival and in its usual place otherwise */
+  const passwordCard = (
+    <form
+      ref={pwForm}
+      className="card"
+      onSubmit={handleSavePassword}
+      style={{ display: 'grid', gap: 10 }}
+    >
+      <h3 style={{ margin: 0 }}>{resetting ? 'Set a new password' : 'Password'}</h3>
+      {resetting && (
+        <p className="muted" style={{ margin: 0, fontSize: '0.82rem' }}>
+          You&apos;re signed in from the link in your email. Pick a new password now — the old one
+          still works until you do.
+        </p>
+      )}
+      <Field
+        label="New password"
+        value={newPassword}
+        onChange={setNewPassword}
+        type="password"
+        autoComplete="new-password"
+        placeholder="••••••••"
+        disabled={saving}
+      />
+      <Field
+        label="Confirm new password"
+        value={confirmPassword}
+        onChange={setConfirmPassword}
+        type="password"
+        autoComplete="new-password"
+        placeholder="••••••••"
+        disabled={saving}
+      />
+      <button className="btn" type="submit" disabled={saving || !canSubmitPassword}>
+        {saving ? 'Saving…' : 'Update password'}
+      </button>
+    </form>
+  )
+
   if (!financeEnabled) {
     return (
       <section className="grid" style={{ gap: '1rem' }}>
@@ -999,6 +1059,8 @@ export function AccountSettings({ canFinance = false }: { canFinance?: boolean }
         </article>
       ) : (
         <>
+          {resetting && passwordCard}
+
           <MemberProfileCard canFinance={canFinance} />
 
           <NicknamesCard />
@@ -1023,30 +1085,7 @@ export function AccountSettings({ canFinance = false }: { canFinance?: boolean }
             </button>
           </form>
 
-          <form className="card" onSubmit={handleSavePassword} style={{ display: 'grid', gap: 10 }}>
-            <h3 style={{ margin: 0 }}>Password</h3>
-            <Field
-              label="New password"
-              value={newPassword}
-              onChange={setNewPassword}
-              type="password"
-              autoComplete="new-password"
-              placeholder="••••••••"
-              disabled={saving}
-            />
-            <Field
-              label="Confirm new password"
-              value={confirmPassword}
-              onChange={setConfirmPassword}
-              type="password"
-              autoComplete="new-password"
-              placeholder="••••••••"
-              disabled={saving}
-            />
-            <button className="btn" type="submit" disabled={saving || !canSubmitPassword}>
-              {saving ? 'Saving…' : 'Update password'}
-            </button>
-          </form>
+          {!resetting && passwordCard}
 
           {(notice || error) && (
             <article className="card" style={{ display: 'grid', gap: 8 }}>

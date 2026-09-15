@@ -1,4 +1,4 @@
-import { onParty, sendParty, voiceSession } from '../voice/voiceSession'
+import { myPeerId, onParty, sendParty, voiceSession } from '../voice/voiceSession'
 import { readStroke, type Stroke } from '../draw/strokes'
 import { readLayerOp, type LayerOp } from '../draw/layerOps'
 
@@ -92,14 +92,63 @@ let partHidden: unknown[] = []
 let partsOf = 0
 let answerTimer: ReturnType<typeof setTimeout> | null = null
 
+/**
+ * ⚠️ THE ASK HAS TO BE REPEATED, and not asking twice is what made joining a drawing already
+ * in progress land on a blank page. "Share everything" is REMEMBERED across visits, so for anyone
+ * who had it on last time the switch is already true when the room mounts — which is the one
+ * moment the call's channel is least likely to exist yet. sendParty drops a message on the floor
+ * when there is no channel, silently and correctly, so the single ask evaporated and nothing ever
+ * asked again: a blank page, no error, and every stroke afterwards widening the gap.
+ *
+ * It stops the instant a chunk arrives, or the instant this page has a picture of its own — at
+ * that point you are not joining theirs, and the room's own rule takes over.
+ */
+let askTimer: ReturnType<typeof setInterval> | null = null
+let asks = 0
+const MAX_ASKS = 8
+const ASK_EVERY_MS = 1500
+
+function stopAsking() {
+  if (askTimer) clearInterval(askTimer)
+  askTimer = null
+  asks = 0
+}
+
 function resetCatchUp() {
   asking = 0
   parts = []
   partIds = []
   partHidden = []
   partsOf = 0
+  stopAsking()
   if (answerTimer) clearTimeout(answerTimer)
   answerTimer = null
+}
+
+/**
+ * Somebody else's stroke names, in the names THIS machine uses.
+ *
+ * ⚠️ WITHOUT THIS, EVERY EDIT TO AN EXISTING STROKE WAS A NO-OP ON THE FAR END. A stroke is
+ * numbered locally as `me:4` and filed by everyone else under `${'${from}'}:4` (see mark), so an op
+ * that names strokes — dragging a selection, restyling one — travelled carrying names that
+ * exist on the sender's machine and nowhere else. The receiver looked them up, found nothing,
+ * and changed nothing: the drag simply did not happen for the other person, with both ends
+ * believing it had. The stroke and undo paths never hit this because they send a NUMBER and let
+ * the receiver build the name; these ops carry a list, so the list is translated instead.
+ *
+ * Both directions: their `me:` is our `${'${from}'}:`, and our own id coming back is our `me:`.
+ * Built from the id the transport stamped, so it needs no trust — the same reasoning as the
+ * rename in the picture handler.
+ */
+function theirIds(op: LayerOp, from: string): LayerOp {
+  if (op.k !== 'style' && op.k !== 'xform') return op
+  const mine = myPeerId()
+  const ids = op.ids.map((id) => {
+    if (id.startsWith('me:')) return `${from}:${id.slice(3)}`
+    if (mine && id.startsWith(`${mine}:`)) return `me:${id.slice(mine.length + 1)}`
+    return id
+  })
+  return { ...op, ids }
 }
 
 let seq = 0
@@ -199,8 +248,17 @@ export const drawParty = {
   catchUp() {
     if (!state.on) return
     resetCatchUp()
-    asking = Date.now()
-    sendParty('art', { want: 1 })
+    const ask = () => {
+      if (!state.on) return stopAsking()
+      /* a picture of our own means we are no longer arriving to theirs — the room refuses an
+         answer in that state anyway, so holding the window open would only invite one */
+      if (myPicture?.()) return stopAsking()
+      if (++asks > MAX_ASKS) return stopAsking()
+      asking = Date.now()
+      sendParty('art', { want: 1 })
+    }
+    ask()
+    askTimer = setInterval(ask, ASK_EVERY_MS)
   },
 
   setOn(on: boolean) {
@@ -315,7 +373,7 @@ export const drawParty = {
       if (b && 'lay' in b) {
         if (!allowed(m.from)) return
         const op = readLayerOp(b.lay)
-        if (op) onLayers?.(op)
+        if (op) onLayers?.(theirIds(op, m.from))
         return
       }
       /**
@@ -378,6 +436,9 @@ export const drawParty = {
         if (b.pic.length > CHUNK) return
         // somebody else answered first, and two half-transfers interleaved would be neither
         if (partsOf && partsOf !== of) return
+        /* an answer is on its way, so stop asking — another ask would only make the answerer
+           start the whole transfer again from the top, mid-transfer */
+        stopAsking()
         partsOf = of
         parts[i] = b.pic
         if (Array.isArray(b.ids)) partIds = b.ids

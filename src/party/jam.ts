@@ -10,7 +10,7 @@ import {
 } from '../audio/synth'
 import { sharedCtx } from '../audio/context'
 import {
-  dropLayersFrom,
+  dropBorrowedLayers,
   loopState,
   putSharedLayer,
   removeLayer,
@@ -93,11 +93,22 @@ export type JamState = {
   /** true while WE are sending our notes to the room */
   on: boolean
   players: Record<string, JamPlayer>
+  /**
+   * Who each peer id is, for labelling their work — kept apart from `players` and NOT cleared
+   * when somebody goes.
+   *
+   * ⚠️ `players` IS A LIST OF WHO IS PLAYING RIGHT NOW, which is the wrong thing to read a
+   * name out of. It is filled in by live notes, so somebody who recorded a bassline and then sat
+   * still was never in it, and somebody who left was taken out of it — and their take, which is
+   * still in the arrangement and still being played, was labelled "Someone" for the rest of the
+   * session. A take outlives the person's presence, so the name has to as well.
+   */
+  names: Record<string, string>
   /** a song somebody has put on the table, waiting for you to take it or wave it away */
   offer: SongOffer | null
 }
 
-let state: JamState = { on: false, players: {}, offer: null }
+let state: JamState = { on: false, players: {}, names: {}, offer: null }
 const listeners = new Set<() => void>()
 
 function set(patch: Partial<JamState>) {
@@ -228,20 +239,30 @@ function allowed(peer: string): boolean {
  * the ids first means the diff has nothing to report: not "these are gone", but "these were never
  * ours to talk about".
  */
-function forgetAndDrop(peer: string) {
-  for (const lid of [...sentLayers.keys()]) if (lid.startsWith(`${peer}:`)) sentLayers.delete(lid)
-  dropLayersFrom(peer)
+/** Everyone we have a name for, so a label outlives a departure. See JamState.names. */
+function rememberName(from: string, name: unknown) {
+  if (typeof name !== 'string' || !name) return
+  const clean = name.slice(0, 40)
+  if (state.names[from] === clean) return
+  set({ names: { ...state.names, [from]: clean } })
 }
 
 function stopAllFor(peer: string) {
   for (const v of voices.get(peer) ?? []) noteOff(v)
   voices.delete(peer)
   rate.delete(peer)
-  /* ⚠️ Their recorded parts go with their live notes, and for the same reason: this runs when
-     somebody leaves or the call drops, and a take nobody in the room can reach is a loop playing
-     forever with no controls attached to it. Their notes stopping while their bassline kept
-     going would be the strangest possible half-departure. */
-  forgetAndDrop(peer)
+  /**
+   * ⚠️ THEIR RECORDED PARTS STAY. This used to drop them, on the reasoning that a take nobody
+   * in the room can reach is a loop playing forever with no controls attached to it — and that
+   * was true when it was written, because a peer's layer was theirs to mix and nobody else's.
+   * It stopped being true when the room became one desk: everyone can mute, fade and re-voice
+   * every part, so the controls ARE attached, to whoever is still here.
+   *
+   * What it did instead was delete work. Somebody records a bassline, steps away for a minute,
+   * and the song loses the bassline — for everybody, silently, with no way to get it back but
+   * asking them to come back and play it again. Tape does not erase itself when the bass player
+   * leaves the room.
+   */
   if (!state.players[peer]) return
   const next = { ...state.players }
   delete next[peer]
@@ -408,8 +429,13 @@ export const jam = {
       /* ⚠️ Every borrowed part goes, and mine go back to being broadcast. Keeping other
          people's takes after leaving the room would be walking off with their work in an
          arrangement they can no longer change; leaving mine marked shared would mean the next jam
-         played them to nobody, because the flag says the room already has them. */
-      for (const peer of Object.keys(state.players)) forgetAndDrop(peer)
+         played them to nobody, because the flag says the room already has them.
+
+         ⚠️ BY PROVENANCE, not by walking the peer list — which does not contain the quiet
+         ones and no longer contains the departed, so it missed exactly the takes it was there to
+         release. sentLayers is cleared wholesale just below, and the diff that would otherwise
+         report these as drops is already unsubscribed with the rig. */
+      dropBorrowedLayers()
       setLayersShared(false)
       sentLayers.clear()
       seenLayers = null
@@ -495,6 +521,9 @@ export const jam = {
     if (detach.length) return () => {}
 
     const off = onParty((m) => {
+      /* every jam message carries the sender's display name, and a take has to stay labelled
+         after they go — see JamState.names */
+      if (m.kind === 'jam' || m.kind.startsWith('jam:')) rememberName(m.from, m.name)
       /**
        * ⚠️ Its own message kind, and read through readSong like a file from disk. What arrives is
        * a stranger's JSON: readSong already clamps every length, checks every instrument against

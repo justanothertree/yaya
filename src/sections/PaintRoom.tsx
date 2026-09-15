@@ -890,7 +890,13 @@ export function PaintRoom() {
     const ids = sel.map((i) => strokes[i]?.id).filter((v): v is string => !!v)
     setUndone([])
     if (ids.length) runLayerOp({ k: 'style', ids, ...patch }, true)
-    else setStrokes((prev) => prev.map((st, i) => (sel.includes(i) ? { ...st, ...patch } : st)))
+    /* ⚠️ AND the unnamed ones, in the same press. These were an `else`, so a MIXED selection —
+       anything drawn before sharing was switched on, picked together with anything drawn after —
+       changed the named strokes and silently left the rest exactly as they were. */
+    if (ids.length < sel.length)
+      setStrokes((prev) =>
+        prev.map((st, i) => (sel.includes(i) && !st.id ? { ...st, ...patch } : st)),
+      )
   }
   const pickColour = (c: string) => {
     setColour(c)
@@ -1420,9 +1426,11 @@ export function PaintRoom() {
       /* ⚠️ Same as restyle: named strokes travel, unnamed ones are edited here only. An id is
          what the room calls a stroke, and one loaded from a gallery file has never had one. */
       if (ids.length) runLayerOp({ k: 'xform', ids, m }, true)
-      else
+      /* ⚠️ AND the unnamed ones — see restyle. As an `else` this left half of a mixed
+         selection sitting where it started while the other half moved. */
+      if (ids.length < sel.length)
         setStrokes((prev) =>
-          prev.map((k, i) => (sel.includes(i) ? { ...k, p: xformPoints(k.p, m) } : k)),
+          prev.map((k, i) => (sel.includes(i) && !k.id ? { ...k, p: xformPoints(k.p, m) } : k)),
         )
       return
     }
