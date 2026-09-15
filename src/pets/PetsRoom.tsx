@@ -3,6 +3,7 @@ import { gallery, subscribeGallery, type Art } from '../draw/gallery'
 import { PetView } from './PetView'
 import { PART_DOES, rigOf, type PartKind } from './rig'
 import { pets, removePet, renamePet, savePet, subscribePets, type Pet } from './pets'
+import { companion, setCompanion, subscribeCompanion } from './companion'
 
 /**
  * The room the pets live in.
@@ -29,6 +30,7 @@ const CALM_AFTER_MS = 2600
 export function PetsRoom() {
   const mine = useSyncExternalStore(subscribePets, pets, pets)
   const drawings = useSyncExternalStore(subscribeGallery, gallery, gallery)
+  const follows = useSyncExternalStore(subscribeCompanion, companion, companion)
   const [openId, setOpenId] = useState<string | null>(null)
   const [adopting, setAdopting] = useState(false)
   const [note, setNote] = useState<string | null>(null)
@@ -65,6 +67,7 @@ export function PetsRoom() {
     return [...seen]
   }, [parts])
   const unnamed = parts.filter((p) => p.name === 'unnamed').length
+  const following = follows.on && (follows.name === chosen?.name || !follows.name)
 
   const say = (msg: string) => {
     setNote(msg)
@@ -168,6 +171,25 @@ export function PetsRoom() {
                   </span>
                 )}
                 <div className="pets-acts">
+                  {/**
+                   * ⚠️ THE ONE CONTROL THAT PUTS SOMETHING ON EVERY OTHER PAGE, so it says exactly
+                   * that rather than "follow me". It is off until pressed, per pet, and the ✕ on
+                   * the corner pet itself is the way back out — see companion.ts.
+                   */}
+                  <button
+                    className={'btn' + (following ? ' is-on' : '')}
+                    aria-pressed={following}
+                    onClick={() =>
+                      setCompanion(following ? { on: false } : { on: true, name: chosen.name })
+                    }
+                    title={
+                      following
+                        ? `Stop ${chosen.name} appearing in the corner of every page`
+                        : `${chosen.name} will sit in the corner of every page on the site until you put them away`
+                    }
+                  >
+                    {following ? '◉ In the corner' : '◎ Keep me company'}
+                  </button>
                   <button
                     className="btn btn-ghost"
                     onClick={() => {

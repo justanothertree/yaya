@@ -1,12 +1,9 @@
 -- 2026-09-16 — a pet block on a profile
 --
--- ⏳ NOT YET APPLIED. The Supabase connector was erroring when this was written, so this one is
---    for you to run. Everything on the client side is already live and degrades honestly: 'pet'
---    is in NEEDS_SERVER_SUPPORT, so until this runs, adding a Pet block and saving says
---    "the 🐾 Pet block needs a one-time database change that hasn't been applied yet" and offers
---    "Take the 🐾 Pet block out and save the rest". Nothing is lost either way.
---
---    Mark it ✅ APPLIED once it is in.
+-- ✅ APPLIED by Evan on 2026-09-16, by hand. The Supabase connector was erroring both when this
+--    was written and when he confirmed running it, so unlike every other file in this folder the
+--    result was never read back from the database here. The check queries at the bottom are the
+--    ones that would prove it; the honest proof is that a 🐾 Pet block now saves.
 --
 --
 -- WHAT THIS IS FOR

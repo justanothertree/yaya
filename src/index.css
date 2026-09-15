@@ -7417,6 +7417,50 @@ a.cz-msg-author:focus-visible {
   margin-inline: 0.3rem;
 }
 
+/* ── the pet in the corner ────────────────────────────────────────
+   ⚠️ pointer-events NONE on the frame and auto on the two things inside it. Without that this is
+   an invisible square over the bottom-right of every page — which on a phone is where most of the
+   buttons are. ⚠️ --bottom-guard is 0 on a desktop and the phone's nav height on a phone, so it
+   clears the bottom bar with no breakpoint, exactly as the call dock does. */
+.pet-corner {
+  position: fixed;
+  right: 0.6rem;
+  bottom: calc(var(--bottom-guard, 0px) + 0.6rem);
+  z-index: 600;
+  pointer-events: none;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.1rem;
+}
+.pet-corner-poke {
+  pointer-events: auto;
+  border: 0;
+  background: none;
+  padding: 0;
+  cursor: pointer;
+  line-height: 0;
+  border-radius: 12px;
+}
+/* ⚠️ Always there rather than on hover. A phone has no hover, and the way to stop looking at
+   an overlay must not be the one thing on it you cannot find. Faint until you go near it. */
+.pet-corner-away {
+  pointer-events: auto;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-size: 0.7rem;
+  line-height: 1;
+  padding: 2px 4px;
+  cursor: pointer;
+  opacity: 0.35;
+  transition: opacity 0.15s ease;
+}
+.pet-corner:hover .pet-corner-away,
+.pet-corner:focus-within .pet-corner-away {
+  opacity: 0.9;
+}
+
 /* a pet block: a little group of characters, not a picture stretched to the block's width */
 .profile-pets {
   display: flex;

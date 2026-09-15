@@ -27,6 +27,7 @@ import { ShareStage } from './voice/ShareStage'
 import { UsagePanel } from './components/UsagePanel'
 import { voiceSession } from './voice/voiceSession'
 import { CallDock } from './voice/CallDock'
+import { PetCompanion } from './pets/PetCompanion'
 import { PartyCursors } from './party/PartyCursors'
 import { AudioDock } from './audio/AudioDock'
 import { useReveal } from './hooks/useReveal'
@@ -1728,6 +1729,11 @@ export default function App() {
       {/* Over everything, drawing nothing until you turn pointer sharing on — see party.ts for
           why that toggle is off by default and why it does not persist. */}
       <PartyCursors />
+      {/* ⚠️ At app level because a pet that vanished when you changed room would not be following
+          you anywhere. Renders nothing at all until somebody says yes in the Pets room, which is
+          the same shape as PartyCursors above and for the same reason: this one is over every
+          page on the site, including other people's. */}
+      <PetCompanion />
       {/* Sits with the call dock for the same reason it exists: the sound outlives the page that
           started it, so its handle has to live above the pages. */}
       <AudioDock onOpen={() => goTo('visualizer')} />
