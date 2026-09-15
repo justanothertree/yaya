@@ -78,6 +78,26 @@ export function avatarStyle(username: string): React.CSSProperties {
 }
 
 /**
+ * Whether a viewer at one tier may see a block at another.
+ *
+ * ⚠️ A PREVIEW OF THE SERVER'S RULE, NOT A SECOND COPY OF IT. can_see() in Postgres decides
+ * what anybody actually receives, and this decides nothing at all — it exists so an owner,
+ * looking at their OWN page with every block already in hand, can be shown the subset somebody
+ * else would have been sent. Nothing is protected by it and nothing may ever be.
+ *
+ * ⚠️ The ordering is by WIDTH, not by rank of person: 'public' is the widest audience and so
+ * the lowest bar. A viewer clears a block when their own reach is at least as wide as the
+ * audience the block was written for.
+ */
+const REACH: Record<Tier, number> = { public: 0, members: 1, friends: 2, private: 3 }
+
+export type Tier = 'public' | 'friends' | 'members' | 'private'
+
+export function tierSees(viewer: Tier, block: Tier): boolean {
+  return REACH[block] <= REACH[viewer]
+}
+
+/**
  * WHAT ONE BLOCK WEARS.
  *
  * A page used to be the same grey card repeated eight times. Everything that made it yours —

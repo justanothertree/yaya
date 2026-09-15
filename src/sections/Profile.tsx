@@ -1,6 +1,6 @@
 import { useContext, useEffect, useRef, useState } from 'react'
 import { getSupabaseClient, getSupabaseClientOrNull } from '../finance/client'
-import { avatarStyle } from '../profile/look'
+import { tierSees, avatarStyle } from '../profile/look'
 import type { ProfileData } from '../profile/profileData'
 import { previewMember, PREVIEW_PROFILES } from '../dev/previewMember'
 import { applyPalette, derivePalette, loadPalette } from '../theme/customTheme'
@@ -138,6 +138,16 @@ export function Profile({ authed, username }: { authed: boolean; username?: stri
    * what the demo is no matter what this says. The boundary is over there, not here.
    */
   const [demo, setDemo] = useState(demoFromHash)
+  /**
+   * ⚠️ "👁 View as others see it" DID NOT DO THAT. It left edit mode and showed you your own
+   * page — every private block, the guestbook's contents, the activity feed — because the server
+   * sends an owner all of their own blocks and nothing downstream filtered them again. The label
+   * promised the one thing the button could not deliver, on the page whose whole point is
+   * deciding who sees what.
+   *
+   * Null means "as me". A tier means: show only what somebody with that reach was sent.
+   */
+  const [seenAs, setSeenAs] = useState<Tier | null>(null)
   const [editing, setEditing] = useState(editFromHash)
   /**
    * Open your own page in the editor, once the server has confirmed it IS your own page.
@@ -764,20 +774,71 @@ export function Profile({ authed, username }: { authed: boolean; username?: stri
             </select>
             <button
               className="btn"
-              onClick={() =>
+              onClick={() => {
+                setSeenAs(null)
                 setEditing((v) => {
                   rememberEditPref(!v)
                   return !v
                 })
-              }
+              }}
               title={
-                editing ? 'See your page the way everyone else does' : 'Back to arranging your page'
+                editing ? 'Stop arranging and look at the page' : 'Back to arranging your page'
               }
             >
-              {editing ? '👁 View as others see it' : '🎨 Edit page'}
+              {editing ? '✓ Done editing' : '🎨 Edit page'}
             </button>
           </span>
         )}
+        {/**
+         * ⚠️ THE FEEDBACK LOOP FOR FOUR VISIBILITY TIERS, which until now had none. Every block
+         * carries an audience and there was no way to find out what any of them looked like from
+         * the other side — so "I think that one is private" was a belief, on a page that can now
+         * be handed to the open internet as a link.
+         *
+         * ⚠️ IT FILTERS WHAT YOU WERE ALREADY SENT, and cannot do otherwise: this is a preview,
+         * not a security boundary. The server decides what anybody actually receives; see
+         * tierSees, which says the same thing where somebody might be tempted to rely on it.
+         */}
+        {p.is_me && !editing && (
+          <div className="profile-seenas" role="group" aria-label="Preview this page as">
+            <span className="muted">Seen by</span>
+            {([null, 'friends', 'members', 'public'] as const).map((t) => (
+              <button
+                key={t ?? 'me'}
+                className={'btn' + (seenAs === t ? ' is-on' : '')}
+                aria-pressed={seenAs === t}
+                onClick={() => setSeenAs(t)}
+                title={
+                  t === null
+                    ? 'Everything, including what only you can see'
+                    : `Only what ${TIER_LABEL[t].toLowerCase()} are sent`
+                }
+              >
+                {t === null ? 'Me' : TIER_LABEL[t]}
+              </button>
+            ))}
+            {seenAs && !blocks.some((b) => tierSees(seenAs, b.visibility)) && (
+              <span className="muted profile-seenas-note">
+                {/* ⚠️ An empty page is the one answer that needs saying out loud. Without this the
+                    preview renders nothing at all, which reads as broken rather than as the
+                    correct and possibly unwanted answer to what a stranger receives. */}
+                <strong>Nothing on your page is set to {TIER_LABEL[seenAs]}</strong> — so this is
+                what they get. Set a block&apos;s audience to {TIER_LABEL[seenAs]} to put something
+                here.
+              </span>
+            )}
+            {seenAs && blocks.some((b) => tierSees(seenAs, b.visibility)) && (
+              <span className="muted profile-seenas-note">
+                {/* ⚠️ Said out loud, because a page that looks emptier than you remember is
+                    alarming until you know why — and knowing why is the entire point of this row. */}
+                {seenAs === 'public'
+                  ? 'A stranger with your link. The guestbook and activity stay between members.'
+                  : `Blocks set to ${TIER_LABEL[seenAs]} or wider.`}
+              </span>
+            )}
+          </div>
+        )}
+
         {/* ⚠️ AND SIGNED IN. Every button in here posts something as you — add friend, message,
           accept — so to a signed-out visitor on the demo page they were four controls that could
           only fail. The home page now sends first-time visitors straight here, and a dead
@@ -863,7 +924,8 @@ export function Profile({ authed, username }: { authed: boolean; username?: stri
           snakeBest={p.snake_best}
           username={p.username}
           isMe={p.is_me}
-          guest={!authed}
+          guest={!authed || seenAs === 'public'}
+          asTier={seenAs ?? undefined}
         />
       )}
 

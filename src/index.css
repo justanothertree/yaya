@@ -7828,6 +7828,25 @@ a.cz-msg-author:focus-visible {
    The editor renders the real .profile-blocks-grid, so everything below is only
    the handles laid over it. Nothing here may change how a block SIZES, or the
    thing being composed would stop being the thing that gets published. */
+/* "Seen by" — the owner looking at their own page through somebody else's reach */
+.profile-seenas {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  margin: 0 0 var(--sp-2, 0.6rem);
+  font-size: 0.85rem;
+}
+.profile-seenas .btn {
+  font-size: 0.8rem;
+}
+/* ⚠️ Takes the whole line once it wraps, so the sentence explaining an emptier-looking page
+   is never a fragment squeezed between two buttons. */
+.profile-seenas-note {
+  flex: 1 0 100%;
+  font-size: 0.75rem;
+}
+
 /**
  * Sections — a long page turned into a few short ones. See blockTab.
  *

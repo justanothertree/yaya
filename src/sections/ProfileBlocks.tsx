@@ -24,6 +24,7 @@ import {
   blockKeepEmpty,
   blockShape,
   textAlign,
+  tierSees,
   textSize,
   textStyle,
   TINT_HUES,
@@ -199,6 +200,17 @@ const blockAlone = (b: ProfileBlock) => b.config?.alone === true
  * offering a heading field for those would be a control that types into nothing.
  */
 /** Blocks whose content is a run of words somebody typed, and so can be set in type. */
+/**
+ * The keys that are a block's LOOK, as opposed to its content or its place on the page.
+ *
+ * ⚠️ THE LINE HAS TO BE DRAWN SOMEWHERE AND THIS IS WHERE. A heading and the text are what
+ * the block SAYS; a section, a width and ⇔ are where it SITS; everything here is how it appears,
+ * and appearance is the only one of the three you would ever want to move between two blocks that
+ * say different things in different places. Copying a width along with a colour would make the
+ * second block change size, which is not what anybody means by "make it look like that one".
+ */
+const LOOK_KEYS = ['font', 'shape', 'edge', 'tint', 'finish', 'textSize', 'align'] as const
+
 const HAS_OWN_WORDS = new Set<ProfileBlock['block_type']>(['bio', 'status', 'free'])
 
 const HAS_HEADING = new Set<ProfileBlock['block_type']>([
@@ -625,6 +637,7 @@ export function ProfileBlocksView({
   username,
   isMe = false,
   guest = false,
+  asTier,
 }: {
   blocks: ProfileBlock[]
   activity: ActivityItem[]
@@ -635,6 +648,13 @@ export function ProfileBlocksView({
   isMe?: boolean
   /** nobody is signed in — see BlockView */
   guest?: boolean
+  /**
+   * ⚠️ THE OWNER LOOKING THROUGH SOMEBODY ELSE'S EYES. Absent means "show me everything I was
+   * sent", which is what every visitor gets — the server already filtered for them. It is only
+   * ever set on your OWN page, where the server sent you all of your own blocks and the question
+   * "what would a stranger have got?" has no other way to be answered.
+   */
+  asTier?: Tier
 }) {
   /**
    * ⚠️ NO TAB BAR UNTIL SOMEBODY MAKES A SECOND SECTION. A page with everything in one place
@@ -655,7 +675,10 @@ export function ProfileBlocksView({
    * block kept blank deliberately, so this is the same question the editor asks when it offers to
    * fill one in.
    */
-  const live = blocks.filter((b) => !isBlockEmpty(b))
+  /* the pretend audience first, then the blocks that actually draw something — in that order,
+     so a section does not keep its tab on the strength of a block this viewer cannot see */
+  const visible = asTier ? blocks.filter((b) => tierSees(asTier, b.visibility)) : blocks
+  const live = visible.filter((b) => !isBlockEmpty(b))
   const tabs = tabsOf(live)
   /* an unnamed leading section exists only while something is still unfiled — see blockTab */
   const hasUnfiled = live.some((b) => !blockTab(b))
@@ -1874,6 +1897,17 @@ export function ProfileBlocksEditor({
   const [arranging, setArranging] = useState(false)
   /** the starting-points menu — open by itself on a page with nothing on it */
   const [starters, setStarters] = useState(false)
+  /**
+   * ⚠️ A LOOK PICKED UP, waiting to be put down — deliberately the same gesture as lifting a
+   * block, because it is the same kind of act and a second mechanism would be a second thing to
+   * learn. Tap to take, tap to give.
+   *
+   * ⚠️ "Use this look everywhere" already existed and is all-or-nothing; a page where every
+   * block is identical is the only page it can make. This is what lets two styles alternate, or
+   * one block stay deliberately different — which is the difference between a setting and
+   * composition.
+   */
+  const [heldLook, setHeldLook] = useState<Record<string, unknown> | null>(null)
   /** whether this page is published — decides what the word "Anyone" currently reaches */
   const [pagePublic, setPagePublic] = useState(false)
   useEffect(() => {
@@ -2052,6 +2086,26 @@ export function ProfileBlocksEditor({
     setBlocks(
       (all) => [...all.slice(0, i + 1), copy, ...all.slice(i + 1)],
       `copying ${BLOCK_LABEL[src.block_type]}`,
+    )
+  }
+
+  const takeLook = (i: number) => {
+    const cfg = blocks[i]?.config ?? {}
+    const look: Record<string, unknown> = {}
+    /* ⚠️ Absent keys are carried as null rather than skipped, or pasting a plain look onto a
+       decorated block would leave the decoration behind and produce a third thing neither block
+       had. "Make it look like that one" includes the parts where that one is plain. */
+    for (const k of LOOK_KEYS) look[k] = cfg[k] ?? null
+    setHeldLook(look)
+    setLiftIdx(null)
+  }
+
+  const giveLook = (i: number) => {
+    if (!heldLook) return
+    setBlocks(
+      (all) =>
+        all.map((x, idx) => (idx === i ? { ...x, config: { ...x.config, ...heldLook } } : x)),
+      'that look',
     )
   }
 
@@ -2379,6 +2433,11 @@ export function ProfileBlocksEditor({
               aria-label={'Edit ' + BLOCK_LABEL[b.block_type]}
               onClick={() => {
                 /* holding something? this is where it goes. Otherwise open it as before. */
+                if (heldLook) {
+                  giveLook(i)
+                  setHeldLook(null)
+                  return
+                }
                 if (liftIdx != null && liftIdx !== i) {
                   moveTo(liftIdx, i)
                   setLiftIdx(null)
@@ -2436,6 +2495,14 @@ export function ProfileBlocksEditor({
                   onClick={() => setAloneAt(i, !blockAlone(b))}
                 >
                   ⇔
+                </button>
+                <button
+                  className="btn"
+                  title="Copy how this one looks, then tap another block to give it the same"
+                  aria-pressed={!!heldLook}
+                  onClick={() => takeLook(i)}
+                >
+                  🎨
                 </button>
                 <button
                   className="btn"
@@ -2560,6 +2627,17 @@ export function ProfileBlocksEditor({
             Cancel
           </button>
         </div>
+      )}
+
+      {heldLook && (
+        /* ⚠️ the same shape as the lift hint below, because it is the same mode: something is
+           held, every other block is somewhere to put it, and nothing on screen says so */
+        <p className="profile-lift-hint">
+          Holding a look — tap a block to give it the same
+          <button className="btn btn-ghost" onClick={() => setHeldLook(null)}>
+            Cancel
+          </button>
+        </p>
       )}
 
       {liftIdx != null && (

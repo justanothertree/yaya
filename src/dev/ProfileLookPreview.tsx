@@ -4,7 +4,7 @@ import {
   ProfileBlocksView,
   type ProfileBlock,
 } from '../sections/ProfileBlocks'
-import { avatarStyle, BANNER_STYLES, type BannerStyle } from '../profile/look'
+import { avatarStyle, BANNER_STYLES, type BannerStyle, type Tier } from '../profile/look'
 import { derivePalette, type PaletteSeed } from '../theme/customTheme'
 
 /**
@@ -99,6 +99,8 @@ export function ProfileLookPreview() {
   const [blocks, setBlocks] = useState<ProfileBlock[]>(SAMPLE_BLOCKS)
   const [who, setWho] = useState('ada')
   const [editing, setEditing] = useState(true)
+  /* the read view's audience — the workbench's stand-in for the "Seen by" row on a real page */
+  const [asTier, setAsTier] = useState<Tier | null>(null)
 
   return (
     <div style={{ display: 'grid', gap: '1rem' }}>
@@ -205,8 +207,24 @@ export function ProfileLookPreview() {
         </div>
       </div>
 
-      <div className="card" style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+      <div
+        className="card"
+        style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}
+      >
         <strong>Viewing as:</strong> {who}
+        {/* ⚠️ The real page has this row too (Profile.tsx, "Seen by"), and it needs a signed-in
+            owner to appear — which is exactly the kind of surface this workbench exists for. */}
+        {!editing &&
+          ([null, 'friends', 'members', 'public'] as const).map((t) => (
+            <button
+              key={t ?? 'me'}
+              className={'btn' + (asTier === t ? ' is-on' : '')}
+              aria-pressed={asTier === t}
+              onClick={() => setAsTier(t)}
+            >
+              {t === null ? 'Me' : t}
+            </button>
+          ))}
         <button
           className="btn"
           onClick={() => setEditing((v) => !v)}
@@ -232,6 +250,8 @@ export function ProfileLookPreview() {
           trophies={SAMPLE_TROPHIES}
           snakeBest={{ score: 812, game_mode: 'classic' }}
           username={who}
+          asTier={asTier ?? undefined}
+          guest={asTier === 'public'}
         />
       )}
     </div>
