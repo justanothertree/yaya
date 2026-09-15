@@ -7829,6 +7829,32 @@ a.cz-msg-author:focus-visible {
    the handles laid over it. Nothing here may change how a block SIZES, or the
    thing being composed would stop being the thing that gets published. */
 /**
+ * Sections — a long page turned into a few short ones. See blockTab.
+ *
+ * ⚠️ A ROW OF BUTTONS, not a nav. These sit inside somebody's page and wear whatever theme
+ * that page is wearing, so they are built from .btn like every other control here rather than
+ * from a second set of tokens that would drift away from it.
+ */
+.profile-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin: 0 0 var(--sp-2, 0.6rem);
+}
+.profile-tab {
+  font-size: 0.85rem;
+}
+/* which section a tile belongs to, while arranging */
+.profile-canvas-tab {
+  padding: 0.05rem 0.4rem;
+  border: 1px solid color-mix(in oklab, var(--border), transparent 40%);
+  border-radius: 999px;
+  font-size: 0.68rem;
+  opacity: 0.8;
+  white-space: nowrap;
+}
+
+/**
  * Starting points — the blank-page answer.
  *
  * ⚠️ EACH CARD DRAWS ITS OWN LAYOUT, in the same six-column grid the page uses, because the

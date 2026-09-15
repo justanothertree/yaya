@@ -29,7 +29,10 @@ const SAMPLE_BLOCKS: ProfileBlock[] = [
     config: { text: 'Invented person. Real layout.' },
     visibility: 'members',
   },
-  { block_type: 'stats', size: 'small', config: {}, visibility: 'friends' },
+  /* ⚠️ Two blocks filed into a section, so the workbench exercises the tab bar. One sample
+     page with everything on one tab would never show it — the bar does not appear until a
+     second section exists, which is the behaviour most worth being able to look at. */
+  { block_type: 'stats', size: 'small', config: { tab: 'Numbers' }, visibility: 'friends' },
   // no session here, so its RPCs fail — which is exactly what should be checked: the block must
   // render its empty state rather than blowing up the page around it
   { block_type: 'guestbook', size: 'large', config: {}, visibility: 'friends' },
@@ -39,7 +42,7 @@ const SAMPLE_BLOCKS: ProfileBlock[] = [
     config: { emoji: '🎮', text: 'chasing a 310' },
     visibility: 'members',
   },
-  { block_type: 'trophies', size: 'medium', config: {}, visibility: 'friends' },
+  { block_type: 'trophies', size: 'medium', config: { tab: 'Numbers' }, visibility: 'friends' },
   // the block whose whole point is the detail it shows — see SAMPLE_ACTIVITY
   { block_type: 'activity', size: 'medium', config: { limit: 4 }, visibility: 'friends' },
 ]

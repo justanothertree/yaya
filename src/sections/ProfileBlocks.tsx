@@ -527,6 +527,44 @@ function BlockView({
   }
 }
 
+/**
+ * Which section of the page a block belongs to.
+ *
+ * ⚠️ IN THE BLOCK'S OWN CONFIG, like `alone`, `shape`, `edge` and `heading` before it —
+ * free-form jsonb the server already accepts, so a tabbed page needs no migration and a reader
+ * that has never heard of tabs ignores the key and renders one long page, exactly as it does now.
+ *
+ * ⚠️ EMPTY MEANS THE FIRST SECTION rather than "no section". A page that is half sorted is the
+ * normal state of a page being sorted, and blocks that have not been filed anywhere yet have to
+ * live somewhere visible while you work — dropping them into a hidden "other" is how you lose
+ * track of the thing you were in the middle of.
+ */
+function blockTab(b: ProfileBlock): string {
+  const v = b.config?.tab
+  return typeof v === 'string' ? v.trim().slice(0, 24) : ''
+}
+
+/**
+ * The sections a page has, in the order their first block appears.
+ *
+ * ⚠️ DERIVED, NEVER STORED. Tab order is block order, so arranging the page arranges its
+ * tabs and there is no second list to keep in step — no reorder controls, nothing that can
+ * disagree with the grid, and ⇅ Arrange rearranges both at once without knowing tabs exist.
+ *
+ * ⚠️ COMPUTED FROM THE BLOCKS THIS VIEWER GETS, which is why it takes a list rather than
+ * reading one. A stranger is served only public blocks, so a section whose blocks are all
+ * members-only must not appear as an empty tab with their name on it — that would publish the
+ * shape of a page nobody can see.
+ */
+function tabsOf(blocks: ProfileBlock[]): string[] {
+  const seen: string[] = []
+  for (const b of blocks) {
+    const t = blockTab(b)
+    if (t && !seen.includes(t)) seen.push(t)
+  }
+  return seen
+}
+
 /** Read-only display of every block, in order. Used for everyone, including the owner outside edit mode. */
 export function ProfileBlocksView({
   blocks,
@@ -548,35 +586,67 @@ export function ProfileBlocksView({
   /** nobody is signed in — see BlockView */
   guest?: boolean
 }) {
+  /**
+   * ⚠️ NO TAB BAR UNTIL SOMEBODY MAKES A SECOND SECTION. A page with everything in one place
+   * is the overwhelming majority of pages and a single tab above it is a control that does
+   * nothing — so tabs cost exactly nothing until they are used, and the page below is
+   * byte-for-byte what it was before.
+   */
+  const tabs = tabsOf(blocks)
+  /* an unnamed leading section exists only while something is still unfiled — see blockTab */
+  const hasUnfiled = blocks.some((b) => !blockTab(b))
+  const sections = !tabs.length ? [] : hasUnfiled ? ['', ...tabs] : tabs
+  const [openTab, setOpenTab] = useState<string | null>(null)
+  const active = openTab != null && sections.includes(openTab) ? openTab : (sections[0] ?? '')
+  const shown = sections.length ? blocks.filter((b) => blockTab(b) === active) : blocks
+
   if (!blocks.length) return null
   return (
-    <div className="profile-blocks-grid">
-      {blocks.map((b, i) => (
-        /**
-         * ⚠️ WRAPPED, exactly as the editor wraps. Blocks used to be the grid items themselves,
-         * which meant every block type had to remember to put its own size class on — and the
-         * song, art and visualiser blocks did not, so their width setting was quietly ignored.
-         * One wrapper carries the span for all of them, the two views finally agree, and there is
-         * a single place for a block that wants the line to itself.
-         */
-        <div
-          key={b.id ?? i}
-          className={'profile-slot is-' + b.size + (blockAlone(b) ? ' is-alone' : '')}
-          {...blockLookAttrs(b.config, username)}
-        >
-          <BlockView
-            guest={guest}
-            block={b}
-            activity={activity}
-            trophies={trophies}
-            achievements={achievements}
-            snakeBest={snakeBest}
-            username={username}
-            isMe={isMe}
-          />
+    <>
+      {sections.length > 1 && (
+        <div className="profile-tabs" role="tablist" aria-label="Sections of this page">
+          {sections.map((t) => (
+            <button
+              key={t || ' main'}
+              role="tab"
+              aria-selected={t === active}
+              className={'btn profile-tab' + (t === active ? ' is-on' : '')}
+              onClick={() => setOpenTab(t)}
+            >
+              {/* an unfiled block's section has no name of its own — see blockTab */}
+              {t || 'Page'}
+            </button>
+          ))}
         </div>
-      ))}
-    </div>
+      )}
+      <div className="profile-blocks-grid">
+        {shown.map((b, i) => (
+          /**
+           * ⚠️ WRAPPED, exactly as the editor wraps. Blocks used to be the grid items themselves,
+           * which meant every block type had to remember to put its own size class on — and the
+           * song, art and visualiser blocks did not, so their width setting was quietly ignored.
+           * One wrapper carries the span for all of them, the two views finally agree, and there is
+           * a single place for a block that wants the line to itself.
+           */
+          <div
+            key={b.id ?? i}
+            className={'profile-slot is-' + b.size + (blockAlone(b) ? ' is-alone' : '')}
+            {...blockLookAttrs(b.config, username)}
+          >
+            <BlockView
+              guest={guest}
+              block={b}
+              activity={activity}
+              trophies={trophies}
+              achievements={achievements}
+              snakeBest={snakeBest}
+              username={username}
+              isMe={isMe}
+            />
+          </div>
+        ))}
+      </div>
+    </>
   )
 }
 
@@ -2172,6 +2242,9 @@ export function ProfileBlocksEditor({
                  the full editor is exactly what makes a long page unpleasant to rearrange. */
               <div className="profile-block profile-canvas-tile">
                 <strong>{BLOCK_LABEL[b.block_type]}</strong>
+                {/* ⚠️ Arrange mode is where a page gets sorted into sections, so a tile that
+                    does not say which one it is in is the one thing you cannot sort by. */}
+                {blockTab(b) && <span className="profile-canvas-tab">{blockTab(b)}</span>}
                 {isBlockEmpty(b) && <span className="muted">empty</span>}
               </div>
             ) : isBlockEmpty(b) ? (
@@ -2323,6 +2396,33 @@ export function ProfileBlocksEditor({
                  * one off is the most visible thing on the page, and gating it behind the colour
                  * rule would have hidden it exactly where it does the most.
                  */}
+                {/**
+                 * ⚠️ WHICH SECTION IT IS IN, as a name you type rather than a list you manage.
+                 *
+                 * Typing the same word on two blocks is what makes a section — there is no "new
+                 * tab" button, nothing to create before it can be used and nothing left over when
+                 * the last block leaves. The datalist offers the names already in use so the
+                 * second block is a pick rather than a spelling test, which is the only part of
+                 * free text that actually goes wrong here.
+                 */}
+                <div className="profile-editrow-settings">
+                  <label className="profile-editrow-look">
+                    <span className="muted">Section</span>
+                    <input
+                      list="profile-tab-names"
+                      value={blockTab(selected)}
+                      placeholder="Page"
+                      maxLength={24}
+                      onChange={(e) => setOpenCfg({ tab: e.target.value.trim() || null })}
+                    />
+                    <datalist id="profile-tab-names">
+                      {tabsOf(blocks).map((t) => (
+                        <option key={t} value={t} />
+                      ))}
+                    </datalist>
+                  </label>
+                </div>
+
                 {/* ⚠️ WHAT THIS BLOCK IS CALLED, for the four types that print a heading.
                     Placeholder shows the default, so leaving it empty is a visible choice rather
                     than a blank that might mean anything. */}
