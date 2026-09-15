@@ -7506,6 +7506,36 @@ a.cz-msg-author:focus-visible {
   font-size: 0.85rem;
   max-width: 46rem;
 }
+/* the how-to: open for somebody with no pets, folded away once they have one */
+.pets-how {
+  font-size: 0.82rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.5rem 0.7rem;
+  max-width: 46rem;
+}
+.pets-how > summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+.pets-how[open] > summary {
+  margin-bottom: 0.4rem;
+}
+.pets-how ol {
+  margin: 0 0 0.5rem;
+  padding-left: 1.2rem;
+  display: grid;
+  gap: 0.22rem;
+}
+.pets-how p {
+  margin: 0 0 0.35rem;
+}
+.pets-how code {
+  font-size: 0.95em;
+  padding: 0 3px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
 .pets-note {
   margin: 0;
   font-size: 0.82rem;

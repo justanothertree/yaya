@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { gallery, subscribeGallery, type Art } from '../draw/gallery'
 import { PetView } from './PetView'
-import { PART_DOES, rigOf, type PartKind } from './rig'
+import { PART_DOES, PART_WORDS, rigOf, type PartKind } from './rig'
 import { pets, removePet, renamePet, savePet, subscribePets, type Pet } from './pets'
 import { companion, setCompanion, subscribeCompanion } from './companion'
 import { PET_WIDTHS, petGif, petSeconds, petStill } from './petFile'
@@ -139,10 +139,56 @@ export function PetsRoom() {
       <div className="pets-head">
         <h2>Pets</h2>
         <p className="muted">
-          Anything you have drawn can live here. It breathes and bobs straight away — and if you go
-          back to the Paint room and <strong>name its layers</strong>, the names tell it how to
-          move. A layer called <em>wing</em> flaps. One called <em>tail</em> wags.
+          A pet is a drawing that moves. Draw each part of a creature on its own layer, tell the
+          layer what that part is, and it starts doing what that part does.
         </p>
+        {/**
+         * ⚠️ THE INSTRUCTIONS WERE ONE SENTENCE AND NOBODY COULD ACT ON THEM. "Name its layers"
+         * assumes you already know the creature is meant to be drawn in PIECES, one per layer —
+         * which is the entire technique, and was the one thing never said. Reported exactly that
+         * way: "not clear and confusing to even know what to go and draw or what i can do."
+         *
+         * ⚠️ OPEN UNTIL YOU HAVE A PET, then folded away. Somebody with no pets is reading this
+         * page to find out how; somebody with three has read it.
+         */}
+        <details className="pets-how" open={!mine.length}>
+          <summary>How to make one</summary>
+          <ol>
+            <li>
+              Go to <strong>🎨 Paint</strong> and draw the <em>body</em> of a creature.
+            </li>
+            <li>
+              Press <strong>+ layer</strong>, then draw one part on it — a wing, a leg, a tail.
+            </li>
+            <li>
+              Press <strong>✎</strong> on that layer and name it after the part:{' '}
+              {PART_WORDS.map((w, i) => (
+                <span key={w}>
+                  {i ? ', ' : ''}
+                  <code>{w}</code>
+                </span>
+              ))}
+              .
+            </li>
+            <li>Repeat 2 and 3 for every part that should move on its own.</li>
+            <li>
+              Press <strong>⬇ Keep</strong> to save the drawing.
+            </li>
+            <li>
+              Come back here and press <strong>✚ Adopt a drawing</strong>.
+            </li>
+          </ol>
+          <p className="muted">
+            Each named part then moves by itself — a <code>wing</code> flaps, a <code>tail</code>{' '}
+            wags, <code>legs</code> take turns. Anything you leave unnamed just breathes along with
+            the body, which is why a drawing with one layer still makes a pet: it simply breathes.
+          </p>
+          <p className="muted">
+            It does not matter how big you drew it or where on the page — a pet is cropped to the
+            creature. And if you would rather animate it yourself, a drawing made with{' '}
+            <strong>🎬 Frames</strong> plays its frames instead of being moved for you.
+          </p>
+        </details>
       </div>
 
       {note && (
@@ -213,7 +259,7 @@ export function PetsRoom() {
                 {unnamed > 0 && (
                   <span className="muted pets-hint">
                     {unnamed === parts.length
-                      ? 'None of its layers are named, so all of it just breathes. Name one wing, head, leg, tail, ear, eye, arm or antenna in the Paint room and it will start doing that.'
+                      ? `Every layer is unnamed, so the whole thing just breathes. In the Paint room, press ✎ on a layer and call it one of: ${PART_WORDS.join(', ')}.`
                       : `${unnamed} unnamed layer${unnamed === 1 ? '' : 's'} — those parts just breathe.`}
                   </span>
                 )}

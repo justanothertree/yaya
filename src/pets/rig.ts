@@ -50,6 +50,9 @@ const WORDS: Array<[PartKind, string[]]> = [
   ['body', ['body', 'shell', 'torso']],
 ]
 
+/** the words worth typing, in the order the room lists them — body is what everything else is */
+export const PART_WORDS: string[] = ['wing', 'head', 'leg', 'tail', 'ear', 'eye', 'arm', 'antenna']
+
 export function partOf(name: string | undefined): PartKind {
   const n = (name ?? '').toLowerCase()
   for (const [kind, words] of WORDS) if (words.some((w) => n.includes(w))) return kind
@@ -112,6 +115,49 @@ const boxOf = (strokes: Stroke[]): Box | null => {
       if (s.p[i + 1] > y1) y1 = s.p[i + 1]
     }
   return x0 === Infinity ? null : { x0, y0, x1, y1 }
+}
+
+/**
+ * The part of the paper the creature is actually ON.
+ *
+ * ⚠️ A PET IS ITS INK, NOT ITS PAPER, and until this existed it was its paper. Somebody drew a
+ * small square in the middle of a full-size canvas, put it in the corner of the site, and got a
+ * tiny square in a large box of nothing — because the view was sized from the paper and the
+ * creature was wherever on it they happened to draw. Nobody draws to the edges, so EVERY pet was
+ * smaller than it should have been; the square just made it obvious.
+ *
+ * Cropping to the ink means where you drew it and how much of the page you used stop being part
+ * of the result, which is the same promise the format already makes about canvas size.
+ *
+ * ⚠️ GENEROUS, NOT TIGHT. Half a stroke's width sticks out past the points it is measured
+ * from, and a wing swings well past where it rests — a box that fits the still pose would clip
+ * the moving one. 12% of the creature's own size, plus half the fattest stroke.
+ */
+export function inkBox(d: Drawing): Box | null {
+  const b = boxOf(d.strokes)
+  if (!b) return null
+  let fat = 0
+  for (const s of d.strokes) if (s.w > fat) fat = s.w
+  const padX = fat / 2 + (b.x1 - b.x0) * 0.12 + 0.02
+  const padY = fat / 2 + (b.y1 - b.y0) * 0.12 + 0.02
+  return { x0: b.x0 - padX, y0: b.y0 - padY, x1: b.x1 + padX, y1: b.y1 + padY }
+}
+
+/**
+ * The shape a pet's view should be: the ink's own proportions, not the paper's.
+ *
+ * ⚠️ x and y are fractions of DIFFERENT lengths — the paper's width and its height — so the ink
+ * box's true shape is its fractional shape times the paper's. Getting this wrong is what would
+ * turn the crop into a stretch, and it is the same width-over-height trap Drawing.ratio documents.
+ */
+export function petRatio(d: Drawing): number {
+  const b = inkBox(d)
+  const paper = d.ratio > 0.05 && d.ratio < 20 ? d.ratio : 1
+  if (!b) return paper
+  const bw = b.x1 - b.x0
+  const bh = b.y1 - b.y0
+  if (bw <= 0 || bh <= 0) return paper
+  return Math.max(0.05, Math.min(20, (bw / bh) * paper))
 }
 
 /**

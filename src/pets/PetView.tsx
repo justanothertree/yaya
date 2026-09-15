@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef } from 'react'
 import type { Drawing } from '../draw/strokes'
 import { paintPet } from './paint'
-import { rigOf } from './rig'
+import { petRatio, rigOf } from './rig'
 
 /**
  * A pet, alive, at whatever size it is given.
@@ -37,7 +37,9 @@ export function PetView({
      component re-renders whenever its parent does */
   const parts = useMemo(() => rigOf(art), [art])
 
-  const wh = art.ratio > 0.05 && art.ratio < 20 ? art.ratio : 1
+  /* ⚠️ THE INK'S SHAPE, NOT THE PAPER'S. paintPet crops to the creature, and the crop is only
+     a magnification rather than a stretch if the canvas is this shape — see the note there. */
+  const wh = useMemo(() => petRatio(art), [art])
   const w = Math.round(wh >= 1 ? size : size * wh)
   const h = Math.round(wh >= 1 ? size / wh : size)
 

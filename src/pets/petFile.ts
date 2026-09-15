@@ -1,6 +1,6 @@
 import { GifEncoder } from '../draw/gif'
 import type { Progress } from '../draw/export'
-import { rigOf } from './rig'
+import { petRatio, rigOf } from './rig'
 import { paintPet } from './paint'
 import type { Pet } from './pets'
 
@@ -32,8 +32,10 @@ const STEPS = 48
 /** hundredths of a second per frame — 48 frames over 3 seconds is 16 a second */
 const DELAY = Math.round((SECONDS * 100) / STEPS)
 
+/* ⚠️ the ink's shape, for the same reason PetView uses it — a file of a pet is the creature,
+   not the page it was drawn on, and the crop only magnifies if the canvas is this shape */
 const shape = (pet: Pet, width: number) => {
-  const wh = pet.art.ratio > 0.05 && pet.art.ratio < 20 ? pet.art.ratio : 1
+  const wh = petRatio(pet.art)
   const w = Math.round(wh >= 1 ? width : width * wh)
   const h = Math.round(wh >= 1 ? width / wh : width)
   return { w: Math.max(8, w), h: Math.max(8, h) }

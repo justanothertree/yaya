@@ -60,7 +60,10 @@ export function PetCompanion() {
       >
         <PetView
           art={pet.art}
-          size={88}
+          /* ⚠️ 88 before the crop landed, when most of that was empty paper. A creature now fills
+             it, so the corner is bigger in effect than this number suggests — and a little larger
+             again, because "really small" was the first thing said about it. */
+          size={104}
           energy={still ? 0 : awake ? 1 : REST}
           label={`${pet.name}, in the corner`}
         />
