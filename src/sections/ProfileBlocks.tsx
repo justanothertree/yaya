@@ -718,7 +718,7 @@ export function ProfileBlocksView({
         <div className="profile-tabs" role="tablist" aria-label="Sections of this page">
           {sections.map((t) => (
             <button
-              key={t || ' main'}
+              key={t || '~unfiled'}
               role="tab"
               aria-selected={t === active}
               className={'btn profile-tab' + (t === active ? ' is-on' : '')}
@@ -1788,6 +1788,22 @@ const STARTERS: Starter[] = [
   },
 ]
 
+/**
+ * Every arrow, mapped to one step along the page's reading order.
+ *
+ * ⚠️ ALL FOUR MEAN THE SAME MOVE, because the grid is not always a grid. At Column width the
+ * page is one block per row and left/right is the wrong word for what you want; at Wide it is
+ * six across and up/down is. Both are "one step along the order the blocks are saved in", which
+ * is the only order that exists — a 2D walk would need rows, and blocks of three different
+ * widths do not sit in rows you could walk.
+ */
+const ARROW_STEP: Record<string, -1 | 1 | undefined> = {
+  ArrowLeft: -1,
+  ArrowUp: -1,
+  ArrowRight: 1,
+  ArrowDown: 1,
+}
+
 /** The "arrange your page" panel — owner only, shown behind an Edit toggle in Profile.tsx. */
 export function ProfileBlocksEditor({
   initial,
@@ -1994,6 +2010,28 @@ export function ProfileBlocksEditor({
     }
   }, [])
 
+  /**
+   * ⚠️ FOCUS IS THE SELECTION, once a keyboard is involved. The arrow keys read which cell the
+   * press came from, so moving the selection without moving the focus moves it exactly once and
+   * then stops dead. It is deferred to an effect rather than done in the handler because the
+   * button being focused often does not exist yet: Delete is the obvious case, and after a move
+   * the button at that index belongs to a different block.
+   */
+  const gridRef = useRef<HTMLDivElement | null>(null)
+  const wantFocus = useRef<number | null>(null)
+  const focusCell = (i: number) => {
+    wantFocus.current = i
+  }
+  useEffect(() => {
+    const i = wantFocus.current
+    if (i == null) return
+    wantFocus.current = null
+    if (i < 0) return
+    /* ⚠️ Not preventScroll. Arrowing along a long page is exactly when you want the page to
+       follow the selection — a selection you cannot see is one you cannot use. */
+    gridRef.current?.querySelector<HTMLElement>(`[data-cell="${i}"] .profile-canvas-pick`)?.focus()
+  })
+
   /* dragging is offered to a pointer and not to a finger — see the grip below */
   const touch = useTouchOnly()
   /** the add-a-block palette, which is seven buttons you are mostly not pressing */
@@ -2078,7 +2116,7 @@ export function ProfileBlocksEditor({
       const [taken] = next.splice(from, 1)
       next.splice(to, 0, taken)
       return next
-    })
+    }, `moving ${BLOCK_LABEL[blocks[from].block_type]}`)
   }
   const setAloneAt = (i: number, alone: boolean) =>
     setBlocks((all) =>
@@ -2123,11 +2161,16 @@ export function ProfileBlocksEditor({
     // The open block travels with its content. Rows are keyed by position, so without this
     // moving a block would leave the panel open on whatever swapped into its old slot.
     setOpenIdx((cur) => (cur === i ? j : cur === j ? i : cur))
+    /* ⚠️ NAMED, like every other step. It was the generic "that change" for as long as moving
+       meant finding a grip and pressing an arrow on it — rare enough that nobody had to check
+       what Undo was about to take back. The keyboard makes it the easiest thing on the page to
+       do by accident, so it now says which block it would put back. A held key coalesces into
+       one step, which is right: you want the block where it started, not one hop back. */
     setBlocks((b) => {
       const next = [...b]
       ;[next[i], next[j]] = [next[j], next[i]]
       return next
-    })
+    }, `moving ${BLOCK_LABEL[blocks[i].block_type]}`)
   }
   /**
    * Removing is the one thing here that can lose work, and it now persists on its own — so it
@@ -2337,6 +2380,31 @@ export function ProfileBlocksEditor({
     return () => window.removeEventListener('keydown', onKey)
   }, [stepBack, stepForward])
 
+  /**
+   * ⚠️ ESCAPE IS THE ONE THAT BELONGS ON THE WINDOW. Holding a look and holding a block are
+   * MODES — while one is on, every block on the page means something different — and the way out
+   * of a mode cannot depend on where the focus happens to have landed. Both have a Cancel button
+   * on their hint, and both hints are below the page they are about, which is the wrong end of a
+   * long page from wherever you just decided against it.
+   *
+   * One press is one step out: put down what is held before letting go of what is picked.
+   */
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return
+      const el = e.target as HTMLElement | null
+      const tag = el?.tagName
+      /* a field gets Escape for its own reasons, and cancelling the page's mode from inside a
+         half-typed bio is not what that press meant */
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || el?.isContentEditable) return
+      if (heldLook) setHeldLook(null)
+      else if (liftIdx != null) setLiftIdx(null)
+      else setOpenIdx(null)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [heldLook, liftIdx])
+
   const selected = openIdx != null ? blocks[openIdx] : null
 
   /**
@@ -2520,6 +2588,19 @@ export function ProfileBlocksEditor({
       )}
 
       {/**
+       * ⚠️ A SHORTCUT IS THE ONE CONTROL A TOOLTIP CANNOT TEACH, because the thing you would
+       * hover to learn it is the thing it exists to save you reaching for. So it is written
+       * down, once, immediately above the grid it works on — and only where there is a keyboard,
+       * since on a phone this is four lines of instructions for keys that are not there.
+       */}
+      {!touch && (
+        <p className="muted profile-keys">
+          <kbd>←</kbd> <kbd>→</kbd> pick a block · <kbd>Shift</kbd> and an arrow moves it ·{' '}
+          <kbd>Delete</kbd> removes it · <kbd>Esc</kbd> backs out
+        </p>
+      )}
+
+      {/**
        * ⚠️ THE EDITOR IS THE PAGE.
        *
        * It was a vertical list of rows with up and down arrows, while the page it produced was a
@@ -2529,8 +2610,54 @@ export function ProfileBlocksEditor({
        * the same components a visitor is served.
        */}
       <div
+        ref={gridRef}
         className={'profile-blocks-grid profile-canvas' + (arranging ? ' is-arranging' : '')}
         {...pageStyleAttrs(page)}
+        /**
+         * ⚠️ ON THE GRID, NOT ON THE WINDOW, and that is the whole reason this works. The site
+         * already pages between sections from a window listener of its own, so a second window
+         * listener here would move the selection AND leave the page — and it would lose, because
+         * the site's listener is mounted first and has already run by the time this one could
+         * prevent anything. Handling the press where it starts and stopping it there is the only
+         * version that can win. It is the same trick the grip's note describes.
+         *
+         * ⚠️ SHIFT MOVES THE BLOCK, and Alt does not, which is the opposite of the editor
+         * idiom most hands know. Alt+Left and Alt+Right are the browser's own Back and Forward:
+         * preventDefault does stop them, but a page editor where one mis-timed press can navigate
+         * away from unsaved work is not worth matching an idiom for.
+         */
+        onKeyDown={(e) => {
+          if (e.ctrlKey || e.metaKey || e.altKey) return
+          /* ⚠️ THE EDITOR RENDERS THE REAL BLOCKS, so a block can contain a text field — the
+             guestbook has one, and it is inside this grid. Without this, typing a message and
+             correcting a typo would delete the guestbook: Backspace would bubble out of the
+             input, find a cell around it, and mean something else entirely. */
+          const el = e.target as HTMLElement
+          const tag = el.tagName
+          if (tag === 'INPUT' || tag === 'TEXTAREA' || el.isContentEditable) return
+          const cell = el.closest('[data-cell]')
+          const i = cell ? Number(cell.getAttribute('data-cell')) : NaN
+          if (!Number.isInteger(i) || i < 0 || i >= blocks.length) return
+
+          const step = ARROW_STEP[e.key]
+          if (step) {
+            const j = i + step
+            if (j < 0 || j >= blocks.length) return
+            e.preventDefault()
+            e.stopPropagation()
+            if (e.shiftKey) move(i, step)
+            else setOpenIdx(j)
+            focusCell(j)
+            return
+          }
+          if (e.key === 'Delete' || e.key === 'Backspace') {
+            e.preventDefault()
+            e.stopPropagation()
+            removeAt(i)
+            /* whatever slides into the gap — or the new last block, when the gap was the end */
+            focusCell(Math.min(i, blocks.length - 2))
+          }
+        }}
         onPointerDown={(e) => {
           // a press on the gaps between blocks puts the inspector away
           if ((e.target as HTMLElement).closest('[data-cell]')) return
@@ -2695,10 +2822,11 @@ export function ProfileBlocksEditor({
               onKeyDown={(e) => {
                 /* ⚠️ the arrow keys page between sections of this site, so they are stopped
                    here as well as prevented — the visualiser's pin hit the same trap */
-                if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return
+                const step = ARROW_STEP[e.key]
+                if (!step) return
                 e.preventDefault()
                 e.stopPropagation()
-                move(i, e.key === 'ArrowLeft' ? -1 : 1)
+                move(i, step)
               }}
             >
               ⠿

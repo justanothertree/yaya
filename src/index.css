@@ -8251,6 +8251,17 @@ a.cz-msg-author:focus-visible {
 .profile-editor-head h3 {
   margin: 0;
 }
+/* the keyboard hint: present, readable, and quieter than everything it describes */
+.profile-keys {
+  margin: 0 0 0.5rem;
+  font-size: 0.74rem;
+}
+.profile-keys kbd {
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0 4px;
+  font-size: 0.7rem;
+}
 .profile-editor-head p {
   margin: 0.15rem 0 0.75rem;
   font-size: 0.82rem;
