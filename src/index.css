@@ -7655,8 +7655,16 @@ a.cz-msg-author:focus-visible {
   flex-wrap: wrap;
   gap: 0.3rem;
 }
-.paint-pet-so-far {
+/* the live pet, beside what it has understood */
+.paint-pet-preview {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+.paint-pet-preview .muted {
   font-size: 0.76rem;
+  max-width: 28rem;
 }
 
 /* ── taking the picture away with you ────────────────────────────────

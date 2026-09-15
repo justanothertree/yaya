@@ -79,6 +79,18 @@ export type LayerOp =
    */
   | { k: 'hold'; i: number; f: number | null }
   /**
+   * Take a frame out of the reel.
+   *
+   * ⚠️ FRAMES COULD BE ADDED AND NEVER REMOVED. + frame, ◀ ▶ and ⧉ From last were all there
+   * and there was no way back — so one accidental press left a blank frame in the middle of an
+   * animation permanently, and the only cure was to redraw the whole thing.
+   *
+   * ⚠️ EVERYTHING ABOVE IT SHIFTS DOWN, exactly as a layer remove does, or every stroke on a
+   * later frame would be pointing at a frame that is no longer there and the reel would grow a
+   * hole. A stroke with no frame is untouched: it was never on this one, it is on all of them.
+   */
+  | { k: 'unframe'; f: number }
+  /**
    * Restyle strokes that are already drawn — the colour, opacity and width controls acting on a
    * selection instead of on the next stroke.
    *
@@ -158,6 +170,17 @@ export function applyLayerOp(stack: Stack, op: LayerOp, layers: number): Stack {
       strokes,
       names,
       hidden: op.on ? [...hidden, op.i] : hidden.filter((x) => x !== op.i),
+      layer,
+    }
+  }
+
+  if (op.k === 'unframe') {
+    return {
+      strokes: strokes
+        .filter((s) => s.f !== op.f)
+        .map((s) => (s.f !== undefined && s.f > op.f ? { ...s, f: s.f - 1 } : s)),
+      names,
+      hidden,
       layer,
     }
   }
@@ -278,6 +301,13 @@ export function readLayerOp(raw: unknown): LayerOp | null {
   if (o.k === 'remove') {
     const i = whole(o.i)
     return i === null ? null : { k: 'remove', i }
+  }
+  if (o.k === 'unframe') {
+    /* ⚠️ frames run to 60, not to 12 — `whole` is the LAYER bound and would refuse most of them */
+    const f = o.f
+    return typeof f === 'number' && Number.isInteger(f) && f >= 0 && f < 60
+      ? { k: 'unframe', f }
+      : null
   }
   if (o.k === 'name') {
     const i = whole(o.i)

@@ -1,5 +1,6 @@
 import {
   useCallback,
+  useMemo,
   useContext,
   useEffect,
   useRef,
@@ -35,6 +36,7 @@ import { drawParty } from '../party/draw'
 import { applyLayerOp, type LayerOp, type Stack } from '../draw/layerOps'
 import { paintSession } from '../draw/session'
 import { savePet } from '../pets/pets'
+import { PetView } from '../pets/PetView'
 import { PART_DOES, PART_WORDS, partOf } from '../pets/rig'
 import { AlsoTogether } from '../ui/AlsoTogether'
 import { useVoiceSession } from '../voice/useVoiceSession'
@@ -1141,6 +1143,20 @@ export function PaintRoom() {
     window.setTimeout(() => setNote(null), 6000)
   }
 
+  /**
+   * The pet as it stands, for the live preview beside the guide.
+   *
+   * ⚠️ MEMOISED ON WHAT A PET IS MADE OF, and it matters: PetView reads the rig out of the
+   * drawing, which walks every stroke twice, and this component re-renders on every pointermove
+   * of a drag. Keyed on the committed strokes means it rebuilds when you finish a stroke rather
+   * than while you are making one — which is also when there is anything new to show.
+   */
+  const petPreview = useMemo(
+    () => ({ ...drawingRef.current }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [strokes, layerNames, bg, fps],
+  )
+
   /** what the wizard has understood so far, in the pet's own words */
   const petParts = layerNames
     .map((n, i) => ({ n, i }))
@@ -1220,7 +1236,30 @@ export function PaintRoom() {
     drawParty.reel(next, nextFps)
   }
 
-  const startFrames = () => goFrame(frame === null ? Math.max(1, frames) : null)
+  /**
+   * ⚠️ IT USED TO OPEN ON FRAME 2. `Math.max(1, frames)` is index 1 on a drawing that has no
+   * frames yet, so pressing 🎬 Frames read "2 / 2" and left a frame 1 that nobody had made —
+   * asked directly: "what is frame 1". Nothing was: everything drawn before the press becomes the
+   * background, which shows on EVERY frame, and the reel itself started empty. So it starts at the
+   * beginning now, and the first pose goes on frame 1.
+   */
+  const startFrames = () => goFrame(frame === null ? 0 : null)
+
+  /**
+   * Take this frame out, closing the gap behind it.
+   *
+   * ⚠️ The last frame leaving means there is no animation any more, so it leaves the mode too:
+   * sitting on "frame 1 of 0" is a state with nothing to draw on and no way to read it.
+   */
+  const dropFrame = () => {
+    const at = frame ?? 0
+    mark(`frame ${at + 1}`)
+    setSel([])
+    runLayerOp({ k: 'unframe', f: at }, true)
+    const left = frames - 1
+    if (left <= 0) goFrame(null)
+    else goFrame(Math.max(0, Math.min(left - 1, at)))
+  }
 
   /**
    * ⚠️ STOPS THE ANIMATION FIRST, or it does not work at all.
@@ -2103,6 +2142,21 @@ export function PaintRoom() {
               >
                 + frame
               </button>
+              {/* ⚠️ Next to + frame, because the pair is the point — anything you can add and not
+                  remove is a press you have to be careful with, and this one could not be undone
+                  even by hand: there was no way to take a frame out at all. */}
+              <button
+                className="btn"
+                onClick={dropFrame}
+                disabled={frames < 1}
+                title={
+                  frames <= 1
+                    ? 'Remove this frame — it is the last one, so the animation ends too'
+                    : `Remove frame ${(frame ?? 0) + 1} and close the gap`
+                }
+              >
+                − frame
+              </button>
               {/* ⚠️ The pair that answer "do I have to draw all this again". This one is for a
                 pose that is nearly the last one; the ↻ on a layer row is for the parts that never
                 change at all. Disabled with work already here, because copying on top of it would
@@ -2767,12 +2821,27 @@ export function PaintRoom() {
             </>
           )}
 
-          {/* ⚠️ What it has understood, as you go. The rig is invisible — you cannot tell by
-              looking whether a layer got named — so the guide keeps saying what it has. */}
-          {petParts.length > 0 && (
-            <span className="muted paint-pet-so-far">
-              So far: {[...new Set(petParts)].map((k) => `${k} ${PART_DOES[k]}`).join(', ')}
-            </span>
+          {/**
+           * ⚠️ THE ANSWER TO "RATHER THAN GUESSING WHAT IT WILL MOVE LIKE". Naming a layer and
+           * hoping was the whole problem: the rig is invisible, so the only way to find out was to
+           * keep it, adopt it, and go and look. This is the real renderer at the real speed on the
+           * real drawing, updating every time you finish a stroke or name a part.
+           *
+           * ⚠️ AND IT SHOWS FRAMES WHEN THERE ARE FRAMES, because paintPet already prefers a
+           * drawn animation over the rig — so this doubles as a way to watch a frame animation
+           * without leaving the room, and answers which of the two a given drawing is getting.
+           */}
+          {!!strokes.length && (
+            <div className="paint-pet-preview">
+              <PetView art={petPreview} size={96} label="your pet, moving" />
+              <span className="muted">
+                {frameCount(petPreview) > 1
+                  ? `Playing your ${frameCount(petPreview)} frames — a drawing with frames is animated by them rather than by its layer names.`
+                  : petParts.length
+                    ? `So far: ${[...new Set(petParts)].map((k) => `${k} ${PART_DOES[k]}`).join(', ')}`
+                    : 'Nothing is named yet, so all of it just breathes.'}
+              </span>
+            </div>
           )}
         </div>
       )}
