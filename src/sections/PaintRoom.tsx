@@ -130,7 +130,44 @@ export function PaintRoom() {
   const [scale, setScale] = useState(1)
   const off = useRef({ x: 0, y: 0 })
   const pan = useRef<{ x: number; y: number } | null>(null)
-  const [undone, setUndone] = useState<Stroke[]>([])
+  /**
+   * WHAT THE PICTURE WAS, BEFORE EACH THING YOU DID.
+   *
+   * ⚠️ A SNAPSHOT HISTORY, replacing an undo that was `pop()` on the stroke list. That version
+   * could only take back an ADDED stroke, so moving, turning, resizing, cutting, pasting, a layer
+   * delete and Clear were all one-way — and pressing Undo after a rotate deleted a stroke instead
+   * of putting the rotation back, which is worse than doing nothing.
+   *
+   * ⚠️ IT IS NOT AS EXPENSIVE AS IT SOUNDS, and that was the worry worth answering. A step
+   * holds the ARRAY, not the strokes: every stroke object in it is the same object still in the
+   * picture, because a stroke is never edited in place — every path here rebuilds the ones it
+   * touches ({ ...k, p: [...] }) and leaves the rest alone. So a step costs one pointer per
+   * stroke, about 8 bytes. Forty steps of a three-hundred-stroke drawing is under 100KB; the
+   * 4000-stroke ceiling would be 1.3MB, and a drawing that size is 128KB on disk.
+   *
+   * ⚠️ NONE OF IT IS SAVED. It is React state and nothing else: paintSession keeps strokes,
+   * bg, hidden and layer names, and packDrawing writes the fields it lists. A history cannot
+   * reach a file, a gallery item, a profile block or a peer.
+   */
+  const [past, setPast] = useState<Array<{ label: string; strokes: Stroke[] }>>([])
+  const [future, setFuture] = useState<Array<{ label: string; strokes: Stroke[] }>>([])
+  /* read by mark() and by undo/redo, which run from handlers rather than from a render */
+  const strokesNow = useRef<Stroke[]>(strokes)
+  strokesNow.current = strokes
+  const HISTORY = 40
+
+  /**
+   * Record where we are, before changing it.
+   *
+   * ⚠️ CALLED AT EVERY PLACE THAT USED TO CLEAR THE REDO LIST, which is what makes the
+   * coverage complete rather than hopeful: every mutation already had to say "and now redo is
+   * meaningless", so every mutation already had a line to replace.
+   */
+  const markAs = useCallback((label: string, snap: Stroke[]) => {
+    setPast((p) => [...p.slice(-(HISTORY - 1)), { label, strokes: snap }])
+    setFuture([])
+  }, [])
+  const mark = useCallback((label: string) => markAs(label, strokesNow.current), [markAs])
   /**
    * ⚠️ LAYERS AND FRAMES ARE ONE FEATURE HERE, because they are one field each on a stroke.
    * A layer decides what is drawn OVER what, a frame decides WHEN — everything else about the
@@ -165,7 +202,8 @@ export function PaintRoom() {
   const [clip, setClip] = useState<Stroke[]>([])
   /** the rectangle being dragged, and the move in progress — refs, they change per pointer event */
   const band = useRef<{ x0: number; y0: number; x1: number; y1: number } | null>(null)
-  const shove = useRef<{ x: number; y: number } | null>(null)
+  /* `from` is the picture as the drag began — one array reference, see the history note */
+  const shove = useRef<{ x: number; y: number; from: Stroke[] } | null>(null)
   const markRef = useRef<{ x0: number; y0: number; x1: number; y1: number } | null>(null)
   const selRef = useRef<number[]>([])
 
@@ -270,13 +308,13 @@ export function PaintRoom() {
    * take back either — which is precisely why bg travels over drawParty as its own message.
    */
   const wipe = useCallback(() => {
-    setUndone([])
+    mark('clearing the picture')
     setSel([])
     setStrokes([])
     setBg(null)
     /* nothing to come back to — carrying the cleared picture forward would be the bug */
     paintSession.forget()
-  }, [])
+  }, [mark])
 
   /**
    * ⚠️ Kept on CHANGE, not on unmount. A cleanup that saves runs after React has already decided
@@ -329,7 +367,7 @@ export function PaintRoom() {
          picture at the moment the message lands. */
       if (drawingRef.current.strokes.length) return
       setBg(d.bg)
-      setUndone([])
+      mark('opening that picture')
       setSel([])
       if (d.layers?.length) setLayerNames(d.layers)
       // which layers are switched off is part of the shared view, not of the saved picture
@@ -931,7 +969,7 @@ export function PaintRoom() {
       .filter((k) => k.f === from)
       .map((k) => ({ ...k, f: to, p: [...k.p], id: drawParty.mark() }))
     if (!made.length) return
-    setUndone([])
+    mark('copying the frame')
     setStrokes((prev) => [...prev, ...made])
     for (const k of made) drawParty.send(k)
     setSel(made.map((_, i) => strokes.length + i))
@@ -952,7 +990,7 @@ export function PaintRoom() {
    * because they came from all of them — there is no earlier answer to restore.
    */
   const holdLayer = (i: number, on: boolean) => {
-    setUndone([])
+    mark(on ? 'holding that layer' : 'putting that layer on this frame')
     runLayerOp({ k: 'hold', i, f: on ? null : (frame ?? 0) }, true)
   }
 
@@ -975,7 +1013,7 @@ export function PaintRoom() {
   const restyle = (patch: { c?: string; a?: number; w?: number }) => {
     if (!sel.length) return
     const ids = sel.map((i) => strokes[i]?.id).filter((v): v is string => !!v)
-    setUndone([])
+    mark('that change')
     if (ids.length) runLayerOp({ k: 'style', ids, ...patch }, true)
     /* ⚠️ AND the unnamed ones, in the same press. These were an `else`, so a MIXED selection —
        anything drawn before sharing was switched on, picked together with anything drawn after —
@@ -1037,10 +1075,10 @@ export function PaintRoom() {
   /**
    * Remove a layer and everything drawn on it.
    *
-   * ⚠️ ASKS FIRST WHEN THERE IS SOMETHING TO LOSE, because undo cannot bring it back. Undo here
-   * steps back one stroke at a time (see undo) — it is not a snapshot history — so a layer with
-   * forty strokes on it is forty presses away even in principle, and in practice gone. An empty
-   * layer is nothing to lose and goes without a question.
+   * ⚠️ ASKS FIRST WHEN THERE IS SOMETHING TO LOSE. Undo DOES bring it back now — the history
+   * is a snapshot one, so a layer and its forty strokes come back in one press — but a question
+   * before deleting forty strokes is still worth asking, and the history is forty steps deep
+   * rather than forever. An empty layer is nothing to lose and goes without a question.
    *
    * ⚠️ Everything above it shifts DOWN a number, or the strokes on those layers would be
    * pointing at a layer that is no longer there and would all collapse onto the bottom.
@@ -1055,7 +1093,7 @@ export function PaintRoom() {
        happened, and asking them to approve a decision somebody already made is how you get two
        different pictures, which is the thing this travels to prevent. */
     if (count && !window.confirm(`Delete ${nameOf(i)} and the ${count} strokes on it?`)) return
-    setUndone([])
+    mark(`removing ${nameOf(i)}`)
     setSel([])
     runLayerOp({ k: 'remove', i }, true)
   }
@@ -1279,13 +1317,13 @@ export function PaintRoom() {
   const cut = () => {
     if (!sel.length) return
     copy()
-    setUndone([])
+    mark('cutting that out')
     setStrokes((prev) => prev.filter((_, i) => !sel.includes(i)))
     drop()
   }
   const erase = () => {
     if (!sel.length) return
-    setUndone([])
+    mark('erasing that')
     setStrokes((prev) => prev.filter((_, i) => !sel.includes(i)))
     drop()
   }
@@ -1309,7 +1347,7 @@ export function PaintRoom() {
       f: frame ?? undefined,
       p: k.p.map((n) => n + nudge),
     }))
-    setUndone([])
+    mark('pasting')
     setStrokes((prev) => {
       const at = prev.length
       setSel(add.map((_, i) => at + i))
@@ -1319,7 +1357,7 @@ export function PaintRoom() {
 
   const commit = (s: Stroke) => {
     live.current = null
-    setUndone([])
+    mark('that stroke')
     s.id = drawParty.mark()
     setStrokes((prev) => [...prev, s])
     // ⚠️ sent on COMPLETION, never while dragging — see party/draw.ts for why a half-drawn
@@ -1376,7 +1414,7 @@ export function PaintRoom() {
         }
       }
       if (box && x >= box.x0 - pad && x <= box.x1 + pad && y >= box.y0 - pad && y <= box.y1 + pad) {
-        shove.current = { x, y }
+        shove.current = { x, y, from: strokesNow.current }
       } else {
         band.current = { x0: x, y0: y, x1: x, y1: y }
         setSel([])
@@ -1429,7 +1467,7 @@ export function PaintRoom() {
       const [mx, my] = at(e)
       const dx = mx - shove.current.x
       const dy = my - shove.current.y
-      shove.current = { x: mx, y: my }
+      shove.current = { x: mx, y: my, from: shove.current.from }
       // ⚠️ moved in place rather than re-added, so the indices the selection holds stay valid
       setStrokes((prev) => {
         /**
@@ -1506,7 +1544,11 @@ export function PaintRoom() {
       gripLive.current = null
       repaint()
       if (!m) return
-      setUndone([])
+      /* ⚠️ Plain mark, because a grip's preview never touches state — it paints from its own
+         snapshot (see the note on grip), so the strokes at this moment are still the ones from
+         before the gesture. Filed here rather than at pointerdown so a press that turns out not
+         to move files no step at all. */
+      mark(g.kind === 'rotate' ? 'turning it' : 'resizing it')
       const ids = sel.map((i) => g.from[i]?.id).filter((v): v is string => !!v)
       /* ⚠️ Same as restyle: named strokes travel, unnamed ones are edited here only. An id is
          what the room calls a stroke, and one loaded from a gallery file has never had one. */
@@ -1520,8 +1562,12 @@ export function PaintRoom() {
       return
     }
     if (shove.current) {
+      /* ⚠️ The array as it was when the drag began, which is one pointer — a move rebuilds
+         the strokes it touches on every pointermove, so the objects in it stay untouched. */
+      const was = shove.current.from
+      const moved = was !== strokesNow.current
       shove.current = null
-      setUndone([])
+      if (moved) markAs('moving it', was)
       return
     }
     const s = live.current
@@ -1529,33 +1575,76 @@ export function PaintRoom() {
     commit(s)
   }
 
+  /** yours, or from a file — a stroke that has never had a name has never left this machine */
+  const isMine = (k: Stroke) => !k.id || k.id.startsWith('me:')
+
   /**
-   * WARNING YOUR OWN LAST STROKE, not the last stroke in the picture.
+   * Tell the room what a step back or forward did to YOUR strokes.
    *
-   * While drawing together the array holds everybody's marks in arrival order, so "remove the
-   * last one" would take back whatever a peer had just drawn — undoing somebody else's work by
-   * pressing undo on yours. Skipping past marks that are not yours is the only reading of undo
-   * that is true in both a shared room and an empty one.
+   * ⚠️ BY ID, AND ONLY EVER ABOUT YOUR OWN. The two messages that already exist are "take back
+   * the one called this" and "here is a stroke"; between them they express everything a snapshot
+   * swap can do to a stroke of yours — gone, new, or changed, where changed is the two in a row.
+   * Nothing here can name a peer's stroke, so nothing here can reach one.
+   *
+   * ⚠️ A stroke with no name cannot travel, which is the same limitation drawing together has
+   * always had: an id is what the room calls a stroke, and one loaded from a gallery file has
+   * never had one.
    */
-  const undo = () => {
-    setSel([])
-    let i = strokes.length - 1
-    while (i >= 0 && strokes[i].id && !strokes[i].id!.startsWith('me:')) i--
-    if (i < 0) return
-    const gone = strokes[i]
-    setUndone((u) => [...u, gone])
-    setStrokes((prev) => prev.filter((_, n) => n !== i))
-    // ⚠️ outside the updater: React may run an updater twice, and this one leaves the machine
-    if (gone.id) drawParty.undo(gone.id)
+  const tellRoom = (from: Stroke[], to: Stroke[]) => {
+    const was = new Map<string, Stroke>()
+    for (const k of from) if (k.id?.startsWith('me:')) was.set(k.id, k)
+    const now = new Map<string, Stroke>()
+    for (const k of to) if (k.id?.startsWith('me:')) now.set(k.id, k)
+    for (const id of was.keys()) if (!now.has(id)) drawParty.undo(id)
+    for (const [id, k] of now) {
+      const before = was.get(id)
+      if (!before) drawParty.send(k)
+      else if (before !== k) {
+        /* changed: taken back and re-stated under the same name, so both ends agree on what it
+           is called and an undo and a redo stay exactly each other */
+        drawParty.undo(id)
+        drawParty.send(k)
+      }
+    }
   }
-  const redo = () => {
+
+  /**
+   * Put a remembered picture back.
+   *
+   * ⚠️ WHAT A PEER HAS DRAWN SINCE IS KEPT. This is the whole reason undo cannot simply assign
+   * the old array: while drawing together the picture holds everybody's marks, and a snapshot from
+   * before somebody else's stroke does not contain it. Assigning it would delete their work with
+   * your undo key — the same trap the old per-stroke undo documented and stepped around.
+   *
+   * ⚠️ Matched on the NAME rather than on object identity, because one of the snapshots is a
+   * deep copy taken for a drag preview. Identity would find nothing in common with it and append
+   * every peer stroke a second time.
+   */
+  const restore = (snap: Stroke[]) => {
+    const cur = strokesNow.current
+    const known = new Set(snap.map((k) => k.id).filter(Boolean))
+    const since = cur.filter((k) => !isMine(k) && k.id && !known.has(k.id))
+    const next = since.length ? [...snap, ...since] : snap
     setSel([])
-    const back = undone[undone.length - 1]
-    if (!back) return
-    setUndone((u) => u.slice(0, -1))
-    setStrokes((prev) => [...prev, back])
-    // it keeps the name it had, so an undo and a redo are exactly each other on every screen
-    drawParty.send(back)
+    setStrokes(next)
+    // ⚠️ outside the updater: React may run an updater twice, and this one leaves the machine
+    tellRoom(cur, next)
+  }
+
+  const undo = () => {
+    const step = past[past.length - 1]
+    if (!step) return
+    setPast((p) => p.slice(0, -1))
+    setFuture((f) => [...f, { label: step.label, strokes: strokesNow.current }])
+    restore(step.strokes)
+  }
+
+  const redo = () => {
+    const step = future[future.length - 1]
+    if (!step) return
+    setFuture((f) => f.slice(0, -1))
+    setPast((p) => [...p, { label: step.label, strokes: strokesNow.current }])
+    restore(step.strokes)
   }
 
   useEffect(() => {
@@ -2166,14 +2255,27 @@ export function PaintRoom() {
 
             paintKits is left in place and untouched, so anything already saved is still there and
             putting this back is a few lines rather than a rebuild. */}
-          <button className="btn" onClick={undo} disabled={!strokes.length} title="Undo (Ctrl+Z)">
-            ↶ Undo
+          {/* ⚠️ NAMED, like the profile editor's. "Undo" is a promise you have to take on
+              trust; "Undo turning it" is one you can check before you press it — which matters far
+              more now that a press can take back a rotate, a paste or a whole cleared page rather
+              than always exactly one stroke. */}
+          <button
+            className="btn"
+            onClick={undo}
+            disabled={!past.length}
+            title={past.length ? `Undo ${past[past.length - 1].label} (Ctrl+Z)` : 'Nothing to undo'}
+          >
+            ↶ Undo{past.length ? ` ${past[past.length - 1].label}` : ''}
           </button>
           <button
             className="btn"
             onClick={redo}
-            disabled={!undone.length}
-            title="Redo (Ctrl+Shift+Z)"
+            disabled={!future.length}
+            title={
+              future.length
+                ? `Redo ${future[future.length - 1].label} (Ctrl+Shift+Z)`
+                : 'Nothing to redo'
+            }
           >
             ↷ Redo
           </button>
@@ -2252,7 +2354,7 @@ export function PaintRoom() {
                     <button
                       className="btn"
                       onClick={() => {
-                        setUndone([])
+                        mark(`opening “${a.name}”`)
                         setBg(a.art.bg)
                         setStrokes(a.art.strokes)
                       }}
