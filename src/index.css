@@ -7888,6 +7888,66 @@ a.cz-msg-author:focus-visible {
 .profile-canvas-cell.is-dragging {
   opacity: 0.45;
 }
+
+/**
+ * Arrange mode — the same grid with the contents turned off.
+ *
+ * ⚠️ THE SPANS ARE DELIBERATELY UNTOUCHED. A tile that ignored its width would be a list
+ * with labels, and the question being answered here is "what does this page look like", which is
+ * mostly a question about widths. Only the HEIGHT collapses, because height is the only thing
+ * standing between twenty blocks and one screen.
+ */
+.profile-canvas.is-arranging {
+  gap: var(--sp-2, 0.6rem);
+}
+.profile-canvas.is-arranging .profile-canvas-cell {
+  min-height: 0;
+}
+/* ⚠️ The floating tag is the thing that names a block whose CONTENT does not — a banner, a
+   picture. A tile is nothing but its name, so the tag is the same word twice, once in a label
+   hanging over the tile above it. */
+.profile-canvas.is-arranging .profile-canvas-tag {
+  display: none;
+}
+.profile-canvas-tile {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-height: 3.4rem;
+  padding: 0.5rem 0.65rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: color-mix(in oklab, var(--panel), transparent 25%);
+  font-size: 0.85rem;
+  /* the label can outgrow a two-column tile on a phone; it clips rather than widening the grid */
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.profile-canvas-tile .muted {
+  font-size: 0.72rem;
+}
+/* ⚠️ The tools keep their absolute top-right corner — they are about 1.2rem tall and the
+   tile is 3.4rem, so they fit inside it. What the tile needs is room not to run underneath them,
+   and only while it is the selected one, since that is the only time they exist. */
+.profile-canvas.is-arranging .profile-canvas-cell.is-selected .profile-canvas-tile {
+  padding-right: 7.5rem;
+}
+.profile-canvas.is-arranging .profile-canvas-cell.is-selected {
+  outline-offset: 2px;
+}
+/* ⚠️ Shorter on a phone, where the grid is one column so every tile is full width and the
+   width buttons are already hidden — there is nothing on a tile but its name, and the whole
+   point of this mode is how many of them are on screen at once. */
+@media (max-width: 700px) {
+  .profile-canvas-tile {
+    min-height: 2.5rem;
+    padding: 0.3rem 0.55rem;
+  }
+  .profile-canvas.is-arranging .profile-canvas-cell.is-selected .profile-canvas-tile {
+    padding-right: 4.5rem;
+  }
+}
 .profile-canvas-cell.is-target {
   outline: 2px dashed var(--accent);
   outline-offset: 3px;

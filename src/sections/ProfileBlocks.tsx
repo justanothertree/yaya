@@ -1470,6 +1470,21 @@ export function ProfileBlocksEditor({
   }
   /** on a phone the panel is a tray, and a tray can be pushed out of the way */
   const [trayOpen, setTrayOpen] = useState(true)
+  /**
+   * ⚠️ ARRANGING IS A DIFFERENT JOB FROM FILLING IN, and the editor showing the real page is
+   * what makes them fight.
+   *
+   * Showing the page at its real widths is right for deciding what goes IN a block — you see
+   * what you are making. It is wrong for deciding WHERE a block goes: a page of real blocks is
+   * several screens tall, so moving something from the bottom to the top means picking it up,
+   * scrolling past everything with it held, and putting it down somewhere you cannot see from
+   * where you started. The arrangement is the one thing the editor could not show you all of.
+   *
+   * So this collapses every block to a labelled tile at the same width it really has. Nothing
+   * about the layout changes — same grid, same spans, same order, same move gestures — it is
+   * the same page with the contents turned off, which is what makes it fit on one screen.
+   */
+  const [arranging, setArranging] = useState(false)
 
   /* dragging is offered to a pointer and not to a finger — see the grip below */
   const touch = useTouchOnly()
@@ -1692,9 +1707,28 @@ export function ProfileBlocksEditor({
       <div className="profile-editor-head">
         <h3>Your page</h3>
         <p className="muted">
-          This is the page itself, at the widths it really uses. Click a block to change what is in
-          it, drag the handle to move it.
+          {arranging
+            ? 'Every block, small enough to see at once. Move them around, then go back to filling them in.'
+            : 'This is the page itself, at the widths it really uses. Click a block to change what is in it, drag the handle to move it.'}
         </p>
+        {/* ⚠️ Only worth offering once there is something to arrange. One block has no order. */}
+        {blocks.length > 1 && (
+          <button
+            className={'btn' + (arranging ? ' is-on' : '')}
+            aria-pressed={arranging}
+            onClick={() => {
+              setArranging((v) => !v)
+              setLiftIdx(null)
+            }}
+            title={
+              arranging
+                ? 'Back to the real page, with everything in it'
+                : 'Shrink every block so the whole arrangement fits on one screen'
+            }
+          >
+            {arranging ? '✓ Done arranging' : '⇅ Arrange'}
+          </button>
+        )}
       </div>
 
       {/**
@@ -1707,7 +1741,7 @@ export function ProfileBlocksEditor({
        * the same components a visitor is served.
        */}
       <div
-        className="profile-blocks-grid profile-canvas"
+        className={'profile-blocks-grid profile-canvas' + (arranging ? ' is-arranging' : '')}
         onPointerDown={(e) => {
           // a press on the gaps between blocks puts the inspector away
           if ((e.target as HTMLElement).closest('[data-cell]')) return
@@ -1859,7 +1893,15 @@ export function ProfileBlocksEditor({
             >
               ⠿
             </span>
-            {isBlockEmpty(b) ? (
+            {arranging ? (
+              /* ⚠️ The LABEL, not the block. Rendering the real thing shorter would still mount
+                 every canvas, every audio graph and every visualiser on the page — the cost of
+                 the full editor is exactly what makes a long page unpleasant to rearrange. */
+              <div className="profile-block profile-canvas-tile">
+                <strong>{BLOCK_LABEL[b.block_type]}</strong>
+                {isBlockEmpty(b) && <span className="muted">empty</span>}
+              </div>
+            ) : isBlockEmpty(b) ? (
               <div className="profile-block profile-canvas-empty">
                 <strong>{BLOCK_LABEL[b.block_type]}</strong>
                 <span className="muted">Nothing in this one yet — click to fill it in.</span>
@@ -1928,7 +1970,11 @@ export function ProfileBlocksEditor({
        * grid pushes every other block somewhere else, so you would be editing a layout that moves
        * while you edit it.
        */}
+      {/* ⚠️ Not while arranging. The tray is for what is IN a block, and it covers a third of
+          the screen — the one thing arrange mode exists to keep whole. The width and remove
+          buttons are on the tile itself, and those are the only settings this job needs. */}
       {selected &&
+        !arranging &&
         openIdx != null &&
         /**
          * ⚠️ THROUGH A PORTAL, and that is what makes `position: fixed` mean the viewport.
