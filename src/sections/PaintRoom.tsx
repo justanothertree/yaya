@@ -1243,17 +1243,25 @@ export function PaintRoom() {
     if (!typing) return
     live.current = pendingText()
     preview()
-    /* ⚠️ Pressing a swatch moves the focus onto that button, so the next letter would be typed
-       into nothing. Taking it back on every picker change is what lets the colour be chosen
-       mid-word — which is the whole reason the words are live in the first place. */
-    typeBox.current?.focus()
+    /**
+     * ⚠️ Pressing a swatch moves the focus onto that button, so the next letter would be typed
+     * into nothing. Taking it back on every picker change is what lets the colour be chosen
+     * mid-word — which is the whole reason the words are live in the first place.
+     *
+     * ⚠️ preventScroll, AND IT IS THE WHOLE BUG — reported as text that "doesn't anchor where
+     * i drew the line to". Focusing an element scrolls the page to bring it into view, and this
+     * one sits above the paper in the document, so the browser scrolled UP and the paper moved
+     * 371 measured pixels DOWN the viewport at the instant the drag ended. The words were always
+     * at the right fraction of the canvas; the canvas was no longer where the line had been drawn.
+     * React's autoFocus does the same thing and takes no options, which is why it is gone.
+     */
+    typeBox.current?.focus({ preventScroll: true })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [typing, colour, alpha, symmetry, echo])
 
   const placeText = () => {
     const s = pendingText()
     setTyping(null)
-    setNote(null)
     if (!s || !s.x?.trim()) {
       live.current = null
       preview()
@@ -1272,14 +1280,27 @@ export function PaintRoom() {
     setSelecting(true)
   }
 
-  const dropTextNote = () => setNote(null)
-
   const dropText = () => {
     setTyping(null)
-    dropTextNote()
     live.current = null
     preview()
   }
+
+  /**
+   * How the text tool works, up for as long as it is the tool.
+   *
+   * ⚠️ ON THE TOOL AND NOT ON THE TYPING. Put up when a text box opened, it added a line to
+   * the page at the exact moment the drag finished — reflowing everything below the paper while
+   * the hand was still moving. Tied to the tool, the layout settles when you press T, and the
+   * instructions are readable BEFORE you drag, which is when they are any use.
+   */
+  useEffect(() => {
+    if (tool !== 'text') return
+    setNote(
+      'Drag a line for the size and angle, then type. Shift+Enter for a new line, Enter to place.',
+    )
+    return () => setNote(null)
+  }, [tool])
 
   /** what the wizard has understood so far, in the pet's own words */
   /* ⚠️ the word you typed, deduped by what it does — see the same note in PetsRoom */
@@ -1924,7 +1945,6 @@ export function PaintRoom() {
        */
       live.current = null
       setTyping({ line, words: '' })
-      setNote('Type. Shift+Enter for a new line, Enter to place.')
       preview()
       return
     }
@@ -2979,7 +2999,6 @@ export function PaintRoom() {
         <textarea
           ref={typeBox}
           className="paint-typing-hidden"
-          autoFocus
           value={typing.words}
           maxLength={240}
           aria-label="The words to put on the picture"
