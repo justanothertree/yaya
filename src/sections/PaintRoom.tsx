@@ -475,6 +475,75 @@ export function PaintRoom() {
    * result at every zoom level. Filling against the unzoomed document means a fill is the same
    * fill however far in you were when you asked for it.
    */
+  /**
+   * Where the handles are, in 0-1 space: four corners plus a rotate knob above the top edge.
+   *
+   * ⚠️ KEPT INSIDE WHAT YOU CAN SEE, which is the whole reason this is not four corners and a
+   * subtraction. Select → All puts the box around the entire picture, so at rest the corners sit
+   * exactly ON the canvas edges, half of each one clipped — and the rotate knob, which lives
+   * ABOVE the top edge, lands at a negative y and is not on screen at all. Zoom in and the whole
+   * lot leaves. The outline still shows where the selection truly is; the things you have to grab
+   * are brought to where your hand can reach them.
+   *
+   * ⚠️ ONE FUNCTION FOR DRAWING AND FOR HIT-TESTING, which is what makes that safe: a handle
+   * painted somewhere the press test does not look for it is worse than one off screen, because
+   * it looks grabbable.
+   *
+   * ⚠️ THE OPPOSITE CORNER IS CARRIED, not worked out by comparing coordinates. Scaling
+   * pivots on the corner diagonally across, and the old code found it by asking whether the
+   * handle's x equalled the box's — which stops being true the moment a handle is clamped, and
+   * was already ambiguous on a selection with no width.
+   */
+  const gripPoints = useCallback(
+    (b: { x0: number; y0: number; x1: number; y1: number }) => {
+      const vw = size.current.w || 1
+      const vh = size.current.h || 1
+      /* the visible window in the drawing's own coordinates — px(fx) = (fx - off.x) * w * scale,
+       so the left edge is off.x and the window is 1/scale wide. Inset by a handle's own size. */
+      const mx = 14 / (vw * scale)
+      const my = 14 / (vh * scale)
+      const x0 = off.current.x + mx
+      const x1 = off.current.x + 1 / scale - mx
+      const y0 = off.current.y + my
+      const y1 = off.current.y + 1 / scale - my
+      const inx = (v: number) => (x1 > x0 ? Math.max(x0, Math.min(x1, v)) : v)
+      const iny = (v: number) => (y1 > y0 ? Math.max(y0, Math.min(y1, v)) : v)
+      const at = (x: number, y: number, ox: number, oy: number) => ({
+        x: inx(x),
+        y: iny(y),
+        ox,
+        oy,
+      })
+      return {
+        corners: [
+          at(b.x0, b.y0, b.x1, b.y1),
+          at(b.x1, b.y0, b.x0, b.y1),
+          at(b.x1, b.y1, b.x0, b.y0),
+          at(b.x0, b.y1, b.x1, b.y0),
+        ],
+        /** the point the stalk leaves from, so it does not shoot off after a clamped knob */
+        top: { x: inx((b.x0 + b.x1) / 2), y: iny(b.y0) },
+        rotate: { x: inx((b.x0 + b.x1) / 2), y: iny(b.y0 - 0.045) },
+      }
+      /* ⚠️ Stable per zoom level, because `blit` depends on it. Left as a plain const it was a
+       new function every render, so either the painter listed a dependency that changed on every
+       render — rebuilding the canvas callback constantly — or it lied about what it uses. */
+    },
+    [scale],
+  )
+
+  /**
+   * ⚠️ HOW CLOSE COUNTS, IN SCREEN PIXELS. It was a flat 0.022 of the picture, which is a
+   * different physical distance at every zoom: at 4× the four corners of a small selection all
+   * answer to the same press, and zoomed out a handle is a few pixels wide and unhittable. The
+   * handle is drawn at a fixed screen size, so what counts as near it has to be as well.
+   */
+  const gripNear = (x: number, y: number, p: { x: number; y: number }) => {
+    const tx = 16 / ((size.current.w || 1) * scale)
+    const ty = 16 / ((size.current.h || 1) * scale)
+    return Math.abs(x - p.x) < tx && Math.abs(y - p.y) < ty
+  }
+
   const blit = useCallback(() => {
     const b = base.current
     const v = view.current
@@ -548,9 +617,9 @@ export function PaintRoom() {
         const g = gripPoints(box)
         const R = 5
         vc.lineWidth = 1.5
-        for (const [hx, hy] of [...g.corners, g.rotate]) {
+        for (const p of [...g.corners, g.rotate]) {
           vc.beginPath()
-          vc.arc(px(hx), py(hy), R, 0, Math.PI * 2)
+          vc.arc(px(p.x), py(p.y), R, 0, Math.PI * 2)
           vc.fillStyle = 'rgba(255,255,255,0.95)'
           vc.fill()
           vc.strokeStyle = 'rgba(0,0,0,0.6)'
@@ -559,15 +628,15 @@ export function PaintRoom() {
         /* a stalk from the top edge to the rotate knob, so it reads as attached rather than as a
            stray dot floating above the picture */
         vc.beginPath()
-        vc.moveTo(px((box.x0 + box.x1) / 2), py(box.y0))
-        vc.lineTo(px(g.rotate[0]), py(g.rotate[1]) + R)
+        vc.moveTo(px(g.top.x), py(g.top.y))
+        vc.lineTo(px(g.rotate.x), py(g.rotate.y) + R)
         vc.strokeStyle = 'rgba(255,255,255,0.65)'
         vc.stroke()
       }
       vc.restore()
     }
     vc.setTransform(dpr, 0, 0, dpr, 0, 0)
-  }, [scale])
+  }, [scale, gripPoints])
 
   /** Rebuild `base` from the committed strokes, then show it. */
   const repaint = useCallback(() => {
@@ -846,24 +915,33 @@ export function PaintRoom() {
    * silent — twice as many strokes, all overlapping, and no way back but undo pressed as many
    * times as the frame is long.
    */
-  const copyPrevFrame = () => {
-    const at = frame ?? 0
-    if (at <= 0) return
+  /**
+   * Put a copy of frame `from` onto frame `to`, ready to be moved.
+   *
+   * ⚠️ Each stroke sent on its own, through the same door a drawn stroke goes through. A
+   * bulk message would be a second way for a stroke to arrive, with its own validation to get
+   * right, to save a handful of sends that happen once per frame.
+   *
+   * ⚠️ Selected AND the select tool turned on, because "move it instead of redrawing it" is
+   * the entire feature and leaving you to go and find the tool is leaving the job half done.
+   * A selection you cannot drag is just an outline.
+   */
+  const carryFrame = (from: number, to: number) => {
     const made: Stroke[] = strokes
-      .filter((k) => k.f === at - 1)
-      .map((k) => ({ ...k, f: at, p: [...k.p], id: drawParty.mark() }))
+      .filter((k) => k.f === from)
+      .map((k) => ({ ...k, f: to, p: [...k.p], id: drawParty.mark() }))
     if (!made.length) return
     setUndone([])
     setStrokes((prev) => [...prev, ...made])
-    /* ⚠️ Each one sent on its own, through the same door a drawn stroke goes through. A
-       bulk message would be a second way for a stroke to arrive, with its own validation to get
-       right, to save a handful of sends that happen once per frame. */
     for (const k of made) drawParty.send(k)
-    /* ⚠️ Selected AND the select tool turned on, because "move it instead of redrawing it" is
-       the entire feature and leaving you to go and find the tool is leaving the job half done.
-       A selection you cannot drag is just an outline. */
     setSel(made.map((_, i) => strokes.length + i))
     setSelecting(true)
+  }
+
+  const copyPrevFrame = () => {
+    const at = frame ?? 0
+    if (at <= 0) return
+    carryFrame(at - 1, at)
   }
   /**
    * Make a layer hold still across every frame, or put it back on the frame you are on.
@@ -1015,10 +1093,27 @@ export function PaintRoom() {
    * carried on, which is exactly how it was reported. And stopping is what you wanted anyway:
    * you add a frame in order to draw on it.
    */
+  /**
+   * ⚠️ A NEW FRAME STARTS AS A COPY OF THIS ONE, which is the whole difference between an
+   * animation tool and a stack of blank pages.
+   *
+   * It used to land you on an empty frame, and the way to get anything onto it was to notice
+   * ⌘ From last — a second button, in a row of eight, that you had to know about before the
+   * obvious gesture would do anything. Reported exactly that way: selecting a stroke and moving it
+   * "is not enough to hold that frame because nothing was added unless you did a From last". It
+   * was not: on an empty frame the only thing there to grab is the held background, and moving
+   * THAT moves it on every frame, which is why nothing appeared to be added.
+   *
+   * Now the press that makes a frame also fills it, selects it and puts you in the select tool,
+   * so the next pose is one drag away. A frame with nothing on it still gives a blank one, and
+   * ⌘ From last still exists for a frame you already made and left empty.
+   */
   const addFrame = () => {
     const at = Math.max(frames, (frame ?? 0) + 1)
     if (at >= 60) return
+    const here = frame ?? 0
     goFrame(at)
+    carryFrame(here, at)
   }
 
   /**
@@ -1090,17 +1185,6 @@ export function PaintRoom() {
     box: { x0: number; y0: number; x1: number; y1: number }
     from: Stroke[]
   } | null>(null)
-
-  /** where the handles are, in 0-1 space: four corners plus a rotate knob above the top edge */
-  const gripPoints = (b: { x0: number; y0: number; x1: number; y1: number }) => ({
-    corners: [
-      [b.x0, b.y0],
-      [b.x1, b.y0],
-      [b.x1, b.y1],
-      [b.x0, b.y1],
-    ] as Array<[number, number]>,
-    rotate: [(b.x0 + b.x1) / 2, b.y0 - 0.045] as [number, number],
-  })
 
   /** The matrix a pointer at (x, y) implies for the grip in progress. */
   const gripMatrix = (x: number, y: number): [number, number, number, number, number, number] => {
@@ -1277,24 +1361,16 @@ export function PaintRoom() {
          would slide instead of stretching. */
       if (box) {
         const g = gripPoints(box)
-        const near = (p: [number, number]) =>
-          Math.abs(x - p[0]) < 0.022 && Math.abs(y - p[1]) < 0.022
         const from = strokes.map((k) => ({ ...k, p: [...k.p] }))
-        if (near(g.rotate)) {
+        if (gripNear(x, y, g.rotate)) {
           grip.current = { kind: 'rotate', ax: x, ay: y, box, from }
           preview()
           return
         }
-        const c = g.corners.find(near)
+        const c = g.corners.find((p) => gripNear(x, y, p))
         if (c) {
-          /* the corner it pivots on is the one diagonally opposite the one you took */
-          grip.current = {
-            kind: 'scale',
-            ax: c[0] === box.x0 ? box.x1 : box.x0,
-            ay: c[1] === box.y0 ? box.y1 : box.y0,
-            box,
-            from,
-          }
+          /* the corner it pivots on is the one diagonally opposite, carried on the handle */
+          grip.current = { kind: 'scale', ax: c.ox, ay: c.oy, box, from }
           preview()
           return
         }
@@ -1770,7 +1846,15 @@ export function PaintRoom() {
               >
                 ▶
               </button>
-              <button className="btn" onClick={addFrame} title="Add a frame after this one">
+              <button
+                className="btn"
+                onClick={addFrame}
+                title={
+                  strokes.some((k) => k.f === (frame ?? 0))
+                    ? 'Add a frame that starts as a copy of this one, ready to move'
+                    : 'Add a frame after this one'
+                }
+              >
                 + frame
               </button>
               {/* ⚠️ The pair that answer "do I have to draw all this again". This one is for a
