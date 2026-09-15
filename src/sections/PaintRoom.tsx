@@ -787,8 +787,22 @@ export function PaintRoom() {
    * frame or layer where the caught strokes are not even visible. Dropping it is the honest
    * answer: a selection that silently means something else is how you delete the wrong thing.
    */
+  /**
+   * ⚠️ UNLESS THE FRAME CHANGE WAS A COPY, which is the one case where the new frame holds the
+   * very strokes the selection is about. + frame moves you to a new frame AND puts the copies
+   * there, so the clear above was undoing it a render later: the selection it set never survived
+   * the press, and you were left in the select tool with nothing caught — which is why the next
+   * drag started a rubber band instead of moving anything. ⧉ From last never hit this, because
+   * it copies onto the frame you are already on and this effect does not fire.
+   *
+   * ⚠️ KEYED ON THE FRAME IT WAS MEANT FOR, not a bare flag, so it can only ever apply to the
+   * arrival it was armed for.
+   */
+  const selFor = useRef<{ frame: number; sel: number[] } | null>(null)
   useEffect(() => {
-    setSel([])
+    const want = selFor.current
+    selFor.current = null
+    setSel(want && want.frame === frame ? want.sel : [])
   }, [frame, layer])
   /**
    * ⚠️ ONE BLIT PER FRAME, NOT ONE PER WHEEL EVENT.
@@ -975,14 +989,40 @@ export function PaintRoom() {
    * A selection you cannot drag is just an outline.
    */
   const carryFrame = (from: number, to: number) => {
-    const made: Stroke[] = strokes
-      .filter((k) => k.f === from)
-      .map((k) => ({ ...k, f: to, p: [...k.p], id: drawParty.mark() }))
+    /* the sources, WITH where they were, so a selection can be carried across as well as the art */
+    const source = strokes.map((k, i) => ({ k, i })).filter((x) => x.k.f === from)
+    const made: Stroke[] = source.map((x) => ({
+      ...x.k,
+      f: to,
+      p: [...x.k.p],
+      id: drawParty.mark(),
+    }))
     if (!made.length) return
     mark('copying the frame')
     setStrokes((prev) => [...prev, ...made])
     for (const k of made) drawParty.send(k)
-    setSel(made.map((_, i) => strokes.length + i))
+
+    /**
+     * ⚠️ A SELECTION SURVIVES THE PRESS. This used to select the whole copied frame, which threw
+     * away the one thing you had just done: selecting the arm. The walk cycle is select the arm,
+     * + frame, nudge, + frame, nudge — and re-finding the arm on every new frame is the work that
+     * makes anybody give up on animating. If the same strokes are still selected, the only thing
+     * left to do on the new frame is move them.
+     *
+     * ⚠️ The originals do not move. A copy is new strokes on a new frame, so the pose you just
+     * left keeps its arm exactly where it was.
+     *
+     * ⚠️ Nothing selected falls back to selecting everything, which is what it always did — with
+     * no selection to preserve, "here is the whole pose, move what you like" is still the right
+     * offer.
+     */
+    const kept = source
+      .map((x, j) => (sel.includes(x.i) ? strokes.length + j : -1))
+      .filter((n) => n >= 0)
+    const next = kept.length ? kept : made.map((_, i) => strokes.length + i)
+    /* survives the frame change — see selFor by the effect that clears a selection */
+    selFor.current = { frame: to, sel: next }
+    setSel(next)
     setSelecting(true)
   }
 
