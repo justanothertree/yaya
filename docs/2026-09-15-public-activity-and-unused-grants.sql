@@ -3,6 +3,14 @@
 -- Both halves come out of the member-to-member sweep, which was run against the live database
 -- rather than reasoned about. Two sections, one run.
 --
+-- ✅ APPLIED 2026-09-15 as migrations `public_activity_for_a_published_page` and
+--    `revoke_anon_grants_that_cannot_be_used`. Verified before and after:
+--      · a member's own feed is BYTE-IDENTICAL to the pre-change output (same md5), so replacing
+--        get_member_activity changed nothing for anybody signed in
+--      · anon cannot execute get_member_activity; anon can execute get_public_activity
+--      · the four table grants are gone and anon still reads zero rows
+--      · 47 circuit logs reach a stranger and ZERO of them carry a group name
+--
 --
 -- ═══ PART 1 — ACTIVITY FOR A PUBLISHED PAGE ═════════════════════════════════════════════════
 --
