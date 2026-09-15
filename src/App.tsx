@@ -852,6 +852,28 @@ export default function App() {
       setActive(signedIn ? 'account-settings' : 'signin')
     }
 
+    /**
+     * The library follows the account, once there is one.
+     *
+     * ⚠️ AFTER the session is confirmed, not on the optimistic boot: syncing on a token that
+     * turns out to be dead would push nothing, pull nothing, and log a permission error on every
+     * cold load. And once per sign-in rather than on a timer — the watcher below keeps it level
+     * after that, so a second sweep would only re-ask a question already answered.
+     */
+    let stopWatch: (() => void) | null = null
+    const startLibrarySync = () => {
+      if (stopWatch) return
+      void import('./library/cloud')
+        .then(async (m) => {
+          await m.syncLibrary()
+          stopWatch = m.watchLibrary()
+        })
+        .catch(() => {
+          /* the migration is not in yet, or the network is not there: the local stores are
+             untouched either way, which is the state everything worked in before this existed */
+        })
+    }
+
     // reads the stored session, refreshing it if it has expired — confirms the optimistic boot
     void readLiveSession()
       .then(({ user: u, dead }) => {
@@ -861,6 +883,7 @@ export default function App() {
           setIsFinanceAuthed(true)
           onSignedIn()
           landReset(true)
+          startLibrarySync()
         } else {
           /**
            * ⚠️ THROW THE DEAD TOKEN AWAY, or this comes back on every single load.
@@ -899,6 +922,7 @@ export default function App() {
         uidRef.current = session.user.id
         setIsFinanceAuthed(true)
         onSignedIn()
+        startLibrarySync()
       } else if (event === 'SIGNED_OUT') {
         uidRef.current = null
         setIsFinanceAuthed(false)
@@ -909,6 +933,7 @@ export default function App() {
     return () => {
       alive = false
       data.subscription.unsubscribe()
+      stopWatch?.()
     }
   }, [])
   // Keep CSS var --nav-h in sync with the actual nav height (drives content offset + anchor

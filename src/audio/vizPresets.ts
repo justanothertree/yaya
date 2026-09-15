@@ -45,12 +45,29 @@ export function readPresets(): VizPreset[] {
   }
 }
 
+/**
+ * Anybody who wants to know when the saved looks change.
+ *
+ * ⚠️ Added for the server copy (see library/cloud.ts), which keeps itself level by WATCHING
+ * the stores rather than by wrapping their savers — a network call inside savePreset would make
+ * saving a look something that can fail, and it must not be.
+ */
+const listeners = new Set<() => void>()
+
+export function subscribePresets(fn: () => void): () => void {
+  listeners.add(fn)
+  return () => {
+    listeners.delete(fn)
+  }
+}
+
 function write(list: VizPreset[]): VizPreset[] {
   try {
     localStorage.setItem(KEY, JSON.stringify(list.slice(0, MAX)))
   } catch {
     /* private mode, or full: the list still holds for this visit */
   }
+  listeners.forEach((l) => l())
   return list
 }
 
