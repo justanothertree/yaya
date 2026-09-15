@@ -357,6 +357,90 @@ export function readStroke(raw: unknown): Stroke | null {
 }
 
 /**
+ * Roughly where a stroke actually LANDS, in 0–1 space — as opposed to where its points are.
+ *
+ * ⚠️ POINTS ARE NOT EXTENT, and for several tools they are not even in the right PLACE. This is
+ * why selecting was reported as "weirdly difficult because its stroke box is oddly shaped/placed
+ * and not the exact stroke", and the answer is four separate ways a stroke escapes its points:
+ *
+ *   · a STAR is drawn from its centre outward, so its two points are the centre and one tip —
+ *     the whole left side of a star dragged rightwards has no point anywhere near it
+ *   · a KALEIDOSCOPE stroke is drawn k times around the middle of the paper, so the copy you are
+ *     looking at can be on the opposite side of the picture from every point it has
+ *   · an ECHO trails copies along the gesture, past the end of it
+ *   · and every stroke is as wide as the brush, which on a fat one is most of its size
+ *
+ * ⚠️ IT IS DELIBERATELY GENEROUS RATHER THAN EXACT. A true bound would mean rasterising, or a
+ * geometry routine per tool that has to be kept in step with how each one paints. A box that is
+ * slightly too big makes a stroke easier to catch and its handles sit slightly outside the ink,
+ * which is what a selection box looks like everywhere else anyway.
+ */
+export function strokeBox(s: Stroke, w: number, h: number) {
+  const short = Math.min(w, h)
+  let x0 = Infinity
+  let y0 = Infinity
+  let x1 = -Infinity
+  let y1 = -Infinity
+  const add = (x: number, y: number) => {
+    if (x < x0) x0 = x
+    if (x > x1) x1 = x
+    if (y < y0) y0 = y
+    if (y > y1) y1 = y
+  }
+
+  if (s.t === 'star' && s.p.length > 3) {
+    /* centre and radius, not corner to corner — see the star case in paintOne */
+    const cx = s.p[0] * w
+    const cy = s.p[1] * h
+    const r = Math.hypot(s.p[2] * w - cx, s.p[3] * h - cy)
+    add(cx - r, cy - r)
+    add(cx + r, cy + r)
+  } else {
+    for (let i = 0; i + 1 < s.p.length; i += 2) add(s.p[i] * w, s.p[i + 1] * h)
+  }
+  if (x0 === Infinity) return { x0: 0, y0: 0, x1: 0, y1: 0 }
+
+  const pad = Math.max(0.5, s.w * short) / 2 + 1
+  x0 -= pad
+  y0 -= pad
+  x1 += pad
+  y1 += pad
+
+  const copies = s.t === 'fill' ? 0 : (s.e ?? 0)
+  if (copies > 0) {
+    const [dx, dy] = gestureDirection(s, w, h)
+    add(x0 + Math.min(0, dx * copies), y0 + Math.min(0, dy * copies))
+    add(x1 + Math.max(0, dx * copies), y1 + Math.max(0, dy * copies))
+  }
+
+  /* the mirrored copies, put through the same transform paintMirrored uses on the strokes */
+  const k = s.k ?? 0
+  if (k >= 2 && s.t !== 'fill') {
+    const cx = w / 2
+    const cy = h / 2
+    const corners: Array<[number, number]> = [
+      [x0, y0],
+      [x1, y0],
+      [x1, y1],
+      [x0, y1],
+    ]
+    for (let seg = 1; seg < k; seg++) {
+      const a = (seg / k) * Math.PI * 2
+      const cos = Math.cos(a)
+      const sin = Math.sin(a)
+      const flip = seg % 2 ? -1 : 1
+      for (const [px, py] of corners) {
+        const ox = px - cx
+        const oy = (py - cy) * flip
+        add(cx + ox * cos - oy * sin, cy + ox * sin + oy * cos)
+      }
+    }
+  }
+
+  return { x0: x0 / w, y0: y0 / h, x1: x1 / w, y1: y1 / h }
+}
+
+/**
  * Paint one stroke onto a context sized w×h.
  *
  * ⚠️ The eraser is `destination-out`, not white. A drawing has no background of its own — it is

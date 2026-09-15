@@ -27,6 +27,7 @@ import {
   layerCount,
   packDrawing,
   readDrawing,
+  strokeBox,
 } from '../draw/strokes'
 import { InCanvasWindow } from '../circuit/ui/canvasContext'
 import { gallery, removeArt, saveArt, subscribeGallery, type Art } from '../draw/gallery'
@@ -1352,6 +1353,7 @@ export function PaintRoom() {
     const lo = { x: Math.min(r.x0, r.x1), y: Math.min(r.y0, r.y1) }
     const hi = { x: Math.max(r.x0, r.x1), y: Math.max(r.y0, r.y1) }
     const out: number[] = []
+    const { w, h } = size.current
     strokes.forEach((k, i) => {
       if (hidden.includes(k.l ?? 0)) return
       if (frame !== null && k.f !== undefined && k.f !== frame) return
@@ -1361,13 +1363,35 @@ export function PaintRoom() {
           return
         }
       }
+      /**
+       * ⚠️ AND FOR THE TWO THAT ARE NOT WHERE THEIR POINTS ARE, the box as well. A star's
+       * points are its centre and one tip, and a kaleidoscope stroke is drawn k times around the
+       * middle of the paper — so dragging a band over the copy you can SEE catches nothing, which
+       * is the part of this that felt broken rather than merely imprecise.
+       *
+       * ⚠️ Only those two. Overlapping boxes for everything would make a long diagonal brush
+       * stroke, whose box is most of the picture, get caught by almost any band — trading a
+       * selection that misses for one that grabs things you did not point at.
+       */
+      if (!w || !h) return
+      if (k.t !== 'star' && (k.k ?? 0) < 2) return
+      const b = strokeBox(k, w, h)
+      if (b.x1 >= lo.x && b.x0 <= hi.x && b.y1 >= lo.y && b.y0 <= hi.y) out.push(i)
     })
     return out
   }
 
   /** the box around the current selection, in 0-1 space, or null */
+  /**
+   * ⚠️ ROUND WHAT IS PAINTED, not round the points. The box used to be the extent of the point
+   * list, which for a fat brush is inside the ink, for a star is half of it, and for a
+   * kaleidoscope stroke can be on the other side of the paper — "its stroke box is oddly
+   * shaped/placed and not the exact stroke". See strokeBox.
+   */
   const selBox = () => {
     if (!sel.length) return null
+    const { w, h } = size.current
+    if (!w || !h) return null
     let x0 = 1
     let y0 = 1
     let x1 = 0
@@ -1375,12 +1399,11 @@ export function PaintRoom() {
     for (const i of sel) {
       const k = strokes[i]
       if (!k) continue
-      for (let n = 0; n < k.p.length; n += 2) {
-        x0 = Math.min(x0, k.p[n])
-        x1 = Math.max(x1, k.p[n])
-        y0 = Math.min(y0, k.p[n + 1])
-        y1 = Math.max(y1, k.p[n + 1])
-      }
+      const b = strokeBox(k, w, h)
+      x0 = Math.min(x0, b.x0)
+      x1 = Math.max(x1, b.x1)
+      y0 = Math.min(y0, b.y0)
+      y1 = Math.max(y1, b.y1)
     }
     return x1 > x0 || y1 > y0 ? { x0, y0, x1, y1 } : null
   }
