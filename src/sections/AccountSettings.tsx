@@ -913,6 +913,78 @@ function BackupCard() {
   )
 }
 
+/**
+ * Publishing your page — the switch that decides whether a link to it works for strangers.
+ *
+ * ⚠️ IT IS THE OWNER'S OWN SWITCH, and that is the only reason this component exists rather
+ * than one person running an update statement per friend. set_my_public_page takes no username;
+ * there is no version of it that can be aimed at somebody else's page. Publishing somebody's
+ * page for them, however well meant, is their decision made by the wrong person.
+ *
+ * ⚠️ IT SAYS WHAT CHANGES, in the words of the thing that changes. Not "make profile public"
+ * — what actually happens is that the blocks you already marked "Anyone" stop meaning "any
+ * member" and start meaning anyone at all, which is a sentence somebody can act on.
+ */
+function PublishCard() {
+  const [on, setOn] = useState<boolean | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [missing, setMissing] = useState(false)
+
+  useEffect(() => {
+    let live = true
+    void getSupabaseClient()
+      .rpc('get_my_public_page')
+      .then(({ data, error }) => {
+        if (!live) return
+        /* the migration has not been run — say so rather than drawing a switch that does
+           nothing, which is the failure this whole page keeps being about */
+        if (error) setMissing(true)
+        else setOn(data === true)
+      })
+    return () => {
+      live = false
+    }
+  }, [])
+
+  const flip = async (next: boolean) => {
+    setBusy(true)
+    const { data, error } = await getSupabaseClient().rpc('set_my_public_page', { p_on: next })
+    setBusy(false)
+    if (error) {
+      showToast('Could not change that — ' + error.message)
+      return
+    }
+    setOn(data === true)
+    showToast(data === true ? 'Your page is live' : 'Your page is members-only again')
+  }
+
+  if (missing || on === null) return null
+
+  return (
+    <article className="card" style={{ display: 'grid', gap: 10 }}>
+      <h3 style={{ margin: 0 }}>Your page</h3>
+      <p className="muted" style={{ margin: 0, fontSize: '0.82rem' }}>
+        {on
+          ? 'Anyone with the link can open your profile, signed in or not. They see only the blocks you set to “Anyone” — the guestbook and your activity stay between members either way.'
+          : 'Your profile is for members only. Turn this on and a link to it works for anyone — the blocks you set to “Anyone” would then mean anyone at all, not just members.'}
+      </p>
+      <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+        <button className="btn" type="button" disabled={busy} onClick={() => void flip(!on)}>
+          {busy ? '…' : on ? 'Make it members-only' : 'Publish my page'}
+        </button>
+        <span className="muted" style={{ fontSize: '0.78rem' }}>
+          {on ? '● Live to anyone with the link' : 'Members only'}
+        </span>
+      </div>
+      {on && (
+        <p className="muted" style={{ margin: 0, fontSize: '0.75rem' }}>
+          Worth a look before you share it: open your own page signed out, or in a private window.
+        </p>
+      )}
+    </article>
+  )
+}
+
 // ── Account & security: login email + password ─────────────────────────────
 export function AccountSettings({ canFinance = false }: { canFinance?: boolean } = {}) {
   const financeEnabled = hasFinanceSupabaseEnv()
@@ -1166,6 +1238,7 @@ export function AccountSettings({ canFinance = false }: { canFinance?: boolean }
 
           <NicknamesCard />
           <CircuitsCard />
+          <PublishCard />
           <BackupCard />
 
           {/* Account & security */}

@@ -175,3 +175,58 @@ grant execute on function public.get_public_profile(text) to anon, authenticated
 -- And the set of reachable pages is exactly the set that asked to be:
 --
 --   select username from public.profiles where public_page;
+
+
+-- ── THE SWITCH BELONGS TO ITS OWNER ─────────────────────────────────────────────────────────
+--
+-- ⚠️ WITHOUT THESE, THE ONLY HAND ON THE SWITCH IS EVAN'S — an update statement run against
+-- somebody else's row. Every line above is built so that publishing a page is the owner's own
+-- decision about their own page, and then the only way to do it would have been for one person
+-- to do it on everyone's behalf, in SQL, which is the same decision made by the wrong person.
+--
+-- ⚠️ Own row only. p_on is the whole input; there is no username parameter and therefore no
+-- version of this that can be aimed at anybody else, whatever the caller sends.
+
+create or replace function public.set_my_public_page(p_on boolean)
+returns boolean
+language plpgsql
+volatile
+security definer
+set search_path to 'public', 'pg_temp'
+as $function$
+declare
+  v_on boolean;
+begin
+  if auth.uid() is null then
+    raise exception 'not signed in';
+  end if;
+
+  update public.profiles
+     set public_page = coalesce(p_on, false)
+   where user_id = auth.uid()
+  returning public_page into v_on;
+
+  return coalesce(v_on, false);
+end
+$function$;
+
+revoke all on function public.set_my_public_page(boolean) from public;
+grant execute on function public.set_my_public_page(boolean) to authenticated;
+
+
+/* What the switch currently says, for drawing it. Own row only, same reasoning. */
+create or replace function public.get_my_public_page()
+returns boolean
+language sql
+stable
+security definer
+set search_path to 'public', 'pg_temp'
+as $function$
+  select coalesce((select p.public_page from public.profiles p where p.user_id = auth.uid()), false);
+$function$;
+
+revoke all on function public.get_my_public_page() from public;
+grant execute on function public.get_my_public_page() to authenticated;
+
+-- With these in place the update statement above is a convenience, not the mechanism:
+-- Account → "Your page" has the switch, and it can only ever move the caller's own.

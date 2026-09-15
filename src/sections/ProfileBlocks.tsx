@@ -392,7 +392,10 @@ function BlockView({
             )}
           </p>
           <p className="muted" style={{ margin: '0.3rem 0 0' }}>
-            {trophies.length} trophies
+            {/* ⚠️ "0 trophies" to a signed-out reader is a LIE, not a lock — the list arrives as
+                props and a stranger is handed an empty one, so a shelf full of them counts as
+                none. The snake score above it is real, because the payload carries that. */}
+            {guest ? 'Sign in to see trophies' : `${trophies.length} trophies`}
           </p>
         </div>
       )
@@ -1663,6 +1666,19 @@ export function ProfileBlocksEditor({
   const [arranging, setArranging] = useState(false)
   /** the starting-points menu — open by itself on a page with nothing on it */
   const [starters, setStarters] = useState(false)
+  /** whether this page is published — decides what the word "Anyone" currently reaches */
+  const [pagePublic, setPagePublic] = useState(false)
+  useEffect(() => {
+    let live = true
+    void getSupabaseClient()
+      .rpc('get_my_public_page')
+      .then(({ data }) => {
+        if (live) setPagePublic(data === true)
+      })
+    return () => {
+      live = false
+    }
+  }, [])
 
   /* dragging is offered to a pointer and not to a finger — see the grip below */
   const touch = useTouchOnly()
@@ -2494,6 +2510,24 @@ export function ProfileBlocksEditor({
                       ))}
                     </select>
                   </label>
+                  {/**
+                   * ⚠️ "ANYONE" CHANGED MEANING AND THE WORD DID NOT.
+                   *
+                   * While a profile could only be loaded by a member, the public tier was a
+                   * ceiling something else enforced: "Anyone" honestly meant "any member", and
+                   * everybody who ever picked it picked it under that meaning. Publishing a page
+                   * makes the same word mean the open internet, for blocks chosen months ago
+                   * against the old one. So the word is left alone — it is the right word — and
+                   * what it currently reaches is said underneath it, where it can be true in both
+                   * states instead of being a guess baked into a label.
+                   */}
+                  {selected.visibility === 'public' && (
+                    <p className="muted" style={{ margin: 0, fontSize: '0.75rem' }}>
+                      {pagePublic
+                        ? '● Your page is published, so “Anyone” means anyone at all — signed in or not.'
+                        : '“Anyone” means any member, until you publish your page in Account.'}
+                    </p>
+                  )}
                   <button className="btn btn-ghost" onClick={() => removeAt(openIdx)}>
                     Remove this block
                   </button>
