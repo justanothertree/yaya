@@ -7828,6 +7828,65 @@ a.cz-msg-author:focus-visible {
    The editor renders the real .profile-blocks-grid, so everything below is only
    the handles laid over it. Nothing here may change how a block SIZES, or the
    thing being composed would stop being the thing that gets published. */
+/**
+ * Starting points — the blank-page answer.
+ *
+ * ⚠️ EACH CARD DRAWS ITS OWN LAYOUT, in the same six-column grid the page uses, because the
+ * thing being chosen is an arrangement and a list of block names is a list of words.
+ */
+.profile-starters {
+  margin: 0 0 var(--sp-2, 0.6rem);
+}
+.profile-starters-lead {
+  margin: 0 0 0.45rem;
+  font-size: 0.8rem;
+}
+.profile-starters-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.profile-starter {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.15rem;
+  width: 11.5rem;
+  padding: 0.55rem 0.65rem;
+  text-align: left;
+  white-space: normal;
+}
+.profile-starter .muted {
+  font-size: 0.72rem;
+  line-height: 1.25;
+}
+.profile-starter-shape {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 2px;
+  width: 100%;
+  margin-top: 0.3rem;
+}
+.profile-starter-shape i {
+  height: 7px;
+  border-radius: 2px;
+  background: color-mix(in oklab, var(--accent), transparent 55%);
+}
+.profile-starter-shape i.is-small {
+  grid-column: span 2;
+}
+.profile-starter-shape i.is-medium {
+  grid-column: span 3;
+}
+.profile-starter-shape i.is-large {
+  grid-column: 1 / -1;
+}
+.profile-starter-count {
+  margin-top: 0.25rem;
+  font-size: 0.68rem;
+  opacity: 0.65;
+}
+
 .profile-canvas {
   padding: var(--sp-2, 0.6rem);
   border: 1px dashed var(--border);
@@ -9273,6 +9332,53 @@ a.cz-msg-author:focus-visible {
    the width setting has already been silently dropped by three of them for exactly that reason.
    ⚠️ --blk-h is a bare number, so it can be composed into hsl() here rather than each caller
    having to know the saturation and lightness that keep text readable. */
+/* ⚠️ The button wears the shape it sets. Four words in a row say nothing about what a
+   "pillow" is; four buttons in four shapes need no words at all, and the words stay anyway for
+   anybody reading rather than looking. */
+.profile-shape-btn.is-square {
+  border-radius: 0;
+}
+.profile-shape-btn.is-pillow {
+  border-radius: 14px;
+}
+.profile-shape-btn.is-cut {
+  border-radius: 0;
+  clip-path: polygon(0 0, calc(100% - 7px) 0, 100% 7px, 100% 100%, 7px 100%, 0 calc(100% - 7px));
+}
+
+/**
+ * The shape of one block — see BLOCK_SHAPES.
+ *
+ * ⚠️ On the SLOT and matched to the block inside it, exactly like the finish, because ten
+ * block types each build their own card and none of them should have to remember this.
+ *
+ * ⚠️ !important on the radius, and it is earning its keep: several block types set their own
+ * border-radius in their own rules further down this file, and a shape that worked on a bio and
+ * not on a banner is worse than no shape at all.
+ */
+.profile-slot[data-shape='square'] > .profile-block,
+.profile-canvas-cell[data-shape='square'] > .profile-block {
+  border-radius: 0 !important;
+}
+.profile-slot[data-shape='pillow'] > .profile-block,
+.profile-canvas-cell[data-shape='pillow'] > .profile-block {
+  border-radius: 26px !important;
+}
+/* ⚠️ A clip rather than a border-radius, because that is the only way to take a corner OFF.
+   The overflow it implies is why this one also hides anything a block draws outside itself. */
+.profile-slot[data-shape='cut'] > .profile-block,
+.profile-canvas-cell[data-shape='cut'] > .profile-block {
+  border-radius: 0 !important;
+  clip-path: polygon(
+    0 0,
+    calc(100% - 18px) 0,
+    100% 18px,
+    100% 100%,
+    18px 100%,
+    0 calc(100% - 18px)
+  );
+}
+
 .profile-slot[data-finish] > .profile-block,
 .profile-canvas-cell[data-finish] > .profile-block {
   border-color: hsl(var(--blk-h) 70% 55% / 0.5);

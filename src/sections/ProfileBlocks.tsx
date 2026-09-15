@@ -13,6 +13,8 @@ import { useTouchOnly } from '../ui/pointerKind'
 import {
   BANNER_STYLES,
   BLOCK_FINISHES,
+  BLOCK_SHAPES,
+  blockShape,
   TINT_HUES,
   bannerBackground,
   blockLook,
@@ -1409,6 +1411,101 @@ function BlockFields({
   }
 }
 
+/**
+ * Who a new block is visible to before anybody chooses.
+ *
+ * 'members' means anyone with ANY account on the site — fine for a bio or a status, but
+ * activity and stats surface circuit-flavoured detail (workout logs, trophies) to people who may
+ * have signed up for an unrelated module and have no context for it. 'friends' at least requires
+ * an accepted mutual friendship first. The circuit_log rows themselves are separately restricted
+ * to viewers who actually share that circuit (get_member_activity checks membership per row) —
+ * this default is about avoiding an accidentally-broad START, not a gap in what the row-level
+ * check already covers.
+ *
+ * ⚠️ One function, because the layouts add blocks too and a second copy of this rule is a
+ * second place for it to be wrong.
+ */
+function defaultTier(type: ProfileBlock['block_type']): Tier {
+  return type === 'activity' || type === 'stats' ? 'friends' : 'members'
+}
+
+/**
+ * Pages you can start from.
+ *
+ * ⚠️ THE BLANK PAGE IS THE PROBLEM, the same one the drum patterns answer in the instrument
+ * room, and it fails the same way. "+ Add a block" eleven times is not a page, it is a list of
+ * decisions taken before you know what any of them look like — and the person who most needs a
+ * profile is exactly the person with no picture in their head of what one should contain. Filling
+ * the page first and pulling it apart afterwards is a far easier job than composing it empty, and
+ * with ⇅ Arrange the pulling apart is now one screen rather than a mile of scrolling.
+ *
+ * ⚠️ EACH ONE IS A DIFFERENT SHAPE, not a different name. Four variations on "banner, bio,
+ * guestbook" would be a longer menu that helps nobody choose. These differ in what the page is
+ * FOR — which block is the biggest, and what a visitor is meant to do when they arrive.
+ *
+ * ⚠️ NOTHING FROM NEEDS_SERVER_SUPPORT. A layout carrying an art or looks block would be
+ * refused whole by a server that has not had that migration yet, so a starting point would fail
+ * to start. Both are one press to add afterwards.
+ */
+type Starter = {
+  id: string
+  name: string
+  /** what the page is FOR, in the words somebody choosing would use */
+  about: string
+  blocks: Array<{
+    type: ProfileBlock['block_type']
+    size: ProfileBlock['size']
+    alone?: true
+  }>
+}
+
+const STARTERS: Starter[] = [
+  {
+    id: 'intro',
+    name: 'Introduction',
+    about: 'Who you are, and somewhere to say hello',
+    blocks: [
+      { type: 'banner', size: 'large' },
+      { type: 'bio', size: 'medium' },
+      { type: 'status', size: 'small' },
+      { type: 'guestbook', size: 'large' },
+    ],
+  },
+  {
+    id: 'stage',
+    name: 'Stage',
+    about: 'A page that plays something when you land on it',
+    blocks: [
+      { type: 'banner', size: 'large' },
+      { type: 'song', size: 'medium' },
+      { type: 'visualizer', size: 'medium' },
+      { type: 'bio', size: 'small' },
+      { type: 'guestbook', size: 'medium' },
+    ],
+  },
+  {
+    id: 'scoreboard',
+    name: 'Scoreboard',
+    about: 'What you have been doing and what you have won',
+    blocks: [
+      { type: 'status', size: 'small' },
+      { type: 'stats', size: 'medium' },
+      { type: 'trophies', size: 'medium' },
+      { type: 'activity', size: 'large', alone: true },
+    ],
+  },
+  {
+    id: 'plain',
+    name: 'Just the basics',
+    about: 'Three blocks. Nothing to tidy up later',
+    blocks: [
+      { type: 'bio', size: 'large' },
+      { type: 'status', size: 'small' },
+      { type: 'guestbook', size: 'medium' },
+    ],
+  },
+]
+
 /** The "arrange your page" panel — owner only, shown behind an Edit toggle in Profile.tsx. */
 export function ProfileBlocksEditor({
   initial,
@@ -1485,6 +1582,8 @@ export function ProfileBlocksEditor({
    * the same page with the contents turned off, which is what makes it fit on one screen.
    */
   const [arranging, setArranging] = useState(false)
+  /** the starting-points menu — open by itself on a page with nothing on it */
+  const [starters, setStarters] = useState(false)
 
   /* dragging is offered to a pointer and not to a finger — see the grip below */
   const touch = useTouchOnly()
@@ -1501,16 +1600,32 @@ export function ProfileBlocksEditor({
         block_type: type,
         size: 'medium',
         config: {},
-        // 'members' means anyone with ANY account on the site -- fine for a bio or a links
-        // list, but activity/stats surface circuit-flavored detail (workout logs, trophies) to
-        // people who may have signed up for an unrelated module and have no context for it.
-        // 'friends' at least requires an accepted mutual friendship first. The circuit_log rows
-        // themselves are separately restricted to viewers who actually share that circuit
-        // (get_member_activity checks membership per row) -- this default is about avoiding an
-        // accidentally-broad START, not a gap in what the row-level check already covers.
-        visibility: type === 'activity' || type === 'stats' ? 'friends' : 'members',
+        visibility: defaultTier(type),
       },
     ])
+  }
+
+  /**
+   * Fill the page from a starting point.
+   *
+   * ⚠️ THE SAME UNDO REMOVING A BLOCK USES. This replaces everything, which is the only other
+   * action here that can lose work — so it gets the same way back, and it is offered rather than
+   * confirmed through a dialog, because a dialog asks you to predict what a layout looks like
+   * while a way back lets you simply look.
+   */
+  const applyStarter = (st: Starter) => {
+    setUndo({ blocks, label: `the ${st.name} layout` })
+    setOpenIdx(null)
+    setLiftIdx(null)
+    setAdding(false)
+    setBlocks(
+      st.blocks.map((b) => ({
+        block_type: b.type,
+        size: b.size,
+        config: b.alone ? { alone: true } : {},
+        visibility: defaultTier(b.type),
+      })),
+    )
   }
   /** drop `from` into `to`, closing the gap it leaves — the reorder a drag performs */
   const moveTo = (from: number, to: number) => {
@@ -1528,6 +1643,12 @@ export function ProfileBlocksEditor({
       all.map((x, idx) =>
         idx === i ? { ...x, config: { ...x.config, alone: alone || undefined } } : x,
       ),
+    )
+
+  /** merge into the open block's config — shared, because two rows of the inspector write it */
+  const setOpenCfg = (patch: Record<string, unknown>) =>
+    setBlocks((all) =>
+      all.map((x, idx) => (idx === openIdx ? { ...x, config: { ...x.config, ...patch } } : x)),
     )
 
   const setSizeAt = (i: number, size: ProfileBlock['size']) =>
@@ -1551,7 +1672,7 @@ export function ProfileBlocksEditor({
    */
   const removeAt = (i: number) => {
     const gone = blocks[i]
-    setUndo({ blocks, label: BLOCK_LABEL[gone.block_type] })
+    setUndo({ blocks, label: `removing ${BLOCK_LABEL[gone.block_type]}` })
     setOpenIdx((cur) => (cur === i ? null : cur != null && cur > i ? cur - 1 : cur))
     setBlocks((all) => all.filter((_, idx) => idx !== i))
   }
@@ -1712,6 +1833,20 @@ export function ProfileBlocksEditor({
             : 'This is the page itself, at the widths it really uses. Click a block to change what is in it, drag the handle to move it.'}
         </p>
         {/* ⚠️ Only worth offering once there is something to arrange. One block has no order. */}
+        {!arranging && (
+          <button
+            className={'btn' + (starters ? ' is-on' : '')}
+            aria-pressed={starters}
+            onClick={() => setStarters((v) => !v)}
+            title={
+              blocks.length
+                ? 'Replace the page with a starting point — you can undo it'
+                : 'Fill the page with a starting point instead of building it up block by block'
+            }
+          >
+            ▦ {blocks.length ? 'Start over from a layout' : 'Start from a layout'}
+          </button>
+        )}
         {blocks.length > 1 && (
           <button
             className={'btn' + (arranging ? ' is-on' : '')}
@@ -1730,6 +1865,49 @@ export function ProfileBlocksEditor({
           </button>
         )}
       </div>
+
+      {/**
+       * ⚠️ OPEN BY ITSELF ON AN EMPTY PAGE, because that is the only moment somebody has no way
+       * to picture what they are being asked to build. Once there are blocks it is a button,
+       * since by then choosing one throws work away.
+       */}
+      {(starters || !blocks.length) && !arranging && (
+        <div className="profile-starters">
+          <p className="muted profile-starters-lead">
+            {blocks.length
+              ? 'Pick one and the page becomes it. What you have now is one press from coming back.'
+              : 'Start from one of these and change anything you like — or add blocks one at a time below.'}
+          </p>
+          <div className="profile-starters-row">
+            {STARTERS.map((st) => (
+              <button
+                key={st.id}
+                className="btn profile-starter"
+                onClick={() => {
+                  applyStarter(st)
+                  setStarters(false)
+                }}
+              >
+                <strong>{st.name}</strong>
+                <span className="muted">{st.about}</span>
+                {/* ⚠️ The SHAPE, at the same widths the layout uses. A list of block names is a
+                    list of words; the thing being chosen is an arrangement. */}
+                <span className="profile-starter-shape" aria-hidden>
+                  {st.blocks.map((b, i) => (
+                    <i key={i} className={'is-' + b.size} />
+                  ))}
+                </span>
+                <span className="profile-starter-count">{st.blocks.length} blocks</span>
+              </button>
+            ))}
+            {blocks.length > 0 && (
+              <button className="btn btn-ghost" onClick={() => setStarters(false)}>
+                Cancel
+              </button>
+            )}
+          </div>
+        </div>
+      )}
 
       {/**
        * ⚠️ THE EDITOR IS THE PAGE.
@@ -2042,6 +2220,37 @@ export function ProfileBlocksEditor({
                 />
 
                 {/**
+                 * ⚠️ EVERY BLOCK TYPE, unlike the colour below it.
+                 *
+                 * CAN_TINT leaves out the three whose card is entirely filled by their own
+                 * artwork — a banner, a drawing, a visualiser — because a tint has nowhere to go
+                 * on them. Shape is the opposite case: those three ARE the rectangle, so squaring
+                 * one off is the most visible thing on the page, and gating it behind the colour
+                 * rule would have hidden it exactly where it does the most.
+                 */}
+                <div className="profile-editrow-settings">
+                  <label className="profile-editrow-look">
+                    <span className="muted">Shape</span>
+                    <span className="profile-width-row">
+                      {BLOCK_SHAPES.map((sh) => (
+                        <button
+                          key={sh.id}
+                          className={
+                            'btn profile-shape-btn is-' +
+                            sh.id +
+                            (blockShape(selected.config) === sh.id ? ' is-on' : '')
+                          }
+                          aria-pressed={blockShape(selected.config) === sh.id}
+                          onClick={() => setOpenCfg({ shape: sh.id === 'round' ? null : sh.id })}
+                        >
+                          {sh.label}
+                        </button>
+                      ))}
+                    </span>
+                  </label>
+                </div>
+
+                {/**
                  * ⚠️ COLOUR, AND WHAT THE COLOUR DOES — two rows, not one.
                  *
                  * A page was the same grey card eight times over. The swatch decides WHICH colour
@@ -2201,7 +2410,7 @@ export function ProfileBlocksEditor({
         )}
         {undo && (
           <button className="btn btn-ghost" onClick={undoRemove}>
-            Undo removing {undo.label}
+            Undo {undo.label}
           </button>
         )}
       </div>

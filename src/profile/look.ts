@@ -103,6 +103,38 @@ export const BLOCK_FINISHES: ReadonlyArray<{ id: BlockFinish; label: string }> =
 ]
 
 /**
+ * WHAT SHAPE ONE BLOCK IS.
+ *
+ * ⚠️ Every block on every page has been the same 12px-rounded rectangle since the first one,
+ * which is the single strongest reason a profile reads as a template even after its owner has
+ * chosen colours, finishes, widths and a banner. Colour says whose page it is; shape says what
+ * KIND of page it is, and there was only ever one kind.
+ *
+ * ⚠️ DIFFERENT IN KIND, not a radius slider — the same rule the finishes follow and for the
+ * same reason. Four shapes that read as four decisions beat a number that produces five hundred
+ * pages differing by two pixels, and none of these can produce a block that does not work.
+ *
+ * ⚠️ INDEPENDENT OF COLOUR, unlike the finish, which is a way of wearing a hue and means
+ * nothing without one. A square grey card is a perfectly good thing to want, so this applies
+ * whether or not a tint was picked — see blockLookAttrs, which used to return nothing at all for
+ * an untinted block.
+ */
+export type BlockShape = 'round' | 'square' | 'pillow' | 'cut'
+
+export const BLOCK_SHAPES: ReadonlyArray<{ id: BlockShape; label: string }> = [
+  { id: 'round', label: 'Rounded' },
+  { id: 'square', label: 'Square' },
+  { id: 'pillow', label: 'Pillow' },
+  { id: 'cut', label: 'Cut' },
+]
+
+/** A block's shape, defaulting to the rounded rectangle every page has always had. */
+export function blockShape(config: Record<string, unknown> | null | undefined): BlockShape {
+  const v = config?.shape
+  return v === 'square' || v === 'pillow' || v === 'cut' ? v : 'round'
+}
+
+/**
  * The swatches.
  *
  * ⚠️ The SAME twelve stops the identity colours use, for the same reason: hues any closer
@@ -173,10 +205,19 @@ export function blockLook(
 export function blockLookAttrs(
   config: Record<string, unknown> | null | undefined,
   username: string,
-): { 'data-finish'?: BlockFinish; style?: React.CSSProperties } {
+): { 'data-finish'?: BlockFinish; 'data-shape'?: BlockShape; style?: React.CSSProperties } {
   const { hue, finish } = blockLook(config, username)
-  if (hue == null) return {}
-  return { 'data-finish': finish, style: { ['--blk-h']: String(hue) } as React.CSSProperties }
+  const shape = blockShape(config)
+  /* ⚠️ The shape survives the early return. This used to be `if (hue == null) return {}`,
+     which was right while everything here was a way of wearing a colour — and would have made a
+     square block silently impossible unless you also tinted it. */
+  const shaped = shape === 'round' ? {} : { 'data-shape': shape }
+  if (hue == null) return shaped
+  return {
+    ...shaped,
+    'data-finish': finish,
+    style: { ['--blk-h']: String(hue) } as React.CSSProperties,
+  }
 }
 
 /**
