@@ -872,9 +872,13 @@ function BackupCard() {
     <article className="card" style={{ display: 'grid', gap: 10 }}>
       <h3 style={{ margin: 0 }}>Your songs, drawings and looks</h3>
       <p className="muted" style={{ margin: 0, fontSize: '0.82rem' }}>
-        These are kept in this browser only — not on your account. Clearing site data loses them,
-        and browsers sometimes do it on their own. Keep a copy, and use it to move them to another
-        computer.
+        {/* ⚠️ This said "kept in this browser only — not on your account", which stopped being
+            true the moment the library started syncing. A settings page that describes the old
+            behaviour is worse than one that says nothing: somebody reads it and backs up out of a
+            fear that no longer applies, or worse, believes a copy exists where it does not. */}
+        These follow your account now — sign in anywhere and they come with you. A file is still
+        worth keeping: it is the copy that survives losing the account itself, and the way to carry
+        work onto a machine you are not signed in on.
       </p>
       <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
         <button className="btn" type="button" onClick={download} disabled={!total}>
