@@ -1578,6 +1578,28 @@ export function PaintRoom() {
     }
     const s = live.current
     if (!s) return
+    /**
+     * ⚠️ TEXT ASKS FOR ITS WORDS ON RELEASE, and until then the drag has been drawing a guide
+     * line (see the text case in paintOne). The order matters: the guide stays on screen while
+     * the prompt is open, so you can see the size and angle you are about to type into.
+     *
+     * ⚠️ A TAP GETS A SENSIBLE BASELINE rather than nothing. Dragging sets the size and the
+     * angle, which is the whole interaction — but somebody who simply clicks meant to put words
+     * there, and a tool that does nothing on a click reads as broken.
+     */
+    if (s.t === 'text') {
+      const dx = (s.p[2] ?? s.p[0]) - s.p[0]
+      const dy = (s.p[3] ?? s.p[1]) - s.p[1]
+      if (Math.hypot(dx, dy) < 0.02) s.p = [s.p[0], s.p[1], s.p[0] + 0.28, s.p[1]]
+      const say = window.prompt('What should it say?')?.trim().slice(0, 120)
+      if (!say) {
+        live.current = null
+        preview()
+        return
+      }
+      commit({ ...s, x: say })
+      return
+    }
     commit(s)
   }
 

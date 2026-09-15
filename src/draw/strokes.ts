@@ -43,6 +43,7 @@ export type Tool =
   | 'ember'
   | 'vine'
   | 'comet'
+  | 'text'
 
 /**
  * Tools that are no longer OFFERED, but are still drawn.
@@ -78,6 +79,8 @@ export const TOOLS: Array<[Tool, string, string]> = [
   ['crayon', '🖤', 'Crayon'],
   ['neon', '💡', 'Neon'],
   ['triangle', '△', 'Triangle'],
+  /* ⚠️ ON THE END, like everything after it will be — see TOOL_ORDER. */
+  ['text', 'T', 'Text'],
 ]
 
 /** How many mirrored copies a stroke is drawn as. 0 or 1 is "just the one". */
@@ -147,7 +150,23 @@ export type Stroke = {
    * property neither mentions cannot travel to disk or arrive from one.
    */
   id?: string
-  /** flat [x, y, x, y, …] in 0–1 space — two points for line/rect/ellipse, one for fill */
+  /**
+   * The words, for the text tool. Absent on every other stroke.
+   *
+   * ⚠️ THE ONLY THING IN THIS FORMAT THAT IS NOT A NUMBER, and it is worth saying why it is
+   * allowed to be. Everything else about a stroke is geometry, which is what lets a drawing be
+   * scaled, rotated, mirrored and echoed by arithmetic on `p` alone. Words cannot be reached that
+   * way: a letter shape belongs to a font on the reader's machine, and the alternative — turning
+   * typed words into outlines at placement time — would make them uneditable, enormous, and
+   * different on every device that has a different font.
+   *
+   * ⚠️ SO THE GEOMETRY STAYS IN `p` AND ONLY THE CONTENT IS HERE. A text stroke is two points,
+   * the baseline its words sit along, and the words are scaled to span it. That means the
+   * selection tool's scale and rotate already work on text with no special case: they transform
+   * two points, and the words follow. Nothing else in this file had to learn about text.
+   */
+  x?: string
+  /** flat [x, y, x, y, …] in 0–1 space — two points for line/rect/ellipse/text, one for fill */
   p: number[]
 }
 
@@ -311,9 +330,22 @@ export function readStroke(raw: unknown): Stroke | null {
   }
   if (p.length % 2) p.pop()
   if (p.length < 2) return null
+  /* ⚠️ Capped and stripped of control characters, because this travels: a drawing goes onto a
+     profile and is drawn in a stranger's browser. Canvas text is not an injection surface the way
+     innerHTML is, but an unbounded string is still a payload, and a newline in fillText is drawn
+     as a space by some engines and a box by others. */
+  let words = ''
+  if (typeof o.x === 'string')
+    for (const ch of o.x.slice(0, 120)) {
+      const n = ch.codePointAt(0) ?? 0
+      words += n < 32 || n === 127 ? ' ' : ch
+    }
+  words = words.trim()
+
   return {
     t: o.t as Tool,
     c: colour(o.c),
+    ...(words ? { x: words } : {}),
     a: num(o.a, 0.02, 1, 1),
     w: num(o.w, 0.0015, 0.25, 0.01),
     k: segments(o.k),
@@ -332,6 +364,17 @@ export function readStroke(raw: unknown): Stroke | null {
  * painting white would erase to a colour that only looks right on one theme. Alpha is the goal
  * feature and this is where it lives.
  */
+/**
+ * What words are drawn in.
+ *
+ * ⚠️ A STACK AND NOT A WEBFONT. A drawing travels — onto a profile, into somebody else's
+ * browser — and fetching a face to render it would mean a network request to draw a picture,
+ * which is the one thing every other part of this format avoids. These are faces people already
+ * have; the last entry is the one nobody can fail to have.
+ */
+const TEXT_FACE =
+  '"Avenir Next", "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif'
+
 /** A rainbow across a shape's bounding box, so a box or ellipse is not one flat hue. */
 function boxWheel(
   ctx: CanvasRenderingContext2D,
@@ -479,6 +522,51 @@ function paintOne(ctx: CanvasRenderingContext2D, s: Stroke, w: number, h: number
   if (erasing) ctx.globalCompositeOperation = 'destination-out'
 
   switch (s.t) {
+    /**
+     * Words along the line you dragged.
+     *
+     * ⚠️ SCALED TO SPAN THE BASELINE, which is what makes the drag mean something: a long drag
+     * is big words and a short one is small, and there is no second control to find. It also
+     * makes the selection tool's scale and rotate work on text for nothing — they move two
+     * points, and the words are measured against wherever those two points now are.
+     *
+     * ⚠️ A FONT STACK, never one face. This is drawn in whoever's browser opened the drawing,
+     * so the named face is a hope and the stack is the promise.
+     *
+     * ⚠️ WITH NO WORDS IT IS A GUIDE LINE, not nothing. That is the state while you are still
+     * dragging one out, and a tool that draws nothing while you use it reads as broken.
+     */
+    case 'text': {
+      const ax = X(0)
+      const ay = Y(1)
+      const bx = s.p.length > 3 ? X(2) : ax
+      const by = s.p.length > 3 ? Y(3) : ay
+      const len = Math.hypot(bx - ax, by - ay)
+      if (!s.x) {
+        if (len < 1) break
+        ctx.globalAlpha = s.a * 0.5
+        ctx.lineWidth = Math.max(0.5, short * 0.002)
+        ctx.strokeStyle = paint
+        ctx.beginPath()
+        ctx.moveTo(ax, ay)
+        ctx.lineTo(bx, by)
+        ctx.stroke()
+        break
+      }
+      if (len < 1) break
+      ctx.save()
+      ctx.translate(ax, ay)
+      ctx.rotate(Math.atan2(by - ay, bx - ax))
+      ctx.font = `600 100px ${TEXT_FACE}`
+      ctx.textBaseline = 'alphabetic'
+      const wide = ctx.measureText(s.x).width || 1
+      const k = len / wide
+      ctx.scale(k, k)
+      ctx.fillStyle = rainbow ? boxWheel(ctx, 0, -100, wide, 0, TURN / k) : paint
+      ctx.fillText(s.x, 0, 0)
+      ctx.restore()
+      break
+    }
     case 'fill':
       floodFill(ctx, X(0), Y(1), erasing ? null : rainbow ? wheel((X(0) + Y(1)) / TURN) : s.c, s.a)
       break
@@ -1079,9 +1167,13 @@ export function packDrawing(d: Drawing): PackedDrawing {
     b: d.bg ? d.bg.slice(1) : 0,
     ...(layered && d.layers?.length ? { l: d.layers } : {}),
     ...(layered && d.fps ? { fp: d.fps } : {}),
+    /* ⚠️ The words go on the END of the row, after the points. A reader that does not know
+       about text does `row.slice(fixed)` and then keeps only the numbers — so an older build
+       drops the string and still draws the baseline, rather than choking on it. */
     s: d.strokes.map((k) => [
       ...fixed(k),
       ...k.p.map((n) => Math.round(n * 1000)),
+      ...(k.x ? [k.x] : []),
     ]) as PackedDrawing['s'],
   }
 }
@@ -1104,6 +1196,9 @@ function unpack(v: Record<string, unknown>): Drawing | null {
     const e = fixed > 5 ? (row[5] as number) : 0
     const l = fixed > 6 ? (row[6] as number) : 0
     const fr = fixed > 7 ? (row[7] as number) : -1
+    /* the words, if this row has any — the colour is a string too, but it is never last */
+    const tail = row[row.length - 1]
+    const words = typeof tail === 'string' && row.length > fixed + 2 ? tail : undefined
     const pts = row.slice(fixed) as number[]
     strokes.push({
       t: TOOL_ORDER[typeof ti === 'number' ? ti : 0] ?? 'brush',
@@ -1115,6 +1210,7 @@ function unpack(v: Record<string, unknown>): Drawing | null {
       l,
       // ⚠️ anything below zero means the stroke never chose a frame, so it shows on all of them
       f: typeof fr === 'number' && fr >= 0 ? fr : undefined,
+      x: words,
       p: pts.filter((n) => typeof n === 'number').map((n) => n / 1000),
     })
   }
