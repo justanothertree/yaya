@@ -7441,6 +7441,24 @@ a.cz-msg-author:focus-visible {
   flex-wrap: wrap;
   gap: 0.4rem;
 }
+/* ⚠️ WIDER THAN THE ROOM'S OTHER SLIDERS. `.paint-row .appearance-slider input` is 5.5rem,
+   which is right for a row of fourteen controls and wrong for a range of sixty in a panel that is
+   a column with space to spare — at 5.5rem each step is a pixel and a half. Same specificity as
+   that rule and declared after it, which is what lets it win. */
+.paint-save-speed {
+  gap: 0.5rem;
+}
+.paint-row .paint-save-speed input[type='range'] {
+  width: auto;
+  flex: 1;
+  min-width: 7rem;
+  /* ⚠️ and a ceiling, or `flex: 1` hands it the whole panel — 883px of travel for sixty steps
+     on a desktop, which reads as a layout accident rather than a control */
+  max-width: 18rem;
+}
+.paint-save-speed {
+  justify-content: flex-start;
+}
 .paint-save-go {
   display: flex;
   gap: 0.4rem;

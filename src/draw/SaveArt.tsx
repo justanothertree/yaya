@@ -33,8 +33,10 @@ export function SaveArt({ art, onClose }: { art: Drawing; onClose: () => void })
   const [width, setWidth] = useState<number | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
   const [made, setMade] = useState<{ url: string; name: string; bytes: number } | null>(null)
+  /** null means "whatever this drawing's own answer is" — see motionOf */
+  const [speed, setSpeed] = useState<number | null>(null)
 
-  const motion = useMemo(() => motionOf(art), [art])
+  const motion = useMemo(() => motionOf(art, speed ?? undefined), [art, speed])
   const widths = kind === 'motion' ? MOTION_WIDTHS : STILL_WIDTHS
   const px = width ?? widths[1][1]
   const shape = sizeOf(art, px)
@@ -48,6 +50,11 @@ export function SaveArt({ art, onClose }: { art: Drawing; onClose: () => void })
     if (!motion && kind === 'motion') setKind('still')
   }, [motion, kind])
 
+  /* ⚠️ A speed does not survive a change of picture. 40 strokes a second is the default for a
+     two-hundred-stroke drawing and nonsense for a four-stroke one, and the panel stays mounted
+     when it is pointed at a different picture in the gallery. */
+  useEffect(() => setSpeed(null), [art])
+
   const run = async () => {
     setBusy(kind === 'still' ? 'Drawing it…' : 'Starting…')
     setMade(null)
@@ -55,7 +62,7 @@ export function SaveArt({ art, onClose }: { art: Drawing; onClose: () => void })
       const blob =
         kind === 'still'
           ? await stillOf(art, px)
-          : await motionGifOf(art, px, (a, b) => setBusy(`Frame ${a} of ${b}…`))
+          : await motionGifOf(art, px, motion?.speed, (a, b) => setBusy(`Frame ${a} of ${b}…`))
       if (!blob) {
         setBusy(null)
         return
@@ -124,6 +131,26 @@ export function SaveArt({ art, onClose }: { art: Drawing; onClose: () => void })
           !art.bg &&
           ' A GIF cannot be transparent, so the paper will be white.'}
       </p>
+
+      {/* ⚠️ Right under the sentence it changes. Dragging it rewrites the "about N seconds"
+          above, which is the only readout that means anything — "12 strokes a second" is a number
+          you have to imagine, and "about 3.4 seconds" is one you can picture. */}
+      {kind === 'motion' && motion && (
+        <label className="appearance-slider paint-save-speed">
+          <span className="muted">
+            {motion.unit === 'frames' ? 'Frames a second' : 'Strokes a second'}
+          </span>
+          <input
+            type="range"
+            min={motion.min}
+            max={motion.max}
+            step={1}
+            value={motion.speed}
+            onChange={(e) => setSpeed(Number(e.target.value))}
+          />
+          <span className="appearance-slider-val">{motion.speed}</span>
+        </label>
+      )}
 
       <div className="paint-save-sizes">
         {widths.map(([label, w]) => (

@@ -94,35 +94,80 @@ export type Motion = {
   steps: number
   /** how long it runs for, in seconds */
   seconds: number
+  /** frames a second, or strokes a second — see `unit` */
+  speed: number
+  min: number
+  max: number
+  unit: 'frames' | 'strokes'
+  /** hundredths of a second each image is held for */
+  delay: number
 }
 
 const MAX_STEPS = 48
 const HOLD = 140 // hundredths of a second to sit on the finished picture
+const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v))
+const tenth = (v: number) => Math.round(v * 10) / 10
 
 /**
- * What a GIF of this would be, worked out before making one — so the button can say what it is
- * about to do rather than the person finding out from the result.
+ * What a GIF of this would be, worked out before making one — so the panel can say what it is
+ * about to do rather than the person finding out from the result, and so the speed control can
+ * show the length changing as it moves.
+ *
+ * @param speed frames a second for an animation, strokes a second for a replay. Omitted means
+ * the drawing's own answer.
  */
-export function motionOf(d: Drawing): Motion | null {
+export function motionOf(d: Drawing, speed?: number): Motion | null {
   const frames = frameCount(d)
   if (frames > 1) {
-    const fps = Math.max(1, Math.min(24, d.fps ?? 8))
-    return { kind: 'frames', steps: frames, seconds: Math.round((frames / fps) * 10) / 10 }
+    /**
+     * ⚠️ ITS OWN fps IS THE DEFAULT, NOT THE RULE. The speed a walk cycle was drawn at is
+     * almost always the speed it should play at — but a GIF is a thing you send to somebody, and
+     * "the same but slower so they can see it" is a reasonable thing to want from a file without
+     * being a change to the drawing. 24 is the ceiling readDrawing already imposes.
+     */
+    const min = 1
+    const max = 24
+    const s = clamp(Math.round(speed ?? d.fps ?? 8), min, max)
+    const delay = Math.max(2, Math.round(100 / s))
+    return {
+      kind: 'frames',
+      steps: frames,
+      speed: s,
+      min,
+      max,
+      unit: 'frames',
+      delay,
+      seconds: tenth((frames * delay) / 100),
+    }
   }
-  if (d.strokes.length < 2) return null
-  const steps = Math.min(MAX_STEPS, d.strokes.length)
-  const delay = stepDelay(steps)
+  const n = d.strokes.length
+  if (n < 2) return null
+  const min = 1
+  const max = 60
+  /**
+   * ⚠️ THE DEFAULT IS A LENGTH, NOT A RATE, and then it is expressed as a rate so the slider
+   * has somewhere to start. A fixed strokes-per-second would make a four-stroke sketch flash past
+   * and a four-hundred-stroke one run for most of a minute; aiming at five seconds gives every
+   * drawing a watchable default, and the slider is there for when five seconds is not what you
+   * wanted. Strokes a second is the same unit the room's ▶ Replay slider uses, deliberately.
+   */
+  const s = clamp(Math.round(speed ?? n / 5), min, max)
+  const steps = Math.min(MAX_STEPS, n)
+  /* ⚠️ More strokes than images: a long drawing puts several strokes in each step rather than
+     growing the file, so the speed asked for is still the speed it plays at. 2 is GIF's own
+     floor — a shorter delay is treated as 10 by most viewers, which would be slower, not faster. */
+  const delay = clamp(Math.round(((n / s) * 100) / steps), 2, 200)
   return {
     kind: 'timelapse',
     steps,
-    seconds: Math.round(((steps * delay + HOLD) / 100) * 10) / 10,
+    speed: s,
+    min,
+    max,
+    unit: 'strokes',
+    delay,
+    seconds: tenth((steps * delay + HOLD) / 100),
   }
 }
-
-/* ⚠️ Aim for the whole drawing to take about five seconds however many strokes are in it. A
-   per-stroke delay would make a four-stroke sketch flash past and a four-hundred-stroke one run
-   for a minute, and neither is a thing anybody wants to watch. */
-const stepDelay = (steps: number) => Math.max(4, Math.min(25, Math.round(500 / steps)))
 
 export type Progress = (done: number, total: number) => void
 
@@ -137,17 +182,16 @@ export type Progress = (done: number, total: number) => void
 export async function motionGifOf(
   d: Drawing,
   width: number,
+  speed?: number,
   onStep?: Progress,
 ): Promise<Blob | null> {
-  const plan = motionOf(d)
+  const plan = motionOf(d, speed)
   if (!plan) return null
   const s = surface(d, width, true)
   if (!s) return null
   const { ctx, w, h } = s
 
   const enc = new GifEncoder(w, h)
-  const fps = Math.max(1, Math.min(24, d.fps ?? 8))
-  const delay = plan.kind === 'frames' ? Math.max(2, Math.round(100 / fps)) : stepDelay(plan.steps)
 
   for (let i = 0; i < plan.steps; i++) {
     /* ⚠️ Opaque, always. GIF's one transparent index means "leave what was underneath", which
@@ -163,7 +207,7 @@ export async function motionGifOf(
     const last = i === plan.steps - 1
     enc.add(
       ctx.getImageData(0, 0, w, h).data,
-      delay + (last && plan.kind === 'timelapse' ? HOLD : 0),
+      plan.delay + (last && plan.kind === 'timelapse' ? HOLD : 0),
     )
     onStep?.(i + 1, plan.steps)
     await new Promise((r) => setTimeout(r, 0))

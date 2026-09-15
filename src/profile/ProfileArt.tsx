@@ -18,6 +18,16 @@ const SHUFFLE_MS = 7000
 /** How tall a picture may make its block, as a multiple of its width. */
 const MAX_RATIO = 1.25
 
+/**
+ * A replay redraws the picture from the start on every step, so the number of STEPS is what it
+ * costs — not the number of strokes. Capping it means a two-hundred-stroke drawing draws itself
+ * in forty-eight repaints with several strokes appearing at once, rather than two hundred
+ * repaints of an ever-longer list. The same cap the GIF uses, for the same reason.
+ */
+const REPLAY_STEPS = 48
+/** how long the finished picture sits there before it starts again */
+const REPLAY_HOLD_MS = 2600
+
 export function ArtBlock({ cfg }: { cfg: Record<string, unknown> }) {
   const host = useRef<HTMLDivElement>(null)
   const cv = useRef<HTMLCanvasElement>(null)
@@ -38,6 +48,18 @@ export function ArtBlock({ cfg }: { cfg: Record<string, unknown> }) {
   )
   const shuffle = cfg.shuffle !== false
   const current = pieces[i % Math.max(1, pieces.length)]
+
+  /**
+   * ⚠️ CLAMPED HERE, not trusted from the config. This object came out of somebody else's row
+   * and is rendered in a visitor's browser: a speed of 100000 is a timer firing as fast as the
+   * machine allows on a page the visitor did not write. It is the same rule readDrawing applies to
+   * every other number that travels, and the reason that function exists.
+   */
+  const replay = cfg.replay === true
+  const replaySpeed =
+    typeof cfg.replaySpeed === 'number' && Number.isFinite(cfg.replaySpeed)
+      ? Math.max(1, Math.min(60, Math.round(cfg.replaySpeed)))
+      : 12
 
   /**
    * ⚠️ A DRAWING WITH FRAMES PLAYS ITSELF, and its own fps is the speed.
@@ -69,6 +91,60 @@ export function ArtBlock({ cfg }: { cfg: Record<string, unknown> }) {
   const plays = cfg.autoplay !== false && !still
   /** back to the first frame when the shuffle moves on, or the next drawing starts mid-stride */
   useEffect(() => setF(0), [i])
+
+  /**
+   * How much of the picture is drawn so far, or null for all of it.
+   *
+   * ⚠️ A REPLAY IS JUST A DRAWING WITH FEWER STROKES — the same sentence the paint room's own
+   * replay is built on, and the reason there is no second render path here to keep correct. It
+   * slices the list `draw` already paints from.
+   *
+   * ⚠️ ONLY FOR A PICTURE WITH NO FRAMES. One made in the frame editor already has motion of
+   * its own and plays it above; drawing an animation stroke by stroke would be two answers to the
+   * same question, and neither is what the person who made it meant.
+   *
+   * ⚠️ NOT gated on `autoplay`. That switch says "play the animation" and is only offered when
+   * a chosen picture HAS frames — having it silently also stop the replays would make one
+   * checkbox mean two things. Both obey prefers-reduced-motion, which is the switch that matters.
+   */
+  const [upTo, setUpTo] = useState<number | null>(null)
+  const upToRef = useRef<number | null>(null)
+  upToRef.current = upTo
+
+  useEffect(() => {
+    const n = current?.strokes.length ?? 0
+    if (!replay || still || frames > 1 || n < 2) {
+      setUpTo(null)
+      return
+    }
+    const steps = Math.min(REPLAY_STEPS, n)
+    const per = n / steps
+    /* the wall-clock length is strokes ÷ speed however many steps that is split into, so the
+       speed on the block means the same thing as the speed on the download */
+    const ms = Math.max(40, Math.round(((n / replaySpeed) * 1000) / steps))
+    let k = 0
+    let t = 0
+    const step = () => {
+      k = k >= steps ? 1 : k + 1
+      setUpTo(Math.min(n, Math.round(k * per)))
+      /* the finished picture is the one worth looking at, so it stays up longer than a stroke */
+      t = window.setTimeout(tick, k >= steps ? REPLAY_HOLD_MS : ms)
+    }
+    const tick = () => {
+      // ⚠️ same reason as the shuffle below: nobody is watching a background tab
+      if (document.visibilityState !== 'visible') {
+        t = window.setTimeout(tick, 1000)
+        return
+      }
+      step()
+    }
+    /* ⚠️ THE FIRST STROKE GOES UP NOW, not one interval from now. `upTo` survives the effect
+       re-running, so waiting for the first tick meant a new picture spent that interval drawn to
+       the PREVIOUS picture's progress — a shuffle landing on a fresh drawing already half done,
+       which then jumped back to the start. Found by watching the trace, not by reading this. */
+    step()
+    return () => window.clearTimeout(t)
+  }, [replay, still, frames, current, replaySpeed])
 
   useEffect(() => {
     if (!plays || frames < 2) return
@@ -164,7 +240,14 @@ export function ArtBlock({ cfg }: { cfg: Record<string, unknown> }) {
       ctx.clearRect(0, 0, w, h)
       ctx.save()
       ctx.translate(Math.round((w - pw) / 2), 0)
-      paintDrawing(ctx, current, pw, h, { frame: frameRef.current })
+      /* ⚠️ `part`, not `shown` — `shown` above is the aspect ratio this panel settled on, and
+         the two live in the same function. */
+      const k = upToRef.current
+      const part =
+        k != null && k < current.strokes.length
+          ? { ...current, strokes: current.strokes.slice(0, k) }
+          : current
+      paintDrawing(ctx, part, pw, h, { frame: frameRef.current })
       ctx.restore()
       lastW = w
     }
@@ -187,7 +270,9 @@ export function ArtBlock({ cfg }: { cfg: Record<string, unknown> }) {
     }
   }, [current])
 
-  const redrawOn = f
+  /* ⚠️ BOTH, as one string. Either number changing means repaint, and depending on the two
+     separately would be two effects racing to call the same function. */
+  const redrawOn = `${f}:${upTo}`
   useEffect(() => {
     redraw.current?.()
   }, [redrawOn])

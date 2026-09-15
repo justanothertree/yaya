@@ -1399,6 +1399,48 @@ function ArtPicker({
           <span className="muted">Play the animation</span>
         </label>
       )}
+      {/**
+       * ⚠️ OFFERED ONLY FOR A PICTURE THAT CAN DO IT, the same rule as the animation switch
+       * above: a drawing made in the frame editor already has motion and plays it, and a
+       * one-stroke picture has nothing to watch. A switch for "draw itself" on a block where
+       * nothing would move is a promise the page cannot keep.
+       *
+       * ⚠️ OFF BY DEFAULT, unlike the animation switch. Frames exist to be played — a drawing
+       * with them is already a moving thing and showing it still is the surprising choice. A flat
+       * picture is a picture; making every art block on the site start redrawing itself because
+       * the feature arrived is a change to pages nobody asked to change.
+       */}
+      {chosen.some((a) => {
+        const d = readDrawing(a)
+        return d ? frameCount(d) < 2 && d.strokes.length > 1 : false
+      }) && (
+        <>
+          <label className="inst-pick" style={{ display: 'flex', gap: '0.4rem' }}>
+            <input
+              type="checkbox"
+              checked={value.replay === true}
+              onChange={(e) => onChange({ ...value, replay: e.target.checked || undefined })}
+            />
+            <span className="muted">Draw themselves, stroke by stroke</span>
+          </label>
+          {value.replay === true && (
+            <label className="appearance-slider" style={{ display: 'flex', gap: '0.4rem' }}>
+              <span className="muted">Strokes a second</span>
+              <input
+                type="range"
+                min={1}
+                max={60}
+                step={1}
+                value={typeof value.replaySpeed === 'number' ? value.replaySpeed : 12}
+                onChange={(e) => onChange({ ...value, replaySpeed: Number(e.target.value) })}
+              />
+              <span className="appearance-slider-val">
+                {typeof value.replaySpeed === 'number' ? value.replaySpeed : 12}
+              </span>
+            </label>
+          )}
+        </>
+      )}
       <span className="muted" style={{ fontSize: '0.75rem' }}>
         {chosen.length} chosen{' '}
         {used > CONFIG_LIMIT
