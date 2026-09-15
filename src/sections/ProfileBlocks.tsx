@@ -609,15 +609,29 @@ export function ProfileBlocksView({
    * nothing — so tabs cost exactly nothing until they are used, and the page below is
    * byte-for-byte what it was before.
    */
-  const tabs = tabsOf(blocks)
+  /**
+   * ⚠️ WHAT WILL ACTUALLY DRAW, not what was served.
+   *
+   * A block can be public, arrive intact, and render nothing: a song block with no song, a bio
+   * with no words that was not kept on purpose. Counting those produced an empty SLOT holding
+   * space in the grid — and, once sections existed, a TAB with somebody's name on it that led to
+   * a blank page. Found on the live site: a section called "page1" whose only block was an empty
+   * song.
+   *
+   * isBlockEmpty already knows which types can come to nothing, and already answers false for a
+   * block kept blank deliberately, so this is the same question the editor asks when it offers to
+   * fill one in.
+   */
+  const live = blocks.filter((b) => !isBlockEmpty(b))
+  const tabs = tabsOf(live)
   /* an unnamed leading section exists only while something is still unfiled — see blockTab */
-  const hasUnfiled = blocks.some((b) => !blockTab(b))
+  const hasUnfiled = live.some((b) => !blockTab(b))
   const sections = !tabs.length ? [] : hasUnfiled ? ['', ...tabs] : tabs
   const [openTab, setOpenTab] = useState<string | null>(null)
   const active = openTab != null && sections.includes(openTab) ? openTab : (sections[0] ?? '')
-  const shown = sections.length ? blocks.filter((b) => blockTab(b) === active) : blocks
+  const shown = sections.length ? live.filter((b) => blockTab(b) === active) : live
 
-  if (!blocks.length) return null
+  if (!live.length) return null
   return (
     <>
       {sections.length > 1 && (
