@@ -242,6 +242,26 @@ export function textAlign(config: Record<string, unknown> | null | undefined): T
   return v === 'center' || v === 'right' ? v : 'left'
 }
 
+/**
+ * A block that is MEANT to be empty.
+ *
+ * ⚠️ BLANK SPACE IS A DESIGN ELEMENT, and until now the page would not let anybody have any.
+ * A bio and a status with nothing typed in them render as nothing at all — correct, because an
+ * unfinished block showing a visitor an empty box is the failure this whole file keeps being
+ * about. But it also means a tinted band, a coloured panel, a gap that pushes the next thing
+ * onto its own line, and every layout built out of those, are impossible to ask for. The blocks
+ * already have a colour, a shape, an edge and a width; the only thing stopping one being used as
+ * a shape on a page was that it insisted on holding words first.
+ *
+ * ⚠️ SO IT IS EXPLICIT, rather than inferred from "it has a tint, so probably deliberate".
+ * The two states look identical on screen and mean opposite things — one is somebody's design
+ * and the other is somebody's unfinished sentence — and a guess that is wrong either publishes
+ * a mistake or deletes an intention. A person pressing a switch cannot be misread.
+ */
+export function blockKeepEmpty(config: Record<string, unknown> | null | undefined): boolean {
+  return config?.keep === true
+}
+
 /** The inline style a run of somebody's own words wears. */
 export function textStyle(config: Record<string, unknown> | null | undefined): React.CSSProperties {
   const em = TEXT_SIZES.find((t) => t.id === textSize(config))?.em ?? 1

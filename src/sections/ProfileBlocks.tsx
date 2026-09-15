@@ -21,6 +21,7 @@ import {
   blockEdge,
   blockFont,
   blockHeading,
+  blockKeepEmpty,
   blockShape,
   textAlign,
   textSize,
@@ -364,7 +365,9 @@ function BlockView({
       return <LooksBlock block={block} />
     case 'bio': {
       const text = typeof cfg.text === 'string' ? cfg.text : ''
-      if (!text.trim()) return null
+      /* ⚠️ Empty and KEPT is a panel — see blockKeepEmpty. Empty and not kept is still
+         nothing, because that is a block somebody has not finished. */
+      if (!text.trim() && !blockKeepEmpty(cfg)) return null
       return (
         <div className={'card profile-block is-' + block.size}>
           {/* ⚠️ STILL A PLAIN TEXT NODE. A bio can say anything and can never RENDER anything —
@@ -415,7 +418,7 @@ function BlockView({
     case 'status': {
       const text = typeof cfg.text === 'string' ? cfg.text.trim() : ''
       const emoji = typeof cfg.emoji === 'string' && cfg.emoji ? cfg.emoji : '💭'
-      if (!text) return null
+      if (!text && !blockKeepEmpty(cfg)) return null
       // One line, big, no heading — a status IS the sentence, and a "Status" label above it
       // would just be a word taking up the space the sentence should have.
       return (
@@ -990,6 +993,9 @@ function BannerPicker({
 /** A block with nothing in it yet, so the canvas can say so instead of drawing a blank card. */
 function isBlockEmpty(block: ProfileBlock): boolean {
   const txt = typeof block.config.text === 'string' ? block.config.text.trim() : ''
+  /* ⚠️ A block kept on purpose is not unfinished, and telling its owner to "click to fill it
+     in" is the editor arguing with a decision they already made. */
+  if (blockKeepEmpty(block.config)) return false
   if (block.block_type === 'bio') return !txt
   if (block.block_type === 'status') return !txt
   if (block.block_type === 'song') return !songFromConfig(block.config)
@@ -2306,6 +2312,7 @@ export function ProfileBlocksEditor({
                 {/* ⚠️ Arrange mode is where a page gets sorted into sections, so a tile that
                     does not say which one it is in is the one thing you cannot sort by. */}
                 {blockTab(b) && <span className="profile-canvas-tab">{blockTab(b)}</span>}
+                {blockKeepEmpty(b.config) && <span className="muted">blank on purpose</span>}
                 {isBlockEmpty(b) && <span className="muted">empty</span>}
               </div>
             ) : isBlockEmpty(b) ? (
@@ -2587,6 +2594,25 @@ export function ProfileBlocksEditor({
                           </button>
                         ))}
                       </span>
+                    </label>
+                    {/**
+                     * ⚠️ THE ONE THAT MAKES BLANK SPACE POSSIBLE. With it on, a block with
+                     * nothing typed in it is still a card — so a tint, a shape and a width become
+                     * a band, a panel or a gap, and layouts nobody designed a block for can be
+                     * built out of the blocks that already exist.
+                     *
+                     * Explicit rather than inferred from "it has a colour, so it is probably
+                     * meant": an unfinished sentence and a deliberate panel look identical and
+                     * mean opposite things, and a guess that is wrong either publishes a mistake
+                     * or deletes an intention.
+                     */}
+                    <label className="inst-pick" style={{ display: 'flex', gap: '0.4rem' }}>
+                      <input
+                        type="checkbox"
+                        checked={blockKeepEmpty(selected.config)}
+                        onChange={(e) => setOpenCfg({ keep: e.target.checked || null })}
+                      />
+                      <span className="muted">Keep it on the page with no words in it</span>
                     </label>
                   </div>
                 )}
