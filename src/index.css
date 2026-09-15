@@ -7828,6 +7828,21 @@ a.cz-msg-author:focus-visible {
    The editor renders the real .profile-blocks-grid, so everything below is only
    the handles laid over it. Nothing here may change how a block SIZES, or the
    thing being composed would stop being the thing that gets published. */
+/* the page's own shape, in the editor head — the one row there that is not about a block */
+.profile-pageshape {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem;
+}
+.profile-pageshape .btn {
+  font-size: 0.78rem;
+}
+.profile-pageshape .muted {
+  font-size: 0.78rem;
+  margin-right: 0.15rem;
+}
+
 /* "Seen by" — the owner looking at their own page through somebody else's reach */
 .profile-seenas {
   display: flex;
@@ -8518,6 +8533,35 @@ a.cz-msg-author:focus-visible {
    the editor still see the arrangement you made. */
 .profile-blocks-grid {
   grid-auto-flow: row dense;
+}
+
+/**
+ * The page's own shape — see PAGE_WIDTHS.
+ *
+ * ⚠️ A MAX-WIDTH, NOT FEWER COLUMNS. The grid is six tracks on purpose (see the long note on
+ * .profile-blocks-grid): six divides by two and three, so a block set to a third is a third at
+ * every size. Narrowing the container keeps every one of those fractions and changes the page
+ * from a dashboard into a column; repacking into two tracks would silently rearrange a
+ * composition somebody made.
+ *
+ * ⚠️ Below 700px the grid is already one column and a max-width of 34rem would do nothing but
+ * add a margin to a phone — so the caps only apply where there is width to give away.
+ */
+@media (min-width: 700px) {
+  .profile-blocks-grid[data-page-w='column'] {
+    max-width: 34rem;
+    margin-inline: auto;
+  }
+  .profile-blocks-grid[data-page-w='page'] {
+    max-width: 58rem;
+    margin-inline: auto;
+  }
+}
+.profile-blocks-grid[data-page-g='tight'] {
+  gap: var(--sp-1, 0.4rem);
+}
+.profile-blocks-grid[data-page-g='airy'] {
+  gap: calc(var(--sp-3, 1rem) * 2.2);
 }
 
 /* the published wrapper, matching the editor's cell — see the note in ProfileBlocks */

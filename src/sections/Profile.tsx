@@ -148,6 +148,12 @@ export function Profile({ authed, username }: { authed: boolean; username?: stri
    * Null means "as me". A tier means: show only what somebody with that reach was sent.
    */
   const [seenAs, setSeenAs] = useState<Tier | null>(null)
+  /**
+   * ⚠️ HELD SEPARATELY FROM `p`, because it is the one part of the payload the owner edits in
+   * place. Writing it back into the profile object would mean either refetching the whole profile
+   * after every press or reaching into a state shape that belongs to the loader.
+   */
+  const [pageStyle, setPageStyle] = useState<unknown>(undefined)
   const [editing, setEditing] = useState(editFromHash)
   /**
    * Open your own page in the editor, once the server has confirmed it IS your own page.
@@ -284,7 +290,10 @@ export function Profile({ authed, username }: { authed: boolean; username?: stri
         if (!live) return
         if (error) setState({ kind: 'error', msg: error.message })
         else if (!data) setState({ kind: 'missing' })
-        else setState({ kind: 'ok', p: data as ProfileData })
+        else {
+          setState({ kind: 'ok', p: data as ProfileData })
+          setPageStyle((data as { page?: unknown }).page)
+        }
       })
     return () => {
       live = false
@@ -486,6 +495,7 @@ export function Profile({ authed, username }: { authed: boolean; username?: stri
       }
       const row = data as ProfileData & { blocks?: ProfileBlock[] }
       setState({ kind: 'ok', p: row })
+      setPageStyle((row as { page?: unknown }).page)
       setBlocks(Array.isArray(row.blocks) ? row.blocks : [])
       setTrophies([])
       setAchievements([])
@@ -525,6 +535,7 @@ export function Profile({ authed, username }: { authed: boolean; username?: stri
       }
       const row = data as ProfileData & { blocks?: ProfileBlock[] }
       setState({ kind: 'ok', p: row })
+      setPageStyle((row as { page?: unknown }).page)
       setBlocks(Array.isArray(row.blocks) ? row.blocks : [])
       setActivity([])
       setTrophies([])
@@ -600,7 +611,10 @@ export function Profile({ authed, username }: { authed: boolean; username?: stri
     if (!error) {
       // refetch so the button reflects the new standing
       const { data } = await sb.rpc('get_member_profile', { p_username: u })
-      if (data) setState({ kind: 'ok', p: data as ProfileData })
+      if (data) {
+        setState({ kind: 'ok', p: data as ProfileData })
+        setPageStyle((data as { page?: unknown }).page)
+      }
     }
   }
   async function message() {
@@ -901,6 +915,17 @@ export function Profile({ authed, username }: { authed: boolean; username?: stri
           copy being arranged, done-editing shows what was actually saved. */}
       {p.is_me && editing ? (
         <ProfileBlocksEditor
+          page={pageStyle}
+          onPage={(next) => {
+            /* ⚠️ Shown immediately, saved in the background. The page redrawing a beat after you
+               pressed a width would make choosing one feel like waiting for the server to agree. */
+            setPageStyle(next)
+            void getSupabaseClient()
+              .rpc('set_my_page_style', { p_style: next })
+              .then(({ data, error }) => {
+                if (!error) setPageStyle(data)
+              })
+          }}
           initial={blocks}
           username={p.username}
           activity={activity}
@@ -926,6 +951,7 @@ export function Profile({ authed, username }: { authed: boolean; username?: stri
           isMe={p.is_me}
           guest={!authed || seenAs === 'public'}
           asTier={seenAs ?? undefined}
+          page={pageStyle}
         />
       )}
 

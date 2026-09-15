@@ -101,6 +101,8 @@ export function ProfileLookPreview() {
   const [editing, setEditing] = useState(true)
   /* the read view's audience — the workbench's stand-in for the "Seen by" row on a real page */
   const [asTier, setAsTier] = useState<Tier | null>(null)
+  /* the workbench's stand-in for the page-shape row, which on a real page needs a signed-in owner */
+  const [page, setPage] = useState<unknown>(undefined)
 
   return (
     <div style={{ display: 'grid', gap: '1rem' }}>
@@ -236,6 +238,8 @@ export function ProfileLookPreview() {
 
       {editing ? (
         <ProfileBlocksEditor
+          page={page}
+          onPage={setPage}
           initial={blocks}
           username={who}
           activity={SAMPLE_ACTIVITY}
@@ -252,6 +256,7 @@ export function ProfileLookPreview() {
           username={who}
           asTier={asTier ?? undefined}
           guest={asTier === 'public'}
+          page={page}
         />
       )}
     </div>

@@ -28,6 +28,10 @@ import {
   blockTilt,
   textAlign,
   tierSees,
+  pageStyleAttrs,
+  PAGE_WIDTHS,
+  PAGE_GAPS,
+  readPageStyle,
   textSize,
   textStyle,
   TINT_HUES,
@@ -652,6 +656,7 @@ export function ProfileBlocksView({
   isMe = false,
   guest = false,
   asTier,
+  page,
 }: {
   blocks: ProfileBlock[]
   activity: ActivityItem[]
@@ -662,6 +667,8 @@ export function ProfileBlocksView({
   isMe?: boolean
   /** nobody is signed in — see BlockView */
   guest?: boolean
+  /** the page shape its owner chose, straight off the profile payload — see readPageStyle */
+  page?: unknown
   /**
    * ⚠️ THE OWNER LOOKING THROUGH SOMEBODY ELSE'S EYES. Absent means "show me everything I was
    * sent", which is what every visitor gets — the server already filtered for them. It is only
@@ -720,7 +727,7 @@ export function ProfileBlocksView({
           ))}
         </div>
       )}
-      <div className="profile-blocks-grid">
+      <div className="profile-blocks-grid" {...pageStyleAttrs(page)}>
         {shown.map((b, i) => (
           /**
            * ⚠️ WRAPPED, exactly as the editor wraps. Blocks used to be the grid items themselves,
@@ -1776,6 +1783,8 @@ export function ProfileBlocksEditor({
   achievements,
   snakeBest,
   onSaved,
+  page,
+  onPage,
 }: {
   initial: ProfileBlock[]
   username: string
@@ -1785,6 +1794,9 @@ export function ProfileBlocksEditor({
   achievements?: Achievement[]
   snakeBest: { score: number; game_mode: string | null } | null
   onSaved: (blocks: ProfileBlock[]) => void
+  /** the page shape, so the canvas composes at the width the page really uses */
+  page?: unknown
+  onPage?: (next: { width: string; gap: string }) => void
 }) {
   const [blocks, setBlocksRaw] = useState<ProfileBlock[]>(initial)
   const [err, setErr] = useState<string | null>(null)
@@ -2336,6 +2348,37 @@ export function ProfileBlocksEditor({
             ▦ {blocks.length ? 'Start over from a layout' : 'Start from a layout'}
           </button>
         )}
+        {/**
+         * ⚠️ THE PAGE'S OWN SHAPE, and the only setting here that is not about one block. It
+         * lives in the head rather than in a block's inspector because there is no block it
+         * belongs to — putting it on whichever one happened to be selected would make it look
+         * like that block's setting and be found by nobody.
+         */}
+        {onPage && (
+          <span className="profile-pageshape">
+            <span className="muted">Page</span>
+            {PAGE_WIDTHS.map((w) => (
+              <button
+                key={w.id}
+                className={'btn' + (readPageStyle(page).width === w.id ? ' is-on' : '')}
+                aria-pressed={readPageStyle(page).width === w.id}
+                onClick={() => onPage({ width: w.id, gap: readPageStyle(page).gap })}
+              >
+                {w.label}
+              </button>
+            ))}
+            {PAGE_GAPS.map((g) => (
+              <button
+                key={g.id}
+                className={'btn' + (readPageStyle(page).gap === g.id ? ' is-on' : '')}
+                aria-pressed={readPageStyle(page).gap === g.id}
+                onClick={() => onPage({ width: readPageStyle(page).width, gap: g.id })}
+              >
+                {g.label}
+              </button>
+            ))}
+          </span>
+        )}
         {blocks.length > 1 && (
           <button
             className={'btn' + (arranging ? ' is-on' : '')}
@@ -2409,6 +2452,7 @@ export function ProfileBlocksEditor({
        */}
       <div
         className={'profile-blocks-grid profile-canvas' + (arranging ? ' is-arranging' : '')}
+        {...pageStyleAttrs(page)}
         onPointerDown={(e) => {
           // a press on the gaps between blocks puts the inspector away
           if ((e.target as HTMLElement).closest('[data-cell]')) return

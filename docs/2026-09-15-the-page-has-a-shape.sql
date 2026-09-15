@@ -1,0 +1,69 @@
+-- 2026-09-15 — the page's own shape, not just the blocks on it
+--
+-- ✅ APPLIED as migrations `profile_page_style`, `profile_getters_carry_page_style` and
+--    `page_style_widths_are_only_ever_narrower`.
+--
+--
+-- WHAT THIS IS FOR
+--
+-- A block could be one of seven shapes, five edges, thirteen tints, three finishes, seven faces,
+-- eight patterns and a couple of degrees off square. The PAGE was identical for everybody: six
+-- columns, one gap, one width. Every profile on the site had the same silhouette.
+--
+--
+-- ⚠️ NOT INSIDE `look`. A visitor may switch off "wear their look" — theme, palette, flair and
+-- backdrop are a skin offered to them, and refusing it is reasonable. The layout is not offered:
+-- it is the arrangement its owner made, and a composition read at somebody else's column width is
+-- a different composition. So it travels as its own top-level key and cannot be turned off.
+--
+-- ⚠️ SIX COLUMNS STAY SIX COLUMNS. The grid's own note argues for six because it divides by two
+-- and three, so a block set to a third is a third at every size — and that a page which re-packs
+-- itself per viewport is a page nobody composed. Narrowing is therefore a max-width, never fewer
+-- tracks: every fraction survives, and the page changes from a dashboard into a column without
+-- rearranging anything anybody placed.
+--
+-- ⚠️ THE AXIS ONLY RUNS ONE WAY, which the first spelling of this got wrong. `.container` already
+-- caps every page at min(90rem, 100vw - 2rem), so today's layout IS the wide one and there is
+-- nothing wider to offer. A value that cannot do anything is worse than one fewer value, so the
+-- three are column / page / wide with `wide` meaning exactly what every profile does now.
+--
+-- ⚠️ THE DEFAULT IS STORED AS NULL rather than as the words for it. A row that says nothing and a
+-- row that says "the default" are the same page; one spelling means the three readers never have
+-- to treat them as two, and every existing profile is untouched because it stores nothing.
+--
+--
+-- ── HOW THE THREE READERS WERE CHANGED, AND WHY IT WAS SAFE ─────────────────────────────────
+--
+-- get_member_profile, get_demo_profile and get_public_profile serve every profile view on the
+-- site, and get_member_profile alone is a hundred lines of visibility arithmetic. Rewriting three
+-- bodies by hand to add one key is three chances to change something nobody meant to change.
+--
+-- So the migration read each function's own definition with pg_get_functiondef, spliced one line
+-- in after a known anchor, and executed the result. A failed splice cannot half-apply: the anchor
+-- either matches or the DO block raises and the whole migration rolls back.
+--
+-- It was then PROVEN rather than assumed. Baselines were taken before:
+--
+--   md5(get_demo_profile()::text)          = 8c7c98977e28079b32dc733c5c9668cd
+--   md5(get_public_profile('evan')::text)  = 8c7c98977e28079b32dc733c5c9668cd
+--   md5(get_member_profile('evan')::text)  = 54250c4ea6dc3be1cd80a786b564f521
+--   md5(get_member_profile(self)::text)    = fabe68d2e9bbdc00949d1043d9a2a7ee
+--
+-- and afterwards every one of those matched `md5((payload - 'page')::text)` exactly, with all
+-- three carrying the new key. Four payloads provably identical apart from the thing that was
+-- added.
+--
+--
+-- ── HOW TO CHECK IT ─────────────────────────────────────────────────────────────────────────
+-- Who has chosen a shape, and what it is:
+--
+--   select username, page_style from public.profiles where page_style is not null;
+--
+-- That the writer refuses junk — expect the first to round-trip and the rest to come back NULL:
+--
+--   select public.set_my_page_style('{"width":"column","gap":"airy"}'::jsonb);
+--   select public.set_my_page_style('{"width":"HACK","gap":"<script>"}'::jsonb);
+--   select public.set_my_page_style('{}'::jsonb);
+--
+-- ⚠️ Those WRITE to the caller's own row. Run them as a throwaway account or not at all; the
+-- editor is the honest test and it is one click.

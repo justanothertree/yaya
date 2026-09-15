@@ -78,6 +78,54 @@ export function avatarStyle(username: string): React.CSSProperties {
 }
 
 /**
+ * HOW THE PAGE IS LAID OUT, as opposed to how any block on it looks.
+ *
+ * ⚠️ THE AXIS ONLY RUNS ONE WAY. `.container` already caps every page at min(90rem, 100vw -
+ * 2rem), so today's layout IS the wide one and there is nothing wider to offer. The three are
+ * therefore column, page and wide — wide being exactly what every profile does now.
+ *
+ * ⚠️ SIX COLUMNS STAY SIX COLUMNS. The grid's own note argues for six because it divides by
+ * two and three, so a block can be a half, a third, two thirds or the whole width and those
+ * fractions mean the same thing at every size. Narrowing is a max-width, not fewer tracks: the
+ * composition somebody arranged survives being read in a narrower column, and would not survive
+ * being repacked into a different number of them.
+ *
+ * ⚠️ Clamped here as well as in set_my_page_style, because this is jsonb arriving from a
+ * network payload and the reader cannot assume the writer was the only way in.
+ */
+export type PageWidth = 'column' | 'page' | 'wide'
+export type PageGap = 'tight' | 'normal' | 'airy'
+export type PageStyle = { width: PageWidth; gap: PageGap }
+
+export const PAGE_WIDTHS: ReadonlyArray<{ id: PageWidth; label: string }> = [
+  { id: 'column', label: 'Column' },
+  { id: 'page', label: 'Page' },
+  { id: 'wide', label: 'Wide' },
+]
+
+export const PAGE_GAPS: ReadonlyArray<{ id: PageGap; label: string }> = [
+  { id: 'tight', label: 'Tight' },
+  { id: 'normal', label: 'Normal' },
+  { id: 'airy', label: 'Airy' },
+]
+
+export function readPageStyle(v: unknown): PageStyle {
+  const o = (v ?? {}) as Record<string, unknown>
+  const width = PAGE_WIDTHS.some((w) => w.id === o.width) ? (o.width as PageWidth) : 'wide'
+  const gap = PAGE_GAPS.some((g) => g.id === o.gap) ? (o.gap as PageGap) : 'normal'
+  return { width, gap }
+}
+
+/** The attributes a blocks grid needs to wear a page style, or nothing when it is the default. */
+export function pageStyleAttrs(v: unknown): { 'data-page-w'?: PageWidth; 'data-page-g'?: PageGap } {
+  const { width, gap } = readPageStyle(v)
+  return {
+    ...(width === 'wide' ? {} : { 'data-page-w': width }),
+    ...(gap === 'normal' ? {} : { 'data-page-g': gap }),
+  }
+}
+
+/**
  * Whether a viewer at one tier may see a block at another.
  *
  * ⚠️ A PREVIEW OF THE SERVER'S RULE, NOT A SECOND COPY OF IT. can_see() in Postgres decides
