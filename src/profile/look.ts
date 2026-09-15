@@ -126,6 +126,68 @@ export function pageStyleAttrs(v: unknown): { 'data-page-w'?: PageWidth; 'data-p
 }
 
 /**
+ * A whole page, rolled.
+ *
+ * ⚠️ RANDOM IS NOT THE SAME AS SURPRISING, and getting that wrong is the difference between a
+ * tool and a gimmick. Choosing every setting independently for every block gives twelve different
+ * faces, twelve shapes and twelve hues — which is not a page anybody designed, it is noise, and
+ * nobody keeps it. The combination space this rolls through is large precisely BECAUSE the
+ * settings compose, so the roll has to compose them too.
+ *
+ * So it picks a small palette of decisions and then varies WITHIN it: one face for the page and
+ * occasionally a second for emphasis, one shape with sometimes an accent shape, one edge, one
+ * finish, and hues drawn from a family rather than from the whole wheel. What changes block to
+ * block is which of those it got — which is roughly what a person does when they design one.
+ *
+ * ⚠️ IT IS SAFE TO PRESS BECAUSE UNDO EXISTS. This would have been a hostile button a day ago:
+ * one press, every block changed, no way back. It costs one keystroke to reject now, and that is
+ * the whole reason it is worth offering at all.
+ */
+const pick = <T>(xs: readonly T[]): T => xs[Math.floor(Math.random() * xs.length)]
+const chance = (p: number) => Math.random() < p
+
+export function surpriseMe(count: number): {
+  page: PageStyle
+  blocks: Array<Record<string, unknown>>
+} {
+  /* one hue family: a base and its neighbours, so two tinted blocks look related rather than
+     like two people chose them */
+  const baseIdx = Math.floor(Math.random() * TINT_HUES.length)
+  const family = [0, 1, -1, 2].map(
+    (d) => TINT_HUES[(baseIdx + d + TINT_HUES.length) % TINT_HUES.length],
+  )
+
+  const face = pick(BLOCK_FONTS.filter((f) => f.id !== 'page')).id
+  const accentFace = chance(0.35) ? pick(BLOCK_FONTS.filter((f) => f.id !== 'page')).id : null
+  const shape = pick(BLOCK_SHAPES).id
+  const accentShape = chance(0.3) ? pick(BLOCK_SHAPES).id : null
+  const edge = pick(BLOCK_EDGES).id
+  const finish = pick(BLOCK_FINISHES).id
+  /* a pattern on SOME blocks. On all of them it stops being an accent and becomes wallpaper */
+  const pattern = chance(0.55) ? (Object.keys(BANNER_STYLES) as BannerStyle[]) : null
+  const patternStyle = pattern ? pick(pattern) : null
+  const tiltable = chance(0.4)
+
+  const blocks: Array<Record<string, unknown>> = []
+  for (let i = 0; i < count; i++) {
+    blocks.push({
+      font: accentFace && chance(0.25) ? accentFace : face,
+      shape: accentShape && chance(0.3) ? accentShape : shape === 'round' ? null : shape,
+      edge: edge === 'plain' ? null : edge,
+      tint: chance(0.75) ? pick(family) : null,
+      finish,
+      backdrop: patternStyle && chance(0.4) ? patternStyle : null,
+      tilt: tiltable && chance(0.35) ? pick([-2, -1, 1, 2]) : null,
+    })
+  }
+
+  return {
+    page: { width: pick(PAGE_WIDTHS).id, gap: pick(PAGE_GAPS).id },
+    blocks,
+  }
+}
+
+/**
  * Whether a viewer at one tier may see a block at another.
  *
  * ⚠️ A PREVIEW OF THE SERVER'S RULE, NOT A SECOND COPY OF IT. can_see() in Postgres decides

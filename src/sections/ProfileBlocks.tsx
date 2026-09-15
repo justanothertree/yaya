@@ -32,6 +32,9 @@ import {
   PAGE_WIDTHS,
   PAGE_GAPS,
   readPageStyle,
+  surpriseMe,
+  type PageWidth,
+  type PageGap,
   textSize,
   textStyle,
   TINT_HUES,
@@ -1720,6 +1723,13 @@ type Starter = {
   name: string
   /** what the page is FOR, in the words somebody choosing would use */
   about: string
+  /**
+   * ⚠️ THE SHAPE OF THE PAGE, not just what is on it. Page width and gap were added after
+   * these were written and live in a row nobody has a reason to look at — so every starter
+   * produced the same silhouette and the axis was effectively invisible. A starting point that
+   * does not start you anywhere new is half a starting point.
+   */
+  page?: { width: PageWidth; gap: PageGap }
   blocks: Array<{
     type: ProfileBlock['block_type']
     size: ProfileBlock['size']
@@ -1730,6 +1740,7 @@ type Starter = {
 const STARTERS: Starter[] = [
   {
     id: 'intro',
+    page: { width: 'page', gap: 'normal' },
     name: 'Introduction',
     about: 'Who you are, and somewhere to say hello',
     blocks: [
@@ -1741,6 +1752,7 @@ const STARTERS: Starter[] = [
   },
   {
     id: 'stage',
+    page: { width: 'wide', gap: 'tight' },
     name: 'Stage',
     about: 'A page that plays something when you land on it',
     blocks: [
@@ -1753,6 +1765,7 @@ const STARTERS: Starter[] = [
   },
   {
     id: 'scoreboard',
+    page: { width: 'wide', gap: 'normal' },
     name: 'Scoreboard',
     about: 'What you have been doing and what you have won',
     blocks: [
@@ -1764,6 +1777,7 @@ const STARTERS: Starter[] = [
   },
   {
     id: 'plain',
+    page: { width: 'column', gap: 'airy' },
     name: 'Just the basics',
     about: 'Three blocks. Nothing to tidy up later',
     blocks: [
@@ -1820,31 +1834,55 @@ export function ProfileBlocksEditor({
    * setStates; without this, undo would walk back through a drag one pixel at a time and never
    * reach the thing before it.
    */
-  type Step = { blocks: ProfileBlock[]; label: string }
+  /**
+   * ⚠️ THE PAGE SHAPE IS IN HERE TOO, and leaving it out was worse than having no undo for it.
+   * "Surprise me" rolls the blocks AND the page; a starter sets both. Undo restored the blocks and
+   * quietly left the page at whatever the roll had chosen — which is the failure mode that makes
+   * an undo button untrustworthy, because it covers enough of a change that you stop checking.
+   */
+  type Step = { blocks: ProfileBlock[]; page: unknown; label: string }
   const [past, setPast] = useState<Step[]>([])
   const [future, setFuture] = useState<Step[]>([])
   const blocksRef = useRef(blocks)
   blocksRef.current = blocks
   const pastRef = useRef<Step[]>(past)
   pastRef.current = past
+  const pageRef = useRef<unknown>(page)
+  pageRef.current = page
+  const onPageRef = useRef(onPage)
+  onPageRef.current = onPage
   const lastPush = useRef(0)
+
+  /** record where we are, coalescing a run of the same gesture into one step */
+  const pushStep = useCallback((label: string) => {
+    const now = Date.now()
+    const top = pastRef.current[pastRef.current.length - 1]
+    const coalesce = now - lastPush.current < 600 && top?.label === label
+    lastPush.current = now
+    if (!coalesce)
+      setPast((p) => [...p.slice(-49), { blocks: blocksRef.current, page: pageRef.current, label }])
+    setFuture([])
+  }, [])
 
   const setBlocks = useCallback(
     (next: ProfileBlock[] | ((b: ProfileBlock[]) => ProfileBlock[]), label = 'that change') => {
-      const cur = blocksRef.current
-      const value = typeof next === 'function' ? next(cur) : next
       /* ⚠️ Computed from refs and pushed OUTSIDE the updater. Calling setState inside another
          setState's updater is the "cannot update a component while rendering" trap, and React is
          free to run an updater twice — which would file two history entries for one press. */
-      const now = Date.now()
-      const top = pastRef.current[pastRef.current.length - 1]
-      const coalesce = now - lastPush.current < 600 && top?.label === label
-      lastPush.current = now
-      if (!coalesce) setPast((p) => [...p.slice(-49), { blocks: cur, label }])
-      setFuture([])
+      const value = typeof next === 'function' ? next(blocksRef.current) : next
+      pushStep(label)
       setBlocksRaw(value)
     },
-    [],
+    [pushStep],
+  )
+
+  /** the page's own shape, recorded the same way so one Undo covers a change that touched both */
+  const changePage = useCallback(
+    (next: { width: string; gap: string }, label: string) => {
+      pushStep(label)
+      onPageRef.current?.(next)
+    },
+    [pushStep],
   )
 
   const stepBack = useCallback(() => {
@@ -1852,8 +1890,12 @@ export function ProfileBlocksEditor({
     if (!p.length) return
     const step = p[p.length - 1]
     setPast(p.slice(0, -1))
-    setFuture((f) => [...f, { blocks: blocksRef.current, label: step.label }])
+    setFuture((f) => [
+      ...f,
+      { blocks: blocksRef.current, page: pageRef.current, label: step.label },
+    ])
     setBlocksRaw(step.blocks)
+    onPageRef.current?.(readPageStyle(step.page))
     lastPush.current = 0
     setOpenIdx(null)
     setLiftIdx(null)
@@ -1863,8 +1905,12 @@ export function ProfileBlocksEditor({
     setFuture((f) => {
       if (!f.length) return f
       const step = f[f.length - 1]
-      setPast((p) => [...p, { blocks: blocksRef.current, label: step.label }])
+      setPast((p) => [
+        ...p,
+        { blocks: blocksRef.current, page: pageRef.current, label: step.label },
+      ])
       setBlocksRaw(step.blocks)
+      onPageRef.current?.(readPageStyle(step.page))
       lastPush.current = 0
       return f.slice(0, -1)
     })
@@ -2009,6 +2055,7 @@ export function ProfileBlocksEditor({
    * while a way back lets you simply look.
    */
   const applyStarter = (st: Starter) => {
+    if (st.page) changePage(st.page, `the ${st.name} layout`)
     setOpenIdx(null)
     setLiftIdx(null)
     setAdding(false)
@@ -2349,6 +2396,33 @@ export function ProfileBlocksEditor({
           </button>
         )}
         {/**
+         * ⚠️ WORTH OFFERING ONLY BECAUSE UNDO EXISTS. Seven shapes, five edges, thirteen tints,
+         * seven faces, eight patterns, five tilts and nine page shapes is a space nobody clicks
+         * their way through — and a button that changed all of it with no way back would be a
+         * button nobody dared press. It costs one keystroke to reject, which is what makes the
+         * space worth having at all.
+         */}
+        {!arranging && blocks.length > 0 && onPage && (
+          <button
+            className="btn"
+            title="Roll a whole look for the page — undo puts it back"
+            onClick={() => {
+              const rolled = surpriseMe(blocks.length)
+              /* ⚠️ One step for both halves: changePage records it, and setBlocks coalesces into
+                 that entry on the same label rather than filing a second. Two steps would mean
+                 Undo had to be pressed twice to take back one press. */
+              changePage(rolled.page, 'the surprise')
+              setBlocks(
+                (all) =>
+                  all.map((b, i) => ({ ...b, config: { ...b.config, ...rolled.blocks[i] } })),
+                'the surprise',
+              )
+            }}
+          >
+            🎲 Surprise me
+          </button>
+        )}
+        {/**
          * ⚠️ THE PAGE'S OWN SHAPE, and the only setting here that is not about one block. It
          * lives in the head rather than in a block's inspector because there is no block it
          * belongs to — putting it on whichever one happened to be selected would make it look
@@ -2362,7 +2436,9 @@ export function ProfileBlocksEditor({
                 key={w.id}
                 className={'btn' + (readPageStyle(page).width === w.id ? ' is-on' : '')}
                 aria-pressed={readPageStyle(page).width === w.id}
-                onClick={() => onPage({ width: w.id, gap: readPageStyle(page).gap })}
+                onClick={() =>
+                  changePage({ width: w.id, gap: readPageStyle(page).gap }, 'the page width')
+                }
               >
                 {w.label}
               </button>
@@ -2372,7 +2448,9 @@ export function ProfileBlocksEditor({
                 key={g.id}
                 className={'btn' + (readPageStyle(page).gap === g.id ? ' is-on' : '')}
                 aria-pressed={readPageStyle(page).gap === g.id}
-                onClick={() => onPage({ width: readPageStyle(page).width, gap: g.id })}
+                onClick={() =>
+                  changePage({ width: readPageStyle(page).width, gap: g.id }, 'the spacing')
+                }
               >
                 {g.label}
               </button>
