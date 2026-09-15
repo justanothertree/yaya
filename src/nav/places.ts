@@ -115,6 +115,9 @@ export const PLACES = [
   { id: 'visualizer', label: 'Visualiser', icon: '🎚️', title: 'Visualiser', nav: () => true },
   { id: 'instrument', label: 'Instrument', icon: '🎹', title: 'Instrument', nav: () => true },
   { id: 'paint', label: 'Paint', icon: '🎨', title: 'Paint', nav: () => true },
+  /* ⚠️ Beside Paint, because that is where its pets come from — every pet in here is a drawing
+     somebody kept, and the first thing the room tells you to do is go and name its layers. */
+  { id: 'pets', label: 'Pets', icon: '🐾', title: 'Pets', nav: () => true },
   { id: 'contact', label: 'Contact', icon: '✉️', title: 'Contact', nav: () => true },
 
   /**

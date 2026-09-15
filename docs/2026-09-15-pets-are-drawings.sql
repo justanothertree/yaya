@@ -1,0 +1,72 @@
+-- 2026-09-15 — pets, and why the library gained a fifth kind
+--
+-- ✅ APPLIED as migration `member_library_keeps_pets`.
+--
+--
+-- WHAT THIS IS FOR
+--
+-- A pets module: a room for creatures you have made, a block for them on your profile, and
+-- eventually one hanging about in the corner of the site. The question that decided the whole
+-- shape of it was where a pet lives, and the answer is that a pet is A DRAWING WITH A NAME.
+--
+-- ⚠️ NO NEW TABLE, because a pet has no field a drawing does not. It is one row in
+-- member_library with kind = 'pet' and a body of {n, a} — the name, and the packed drawing. The
+-- 400-item and 20MB ceilings, the per-item 128KB cap, the case-insensitive name slot and the
+-- deny-all RLS all already apply to it, unchanged. A pets table would have been a second place
+-- for one person's creative work to live, a second thing to back up, and a second set of limits
+-- to keep in agreement with the first.
+--
+-- ⚠️ TWO PLACES LIST THE KINDS AND BOTH HAD TO MOVE. The table's check constraint and
+-- library_put's own `p_kind not in (...)` guard are independent, and a migration that widened
+-- only one would produce a pet that the function accepted and the table refused — an error from
+-- the database rather than from the code, at the moment somebody saved. Both were widened in the
+-- same migration and neither is the only gate.
+--
+-- ⚠️ WIDENING ONLY. No row was read, rewritten or deleted; every existing kind is still legal
+-- and every existing row still satisfies the new constraint. The old constraint is recoverable by
+-- naming four kinds instead of five.
+--
+--
+-- ── THE PART THAT IS NOT SQL, AND IS THE ACTUAL IDEA ─────────────────────────────────────────
+--
+-- Josh suggested "a blueprint pet animation rig for what you draw". The expensive reading of that
+-- is a rig editor: joints, bones, weights, a second document beside the picture that has to be
+-- kept in step with it. The cheap reading is that THE RIG IS ALREADY IN THE FILE.
+--
+-- A drawing here has layers, and layers have names (Drawing.layers, added for the frame editor).
+-- Somebody drawing a bird puts the wing on its own layer without being asked, because that is how
+-- you draw a bird. So src/pets/rig.ts reads the names: a layer called `wing` flaps, `tail` wags,
+-- `leg` shuffles, `eye` blinks. Nothing is stored, nothing is authored twice, and the rig is
+-- edited by renaming a layer in a room that already exists.
+--
+-- Three things fall out of it, and all three are the point:
+--
+--   · ANY drawing is already a pet. No names, one layer, no parts — it breathes and bobs, which
+--     is enough to read as alive. Naming layers makes it better; nothing makes it fail.
+--   · A pet drawn with FRAMES plays its frames instead, so both halves of what Josh described
+--     are true at once: have the pieces moved for you, or draw the motion yourself.
+--   · The joint of a limb is the point on it nearest the middle of the creature, which is one
+--     rule that puts a wing's pivot at the body, a leg's at the top and a tail's at the end that
+--     is attached — because that is what a limb is. Nobody places a joint.
+--
+--
+-- ── HOW TO CHECK IT ─────────────────────────────────────────────────────────────────────────
+-- What kinds the library will now take:
+--
+--   select pg_get_constraintdef(oid) from pg_constraint
+--    where conrelid = 'public.member_library'::regclass and conname = 'member_library_kind_check';
+--
+-- Whose pets are on the server, and how big they are:
+--
+--   select p.username, l.name, octet_length(l.body::text) as bytes, l.updated_at
+--     from public.member_library l join public.profiles p on p.user_id = l.user_id
+--    where l.kind = 'pet' order by l.updated_at desc;
+--
+-- That the function agrees with the table — expect the first to be accepted and the second to
+-- raise 'unknown kind':
+--
+--   select public.library_put('pet', 'throwaway', '{"n":"x","a":{}}'::jsonb);
+--   select public.library_put('creature', 'throwaway', '{}'::jsonb);
+--
+-- ⚠️ Those WRITE to the caller's own library. Run them as a throwaway account or not at all; the
+-- Pets room is the honest test and it is two clicks.

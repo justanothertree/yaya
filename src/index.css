@@ -7417,6 +7417,104 @@ a.cz-msg-author:focus-visible {
   margin-inline: 0.3rem;
 }
 
+/* ── pets ────────────────────────────────────────────────
+   A strip of everyone you have, then the one you picked, big, beside what the rig understood. */
+.pets-room {
+  display: grid;
+  gap: 0.9rem;
+}
+.pets-head h2 {
+  margin: 0;
+}
+.pets-head p {
+  margin: 0.3rem 0 0;
+  font-size: 0.85rem;
+  max-width: 46rem;
+}
+.pets-note {
+  margin: 0;
+  font-size: 0.82rem;
+}
+.pets-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.pets-chip {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.2rem;
+  padding: 0.4rem;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+}
+.pets-chip.is-on {
+  border-color: var(--accent, #7c6af7);
+  box-shadow: inset 0 0 0 1px var(--accent, #7c6af7);
+}
+.pets-chip-name {
+  font-size: 0.7rem;
+  max-width: 5.5rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pets-stage {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1.2rem;
+}
+/* ⚠️ The pet is the button, so it gets no chrome of its own — a border round a creature
+   makes it a picture of a creature. The focus ring is still there for a keyboard. */
+.pets-poke {
+  border: 0;
+  background: none;
+  padding: 0;
+  cursor: pointer;
+  border-radius: 14px;
+  line-height: 0;
+}
+.pets-facts {
+  display: grid;
+  gap: 0.35rem;
+  font-size: 0.85rem;
+  min-width: min(18rem, 100%);
+  flex: 1;
+}
+.pets-parts {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 0.15rem;
+  font-size: 0.8rem;
+}
+.pets-part {
+  font-weight: 600;
+}
+.pets-hint {
+  font-size: 0.76rem;
+  max-width: 34rem;
+}
+.pets-acts,
+.pets-adopt {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+}
+.pets-adopt {
+  display: grid;
+  justify-items: start;
+  gap: 0.5rem;
+}
+
 /* ── taking the picture away with you ────────────────────────────────
    A panel between the button and the paper. It is a column rather than a wrapping row, because
    every line in it answers a different question and a wrap would mix them up. */

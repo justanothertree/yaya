@@ -4,6 +4,7 @@ import { packSong, readSong } from '../audio/songFile'
 import { gallery, saveArt, subscribeGallery } from '../draw/gallery'
 import { packDrawing, readDrawing } from '../draw/strokes'
 import { readPresets, savePreset, subscribePresets } from '../audio/vizPresets'
+import { packPet, pets, readPet, savePet, subscribePets } from '../pets/pets'
 
 /**
  * The library, on your account instead of in one browser.
@@ -27,10 +28,10 @@ import { readPresets, savePreset, subscribePresets } from '../audio/vizPresets'
  * is open and watching.
  */
 
-type Kind = 'song' | 'loop' | 'art' | 'look'
+type Kind = 'song' | 'loop' | 'art' | 'look' | 'pet'
 type Row = { kind: Kind; name: string; body: unknown }
 
-const KINDS: Kind[] = ['song', 'loop', 'art', 'look']
+const KINDS: Kind[] = ['song', 'loop', 'art', 'look', 'pet']
 const isKind = (v: unknown): v is Kind => typeof v === 'string' && (KINDS as string[]).includes(v)
 
 /** Everything kept on this machine, in the shape the server stores. */
@@ -39,6 +40,9 @@ function localRows(): Row[] {
   for (const i of library()) out.push({ kind: i.kind, name: i.name, body: packSong(i.song) })
   for (const a of gallery()) out.push({ kind: 'art', name: a.name, body: packDrawing(a.art) })
   for (const p of readPresets()) out.push({ kind: 'look', name: p.name, body: p.s })
+  /* ⚠️ A pet is a drawing with a name, so it costs the library one more kind and no new
+     anything — see pets.ts. The name is the slot, which is also why savePet refuses duplicates. */
+  for (const p of pets()) out.push({ kind: 'pet', name: p.name, body: packPet(p) })
   return out
 }
 
@@ -55,6 +59,10 @@ function adoptLocally(r: Row): boolean {
   if (r.kind === 'art') {
     const d = readDrawing(r.body)
     return d ? !!saveArt(d) : false
+  }
+  if (r.kind === 'pet') {
+    const p = readPet(r.body)
+    return p ? !!savePet(p.name, p.art) : false
   }
   if (r.kind === 'look') {
     if (!r.body || typeof r.body !== 'object') return false
@@ -148,6 +156,11 @@ export function watchLibrary(): () => void {
     })()
   }
 
-  const offs = [subscribeLibrary(settle), subscribeGallery(settle), subscribePresets(settle)]
+  const offs = [
+    subscribeLibrary(settle),
+    subscribeGallery(settle),
+    subscribePresets(settle),
+    subscribePets(settle),
+  ]
   return () => offs.forEach((off) => off())
 }
