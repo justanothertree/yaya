@@ -1,0 +1,40 @@
+-- ✅ APPLIED as migration `profile_blocks_room_for_a_drawing`.
+--
+-- WHY: a pet would not fit in a profile block, and the reason was a number nobody had justified.
+--
+-- The per-block config cap was 16000 characters. It arrived with the original
+-- save_my_profile_blocks and every migration since copied it forward; nothing in this repository
+-- says where it came from or what it was protecting. Asked directly — why is there a cap, I want
+-- it to fit — and there was no answer to give beyond "it has always been that".
+--
+-- It also bounded the wrong thing. Twenty blocks at 16000 is 320KB of profile and there was NO
+-- limit on the total, while the one block that genuinely needs room — a drawing, a pet, which
+-- carry every stroke that made them — is the one it turned away. A visitor downloads and draws
+-- every block on a page, so what costs them is the total and not the largest one.
+--
+-- So it is turned around. One block may be four times bigger (64000) and a whole profile is now
+-- capped at 160000, which it never was. The worst case a visitor can be handed HALVES, from 320KB
+-- to 160KB, at the same time as the room for one good drawing quadruples.
+--
+-- SCALE, measured against the live table immediately before this ran:
+--   heaviest single profile ....... 13,384 characters, all blocks together
+--   biggest single block .......... 13,323
+--   every block belonging to all .. 28,584
+-- The new profile ceiling is about twelve times the heaviest profile that exists, and the new
+-- per-block cap is nearly five times the biggest block anybody has made.
+--
+-- VERIFIED after applying:
+--   * security definer, owner postgres, search_path pinned, anon still cannot execute,
+--     authenticated still can — all unchanged from the definition captured beforehand
+--     (md5 eb78e890fbdf147da6016204268b492a)
+--   * the type allowlist is intact, including 'pet' and 'free', and the 20-block limit stands
+--   * the guards were exercised on crafted payloads: 63,009 accepted; 65,009 caught by the block
+--     cap; three 60,000-character blocks (180,027 total) pass the block cap and are caught by the
+--     new profile cap, which is the case the old function could not see at all
+--
+-- THE CLIENT AGREES: CONFIG_LIMIT and the new PROFILE_LIMIT in src/profile/blockSize.ts, checked
+-- before the request goes out. That matters more than it sounds — the server refuses the WHOLE
+-- payload, so a limit found out from the server means one over-full page stops every later edit
+-- saving. See docs/2026-09-02-the-client-must-agree-with-the-server.md.
+--
+-- Safe to run more than once.

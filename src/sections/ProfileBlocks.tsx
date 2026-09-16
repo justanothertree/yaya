@@ -57,7 +57,7 @@ import { readPresets } from '../audio/vizPresets'
 
 import { packSong } from '../audio/songFile'
 import { ArtBlock } from '../profile/ProfileArt'
-import { CONFIG_LIMIT, configSize } from '../profile/blockSize'
+import { CONFIG_LIMIT, PROFILE_LIMIT, configSize } from '../profile/blockSize'
 import { PetBlock, PetPicker } from '../pets/PetBlock'
 import { gallery, subscribeGallery, type Art } from '../draw/gallery'
 import { frameCount, packDrawing, readDrawing } from '../draw/strokes'
@@ -2303,6 +2303,22 @@ export function ProfileBlocksEditor({
       setErr(
         `the ${BLOCK_LABEL[overSized.block_type]} block holds too much — take something out of it`,
       )
+      setStatus('idle')
+      return
+    }
+
+    /**
+     * ⚠️ AND THE PAGE AS A WHOLE, checked here for the same reason and in the same breath: the
+     * server refuses the entire payload either way, so finding out from it means one over-full
+     * page stops every later edit saving with a message about nothing in particular. The two
+     * limits say different things and so does this — the block one is "this block holds too
+     * much", and this one is "everything together is too much", which is fixed by taking a
+     * different thing out.
+     */
+    const weight = blocks.reduce((n, b) => n + configSize(b.config), 0)
+    if (weight > PROFILE_LIMIT) {
+      setBlocked(null)
+      setErr('the page holds too much altogether — take something out of one of the blocks')
       setStatus('idle')
       return
     }

@@ -1370,9 +1370,9 @@ export function xformStroke(
 /**
  * The same drawing with the points nobody can see taken out.
  *
- * ⚠️ FOR CARRYING, NOT FOR KEEPING. A profile block holds the whole drawing inside a 16000
- * character config, and a pet is a whole drawing, so a detailed one simply does not fit — measured,
- * a pet of sixty hand-drawn strokes wants 127% of the room a block has. This is what makes it fit
+ * ⚠️ FOR CARRYING, NOT FOR KEEPING. A profile block holds the whole drawing inside a capped
+ * config (CONFIG_LIMIT), and a pet is a whole drawing, so a detailed one can outgrow it — measured,
+ * a pet of sixty smooth hand-drawn strokes wanted four times the room a block had. This is what makes it fit
  * without asking anybody to draw less: the room records a point every 0.002 of the canvas WHILE
  * DRAWING AT FULL SIZE, and the same pet on a profile is about 180 pixels across, where 0.002 is a
  * third of a pixel. Most of what is stored was never going to be visible there.
@@ -1461,7 +1461,7 @@ export function packDrawing(d: Drawing): PackedDrawing {
    * ⚠️ WRITTEN AS VERSION 4 UNLESS LAYERS OR FRAMES ARE ACTUALLY USED.
    *
    * Every fixed field costs two more numbers on EVERY stroke, and a block on a profile gets
-   * 16000 bytes for everything it holds — so making all existing drawings pay for an animation
+   * a capped budget for everything it holds — so making all existing drawings pay for an animation
    * feature they do not use would take room away from the picture itself and, worse, would grow
    * files that are already saved the moment they were next opened. A flat drawing still writes
    * the format it wrote before, byte for byte, and only an animation pays for being one.

@@ -92,7 +92,7 @@ export function PetBlock({ cfg }: { cfg: Record<string, unknown> }) {
  * Which of your pets are on the page.
  *
  * ⚠️ IT SHOWS THE BUDGET, and for this block that is not a nicety. A pet is a whole drawing, and
- * a block gets 16000 characters for everything it holds — so two detailed creatures can be the
+ * a block's budget covers everything it holds — so two detailed creatures can still be the
  * difference between a page that saves and one the server refuses. The art picker learned this
  * first; a pet is bigger than a drawing by the length of its name and nothing else.
  */

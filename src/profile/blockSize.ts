@@ -6,8 +6,29 @@
  * — a pet is a whole drawing, so that block's budget is the one most likely to run out.
  */
 
-/** Must stay in step with the length() guard in save_my_profile_blocks. */
-export const CONFIG_LIMIT = 16000
+/**
+ * Must stay in step with the length() guard in save_my_profile_blocks.
+ *
+ * ⚠️ 64000, AND IT WAS 16000 FOR NO REASON ANYBODY WROTE DOWN. That number arrived with the
+ * original function and every migration since copied it forward; nothing in the repository says
+ * where it came from. It also bounded the wrong thing — twenty blocks at 16000 is 320KB of
+ * profile with no limit on the total, while the one block that genuinely needs room, a drawing or
+ * a pet, is the one it turned away.
+ */
+export const CONFIG_LIMIT = 64000
+
+/**
+ * And what the whole page may weigh.
+ *
+ * ⚠️ THIS IS THE ONE THAT MATTERS, and until now it did not exist. A visitor downloads and draws
+ * every block on a profile, so what costs them is the TOTAL, not the largest one. Capping the
+ * total is what makes it safe to be generous with a single block: the worst case a visitor can be
+ * handed drops from 320KB to 160KB at the same time as the room for one good drawing quadruples.
+ *
+ * For scale, measured when this was set: the heaviest profile on the site was 13384 characters
+ * all told, and every profile block belonging to everybody added up to 28584.
+ */
+export const PROFILE_LIMIT = 160000
 
 /**
  * How big the server will think this block's config is.
