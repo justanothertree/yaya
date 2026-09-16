@@ -1475,6 +1475,66 @@ export const layerCount = (d: Drawing): number =>
  */
 let scratch: HTMLCanvasElement | null = null
 
+/**
+ * A run of strokes onto a context, with each layer erasing only itself.
+ *
+ * ⚠️ AN ERASER BELONGS TO ITS LAYER, and until this it belonged to the whole picture. Rubbing
+ * out part of a middle layer took the layers behind it away as well, because the eraser is
+ * destination-out and destination is whatever is already on the canvas — reported as "tough to
+ * work with", which is generous.
+ *
+ * It is the argument the onion skin below already makes about frames, and it is the same
+ * argument: compositing a FINISHED image means the thing can only ever erase itself, which is
+ * what a layer is. The fix was to notice that layers deserved the answer frames already had.
+ *
+ * ⚠️ AND IT COSTS NOTHING WHEN IT CHANGES NOTHING, which is the whole reason it is shaped like
+ * this. Per-layer compositing is only ever VISIBLE when an eraser is in play: with no eraser the
+ * layers land on the same pixels in the same order either way. So one layer, or no eraser, takes
+ * the loop it always took — that is every drawing made before today and most made after, and it
+ * means the common case pays nothing for a correctness fix it never needed.
+ *
+ * ⚠️ ITS OWN SURFACE, not the onion's. The ghost loop is holding `scratch` while it calls
+ * this, and handing both the same canvas would have each wipe the other's work mid-frame.
+ */
+let deck: HTMLCanvasElement | null = null
+function paintBand(ctx: CanvasRenderingContext2D, list: Stroke[], w: number, h: number) {
+  let erases = false
+  let spread = false
+  let first = -1
+  for (const s of list) {
+    if (s.t === 'eraser') erases = true
+    const l = s.l ?? 0
+    if (first < 0) first = l
+    else if (l !== first) spread = true
+  }
+  if (!erases || !spread) {
+    for (const s of list) paintStroke(ctx, s, w, h)
+    return
+  }
+  if (!deck) deck = document.createElement('canvas')
+  if (deck.width !== w || deck.height !== h) {
+    deck.width = w
+    deck.height = h
+  }
+  const dc = deck.getContext('2d')
+  if (!dc) {
+    for (const s of list) paintStroke(ctx, s, w, h)
+    return
+  }
+  /* ⚠️ the list arrives sorted by layer and the sort is stable, so a layer is a RUN in it —
+     walking to the next boundary beats grouping into a map that is thrown away every frame */
+  for (let i = 0; i < list.length; ) {
+    const layer = list[i].l ?? 0
+    let j = i
+    while (j < list.length && (list[j].l ?? 0) === layer) j++
+    dc.setTransform(1, 0, 0, 1, 0, 0)
+    dc.clearRect(0, 0, w, h)
+    for (let n = i; n < j; n++) paintStroke(dc, list[n], w, h)
+    ctx.drawImage(deck, 0, 0)
+    i = j
+  }
+}
+
 export function paintDrawing(
   ctx: CanvasRenderingContext2D,
   d: Drawing,
@@ -1494,7 +1554,7 @@ export function paintDrawing(
 
   // a flat drawing, or an explicit request for everything at once
   if (!frames) {
-    for (const s of ordered(d.strokes.filter(visible))) paintStroke(ctx, s, w, h)
+    paintBand(ctx, ordered(d.strokes.filter(visible)), w, h)
     return
   }
   const now = Math.max(0, Math.min(frames - 1, view?.frame ?? 0))
@@ -1522,7 +1582,8 @@ export function paintDrawing(
       if (!list.length || !sc) continue
       sc.setTransform(1, 0, 0, 1, 0, 0)
       sc.clearRect(0, 0, w, h)
-      for (const s of list) paintStroke(sc, s, w, h)
+      /* a ghost is a picture of a frame, so its layers erase each other the same way */
+      paintBand(sc, list, w, h)
       ctx.save()
       // the further back, the fainter — 0.30, 0.18, 0.11 …
       ctx.globalAlpha = 0.3 * Math.pow(0.6, i - 1)
@@ -1533,10 +1594,12 @@ export function paintDrawing(
 
   // ⚠️ a stroke with no frame belongs to every frame, so it is drawn HERE and never as a ghost —
   // ghosting it too would darken the background once per onion step
-  for (const s of ordered(
-    d.strokes.filter((s) => (s.f === undefined || s.f === now) && visible(s)),
-  ))
-    paintStroke(ctx, s, w, h)
+  paintBand(
+    ctx,
+    ordered(d.strokes.filter((s) => (s.f === undefined || s.f === now) && visible(s))),
+    w,
+    h,
+  )
 }
 
 /**

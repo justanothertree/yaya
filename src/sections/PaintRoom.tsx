@@ -595,6 +595,22 @@ export function PaintRoom() {
     return Math.abs(x - p.x) < tx && Math.abs(y - p.y) < ty
   }
 
+  /**
+   * Whether the stroke in progress has to go through the full repaint rather than be dropped on
+   * top of the finished picture.
+   *
+   * ⚠️ ONLY AN ERASER, AND ONLY OVER MORE THAN ONE LAYER. `base` is the picture already
+   * flattened, so an eraser painted onto it cuts through every layer at once — which is exactly
+   * the bug being fixed one file over, reappearing for the length of a drag. Measured before this:
+   * mid-drag a column through both bands read empty, and layer 1 came back on release. Watching
+   * it take everything and then give half of it back is worse than either answer on its own.
+   *
+   * ⚠️ DECIDED ONCE PER DRAG, NOT PER MOVE. It is a scan of the stroke list to see whether
+   * anything sits on another layer, which is cheap once and wasteful sixty times a second — and
+   * it cannot change mid-stroke, because nobody else's strokes land while your pointer is down.
+   */
+  const bakeLive = useRef(false)
+
   const blit = useCallback(() => {
     const b = base.current
     const v = view.current
@@ -618,7 +634,7 @@ export function PaintRoom() {
       v.width,
       v.height,
     )
-    if (live.current) {
+    if (live.current && !bakeLive.current) {
       // the stroke in progress is drawn straight onto the view, so it needs the same mapping
       vc.setTransform(
         dpr * scale,
@@ -728,7 +744,12 @@ export function PaintRoom() {
               ),
             }
           : drawingRef.current
-    paintDrawing(bc, shown, w, h, {
+    /* ⚠️ the eraser in progress goes IN the picture, not on top of it — see bakeLive */
+    const withLive =
+      bakeLive.current && live.current
+        ? { ...shown, strokes: [...shown.strokes, live.current] }
+        : shown
+    paintDrawing(bc, withLive, w, h, {
       frame: frame ?? undefined,
       hidden,
       onion: frame === null || playing ? 0 : onion,
@@ -1802,6 +1823,9 @@ export function PaintRoom() {
       })
       return
     }
+    /* ⚠️ once, here, rather than on every move — see bakeLive */
+    bakeLive.current =
+      tool === 'eraser' && strokes.some((k) => (k.l ?? 0) !== layer) && strokes.length > 0
     live.current = {
       t: tool,
       c: colour,
@@ -1899,11 +1923,15 @@ export function PaintRoom() {
       s.p[2] = x
       s.p[3] = y
     }
-    preview()
+    /* ⚠️ a baked eraser needs the whole picture rebuilt, because what it may touch is decided
+       inside paintDrawing; everything else is one stroke dropped onto a finished canvas */
+    if (bakeLive.current) repaint()
+    else preview()
   }
 
   const onUp = () => {
     pan.current = null
+    bakeLive.current = false
     if (band.current) {
       const r = band.current
       band.current = null
