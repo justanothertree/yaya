@@ -7463,7 +7463,7 @@ a.cz-msg-author:focus-visible {
     order: 2;
     /* ⚠️ its own scrollbar, not the page's: twelve layers must not be able to make the
        column taller than the picture it is standing next to */
-    max-height: calc(100vh - 230px);
+    max-height: calc(100vh - 372px);
     overflow-y: auto;
     padding-right: 0.3rem;
   }
@@ -7474,8 +7474,11 @@ a.cz-msg-author:focus-visible {
    * things reached for most, pushed under the two reached for least. Same ranking as the stacked
    * layout, running down instead of along.
    */
+  /* ⚠️ full width, above both — the brushes are not a column, and in one they cost the rail
+     190 of its 538 pixels and pushed Undo off the bottom of it. See the note in the room. */
   .paint-wrap:not(.tools-hidden) .paint-bar {
     order: 0;
+    flex: 1 1 100%;
   }
   .paint-wrap:not(.tools-hidden) .paint-row.paint-draw {
     order: 1;
@@ -7494,7 +7497,7 @@ a.cz-msg-author:focus-visible {
     flex: 1 1 22rem;
     min-width: 0;
     /* ⚠️ only the heading and the one row below are left to pay for now */
-    height: clamp(20rem, calc(100vh - 230px), 60rem);
+    height: clamp(18rem, calc(100vh - 372px), 60rem);
   }
   .paint-wrap:not(.tools-hidden) .paint-shape-row {
     order: 3;

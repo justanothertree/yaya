@@ -2271,50 +2271,62 @@ export function PaintRoom() {
        * cannot be lifted OVER the drawing without overlapping each other — so wrapping them is
        * what makes the overlay below possible at all, and it costs one element.
        */}
-      <div className="paint-tools-panel">
-        <div className="paint-bar">
-          <button
-            className="btn paint-tool-open"
-            aria-expanded={toolsOpen}
-            onClick={() => setToolsOpen((v) => !v)}
-            title="Choose a brush"
-          >
-            <span aria-hidden>{TOOLS.find(([id]) => id === tool)?.[1]}</span>
-            {TOOLS.find(([id]) => id === tool)?.[2] ?? 'Brush'}
-            <span aria-hidden>{toolsOpen ? '▴' : '▾'}</span>
-          </button>
-          <div className={'fx-style-row paint-tools' + (toolsOpen ? ' is-open' : '')}>
-            {/* ⚠️ Retired ones are hidden here rather than deleted from TOOLS — the packed format
-              stores a tool as an index into that list, so removing one repaints every saved
-              drawing. See RETIRED_TOOLS. */}
-            {TOOLS.filter(([id]) => !RETIRED_TOOLS.has(id)).map(([id, icon, label]) => (
-              <button
-                key={id}
-                className={'fx-style-btn' + (tool === id ? ' is-on' : '')}
-                aria-pressed={tool === id}
-                onClick={() => {
-                  setTool(id)
-                  /**
-                   * ⚠️ CHOOSING A BRUSH LEAVES THE SELECTION TOOL, which is how every paint
-                   * program behaves and what was missing here. Selecting stayed on until you went
-                   * back and switched it off by hand, so finishing with a selection and wanting to
-                   * draw meant hunting for the ⬚ again — reported as jarring, and it is: reaching
-                   * for a brush IS saying you are done selecting.
-                   */
-                  setSelecting(false)
-                  drop()
-                  /* closes on a phone, where it is a menu; harmless on a desktop, where the row
-                   is always open and this flag is not read */
-                  setToolsOpen(false)
-                }}
-              >
-                <span aria-hidden>{icon}</span>
-                <span className="fx-style-label">{label}</span>
-              </button>
-            ))}
-          </div>
+      {/**
+       * The brushes, above the paper and outside the panel.
+       *
+       * ⚠️ OUT OF THE PANEL SO IT CAN LEAVE IT. Once the panel became a side rail the tool
+       * grid was in it, and at 21rem the seventeen tools wrap to five rows and eat 190px of a
+       * column that only has 538 — measured, with one layer, Effects, Undo, Redo, Clear, Zoom and
+       * Fit all pushed below the rail's fold. Undo is the button you reach for most and it was off
+       * screen in the layout's resting state, which is a worse fault than the one the rail fixed.
+       *
+       * Out here it is a full-width row again above the picture: every tool on two rows, and the
+       * rail left holding only the things that genuinely want to be a column. It is still ordered
+       * into place in the stacked layout, which never cared which box it was in.
+       */}
+      <div className="paint-bar">
+        <button
+          className="btn paint-tool-open"
+          aria-expanded={toolsOpen}
+          onClick={() => setToolsOpen((v) => !v)}
+          title="Choose a brush"
+        >
+          <span aria-hidden>{TOOLS.find(([id]) => id === tool)?.[1]}</span>
+          {TOOLS.find(([id]) => id === tool)?.[2] ?? 'Brush'}
+          <span aria-hidden>{toolsOpen ? '▴' : '▾'}</span>
+        </button>
+        <div className={'fx-style-row paint-tools' + (toolsOpen ? ' is-open' : '')}>
+          {/* ⚠️ Retired ones are hidden here rather than deleted from TOOLS — the packed format
+            stores a tool as an index into that list, so removing one repaints every saved
+            drawing. See RETIRED_TOOLS. */}
+          {TOOLS.filter(([id]) => !RETIRED_TOOLS.has(id)).map(([id, icon, label]) => (
+            <button
+              key={id}
+              className={'fx-style-btn' + (tool === id ? ' is-on' : '')}
+              aria-pressed={tool === id}
+              onClick={() => {
+                setTool(id)
+                /**
+                 * ⚠️ CHOOSING A BRUSH LEAVES THE SELECTION TOOL, which is how every paint
+                 * program behaves and what was missing here. Selecting stayed on until you went
+                 * back and switched it off by hand, so finishing with a selection and wanting to
+                 * draw meant hunting for the ⬚ again — reported as jarring, and it is: reaching
+                 * for a brush IS saying you are done selecting.
+                 */
+                setSelecting(false)
+                drop()
+                /* closes on a phone, where it is a menu; harmless on a desktop, where the row
+                 is always open and this flag is not read */
+                setToolsOpen(false)
+              }}
+            >
+              <span aria-hidden>{icon}</span>
+              <span className="fx-style-label">{label}</span>
+            </button>
+          ))}
         </div>
-
+      </div>
+      <div className="paint-tools-panel">
         <div className="paint-row paint-select">
           {/* ⚠️ SELECTING USED TO BE HERE, and the note that argued for it was about space:
             two rows each holding one button most of the time. It has gone to sit beside opacity
