@@ -7905,6 +7905,64 @@ a.cz-msg-author:focus-visible {
   flex-wrap: wrap;
   gap: 0.3rem;
 }
+
+/* ── somewhere to play with the thing you drew ──────────────────────
+   ⚠️ ASPECT RATIO RATHER THAN A HEIGHT, so the world is the same shape everywhere. The physics
+   works in 0–1 across and down (see play.ts), so a field that changed shape with the window would
+   change how far a jump reaches — the same gap would clear on a laptop and not on a phone, which
+   feels like the game cheating rather than like a layout. */
+.pet-play {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.pet-play-field {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  width: 100%;
+  border: 1px solid var(--line, rgba(255, 255, 255, 0.16));
+  border-radius: 10px;
+  overflow: hidden;
+  background:
+    radial-gradient(
+      120% 80% at 50% 110%,
+      color-mix(in srgb, var(--accent, #7c6af7) 20%, transparent),
+      transparent 70%
+    ),
+    color-mix(in srgb, var(--bg) 84%, var(--text) 16%);
+  /* ⚠️ a drag inside the field must not scroll the page out from under the game */
+  touch-action: none;
+}
+.pet-play-floor {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 3px;
+  background: color-mix(in srgb, var(--text) 45%, transparent);
+}
+.pet-play-ledge {
+  position: absolute;
+  height: 3px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--text) 38%, transparent);
+}
+/* ⚠️ (x, y) IS THE FEET, not the middle. The physics puts y on whatever the pet is standing
+   on, so the picture hangs from that point — centre it instead and every creature sinks by half
+   its own height, a tall one further than a short one. */
+.pet-play-pet {
+  position: absolute;
+  transform: translate(-50%, -100%);
+  will-change: transform;
+  line-height: 0;
+}
+.pet-play-keys {
+  font-size: 0.8rem;
+  margin: 0;
+}
+.pet-play-keys strong {
+  color: var(--text);
+}
 .pets-files {
   display: flex;
   flex-wrap: wrap;

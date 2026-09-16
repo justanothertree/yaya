@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { gallery, subscribeGallery, type Art } from '../draw/gallery'
+import { PetPlay } from './PetPlay'
 import { PetView } from './PetView'
 import { PART_DOES, PART_WORDS, STANCES, rigOf, type PartKind, type Mood } from './rig'
 import { pets, removePet, renamePet, savePet, subscribePets, type Pet } from './pets'
@@ -38,7 +39,7 @@ const REST = 0.55
 const PROD = 1
 const CALM_AFTER_MS = 2600
 
-export function PetsRoom() {
+export function PetsRoom({ onControlChange }: { onControlChange?: (on: boolean) => void } = {}) {
   const mine = useSyncExternalStore(subscribePets, pets, pets)
   const drawings = useSyncExternalStore(subscribeGallery, gallery, gallery)
   const follows = useSyncExternalStore(subscribeCompanion, companion, companion)
@@ -62,6 +63,26 @@ export function PetsRoom() {
   const chosen: Pet | undefined = mine.find((p) => p.id === openId) ?? mine[0]
 
   const [stance, setStance] = useState<Mood['stance']>('idle')
+  /**
+   * Playing with it, rather than looking at it.
+   *
+   * ⚠️ A MODE AND NOT A SECOND ROOM, because it is the same pet doing the same five things
+   * it already does — the difference is only whether the stance comes from a button or from your
+   * hands. Asked for as "a mode or space or way to select them and control them like a 2d
+   * platformer", and the selecting is the list that was already here.
+   */
+  const [playing, setPlaying] = useState(false)
+
+  /**
+   * ⚠️ THE PAGE'S KEYBOARD SHORTCUTS STAND DOWN WHILE YOU PLAY, the same way they do for the
+   * snake. The site navigates on single letters, so steering a pet meant any key the game does not
+   * use took you to another room — measured: pressing `q` while playing left for Contact, with the
+   * creature still walking. Reported by nobody, because it was found before anybody had to.
+   */
+  useEffect(() => {
+    onControlChange?.(playing)
+    return () => onControlChange?.(false)
+  }, [playing, onControlChange])
   const [energy, setEnergy] = useState(REST)
   const calmTimer = useRef(0)
   const prod = () => {
@@ -246,25 +267,49 @@ export function PetsRoom() {
               {/* ⚠️ A BUTTON, not a canvas with a click handler. Prodding the pet is the only
                   interaction in the room and it has to be reachable with a keyboard like
                   everything else here. */}
-              <button
-                className="pets-poke"
-                onClick={prod}
-                title={
-                  still ? 'Motion is off in your system settings' : `Say hello to ${chosen.name}`
-                }
-              >
-                <PetView
-                  art={chosen.art}
-                  size={220}
-                  energy={still ? 0 : energy}
-                  stance={stance}
-                  watch="hover"
-                  label={`${chosen.name}, waving about`}
-                />
-              </button>
+              {playing ? (
+                /* ⚠️ IN PLACE OF THE POKE-ABLE PET, not beside it. Two of the same creature on
+                   one screen, one of them answering the keyboard and one of them not, is a
+                   question about which one is real — and the field is the same pet, so nothing is
+                   lost by swapping. */
+                <PetPlay art={chosen.art} name={chosen.name} />
+              ) : (
+                <button
+                  className="pets-poke"
+                  onClick={prod}
+                  title={
+                    still ? 'Motion is off in your system settings' : `Say hello to ${chosen.name}`
+                  }
+                >
+                  <PetView
+                    art={chosen.art}
+                    size={220}
+                    energy={still ? 0 : energy}
+                    stance={stance}
+                    watch="hover"
+                    label={`${chosen.name}, waving about`}
+                  />
+                </button>
+              )}
 
               <div className="pets-facts">
                 <strong>{chosen.name}</strong>
+                {/* ⚠️ first, because once you know it can be played with, the five buttons
+                    underneath read as what they are — a way to look at one pose on purpose */}
+                <div className="pets-stances">
+                  <button
+                    className={'btn' + (playing ? ' is-on' : '')}
+                    aria-pressed={playing}
+                    onClick={() => setPlaying((v) => !v)}
+                    title={
+                      playing
+                        ? `Stop playing and look at ${chosen.name}`
+                        : `Walk ${chosen.name} about with the arrow keys`
+                    }
+                  >
+                    {playing ? '■ Stop' : '🎮 Play'}
+                  </button>
+                </div>
                 {/**
                  * ⚠️ NONE OF THESE NEEDED A SECOND DRAWING. Running is the same legs faster and
                  * further with the body leaning into it; sleeping is everything slowed almost to
@@ -285,7 +330,9 @@ export function PetsRoom() {
                   ))}
                 </div>
                 <span className="muted pets-hint">
-                  It follows your pointer with its head and eyes while you are over it.
+                  {playing
+                    ? 'It runs, crouches and braces on the way down using the layer names you gave it.'
+                    : 'It follows your pointer with its head and eyes while you are over it.'}
                 </span>
                 {/* the rig, in the words of this person's own drawing — see the note at the top */}
                 <ul className="pets-parts">

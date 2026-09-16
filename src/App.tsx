@@ -759,7 +759,7 @@ export default function App() {
   const liveRef = useRef<HTMLDivElement>(null)
   const navLinksRef = useRef<HTMLDivElement>(null)
   const navRef = useRef<HTMLElement>(null)
-  const [snakeHasControl, setSnakeHasControl] = useState(false)
+  const [gameHasControl, setGameHasControl] = useState(false)
   // True while Snake is connected to a multiplayer room. Toggling canvas re-mounts the
   // section, which drops the socket mid-round — and a round's results live only in the
   // ws-server's memory until every participant finishes, so leaving can cost the whole
@@ -1099,10 +1099,15 @@ export default function App() {
         tag === 'input' || tag === 'textarea' || (target as HTMLElement)?.isContentEditable
       if (isTyping || e.altKey || e.ctrlKey || e.metaKey) return
       const key = e.key
-      // Arrow navigation across sections — but never while the snake game has control.
+      // Arrow navigation across sections — but never while a game has control.
       // The game can live anywhere now (its page, or a pinned canvas window over any
       // tab), so the guard follows the GAME, not the page.
-      const allowPageNav = !snakeHasControl
+      //
+      // ⚠️ AND IT IS NO LONGER ONLY THE SNAKE, which is why this stopped being called
+      // snakeHasControl. A pet being walked about a platformer wants the arrow keys for exactly
+      // the same reason, and found out the hard way: a stray letter while playing navigated the
+      // room out from under the creature being steered.
+      const allowPageNav = !gameHasControl
       if (allowPageNav) {
         /* the same list the nav strip draws, so the arrows visit exactly what you can see */
         const order = navFor(viewer).map((p) => p.id)
@@ -1121,7 +1126,7 @@ export default function App() {
     return () => window.removeEventListener('keydown', onKey)
     /* ⚠️ `viewer` rather than the five flags it is made of — it is memoised on exactly those,
        so naming it once keeps this list honest and stops it drifting from what navFor reads */
-  }, [active, snakeHasControl, viewer])
+  }, [active, gameHasControl, viewer])
 
   // Keep the tab in step with the route. Home keeps the full descriptive title (it is what gets
   // shared and indexed); everywhere else is prefixed so history and bookmarks are told apart.
@@ -1399,7 +1404,7 @@ export default function App() {
         )
       case 'snake':
         return (
-          <SnakeGame onControlChange={setSnakeHasControl} onLiveChange={setSnakeLive} autoFocus />
+          <SnakeGame onControlChange={setGameHasControl} onLiveChange={setSnakeLive} autoFocus />
         )
       case 'visualizer':
         return <AudioVisualizer />
@@ -1408,7 +1413,7 @@ export default function App() {
       case 'paint':
         return <PaintRoom />
       case 'pets':
-        return <PetsRoom />
+        return <PetsRoom onControlChange={setGameHasControl} />
       case 'contact':
         return <ContactForm />
       case 'admin':
@@ -2181,7 +2186,7 @@ export default function App() {
                 else is mounted while the game chunk arrives. */}
               <Suspense fallback={<div aria-busy>Loading the game…</div>}>
                 <SnakeGame
-                  onControlChange={setSnakeHasControl}
+                  onControlChange={setGameHasControl}
                   onLiveChange={setSnakeLive}
                   autoFocus
                 />
@@ -2287,7 +2292,7 @@ export default function App() {
           {!sharedCanvasShowing && active === 'pets' && (
             <section id="pets" className="card reveal">
               <Suspense fallback={<div aria-busy>Loading…</div>}>
-                <PetsRoom />
+                <PetsRoom onControlChange={setGameHasControl} />
               </Suspense>
             </section>
           )}
