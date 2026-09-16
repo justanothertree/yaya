@@ -473,7 +473,15 @@ export function PaintRoom() {
   useEffect(() => {
     const onFull = () => {
       const on = !!document.fullscreenElement
-      setToolsHidden(on)
+      /**
+       * ⚠️ FULLSCREEN NO LONGER TAKES THE TOOLS AWAY. Hiding them was right when the only
+       * place they could go was above the paper, where they were the thing making fullscreen worth
+       * pressing. It stopped being right the moment they could sit beside it: what hiding them
+       * actually did was leave you full-screen with no brush, no colour and no layer names, which
+       * is every single thing you need to make a pet — reported as not being able to draw one in
+       * there. The ⌃ Tools button still gives bare paper for anybody who wants it, and now that
+       * is a choice rather than what fullscreen means.
+       */
       setIsFull(on)
     }
     document.addEventListener('fullscreenchange', onFull)
@@ -2308,65 +2316,11 @@ export function PaintRoom() {
         </div>
 
         <div className="paint-row paint-select">
-          <button
-            className={'btn' + (selecting ? ' is-on' : '')}
-            aria-pressed={selecting}
-            onClick={() => {
-              setSelecting((v) => !v)
-              drop()
-            }}
-            title="Drag a box round some strokes, then move, copy or cut them"
-          >
-            ⬚ Select
-          </button>
-          {selecting && (
-            <>
-              <button
-                className="btn"
-                onClick={selectAll}
-                title={`Everything on ${layerNames[layer]?.trim() || `layer ${layer + 1}`} — press again for every layer`}
-              >
-                All
-              </button>
-              <span className="muted paint-select-count">
-                {sel.length ? `${sel.length} picked` : 'drag a box'}
-              </span>
-              <button className="btn" onClick={copy} disabled={!sel.length} title="Copy (Ctrl+C)">
-                Copy
-              </button>
-              <button className="btn" onClick={cut} disabled={!sel.length} title="Cut (Ctrl+X)">
-                Cut
-              </button>
-              {/* ⚠️ paste lands on the layer and frame you are on now — see paste() */}
-              <button
-                className="btn"
-                onClick={paste}
-                disabled={!clip.length}
-                title={
-                  frame === null
-                    ? 'Paste (Ctrl+V)'
-                    : 'Paste onto this frame (Ctrl+V) — the way to build the next pose'
-                }
-              >
-                Paste{clip.length ? ` · ${clip.length}` : ''}
-              </button>
-              <button
-                className="btn"
-                onClick={erase}
-                disabled={!sel.length}
-                title="Delete the selection"
-              >
-                ✕
-              </button>
-            </>
-          )}
-          {/* ⚠️ ONE ROW WITH THE LAYERS, not a row of its own. Selecting had a line to itself
-            holding a single button most of the time, and the layers line beside it was nearly as
-            empty — two thirty-nine pixel rows for about a hundred and fifty pixels of controls,
-            paid for by the picture. They also belong together: both are about WHICH strokes you
-            are working on rather than how the next one will look. Frames used to be here too and
-            is not any more — see the note on its row. */}
-          <span className="paint-row-divide" aria-hidden />
+          {/* ⚠️ SELECTING USED TO BE HERE, and the note that argued for it was about space:
+            two rows each holding one button most of the time. It has gone to sit beside opacity
+            and size, asked for, and it is the better home — choosing a colour, a width and then a
+            handful of strokes to apply them to is one activity, while this row is now purely the
+            stack. Frames left for its own row for a different reason; see the note there. */}
           <span className="muted paint-stack-label">Layers</span>
           {Array.from({ length: layers }, (_, i) => layers - 1 - i).map((i) => (
             <span key={i} className={'paint-layer' + (layer === i ? ' is-on' : '')}>
@@ -2776,6 +2730,62 @@ export function PaintRoom() {
             />
             <span className="appearance-slider-val">{Math.round(width * 1000)}</span>
           </label>
+          {/* ⚠️ BESIDE THE COLOUR AND THE SIZE, asked for. Picking a colour, picking a width
+             and picking which strokes to apply them to is one activity, and selecting was two rows
+             away from the other two — next to the layer stack, which is a different question. */}
+          <span className="paint-row-divide" aria-hidden />
+          <button
+            className={'btn' + (selecting ? ' is-on' : '')}
+            aria-pressed={selecting}
+            onClick={() => {
+              setSelecting((v) => !v)
+              drop()
+            }}
+            title="Drag a box round some strokes, then move, copy or cut them"
+          >
+            ⬚ Select
+          </button>
+          {selecting && (
+            <>
+              <button
+                className="btn"
+                onClick={selectAll}
+                title={`Everything on ${layerNames[layer]?.trim() || `layer ${layer + 1}`} — press again for every layer`}
+              >
+                All
+              </button>
+              <span className="muted paint-select-count">
+                {sel.length ? `${sel.length} picked` : 'drag a box'}
+              </span>
+              <button className="btn" onClick={copy} disabled={!sel.length} title="Copy (Ctrl+C)">
+                Copy
+              </button>
+              <button className="btn" onClick={cut} disabled={!sel.length} title="Cut (Ctrl+X)">
+                Cut
+              </button>
+              {/* ⚠️ paste lands on the layer and frame you are on now — see paste() */}
+              <button
+                className="btn"
+                onClick={paste}
+                disabled={!clip.length}
+                title={
+                  frame === null
+                    ? 'Paste (Ctrl+V)'
+                    : 'Paste onto this frame (Ctrl+V) — the way to build the next pose'
+                }
+              >
+                Paste{clip.length ? ` · ${clip.length}` : ''}
+              </button>
+              <button
+                className="btn"
+                onClick={erase}
+                disabled={!sel.length}
+                title="Delete the selection"
+              >
+                ✕
+              </button>
+            </>
+          )}
         </div>
 
         {/**

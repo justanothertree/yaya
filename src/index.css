@@ -7429,6 +7429,124 @@ a.cz-msg-author:focus-visible {
     order: 5;
   }
 }
+
+/**
+ * THE CONTROLS GO BESIDE THE PAPER ONCE THERE IS ROOM FOR THEM.
+ *
+ * ⚠️ THE SNAKE BOARD AND THE VISUALISER ALREADY SOLVED THIS, and the note by the visualiser's
+ * panel says why: a panel that is a sibling in one flex COLUMN comes straight out of the picture,
+ * so every control you show costs canvas. Beside it, in a column of its own, it costs none. Asked
+ * for in those words — some of it could be on the side like snake and the visualiser.
+ *
+ * Stacked, the paper had to be squeezed to about 348px at 1024x768 to leave the colour row on
+ * screen. Beside, the paper keeps nearly the whole height and the tools, layers, frames and
+ * picture controls are all visible at once without scrolling — which is what makes drawing a pet
+ * in here practical, since the wizard wants the tool row, the layer names and the paper together.
+ *
+ * ⚠️ 64rem, THE SAME THRESHOLD THE VISUALISER USES, and scoped by width rather than by a
+ * class for the same reason: it is a question about how much room there is, and nothing else.
+ * Below it the stacked layout above still applies unchanged.
+ *
+ * ⚠️ AND THE PANEL BECOMES A REAL BOX AGAIN. The stacked layout dissolves it with
+ * display:contents so its rows can be ordered against the board; here it has to be a column, so
+ * this block sits after that one and wins on source order at equal specificity.
+ */
+@media (min-width: 64rem) {
+  .paint-wrap:not(.tools-hidden) {
+    flex-flow: row wrap;
+    align-items: flex-start;
+  }
+  .paint-wrap:not(.tools-hidden) .paint-tools-panel {
+    display: flex;
+    flex: 0 0 21rem;
+    width: 21rem;
+    order: 2;
+    /* ⚠️ its own scrollbar, not the page's: twelve layers must not be able to make the
+       column taller than the picture it is standing next to */
+    max-height: calc(100vh - 230px);
+    overflow-y: auto;
+    padding-right: 0.3rem;
+  }
+  /**
+   * ⚠️ RANKED DOWN THE COLUMN, not left in source order. The stacked layout's orders are
+   * about the paper and mean nothing here, but dropping them all to 0 falls back to the DOM,
+   * which puts the layer stack and the animation controls above the colour and the size — the two
+   * things reached for most, pushed under the two reached for least. Same ranking as the stacked
+   * layout, running down instead of along.
+   */
+  .paint-wrap:not(.tools-hidden) .paint-bar {
+    order: 0;
+  }
+  .paint-wrap:not(.tools-hidden) .paint-row.paint-draw {
+    order: 1;
+  }
+  .paint-wrap:not(.tools-hidden) .paint-row.paint-select {
+    order: 2;
+  }
+  .paint-wrap:not(.tools-hidden) .paint-row.paint-frames {
+    order: 3;
+  }
+  .paint-wrap:not(.tools-hidden) .paint-row.paint-picture {
+    order: 4;
+  }
+  .paint-wrap:not(.tools-hidden) .paint-board {
+    order: 1;
+    flex: 1 1 22rem;
+    min-width: 0;
+    /* ⚠️ only the heading and the one row below are left to pay for now */
+    height: clamp(20rem, calc(100vh - 230px), 60rem);
+  }
+  .paint-wrap:not(.tools-hidden) .paint-shape-row {
+    order: 3;
+    flex: 1 1 100%;
+  }
+  .paint-wrap:not(.tools-hidden) > .paint-note,
+  .paint-wrap:not(.tools-hidden) > .also-together {
+    order: 4;
+    flex: 1 1 100%;
+  }
+  /* the gallery is a full-width strip under everything, never a column beside the paper */
+  .paint-wrap:not(.tools-hidden) .paint-row.paint-gallery {
+    order: 5;
+    flex: 1 1 100%;
+  }
+
+  /**
+   * ⚠️ AND FULLSCREEN IS THIS LAYOUT, FULL SIZE. Fullscreen used to mean "hide every tool",
+   * which was the only thing it could mean while the tools were stacked above the paper — they
+   * were what fullscreen was escaping. Beside it, they cost the picture no height at all, so
+   * escaping them costs you a brush, a colour and your layer names for nothing. The rules below
+   * simply let the pair fill the screen; the ⌃ Tools button is still there for bare paper.
+   *
+   * ⚠️ The height is stated rather than stretched, because these are flex LINES: the board
+   * and the panel sit on the first one and the paper shape row wraps onto the second, and a line
+   * does not grow to fill its container the way a lone flex item does.
+   */
+  .paint-wrap:fullscreen:not(.tools-hidden) .paint-board,
+  .paint-wrap.is-full:not(.tools-hidden) .paint-board {
+    height: calc(100vh - 5rem);
+    min-height: 0;
+    flex: 1 1 22rem;
+  }
+  /**
+   * ⚠️ AND THE FULLSCREEN OVERLAY BECOMES A RAIL. It is absolutely positioned with left AND
+   * right both pinned, so it is a sheet across the whole screen — which was invisible and
+   * therefore harmless while fullscreen hid the tools, and is a sheet over your picture the moment
+   * it does not. Pinned to one side with the paper's margin held clear of it, the same panel is
+   * the side rail the rest of this block builds, and the picture keeps everything to its left.
+   */
+  .paint-wrap:fullscreen:not(.tools-hidden) .paint-tools-panel,
+  .paint-wrap.is-full:not(.tools-hidden) .paint-tools-panel {
+    left: auto;
+    width: 21rem;
+    flex-basis: 21rem;
+    max-height: calc(100vh - 5rem);
+  }
+  .paint-wrap:fullscreen:not(.tools-hidden) .paint-board,
+  .paint-wrap.is-full:not(.tools-hidden) .paint-board {
+    margin-right: 21.8rem;
+  }
+}
 /* with the tools gone there is room, so the paper takes it */
 .paint-wrap.tools-hidden .paint-board {
   height: clamp(18rem, 74vh, 52rem);
