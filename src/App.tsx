@@ -759,6 +759,17 @@ export default function App() {
   const liveRef = useRef<HTMLDivElement>(null)
   const navLinksRef = useRef<HTMLDivElement>(null)
   const navRef = useRef<HTMLElement>(null)
+  /**
+   * Whether a game currently owns the keyboard.
+   *
+   * ⚠️ ONE BOOLEAN, SEVERAL WRITERS, AND THAT IS ONLY SAFE BECAUSE ONE OF THEM IS EVER
+   * MOUNTED. The snake and the pets playground both raise this, and both of their mounts are
+   * gated on `active` being their own section — so the two can never be on screen together and
+   * cannot take the flag from each other. If a third game ever arrives that can be open ALONGSIDE
+   * another, this stops working the moment it unmounts: its cleanup sets false and quietly takes
+   * the arrow keys off whoever else was using them. Count the claims at that point rather than
+   * storing the last thing anybody said.
+   */
   const [gameHasControl, setGameHasControl] = useState(false)
   // True while Snake is connected to a multiplayer room. Toggling canvas re-mounts the
   // section, which drops the socket mid-round — and a round's results live only in the
