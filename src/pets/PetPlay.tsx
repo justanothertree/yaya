@@ -190,7 +190,7 @@ export function PetPlay({ pets, startAt = 0 }: { pets: PlayPet[]; startAt?: numb
       bodies.current = lot.map((b, i) =>
         stepBody(
           b,
-          i === at ? held.current : boss ? followInput(b, boss, i) : STILL,
+          i === at ? held.current : boss ? followInput(b, boss, i, COURSE) : STILL,
           COURSE,
           dt,
           traits[i],
@@ -247,7 +247,7 @@ export function PetPlay({ pets, startAt = 0 }: { pets: PlayPet[]; startAt?: numb
           const b = shown[i]
           if (!b) return null
           const mine = i === lead
-          const input = mine ? held.current : boss ? followInput(b, boss, i) : STILL
+          const input = mine ? held.current : boss ? followInput(b, boss, i, COURSE) : STILL
           return (
             /* ⚠️ A BUTTON, so taking control of a creature is a thing you can do with a mouse, a
                thumb or the keyboard — the number keys are the shortcut, not the only way. */

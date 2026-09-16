@@ -269,19 +269,55 @@ export const effortOf = (b: Body): number =>
  * whenever it is below you bounces on the spot the entire time you stand on a ledge, which reads
  * as a fault rather than as keenness.
  */
-export function followInput(self: Body, lead: Body, slot = 1): Input {
+export function followInput(self: Body, lead: Body, slot = 1, ledges: Ledge[] = []): Input {
   const behind = -Math.sign(lead.facing || 1)
   const side = slot % 2 === 1 ? behind : -behind
   const dist = 0.07 + Math.floor((slot - 1) / 2) * 0.08
-  const want = Math.max(0.05, Math.min(0.95, lead.x + side * dist))
+  /* ⚠️ THE WHOLE WORLD, not the first screen of it. This said 0.95 — which was the edge of
+     the world when the world was one screen wide, and became a leash the moment it was three.
+     Measured: with the lead two screens away a follower walked to 0.95 and stopped there. */
+  const want = Math.max(0.05, Math.min(WORLD.w - 0.05, lead.x + side * dist))
   const dx = want - self.x
   /* ⚠️ a dead zone wide enough to see, because a follower that stops dead the instant it is
      level twitches every time the lead breathes. Half a pet is about right. */
   const close = Math.abs(dx) < 0.045
+
+  /**
+   * Somewhere to land: above where it stands, within one jump, near enough across to arrive on,
+   * and not above the lead — there is no sense climbing past the thing being followed.
+   */
+  const step =
+    lead.y < self.y - 0.08 &&
+    (self.y - lead.y < 0.34 ||
+      ledges.some(
+        (l) =>
+          self.y - l.y > 0.05 &&
+          self.y - l.y < 0.34 &&
+          l.y > lead.y - 0.02 &&
+          /* ⚠️ ACTUALLY UNDER IT, near enough to arrive on it and no more. A generous window
+             reads as "there is a shelf over there somewhere" and produces a pet jumping at empty
+             air next to one — measured at 0.14 of slack: twenty-five jumps, none of them landing
+             anywhere but the floor it started on. */
+          self.x > l.x - 0.04 &&
+          self.x < l.x + l.w + 0.04,
+      ))
+
   return {
     left: !close && dx < 0,
     right: !close && dx > 0,
-    jump: self.onGround && lead.y < self.y - 0.08 && Math.abs(dx) < 0.4,
+    /**
+     * ⚠️ ONLY WHEN THERE IS SOMEWHERE TO LAND. Above you is worth a jump; far above you is a
+     * pet bouncing on the spot for as long as you stand up there, which is the thing the note above
+     * says a follower must not do — it just did not cover being stuck UNDER you. Measured with a
+     * follower left behind the gap: twenty-two jumps in fifteen seconds, going nowhere.
+     *
+     * ⚠️ SO THE TEST IS A LEDGE, NOT A HEIGHT. Asking only "is the lead within one jump" made
+     * followers give up at the second shelf and stand on the floor, because two shelves up is two
+     * jumps and neither of them is the one being measured. Looking for a step it could actually
+     * land on lets a follower climb the same course you climb, one shelf at a time, and still
+     * refuses to jump at a lead who is out of reach with nothing in between.
+     */
+    jump: self.onGround && Math.abs(dx) < 0.4 && step,
     down: false,
   }
 }
