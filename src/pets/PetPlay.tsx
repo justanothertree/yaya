@@ -11,6 +11,7 @@ import {
   stepBody,
   collect,
   TREATS,
+  WORLD,
   traitWords,
   traitsOf,
   type Body,
@@ -82,6 +83,21 @@ export function PetPlay({ pets, startAt = 0 }: { pets: PlayPet[]; startAt?: numb
      tear down and rebuild the animation frame */
   const takenRef = useRef(taken)
   takenRef.current = taken
+
+  /**
+   * Where the window onto the world is.
+   *
+   * ⚠️ IT EASES RATHER THAN SNAPPING. Locked to the lead exactly, the whole world slides
+   * under a creature that is standing still while it accelerates, and every small correction you
+   * make is a shove to the entire picture. Chasing at a rate means the camera arrives a moment
+   * after you do, which is what makes it feel like a window rather than a treadmill.
+   *
+   * ⚠️ AND IT STOPS AT THE EDGES, so the ends of the world sit against the sides of the frame
+   * rather than scrolling on into nothing. There is a floor and a wall out there and the camera
+   * should admit it.
+   */
+  const cam = useRef(0)
+  const [camAt, setCamAt] = useState(0)
 
   /**
    * ⚠️ THE BODIES LIVE IN A REF AND ARE COPIED INTO STATE ONCE A FRAME. The loop must not depend
@@ -180,6 +196,14 @@ export function PetPlay({ pets, startAt = 0 }: { pets: PlayPet[]; startAt?: numb
           traits[i],
         ),
       )
+      const eye = bodies.current[at]
+      if (eye) {
+        const want = Math.max(0, Math.min(WORLD.w - 1, eye.x - 0.5))
+        /* ⚠️ framerate-independent easing: 1 - e^(-k t), not a fixed fraction per frame, or the
+           camera chases faster on a fast machine than a slow one */
+        cam.current += (want - cam.current) * (1 - Math.exp(-7 * Math.min(0.05, dt)))
+        setCamAt(cam.current)
+      }
       setShown(bodies.current)
       /* ⚠️ null when nothing changed, so this is sixty comparisons a second and no renders —
          see collect */
@@ -202,7 +226,11 @@ export function PetPlay({ pets, startAt = 0 }: { pets: PlayPet[]; startAt?: numb
           <span
             key={i}
             className="pet-play-ledge"
-            style={{ left: `${l.x * 100}%`, top: `${l.y * 100}%`, width: `${l.w * 100}%` }}
+            style={{
+              left: `${(l.x - camAt) * 100}%`,
+              top: `${l.y * 100}%`,
+              width: `${l.w * 100}%`,
+            }}
             aria-hidden
           />
         ))}
@@ -211,7 +239,7 @@ export function PetPlay({ pets, startAt = 0 }: { pets: PlayPet[]; startAt?: numb
           <span
             key={i}
             className={'pet-play-treat' + (taken[i] ? ' is-gone' : '')}
-            style={{ left: `${s.x * 100}%`, top: `${s.y * 100}%` }}
+            style={{ left: `${(s.x - camAt) * 100}%`, top: `${s.y * 100}%` }}
             aria-hidden
           />
         ))}
@@ -226,7 +254,7 @@ export function PetPlay({ pets, startAt = 0 }: { pets: PlayPet[]; startAt?: numb
             <button
               key={`${p.name}-${i}`}
               className={'pet-play-pet' + (mine ? ' is-lead' : '')}
-              style={{ left: `${b.x * 100}%`, top: `${b.y * 100}%` }}
+              style={{ left: `${(b.x - camAt) * 100}%`, top: `${b.y * 100}%` }}
               onClick={() => setLead(i)}
               title={
                 (mine ? `You are ${p.name}` : `Play as ${p.name} (${i + 1})`) +

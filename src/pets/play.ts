@@ -41,6 +41,24 @@ export type Ledge = { x: number; y: number; w: number }
 export const FLOOR = 1
 
 /**
+ * How wide the world is, in screenfuls.
+ *
+ * ⚠️ IT IS BIGGER THAN THE WINDOW, and that is the whole of this change. Yesterday's note on
+ * the treats worked out that no treat could be made glider-only: a pet's reach is its whole body,
+ * a fifth of a screen tall, so anything a winged pet could get to on one screen was already inside
+ * a plain one's hitbox — and a gap wider than a jump does not fit across one screen either. The
+ * conclusion was that gating wants a bigger world, so here is one.
+ *
+ * ⚠️ WIDE RATHER THAN TALL, because a horizontal camera is one number and a vertical one is
+ * a second set of decisions about when to follow you up. A gap is also the honest way to ask for
+ * wings: staying up is exactly what wings are for, and a gap says so without a word of UI.
+ *
+ * ⚠️ x IS STILL 0–1 PER SCREEN. The unit did not change, there is just more of it — so
+ * gravity, jumps and speeds are all still the numbers they were tuned to, and y is untouched.
+ */
+export const WORLD = { w: 3 }
+
+/**
  * ⚠️ TUNED IN WORLD HEIGHTS, and the jump is the one that matters: 1.55 against a gravity of 4.6
  * is a rise of about a quarter of the screen and a hang of roughly two thirds of a second, which
  * is what reads as a jump rather than a hop or a balloon. Everything else was fitted around it.
@@ -174,7 +192,7 @@ export function stepBody(
   }
   vy = Math.min(TUNE.maxFall * (input.jump && traits.glide < 1 ? traits.glide : 1), vy)
 
-  const x = Math.max(0.02, Math.min(0.98, b.x + vx * t))
+  const x = Math.max(0.02, Math.min(WORLD.w - 0.02, b.x + vx * t))
   const wasY = b.y
   let y = wasY + vy * t
   let onGround = false
@@ -310,10 +328,25 @@ export function collect(bodies: Body[], spots: Spot[], taken: boolean[]): boolea
 }
 
 /** A little course: three ledges you can climb, reachable in order from the floor. */
+/**
+ * The course, across three screens.
+ *
+ * ⚠️ THE FIRST SCREEN IS UNCHANGED, so everything measured against it still holds and the
+ * opening of the level is the one that was already tuned. What is new is what happens after it.
+ *
+ * ⚠️ AND THERE IS A GAP AT 1.62 THAT A PLAIN JUMP CANNOT CROSS. That is the point of the
+ * wider world: a creature with wings holds jump and glides over it, a creature without has to go
+ * the long way round along the floor. Measured rather than hoped — see the note on TREATS.
+ */
 export const COURSE: Ledge[] = [
   { x: 0.08, y: 0.74, w: 0.22 },
   { x: 0.4, y: 0.54, w: 0.24 },
   { x: 0.72, y: 0.34, w: 0.2 },
+  /* the run-up: a shelf you arrive on from the top of the first screen */
+  { x: 1.12, y: 0.4, w: 0.3 },
+  /* ── the gap ── */
+  { x: 2.04, y: 0.46, w: 0.34 },
+  { x: 2.52, y: 0.28, w: 0.3 },
 ]
 
 /**
@@ -342,4 +375,9 @@ export const TREATS: Spot[] = [
   { x: 0.19, y: 0.74 },
   { x: 0.52, y: 0.54 },
   { x: 0.97, y: 0.12 },
+  { x: 1.26, y: 0.4 },
+  /* ⚠️ the far side of the gap: this is the one that asks for wings */
+  { x: 2.2, y: 0.46 },
+  { x: 2.66, y: 0.28 },
+  { x: 2.9, y: FLOOR },
 ]
