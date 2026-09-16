@@ -7342,6 +7342,83 @@ a.cz-msg-author:focus-visible {
 .paint-wrap.tools-hidden .paint-tools-panel {
   display: none;
 }
+
+/**
+ * THE PAPER IS THE SUBJECT, and on a desktop it was the last thing on screen.
+ *
+ * ⚠️ THIS IS THE PHONE'S BUG, UNFIXED ONE BREAKPOINT UP. The note under the 780px rules
+ * works out that the canvas had ended up 1392px down a page 812px tall and hoists it. Nobody
+ * carried the lesson upward, and the desktop had the same fault in smaller print: measured at
+ * 1024x768 the board began at y=581, so seven rows of controls were above the fold and 187px of
+ * a 445px canvas was below it. You could see all of the furniture and a third of the picture.
+ *
+ * ⚠️ ORDERED BY HOW OFTEN A HAND REACHES FOR IT, which is the whole design. The tool bar is
+ * the one thing wanted before the first mark, so it stays on top. Then the paper. Then colour and
+ * size, which change constantly, directly beneath it. Layers, effects, zoom and clearing sit
+ * lower; the gallery, keeping, downloading and making a pet sit lowest, because every one of them
+ * is a thing you do to a picture you have already finished — they were ABOVE the canvas.
+ *
+ * ⚠️ display:contents ON THE PANEL, so its rows become children of the wrap and can be
+ * ordered against the board without moving a line of JSX. Written as :not(.tools-hidden) because
+ * hiding the tools is display:none on this same element, and contents would beat it.
+ */
+@media (min-width: 781px) {
+  .paint-wrap:not(.tools-hidden) .paint-tools-panel {
+    display: contents;
+  }
+  /**
+   * ⚠️ SIZED AGAINST WHAT IS ABOVE AND BELOW IT, not against the window. 58vh knows nothing
+   * about the heading, the tool bar or the colour row, so on a 768px screen it took 445px and put
+   * the swatches and the size slider at y=764 — four pixels off the bottom. You could see the
+   * whole picture or the colour you were painting it with, and had to scroll between them.
+   *
+   * Subtracting the fixed furniture instead means the first screen always holds the bar, the
+   * paper and the row you change colour and size in — the goal the phone rules already state.
+   * On a taller screen this is BIGGER than the old 58vh, not smaller: 664px of canvas at 1080p
+   * against 626. It only gives ground on the short screens where something had to.
+   *
+   * ⚠️ px, not rem, in the subtraction: the root font-size on this site is fluid, so a rem is
+   * not a fixed number of pixels and cannot be used to cancel a measured layout.
+   */
+  .paint-wrap:not(.tools-hidden) .paint-board {
+    height: clamp(14rem, calc(100vh - 420px), 40rem);
+  }
+  .paint-bar {
+    order: -3;
+  }
+  /**
+   * ⚠️ EVERY TOOL VISIBLE, rather than a strip you have to scroll. Measured: 1369px of tools
+   * in a 919px row, so the last six — Star, Arrow, Crayon, Neon, Triangle and Text — were off the
+   * right-hand edge behind nothing but a thin scrollbar. A tool you cannot see is a tool nobody
+   * uses, and it is a poor trade to have built the text tool and then hidden it.
+   *
+   * Wrapping costs about thirty pixels of canvas and is worth it: this is the one row where
+   * seeing the whole set IS the feature, because picking a brush is choosing from what is there.
+   */
+  .paint-wrap:not(.tools-hidden) .paint-board {
+    order: -2;
+  }
+  /* colour, paper, opacity, size — the row you are in and out of while drawing */
+  .paint-wrap:not(.tools-hidden)
+    .paint-tools-panel
+    > .paint-row:not(.paint-select):not(.paint-picture) {
+    order: -1;
+  }
+  .paint-row.paint-select {
+    order: 1;
+  }
+  .paint-row.paint-picture {
+    order: 2;
+  }
+  /* what you do with it once it exists */
+  .paint-shape-row {
+    order: 3;
+  }
+  .paint-wrap > .paint-note,
+  .paint-wrap > .also-together {
+    order: 4;
+  }
+}
 /* with the tools gone there is room, so the paper takes it */
 .paint-wrap.tools-hidden .paint-board {
   height: clamp(18rem, 74vh, 52rem);
@@ -9088,10 +9165,20 @@ a.cz-msg-author:focus-visible {
    A swatch that says what the paper is and opens the controls for it, rather than a second pad
    sitting next to the brush's looking exactly as important. */
 /**
- * ⚠️ ONE LINE THAT SCROLLS, not a grid that wraps — measured at 1024px wide, eighteen tiles
- * stacked icon-over-label wrapped onto two rows and took 142 pixels, the largest single thing
- * between the tools and the paper. Laid out along the line with the label beside the icon they
- * are about forty, and every brush is still visible and still named.
+ * ⚠️ ALONG THE LINE, NOT STACKED — measured at 1024px wide, eighteen tiles stacked
+ * icon-over-label wrapped onto two rows and took 142 pixels, the largest single thing between the
+ * tools and the paper. Laid out with the label beside the icon they are about forty.
+ *
+ * ⚠️ AND IT WRAPS RATHER THAN SCROLLS, which is a correction. This said "every brush is
+ * still visible and still named" and that was not true: nowrap put 1369px of tools in a 919px
+ * row, so Star, Arrow, Crayon, Neon, Triangle and Text sat off the right-hand edge behind a thin
+ * scrollbar. Text had been built, shipped, fixed twice — and could not be reached without
+ * scrolling a strip nothing marked as scrollable.
+ *
+ * Wrapping does not cost the 142px the stacked grid did, because that figure was about the TILE
+ * SHAPE and not about wrapping: these tiles are one line tall, so a second row is about thirty.
+ * This row is the one place where seeing the whole set is the feature, since choosing a brush is
+ * choosing from what is in front of you.
  *
  * ⚠️ Desktop only. On a phone the row is a menu (below) and a grid is the right shape for it —
  * a horizontal scroll inside a page that already scrolls vertically is a thumb fighting itself.
@@ -9099,11 +9186,10 @@ a.cz-msg-author:focus-visible {
 @media (min-width: 40.0625rem) {
   .fx-style-row.paint-tools {
     display: flex;
-    flex-wrap: nowrap;
-    overflow-x: auto;
+    flex-wrap: wrap;
+    overflow-x: visible;
     gap: 0.3rem;
     padding-block: 0.2rem;
-    scrollbar-width: thin;
   }
   .paint-tools .fx-style-btn {
     flex: 0 0 auto;

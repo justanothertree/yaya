@@ -2759,6 +2759,20 @@ export function PaintRoom() {
             />
             <span className="appearance-slider-val">{Math.round(width * 1000)}</span>
           </label>
+        </div>
+
+        {/**
+         * What you do TO the picture, rather than what you draw it with.
+         *
+         * ⚠️ SPLIT OUT OF THE COLOUR ROW, which had grown to twenty-four controls holding
+         * things you touch every few seconds next to things you touch once a session — swatches
+         * and the size slider beside Clear, Fit and the zoom. One row of equal-looking buttons is
+         * a list to read rather than a place you know your way around, and the only way to find
+         * the size slider was to scan past everything else. Split by how often a hand reaches for
+         * it, they sort themselves: colour and size stay under the paper where they are wanted
+         * constantly, and this row sits lower with the rest of the furniture.
+         */}
+        <div className="paint-row paint-picture">
           {/**
            * ⚠️ FOLDED, because these two are the least reached for and cost the most room.
            *
@@ -2856,7 +2870,15 @@ export function PaintRoom() {
             disabled={!past.length}
             title={past.length ? `Undo ${past[past.length - 1].label} (Ctrl+Z)` : 'Nothing to undo'}
           >
-            ↶ Undo{past.length ? ` ${past[past.length - 1].label}` : ''}
+            {/**
+             * ⚠️ THE LABEL IS FIXED, and what it is about to undo lives in the title beside the
+             * shortcut. Naming the step inline meant the button changed width with the last thing
+             * you did — "Undo" to "Undo clearing the picture" is ninety pixels — in a row that
+             * wraps, so finishing a stroke could push Redo, Clear and the zoom onto another line.
+             * A control that moves the moment you use it is the same fault the text tool had, and
+             * it is worse here because Undo is the one button you reach for repeatedly and fast.
+             */}
+            ↶ Undo
           </button>
           <button
             className="btn"
@@ -2990,7 +3012,10 @@ export function PaintRoom() {
       </div>
       <div className="paint-shape-row">
         <label className="paint-shape">
-          <span className="muted">Paper</span>
+          {/* ⚠️ SHAPE, because "Paper" is already the background COLOUR two rows up. The same
+             word on two controls that do different things is not a naming quibble: one of them is
+             always the wrong one to have pressed. */}
+          <span className="muted">Shape</span>
           <select
             className="viz-select"
             value={shape}
