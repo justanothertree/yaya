@@ -45,6 +45,10 @@ what it just made stale — copy, empty states, the thing a neighbouring feature
 - **Four things never happen in the Browser pane, and each one fakes a pass.**
   `requestAnimationFrame` never fires, so any animation loop simply does not run — a canvas that
   is blank after a hot reload looks exactly like a renderer you have just broken, and is not.
+  **It can be stood in for**, which is how the fighting room's live round, keyboard and win state
+  were checked: replace `window.requestAnimationFrame` with a `setTimeout` at ~16ms, then leave
+  the room and come back so the loop starts against the replacement. Everything the loop DRIVES
+  is then observable; everything it computes should still live where it can be called directly.
   `ResizeObserver` never fires, so anything that re-measures on resize cannot be exercised at all.
   `prefers-reduced-motion` cannot be emulated. And `window.confirm` is auto-dismissed, which
   returns `false` — so a confirmed action appears to do nothing and the feature appears broken

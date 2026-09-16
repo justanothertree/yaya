@@ -53,7 +53,7 @@ Everything else is the platformer: gravity, acceleration, one-way ledges, the co
 fighting game whose jump felt different from the playground's jump would be two games about the
 same creature.
 
-## Four things that were measured, not guessed
+## Five things that were measured, not guessed
 
 **Knockback did not work at all.** Drag applies whenever no direction is held, which is exactly the
 state a stunned fighter is in. At full grip the hardest attack in the game threw a 200%-damaged
