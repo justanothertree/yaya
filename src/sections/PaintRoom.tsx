@@ -1622,7 +1622,26 @@ export function PaintRoom() {
   /* the selection, for repaint — which runs from a ref during a drag and would otherwise close
      over whatever it was when the callback was last built */
   selRef.current = sel
-  const selectAll = () => setSel(inBand({ x0: -1, y0: -1, x1: 2, y1: 2 }))
+  /**
+   * Everything — on the layer you are working on, and then everything everywhere.
+   *
+   * ⚠️ THE LAYER FIRST, because that is what you meant nine times in ten. Anybody pressing
+   * All is in the middle of doing something to a layer, and handing them every stroke in the
+   * picture means the next drag moves the parts they had carefully left alone. Asked for exactly
+   * that way. inBand already skips hidden layers and other frames, so this only adds the one
+   * thing it was missing.
+   *
+   * ⚠️ AND PRESSING IT AGAIN WIDENS to the whole picture, so nothing is taken away — moving
+   * an entire drawing is still two presses rather than impossible. On a one-layer drawing the two
+   * are the same set and nobody can tell the difference, which is the property that makes this
+   * safe to change under drawings that already exist.
+   */
+  const selectAll = () => {
+    const every = inBand({ x0: -1, y0: -1, x1: 2, y1: 2 })
+    const mine = every.filter((i) => (strokes[i].l ?? 0) === layer)
+    const already = mine.length === sel.length && mine.every((i) => sel.includes(i))
+    setSel(mine.length && !already ? mine : every)
+  }
   const copy = () => {
     if (!sel.length) return
     setClip(sel.map((i) => ({ ...strokes[i], p: [...strokes[i].p] })).filter(Boolean))
@@ -1743,12 +1762,30 @@ export function PaintRoom() {
       }
       if (box && x >= box.x0 - pad && x <= box.x1 + pad && y >= box.y0 - pad && y <= box.y1 + pad) {
         shove.current = { x, y, from: strokesNow.current }
+        preview()
+        return
+      }
+      /**
+       * ⚠️ WITH THE TEXT TOOL, EMPTY PAPER MEANS ANOTHER TEXT BOX, and without this the tool
+       * is a liar: placing text turns the selection on so the handles can resize and turn it, and
+       * the selection then swallowed every drag after it. The button stayed lit, the note still
+       * said to drag a line, and dragging did nothing at all — reported as the text line "not
+       * working… entirely up to the selection tool".
+       *
+       * It is the rule the tool row already follows one screen down: reaching for a brush IS
+       * saying you are done selecting. Reaching for empty paper with the Text tool says it too.
+       * Handles and the inside of the box are tested first, above, so adjusting what you just
+       * wrote still works — it is only a drag somewhere else that starts the next one.
+       */
+      if (tool === 'text') {
+        setSel([])
+        setSelecting(false)
       } else {
         band.current = { x0: x, y0: y, x1: x, y1: y }
         setSel([])
+        preview()
+        return
       }
-      preview()
-      return
     }
     if (tool === 'fill') {
       /**
@@ -2161,7 +2198,11 @@ export function PaintRoom() {
           </button>
           {selecting && (
             <>
-              <button className="btn" onClick={selectAll} title="Select everything you can see">
+              <button
+                className="btn"
+                onClick={selectAll}
+                title={`Everything on ${layerNames[layer]?.trim() || `layer ${layer + 1}`} — press again for every layer`}
+              >
                 All
               </button>
               <span className="muted paint-select-count">
