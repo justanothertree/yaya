@@ -3064,6 +3064,96 @@ export function PaintRoom() {
          * nobody chose, and differently on a phone than on a desktop. Naming the shape makes it a
          * decision; printing the pixels means you never have to infer it from looking.
          */}
+        {/**
+         * The pet guide, in the rail with the other controls.
+         *
+         * ⚠️ IT USED TO SIT ACROSS THE TOP, and the note here said that was because every
+         * instruction on it is about what to do on the paper. That was true when the controls were
+         * a band above the picture, and it is the wrong shape now: measured, at the "add a part
+         * that moves" step it is a 918x268 slab that pushed the paper down to y=568 on a 768-tall
+         * screen — most of the paper off the bottom of it. Reported as the paint being shifted
+         * when the pet wizard opens.
+         *
+         * The reason it gave still holds — it belongs beside the paper — and the rail IS beside
+         * the paper now. Fourteen part buttons are four short rows in a column instead of one very
+         * wide line, which is the shape they wanted all along.
+         */}
+        {petStep && (
+          <div className="paint-row paint-pet-guide">
+            {petStep.phase === 'body' && (
+              <>
+                <strong>1 · Draw the body.</strong>
+                <span className="muted">
+                  Just the middle of the creature — head, wings and legs come next, each on their
+                  own layer. This step finishes itself the moment you draw something.
+                </span>
+              </>
+            )}
+
+            {petStep.phase === 'draw' && (
+              <>
+                <strong>Draw the {petStep.part}.</strong>
+                <span className="muted">
+                  You are on a new layer called <code>{petStep.part}</code>, so this part{' '}
+                  {PART_DOES[partOf(petStep.part)]} on its own. Draw it where it belongs on the
+                  body.
+                </span>
+                <button className="btn btn-ghost" onClick={() => setPetStep({ phase: 'pick' })}>
+                  Skip this one
+                </button>
+              </>
+            )}
+
+            {petStep.phase === 'pick' && (
+              <>
+                <strong>Add a part that moves.</strong>
+                <span className="muted">
+                  Press one, then draw it. Each becomes its own layer, and the name is what makes it
+                  move.
+                </span>
+                <span className="paint-pet-parts">
+                  {PART_WORDS.map((w) => (
+                    <button
+                      key={w}
+                      className="btn"
+                      disabled={layers >= 12}
+                      onClick={() => petAddPart(w)}
+                      title={`A layer called ${w} — it ${PART_DOES[partOf(w)]}`}
+                    >
+                      {w}
+                    </button>
+                  ))}
+                </span>
+                <button className="btn" disabled={!strokes.length} onClick={finishPet}>
+                  ✓ That is everything
+                </button>
+              </>
+            )}
+
+            {/**
+             * ⚠️ THE ANSWER TO "RATHER THAN GUESSING WHAT IT WILL MOVE LIKE". Naming a layer and
+             * hoping was the whole problem: the rig is invisible, so the only way to find out was to
+             * keep it, adopt it, and go and look. This is the real renderer at the real speed on the
+             * real drawing, updating every time you finish a stroke or name a part.
+             *
+             * ⚠️ AND IT SHOWS FRAMES WHEN THERE ARE FRAMES, because paintPet already prefers a
+             * drawn animation over the rig — so this doubles as a way to watch a frame animation
+             * without leaving the room, and answers which of the two a given drawing is getting.
+             */}
+            {!!strokes.length && (
+              <div className="paint-pet-preview">
+                <PetView art={petPreview} size={96} label="your pet, moving" />
+                <span className="muted">
+                  {frameCount(petPreview) > 1
+                    ? `Playing your ${frameCount(petPreview)} frames — a drawing with frames is animated by them rather than by its layer names.`
+                    : petParts.length
+                      ? `So far: ${petParts.join(', ')}`
+                      : 'Nothing is named yet, so all of it just breathes.'}
+                </span>
+              </div>
+            )}
+          </div>
+        )}
       </div>
       <div className="paint-shape-row">
         <label className="paint-shape">
@@ -3264,83 +3354,6 @@ export function PaintRoom() {
             }
           }}
         />
-      )}
-      {petStep && (
-        /* ⚠️ Directly above the paper, because every instruction on it is about what to do on
-           the paper. A guide somewhere else is a thing to keep looking away at. */
-        <div className="paint-row paint-pet-guide">
-          {petStep.phase === 'body' && (
-            <>
-              <strong>1 · Draw the body.</strong>
-              <span className="muted">
-                Just the middle of the creature — head, wings and legs come next, each on their own
-                layer. This step finishes itself the moment you draw something.
-              </span>
-            </>
-          )}
-
-          {petStep.phase === 'draw' && (
-            <>
-              <strong>Draw the {petStep.part}.</strong>
-              <span className="muted">
-                You are on a new layer called <code>{petStep.part}</code>, so this part{' '}
-                {PART_DOES[partOf(petStep.part)]} on its own. Draw it where it belongs on the body.
-              </span>
-              <button className="btn btn-ghost" onClick={() => setPetStep({ phase: 'pick' })}>
-                Skip this one
-              </button>
-            </>
-          )}
-
-          {petStep.phase === 'pick' && (
-            <>
-              <strong>Add a part that moves.</strong>
-              <span className="muted">
-                Press one, then draw it. Each becomes its own layer, and the name is what makes it
-                move.
-              </span>
-              <span className="paint-pet-parts">
-                {PART_WORDS.map((w) => (
-                  <button
-                    key={w}
-                    className="btn"
-                    disabled={layers >= 12}
-                    onClick={() => petAddPart(w)}
-                    title={`A layer called ${w} — it ${PART_DOES[partOf(w)]}`}
-                  >
-                    {w}
-                  </button>
-                ))}
-              </span>
-              <button className="btn" disabled={!strokes.length} onClick={finishPet}>
-                ✓ That is everything
-              </button>
-            </>
-          )}
-
-          {/**
-           * ⚠️ THE ANSWER TO "RATHER THAN GUESSING WHAT IT WILL MOVE LIKE". Naming a layer and
-           * hoping was the whole problem: the rig is invisible, so the only way to find out was to
-           * keep it, adopt it, and go and look. This is the real renderer at the real speed on the
-           * real drawing, updating every time you finish a stroke or name a part.
-           *
-           * ⚠️ AND IT SHOWS FRAMES WHEN THERE ARE FRAMES, because paintPet already prefers a
-           * drawn animation over the rig — so this doubles as a way to watch a frame animation
-           * without leaving the room, and answers which of the two a given drawing is getting.
-           */}
-          {!!strokes.length && (
-            <div className="paint-pet-preview">
-              <PetView art={petPreview} size={96} label="your pet, moving" />
-              <span className="muted">
-                {frameCount(petPreview) > 1
-                  ? `Playing your ${frameCount(petPreview)} frames — a drawing with frames is animated by them rather than by its layer names.`
-                  : petParts.length
-                    ? `So far: ${petParts.join(', ')}`
-                    : 'Nothing is named yet, so all of it just breathes.'}
-              </span>
-            </div>
-          )}
-        </div>
       )}
       {saving && <SaveArt art={saving} onClose={() => setSaving(null)} />}
       <div

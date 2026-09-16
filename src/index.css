@@ -7332,6 +7332,17 @@ a.cz-msg-author:focus-visible {
  * button. In fullscreen this is what turns the room into a picture; on the ordinary page it is
  * the same press for the same reason.
  */
+/**
+ * ⚠️ THE WIZARD COMES FIRST IN THE PANEL, at every width, because while it is open it is the
+ * task. In the side rail that puts it beside the paper; on a phone, where the panel sits under the
+ * canvas, it puts it directly under the tool row instead of at the bottom of the column — measured
+ * at y=1053 against a board at y=151 before this, which is two screens away from the thing the
+ * instructions are about.
+ */
+.paint-row.paint-pet-guide {
+  order: -1;
+}
+
 /* the panel holding everything that is not the paper */
 .paint-tools-panel {
   display: flex;
@@ -7538,16 +7549,59 @@ a.cz-msg-author:focus-visible {
    * it does not. Pinned to one side with the paper's margin held clear of it, the same panel is
    * the side rail the rest of this block builds, and the picture keeps everything to its left.
    */
-  .paint-wrap:fullscreen:not(.tools-hidden) .paint-tools-panel,
-  .paint-wrap.is-full:not(.tools-hidden) .paint-tools-panel {
-    left: auto;
-    width: 21rem;
-    flex-basis: 21rem;
-    max-height: calc(100vh - 5rem);
+  /**
+   * ⚠️ FULLSCREEN IS A GRID, because subtracting a guess from 100vh does not work here. The
+   * first attempt gave the board a height of 100vh minus five rem and left the rest to luck:
+   * measured inside the wrap, which IS the screen once fullscreen is real, the padding, the tool
+   * bar, two gaps, the board and the paper-shape strip added up to 839 pixels on a 768 screen.
+   * Seventy-one over, and what got clipped was the strip carrying Gallery, Keep, Make a pet,
+   * Download, ⌃ Tools and ⛶ — including the only way back out of fullscreen. Reported as controls
+   * off screen, which undersells it.
+   *
+   * No constant can fix that, because the thing being subtracted is not constant: the tool bar is
+   * one row on a wide screen and three on a narrow one. A grid does not need the number — the bar
+   * and the strip take what they need, and `1fr` hands the rest to the picture and the rail,
+   * whatever that turns out to be.
+   *
+   * ⚠️ AND THE PANEL STOPS BEING AN OVERLAY. It is positioned absolutely with left AND right
+   * pinned, which was invisible while fullscreen hid the tools and a sheet over the picture the
+   * moment it did not. As a real grid column it cannot cover anything, and it cannot be measured
+   * wrong either.
+   */
+  .paint-wrap:fullscreen:not(.tools-hidden),
+  .paint-wrap.is-full:not(.tools-hidden) {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 21rem;
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    align-content: stretch;
+  }
+  .paint-wrap:fullscreen:not(.tools-hidden) .paint-bar,
+  .paint-wrap.is-full:not(.tools-hidden) .paint-bar {
+    grid-column: 1 / -1;
+    grid-row: 1;
   }
   .paint-wrap:fullscreen:not(.tools-hidden) .paint-board,
   .paint-wrap.is-full:not(.tools-hidden) .paint-board {
-    margin-right: 21.8rem;
+    grid-column: 1;
+    grid-row: 2;
+    height: auto;
+    min-height: 0;
+    margin-right: 0;
+  }
+  .paint-wrap:fullscreen:not(.tools-hidden) .paint-tools-panel,
+  .paint-wrap.is-full:not(.tools-hidden) .paint-tools-panel {
+    position: static;
+    grid-column: 2;
+    grid-row: 2;
+    width: auto;
+    max-height: none;
+    min-height: 0;
+    overflow-y: auto;
+  }
+  .paint-wrap:fullscreen:not(.tools-hidden) .paint-shape-row,
+  .paint-wrap.is-full:not(.tools-hidden) .paint-shape-row {
+    grid-column: 1 / -1;
+    grid-row: 3;
   }
 }
 /* with the tools gone there is room, so the paper takes it */
