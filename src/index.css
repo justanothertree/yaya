@@ -7353,6 +7353,15 @@ a.cz-msg-author:focus-visible {
 .paint-wrap.tools-hidden .paint-tools-panel {
   display: none;
 }
+/**
+ * ⚠️ AND THE BRUSHES, which this stopped covering the moment the tool bar moved out of the
+ * panel to stop it crushing the rail. One rule hid "the tools" by hiding the box they were in, so
+ * taking the biggest tool out of that box quietly changed what the button does: ⌃ Tools left the
+ * whole brush row on screen while claiming to hide the tools and give you the paper.
+ */
+.paint-wrap.tools-hidden .paint-bar {
+  display: none;
+}
 
 /**
  * THE PAPER IS THE SUBJECT, and on a desktop it was the last thing on screen.
@@ -7536,8 +7545,8 @@ a.cz-msg-author:focus-visible {
    * and the panel sit on the first one and the paper shape row wraps onto the second, and a line
    * does not grow to fill its container the way a lone flex item does.
    */
-  .paint-wrap:fullscreen:not(.tools-hidden) .paint-board,
-  .paint-wrap.is-full:not(.tools-hidden) .paint-board {
+  .paint-wrap:fullscreen .paint-board,
+  .paint-wrap.is-full .paint-board {
     height: calc(100vh - 5rem);
     min-height: 0;
     flex: 1 1 22rem;
@@ -7568,28 +7577,42 @@ a.cz-msg-author:focus-visible {
    * moment it did not. As a real grid column it cannot cover anything, and it cannot be measured
    * wrong either.
    */
-  .paint-wrap:fullscreen:not(.tools-hidden),
-  .paint-wrap.is-full:not(.tools-hidden) {
+  .paint-wrap:fullscreen,
+  .paint-wrap.is-full {
     display: grid;
     grid-template-columns: minmax(0, 1fr) 21rem;
     grid-template-rows: auto minmax(0, 1fr) auto;
     align-content: stretch;
   }
-  .paint-wrap:fullscreen:not(.tools-hidden) .paint-bar,
-  .paint-wrap.is-full:not(.tools-hidden) .paint-bar {
+  /**
+   * ⚠️ AND IT STAYS A GRID WITH THE TOOLS HIDDEN, which is the whole of the reported bug.
+   * Every rule here said :not(.tools-hidden), so pressing ⌃ Tools did not hide a column — it
+   * dropped the room out of the grid altogether and back into the plain flex column, where the
+   * paper-shape strip sits in SOURCE order, which is above the picture. That is the "bottom bar
+   * pops out" as a row, and pressing it again left a gap where the panel had been.
+   *
+   * Hiding the tools is one column fewer, and nothing else. The rows are untouched, so the paper
+   * simply takes the width the rail was using and the strip stays where it was.
+   */
+  .paint-wrap:fullscreen.tools-hidden,
+  .paint-wrap.is-full.tools-hidden {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .paint-wrap:fullscreen .paint-bar,
+  .paint-wrap.is-full .paint-bar {
     grid-column: 1 / -1;
     grid-row: 1;
   }
-  .paint-wrap:fullscreen:not(.tools-hidden) .paint-board,
-  .paint-wrap.is-full:not(.tools-hidden) .paint-board {
+  .paint-wrap:fullscreen .paint-board,
+  .paint-wrap.is-full .paint-board {
     grid-column: 1;
     grid-row: 2;
     height: auto;
     min-height: 0;
     margin-right: 0;
   }
-  .paint-wrap:fullscreen:not(.tools-hidden) .paint-tools-panel,
-  .paint-wrap.is-full:not(.tools-hidden) .paint-tools-panel {
+  .paint-wrap:fullscreen .paint-tools-panel,
+  .paint-wrap.is-full .paint-tools-panel {
     position: static;
     grid-column: 2;
     grid-row: 2;
@@ -7598,8 +7621,8 @@ a.cz-msg-author:focus-visible {
     min-height: 0;
     overflow-y: auto;
   }
-  .paint-wrap:fullscreen:not(.tools-hidden) .paint-shape-row,
-  .paint-wrap.is-full:not(.tools-hidden) .paint-shape-row {
+  .paint-wrap:fullscreen .paint-shape-row,
+  .paint-wrap.is-full .paint-shape-row {
     grid-column: 1 / -1;
     grid-row: 3;
   }

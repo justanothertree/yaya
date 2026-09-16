@@ -1092,7 +1092,7 @@ export function PaintRoom() {
    * knows a stroke by; one loaded from a gallery file has never had one, which is the same limit
    * undo has always had rather than a new one.
    */
-  const restyle = (patch: { c?: string; a?: number; w?: number }) => {
+  const restyle = (patch: { c?: string; a?: number; w?: number; sy?: number; e?: number }) => {
     if (!sel.length) return
     const ids = sel.map((i) => strokes[i]?.id).filter((v): v is string => !!v)
     mark('that change')
@@ -1102,7 +1102,21 @@ export function PaintRoom() {
        changed the named strokes and silently left the rest exactly as they were. */
     if (ids.length < sel.length)
       setStrokes((prev) =>
-        prev.map((st, i) => (sel.includes(i) && !st.id ? { ...st, ...patch } : st)),
+        prev.map((st, i) =>
+          sel.includes(i) && !st.id
+            ? {
+                ...st,
+                ...(patch.c !== undefined ? { c: patch.c } : {}),
+                ...(patch.a !== undefined ? { a: patch.a } : {}),
+                ...(patch.w !== undefined ? { w: patch.w } : {}),
+                /* ⚠️ `sy` on the wire, `k` on the stroke: the op already spends `k` on which KIND
+                   of op it is, so the field could not also be called that. Spread blindly and a
+                   symmetry change would have set the stroke's k to the string 'style'. */
+                ...(patch.sy !== undefined ? { k: patch.sy } : {}),
+                ...(patch.e !== undefined ? { e: patch.e } : {}),
+              }
+            : st,
+        ),
       )
   }
   const pickColour = (c: string) => {
@@ -1309,6 +1323,30 @@ export function PaintRoom() {
     setSel([at])
     setSelecting(true)
   }
+
+  /**
+   * A text box does not outlive the tool that opened it.
+   *
+   * ⚠️ AN EMPTY ONE WAS A DEAD END. Draw a line, type nothing, press ⚬ Select: you land in
+   * select mode with an invisible field still holding the focus, so every key you press goes into
+   * a text box you cannot see and the effect beside pendingText keeps taking the focus back.
+   * Reported as being stopped from switching to select mode, and it is — the mode changed, the
+   * keyboard did not.
+   *
+   * ⚠️ IT PLACES RATHER THAN DISCARDS, because placeText already draws the distinction: words
+   * are committed, an empty box is thrown away. Walking off mid-word should not lose the word.
+   *
+   * ⚠️ ONLY THE TOOL AND THE MODE. Colour, size, opacity and the effects deliberately do NOT
+   * end it — being able to change those while the words are still live is the whole reason this is
+   * a live text box rather than the browser prompt it replaced.
+   */
+  useEffect(() => {
+    if (!typing) return
+    if (tool !== 'text' || selecting) placeText()
+    /* ⚠️ not on `typing`: this reacts to LEAVING, and listing it would fire the moment a box
+       opens. eslint cannot see that distinction. */
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tool, selecting])
 
   const dropText = () => {
     setTyping(null)
@@ -2871,7 +2909,10 @@ export function PaintRoom() {
                         key={n}
                         className={'btn' + (symmetry === n ? ' is-on' : '')}
                         aria-pressed={symmetry === n}
-                        onClick={() => setSymmetry(n)}
+                        onClick={() => {
+                          setSymmetry(n)
+                          restyle({ sy: n })
+                        }}
                         title={n === 0 ? 'No mirroring' : `${n} mirrored segments`}
                       >
                         {n === 0 ? 'Off' : n}
@@ -2891,7 +2932,10 @@ export function PaintRoom() {
                         key={n}
                         className={'btn' + (echo === n ? ' is-on' : '')}
                         aria-pressed={echo === n}
-                        onClick={() => setEcho(n)}
+                        onClick={() => {
+                          setEcho(n)
+                          restyle({ e: n })
+                        }}
                         title={
                           n === 0
                             ? 'No trailing copies'

@@ -1,4 +1,4 @@
-import { xformStroke, type Stroke } from './strokes'
+import { ECHOES, SYMMETRIES, xformStroke, type Stroke } from './strokes'
 
 /**
  * Changing the stack of layers — as one definition, so it happens the same way for everybody.
@@ -104,7 +104,7 @@ export type LayerOp =
    * style on each would mean moving the opacity slider also re-applied whatever colour happened to
    * be loaded, which is not what anybody pressed.
    */
-  | { k: 'style'; ids: string[]; c?: string; a?: number; w?: number }
+  | { k: 'style'; ids: string[]; c?: string; a?: number; w?: number; sy?: number; e?: number }
   /**
    * Move, scale and rotate strokes that are already drawn — as one affine matrix.
    *
@@ -205,6 +205,9 @@ export function applyLayerOp(stack: Stack, op: LayerOp, layers: number): Stack {
               ...(op.c !== undefined ? { c: op.c } : {}),
               ...(op.a !== undefined ? { a: op.a } : {}),
               ...(op.w !== undefined ? { w: op.w } : {}),
+              /* ⚠️ mirroring and trailing copies are style too — see restyle */
+              ...(op.sy !== undefined ? { k: op.sy } : {}),
+              ...(op.e !== undefined ? { e: op.e } : {}),
             }
           : st,
       ),
@@ -323,7 +326,21 @@ export function readLayerOp(raw: unknown): LayerOp | null {
     if (typeof o.a === 'number' && Number.isFinite(o.a)) op.a = Math.max(0.02, Math.min(1, o.a))
     if (typeof o.w === 'number' && Number.isFinite(o.w))
       op.w = Math.max(0.0015, Math.min(0.25, o.w))
-    return op.c === undefined && op.a === undefined && op.w === undefined ? null : op
+    /**
+     * ⚠️ ONLY THE VALUES THE ROOM OFFERS, the way readStroke already treats these two: a
+     * kaleidoscope draws its stroke k times around the middle of the picture and an echo repeats
+     * it, so a number arriving from somebody else's tab is a multiplier on how much work every
+     * frame does. Whole numbers off the menu, or nothing.
+     */
+    if (typeof o.sy === 'number' && (SYMMETRIES as readonly number[]).includes(o.sy)) op.sy = o.sy
+    if (typeof o.e === 'number' && (ECHOES as readonly number[]).includes(o.e)) op.e = o.e
+    return op.c === undefined &&
+      op.a === undefined &&
+      op.w === undefined &&
+      op.sy === undefined &&
+      op.e === undefined
+      ? null
+      : op
   }
   if (o.k === 'xform') {
     if (!Array.isArray(o.ids) || !Array.isArray(o.m) || o.m.length !== 6) return null
