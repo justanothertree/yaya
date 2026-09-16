@@ -2267,10 +2267,18 @@ export default function App() {
           {!sharedCanvasShowing && active === 'paint' && (
             <section id="paint" className="card reveal">
               <h2>🎨 Paint</h2>
-              <p className="muted">
-                Draw something. Brush, shapes, a fill bucket and real transparency — kept as the
-                strokes you made rather than as an image.
-              </p>
+              {/**
+               * ⚠️ NO BLURB, because the room already says this better and further down. It read
+               * "kept as the strokes you made rather than as an image"; the standing note under the
+               * picture says "kept as the strokes you made, not as an image — so they redraw sharp
+               * at any size, undo is free, and one fits in a profile without being hosted
+               * anywhere." Same fact, with the reasons it matters attached. The rest of it named
+               * four tools that are on screen in a toolbar.
+               *
+               * The phone rules had already hidden it and said why — three lines, 63px, read once
+               * ever, and better taken from the blurb than from the canvas — so nobody on a phone
+               * has ever seen it. This deletes it rather than hiding it at a second breakpoint.
+               */}
               <Suspense fallback={<div aria-busy>Loading…</div>}>
                 <PaintRoom />
               </Suspense>

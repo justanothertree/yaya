@@ -2356,24 +2356,6 @@ export function PaintRoom() {
                */}
               <button
                 className="paint-layer-eye"
-                onClick={() => {
-                  const to = window
-                    .prompt(
-                      'Name this layer — wing, head, leg, tail, ear, eye, arm and antenna give it movement in the Pets room.',
-                      layerNames[i] ?? '',
-                    )
-                    ?.trim()
-                  if (to === undefined) return
-                  mark(`renaming ${nameOf(i)}`)
-                  runLayerOp({ k: 'name', i, name: to.slice(0, 24) }, true)
-                }}
-                title={`Rename ${nameOf(i)}`}
-                aria-label={`Rename ${nameOf(i)}`}
-              >
-                ✎
-              </button>
-              <button
-                className="paint-layer-eye"
                 aria-pressed={!hidden.includes(i)}
                 onClick={() => runLayerOp({ k: 'hide', i, on: !hidden.includes(i) }, true)}
                 title={hidden.includes(i) ? 'Show this layer' : 'Hide this layer'}
@@ -2403,35 +2385,69 @@ export function PaintRoom() {
                   ↻
                 </button>
               )}
-              {/* ⚠️ Up means further FORWARD in the picture, which is up this list too — the rows
-                are drawn highest first, so the arrows point the way the layer actually moves. */}
-              <button
-                className="paint-layer-move"
-                onClick={() => moveLayer(i, 1)}
-                disabled={i >= layers - 1}
-                title={`Move ${nameOf(i)} in front`}
-                aria-label={`Move ${nameOf(i)} in front`}
-              >
-                ▲
-              </button>
-              <button
-                className="paint-layer-move"
-                onClick={() => moveLayer(i, -1)}
-                disabled={i <= 0}
-                title={`Move ${nameOf(i)} behind`}
-                aria-label={`Move ${nameOf(i)} behind`}
-              >
-                ▼
-              </button>
-              <button
-                className="paint-layer-move"
-                onClick={() => removeLayer(i)}
-                disabled={layers <= 1}
-                title={`Delete ${nameOf(i)}`}
-                aria-label={`Delete ${nameOf(i)}`}
-              >
-                ✕
-              </button>
+              {/**
+               * ⚠️ ONLY ON THE LAYER YOU ARE ON, and that one rule takes four buttons off every
+               * other row. Each chip carried six controls, so twelve layers was seventy-two of
+               * them and 263 pixels — half the side rail, for a list. It reads as a wall rather
+               * than a stack, and it was the last thing in this room still growing without a
+               * limit.
+               *
+               * The split is what you actually do to which layer. Hiding one is something you do
+               * to the OTHERS — to see past them while you work — so the eye stays on every row.
+               * Renaming, reordering and deleting are things you do to the one you are working on,
+               * and selecting it first is a click you were making anyway.
+               */}
+              {layer === i && (
+                <>
+                  <button
+                    className="paint-layer-eye"
+                    onClick={() => {
+                      const to = window
+                        .prompt(
+                          'Name this layer — wing, head, leg, tail, ear, eye, arm and antenna give it movement in the Pets room.',
+                          layerNames[i] ?? '',
+                        )
+                        ?.trim()
+                      if (to === undefined) return
+                      mark(`renaming ${nameOf(i)}`)
+                      runLayerOp({ k: 'name', i, name: to.slice(0, 24) }, true)
+                    }}
+                    title={`Rename ${nameOf(i)}`}
+                    aria-label={`Rename ${nameOf(i)}`}
+                  >
+                    ✎
+                  </button>
+                  {/* ⚠️ Up means further FORWARD in the picture, which is up this list too — the rows
+                  are drawn highest first, so the arrows point the way the layer actually moves. */}
+                  <button
+                    className="paint-layer-move"
+                    onClick={() => moveLayer(i, 1)}
+                    disabled={i >= layers - 1}
+                    title={`Move ${nameOf(i)} in front`}
+                    aria-label={`Move ${nameOf(i)} in front`}
+                  >
+                    ▲
+                  </button>
+                  <button
+                    className="paint-layer-move"
+                    onClick={() => moveLayer(i, -1)}
+                    disabled={i <= 0}
+                    title={`Move ${nameOf(i)} behind`}
+                    aria-label={`Move ${nameOf(i)} behind`}
+                  >
+                    ▼
+                  </button>
+                  <button
+                    className="paint-layer-move"
+                    onClick={() => removeLayer(i)}
+                    disabled={layers <= 1}
+                    title={`Delete ${nameOf(i)}`}
+                    aria-label={`Delete ${nameOf(i)}`}
+                  >
+                    ✕
+                  </button>
+                </>
+              )}
             </span>
           ))}
           <button

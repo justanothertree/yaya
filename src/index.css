@@ -7463,7 +7463,7 @@ a.cz-msg-author:focus-visible {
     order: 2;
     /* ⚠️ its own scrollbar, not the page's: twelve layers must not be able to make the
        column taller than the picture it is standing next to */
-    max-height: calc(100vh - 372px);
+    max-height: calc(100vh - 318px);
     overflow-y: auto;
     padding-right: 0.3rem;
   }
@@ -7497,7 +7497,7 @@ a.cz-msg-author:focus-visible {
     flex: 1 1 22rem;
     min-width: 0;
     /* ⚠️ only the heading and the one row below are left to pay for now */
-    height: clamp(18rem, calc(100vh - 372px), 60rem);
+    height: clamp(18rem, calc(100vh - 318px), 60rem);
   }
   .paint-wrap:not(.tools-hidden) .paint-shape-row {
     order: 3;
@@ -8258,18 +8258,6 @@ a.cz-msg-author:focus-visible {
   }
   .paint-tools .fx-style-label {
     font-size: 0.62rem;
-  }
-  /**
-   * ⚠️ The blurb goes, exactly as it does for the instrument room a few rules up.
-   *
-   * "Draw something. Brush, shapes, a fill bucket and real transparency…" is three lines and
-   * 63px on a phone, and it is read once ever. That was the last of the gap between the tool
-   * grid and the fixed navigation bar at the bottom of the screen, which the measurement above
-   * missed because it is 60px of FIXED overlay rather than page height. Taking it from the
-   * blurb rather than from the canvas, because the canvas is the point of the page.
-   */
-  .card:has(> .paint-wrap) > p.muted {
-    display: none;
   }
 }
 
