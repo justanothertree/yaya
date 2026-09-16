@@ -268,9 +268,78 @@ export function followInput(self: Body, lead: Body, slot = 1): Input {
   }
 }
 
+/** Somewhere to get to. */
+export type Spot = { x: number; y: number }
+
+/**
+ * How close a pet's FEET have to be to a treat to have got it.
+ *
+ * ⚠️ A BOX AROUND THE WHOLE CREATURE, not a circle around a point. The body's y is the
+ * ground it is standing on, so a treat at head height is more than a pet-height away from the
+ * number being compared — a plain distance check means walking through a treat at eye level does
+ * nothing, which is the sort of thing that reads as the game ignoring you. Up is generous, down is
+ * not, because a treat under your feet is one you have already passed.
+ */
+const REACH_X = 0.05
+const REACH_UP = 0.2
+const REACH_DOWN = 0.04
+
+export const touching = (b: Body, s: Spot): boolean =>
+  Math.abs(b.x - s.x) < REACH_X && b.y - s.y < REACH_UP + 0 && s.y - b.y < REACH_DOWN
+
+/**
+ * Who has picked up what.
+ *
+ * ⚠️ ANY PET COUNTS, not just the one you are driving. The followers are your pets too, and
+ * a party that walks through a treat without it counting would be asking you to go back and do it
+ * again as the right creature, which is busywork rather than a game.
+ *
+ * ⚠️ IT RETURNS null WHEN NOTHING CHANGED, so the room can call this every frame and only
+ * touch React when something actually happened. Sixty state updates a second to say "still five
+ * treats" is the cost of asking the wrong question.
+ */
+export function collect(bodies: Body[], spots: Spot[], taken: boolean[]): boolean[] | null {
+  let hit = false
+  const next = spots.map((s, i) => {
+    if (taken[i]) return true
+    const got = bodies.some((b) => touching(b, s))
+    if (got) hit = true
+    return got
+  })
+  return hit ? next : null
+}
+
 /** A little course: three ledges you can climb, reachable in order from the floor. */
 export const COURSE: Ledge[] = [
   { x: 0.08, y: 0.74, w: 0.22 },
   { x: 0.4, y: 0.54, w: 0.24 },
   { x: 0.72, y: 0.34, w: 0.2 },
+]
+
+/**
+ * Five things to go and get.
+ *
+ * ⚠️ PLACED AGAINST THE COURSE, not scattered at random. Two sit on the floor where anybody
+ * can have them, two on ledges so you have to climb, and one out past the end of the top ledge
+ * where you have to leave the ground and still be going when you arrive. Random placement makes a
+ * level that is different every time and interesting none of them.
+ *
+ * ⚠️ NONE OF THEM IS GATED BY WHAT A CREATURE CAN DO, and it is worth writing down why rather
+ * than leaving somebody to try. Brute-forcing every jump timing from the top ledge, a plain pet
+ * with no wings reaches even the highest treat — and it is not a placement that can be tuned out.
+ * A pet's reach is its whole body, a fifth of the screen tall, and a plain jump from the top ledge
+ * peaks at y=0.066; so anything a winged pet can get to is already inside a plain one's hitbox.
+ * Gating by height needs a taller world, and gating by distance needs a gap wider than a jump,
+ * which does not fit across one screen either.
+ *
+ * So abilities change how EASILY you go round, not whether you can: a fast creature gets between
+ * them quicker, a glider recovers from a missed landing instead of starting again. Making the
+ * choice of creature decide what is reachable at all is a level-design job, not a tuning one.
+ */
+export const TREATS: Spot[] = [
+  { x: 0.34, y: FLOOR },
+  { x: 0.66, y: FLOOR },
+  { x: 0.19, y: 0.74 },
+  { x: 0.52, y: 0.54 },
+  { x: 0.97, y: 0.12 },
 ]

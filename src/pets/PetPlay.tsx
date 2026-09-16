@@ -9,6 +9,8 @@ import {
   restingBody,
   stanceOf,
   stepBody,
+  collect,
+  TREATS,
   traitWords,
   traitsOf,
   type Body,
@@ -75,6 +77,11 @@ export function PetPlay({ pets, startAt = 0 }: { pets: PlayPet[]; startAt?: numb
   const [size, setSize] = useState({ w: 0, h: 0 })
   const [lead, setLead] = useState(() => Math.min(startAt, Math.max(0, pets.length - 1)))
   const [shown, setShown] = useState<Body[]>(() => startBodies(pets.length))
+  const [taken, setTaken] = useState<boolean[]>(() => TREATS.map(() => false))
+  /* ⚠️ the loop reads this rather than closing over the state, so picking one up does not
+     tear down and rebuild the animation frame */
+  const takenRef = useRef(taken)
+  takenRef.current = taken
 
   /**
    * ⚠️ THE BODIES LIVE IN A REF AND ARE COPIED INTO STATE ONCE A FRAME. The loop must not depend
@@ -174,6 +181,10 @@ export function PetPlay({ pets, startAt = 0 }: { pets: PlayPet[]; startAt?: numb
         ),
       )
       setShown(bodies.current)
+      /* ⚠️ null when nothing changed, so this is sixty comparisons a second and no renders —
+         see collect */
+      const got = collect(bodies.current, TREATS, takenRef.current)
+      if (got) setTaken(got)
       raf = requestAnimationFrame(tick)
     }
     raf = requestAnimationFrame(tick)
@@ -196,6 +207,14 @@ export function PetPlay({ pets, startAt = 0 }: { pets: PlayPet[]; startAt?: numb
           />
         ))}
         <span className="pet-play-floor" aria-hidden />
+        {TREATS.map((s, i) => (
+          <span
+            key={i}
+            className={'pet-play-treat' + (taken[i] ? ' is-gone' : '')}
+            style={{ left: `${s.x * 100}%`, top: `${s.y * 100}%` }}
+            aria-hidden
+          />
+        ))}
         {pets.map((p, i) => {
           const b = shown[i]
           if (!b) return null
@@ -227,6 +246,18 @@ export function PetPlay({ pets, startAt = 0 }: { pets: PlayPet[]; startAt?: numb
           )
         })}
       </div>
+      <p className="pet-play-score muted">
+        {taken.every(Boolean) ? (
+          <>
+            <strong>All {TREATS.length} found.</strong>{' '}
+            <button className="btn btn-ghost" onClick={() => setTaken(TREATS.map(() => false))}>
+              Put them back
+            </button>
+          </>
+        ) : (
+          `${taken.filter(Boolean).length} of ${TREATS.length} found`
+        )}
+      </p>
       {/* ⚠️ said in the room rather than in a tooltip, because a tooltip is not a thing a phone
           has and this is the only place on the site where the keyboard IS the interface */}
       <p className="muted pet-play-keys">

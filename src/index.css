@@ -7983,6 +7983,37 @@ a.cz-msg-author:focus-visible {
   outline: 2px solid var(--accent, #7c6af7);
   outline-offset: 2px;
 }
+/* ⚠️ ANCHORED AT ITS MIDDLE, unlike the pets, which hang from their feet. A treat has no feet
+   and no up — the point given for it is where the thing IS, and the hit test in play.ts compares
+   against that same point, so the picture and the maths agree about where it is. */
+.pet-play-treat {
+  position: absolute;
+  width: 11px;
+  height: 11px;
+  margin: -5px 0 0 -5px;
+  border-radius: 50%;
+  background: var(--accent, #7c6af7);
+  box-shadow: 0 0 9px 2px color-mix(in srgb, var(--accent, #7c6af7) 55%, transparent);
+  transition:
+    opacity 0.18s ease,
+    transform 0.18s ease;
+}
+/* ⚠️ it fades rather than vanishing, so you can tell you took it from having missed it. Kept
+   in the layout at zero opacity because removing it would reflow nothing — it is absolute — but
+   would lose the transition, and the fade IS the feedback. */
+.pet-play-treat.is-gone {
+  opacity: 0;
+  transform: scale(2.1);
+}
+@media (prefers-reduced-motion: reduce) {
+  .pet-play-treat {
+    transition: none;
+  }
+}
+.pet-play-score {
+  font-size: 0.8rem;
+  margin: 0;
+}
 .pet-play-keys {
   font-size: 0.8rem;
   margin: 0;
