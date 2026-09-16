@@ -417,16 +417,24 @@ export function strokeBox(s: Stroke, w: number, h: number) {
     let wide = 1
     if (m) for (const ln of lines) wide = Math.max(wide, m.measureText(ln).width || 1)
     else for (const ln of lines) wide = Math.max(wide, ln.length * 52)
-    /* the same scale paintOne uses: the widest line spans the baseline */
-    const k = len / wide
+    /* the same scale paintOne uses — see textScale */
+    const k = textScale(len)
     const up = TEXT_ASCENT * k
     const down = ((lines.length - 1) * TEXT_STEP + TEXT_DESCENT) * k
     const a = Math.atan2(by - ay, bx - ax)
     const nx = -Math.sin(a)
     const ny = Math.cos(a)
+    /**
+     * ⚠️ THE FAR END IS WHERE THE WORDS END, not where the line ended. Now the size comes from
+     * the line instead of being squeezed to fit it, so the text is free to run past the end of the
+     * drag — and a box drawn to the drag would leave the tail of a long piece of text outside its
+     * own selection: unhittable, and unmoved by its own handles.
+     */
+    const runX = ax + Math.cos(a) * wide * k
+    const runY = ay + Math.sin(a) * wide * k
     for (const [ex, ey] of [
       [ax, ay],
-      [bx, by],
+      [runX, runY],
     ] as Array<[number, number]>) {
       add(ex - nx * up, ey - ny * up)
       add(ex + nx * down, ey + ny * down)
@@ -516,6 +524,35 @@ const TEXT_DESCENT = 24
  * same reasoning as the scratch canvas the onion skin uses.
  */
 let meter: CanvasRenderingContext2D | null = null
+/**
+ * How big the letters are, worked out from the line you dragged.
+ *
+ * ⚠️ THE LINE SETS THE SIZE. IT USED TO SET THE WIDTH, which is not the same thing and is the
+ * difference between a control and a surprise. Dividing the line by the width of whatever you had
+ * typed so far made the letters a function of HOW MUCH you typed: measured on one identical 400px
+ * line, "A" came out 250px tall and "Hello" 126px. You dragged a line to say how big, and every
+ * further character made it smaller. Reported as the text ignoring the sizing of the line, which
+ * is what it was doing — obeying the line's LENGTH and overruling what that length was for.
+ *
+ * ⚠️ A FIXED REFERENCE, so the answer cannot depend on the words. Six characters' worth,
+ * chosen so a short word still very nearly spans the line you drew — the old behaviour for the
+ * common case, which is what makes this a correction rather than a different feature. Type more
+ * and it runs on past the end of the line at the same size; type less and it stops short.
+ *
+ * ⚠️ MEASURED ONCE AND KEPT: the same string in the same face at the same size every time,
+ * and this is asked per text stroke per frame.
+ */
+const TEXT_REF = 'Hello '
+let refWide = 0
+function textScale(len: number): number {
+  if (!refWide) {
+    const m = textMeter()
+    /* the same rough 0.52-of-the-size-per-character fallback strokeBox already used */
+    refWide = (m && m.measureText(TEXT_REF).width) || TEXT_REF.length * 52
+  }
+  return len / refWide
+}
+
 function textMeter(): CanvasRenderingContext2D | null {
   if (!meter && typeof document !== 'undefined') {
     const c = document.createElement('canvas')
@@ -722,7 +759,9 @@ function paintOne(ctx: CanvasRenderingContext2D, s: Stroke, w: number, h: number
       const lines = s.x.split('\n')
       let wide = 1
       for (const ln of lines) wide = Math.max(wide, ctx.measureText(ln).width || 1)
-      const k = len / wide
+      /* ⚠️ from the line, not from the words — see textScale. `wide` stays the real width of
+         the longest line, because the rainbow needs to know how far the colours must reach. */
+      const k = textScale(len)
       ctx.scale(k, k)
       ctx.fillStyle = rainbow
         ? boxWheel(ctx, 0, -100, wide, (lines.length - 1) * TEXT_STEP, TURN / k)
