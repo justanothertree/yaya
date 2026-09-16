@@ -1,4 +1,4 @@
-import type { Stroke } from './strokes'
+import { xformStroke, type Stroke } from './strokes'
 
 /**
  * Changing the stack of layers — as one definition, so it happens the same way for everybody.
@@ -216,21 +216,11 @@ export function applyLayerOp(stack: Stack, op: LayerOp, layers: number): Stack {
 
   if (op.k === 'xform') {
     const want = new Set(op.ids)
-    const [a, b, c, d, e, f] = op.m
     return {
-      strokes: strokes.map((st) => {
-        if (!st.id || !want.has(st.id)) return st
-        const p = st.p.slice()
-        for (let i = 0; i + 1 < p.length; i += 2) {
-          const x = p[i]
-          const y = p[i + 1]
-          /* ⚠️ clamped to the same range readStroke allows, because a transform is the one edit
-             that can push a point arbitrarily far and these become canvas coordinates */
-          p[i] = Math.max(-0.5, Math.min(1.5, a * x + c * y + e))
-          p[i + 1] = Math.max(-0.5, Math.min(1.5, b * x + d * y + f))
-        }
-        return { ...st, p }
-      }),
+      /* ⚠️ points and thickness both — see xformStroke, which is also what the room's own
+         preview and its unnamed strokes go through, so a peer cannot end up with a different
+         picture from the person who did the stretching */
+      strokes: strokes.map((st) => (st.id && want.has(st.id) ? xformStroke(st, op.m) : st)),
       names,
       hidden,
       layer,

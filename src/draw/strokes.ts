@@ -1292,6 +1292,42 @@ export type PackedDrawing = {
  * not the other gives you a brush that draws one straight line from where you pressed: it looks
  * like the tool is broken rather than like a list is out of date.
  */
+/**
+ * A stroke under a matrix — its points AND its thickness.
+ *
+ * ⚠️ THE WIDTH IS THE HALF THAT WAS MISSING, and leaving it out is what opens gaps in a
+ * drawing you stretch: geometry is two-dimensional and lives in `p`, but thickness is one scalar
+ * in `w`, so scaling a selection spread the points apart and left every line exactly as thin as
+ * it was. Two strokes drawn overlapping came apart. Reported as gaps "in the lines that use to
+ * overlap".
+ *
+ * ⚠️ THE FACTOR IS THE SQUARE ROOT OF THE DETERMINANT, which is the one number that answers
+ * this for every matrix the room can build. A rotation's determinant is exactly 1, so turning
+ * something never thickens it and no special case is needed. A uniform scale's is s², so the
+ * factor is s. A stretch's is sx·sy, so the factor is the geometric mean — the honest scalar
+ * answer to a question that has none, because one number cannot be wide across and narrow down.
+ *
+ * ⚠️ Clamped to the range readStroke allows, so a transform cannot produce a stroke the
+ * reader would later reject or clamp differently on the way back in.
+ */
+export function xformStroke(
+  s: Stroke,
+  m: [number, number, number, number, number, number],
+): Stroke {
+  const [a, b, c, d, e, f] = m
+  const p = s.p.slice()
+  for (let i = 0; i + 1 < p.length; i += 2) {
+    const x = p[i]
+    const y = p[i + 1]
+    /* ⚠️ clamped to the same range readStroke allows, because a transform is the one edit
+       that can push a point arbitrarily far and these become canvas coordinates */
+    p[i] = Math.max(-0.5, Math.min(1.5, a * x + c * y + e))
+    p[i + 1] = Math.max(-0.5, Math.min(1.5, b * x + d * y + f))
+  }
+  const k = Math.sqrt(Math.abs(a * d - b * c)) || 1
+  return { ...s, p, w: Math.max(0.0015, Math.min(0.25, s.w * k)) }
+}
+
 export const isFreehand = (t: Tool) =>
   t === 'brush' ||
   t === 'eraser' ||

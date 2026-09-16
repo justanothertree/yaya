@@ -29,6 +29,7 @@ import {
   readDrawing,
   strokeBox,
   floodFill,
+  xformStroke,
 } from '../draw/strokes'
 import { InCanvasWindow } from '../circuit/ui/canvasContext'
 import { gallery, removeArt, saveArt, subscribeGallery, type Art } from '../draw/gallery'
@@ -720,10 +721,10 @@ export function PaintRoom() {
         : g && m
           ? {
               ...drawingRef.current,
+              /* ⚠️ from the snapshot, through the same one function the committed edit and
+                 the peers' copy go through — so what you watch while you drag is what you get */
               strokes: drawingRef.current.strokes.map((k, i) =>
-                selRef.current.includes(i) && g.from[i]
-                  ? { ...k, p: xformPoints(g.from[i].p, m) }
-                  : k,
+                selRef.current.includes(i) && g.from[i] ? xformStroke(g.from[i], m) : k,
               ),
             }
           : drawingRef.current
@@ -1570,17 +1571,6 @@ export function PaintRoom() {
 
   /** the matrix the grip currently implies, for the preview only — never committed from here */
   const gripLive = useRef<[number, number, number, number, number, number] | null>(null)
-  const xformPoints = (p: number[], m: [number, number, number, number, number, number]) => {
-    const out = p.slice()
-    for (let i = 0; i + 1 < out.length; i += 2) {
-      const x = out[i]
-      const y = out[i + 1]
-      out[i] = Math.max(-0.5, Math.min(1.5, m[0] * x + m[2] * y + m[4]))
-      out[i + 1] = Math.max(-0.5, Math.min(1.5, m[1] * x + m[3] * y + m[5]))
-    }
-    return out
-  }
-
   /**
    * ⚠️ ONE TIMER, AT A FIXED RATE, ADVANCING BY A FRACTION. Ticking once per stroke would
    * make the interval itself the speed control, and at sixty strokes a second that is a 16ms
@@ -1942,9 +1932,7 @@ export function PaintRoom() {
       /* ⚠️ AND the unnamed ones — see restyle. As an `else` this left half of a mixed
          selection sitting where it started while the other half moved. */
       if (ids.length < sel.length)
-        setStrokes((prev) =>
-          prev.map((k, i) => (sel.includes(i) && !k.id ? { ...k, p: xformPoints(k.p, m) } : k)),
-        )
+        setStrokes((prev) => prev.map((k, i) => (sel.includes(i) && !k.id ? xformStroke(k, m) : k)))
       return
     }
     if (shove.current) {
