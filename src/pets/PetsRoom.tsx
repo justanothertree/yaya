@@ -272,7 +272,13 @@ export function PetsRoom({ onControlChange }: { onControlChange?: (on: boolean) 
                    one screen, one of them answering the keyboard and one of them not, is a
                    question about which one is real — and the field is the same pet, so nothing is
                    lost by swapping. */
-                <PetPlay art={chosen.art} name={chosen.name} />
+                <PetPlay
+                  pets={mine.map((p) => ({ name: p.name, art: p.art }))}
+                  startAt={Math.max(
+                    0,
+                    mine.findIndex((p) => p.id === chosen.id),
+                  )}
+                />
               ) : (
                 <button
                   className="pets-poke"

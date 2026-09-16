@@ -7955,6 +7955,33 @@ a.cz-msg-author:focus-visible {
   transform: translate(-50%, -100%);
   will-change: transform;
   line-height: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+/* ⚠️ THE ONE YOU ARE IS MARKED UNDERNEATH, not outlined. A ring round the creature competes
+   with the drawing — which is somebody's artwork and the whole point of the room — and on a pet
+   with an odd silhouette it reads as part of the picture. A shadow on the ground it is standing
+   on says "this one" without touching it. */
+.pet-play-pet.is-lead::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: -2px;
+  width: 42%;
+  height: 5px;
+  transform: translateX(-50%);
+  border-radius: 50%;
+  background: var(--accent, #7c6af7);
+  box-shadow: 0 0 10px 2px color-mix(in srgb, var(--accent, #7c6af7) 60%, transparent);
+}
+.pet-play-pet:not(.is-lead) {
+  opacity: 0.82;
+}
+.pet-play-pet:focus-visible {
+  outline: 2px solid var(--accent, #7c6af7);
+  outline-offset: 2px;
 }
 .pet-play-keys {
   font-size: 0.8rem;

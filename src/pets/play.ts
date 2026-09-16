@@ -163,6 +163,43 @@ export function stanceOf(b: Body, input: Input): Stance {
 export const effortOf = (b: Body): number =>
   b.onGround ? 0.35 + (Math.abs(b.vx) / TUNE.speed) * 1.35 : 1.1
 
+/**
+ * What a pet that ISN'T being driven wants to do: keep up with the one that is.
+ *
+ * ⚠️ IT RETURNS AN INPUT, NOT A POSITION, and that is the whole trick. A follower is steered
+ * through exactly the same stepBody as you are — same acceleration, same gravity, same one-way
+ * ledges, same coyote rule. So it cannot walk through a ledge you have to climb, cannot reach
+ * somewhere you cannot, and gets the run and crouch stances for free. Writing "move it towards
+ * him" instead would have been a second, worse physics engine that disagrees with the first.
+ *
+ * ⚠️ SLOTS ALTERNATE BEHIND AND IN FRONT, AND ARE KEPT INSIDE THE WORLD. Queueing them all
+ * behind the lead sounds tidier and is not: with the lead near the left wall every slot lands at a
+ * negative x, every follower walks into the wall, and they stack in the corner as one smudge —
+ * measured exactly that, three pets rendered at left: 2%, which is the clamp. Alternating sides
+ * and clamping the slot means the lead can stand anywhere and still be followed by a group you
+ * can tell apart.
+ *
+ * ⚠️ IT JUMPS ONLY WHEN THE LEAD IS GENUINELY ABOVE AND NOT FAR AWAY. A follower that jumps
+ * whenever it is below you bounces on the spot the entire time you stand on a ledge, which reads
+ * as a fault rather than as keenness.
+ */
+export function followInput(self: Body, lead: Body, slot = 1): Input {
+  const behind = -Math.sign(lead.facing || 1)
+  const side = slot % 2 === 1 ? behind : -behind
+  const dist = 0.07 + Math.floor((slot - 1) / 2) * 0.08
+  const want = Math.max(0.05, Math.min(0.95, lead.x + side * dist))
+  const dx = want - self.x
+  /* ⚠️ a dead zone wide enough to see, because a follower that stops dead the instant it is
+     level twitches every time the lead breathes. Half a pet is about right. */
+  const close = Math.abs(dx) < 0.045
+  return {
+    left: !close && dx < 0,
+    right: !close && dx > 0,
+    jump: self.onGround && lead.y < self.y - 0.08 && Math.abs(dx) < 0.4,
+    down: false,
+  }
+}
+
 /** A little course: three ledges you can climb, reachable in order from the floor. */
 export const COURSE: Ledge[] = [
   { x: 0.08, y: 0.74, w: 0.22 },

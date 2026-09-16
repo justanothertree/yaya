@@ -1,20 +1,34 @@
 import { useEffect, useRef, useState } from 'react'
 import type { Drawing } from '../draw/strokes'
 import { PetView } from './PetView'
-import { COURSE, effortOf, restingBody, stanceOf, stepBody, type Body, type Input } from './play'
+import {
+  COURSE,
+  effortOf,
+  followInput,
+  restingBody,
+  stanceOf,
+  stepBody,
+  type Body,
+  type Input,
+} from './play'
 
 /**
- * Somewhere to actually play with the thing you drew.
+ * Somewhere to actually play with the things you drew.
  *
  * ⚠️ THE RIG WAS ALREADY A CHARACTER CONTROLLER AND NOBODY HAD NOTICED. It reads a run, a crouch
  * and a braced pose out of the layer names, takes a facing, and runs its legs off a clock — which
  * is the whole of what a platformer asks of a sprite. So this needed no new drawing, no sprite
  * sheet and no second format: your pet walks because `run` is a stance it already had.
  *
- * ⚠️ THE PHYSICS IS NOT IN HERE, on purpose. It is a pure function in play.ts, because
+ * ⚠️ ALL OF THEM ARE HERE, AND YOU PICK WHICH ONE YOU ARE. The ask was a way to SELECT them and
+ * control them, and a room holding one creature at a time only answers half of that. The rest
+ * follow whoever you are being — through the same stepBody, so a follower obeys the same gravity
+ * and the same one-way ledges and cannot get anywhere you could not.
+ *
+ * ⚠️ THE PHYSICS IS NOT IN HERE, on purpose. It is pure functions in play.ts, because
  * requestAnimationFrame does not run in the browser pane and a loop that owns its own maths is a
  * loop that cannot be checked. This component is the clock, the keys and the positioning; every
- * question about what the pet DOES is answered next door and answerable without a browser.
+ * question about what a pet DOES is answered next door, without a browser.
  */
 
 const KEYS: Record<string, keyof Input> = {
@@ -33,21 +47,53 @@ const KEYS: Record<string, keyof Input> = {
   ' ': 'jump',
 }
 
-export function PetPlay({ art, name }: { art: Drawing; name: string }) {
+const STILL: Input = { left: false, right: false, jump: false, down: false }
+
+export type PlayPet = { name: string; art: Drawing }
+
+/**
+ * Where everybody stands before anything has happened.
+ *
+ * ⚠️ THE FIRST FRAME IS DRAWN FROM THIS, NOT FROM THE LOOP. Starting the shown list empty and
+ * waiting for requestAnimationFrame to fill it means the room renders with no creatures in it
+ * until the browser gets round to a frame — one blank frame in a real browser, and forever in the
+ * pane, where rAF never runs at all. A game whose resting state is "nothing is here yet" cannot be
+ * checked and blinks on arrival.
+ *
+ * ⚠️ SPREAD ALONG THE FLOOR rather than stacked on one spot, so a room full of pets opens as
+ * a row of creatures rather than one creature with a crowd hiding behind it.
+ */
+const startBodies = (n: number): Body[] =>
+  Array.from({ length: n }, (_, i) => restingBody(0.14 + i * 0.11))
+
+export function PetPlay({ pets, startAt = 0 }: { pets: PlayPet[]; startAt?: number }) {
   const host = useRef<HTMLDivElement>(null)
   const [size, setSize] = useState({ w: 0, h: 0 })
-  const [shown, setShown] = useState<Body>(() => restingBody())
+  const [lead, setLead] = useState(() => Math.min(startAt, Math.max(0, pets.length - 1)))
+  const [shown, setShown] = useState<Body[]>(() => startBodies(pets.length))
 
   /**
-   * ⚠️ THE BODY LIVES IN A REF AND IS COPIED INTO STATE ONCE A FRAME. The loop must not depend on
-   * React to know where the pet is — a setState per frame that also feeds the next frame is how a
-   * game ends up running at the speed of the renderer rather than the speed of the clock.
+   * ⚠️ THE BODIES LIVE IN A REF AND ARE COPIED INTO STATE ONCE A FRAME. The loop must not depend
+   * on React to know where anybody is — a setState per frame that also feeds the next frame is how
+   * a game ends up running at the speed of the renderer rather than the speed of the clock.
+   *
+   * ⚠️ SPREAD ALONG THE FLOOR rather than stacked on one spot, so a room full of pets is a row of
+   * creatures at the start rather than one creature with a crowd hiding behind it.
    */
-  const body = useRef<Body>(restingBody())
-  const held = useRef<Input>({ left: false, right: false, jump: false, down: false })
+  const bodies = useRef<Body[]>([])
+  const held = useRef<Input>({ ...STILL })
+  const leadRef = useRef(lead)
+  leadRef.current = lead
+
+  /* ⚠️ both of them, together: the ref the loop steps and the state the page draws start as
+     the same row of creatures, so what you see before the first frame is what the loop inherits */
+  useEffect(() => {
+    bodies.current = startBodies(pets.length)
+    setShown(bodies.current)
+  }, [pets.length])
 
   /* ⚠️ measured on resize rather than with a ResizeObserver, which never fires in the pane —
-     the pet's size in pixels has to come from somewhere and this is the honest somewhere */
+     the pets' size in pixels has to come from somewhere and this is the honest somewhere */
   useEffect(() => {
     const fit = () => {
       const r = host.current?.getBoundingClientRect()
@@ -62,13 +108,25 @@ export function PetPlay({ art, name }: { art: Drawing; name: string }) {
    * ⚠️ preventDefault ON THE ARROWS AND THE SPACE BAR, or playing scrolls the page out from under
    * the game — which on a room this far down the page means the pet you are steering leaves the
    * screen while you steer it.
+   *
+   * ⚠️ NUMBERS SWITCH WHO YOU ARE, not Tab. Tab is how somebody who cannot use a mouse leaves
+   * this game, and taking it would trap them in a room whose only other control is the arrow keys.
    */
   useEffect(() => {
     const set = (e: KeyboardEvent, on: boolean) => {
       const k = KEYS[e.key]
-      if (!k) return
-      e.preventDefault()
-      held.current[k] = on
+      if (k) {
+        e.preventDefault()
+        held.current[k] = on
+        return
+      }
+      if (on && /^[1-9]$/.test(e.key)) {
+        const n = Number(e.key) - 1
+        if (n < pets.length) {
+          e.preventDefault()
+          setLead(n)
+        }
+      }
     }
     const down = (e: KeyboardEvent) => set(e, true)
     const up = (e: KeyboardEvent) => set(e, false)
@@ -77,7 +135,7 @@ export function PetPlay({ art, name }: { art: Drawing; name: string }) {
     /* ⚠️ a key held when the window loses focus never sends its keyup, and the pet walks off on
        its own for ever. Letting go of everything is the only honest answer to "I stopped looking". */
     const drop = () => {
-      held.current = { left: false, right: false, jump: false, down: false }
+      held.current = { ...STILL }
     }
     window.addEventListener('blur', drop)
     return () => {
@@ -85,7 +143,7 @@ export function PetPlay({ art, name }: { art: Drawing; name: string }) {
       window.removeEventListener('keyup', up)
       window.removeEventListener('blur', drop)
     }
-  }, [])
+  }, [pets.length])
 
   useEffect(() => {
     let raf = 0
@@ -93,18 +151,22 @@ export function PetPlay({ art, name }: { art: Drawing; name: string }) {
     const tick = (now: number) => {
       const dt = (now - last) / 1000
       last = now
-      body.current = stepBody(body.current, held.current, COURSE, dt)
-      setShown(body.current)
+      const at = leadRef.current
+      const lot = bodies.current
+      const boss = lot[at]
+      bodies.current = lot.map((b, i) =>
+        stepBody(b, i === at ? held.current : boss ? followInput(b, boss, i) : STILL, COURSE, dt),
+      )
+      setShown(bodies.current)
       raf = requestAnimationFrame(tick)
     }
     raf = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(raf)
   }, [])
 
-  /* the pet stands about a ninth of the height, which is the size a platformer character reads at */
+  /* a pet stands about a fifth of the height, which is the size a platformer character reads at */
   const pet = Math.max(40, Math.round(size.h * 0.22))
-  const input = held.current
-  const stance = stanceOf(shown, input)
+  const boss = shown[lead]
 
   return (
     <div className="pet-play">
@@ -118,27 +180,47 @@ export function PetPlay({ art, name }: { art: Drawing; name: string }) {
           />
         ))}
         <span className="pet-play-floor" aria-hidden />
-        <span
-          className="pet-play-pet"
-          style={{ left: `${shown.x * 100}%`, top: `${shown.y * 100}%` }}
-        >
-          <PetView
-            art={art}
-            size={pet}
-            energy={effortOf(shown)}
-            facing={shown.facing}
-            stance={stance}
-            label={`${name}, being played`}
-          />
-        </span>
+        {pets.map((p, i) => {
+          const b = shown[i]
+          if (!b) return null
+          const mine = i === lead
+          const input = mine ? held.current : boss ? followInput(b, boss, i) : STILL
+          return (
+            /* ⚠️ A BUTTON, so taking control of a creature is a thing you can do with a mouse, a
+               thumb or the keyboard — the number keys are the shortcut, not the only way. */
+            <button
+              key={`${p.name}-${i}`}
+              className={'pet-play-pet' + (mine ? ' is-lead' : '')}
+              style={{ left: `${b.x * 100}%`, top: `${b.y * 100}%` }}
+              onClick={() => setLead(i)}
+              title={mine ? `You are ${p.name}` : `Play as ${p.name} (${i + 1})`}
+              aria-pressed={mine}
+            >
+              <PetView
+                art={p.art}
+                size={pet}
+                energy={effortOf(b)}
+                facing={b.facing}
+                stance={stanceOf(b, input)}
+                label={mine ? `${p.name}, the one you are playing` : `${p.name}, following`}
+              />
+            </button>
+          )
+        })}
       </div>
       {/* ⚠️ said in the room rather than in a tooltip, because a tooltip is not a thing a phone
           has and this is the only place on the site where the keyboard IS the interface */}
       <p className="muted pet-play-keys">
         <strong>← →</strong> or <strong>A D</strong> to walk · <strong>↑</strong>,{' '}
-        <strong>W</strong> or <strong>space</strong> to jump · <strong>↓</strong> to crouch. It
-        runs, crouches and braces on the way down using the layer names you gave it — a pet with a
-        layer called <code>leg</code> runs on its legs.
+        <strong>W</strong> or <strong>space</strong> to jump · <strong>↓</strong> to crouch
+        {pets.length > 1 && (
+          <>
+            {' · '}
+            <strong>1–{Math.min(9, pets.length)}</strong> or click a pet to play as it
+          </>
+        )}
+        . They run, crouch and brace on the way down using the layer names you gave them
+        {pets.length > 1 ? ', and the rest follow whoever you are.' : '.'}
       </p>
     </div>
   )
