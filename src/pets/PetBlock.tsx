@@ -1,7 +1,21 @@
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react'
 import { CONFIG_LIMIT, configSize } from '../profile/blockSize'
 import { PetView } from './PetView'
+import { simplifyDrawing } from '../draw/strokes'
 import { packPet, pets, readPet, subscribePets, type Pet } from './pets'
+
+/**
+ * How far a point may move when a pet is packed into a block, in the drawing's own 0–1 space.
+ *
+ * ⚠️ A THIRD OF A PIXEL AT THE SIZE A BLOCK DRAWS IT. Pets on a page are 120 to 180 across
+ * (see the sizes below), so 0.0018 of the picture is well under one pixel of what a visitor
+ * actually sees. The room samples a point every 0.002 while you draw at full canvas size, which is
+ * where all the detail a block cannot afford comes from.
+ */
+const BLOCK_TOLERANCE = 0.0018
+
+/** the copy that travels — see simplifyDrawing */
+const packForBlock = (p: Pet) => packPet({ ...p, art: simplifyDrawing(p.art, BLOCK_TOLERANCE) })
 
 /**
  * Somebody's pets, alive on their page.
@@ -103,7 +117,7 @@ export function PetPicker({
   const costs = useMemo(
     () =>
       new Map(
-        mine.map((p) => [p.id, configSize({ pets: [packPet(p)] }) - configSize({ pets: [] })]),
+        mine.map((p) => [p.id, configSize({ pets: [packForBlock(p)] }) - configSize({ pets: [] })]),
       ),
     [mine],
   )
@@ -163,7 +177,7 @@ export function PetPicker({
                   ...value,
                   pets: on
                     ? chosen.filter((c) => readPet(c)?.name !== p.name)
-                    : [...chosen, packPet(p)],
+                    : [...chosen, packForBlock(p)],
                 })
               }
             >

@@ -1367,6 +1367,78 @@ export function xformStroke(
   return { ...s, p, w: Math.max(0.0015, Math.min(0.25, s.w * k)) }
 }
 
+/**
+ * The same drawing with the points nobody can see taken out.
+ *
+ * ⚠️ FOR CARRYING, NOT FOR KEEPING. A profile block holds the whole drawing inside a 16000
+ * character config, and a pet is a whole drawing, so a detailed one simply does not fit — measured,
+ * a pet of sixty hand-drawn strokes wants 127% of the room a block has. This is what makes it fit
+ * without asking anybody to draw less: the room records a point every 0.002 of the canvas WHILE
+ * DRAWING AT FULL SIZE, and the same pet on a profile is about 180 pixels across, where 0.002 is a
+ * third of a pixel. Most of what is stored was never going to be visible there.
+ *
+ * The gallery and the Pets room keep the full-detail original either way. Only the copy that
+ * travels into a block is thinned, because that copy has a size limit and a known display size.
+ *
+ * ⚠️ FREEHAND ONLY. A shape tool's points are not a path — two corners, a centre and a
+ * radius, a baseline — and a fill's are a seed point followed by the region it was allowed to
+ * cover. Running a path simplifier over either would not thin them, it would move them.
+ *
+ * ⚠️ Ramer–Douglas–Peucker, with an explicit stack rather than recursion: the depth is
+ * data-dependent and a long smooth stroke is exactly the shape that makes it deep.
+ */
+export function simplifyDrawing(d: Drawing, tol: number): Drawing {
+  return {
+    ...d,
+    strokes: d.strokes.map((s) =>
+      isFreehand(s.t) && s.p.length > 6 ? { ...s, p: thin(s.p, tol) } : s,
+    ),
+  }
+}
+
+function thin(p: number[], tol: number): number[] {
+  const n = p.length / 2
+  if (n < 3) return p
+  const keep = new Uint8Array(n)
+  keep[0] = 1
+  keep[n - 1] = 1
+  const stack: Array<[number, number]> = [[0, n - 1]]
+  while (stack.length) {
+    const [a, b] = stack.pop()!
+    if (b - a < 2) continue
+    const ax = p[a * 2]
+    const ay = p[a * 2 + 1]
+    const bx = p[b * 2]
+    const by = p[b * 2 + 1]
+    const dx = bx - ax
+    const dy = by - ay
+    const len = Math.hypot(dx, dy)
+    let far = -1
+    let best = tol
+    for (let i = a + 1; i < b; i++) {
+      const x = p[i * 2]
+      const y = p[i * 2 + 1]
+      /* distance to the segment, or to the point itself when the segment has no length */
+      const gap = len
+        ? Math.abs(dy * x - dx * y + bx * ay - by * ax) / len
+        : Math.hypot(x - ax, y - ay)
+      if (gap > best) {
+        best = gap
+        far = i
+      }
+    }
+    if (far < 0) continue
+    keep[far] = 1
+    stack.push([a, far], [far, b])
+  }
+  const out: number[] = []
+  for (let i = 0; i < n; i++)
+    if (keep[i]) {
+      out.push(p[i * 2], p[i * 2 + 1])
+    }
+  return out
+}
+
 export const isFreehand = (t: Tool) =>
   t === 'brush' ||
   t === 'eraser' ||
