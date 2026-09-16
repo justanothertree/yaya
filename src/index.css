@@ -7933,6 +7933,12 @@ a.cz-msg-author:focus-visible {
   /* ⚠️ a drag inside the field must not scroll the page out from under the game */
   touch-action: none;
 }
+/* ⚠️ the world's own box. On a desktop it is the whole frame; on a touch screen it stops
+   above the thumbs, so the floor the pets walk on is never behind a button. */
+.pet-play-stage {
+  position: absolute;
+  inset: 0;
+}
 .pet-play-floor {
   position: absolute;
   left: 0;
@@ -8010,6 +8016,71 @@ a.cz-msg-author:focus-visible {
     transition: none;
   }
 }
+/* ── thumbs, for a screen with no keyboard ──────────────────
+   ⚠️ HIDDEN WHERE THERE IS A KEYBOARD. A pad on a desktop is two thumb-sized buttons sitting
+   over a picture for somebody who is already holding the better control — and this game's actual
+   interface, the arrow keys, does not get better for having a second one drawn on top of it. */
+.pet-play-pad {
+  display: none;
+}
+@media (hover: none), (pointer: coarse) {
+  /* ⚠️ A TALLER WORLD WHERE THE CONTROLS LIVE ON IT. 16:9 on a phone is a 168px field with
+     48px thumbs standing in it — nearly a third of the height given to the pad, over the strip of
+     floor the pets actually walk on. Four-to-three buys back the room the thumbs cost. The physics
+     does not notice: x is per screen-WIDTH and y is per height, so the world is the same world,
+     just a taller window onto it. */
+  .pet-play-field {
+    aspect-ratio: 4 / 3;
+  }
+  .pet-play-stage {
+    /* the height of a thumb plus the padding around it — see the note in the room */
+    inset: 0 0 58px 0;
+  }
+  .pet-play-pad {
+    position: absolute;
+    inset: auto 0 0 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    padding: 0.5rem;
+    gap: 0.5rem;
+    /* ⚠️ the pad itself catches nothing; only the keys do, so the picture behind the gap
+       between them is still a picture and tapping a pet there still selects it */
+    pointer-events: none;
+  }
+  .pet-play-pad-side {
+    display: flex;
+    gap: 0.5rem;
+    pointer-events: none;
+  }
+  /* ⚠️ 48px, which is the smallest a thumb reliably hits — and the reason the pad sits in the
+     corners rather than under the field: at this size, below the picture means on top of it. */
+  .pet-play-key {
+    pointer-events: auto;
+    width: 48px;
+    height: 48px;
+    display: grid;
+    place-items: center;
+    font-size: 1.1rem;
+    border-radius: 12px;
+    border: 1px solid var(--border);
+    background: color-mix(in srgb, var(--bg) 62%, transparent);
+    color: var(--text);
+    backdrop-filter: blur(3px);
+    /* a held control must not also select text, summon a magnifier or fire a double-tap zoom */
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+  }
+  .pet-play-key.is-jump {
+    background: color-mix(in srgb, var(--accent, #7c6af7) 34%, transparent);
+  }
+  .pet-play-key:active {
+    background: color-mix(in srgb, var(--accent, #7c6af7) 52%, transparent);
+  }
+}
+
 .pet-play-score {
   font-size: 0.8rem;
   margin: 0;

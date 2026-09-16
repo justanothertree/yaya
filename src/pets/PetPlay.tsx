@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Drawing } from '../draw/strokes'
 import { PetView } from './PetView'
-import { rigOf } from './rig'
+import { petRatio, rigOf } from './rig'
 import {
   COURSE,
   effortOf,
@@ -171,10 +171,16 @@ export function PetPlay({ pets, startAt = 0 }: { pets: PlayPet[]; startAt?: numb
       held.current = { ...STILL }
     }
     window.addEventListener('blur', drop)
+    /* ⚠️ a thumb that slides off a pad button releases nowhere near it, so the window is the
+       only place that reliably hears about it — see the pad below */
+    window.addEventListener('pointerup', drop)
+    window.addEventListener('pointercancel', drop)
     return () => {
       window.removeEventListener('keydown', down)
       window.removeEventListener('keyup', up)
       window.removeEventListener('blur', drop)
+      window.removeEventListener('pointerup', drop)
+      window.removeEventListener('pointercancel', drop)
     }
   }, [pets.length])
 
@@ -215,26 +221,139 @@ export function PetPlay({ pets, startAt = 0 }: { pets: PlayPet[]; startAt?: numb
     return () => cancelAnimationFrame(raf)
   }, [traits])
 
-  /* a pet stands about a fifth of the height, which is the size a platformer character reads at */
-  const pet = Math.max(40, Math.round(size.h * 0.22))
+  /**
+   * How tall each creature stands, and it is worked out per creature.
+   *
+   * ⚠️ PetView's `size` IS THE LONG SIDE, NOT THE HEIGHT, and passing a height to it is the
+   * bug this fixes: a creature drawn taller than it is wide came out that much bigger than one
+   * drawn wide. Measured on a phone — a 40px `size` rendered 109px tall in a 168px field, so the
+   * pet was two thirds of the world and every pet was a different size from every other.
+   *
+   * ⚠️ AND THE HEIGHT IS THE ONE THE PHYSICS ALREADY BELIEVES. The reach test in play.ts
+   * treats a pet as 0.2 of the world tall; drawing it any other size means the thing you see and
+   * the thing that touches a treat are different creatures. Now they are the same one.
+   */
+  const petSize = (art: Drawing) => {
+    const tall = Math.max(26, size.h * 0.2)
+    const wh = petRatio(art)
+    return Math.round(wh >= 1 ? tall * wh : tall)
+  }
   const boss = shown[lead]
 
   return (
     <div className="pet-play">
-      <div className="pet-play-field" ref={host}>
-        {COURSE.map((l, i) => (
-          <span
-            key={i}
-            className="pet-play-ledge"
-            style={{
-              left: `${(l.x - camAt) * 100}%`,
-              top: `${l.y * 100}%`,
-              width: `${l.w * 100}%`,
-            }}
-            aria-hidden
-          />
-        ))}
-        <span className="pet-play-floor" aria-hidden />
+      <div className="pet-play-field">
+        {/**
+         * ⚠️ THE WORLD GETS ITS OWN BOX SO THE THUMBS ARE NOT STANDING IN IT. Overlaid on the
+         * field, the pad sat on the strip of floor the pets actually walk on — measured on a phone,
+         * both creatures were underneath a key at the start, before anybody had moved. Controls
+         * under the PICTURE are what I was avoiding; controls under the WORLD, inside the same
+         * frame, cost the picture nothing and leave the floor clear.
+         *
+         * ⚠️ AND IT IS WHAT THE WORLD IS MEASURED AGAINST, so `host` moved here from the field.
+         * y = 1 is the bottom of the stage, not the bottom of the frame, and a pet standing on the
+         * floor stands on the floor rather than behind a button.
+         */}
+        <div className="pet-play-stage" ref={host}>
+          {COURSE.map((l, i) => (
+            <span
+              key={i}
+              className="pet-play-ledge"
+              style={{
+                left: `${(l.x - camAt) * 100}%`,
+                top: `${l.y * 100}%`,
+                width: `${l.w * 100}%`,
+              }}
+              aria-hidden
+            />
+          ))}
+          <span className="pet-play-floor" aria-hidden />
+          {pets.map((p, i) => {
+            const b = shown[i]
+            if (!b) return null
+            const mine = i === lead
+            const input = mine ? held.current : boss ? followInput(b, boss, i, COURSE) : STILL
+            return (
+              /* ⚠️ A BUTTON, so taking control of a creature is a thing you can do with a mouse, a
+                 thumb or the keyboard — the number keys are the shortcut, not the only way. */
+              <button
+                key={`${p.name}-${i}`}
+                className={'pet-play-pet' + (mine ? ' is-lead' : '')}
+                style={{ left: `${(b.x - camAt) * 100}%`, top: `${b.y * 100}%` }}
+                onClick={() => setLead(i)}
+                title={
+                  (mine ? `You are ${p.name}` : `Play as ${p.name} (${i + 1})`) +
+                  (traitWords(traits[i]).length ? ` — ${traitWords(traits[i]).join(', ')}` : '')
+                }
+                aria-pressed={mine}
+              >
+                <PetView
+                  art={p.art}
+                  size={petSize(p.art)}
+                  energy={effortOf(b)}
+                  facing={b.facing}
+                  stance={stanceOf(b, input)}
+                  label={mine ? `${p.name}, the one you are playing` : `${p.name}, following`}
+                />
+              </button>
+            )
+          })}
+        </div>
+        {/**
+         * ⚠️ THE GAME DID NOT EXIST ON A PHONE. Everything in this room was driven by the
+         * arrow keys, and the note under the field said so out loud — "this is the only place on
+         * the site where the keyboard IS the interface" — which reads as a design decision and was
+         * really an admission. On a touch screen you could open the playground, see your pets and
+         * do nothing whatever with them.
+         *
+         * ⚠️ ON THE FIELD, NOT UNDER IT. Controls below the picture are controls your thumb
+         * covers the picture to reach on a screen this size. Overlaid at the bottom corners, the
+         * thumbs sit where they already rest and the creature stays visible between them.
+         *
+         * ⚠️ pointer EVENTS RATHER THAN click, because a platformer needs held, not pressed —
+         * and pointerup is taken on the WINDOW, since a thumb that slides off a button never sends
+         * one to the button and the pet would walk off on its own for ever.
+         */}
+        <div className="pet-play-pad" aria-hidden={false}>
+          <span className="pet-play-pad-side">
+            {(['left', 'right'] as const).map((k) => (
+              <button
+                key={k}
+                className="pet-play-key"
+                aria-label={k === 'left' ? 'Walk left' : 'Walk right'}
+                onPointerDown={(e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  held.current[k] = true
+                }}
+                onPointerUp={() => (held.current[k] = false)}
+                onPointerCancel={() => (held.current[k] = false)}
+                onPointerLeave={() => (held.current[k] = false)}
+              >
+                {k === 'left' ? '◀' : '▶'}
+              </button>
+            ))}
+          </span>
+          <span className="pet-play-pad-side">
+            {(['down', 'jump'] as const).map((k) => (
+              <button
+                key={k}
+                className={'pet-play-key' + (k === 'jump' ? ' is-jump' : '')}
+                aria-label={k === 'jump' ? 'Jump, hold to glide' : 'Crouch'}
+                onPointerDown={(e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  held.current[k] = true
+                }}
+                onPointerUp={() => (held.current[k] = false)}
+                onPointerCancel={() => (held.current[k] = false)}
+                onPointerLeave={() => (held.current[k] = false)}
+              >
+                {k === 'jump' ? '⬆' : '▼'}
+              </button>
+            ))}
+          </span>
+        </div>
         {TREATS.map((s, i) => (
           <span
             key={i}
@@ -243,36 +362,6 @@ export function PetPlay({ pets, startAt = 0 }: { pets: PlayPet[]; startAt?: numb
             aria-hidden
           />
         ))}
-        {pets.map((p, i) => {
-          const b = shown[i]
-          if (!b) return null
-          const mine = i === lead
-          const input = mine ? held.current : boss ? followInput(b, boss, i, COURSE) : STILL
-          return (
-            /* ⚠️ A BUTTON, so taking control of a creature is a thing you can do with a mouse, a
-               thumb or the keyboard — the number keys are the shortcut, not the only way. */
-            <button
-              key={`${p.name}-${i}`}
-              className={'pet-play-pet' + (mine ? ' is-lead' : '')}
-              style={{ left: `${(b.x - camAt) * 100}%`, top: `${b.y * 100}%` }}
-              onClick={() => setLead(i)}
-              title={
-                (mine ? `You are ${p.name}` : `Play as ${p.name} (${i + 1})`) +
-                (traitWords(traits[i]).length ? ` — ${traitWords(traits[i]).join(', ')}` : '')
-              }
-              aria-pressed={mine}
-            >
-              <PetView
-                art={p.art}
-                size={pet}
-                energy={effortOf(b)}
-                facing={b.facing}
-                stance={stanceOf(b, input)}
-                label={mine ? `${p.name}, the one you are playing` : `${p.name}, following`}
-              />
-            </button>
-          )
-        })}
       </div>
       <p className="pet-play-score muted">
         {taken.every(Boolean) ? (
