@@ -7398,25 +7398,35 @@ a.cz-msg-author:focus-visible {
   .paint-wrap:not(.tools-hidden) .paint-board {
     order: -2;
   }
-  /* colour, paper, opacity, size — the row you are in and out of while drawing */
-  .paint-wrap:not(.tools-hidden)
-    .paint-tools-panel
-    > .paint-row:not(.paint-select):not(.paint-picture) {
+  /**
+   * colour, paper, opacity, size — the row you are in and out of while drawing.
+   *
+   * ⚠️ NAMED, NOT DESCRIBED BY WHAT IT IS NOT. This was a chain of :not() against the other
+   * rows, which is a rule that silently captures the next row anybody adds — and it did: the
+   * frames row landed here at order -1, above the paper's own controls, because six classes of
+   * :not() outrank a two-class selector. A row that wants an order should say which row it is.
+   */
+  .paint-row.paint-draw {
     order: -1;
   }
   .paint-row.paint-select {
     order: 1;
   }
-  .paint-row.paint-picture {
+  /* ⚠️ directly under the layers, because animating is the other thing you do to the stack
+     — near it, but on a line the layer strip cannot push around */
+  .paint-row.paint-frames {
     order: 2;
+  }
+  .paint-row.paint-picture {
+    order: 3;
   }
   /* what you do with it once it exists */
   .paint-shape-row {
-    order: 3;
+    order: 4;
   }
   .paint-wrap > .paint-note,
   .paint-wrap > .also-together {
-    order: 4;
+    order: 5;
   }
 }
 /* with the tools gone there is room, so the paper takes it */
@@ -9351,10 +9361,6 @@ a.cz-msg-author:focus-visible {
 .paint-stack-label {
   font-size: 0.78rem;
   letter-spacing: 0.02em;
-}
-.paint-stack-gap {
-  flex: 1 1 0.5rem;
-  min-width: 0.5rem;
 }
 .paint-layer {
   display: inline-flex;

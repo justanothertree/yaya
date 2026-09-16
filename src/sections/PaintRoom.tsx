@@ -2364,7 +2364,8 @@ export function PaintRoom() {
             holding a single button most of the time, and the layers line beside it was nearly as
             empty — two thirty-nine pixel rows for about a hundred and fifty pixels of controls,
             paid for by the picture. They also belong together: both are about WHICH strokes you
-            are working on rather than how the next one will look. */}
+            are working on rather than how the next one will look. Frames used to be here too and
+            is not any more — see the note on its row. */}
           <span className="paint-row-divide" aria-hidden />
           <span className="muted paint-stack-label">Layers</span>
           {Array.from({ length: layers }, (_, i) => layers - 1 - i).map((i) => (
@@ -2475,9 +2476,24 @@ export function PaintRoom() {
           >
             + layer
           </button>
+        </div>
 
-          <span className="paint-stack-gap" aria-hidden />
-
+        {/**
+         * Animating, on a line of its own.
+         *
+         * ⚠️ BECAUSE THE LAYER STRIP HAS NO MAXIMUM WIDTH. Every layer adds a chip of about two
+         * hundred pixels carrying six controls, up to twelve of them — so in a wrapping row the
+         * strip decides where everything after it lands. Reported exactly that way: as you add
+         * layers the frame controls get split across lines. It is not that they were crowded, it
+         * is that their position was a function of how many layers you happened to have, and the
+         * eight controls of an open animation were dealt out across whatever gaps were left.
+         *
+         * ⚠️ AND IT COSTS NOTHING NOW, which is why it can simply be fixed rather than traded
+         * against. This row sits below the paper since the layout pass, so the line it takes comes
+         * out of space that was already under the fold — the board's height is worked out from the
+         * furniture above it and does not know or care how many rows are beneath.
+         */}
+        <div className="paint-row paint-frames">
           <button
             className={'btn' + (frame !== null ? ' is-on' : '')}
             aria-pressed={frame !== null}
@@ -2596,7 +2612,8 @@ export function PaintRoom() {
           )}
         </div>
 
-        <div className="paint-row">
+        {/* colour, paper, opacity and size — named, because the layout orders on this class */}
+        <div className="paint-row paint-draw">
           <span className="paint-swatches" role="group" aria-label="Colour">
             {/* ⚠️ Transparency sits in the SWATCH ROW, not as a tool. It is a colour you can load
               into anything: brush with it and you rub out, fill with it and you clear a region,
