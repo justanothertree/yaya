@@ -268,6 +268,14 @@ export function PetPlay({ pets, startAt = 0 }: { pets: PlayPet[]; startAt?: numb
             />
           ))}
           <span className="pet-play-floor" aria-hidden />
+          {TREATS.map((s, i) => (
+            <span
+              key={i}
+              className={'pet-play-treat' + (taken[i] ? ' is-gone' : '')}
+              style={{ left: `${(s.x - camAt) * 100}%`, top: `${s.y * 100}%` }}
+              aria-hidden
+            />
+          ))}
           {pets.map((p, i) => {
             const b = shown[i]
             if (!b) return null
@@ -354,14 +362,31 @@ export function PetPlay({ pets, startAt = 0 }: { pets: PlayPet[]; startAt?: numb
             ))}
           </span>
         </div>
+      </div>
+      {/**
+       * ⚠️ THE WHOLE WORLD, WITH THE PART YOU CAN SEE MARKED ON IT. The field shows one screen
+       * of three, so without this there is no way to tell whether there is more to the right, how
+       * much of it there is, or where the things you have not found are — you walk and find out.
+       *
+       * ⚠️ IT IS NOT A CONTROL. No clicking to jump the camera somewhere: the point of the
+       * world being bigger than the window is that you cross it, and a map you can teleport with
+       * takes that back. It says where you are and nothing else.
+       */}
+      <div className="pet-play-map" aria-hidden>
+        <span
+          className="pet-play-map-view"
+          style={{ left: `${(camAt / WORLD.w) * 100}%`, width: `${(1 / WORLD.w) * 100}%` }}
+        />
         {TREATS.map((s, i) => (
           <span
             key={i}
-            className={'pet-play-treat' + (taken[i] ? ' is-gone' : '')}
-            style={{ left: `${(s.x - camAt) * 100}%`, top: `${s.y * 100}%` }}
-            aria-hidden
+            className={'pet-play-map-treat' + (taken[i] ? ' is-gone' : '')}
+            style={{ left: `${(s.x / WORLD.w) * 100}%` }}
           />
         ))}
+        {boss && (
+          <span className="pet-play-map-you" style={{ left: `${(boss.x / WORLD.w) * 100}%` }} />
+        )}
       </div>
       <p className="pet-play-score muted">
         {taken.every(Boolean) ? (
