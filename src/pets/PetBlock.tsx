@@ -94,6 +94,20 @@ export function PetPicker({
   const names = chosen.map((p) => readPet(p)?.name ?? '?')
   const used = configSize({ ...value, pets: chosen })
 
+  /**
+   * What each pet would ADD, measured the way the server measures it.
+   *
+   * ⚠️ MEMOISED, because packing a drawing is real work and this is asked once per pet on
+   * every render of the picker — and the answer only changes when the pets in this browser do.
+   */
+  const costs = useMemo(
+    () =>
+      new Map(
+        mine.map((p) => [p.id, configSize({ pets: [packPet(p)] }) - configSize({ pets: [] })]),
+      ),
+    [mine],
+  )
+
   if (!mine.length && !chosen.length)
     return (
       <p className="muted" style={{ margin: 0, fontSize: '0.85rem' }}>
@@ -113,11 +127,37 @@ export function PetPicker({
       <div className="fx-style-row">
         {mine.map((p) => {
           const on = names.includes(p.name)
+          const cost = costs.get(p.id) ?? 0
+          /**
+           * ⚠️ A PET THAT CANNOT BE SAVED CANNOT BE PICKED, which it could be until now. The
+           * meter underneath measured this correctly and then said it after the fact — you chose a
+           * detailed pet, it went in, and the NEXT save of the whole page was refused, because
+           * save_my_profile_blocks rejects the entire payload rather than the block. So one pet
+           * too big for a block stopped the profile saving at all until it was taken out again,
+           * and the only clue was a message about a block holding too much.
+           *
+           * Reported exactly this way: one of the pets will not save to a block. Measured, a pet
+           * of sixty hand-drawn strokes is over the 16000 a block gets; thirty is 45% of it.
+           *
+           * ⚠️ Never disabled while it is ON. Whatever is already in the block has to stay
+           * removable, and disabling the way out of an over-full block is how you get stuck.
+           */
+          const wontFit = !on && used + cost > CONFIG_LIMIT
           return (
             <button
               key={p.id}
               className={'fx-style-btn' + (on ? ' is-on' : '')}
               aria-pressed={on}
+              disabled={wontFit}
+              title={
+                wontFit
+                  ? `${p.name} is too detailed for a profile block — it needs about ${Math.round(
+                      ((used + cost) / CONFIG_LIMIT) * 100,
+                    )}% of the room one has. A block holds the whole drawing, so a simpler pet fits.`
+                  : on
+                    ? `Take ${p.name} off the page`
+                    : `Put ${p.name} on the page`
+              }
               onClick={() =>
                 onChange({
                   ...value,
@@ -139,6 +179,16 @@ export function PetPicker({
           ? '— too much for one block, take one out'
           : `· ${Math.round((used / CONFIG_LIMIT) * 100)}% of the room a block has`}
       </span>
+      {/* ⚠️ said once, under the list, rather than on each greyed-out pet: a title is not
+          readable on a phone, and this is the one thing somebody stuck here needs told. */}
+      {mine.some(
+        (p) => !names.includes(p.name) && used + (costs.get(p.id) ?? 0) > CONFIG_LIMIT,
+      ) && (
+        <span className="muted" style={{ fontSize: '0.75rem' }}>
+          Greyed-out pets are too detailed to fit in a block — a block carries the whole drawing so
+          the page can show it without hosting anything.
+        </span>
+      )}
     </div>
   )
 }
