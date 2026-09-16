@@ -42,6 +42,20 @@ what it just made stale — copy, empty states, the thing a neighbouring feature
   `getComputedStyle` reports interpolated values — inject `*{transition:none!important}` before
   measuring. `performance.now()` cannot see canvas work. The Browser pane collapses to 0×0 between
   calls, so resize immediately before measuring.
+- **Four things never happen in the Browser pane, and each one fakes a pass.**
+  `requestAnimationFrame` never fires, so any animation loop simply does not run — a canvas that
+  is blank after a hot reload looks exactly like a renderer you have just broken, and is not.
+  `ResizeObserver` never fires, so anything that re-measures on resize cannot be exercised at all.
+  `prefers-reduced-motion` cannot be emulated. And `window.confirm` is auto-dismissed, which
+  returns `false` — so a confirmed action appears to do nothing and the feature appears broken
+  (this cost an hour on the paint room's Clear button, which was fine).
+- **So put the logic where it can be asked a question, and leave the wiring in the component.**
+  The pets module's physics is pure functions in `src/pets/play.ts` for exactly this reason: with
+  no rAF, a loop that owns its own maths is a loop nobody can check. Called directly, `stepBody`
+  answers "what happens if you hold right for half a second" with no browser involved — which is
+  how the platformer's jump arcs, its one-way ledges, its coyote window and the reachability of
+  every treat were verified. It is also why `effortFor` was lifted out of the JSX: reduced motion
+  is unobservable in the pane, and a single frame at t=0 looks identical either way.
 
 ## 3 · Security is part of every change
 
