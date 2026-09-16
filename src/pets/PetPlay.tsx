@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Drawing } from '../draw/strokes'
 import { PetView } from './PetView'
+import { rigOf } from './rig'
 import {
   COURSE,
   effortOf,
@@ -8,8 +9,11 @@ import {
   restingBody,
   stanceOf,
   stepBody,
+  traitWords,
+  traitsOf,
   type Body,
   type Input,
+  type Traits,
 } from './play'
 
 /**
@@ -81,6 +85,12 @@ export function PetPlay({ pets, startAt = 0 }: { pets: PlayPet[]; startAt?: numb
    * creatures at the start rather than one creature with a crowd hiding behind it.
    */
   const bodies = useRef<Body[]>([])
+  /**
+   * ⚠️ WORKED OUT ONCE PER PET, not once per frame. rigOf walks every stroke to find the part
+   * boxes, and this is asked inside the loop — sixty times a second times however many creatures
+   * you have drawn is the one place in this room where that would actually be felt.
+   */
+  const traits = useMemo<Traits[]>(() => pets.map((p) => traitsOf(rigOf(p.art))), [pets])
   const held = useRef<Input>({ ...STILL })
   const leadRef = useRef(lead)
   leadRef.current = lead
@@ -155,14 +165,20 @@ export function PetPlay({ pets, startAt = 0 }: { pets: PlayPet[]; startAt?: numb
       const lot = bodies.current
       const boss = lot[at]
       bodies.current = lot.map((b, i) =>
-        stepBody(b, i === at ? held.current : boss ? followInput(b, boss, i) : STILL, COURSE, dt),
+        stepBody(
+          b,
+          i === at ? held.current : boss ? followInput(b, boss, i) : STILL,
+          COURSE,
+          dt,
+          traits[i],
+        ),
       )
       setShown(bodies.current)
       raf = requestAnimationFrame(tick)
     }
     raf = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(raf)
-  }, [])
+  }, [traits])
 
   /* a pet stands about a fifth of the height, which is the size a platformer character reads at */
   const pet = Math.max(40, Math.round(size.h * 0.22))
@@ -193,7 +209,10 @@ export function PetPlay({ pets, startAt = 0 }: { pets: PlayPet[]; startAt?: numb
               className={'pet-play-pet' + (mine ? ' is-lead' : '')}
               style={{ left: `${b.x * 100}%`, top: `${b.y * 100}%` }}
               onClick={() => setLead(i)}
-              title={mine ? `You are ${p.name}` : `Play as ${p.name} (${i + 1})`}
+              title={
+                (mine ? `You are ${p.name}` : `Play as ${p.name} (${i + 1})`) +
+                (traitWords(traits[i]).length ? ` — ${traitWords(traits[i]).join(', ')}` : '')
+              }
               aria-pressed={mine}
             >
               <PetView
@@ -219,8 +238,9 @@ export function PetPlay({ pets, startAt = 0 }: { pets: PlayPet[]; startAt?: numb
             <strong>1–{Math.min(9, pets.length)}</strong> or click a pet to play as it
           </>
         )}
-        . They run, crouch and brace on the way down using the layer names you gave them
-        {pets.length > 1 ? ', and the rest follow whoever you are.' : '.'}
+        . What each one is made of is what it can do: wings glide if you hold jump on the way down,
+        legs make it quicker, and anything the rig calls a float is lighter
+        {pets.length > 1 ? '. The rest follow whoever you are.' : '.'}
       </p>
     </div>
   )

@@ -1,4 +1,4 @@
-import type { Stance } from './rig'
+import type { Part, Stance } from './rig'
 
 /**
  * A pet you can walk about, jump, and drop off things.
@@ -61,6 +61,58 @@ export const TUNE = {
   coyote: 0.1,
 }
 
+/**
+ * What a particular creature is good at, read out of what it is made of.
+ *
+ * ⚠️ THIS IS WHAT MAKES CHOOSING ONE A CHOICE. Until now every pet handled identically, so
+ * picking between them was a toggle with nothing on either side of it — the roster was a costume
+ * change. The module's whole bet is that a drawing's layer names are its skeleton; this is the
+ * same bet carried one step further, that they also say what the thing can DO. A creature with
+ * wings should get down gently. One with four legs should be quicker than one with none.
+ *
+ * ⚠️ AND NOBODY HAS TO BE TOLD. You do not pick a class or tick a box — you drew wings, so
+ * it glides. The same four minutes in the paint room that made the pet made its abilities, and a
+ * person who never reads a word of this still gets a winged thing that handles like one.
+ *
+ * ⚠️ MODIFIERS, NOT VALUES, so the feel of the game is still TUNE's to set in one place.
+ * Every one of these multiplies something already tuned rather than replacing it, and a pet with
+ * no recognised parts multiplies everything by one and plays exactly as the game plays.
+ */
+export type Traits = { speed: number; jump: number; gravity: number; glide: number }
+
+export const PLAIN: Traits = { speed: 1, jump: 1, gravity: 1, glide: 1 }
+
+export function traitsOf(parts: Part[]): Traits {
+  let legs = 0
+  let wings = 0
+  let floats = 0
+  for (const p of parts) {
+    if (p.kind === 'leg') legs++
+    else if (p.kind === 'wing') wings++
+    else if (p.kind === 'float') floats++
+  }
+  return {
+    /* ⚠️ capped, because somebody WILL draw nine legs and the game should still be playable */
+    speed: 1 + Math.min(legs, 4) * 0.09,
+    jump: 1 + Math.min(wings, 2) * 0.13,
+    /* a halo, a balloon, a cloud — things the rig already calls `float` are lighter here too */
+    gravity: floats ? 0.74 : 1,
+    /* ⚠️ the one ability you have to USE: hold jump on the way down and wings slow the fall */
+    glide: wings ? 0.34 : 1,
+  }
+}
+
+/** What this creature is good at, in the fewest words that are true. */
+export function traitWords(t: Traits): string[] {
+  const out: string[] = []
+  if (t.glide < 1) out.push('glides')
+  if (t.jump > 1) out.push('jumps higher')
+  if (t.gravity < 1) out.push('light')
+  if (t.speed > 1.18) out.push('fast')
+  else if (t.speed > 1) out.push('quick')
+  return out
+}
+
 export const restingBody = (x = 0.2): Body => ({
   x,
   y: FLOOR,
@@ -77,11 +129,17 @@ export const restingBody = (x = 0.2): Body => ({
  * @param dt seconds. Clamped, because a tab that was in the background hands you a dt of several
  * seconds and a pet that teleports through the floor — the one bug every naive loop has.
  */
-export function stepBody(b: Body, input: Input, ledges: Ledge[], dt: number): Body {
+export function stepBody(
+  b: Body,
+  input: Input,
+  ledges: Ledge[],
+  dt: number,
+  traits: Traits = PLAIN,
+): Body {
   const t = Math.max(0, Math.min(0.05, dt))
   const ducking = input.down && b.onGround
   const want = (input.right ? 1 : 0) - (input.left ? 1 : 0)
-  const top = ducking ? TUNE.crouchSpeed : TUNE.speed
+  const top = (ducking ? TUNE.crouchSpeed : TUNE.speed) * traits.speed
 
   let vx = b.vx
   if (want !== 0) {
@@ -102,9 +160,19 @@ export function stepBody(b: Body, input: Input, ledges: Ledge[], dt: number): Bo
    */
   const fell = b.onGround ? 0 : b.fell + t
   let vy = b.vy
-  if (input.jump && (b.onGround || fell < TUNE.coyote)) vy = -TUNE.jump
-  else vy += TUNE.gravity * (vy > 0 ? TUNE.fallBoost : 1) * t
-  vy = Math.min(TUNE.maxFall, vy)
+  if (input.jump && (b.onGround || fell < TUNE.coyote)) vy = -TUNE.jump * traits.jump
+  else {
+    /**
+     * ⚠️ GLIDING IS HELD, NOT AUTOMATIC, which is what makes wings a thing you play rather
+     * than a number you have. It only applies on the way DOWN: holding jump on the way up would
+     * make a winged pet float upward for as long as you leaned on the key, which is not a jump.
+     */
+    const gliding = vy > 0 && input.jump && !b.onGround
+    const pull =
+      TUNE.gravity * traits.gravity * (gliding ? traits.glide : vy > 0 ? TUNE.fallBoost : 1)
+    vy += pull * t
+  }
+  vy = Math.min(TUNE.maxFall * (input.jump && traits.glide < 1 ? traits.glide : 1), vy)
 
   const x = Math.max(0.02, Math.min(0.98, b.x + vx * t))
   const wasY = b.y
