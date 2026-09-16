@@ -250,6 +250,22 @@ export const effortOf = (b: Body): number =>
   b.onGround ? 0.35 + (Math.abs(b.vx) / TUNE.speed) * 1.35 : 1.1
 
 /**
+ * The same, for somebody who has asked for less movement.
+ *
+ * ⚠️ A GAME IS NOT ALL ONE KIND OF MOTION. Movement you CAUSED is the thing you came for, and
+ * taking it away leaves no game; movement that happens AT you is what the setting is about. So a
+ * creature standing still stands still — no breathing, no wings, no tail — and everything it does
+ * because you pressed something is untouched.
+ *
+ * ⚠️ IT LIVES HERE RATHER THAN IN THE COMPONENT so it can be checked. Written inline in the
+ * JSX it was three conditions nobody could ask a question of, in the one part of this module the
+ * browser pane cannot observe: prefers-reduced-motion cannot be emulated there, and a single frame
+ * at t=0 looks identical either way because every oscillation in the rig starts at zero.
+ */
+export const effortFor = (b: Body, still: boolean): number =>
+  still && b.onGround && Math.abs(b.vx) < 0.02 ? 0 : effortOf(b)
+
+/**
  * What a pet that ISN'T being driven wants to do: keep up with the one that is.
  *
  * ⚠️ IT RETURNS AN INPUT, NOT A POSITION, and that is the whole trick. A follower is steered

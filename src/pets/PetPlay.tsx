@@ -5,7 +5,7 @@ import { petRatio, rigOf } from './rig'
 import { useOneShot } from './oneShot'
 import {
   COURSE,
-  effortOf,
+  effortFor,
   followInput,
   restingBody,
   stanceOf,
@@ -117,6 +117,32 @@ export function PetPlay({ pets, startAt = 0 }: { pets: PlayPet[]; startAt?: numb
   const traits = useMemo<Traits[]>(() => pets.map((p) => traitsOf(rigOf(p.art))), [pets])
   /* ⚠️ the one thing in this room that is done rather than held — see useOneShot */
   const [pouncing, pounce] = useOneShot()
+
+  /**
+   * Motion somebody did not ask for.
+   *
+   * ⚠️ EVERY OTHER FILE IN THIS MODULE DOES THIS AND THIS ONE DID NOT. PetBlock, PetCompanion,
+   * PetsRoom and PetView all read prefers-reduced-motion; the playground, which is the most moving
+   * thing in the room by a distance, was the only one that ignored it.
+   *
+   * ⚠️ A GAME IS NOT ALL ONE KIND OF MOTION, which is why this is not simply "stop". Movement
+   * you CAUSED is the thing you came for and taking it away leaves no game at all; movement that
+   * happens at you is what the setting is about. So a creature standing still stands still — no
+   * breathing, no wings — and the camera arrives at once instead of gliding, while walking,
+   * jumping and the followers keeping up are all left exactly as they are.
+   */
+  const [still, setStill] = useState(
+    () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false,
+  )
+  useEffect(() => {
+    const mq = window.matchMedia?.('(prefers-reduced-motion: reduce)')
+    if (!mq) return
+    const on = () => setStill(mq.matches)
+    mq.addEventListener('change', on)
+    return () => mq.removeEventListener('change', on)
+  }, [])
+  const stillRef = useRef(still)
+  stillRef.current = still
   const pounceRef = useRef(pounce)
   pounceRef.current = pounce
   const held = useRef<Input>({ ...STILL })
@@ -218,8 +244,11 @@ export function PetPlay({ pets, startAt = 0 }: { pets: PlayPet[]; startAt?: numb
       if (eye) {
         const want = Math.max(0, Math.min(WORLD.w - 1, eye.x - 0.5))
         /* ⚠️ framerate-independent easing: 1 - e^(-k t), not a fixed fraction per frame, or the
-           camera chases faster on a fast machine than a slow one */
-        cam.current += (want - cam.current) * (1 - Math.exp(-7 * Math.min(0.05, dt)))
+           camera chases faster on a fast machine than a slow one. The glide is the decorative half
+           of this, so reduced motion gets the window without the sweep. */
+        cam.current = stillRef.current
+          ? want
+          : cam.current + (want - cam.current) * (1 - Math.exp(-7 * Math.min(0.05, dt)))
         setCamAt(cam.current)
       }
       setShown(bodies.current)
@@ -310,7 +339,9 @@ export function PetPlay({ pets, startAt = 0 }: { pets: PlayPet[]; startAt?: numb
                 <PetView
                   art={p.art}
                   size={petSize(p.art)}
-                  energy={effortOf(b)}
+                  /* ⚠️ at rest and asked for less motion it simply stands there; the legs still
+                     run when it runs, because that is motion you are causing — see effortFor */
+                  energy={effortFor(b, still)}
                   facing={b.facing}
                   stance={mine && pouncing ? 'pounce' : stanceOf(b, input)}
                   label={mine ? `${p.name}, the one you are playing` : `${p.name}, following`}
