@@ -21,7 +21,7 @@ export function PetView({
   energy = 1,
   facing = 1,
   stance = 'idle',
-  watch = false,
+  watch,
   className,
   label,
 }: {
@@ -31,8 +31,14 @@ export function PetView({
   energy?: number
   facing?: number
   stance?: Mood['stance']
-  /** follow the pointer with its head and eyes while it is over this pet */
-  watch?: boolean
+  /**
+   * Follow the pointer with its head and eyes.
+   *
+   * `'hover'` only while the pointer is over the pet, which is right for one sitting in a page
+   * among other things. `'page'` follows it anywhere on the screen, which is the only mode that
+   * works for a creature pinned in a corner — your cursor is almost never on top of it.
+   */
+  watch?: 'hover' | 'page'
   className?: string
   label?: string
 }) {
@@ -73,7 +79,7 @@ export function PetView({
    * straight into the ref the loop reads, never into state: this fires on every pointermove.
    */
   const follow = (e: React.PointerEvent) => {
-    if (!watch) return
+    if (watch !== 'hover') return
     const r = e.currentTarget.getBoundingClientRect()
     if (!r.width || !r.height) return
     live.current.look = {
@@ -84,6 +90,36 @@ export function PetView({
   const away = () => {
     live.current.look = { x: 0, y: 0 }
   }
+
+  /**
+   * Where the pointer is on the screen, for the corner pet.
+   *
+   * ⚠️ CLIENT COORDINATES, NOT A LOOK VECTOR, and the split is the point. Turning a pointer
+   * position into "which way is that from here" needs the pet's rectangle, and reading a rectangle
+   * is a layout read — doing it in this handler would mean one per pointermove, which is as often
+   * as the mouse can be bothered to move. Storing two numbers here and converting inside the frame
+   * costs at most one read per frame, and a frame is the only moment the answer is used.
+   */
+  const at = useRef<{ x: number; y: number } | null>(null)
+  useEffect(() => {
+    if (watch !== 'page') return
+    const on = (e: PointerEvent) => {
+      at.current = { x: e.clientX, y: e.clientY }
+    }
+    /* a pointer that has left the window is not somewhere to look — and a touch screen has no
+       pointer at all between taps, which is the same thing */
+    const gone = () => {
+      at.current = null
+    }
+    window.addEventListener('pointermove', on, { passive: true })
+    window.addEventListener('pointerleave', gone)
+    window.addEventListener('pointercancel', gone)
+    return () => {
+      window.removeEventListener('pointermove', on)
+      window.removeEventListener('pointerleave', gone)
+      window.removeEventListener('pointercancel', gone)
+    }
+  }, [watch])
 
   useEffect(() => {
     const el = cv.current
@@ -97,17 +133,40 @@ export function PetView({
     el.height = Math.round(h * dpr)
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
 
-    const draw = (t: number) =>
+    /**
+     * ⚠️ THE WHOLE SCREEN MAPS TO THE WHOLE RANGE, measured from wherever the pet happens to
+     * sit rather than over a fixed distance. A pet in a corner is never more than a sliver of the
+     * screen from one edge and nearly all of it from the other, so dividing by one number pins it
+     * at a full glance in the direction it has room in and barely moves it in the other. Giving
+     * each side its own distance to the edge means the far corner is a full look and the near one
+     * is a small one, whichever corner the pet sits in.
+     *
+     * ⚠️ Safe to read a rectangle here: this runs inside the frame, after the canvas has been
+     * sized and before anything writes to the page, so it cannot be the read half of a thrash.
+     */
+    const lookAt = (): { x: number; y: number } => {
+      const p = at.current
+      if (!p) return { x: 0, y: 0 }
+      const r = el.getBoundingClientRect()
+      if (!r.width || !r.height) return { x: 0, y: 0 }
+      const cx = r.left + r.width / 2
+      const cy = r.top + r.height / 2
+      const span = (v: number, c: number, max: number) => {
+        const room = v < c ? c : max - c
+        return room > 1 ? Math.max(-1, Math.min(1, (v - c) / room)) : 0
+      }
+      return { x: span(p.x, cx, window.innerWidth), y: span(p.y, cy, window.innerHeight) }
+    }
+
+    const draw = (t: number) => {
+      const look = watch === 'page' ? lookAt() : live.current.look
       paintPet(ctx, art, parts, w, h, {
         t,
         energy: live.current.energy,
         facing: live.current.facing,
-        mood: {
-          stance: live.current.stance,
-          lookX: live.current.look.x,
-          lookY: live.current.look.y,
-        },
+        mood: { stance: live.current.stance, lookX: look.x, lookY: look.y },
       })
+    }
 
     /**
      * ⚠️ ONE FRAME NOW, BEFORE THE LOOP. requestAnimationFrame does not run until the next
@@ -131,7 +190,7 @@ export function PetView({
      * repainted nothing at all. It is a rare, deliberate press, so restarting the loop for it
      * costs nothing, and the clock lives in a ref so the creature does not snap back to t=0.
      */
-  }, [art, parts, w, h, moving, stance])
+  }, [art, parts, w, h, moving, stance, watch])
 
   return (
     <canvas
@@ -139,8 +198,8 @@ export function PetView({
       className={className}
       aria-label={label ?? art.name ?? 'Pet'}
       role="img"
-      onPointerMove={watch ? follow : undefined}
-      onPointerLeave={watch ? away : undefined}
+      onPointerMove={watch === 'hover' ? follow : undefined}
+      onPointerLeave={watch === 'hover' ? away : undefined}
     />
   )
 }

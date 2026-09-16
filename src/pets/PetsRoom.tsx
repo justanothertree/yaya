@@ -258,7 +258,7 @@ export function PetsRoom() {
                   size={220}
                   energy={still ? 0 : energy}
                   stance={stance}
-                  watch
+                  watch="hover"
                   label={`${chosen.name}, waving about`}
                 />
               </button>
