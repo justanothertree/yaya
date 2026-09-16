@@ -1,5 +1,14 @@
 import { frameCount, paintDrawing, paintStroke, type Drawing } from '../draw/strokes'
-import { bodyPose, inkBox, poseOf, TUNE, type Mood, type Part } from './rig'
+import {
+  bodyPose,
+  inkBox,
+  PART_PARENT,
+  poseOf,
+  TUNE,
+  type Mood,
+  type Part,
+  type PartKind,
+} from './rig'
 
 /**
  * A pet, painted at one instant.
@@ -93,8 +102,15 @@ export function paintPet(
      than about the middle of a page that is no longer on screen */
   crop()
 
-  /* parts arrive in layer order, which is the order the picture is drawn in — see rigOf */
-  for (const part of parts) {
+  /**
+   * One part's own movement, as a transform on whatever frame it is already in.
+   *
+   * ⚠️ THE EYES' REACH CAME DOWN when they started riding on the head, and that is arithmetic
+   * rather than taste: they were moved 0.026 on their own and are now moved by the head as well,
+   * so leaving it would have them travel half as far again as they ever did. They still out-run
+   * the head, which is what eyes do — they just do it by adding to it now.
+   */
+  const place = (part: Part) => {
     const pose = poseOf(part, rt, re)
     /**
      * ⚠️ LOOKING IS THE HEAD AND THE EYES AND NOTHING ELSE, which is what makes it read as a
@@ -105,18 +121,33 @@ export function paintPet(
      * functions of time and this stays the one place that knows what a stance is.
      */
     const looks = part.kind === 'head' || part.kind === 'eye'
-    const reach = part.kind === 'eye' ? 0.026 : 0.012
+    const reach = part.kind === 'eye' ? 0.014 : 0.012
     const dx = pose.dx + (looks ? lookX * reach : 0)
     const dy = pose.dy + (looks ? lookY * reach * 0.8 : 0)
     const rot = pose.rot + (part.kind === 'head' ? lookX * 0.09 : 0)
     const sy = tune.shut && part.kind === 'eye' ? 0.08 : pose.sy
     const px = part.px * w
     const py = part.py * h
-    ctx.save()
     ctx.translate(px + dx * w, py + dy * h)
     ctx.rotate(rot)
     ctx.scale(pose.sx, sy)
     ctx.translate(-px, -py)
+  }
+
+  /* ⚠️ what each kind IS, looked up once rather than searched for per part per frame. The first
+     part of a kind wins, which is what somebody who drew two ear layers means by "the head". */
+  const byKind = new Map<PartKind, Part>()
+  for (const part of parts) if (!byKind.has(part.kind)) byKind.set(part.kind, part)
+
+  /* parts arrive in layer order, which is the order the picture is drawn in — see rigOf */
+  for (const part of parts) {
+    ctx.save()
+    /* ⚠️ the parent's movement first, so the child is posed in a frame that has already moved —
+       an ear turns with the head AND twitches, instead of having to choose. See PART_PARENT. */
+    const up = PART_PARENT[part.kind]
+    const parent = up ? byKind.get(up) : undefined
+    if (parent && parent !== part) place(parent)
+    place(part)
     for (const s of part.strokes) paintStroke(ctx, s, w, h)
     ctx.restore()
   }

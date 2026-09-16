@@ -115,6 +115,32 @@ export const PART_DOES: Record<PartKind, string> = {
   float: 'drifts',
 }
 
+/**
+ * What a part hangs off, when it hangs off something other than the creature itself.
+ *
+ * ⚠️ AN EAR IS ON THE HEAD, NOT ON THE ANIMAL. Every part was posed about its own pivot against
+ * the body, so a head could bob and tilt while the ears attached to it stayed exactly where they
+ * were drawn — the head slid out from under them. Asked for directly: the ears should move with
+ * the head. The same is true of an eye, a mouth and a whisker, and it is what makes a face read
+ * as a face rather than as five drawings near each other.
+ *
+ * ⚠️ ONE LEVEL, ON PURPOSE. Anything not named here hangs off the body, which is the whole
+ * creature and already moves as one — so a wing or a leg needs no entry and pays no cost. A
+ * deeper tree would want joints, a bind pose and an order to resolve them in, which is the rig
+ * editor this module exists to avoid. The parts that genuinely ride on another part are the ones
+ * on the head, and naming them is the entire hierarchy.
+ *
+ * ⚠️ BY KIND, so it keeps working for a drawing whose layers are called whatever they are called:
+ * the names are already read down to kinds by partOf, and this sits on top of that rather than
+ * beside it.
+ */
+export const PART_PARENT: Partial<Record<PartKind, PartKind>> = {
+  ear: 'head',
+  eye: 'head',
+  mouth: 'head',
+  antenna: 'head',
+}
+
 export type Box = { x0: number; y0: number; x1: number; y1: number }
 
 export type Part = {
