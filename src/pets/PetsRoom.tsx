@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { gallery, subscribeGallery, type Art } from '../draw/gallery'
+import { useOneShot } from './oneShot'
 import { PetPlay } from './PetPlay'
 import { PetView } from './PetView'
 import { PART_DOES, PART_WORDS, STANCES, rigOf, type PartKind, type Mood } from './rig'
@@ -72,6 +73,8 @@ export function PetsRoom({ onControlChange }: { onControlChange?: (on: boolean) 
    * platformer", and the selecting is the list that was already here.
    */
   const [playing, setPlaying] = useState(false)
+  /* ⚠️ a thing it DOES rather than a thing it is — see useOneShot */
+  const [pouncing, pounce] = useOneShot()
 
   /**
    * ⚠️ THE PAGE'S KEYBOARD SHORTCUTS STAND DOWN WHILE YOU PLAY, the same way they do for the
@@ -291,7 +294,7 @@ export function PetsRoom({ onControlChange }: { onControlChange?: (on: boolean) 
                     art={chosen.art}
                     size={220}
                     energy={still ? 0 : energy}
-                    stance={stance}
+                    stance={pouncing ? 'pounce' : stance}
                     watch="hover"
                     label={`${chosen.name}, waving about`}
                   />
@@ -323,6 +326,15 @@ export function PetsRoom({ onControlChange }: { onControlChange?: (on: boolean) 
                  * creature somebody drew once can do all five — see TUNE in rig.ts.
                  */}
                 <div className="pets-stances">
+                  {/* ⚠️ apart from the five, because it is not one of them: those are poses to
+                      leave a creature in, and this one gives the creature back after a moment */}
+                  <button
+                    className={'btn' + (pouncing ? ' is-on' : '')}
+                    onClick={pounce}
+                    title={`Make ${chosen.name} pounce`}
+                  >
+                    ⚡ Pounce
+                  </button>
                   {STANCES.map(([id, label]) => (
                     <button
                       key={id}

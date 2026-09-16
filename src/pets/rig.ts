@@ -414,7 +414,7 @@ function blink(t: number): number {
  * scaled, plus a whole-body adjustment — so a stance cannot forget about a part, and a part added
  * later works in every stance without anybody revisiting this table.
  */
-export type Stance = 'idle' | 'alert' | 'run' | 'crouch' | 'sleep'
+export type Stance = 'idle' | 'alert' | 'run' | 'crouch' | 'sleep' | 'pounce'
 
 export type Mood = {
   stance: Stance
@@ -438,6 +438,13 @@ export type Tune = {
   shut: boolean
 }
 
+/**
+ * ⚠️ POUNCE IS NOT IN THIS LIST, and that is the difference between it and the other five.
+ * These are states: you pick one and the creature stays in it until you pick another, which is
+ * what the buttons in the Pets room offer. A pounce is a THING THAT HAPPENS — it runs for about
+ * a third of a second and gives the creature back — so offering it as a state you could leave a
+ * pet stuck in would be offering the wrong shape of thing. It is triggered, by oneShot.
+ */
 export const STANCES: Array<[Stance, string]> = [
   ['idle', 'Idle'],
   ['alert', 'Alert'],
@@ -448,6 +455,23 @@ export const STANCES: Array<[Stance, string]> = [
 
 export const TUNE: Record<Stance, Tune> = {
   idle: { rate: 1, swing: 1, lean: 0, drop: 0, squashX: 1, squashY: 1, shut: false },
+  /**
+   * ⚠️ A LUNGE, AND IT IS STILL ONLY A TUNING. Asked for as an attack alongside the other
+   * five, and skipped at the time because it wanted a triggered animation rather than a state.
+   * The triggering is the new part — see oneShot — but the POSE needed nothing new at all: thrown
+   * forward hard, squashed along its own length, everything moving at twice the rate and half as
+   * far again. The same table as every other stance, so a part somebody adds later pounces too
+   * without anybody revisiting this.
+   */
+  pounce: {
+    rate: 2.2,
+    swing: 1.9,
+    lean: 0.3,
+    drop: 0.02,
+    squashX: 1.14,
+    squashY: 0.88,
+    shut: false,
+  },
   /* braced and quick, standing a little taller — the pose before it does something */
   alert: {
     rate: 1.55,
@@ -481,6 +505,15 @@ export const TUNE: Record<Stance, Tune> = {
     shut: true,
   },
 }
+
+/**
+ * How long a pounce lasts, in seconds.
+ *
+ * ⚠️ SHORT ENOUGH THAT IT READS AS ONE MOVEMENT. Much longer and it is a pose being held,
+ * which is the thing a stance already does and does better; much shorter and it is a flicker you
+ * cannot tell you caused.
+ */
+export const POUNCE_FOR = 0.34
 
 /** The whole pet's own drift, so it is not a rigid thing with moving parts. */
 export function bodyPose(t: number, energy = 1): { dy: number; rot: number } {

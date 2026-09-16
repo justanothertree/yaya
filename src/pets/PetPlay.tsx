@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Drawing } from '../draw/strokes'
 import { PetView } from './PetView'
 import { petRatio, rigOf } from './rig'
+import { useOneShot } from './oneShot'
 import {
   COURSE,
   effortOf,
@@ -114,6 +115,10 @@ export function PetPlay({ pets, startAt = 0 }: { pets: PlayPet[]; startAt?: numb
    * you have drawn is the one place in this room where that would actually be felt.
    */
   const traits = useMemo<Traits[]>(() => pets.map((p) => traitsOf(rigOf(p.art))), [pets])
+  /* ⚠️ the one thing in this room that is done rather than held — see useOneShot */
+  const [pouncing, pounce] = useOneShot()
+  const pounceRef = useRef(pounce)
+  pounceRef.current = pounce
   const held = useRef<Input>({ ...STILL })
   const leadRef = useRef(lead)
   leadRef.current = lead
@@ -151,6 +156,13 @@ export function PetPlay({ pets, startAt = 0 }: { pets: PlayPet[]; startAt?: numb
       if (k) {
         e.preventDefault()
         held.current[k] = on
+        return
+      }
+      /* ⚠️ through a ref: this listener is armed once, and reading `pounce` directly would
+         put it in the dependencies and tear the whole keyboard down every time one fires */
+      if (on && (e.key === 'x' || e.key === 'X')) {
+        e.preventDefault()
+        pounceRef.current()
         return
       }
       if (on && /^[1-9]$/.test(e.key)) {
@@ -300,7 +312,7 @@ export function PetPlay({ pets, startAt = 0 }: { pets: PlayPet[]; startAt?: numb
                   size={petSize(p.art)}
                   energy={effortOf(b)}
                   facing={b.facing}
-                  stance={stanceOf(b, input)}
+                  stance={mine && pouncing ? 'pounce' : stanceOf(b, input)}
                   label={mine ? `${p.name}, the one you are playing` : `${p.name}, following`}
                 />
               </button>
@@ -343,6 +355,19 @@ export function PetPlay({ pets, startAt = 0 }: { pets: PlayPet[]; startAt?: numb
             ))}
           </span>
           <span className="pet-play-pad-side">
+            {/* ⚠️ a tap rather than a hold, because it is a thing that happens once — the other
+                four keys are held and this one cannot be */}
+            <button
+              className="pet-play-key"
+              aria-label="Pounce"
+              onPointerDown={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                pounce()
+              }}
+            >
+              ⚡
+            </button>
             {(['down', 'jump'] as const).map((k) => (
               <button
                 key={k}
@@ -404,7 +429,8 @@ export function PetPlay({ pets, startAt = 0 }: { pets: PlayPet[]; startAt?: numb
           has and this is the only place on the site where the keyboard IS the interface */}
       <p className="muted pet-play-keys">
         <strong>← →</strong> or <strong>A D</strong> to walk · <strong>↑</strong>,{' '}
-        <strong>W</strong> or <strong>space</strong> to jump · <strong>↓</strong> to crouch
+        <strong>W</strong> or <strong>space</strong> to jump · <strong>↓</strong> to crouch ·{' '}
+        <strong>X</strong> to pounce
         {pets.length > 1 && (
           <>
             {' · '}
