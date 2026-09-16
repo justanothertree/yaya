@@ -11,6 +11,7 @@ import {
   stanceOf,
   stepBody,
   collect,
+  PET_TALL,
   TREATS,
   WORLD,
   traitWords,
@@ -270,12 +271,13 @@ export function PetPlay({ pets, startAt = 0 }: { pets: PlayPet[]; startAt?: numb
    * drawn wide. Measured on a phone — a 40px `size` rendered 109px tall in a 168px field, so the
    * pet was two thirds of the world and every pet was a different size from every other.
    *
-   * ⚠️ AND THE HEIGHT IS THE ONE THE PHYSICS ALREADY BELIEVES. The reach test in play.ts
-   * treats a pet as 0.2 of the world tall; drawing it any other size means the thing you see and
-   * the thing that touches a treat are different creatures. Now they are the same one.
+   * ⚠️ AND THE HEIGHT IS THE ONE THE PHYSICS ALREADY BELIEVES — PET_TALL, which the reach
+   * test is written in too. Drawing it any other size means the thing you see and the thing that
+   * touches a treat are different creatures. It was the same 0.2 typed in both files with a
+   * comment asking the reader to keep them in step; now there is nothing to keep in step.
    */
   const petSize = (art: Drawing) => {
-    const tall = Math.max(26, size.h * 0.2)
+    const tall = Math.max(26, size.h * PET_TALL)
     const wh = petRatio(art)
     return Math.round(wh >= 1 ? tall * wh : tall)
   }

@@ -59,6 +59,63 @@ export const FLOOR = 1
 export const WORLD = { w: 3 }
 
 /**
+ * How tall a creature stands, as a fraction of the world.
+ *
+ * ⚠️ IT WAS THE SAME NUMBER IN TWO PLACES AND ONLY ONE OF THEM SAID SO. The reach test
+ * below used a bare 0.2 and PetPlay sized every pet to `size.h * 0.2` with a comment explaining
+ * that it had to match — which is a comment doing a constant's job, and it only held because
+ * somebody noticed. Anything that has to know how big a pet is now asks here.
+ */
+export const PET_TALL = 0.2
+
+/**
+ * The edges of the world a body is in.
+ *
+ * ⚠️ A FIGHTING STAGE IS A WORLD YOU CAN FALL OUT OF, which is the one thing the playground's
+ * world cannot be: it has a floor running the full width underneath everything, on purpose, so
+ * that there is no ledge you can reach and not leave. A ring-out is the opposite promise.
+ *
+ * ⚠️ SO IT IS A PARAMETER RATHER THAN A SECOND stepBody. The alternative is a fighting
+ * physics beside a platforming physics, and the note on followInput already says what that costs:
+ * two engines that disagree, where a thing can reach somewhere in one of them and not the other.
+ * The default is exactly the world that was here before, so the playground is untouched.
+ */
+export type Bounds = {
+  /** how many screens across */
+  w: number
+  /** a floor the whole way along, or nothing but the ledges */
+  ground: boolean
+  /** sides that stop you, or open air */
+  walls: boolean
+}
+
+export const CLOSED: Bounds = { w: WORLD.w, ground: true, walls: true }
+
+/**
+ * The things about one step that are not the body, the keys or the clock.
+ *
+ * ⚠️ AN OPTIONS OBJECT RATHER THAN A SIXTH AND SEVENTH ARGUMENT, because two of these arrived
+ * within an hour of each other and a positional list that long is one nobody can read at the call
+ * site — `stepBody(b, i, l, dt, traits, RING, 0.12)` says nothing about what 0.12 is.
+ */
+export type Step = {
+  /** the edges of the world; the platformer's closed one by default */
+  bounds?: Bounds
+  /**
+   * How strongly the ground takes speed back off a body nobody is steering, 1 being normal
+   * footing.
+   *
+   * ⚠️ A BODY THAT HAS JUST BEEN HIT IS NOT STANDING ON ANYTHING. Drag applies whenever no
+   * direction is held, which is exactly the state a stunned fighter is in — so at full grip a
+   * launch is over before it has gone anywhere. Measured before this existed: at 200% damage, the
+   * hardest attack in the game threw somebody from the middle of the stage to x=1.315 against a
+   * boundary at 1.34, so a round could essentially never be won. It is a multiplier rather than a
+   * switch so the same knob can be an icy floor later.
+   */
+  grip?: number
+}
+
+/**
  * ⚠️ TUNED IN WORLD HEIGHTS, and the jump is the one that matters: 1.55 against a gravity of 4.6
  * is a rise of about a quarter of the screen and a hang of roughly two thirds of a second, which
  * is what reads as a jump rather than a hop or a balloon. Everything else was fitted around it.
@@ -153,7 +210,10 @@ export function stepBody(
   ledges: Ledge[],
   dt: number,
   traits: Traits = PLAIN,
+  step: Step = {},
 ): Body {
+  const bounds = step.bounds ?? CLOSED
+  const grip = step.grip ?? 1
   const t = Math.max(0, Math.min(0.05, dt))
   const ducking = input.down && b.onGround
   const want = (input.right ? 1 : 0) - (input.left ? 1 : 0)
@@ -166,7 +226,7 @@ export function stepBody(
   } else {
     /* ⚠️ towards zero rather than multiplied, so it actually arrives: a decay never quite stops
        and leaves the pet creeping for ever at a speed too small to see but not to accumulate */
-    const drop = TUNE.drag * t
+    const drop = TUNE.drag * grip * t
     vx = Math.abs(vx) <= drop ? 0 : vx - Math.sign(vx) * drop
   }
 
@@ -192,12 +252,16 @@ export function stepBody(
   }
   vy = Math.min(TUNE.maxFall * (input.jump && traits.glide < 1 ? traits.glide : 1), vy)
 
-  const x = Math.max(0.02, Math.min(WORLD.w - 0.02, b.x + vx * t))
+  const drift = b.x + vx * t
+  const x = bounds.walls ? Math.max(0.02, Math.min(bounds.w - 0.02, drift)) : drift
   const wasY = b.y
   let y = wasY + vy * t
   let onGround = false
 
-  if (y >= FLOOR) {
+  /* ⚠️ WITHOUT A FLOOR THIS FALLS THROUGH TO THE LEDGES, which is the whole difference: the
+     same one-way test then decides everything you can stand on, and anything you miss you keep
+     falling past. */
+  if (bounds.ground && y >= FLOOR) {
     y = FLOOR
     vy = 0
     onGround = true
@@ -351,7 +415,7 @@ export type Spot = { x: number; y: number }
  * not, because a treat under your feet is one you have already passed.
  */
 const REACH_X = 0.05
-const REACH_UP = 0.2
+const REACH_UP = PET_TALL
 const REACH_DOWN = 0.04
 
 export const touching = (b: Body, s: Spot): boolean =>

@@ -8103,6 +8103,179 @@ a.cz-msg-author:focus-visible {
   }
 }
 
+/* ── the fighting room ──────────────────────────────────
+   ⚠️ THE STAGE KEEPS ITS SHAPE, because the whole game is measured in fractions of it: a ledge
+   at x 0.16 and a hitbox reaching 0.43 only mean anything against a box whose proportions do not
+   wander. aspect-ratio rather than a height, so it is the same fight on a phone as on a desk. */
+.pet-fight {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.pet-fight-field {
+  position: relative;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  overflow: hidden;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--accent, #7c6af7) 9%, transparent),
+    transparent 70%
+  );
+}
+.pet-fight-stage {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  max-height: 58vh;
+}
+.pet-fight-ledge {
+  position: absolute;
+  height: 6px;
+  margin-top: -3px;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--text) 42%, transparent);
+}
+.pet-fight-ledge.is-deck {
+  height: 9px;
+  margin-top: -4px;
+  background: color-mix(in srgb, var(--text) 62%, transparent);
+}
+/* ⚠️ translate(-50%, -100%): x is the middle of the creature and y is the ground under its
+   feet, which is what every number in fight.ts means by a position. */
+.pet-fight-pet {
+  position: absolute;
+  transform: translate(-50%, -100%);
+  transition: none;
+  pointer-events: none;
+}
+/* ⚠️ A HIT HAS TO BE VISIBLE WITHOUT WATCHING THE NUMBER. Being launched reads as the
+   creature moving; being HIT is one frame, and without a flash the damage going up is the only
+   evidence it happened. */
+.pet-fight-pet.is-hit {
+  filter: brightness(1.9) saturate(0.4);
+}
+.pet-fight-pet.is-swing {
+  filter: drop-shadow(0 0 7px color-mix(in srgb, var(--accent, #7c6af7) 80%, transparent));
+}
+.pet-fight-pet.is-safe {
+  opacity: 0.55;
+}
+@media (prefers-reduced-motion: reduce) {
+  /* the flash is a thing that happens AT you, so it goes; the launch is the game and stays */
+  .pet-fight-pet.is-hit {
+    filter: none;
+    outline: 2px solid var(--accent, #7c6af7);
+  }
+}
+.pet-fight-over {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  background: color-mix(in srgb, var(--bg, #111) 72%, transparent);
+  font-size: 1.15rem;
+}
+.pet-fight-hud {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 8px;
+}
+.pet-fight-card {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--who, var(--accent, #7c6af7));
+  border-radius: 12px;
+  min-width: 0;
+}
+/* ⚠️ two hues, and they are the ONLY thing telling the readouts apart from the creatures they
+   belong to — which is why the pips and the dot beside each picker carry them too */
+.pet-fight-card.is-p1,
+.pet-fight-dot.is-p1 {
+  --who: #f2a13a;
+}
+.pet-fight-card.is-p2,
+.pet-fight-dot.is-p2 {
+  --who: #43b0f1;
+}
+.pet-fight-who {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.pet-fight-who strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pet-fight-moves {
+  font-size: 0.72rem;
+  opacity: 0.7;
+}
+.pet-fight-hurt {
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  font-size: 1.05rem;
+}
+.pet-fight-stocks {
+  display: flex;
+  gap: 3px;
+}
+.pet-fight-stocks i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--text) 22%, transparent);
+}
+.pet-fight-stocks i.is-on {
+  background: var(--who, var(--accent, #7c6af7));
+}
+.pet-fight-setup {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.pet-fight-seat {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.pet-fight-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--who);
+}
+.pet-fight-keys {
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+/* ⚠️ the pad borrows .pet-play-key rather than restating it: same thumbs, same size, and one
+   place to fix if a key is ever too small to hit */
+.pet-fight-pad {
+  display: none;
+}
+@media (pointer: coarse) {
+  .pet-fight-pad {
+    display: flex;
+    justify-content: space-between;
+    padding: 8px;
+    gap: 8px;
+  }
+  .pet-fight-pad-side {
+    display: flex;
+    gap: 8px;
+  }
+}
+
 /* ── the games menu ──────────────────────────────────────
    ⚠️ auto-fit rather than a column count, so this needs no breakpoint of its own: two games
    sit side by side wherever 220px twice will fit and stack wherever it will not. A fixed

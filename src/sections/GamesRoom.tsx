@@ -29,8 +29,12 @@ const PetPlay = lazyRetry(
   () => import('../pets/PetPlay'),
   (m) => m.PetPlay,
 )
+const PetFight = lazyRetry(
+  () => import('../pets/PetFight'),
+  (m) => m.PetFight,
+)
 
-type GameId = 'snake' | 'playground'
+type GameId = 'snake' | 'playground' | 'fight'
 
 /**
  * Which game the address bar asked for, or null for the menu.
@@ -48,7 +52,7 @@ function wantedFromHash(): GameId | null {
   // the alias every challenge message ever posted was built from.
   if (base === 'snake' || q.has('room') || q.has('beat')) return 'snake'
   const play = q.get('play')
-  return play === 'snake' || play === 'playground' ? play : null
+  return play === 'snake' || play === 'playground' || play === 'fight' ? play : null
 }
 
 export function GamesRoom({
@@ -129,10 +133,20 @@ export function GamesRoom({
       </>
     )
 
+  if (game === 'fight')
+    return (
+      <>
+        <GamesBar onBack={() => setGame(null)} />
+        <Suspense fallback={<div aria-busy>Loading the ring…</div>}>
+          <PetFight pets={mine.map((p) => ({ name: p.name, art: p.art }))} />
+        </Suspense>
+      </>
+    )
+
   return (
     <>
       <h2 style={{ marginTop: 0 }}>🎮 Games</h2>
-      <p className="muted">Pick one. Both work with a keyboard, a thumb, or a friend.</p>
+      <p className="muted">Pick one. They all work with a keyboard, a thumb, or a friend.</p>
       <div className="games-pick">
         <button className="games-tile" onClick={() => setGame('snake')}>
           <span className="games-tile-art" aria-hidden>
@@ -148,30 +162,44 @@ export function GamesRoom({
         </button>
 
         {mine.length ? (
-          <button className="games-tile" onClick={() => setGame('playground')}>
-            <span className="games-tile-art" aria-hidden>
-              {/* ⚠️ STILL, at energy 0. A row of idling creatures on a menu is movement you did
-                  not ask for, and the one on the card is a picture of what you get, not a demo. */}
-              <PetView art={mine[0].art} size={56} energy={0} />
-            </span>
-            <span className="games-tile-body">
-              <span className="games-tile-name">Playground</span>
-              <span className="games-tile-line">
-                A platformer for the creatures you drew. Arrow keys to run and jump, 1–9 to switch
-                which one you are — the rest follow you.
+          <>
+            <button className="games-tile" onClick={() => setGame('playground')}>
+              <span className="games-tile-art" aria-hidden>
+                {/* ⚠️ STILL, at energy 0. A row of idling creatures on a menu is movement you
+                    did not ask for, and the one on the card is a picture of what you get. */}
+                <PetView art={mine[0].art} size={56} energy={0} />
               </span>
-            </span>
-          </button>
+              <span className="games-tile-body">
+                <span className="games-tile-name">Playground</span>
+                <span className="games-tile-line">
+                  A platformer for the creatures you drew. Arrow keys to run and jump, 1–9 to switch
+                  which one you are — the rest follow you.
+                </span>
+              </span>
+            </button>
+            <button className="games-tile" onClick={() => setGame('fight')}>
+              <span className="games-tile-art" aria-hidden>
+                <PetView art={mine[mine.length > 1 ? 1 : 0].art} size={56} energy={0} />
+              </span>
+              <span className="games-tile-body">
+                <span className="games-tile-name">Scrap</span>
+                <span className="games-tile-line">
+                  Two of your creatures, three lives each, on a stage you can be knocked off. What
+                  they are made of is what they hit with.
+                </span>
+              </span>
+            </button>
+          </>
         ) : (
           <a className="games-tile is-locked" href="#pets">
             <span className="games-tile-art" aria-hidden>
               🐾
             </span>
             <span className="games-tile-body">
-              <span className="games-tile-name">Playground</span>
+              <span className="games-tile-name">Playground &amp; Scrap</span>
               <span className="games-tile-line">
-                A platformer for the creatures you drew — draw one first, then come back. The Pets
-                room shows you how.
+                A platformer and a fighting ring for the creatures you drew — draw one first, then
+                come back. The Pets room shows you how.
               </span>
             </span>
           </a>
