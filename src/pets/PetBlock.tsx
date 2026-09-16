@@ -125,7 +125,8 @@ export function PetPicker({
   if (!mine.length && !chosen.length)
     return (
       <p className="muted" style={{ margin: 0, fontSize: '0.85rem' }}>
-        No pets yet. Adopt one of your drawings in the <strong>Pets</strong> room, then come back.
+        No pets yet. Adopt one of your drawings in the <strong>Pets</strong> room, then come back —
+        or sign in, if you have made some on another machine.
       </p>
     )
 
@@ -134,8 +135,12 @@ export function PetPicker({
       {/* what the block HOLDS, which is not the same list as what this browser can offer */}
       {!mine.length && (
         <span className="muted" style={{ fontSize: '0.75rem' }}>
-          {names.join(', ')} — added from another browser. They show fine; this one has no pets in
-          it, so there is nothing here to add.
+          {/* ⚠️ THIS USED TO SAY THERE WAS NOTHING TO BE DONE ABOUT IT, and that was not true:
+              pets are one of the kinds the library syncs (see library/cloud.ts, kind 'pet'), so a
+              browser that has none gets them as soon as it is signed in. Saying a thing is
+              permanent when it fixes itself in a moment sends somebody off to redraw a pet. */}
+          {names.join(', ')} — added from another browser, and they show here fine. Your own pets
+          arrive on this machine once you are signed in.
         </span>
       )}
       <div className="fx-style-row">

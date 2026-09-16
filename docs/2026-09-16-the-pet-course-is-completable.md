@@ -72,3 +72,37 @@ shape of thing a test file exists for — the module is pure, dependency-free an
 it would test cleanly. The repository has no test runner and adding one is a change to the
 project's toolchain rather than a change to a feature, so it is left as a question: worth adding
 `vitest` for this, or is `docs/` the right home for it?
+
+---
+
+# Addendum: why that pet would not go on a profile
+
+Checked against the live `member_library`, because the pets were there all along.
+
+**Pets already sync.** I said more than once in conversation that pets were localStorage-only with
+no cross-device story, and that was wrong. `src/library/cloud.ts` carries kind `'pet'` in both
+directions, the table's `member_library_kind_check` allows it, `library_put` allows it, and there
+are three pet rows belonging to two people in the live database. It has been working.
+
+**Two of the three pets could not fit in a profile block, not one.** Measured on the real rows:
+
+| packed bytes | against the old 16,000 cap | against the new 64,000 cap | strokes |
+| ------------ | -------------------------- | -------------------------- | ------- |
+| 58,832       | **368%**                   | 92%                        | 31      |
+| 24,534       | **153%**                   | 38%                        | 171     |
+| 1,708        | 11%                        | 3%                         | 15      |
+
+Only the smallest ever fitted, which is exactly the one pet block stored on a profile (1,720
+characters). So "one of the pets won't save to a block" was, if anything, an understatement.
+
+**Both now fit, and the two are helped by different halves of the fix.** Measured on synthetic
+pets built to the same shape as the real ones, rather than on anybody's actual drawing:
+
+| shaped like        | packed  | after thinning | shrank | of a block |
+| ------------------ | ------- | -------------- | ------ | ---------- |
+| the 31-stroke one  | 117,634 | 3,788          | 31×    | 6%         |
+| the 171-stroke one | 61,102  | 20,650         | 3×     | 32%        |
+
+Few strokes with very many points each is what the simplifier is for, so the big one collapses by
+thirty times. Many strokes with few points each has little redundancy to remove, so that one is
+helped mostly by the cap going from 16,000 to 64,000. Neither fix alone would have covered both.
