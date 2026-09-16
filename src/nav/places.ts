@@ -111,7 +111,9 @@ export const PLACES = [
     nav: member,
   },
   { id: 'admin', label: 'Admin', icon: '🛠', title: 'Admin', nav: (v) => v.isAdmin },
-  { id: 'snake', label: 'Snake', icon: '🎮', title: 'Snake', nav: () => true },
+  /* ⚠️ Snake is one of the things in here now, not the whole of it — see GamesRoom, and see
+     SECTION_ALIASES below for why `#snake` did not stop meaning anything when this was renamed. */
+  { id: 'games', label: 'Games', icon: '🎮', title: 'Games', nav: () => true },
   { id: 'visualizer', label: 'Visualiser', icon: '🎚️', title: 'Visualiser', nav: () => true },
   { id: 'instrument', label: 'Instrument', icon: '🎹', title: 'Instrument', nav: () => true },
   { id: 'paint', label: 'Paint', icon: '🎨', title: 'Paint', nav: () => true },
@@ -148,3 +150,34 @@ export const SECTION_TITLES: Record<Section, string> = Object.fromEntries(
 
 /** The places this viewer is offered, in order. Drives both navs and the arrow keys. */
 export const navFor = (v: Viewer): readonly Place[] => PLACES.filter((p) => p.nav(v))
+
+/**
+ * Routes that are no longer places, and what they mean now.
+ *
+ * ⚠️ A ROUTE SOMEBODY WAS SENT IS PERMANENT. `#snake?room=…` links were built by
+ * `challengeLink` and posted into chat, so they are sitting in the database inside messages that
+ * were written months ago and cannot be rewritten. Renaming the Snake tab to Games renames a
+ * PLACE, which is free; renaming a LINK is only free when nobody kept one, and here eight people
+ * did. So `#snake` keeps working, keeps its query, and lands on the games room with Snake
+ * already open — which is exactly what it always did.
+ */
+export const SECTION_ALIASES: Record<string, Section> = { snake: 'games' }
+
+/**
+ * The section a hash names. One answer, for the first load and for every hashchange after it.
+ *
+ * ⚠️ THIS WAS TWO FUNCTIONS AND THEY DISAGREED. Only the hashchange parser knew that
+ * `#circuit?tab=chat` means Chat (chat used to be a Circuit tab), so the rule applied when you
+ * navigated to such a link from inside the site and not when you ARRIVED on one — which is the
+ * case an old link in somebody's messages is actually going to hit. Two copies of a routing rule
+ * is the same failure this file was written to stop; it had simply grown a second home.
+ */
+export function sectionOf(hash: string): Section {
+  const raw = (hash || '#home').replace(/^#/, '')
+  const [base, query] = raw.split('?')
+  const id = base || 'home'
+  if (id === 'circuit' && new URLSearchParams(query ?? '').get('tab') === 'chat') return 'chat'
+  const alias = SECTION_ALIASES[id]
+  if (alias) return alias
+  return (ALL_SECTIONS as string[]).includes(id) ? (id as Section) : 'home'
+}

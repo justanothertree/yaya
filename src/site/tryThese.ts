@@ -177,7 +177,10 @@ export const TRY_THESE: Invite[] = [
     line: 'Four of the looks, cycling. Everyone builds a page out of blocks — a song, a drawing, scores, a guestbook — and from somebody’s page you can add them, message them, call them, or draw and play together.',
   },
   {
-    id: 'snake',
+    id: 'games',
+    /* ⚠️ STRAIGHT INTO SNAKE, not into the menu it now sits behind. `id` names the room the
+       compiler can check; the tile says "Play Snake" and has to land on Snake. */
+    href: '#games?play=snake',
     /**
      * ⚠️ "MAKE SOMETHING" MEANS "NO ACCOUNT NEEDED", WHICH IS EXACTLY WHAT THIS IS. It sat
      * under "With other people" because the ROOM keeps scores and lets people race each other —

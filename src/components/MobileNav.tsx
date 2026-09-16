@@ -24,7 +24,7 @@ export type MobileSection =
   | 'signin'
   | 'investments'
   | 'account-settings'
-  | 'snake'
+  | 'games'
   | 'visualizer'
   | 'instrument'
   | 'paint'
@@ -101,7 +101,7 @@ export function MobileNav({
       ]
     : [
         { key: 'home', label: 'Home', icon: '🏠', section: 'home' },
-        { key: 'snake', label: 'Snake', icon: '🎮', section: 'snake', primary: !hasAuth },
+        { key: 'games', label: 'Games', icon: '🎮', section: 'games', primary: !hasAuth },
         ...(hasAuth
           ? [
               {

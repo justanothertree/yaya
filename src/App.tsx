@@ -17,7 +17,7 @@ import { AmbientBackdrop } from './components/AmbientBackdrop'
 import { installClickFx, setClickFxEnabled, setClickFxStyle, type FxStyle } from './ui/clickFx'
 import { FX_STYLES } from './ui/fxStyles'
 import { applyCursorSkin, isCursorSkin, type CursorSkin } from './ui/cursorSkin'
-import { ALL_SECTIONS, SECTION_TITLES, navFor, type Section } from './nav/places'
+import { SECTION_ALIASES, SECTION_TITLES, navFor, sectionOf, type Section } from './nav/places'
 import { occupancy, usePartyHere } from './party/whereEveryone'
 import { AppearanceDialog } from './components/AppearanceDialog'
 import { BugReport } from './components/BugReport'
@@ -55,11 +55,14 @@ import { previewMember, PREVIEW_ME, PREVIEW_VOICE_IN } from './dev/previewMember
  * Snake was the site's first feature and stayed an EAGER import while every other section became
  * lazy — so a 4,000-line game manager, its Supabase leaderboard client and the `bad-words` list
  * all rode in the main bundle that every visitor downloads, including the ones who never open it.
- * Both render sites are gated on `active === 'snake'`, so there was nothing keeping it there.
+ * Both render sites are gated on `active === 'games'`, so there was nothing keeping it there.
+ *
+ * It is reached through the games room now, which lazies Snake and the playground separately
+ * again — opening the menu must not download both of the things you did not pick.
  */
-const SnakeGame = lazyRetry(
-  () => import('./sections/SnakeGame'),
-  (m) => m.SnakeGame,
+const GamesRoom = lazyRetry(
+  () => import('./sections/GamesRoom'),
+  (m) => m.GamesRoom,
 )
 const PaintRoom = lazyRetry(
   () => import('./sections/PaintRoom'),
@@ -223,11 +226,7 @@ const CANVAS_PREF = 'canvas_mode_v1'
 const DEV_PREVIEW = typeof window === 'undefined' ? '' : window.location.hash.replace(/^#dev-/, '')
 
 export default function App() {
-  const initialSection: Section = (() => {
-    const raw = (window.location.hash || '#home').replace('#', '')
-    const base = (raw.split('?')[0] || 'home') as Section
-    return ALL_SECTIONS.includes(base) ? base : 'home'
-  })()
+  const initialSection: Section = sectionOf(window.location.hash)
   const [active, setActive] = useState<Section>(initialSection)
   // boot from the persisted session + last-confirmed flags (verified in the background)
   const [boot] = useState(() => {
@@ -1029,15 +1028,7 @@ export default function App() {
 
   // Read hash when it changes (deep links + back/forward)
   useEffect(() => {
-    const parseHash = (): Section => {
-      const raw = (window.location.hash || '#home').replace('#', '')
-      const base = (raw.split('?')[0] || 'home') as Section
-      // chat used to live as a Circuit tab; keep those links working
-      if (base === 'circuit' && new URLSearchParams(raw.split('?')[1] ?? '').get('tab') === 'chat')
-        return 'chat'
-      return ALL_SECTIONS.includes(base) ? base : 'home'
-    }
-    const onHash = () => setActive(parseHash())
+    const onHash = () => setActive(sectionOf(window.location.hash))
     window.addEventListener('hashchange', onHash)
     return () => window.removeEventListener('hashchange', onHash)
   }, [])
@@ -1051,8 +1042,15 @@ export default function App() {
     const raw = (window.location.hash || '#').replace('#', '')
     const [base, query] = raw.split('?')
     if (base !== active) {
-      // Preserve query for snake deep-links (e.g., room=...)
-      const suffix = active === 'snake' && base === 'snake' && query ? `?${query}` : ''
+      /**
+       * ⚠️ AN ALIAS KEEPS ITS QUERY, and this is the first time that has had to be true. The
+       * old line here asked whether base and active were BOTH 'snake' inside a branch that only
+       * runs when they differ — dead code, and harmlessly so, because a `#snake?room=` link
+       * matched its own section and the hash was never touched. `#snake` now normalises to
+       * `#games`, so this rewrite does fire on exactly those links, and dropping `?room=` here
+       * would turn every challenge message ever posted into a link to the menu.
+       */
+      const suffix = SECTION_ALIASES[base] === active && query ? `?${query}` : ''
       window.location.hash = active + suffix
     }
   }, [active])
@@ -1348,7 +1346,7 @@ export default function App() {
   const singleCanvasTabs: Section[] = [
     'investments',
     'account-settings',
-    'snake',
+    'games',
     'visualizer',
     'instrument',
     'paint',
@@ -1363,7 +1361,7 @@ export default function App() {
   const canvasCapable =
     (active === 'home' || active === 'circuit' || singleCanvasTabs.includes(active)) &&
     // …except Snake while a multiplayer room is connected — see snakeLive above.
-    !(active === 'snake' && snakeLive)
+    !(active === 'games' && snakeLive)
   /**
    * True whenever the ONE shared canvas is covering the normal page for whatever `active`
    * currently is — every page except `invite`, which was never canvas-capable at all. Replaces
@@ -1378,7 +1376,7 @@ export default function App() {
   const canvasTitleFor: Partial<Record<Section, string>> = {
     investments: '📈 Investments',
     'account-settings': '👤 Account',
-    snake: '🐍 Snake',
+    games: '🎮 Games',
     visualizer: '🎚️ Visualiser',
     instrument: '🎹 Instrument',
     paint: '🎨 Paint',
@@ -1413,9 +1411,9 @@ export default function App() {
         ) : (
           <p className="muted">Sign in to manage your account.</p>
         )
-      case 'snake':
+      case 'games':
         return (
-          <SnakeGame onControlChange={setGameHasControl} onLiveChange={setSnakeLive} autoFocus />
+          <GamesRoom onControlChange={setGameHasControl} onLiveChange={setSnakeLive} autoFocus />
         )
       case 'visualizer':
         return <AudioVisualizer />
@@ -1587,7 +1585,7 @@ export default function App() {
         // case the canvas has always refused, so the launcher refuses it in the same words.
         // (No more "this tab" disabled reason: on the one shared canvas, closing the page
         // you're nominally "on" is just closing a window, same as any other.)
-        disabled: sec === 'snake' && snakeLive ? 'in a live round' : undefined,
+        disabled: sec === 'games' && snakeLive ? 'in a live round' : undefined,
       })),
   ]
 
@@ -1757,8 +1755,8 @@ export default function App() {
       <a href="#content" className="skip-link">
         Skip to content
       </a>
-      <a href="#snake" className="skip-link">
-        Skip to Snake game
+      <a href="#games" className="skip-link">
+        Skip to games
       </a>
       <nav className={'nav'} aria-label="Primary" ref={navRef}>
         <div className="container nav-inner">
@@ -1832,7 +1830,7 @@ export default function App() {
               onToggleCanvas={toggleCanvas}
               canvasCapable={canvasCapable}
               canvasReason={
-                active === 'snake' && snakeLive
+                active === 'games' && snakeLive
                   ? 'Not while you’re in a multiplayer room — switching would drop you from the round'
                   : undefined
               }
@@ -2191,12 +2189,12 @@ export default function App() {
               </Suspense>
             </section>
           )}
-          {!sharedCanvasShowing && active === 'snake' && (
-            <section id="snake" className="card reveal">
+          {!sharedCanvasShowing && active === 'games' && (
+            <section id="games" className="card reveal">
               {/* Its own boundary, not the page-wide one: a shared fallback would blank whatever
                 else is mounted while the game chunk arrives. */}
               <Suspense fallback={<div aria-busy>Loading the game…</div>}>
-                <SnakeGame
+                <GamesRoom
                   onControlChange={setGameHasControl}
                   onLiveChange={setSnakeLive}
                   autoFocus

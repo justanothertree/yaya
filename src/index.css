@@ -8103,6 +8103,70 @@ a.cz-msg-author:focus-visible {
   }
 }
 
+/* ── the games menu ──────────────────────────────────────
+   ⚠️ auto-fit rather than a column count, so this needs no breakpoint of its own: two games
+   sit side by side wherever 220px twice will fit and stack wherever it will not. A fixed
+   `repeat(2, 1fr)` here would put two 160px cards on a phone, which is the squeeze the tile
+   toolbar was already caught by once. */
+.games-pick {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+  margin-top: 1rem;
+}
+.games-tile {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px;
+  text-align: left;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--control-bg, rgba(127, 127, 127, 0.08));
+  color: var(--text);
+  text-decoration: none;
+  cursor: pointer;
+  transition: border-color 0.16s ease;
+}
+.games-tile:hover,
+.games-tile:focus-visible {
+  border-color: var(--accent);
+}
+/* ⚠️ DIMMED, NOT DISABLED. The locked card is a link to the Pets room rather than a dead
+   button — "draw one first" is only useful next to the way to go and do that. */
+.games-tile.is-locked {
+  opacity: 0.72;
+}
+.games-tile-art {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  font-size: 2rem;
+  line-height: 1;
+}
+.games-tile-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.games-tile-name {
+  font-weight: 700;
+}
+.games-tile-line {
+  font-size: 0.85rem;
+  opacity: 0.75;
+}
+.games-bar {
+  display: flex;
+  align-items: center;
+  min-height: 34px;
+  margin-bottom: 0.75rem;
+}
+
 /* ── where you are, in a world you can see a third of ──────────
    ⚠️ THE WORLD IS THREE SCREENS AND THE WINDOW IS ONE. Without this there is no way to tell
    whether there is more to the right, how much, or where the things you have not found are — you
