@@ -1708,8 +1708,79 @@ export function PaintRoom() {
     drawParty.send(s)
   }
 
+  /**
+   * Two fingers: shove the picture about and pinch it bigger.
+   *
+   * ⚠️ IT IS THE PHONE'S MIDDLE BUTTON AND WHEEL, and it was simply missing. Zooming in is
+   * how you draw anything small, and the room offered two ways to do it that a phone does not
+   * have: a scroll wheel, and a middle-button drag. The slider moves the magnification but never
+   * the part of the picture you are looking at, so on a touch screen you could go in and not go
+   * anywhere — asked for as two fingers "moving panning stretching/pinching".
+   *
+   * ⚠️ THE SECOND FINGER CANCELS WHAT THE FIRST ONE STARTED, and that is not optional. The
+   * first finger has already begun a stroke, a band, or a drag of the selection by the time the
+   * second lands, and there is no gesture on a touch screen that starts with two fingers at
+   * exactly the same instant. Every one of those has to be put back rather than committed, or
+   * pinching to look closer would leave a smear across the picture every single time.
+   *
+   * ⚠️ ANCHORED BETWEEN THE FINGERS, for the reason the wheel is anchored under the pointer
+   * — see onWheel. Zooming about the middle of the paper means whatever you leaned in to look at
+   * slides out from under you while you do it.
+   */
+  const fingers = useRef(new Map<number, { x: number; y: number }>())
+  const pinch = useRef<{ gap: number; scale: number; ax: number; ay: number } | null>(null)
+
+  const twoOf = () => {
+    const it = fingers.current.values()
+    const a = it.next().value
+    const b = it.next().value
+    return a && b ? ([a, b] as const) : null
+  }
+
+  /** put back whatever one finger had started, so a pinch cannot draw */
+  const dropGesture = () => {
+    live.current = null
+    band.current = null
+    grip.current = null
+    gripLive.current = null
+    pan.current = null
+    bakeLive.current = false
+    if (shove.current) {
+      const was = shove.current.from
+      shove.current = null
+      setStrokes(was)
+    }
+  }
+
   const onDown = (e: React.PointerEvent) => {
-    e.preventDefault()
+    /**
+     * ⚠️ A PRIMARY PRESS IS THE START OF A GESTURE, so nothing may still be down — and saying
+     * so here is what stops a finger that left the glass without a pointerup from haunting the
+     * map forever and making the next ordinary press look like the second finger of a pinch. The
+     * obvious fix, ending the gesture on pointerleave, is worse: a mouse fires that simply for
+     * being moved off the paper, and where the browser refused the pointer capture the room
+     * deliberately keeps drawing to the edge (see the catch below), so it would cut strokes short.
+     */
+    if (e.isPrimary) fingers.current.clear()
+    fingers.current.set(e.pointerId, { x: e.clientX, y: e.clientY })
+    if (fingers.current.size === 2) {
+      const two = twoOf()
+      dropGesture()
+      if (two) {
+        const [a, b] = two
+        const anchor = at({ clientX: (a.x + b.x) / 2, clientY: (a.y + b.y) / 2 })
+        pinch.current = {
+          gap: Math.max(1, Math.hypot(a.x - b.x, a.y - b.y)),
+          scale,
+          ax: anchor[0],
+          ay: anchor[1],
+        }
+      }
+      repaint()
+      return
+    }
+    /* a third finger is not a gesture this room has, and must not become a stroke either */
+    if (fingers.current.size > 2) return
     /* ⚠️ Touching the paper ends the replay rather than drawing into a half-shown picture —
        which would look like the rest of your strokes had been lost. */
     if (replayRef.current !== null) setReplayAt(null)
@@ -1841,6 +1912,38 @@ export function PaintRoom() {
   }
 
   const onMove = (e: React.PointerEvent) => {
+    if (fingers.current.has(e.pointerId))
+      fingers.current.set(e.pointerId, { x: e.clientX, y: e.clientY })
+    const held = pinch.current
+    if (held) {
+      const two = twoOf()
+      if (!two) return
+      const [a, b] = two
+      const r = view.current!.getBoundingClientRect()
+      const gap = Math.max(1, Math.hypot(a.x - b.x, a.y - b.y))
+      const next = Math.max(1, Math.min(12, held.scale * (gap / held.gap)))
+      const fx = ((a.x + b.x) / 2 - r.left) / r.width
+      const fy = ((a.y + b.y) / 2 - r.top) / r.height
+      off.current.x = held.ax - fx / next
+      off.current.y = held.ay - fy / next
+      clampOffset(next)
+      /**
+       * ⚠️ BOTH, EVERY TIME, and the obvious version of this was wrong. Two fingers do not
+       * move in one event — each reports separately — so within a single batch the first finger's
+       * move computes a gap the second has not caught up with yet. Asking `next === scale` to
+       * decide whether to set it compares against the value React has not re-rendered with, so
+       * the correcting update from the second finger was dropped and the zoom stuck at whatever
+       * the half-updated gap implied. Measured: a pure shove with the gap identical at both ends
+       * drove 3.0x to 1.1x.
+       *
+       * setScale with the value it already holds is a no-op React bails out of, and blit is what
+       * actually moves the picture when only the offset changed — so doing both is correct for a
+       * pinch and for a shove, and costs one extra paint on the frames that zoom.
+       */
+      setScale(next)
+      blit()
+      return
+    }
     if (pan.current) {
       const r = view.current!.getBoundingClientRect()
       off.current.x -= (e.clientX - pan.current.x) / r.width / scale
@@ -1929,7 +2032,11 @@ export function PaintRoom() {
     else preview()
   }
 
-  const onUp = () => {
+  const onUp = (e?: React.PointerEvent) => {
+    if (e) fingers.current.delete(e.pointerId)
+    /* the gesture ends when it stops being two fingers, and the one still down must not go on
+       to draw — dropGesture already emptied everything onUp below looks at */
+    if (fingers.current.size < 2) pinch.current = null
     pan.current = null
     bakeLive.current = false
     if (band.current) {
