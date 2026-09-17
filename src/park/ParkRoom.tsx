@@ -33,6 +33,7 @@ import {
 import { attacksOf, moveTable, petWide, type Attack } from '../pets/attack'
 import { rigOf } from '../pets/rig'
 import { lungeOf } from '../pets/fight'
+import { beaten, bossMoves, bossThink, bossWide, makeBoss, wounded, type Boss } from './boss'
 
 /**
  * A park you walk into and find people in.
@@ -172,7 +173,17 @@ export function ParkRoom({
     () => (mine ? moveTable(attacksOf(rigOf(mine.art))) : []),
     [mine],
   )
+  const boss = useRef<Boss | null>(null)
+  const [bossShown, setBossShown] = useState<Boss | null>(null)
+  const [bossPick, setBossPick] = useState(0)
   const myWide = useMemo(() => (mine ? petWide(mine.art) : 0.2), [mine])
+
+  const bossArt = pets[bossPick] ?? pets[0]
+  const bossKit = useMemo(
+    () => (bossArt ? { moves: bossMoves(bossArt.art), wide: bossWide(bossArt.art) } : null),
+    [bossArt],
+  )
+
   /** the wandering creatures, in the order wanderAt indexes them */
   const strollPets = useMemo(
     () => pets.filter((_, i) => i !== pick).slice(0, MAX_WANDERERS),
@@ -188,6 +199,18 @@ export function ParkRoom({
   const hitting = useRef<StrikeInput>({ quick: false, heavy: false, up: false, down: false })
   /** bumped when a swing starts or ends, so the render follows without owning the loop */
   const [swingAt, setSwingAt] = useState(0)
+  /**
+   * The boss, if one has been called out.
+   *
+   * ⚠️ A ROLE, NOT A KIND. It is one of your own minions — the same drawing, the same rig, the
+   * same moves read from the same layer names — stood up bigger with a pool of health and
+   * something that actually plays behind it. See boss.ts for why that is the design rather than
+   * the shortcut.
+   *
+   * ⚠️ AND IT IS YOURS ALONE FOR NOW. Nothing about it crosses the wire, so you and a friend in
+   * the same park are each fighting your own. Sharing one is the next piece and needs somebody to
+   * own its state — saying that out loud beats letting two people wonder why their hits disagree.
+   */
   /**
    * How far each wanderer has been knocked from its path, and how fast it is drifting back.
    *
@@ -342,11 +365,13 @@ export function ParkRoom({
       if (wasSwinging !== you.current.swing > 0) setSwingAt((n) => n + 1)
 
       /* what my swing is hurting right now, if anything */
-      const mv = myMoves[you.current.move]
-      const area =
-        you.current.swing > 0 && !you.current.spent && mv
-          ? strikeArea(you.current, you.current.facing, mv, mv.span - you.current.swing)
+      const mv0 = myMoves[you.current.move]
+      const area0 =
+        you.current.swing > 0 && !you.current.spent && mv0
+          ? strikeArea(you.current, you.current.facing, mv0, mv0.span - you.current.swing)
           : null
+      const area = area0
+      const mv = mv0
       if (area && mv) {
         nudges.current.forEach((n, i) => {
           const w = wanderAt(i, clockRef.current)
@@ -362,6 +387,49 @@ export function ParkRoom({
         })
         /* ⚠️ the other people in the park are shoved by their OWN reading of my swing, never by
            mine — see the note on hits below. Nothing here reaches across the wire. */
+      }
+
+      /**
+       * The boss takes its turn: it thinks, it walks, it swings, and it is hit.
+       *
+       * ⚠️ THROUGH THE SAME stepStrike AND stepWalker A PERSON IS, so it cannot do anything you
+       * could not — no extra speed, no attack from nowhere, no turning mid-swing. What it has
+       * over you is reach and health, both of which you can see.
+       */
+      const bs = boss.current
+      if (bs && bossKit) {
+        /* ⚠️ a local, not the ref: everything below reads what the line above it produced, and a
+           ref that might have been set to null cannot be narrowed by a compiler reading in order */
+        let cur: Boss = { ...bs, think: bs.think + dt }
+        const plan = bossThink(cur, you.current, bossKit.moves)
+        const struckBoss = stepStrike(cur, plan.hit, bossKit.moves, dt)
+        const bSteer = busy(struckBoss) ? STILL : { ...STILL, ...plan.steer }
+        const walked = stepWalker(struckBoss, bSteer, struckBoss.hold > 0 ? 0 : dt)
+        /* ⚠️ it turns to face you when it is not committed, because a creature that only faced
+           the way it walked would back away and then swing at nothing */
+        const facing = struckBoss.swing > 0 ? cur.facing : you.current.x < cur.x ? -1 : 1
+        /* ⚠️ cur first: stepStrike and stepWalker each return only the part they own, so
+           spreading them alone would quietly drop the name, the art and the health */
+        cur = { ...cur, ...struckBoss, ...walked, facing }
+
+        /* its swing against me */
+        const bm = bossKit.moves[cur.move]
+        if (cur.swing > 0 && !cur.spent && bm) {
+          const area = strikeArea(cur, cur.facing, bm, bm.span - cur.swing, cur.scale)
+          if (area && you.current.stun <= 0 && inArea(you.current, myWide, area)) {
+            you.current = shoved(you.current, cur, bm)
+            cur = { ...cur, spent: true }
+          }
+        }
+
+        /* and mine against it */
+        if (area0 && mv0 && !beaten(cur) && inArea(cur, bossKit.wide, area0, cur.scale)) {
+          cur = wounded(cur, mv0)
+          you.current = { ...you.current, spent: true, hold: 0.06 + mv0.bite * 0.004 }
+        }
+
+        boss.current = cur
+        setBossShown(cur)
       }
 
       /**
@@ -425,7 +493,7 @@ export function ParkRoom({
     }
     raf = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(raf)
-  }, [walking, myMoves, myWide])
+  }, [walking, myMoves, myWide, bossKit])
 
   /* the same sizing as everywhere else — PetView's size is the LONG side, not the height */
   const petSize = (art: Drawing) => {
@@ -489,6 +557,43 @@ export function ParkRoom({
           <label className="park-seat">
             <span className="sr-only">Who to take</span>
             <select value={pick} onChange={(e) => setPick(Number(e.target.value))}>
+              {pets.map((p, i) => (
+                <option key={i} value={i}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+        {walking && pets.length > 0 && (
+          <button
+            className="btn"
+            onClick={() => {
+              if (boss.current) {
+                boss.current = null
+                setBossShown(null)
+                return
+              }
+              const art = pets[bossPick] ?? pets[0]
+              /* ⚠️ a little way off rather than on top of you, so a boss arriving is something
+                 you walk towards rather than something that lands on your head */
+              boss.current = makeBoss(art.name, art.art, {
+                x: Math.max(0.05, Math.min(0.95, you.current.x + 0.1)),
+                y: you.current.y,
+              })
+              setBossShown(boss.current)
+            }}
+            title={
+              bossShown ? 'Send it away' : 'Stand one of your minions up as something to fight'
+            }
+          >
+            {bossShown ? '✕ Boss away' : '☠ Call a boss'}
+          </button>
+        )}
+        {walking && pets.length > 1 && !bossShown && (
+          <label className="park-seat">
+            <span className="sr-only">Which minion to fight</span>
+            <select value={bossPick} onChange={(e) => setBossPick(Number(e.target.value))}>
               {pets.map((p, i) => (
                 <option key={i} value={i}>
                   {p.name}
@@ -651,6 +756,45 @@ export function ParkRoom({
                   </span>
                 )
               })}
+          {walking && bossShown && (
+            <span
+              className={
+                'park-one is-boss' +
+                (bossShown.hold > 0 ? ' is-hit' : '') +
+                (beaten(bossShown) ? ' is-beaten' : '')
+              }
+              style={{
+                left: `${onScreen(bossShown, camAt).x * 100}%`,
+                top: `${onScreen(bossShown, camAt).y * 100}%`,
+                zIndex: depthOf(bossShown),
+                transform: `translate(calc(-50% + ${(
+                  bossShown.facing *
+                  lungeOf(bossShown, bossKit?.moves ?? []) *
+                  100
+                ).toFixed(1)}%), -100%)`,
+              }}
+            >
+              <PetView
+                art={bossShown.art}
+                size={petSize(bossShown.art) * bossShown.scale}
+                facing={bossShown.facing}
+                energy={beaten(bossShown) ? 0 : bossShown.moving ? 1.3 : 0.5}
+                show={
+                  bossShown.swing > 0 ? (bossKit?.moves ?? [])[bossShown.move]?.layer : undefined
+                }
+                label={`${bossShown.name}, the boss`}
+              />
+              {/* ⚠️ what is LEFT of it, not what it has taken. A boss has a pool rather than the
+                  three lives a scrap gives you, and a bar is the only honest way to say how much
+                  of a thing that big is still coming. */}
+              <span className="park-life" aria-label={`${Math.round(bossShown.life)} left`}>
+                <i style={{ width: `${(bossShown.life / bossShown.lifeMax) * 100}%` }} />
+              </span>
+              <span className="park-name">
+                {beaten(bossShown) ? `${bossShown.name} — beaten` : bossShown.name}
+              </span>
+            </span>
+          )}
           {!walking && (
             <div className="park-empty">
               <p className="muted">
@@ -700,7 +844,10 @@ export function ParkRoom({
         whoever is online is who you will meet.
         {strolling.length > 0 && (
           <> The faded ones are your own other minions having a wander — only you see those.</>
-        )}
+        )}{' '}
+        <strong>F</strong> and <strong>G</strong> swing, the same six moves your creature has
+        anywhere else. Call a boss and one of your own minions stands up big with a health bar — it
+        is the same drawing, which is the point.
       </p>
     </div>
   )

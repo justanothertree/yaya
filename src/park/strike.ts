@@ -88,9 +88,9 @@ export const PARK_TALL = PET_TALL * 0.8
  */
 export const FOOT = { deep: 0.28 }
 
-export const footOf = (wide: number): { x: number; y: number } => ({
-  x: across(wide * 0.8) / 2,
-  y: down(FOOT.deep * PARK_TALL) / 2,
+export const footOf = (wide: number, scale = 1): { x: number; y: number } => ({
+  x: across(wide * 0.8 * scale) / 2,
+  y: down(FOOT.deep * PARK_TALL * scale) / 2,
 })
 
 /**
@@ -99,11 +99,18 @@ export const footOf = (wide: number): { x: number; y: number } => ({
  * ⚠️ READ OFF THE SAME live WINDOW AS THE FIGHT, so a move that is dangerous for the middle third
  * of its swing is dangerous for the middle third of its swing wherever it is thrown.
  */
-export function strikeArea(at: Spot, facing: number, a: Attack, gone: number): Box | null {
+export function strikeArea(
+  at: Spot,
+  facing: number,
+  a: Attack,
+  gone: number,
+  /** ⚠️ a bigger creature reaches further, because its arm IS longer — see the boss */
+  scale = 1,
+): Box | null {
   const f = gone / a.span
   if (f < a.live[0] || f > a.live[1]) return null
-  const reach = across(a.reach * PARK_TALL)
-  const deep = down(Math.max(a.rise, 0.4) * PARK_TALL)
+  const reach = across(a.reach * PARK_TALL * scale)
+  const deep = down(Math.max(a.rise, 0.4) * PARK_TALL * scale)
   const x0 = a.both ? at.x - reach : facing > 0 ? at.x : at.x - reach
   return {
     x0,
@@ -114,8 +121,8 @@ export function strikeArea(at: Spot, facing: number, a: Attack, gone: number): B
 }
 
 /** Is this creature standing in that patch? */
-export function inArea(at: Spot, wide: number, b: Box): boolean {
-  const foot = footOf(wide)
+export function inArea(at: Spot, wide: number, b: Box, scale = 1): boolean {
+  const foot = footOf(wide, scale)
   return (
     at.x + foot.x > b.x0 && at.x - foot.x < b.x1 && at.y + foot.y > b.y0 && at.y - foot.y < b.y1
   )

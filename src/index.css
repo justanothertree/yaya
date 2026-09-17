@@ -8250,6 +8250,37 @@ a.cz-msg-author:focus-visible {
 /* ⚠️ YOUR OTHER MINIONS READ AS SCENERY, faintly. They are honestly yours and honestly there,
    but they are not people you can talk to and nobody else can see them — so they should not be
    mistaken at a glance for somebody who has just walked into the park. */
+/* ⚠️ A BOSS IS THE SAME ELEMENT AS EVERYBODY ELSE, sorted into the same depth order, because
+   it IS one of your minions stood up bigger — see boss.ts. The only things it gets of its own are
+   a bar and a knowing when it has been beaten. */
+.park-one.is-boss .park-name {
+  background: color-mix(in srgb, #e8534e 80%, transparent);
+  color: #fff;
+  font-weight: 700;
+  max-width: 18ch;
+}
+.park-one.is-boss.is-hit {
+  filter: brightness(1.8) saturate(0.5);
+}
+.park-one.is-boss.is-beaten {
+  filter: grayscale(1) brightness(0.55);
+}
+.park-life {
+  width: 74px;
+  height: 5px;
+  margin-bottom: 2px;
+  border-radius: 3px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--text) 25%, transparent);
+}
+.park-life i {
+  display: block;
+  height: 100%;
+  background: #e8534e;
+}
+.park-one.is-beaten .park-life {
+  display: none;
+}
 .park-one.is-stroll {
   opacity: 0.62;
 }
