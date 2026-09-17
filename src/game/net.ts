@@ -1,19 +1,39 @@
 import type { NetMessage, Settings } from './types'
 
-type Handlers = {
+type Handlers<M> = {
   onOpen?: () => void
   onClose?: (ev: CloseEvent) => void
   onError?: (ev: Event) => void
-  onMessage?: (msg: NetMessage) => void
+  onMessage?: (msg: M) => void
 }
 
-export class NetClient {
+/**
+ * A socket to the relay.
+ *
+ * ⚠️ GENERIC OVER WHAT TRAVELS DOWN IT, because the relay is not only Snake's. It carries
+ * voice signalling, and now the park — which needs the same connect, the same stable client id,
+ * the same hello, and the same "prove who you are if you are anyone" that took a real bug to get
+ * right (see the note in onopen). A second copy of this class for the park would be a second
+ * copy of that bug waiting to be reintroduced.
+ *
+ * ⚠️ TWO TYPE PARAMETERS, because what a room says is not what it hears: the park sends
+ * positions and receives rosters, and one parameter would have forced every message in either
+ * direction into one union that neither end actually accepts.
+ *
+ * ⚠️ IT STAYS IN game/ ANYWAY. Moving it somewhere neutral would be tidier and would touch
+ * live multiplayer to buy nothing a comment cannot; the default type parameter means every
+ * existing use reads exactly as it did.
+ */
+export class NetClient<
+  M extends { type: string } = NetMessage,
+  O extends { type: string } = NetMessage,
+> {
   private ws: WebSocket | null = null
   private url: string
-  private handlers: Handlers
+  private handlers: Handlers<M>
   private connecting = false
 
-  constructor(url: string, handlers: Handlers = {}) {
+  constructor(url: string, handlers: Handlers<M> = {}) {
     this.url = url
     this.handlers = handlers
   }
@@ -78,7 +98,7 @@ export class NetClient {
       }
       ws.onmessage = (ev) => {
         try {
-          const msg = JSON.parse(ev.data) as NetMessage
+          const msg = JSON.parse(ev.data) as M
           this.handlers.onMessage?.(msg)
         } catch {
           // ignore
@@ -98,7 +118,12 @@ export class NetClient {
     }
   }
 
-  send(msg: NetMessage) {
+  /**
+   * ⚠️ `O | NetMessage`, because this class sends two of its own messages — the hello and
+   * the auth token — whatever else is travelling down the socket. Without the second half a
+   * caller with its own outgoing shape could not be constructed at all.
+   */
+  send(msg: O | NetMessage) {
     try {
       if (import.meta.env.DEV) {
         try {

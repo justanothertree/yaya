@@ -2,6 +2,7 @@ import { Suspense, useCallback, useEffect, useState, useSyncExternalStore } from
 import { lazyRetry } from '../lazyRetry'
 import { PetView } from '../pets/PetView'
 import { pets as myPets, subscribePets } from '../pets/pets'
+import { readHandle } from '../game/handle'
 
 /**
  * The room the games live in.
@@ -33,8 +34,12 @@ const PetFight = lazyRetry(
   () => import('../pets/PetFight'),
   (m) => m.PetFight,
 )
+const ParkRoom = lazyRetry(
+  () => import('../park/ParkRoom'),
+  (m) => m.ParkRoom,
+)
 
-type GameId = 'snake' | 'playground' | 'fight'
+type GameId = 'snake' | 'playground' | 'fight' | 'park'
 
 /**
  * Which game the address bar asked for, or null for the menu.
@@ -52,7 +57,9 @@ function wantedFromHash(): GameId | null {
   // the alias every challenge message ever posted was built from.
   if (base === 'snake' || q.has('room') || q.has('beat')) return 'snake'
   const play = q.get('play')
-  return play === 'snake' || play === 'playground' || play === 'fight' ? play : null
+  return play === 'snake' || play === 'playground' || play === 'fight' || play === 'park'
+    ? play
+    : null
 }
 
 export function GamesRoom({
@@ -143,6 +150,16 @@ export function GamesRoom({
       </>
     )
 
+  if (game === 'park')
+    return (
+      <>
+        <GamesBar onBack={() => setGame(null)} />
+        <Suspense fallback={<div aria-busy>Finding the park…</div>}>
+          <ParkRoom pets={mine.map((p) => ({ name: p.name, art: p.art }))} myName={readHandle()} />
+        </Suspense>
+      </>
+    )
+
   return (
     <>
       <h2 style={{ marginTop: 0 }}>🎮 Games</h2>
@@ -174,6 +191,18 @@ export function GamesRoom({
                 <span className="games-tile-line">
                   A platformer for the creatures you drew. Arrow keys to run and jump, 1–9 to switch
                   which one you are — the rest follow you.
+                </span>
+              </span>
+            </button>
+            <button className="games-tile" onClick={() => setGame('park')}>
+              <span className="games-tile-art" aria-hidden>
+                🌳
+              </span>
+              <span className="games-tile-body">
+                <span className="games-tile-name">The park</span>
+                <span className="games-tile-line">
+                  One field, everybody in it. Take a minion for a walk and whoever else is online is
+                  who you will meet.
                 </span>
               </span>
             </button>

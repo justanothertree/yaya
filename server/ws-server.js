@@ -28,6 +28,34 @@ const MAX_CHAT_LEN = 300
 const CHAT_BURST = 5
 const CHAT_WINDOW_MS = 4000
 const MAX_ROOM_ID_LEN = 64
+/**
+ * The park: a room people walk about in rather than play a round in.
+ *
+ * A park room is told apart by its id alone, and that matters for more than routing. Everything
+ * below is a ceiling on what one of these can cost the relay, and the relay is not only the
+ * park — it also serves /ice, which is every voice call on the site. Snake rooms are made and
+ * thrown away around a round; a park is meant to sit there, so what it holds has to be bounded
+ * rather than merely short-lived.
+ *
+ * ⚠️ THE RELAY NEVER LOOKS INSIDE A DRAWING. A `look` is stored and forwarded as an opaque blob
+ * with a size limit on it, exactly as a chat line is forwarded as text. readDrawing on the
+ * CLIENT is the security boundary for what a stroke list may contain, the same door a backup
+ * file and a stranger's gallery file come through — see draw/strokes.ts. A relay that parsed
+ * pictures would be a second, worse copy of that check running somewhere it cannot be fixed.
+ */
+const PARK_PREFIX = 'park'
+const isPark = (roomId) => roomId === PARK_PREFIX || roomId.startsWith(PARK_PREFIX + ':')
+/** One creature, packed and thinned by the client. Comfortably under MAX_MSG_BYTES. */
+const MAX_LOOK_BYTES = 12000
+/** So a roster broadcast cannot grow without limit, and neither can what the room holds. */
+const MAX_PARK_CLIENTS = Number(process.env.MAX_PARK_CLIENTS || 24)
+/**
+ * ⚠️ POSITION IS A FIREHOSE AND NEEDS ITS OWN CEILING. The client sends about fifteen a second;
+ * a browser console can send ten thousand. Same sliding window as chat, sized for the real
+ * client with room to spare, and dropped silently for the same reason.
+ */
+const WALK_BURST = 45
+const WALK_WINDOW_MS = 1000
 /** How many rooms may exist at once. See the room-leak note in the hello handler. */
 const MAX_ROOMS = Number(process.env.MAX_ROOMS || 500)
 /**
@@ -1435,6 +1463,12 @@ wss.on('connection', (ws, req) => {
         send(ws, { type: 'error', code: 'room-not-found', message: 'Room does not exist' })
         return
       }
+      /* ⚠️ A park has a door policy, because it is the one room strangers are invited into by a
+         link on a public page rather than by somebody who knows them. */
+      if (room && isPark(roomId) && room.clients.size >= MAX_PARK_CLIENTS) {
+        send(ws, { type: 'error', code: 'room-full', message: 'The park is full right now' })
+        return
+      }
       if (!room) {
         // A ceiling, so that a bug or a bored stranger cannot turn room creation into memory
         // exhaustion. Far above any real lobby: this relay has never held more than a handful.
@@ -1537,6 +1571,24 @@ wss.on('connection', (ws, req) => {
        * who was already happy with the room never sent one.
        */
       send(ws, { type: 'settings', settings: room.settings })
+      /**
+       * ⚠️ WHO IS ALREADY HERE, sent only to the one who just arrived.
+       *
+       * Without it a park is empty until everybody already in it happens to move, and somebody
+       * standing still is somebody you never see at all. Built from room.clients rather than
+       * room.state, because state is deliberately never deleted on disconnect — walking that map
+       * instead would populate the park with everyone who had ever visited it.
+       */
+      if (isPark(roomId)) {
+        const who = []
+        for (const other of room.clients.keys()) {
+          if (other === id) continue
+          const st = room.state.get(other)
+          if (!st || !st.look) continue
+          who.push({ from: other, name: st.name || '', art: st.look, ...(st.at || {}) })
+        }
+        send(ws, { type: 'park', who })
+      }
       return
     }
 
@@ -1697,6 +1749,72 @@ wss.on('connection', (ws, req) => {
         broadcast(room, { type: 'chat', text, from: id, name: st.name }, id)
         break
       }
+      /**
+       * What you look like in the park: a name and a drawing.
+       *
+       * ⚠️ SENT ONCE ON ARRIVAL AND KEPT, so somebody who joins later sees you without waiting
+       * for you to move. That is the only thing the relay stores for a park, and it is capped.
+       */
+      case 'look': {
+        if (!isPark(joinedRoomId)) break
+        const art = msg.art
+        if (!art || typeof art !== 'object') break
+        let size = 0
+        try {
+          size = JSON.stringify(art).length
+        } catch {
+          break
+        }
+        if (size > MAX_LOOK_BYTES) {
+          send(ws, {
+            type: 'error',
+            code: 'look-too-big',
+            message: 'That creature is too detailed for the park',
+          })
+          break
+        }
+        const st = room.state.get(id) || {}
+        st.look = art
+        if (typeof msg.name === 'string' && msg.name.trim())
+          st.name = msg.name.trim().slice(0, MAX_NAME_LEN)
+        room.state.set(id, st)
+        broadcast(room, { type: 'look', from: id, name: st.name || '', art }, id)
+        break
+      }
+
+      /**
+       * Where you are, about fifteen times a second.
+       *
+       * ⚠️ NOTHING HERE IS TRUSTED AS A NUMBER. x and y arrive as whatever JSON allows —
+       * strings, NaN, Infinity, 1e30 — and every one of those ends up in a CSS percentage on
+       * somebody else's screen. Clamped to the field rather than rejected, so a bad frame is a
+       * peer standing at the edge rather than a peer who disappears.
+       */
+      case 'walk': {
+        if (!isPark(joinedRoomId)) break
+        const st = room.state.get(id) || {}
+        const now = Date.now()
+        const recent = (st.walkTimes || []).filter((t) => now - t < WALK_WINDOW_MS)
+        if (recent.length >= WALK_BURST) {
+          st.walkTimes = recent
+          room.state.set(id, st)
+          break
+        }
+        recent.push(now)
+        st.walkTimes = recent
+        const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : 0)
+        const at = {
+          x: Math.max(0, Math.min(1, num(msg.x))),
+          y: Math.max(0, Math.min(1, num(msg.y))),
+          f: msg.f === -1 ? -1 : 1,
+          m: msg.m ? 1 : 0,
+        }
+        st.at = at
+        room.state.set(id, st)
+        broadcast(room, { type: 'walk', from: id, ...at }, id)
+        break
+      }
+
       case 'auth': {
         /**
          * A signed-in player proving who they are, so their results can be credited.

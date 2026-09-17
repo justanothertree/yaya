@@ -8103,6 +8103,106 @@ a.cz-msg-author:focus-visible {
   }
 }
 
+/* ── the park ────────────────────────────────────────────
+   ⚠️ THE FIELD KEEPS ITS SHAPE, because every position on the wire is a fraction of it. If the
+   box were a different shape on a phone than on a desk, two people would be standing in the same
+   coordinates and looking at different places. aspect-ratio, not a height. */
+.park {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.park-field {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  max-height: 60vh;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background:
+    radial-gradient(
+      120% 90% at 50% 8%,
+      color-mix(in srgb, #7fc46a 26%, transparent),
+      transparent 70%
+    ),
+    linear-gradient(180deg, color-mix(in srgb, #7fc46a 12%, transparent), transparent 75%);
+}
+/* a worn path, so the field reads as a place rather than as an empty rectangle */
+.park-path {
+  position: absolute;
+  left: 8%;
+  right: 8%;
+  top: 62%;
+  height: 12%;
+  border-radius: 50%;
+  background: color-mix(in srgb, #c9a86a 20%, transparent);
+}
+/* ⚠️ translate(-50%, -100%): x is the middle of the creature and y is the ground under its
+   feet, which is what every number in walk.ts means by a position — the same as the fight. */
+.park-one {
+  position: absolute;
+  transform: translate(-50%, -100%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  pointer-events: none;
+}
+.park-name {
+  font-size: 0.68rem;
+  padding: 1px 6px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--bg, #111) 62%, transparent);
+  white-space: nowrap;
+  max-width: 12ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* ⚠️ YOU ARE MARKED, because with four hand-drawn creatures on one field the question
+   "which one am I" is otherwise answered by walking and seeing what moves. */
+.park-one.is-me .park-name {
+  background: var(--accent, #7c6af7);
+  color: #fff;
+  font-weight: 700;
+}
+.park-empty {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 0 16px;
+  text-align: center;
+}
+.park-bar,
+.park-seat {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.park-count {
+  font-size: 0.82rem;
+}
+.park-trouble {
+  margin: 0;
+  font-size: 0.82rem;
+}
+.park-keys {
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+/* the pad borrows .pet-play-key, which is defined under the same coarse-pointer query */
+.park-pad {
+  display: none;
+}
+@media (pointer: coarse) {
+  .park-pad {
+    display: flex;
+    justify-content: center;
+    gap: 8px;
+  }
+}
+
 /* ── the fighting room ──────────────────────────────────
    ⚠️ THE STAGE KEEPS ITS SHAPE, because the whole game is measured in fractions of it: a ledge
    at x 0.16 and a hitbox reaching 0.43 only mean anything against a box whose proportions do not
