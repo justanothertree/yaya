@@ -8325,6 +8325,74 @@ a.cz-msg-author:focus-visible {
 .park-count {
   font-size: 0.82rem;
 }
+/* ⚠️ THE MOVE PREVIEW IN THE MAKER. Sits inside the pet panel, which is narrow, so the row of
+   moves wraps and the stage is sized by its own content rather than by a viewport. */
+.move-show {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+}
+.move-show-pick {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  justify-content: center;
+}
+.move-show-pick .btn {
+  font-size: 0.72rem;
+  padding: 3px 7px;
+}
+.move-show-pick .btn.is-on {
+  background: var(--accent, #7c6af7);
+  color: #fff;
+}
+.move-show-stage {
+  position: relative;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--text) 5%, transparent);
+  overflow: hidden;
+}
+.move-show-pet {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  display: block;
+}
+/* ⚠️ ONLY WHILE IT CAN HURT. The box is the answer to "what does this move cover", and a box
+   that were always on screen would say the wind-up and the recovery are dangerous, which is the
+   one thing about a swing worth knowing that they are not. */
+.move-show-box {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  border-radius: 4px;
+  opacity: 0;
+  background: color-mix(in srgb, #e8534e 22%, transparent);
+  border: 1px solid color-mix(in srgb, #e8534e 55%, transparent);
+}
+.move-show-box.is-live {
+  opacity: 1;
+}
+.move-show-phase {
+  position: absolute;
+  left: 6px;
+  bottom: 4px;
+  font-size: 0.68rem;
+  opacity: 0.75;
+  font-variant: small-caps;
+}
+.move-show-says {
+  margin: 0;
+  font-size: 0.76rem;
+  line-height: 1.45;
+  text-align: center;
+}
+@media (prefers-reduced-motion: reduce) {
+  .move-show-box {
+    transition: none;
+  }
+}
 .park-trouble {
   margin: 0;
   font-size: 0.82rem;

@@ -42,6 +42,7 @@ import { paintSession } from '../draw/session'
 import { savePet } from '../pets/pets'
 import { PetView } from '../pets/PetView'
 import { PART_DOES, PART_WORDS, partOf, rigOf } from '../pets/rig'
+import { MoveShow } from '../pets/MoveShow'
 import { attacksOf, moveTable } from '../pets/attack'
 import { AlsoTogether } from '../ui/AlsoTogether'
 import { useVoiceSession } from '../voice/useVoiceSession'
@@ -1398,8 +1399,7 @@ export function PaintRoom() {
   const petMoves = useMemo(() => {
     const parts = attacksOf(rigOf(petPreview))
     if (!parts.length) return null
-    const t = moveTable(parts)
-    return { quick: t[0].name, heavy: t[1].name, up: t[2].name, down: t[4].name }
+    return moveTable(parts)
   }, [petPreview])
 
   const addLayer = () => {
@@ -3237,13 +3237,20 @@ export function PaintRoom() {
                       ? `So far: ${petParts.join(', ')}`
                       : 'Nothing is named yet, so all of it just breathes.'}
                 </span>
+                {/**
+                 * ⚠️ IT USED TO NAME THE MOVES AND NEVER SHOW ONE. "In a scrap: swipe, heavy
+                 * gore, up buffet, down sweep" is four words, and four words is not a reason to
+                 * call a layer `horn` — you had to take it on trust, keep the creature, adopt it
+                 * and go and press things to find out what you had made. Said plainly: nobody
+                 * picks a layer name for a fighting style they have never been shown.
+                 */}
                 {frameCount(petPreview) <= 1 && petMoves && (
-                  <span className="muted paint-pet-moves">
-                    In a scrap: <strong>{petMoves.quick}</strong>, heavy{' '}
-                    <strong>{petMoves.heavy}</strong>, up <strong>{petMoves.up}</strong>, down{' '}
-                    <strong>{petMoves.down}</strong>.
-                    {petMoves.up === petMoves.down && ' Draw a longer part and down gets its own.'}
-                  </span>
+                  <>
+                    <span className="muted paint-pet-moves">
+                      Every part you name is a move. Press one to watch it.
+                    </span>
+                    <MoveShow art={petPreview} moves={petMoves} tall={92} />
+                  </>
                 )}
               </div>
             )}

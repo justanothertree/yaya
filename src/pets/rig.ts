@@ -81,19 +81,26 @@ const WORDS: Array<[PartKind, string[]]> = [
    *
    * ⚠️ `claw` IS DELIBERATELY NOT HERE. It has meant a foot since the rig was written, and
    * quietly turning somebody's paw into a weapon changes a creature they already drew.
+   *
+   * ⚠️ THE LATER ADDITIONS CAME FROM ASKING, NOT FROM GUESSING. Seventy-five plausible layer
+   * names were put through partOf and thirty came back as `body`, which is the answer that means
+   * "this does nothing" — and a word that does nothing says so nowhere. Most of those thirty were
+   * right (a belly, a shoulder and a mane ARE body), but antler, talon, teeth, tooth, fist,
+   * tentacle and nose plainly were not. Added with the owner's go-ahead that creatures already
+   * drawn may change, which is the cost this list otherwise has to weigh every time.
    */
-  ['horn', ['horn', 'spike', 'blade', 'sword', 'tusk', 'fang', 'stinger', 'pincer']],
+  ['horn', ['horn', 'spike', 'blade', 'sword', 'tusk', 'fang', 'stinger', 'pincer', 'antler']],
   ['spin', ['wheel', 'rotor', 'propeller', 'gear', 'fan']],
   ['flame', ['flame', 'fire', 'torch', 'candle']],
   ['float', ['halo', 'aura', 'balloon', 'ghost', 'cloud', 'bubble', 'float']],
-  ['mouth', ['mouth', 'jaw', 'tongue']],
+  ['mouth', ['mouth', 'jaw', 'tongue', 'teeth', 'tooth']],
   ['wing', ['wing', 'flap']],
   ['antenna', ['antenna', 'antennae', 'feeler', 'whisker']],
   ['ear', ['ear']],
   ['tail', ['tail']],
-  ['leg', ['leg', 'foot', 'feet', 'paw', 'claw', 'hoof']],
-  ['arm', ['arm', 'fin', 'hand', 'flipper']],
-  ['head', ['head', 'face', 'snout', 'beak']],
+  ['leg', ['leg', 'foot', 'feet', 'paw', 'claw', 'hoof', 'talon']],
+  ['arm', ['arm', 'fin', 'hand', 'flipper', 'fist', 'tentacle']],
+  ['head', ['head', 'face', 'snout', 'beak', 'nose']],
   ['body', ['body', 'shell', 'torso']],
 ]
 

@@ -1,0 +1,189 @@
+import { useEffect, useRef, useState } from 'react'
+import type { Drawing } from '../draw/strokes'
+import { PetView } from './PetView'
+import { petRatio } from './rig'
+import { lungeOf, phaseOf } from './fight'
+import type { Attack } from './attack'
+
+/**
+ * What your creature's moves actually look like.
+ *
+ * ⚠️ THE ROOM NAMED THE MOVES AND NEVER SHOWED ONE. "In a scrap: swipe, heavy gore, up buffet,
+ * down sweep" is four words, and four words is not a reason to call a layer `horn` — you had to
+ * believe that naming a layer bought you a fighting style, keep the creature, adopt it, open the
+ * games tab and press things to find out what you had made. Said out loud by the owner: nobody is
+ * going to pick a layer name for a fighting style they have never been shown and cannot tweak.
+ *
+ * ⚠️ SO IT PLAYS THE SWING, AT THE SPEED IT HAPPENS, WITH THE DANGEROUS PART DRAWN. A move in this
+ * game is three things — how long you are committed, when in that it can hurt, and how far it
+ * covers — and none of the three is a word. Watching a heavy wind up, flash and leave you standing
+ * there is the entire argument for why a heavy costs more, made in about a second and a half.
+ *
+ * ⚠️ AND IT SAYS WHAT WOULD CHANGE IT, which is the tweak. There is deliberately no slider here:
+ * the drawing is the only source of truth in this whole module, and a number you could drag would
+ * be a second one that could disagree with it. What there IS instead is the sentence telling you
+ * that the reach came from how long you drew the part — so the pencil is the knob, and now it is
+ * a knob you can see moving.
+ */
+
+/** how long it sits still at the end before going round again, so the recovery reads as a cost */
+const PAUSE = 0.5
+
+const BUTTON = ['F', 'G', '↑ F', '↑ G', '↓ F', '↓ G']
+
+/** ⚠️ by slot, because the slot is what a person presses — see slotFor */
+const ROLE = ['quick', 'heavy', 'up, quick', 'up, heavy', 'down, quick', 'down, heavy']
+
+/**
+ * What you would change to change it.
+ *
+ * ⚠️ NAMED AFTER THE PART, NOT AFTER THE NUMBER. "reach 1.25" is a fact about a creature nobody
+ * asked for; "draw the horn longer" is the same fact pointed at the pencil.
+ */
+function tweakFor(a: Attack): string {
+  if (a.from === 'hit')
+    return 'You drew this one. Further from the middle reaches further, higher up launches harder, and bigger hurts more.'
+  const part: Record<string, string> = {
+    arm: 'arm',
+    leg: 'leg',
+    head: 'head',
+    mouth: 'mouth',
+    tail: 'tail',
+    wing: 'wing',
+    horn: 'horn',
+    spin: 'wheel',
+    pulse: 'heart',
+    flame: 'flame',
+  }
+  const p = part[a.from] ?? a.from
+  return `Comes from your ${p}. Draw a longer one and it reaches further; a layer called hit gives you a move you draw yourself.`
+}
+
+/** How far a move reaches and how tall it is, as fractions of the creature's height. */
+const spanOf = (a: Attack) => ({ wide: a.reach, tall: Math.max(a.rise, 0.2) * 2 })
+
+export function MoveShow({
+  art,
+  moves,
+  /** the creature's height in the preview, in pixels */
+  tall = 104,
+}: {
+  art: Drawing
+  moves: Attack[]
+  tall?: number
+}) {
+  const [pick, setPick] = useState(0)
+  /* ⚠️ asked here rather than taken as a prop, so this cannot be dropped into a room that
+     forgot about it — and unverifiable in the Browser pane, which cannot emulate the setting */
+  const [still, setStill] = useState(
+    () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false,
+  )
+  useEffect(() => {
+    const mq = window.matchMedia?.('(prefers-reduced-motion: reduce)')
+    if (!mq) return
+    const on = () => setStill(mq.matches)
+    mq.addEventListener('change', on)
+    return () => mq.removeEventListener('change', on)
+  }, [])
+  const [gone, setGone] = useState(0)
+  const a = moves[pick] ?? moves[0]
+  const cycle = a ? a.span + a.rest + PAUSE : 1
+
+  /**
+   * ⚠️ THE CLOCK IS THE WHOLE POINT, so reduced motion gets the one frame that matters rather
+   * than nothing: parked at the middle of the live window, which is the frame the move IS.
+   */
+  const at = useRef(0)
+  useEffect(() => {
+    if (!a) return
+    if (still) {
+      setGone(a.span * ((a.live[0] + a.live[1]) / 2))
+      return
+    }
+    let raf = 0
+    let last = performance.now()
+    const tick = (now: number) => {
+      at.current = (at.current + (now - last) / 1000) % cycle
+      last = now
+      setGone(at.current)
+      raf = requestAnimationFrame(tick)
+    }
+    raf = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(raf)
+  }, [a, cycle, still])
+
+  if (!a) return null
+
+  const swinging = { swing: Math.max(0, a.span - gone), move: 0, spent: false, stun: 0, hold: 0 }
+  const phase = gone < a.span ? phaseOf(swinging, [a]) : 'ready'
+  const live = phase === 'live'
+  const lunge = gone < a.span ? lungeOf(swinging, [a]) : 0
+  const { wide, tall: high } = spanOf(a)
+
+  const wh = petRatio(art)
+  const size = Math.round(wh >= 1 ? tall * wh : tall)
+
+  return (
+    <div className="move-show">
+      <div className="move-show-pick" role="group" aria-label="Your moves">
+        {moves.map((m, i) => (
+          <button
+            key={i}
+            className={'btn btn-ghost' + (i === pick ? ' is-on' : '')}
+            aria-pressed={i === pick}
+            onClick={() => {
+              setPick(i)
+              at.current = 0
+              setGone(0)
+            }}
+          >
+            <b>{BUTTON[i]}</b> {m.name}
+          </button>
+        ))}
+      </div>
+
+      <div className="move-show-stage" style={{ height: `${Math.round(tall * 1.5)}px` }}>
+        {/* ⚠️ THE DANGEROUS PATCH, DRAWN WHERE IT IS. Reach and rise are in creature-heights, so
+            at a known pixel height they are a rectangle and nothing has to be guessed. It is only
+            on screen while the move can actually hurt, which is how the wind-up and the recovery
+            become visible as the thing they are. */}
+        <span
+          className={'move-show-box' + (live ? ' is-live' : '')}
+          style={{
+            width: `${wide * tall * (a.both ? 2 : 1)}px`,
+            height: `${high * tall}px`,
+            left: a.both ? `calc(50% - ${wide * tall}px)` : '50%',
+          }}
+          aria-hidden
+        />
+        <span
+          className="move-show-pet"
+          style={{ transform: `translate(calc(-50% + ${(lunge * 100).toFixed(1)}%), -50%)` }}
+        >
+          <PetView
+            art={art}
+            size={size}
+            facing={1}
+            energy={gone < a.span ? 2 : 0.6}
+            show={gone < a.span ? a.layer : undefined}
+            label={`your minion throwing its ${a.name}`}
+          />
+        </span>
+        <span className="move-show-phase">{live ? 'now it hurts' : phase}</span>
+      </div>
+
+      <p className="muted move-show-says">
+        <strong>
+          {a.name} — {ROLE[pick]}
+        </strong>
+        <br />
+        Reaches <strong>{a.reach.toFixed(1)}</strong> of its own height
+        {a.both ? ' on both sides' : ''}, hits for <strong>{a.bite}</strong>, and ties it up for{' '}
+        <strong>{(a.span + a.rest).toFixed(2)}s</strong>
+        {a.lift > 0.5 ? ' — this is the one that launches.' : '.'}
+        <br />
+        {tweakFor(a)}
+      </p>
+    </div>
+  )
+}
