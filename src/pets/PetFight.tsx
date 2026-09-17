@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Drawing } from '../draw/strokes'
 import { PetView } from './PetView'
 import { petRatio, rigOf } from './rig'
-import { attacksOf, pairOf, petWide, type Attack } from './attack'
+import { attacksOf, moveTable, pairOf, petWide, type Attack } from './attack'
 import {
   fightEffort,
   fightStance,
@@ -146,7 +146,10 @@ export function PetFight({
   const kit = useMemo(() => {
     const rigs = side.map((p) => rigOf(p.art))
     return {
-      moves: rigs.map((r) => attacksOf(r)) as Attack[][],
+      /* ⚠️ the six-slot table, not the raw part list — see moveTable. A fighter stores which
+         move it is throwing as an index into whatever it was given, so this has to be the same
+         list the hit test, the phase readout and the network all look up. */
+      moves: rigs.map((r) => moveTable(attacksOf(r))) as Attack[][],
       traits: rigs.map((r) => traitsOf(r)) as Traits[],
       wides: side.map((p) => petWide(p.art)),
     }
@@ -390,6 +393,8 @@ export function PetFight({
               <PetView art={p.art} size={34} energy={0} label="" />
               <span className="pet-fight-who">
                 <strong>{p.name}</strong>
+                {/* ⚠️ the two NEUTRAL moves, because six names will not fit on a card — the rest
+                    are found by pointing, which the legend under the stage explains */}
                 <span className="pet-fight-moves">
                   {quick.name} · {heavy.name}
                 </span>
@@ -400,11 +405,12 @@ export function PetFight({
                   reacting to and there was no way to know one was coming */}
               {f && phaseOf(f, kit.moves[i] ?? []) !== 'ready' ? (
                 <span className={'pet-fight-doing is-' + phaseOf(f, kit.moves[i] ?? [])}>
+                  {/* ⚠️ THE MOVE ACTUALLY BEING THROWN, looked up by the index the fighter is
+                      carrying — this used to compare against the heavy's name and guess, which
+                      could only ever name two of the six. */}
                   {phaseOf(f, kit.moves[i] ?? []) === 'stunned'
                     ? 'hit'
-                    : (kit.moves[i] ?? [])[f.move]?.name === heavy.name
-                      ? heavy.name
-                      : (quick.name ?? '')}
+                    : ((kit.moves[i] ?? [])[f.move]?.name ?? '')}
                 </span>
               ) : null}
               <span className="pet-fight-hurt">{Math.round(f?.hurt ?? 0)}%</span>
@@ -648,7 +654,10 @@ export function PetFight({
       <p className="muted pet-fight-keys">
         <strong>{online ? 'You' : 'Player one'}</strong> — <strong>A D</strong> to move,{' '}
         <strong>W</strong> to jump (again in the air to recover), <strong>F</strong> quick,{' '}
-        <strong>G</strong> heavy.
+        <strong>G</strong> heavy. <strong>Hold W or S as you hit</strong> for an up or down attack —
+        six in all, and which part answers each direction is decided by what you drew: the most
+        launching one goes up, the longest-reaching one goes down, and the hardest hitter is your
+        neutral heavy.
         {!cpu && !online && (
           <>
             {' '}

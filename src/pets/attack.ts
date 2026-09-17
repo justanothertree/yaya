@@ -258,19 +258,9 @@ function bulk(p: Part, ink: Box): number {
  * is always the one you have to mean. The room binds two buttons to the ends of this list, which
  * is why the order is part of the answer rather than a detail of how it was built.
  */
-/**
- * ⚠️ EVERY CREATURE HAS AT LEAST TWO MOVES, and this is where that has to be true rather than
- * in `pairOf`. The room binds two buttons to the ends of this list and `stepFighter` picks a move
- * by INDEX into it — so for anything with one recognised part, both ends were index zero and both
- * buttons threw the same swing, whatever the readout said. Making the pair up for display and not
- * for the simulation is the shape of bug where the screen and the rules quietly disagree.
- */
-const withHeavy = (list: Attack[]): Attack[] =>
-  list.length > 1 ? list : [list[0], heavier(list[0])]
-
 export function attacksOf(parts: Part[]): Attack[] {
   const ink = inkOf(parts)
-  if (!ink) return withHeavy([POUNCE])
+  if (!ink) return [POUNCE]
 
   const best = new Map<PartKind, number>()
   for (const p of parts) {
@@ -293,7 +283,10 @@ export function attacksOf(parts: Part[]): Attack[] {
      */
     out.push({ ...t, from: kind, reach: t.reach * (0.85 + big * 0.4) })
   }
-  return withHeavy(out.length ? out.sort((a, b) => a.span + a.rest - (b.span + b.rest)) : [POUNCE])
+  /* ⚠️ THE PARTS, AND ONLY THE PARTS. This used to force a second entry in so that two buttons
+     could never land on the same move — which moveTable now does properly, and doing it here as
+     well produced a "big big sweep": a heavy made out of a heavy, with the commitment squared. */
+  return out.length ? out.sort((a, b) => a.span + a.rest - (b.span + b.rest)) : [POUNCE]
 }
 
 /**
@@ -321,15 +314,62 @@ const heavier = (a: Attack): Attack => ({
 })
 
 /**
- * The quick one and the heavy one, which is what a pair of buttons can hold.
+ * Where you are pointing when you press.
  *
- * ⚠️ A VIEW OF THE LIST, NOT A SECOND SOURCE OF IT. attacksOf guarantees two, so this only has
- * to say which ends the buttons are on — and because it is the same list `stepFighter` indexes,
- * the name on the readout is the move that actually comes out.
+ * ⚠️ TAKEN FROM THE KEYS YOU ALREADY HOLD, so this costs nobody a new button to learn: up is the
+ * jump key and down is the crouch key, both of which your hand is on. An attack aimed up
+ * therefore comes out as you leave the ground, which is what an up attack is anyway.
  */
+export type Aim = 'neutral' | 'up' | 'down'
+
+const pickBy = (list: Attack[], score: (a: Attack) => number): Attack =>
+  list.reduce((best, a) => (score(a) > score(best) ? a : best))
+
+/**
+ * The six things a creature can throw, in the order the buttons index them.
+ *
+ * ⚠️ THE AIM PICKS WHICH PART ANSWERS; THE BUTTON PICKS HOW HARD. That is the whole design, and
+ * it is what makes drawing another part worth doing: a creature with four recognised parts has a
+ * different one answering each direction, while one with a single part answers all three the same
+ * way and is honestly told so. Nobody picks moves from a menu — you point, and whatever you drew
+ * that is best at going that way is what comes out.
+ *
+ * ⚠️ up IS THE MOST LAUNCHING PART, down IS THE LONGEST-REACHING, and neutral-heavy is the
+ * hardest hitter. Sorting by character rather than by position in the list is what stops a part
+ * from being unreachable: `many` has a kick, a buffet, a bite and a sweep, and before this the
+ * two buttons could only ever produce the first and the last of them.
+ *
+ * ⚠️ A SIX-ENTRY TABLE RATHER THAN A CHOOSING FUNCTION, because a fighter stores which move it is
+ * throwing as an INDEX, and everything downstream — the hit test, the phase readout, the network
+ * — looks it up in this same list. A chooser that could return a move which is not in the list
+ * would be a move the rest of the game cannot find.
+ */
+export function moveTable(list: Attack[]): Attack[] {
+  const src = list.length ? list : [POUNCE]
+  const quick = src[0]
+  const hardest = pickBy(src, (a) => a.bite)
+  const up = pickBy(src, (a) => a.lift)
+  const down = pickBy(src, (a) => a.reach)
+  return [
+    quick,
+    /* a heavy must always cost more than the quick beside it — for a one-part creature the
+       hardest hitter IS the quick one, so it gets the committed version instead */
+    hardest === quick ? heavier(quick) : hardest,
+    up,
+    heavier(up),
+    down,
+    heavier(down),
+  ]
+}
+
+/** Which entry of the table a press lands on. */
+export const slotFor = (heavy: boolean, aim: Aim): number =>
+  (aim === 'up' ? 2 : aim === 'down' ? 4 : 0) + (heavy ? 1 : 0)
+
+/** The quick one and the heavy one, for a readout that has room for two. */
 export function pairOf(list: Attack[]): [Attack, Attack] {
   if (!list.length) return [POUNCE, heavier(POUNCE)]
-  return [list[0], list[list.length - 1]]
+  return [list[0], list[1] ?? heavier(list[0])]
 }
 
 /**

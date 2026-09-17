@@ -1,4 +1,4 @@
-import { hurtBox, inBox, type Attack, type At } from './attack'
+import { hurtBox, inBox, slotFor, type Aim, type Attack, type At } from './attack'
 import {
   PET_TALL,
   restingBody,
@@ -244,7 +244,13 @@ export function stepFighter(
   const tapH = input.heavy && !f.heldH
   const busy = stun > 0 || swing > 0
   if (!busy && rest <= 0 && (tapQ || tapH)) {
-    move = tapH ? Math.max(0, moves.length - 1) : 0
+    /**
+     * ⚠️ WHERE YOU WERE POINTING WHEN YOU PRESSED, and only then. Reading the aim every frame
+     * would let a swing change its mind halfway through — you would start a sweep, tap up, and
+     * the hitbox would become a different move's mid-flight.
+     */
+    const aim: Aim = input.jump ? 'up' : input.down ? 'down' : 'neutral'
+    move = Math.min(moves.length - 1, slotFor(tapH, aim))
     swing = moves[move]?.span ?? 0
     spent = false
   }
@@ -574,13 +580,28 @@ export function foeInput(
   /* ⚠️ PULSED, because an air jump is a press: held down it would be spent on the first frame
      off the ground and never again, which is the recovery it most needs it for */
   const pulse = Math.floor(clock * 7) % 2 === 0
+  /**
+   * ⚠️ IT SWINGS WITH ITS HANDS EMPTY, which is the whole of what it needed to learn about
+   * directions. The aim is read off the jump and crouch keys — keys this already presses for its
+   * own reasons — so the moment there were directional attacks it began throwing long-recovery
+   * up-swings whenever it happened to be jumping, and whiffing them: six stalemates in
+   * thirty-six became eighteen.
+   *
+   * ⚠️ AND TEACHING IT TO AIM DELIBERATELY MADE THAT WORSE, not better. Holding an aim means
+   * holding jump or crouch, and neither is free: jump held is a creature bouncing off the stage
+   * instead of fighting, crouch held is one walking at four tenths of its speed. Those costs are
+   * exactly the trade a direction is MEANT to be for a player — and an opponent that pays them
+   * without understanding them simply plays worse.
+   */
+  const jumpNow = pulse && ((above && self.onGround) || (!self.onGround && foe.y < self.y - 0.25))
+  const canHit = near && self.rest <= 0 && !jumpNow
   return {
     left: !near && dx < 0,
     right: !near && dx > 0,
-    jump: pulse && ((above && self.onGround) || (!self.onGround && foe.y < self.y - 0.25)),
+    jump: jumpNow,
     down: false,
-    quick: near && self.rest <= 0 && beat,
-    heavy: near && self.rest <= 0 && !beat && Math.abs(dx) < range * 0.45 * nerve,
+    quick: canHit && beat,
+    heavy: canHit && !beat && Math.abs(dx) < range * 0.45 * nerve,
   }
 }
 
