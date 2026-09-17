@@ -1466,7 +1466,15 @@ export function packDrawing(d: Drawing): PackedDrawing {
    * files that are already saved the moment they were next opened. A flat drawing still writes
    * the format it wrote before, byte for byte, and only an animation pays for being one.
    */
-  const layered = d.strokes.some((k) => k.l || k.f !== undefined)
+  /**
+   * ⚠️ NAMED LAYERS COUNT, EVEN WHEN THERE IS ONLY ONE. This asked whether any stroke carried
+   * a truthy `l` or a frame — and layer ZERO is not truthy, so a drawing whose only layer was
+   * named came out as a flat version-4 file with the `l` list dropped on the floor. Measured: a
+   * one-layer drawing called `body` packed and unpacked to a drawing with no names at all, which
+   * in the minions module is the difference between a creature that breathes and a creature the
+   * rig cannot read. Three named layers with everything drawn on the first behaved the same way.
+   */
+  const layered = d.strokes.some((k) => k.l || k.f !== undefined) || !!d.layers?.length
   const fixed = (k: Stroke) =>
     layered
       ? [

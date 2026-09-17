@@ -3066,8 +3066,30 @@ export function PaintRoom() {
                     <button
                       className="btn"
                       onClick={() => {
+                        /**
+                         * ⚠️ OPENING A PICTURE BROUGHT BACK ITS STROKES AND NOTHING ELSE, and the
+                         * missing part was the layer NAMES. They saved correctly the whole time —
+                         * the gallery holds them, packDrawing writes them, readDrawing reads them
+                         * — they simply were not put back on the board, so every creature you
+                         * reopened had its parts again and no idea what any of them were. Reported
+                         * as the names not saving, which is what it looks like from the outside
+                         * and is the one thing that was never true.
+                         *
+                         * ⚠️ AND THE REST OF THE BOARD IS THE PICTURE'S TOO. Frames a second
+                         * belongs to the drawing that was made at it. Which layers are switched
+                         * off does NOT travel with a picture (see the party handler, same rule),
+                         * but the ones you had hidden refer to a drawing that is no longer here —
+                         * left alone, layer 2 of whatever you just opened comes back invisible and
+                         * reads as content that failed to load. A selection and an active layer
+                         * belonging to the old picture are stale in exactly the same way.
+                         */
                         mark(`opening “${a.name}”`)
                         setBg(a.art.bg)
+                        setSel([])
+                        setHidden([])
+                        setLayer(0)
+                        setLayerNames(a.art.layers ?? [])
+                        if (a.art.fps) setFps(a.art.fps)
                         setStrokes(a.art.strokes)
                       }}
                       title="Open this, replacing what is on the board"
