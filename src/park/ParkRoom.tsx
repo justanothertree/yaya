@@ -50,7 +50,21 @@ const KEYS: Record<string, keyof Steer> = {
 /** The one park, until there is a reason for a second. */
 export const PARK_ROOM = 'park'
 
-export function ParkRoom({ pets, myName }: { pets: ParkPet[]; myName: string }) {
+export function ParkRoom({
+  pets,
+  myName,
+  authed,
+}: {
+  pets: ParkPet[]
+  myName: string
+  /**
+   * ⚠️ A COURTESY, NOT THE RULE. The relay is what actually keeps a park members-only — its
+   * socket is unauthenticated and accepts any origin, so a button this page declines to draw is
+   * a button somebody can skip. This exists so a signed-out visitor is told why, rather than
+   * walking into a field and waiting twelve seconds to be told no.
+   */
+  authed: boolean
+}) {
   const field = useRef<HTMLDivElement>(null)
   const [size, setSize] = useState({ w: 0, h: 0 })
   const [pick, setPick] = useState(0)
@@ -195,7 +209,7 @@ export function ParkRoom({ pets, myName }: { pets: ParkPet[]; myName: string }) 
     <div className="park">
       <div className="park-bar">
         {!walking ? (
-          <button className="btn" disabled={tooBig} onClick={() => setWalking(true)}>
+          <button className="btn" disabled={tooBig || !authed} onClick={() => setWalking(true)}>
             🌳 Walk into the park
           </button>
         ) : (
@@ -227,6 +241,14 @@ export function ParkRoom({ pets, myName }: { pets: ParkPet[]; myName: string }) 
       {state.current.trouble && (
         <p className="muted park-trouble" role="status">
           {state.current.trouble}
+        </p>
+      )}
+      {!authed && !walking && (
+        <p className="muted park-trouble" role="status">
+          The park is for people with an account. Snake is open to everybody — but in here your
+          creature is drawn on everyone else's screen, and a picture is the one thing nobody can
+          filter, so this one asks who you are first. <a href="#signin">Sign in</a> and walk right
+          in.
         </p>
       )}
       {tooBig && !walking && (

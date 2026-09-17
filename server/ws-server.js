@@ -56,6 +56,15 @@ const MAX_PARK_CLIENTS = Number(process.env.MAX_PARK_CLIENTS || 24)
  */
 const WALK_BURST = 45
 const WALK_WINDOW_MS = 1000
+/**
+ * How long a socket may stand in a park without having proved it belongs there.
+ *
+ * ⚠️ THE PROOF ARRIVES AFTER THE JOIN AND CANNOT ARRIVE BEFORE IT. NetClient sends its hello
+ * and then its token, and verifying the token is a round trip to Supabase — so there is always a
+ * window where somebody is in the room and not yet vouched for. The window is what is bounded
+ * here; what happens INSIDE it is bounded by broadcastPark, which sends them nothing.
+ */
+const PARK_VOUCH_MS = 12000
 /** How many rooms may exist at once. See the room-leak note in the hello handler. */
 const MAX_ROOMS = Number(process.env.MAX_ROOMS || 500)
 /**
@@ -204,6 +213,27 @@ function broadcast(room, payload, exceptId) {
       } catch {
         /* ignore */
       }
+    }
+  }
+}
+
+/**
+ * Like broadcast, but only to people the park has let in.
+ *
+ * ⚠️ SILENCE IS THE POINT, NOT THE REFUSAL. Refusing to RELAY a stranger's creature stops them
+ * drawing on everybody's screen, and does nothing at all about them sitting in the room watching
+ * whose creatures are there and where they are walking. A park that admits lurkers has not been
+ * made members-only; it has been made members-write.
+ */
+function broadcastPark(room, payload, exceptId) {
+  const str = JSON.stringify(payload)
+  for (const [id, ws] of room.clients) {
+    if (ws.readyState !== ws.OPEN || id === exceptId) continue
+    if (!room.state.get(id)?.vouched) continue
+    try {
+      ws.send(str)
+    } catch {
+      /* ignore */
     }
   }
 }
@@ -1406,6 +1436,8 @@ wss.on('connection', (ws, req) => {
   }
   const id = uuid().slice(0, 12)
   let joinedRoomId = null
+  /** see PARK_VOUCH_MS — cleared on close, or a dropped socket keeps a timer alive */
+  let parkVouchTimer = null
   // see the heartbeat below — a half-open socket answers no pong and gets terminated,
   // which runs this connection's normal close handler and frees its room
   ws.isAlive = true
@@ -1572,22 +1604,28 @@ wss.on('connection', (ws, req) => {
        */
       send(ws, { type: 'settings', settings: room.settings })
       /**
-       * ⚠️ WHO IS ALREADY HERE, sent only to the one who just arrived.
+       * ⚠️ A PARK IS FOR PEOPLE WITH AN ACCOUNT, and nothing about that can be enforced by the
+       * page: this socket is unauthenticated and accepts any origin, so a client that simply does
+       * not offer the choice is a client somebody can skip. The door is here.
        *
-       * Without it a park is empty until everybody already in it happens to move, and somebody
-       * standing still is somebody you never see at all. Built from room.clients rather than
-       * room.state, because state is deliberately never deleted on disconnect — walking that map
-       * instead would populate the park with everyone who had ever visited it.
+       * Snake is open to strangers and should stay open — what a stranger gets there is a handle,
+       * a score and a chat line, and the chat line goes through a profanity list. What a stranger
+       * gets HERE is a drawing rendered on everybody else's screen, and there is no filter for a
+       * picture. That is the difference, and it is the whole argument.
+       *
+       * The roster is not sent here any more; it is sent when the token comes back, because being
+       * handed the roster IS being let in. Until then this socket receives nothing a park sends.
        */
       if (isPark(roomId)) {
-        const who = []
-        for (const other of room.clients.keys()) {
-          if (other === id) continue
-          const st = room.state.get(other)
-          if (!st || !st.look) continue
-          who.push({ from: other, name: st.name || '', art: st.look, ...(st.at || {}) })
-        }
-        send(ws, { type: 'park', who })
+        parkVouchTimer = setTimeout(() => {
+          const st = room.state.get(id)
+          if (st?.vouched) return
+          send(ws, {
+            type: 'error',
+            code: 'members-only',
+            message: 'The park is for people with an account on the site',
+          })
+        }, PARK_VOUCH_MS)
       }
       return
     }
@@ -1757,6 +1795,9 @@ wss.on('connection', (ws, req) => {
        */
       case 'look': {
         if (!isPark(joinedRoomId)) break
+        /* ⚠️ the same check the roster makes, on the other side of it: nothing a stranger draws
+           reaches anybody, and nothing anybody draws reaches a stranger */
+        if (!room.state.get(id)?.vouched) break
         const art = msg.art
         if (!art || typeof art !== 'object') break
         let size = 0
@@ -1778,7 +1819,7 @@ wss.on('connection', (ws, req) => {
         if (typeof msg.name === 'string' && msg.name.trim())
           st.name = msg.name.trim().slice(0, MAX_NAME_LEN)
         room.state.set(id, st)
-        broadcast(room, { type: 'look', from: id, name: st.name || '', art }, id)
+        broadcastPark(room, { type: 'look', from: id, name: st.name || '', art }, id)
         break
       }
 
@@ -1792,6 +1833,7 @@ wss.on('connection', (ws, req) => {
        */
       case 'walk': {
         if (!isPark(joinedRoomId)) break
+        if (!room.state.get(id)?.vouched) break
         const st = room.state.get(id) || {}
         const now = Date.now()
         const recent = (st.walkTimes || []).filter((t) => now - t < WALK_WINDOW_MS)
@@ -1811,7 +1853,7 @@ wss.on('connection', (ws, req) => {
         }
         st.at = at
         room.state.set(id, st)
-        broadcast(room, { type: 'walk', from: id, ...at }, id)
+        broadcastPark(room, { type: 'walk', from: id, ...at }, id)
         break
       }
 
@@ -1838,7 +1880,27 @@ wss.on('connection', (ws, req) => {
           const st = room.state.get(id)
           if (!st) return // left while we were checking
           st.userId = user.id
+          st.vouched = true
           room.state.set(id, st)
+          /**
+           * ⚠️ BEING HANDED THE ROSTER IS BEING LET IN, so it is sent here rather than on the
+           * hello. Anybody still waiting on this round trip has received nothing a park sends,
+           * which is what makes the door a door rather than a sign.
+           *
+           * Built from room.clients rather than room.state, because state is deliberately never
+           * deleted on disconnect — walking that map instead would populate the park with
+           * everybody who had ever visited it.
+           */
+          if (!isPark(joinedRoomId)) return
+          if (parkVouchTimer) clearTimeout(parkVouchTimer)
+          const who = []
+          for (const other of room.clients.keys()) {
+            if (other === id) continue
+            const o = room.state.get(other)
+            if (!o || !o.vouched || !o.look) continue
+            who.push({ from: other, name: o.name || '', art: o.look, ...(o.at || {}) })
+          }
+          send(ws, { type: 'park', who })
         })
         break
       }
@@ -2071,6 +2133,7 @@ wss.on('connection', (ws, req) => {
   })
 
   ws.on('close', () => {
+    if (parkVouchTimer) clearTimeout(parkVouchTimer)
     if (!joinedRoomId) return
     const room = rooms.get(joinedRoomId)
     if (!room) return

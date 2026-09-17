@@ -66,11 +66,14 @@ export function GamesRoom({
   onControlChange,
   onLiveChange,
   autoFocus,
+  authed,
 }: {
   onControlChange?: (on: boolean) => void
   /** true while Snake is connected to a multiplayer room — see GameManager's onLiveChange */
   onLiveChange?: (live: boolean) => void
   autoFocus?: boolean
+  /** signed in to the members' side. Only the park cares, and only so it can explain itself. */
+  authed?: boolean
 }) {
   const [game, setGame] = useState<GameId | null>(() => wantedFromHash())
   const [live, setLive] = useState(false)
@@ -155,7 +158,11 @@ export function GamesRoom({
       <>
         <GamesBar onBack={() => setGame(null)} />
         <Suspense fallback={<div aria-busy>Finding the park…</div>}>
-          <ParkRoom pets={mine.map((p) => ({ name: p.name, art: p.art }))} myName={readHandle()} />
+          <ParkRoom
+            pets={mine.map((p) => ({ name: p.name, art: p.art }))}
+            myName={readHandle()}
+            authed={!!authed}
+          />
         </Suspense>
       </>
     )

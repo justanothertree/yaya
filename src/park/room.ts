@@ -141,30 +141,33 @@ export function joinPark(
     onMessage: (msg) => {
       switch (msg.type) {
         case 'welcome': {
-          /**
-           * ⚠️ THE LOOK GOES OUT HERE, NOT ON `onOpen`. NetClient calls its open handler
-           * BEFORE it sends its own hello, so a look sent from there reaches the relay while the
-           * socket has joined no room at all — and the relay drops everything that is not a
-           * hello until one has arrived. Watched happen: the first person into the park was
-           * visible to herself and to nobody else, because the relay had never been told what
-           * she looked like, so the roster it handed the second arrival was empty.
-           *
-           * `welcome` is the relay confirming the join, which is the first moment a look can
-           * land anywhere. It is also the right moment after a reconnect, for the same reason.
-           */
+          /* joined the room — which is not the same as being let into the park, see below */
           state.me = str(msg.id, 24) || null
           state.trouble = null
-          net.send({ type: 'look', name: me.name, art: packed })
           onChange()
           break
         }
         case 'park': {
-          /* everybody already standing here, sent only to whoever just arrived */
-          if (!Array.isArray(msg.who)) break
-          for (const entry of msg.who.slice(0, 32)) {
-            const one = readSomeone(entry)
-            if (one) state.here.set(one.id, one)
-          }
+          /**
+           * ⚠️ THE ROSTER IS THE DOOR OPENING, and the look goes out in answer to it.
+           *
+           * Two things had to be waited for and they are not the same thing. `welcome` says the
+           * socket joined a room; the park additionally wants proof of an account, which arrives
+           * a round trip later because the relay has to ask Supabase. Sending the look any
+           * earlier means sending it to a relay that will drop it — which is exactly what
+           * happened when it went out on the socket's open handler, before even the hello: the
+           * first person into the park was visible to herself and to nobody else, and the roster
+           * handed to the second arrival was empty.
+           *
+           * A signed-out visitor never receives this, so they never announce themselves either.
+           */
+          if (Array.isArray(msg.who))
+            for (const entry of msg.who.slice(0, 32)) {
+              const one = readSomeone(entry)
+              if (one) state.here.set(one.id, one)
+            }
+          state.trouble = null
+          net.send({ type: 'look', name: me.name, art: packed })
           onChange()
           break
         }

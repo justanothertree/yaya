@@ -99,12 +99,71 @@ else is additive and each piece is small.
 
 - **The relay has to be redeployed** for any of this to exist outside a laptop. The client is
   harmless against an old relay: `look` and `walk` are ignored, and the park is an empty field.
-- **Nobody is checked at the door.** The socket is unauthenticated and accepts any origin, which
-  was true before the park and matters more now that a room is persistent and public — anybody who
-  can reach the relay can stand in the park under any name. The relay can already verify a
-  Supabase token (`auth`); requiring it, or marking vouched-for names, is a decision about who the
-  park is for.
+- ~~**Nobody is checked at the door.**~~ **Closed the same day — the park is members-only.** See
+  below.
 - **Names are not moderated here.** Snake's handle rules and profanity list sit in the game
   module; the park reads the same stored handle and does not re-check it.
 - Nothing is persisted. An empty park is deleted like any other room, so the world has no memory
   yet — which is fine while there is nothing in it to remember.
+
+---
+
+# Addendum: the park has a door — 2026-09-16
+
+Snake is open to strangers and should stay open. What a stranger gets there is a handle, a score
+and a chat line, and the chat line goes through a profanity list. What a stranger gets in the park
+is **a drawing rendered on everybody else's screen**, and there is no filter for a picture. That is
+the whole argument, and it is why the two rooms honestly want different doors rather than one rule
+applied twice.
+
+The decision was also asymmetric, which settled the timing. Opening the park later costs one line.
+Closing it later does not un-show anything to anybody — and this project already has the note about
+what happens when a tier is narrowed after people have used it under the old meaning.
+
+## Where the door is
+
+On the relay, because it cannot be anywhere else. The socket is unauthenticated and accepts any
+origin, so a page that declines to draw the button is a page somebody can skip. `verifyToken` was
+already there for crediting scores; this makes a park room refuse to do anything for a socket it
+has not come back for.
+
+The proof arrives **after** the join and cannot arrive before it — NetClient sends its hello and
+then its token, and verifying the token is a round trip to Supabase. So there is always a window
+where somebody is in the room and not yet vouched for. What is bounded is the window
+(`PARK_VOUCH_MS`, 12s, then an error saying why); what happens inside it is bounded by
+`broadcastPark`, which sends them nothing.
+
+**Silence is the point, not the refusal.** Refusing to relay a stranger's creature stops them
+drawing on everybody's screen and does nothing at all about them sitting in the room watching whose
+creatures are there and where they are walking. A park that admits lurkers has not been made
+members-only; it has been made members-write.
+
+Being handed the roster **is** being let in, so the client sends its look in answer to the roster
+rather than to the welcome. A signed-out visitor never receives one, so never announces itself.
+
+## Measured, against a stubbed Supabase rather than anybody's account
+
+A local stand-in for `/auth/v1/user` returns a user for one known token and 401 for everything
+else, so the relay's real check runs end to end with no real session involved.
+
+|                                            |                                       |
+| ------------------------------------------ | ------------------------------------- |
+| a member is handed the roster              | yes                                   |
+| a stranger is not                          | yes                                   |
+| a stranger sees members' looks and walks   | 0 and 0                               |
+| anything a stranger sends reaches a member | 0 and 0                               |
+| an invalid token                           | refused                               |
+| two members see each other                 | yes                                   |
+| Snake, with no token at all                | still joins, still chats              |
+| a socket that never vouches                | told why after ~12s, not disconnected |
+
+And in the browser signed out: the button is disabled, with a sentence saying why and a link to
+sign in.
+
+## Still open after this
+
+- **Suspension is not checked.** `verifyToken` proves an account exists, not that it is in good
+  standing. Elsewhere the site asks the database (`can_see`, `is_admin`); a park that cared would
+  do the same, at the cost of a second round trip on join.
+- **Names are still not moderated here.** The park reads the handle Snake stores and does not
+  re-check it against Snake's own rules.

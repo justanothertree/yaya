@@ -1413,7 +1413,12 @@ export default function App() {
         )
       case 'games':
         return (
-          <GamesRoom onControlChange={setGameHasControl} onLiveChange={setSnakeLive} autoFocus />
+          <GamesRoom
+            onControlChange={setGameHasControl}
+            onLiveChange={setSnakeLive}
+            autoFocus
+            authed={isFinanceAuthed}
+          />
         )
       case 'visualizer':
         return <AudioVisualizer />
@@ -2198,6 +2203,7 @@ export default function App() {
                   onControlChange={setGameHasControl}
                   onLiveChange={setSnakeLive}
                   autoFocus
+                  authed={isFinanceAuthed}
                 />
               </Suspense>
             </section>
