@@ -7608,8 +7608,34 @@ a.cz-msg-author:focus-visible {
     grid-column: 1;
     grid-row: 2;
     height: auto;
+    /**
+     * ⚠️ NO FLOOR ONCE THIS IS A GRID, and the floor is what pushed the shape row off the
+     * bottom. `min-height: 50vh` is set for the flex layout further down, where a lone board can
+     * collapse; in a grid whose middle row is `minmax(0, 1fr)` the row already cannot collapse,
+     * and a 400px floor on an 800px screen simply overflows the track. Measured at 1280x800: the
+     * row that carries Shape, Gallery, Keep and Make a minion sat at 779 to 806 in an 800px
+     * viewport — six pixels under the fold, in an element that does not scroll. Reported as those
+     * controls being available only after leaving fullscreen.
+     */
     min-height: 0;
+    max-height: 100%;
     margin-right: 0;
+  }
+  /* the shaped board keeps its proportions but takes its height from the track, not from vh */
+  .paint-wrap:fullscreen .paint-board.has-shape,
+  .paint-wrap.is-full .paint-board.has-shape {
+    height: 100%;
+    width: auto;
+    max-width: 100%;
+    min-height: 0;
+    aspect-ratio: var(--paint-ar);
+    margin-inline: auto;
+  }
+  /* ⚠️ and the row that carries the way out never shrinks away with it */
+  .paint-wrap:fullscreen .paint-shape-row,
+  .paint-wrap.is-full .paint-shape-row {
+    flex: 0 0 auto;
+    min-height: 0;
   }
   .paint-wrap:fullscreen .paint-tools-panel,
   .paint-wrap.is-full .paint-tools-panel {
@@ -9157,6 +9183,30 @@ a.cz-msg-author:focus-visible {
   }
 }
 
+/* ⚠️ THE FRAME THAT BECOMES THE CREATURE. Never catches a pointer — it sits over a drawing
+   surface, and a box you cannot draw through is a box that has broken the room. */
+.paint-crop {
+  position: absolute;
+  pointer-events: none;
+  border: 1px dashed color-mix(in srgb, var(--accent, #7c6af7) 75%, transparent);
+  border-radius: 4px;
+  box-shadow: 0 0 0 9999px color-mix(in srgb, #000 22%, transparent);
+  z-index: 3;
+}
+.paint-crop i {
+  /* ⚠️ inside the frame, not above it: the frame can sit against the top of the board, and a
+     label hung above one there is a label nobody ever sees */
+  position: absolute;
+  left: 3px;
+  top: 3px;
+  font-size: 0.66rem;
+  font-style: normal;
+  white-space: nowrap;
+  padding: 1px 5px;
+  border-radius: 6px;
+  background: var(--accent, #7c6af7);
+  color: #fff;
+}
 .paint-board {
   position: relative;
   height: clamp(18rem, 58vh, 40rem);

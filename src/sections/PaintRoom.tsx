@@ -41,7 +41,7 @@ import { applyLayerOp, type LayerOp, type Stack } from '../draw/layerOps'
 import { paintSession } from '../draw/session'
 import { savePet } from '../pets/pets'
 import { PetView } from '../pets/PetView'
-import { PART_DOES, PART_WORDS, inFrontOfOrder, partOf, rigOf } from '../pets/rig'
+import { PART_DOES, PART_WORDS, inFrontOfOrder, inkBox, partOf, rigOf } from '../pets/rig'
 import { MoveShow } from '../pets/MoveShow'
 import { attacksOf, moveTable } from '../pets/attack'
 import { AlsoTogether } from '../ui/AlsoTogether'
@@ -1416,6 +1416,28 @@ export function PaintRoom() {
    * The arrows to fix it are already on the layer row; the only thing missing was knowing to look.
    */
   const petStack = useMemo(() => inFrontOfOrder(petPreview)[0] ?? null, [petPreview])
+
+  /**
+   * The frame that actually becomes your creature.
+   *
+   * ⚠️ WHERE AND HOW BIG YOU DRAW IS THROWN AWAY, and nothing said so. A creature is cropped to
+   * its own ink and then drawn at one fixed height wherever it appears, so a tiny sketch in a
+   * corner and a huge one filling the page come out identical — which is exactly right, and
+   * exactly the thing that reads as "drawing in different sizes isn't representing what your guy
+   * will look like". Showing the crop turns an invisible rule into a rectangle.
+   *
+   * ⚠️ ONLY WHILE MAKING A MINION. On an ordinary drawing there is no creature and the frame
+   * would be a box around your picture for no reason.
+   */
+  const petCrop = useMemo(() => {
+    const b = petStep ? inkBox(petPreview) : null
+    if (!b) return null
+    /* ⚠️ HELD INSIDE THE PAGE. inkBox pads out past the ink, and past the paper with it, so an
+       unclamped frame hangs off the board — where the board's own overflow clips it and takes the
+       label with it. The part off the page is not paper anyway. */
+    const at = (v: number) => Math.max(0, Math.min(1, v))
+    return { x0: at(b.x0), y0: at(b.y0), x1: at(b.x1), y1: at(b.y1) }
+  }, [petStep, petPreview])
 
   const petMoves = useMemo(() => {
     const parts = attacksOf(rigOf(petPreview))
@@ -3527,6 +3549,20 @@ export function PaintRoom() {
           onPointerCancel={onUp}
           onContextMenu={(e) => e.preventDefault()}
         />
+        {petCrop && (
+          <span
+            className="paint-crop"
+            style={{
+              left: `${petCrop.x0 * 100}%`,
+              top: `${petCrop.y0 * 100}%`,
+              width: `${(petCrop.x1 - petCrop.x0) * 100}%`,
+              height: `${(petCrop.y1 - petCrop.y0) * 100}%`,
+            }}
+            aria-hidden
+          >
+            <i>this becomes your minion</i>
+          </span>
+        )}
       </div>
 
       {/* ⚠️ BELOW THE PICTURE. It is a standing note rather than a control, and thirty-five
