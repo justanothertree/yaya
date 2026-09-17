@@ -54,9 +54,16 @@ export function ParkRoom({
   pets,
   myName,
   authed,
+  onControlChange,
 }: {
   pets: ParkPet[]
   myName: string
+  /**
+   * ⚠️ RAISED ONLY WHILE WALKING, which is what makes this a prop rather than a line in the
+   * games room. Everywhere else in that tab, being on the page IS playing; here you stand at the
+   * gate first, and the arrow keys should still move between sections until you go in.
+   */
+  onControlChange?: (on: boolean) => void
   /**
    * ⚠️ A COURTESY, NOT THE RULE. The relay is what actually keeps a park members-only — its
    * socket is unauthenticated and accepts any origin, so a button this page declines to draw is
@@ -128,6 +135,12 @@ export function ParkRoom({
       state.current = { me: null, here: new Map(), trouble: null }
     }
   }, [walking, mine, myName])
+
+  useEffect(() => {
+    if (!walking) return
+    onControlChange?.(true)
+    return () => onControlChange?.(false)
+  }, [walking, onControlChange])
 
   useEffect(() => {
     if (!walking) return

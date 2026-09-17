@@ -108,12 +108,21 @@ export function GamesRoom({
   }, [])
 
   /**
-   * ⚠️ ONLY ONE OF THE TWO GAMES EVER WRITES THIS. Snake raises `onControlChange` itself when its
-   * canvas takes focus, so the playground is the only one this room has to speak for — it takes
-   * the arrow keys the moment it is on screen, the same as it does inside the Minions room.
+   * ⚠️ EVERY GAME IN HERE TAKES THE KEYBOARD, and for a while only one of them said so. This
+   * read `game !== 'playground'` when the playground was the only thing beside Snake, and neither
+   * the scrap nor the park was ever added to it — so the arrow keys walked the site out from
+   * under a fight somebody was in the middle of. Reported from a live test, which is exactly
+   * where a guard that is a LIST rather than a rule gets found out.
+   *
+   * ⚠️ SNAKE IS THE EXCEPTION AND STAYS ONE. It raises this itself when its canvas takes focus,
+   * so clicking away from the board gives the page its arrows back; speaking for it here as well
+   * would be two writers and a flag that never comes down.
+   *
+   * ⚠️ AND THE PARK SPEAKS FOR ITSELF, because it is the one room where being on the page is
+   * not the same as playing: until you walk in, the arrows should still move between sections.
    */
   useEffect(() => {
-    if (game !== 'playground') return
+    if (game !== 'playground' && game !== 'fight') return
     onControlChange?.(true)
     return () => onControlChange?.(false)
   }, [game, onControlChange])
@@ -166,6 +175,7 @@ export function GamesRoom({
             pets={mine.map((p) => ({ name: p.name, art: p.art }))}
             myName={readHandle()}
             authed={!!authed}
+            onControlChange={onControlChange}
           />
         </Suspense>
       </>

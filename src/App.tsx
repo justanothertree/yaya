@@ -1307,7 +1307,18 @@ export default function App() {
     return () => window.removeEventListener('scroll', onScroll)
   }, [])
 
-  // Keyboard help overlay: open with '?' or Shift+/, close with Escape
+  /**
+   * Keyboard help overlay: open with '?' or Shift+/, close with Escape.
+   *
+   * ⚠️ NOT WHILE A GAME HAS THE KEYBOARD, and this was not theoretical: `/` is player two's heavy
+   * attack in a scrap, so on a shared keyboard the second player's punch button opened a help
+   * panel over the fight. The arrow keys had the same problem one guard further along — the
+   * lesson is that `gameHasControl` has to cover EVERY global shortcut, not just the one that
+   * happened to be found first.
+   *
+   * ⚠️ ESCAPE STILL CLOSES IT, whatever has control. A modal you can open and not close is worse
+   * than the collision this is fixing.
+   */
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       // Ignore while typing in inputs/textareas/contenteditable to avoid annoyance
@@ -1316,16 +1327,19 @@ export default function App() {
       const isTyping =
         tag === 'input' || tag === 'textarea' || target?.isContentEditable || tag === 'select'
       if (isTyping) return
+      if (e.key === 'Escape' && helpOpen) {
+        setHelpOpen(false)
+        return
+      }
+      if (gameHasControl) return
       if ((e.key === '?' || (e.key === '/' && e.shiftKey)) && !helpOpen) {
         setHelpOpen(true)
         e.preventDefault()
-      } else if (e.key === 'Escape' && helpOpen) {
-        setHelpOpen(false)
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [helpOpen])
+  }, [helpOpen, gameHasControl])
 
   // (Auto-hide removed)
 
