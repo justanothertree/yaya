@@ -8366,6 +8366,21 @@ a.cz-msg-author:focus-visible {
   background: color-mix(in srgb, var(--text) 5%, transparent);
   overflow: hidden;
 }
+/* ⚠️ WHAT AN ENEMY HAS TO REACH. Fixed at the middle and never lunging with the picture, so
+   the gap between the two is visible: a swing moves the drawing, not the creature. */
+.move-show-body {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  border-radius: 4px;
+  border: 1px dashed color-mix(in srgb, var(--text) 38%, transparent);
+  background: color-mix(in srgb, var(--text) 5%, transparent);
+}
+.move-show-dup {
+  opacity: 0.6;
+  font-style: normal;
+}
 .move-show-pet {
   position: absolute;
   left: 50%;

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { Drawing } from '../draw/strokes'
 import { PetView } from './PetView'
-import { petRatio } from './rig'
+import { bodyRatio, petRatio } from './rig'
 import { lungeOf, phaseOf } from './fight'
 import type { Attack } from './attack'
 
@@ -72,6 +72,19 @@ export function MoveShow({
   moves: Attack[]
   tall?: number
 }) {
+  /**
+   * Which earlier button already throws this exact move.
+   *
+   * ⚠️ MOST CREATURES HAVE FEWER THAN SIX MOVES AND THE ROW PRETENDED OTHERWISE. moveTable
+   * always returns six entries, and a creature with one or two named parts fills several of them
+   * with the same attack — so the row read as six things that all behaved identically. Reported
+   * as "a lot of the attacks seem to be so similar". They were the same attack.
+   */
+  const sameAs = moves.map((m) =>
+    moves.findIndex(
+      (o) => o.name === m.name && o.reach === m.reach && o.bite === m.bite && o.span === m.span,
+    ),
+  )
   const [pick, setPick] = useState(0)
   /* ⚠️ asked here rather than taken as a prop, so this cannot be dropped into a room that
      forgot about it — and unverifiable in the Browser pane, which cannot emulate the setting */
@@ -138,6 +151,7 @@ export function MoveShow({
             }}
           >
             <b>{BUTTON[i]}</b> {m.name}
+            {sameAs[i] < i && <i className="move-show-dup"> = {BUTTON[sameAs[i]]}</i>}
           </button>
         ))}
       </div>
@@ -154,6 +168,15 @@ export function MoveShow({
             height: `${high * tall}px`,
             left: a.both ? `calc(50% - ${wide * tall}px)` : '50%',
           }}
+          aria-hidden
+        />
+        {/* ⚠️ WHAT THEY HAVE TO REACH TO HIT YOU, which is not the picture and does not lunge
+            with it. A creature's width is its BODY — attacks drawn off the side are not part of
+            what can be hit — and a swing moves the drawing while leaving the creature where it
+            stands, so this box stays put while the picture leans out of it. */}
+        <span
+          className="move-show-body"
+          style={{ width: `${bodyRatio(art) * tall}px`, height: `${tall}px` }}
           aria-hidden
         />
         <span
@@ -181,8 +204,11 @@ export function MoveShow({
         {a.both ? ' on both sides' : ''}, hits for <strong>{a.bite}</strong>, and ties it up for{' '}
         <strong>{(a.span + a.rest).toFixed(2)}s</strong>
         {a.lift > 0.5 ? ' — this is the one that launches.' : '.'}
+        {a.both && ' It comes out both sides, so it does not matter which way you are facing.'}
         <br />
-        {tweakFor(a)}
+        {sameAs[pick] < pick
+          ? `The same move as ${BUTTON[sameAs[pick]]}. Name another layer and this button gets one of its own.`
+          : tweakFor(a)}
       </p>
     </div>
   )

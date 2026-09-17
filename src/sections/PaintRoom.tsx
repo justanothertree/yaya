@@ -328,6 +328,18 @@ export function PaintRoom() {
     setSel([])
     setStrokes([])
     setBg(null)
+    /**
+     * ⚠️ THE LAYERS GO TOO, and they did not. layerCount reads the NAME list as well as the
+     * strokes, so clearing only the strokes left an empty picture still carrying however many
+     * named layers it had — reported as "clearing the image doesn't clear the parts layers". The
+     * pet panel went on describing a creature that was no longer there, and the next thing drawn
+     * landed on somebody else's part.
+     */
+    setLayerNames([])
+    setHidden([])
+    setLayer(0)
+    /* the guide was walking you through parts that no longer exist */
+    setPetStep(null)
     /* nothing to come back to — carrying the cleared picture forward would be the bug */
     paintSession.forget()
   }, [mark])
@@ -3189,11 +3201,23 @@ export function PaintRoom() {
             {petStep.phase === 'draw' && (
               <>
                 <strong>Draw the {petStep.part}.</strong>
-                <span className="muted">
-                  You are on a new layer called <code>{petStep.part}</code>, so this part{' '}
-                  {PART_DOES[partOf(petStep.part)]} on its own. Draw it where it belongs on the
-                  body.
-                </span>
+                {/* ⚠️ A HIT IS NOT A BODY PART AND THE GENERIC SENTENCE SAID IT WAS. "Draw it
+                    where it belongs on the body" is meaningless for an attack, and the word itself
+                    is ambiguous — asked directly whether `hit` meant hitting them or being hit. */}
+                {partOf(petStep.part) === 'hit' ? (
+                  <span className="muted">
+                    A <code>hit</code> is an attack <em>you throw</em>, not a wound you take — and
+                    it is the one layer nobody sees until you swing. Draw the shape of the blow
+                    where it lands: out to the side reaches further, above the head sends them
+                    flying, and a bigger shape hurts more.
+                  </span>
+                ) : (
+                  <span className="muted">
+                    You are on a new layer called <code>{petStep.part}</code>, so this part{' '}
+                    {PART_DOES[partOf(petStep.part)]} on its own. Draw it where it belongs on the
+                    body.
+                  </span>
+                )}
                 <button className="btn btn-ghost" onClick={() => setPetStep({ phase: 'pick' })}>
                   Skip this one
                 </button>
