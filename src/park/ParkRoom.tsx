@@ -43,7 +43,6 @@ import { rigOf } from '../pets/rig'
 import { lungeOf } from '../pets/fight'
 import {
   beaten,
-  BOSS,
   bossMoves,
   bossThink,
   bossWide,
@@ -52,6 +51,7 @@ import {
   wounded,
   type Boss,
 } from './boss'
+import { saysOf, temperOf, type Temper } from './temper'
 
 /**
  * A park you walk into and find people in.
@@ -312,14 +312,29 @@ export function ParkRoom({
    * its reach, timing and bite are already knowable here — and rigOf walks every stroke, which is
    * not a thing to do sixty times a second for a creature that has not changed.
    */
-  const echoKit = useRef<{ by: string; moves: Attack[]; wide: number } | null>(null)
+  const echoKit = useRef<{
+    by: string
+    moves: Attack[]
+    wide: number
+    /**
+     * ⚠️ WORKED OUT HERE, NOT SENT. A boss's size, health, pace and nerve are a pure function
+     * of its drawing — which arrived when it was called out — so both ends reach the same answer
+     * from the same picture with nothing about it on the wire. What matters is that this end uses
+     * the SAME scale the host does: reach is multiplied by it, so a remote boss sized at a
+     * constant would have a hitbox that disagreed with the one hitting you.
+     */
+    temper: Temper
+  } | null>(null)
   const myWide = useMemo(() => (myArt ? petWide(myArt) : 0.2), [myArt])
 
   /* ⚠️ the drawing again, not the wrapper — this one feeds the animation loop's deps, and a
      loop rebuilt every render is a loop whose clock starts again every render */
   const bossArt = (pets[bossPick] ?? pets[0])?.art
   const bossKit = useMemo(
-    () => (bossArt ? { moves: bossMoves(bossArt), wide: bossWide(bossArt) } : null),
+    () =>
+      bossArt
+        ? { moves: bossMoves(bossArt), wide: bossWide(bossArt), temper: temperOf(bossArt) }
+        : null,
     [bossArt],
   )
 
@@ -575,7 +590,13 @@ export function ParkRoom({
         const plan = bossThink(cur, target, bossKit.moves)
         const struckBoss = stepStrike(cur, plan.hit, bossKit.moves, dt)
         const bSteer = busy(struckBoss) ? STILL : { ...STILL, ...plan.steer }
-        const walked = stepWalker(struckBoss, bSteer, struckBoss.hold > 0 ? 0 : dt)
+        const walked = stepWalker(
+          struckBoss,
+          bSteer,
+          struckBoss.hold > 0 ? 0 : dt,
+          /* its own pace, and half again when it is running at somebody — see bossThink */
+          plan.speed,
+        )
         /* ⚠️ it turns to face you when it is not committed, because a creature that only faced
            the way it walked would back away and then swing at nothing */
         const facing = struckBoss.swing > 0 ? cur.facing : target.x < cur.x ? -1 : 1
@@ -667,7 +688,12 @@ export function ParkRoom({
       const tb = state.current.boss
       if (tb) {
         if (echoKit.current?.by !== tb.by)
-          echoKit.current = { by: tb.by, moves: bossMoves(tb.art), wide: bossWide(tb.art) }
+          echoKit.current = {
+            by: tb.by,
+            moves: bossMoves(tb.art),
+            wide: bossWide(tb.art),
+            temper: temperOf(tb.art),
+          }
         const kit = echoKit.current
         tb.shown = farFrom(tb.shown, tb.at)
           ? tb.at
@@ -676,7 +702,7 @@ export function ParkRoom({
         if (theirMove) {
           tb.swingFor += dt
           if (!tb.spent) {
-            const area = strikeArea(tb.shown, tb.facing, theirMove, tb.swingFor, BOSS.scale)
+            const area = strikeArea(tb.shown, tb.facing, theirMove, tb.swingFor, kit.temper.scale)
             if (area && you.current.stun <= 0 && inArea(you.current, myWide, area)) {
               you.current = shoved(you.current, tb.shown, theirMove)
               tb.spent = true
@@ -692,7 +718,7 @@ export function ParkRoom({
           mv0 &&
           !you.current.spent &&
           tb.hp > 0 &&
-          inArea(tb.shown, kit.wide, area0, BOSS.scale)
+          inArea(tb.shown, kit.wide, area0, kit.temper.scale)
         )
           you.current = { ...you.current, spent: true, hold: 0.06 + mv0.bite * 0.004 }
       }
@@ -797,6 +823,24 @@ export function ParkRoom({
   void roster
   /* somebody else's boss, which this screen echoes rather than runs — see BossEcho */
   const theirBoss: BossEcho | null = state.current.boss
+
+  /**
+   * What the picture will fight like, or what the one in the field is fighting like.
+   *
+   * ⚠️ THE TEMPER THAT IS ACTUALLY IN USE, never a fresh reading. bossShown carries the temper
+   * it was built with and the echo's kit carries the one its hitboxes use — reading the drawing
+   * again here would be a second answer free to drift from the one doing the hitting.
+   */
+  const bossSays = (() => {
+    if (bossShown) return `${bossShown.name} — ${saysOf(bossShown.temper)}`
+    if (theirBoss) {
+      const t = echoKit.current?.by === theirBoss.by ? echoKit.current.temper : null
+      return t ? `${theirBoss.name} — ${saysOf(t)}` : null
+    }
+    if (!bossKit || !bossArt) return null
+    const who = (pets[bossPick] ?? pets[0])?.name ?? 'It'
+    return `${who} as a boss: ${saysOf(bossKit.temper)} ${bossKit.temper.life} health.`
+  })()
   const theirMove =
     theirBoss && echoKit.current?.by === theirBoss.by && theirBoss.swing > 0
       ? echoKit.current.moves[theirBoss.swing - 1]
@@ -876,6 +920,7 @@ export function ParkRoom({
                 b.shown,
                 others.length,
                 (echoKit.current?.by === b.by ? echoKit.current.moves[0]?.reach : 0) || 1,
+                echoKit.current?.by === b.by ? echoKit.current.temper.scale : undefined,
               )
               you.current = { ...you.current, x: spot.x, y: spot.y, vx: 0, vy: 0 }
               setShownYou(you.current)
@@ -920,6 +965,21 @@ export function ParkRoom({
           </button>
         )}
       </div>
+
+      {/*
+        ⚠️ WHAT THE DRAWING TURNED INTO, SAID OUT LOUD BEFORE YOU CALL IT. A boss's size, health,
+        pace, nerve and preferred range all come out of the picture — and a reading nobody is shown
+        is a reading nobody can act on. This is the same job the maker's move list does for a
+        creature: the rig was invisible until the preview existed.
+
+        ⚠️ AND IT DESCRIBES THE ONE THAT IS OUT once there is one, including somebody else's,
+        because the answer to "why is this thing so fast" should be on the screen it is fast on.
+      */}
+      {walking && bossSays && (
+        <p className="muted park-says" role="status">
+          {bossSays}
+        </p>
+      )}
 
       {/* ⚠️ A PROBLEM IS SAID OUT LOUD. A room that silently fails to connect is a room that
           looks like an empty park, and somebody waits in it for a friend who cannot arrive. */}
@@ -1075,7 +1135,7 @@ export function ParkRoom({
               at={theirBoss.shown}
               cam={camAt}
               facing={theirBoss.facing}
-              size={petSize(theirBoss.art) * BOSS.scale}
+              size={petSize(theirBoss.art) * (echoKit.current?.temper.scale ?? 2.6)}
               lunge={echoLunge(theirMove, theirBoss.swingFor)}
               show={theirMove?.layer}
               hp={theirBoss.hp}

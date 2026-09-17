@@ -3,6 +3,7 @@ import { attacksOf, moveTable, petWide, type Attack } from '../pets/attack'
 import { rigOf } from '../pets/rig'
 import { restingWalker, VIEW, type Spot } from './walk'
 import { across, footOf, PARK_TALL, restingStriker, type StrikeInput, type Striker } from './strike'
+import { givesGround, runsAtYou, temperOf, type Temper } from './temper'
 
 /**
  * A boss.
@@ -25,7 +26,15 @@ import { across, footOf, PARK_TALL, restingStriker, type StrikeInput, type Strik
 export type Boss = Striker & {
   name: string
   art: Drawing
-  /** how many times taller than an ordinary creature it stands */
+  /**
+   * What kind of thing it is, read out of its own drawing.
+   *
+   * ⚠️ CARRIED, NOT LOOKED UP. temperOf walks every stroke; this is read on every frame of
+   * the fight. Same bargain as a Part carrying its own strokes.
+   */
+  temper: Temper
+  /** how many times taller than an ordinary creature it stands — its temper's, kept here so
+      everything downstream can ask the boss rather than the drawing */
   scale: number
   /** what is left of it */
   life: number
@@ -37,25 +46,32 @@ export type Boss = Striker & {
 }
 
 /**
- * How big, and how much of it there is.
+ * How big, and how much of there is, WHEN THE DRAWING HAS NOTHING TO SAY.
  *
  * ⚠️ SIZE IS NOT DIFFICULTY, and keeping them apart is what stops a boss being a wall. A creature
  * three times as tall covers nine times the ground and reaches three times as far — that alone
  * would make it unbeatable rather than hard. So the health is set against how long a fight should
  * take rather than against how big the thing is.
+ *
+ * ⚠️ AND IT IS NOW A FALLBACK RATHER THAN THE ANSWER. Every one of these comes out of the
+ * drawing — see temper.ts — because two different pictures that fought identically were a
+ * drawing that did not matter. What is left here is the middle of the band, for the places that
+ * need a number before they have a creature.
  */
 export const BOSS = { scale: 2.6, life: 520, guard: 0.45 }
 
 export const bossTall = (b: Boss) => PARK_TALL * b.scale
 
 export function makeBoss(name: string, art: Drawing, at: Spot): Boss {
+  const temper = temperOf(art)
   return {
     ...restingStriker(restingWalker(at.x, at.y)),
     name,
     art,
-    scale: BOSS.scale,
-    life: BOSS.life,
-    lifeMax: BOSS.life,
+    temper,
+    scale: temper.scale,
+    life: temper.life,
+    lifeMax: temper.life,
     think: 0,
     lean: -1,
     facing: -1,
@@ -88,7 +104,13 @@ export function bossThink(
   b: Boss,
   target: Spot,
   moves: Attack[],
-): { steer: { left: boolean; right: boolean; up: boolean; down: boolean }; hit: StrikeInput } {
+): {
+  steer: { left: boolean; right: boolean; up: boolean; down: boolean }
+  hit: StrikeInput
+  /** what to hand stepWalker, so a charge is visibly a charge */
+  speed: number
+} {
+  const t = b.temper
   const dx = target.x - b.x
   const dy = target.y - b.y
   const away = Math.abs(dx)
@@ -98,34 +120,57 @@ export function bossThink(
   const reach = ((quick?.reach ?? 0.9) * PARK_TALL * b.scale) / (16 / 10)
   const step = reach * VIEW.w
 
-  /* ⚠️ a beat of commitment: re-deciding every frame is what makes a thing look like a machine */
-  const beat = Math.floor(b.think * 1.6)
-  const backOff = beat % 5 === 0
+  /**
+   * ⚠️ A BEAT OF COMMITMENT: re-deciding every frame is what makes a thing look like a machine.
+   * How LONG a beat is now comes out of the drawing — a creature whose moves are slow and
+   * expensive reads as deliberate, one made of quick jabs reads as twitchy, and before this every
+   * boss on the site re-decided on exactly the same 0.625 second tick.
+   */
+  const beat = Math.floor(b.think / t.beat)
+  const charging = runsAtYou(beat, t) && away > step * 1.1
+  const backOff = !charging && givesGround(beat, t)
 
-  const wantX = backOff ? -Math.sign(dx) : away > step * 0.8 ? Math.sign(dx) : 0
-  /* ⚠️ depth is closed first: a swing reaches sideways, so standing on the wrong line is the one
-     position from which nothing it does can possibly land */
-  const wantY = Math.abs(dy) > bossFoot(b).y * 1.3 ? Math.sign(dy) : 0
+  /**
+   * ⚠️ WHERE IT WANTS TO STAND IS ITS OWN REACH, NOT A CONSTANT. A creature made of one long
+   * tail should hover at the end of it; one made of a jaw has to be in your face and ought to
+   * behave like it knows that. This one number is most of why two bosses feel different to fight.
+   */
+  const want = step * t.range
+  const wantX = backOff ? -Math.sign(dx) : away > want ? Math.sign(dx) : 0
 
-  const lined = Math.abs(dy) < bossFoot(b).y * 2.2
+  /**
+   * ⚠️ DEPTH IS CLOSED FIRST, EXCEPT WHEN IT IS RUNNING AT YOU. A swing reaches sideways, so
+   * standing on the wrong line is the one position from which nothing it does can possibly land —
+   * which is why the ordinary walk lines up before it closes. A charge is the deliberate exception:
+   * it comes straight at you on the diagonal, which is what makes it something to step out of.
+   */
+  const deep = bossFoot(b).y
+  const wantY = charging ? Math.sign(dy) : Math.abs(dy) > deep * 1.3 ? Math.sign(dy) : 0
+
+  const lined = Math.abs(dy) < deep * 2.2
   const inRange = away < step * 1.05 && lined
   /* far but lined up: the long move. Close: the quick one. */
   const heavy = inRange && away > step * 0.55
 
   return {
     steer: {
-      left: wantX < 0,
-      right: wantX > 0,
+      left: charging ? dx < 0 : wantX < 0,
+      right: charging ? dx > 0 : wantX > 0,
       up: wantY < 0,
       down: wantY > 0,
     },
     hit: {
+      /**
+       * ⚠️ HOW OFTEN IT SWINGS IS ITS BEAT, and its beat is its drawing. This was `beat % 2`
+       * and `beat % 3` on a fixed tick, which is the same rhythm for every creature ever drawn.
+       */
       quick: inRange && !heavy && beat % 2 === 0,
       heavy: inRange && heavy && beat % 3 === 0,
       /* it aims down for its long move, the same key a person would hold */
       up: false,
       down: heavy,
     },
+    speed: t.pace * (charging ? 1.5 : 1),
   }
 }
 
@@ -141,12 +186,15 @@ export function bossThink(
  * being hit for pressing join, so this is just outside what its quick attack covers — close
  * enough to be in the fight, far enough that the first move is yours.
  */
-export function ringSpot(b: Spot, n: number, reach = 1): Spot {
+export function ringSpot(b: Spot, n: number, reach = 1, scale = BOSS.scale): Spot {
   /* ⚠️ ITS OWN REACH, NOT A GUESS AT ONE. How far a boss can hit is read out of its drawing
      like everything else about it, and it varies by nearly half between creatures — a fixed
      distance put the joiner INSIDE the swing of a long-armed one, measured at 0.082 against a
-     reach of 0.098. The quarter-height on top is the step you get to take before it does. */
-  const out = across((reach + 0.25) * PARK_TALL * BOSS.scale)
+     reach of 0.098. The quarter-height on top is the step you get to take before it does.
+
+     ⚠️ AND ITS OWN SIZE, for the same reason: reach is multiplied by scale everywhere it is
+     used, and bosses no longer all stand the same height. */
+  const out = across((reach + 0.25) * PARK_TALL * scale)
   const side = n % 2 === 0 ? -1 : 1
   /* everybody after the first two stands a little further back, so a crowd is a crowd rather
      than four creatures in the same square foot */

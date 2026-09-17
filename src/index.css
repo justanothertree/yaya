@@ -8329,6 +8329,14 @@ a.cz-msg-author:focus-visible {
   margin: 0;
   font-size: 0.82rem;
 }
+/* ⚠️ WHAT THE DRAWING TURNED INTO. Sits under the bar rather than in it, because it is a
+   sentence rather than a control and a sentence in a row of buttons wraps the row. */
+.park-says {
+  margin: 0;
+  font-size: 0.8rem;
+  font-style: italic;
+  line-height: 1.45;
+}
 .park-keys {
   font-size: 0.82rem;
   line-height: 1.5;
