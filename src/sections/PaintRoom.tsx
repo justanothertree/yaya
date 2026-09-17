@@ -41,7 +41,8 @@ import { applyLayerOp, type LayerOp, type Stack } from '../draw/layerOps'
 import { paintSession } from '../draw/session'
 import { savePet } from '../pets/pets'
 import { PetView } from '../pets/PetView'
-import { PART_DOES, PART_WORDS, partOf } from '../pets/rig'
+import { PART_DOES, PART_WORDS, partOf, rigOf } from '../pets/rig'
+import { attacksOf, moveTable } from '../pets/attack'
 import { AlsoTogether } from '../ui/AlsoTogether'
 import { useVoiceSession } from '../voice/useVoiceSession'
 
@@ -1381,6 +1382,25 @@ export function PaintRoom() {
         .map((x) => [partOf(x.n), `${x.n.toLowerCase().slice(0, 18)} ${PART_DOES[partOf(x.n)]}`]),
     ).values(),
   ]
+
+  /**
+   * What this creature could fight with.
+   *
+   * ⚠️ THE ROOM SAID WHAT EVERY PART DOES AND NOT WHAT ANY OF THEM IS FOR. "head bobs and
+   * tilts, wing flaps" is the whole answer for a creature that only ever stands in a corner, and
+   * no answer at all for one you are drawing to take into a scrap — you had to keep it, adopt it,
+   * open the games tab and press things to find out that a tail is your long one. The rig was
+   * invisible until the preview existed; the move list was invisible until this did.
+   *
+   * ⚠️ IT NAMES THE DIRECTIONS, because that is the part nobody would guess: which of your
+   * parts answers up, and which answers down, is decided by what you drew rather than by you.
+   */
+  const petMoves = useMemo(() => {
+    const parts = attacksOf(rigOf(petPreview))
+    if (!parts.length) return null
+    const t = moveTable(parts)
+    return { quick: t[0].name, heavy: t[1].name, up: t[2].name, down: t[4].name }
+  }, [petPreview])
 
   const addLayer = () => {
     if (layers >= MAX_LAYERS) return
@@ -3217,6 +3237,14 @@ export function PaintRoom() {
                       ? `So far: ${petParts.join(', ')}`
                       : 'Nothing is named yet, so all of it just breathes.'}
                 </span>
+                {frameCount(petPreview) <= 1 && petMoves && (
+                  <span className="muted paint-pet-moves">
+                    In a scrap: <strong>{petMoves.quick}</strong>, heavy{' '}
+                    <strong>{petMoves.heavy}</strong>, up <strong>{petMoves.up}</strong>, down{' '}
+                    <strong>{petMoves.down}</strong>.
+                    {petMoves.up === petMoves.down && ' Draw a longer part and down gets its own.'}
+                  </span>
+                )}
               </div>
             )}
           </div>

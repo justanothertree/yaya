@@ -20,6 +20,7 @@ import {
   type Walker,
 } from './walk'
 import { joinPark, lookFits, SEND_HZ, type Park, type ParkState, type Someone } from './room'
+import { MAX_WANDERERS, wanderAt } from './wander'
 
 /**
  * A park you walk into and find people in.
@@ -137,6 +138,8 @@ export function ParkRoom({
    */
   const cam = useRef<Spot>({ x: 0, y: 0 })
   const [camAt, setCamAt] = useState<Spot>({ x: 0, y: 0 })
+  /* the clock the wanderers are a function of — see wander.ts */
+  const [clockAt, setClockAt] = useState(0)
 
   const [still, setStill] = useState(
     () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false,
@@ -236,12 +239,15 @@ export function ParkRoom({
     if (!walking) return
     let raf = 0
     let last = performance.now()
+    const started = last
     let sent = 0
     const tick = (now: number) => {
       const dt = (now - last) / 1000
       last = now
       you.current = stepWalker(you.current, held.current, dt)
       setShownYou(you.current)
+
+      setClockAt((now - started) / 1000)
 
       const want = camWant(you.current)
       /* framerate-independent easing, not a fixed fraction per frame — see PetPlay's camera */
@@ -281,6 +287,23 @@ export function ParkRoom({
     const wh = petRatio(art)
     return Math.round(wh >= 1 ? tall * wh : tall)
   }
+
+  /**
+   * Your other creatures, out for a walk of their own.
+   *
+   * ⚠️ WORKED OUT FROM THE CLOCK ON EVERY RENDER, which is cheap because there is nothing to
+   * work out — a wanderer's position is a function of the time and its index, with no state to
+   * keep and nothing to step. See wander.ts for why they are your minions rather than invented
+   * people, and why nobody else can see them.
+   */
+  const strolling = useMemo(
+    () =>
+      pets
+        .filter((_, i) => i !== pick)
+        .slice(0, MAX_WANDERERS)
+        .map((p, i) => ({ pet: p, ...wanderAt(i, clockAt) })),
+    [pets, pick, clockAt],
+  )
 
   const others: Someone[] = [...state.current.here.values()]
   /* roster is read so this recomputes when somebody joins or leaves — see the note on the loop */
@@ -374,6 +397,19 @@ export function ParkRoom({
           />
           {walking &&
             [
+              /* ⚠️ IN THE SAME SORT AS EVERYBODY ELSE, so a wanderer that is nearer the camera
+                 is drawn in front of you rather than always behind — they are in the park, not
+                 painted on the back of it. */
+              ...strolling.map((w, i) => ({
+                key: 'stroll-' + i,
+                name: w.pet.name,
+                art: w.pet.art,
+                at: w.at,
+                facing: w.facing,
+                moving: w.moving,
+                mine: false,
+                stroll: true,
+              })),
               ...others.map((o) => ({
                 key: o.id,
                 name: o.name,
@@ -382,6 +418,7 @@ export function ParkRoom({
                 facing: o.facing,
                 moving: o.moving,
                 mine: false,
+                stroll: false,
               })),
               {
                 key: 'me',
@@ -391,6 +428,7 @@ export function ParkRoom({
                 facing: shownYou.facing,
                 moving: shownYou.moving,
                 mine: true,
+                stroll: false,
               },
             ]
               /* ⚠️ lower on the screen is nearer the camera, which in a top-down world is the
@@ -405,7 +443,9 @@ export function ParkRoom({
                 return (
                   <span
                     key={one.key}
-                    className={'park-one' + (one.mine ? ' is-me' : '')}
+                    className={
+                      'park-one' + (one.mine ? ' is-me' : '') + (one.stroll ? ' is-stroll' : '')
+                    }
                     style={{
                       left: `${at.x * 100}%`,
                       top: `${at.y * 100}%`,
@@ -425,7 +465,11 @@ export function ParkRoom({
                               ? 0
                               : 0.4
                       }
-                      label={`${one.name}, in the park`}
+                      label={
+                        one.stroll
+                          ? `${one.name}, one of yours, having a wander`
+                          : `${one.name}, in the park`
+                      }
                     />
                     <span className="park-name">{one.name}</span>
                   </span>
@@ -477,6 +521,9 @@ export function ParkRoom({
         screens across and {PARK.down} down, so keep going and the view follows you — the little map
         shows the whole of it, where you are, and everybody else. Everyone is in the same park, so
         whoever is online is who you will meet.
+        {strolling.length > 0 && (
+          <> The faded ones are your own other minions having a wander — only you see those.</>
+        )}
       </p>
     </div>
   )
