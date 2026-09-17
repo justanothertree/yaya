@@ -11,6 +11,7 @@ import {
   freshFighter,
   IDLE,
   liveBox,
+  lungeOf,
   MAX_CATCHUP,
   phaseOf,
   STAGE,
@@ -472,7 +473,18 @@ export function PetFight({
                   phaseOf(f, kit.moves[i] ?? []) +
                   (f.safe > 0 ? ' is-safe' : '')
                 }
-                style={{ left: `${f.x * 100}%`, top: `${f.y * 100}%` }}
+                /* ⚠️ the lunge rides on the same transform that centres the creature, so it
+                   moves the picture without moving where it actually IS — the hitbox and the
+                   collision are the simulation's, and neither knows about this */
+                style={{
+                  left: `${f.x * 100}%`,
+                  top: `${f.y * 100}%`,
+                  transform: `translate(calc(-50% + ${(
+                    f.facing *
+                    lungeOf(f, kit.moves[i] ?? []) *
+                    100
+                  ).toFixed(1)}%), -100%)`,
+                }}
               >
                 <PetView
                   art={p.art}

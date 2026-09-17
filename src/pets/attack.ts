@@ -421,12 +421,58 @@ const pickBy = (list: Attack[], score: (a: Attack) => number): Attack =>
  * — looks it up in this same list. A chooser that could return a move which is not in the list
  * would be a move the rest of the game cannot find.
  */
+type Role = 'neutral' | 'up' | 'down'
+
+/** What each direction is asking for. */
+const SCORE: Record<Role, (a: Attack) => number> = {
+  neutral: (a) => a.bite,
+  up: (a) => a.lift,
+  down: (a) => a.reach,
+}
+
 export function moveTable(list: Attack[]): Attack[] {
   const src = list.length ? list : [POUNCE]
+
+  /**
+   * ⚠️ AN ATTACK YOU DREW ALWAYS COMES OUT SOMEWHERE, and without this one could sit on a
+   * creature and never be reachable. Slots are won by being best at something, and a drawn attack
+   * competes against parts that are specialists — so a perfectly good hit that is not the
+   * quickest, not the hardest, not the highest and not the longest wins nothing at all. Watched
+   * exactly that: a creature with an arm, a horn, a wing and a drawn hit had six buttons that
+   * produced swipe, gore, buffet and big buffet, and the thing its owner had actually drawn was
+   * unreachable. Reported as "I drew a hit body part but I'm not seeing what that looks like".
+   *
+   * ⚠️ EACH ONE CLAIMS THE DIRECTION IT IS MOST SUITED TO rather than simply outranking
+   * everything. Giving drawn attacks blanket priority would mean one modest slash hid the horn,
+   * the wing and the arm all at once — which punishes drawing MORE. Scored against the best of
+   * this creature in each of the three, so the claim is about what the drawing is FOR.
+   */
+  const top: Record<Role, number> = {
+    neutral: Math.max(...src.map(SCORE.neutral)) || 1,
+    up: Math.max(...src.map(SCORE.up)) || 1,
+    down: Math.max(...src.map(SCORE.down)) || 1,
+  }
+  const roleOf = (a: Attack): Role => {
+    const n = SCORE.neutral(a) / top.neutral
+    const u = SCORE.up(a) / top.up
+    const d = SCORE.down(a) / top.down
+    return u >= d && u >= n ? 'up' : d >= n ? 'down' : 'neutral'
+  }
+  const claimed = new Map<Role, Attack>()
+  for (const a of src) {
+    if (a.from !== 'hit') continue
+    const r = roleOf(a)
+    const had = claimed.get(r)
+    if (!had || SCORE[r](a) > SCORE[r](had)) claimed.set(r, a)
+  }
+  const forRole = (r: Role) => claimed.get(r) ?? pickBy(src, SCORE[r])
+
+  /* ⚠️ the quick neutral stays the fastest thing you have whatever you drew — it is the
+     button you throw out without thinking, and a drawn attack claiming it would take that away */
   const quick = src[0]
-  const hardest = pickBy(src, (a) => a.bite)
-  const up = pickBy(src, (a) => a.lift)
-  const down = pickBy(src, (a) => a.reach)
+  const hardest = forRole('neutral')
+  const up = forRole('up')
+  const down = forRole('down')
   return [
     quick,
     /* a heavy must always cost more than the quick beside it — for a one-part creature the

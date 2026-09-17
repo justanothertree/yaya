@@ -8370,15 +8370,25 @@ a.cz-msg-author:focus-visible {
   --who: #43b0f1;
 }
 
-/* ⚠️ THE DANGEROUS REGION, drawn from the same box the hit test reads. What lights up IS what
-   can hurt you, for exactly the frames it can — which is how somebody learns the range of a move
-   rather than guessing at it. */
+/* ⚠️ THE DANGEROUS REGION, AND IT IS NOT THE ATTACK. It used to be a bordered rectangle with a
+   solid fill, which on a creature that did not move made the box look like the move — "forward
+   attacks at a rectangle in front of you". It is a hint about where the danger is, so it reads as
+   a smear of air rather than a thrown object: no border, soft edges, and faint enough that a
+   drawn attack painted over it is plainly the thing you are looking at. */
 .pet-fight-swipe {
   position: absolute;
-  border-radius: 6px;
   pointer-events: none;
-  background: color-mix(in srgb, var(--who, #fff) 30%, transparent);
-  border: 1px solid color-mix(in srgb, var(--who, #fff) 75%, transparent);
+  border-radius: 50%;
+  background: radial-gradient(
+    closest-side,
+    color-mix(in srgb, var(--who, #fff) 26%, transparent),
+    transparent 85%
+  );
+}
+/* ⚠️ transform, not left/top: the lunge is written into the same transform that centres the
+   creature (see PetFight), so this must not be a second one fighting it. */
+.pet-fight-pet {
+  will-change: transform;
 }
 .pet-fight-swipe.is-p1 {
   --who: #f2a13a;

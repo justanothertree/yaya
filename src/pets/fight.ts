@@ -613,6 +613,33 @@ export function fightStance(f: Fighter): 'idle' | 'alert' | 'run' | 'crouch' | '
   return Math.abs(f.vx) > 0.05 ? 'run' : 'idle'
 }
 
+/**
+ * How far a creature throws itself into a swing, in its own heights.
+ *
+ * ⚠️ THE ATTACK HAD NO MOVEMENT IN IT AT ALL. A swing changed a stance, lit a filter and drew
+ * a box in front of the creature — and a box appearing in front of something that is standing
+ * perfectly still reads as a ranged attack, because that is exactly what it looks like. Reported
+ * as "they all are just forward attacks at a rectangle in front of you".
+ *
+ * ⚠️ PULL BACK, THROW, DRIFT HOME, which is the oldest shape in animation and the reason the
+ * three phases were worth separating in the first place. The wind-up going the WRONG way is what
+ * makes the strike read as fast: there is nothing to compare it to otherwise.
+ */
+export function lungeOf(f: Fighter, moves: Attack[]): number {
+  switch (phaseOf(f, moves)) {
+    case 'windup':
+      return -0.16
+    case 'live':
+      return 0.44
+    case 'recover':
+      return 0.16
+    case 'stunned':
+      return -0.1
+    default:
+      return 0
+  }
+}
+
 /** How fast the creature's own clock runs — the same shape as the playground's effortOf. */
 export const fightEffort = (f: Fighter, still: boolean): number => {
   if (f.swing > 0) return 2.2
