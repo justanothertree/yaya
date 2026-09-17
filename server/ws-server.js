@@ -63,6 +63,16 @@ const carriesArt = (roomId) => isPark(roomId) || isBout(roomId)
 const STEP_BURST = 130
 /** One creature, packed and thinned by the client. Comfortably under MAX_MSG_BYTES. */
 const MAX_LOOK_BYTES = 12000
+/**
+ * Calling a boss out, and putting it away again.
+ *
+ * ⚠️ AN ANNOUNCEMENT, NOT A FIREHOSE. This is the one park message that carries a whole drawing,
+ * so a burst of them is the expensive one — a handful in a few seconds is far more than pressing
+ * a button can produce and far less than a script would want. Where the boss IS goes out on
+ * `bstep`, which is a fistful of numbers and has the walk ceiling.
+ */
+const BOSS_BURST = 6
+const BOSS_WINDOW_MS = 5000
 /** So a roster broadcast cannot grow without limit, and neither can what the room holds. */
 const MAX_PARK_CLIENTS = Number(process.env.MAX_PARK_CLIENTS || 24)
 /**
@@ -1951,6 +1961,123 @@ wss.on('connection', (ws, req) => {
       }
 
       /**
+       * A boss in the park: one person's minion, stood up big for everybody.
+       *
+       * ⚠️ SOMEBODY HAS TO OWN IT, and whoever called it is the only honest candidate. A relay
+       * that ran the boss would be a relay with an opinion about a fight — the thing the bout
+       * handler below goes out of its way never to be — and a boss nobody owned would be a boss
+       * each machine ran its own copy of, which is exactly the "why do our hits disagree" this
+       * exists to stop. So: its caller runs it, everybody else is TOLD about it, and the relay's
+       * whole job is making sure there is one of them.
+       *
+       * ⚠️ ONE PER PARK, ARBITRATED HERE. Two people pressing the button in the same second
+       * cannot both own it, and no amount of client agreement settles that race — the relay is
+       * the only place that can say which press arrived first.
+       *
+       * ⚠️ AND IT IS A DRAWING, so it goes through the same size cap and the same silence a look
+       * does. The relay still never looks inside one.
+       */
+      case 'boss': {
+        if (!isPark(joinedRoomId)) break
+        const st = room.state.get(id) || {}
+        if (!st.vouched) break
+        const now = Date.now()
+        const recent = (st.bossTimes || []).filter((t) => now - t < BOSS_WINDOW_MS)
+        if (recent.length >= BOSS_BURST) {
+          st.bossTimes = recent
+          room.state.set(id, st)
+          break
+        }
+        recent.push(now)
+        st.bossTimes = recent
+        room.state.set(id, st)
+        /* sending no drawing is putting it away, and only whoever called it may */
+        if (msg.art == null) {
+          if (room.boss && room.boss.by === id) {
+            room.boss = null
+            broadcastVouched(room, { type: 'boss', from: id, art: null }, id)
+          }
+          break
+        }
+        if (room.boss && room.boss.by !== id) {
+          send(ws, {
+            type: 'error',
+            code: 'boss-taken',
+            message: 'Somebody else has a boss out already',
+          })
+          /* ⚠️ AND HAND THEM THE ONE THAT IS OUT. The loser of the race has already stood a boss
+             up on their own screen — waiting for permission before showing it would put a round
+             trip in front of every boss anybody ever calls. Sending the real one here is what
+             lets them back their own out and join this fight instead, with nothing to plumb. */
+          send(ws, {
+            type: 'boss',
+            from: room.boss.by,
+            name: room.boss.name || '',
+            art: room.boss.art,
+            ...(room.boss.at || {}),
+          })
+          break
+        }
+        if (typeof msg.art !== 'object') break
+        let bossSize = 0
+        try {
+          bossSize = JSON.stringify(msg.art).length
+        } catch {
+          break
+        }
+        if (bossSize > MAX_LOOK_BYTES) {
+          send(ws, {
+            type: 'error',
+            code: 'look-too-big',
+            message: 'That creature is too detailed to stand up as a boss',
+          })
+          break
+        }
+        const bossName = typeof msg.name === 'string' ? msg.name.trim().slice(0, MAX_NAME_LEN) : ''
+        room.boss = { by: id, name: bossName, art: msg.art, at: null }
+        broadcastVouched(room, { type: 'boss', from: id, name: bossName, art: msg.art }, id)
+        break
+      }
+
+      /**
+       * Where the boss is and how much of it is left, from the machine running it.
+       *
+       * ⚠️ THE SAME SHAPE AS A WALK AND THE SAME SUSPICION OF IT — clamped rather than rejected,
+       * so a bad frame is a boss at the edge of the field rather than a boss that disappears.
+       *
+       * ⚠️ `h` IS A FRACTION ON PURPOSE. What is left of a boss goes out as a share of what it
+       * started with, so the relay needs no idea how much health a boss has — that number can be
+       * retuned on the client, or differ per boss later, without this file ever knowing.
+       */
+      case 'bstep': {
+        if (!isPark(joinedRoomId)) break
+        const st = room.state.get(id) || {}
+        if (!st.vouched) break
+        if (!room.boss || room.boss.by !== id) break
+        const now = Date.now()
+        const recent = (st.bstepTimes || []).filter((t) => now - t < WALK_WINDOW_MS)
+        if (recent.length >= WALK_BURST) {
+          st.bstepTimes = recent
+          room.state.set(id, st)
+          break
+        }
+        recent.push(now)
+        st.bstepTimes = recent
+        room.state.set(id, st)
+        const bnum = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : 0)
+        const bat = {
+          x: Math.max(0, Math.min(1, bnum(msg.x))),
+          y: Math.max(0, Math.min(1, bnum(msg.y))),
+          f: msg.f === -1 ? -1 : 1,
+          a: Math.max(0, Math.min(6, Math.round(bnum(msg.a)))),
+          h: Math.max(0, Math.min(1, bnum(msg.h))),
+        }
+        room.boss.at = bat
+        broadcastVouched(room, { type: 'bstep', from: id, ...bat }, id)
+        break
+      }
+
+      /**
        * One player's buttons for one frame of a bout.
        *
        * ⚠️ THE RELAY DOES NOT SIMULATE ANYTHING, and that is the design rather than a shortcut.
@@ -2037,7 +2164,19 @@ wss.on('connection', (ws, req) => {
               if (!o || !o.vouched || !o.look) continue
               who.push({ from: other, name: o.name || '', art: o.look, ...(o.at || {}) })
             }
-            send(ws, { type: 'park', who })
+            /* ⚠️ WHOEVER ARRIVES LATE IS TOLD, or joining a fight would mean waiting for the
+               boss to be called out again. The roster is already the "here is what is going on"
+               message, and a boss in the field is part of what is going on. */
+            const outNow =
+              room.boss && room.boss.by !== id
+                ? {
+                    from: room.boss.by,
+                    name: room.boss.name || '',
+                    art: room.boss.art,
+                    ...(room.boss.at || {}),
+                  }
+                : null
+            send(ws, { type: 'park', who, boss: outNow })
           })
         break
       }
@@ -2275,6 +2414,10 @@ wss.on('connection', (ws, req) => {
     const room = rooms.get(joinedRoomId)
     if (!room) return
     room.clients.delete(id)
+    /* ⚠️ A BOSS IS RUN BY THE MACHINE THAT CALLED IT, so when that machine goes the boss goes —
+       otherwise the park keeps a boss nobody is stepping and nobody else is allowed to replace.
+       Peers drop their own copy on the `over` broadcast below, which they already handle. */
+    if (room.boss && room.boss.by === id) room.boss = null
     // Prune participant from active round, if present.
     // Policy: disconnecting participants are removed from the round and
     // no longer required (or counted) for finalization.

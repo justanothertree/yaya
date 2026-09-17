@@ -18,7 +18,15 @@ import {
   type Spot,
   type Steer,
 } from './walk'
-import { joinPark, lookFits, SEND_HZ, type Park, type ParkState, type Someone } from './room'
+import {
+  joinPark,
+  lookFits,
+  SEND_HZ,
+  type BossEcho,
+  type Park,
+  type ParkState,
+  type Someone,
+} from './room'
 import { MAX_WANDERERS, wanderAt } from './wander'
 import {
   busy,
@@ -33,7 +41,17 @@ import {
 import { attacksOf, moveTable, petWide, type Attack } from '../pets/attack'
 import { rigOf } from '../pets/rig'
 import { lungeOf } from '../pets/fight'
-import { beaten, bossMoves, bossThink, bossWide, makeBoss, wounded, type Boss } from './boss'
+import {
+  beaten,
+  BOSS,
+  bossMoves,
+  bossThink,
+  bossWide,
+  makeBoss,
+  ringSpot,
+  wounded,
+  type Boss,
+} from './boss'
 
 /**
  * A park you walk into and find people in.
@@ -78,6 +96,94 @@ const KEYS: Record<string, keyof Steer> = {
   S: 'down',
 }
 
+/**
+ * How long a beaten boss stays standing before its owner puts it away.
+ *
+ * ⚠️ IT HAS TO GO BY ITSELF, because a park has ONE boss and whoever called it is not
+ * necessarily still looking at the screen. A boss left dead in a field nobody can replace is a
+ * park with the fight switched off, ended by somebody wandering away from their keyboard.
+ */
+const BOSS_LINGER = 3.5
+
+/**
+ * The lunge of a swing known only as a slot and a clock.
+ *
+ * ⚠️ A PEER'S ATTACK HAS TO READ AS AN ATTACK. What arrives is which move is out and, kept
+ * here, how long it has been out — which is exactly what phaseOf needs, so somebody else's swing
+ * winds up, lunges and recovers on your screen for the same fractions of it as on theirs.
+ */
+const echoLunge = (a: Attack | undefined, gone: number): number =>
+  a
+    ? lungeOf({ swing: Math.max(0.0001, a.span - gone), move: 0, spent: false, stun: 0, hold: 0 }, [
+        a,
+      ])
+    : 0
+
+/**
+ * A boss standing in the field.
+ *
+ * ⚠️ ONE COMPONENT FOR YOURS AND FOR SOMEBODY ELSE'S, because the difference between them is
+ * entirely a question of which machine is doing the arithmetic. Yours is stepped here; theirs
+ * arrives as a place, a facing, a slot and a fraction — and once either has been reduced to those
+ * four things there is nothing left to tell them apart, which is the whole point of the echo.
+ */
+function BossFigure({
+  name,
+  art,
+  at,
+  cam,
+  facing,
+  size,
+  lunge,
+  show,
+  hp,
+  hit,
+  moving,
+}: {
+  name: string
+  art: Drawing
+  at: Spot
+  cam: Spot
+  facing: number
+  size: number
+  lunge: number
+  show: number | undefined
+  /** what is LEFT of it, 0..1 */
+  hp: number
+  hit: boolean
+  moving: boolean
+}) {
+  const on = onScreen(at, cam)
+  const done = hp <= 0
+  return (
+    <span
+      className={'park-one is-boss' + (hit ? ' is-hit' : '') + (done ? ' is-beaten' : '')}
+      style={{
+        left: `${on.x * 100}%`,
+        top: `${on.y * 100}%`,
+        zIndex: depthOf(at),
+        transform: `translate(calc(-50% + ${(facing * lunge * 100).toFixed(1)}%), -100%)`,
+      }}
+    >
+      <PetView
+        art={art}
+        size={size}
+        facing={facing}
+        energy={done ? 0 : moving ? 1.3 : 0.5}
+        show={show}
+        label={`${name}, the boss`}
+      />
+      {/* ⚠️ what is LEFT of it, not what it has taken. A boss has a pool rather than the three
+          lives a scrap gives you, and a bar is the only honest way to say how much of a thing that
+          big is still coming — and with two people hitting it, the only way to agree on it. */}
+      <span className="park-life" aria-label={`${Math.round(hp * 100)}% left`}>
+        <i style={{ width: `${hp * 100}%` }} />
+      </span>
+      <span className="park-name">{done ? `${name} — beaten` : name}</span>
+    </span>
+  )
+}
+
 /** The one park, until there is a reason for a second. */
 export const PARK_ROOM = 'park'
 
@@ -87,10 +193,17 @@ function MiniMap({
   me,
   others,
   strolling,
+  boss,
 }: {
   cam: Spot
   me: Spot
   others: Array<Spot & { id: string }>
+  /**
+   * ⚠️ AND SO DOES THE BOSS, for the same reason the wanderers are on here: a fight you cannot
+   * find is a fight you are not in. The Join button is the fast way over; this is the one that
+   * shows you it is happening at all, and which way to walk if you would rather arrive on foot.
+   */
+  boss: Spot | null
   /**
    * ⚠️ THE WANDERERS GO ON THE MAP OR THEY MIGHT AS WELL NOT EXIST. The park is nine screens and
    * they roam all of it, so the odds of one being in your window at any moment are small — which
@@ -111,6 +224,12 @@ function MiniMap({
           height: `${VIEW.h * 100}%`,
         }}
       />
+      {boss && (
+        <span
+          className="park-map-dot is-boss"
+          style={{ left: `${boss.x * 100}%`, top: `${boss.y * 100}%` }}
+        />
+      )}
       {strolling.map((w, i) => (
         <span
           key={'s' + i}
@@ -166,21 +285,41 @@ export function ParkRoom({
   const [roster, setRoster] = useState(0)
 
   const mine = pets[pick] ?? pets[0]
-  const tooBig = useMemo(() => (mine ? !lookFits(mine.art) : false), [mine])
+  /**
+   * ⚠️ THE DRAWING, NOT THE WRAPPER AROUND IT, is what the socket depends on. The effect below
+   * owns the connection and uses only the art and the name — so depending on the object that
+   * holds them makes the park reconnect every time somebody upstream rebuilds that object, which
+   * is a bug this has already had once. GamesRoom memoises its side; this is the other half, and
+   * it is the half that cannot be broken from outside.
+   */
+  const myArt = mine?.art
+  const tooBig = useMemo(() => (myArt ? !lookFits(myArt) : false), [myArt])
 
   /* ⚠️ read once per creature, never per frame — rigOf walks every stroke */
   const myMoves = useMemo<Attack[]>(
-    () => (mine ? moveTable(attacksOf(rigOf(mine.art))) : []),
-    [mine],
+    () => (myArt ? moveTable(attacksOf(rigOf(myArt))) : []),
+    [myArt],
   )
   const boss = useRef<Boss | null>(null)
   const [bossShown, setBossShown] = useState<Boss | null>(null)
   const [bossPick, setBossPick] = useState(0)
-  const myWide = useMemo(() => (mine ? petWide(mine.art) : 0.2), [mine])
+  /** when your boss was beaten, so it can take itself away — see BOSS_LINGER */
+  const bossDoneAt = useRef(0)
+  /**
+   * What somebody else's boss can throw, worked out once from the drawing they sent.
+   *
+   * ⚠️ THE SAME BARGAIN AS A PEER'S MOVE TABLE. Its drawing arrived when it was called out, so
+   * its reach, timing and bite are already knowable here — and rigOf walks every stroke, which is
+   * not a thing to do sixty times a second for a creature that has not changed.
+   */
+  const echoKit = useRef<{ by: string; moves: Attack[]; wide: number } | null>(null)
+  const myWide = useMemo(() => (myArt ? petWide(myArt) : 0.2), [myArt])
 
-  const bossArt = pets[bossPick] ?? pets[0]
+  /* ⚠️ the drawing again, not the wrapper — this one feeds the animation loop's deps, and a
+     loop rebuilt every render is a loop whose clock starts again every render */
+  const bossArt = (pets[bossPick] ?? pets[0])?.art
   const bossKit = useMemo(
-    () => (bossArt ? { moves: bossMoves(bossArt.art), wide: bossWide(bossArt.art) } : null),
+    () => (bossArt ? { moves: bossMoves(bossArt), wide: bossWide(bossArt) } : null),
     [bossArt],
   )
 
@@ -192,7 +331,7 @@ export function ParkRoom({
   const wides = useRef<number[]>([])
   wides.current = strollPets.map((p) => petWide(p.art))
 
-  const state = useRef<ParkState>({ me: null, here: new Map(), trouble: null })
+  const state = useRef<ParkState>({ me: null, here: new Map(), boss: null, trouble: null })
   const park = useRef<Park | null>(null)
   const you = useRef<Striker>(restingStriker(restingWalker()))
   const held = useRef<Steer>({ ...STILL })
@@ -270,8 +409,8 @@ export function ParkRoom({
    * companion follows, and it matters more here because arriving is visible to everybody else.
    */
   useEffect(() => {
-    if (!walking || !mine) return
-    state.current = { me: null, here: new Map(), trouble: null }
+    if (!walking || !myArt) return
+    state.current = { me: null, here: new Map(), boss: null, trouble: null }
     /* ⚠️ somewhere in the middle of the park rather than the middle of a screen, so two people
        arriving separately do not always land on top of each other */
     you.current = restingStriker(
@@ -280,7 +419,7 @@ export function ParkRoom({
     cam.current = camWant(you.current)
     setCamAt(cam.current)
     const bump = () => setRoster((n) => n + 1)
-    const p = joinPark(PARK_ROOM, { name: myName, art: mine.art }, state.current, bump)
+    const p = joinPark(PARK_ROOM, { name: myName, art: myArt }, state.current, bump)
     if (!p) {
       state.current.trouble = 'The park is not switched on in this build'
       bump()
@@ -291,9 +430,12 @@ export function ParkRoom({
     return () => {
       p.leave()
       park.current = null
-      state.current = { me: null, here: new Map(), trouble: null }
+      state.current = { me: null, here: new Map(), boss: null, trouble: null }
+      /* the relay drops your boss when your socket goes; this is the same thing on this side */
+      boss.current = null
+      setBossShown(null)
     }
-  }, [walking, mine, myName])
+  }, [walking, myArt, myName])
 
   /* ⚠️ one per wanderer, rebuilt when the roster of them changes — an index into this must
      always mean the same creature as the same index into strollPets */
@@ -396,18 +538,47 @@ export function ParkRoom({
        * could not — no extra speed, no attack from nowhere, no turning mid-swing. What it has
        * over you is reach and health, both of which you can see.
        */
+      /**
+       * ⚠️ THE RELAY SAYS WHOSE BOSS IT IS, AND IT SAYS SO AFTER THE FACT. Pressing the button
+       * stands one up on this screen immediately, because waiting a round trip for permission
+       * would put the network in front of every boss anybody ever calls. If somebody else won
+       * that race the relay hands us theirs — and this is where ours steps aside, which is the
+       * whole of the arbitration on this side.
+       */
+      if (boss.current && state.current.boss) {
+        boss.current = null
+        setBossShown(null)
+        bossDoneAt.current = 0
+      }
+
       const bs = boss.current
       if (bs && bossKit) {
         /* ⚠️ a local, not the ref: everything below reads what the line above it produced, and a
            ref that might have been set to null cannot be narrowed by a compiler reading in order */
         let cur: Boss = { ...bs, think: bs.think + dt }
-        const plan = bossThink(cur, you.current, bossKit.moves)
+        /**
+         * ⚠️ IT FIGHTS WHOEVER IS NEAREST, NOT WHOEVER CALLED IT. A boss that only ever chased
+         * its owner walks away from the friend who just joined and swings at somebody a screen
+         * behind them — which turns a fight two people are in into two people taking turns being
+         * ignored. Everybody's position is already here to draw them with; picking the closest is
+         * the whole cost of making the boss agree that this is one fight.
+         */
+        let target: Spot = you.current
+        let near = (you.current.x - cur.x) ** 2 + (you.current.y - cur.y) ** 2
+        for (const o of state.current.here.values()) {
+          const d = (o.shown.x - cur.x) ** 2 + (o.shown.y - cur.y) ** 2
+          if (d < near) {
+            near = d
+            target = o.shown
+          }
+        }
+        const plan = bossThink(cur, target, bossKit.moves)
         const struckBoss = stepStrike(cur, plan.hit, bossKit.moves, dt)
         const bSteer = busy(struckBoss) ? STILL : { ...STILL, ...plan.steer }
         const walked = stepWalker(struckBoss, bSteer, struckBoss.hold > 0 ? 0 : dt)
         /* ⚠️ it turns to face you when it is not committed, because a creature that only faced
            the way it walked would back away and then swing at nothing */
-        const facing = struckBoss.swing > 0 ? cur.facing : you.current.x < cur.x ? -1 : 1
+        const facing = struckBoss.swing > 0 ? cur.facing : target.x < cur.x ? -1 : 1
         /* ⚠️ cur first: stepStrike and stepWalker each return only the part they own, so
            spreading them alone would quietly drop the name, the art and the health */
         cur = { ...cur, ...struckBoss, ...walked, facing }
@@ -422,14 +593,31 @@ export function ParkRoom({
           }
         }
 
-        /* and mine against it */
-        if (area0 && mv0 && !beaten(cur) && inArea(cur, bossKit.wide, area0, cur.scale)) {
+        /* and mine against it — one swing is one hit, so a swipe that already caught a
+           wanderer does not also land on the boss */
+        if (
+          area0 &&
+          mv0 &&
+          !you.current.spent &&
+          !beaten(cur) &&
+          inArea(cur, bossKit.wide, area0, cur.scale)
+        ) {
           cur = wounded(cur, mv0)
           you.current = { ...you.current, spent: true, hold: 0.06 + mv0.bite * 0.004 }
         }
 
-        boss.current = cur
-        setBossShown(cur)
+        /* ⚠️ A BEATEN BOSS TAKES ITSELF AWAY. One park has one boss, and whoever called it is
+           not necessarily still at the keyboard — see BOSS_LINGER. */
+        if (beaten(cur) && !bossDoneAt.current) bossDoneAt.current = now / 1000
+        if (bossDoneAt.current && now / 1000 - bossDoneAt.current > BOSS_LINGER) {
+          boss.current = null
+          setBossShown(null)
+          bossDoneAt.current = 0
+          park.current?.callBoss('', null)
+        } else {
+          boss.current = cur
+          setBossShown(cur)
+        }
       }
 
       /**
@@ -442,13 +630,71 @@ export function ParkRoom({
       for (const o of state.current.here.values()) {
         if (o.swing <= 0) continue
         o.swingFor += dt
+        if (o.spent) continue
         const list = foeMoves.current.get(o.id)
         const theirs = list?.[o.swing - 1]
         if (!theirs) continue
         const area = strikeArea(o.shown, o.facing, theirs, o.swingFor)
-        if (!area || you.current.stun > 0) continue
+        if (!area) continue
+        /**
+         * ⚠️ AND WHOEVER CALLED THE BOSS DECIDES WHAT IT TAKES. Everybody's swing is tested
+         * against the boss on the one machine running it, using the attacker's OWN drawing — so
+         * a friend's hit is worth exactly what their creature's move is worth, and no damage
+         * number ever crosses the wire for anybody to make up. It costs them the lag before the
+         * bar moves, and buys one health bar that both of you believe.
+         */
+        const b = boss.current
+        if (b && bossKit && !beaten(b) && inArea(b, bossKit.wide, area, b.scale)) {
+          boss.current = wounded(b, theirs)
+          setBossShown(boss.current)
+          o.spent = true
+          continue
+        }
+        if (you.current.stun > 0) continue
         if (!inArea(you.current, myWide, area)) continue
         you.current = shoved(you.current, o.shown, theirs)
+        o.spent = true
+      }
+
+      /**
+       * Somebody else's boss: eased into place, and dangerous.
+       *
+       * ⚠️ IT HITS ME HERE, THE SAME WAY EVERYBODY ELSE DOES. The machine running the boss does
+       * not get to decide when it has hit you, for exactly the reason a peer does not. What
+       * arrives is where it is and which move is out; whether that reached you is answered on
+       * your own screen, against your own position, out of its own drawing's reach.
+       */
+      const tb = state.current.boss
+      if (tb) {
+        if (echoKit.current?.by !== tb.by)
+          echoKit.current = { by: tb.by, moves: bossMoves(tb.art), wide: bossWide(tb.art) }
+        const kit = echoKit.current
+        tb.shown = farFrom(tb.shown, tb.at)
+          ? tb.at
+          : easeTo(tb.shown, tb.at, dt, stillRef.current ? 60 : 14)
+        const theirMove = tb.swing > 0 ? kit.moves[tb.swing - 1] : undefined
+        if (theirMove) {
+          tb.swingFor += dt
+          if (!tb.spent) {
+            const area = strikeArea(tb.shown, tb.facing, theirMove, tb.swingFor, BOSS.scale)
+            if (area && you.current.stun <= 0 && inArea(you.current, myWide, area)) {
+              you.current = shoved(you.current, tb.shown, theirMove)
+              tb.spent = true
+            }
+          }
+        }
+        /* ⚠️ MY HIT ON IT IS FELT HERE AND COUNTED THERE. The freeze lands on this frame so the
+           swing has weight; the bar moves when the machine running the boss says so, a fraction of
+           a second later. Taking the health off locally as well would be showing a number that is
+           about to be contradicted by the only one that counts. */
+        if (
+          area0 &&
+          mv0 &&
+          !you.current.spent &&
+          tb.hp > 0 &&
+          inArea(tb.shown, kit.wide, area0, BOSS.scale)
+        )
+          you.current = { ...you.current, spent: true, hold: 0.06 + mv0.bite * 0.004 }
       }
 
       /* a nudge decays back to nothing, so the path stays the truth */
@@ -488,6 +734,18 @@ export function ParkRoom({
       if (now - sent > 1000 / SEND_HZ) {
         sent = now
         park.current?.send(you.current, you.current.swing > 0 ? you.current.move + 1 : 0)
+        /* ⚠️ THE BOSS GOES OUT AT THE SAME RATE AS A WALK AND NO FASTER — it is one more
+           creature moving in the park, and fifteen a second is what everything else in here
+           costs. What is left of it rides along as a fraction, so the relay never learns how
+           much health a boss has. */
+        const mineOut = boss.current
+        if (mineOut)
+          park.current?.stepBoss(
+            mineOut,
+            mineOut.facing,
+            mineOut.swing > 0 ? mineOut.move + 1 : 0,
+            mineOut.lifeMax > 0 ? mineOut.life / mineOut.lifeMax : 0,
+          )
       }
       raf = requestAnimationFrame(tick)
     }
@@ -537,6 +795,12 @@ export function ParkRoom({
     if (!foeMoves.current.has(o.id)) foeMoves.current.set(o.id, moveTable(attacksOf(rigOf(o.art))))
   /* roster is read so this recomputes when somebody joins or leaves — see the note on the loop */
   void roster
+  /* somebody else's boss, which this screen echoes rather than runs — see BossEcho */
+  const theirBoss: BossEcho | null = state.current.boss
+  const theirMove =
+    theirBoss && echoKit.current?.by === theirBoss.by && theirBoss.swing > 0
+      ? echoKit.current.moves[theirBoss.swing - 1]
+      : undefined
   const crowd = others.length + (walking ? 1 : 0)
 
   if (!pets.length) return null
@@ -565,13 +829,15 @@ export function ParkRoom({
             </select>
           </label>
         )}
-        {walking && pets.length > 0 && (
+        {walking && pets.length > 0 && !theirBoss && (
           <button
             className="btn"
             onClick={() => {
               if (boss.current) {
                 boss.current = null
                 setBossShown(null)
+                bossDoneAt.current = 0
+                park.current?.callBoss('', null)
                 return
               }
               const art = pets[bossPick] ?? pets[0]
@@ -581,16 +847,47 @@ export function ParkRoom({
                 x: Math.max(0.05, Math.min(0.95, you.current.x + 0.1)),
                 y: you.current.y,
               })
+              bossDoneAt.current = 0
               setBossShown(boss.current)
+              /* ⚠️ AND EVERYBODY ELSE IS TOLD AT ONCE. A boss too detailed to send is refused by
+                 the relay, which answers with the reason — the same door a look goes through. */
+              if (lookFits(art.art)) park.current?.callBoss(art.name, art.art)
+              else
+                state.current.trouble = `${art.name} is too detailed to stand up where everybody can see — something with fewer strokes will.`
             }}
             title={
-              bossShown ? 'Send it away' : 'Stand one of your minions up as something to fight'
+              bossShown
+                ? 'Send it away'
+                : 'Stand one of your minions up for everybody in the park to fight'
             }
           >
             {bossShown ? '✕ Boss away' : '☠ Call a boss'}
           </button>
         )}
-        {walking && pets.length > 1 && !bossShown && (
+        {/* ⚠️ JOINING IS A BUTTON, NOT A WALK. The park is nine screens; a boss is in one of
+            them, and a fight you have to find is a fight you mostly miss — see ringSpot. */}
+        {walking && theirBoss && (
+          <button
+            className="btn"
+            onClick={() => {
+              const b = state.current.boss
+              if (!b) return
+              const spot = ringSpot(
+                b.shown,
+                others.length,
+                (echoKit.current?.by === b.by ? echoKit.current.moves[0]?.reach : 0) || 1,
+              )
+              you.current = { ...you.current, x: spot.x, y: spot.y, vx: 0, vy: 0 }
+              setShownYou(you.current)
+              cam.current = camWant(you.current)
+              setCamAt(cam.current)
+            }}
+            title={`Stand next to ${theirBoss.name}`}
+          >
+            ⚔ Join the fight
+          </button>
+        )}
+        {walking && pets.length > 1 && !bossShown && !theirBoss && (
           <label className="park-seat">
             <span className="sr-only">Which minion to fight</span>
             <select value={bossPick} onChange={(e) => setBossPick(Number(e.target.value))}>
@@ -757,43 +1054,39 @@ export function ParkRoom({
                 )
               })}
           {walking && bossShown && (
-            <span
-              className={
-                'park-one is-boss' +
-                (bossShown.hold > 0 ? ' is-hit' : '') +
-                (beaten(bossShown) ? ' is-beaten' : '')
+            <BossFigure
+              name={bossShown.name}
+              art={bossShown.art}
+              at={bossShown}
+              cam={camAt}
+              facing={bossShown.facing}
+              size={petSize(bossShown.art) * bossShown.scale}
+              lunge={lungeOf(bossShown, bossKit?.moves ?? [])}
+              show={bossShown.swing > 0 ? (bossKit?.moves ?? [])[bossShown.move]?.layer : undefined}
+              hp={bossShown.lifeMax > 0 ? bossShown.life / bossShown.lifeMax : 0}
+              hit={bossShown.hold > 0}
+              moving={bossShown.moving}
+            />
+          )}
+          {walking && theirBoss && (
+            <BossFigure
+              name={theirBoss.name}
+              art={theirBoss.art}
+              at={theirBoss.shown}
+              cam={camAt}
+              facing={theirBoss.facing}
+              size={petSize(theirBoss.art) * BOSS.scale}
+              lunge={echoLunge(theirMove, theirBoss.swingFor)}
+              show={theirMove?.layer}
+              hp={theirBoss.hp}
+              hit={false}
+              /* it is walking if where it says it is has got ahead of where it is drawn */
+              moving={
+                Math.abs(theirBoss.at.x - theirBoss.shown.x) +
+                  Math.abs(theirBoss.at.y - theirBoss.shown.y) >
+                0.0006
               }
-              style={{
-                left: `${onScreen(bossShown, camAt).x * 100}%`,
-                top: `${onScreen(bossShown, camAt).y * 100}%`,
-                zIndex: depthOf(bossShown),
-                transform: `translate(calc(-50% + ${(
-                  bossShown.facing *
-                  lungeOf(bossShown, bossKit?.moves ?? []) *
-                  100
-                ).toFixed(1)}%), -100%)`,
-              }}
-            >
-              <PetView
-                art={bossShown.art}
-                size={petSize(bossShown.art) * bossShown.scale}
-                facing={bossShown.facing}
-                energy={beaten(bossShown) ? 0 : bossShown.moving ? 1.3 : 0.5}
-                show={
-                  bossShown.swing > 0 ? (bossKit?.moves ?? [])[bossShown.move]?.layer : undefined
-                }
-                label={`${bossShown.name}, the boss`}
-              />
-              {/* ⚠️ what is LEFT of it, not what it has taken. A boss has a pool rather than the
-                  three lives a scrap gives you, and a bar is the only honest way to say how much
-                  of a thing that big is still coming. */}
-              <span className="park-life" aria-label={`${Math.round(bossShown.life)} left`}>
-                <i style={{ width: `${(bossShown.life / bossShown.lifeMax) * 100}%` }} />
-              </span>
-              <span className="park-name">
-                {beaten(bossShown) ? `${bossShown.name} — beaten` : bossShown.name}
-              </span>
-            </span>
+            />
           )}
           {!walking && (
             <div className="park-empty">
@@ -811,6 +1104,7 @@ export function ParkRoom({
             me={shownYou}
             others={others.map((o) => ({ id: o.id, x: o.shown.x, y: o.shown.y }))}
             strolling={strolling}
+            boss={bossShown ?? theirBoss?.shown ?? null}
           />
         )}
       </div>
@@ -846,8 +1140,9 @@ export function ParkRoom({
           <> The faded ones are your own other minions having a wander — only you see those.</>
         )}{' '}
         <strong>F</strong> and <strong>G</strong> swing, the same six moves your creature has
-        anywhere else. Call a boss and one of your own minions stands up big with a health bar — it
-        is the same drawing, which is the point.
+        anywhere else. Call a boss and one of your own minions stands up big with a health bar,
+        where <em>everybody</em> in the park can see it and hit it — one boss at a time, run by
+        whoever called it, and it goes when they do.
       </p>
     </div>
   )

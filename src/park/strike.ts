@@ -67,8 +67,8 @@ export const restingStriker = (w: Walker): Striker => ({
  * vertical is not. These two functions are the only place that conversion happens.
  */
 const ASPECT = 16 / 10
-const across = (screenHeights: number) => (screenHeights / ASPECT) * VIEW.w
-const down = (screenHeights: number) => screenHeights * VIEW.h
+export const across = (screenHeights: number) => (screenHeights / ASPECT) * VIEW.w
+export const down = (screenHeights: number) => screenHeights * VIEW.h
 
 /**
  * How tall a creature stands here, as a fraction of the field's height.

@@ -2,7 +2,7 @@ import type { Drawing } from '../draw/strokes'
 import { attacksOf, moveTable, petWide, type Attack } from '../pets/attack'
 import { rigOf } from '../pets/rig'
 import { restingWalker, VIEW, type Spot } from './walk'
-import { footOf, PARK_TALL, restingStriker, type StrikeInput, type Striker } from './strike'
+import { across, footOf, PARK_TALL, restingStriker, type StrikeInput, type Striker } from './strike'
 
 /**
  * A boss.
@@ -127,6 +127,32 @@ export function bossThink(
       down: heavy,
     },
   }
+}
+
+/**
+ * Somewhere to stand when you are joining a fight that is already going on.
+ *
+ * ⚠️ BECAUSE THE PARK IS NINE SCREENS AND A BOSS IS IN ONE OF THEM. A shared boss that you
+ * have to find is a shared boss you mostly miss — by the time you have walked three screens the
+ * fight is over, which is the difference between "we fought that together" and "you told me about
+ * it". So joining is a button, and the button puts you at arm's length from the thing.
+ *
+ * ⚠️ AT THE EDGE OF ITS REACH, NOT ON TOP OF IT. Landing inside a boss's swing would mean
+ * being hit for pressing join, so this is just outside what its quick attack covers — close
+ * enough to be in the fight, far enough that the first move is yours.
+ */
+export function ringSpot(b: Spot, n: number, reach = 1): Spot {
+  /* ⚠️ ITS OWN REACH, NOT A GUESS AT ONE. How far a boss can hit is read out of its drawing
+     like everything else about it, and it varies by nearly half between creatures — a fixed
+     distance put the joiner INSIDE the swing of a long-armed one, measured at 0.082 against a
+     reach of 0.098. The quarter-height on top is the step you get to take before it does. */
+  const out = across((reach + 0.25) * PARK_TALL * BOSS.scale)
+  const side = n % 2 === 0 ? -1 : 1
+  /* everybody after the first two stands a little further back, so a crowd is a crowd rather
+     than four creatures in the same square foot */
+  const back = Math.floor(n / 2) * out * 0.45
+  const clamp = (v: number) => Math.max(0.02, Math.min(0.98, v))
+  return { x: clamp(b.x + side * (out + back)), y: clamp(b.y + (n % 4 < 2 ? 0.012 : -0.012)) }
 }
 
 /** A blow landed on it. */

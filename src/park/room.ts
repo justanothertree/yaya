@@ -25,14 +25,20 @@ import type { Spot, Walker } from './walk'
 type Out =
   | { type: 'look'; name: string; art: unknown }
   | { type: 'walk'; x: number; y: number; f: number; m: number; a: number }
+  /* calling a boss out, or — with a null drawing — putting it away */
+  | { type: 'boss'; name: string; art: unknown | null }
+  /* where it is and what is left of it, from the one machine running it */
+  | { type: 'bstep'; x: number; y: number; f: number; a: number; h: number }
 
 /** What arrives. */
 type In =
   | { type: 'welcome'; id: string }
   | { type: 'presence'; count: number }
-  | { type: 'park'; who?: unknown[] }
+  | { type: 'park'; who?: unknown[]; boss?: unknown }
   | { type: 'look'; from?: string; name?: string; art?: unknown }
   | { type: 'walk'; from?: string; x?: number; y?: number; f?: number; m?: number; a?: number }
+  | { type: 'boss'; from?: string; name?: string; art?: unknown }
+  | { type: 'bstep'; from?: string; x?: number; y?: number; f?: number; a?: number; h?: number }
   /* ⚠️ the relay already says this when anybody leaves any room, so a departure needs no new
      message on the server — `over` with a `from` is "that peer is gone", whatever ended. */
   | { type: 'over'; from?: string }
@@ -58,12 +64,56 @@ export type Someone = {
   swing: number
   /** how long their current swing has been out, kept locally so it can be animated */
   swingFor: number
+  /**
+   * True once this swing of theirs has already landed on something here.
+   *
+   * ⚠️ ONE SWING IS ONE HIT, the same rule a local striker follows. Their slot stays set for
+   * the whole span of the attack, so without this the live window is a separate hit on every
+   * frame of itself: measured at five frames for a quick attack and seven for a heavy, which is
+   * a friend's swing landing for five to seven times what their creature's move is worth.
+   */
+  spent: boolean
+}
+
+/**
+ * Somebody else's boss.
+ *
+ * ⚠️ AN ECHO, NOT A SIMULATION. The machine that called the boss out is the only one stepping
+ * it; everybody else receives where it is, which way it is looking, which move is out and how much
+ * of it is left, and draws that. Two machines both running the same boss from the same drawing
+ * would drift apart within seconds — the park is not lockstep and does not want to be, because
+ * a place you walk into cannot make everybody wait for the slowest person in it — and the first
+ * thing anybody would notice is their hits disagreeing about when it died.
+ *
+ * ⚠️ WHICH MOVE IS OUT IS STILL ONLY A SLOT, read against the boss's own drawing exactly as a
+ * person's swing is. So a remote boss's attacks reach as far and hurt as much on your screen as on
+ * the screen running it, and none of that has to cross the wire.
+ */
+export type BossEcho = {
+  /** the peer running it; when they leave, it leaves */
+  by: string
+  name: string
+  art: Drawing
+  at: Spot
+  /** where it is drawn, which lags the truth on purpose — see easeTo */
+  shown: Spot
+  facing: number
+  /** its move table's slot plus one, 0 for none */
+  swing: number
+  /** how long that swing has been out, kept here so it can be animated and aimed */
+  swingFor: number
+  /** true once this swing of its has landed on me, so one swing is one hit */
+  spent: boolean
+  /** what is LEFT of it, 0..1 */
+  hp: number
 }
 
 export type ParkState = {
   /** null until the relay says hello back */
   me: string | null
   here: Map<string, Someone>
+  /** the one boss in the park, when it is somebody else's — your own lives in the room */
+  boss: BossEcho | null
   /** what the relay last said, so a room can explain itself rather than just sitting there */
   trouble: string | null
 }
@@ -113,11 +163,41 @@ function readSomeone(v: unknown): Someone | null {
     moving: false,
     swing: 0,
     swingFor: 0,
+    spent: false,
+  }
+}
+
+/** A boss from the wire, or null. The same door, and the same suspicion. */
+function readBoss(v: unknown): BossEcho | null {
+  if (!v || typeof v !== 'object') return null
+  const o = v as Record<string, unknown>
+  const by = str(o.from, 24)
+  if (!by) return null
+  const art = readDrawing(o.art)
+  if (!art || !art.strokes.length) return null
+  const at = spot(o as { x?: unknown; y?: unknown })
+  return {
+    by,
+    name: str(o.name, 40) || 'A boss',
+    art,
+    at,
+    shown: at,
+    facing: o.f === -1 ? -1 : 1,
+    swing: 0,
+    swingFor: 0,
+    spent: false,
+    /* ⚠️ a boss with no health reported yet has not been stepped at all, which is a FULL one —
+       reading a missing number as zero would draw it already beaten the moment it arrived */
+    hp: typeof o.h === 'number' && Number.isFinite(o.h) ? Math.max(0, Math.min(1, o.h)) : 1,
   }
 }
 
 export type Park = {
   send: (w: Walker, swing: number) => void
+  /** stand one of your minions up for everybody, or pass null to put it away */
+  callBoss: (name: string, art: Drawing | null) => void
+  /** where your boss is and what is left of it, at the same rate as a walk */
+  stepBoss: (at: Spot, facing: number, swing: number, hp: number) => void
   leave: () => void
 }
 
@@ -178,9 +258,46 @@ export function joinPark(
               const one = readSomeone(entry)
               if (one) state.here.set(one.id, one)
             }
+          /* somebody already had a boss out when we walked in — see the relay's roster note */
+          state.boss = readBoss(msg.boss)
           state.trouble = null
           net.send({ type: 'look', name: me.name, art: packed })
           onChange()
+          break
+        }
+        case 'boss': {
+          const by = str(msg.from, 24)
+          if (!by) break
+          /* no drawing means it has been put away */
+          if (msg.art == null) {
+            if (state.boss?.by === by) {
+              state.boss = null
+              onChange()
+            }
+            break
+          }
+          const one = readBoss(msg)
+          if (!one) break
+          state.boss = one
+          onChange()
+          break
+        }
+        case 'bstep': {
+          const b = state.boss
+          if (!b || b.by !== str(msg.from, 24)) break
+          b.at = spot(msg)
+          b.facing = msg.f === -1 ? -1 : 1
+          const a = typeof msg.a === 'number' && Number.isFinite(msg.a) ? Math.round(msg.a) : 0
+          const slot = Math.max(0, Math.min(6, a))
+          /* a NEW swing restarts the clock; the same one carrying on does not — as for a peer */
+          if (slot !== b.swing) {
+            b.swingFor = 0
+            b.spent = false
+          }
+          b.swing = slot
+          if (typeof msg.h === 'number' && Number.isFinite(msg.h))
+            b.hp = Math.max(0, Math.min(1, msg.h))
+          /* deliberately no onChange — the loop reads this every frame, the same as a walk */
           break
         }
         case 'look': {
@@ -209,14 +326,29 @@ export function joinPark(
              attack would appear to start again on every packet that arrived during it */
           const a = typeof msg.a === 'number' && Number.isFinite(msg.a) ? Math.round(msg.a) : 0
           const slot = Math.max(0, Math.min(6, a))
-          if (slot !== who.swing) who.swingFor = 0
+          if (slot !== who.swing) {
+            who.swingFor = 0
+            /* ⚠️ AND THE NEW SWING HAS NOT LANDED YET. Forgetting this line means one swing is one
+               hit FOREVER rather than one hit per swing: the flag is set by the first blow that
+               connects and never cleared, so a peer lands exactly one hit for as long as they
+               stand in the park. Found by swinging twelve times at a boss and taking nothing off
+               it. */
+            who.spent = false
+          }
           who.swing = slot
           /* deliberately no onChange — the loop reads this map every frame */
           break
         }
         case 'over': {
           const id = str(msg.from, 24)
-          if (id && state.here.delete(id)) onChange()
+          let changed = id ? state.here.delete(id) : false
+          /* ⚠️ a boss belongs to the machine running it. Nobody else is stepping it, so when
+             they go this is not an abandoned boss, it is no boss. */
+          if (id && state.boss?.by === id) {
+            state.boss = null
+            changed = true
+          }
+          if (changed) onChange()
           break
         }
         case 'error': {
@@ -233,6 +365,12 @@ export function joinPark(
   return {
     send: (w, swing) => {
       net.send({ type: 'walk', x: w.x, y: w.y, f: w.facing, m: w.moving ? 1 : 0, a: swing })
+    },
+    callBoss: (name, art) => {
+      net.send({ type: 'boss', name, art: art ? packLook(art) : null })
+    },
+    stepBoss: (at, facing, swing, hp) => {
+      net.send({ type: 'bstep', x: at.x, y: at.y, f: facing, a: swing, h: hp })
     },
     leave: () => {
       stop = true

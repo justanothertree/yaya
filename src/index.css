@@ -8221,6 +8221,15 @@ a.cz-msg-author:focus-visible {
   margin: -2px 0 0 -2px;
   background: color-mix(in srgb, #7fc46a 85%, transparent);
 }
+/* ⚠️ THE BOSS IS ON THE MAP because it is the one thing in the park worth walking towards.
+   Without it a shared fight is something that happens on somebody else's screen. */
+.park-map-dot.is-boss {
+  width: 9px;
+  height: 9px;
+  margin: -5px 0 0 -5px;
+  background: #e8534e;
+  box-shadow: 0 0 0 2px color-mix(in srgb, #e8534e 30%, transparent);
+}
 .park-map-dot.is-me {
   width: 7px;
   height: 7px;
@@ -8277,6 +8286,9 @@ a.cz-msg-author:focus-visible {
   display: block;
   height: 100%;
   background: #e8534e;
+  /* ⚠️ somebody else's boss reports its health fifteen times a second, so the bar arrives in
+     steps. A step shorter than the gap between them reads as a bar draining rather than ticking. */
+  transition: width 90ms linear;
 }
 .park-one.is-beaten .park-life {
   display: none;

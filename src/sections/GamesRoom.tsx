@@ -1,4 +1,4 @@
-import { Suspense, useCallback, useEffect, useState, useSyncExternalStore } from 'react'
+import { Suspense, useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react'
 import { lazyRetry } from '../lazyRetry'
 import { PetView } from '../pets/PetView'
 import { pets as myPets, subscribePets } from '../pets/pets'
@@ -78,6 +78,21 @@ export function GamesRoom({
   const [game, setGame] = useState<GameId | null>(() => wantedFromHash())
   const [live, setLive] = useState(false)
   const mine = useSyncExternalStore(subscribePets, myPets, myPets)
+  /**
+   * The creatures, as the games want them, and the SAME objects every render.
+   *
+   * ⚠️ THIS WAS `mine.map(...)` AT EACH CALL SITE, AND IT COST THE PARK ITS CONNECTION. A new
+   * array of new objects every render means the park's `mine` is a new object every render, which
+   * means its join effect — which owns the socket — tears down and rebuilds on every render of
+   * this component. Measured against a live relay: one leave and one rejoin every four seconds,
+   * with no position sent in between. Everybody else sees you flicker in and out, and anything
+   * the relay holds FOR you goes with each drop, which is how a shared boss lasted four seconds.
+   *
+   * ⚠️ AND IT IS THE SHAPE CLAUDE.md §7 NAMES: an effect whose dependency is rebuilt every
+   * render tears down and rebuilds whatever it owns. The store's own array is stable; only this
+   * mapping was not.
+   */
+  const playable = useMemo(() => mine.map((p) => ({ name: p.name, art: p.art })), [mine])
 
   /** Snake's relay connection, mirrored here as well as raised — see the note on Back below. */
   const liveChange = useCallback(
@@ -147,7 +162,7 @@ export function GamesRoom({
       <>
         <GamesBar onBack={() => setGame(null)} />
         <Suspense fallback={<div aria-busy>Loading the playground…</div>}>
-          <PetPlay pets={mine.map((p) => ({ name: p.name, art: p.art }))} />
+          <PetPlay pets={playable} />
         </Suspense>
       </>
     )
@@ -157,11 +172,7 @@ export function GamesRoom({
       <>
         <GamesBar onBack={() => setGame(null)} />
         <Suspense fallback={<div aria-busy>Loading the ring…</div>}>
-          <PetFight
-            pets={mine.map((p) => ({ name: p.name, art: p.art }))}
-            myName={readHandle()}
-            authed={!!authed}
-          />
+          <PetFight pets={playable} myName={readHandle()} authed={!!authed} />
         </Suspense>
       </>
     )
@@ -172,7 +183,7 @@ export function GamesRoom({
         <GamesBar onBack={() => setGame(null)} />
         <Suspense fallback={<div aria-busy>Finding the park…</div>}>
           <ParkRoom
-            pets={mine.map((p) => ({ name: p.name, art: p.art }))}
+            pets={playable}
             myName={readHandle()}
             authed={!!authed}
             onControlChange={onControlChange}
