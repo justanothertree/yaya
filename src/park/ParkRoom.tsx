@@ -4,14 +4,18 @@ import { PetView } from '../pets/PetView'
 import { petRatio } from '../pets/rig'
 import { PET_TALL } from '../pets/play'
 import {
+  camWant,
   depthOf,
   easeTo,
   farFrom,
+  onScreen,
   PARK,
   restingWalker,
   stepWalker,
   STILL,
+  VIEW,
   walkEffort,
+  type Spot,
   type Steer,
   type Walker,
 } from './walk'
@@ -50,6 +54,42 @@ const KEYS: Record<string, keyof Steer> = {
 /** The one park, until there is a reason for a second. */
 export const PARK_ROOM = 'park'
 
+/** Everybody on one little map, so a park bigger than a screen is not a park you get lost in. */
+function MiniMap({
+  cam,
+  me,
+  others,
+}: {
+  cam: Spot
+  me: Spot
+  others: Array<Spot & { id: string }>
+}) {
+  return (
+    <div className="park-map" aria-hidden>
+      <span
+        className="park-map-view"
+        style={{
+          left: `${cam.x * 100}%`,
+          top: `${cam.y * 100}%`,
+          width: `${VIEW.w * 100}%`,
+          height: `${VIEW.h * 100}%`,
+        }}
+      />
+      {others.map((o) => (
+        <span
+          key={o.id}
+          className="park-map-dot"
+          style={{ left: `${o.x * 100}%`, top: `${o.y * 100}%` }}
+        />
+      ))}
+      <span
+        className="park-map-dot is-me"
+        style={{ left: `${me.x * 100}%`, top: `${me.y * 100}%` }}
+      />
+    </div>
+  )
+}
+
 export function ParkRoom({
   pets,
   myName,
@@ -73,6 +113,9 @@ export function ParkRoom({
   authed: boolean
 }) {
   const field = useRef<HTMLDivElement>(null)
+  /** what goes fullscreen — the field and its map, not the whole page */
+  const stage = useRef<HTMLDivElement>(null)
+  const [full, setFull] = useState(false)
   const [size, setSize] = useState({ w: 0, h: 0 })
   const [pick, setPick] = useState(0)
   const [walking, setWalking] = useState(false)
@@ -87,6 +130,13 @@ export function ParkRoom({
   const you = useRef<Walker>(restingWalker())
   const held = useRef<Steer>({ ...STILL })
   const [shownYou, setShownYou] = useState<Walker>(() => restingWalker())
+  /**
+   * ⚠️ THE WINDOW EASES RATHER THAN SNAPPING, the same as the platformer's. Locked to you exactly,
+   * the whole park slides under a creature that is standing still while it accelerates, and every
+   * small correction is a shove to the entire picture.
+   */
+  const cam = useRef<Spot>({ x: 0, y: 0 })
+  const [camAt, setCamAt] = useState<Spot>({ x: 0, y: 0 })
 
   const [still, setStill] = useState(
     () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false,
@@ -111,6 +161,14 @@ export function ParkRoom({
     return () => window.removeEventListener('resize', fit)
   }, [])
 
+  /* fullscreen can also be left with Escape, which fires no click of ours — so follow the
+     browser rather than assuming our own button is the only way out (same as the visualiser) */
+  useEffect(() => {
+    const onFs = () => setFull(document.fullscreenElement === stage.current)
+    document.addEventListener('fullscreenchange', onFs)
+    return () => document.removeEventListener('fullscreenchange', onFs)
+  }, [])
+
   /**
    * ⚠️ JOINING IS A THING YOU DO, not something a page does to you. Opening a tab should not put
    * you in a room with other people and tell them your name — that is the same rule the corner
@@ -119,7 +177,11 @@ export function ParkRoom({
   useEffect(() => {
     if (!walking || !mine) return
     state.current = { me: null, here: new Map(), trouble: null }
-    you.current = restingWalker(0.3 + Math.random() * 0.4, 0.5 + Math.random() * 0.3)
+    /* ⚠️ somewhere in the middle of the park rather than the middle of a screen, so two people
+       arriving separately do not always land on top of each other */
+    you.current = restingWalker(0.3 + Math.random() * 0.4, 0.35 + Math.random() * 0.4)
+    cam.current = camWant(you.current)
+    setCamAt(cam.current)
     const bump = () => setRoster((n) => n + 1)
     const p = joinPark(PARK_ROOM, { name: myName, art: mine.art }, state.current, bump)
     if (!p) {
@@ -180,6 +242,15 @@ export function ParkRoom({
       last = now
       you.current = stepWalker(you.current, held.current, dt)
       setShownYou(you.current)
+
+      const want = camWant(you.current)
+      /* framerate-independent easing, not a fixed fraction per frame — see PetPlay's camera */
+      const k = stillRef.current ? 1 : 1 - Math.exp(-7 * Math.min(0.05, dt))
+      cam.current = {
+        x: cam.current.x + (want.x - cam.current.x) * k,
+        y: cam.current.y + (want.y - cam.current.y) * k,
+      }
+      setCamAt(cam.current)
 
       /**
        * ⚠️ EVERY PEER MOVES ON EVERY FRAME, not only on the frames a packet arrived. Fifteen a
@@ -247,6 +318,21 @@ export function ParkRoom({
             {crowd === 1 ? 'Nobody else here yet' : `${crowd} here`}
           </span>
         )}
+        {walking && (
+          <button
+            className="btn btn-ghost"
+            aria-pressed={full}
+            title={full ? 'Leave fullscreen' : 'Fill the screen'}
+            onClick={() => {
+              const el = stage.current
+              if (!el) return
+              if (document.fullscreenElement) void document.exitFullscreen().catch(() => {})
+              else void el.requestFullscreen?.().catch(() => {})
+            }}
+          >
+            {full ? '⤡ Out' : '⛶ Fullscreen'}
+          </button>
+        )}
       </div>
 
       {/* ⚠️ A PROBLEM IS SAID OUT LOUD. A room that silently fails to connect is a room that
@@ -271,67 +357,96 @@ export function ParkRoom({
         </p>
       )}
 
-      <div className="park-field" ref={field}>
-        <span className="park-path" aria-hidden />
-        {walking &&
-          [
-            ...others.map((o) => ({
-              key: o.id,
-              name: o.name,
-              art: o.art,
-              at: o.shown,
-              facing: o.facing,
-              moving: o.moving,
-              mine: false,
-            })),
-            {
-              key: 'me',
-              name: myName,
-              art: mine.art,
-              at: shownYou,
-              facing: shownYou.facing,
-              moving: shownYou.moving,
-              mine: true,
-            },
-          ]
-            /* ⚠️ lower on the screen is nearer the camera, which in a top-down world is the
-               whole of depth — see depthOf */
-            .sort((a, b) => depthOf(a.at) - depthOf(b.at))
-            .map((one) => (
-              <span
-                key={one.key}
-                className={'park-one' + (one.mine ? ' is-me' : '')}
-                style={{
-                  left: `${one.at.x * 100}%`,
-                  top: `${one.at.y * 100}%`,
-                  zIndex: depthOf(one.at),
-                }}
-              >
-                <PetView
-                  art={one.art}
-                  size={petSize(one.art)}
-                  facing={one.facing}
-                  energy={
-                    one.mine
-                      ? walkEffort(shownYou, stillRef.current)
-                      : one.moving
-                        ? 1.2
-                        : stillRef.current
-                          ? 0
-                          : 0.4
-                  }
-                  label={`${one.name}, in the park`}
-                />
-                <span className="park-name">{one.name}</span>
-              </span>
-            ))}
-        {!walking && (
-          <div className="park-empty">
-            <p className="muted">
-              A field, and whoever else is standing in it. Take one of your minions for a walk and
-              anybody else in the park will see them.
-            </p>
-          </div>
+      <div className={'park-stage' + (full ? ' is-full' : '')} ref={stage}>
+        <div className="park-field" ref={field}>
+          {/* ⚠️ THE GROUND MOVES, NOT THE CREATURES. Everything in the park is placed by the same
+              onScreen() the walkers are, so the grass, the path and the people can never disagree
+              about where the middle of the world is. */}
+          <span
+            className="park-ground"
+            style={{
+              left: `${-camAt.x * PARK.across * 100}%`,
+              top: `${-camAt.y * PARK.down * 100}%`,
+              width: `${PARK.across * 100}%`,
+              height: `${PARK.down * 100}%`,
+            }}
+            aria-hidden
+          />
+          {walking &&
+            [
+              ...others.map((o) => ({
+                key: o.id,
+                name: o.name,
+                art: o.art,
+                at: o.shown,
+                facing: o.facing,
+                moving: o.moving,
+                mine: false,
+              })),
+              {
+                key: 'me',
+                name: myName,
+                art: mine.art,
+                at: shownYou as Spot,
+                facing: shownYou.facing,
+                moving: shownYou.moving,
+                mine: true,
+              },
+            ]
+              /* ⚠️ lower on the screen is nearer the camera, which in a top-down world is the
+                 whole of depth — see depthOf */
+              .sort((a, b) => depthOf(a.at) - depthOf(b.at))
+              .map((one) => {
+                const at = onScreen(one.at, camAt)
+                /* ⚠️ anybody further than a screen away is simply not drawn. They are still there,
+                   still moving, and still a dot on the map — but a creature at -240% is a DOM node
+                   the browser lays out every frame to show nobody anything. */
+                if (at.x < -0.2 || at.x > 1.2 || at.y < -0.2 || at.y > 1.2) return null
+                return (
+                  <span
+                    key={one.key}
+                    className={'park-one' + (one.mine ? ' is-me' : '')}
+                    style={{
+                      left: `${at.x * 100}%`,
+                      top: `${at.y * 100}%`,
+                      zIndex: depthOf(one.at),
+                    }}
+                  >
+                    <PetView
+                      art={one.art}
+                      size={petSize(one.art)}
+                      facing={one.facing}
+                      energy={
+                        one.mine
+                          ? walkEffort(shownYou, stillRef.current)
+                          : one.moving
+                            ? 1.2
+                            : stillRef.current
+                              ? 0
+                              : 0.4
+                      }
+                      label={`${one.name}, in the park`}
+                    />
+                    <span className="park-name">{one.name}</span>
+                  </span>
+                )
+              })}
+          {!walking && (
+            <div className="park-empty">
+              <p className="muted">
+                A field three screens across, and whoever else is standing in it. Take one of your
+                minions for a walk and anybody else in the park will see them.
+              </p>
+            </div>
+          )}
+        </div>
+
+        {walking && (
+          <MiniMap
+            cam={camAt}
+            me={shownYou}
+            others={others.map((o) => ({ id: o.id, x: o.shown.x, y: o.shown.y }))}
+          />
         )}
       </div>
 
@@ -358,10 +473,10 @@ export function ParkRoom({
       )}
 
       <p className="muted park-keys">
-        <strong>← → ↑ ↓</strong> or <strong>WASD</strong> to walk about. Everyone in the park is in
-        the same one, so whoever is online is who you will meet. Vertical steps are shorter than
-        horizontal ones because you are looking down at a field, not across it
-        {PARK.squash < 1 ? '.' : '.'}
+        <strong>← → ↑ ↓</strong> or <strong>WASD</strong> to walk about. The park is {PARK.across}{' '}
+        screens across and {PARK.down} down, so keep going and the view follows you — the little map
+        shows the whole of it, where you are, and everybody else. Everyone is in the same park, so
+        whoever is online is who you will meet.
       </p>
     </div>
   )

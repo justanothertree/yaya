@@ -8112,6 +8112,26 @@ a.cz-msg-author:focus-visible {
   flex-direction: column;
   gap: 10px;
 }
+.park-stage {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+/* ⚠️ FULLSCREEN IS THE STAGE, NOT THE PAGE. The field and its map go; the nav, the bar and the
+   key legend stay behind, because what you want filling a screen is the park rather than the
+   site around it. The browser paints the backdrop black, so the ground needs its own. */
+.park-stage:fullscreen {
+  justify-content: center;
+  padding: 12px;
+  background: var(--bg, #14101a);
+}
+.park-stage:fullscreen .park-field {
+  max-height: none;
+  height: min(88vh, calc(100vw * 0.625));
+  width: min(100%, calc(88vh * 1.6));
+  align-self: center;
+}
 .park-field {
   position: relative;
   width: 100%;
@@ -8120,23 +8140,85 @@ a.cz-msg-author:focus-visible {
   overflow: hidden;
   border: 1px solid var(--border);
   border-radius: 16px;
-  background:
-    radial-gradient(
-      120% 90% at 50% 8%,
-      color-mix(in srgb, #7fc46a 26%, transparent),
-      transparent 70%
-    ),
-    linear-gradient(180deg, color-mix(in srgb, #7fc46a 12%, transparent), transparent 75%);
+  background: color-mix(in srgb, #7fc46a 7%, transparent);
 }
-/* a worn path, so the field reads as a place rather than as an empty rectangle */
-.park-path {
+/* ⚠️ THE GROUND IS AN ELEMENT THAT MOVES, not a background on the frame. A background-position
+   would have to be kept in step with the camera by hand in two units; one absolutely positioned
+   box the size of the whole park is placed by the same numbers the creatures are, so the grass
+   and the people cannot disagree about where the middle of the world is. */
+.park-ground {
   position: absolute;
-  left: 8%;
-  right: 8%;
-  top: 62%;
-  height: 12%;
+  /* ⚠️ SOMETHING TO MOVE PAST, or a bigger park is just a bigger nothing. An open field with no
+     texture gives a walking creature no evidence it is walking — it sits in the middle of the
+     frame while a flat colour slides behind it, which looks identical to standing still. The
+     tufts tile at a fraction of a screen so they pass by at a rate you can see. */
+  background:
+    repeating-radial-gradient(
+      circle at 12% 22%,
+      color-mix(in srgb, #7fc46a 30%, transparent) 0 2px,
+      transparent 2px 100%
+    ),
+    repeating-radial-gradient(
+      circle at 68% 74%,
+      color-mix(in srgb, #7fc46a 22%, transparent) 0 3px,
+      transparent 3px 100%
+    ),
+    radial-gradient(
+      30% 22% at 34% 30%,
+      color-mix(in srgb, #c9a86a 22%, transparent),
+      transparent 72%
+    ),
+    radial-gradient(
+      26% 18% at 72% 68%,
+      color-mix(in srgb, #c9a86a 18%, transparent),
+      transparent 72%
+    ),
+    linear-gradient(180deg, color-mix(in srgb, #7fc46a 16%, transparent), transparent 85%);
+  background-size:
+    6% 9%,
+    9% 13%,
+    100% 100%,
+    100% 100%,
+    100% 100%;
+}
+
+/* ⚠️ A PARK BIGGER THAN A SCREEN IS A PARK YOU CAN LOSE PEOPLE IN. The map is the whole world
+   with the part you can see marked on it, and a dot for everybody — which is what stops a bigger
+   park just meaning a lonelier one. It says where things are and nothing else: no clicking to
+   jump the view, because crossing the park is the thing the park is for. */
+/* ⚠️ IN THE CORNER OF THE FIELD, not under it. Below the field it pushed the whole room down
+   a map's height and fell off the bottom of a phone — and in fullscreen, where the field is the
+   only thing on the screen, "under it" is off it. */
+.park-map {
+  position: absolute;
+  right: 10px;
+  top: 10px;
+  width: min(132px, 26%);
+  aspect-ratio: 1;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: color-mix(in srgb, #7fc46a 10%, transparent);
+  overflow: hidden;
+}
+.park-map-view {
+  position: absolute;
+  border: 1px solid color-mix(in srgb, var(--text) 45%, transparent);
+  background: color-mix(in srgb, var(--text) 8%, transparent);
+  border-radius: 2px;
+}
+.park-map-dot {
+  position: absolute;
+  width: 5px;
+  height: 5px;
+  margin: -3px 0 0 -3px;
   border-radius: 50%;
-  background: color-mix(in srgb, #c9a86a 20%, transparent);
+  background: color-mix(in srgb, var(--text) 60%, transparent);
+}
+.park-map-dot.is-me {
+  width: 7px;
+  height: 7px;
+  margin: -4px 0 0 -4px;
+  background: var(--accent, #7c6af7);
 }
 /* ⚠️ translate(-50%, -100%): x is the middle of the creature and y is the ground under its
    feet, which is what every number in walk.ts means by a position — the same as the fight. */

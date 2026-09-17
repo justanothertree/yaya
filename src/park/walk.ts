@@ -48,13 +48,44 @@ export const STILL: Steer = { left: false, right: false, up: false, down: false 
  */
 const ASPECT = 16 / 10
 
+/**
+ * How big the park is, and what one screenful of it is.
+ *
+ * ⚠️ A POSITION IS STILL 0–1, AND THAT IS THE WHOLE REASON THIS NEEDED NO NEW PROTOCOL. Growing
+ * the world could have meant zone ids on the wire and a relay that knows about them; instead
+ * 0–1 simply stops meaning "across the screen" and starts meaning "across the park". Every
+ * message, every clamp and every validator is untouched, and an old client and a new one
+ * disagree about the size of the world rather than about how to talk.
+ *
+ * ⚠️ AND ONE WORLD RATHER THAN ROOMS YOU STEP BETWEEN. Screen-to-screen zones are the easier
+ * thing to build and the wrong thing for a park: the point of the place is seeing who is about,
+ * and zones hide everybody who is not in yours. A camera keeps them on the map even when they are
+ * off the edge of your window.
+ */
 export const PARK = {
-  /** what vertical speed is multiplied by, so up and down reads right on screen */
-  squash: ASPECT * 0.82,
-  /** a creature stands this tall; the park's own bounds keep its feet on the grass */
+  /** how many screenfuls the world is, across and down */
+  across: 3,
+  down: 3,
+  /** a creature stands this tall on screen; the park's bounds keep its feet on the grass */
   tall: PET_TALL,
 }
 
+/** One screenful, in world units. */
+export const VIEW = { w: 1 / PARK.across, h: 1 / PARK.down }
+
+/**
+ * ⚠️ BUILT FROM THE SHAPE OF THE WORLD, not picked. Equal speed on SCREEN needs the vertical to
+ * be multiplied by (across/down) × the screen's own aspect — and the 0.82 is the only part that
+ * is a choice: a little slower up and down still reads as a field you are looking down at.
+ */
+export const SQUASH = (PARK.across / PARK.down) * ASPECT * 0.82
+
+/**
+ * ⚠️ IN SCREENFULS A SECOND, NOT WORLD UNITS. Written in world units these numbers would mean
+ * something different every time the park changed size — a walk across one screen would take three
+ * times as long the moment the world became three screens wide, which is the version of "bigger"
+ * that just means "slower". Everything here is converted at the point of use.
+ */
 export const TUNE = {
   speed: 0.38,
   accel: 3.4,
@@ -93,35 +124,60 @@ export function stepWalker(w: Walker, steer: Steer, dt: number, speed = 1): Walk
     wy /= len
   }
 
-  const top = TUNE.speed * speed
-  const pull = (v: number, want: number, cap: number) => {
+  /* screenfuls a second into world units a second — see the note on TUNE */
+  const per = VIEW.w
+  const top = TUNE.speed * speed * per
+  const pull = (v: number, want: number, cap: number, accel: number, drag: number) => {
     if (want !== 0) {
-      const next = v + want * TUNE.accel * t
+      const next = v + want * accel * t
       return Math.max(-cap, Math.min(cap, next))
     }
     /* towards zero rather than multiplied, so it arrives — see the same note in play.ts */
-    const drop = TUNE.drag * t
+    const drop = drag * t
     return Math.abs(v) <= drop ? 0 : v - Math.sign(v) * drop
   }
 
-  const vx = pull(w.vx, wx, top)
-  const vy = pull(w.vy, wy, top * PARK.squash)
+  /* ⚠️ the ramp is scaled with the top speed, or a smaller top speed is simply reached sooner
+     and a bigger park feels twitchier than a small one for no reason anybody asked for */
+  const ax = TUNE.accel * per
+  const dx = TUNE.drag * per
+  const vx = pull(w.vx, wx, top, ax, dx)
+  const vy = pull(w.vy, wy, top * SQUASH, ax * SQUASH, dx * SQUASH)
 
-  /* ⚠️ half a creature in from every edge, measured in the axis it applies to: the park is
-     wider than it is tall, so the same inset in x and y would not look like the same margin */
-  const padX = 0.03
+  /* ⚠️ margins are a fraction of a SCREEN, converted — an inset in world units would be three
+     times as generous in a three-screen park as it was in a one-screen one */
+  const padX = 0.03 * VIEW.w
   const x = Math.max(padX, Math.min(1 - padX, w.x + vx * t))
-  const y = Math.max(PARK.tall * 0.6, Math.min(0.97, w.y + vy * t))
+  const y = Math.max(PARK.tall * 0.6 * VIEW.h, Math.min(1 - 0.03 * VIEW.h, w.y + vy * t))
 
+  const quiet = TUNE.quiet * per
   return {
     x,
     y,
     vx,
     vy,
-    facing: vx > TUNE.quiet ? 1 : vx < -TUNE.quiet ? -1 : w.facing,
-    moving: Math.hypot(vx, vy) > TUNE.quiet,
+    facing: vx > quiet ? 1 : vx < -quiet ? -1 : w.facing,
+    moving: Math.hypot(vx, vy) > quiet,
   }
 }
+
+/**
+ * Where the window onto the world wants to be: you, in the middle of it.
+ *
+ * ⚠️ CLAMPED TO THE WORLD, so the edges of the park sit against the edges of the frame rather
+ * than scrolling on into nothing — the same rule the platformer's camera follows, and the reason
+ * walking into a corner feels like a corner.
+ */
+export const camWant = (me: Spot): Spot => ({
+  x: Math.max(0, Math.min(1 - VIEW.w, me.x - VIEW.w / 2)),
+  y: Math.max(0, Math.min(1 - VIEW.h, me.y - VIEW.h / 2)),
+})
+
+/** Where something in the world sits in the frame, as a fraction of the frame. */
+export const onScreen = (at: Spot, cam: Spot): Spot => ({
+  x: (at.x - cam.x) / VIEW.w,
+  y: (at.y - cam.y) / VIEW.h,
+})
 
 /**
  * How fast the creature's own clock runs, so its legs match the ground.
@@ -131,7 +187,8 @@ export function stepWalker(w: Walker, steer: Steer, dt: number, speed = 1): Walk
  * is untouched, because walking is the thing you came to do.
  */
 export const walkEffort = (w: Walker, still: boolean): number => {
-  const speed = Math.hypot(w.vx, w.vy)
+  /* in screenfuls a second, so the legs match the ground whatever size the park is */
+  const speed = Math.hypot(w.vx, w.vy) / VIEW.w
   if (still && speed < TUNE.quiet) return 0
   return 0.35 + (speed / TUNE.speed) * 1.3
 }
@@ -164,7 +221,7 @@ export function easeTo(shown: Spot, target: Spot, dt: number, rate = 14): Spot {
  * whole park at walking pace shows a creature sliding through everything in between for a
  * second and a half. Beyond a third of the park it is not a journey anybody made.
  */
-export const TELEPORT = 0.33
+export const TELEPORT = 0.33 * VIEW.w
 
 export const farFrom = (a: Spot, b: Spot): boolean => Math.hypot(a.x - b.x, a.y - b.y) > TELEPORT
 
