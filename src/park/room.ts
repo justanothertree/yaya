@@ -24,7 +24,7 @@ import type { Spot, Walker } from './walk'
 /** What the relay is told. The hello and the auth token are NetClient's own — see its send. */
 type Out =
   | { type: 'look'; name: string; art: unknown }
-  | { type: 'walk'; x: number; y: number; f: number; m: number }
+  | { type: 'walk'; x: number; y: number; f: number; m: number; a: number }
 
 /** What arrives. */
 type In =
@@ -32,7 +32,7 @@ type In =
   | { type: 'presence'; count: number }
   | { type: 'park'; who?: unknown[] }
   | { type: 'look'; from?: string; name?: string; art?: unknown }
-  | { type: 'walk'; from?: string; x?: number; y?: number; f?: number; m?: number }
+  | { type: 'walk'; from?: string; x?: number; y?: number; f?: number; m?: number; a?: number }
   /* ⚠️ the relay already says this when anybody leaves any room, so a departure needs no new
      message on the server — `over` with a `from` is "that peer is gone", whatever ended. */
   | { type: 'over'; from?: string }
@@ -48,6 +48,16 @@ export type Someone = {
   shown: Spot
   facing: number
   moving: boolean
+  /**
+   * Which of their moves is out, 0 for none.
+   *
+   * ⚠️ A SLOT, NOT A MOVE. What the slot means is read from THEIR drawing, which arrived with
+   * their look — so the wire carries one small number and the meaning is already on both sides.
+   * Sending the attack itself would be sending a thing the other end can work out.
+   */
+  swing: number
+  /** how long their current swing has been out, kept locally so it can be animated */
+  swingFor: number
 }
 
 export type ParkState = {
@@ -101,11 +111,13 @@ function readSomeone(v: unknown): Someone | null {
     shown: at,
     facing: o.f === -1 ? -1 : 1,
     moving: false,
+    swing: 0,
+    swingFor: 0,
   }
 }
 
 export type Park = {
-  send: (w: Walker) => void
+  send: (w: Walker, swing: number) => void
   leave: () => void
 }
 
@@ -193,6 +205,12 @@ export function joinPark(
           who.at = spot(msg)
           who.facing = msg.f === -1 ? -1 : 1
           who.moving = !!msg.m
+          /* ⚠️ a NEW swing restarts the clock; the same one carrying on does not, or a peer's
+             attack would appear to start again on every packet that arrived during it */
+          const a = typeof msg.a === 'number' && Number.isFinite(msg.a) ? Math.round(msg.a) : 0
+          const slot = Math.max(0, Math.min(6, a))
+          if (slot !== who.swing) who.swingFor = 0
+          who.swing = slot
           /* deliberately no onChange — the loop reads this map every frame */
           break
         }
@@ -213,8 +231,8 @@ export function joinPark(
   net.connect(room, { create: true })
 
   return {
-    send: (w) => {
-      net.send({ type: 'walk', x: w.x, y: w.y, f: w.facing, m: w.moving ? 1 : 0 })
+    send: (w, swing) => {
+      net.send({ type: 'walk', x: w.x, y: w.y, f: w.facing, m: w.moving ? 1 : 0, a: swing })
     },
     leave: () => {
       stop = true

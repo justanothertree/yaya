@@ -17,10 +17,22 @@ import {
   walkEffort,
   type Spot,
   type Steer,
-  type Walker,
 } from './walk'
 import { joinPark, lookFits, SEND_HZ, type Park, type ParkState, type Someone } from './room'
 import { MAX_WANDERERS, wanderAt } from './wander'
+import {
+  busy,
+  inArea,
+  restingStriker,
+  shoved,
+  stepStrike,
+  strikeArea,
+  type StrikeInput,
+  type Striker,
+} from './strike'
+import { attacksOf, moveTable, petWide, type Attack } from '../pets/attack'
+import { rigOf } from '../pets/rig'
+import { lungeOf } from '../pets/fight'
 
 /**
  * A park you walk into and find people in.
@@ -36,6 +48,19 @@ import { MAX_WANDERERS, wanderAt } from './wander'
  */
 
 export type ParkPet = { name: string; art: Drawing }
+
+/**
+ * ⚠️ THE SAME BUTTONS AS A SCRAP, on purpose. Somebody who has learned that F is quick and G is
+ * heavy in the ring should not have to learn a second pair for the park — and the moves behind
+ * them are the same six read from the same drawing, so a different key would be a different name
+ * for exactly the same thing.
+ */
+const HITS: Record<string, 'quick' | 'heavy'> = {
+  f: 'quick',
+  F: 'quick',
+  g: 'heavy',
+  G: 'heavy',
+}
 
 const KEYS: Record<string, keyof Steer> = {
   ArrowLeft: 'left',
@@ -60,10 +85,19 @@ function MiniMap({
   cam,
   me,
   others,
+  strolling,
 }: {
   cam: Spot
   me: Spot
   others: Array<Spot & { id: string }>
+  /**
+   * ⚠️ THE WANDERERS GO ON THE MAP OR THEY MIGHT AS WELL NOT EXIST. The park is nine screens and
+   * they roam all of it, so the odds of one being in your window at any moment are small — which
+   * made a field that was supposed to feel inhabited feel empty, and made the creatures in it
+   * something you met by luck rather than went to find. On the map they are somewhere to walk to,
+   * which is the thing an open park most needs and the cheapest possible version of it.
+   */
+  strolling: Array<{ at: Spot }>
 }) {
   return (
     <div className="park-map" aria-hidden>
@@ -76,6 +110,13 @@ function MiniMap({
           height: `${VIEW.h * 100}%`,
         }}
       />
+      {strolling.map((w, i) => (
+        <span
+          key={'s' + i}
+          className="park-map-dot is-stroll"
+          style={{ left: `${w.at.x * 100}%`, top: `${w.at.y * 100}%` }}
+        />
+      ))}
       {others.map((o) => (
         <span
           key={o.id}
@@ -126,11 +167,37 @@ export function ParkRoom({
   const mine = pets[pick] ?? pets[0]
   const tooBig = useMemo(() => (mine ? !lookFits(mine.art) : false), [mine])
 
+  /* ⚠️ read once per creature, never per frame — rigOf walks every stroke */
+  const myMoves = useMemo<Attack[]>(
+    () => (mine ? moveTable(attacksOf(rigOf(mine.art))) : []),
+    [mine],
+  )
+  const myWide = useMemo(() => (mine ? petWide(mine.art) : 0.2), [mine])
+  /** the wandering creatures, in the order wanderAt indexes them */
+  const strollPets = useMemo(
+    () => pets.filter((_, i) => i !== pick).slice(0, MAX_WANDERERS),
+    [pets, pick],
+  )
+  const wides = useRef<number[]>([])
+  wides.current = strollPets.map((p) => petWide(p.art))
+
   const state = useRef<ParkState>({ me: null, here: new Map(), trouble: null })
   const park = useRef<Park | null>(null)
-  const you = useRef<Walker>(restingWalker())
+  const you = useRef<Striker>(restingStriker(restingWalker()))
   const held = useRef<Steer>({ ...STILL })
-  const [shownYou, setShownYou] = useState<Walker>(() => restingWalker())
+  const hitting = useRef<StrikeInput>({ quick: false, heavy: false, up: false, down: false })
+  /** bumped when a swing starts or ends, so the render follows without owning the loop */
+  const [swingAt, setSwingAt] = useState(0)
+  /**
+   * How far each wanderer has been knocked from its path, and how fast it is drifting back.
+   *
+   * ⚠️ THE PATH STAYS PURE AND THE SHOVE SITS ON TOP. A wanderer is a function of the clock —
+   * that is what makes it free — so being hit cannot change where it is; it changes where it is
+   * DRAWN, by an offset that decays back to nothing. Nothing accumulates, nothing drifts, and a
+   * wanderer that is left alone for a second is exactly where the clock says it should be.
+   */
+  const nudges = useRef<Array<{ x: number; y: number; till: number }>>([])
+  const [shownYou, setShownYou] = useState<Striker>(() => restingStriker(restingWalker()))
   /**
    * ⚠️ THE WINDOW EASES RATHER THAN SNAPPING, the same as the platformer's. Locked to you exactly,
    * the whole park slides under a creature that is standing still while it accelerates, and every
@@ -140,6 +207,8 @@ export function ParkRoom({
   const [camAt, setCamAt] = useState<Spot>({ x: 0, y: 0 })
   /* the clock the wanderers are a function of — see wander.ts */
   const [clockAt, setClockAt] = useState(0)
+  /* the same clock, where the loop can reach it without depending on a render */
+  const clockRef = useRef(0)
 
   const [still, setStill] = useState(
     () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false,
@@ -182,7 +251,9 @@ export function ParkRoom({
     state.current = { me: null, here: new Map(), trouble: null }
     /* ⚠️ somewhere in the middle of the park rather than the middle of a screen, so two people
        arriving separately do not always land on top of each other */
-    you.current = restingWalker(0.3 + Math.random() * 0.4, 0.35 + Math.random() * 0.4)
+    you.current = restingStriker(
+      restingWalker(0.3 + Math.random() * 0.4, 0.35 + Math.random() * 0.4),
+    )
     cam.current = camWant(you.current)
     setCamAt(cam.current)
     const bump = () => setRoster((n) => n + 1)
@@ -201,6 +272,12 @@ export function ParkRoom({
     }
   }, [walking, mine, myName])
 
+  /* ⚠️ one per wanderer, rebuilt when the roster of them changes — an index into this must
+     always mean the same creature as the same index into strollPets */
+  useEffect(() => {
+    nudges.current = strollPets.map(() => ({ x: 0, y: 0, till: 0 }))
+  }, [strollPets])
+
   useEffect(() => {
     if (!walking) return
     onControlChange?.(true)
@@ -210,16 +287,25 @@ export function ParkRoom({
   useEffect(() => {
     if (!walking) return
     const set = (e: KeyboardEvent, on: boolean) => {
+      const hit = HITS[e.key]
+      if (hit) {
+        e.preventDefault()
+        hitting.current[hit] = on
+        return
+      }
       const k = KEYS[e.key]
       if (!k) return
       e.preventDefault()
       held.current[k] = on
+      /* the aim is the same two keys you already hold — see the scrap's note on the same rule */
+      if (k === 'up' || k === 'down') hitting.current[k] = on
     }
     const down = (e: KeyboardEvent) => set(e, true)
     const up = (e: KeyboardEvent) => set(e, false)
     /* a key held when the window loses focus never sends its keyup — see PetPlay */
     const drop = () => {
       held.current = { ...STILL }
+      hitting.current = { quick: false, heavy: false, up: false, down: false }
     }
     window.addEventListener('keydown', down)
     window.addEventListener('keyup', up)
@@ -244,10 +330,70 @@ export function ParkRoom({
     const tick = (now: number) => {
       const dt = (now - last) / 1000
       last = now
-      you.current = stepWalker(you.current, held.current, dt)
+      /**
+       * ⚠️ SWING FIRST, THEN WALK, and the walk is thrown away while the swing is out. A creature
+       * mid-attack is committed — the same rule the scrap follows — so it keeps whatever speed it
+       * had and gains none, which is what makes a long recovery cost something.
+       */
+      const wasSwinging = you.current.swing > 0
+      const struck = stepStrike(you.current, hitting.current, myMoves, dt)
+      const steer = busy(struck) ? STILL : held.current
+      you.current = { ...struck, ...stepWalker(struck, steer, struck.hold > 0 ? 0 : dt) }
+      if (wasSwinging !== you.current.swing > 0) setSwingAt((n) => n + 1)
+
+      /* what my swing is hurting right now, if anything */
+      const mv = myMoves[you.current.move]
+      const area =
+        you.current.swing > 0 && !you.current.spent && mv
+          ? strikeArea(you.current, you.current.facing, mv, mv.span - you.current.swing)
+          : null
+      if (area && mv) {
+        nudges.current.forEach((n, i) => {
+          const w = wanderAt(i, clockRef.current)
+          if (!inArea(w.at, wides.current[i] ?? 0.2, area)) return
+          const dx = w.at.x - you.current.x
+          const dy = w.at.y - you.current.y
+          const len = Math.hypot(dx, dy) || 1
+          const power = mv.shove * 0.06
+          n.x += (dx / len) * power
+          n.y += (dy / len) * power * 0.6
+          n.till = clockRef.current + 0.5
+          you.current = { ...you.current, spent: true, hold: 0.05 + mv.bite * 0.004 }
+        })
+        /* ⚠️ the other people in the park are shoved by their OWN reading of my swing, never by
+           mine — see the note on hits below. Nothing here reaches across the wire. */
+      }
+
+      /**
+       * ⚠️ I DECIDE WHEN I AM HIT, NOT THEM. Everybody sees a slightly different park — positions
+       * arrive fifteen times a second and are eased on the way in — so two people will never quite
+       * agree on whether a swing connected. Letting the swinger decide would mean being shoved by
+       * somebody else's picture of where you were standing; deciding it here means the worst case
+       * is that a blow you saw miss shoved them anyway, on their screen, which nobody minds.
+       */
+      for (const o of state.current.here.values()) {
+        if (o.swing <= 0) continue
+        o.swingFor += dt
+        const list = foeMoves.current.get(o.id)
+        const theirs = list?.[o.swing - 1]
+        if (!theirs) continue
+        const area = strikeArea(o.shown, o.facing, theirs, o.swingFor)
+        if (!area || you.current.stun > 0) continue
+        if (!inArea(you.current, myWide, area)) continue
+        you.current = shoved(you.current, o.shown, theirs)
+      }
+
+      /* a nudge decays back to nothing, so the path stays the truth */
+      for (const n of nudges.current) {
+        const ease = Math.exp(-3.2 * Math.min(0.05, dt))
+        n.x *= ease
+        n.y *= ease
+      }
+
       setShownYou(you.current)
 
-      setClockAt((now - started) / 1000)
+      clockRef.current = (now - started) / 1000
+      setClockAt(clockRef.current)
 
       const want = camWant(you.current)
       /* framerate-independent easing, not a fixed fraction per frame — see PetPlay's camera */
@@ -273,13 +419,13 @@ export function ParkRoom({
          what anybody can see and four times what the relay has to forward */
       if (now - sent > 1000 / SEND_HZ) {
         sent = now
-        park.current?.send(you.current)
+        park.current?.send(you.current, you.current.swing > 0 ? you.current.move + 1 : 0)
       }
       raf = requestAnimationFrame(tick)
     }
     raf = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(raf)
-  }, [walking])
+  }, [walking, myMoves, myWide])
 
   /* the same sizing as everywhere else — PetView's size is the LONG side, not the height */
   const petSize = (art: Drawing) => {
@@ -298,14 +444,29 @@ export function ParkRoom({
    */
   const strolling = useMemo(
     () =>
-      pets
-        .filter((_, i) => i !== pick)
-        .slice(0, MAX_WANDERERS)
-        .map((p, i) => ({ pet: p, ...wanderAt(i, clockAt) })),
-    [pets, pick, clockAt],
+      strollPets.map((p, i) => {
+        const w = wanderAt(i, clockAt)
+        const n = nudges.current[i]
+        /* the shove is drawn on top of the path, never written into it — see nudges */
+        return { pet: p, ...w, at: { x: w.at.x + (n?.x ?? 0), y: w.at.y + (n?.y ?? 0) } }
+      }),
+    [strollPets, clockAt],
   )
 
+  /**
+   * What everybody else can throw, worked out from the drawing they sent.
+   *
+   * ⚠️ THE WIRE CARRIES A SLOT NUMBER AND NOTHING ELSE. Their creature arrived with their look,
+   * so their moves are already knowable here — sending the attack itself would be sending a thing
+   * this end can work out, fifteen times a second, for as long as they stand there.
+   */
+  const foeMoves = useRef<Map<string, Attack[]>>(new Map())
+
+  /* read so that a swing starting or ending re-renders — see the loop */
+  void swingAt
   const others: Someone[] = [...state.current.here.values()]
+  for (const o of others)
+    if (!foeMoves.current.has(o.id)) foeMoves.current.set(o.id, moveTable(attacksOf(rigOf(o.art))))
   /* roster is read so this recomputes when somebody joins or leaves — see the note on the loop */
   void roster
   const crowd = others.length + (walking ? 1 : 0)
@@ -409,6 +570,8 @@ export function ParkRoom({
                 moving: w.moving,
                 mine: false,
                 stroll: true,
+                lunge: 0,
+                show: undefined as number | undefined,
               })),
               ...others.map((o) => ({
                 key: o.id,
@@ -419,6 +582,12 @@ export function ParkRoom({
                 moving: o.moving,
                 mine: false,
                 stroll: false,
+                /* their swing, animated from the slot they sent and the drawing they sent */
+                lunge: lungeOf(
+                  { swing: o.swing > 0 ? 1 : 0, move: 0, spent: false, stun: 0, hold: 0 },
+                  [],
+                ),
+                show: (foeMoves.current.get(o.id) ?? [])[o.swing - 1]?.layer,
               })),
               {
                 key: 'me',
@@ -429,6 +598,8 @@ export function ParkRoom({
                 moving: shownYou.moving,
                 mine: true,
                 stroll: false,
+                lunge: lungeOf(shownYou, myMoves),
+                show: shownYou.swing > 0 ? myMoves[shownYou.move]?.layer : undefined,
               },
             ]
               /* ⚠️ lower on the screen is nearer the camera, which in a top-down world is the
@@ -450,12 +621,17 @@ export function ParkRoom({
                       left: `${at.x * 100}%`,
                       top: `${at.y * 100}%`,
                       zIndex: depthOf(one.at),
+                      /* the swing moves the picture, never the creature — see the scrap's note */
+                      transform: `translate(calc(-50% + ${(one.facing * one.lunge * 100).toFixed(
+                        1,
+                      )}%), -100%)`,
                     }}
                   >
                     <PetView
                       art={one.art}
                       size={petSize(one.art)}
                       facing={one.facing}
+                      show={one.show}
                       energy={
                         one.mine
                           ? walkEffort(shownYou, stillRef.current)
@@ -490,6 +666,7 @@ export function ParkRoom({
             cam={camAt}
             me={shownYou}
             others={others.map((o) => ({ id: o.id, x: o.shown.x, y: o.shown.y }))}
+            strolling={strolling}
           />
         )}
       </div>

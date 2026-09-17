@@ -8214,6 +8214,13 @@ a.cz-msg-author:focus-visible {
   border-radius: 50%;
   background: color-mix(in srgb, var(--text) 60%, transparent);
 }
+/* your own wandering minions: there, findable, and plainly not somebody who has arrived */
+.park-map-dot.is-stroll {
+  width: 4px;
+  height: 4px;
+  margin: -2px 0 0 -2px;
+  background: color-mix(in srgb, #7fc46a 85%, transparent);
+}
 .park-map-dot.is-me {
   width: 7px;
   height: 7px;

@@ -1936,6 +1936,13 @@ wss.on('connection', (ws, req) => {
           y: Math.max(0, Math.min(1, num(msg.y))),
           f: msg.f === -1 ? -1 : 1,
           m: msg.m ? 1 : 0,
+          /**
+           * ⚠️ WHICH SWING IS OUT, AS A SMALL WHOLE NUMBER. 0 is none and 1..6 are the slots of
+           * the mover's own move table — the relay does not know or care what any of them mean,
+           * it just will not forward a number outside that range. Everything about what the move
+           * IS lives in the drawing the other end already has.
+           */
+          a: Math.max(0, Math.min(6, Math.round(num(msg.a)))),
         }
         st.at = at
         room.state.set(id, st)

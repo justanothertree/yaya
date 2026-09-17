@@ -336,7 +336,23 @@ export function liveBox(f: Fighter, moves: Attack[]) {
  */
 export type Phase = 'ready' | 'windup' | 'live' | 'recover' | 'stunned' | 'frozen'
 
-export function phaseOf(f: Fighter, moves: Attack[]): Phase {
+/**
+ * The least a thing has to be for these two to read it.
+ *
+ * ⚠️ STRUCTURAL, so the park can use them without being a Fighter. A creature swinging in a
+ * top-down field has no stocks and no jumps left and never will — but the three parts of a swing
+ * are the three parts of a swing wherever it is thrown, and writing them out twice would be two
+ * answers to when a hitbox is live.
+ */
+export type Swinging = {
+  swing: number
+  move: number
+  spent: boolean
+  stun: number
+  hold: number
+}
+
+export function phaseOf(f: Swinging, moves: Attack[]): Phase {
   if (f.hold > 0) return 'frozen'
   if (f.stun > 0) return 'stunned'
   if (f.swing <= 0) return 'ready'
@@ -625,7 +641,7 @@ export function fightStance(f: Fighter): 'idle' | 'alert' | 'run' | 'crouch' | '
  * three phases were worth separating in the first place. The wind-up going the WRONG way is what
  * makes the strike read as fast: there is nothing to compare it to otherwise.
  */
-export function lungeOf(f: Fighter, moves: Attack[]): number {
+export function lungeOf(f: Swinging, moves: Attack[]): number {
   switch (phaseOf(f, moves)) {
     case 'windup':
       return -0.16
