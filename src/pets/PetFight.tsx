@@ -10,7 +10,9 @@ import {
   FRAME,
   freshFighter,
   IDLE,
+  liveBox,
   MAX_CATCHUP,
+  phaseOf,
   STAGE,
   stepFight,
   STOCKS,
@@ -394,6 +396,17 @@ export function PetFight({
               </span>
               {/* ⚠️ the number AND the pips: a damage figure alone does not say how close anyone
                   is to losing, and pips alone do not say how close the next hit is to a KO */}
+              {/* ⚠️ what they are DOING, beside what they have taken — a heavy is worth
+                  reacting to and there was no way to know one was coming */}
+              {f && phaseOf(f, kit.moves[i] ?? []) !== 'ready' ? (
+                <span className={'pet-fight-doing is-' + phaseOf(f, kit.moves[i] ?? [])}>
+                  {phaseOf(f, kit.moves[i] ?? []) === 'stunned'
+                    ? 'hit'
+                    : (kit.moves[i] ?? [])[f.move]?.name === heavy.name
+                      ? heavy.name
+                      : (quick.name ?? '')}
+                </span>
+              ) : null}
               <span className="pet-fight-hurt">{Math.round(f?.hurt ?? 0)}%</span>
               <span className="pet-fight-stocks" aria-label={`${f?.stocks ?? 0} lives left`}>
                 {Array.from({ length: STOCKS }, (_, s) => (
@@ -449,9 +462,9 @@ export function PetFight({
                 className={
                   'pet-fight-pet is-' +
                   SIDE[i] +
-                  (f.stun > 0 ? ' is-hit' : '') +
-                  (f.safe > 0 ? ' is-safe' : '') +
-                  (f.swing > 0 ? ' is-swing' : '')
+                  ' is-' +
+                  phaseOf(f, kit.moves[i] ?? []) +
+                  (f.safe > 0 ? ' is-safe' : '')
                 }
                 style={{ left: `${f.x * 100}%`, top: `${f.y * 100}%` }}
               >
@@ -464,6 +477,31 @@ export function PetFight({
                   label={`${p.name}, on ${Math.round(f.hurt)} per cent`}
                 />
               </span>
+            )
+          })}
+          {/**
+           * ⚠️ THE HITBOX ITSELF, not an impression of one. It is read from the same `liveBox` the
+           * hit test uses, so what lights up IS what can hurt you, for exactly the frames it can —
+           * which is the difference between learning the range of a move and guessing at it.
+           * There is nothing to draw until an attack is live, so a quiet fight shows nothing.
+           */}
+          {side.map((_p, i) => {
+            const f = shown[i]
+            if (!f || f.stocks <= 0) return null
+            const box = liveBox(f, kit.moves[i] ?? [])
+            if (!box) return null
+            return (
+              <span
+                key={`hit-${i}`}
+                className={'pet-fight-swipe is-' + SIDE[i]}
+                style={{
+                  left: `${box.x0 * 100}%`,
+                  top: `${box.y0 * 100}%`,
+                  width: `${(box.x1 - box.x0) * 100}%`,
+                  height: `${(box.y1 - box.y0) * 100}%`,
+                }}
+                aria-hidden
+              />
             )
           })}
           {over !== null && (

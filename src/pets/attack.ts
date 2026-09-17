@@ -72,7 +72,7 @@ const FROM: Partial<Record<PartKind, Omit<Attack, 'from'>>> = {
     name: 'swipe',
     span: 0.26,
     live: [0.26, 0.6],
-    reach: 0.95,
+    reach: 0.92,
     rise: 0.44,
     bite: 4,
     shove: 0.95,
@@ -94,7 +94,7 @@ const FROM: Partial<Record<PartKind, Omit<Attack, 'from'>>> = {
     name: 'butt',
     span: 0.28,
     live: [0.3, 0.62],
-    reach: 0.8,
+    reach: 0.84,
     rise: 0.38,
     bite: 6,
     shove: 1.2,
@@ -105,7 +105,7 @@ const FROM: Partial<Record<PartKind, Omit<Attack, 'from'>>> = {
     name: 'bite',
     span: 0.36,
     live: [0.38, 0.7],
-    reach: 0.74,
+    reach: 0.78,
     rise: 0.3,
     bite: 10,
     shove: 0.95,
@@ -116,7 +116,7 @@ const FROM: Partial<Record<PartKind, Omit<Attack, 'from'>>> = {
     name: 'sweep',
     span: 0.38,
     live: [0.3, 0.76],
-    reach: 1.3,
+    reach: 1.15,
     rise: 0.28,
     bite: 7,
     shove: 1.4,
@@ -127,7 +127,7 @@ const FROM: Partial<Record<PartKind, Omit<Attack, 'from'>>> = {
     name: 'buffet',
     span: 0.32,
     live: [0.26, 0.7],
-    reach: 1.0,
+    reach: 0.96,
     rise: 0.6,
     bite: 6,
     shove: 1.1,
@@ -139,7 +139,7 @@ const FROM: Partial<Record<PartKind, Omit<Attack, 'from'>>> = {
     name: 'spin',
     span: 0.36,
     live: [0.2, 0.86],
-    reach: 0.85,
+    reach: 0.88,
     rise: 0.42,
     both: true,
     bite: 6,
@@ -151,7 +151,7 @@ const FROM: Partial<Record<PartKind, Omit<Attack, 'from'>>> = {
     name: 'burst',
     span: 0.42,
     live: [0.48, 0.72],
-    reach: 0.8,
+    reach: 0.84,
     rise: 0.62,
     both: true,
     bite: 8,
@@ -163,7 +163,7 @@ const FROM: Partial<Record<PartKind, Omit<Attack, 'from'>>> = {
     name: 'scorch',
     span: 0.46,
     live: [0.42, 0.88],
-    reach: 1.15,
+    reach: 1.05,
     rise: 0.48,
     bite: 12,
     shove: 1.3,
@@ -185,7 +185,7 @@ export const POUNCE: Attack = {
   from: 'body',
   span: 0.34,
   live: [0.24, 0.66],
-  reach: 0.8,
+  reach: 0.84,
   rise: 0.4,
   bite: 5,
   shove: 1,
@@ -240,9 +240,19 @@ function bulk(p: Part, ink: Box): number {
  * is always the one you have to mean. The room binds two buttons to the ends of this list, which
  * is why the order is part of the answer rather than a detail of how it was built.
  */
+/**
+ * ⚠️ EVERY CREATURE HAS AT LEAST TWO MOVES, and this is where that has to be true rather than
+ * in `pairOf`. The room binds two buttons to the ends of this list and `stepFighter` picks a move
+ * by INDEX into it — so for anything with one recognised part, both ends were index zero and both
+ * buttons threw the same swing, whatever the readout said. Making the pair up for display and not
+ * for the simulation is the shape of bug where the screen and the rules quietly disagree.
+ */
+const withHeavy = (list: Attack[]): Attack[] =>
+  list.length > 1 ? list : [list[0], heavier(list[0])]
+
 export function attacksOf(parts: Part[]): Attack[] {
   const ink = inkOf(parts)
-  if (!ink) return [POUNCE]
+  if (!ink) return withHeavy([POUNCE])
 
   const best = new Map<PartKind, number>()
   for (const p of parts) {
@@ -256,16 +266,51 @@ export function attacksOf(parts: Part[]): Attack[] {
   for (const [kind, big] of best) {
     const t = FROM[kind]
     if (!t) continue
-    /* 0.75× for a stub, up to 1.65× for something half the creature long — see bulk */
-    out.push({ ...t, from: kind, reach: t.reach * (0.75 + big * 0.9) })
+    /**
+     * ⚠️ A NARROWER SPREAD THAN IT LOOKS LIKE IT SHOULD BE. This ran 0.75× to 1.65×, which on
+     * top of the base reaches put the longest sweep two body-lengths in front of the creature —
+     * and the first person to play it said the fighting felt "ranged", which it was. Drawing a
+     * longer tail should still out-reach a stub, and it still does; it should not turn a melee
+     * game into one fought at a distance where neither creature is near the other.
+     */
+    out.push({ ...t, from: kind, reach: t.reach * (0.85 + big * 0.4) })
   }
-  if (!out.length) return [POUNCE]
-  return out.sort((a, b) => a.span + a.rest - (b.span + b.rest))
+  return withHeavy(out.length ? out.sort((a, b) => a.span + a.rest - (b.span + b.rest)) : [POUNCE])
 }
 
-/** The quick one and the heavy one, which is what a pair of buttons can hold. */
+/**
+ * A committed version of a move, for a creature that only has the one.
+ *
+ * ⚠️ WITHOUT THIS, MOST CREATURES HAD TWO BUTTONS THAT DID THE SAME THING. `pairOf` took the
+ * first and the last of the list, which for anything with a single recognised part is the same
+ * entry twice — and one recognised part is the common case, not the odd one. Reported after the
+ * first real fight: "the light and heavy attack are the same". They were, literally.
+ *
+ * ⚠️ AND THE TRADE IS THE ONE THE WHOLE ROSTER IS BUILT ON: more reach and nearly twice the
+ * damage, paid for in being committed for about three times as long. A heavy you can throw as
+ * freely as a light is not a heavy, it is a better light.
+ */
+const heavier = (a: Attack): Attack => ({
+  ...a,
+  name: 'big ' + a.name,
+  span: a.span * 1.55,
+  live: [a.live[0] + 0.08, Math.min(0.95, a.live[1] + 0.05)],
+  reach: a.reach * 1.2,
+  bite: Math.round(a.bite * 1.9),
+  shove: a.shove * 1.4,
+  lift: Math.min(0.85, a.lift * 1.15),
+  rest: a.rest * 1.9,
+})
+
+/**
+ * The quick one and the heavy one, which is what a pair of buttons can hold.
+ *
+ * ⚠️ A VIEW OF THE LIST, NOT A SECOND SOURCE OF IT. attacksOf guarantees two, so this only has
+ * to say which ends the buttons are on — and because it is the same list `stepFighter` indexes,
+ * the name on the readout is the move that actually comes out.
+ */
 export function pairOf(list: Attack[]): [Attack, Attack] {
-  if (!list.length) return [POUNCE, POUNCE]
+  if (!list.length) return [POUNCE, heavier(POUNCE)]
   return [list[0], list[list.length - 1]]
 }
 

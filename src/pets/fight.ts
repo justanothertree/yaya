@@ -63,6 +63,30 @@ export type Fighter = Body & {
    * control here is a level. Held, it would spend every hop in three frames.
    */
   held: boolean
+  /**
+   * Whether each attack button was down last frame.
+   *
+   * ⚠️ AN ATTACK IS A PRESS, AND IT USED TO BE A LEVEL — which is the whole of "the fight is just
+   * holding down the attack to win". Held, the button re-fired the instant the recovery ran out,
+   * so the best thing either player could do was lean on it and never let go. Committing to a
+   * swing has to be a decision you make again each time, or the recovery a heavy pays for its
+   * damage with is a cost nobody ever actually pays.
+   */
+  heldQ: boolean
+  heldH: boolean
+  /**
+   * Frames of stillness after a hit lands, for both of them at once.
+   *
+   * ⚠️ THIS IS WHAT MAKES A HIT FEEL LIKE A HIT. Without it a blow is a number changing and a
+   * creature sliding — the two bodies pass through the moment of contact at full speed and there
+   * is nothing to see. A few hundredths of a second where the world stops is the oldest trick in
+   * the genre and the single biggest difference between "it registered" and "something happened".
+   *
+   * ⚠️ IN THE SIMULATION, NOT THE RENDERER, because both machines have to stop on the same frame
+   * for the same length of time. A freeze done in the drawing would desync a bout the first time
+   * anybody connected.
+   */
+  hold: number
 }
 
 export type FightInput = Input & { quick: boolean; heavy: boolean }
@@ -154,6 +178,9 @@ export const freshFighter = (i: number): Fighter => ({
   safe: 1.2,
   hops: 2,
   held: false,
+  heldQ: false,
+  heldH: false,
+  hold: 0,
 })
 
 const at = (f: Fighter): At => ({ x: f.x, y: f.y, facing: f.facing })
@@ -189,6 +216,22 @@ export function stepFighter(
   bounds: Bounds = RING,
 ): Fighter {
   const t = Math.max(0, Math.min(0.05, dt))
+
+  /**
+   * ⚠️ NOTHING MOVES DURING HITSTOP, INCLUDING GRAVITY. A freeze that only stopped the horizontal
+   * would drop both creatures a little on every exchange, which over a long fight is a fighter
+   * being quietly walked into the pit by having landed hits.
+   */
+  if (f.hold > 0) {
+    return {
+      ...f,
+      hold: Math.max(0, f.hold - t),
+      held: input.jump,
+      heldQ: input.quick,
+      heldH: input.heavy,
+    }
+  }
+
   const stun = Math.max(0, f.stun - t)
   const rest = Math.max(0, f.rest - t)
   const safe = Math.max(0, f.safe - t)
@@ -196,9 +239,12 @@ export function stepFighter(
   let move = f.move
   let spent = f.spent
 
+  /* ⚠️ the rising edge only — see heldQ/heldH */
+  const tapQ = input.quick && !f.heldQ
+  const tapH = input.heavy && !f.heldH
   const busy = stun > 0 || swing > 0
-  if (!busy && rest <= 0 && (input.quick || input.heavy)) {
-    move = input.heavy ? Math.max(0, moves.length - 1) : 0
+  if (!busy && rest <= 0 && (tapQ || tapH)) {
+    move = tapH ? Math.max(0, moves.length - 1) : 0
     swing = moves[move]?.span ?? 0
     spent = false
   }
@@ -246,6 +292,9 @@ export function stepFighter(
     vy,
     hops,
     held: input.jump,
+    heldQ: input.quick,
+    heldH: input.heavy,
+    hold: 0,
     facing,
     hurt: f.hurt,
     stocks: f.stocks,
@@ -264,6 +313,33 @@ export function liveBox(f: Fighter, moves: Attack[]) {
   const a = moves[f.move]
   if (!a) return null
   return hurtBox(at(f), a, a.span - f.swing)
+}
+
+/**
+ * Which part of a swing a creature is in.
+ *
+ * ⚠️ THE THREE PARTS OF AN ATTACK ARE THE GAME, AND YOU COULD NOT SEE ANY OF THEM. The whole
+ * reason a heavy is worth more damage is that you are committed through a wind-up before it and a
+ * recovery after it — but on screen every attack was one undifferentiated lunge, so there was
+ * nothing to step into and nothing to punish, and both buttons looked the same whatever they did.
+ * Reported as needing "more feeling where every action is obvious as to what's happening".
+ *
+ * ⚠️ DERIVED, NOT STORED. It is a reading of the same swing clock the hit test uses, so what
+ * you see lit up is exactly when the hitbox is live — rather than a second animation that agrees
+ * with the rules only until one of them is edited.
+ */
+export type Phase = 'ready' | 'windup' | 'live' | 'recover' | 'stunned' | 'frozen'
+
+export function phaseOf(f: Fighter, moves: Attack[]): Phase {
+  if (f.hold > 0) return 'frozen'
+  if (f.stun > 0) return 'stunned'
+  if (f.swing <= 0) return 'ready'
+  const a = moves[f.move]
+  if (!a) return 'ready'
+  const gone = (a.span - f.swing) / a.span
+  if (gone < a.live[0]) return 'windup'
+  if (gone > a.live[1] || f.spent) return 'recover'
+  return 'live'
 }
 
 /** Somebody got hit, and by what. */
@@ -311,6 +387,11 @@ export function trade(
       next[j].swing = 0
       next[j].facing = -dir
       next[i].spent = true
+      /* ⚠️ BOTH OF THEM, for the same length of time. Freezing only the one who was hit reads as
+         them lagging; freezing both reads as the blow landing. */
+      const freeze = 0.05 + a.bite * 0.004
+      next[i].hold = freeze
+      next[j].hold = freeze
       blows.push({ who: j, by: i, attack: a, up: a.lift > 0.5 })
       break
     }

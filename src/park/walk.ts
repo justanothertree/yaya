@@ -36,14 +36,21 @@ export type Steer = { left: boolean; right: boolean; up: boolean; down: boolean 
 export const STILL: Steer = { left: false, right: false, up: false, down: false }
 
 /**
- * ⚠️ THE PARK IS TALLER THAN IT IS DEEP, in the sense that y is squashed. A top-down field drawn
- * in a 16:10 box means one unit of y is a shorter distance on screen than one unit of x, so a
- * creature walking north at the same number would visibly outrun one walking east. `squash` is
- * that ratio, and it is applied to movement rather than to the drawing.
+ * ⚠️ THE CORRECTION WAS THE WRONG WAY ROUND, and it was reported as walking through quicksand
+ * going up and down. The field is 16:10, so one unit of y is a SHORTER distance on screen than
+ * one unit of x — which means the same number moves you visibly SLOWER up the screen, not faster.
+ * The old note here reasoned that out backwards and then slowed y by a further 0.62 on top, so
+ * north ended up about two and a half times slower than east to look at.
+ *
+ * So the number is built rather than picked. `aspect` undoes the shape of the box; the 0.82 is
+ * the part that is a choice — a little slower up and down still reads as a field you are looking
+ * down at rather than a flat grid, and it is gentle enough not to feel like being held back.
  */
+const ASPECT = 16 / 10
+
 export const PARK = {
-  /** how much slower vertical movement is, so diagonal reads as diagonal */
-  squash: 0.62,
+  /** what vertical speed is multiplied by, so up and down reads right on screen */
+  squash: ASPECT * 0.82,
   /** a creature stands this tall; the park's own bounds keep its feet on the grass */
   tall: PET_TALL,
 }

@@ -8249,21 +8249,82 @@ a.cz-msg-author:focus-visible {
   transition: none;
   pointer-events: none;
 }
-/* ⚠️ A HIT HAS TO BE VISIBLE WITHOUT WATCHING THE NUMBER. Being launched reads as the
-   creature moving; being HIT is one frame, and without a flash the damage going up is the only
-   evidence it happened. */
-.pet-fight-pet.is-hit {
+/* ── the three parts of a swing, which the game is actually made of ────────
+   ⚠️ A WIND-UP, A LIVE MOMENT AND A RECOVERY LOOK DIFFERENT NOW. They always existed in the
+   rules — a heavy is worth its damage because you are committed either side of it — and none of
+   them was visible, so there was nothing to step into and nothing to punish, and the two buttons
+   looked identical whatever they did. Reported as needing every action to be obvious. */
+.pet-fight-pet.is-windup {
+  filter: brightness(0.82) saturate(1.3);
+}
+.pet-fight-pet.is-live {
+  filter: drop-shadow(0 0 9px color-mix(in srgb, var(--who, #fff) 95%, transparent))
+    brightness(1.15);
+}
+.pet-fight-pet.is-recover {
+  filter: brightness(0.7) saturate(0.55);
+}
+/* ⚠️ BEING HIT READS AS A FLASH, and being FROZEN is the couple of hundredths where the world
+   stops on contact — the same white, because they are two halves of one moment. */
+.pet-fight-pet.is-hit,
+.pet-fight-pet.is-stunned,
+.pet-fight-pet.is-frozen {
   filter: brightness(1.9) saturate(0.4);
 }
-.pet-fight-pet.is-swing {
-  filter: drop-shadow(0 0 7px color-mix(in srgb, var(--accent, #7c6af7) 80%, transparent));
+.pet-fight-pet.is-p1 {
+  --who: #f2a13a;
+}
+.pet-fight-pet.is-p2 {
+  --who: #43b0f1;
+}
+
+/* ⚠️ THE DANGEROUS REGION, drawn from the same box the hit test reads. What lights up IS what
+   can hurt you, for exactly the frames it can — which is how somebody learns the range of a move
+   rather than guessing at it. */
+.pet-fight-swipe {
+  position: absolute;
+  border-radius: 6px;
+  pointer-events: none;
+  background: color-mix(in srgb, var(--who, #fff) 30%, transparent);
+  border: 1px solid color-mix(in srgb, var(--who, #fff) 75%, transparent);
+}
+.pet-fight-swipe.is-p1 {
+  --who: #f2a13a;
+}
+.pet-fight-swipe.is-p2 {
+  --who: #43b0f1;
+}
+
+/* what they are doing, beside what they have taken */
+.pet-fight-doing {
+  font-size: 0.68rem;
+  padding: 1px 6px;
+  border-radius: 8px;
+  white-space: nowrap;
+  background: color-mix(in srgb, var(--text) 12%, transparent);
+}
+.pet-fight-doing.is-windup {
+  background: color-mix(in srgb, var(--who, var(--accent, #7c6af7)) 35%, transparent);
+}
+.pet-fight-doing.is-live {
+  background: var(--who, var(--accent, #7c6af7));
+  color: #fff;
+  font-weight: 700;
+}
+.pet-fight-doing.is-stunned {
+  background: color-mix(in srgb, #e8534e 55%, transparent);
+  color: #fff;
 }
 .pet-fight-pet.is-safe {
   opacity: 0.55;
 }
 @media (prefers-reduced-motion: reduce) {
-  /* the flash is a thing that happens AT you, so it goes; the launch is the game and stays */
-  .pet-fight-pet.is-hit {
+  /* ⚠️ THE FLASH GOES, THE HITBOX STAYS. A flash is something that happens AT you; the lit
+     region is information about the rules, and taking it away would make the game harder to read
+     rather than calmer to look at. */
+  .pet-fight-pet.is-hit,
+  .pet-fight-pet.is-stunned,
+  .pet-fight-pet.is-frozen {
     filter: none;
     outline: 2px solid var(--accent, #7c6af7);
   }
