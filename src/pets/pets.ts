@@ -31,7 +31,7 @@ export function readPet(v: unknown): { name: string; art: Drawing } | null {
   const art = readDrawing(o.a ?? o.art)
   if (!art || !art.strokes.length) return null
   const raw = typeof o.n === 'string' ? o.n : typeof o.name === 'string' ? o.name : ''
-  const name = raw.trim().slice(0, 40) || art.name || 'Pet'
+  const name = raw.trim().slice(0, 40) || art.name || 'Minion'
   return { name, art }
 }
 

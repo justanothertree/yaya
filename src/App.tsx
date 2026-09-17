@@ -1421,7 +1421,7 @@ export default function App() {
         return <InstrumentRoom inCanvas />
       case 'paint':
         return <PaintRoom />
-      case 'pets':
+      case 'minions':
         return <PetsRoom onControlChange={setGameHasControl} />
       case 'contact':
         return <ContactForm />
@@ -1744,7 +1744,7 @@ export default function App() {
           why that toggle is off by default and why it does not persist. */}
       <PartyCursors />
       {/* ⚠️ At app level because a pet that vanished when you changed room would not be following
-          you anywhere. Renders nothing at all until somebody says yes in the Pets room, which is
+          you anywhere. Renders nothing at all until somebody says yes in the Minions room, which is
           the same shape as PartyCursors above and for the same reason: this one is over every
           page on the site, including other people's. */}
       <PetCompanion />
@@ -2298,8 +2298,8 @@ export default function App() {
               </Suspense>
             </section>
           )}
-          {!sharedCanvasShowing && active === 'pets' && (
-            <section id="pets" className="card reveal">
+          {!sharedCanvasShowing && active === 'minions' && (
+            <section id="minions" className="card reveal">
               <Suspense fallback={<div aria-busy>Loading…</div>}>
                 <PetsRoom onControlChange={setGameHasControl} />
               </Suspense>

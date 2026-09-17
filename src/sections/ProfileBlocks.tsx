@@ -255,7 +255,7 @@ const BLOCK_LABEL: Record<ProfileBlock['block_type'], string> = {
   song: '🎵 Song',
   visualizer: '◉ Visualiser',
   art: '🖼 Art',
-  pet: '🐾 Pet',
+  pet: '🐾 Minion',
   looks: '🎭 Looks',
 }
 

@@ -8,7 +8,7 @@ import { pets as myPets, subscribePets } from '../pets/pets'
  *
  * ⚠️ THIS TAB USED TO BE CALLED SNAKE, and Snake is now one of the things in it rather than the
  * whole of it. That is the entire point: there was nowhere for a second game to go. A platformer
- * already existed and was reachable only by opening the Pets room and pressing a button inside
+ * already existed and was reachable only by opening the Minions room and pressing a button inside
  * it, which is a fine place for it to have been BORN and a poor place for it to live.
  *
  * ⚠️ `#snake` STILL WORKS AND ALWAYS WILL — see SECTION_ALIASES in nav/places.ts. Challenge links
@@ -100,7 +100,7 @@ export function GamesRoom({
   /**
    * ⚠️ ONLY ONE OF THE TWO GAMES EVER WRITES THIS. Snake raises `onControlChange` itself when its
    * canvas takes focus, so the playground is the only one this room has to speak for — it takes
-   * the arrow keys the moment it is on screen, the same as it does inside the Pets room.
+   * the arrow keys the moment it is on screen, the same as it does inside the Minions room.
    */
   useEffect(() => {
     if (game !== 'playground') return
@@ -191,7 +191,7 @@ export function GamesRoom({
             </button>
           </>
         ) : (
-          <a className="games-tile is-locked" href="#pets">
+          <a className="games-tile is-locked" href="#minions">
             <span className="games-tile-art" aria-hidden>
               🐾
             </span>
@@ -199,7 +199,7 @@ export function GamesRoom({
               <span className="games-tile-name">Playground &amp; Scrap</span>
               <span className="games-tile-line">
                 A platformer and a fighting ring for the creatures you drew — draw one first, then
-                come back. The Pets room shows you how.
+                come back. The Minions room shows you how.
               </span>
             </span>
           </a>

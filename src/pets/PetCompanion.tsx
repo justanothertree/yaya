@@ -22,7 +22,7 @@ import { pets, subscribePets } from './pets'
  *
  * ⚠️ IT WATCHES YOU ACROSS THE WHOLE PAGE, which is what makes a creature in a corner read
  * as company rather than as a sticker. The rig has moved the head and the eyes since the stances
- * landed, and the Pets room advertises it — but the room's pet is one you are leaning over, so
+ * landed, and the Minions room advertises it — but the room's pet is one you are leaning over, so
  * `'hover'` was enough there, and this one was left with no watching at all. Your cursor is almost
  * never on top of a thing pinned in a corner: for this pet, following the pointer anywhere on the
  * screen is not a richer mode, it is the only one that would ever fire.
@@ -102,7 +102,7 @@ export function PetCompanion() {
       <button
         className="pet-corner-away"
         onClick={() => setCompanion({ on: false })}
-        title={`Put ${pet.name} away — the Pets room brings them back`}
+        title={`Put ${pet.name} away — the Minions room brings them back`}
         aria-label={`Put ${pet.name} away`}
       >
         ✕

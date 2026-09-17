@@ -117,9 +117,15 @@ export const PLACES = [
   { id: 'visualizer', label: 'Visualiser', icon: '🎚️', title: 'Visualiser', nav: () => true },
   { id: 'instrument', label: 'Instrument', icon: '🎹', title: 'Instrument', nav: () => true },
   { id: 'paint', label: 'Paint', icon: '🎨', title: 'Paint', nav: () => true },
-  /* ⚠️ Beside Paint, because that is where its pets come from — every pet in here is a drawing
-     somebody kept, and the first thing the room tells you to do is go and name its layers. */
-  { id: 'pets', label: 'Pets', icon: '🐾', title: 'Pets', nav: () => true },
+  /* ⚠️ Beside Paint, because that is where its minions come from — every one of them is a
+     drawing somebody kept, and the first thing the room tells you to do is name its layers.
+
+     ⚠️ THEY WERE CALLED PETS UNTIL TODAY, so `#pets` is aliased below for the same reason
+     `#snake` is: the name a thing is called is the owner's to change, and a link somebody was
+     already sent is not. Everything the DATABASE and people's browsers have already written down
+     still says `pet` — the library kind, the profile block type, the localStorage key — because
+     renaming those rewrites other people's rows to change a word on a heading. */
+  { id: 'minions', label: 'Minions', icon: '🐾', title: 'Minions', nav: () => true },
   { id: 'contact', label: 'Contact', icon: '✉️', title: 'Contact', nav: () => true },
 
   /**
@@ -161,7 +167,7 @@ export const navFor = (v: Viewer): readonly Place[] => PLACES.filter((p) => p.na
  * did. So `#snake` keeps working, keeps its query, and lands on the games room with Snake
  * already open — which is exactly what it always did.
  */
-export const SECTION_ALIASES: Record<string, Section> = { snake: 'games' }
+export const SECTION_ALIASES: Record<string, Section> = { snake: 'games', pets: 'minions' }
 
 /**
  * The section a hash names. One answer, for the first load and for every hashchange after it.

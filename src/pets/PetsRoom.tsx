@@ -180,9 +180,9 @@ export function PetsRoom({ onControlChange }: { onControlChange?: (on: boolean) 
   return (
     <section className="card pets-room">
       <div className="pets-head">
-        <h2>Pets</h2>
+        <h2>Minions</h2>
         <p className="muted">
-          A pet is a drawing that moves. Draw each part of a creature on its own layer, tell the
+          A minion is a drawing that moves. Draw each part of a creature on its own layer, tell the
           layer what that part is, and it starts doing what that part does.
         </p>
         {/**
@@ -191,7 +191,7 @@ export function PetsRoom({ onControlChange }: { onControlChange?: (on: boolean) 
          * which is the entire technique, and was the one thing never said. Reported exactly that
          * way: "not clear and confusing to even know what to go and draw or what i can do."
          *
-         * ⚠️ OPEN UNTIL YOU HAVE A PET, then folded away. Somebody with no pets is reading this
+         * ⚠️ OPEN UNTIL YOU HAVE ONE, then folded away. Somebody with no minions is reading this
          * page to find out how; somebody with three has read it.
          */}
         <details className="pets-how" open={!mine.length}>
@@ -224,10 +224,11 @@ export function PetsRoom({ onControlChange }: { onControlChange?: (on: boolean) 
           <p className="muted">
             Each named part then moves by itself — a <code>wing</code> flaps, a <code>tail</code>{' '}
             wags, <code>legs</code> take turns. Anything you leave unnamed just breathes along with
-            the body, which is why a drawing with one layer still makes a pet: it simply breathes.
+            the body, which is why a drawing with one layer still makes a minion: it simply
+            breathes.
           </p>
           <p className="muted">
-            It does not matter how big you drew it or where on the page — a pet is cropped to the
+            It does not matter how big you drew it or where on the page — a minion is cropped to the
             creature. And if you would rather animate it yourself, a drawing made with{' '}
             <strong>🎬 Frames</strong> plays its frames instead of being moved for you.
           </p>
@@ -243,7 +244,7 @@ export function PetsRoom({ onControlChange }: { onControlChange?: (on: boolean) 
       {!mine.length ? (
         <p className="muted">
           {drawings.length
-            ? 'No pets yet. Adopt one of your drawings below.'
+            ? 'No minions yet. Adopt one of your drawings below.'
             : 'Nothing to adopt yet — draw something in the Paint room and press Keep, then come back.'}
         </p>
       ) : (
@@ -443,7 +444,7 @@ export function PetsRoom({ onControlChange }: { onControlChange?: (on: boolean) 
                   </button>
                 </div>
                 {/* ⚠️ ITS OWN LINE. With the size chips inline the row was eight buttons — three
-                    things you can do to a pet and five that are about making a file — all the same
+                    things you can do to a minion and five that are about making a file — all the same
                     weight, wrapping to four lines on a phone. Two kinds of thing, two rows. */}
                 <div className="pets-files">
                   <button
@@ -494,7 +495,9 @@ export function PetsRoom({ onControlChange }: { onControlChange?: (on: boolean) 
           aria-pressed={adopting}
           disabled={!drawings.length}
           onClick={() => setAdopting((v) => !v)}
-          title={drawings.length ? 'Turn one of your drawings into a pet' : 'Draw something first'}
+          title={
+            drawings.length ? 'Turn one of your drawings into a minion' : 'Draw something first'
+          }
         >
           ✚ Adopt a drawing
         </button>

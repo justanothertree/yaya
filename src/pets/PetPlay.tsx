@@ -467,7 +467,7 @@ export function PetPlay({ pets, startAt = 0 }: { pets: PlayPet[]; startAt?: numb
         {pets.length > 1 && (
           <>
             {' · '}
-            <strong>1–{Math.min(9, pets.length)}</strong> or click a pet to play as it
+            <strong>1–{Math.min(9, pets.length)}</strong> or click a minion to play as it
           </>
         )}
         . What each one is made of is what it can do: wings glide if you hold jump on the way down,

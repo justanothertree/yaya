@@ -1230,7 +1230,7 @@ export function PaintRoom() {
   }, [strokes, petStep])
 
   const finishPet = () => {
-    const name = window.prompt('What is your pet called?', '')?.trim() ?? ''
+    const name = window.prompt('What is your minion called?', '')?.trim() ?? ''
     if (!name) return
     const art = { ...drawingRef.current, name }
     saveArt(art)
@@ -1238,7 +1238,7 @@ export function PaintRoom() {
     setPetStep(null)
     setNote(
       made
-        ? `${made.name} is yours — find them in 🐾 Pets.`
+        ? `${made.name} is yours — find them in 🐾 Minions.`
         : 'That could not be kept — is there anything on the page?',
     )
     window.setTimeout(() => setNote(null), 6000)
@@ -2442,7 +2442,7 @@ export function PaintRoom() {
                     onClick={() => {
                       const to = window
                         .prompt(
-                          'Name this layer — wing, head, leg, tail, ear, eye, arm and antenna give it movement in the Pets room.',
+                          'Name this layer — wing, head, leg, tail, ear, eye, arm and antenna give it movement in the Minions room.',
                           layerNames[i] ?? '',
                         )
                         ?.trim()
@@ -3186,7 +3186,7 @@ export function PaintRoom() {
              */}
             {!!strokes.length && (
               <div className="paint-pet-preview">
-                <PetView art={petPreview} size={96} label="your pet, moving" />
+                <PetView art={petPreview} size={96} label="your minion, moving" />
                 <span className="muted">
                   {frameCount(petPreview) > 1
                     ? `Playing your ${frameCount(petPreview)} frames — a drawing with frames is animated by them rather than by its layer names.`
@@ -3251,7 +3251,7 @@ export function PaintRoom() {
           ⬇ Keep
         </button>
         {/* ⚠️ Beside Keep because it ENDS in a keep — it is the same job with the steps said out
-            loud, and the pet falls out at the end. */}
+            loud, and the minion falls out at the end. */}
         <button
           className={'btn' + (petStep ? ' is-on' : '')}
           aria-pressed={!!petStep}
@@ -3262,7 +3262,7 @@ export function PaintRoom() {
               : 'Walk me through making a creature that moves'
           }
         >
-          🐾 Make a pet
+          🐾 Make a minion
         </button>
         {/**
          * ⚠️ A DIFFERENT WORD AND A DIFFERENT ARROW FROM KEEP, deliberately. Keep puts a picture

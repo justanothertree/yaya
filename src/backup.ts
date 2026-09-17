@@ -3,12 +3,16 @@ import { packSong, readSong } from './audio/songFile'
 import { gallery, saveArt } from './draw/gallery'
 import { packDrawing, readDrawing } from './draw/strokes'
 import { readPresets, savePreset } from './audio/vizPresets'
+import { packPet, pets, readPet, savePet } from './pets/pets'
 
 /**
  * Everything you have made that lives only in this browser, as one file.
  *
- * ⚠️ THREE STORES ARE LOCAL AND ONLY LOCAL: the song library, the paint gallery and the saved
- * looks. That is written down as a deliberate first step in each of them — it works with no
+ * ⚠️ FOUR STORES ARE LOCAL AND ONLY LOCAL: the song library, the paint gallery, the saved
+ * looks and your minions — and the minions were missing from here for their whole life, because
+ * this file was written when there were three and nobody came back to it when a fourth arrived.
+ * A person who backed up, wiped, and restored got everything they had made except their
+ * creatures, and the file gave them no reason to expect that. That is written down as a deliberate first step in each of them — it works with no
  * schema change and no new way for one person's data to reach another — and the bill for it
  * came due twice in one week. Somebody lost songs they made weeks ago without changing browser
  * or clearing anything, which is a browser evicting site data and is entirely normal; and a song
@@ -32,6 +36,19 @@ export type Backup = {
   songs: Array<{ kind: 'song' | 'loop'; song: unknown }>
   art: unknown[]
   looks: Array<{ name: string; s: Record<string, unknown> }>
+  /**
+   * ⚠️ `minions`, not `pets`, and that is the rule rather than an inconsistency. Every other
+   * stored word in this codebase still says `pet` — the localStorage key, the library kind, the
+   * profile block type — because those were written down before the rename, in places belonging
+   * to people who cannot be asked to rewrite them. This field has never been written by anybody,
+   * so it gets the real name. A stored word is frozen at the moment it is first written, not
+   * before.
+   *
+   * ⚠️ REQUIRED HERE AND OPTIONAL ON THE WAY IN, which is not a contradiction: a backup this
+   * app WRITES always has it, and both readers take a `Partial<Backup>` and check every field
+   * with Array.isArray — so a file made before today restores exactly as it did.
+   */
+  minions: unknown[]
 }
 
 export function makeBackup(): Backup {
@@ -41,6 +58,7 @@ export function makeBackup(): Backup {
     songs: library().map((i) => ({ kind: i.kind, song: packSong(i.song) })),
     art: gallery().map((a) => packDrawing(a.art)),
     looks: readPresets().map((p) => ({ name: p.name, s: p.s })),
+    minions: pets().map(packPet),
   }
 }
 
@@ -51,7 +69,13 @@ export function backupName(): string {
   return `evancook-backup-${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}.json`
 }
 
-export type Restored = { songs: number; art: number; looks: number; skipped: number }
+export type Restored = {
+  songs: number
+  art: number
+  looks: number
+  minions: number
+  skipped: number
+}
 
 /**
  * Put a backup back.
@@ -62,7 +86,7 @@ export type Restored = { songs: number; art: number; looks: number; skipped: num
  * with everything twice.
  */
 export function restoreBackup(raw: unknown): Restored {
-  const out: Restored = { songs: 0, art: 0, looks: 0, skipped: 0 }
+  const out: Restored = { songs: 0, art: 0, looks: 0, minions: 0, skipped: 0 }
   if (!raw || typeof raw !== 'object') return out
   const b = raw as Partial<Backup>
 
@@ -127,17 +151,43 @@ export function restoreBackup(raw: unknown): Restored {
     }
   }
 
+  /* ⚠️ through readPet, like everything else here: a backup comes off a disk and is exactly
+     as trustworthy as a file from a stranger — see the note at the top */
+  if (Array.isArray(b.minions)) {
+    const have = new Set(pets().map((p) => p.name))
+    for (const packed of b.minions.slice(0, 200)) {
+      const m = readPet(packed)
+      if (!m || have.has(m.name)) {
+        out.skipped++
+        continue
+      }
+      if (savePet(m.name, m.art)) {
+        have.add(m.name)
+        out.minions++
+      } else out.skipped++
+    }
+  }
+
   return out
 }
 
 /** What a backup holds, for showing before anything is written. */
-export function countBackup(raw: unknown): { songs: number; art: number; looks: number } | null {
+export function countBackup(
+  raw: unknown,
+): { songs: number; art: number; looks: number; minions: number } | null {
   if (!raw || typeof raw !== 'object') return null
   const b = raw as Partial<Backup>
-  if (!Array.isArray(b.songs) && !Array.isArray(b.art) && !Array.isArray(b.looks)) return null
+  if (
+    !Array.isArray(b.songs) &&
+    !Array.isArray(b.art) &&
+    !Array.isArray(b.looks) &&
+    !Array.isArray(b.minions)
+  )
+    return null
   return {
     songs: Array.isArray(b.songs) ? b.songs.length : 0,
     art: Array.isArray(b.art) ? b.art.length : 0,
     looks: Array.isArray(b.looks) ? b.looks.length : 0,
+    minions: Array.isArray(b.minions) ? b.minions.length : 0,
   }
 }

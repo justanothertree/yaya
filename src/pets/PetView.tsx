@@ -196,7 +196,7 @@ export function PetView({
     <canvas
       ref={cv}
       className={className}
-      aria-label={label ?? art.name ?? 'Pet'}
+      aria-label={label ?? art.name ?? 'Minion'}
       role="img"
       onPointerMove={watch === 'hover' ? follow : undefined}
       onPointerLeave={watch === 'hover' ? away : undefined}

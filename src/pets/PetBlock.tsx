@@ -125,8 +125,8 @@ export function PetPicker({
   if (!mine.length && !chosen.length)
     return (
       <p className="muted" style={{ margin: 0, fontSize: '0.85rem' }}>
-        No pets yet. Adopt one of your drawings in the <strong>Pets</strong> room, then come back —
-        or sign in, if you have made some on another machine.
+        No minions yet. Adopt one of your drawings in the <strong>Minions</strong> room, then come
+        back — or sign in, if you have made some on another machine.
       </p>
     )
 
@@ -136,10 +136,11 @@ export function PetPicker({
       {!mine.length && (
         <span className="muted" style={{ fontSize: '0.75rem' }}>
           {/* ⚠️ THIS USED TO SAY THERE WAS NOTHING TO BE DONE ABOUT IT, and that was not true:
-              pets are one of the kinds the library syncs (see library/cloud.ts, kind 'pet'), so a
+              these are one of the kinds the library syncs (see library/cloud.ts, kind 'pet' — the
+              stored word never changed, only the one on the heading), so a
               browser that has none gets them as soon as it is signed in. Saying a thing is
-              permanent when it fixes itself in a moment sends somebody off to redraw a pet. */}
-          {names.join(', ')} — added from another browser, and they show here fine. Your own pets
+              permanent when it fixes itself in a moment sends somebody off to redraw one. */}
+          {names.join(', ')} — added from another browser, and they show here fine. Your own minions
           arrive on this machine once you are signed in.
         </span>
       )}
@@ -198,14 +199,14 @@ export function PetPicker({
           ? '— too much for one block, take one out'
           : `· ${Math.round((used / CONFIG_LIMIT) * 100)}% of the room a block has`}
       </span>
-      {/* ⚠️ said once, under the list, rather than on each greyed-out pet: a title is not
+      {/* ⚠️ said once, under the list, rather than on each greyed-out one: a title is not
           readable on a phone, and this is the one thing somebody stuck here needs told. */}
       {mine.some(
         (p) => !names.includes(p.name) && used + (costs.get(p.id) ?? 0) > CONFIG_LIMIT,
       ) && (
         <span className="muted" style={{ fontSize: '0.75rem' }}>
-          Greyed-out pets are too detailed to fit in a block — a block carries the whole drawing so
-          the page can show it without hosting anything.
+          Greyed-out minions are too detailed to fit in a block — a block carries the whole drawing
+          so the page can show it without hosting anything.
         </span>
       )}
     </div>

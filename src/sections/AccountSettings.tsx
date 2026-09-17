@@ -831,7 +831,7 @@ function BackupCard() {
   const [busy, setBusy] = useState(false)
   const file = useRef<HTMLInputElement>(null)
   const mine = makeBackup()
-  const total = mine.songs.length + mine.art.length + mine.looks.length
+  const total = mine.songs.length + mine.art.length + mine.looks.length + mine.minions.length
 
   const download = () => {
     const blob = new Blob([JSON.stringify(mine)], { type: 'application/json' })
@@ -854,10 +854,10 @@ function BackupCard() {
         return
       }
       const got = restoreBackup(raw)
-      const added = got.songs + got.art + got.looks
+      const added = got.songs + got.art + got.looks + got.minions
       showToast(
         added
-          ? `Added ${added} — ${got.songs} songs, ${got.art} drawings, ${got.looks} looks`
+          ? `Added ${added} — ${got.songs} songs, ${got.art} drawings, ${got.looks} looks, ${got.minions} minions`
           : 'Everything in that file was already here',
       )
     } catch {
@@ -870,7 +870,7 @@ function BackupCard() {
 
   return (
     <article className="card" style={{ display: 'grid', gap: 10 }}>
-      <h3 style={{ margin: 0 }}>Your songs, drawings and looks</h3>
+      <h3 style={{ margin: 0 }}>Your songs, drawings, looks and minions</h3>
       <p className="muted" style={{ margin: 0, fontSize: '0.82rem' }}>
         {/* ⚠️ This said "kept in this browser only — not on your account", which stopped being
             true the moment the library started syncing. A settings page that describes the old
