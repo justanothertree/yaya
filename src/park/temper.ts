@@ -94,6 +94,15 @@ const roll = (n: number, salt: number): number => {
 /** Which beat is a backing-off one, and which is a run at you. */
 export const givesGround = (beat: number, t: Temper): boolean => roll(beat, 1) > t.nerve
 export const runsAtYou = (beat: number, t: Temper): boolean => roll(beat, 2) < t.charge * 0.55
+/**
+ * Whether this beat's swing is a committed one.
+ *
+ * ⚠️ NERVE DECIDES, because a heavy is the move you have to mean — it reaches further and hurts
+ * nearly twice as much, and leaves you standing there afterwards. A creature that never gives
+ * ground is exactly the one that should be willing to pay that, and a darter is the one that
+ * should not.
+ */
+export const goesBig = (beat: number, t: Temper): boolean => roll(beat, 3) < 0.22 + t.nerve * 0.36
 
 /** The longest thing it can throw, which is what it wants to fight at. */
 const longest = (moves: Attack[]): number =>

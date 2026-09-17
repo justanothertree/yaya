@@ -3,7 +3,7 @@ import { attacksOf, moveTable, petWide, type Attack } from '../pets/attack'
 import { rigOf } from '../pets/rig'
 import { restingWalker, VIEW, type Spot } from './walk'
 import { across, footOf, PARK_TALL, restingStriker, type StrikeInput, type Striker } from './strike'
-import { givesGround, runsAtYou, temperOf, type Temper } from './temper'
+import { givesGround, goesBig, runsAtYou, temperOf, type Temper } from './temper'
 
 /**
  * A boss.
@@ -115,9 +115,16 @@ export function bossThink(
   const dy = target.y - b.y
   const away = Math.abs(dx)
 
-  /* its own reach, which is bigger than a creature's because it is */
-  const quick = moves[0]
-  const reach = ((quick?.reach ?? 0.9) * PARK_TALL * b.scale) / (16 / 10)
+  /**
+   * How far it can hit from, which is bigger than a creature's because IT is.
+   *
+   * ⚠️ ITS LONGEST MOVE, NOT ITS QUICKEST. This measured the quick one, so a boss made of an
+   * enormous tail stood as close as a boss made of a stub and never used the thing it was drawn
+   * with — and `range` has always been documented as a share of its LONGEST reach. The creature
+   * that can hit you from further away should be standing further away.
+   */
+  const long = moves.reduce((most, a) => Math.max(most, a.reach), moves[0]?.reach ?? 0.9)
+  const reach = (long * PARK_TALL * b.scale) / (16 / 10)
   const step = reach * VIEW.w
 
   /**
@@ -149,8 +156,28 @@ export function bossThink(
 
   const lined = Math.abs(dy) < deep * 2.2
   const inRange = away < step * 1.05 && lined
-  /* far but lined up: the long move. Close: the quick one. */
-  const heavy = inRange && away > step * 0.55
+
+  /**
+   * WHICH of its six, not which of its two.
+   *
+   * ⚠️ A BOSS USED TO THROW TWO MOVES AND ONLY TWO. It picked between quick-neutral and
+   * heavy-down and nothing else, so four of the six things a creature was drawn with could never
+   * appear on a boss at all. Measured over ninety seconds against a creature with a horn, wings, a
+   * tail, an arm and legs: slot 0 six times, slot 5 thirty-five times, and its gore, its buffet,
+   * its launcher and its sweep exactly never. Somebody drew a horn and their boss would not use it.
+   *
+   * ⚠️ THE DISTANCE PICKS THE ROLE AND THE DRAWING FILLS IT, which is why this is three lines
+   * rather than a table of moves per creature. moveTable already sorted the six by character — up
+   * is whatever launches hardest, down is whatever reaches furthest, neutral-heavy is the hardest
+   * hitter — so asking for a role asks for whatever THAT creature has that is best at it. A boss
+   * with a tail reaches with the tail; one with wings launches with the wings; neither needed a
+   * line of code about tails or wings.
+   */
+  const gap = away / Math.max(1e-6, step)
+  const aim: 'up' | 'down' | 'neutral' = gap > 0.72 ? 'down' : gap < 0.42 ? 'up' : 'neutral'
+  /* ⚠️ its beat is its drawing: this was a fixed tick, the same rhythm for every creature */
+  const swings = inRange && beat % 2 === 0
+  const big = goesBig(beat, t)
 
   return {
     steer: {
@@ -160,15 +187,11 @@ export function bossThink(
       down: wantY > 0,
     },
     hit: {
-      /**
-       * ⚠️ HOW OFTEN IT SWINGS IS ITS BEAT, and its beat is its drawing. This was `beat % 2`
-       * and `beat % 3` on a fixed tick, which is the same rhythm for every creature ever drawn.
-       */
-      quick: inRange && !heavy && beat % 2 === 0,
-      heavy: inRange && heavy && beat % 3 === 0,
-      /* it aims down for its long move, the same key a person would hold */
-      up: false,
-      down: heavy,
+      quick: swings && !big,
+      heavy: swings && big,
+      /* the same two keys a person holds to aim — see slotFor */
+      up: swings && aim === 'up',
+      down: swings && aim === 'down',
     },
     speed: t.pace * (charging ? 1.5 : 1),
   }
