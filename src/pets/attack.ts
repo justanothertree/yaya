@@ -159,6 +159,24 @@ const FROM: Partial<Record<PartKind, Omit<Attack, 'from'>>> = {
     lift: 0.7,
     rest: 0.44,
   },
+  /**
+   * ⚠️ THE ONE THING YOU DRAW TO FIGHT WITH RATHER THAN TO MOVE WITH. Every other part is a
+   * piece of an animal that happens to be usable; a horn, a blade or a spike is only ever a
+   * weapon, so it is the one entry allowed to be plainly the best at hurting somebody — paid for
+   * in being slow to bring out, short of the tail's range, and almost no lift, so it hurts a great
+   * deal and is poor at actually finishing anybody off.
+   */
+  horn: {
+    name: 'gore',
+    span: 0.44,
+    live: [0.44, 0.72],
+    reach: 1.0,
+    rise: 0.26,
+    bite: 14,
+    shove: 1.05,
+    lift: 0.16,
+    rest: 0.4,
+  },
   flame: {
     name: 'scorch',
     span: 0.46,

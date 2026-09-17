@@ -30,6 +30,7 @@ import {
   strokeBox,
   floodFill,
   xformStroke,
+  MAX_LAYERS,
 } from '../draw/strokes'
 import { InCanvasWindow } from '../circuit/ui/canvasContext'
 import { gallery, removeArt, saveArt, subscribeGallery, type Art } from '../draw/gallery'
@@ -1207,7 +1208,7 @@ export function PaintRoom() {
   }
 
   const petAddPart = (part: string) => {
-    if (layers >= 12) return
+    if (layers >= MAX_LAYERS) return
     const at = layers
     mark(`a ${part} layer`)
     /* ⚠️ ONE op, not an add and then a name — see the note on LayerOp.add */
@@ -1382,7 +1383,7 @@ export function PaintRoom() {
   ]
 
   const addLayer = () => {
-    if (layers >= 12) return
+    if (layers >= MAX_LAYERS) return
     runLayerOp({ k: 'add' }, true)
     /* ⚠️ Only the person who pressed it moves to the new layer — see applyLayerOp. Taking a
        peer's brush off what they were drawing on is not sharing, it is interfering. */
@@ -2491,7 +2492,7 @@ export function PaintRoom() {
           <button
             className="btn"
             onClick={addLayer}
-            disabled={layers >= 12}
+            disabled={layers >= MAX_LAYERS}
             title="Add a layer above"
           >
             + layer
@@ -3182,7 +3183,7 @@ export function PaintRoom() {
                     <button
                       key={w}
                       className="btn"
-                      disabled={layers >= 12}
+                      disabled={layers >= MAX_LAYERS}
                       onClick={() => petAddPart(w)}
                       title={`A layer called ${w} — it ${PART_DOES[partOf(w)]}`}
                     >

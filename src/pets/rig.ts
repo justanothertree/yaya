@@ -44,6 +44,7 @@ export type PartKind =
   | 'spin'
   | 'flame'
   | 'float'
+  | 'horn'
 
 /**
  * What each name means, in the words people actually use.
@@ -60,6 +61,16 @@ const WORDS: Array<[PartKind, string[]]> = [
    * gear twitches. Anything whose word contains a shorter word below it has to come above it.
    */
   ['pulse', ['heart', 'pulse', 'glow', 'gem', 'core']],
+  /**
+   * ⚠️ ABOVE 'spin' BECAUSE "fang" CONTAINS "fan", which is exactly the trap the note at the
+   * top of this list describes, and I walked into it anyway — checked that none of these words
+   * contained a shorter one BELOW them, and missed that one of them contains a shorter one ABOVE.
+   * Caught by asking what every new word actually reads as: `fang` came back as a propeller.
+   *
+   * ⚠️ `claw` IS DELIBERATELY NOT HERE. It has meant a foot since the rig was written, and
+   * quietly turning somebody's paw into a weapon changes a creature they already drew.
+   */
+  ['horn', ['horn', 'spike', 'blade', 'sword', 'tusk', 'fang', 'stinger', 'pincer']],
   ['spin', ['wheel', 'rotor', 'propeller', 'gear', 'fan']],
   ['flame', ['flame', 'fire', 'torch', 'candle']],
   ['float', ['halo', 'aura', 'balloon', 'ghost', 'cloud', 'bubble', 'float']],
@@ -89,6 +100,7 @@ export const PART_WORDS: string[] = [
   'wheel',
   'flame',
   'halo',
+  'horn',
 ]
 
 export function partOf(name: string | undefined): PartKind {
@@ -113,6 +125,7 @@ export const PART_DOES: Record<PartKind, string> = {
   spin: 'spins',
   flame: 'flickers',
   float: 'drifts',
+  horn: 'juts out, and hits hardest of anything',
 }
 
 /**

@@ -206,7 +206,20 @@ export type Drawing = {
 const MAX_STROKES = 4000
 const MAX_POINTS = 2000
 const MAX_NAME = 60
-const MAX_LAYERS = 12
+/**
+ * How many layers a drawing may have.
+ *
+ * ⚠️ IT WAS TWELVE AND THE ROOM SUGGESTED THIRTEEN PARTS. PART_WORDS lists thirteen words worth
+ * typing and a creature wants a body layer besides, so the paint room was recommending more parts
+ * than a drawing could physically hold — and the "+ layer" button went dead partway through
+ * following its own instructions. Reported as hitting a limit while adding things to a minion,
+ * which is exactly what it was.
+ *
+ * ⚠️ AN OLDER READER DEGRADES RATHER THAN BREAKS. `slot` clamps an index to max-1, so a build
+ * that still believes in twelve draws every stroke of a twenty-four layer creature and merges the
+ * top ones together. The picture survives; only the rig reads fewer parts.
+ */
+export const MAX_LAYERS = 24
 const MAX_FRAMES = 60
 
 const TOOL_IDS = new Set<string>(TOOLS.map(([t]) => t))
