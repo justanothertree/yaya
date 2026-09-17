@@ -7,18 +7,39 @@ import {
   fightEffort,
   fightStance,
   foeInput,
+  FRAME,
   freshFighter,
   IDLE,
-  respawn,
+  MAX_CATCHUP,
   STAGE,
-  stepFighter,
+  stepFight,
   STOCKS,
-  trade,
   winnerOf,
   RING,
   type FightInput,
   type Fighter,
 } from './fight'
+import {
+  advance,
+  DELAY,
+  framesFor,
+  heard,
+  newTape,
+  packInput,
+  ready,
+  STALL_SAYS,
+  take,
+  type Tape,
+} from './bout'
+import {
+  boutCode,
+  boutFromHash,
+  boutLink,
+  joinBout,
+  newBout,
+  type Bout,
+  type BoutState,
+} from './boutRoom'
 import { PET_TALL, traitsOf, traitWords, type Traits } from './play'
 
 /**
@@ -65,7 +86,15 @@ const KEYS: Array<Record<string, keyof FightInput>> = [
 /** Whose colour is whose, so a readout and a creature can be matched without reading a name. */
 const SIDE = ['p1', 'p2']
 
-export function PetFight({ pets }: { pets: FightPet[] }) {
+export function PetFight({
+  pets,
+  myName,
+  authed,
+}: {
+  pets: FightPet[]
+  myName: string
+  authed?: boolean
+}) {
   const host = useRef<HTMLDivElement>(null)
   const [size, setSize] = useState({ w: 0, h: 0 })
   const [pick, setPick] = useState<[number, number]>([0, Math.min(1, pets.length - 1)])
@@ -73,7 +102,38 @@ export function PetFight({ pets }: { pets: FightPet[] }) {
   /* ⚠️ bumped to start a fresh round; the loop hangs off it so a rematch rebuilds everything */
   const [round, setRound] = useState(0)
 
-  const side = useMemo(() => pick.map((i) => pets[i] ?? pets[0]).filter(Boolean), [pets, pick])
+  /** the bout code, once you have opened one or followed somebody's link */
+  const [code, setCode] = useState<string | null>(() => boutFromHash(window.location.hash))
+  /** bumped when the other side turns up, leaves, or something goes wrong */
+  const [wire, setWire] = useState(0)
+  const bout = useRef<BoutState>(newBout())
+  const post = useRef<Bout | null>(null)
+  const tape = useRef<Tape>(newTape())
+  const online = !!code
+
+  /**
+   * Who is fighting, in seat order.
+   *
+   * ⚠️ ONLINE, BOTH SIDES FIGHT THE CREATURES THAT WENT OVER THE WIRE — including your own. A look
+   * is thinned before it is sent, and thinning moves points, so reach and body width come out
+   * slightly different for the drawing you kept and the one they received. Both feed hit detection
+   * directly, so two machines would disagree about whether a swipe connected from the very first
+   * exchange, with nothing wrong in the netcode at all. See BoutState.mine.
+   */
+  const side = useMemo(() => {
+    /* ⚠️ READ, NOT IGNORED: `bout` is a ref, so a foe arriving is invisible to the dependency
+       list unless the counter that says one did is actually used in here */
+    void wire
+    if (online) {
+      const foe = bout.current.foe
+      const mineArt = bout.current.mine
+      if (!foe || !mineArt) return []
+      const meEntry = { name: myName, art: mineArt }
+      const themEntry = { name: foe.name, art: foe.art }
+      return bout.current.seat === 0 ? [meEntry, themEntry] : [themEntry, meEntry]
+    }
+    return pick.map((i) => pets[i] ?? pets[0]).filter(Boolean)
+  }, [pets, pick, online, wire, myName])
 
   /**
    * ⚠️ READ ONCE PER FIGHTER, not once per frame. rigOf walks every stroke to find the part
@@ -89,6 +149,8 @@ export function PetFight({ pets }: { pets: FightPet[] }) {
     }
   }, [side])
 
+  /** how many seconds the fight has been waiting on somebody else's buttons */
+  const [stalled, setStalled] = useState(0)
   const [shown, setShown] = useState<Fighter[]>(() => [freshFighter(0), freshFighter(1)])
   const [over, setOver] = useState<number | null>(null)
   const fighters = useRef<Fighter[]>([freshFighter(0), freshFighter(1)])
@@ -114,9 +176,38 @@ export function PetFight({ pets }: { pets: FightPet[] }) {
   useEffect(() => {
     fighters.current = [freshFighter(0), freshFighter(1)]
     held.current = [{ ...IDLE }, { ...IDLE }]
+    tape.current = newTape()
     setShown(fighters.current)
     setOver(null)
+    setStalled(0)
   }, [round, side])
+
+  /**
+   * ⚠️ JOINING IS A THING YOU DO. Following somebody's link fills in the code and connects; it
+   * does not reach into your creatures and pick one, and it cannot happen to you by opening a tab.
+   */
+  useEffect(() => {
+    if (!code || !authed) return
+    const mineNow = pets[pick[0]] ?? pets[0]
+    if (!mineNow) return
+    bout.current = newBout()
+    tape.current = newTape()
+    const bump = () => setWire((n) => n + 1)
+    const b = joinBout(
+      code,
+      { name: myName, art: mineNow.art },
+      bout.current,
+      bump,
+      (seat, frame, input) => heard(tape.current, seat, frame, input),
+    )
+    post.current = b
+    bump()
+    return () => {
+      b?.leave()
+      post.current = null
+      bout.current = newBout()
+    }
+  }, [code, authed, pets, pick, myName])
 
   useEffect(() => {
     const r = host.current?.getBoundingClientRect()
@@ -166,48 +257,87 @@ export function PetFight({ pets }: { pets: FightPet[] }) {
     }
   }, [])
 
+  /**
+   * The clock.
+   *
+   * ⚠️ A FIXED STEP, ONLINE AND OFF. Stepping by however long the last animation frame happened to
+   * take is fine on one screen and useless across two: the same inputs on a 60Hz laptop and a
+   * 144Hz monitor are a different fight within seconds. It is the same step locally so that what
+   * you practise against the machine is the game you take online.
+   *
+   * ⚠️ ONLINE, THE TAPE DECIDES WHETHER TIME PASSES AT ALL. Nobody goes past a frame until both
+   * sides' buttons for it are in hand — which is why both screens always show the same fight, and
+   * why a bad connection shows up as a pause rather than as two worlds quietly drifting apart.
+   */
   useEffect(() => {
+    if (!kit.moves.length) return
     let raf = 0
     let last = performance.now()
-    let clock = 0
+    let owed = 0
+    let waited = 0
     const tick = (now: number) => {
-      const dt = (now - last) / 1000
+      const dt = Math.min(0.25, (now - last) / 1000)
       last = now
-      clock += dt
-      const lot = fighters.current
-      const done = winnerOf(lot)
+      owed += dt / FRAME
+      let runs = framesFor(owed, MAX_CATCHUP)
+      owed -= runs
+      let moved = false
 
-      if (done === null) {
-        const inputs = lot.map((f, i) =>
-          i === 1 && cpuRef.current
-            ? foeInput(f, lot[0], kit.moves[1] ?? [], kit.wides[0] ?? PET_TALL, clock)
-            : held.current[i],
-        )
-        let next = lot.map((f, i) =>
-          f.stocks > 0
-            ? stepFighter(f, inputs[i], kit.moves[i] ?? [], dt, kit.traits[i], STAGE, RING)
-            : f,
-        )
-        /* ⚠️ null when nothing landed and null when nobody fell, so a quiet frame costs two
-           comparisons and no renders — the same bargain collect makes in the playground */
-        const swap = trade(next, kit.moves, kit.wides)
-        if (swap) next = swap.next
-        const back = respawn(next)
-        if (back) next = back
+      while (runs-- > 0) {
+        const lot = fighters.current
+        if (winnerOf(lot) !== null) break
+
+        let inputs: FightInput[]
+        if (online) {
+          const mySeat = bout.current.seat
+          const want = tape.current.at + DELAY
+          if (!tape.current.seen[mySeat]?.has(want)) {
+            const mine = packInput(held.current[0])
+            heard(tape.current, mySeat, want, mine)
+            post.current?.step(want, mine)
+          }
+          if (!ready(tape.current)) break
+          inputs = take(tape.current)
+          advance(tape.current)
+        } else {
+          const frame = tape.current.at
+          inputs = lot.map((f, i) =>
+            i === 1 && cpuRef.current
+              ? foeInput(f, lot[0], kit.moves[1] ?? [], kit.wides[0] ?? PET_TALL, frame * FRAME)
+              : held.current[i],
+          )
+          tape.current.at++
+        }
+
+        let next = stepFight(lot, inputs, kit.moves, kit.traits, kit.wides, STAGE, RING)
         const end = winnerOf(next)
         /* ⚠️ the round stops being stepped the moment it is decided, so whatever the winner
            happened to be doing on that frame is what stays on screen — which was a creature
            frozen mid-swing, lit up, apparently attacking nobody for ever */
         if (end !== null) next = next.map((f) => ({ ...f, swing: 0, stun: 0, vx: 0 }))
         fighters.current = next
-        setShown(next)
-        if (end !== null) setOver(end)
+        moved = true
+        if (end !== null) {
+          setOver(end)
+          break
+        }
+      }
+
+      if (moved) {
+        setShown(fighters.current)
+        waited = 0
+        setStalled((v) => (v === 0 ? v : 0))
+      } else if (online && bout.current.foe && winnerOf(fighters.current) === null) {
+        /* ⚠️ a stall and a dropped player look identical, and only a clock tells them apart —
+           below a second it is the network breathing and deserves no words */
+        waited += dt
+        if (waited > STALL_SAYS) setStalled(Math.round(waited))
       }
       raf = requestAnimationFrame(tick)
     }
     raf = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(raf)
-  }, [kit, round])
+  }, [kit, round, online])
 
   /* the same sizing as the playground, and for the same reason — PetView's size is the LONG side */
   const petSize = (art: Drawing) => {
@@ -245,6 +375,31 @@ export function PetFight({ pets }: { pets: FightPet[] }) {
           )
         })}
       </div>
+
+      {online && !authed && (
+        <p className="muted pet-fight-say" role="status">
+          Fighting online is for people with an account — your creature is drawn on somebody else's
+          screen, and a picture is the one thing nobody can filter. <a href="#signin">Sign in</a>{' '}
+          and the bout opens.
+        </p>
+      )}
+      {online && authed && bout.current.trouble && (
+        <p className="muted pet-fight-say" role="status">
+          {bout.current.trouble}
+        </p>
+      )}
+      {online && authed && !bout.current.foe && !bout.current.trouble && (
+        <p className="muted pet-fight-say" role="status">
+          Waiting for somebody to take the other side — the link is on your clipboard. They need an
+          account, and they bring their own creature.
+        </p>
+      )}
+      {online && stalled > 0 && (
+        <p className="muted pet-fight-say" role="status">
+          Waiting on {bout.current.foe?.name ?? 'them'}
+          {stalled > 3 ? ' — they may have dropped out' : '…'}
+        </p>
+      )}
 
       <div className="pet-fight-field">
         <div className="pet-fight-stage" ref={host}>
@@ -295,7 +450,7 @@ export function PetFight({ pets }: { pets: FightPet[] }) {
         {/* ⚠️ ONE PAD, FOR PLAYER ONE. Two sets of thumbs on one phone is not a thing that fits,
             so on a touch screen the honest offer is you against the machine — which is why the
             pad only appears with a machine to fight. */}
-        {cpu && (
+        {(cpu || online) && (
           <div className="pet-fight-pad">
             <span className="pet-fight-pad-side">
               {(['left', 'right'] as const).map((k) => (
@@ -340,15 +495,59 @@ export function PetFight({ pets }: { pets: FightPet[] }) {
       </div>
 
       <div className="pet-fight-setup">
-        <button
-          className="btn"
-          onClick={() => setCpu((c) => !c)}
-          aria-pressed={!cpu}
-          title={cpu ? 'Two people on one keyboard' : 'Play against the machine'}
-        >
-          {cpu ? '👤 vs 💻' : '👤 vs 👤'}
-        </button>
-        {pets.length > 1 &&
+        {!online && (
+          <button
+            className="btn"
+            onClick={() => setCpu((c) => !c)}
+            aria-pressed={!cpu}
+            title={cpu ? 'Two people on one keyboard' : 'Play against the machine'}
+          >
+            {cpu ? '👤 vs 💻' : '👤 vs 👤'}
+          </button>
+        )}
+        {/* ⚠️ THE LINK IS THE INVITE, the same shape Snake's challenge already uses: no pending
+            state to expire, nothing to reconcile if nobody answers, and it works from a phone or
+            pasted anywhere. */}
+        {!online ? (
+          <button
+            className="btn"
+            disabled={!authed}
+            title={
+              authed
+                ? 'Open a bout and send somebody the link'
+                : 'Fighting online is for people with an account'
+            }
+            onClick={() => {
+              const made = boutCode()
+              setCode(made)
+              void navigator.clipboard?.writeText(boutLink(made)).catch(() => {})
+            }}
+          >
+            🌐 Fight a friend
+          </button>
+        ) : (
+          <>
+            <button
+              className="btn"
+              onClick={() => {
+                setCode(null)
+                setRound((r) => r + 1)
+              }}
+            >
+              ← Back to local
+            </button>
+            <button
+              className="btn btn-ghost"
+              onClick={() => void navigator.clipboard?.writeText(boutLink(code)).catch(() => {})}
+              title={boutLink(code)}
+            >
+              🔗 Copy the link
+            </button>
+            <span className="muted pet-fight-code">{code}</span>
+          </>
+        )}
+        {!online &&
+          pets.length > 1 &&
           ([0, 1] as const).map((seat) => (
             <label key={seat} className="pet-fight-seat">
               <span className={'pet-fight-dot is-' + SIDE[seat]} aria-hidden />
@@ -374,9 +573,10 @@ export function PetFight({ pets }: { pets: FightPet[] }) {
       {/* ⚠️ in the room rather than in a tooltip, the same as the playground: this is the other
           place on the site where the keyboard IS the interface, and a phone has no tooltips */}
       <p className="muted pet-fight-keys">
-        <strong>Player one</strong> — <strong>A D</strong> to move, <strong>W</strong> to jump
-        (again in the air to recover), <strong>F</strong> quick, <strong>G</strong> heavy.
-        {!cpu && (
+        <strong>{online ? 'You' : 'Player one'}</strong> — <strong>A D</strong> to move,{' '}
+        <strong>W</strong> to jump (again in the air to recover), <strong>F</strong> quick,{' '}
+        <strong>G</strong> heavy.
+        {!cpu && !online && (
           <>
             {' '}
             <strong>Player two</strong> — <strong>← →</strong>, <strong>↑</strong>,{' '}

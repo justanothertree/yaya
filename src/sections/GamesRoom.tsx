@@ -148,7 +148,11 @@ export function GamesRoom({
       <>
         <GamesBar onBack={() => setGame(null)} />
         <Suspense fallback={<div aria-busy>Loading the ring…</div>}>
-          <PetFight pets={mine.map((p) => ({ name: p.name, art: p.art }))} />
+          <PetFight
+            pets={mine.map((p) => ({ name: p.name, art: p.art }))}
+            myName={readHandle()}
+            authed={!!authed}
+          />
         </Suspense>
       </>
     )

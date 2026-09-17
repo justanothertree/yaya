@@ -45,6 +45,22 @@ const MAX_ROOM_ID_LEN = 64
  */
 const PARK_PREFIX = 'park'
 const isPark = (roomId) => roomId === PARK_PREFIX || roomId.startsWith(PARK_PREFIX + ':')
+/**
+ * A bout: two people running the same fight, frame for frame.
+ *
+ * ⚠️ THE RULE IS ABOUT PICTURES, NOT ABOUT ROOMS. Snake is open to strangers and stays open,
+ * because what travels there is a handle, a score and a chat line that goes through a profanity
+ * list. A park and a bout both carry a DRAWING onto somebody else's screen, and there is no filter
+ * for a picture — so the door is on the thing being carried rather than on the game being played.
+ */
+const isBout = (roomId) => roomId.startsWith('fight:')
+const carriesArt = (roomId) => isPark(roomId) || isBout(roomId)
+/**
+ * ⚠️ ONE INPUT PER FRAME AT SIXTY FRAMES A SECOND, and a fight runs for minutes. The window is
+ * a second, so this is twice what a client at full tilt sends and still a hard ceiling on what a
+ * console can push. Frames are small — a number and six bits — which is why this can be generous.
+ */
+const STEP_BURST = 130
 /** One creature, packed and thinned by the client. Comfortably under MAX_MSG_BYTES. */
 const MAX_LOOK_BYTES = 12000
 /** So a roster broadcast cannot grow without limit, and neither can what the room holds. */
@@ -225,7 +241,7 @@ function broadcast(room, payload, exceptId) {
  * whose creatures are there and where they are walking. A park that admits lurkers has not been
  * made members-only; it has been made members-write.
  */
-function broadcastPark(room, payload, exceptId) {
+function broadcastVouched(room, payload, exceptId) {
   const str = JSON.stringify(payload)
   for (const [id, ws] of room.clients) {
     if (ws.readyState !== ws.OPEN || id === exceptId) continue
@@ -1616,14 +1632,16 @@ wss.on('connection', (ws, req) => {
        * The roster is not sent here any more; it is sent when the token comes back, because being
        * handed the roster IS being let in. Until then this socket receives nothing a park sends.
        */
-      if (isPark(roomId)) {
+      if (carriesArt(roomId)) {
         parkVouchTimer = setTimeout(() => {
           const st = room.state.get(id)
           if (st?.vouched) return
           send(ws, {
             type: 'error',
             code: 'members-only',
-            message: 'The park is for people with an account on the site',
+            message: isPark(roomId)
+              ? 'The park is for people with an account on the site'
+              : 'A bout is between people with accounts on the site',
           })
         }, PARK_VOUCH_MS)
       }
@@ -1794,7 +1812,7 @@ wss.on('connection', (ws, req) => {
        * for you to move. That is the only thing the relay stores for a park, and it is capped.
        */
       case 'look': {
-        if (!isPark(joinedRoomId)) break
+        if (!carriesArt(joinedRoomId)) break
         /* ⚠️ the same check the roster makes, on the other side of it: nothing a stranger draws
            reaches anybody, and nothing anybody draws reaches a stranger */
         if (!room.state.get(id)?.vouched) break
@@ -1819,7 +1837,7 @@ wss.on('connection', (ws, req) => {
         if (typeof msg.name === 'string' && msg.name.trim())
           st.name = msg.name.trim().slice(0, MAX_NAME_LEN)
         room.state.set(id, st)
-        broadcastPark(room, { type: 'look', from: id, name: st.name || '', art }, id)
+        broadcastVouched(room, { type: 'look', from: id, name: st.name || '', art }, id)
         break
       }
 
@@ -1853,7 +1871,40 @@ wss.on('connection', (ws, req) => {
         }
         st.at = at
         room.state.set(id, st)
-        broadcastPark(room, { type: 'walk', from: id, ...at }, id)
+        broadcastVouched(room, { type: 'walk', from: id, ...at }, id)
+        break
+      }
+
+      /**
+       * One player's buttons for one frame of a bout.
+       *
+       * ⚠️ THE RELAY DOES NOT SIMULATE ANYTHING, and that is the design rather than a shortcut.
+       * Both machines run the same fight from the same inputs — the simulation is a pure function
+       * of state and inputs, checked bit-identical over 20,000 frames — so all that has to cross
+       * the wire is which buttons were down on which frame. Nobody is authoritative, neither
+       * player waits to be told what happened to them, and the relay cannot be wrong about a fight
+       * because it has no opinion about one.
+       *
+       * ⚠️ SIX BITS AND A FRAME NUMBER. An input is a bitmask, so validating it is a mask and a
+       * range check rather than six field checks that a future button would silently escape.
+       */
+      case 'step': {
+        if (!isBout(joinedRoomId)) break
+        const st = room.state.get(id)
+        if (!st?.vouched) break
+        const n = msg.n
+        if (typeof n !== 'number' || !Number.isInteger(n) || n < 0 || n > 216000) break
+        const now = Date.now()
+        const recent = (st.stepTimes || []).filter((t) => now - t < WALK_WINDOW_MS)
+        if (recent.length >= STEP_BURST) {
+          st.stepTimes = recent
+          room.state.set(id, st)
+          break
+        }
+        recent.push(now)
+        st.stepTimes = recent
+        room.state.set(id, st)
+        broadcastVouched(room, { type: 'step', from: id, n, in: (msg.in | 0) & 63 }, id)
         break
       }
 
@@ -1891,7 +1942,7 @@ wss.on('connection', (ws, req) => {
            * deleted on disconnect — walking that map instead would populate the park with
            * everybody who had ever visited it.
            */
-          if (!isPark(joinedRoomId)) return
+          if (!carriesArt(joinedRoomId)) return
           if (parkVouchTimer) clearTimeout(parkVouchTimer)
           const who = []
           for (const other of room.clients.keys()) {

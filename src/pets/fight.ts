@@ -351,6 +351,59 @@ export function respawn(fs: Fighter[], i0 = 0): Fighter[] | null {
   return gone ? next : null
 }
 
+/**
+ * How long one frame of the fight is.
+ *
+ * ⚠️ FIXED, AND THAT IS WHAT MAKES THE FIGHT SHAREABLE. Stepping by however long the last
+ * animation frame happened to take is fine for one screen and useless for two: the same inputs on
+ * a 60Hz laptop and a 144Hz monitor produce different fights within seconds, and no amount of
+ * sending positions back and forth can reconcile two worlds that disagree about what happened.
+ *
+ * ⚠️ THE SIMULATION USES ONLY max, min, abs, floor AND sign — checked, not assumed. Those are
+ * exactly specified on IEEE 754 doubles, so they give the same bits in every engine. No sin, cos,
+ * exp, hypot or random anywhere in the fight path, which is the other half of why two machines can
+ * agree. (walk.ts does use hypot and exp; the park does not need to agree with anybody.)
+ */
+export const FRAME = 1 / 60
+
+/**
+ * One whole frame: everybody steps, swings land, anybody who fell off comes back.
+ *
+ * ⚠️ state' = f(state, inputs) AND NOTHING ELSE. No clock, no random, no reading anything
+ * outside its arguments — which is the exact shape a shared fight needs, and is also why the
+ * whole game was testable before it had a screen.
+ */
+export function stepFight(
+  fs: Fighter[],
+  inputs: FightInput[],
+  moves: Attack[][],
+  traits: Traits[],
+  wides: number[],
+  ledges: Ledge[] = STAGE,
+  bounds: Bounds = RING,
+): Fighter[] {
+  let next = fs.map((f, i) =>
+    f.stocks > 0
+      ? stepFighter(f, inputs[i] ?? IDLE, moves[i] ?? [], FRAME, traits[i], ledges, bounds)
+      : f,
+  )
+  const swap = trade(next, moves, wides)
+  if (swap) next = swap.next
+  const back = respawn(next)
+  if (back) next = back
+  return next
+}
+
+/**
+ * How many frames one animation frame may catch up.
+ *
+ * ⚠️ A BACKGROUNDED TAB HANDS YOU SECONDS AT ONCE, and a fixed step turns that into hundreds
+ * of frames in one go — which locks the page up and, in a shared fight, fast-forwards one player
+ * through a fight the other watched at normal speed. Dropping the excess is the honest answer: the
+ * clock is allowed to be behind, the simulation is not allowed to lie.
+ */
+export const MAX_CATCHUP = 5
+
 /** Who is left standing, or null while more than one of them is. */
 export function winnerOf(fs: Fighter[]): number | null {
   const alive = fs.map((f, i) => (f.stocks > 0 ? i : -1)).filter((i) => i >= 0)
