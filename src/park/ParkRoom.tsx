@@ -1156,17 +1156,19 @@ export function ParkRoom({
               </p>
             </div>
           )}
+          {/* ⚠️ INSIDE THE FIELD, NOT BESIDE IT. It pins to the top-right of whatever box it sits
+              in, and the field is no longer always as wide as the stage — so out here it drifted
+              off the corner of the world it is a map of, and did so in fullscreen already. */}
+          {walking && (
+            <MiniMap
+              cam={camAt}
+              me={shownYou}
+              others={others.map((o) => ({ id: o.id, x: o.shown.x, y: o.shown.y }))}
+              strolling={strolling}
+              boss={bossShown ?? theirBoss?.shown ?? null}
+            />
+          )}
         </div>
-
-        {walking && (
-          <MiniMap
-            cam={camAt}
-            me={shownYou}
-            others={others.map((o) => ({ id: o.id, x: o.shown.x, y: o.shown.y }))}
-            strolling={strolling}
-            boss={bossShown ?? theirBoss?.shown ?? null}
-          />
-        )}
       </div>
 
       {walking && (

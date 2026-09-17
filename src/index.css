@@ -8127,16 +8127,29 @@ a.cz-msg-author:focus-visible {
   background: var(--bg, #14101a);
 }
 .park-stage:fullscreen .park-field {
-  max-height: none;
-  height: min(88vh, calc(100vw * 0.625));
   width: min(100%, calc(88vh * 1.6));
   align-self: center;
 }
+/**
+ * ⚠️ THE FIELD IS EXACTLY 16:10 OR THE GAME LIES ABOUT ITSELF. strike.ts converts anything
+ * horizontal through a hard-coded ASPECT of 16/10, because the world has to be the same shape for
+ * everybody — two people in one park with differently shaped fields would work out different
+ * hitboxes for the same swing and disagree about who hit whom.
+ *
+ * ⚠️ AND `max-height` QUIETLY BROKE THAT, because it beats `aspect-ratio`. Measured at
+ * 1024x768: the field declared 16/10 and rendered 919x461, which is 1.994 — so every sideways
+ * reach and every footprint came out 1.246 times bigger than the picture while depth stayed
+ * exactly right. Reported as attacks that feel ranged, left-right behaving differently from
+ * up-down, and two creatures trading blows with clear space between them, which is precisely what
+ * a quarter of a body-width of invisible padding on each of them looks like.
+ *
+ * So the height budget narrows the field instead of squashing it. Same idea, one that cannot lie.
+ */
 .park-field {
   position: relative;
-  width: 100%;
+  width: min(100%, calc(68vh * 1.6));
+  margin-inline: auto;
   aspect-ratio: 16 / 10;
-  max-height: 60vh;
   overflow: hidden;
   border: 1px solid var(--border);
   border-radius: 16px;
