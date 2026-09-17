@@ -480,6 +480,9 @@ export function PetFight({
                   energy={fightEffort(f, stillRef.current)}
                   facing={f.facing}
                   stance={fightStance(f)}
+                  /* ⚠️ only while the swing is actually out, so a drawn attack appears for the
+                     frames it exists and is gone the rest of the time — see PetPaint.show */
+                  show={f.swing > 0 ? (kit.moves[i] ?? [])[f.move]?.layer : undefined}
                   label={`${p.name}, on ${Math.round(f.hurt)} per cent`}
                 />
               </span>

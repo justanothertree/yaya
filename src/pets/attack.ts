@@ -1,5 +1,5 @@
 import { PET_TALL } from './play'
-import { petRatio, type Box, type Part, type PartKind } from './rig'
+import { bodyRatio, type Box, type Part, type PartKind } from './rig'
 import type { Drawing } from '../draw/strokes'
 
 /**
@@ -55,6 +55,15 @@ export type Attack = {
   lift: number
   /** how long after it before another can be thrown */
   rest: number
+  /**
+   * The layer to reveal while this is being thrown, for an attack somebody drew.
+   *
+   * ⚠️ ABSENT FOR EVERY TEMPLATE MOVE. A kick or a sweep is the creature's own leg or tail
+   * doing something, and those are on screen the whole time; a drawn attack is a layer that
+   * exists only while it is out. Undefined therefore means "nothing extra to show", which is
+   * what all the derived moves want.
+   */
+  layer?: number
 }
 
 /**
@@ -211,6 +220,59 @@ export const POUNCE: Attack = {
   rest: 0.22,
 }
 
+/**
+ * The attacks somebody actually drew.
+ *
+ * ⚠️ WHERE YOU DREW IT IS THE MOVE. Everything about a drawn attack comes out of the ink: how
+ * far it reaches is how far it extends from the creature, how high it sends somebody is how high
+ * above the middle it sits, how much it hurts is how big it is — and the price of all of it is
+ * that a bigger attack is a slower one. Nobody sets a number; you draw a short jab near the body
+ * or a long arc over your head, and that IS the difference between them.
+ *
+ * ⚠️ WHICH MEANS IT ANSWERS A DIRECTION BY ITSELF. A hit drawn high has lift and becomes the
+ * up attack; one drawn far out has reach and becomes the down attack. The same rule that already
+ * sorts a wing from a tail sorts two things you drew, with nothing new to learn.
+ *
+ * ⚠️ AND IT IS MEASURED AGAINST THE BODY, never against everything. A creature's size must not
+ * include the attack it can throw, or drawing a bigger slash would quietly shrink the creature it
+ * belongs to and make every other move's reach wrong.
+ */
+function drawnAttacks(parts: Part[], body: Box): Attack[] {
+  const h = body.y1 - body.y0
+  if (h <= 0) return []
+  const cx = (body.x0 + body.x1) / 2
+  const cy = (body.y0 + body.y1) / 2
+  const area = Math.max(1e-6, (body.x1 - body.x0) * h)
+
+  return parts
+    .filter((p) => p.kind === 'hit')
+    .map((p) => {
+      /* how far the ink gets from the middle of the creature, in creature-heights */
+      const out = Math.max(cx - p.box.x0, p.box.x1 - cx) / h
+      const tall = (p.box.y1 - p.box.y0) / h
+      /* above the middle is positive; a hit drawn overhead launches, one at the feet does not */
+      const high = (cy - (p.box.y0 + p.box.y1) / 2) / h
+      const size = ((p.box.x1 - p.box.x0) * (p.box.y1 - p.box.y0)) / area
+      /* ⚠️ both sides only if it genuinely straddles the middle rather than merely touching it */
+      const both = p.box.x0 < cx - h * 0.12 && p.box.x1 > cx + h * 0.12
+      const heft = Math.max(0.25, Math.min(1.6, size))
+      return {
+        name: p.name.toLowerCase().slice(0, 14) || 'hit',
+        from: 'hit' as PartKind,
+        span: 0.24 + heft * 0.2,
+        live: [0.32, 0.72] as [number, number],
+        reach: Math.max(0.5, Math.min(1.6, out)),
+        rise: Math.max(0.2, Math.min(0.9, tall / 2)),
+        ...(both ? { both: true } : {}),
+        bite: Math.round(Math.max(3, Math.min(16, 4 + heft * 8))),
+        shove: 0.9 + heft * 0.35,
+        lift: Math.max(0.1, Math.min(0.85, 0.34 + high * 0.9)),
+        rest: 0.16 + heft * 0.22,
+        layer: p.layer,
+      }
+    })
+}
+
 /** The union of every part's box: the creature, rather than the paper it sits on. */
 function inkOf(parts: Part[]): Box | null {
   let b: Box | null = null
@@ -259,12 +321,18 @@ function bulk(p: Part, ink: Box): number {
  * is why the order is part of the answer rather than a detail of how it was built.
  */
 export function attacksOf(parts: Part[]): Attack[] {
-  const ink = inkOf(parts)
+  /**
+   * ⚠️ THE BODY, NOT THE BODY PLUS WHATEVER IT CAN SWING. Every measurement below is relative
+   * to how big the creature is, and a hit layer is an attack rather than anatomy — so counting
+   * it would mean drawing a longer slash quietly shrank every other move's reach, and made the
+   * slash itself score as a smaller fraction of a creature it had just inflated.
+   */
+  const ink = inkOf(parts.filter((p) => p.kind !== 'hit')) ?? inkOf(parts)
   if (!ink) return [POUNCE]
 
   const best = new Map<PartKind, number>()
   for (const p of parts) {
-    if (!FROM[p.kind]) continue
+    if (p.kind === 'hit' || !FROM[p.kind]) continue
     const big = bulk(p, ink)
     const had = best.get(p.kind)
     if (had === undefined || big > had) best.set(p.kind, big)
@@ -283,10 +351,19 @@ export function attacksOf(parts: Part[]): Attack[] {
      */
     out.push({ ...t, from: kind, reach: t.reach * (0.85 + big * 0.4) })
   }
-  /* ⚠️ THE PARTS, AND ONLY THE PARTS. This used to force a second entry in so that two buttons
-     could never land on the same move — which moveTable now does properly, and doing it here as
-     well produced a "big big sweep": a heavy made out of a heavy, with the commitment squared. */
-  return out.length ? out.sort((a, b) => a.span + a.rest - (b.span + b.rest)) : [POUNCE]
+  /**
+   * ⚠️ WHAT SOMEBODY DREW GOES IN WITH WHAT THEY GREW. A drawn attack is not a special case
+   * that overrides the parts — it takes its place among them and is sorted by the same
+   * commitment, so a creature can have a tail AND a slash and moveTable picks whichever of them
+   * is actually best at going up.
+   *
+   * ⚠️ THE PARTS, AND ONLY THE PARTS, otherwise. This used to force a second entry in so that
+   * two buttons could never land on the same move — which moveTable now does properly, and doing
+   * it here as well produced a "big big sweep": a heavy made out of a heavy, commitment squared.
+   */
+  const drawn = drawnAttacks(parts, ink)
+  const all = [...out, ...drawn]
+  return all.length ? all.sort((a, b) => a.span + a.rest - (b.span + b.rest)) : [POUNCE]
 }
 
 /**
@@ -380,7 +457,7 @@ export function pairOf(list: Attack[]): [Attack, Attack] {
  * somebody who drew a long low thing is a long low thing and is easier to catch, the same way it
  * is drawn. How far it can reach is not, or being drawn wide would be a straight upgrade.
  */
-export const petWide = (art: Drawing): number => PET_TALL * petRatio(art)
+export const petWide = (art: Drawing): number => PET_TALL * bodyRatio(art)
 
 /** Where a creature stands, in the terms a hit test needs. */
 export type At = { x: number; y: number; facing: number }

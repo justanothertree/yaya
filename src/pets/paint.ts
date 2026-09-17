@@ -30,6 +30,15 @@ export type PetPaint = {
   facing?: number
   /** what it is doing, and where it is looking. Absent is idle and straight ahead. */
   mood?: Mood
+  /**
+   * Which hit layer to reveal, if any.
+   *
+   * ⚠️ HIT LAYERS ARE INVISIBLE UNLESS NAMED HERE. They are the drawn attacks — see the note in
+   * rig.ts — so a creature standing about shows none of them, and a creature mid-swing shows
+   * exactly the one it is throwing. Undefined means none, which is the common case and the one
+   * every existing caller gets for free.
+   */
+  show?: number
 }
 
 export function paintPet(
@@ -38,7 +47,7 @@ export function paintPet(
   parts: Part[],
   w: number,
   h: number,
-  { t, energy = 1, facing = 1, mood }: PetPaint,
+  { t, energy = 1, facing = 1, mood, show }: PetPaint,
 ) {
   /* ⚠️ A stance is the same rig with the clock and the amplitude scaled — see TUNE. Nothing
      below branches on which stance it is, so a part added later works in all of them. */
@@ -64,6 +73,8 @@ export function paintPet(
    * canvas from petRatio, which is the ink box's own shape — so the two cancel to one magnification
    * and a rotating wing rotates rather than shears. Size a pet's canvas any other way and it will.
    */
+  /* ⚠️ the whole picture, so an attack drawn past the creature still lands on the bitmap —
+     see petRatio, which sizes the canvas from the same box for exactly this reason */
   const box = inkBox(art)
   const bw = box ? box.x1 - box.x0 : 0
   const bh = box ? box.y1 - box.y0 : 0
@@ -141,6 +152,10 @@ export function paintPet(
 
   /* parts arrive in layer order, which is the order the picture is drawn in — see rigOf */
   for (const part of parts) {
+    /* ⚠️ AN ATTACK IS NOT PART OF STANDING THERE. A hit layer is drawn only while it is the
+       one being thrown, which is what lets somebody draw a slash across the whole creature
+       without it being there the rest of the time — see PetPaint.show. */
+    if (part.kind === 'hit' && part.layer !== show) continue
     ctx.save()
     /* ⚠️ the parent's movement first, so the child is posed in a frame that has already moved —
        an ear turns with the head AND twitches, instead of having to choose. See PART_PARENT. */

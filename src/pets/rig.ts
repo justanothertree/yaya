@@ -45,6 +45,7 @@ export type PartKind =
   | 'flame'
   | 'float'
   | 'horn'
+  | 'hit'
 
 /**
  * What each name means, in the words people actually use.
@@ -54,6 +55,17 @@ export type PartKind =
  * feature that works for the person who read the instructions and one that works.
  */
 const WORDS: Array<[PartKind, string[]]> = [
+  /**
+   * ⚠️ A LAYER YOU DO NOT SEE UNTIL YOU SWING IT. Everything else in this list is a piece of a
+   * creature that is always there; a hit is the one part that is hidden by default, appears for
+   * the fraction of a second it is dangerous, and IS the dangerous region while it does. Where
+   * you draw it decides everything about the move — how far it reaches, how high it sends
+   * somebody, how much it hurts — so the whole of "draw your own attacks" is one layer name.
+   *
+   * First in the list because it is the one kind that must never be mistaken for something else,
+   * and none of its words contains or is contained by anything below.
+   */
+  ['hit', ['hit', 'attack', 'strike', 'slash', 'swipe', 'blast', 'swing']],
   ['eye', ['eye', 'pupil', 'blink']],
   /**
    * ⚠️ ORDER IS CORRECTNESS HERE, not taste, because these are SUBSTRINGS. "heart" contains
@@ -101,6 +113,7 @@ export const PART_WORDS: string[] = [
   'flame',
   'halo',
   'horn',
+  'hit',
 ]
 
 export function partOf(name: string | undefined): PartKind {
@@ -126,6 +139,7 @@ export const PART_DOES: Record<PartKind, string> = {
   flame: 'flickers',
   float: 'drifts',
   horn: 'juts out, and hits hardest of anything',
+  hit: 'is hidden until you attack with it',
 }
 
 /**
@@ -215,11 +229,32 @@ const boxOf = (strokes: Stroke[]): Box | null => {
  * from, and a wing swings well past where it rests — a box that fits the still pose would clip
  * the moving one. 12% of the creature's own size, plus half the fattest stroke.
  */
-export function inkBox(d: Drawing): Box | null {
-  const b = boxOf(d.strokes)
+/**
+ * Which layers are attacks rather than anatomy.
+ *
+ * ⚠️ READ OFF THE NAMES WITHOUT BUILDING A RIG, because the cheap callers — how wide is this
+ * creature, what shape is its canvas — are asked on every frame and must not walk every stroke
+ * to find out. `rigOf` answers the same question the expensive way when it is already working.
+ */
+export function hitLayers(d: Drawing): number[] {
+  const out: number[] = []
+  d.layers?.forEach((n, i) => {
+    if (partOf(n) === 'hit') out.push(i)
+  })
+  return out
+}
+
+/**
+ * @param skip layers to leave out — a creature is measured by its body, never by the swing it
+ * can throw. Without this, drawing a long slash makes the creature itself render small inside a
+ * canvas sized to hold an attack that is invisible almost all of the time.
+ */
+export function inkBox(d: Drawing, skip: number[] = []): Box | null {
+  const keep = skip.length ? d.strokes.filter((k) => !skip.includes(k.l ?? 0)) : d.strokes
+  const b = boxOf(keep.length ? keep : d.strokes)
   if (!b) return null
   let fat = 0
-  for (const s of d.strokes) if (s.w > fat) fat = s.w
+  for (const s of keep) if (s.w > fat) fat = s.w
   const padX = fat / 2 + (b.x1 - b.x0) * 0.12 + 0.02
   const padY = fat / 2 + (b.y1 - b.y0) * 0.12 + 0.02
   return { x0: b.x0 - padX, y0: b.y0 - padY, x1: b.x1 + padX, y1: b.y1 + padY }
@@ -233,7 +268,34 @@ export function inkBox(d: Drawing): Box | null {
  * turn the crop into a stretch, and it is the same width-over-height trap Drawing.ratio documents.
  */
 export function petRatio(d: Drawing): number {
+  /**
+   * ⚠️ THE WHOLE PICTURE, ATTACKS INCLUDED, because this decides the SHAPE OF THE CANVAS and
+   * the canvas is what everything is drawn into. Cropping the view to the body alone means a
+   * slash drawn beyond the creature lands outside the bitmap and is simply not there — measured:
+   * an uppercut drawn above the head rendered exactly zero pixels.
+   *
+   * ⚠️ WHICH IS NOT THE SAME QUESTION AS HOW BIG THE CREATURE IS. That one is bodyRatio below,
+   * and hit detection asks that one — otherwise drawing a bigger attack would make you easier to
+   * hit, which is the opposite of what drawing it should do.
+   */
   const b = inkBox(d)
+  const paper = d.ratio > 0.05 && d.ratio < 20 ? d.ratio : 1
+  if (!b) return paper
+  const bw = b.x1 - b.x0
+  const bh = b.y1 - b.y0
+  if (bw <= 0 || bh <= 0) return paper
+  return Math.max(0.05, Math.min(20, (bw / bh) * paper))
+}
+
+/**
+ * The creature's own proportions, with whatever it can swing left out.
+ *
+ * ⚠️ WHAT YOU ARE, NOT WHAT YOU CAN THROW. petRatio has to include the attacks so the canvas
+ * is big enough to draw them in; how wide a target you make must not, or a longer slash would
+ * quietly widen your own hitbox.
+ */
+export function bodyRatio(d: Drawing): number {
+  const b = inkBox(d, hitLayers(d))
   const paper = d.ratio > 0.05 && d.ratio < 20 ? d.ratio : 1
   if (!b) return paper
   const bw = b.x1 - b.x0

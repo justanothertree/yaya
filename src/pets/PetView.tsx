@@ -21,6 +21,7 @@ export function PetView({
   energy = 1,
   facing = 1,
   stance = 'idle',
+  show,
   watch,
   className,
   label,
@@ -31,6 +32,14 @@ export function PetView({
   energy?: number
   facing?: number
   stance?: Mood['stance']
+  /**
+   * Which drawn attack to reveal, if the creature is mid-swing.
+   *
+   * ⚠️ A hit layer is invisible unless it is named here — see PetPaint.show. Passed live like
+   * the energy and the facing, because it changes several times a second during a fight and
+   * restarting the animation each time would be a creature that stutters whenever it swings.
+   */
+  show?: number
   /**
    * Follow the pointer with its head and eyes.
    *
@@ -66,8 +75,8 @@ export function PetView({
    * particular could not work any other way: it changes on every pointermove, and restarting an
    * animation sixty times a second is not an animation.
    */
-  const live = useRef({ energy, facing, stance, look: { x: 0, y: 0 } })
-  live.current = { ...live.current, energy, facing, stance }
+  const live = useRef({ energy, facing, stance, show, look: { x: 0, y: 0 } })
+  live.current = { ...live.current, energy, facing, stance, show }
 
   /* ⚠️ the BOOLEAN, not the number. Crossing between still and moving has to restart the loop;
      every other change of energy is picked up through the ref on the next frame. */
@@ -165,6 +174,7 @@ export function PetView({
         energy: live.current.energy,
         facing: live.current.facing,
         mood: { stance: live.current.stance, lookX: look.x, lookY: look.y },
+        show: live.current.show,
       })
     }
 
