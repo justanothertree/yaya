@@ -41,7 +41,7 @@ import { applyLayerOp, type LayerOp, type Stack } from '../draw/layerOps'
 import { paintSession } from '../draw/session'
 import { savePet } from '../pets/pets'
 import { PetView } from '../pets/PetView'
-import { PART_DOES, PART_WORDS, partOf, rigOf } from '../pets/rig'
+import { PART_DOES, PART_WORDS, inFrontOfOrder, partOf, rigOf } from '../pets/rig'
 import { MoveShow } from '../pets/MoveShow'
 import { attacksOf, moveTable } from '../pets/attack'
 import { AlsoTogether } from '../ui/AlsoTogether'
@@ -1396,6 +1396,15 @@ export function PaintRoom() {
    * ⚠️ IT NAMES THE DIRECTIONS, because that is the part nobody would guess: which of your
    * parts answers up, and which answers down, is decided by what you drew rather than by you.
    */
+  /**
+   * A part painted over something it usually sits behind.
+   *
+   * ⚠️ SAID, NOT SORTED. Layer order is paint order and paint order is a choice somebody made
+   * while drawing — a tail crossing in front of the body may be exactly the creature they meant.
+   * The arrows to fix it are already on the layer row; the only thing missing was knowing to look.
+   */
+  const petStack = useMemo(() => inFrontOfOrder(petPreview)[0] ?? null, [petPreview])
+
   const petMoves = useMemo(() => {
     const parts = attacksOf(rigOf(petPreview))
     if (!parts.length) return null
@@ -3244,6 +3253,14 @@ export function PaintRoom() {
                  * and go and press things to find out what you had made. Said plainly: nobody
                  * picks a layer name for a fighting style they have never been shown.
                  */}
+                {frameCount(petPreview) <= 1 && petStack && (
+                  <span className="muted paint-pet-moves">
+                    Your <strong>{petStack.name}</strong> is painted in front of your{' '}
+                    <strong>{petStack.over}</strong>. That usually looks better the other way round
+                    — the <strong>▼</strong> on its layer row tucks it behind. Nothing about the
+                    fighting changes either way.
+                  </span>
+                )}
                 {frameCount(petPreview) <= 1 && petMoves && (
                   <>
                     <span className="muted paint-pet-moves">

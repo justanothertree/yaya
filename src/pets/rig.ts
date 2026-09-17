@@ -175,6 +175,62 @@ export const PART_PARENT: Partial<Record<PartKind, PartKind>> = {
   antenna: 'head',
 }
 
+/**
+ * Back to front: which parts usually sit behind which.
+ *
+ * ⚠️ A SUGGESTION, NEVER A SORT. Layer order is paint order, and paint order is something
+ * somebody chose while drawing — a creature whose tail crosses in front of its body may be exactly
+ * the creature they meant. Quietly re-sorting layers would be the editor overruling the drawing,
+ * which is the one thing this module never does. So this exists only so a room can SAY "your wing
+ * is in front of the body, which usually looks wrong", and leave the arrows where they already are.
+ *
+ * ⚠️ AND IT IS ABOUT LOOKS ALONE. Nothing in the rig, the move table or any hitbox reads this.
+ * A part that is painted in front hits exactly as hard as one painted behind.
+ */
+export const PART_DEPTH: Record<PartKind, number> = {
+  tail: 0,
+  wing: 1,
+  float: 2,
+  spin: 3,
+  leg: 4,
+  body: 5,
+  arm: 6,
+  head: 7,
+  ear: 8,
+  antenna: 9,
+  eye: 10,
+  mouth: 11,
+  horn: 12,
+  flame: 13,
+  pulse: 14,
+  hit: 15,
+}
+
+/**
+ * Parts painted in front of something they usually sit behind.
+ *
+ * Lower layers are painted first, so ascending layer order IS back to front. A part whose depth
+ * rank is lower than something it is painted OVER is the case worth mentioning.
+ */
+export function inFrontOfOrder(d: Drawing): Array<{ name: string; over: string }> {
+  /* ⚠️ THE BODY IS IN THIS, and leaving it out was the bug. "A wing in front of the body" is
+     the whole complaint this exists for — filtering the body out silently answered "no problem"
+     for the one arrangement anybody would actually want telling about. */
+  const parts = rigOf(d)
+  const out: Array<{ name: string; over: string }> = []
+  for (let i = parts.length - 1; i >= 0; i--) {
+    for (let j = 0; j < i; j++) {
+      const front = parts[i]
+      const back = parts[j]
+      if (PART_DEPTH[front.kind] < PART_DEPTH[back.kind])
+        out.push({ name: front.name, over: back.name })
+    }
+  }
+  /* ⚠️ ONE AT A TIME. A creature with four things in the wrong order produces six complaints,
+     and a paragraph of them is a paragraph nobody reads — fix one and the next appears. */
+  return out.slice(0, 1)
+}
+
 export type Box = { x0: number; y0: number; x1: number; y1: number }
 
 export type Part = {
