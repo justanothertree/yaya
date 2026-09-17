@@ -27,6 +27,7 @@ import {
   newTape,
   packInput,
   ready,
+  REMATCH_AFTER,
   STALL_SAYS,
   take,
   type Tape,
@@ -151,6 +152,10 @@ export function PetFight({
 
   /** how many seconds the fight has been waiting on somebody else's buttons */
   const [stalled, setStalled] = useState(0)
+  /** the frame a round was decided on, so both sides can start the next one together */
+  const endedAt = useRef<number | null>(null)
+  /** frames until the next round, for the countdown — online only */
+  const [nextIn, setNextIn] = useState(0)
   const [shown, setShown] = useState<Fighter[]>(() => [freshFighter(0), freshFighter(1)])
   const [over, setOver] = useState<number | null>(null)
   const fighters = useRef<Fighter[]>([freshFighter(0), freshFighter(1)])
@@ -177,9 +182,11 @@ export function PetFight({
     fighters.current = [freshFighter(0), freshFighter(1)]
     held.current = [{ ...IDLE }, { ...IDLE }]
     tape.current = newTape()
+    endedAt.current = null
     setShown(fighters.current)
     setOver(null)
     setStalled(0)
+    setNextIn(0)
   }, [round, side])
 
   /**
@@ -285,10 +292,15 @@ export function PetFight({
 
       while (runs-- > 0) {
         const lot = fighters.current
-        if (winnerOf(lot) !== null) break
-
         let inputs: FightInput[]
+
         if (online) {
+          /**
+           * ⚠️ THE CLOCK KEEPS RUNNING AFTER A KNOCKOUT, and it has to. The frame counter is the
+           * one thing two machines share, so it may never go backwards or pause on one side
+           * while a bout is connected — a round ending is the fighters resetting, not time
+           * stopping. Inputs keep being posted and consumed through the gap for the same reason.
+           */
           const mySeat = bout.current.seat
           const want = tape.current.at + DELAY
           if (!tape.current.seen[mySeat]?.has(want)) {
@@ -299,7 +311,23 @@ export function PetFight({
           if (!ready(tape.current)) break
           inputs = take(tape.current)
           advance(tape.current)
+
+          if (endedAt.current !== null) {
+            const togo = endedAt.current + REMATCH_AFTER - tape.current.at
+            moved = true
+            if (togo > 0) {
+              setNextIn(Math.ceil(togo * FRAME))
+              continue
+            }
+            /* both sides reach this on the same frame, having agreed on the one before it */
+            fighters.current = [freshFighter(0), freshFighter(1)]
+            endedAt.current = null
+            setOver(null)
+            setNextIn(0)
+            continue
+          }
         } else {
+          if (winnerOf(lot) !== null) break
           const frame = tape.current.at
           inputs = lot.map((f, i) =>
             i === 1 && cpuRef.current
@@ -318,8 +346,9 @@ export function PetFight({
         fighters.current = next
         moved = true
         if (end !== null) {
+          endedAt.current = tape.current.at
           setOver(end)
-          break
+          if (!online) break
         }
       }
 
@@ -440,9 +469,15 @@ export function PetFight({
           {over !== null && (
             <div className="pet-fight-over">
               <strong>{over >= 0 ? `${side[over]?.name ?? 'Nobody'} wins` : 'Nobody wins'}</strong>
-              <button className="btn" onClick={() => setRound((r) => r + 1)}>
-                Again
-              </button>
+              {/* ⚠️ ONLINE THERE IS NO BUTTON, because a rematch is not one person's to call: the
+                  next round begins on a frame both machines worked out for themselves. */}
+              {online ? (
+                <span className="muted">Next round in {nextIn}…</span>
+              ) : (
+                <button className="btn" onClick={() => setRound((r) => r + 1)}>
+                  Again
+                </button>
+              )}
             </div>
           )}
         </div>

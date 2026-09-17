@@ -847,6 +847,47 @@ async function verifyToken(token) {
   }
 }
 
+/**
+ * Is this account in good standing?
+ *
+ * ⚠️ AN ACCOUNT EXISTING IS NOT AN ACCOUNT IN GOOD STANDING, and for a room that carries drawings
+ * onto other people's screens the difference is the whole point of having a door. Suspension is
+ * the database's own rule — `is_suspended`, the same function the site asks — rather than a copy
+ * of it kept here, for the same reason `is_admin` is asked rather than reimplemented: a second
+ * copy of a rule is a second place for it to be out of date.
+ *
+ * ⚠️ REFUSES ON DOUBT, unlike the token check. If Supabase cannot be reached, a token cannot be
+ * verified at all and nobody gets in — so the failure is already closed. Here the token is good
+ * and only the standing is unknown, and the safe answer for a room somebody's family is in is to
+ * wait rather than to wave them through.
+ */
+const standingCache = new Map()
+
+async function inGoodStanding(token, userId) {
+  if (!SUPABASE_URL || !SUPABASE_ANON_KEY || !userId) return false
+  const hit = standingCache.get(userId)
+  if (hit && Date.now() - hit.at < TOKEN_TTL) return hit.ok
+  try {
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/rpc/is_suspended`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        apikey: SUPABASE_ANON_KEY,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ p_user_id: userId }),
+    })
+    if (!r.ok) return false
+    const suspended = await r.json()
+    const ok = suspended !== true
+    standingCache.set(userId, { at: Date.now(), ok })
+    if (standingCache.size > 200) standingCache.clear()
+    return ok
+  } catch {
+    return false
+  }
+}
+
 async function verifyUser(req) {
   return verifyToken(bearer(req))
 }
@@ -1488,14 +1529,27 @@ wss.on('connection', (ws, req) => {
 
     // Allow lobby list discovery without joining a room
     if (msg.type === 'list') {
-      const items = Array.from(rooms.entries()).map(([rid, r]) => {
-        const meta = r.meta || { name: rid, public: true }
-        return {
-          id: rid,
-          name: typeof meta.name === 'string' ? meta.name : rid,
-          count: r.clients.size,
-        }
-      })
+      /**
+       * ⚠️ A BOUT CODE IS THE INVITE, AND THIS HANDED THEM OUT. `list` is unauthenticated — any
+       * browser console on any origin can ask — and it enumerated every room id the relay held,
+       * which now includes `fight:<code>`. The code IS the way into a bout, so publishing the live
+       * ones let a stranger take the second seat before the friend the link was sent to; the
+       * members-only door would refuse them, and the person who was actually invited would still
+       * arrive to find the room full.
+       *
+       * Snake's lobby is what this exists for and is untouched. Nothing that carries a drawing is
+       * a room you find by browsing — you are told about it or you are in it.
+       */
+      const items = Array.from(rooms.entries())
+        .filter(([rid]) => !carriesArt(rid))
+        .map(([rid, r]) => {
+          const meta = r.meta || { name: rid, public: true }
+          return {
+            id: rid,
+            name: typeof meta.name === 'string' ? meta.name : rid,
+            count: r.clients.size,
+          }
+        })
       send(ws, { type: 'rooms', items })
       return
     }
@@ -1515,6 +1569,20 @@ wss.on('connection', (ws, req) => {
          link on a public page rather than by somebody who knows them. */
       if (room && isPark(roomId) && room.clients.size >= MAX_PARK_CLIENTS) {
         send(ws, { type: 'error', code: 'room-full', message: 'The park is full right now' })
+        return
+      }
+      /**
+       * ⚠️ A BOUT IS BETWEEN TWO PEOPLE, and a link can be forwarded. Without this a third arrival
+       * is not refused so much as undefined: every side takes the last `look` it saw as its
+       * opponent, so three people in one room means at least two of them are fighting somebody who
+       * is not fighting them back, and the seat rule quietly disagrees with itself.
+       */
+      if (room && isBout(roomId) && room.clients.size >= 2) {
+        send(ws, {
+          type: 'error',
+          code: 'bout-full',
+          message: 'That bout already has two fighters in it',
+        })
         return
       }
       if (!room) {
@@ -1926,33 +1994,44 @@ wss.on('connection', (ws, req) => {
          */
         if (typeof msg.token !== 'string' || msg.token.length > 4096) break
         const token = msg.token
-        void verifyToken(token).then((user) => {
-          if (!user?.id) return
-          const st = room.state.get(id)
-          if (!st) return // left while we were checking
-          st.userId = user.id
-          st.vouched = true
-          room.state.set(id, st)
-          /**
-           * ⚠️ BEING HANDED THE ROSTER IS BEING LET IN, so it is sent here rather than on the
-           * hello. Anybody still waiting on this round trip has received nothing a park sends,
-           * which is what makes the door a door rather than a sign.
-           *
-           * Built from room.clients rather than room.state, because state is deliberately never
-           * deleted on disconnect — walking that map instead would populate the park with
-           * everybody who had ever visited it.
-           */
-          if (!carriesArt(joinedRoomId)) return
-          if (parkVouchTimer) clearTimeout(parkVouchTimer)
-          const who = []
-          for (const other of room.clients.keys()) {
-            if (other === id) continue
-            const o = room.state.get(other)
-            if (!o || !o.vouched || !o.look) continue
-            who.push({ from: other, name: o.name || '', art: o.look, ...(o.at || {}) })
-          }
-          send(ws, { type: 'park', who })
-        })
+        void verifyToken(token)
+          .then(async (user) => {
+            if (!user?.id) return null
+            const st0 = room.state.get(id)
+            if (!st0) return null // left while we were checking
+            st0.userId = user.id
+            room.state.set(id, st0)
+            /* ⚠️ only rooms that carry a drawing pay for this round trip — Snake credits scores
+               off the token alone and always has, and asking twice there would slow every join
+               to buy nothing */
+            if (!carriesArt(joinedRoomId)) return null
+            return (await inGoodStanding(token, user.id)) ? user : null
+          })
+          .then((user) => {
+            if (!user?.id) return
+            const st = room.state.get(id)
+            if (!st) return
+            st.vouched = true
+            room.state.set(id, st)
+            /**
+             * ⚠️ BEING HANDED THE ROSTER IS BEING LET IN, so it is sent here rather than on the
+             * hello. Anybody still waiting on this round trip has received nothing a park sends,
+             * which is what makes the door a door rather than a sign.
+             *
+             * Built from room.clients rather than room.state, because state is deliberately never
+             * deleted on disconnect — walking that map instead would populate the park with
+             * everybody who had ever visited it.
+             */
+            if (parkVouchTimer) clearTimeout(parkVouchTimer)
+            const who = []
+            for (const other of room.clients.keys()) {
+              if (other === id) continue
+              const o = room.state.get(other)
+              if (!o || !o.vouched || !o.look) continue
+              who.push({ from: other, name: o.name || '', art: o.look, ...(o.at || {}) })
+            }
+            send(ws, { type: 'park', who })
+          })
         break
       }
       case 'ready': {

@@ -136,3 +136,18 @@ export const seatOf = (me: string, them: string): number => (me < them ? 0 : 1)
  * having crashed.
  */
 export const STALL_SAYS = 1
+
+/**
+ * How long after a knockout the next round begins, in frames.
+ *
+ * ⚠️ A REMATCH NEEDS NO NEGOTIATION, because both machines already agree on the frame the round
+ * ended — they agree on everything, that is the whole point of running the same simulation. So
+ * "three seconds after that frame" is a fact each side works out alone and arrives at together,
+ * with no message, no handshake and nothing to get out of step.
+ *
+ * ⚠️ AND WITHOUT IT, PRESSING AGAIN DEADLOCKED THE BOUT. A local reset put my tape back to frame
+ * zero while the other side was still posting inputs for frame three thousand — so I sat waiting
+ * for frame four, which nobody was ever going to send again, and the fight simply stopped. The
+ * frame counter must never go backwards while a bout is connected; only the fighters reset.
+ */
+export const REMATCH_AFTER = 180
