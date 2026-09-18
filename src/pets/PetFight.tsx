@@ -637,6 +637,37 @@ export function PetFight({
             <span className="muted pet-fight-code">{code}</span>
           </>
         )}
+        {/**
+         * ⚠️ ONLINE YOU PICK YOUR OWN, AND ONLY WHILE YOU ARE WAITING. The seat pickers were
+         * hidden outright once a bout had a code, so following somebody's link brought whichever
+         * creature happened to be selected and there was no way at all to change it — watched
+         * happening: he loaded in with his second minion and was stuck with it.
+         *
+         * ⚠️ AND NOT ONCE THE FIGHT IS ON. A bout is lockstep: both machines run the same
+         * simulation from the same drawing, so swapping a creature underneath it would give the two
+         * sides different move tables and different hitboxes for the same frame, which is a desync
+         * rather than a swap. `side` is empty until a foe and my own look are both in hand, so this
+         * is the lobby and nothing else.
+         */}
+        {online && pets.length > 1 && side.length < 2 && (
+          <label className="pet-fight-seat">
+            <span className={'pet-fight-dot is-' + SIDE[0]} aria-hidden />
+            <span className="sr-only">Which minion you are bringing</span>
+            <select
+              value={pick[0]}
+              onChange={(e) => {
+                const n = Number(e.target.value)
+                setPick((p) => [n, p[1]])
+              }}
+            >
+              {pets.map((p, i) => (
+                <option key={i} value={i}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         {!online &&
           pets.length > 1 &&
           ([0, 1] as const).map((seat) => (

@@ -9,6 +9,7 @@ import { companion, cornerSize, setCompanion, subscribeCompanion } from './compa
 import { PET_WIDTHS, petGif, petSeconds, petStill } from './petFile'
 import { fileNameFor, save, sizeLabel } from '../draw/export'
 import { packDrawing } from '../draw/strokes'
+import { paintSession } from '../draw/session'
 import { packPet } from './pets'
 
 /**
@@ -422,6 +423,32 @@ export function PetsRoom({ onControlChange }: { onControlChange?: (on: boolean) 
                         {label}
                       </button>
                     ))}
+                  {/**
+                   * ⚠️ A WAY BACK TO THE PENCIL. Adding a part to a creature you already keep meant
+                   * Paint, Gallery, Open — and only if the original drawing was still in the
+                   * gallery, which for anything made a while ago it was not. A minion carries its
+                   * own drawing, so the whole of "edit this one" is handing that drawing to the
+                   * room that edits drawings. Asked for twice.
+                   *
+                   * ⚠️ IT DOES NOT TOUCH THE MINION. What opens is the picture; keeping it again
+                   * is a new minion until you overwrite it, which is the same bargain the gallery
+                   * has always had. Said on the button rather than assumed.
+                   */}
+                  <button
+                    className="btn btn-ghost"
+                    title={`Open ${chosen.name}'s drawing in Paint`}
+                    onClick={() => {
+                      paintSession.keep({
+                        strokes: chosen.art.strokes,
+                        bg: chosen.art.bg,
+                        hidden: [],
+                        layerNames: chosen.art.layers ?? [],
+                      })
+                      window.location.hash = '#paint'
+                    }}
+                  >
+                    ✎ Edit the drawing
+                  </button>
                   <button
                     className="btn btn-ghost"
                     onClick={() => {
