@@ -8875,6 +8875,14 @@ a.cz-msg-author:focus-visible {
 
 /* ── the pet guide ─────────────────────────────────────────────
    A column, not a wrapping row: every line answers a different question and a wrap mixes them. */
+/**
+ * ⚠️ IT SCROLLS INSIDE ITSELF RATHER THAN PUSHING THE ROOM AROUND. This sits at the top of the
+ * tools rail, where the thing you are doing belongs — and it grew: the wizard text, fifteen part
+ * buttons, the preview, the layer-order hint, six move chips and the move stage. Measured at
+ * 1280x800 it stood 810px tall and put colour and size at y=1123 and the layer stack at y=1289,
+ * which is every paint control below the fold of an 800px screen. Reported as the pet maker
+ * pushing the whole toolbar down, and it was.
+ */
 .paint-pet-guide {
   flex-direction: column;
   align-items: flex-start;
@@ -8884,6 +8892,13 @@ a.cz-msg-author:focus-visible {
   border: 1px solid var(--accent, #7c6af7);
   border-radius: 10px;
   font-size: 0.84rem;
+  /* ⚠️ flex-basis auto and no shrinking: this is a column flex item, and a max-height with an
+     overflow let the others squeeze it to a single 25px line — a cap is not a collapse */
+  flex: 0 0 auto;
+  max-height: min(40vh, 22rem);
+  overflow-y: auto;
+  /* the parts row and the move chips wrap; nothing in here wants a sideways scrollbar */
+  overflow-x: hidden;
 }
 .paint-pet-guide .muted {
   font-size: 0.8rem;

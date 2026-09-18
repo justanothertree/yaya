@@ -2816,14 +2816,18 @@ export function PaintRoom() {
               className={'btn paint-fold-open' + (colourOpen ? ' is-on' : '')}
               aria-expanded={colourOpen}
               onClick={() => setColourOpen((v) => !v)}
-              title="Mix a colour the swatches do not have"
+              title="Any colour the swatches do not have"
             >
               <span
                 className="paint-fold-chip"
                 aria-hidden
                 style={colour === NONE || colour === RAINBOW ? undefined : { background: colour }}
               />
-              Mix
+              {/* ⚠️ "MIX" DID NOT READ AS A COLOUR PICKER. Watched somebody reach for the rainbow
+                  swatch wanting a custom colour, because a band of every colour looks far more like
+                  "choose one" than a word that could equally mean blending two. The swatches beside
+                  it are all colours, so the odd one out has to say what it is for. */}
+              Any colour
             </button>
             {colourOpen && (
               <span className="paint-fold-pop">
