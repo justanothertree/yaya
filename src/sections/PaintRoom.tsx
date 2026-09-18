@@ -97,6 +97,44 @@ const LAST = loadLastKit()
  * arithmetic and not the decision. Free stays first and stays the default: it is what the room
  * has always done, and a fixed shape is a thing to reach for rather than a thing to be given.
  */
+/**
+ * The tool belt: the few brushes you actually used, kept one press away.
+ *
+ * ⚠️ WHY NOT ALL SEVENTEEN. They were a full-width strip above the paper, and the note on
+ * .paint-bar records why they had to leave the rail: at 21rem they wrap to five rows and push
+ * Undo — the button you reach for most — off the bottom of the column. But a strip that wide is
+ * also a strip a long way from the colour you are about to draw with, which is how it was
+ * reported: "the brushes feel far from the colors and stuff". Both are true, and a belt is the
+ * thing that is neither: his own suggestion, "a smart belt that keeps the last few tools you used
+ * clickable but the tools are behind a dropdown".
+ *
+ * ⚠️ FIVE, BECAUSE THAT IS WHAT A ROW HOLDS. The panel is 21rem and a chip is about 5rem,
+ * so five and the All button is two tidy rows rather than five untidy ones.
+ */
+const BELT_SIZE = 5
+const BELT_KEY = 'paint_belt_v1'
+/** A starting kit: what somebody opening Paint for the first time reaches for. */
+const BELT_SEED: Tool[] = ['brush', 'eraser', 'line', 'rect', 'fill']
+
+const readBelt = (): Tool[] => {
+  const live = (t: unknown): t is Tool =>
+    typeof t === 'string' && TOOLS.some(([id]) => id === t) && !RETIRED_TOOLS.has(t as Tool)
+  let saved: unknown
+  try {
+    saved = JSON.parse(localStorage.getItem(BELT_KEY) || 'null')
+  } catch {
+    saved = null
+  }
+  /* ⚠️ re-validated on the way OUT, like every other local store here — localStorage is
+     editable by anything on this origin, and a retired tool would render a button that draws
+     nothing. Short reads are topped up from the seed so the belt is always the same length. */
+  const kept = Array.isArray(saved) ? saved.filter(live) : []
+  const out: Tool[] = []
+  for (const t of [...kept, ...BELT_SEED])
+    if (!out.includes(t) && out.length < BELT_SIZE) out.push(t)
+  return out
+}
+
 const PAPER_SHAPES: Array<[string, string, number]> = [
   ['free', 'Free', 0],
   ['16/9', 'Wide 16:9', 16 / 9],
@@ -239,6 +277,16 @@ export function PaintRoom() {
   const selRef = useRef<number[]>([])
 
   const [tool, setTool] = useState<Tool>(() => LAST?.tool ?? 'brush')
+  const [belt, setBelt] = useState<Tool[]>(readBelt)
+  /**
+   * When each tool was last picked, as a counter rather than a clock.
+   *
+   * ⚠️ A REF, BECAUSE NOTHING RENDERS FROM IT. It only decides which slot a new tool takes,
+   * which is a question asked at the moment of picking one — keeping it in state would redraw the
+   * whole room to record a fact nobody can see.
+   */
+  const toolUsed = useRef<Record<string, number>>({})
+  const toolTick = useRef(0)
   const [colour, setColour] = useState(() => LAST?.colour ?? '#22c55e')
   /* folded away by default — see the note where it is rendered */
   const [paperOpen, setPaperOpen] = useState(false)
@@ -1869,6 +1917,54 @@ export function PaintRoom() {
   }, [replayAt, repaint])
 
   const drop = () => setSel([])
+
+  /**
+   * Picking a brush, from the belt or from behind the All button.
+   *
+   * ⚠️ ONE HANDLER, because there are two ways in now and they must do the same four things.
+   * The belt and the grid disagreeing about whether choosing a tool drops the selection is the
+   * kind of difference nobody would find for weeks.
+   */
+  const chooseTool = (id: Tool) => {
+    setTool(id)
+    /**
+     * ⚠️ CHOOSING A BRUSH LEAVES THE SELECTION TOOL, which is how every paint program
+     * behaves and what was missing here. Selecting stayed on until you went back and switched it
+     * off by hand, so finishing with a selection and wanting to draw meant hunting for the ⬚
+     * again — reported as jarring, and it is: reaching for a brush IS saying you are done
+     * selecting.
+     */
+    setSelecting(false)
+    drop()
+    setToolsOpen(false)
+
+    toolUsed.current[id] = ++toolTick.current
+    setBelt((b) => {
+      if (b.includes(id)) return b
+      /**
+       * ⚠️ THE SLOTS DO NOT REORDER, and that is the whole difference between a belt and a
+       * shuffling list. A most-recent-first belt moves every button every time you press one, so
+       * the tool you wanted next is never where you just looked — the classic way this idea is
+       * got wrong. A new tool takes the place of the one used longest ago and everything else
+       * stays exactly where it was, so the belt learns without moving.
+       */
+      let worst = 0
+      for (let i = 1; i < b.length; i++)
+        if ((toolUsed.current[b[i]] ?? 0) < (toolUsed.current[b[worst]] ?? 0)) worst = i
+      const next = b.slice()
+      next[worst] = id
+      return next
+    })
+  }
+
+  /* a per-browser convenience, so the belt is the one you left — never anything but that */
+  useEffect(() => {
+    try {
+      localStorage.setItem(BELT_KEY, JSON.stringify(belt))
+    } catch {
+      /* private window or full storage: the belt is simply the seed next time */
+    }
+  }, [belt])
   /* ⚠️ through a ref: blit is a useCallback on [scale] and must not be rebuilt per drag event */
   markRef.current = band.current ?? selBox()
   /* the selection, for repaint — which runs from a ref during a drag and would otherwise close
@@ -2529,46 +2625,60 @@ export function PaintRoom() {
        * into place in the stacked layout, which never cared which box it was in.
        */}
       <div className="paint-bar">
-        <button
-          className="btn paint-tool-open"
-          aria-expanded={toolsOpen}
-          onClick={() => setToolsOpen((v) => !v)}
-          title="Choose a brush"
-        >
-          <span aria-hidden>{TOOLS.find(([id]) => id === tool)?.[1]}</span>
-          {TOOLS.find(([id]) => id === tool)?.[2] ?? 'Brush'}
-          <span aria-hidden>{toolsOpen ? '▴' : '▾'}</span>
-        </button>
-        <div className={'fx-style-row paint-tools' + (toolsOpen ? ' is-open' : '')}>
-          {/* ⚠️ Retired ones are hidden here rather than deleted from TOOLS — the packed format
+        {/**
+         * The belt: the last few you used, plus the way to everything else. See BELT_SIZE.
+         *
+         * ⚠️ THE CURRENT TOOL IS ALWAYS ON IT, because choosing one puts it there — so the
+         * belt never shows you five brushes none of which is the one you are holding.
+         */}
+        <div className="paint-belt">
+          {belt.map((id) => {
+            const found = TOOLS.find(([x]) => x === id)
+            if (!found) return null
+            const [, icon, label] = found
+            return (
+              <button
+                key={id}
+                className={'fx-style-btn' + (tool === id ? ' is-on' : '')}
+                aria-pressed={tool === id}
+                onClick={() => chooseTool(id)}
+              >
+                <span aria-hidden>{icon}</span>
+                <span className="fx-style-label">{label}</span>
+              </button>
+            )
+          })}
+          <button
+            className="btn paint-tool-open"
+            aria-expanded={toolsOpen}
+            onClick={() => setToolsOpen((v) => !v)}
+            title="Every brush"
+          >
+            <span aria-hidden>⋯</span> All
+            <span aria-hidden>{toolsOpen ? '▴' : '▾'}</span>
+          </button>
+        </div>
+        {/* ⚠️ RENDERED ONLY WHEN OPEN, not hidden with CSS, so the seventeen tools take no
+          room in the column at all — which is the thing that drove them out of the rail. It is
+          an overlay when it is up; see .paint-tools.is-open. */}
+        {toolsOpen && (
+          <div className="fx-style-row paint-tools is-open">
+            {/* ⚠️ Retired ones are hidden here rather than deleted from TOOLS — the packed format
             stores a tool as an index into that list, so removing one repaints every saved
             drawing. See RETIRED_TOOLS. */}
-          {TOOLS.filter(([id]) => !RETIRED_TOOLS.has(id)).map(([id, icon, label]) => (
-            <button
-              key={id}
-              className={'fx-style-btn' + (tool === id ? ' is-on' : '')}
-              aria-pressed={tool === id}
-              onClick={() => {
-                setTool(id)
-                /**
-                 * ⚠️ CHOOSING A BRUSH LEAVES THE SELECTION TOOL, which is how every paint
-                 * program behaves and what was missing here. Selecting stayed on until you went
-                 * back and switched it off by hand, so finishing with a selection and wanting to
-                 * draw meant hunting for the ⬚ again — reported as jarring, and it is: reaching
-                 * for a brush IS saying you are done selecting.
-                 */
-                setSelecting(false)
-                drop()
-                /* closes on a phone, where it is a menu; harmless on a desktop, where the row
-                 is always open and this flag is not read */
-                setToolsOpen(false)
-              }}
-            >
-              <span aria-hidden>{icon}</span>
-              <span className="fx-style-label">{label}</span>
-            </button>
-          ))}
-        </div>
+            {TOOLS.filter(([id]) => !RETIRED_TOOLS.has(id)).map(([id, icon, label]) => (
+              <button
+                key={id}
+                className={'fx-style-btn' + (tool === id ? ' is-on' : '')}
+                aria-pressed={tool === id}
+                onClick={() => chooseTool(id)}
+              >
+                <span aria-hidden>{icon}</span>
+                <span className="fx-style-label">{label}</span>
+              </button>
+            ))}
+          </div>
+        )}
       </div>
       <div className="paint-tools-panel">
         <div className="paint-row paint-select">

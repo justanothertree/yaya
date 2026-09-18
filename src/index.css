@@ -7557,7 +7557,9 @@ a.cz-msg-author:focus-visible {
    * which is three places to change and three chances to leave one behind. They are the same
    * number by construction now.
    *
-   * ⚠️ 262px, DOWN FROM 318. The old figure paid for "the heading and the one row below",
+   * ⚠️ 241px, DOWN FROM 318 — 262 first, then 21 more once the tool belt replaced the
+   * seventeen-tool strip and the furniture above the paper got shorter. The budget is measured,
+   * so it has to be re-measured whenever what it pays for changes. The old figure paid for "the heading and the one row below",
    * and the heading no longer exists here — see #paint > h2. Measured at 1440x810: the title was
    * 86px of the 318 and the board sat at 492 tall with 108px of dead screen under it. Handing
    * that back takes a 4:3 page from 657x492 to 741x548, which is 25% more paper.
@@ -7574,7 +7576,7 @@ a.cz-msg-author:focus-visible {
    * cancellations.
    */
   .paint-wrap {
-    --paint-h: clamp(18rem, calc(100vh - 262px), 60rem);
+    --paint-h: clamp(18rem, calc(100vh - 241px), 60rem);
   }
   .paint-wrap:not(.tools-hidden) {
     flex-flow: row wrap;
@@ -10593,24 +10595,61 @@ a.cz-msg-author:focus-visible {
   }
 }
 
-/* ── brushes: a row on a desktop, a menu on a phone ──────────────────────────
-   One list either way — see the note in PaintRoom. The button is the whole control on narrow
-   screens and does not exist on wide ones. */
+/* ── brushes: a belt, and everything else behind a button ─────────────────────
+   One list either way — see BELT_SIZE in PaintRoom. This used to read "a row on a desktop, a menu
+   on a phone", and the menu is now the shape everywhere: seventeen tools are a strip too wide to
+   sit anywhere near the colour you are about to use, and five are not. */
+.paint-belt {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+/**
+ * ⚠️ A FLOOR UNDER EACH CHIP, because a flex row shrinks them to their text and the grid
+ * these came out of did not — .paint-tools gives every tool a minmax(5rem) track. Measured on a
+ * phone the moment the belt became a row: Fill came out 26px wide, a thumb target about half the
+ * size it should be. 44px is the smallest anybody should have to hit.
+ *
+ * ⚠️ px, NOT rem — the root font-size here is fluid, so a rem cannot promise a number of
+ * pixels, and a touch target is a promise about pixels.
+ */
+.paint-belt .fx-style-btn {
+  min-width: 44px;
+}
 .paint-tool-open {
-  display: none;
+  display: inline-flex;
   align-items: center;
   gap: 0.35rem;
 }
-@media (max-width: 40rem) {
-  .paint-tool-open {
-    display: inline-flex;
-  }
-  .paint-tools {
-    display: none;
-  }
-  .paint-tools.is-open {
-    display: grid;
-  }
+/**
+ * ⚠️ AN OVERLAY, NOT A ROW THAT APPEARS. The whole reason the tools left the rail is that
+ * seventeen of them wrap to five rows and push what is under them off the bottom of the column —
+ * so a grid that PUSHES when it opens would bring that straight back, one click later. Lifted out
+ * of the flow it costs the column nothing whether it is up or down, which is the same bargain
+ * fullscreen's floating panel already makes.
+ *
+ * ⚠️ AND IT IS ONLY IN THE DOM WHILE IT IS OPEN, so this is the whole of its layout.
+ */
+.paint-bar {
+  position: relative;
+}
+.paint-tools.is-open {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  display: grid;
+  gap: 4px;
+  padding: 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+  /* a short screen must still be able to reach the last tool */
+  max-height: min(60vh, 26rem);
+  overflow-y: auto;
 }
 
 .paint-layer-move {
