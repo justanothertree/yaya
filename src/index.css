@@ -9185,6 +9185,12 @@ a.cz-msg-author:focus-visible {
 
 /* ⚠️ THE FRAME THAT BECOMES THE CREATURE. Never catches a pointer — it sits over a drawing
    surface, and a box you cannot draw through is a box that has broken the room. */
+/* ⚠️ AN EFFECT THAT IS ON SAYS SO FROM ACROSS THE ROOM. Folded away, the only sign a six-fold
+   kaleidoscope was multiplying every stroke was a small badge, and it went unnoticed. */
+.paint-fold-open.is-live {
+  border-color: var(--accent, #7c6af7);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent, #7c6af7) 35%, transparent);
+}
 .paint-crop {
   position: absolute;
   pointer-events: none;

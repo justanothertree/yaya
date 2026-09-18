@@ -282,10 +282,22 @@ export function PaintRoom() {
    */
   const [alpha, setAlpha] = useState(1)
   const [width, setWidth] = useState(() => LAST?.width ?? 0.008)
-  /** kaleidoscope segments for strokes drawn from now on — see Stroke.k */
-  const [symmetry, setSymmetry] = useState(() => LAST?.symmetry ?? 0)
-  /** fading copies trailing each stroke along the way it was drawn — see Stroke.e */
-  const [echo, setEcho] = useState(() => LAST?.echo ?? 0)
+  /**
+   * Kaleidoscope segments and trailing copies for strokes drawn from now on — see Stroke.k and .e.
+   *
+   * ⚠️ THESE TWO DELIBERATELY DO NOT COME BACK WITH THE REST OF THE KIT, and the rest of the kit
+   * is right to. A tool, a colour, a width and an opacity are what you draw WITH; symmetry and
+   * echo are a mode the room is IN, and they multiply every mark you make. Arriving in a mode you
+   * did not switch on this session — behind a folded button, signalled by a badge the size of two
+   * characters — is a room that has started drawing for you. Watched happening to somebody making
+   * their first minion: every stroke came out six times and it took a while to work out why, and
+   * turning the one they found off left the other one on.
+   *
+   * ⚠️ STILL SAVED, so a NAMED kit keeps them: a setup you deliberately gave a name to is a
+   * different thing from whatever the room happened to be doing when you last closed the tab.
+   */
+  const [symmetry, setSymmetry] = useState(0)
+  const [echo, setEcho] = useState(0)
   /* ⚠️ Stored on CHANGE, not on leaving: a tab closed or crashed never gets an unload handler,
      and losing the setup in exactly the case where you were interrupted is the worst of both. */
   useEffect(() => {
@@ -2941,7 +2953,14 @@ export function PaintRoom() {
            */}
           <span className="paint-fold">
             <button
-              className={'btn paint-fold-open' + (fxOpen ? ' is-on' : '')}
+              /* ⚠️ reads as ON while an effect is live, not merely while the fold is open. A badge
+                 two characters wide was not enough to notice — see the note on symmetry above,
+                 and the person who could not find what was multiplying their strokes. */
+              className={
+                'btn paint-fold-open' +
+                (fxOpen ? ' is-on' : '') +
+                (symmetry || echo ? ' is-live' : '')
+              }
               aria-expanded={fxOpen}
               onClick={() => setFxOpen((v) => !v)}
               title="Mirroring and trailing copies"

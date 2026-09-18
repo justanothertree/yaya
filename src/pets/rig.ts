@@ -261,18 +261,99 @@ export type Part = {
   phase: number
 }
 
-const boxOf = (strokes: Stroke[]): Box | null => {
+/**
+ * Where the ink actually lands — COPIES AND ALL.
+ *
+ * ⚠️ THIS READ THE STROKE POINTS AND THE STROKE POINTS ARE NOT THE PICTURE. Symmetry and echo
+ * are stored as one number each and the copies are made at DRAWING time (see paintStroke), which
+ * is the right call for the file format and was quietly wrong for every measurement taken off it.
+ * A six-fold kaleidoscope drawn in one corner is six shapes around the middle of the page, and
+ * this said it was the one in the corner — so the crop frame, the creature's proportions, its
+ * footprint and every part's reach were computed against a fraction of what somebody had drawn.
+ * Reported by a first-time user as a hitbox wildly out of scale with the drawing, and it was.
+ *
+ * ⚠️ CORNERS RATHER THAN EVERY POINT, because this runs on every render in some rooms and a
+ * drawing may hold four thousand strokes of two thousand points. Rotating a box's corners bounds
+ * the rotated points it contains, so the answer is never too small; for a kaleidoscope, whose ink
+ * is spread around a circle anyway, it is barely too big either.
+ *
+ * ⚠️ IN THE PAPER'S OWN SHAPE. The rotation happens in PIXELS, so it mixes x and y through the
+ * page's aspect — doing it in 0-1 space would be a different rotation on every canvas shape.
+ */
+const boxOf = (strokes: Stroke[], ratio = 1): Box | null => {
+  const r = ratio > 0.05 && ratio < 20 ? ratio : 1
   let x0 = Infinity
   let y0 = Infinity
   let x1 = -Infinity
   let y1 = -Infinity
-  for (const s of strokes)
+  const eat = (x: number, y: number) => {
+    if (x < x0) x0 = x
+    if (x > x1) x1 = x
+    if (y < y0) y0 = y
+    if (y > y1) y1 = y
+  }
+
+  for (const s of strokes) {
+    if (s.p.length < 2) continue
+    let ax = Infinity
+    let ay = Infinity
+    let bx = -Infinity
+    let by = -Infinity
     for (let i = 0; i + 1 < s.p.length; i += 2) {
-      if (s.p[i] < x0) x0 = s.p[i]
-      if (s.p[i] > x1) x1 = s.p[i]
-      if (s.p[i + 1] < y0) y0 = s.p[i + 1]
-      if (s.p[i + 1] > y1) y1 = s.p[i + 1]
+      if (s.p[i] < ax) ax = s.p[i]
+      if (s.p[i] > bx) bx = s.p[i]
+      if (s.p[i + 1] < ay) ay = s.p[i + 1]
+      if (s.p[i + 1] > by) by = s.p[i + 1]
     }
+
+    /* ⚠️ the bucket takes neither, exactly as paintStroke and paintMirrored refuse it */
+    const fill = s.t === 'fill'
+    const copies = fill ? 0 : (s.e ?? 0)
+    const k = fill ? 0 : (s.k ?? 0)
+
+    /* one echo step, in 0-1 space — the same arithmetic gestureDirection does in pixels */
+    let ox = 0
+    let oy = 0
+    if (copies >= 1) {
+      const n = s.p.length
+      const step = Math.min(r, 1) * 0.022
+      if (n < 4) {
+        ox = (Math.min(r, 1) * 0.02) / r
+        oy = Math.min(r, 1) * 0.02
+      } else {
+        const dx = (s.p[n - 2] - s.p[0]) * r
+        const dy = s.p[n - 1] - s.p[1]
+        const len = Math.hypot(dx, dy) || 1
+        ox = ((-dx / len) * step) / r
+        oy = (-dy / len) * step
+      }
+    }
+
+    const segs = k >= 2 ? k : 1
+    for (let seg = 0; seg < segs; seg++) {
+      for (let c = 0; c < 4; c++) {
+        const rawX = c === 1 || c === 3 ? bx : ax
+        const rawY = c >= 2 ? by : ay
+        let px = rawX * r - r / 2
+        let py = rawY - 0.5
+        if (k >= 2) {
+          /* alternate segments are flipped BEFORE the rotation, as the canvas applies them */
+          if (seg % 2) py = -py
+          const t = (seg / segs) * Math.PI * 2
+          const cos = Math.cos(t)
+          const sin = Math.sin(t)
+          const nx = px * cos - py * sin
+          py = px * sin + py * cos
+          px = nx
+        }
+        const fx = (px + r / 2) / r
+        const fy = py + 0.5
+        eat(fx, fy)
+        /* the echo translate sits outside the mirror, so it moves every copy */
+        for (let i = 1; i <= copies; i++) eat(fx + ox * i, fy + oy * i)
+      }
+    }
+  }
   return x0 === Infinity ? null : { x0, y0, x1, y1 }
 }
 
@@ -314,7 +395,7 @@ export function hitLayers(d: Drawing): number[] {
  */
 export function inkBox(d: Drawing, skip: number[] = []): Box | null {
   const keep = skip.length ? d.strokes.filter((k) => !skip.includes(k.l ?? 0)) : d.strokes
-  const b = boxOf(keep.length ? keep : d.strokes)
+  const b = boxOf(keep.length ? keep : d.strokes, d.ratio)
   if (!b) return null
   let fat = 0
   for (const s of keep) if (s.w > fat) fat = s.w
@@ -377,7 +458,7 @@ export function bodyRatio(d: Drawing): number {
  * always toward the middle, because that is what a limb is.
  */
 export function rigOf(d: Drawing): Part[] {
-  const whole = boxOf(d.strokes)
+  const whole = boxOf(d.strokes, d.ratio)
   if (!whole) return []
   const cx = (whole.x0 + whole.x1) / 2
   const cy = (whole.y0 + whole.y1) / 2
