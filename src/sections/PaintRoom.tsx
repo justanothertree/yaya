@@ -1543,12 +1543,23 @@ export function PaintRoom() {
   const [dragLayer, setDragLayer] = useState<number | null>(null)
   const mergeLayer = (i: number, into: number) => {
     if (i === into) return
+    /**
+     * ⚠️ MARKED, LIKE EVERY OTHER MUTATION. The history is a snapshot of the strokes and the
+     * layer names, and mark() is the only thing that pushes one — so without this a merge was not
+     * undoable at all. Worse than nothing happening: the last snapshot in the list is from before
+     * whatever you did BEFORE the merge, so one press of Undo took that away as well, and a stale
+     * redo survived a merge that had invalidated it.
+     */
+    mark(`pouring ${nameOf(i)} into ${nameOf(into)}`)
     runLayerOp({ k: 'merge', i, into }, true)
   }
 
   const moveLayer = (i: number, dir: 1 | -1) => {
     const to = i + dir
     if (to < 0 || to >= layers) return
+    /* ⚠️ and reordering is a mutation too — it rewrites `l` on every stroke of two layers, so
+       leaving it out of the history left a redo list a reorder had already made wrong */
+    mark(`moving ${nameOf(i)}`)
     runLayerOp({ k: 'move', i, to }, true)
   }
 
@@ -2651,6 +2662,26 @@ export function PaintRoom() {
                     aria-label={`Move ${nameOf(i)} behind`}
                   >
                     ▼
+                  </button>
+                  {/**
+                   * ⚠️ MERGING NEEDS A BUTTON, and the note further up this row already said why:
+                   * a gesture with no button cannot be found by somebody who has not been told,
+                   * and does not exist at all on a phone. Dragging one row onto another is how you
+                   * pour any layer into any other, and it is HTML5 drag — no touch device fires
+                   * it, and no keyboard reaches it. So the common case gets a control: into the
+                   * one below, which is the direction a stack is usually flattened.
+                   *
+                   * ⚠️ DOWN, NOT UP, so the lower layer's name survives and its strokes stay
+                   * underneath — the same way round as dropping this row onto the one beneath it.
+                   */}
+                  <button
+                    className="paint-layer-move"
+                    onClick={() => mergeLayer(i, i - 1)}
+                    disabled={i <= 0}
+                    title={`Pour ${nameOf(i)} into ${nameOf(i - 1)}`}
+                    aria-label={`Pour ${nameOf(i)} into ${nameOf(i - 1)}`}
+                  >
+                    ⤵
                   </button>
                   <button
                     className="paint-layer-move"
