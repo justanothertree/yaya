@@ -35,6 +35,7 @@ import {
 } from '../draw/strokes'
 import { InCanvasWindow } from '../circuit/ui/canvasContext'
 import { gallery, removeArt, saveArt, subscribeGallery, type Art } from '../draw/gallery'
+import { ArtThumb } from '../draw/ArtThumb'
 import { SaveArt } from '../draw/SaveArt'
 import { together } from '../party/together'
 import { drawParty } from '../party/draw'
@@ -3441,79 +3442,6 @@ export function PaintRoom() {
           </p>
         )}
 
-        {galleryOpen && (
-          <div className="paint-row paint-gallery">
-            {!saved.length ? (
-              <span className="muted">
-                Nothing kept yet. Draw something, then press <strong>Keep</strong>.
-              </span>
-            ) : (
-              <ul className="paint-gallery-list">
-                {saved.map((a: Art) => (
-                  <li key={a.id}>
-                    <span className="paint-gallery-name">🖼 {a.name}</span>
-                    <span className="muted paint-gallery-meta">{a.art.strokes.length} strokes</span>
-                    <button
-                      className="btn"
-                      onClick={() => {
-                        /**
-                         * ⚠️ OPENING A PICTURE BROUGHT BACK ITS STROKES AND NOTHING ELSE, and the
-                         * missing part was the layer NAMES. They saved correctly the whole time —
-                         * the gallery holds them, packDrawing writes them, readDrawing reads them
-                         * — they simply were not put back on the board, so every creature you
-                         * reopened had its parts again and no idea what any of them were. Reported
-                         * as the names not saving, which is what it looks like from the outside
-                         * and is the one thing that was never true.
-                         *
-                         * ⚠️ AND THE REST OF THE BOARD IS THE PICTURE'S TOO. Frames a second
-                         * belongs to the drawing that was made at it. Which layers are switched
-                         * off does NOT travel with a picture (see the party handler, same rule),
-                         * but the ones you had hidden refer to a drawing that is no longer here —
-                         * left alone, layer 2 of whatever you just opened comes back invisible and
-                         * reads as content that failed to load. A selection and an active layer
-                         * belonging to the old picture are stale in exactly the same way.
-                         */
-                        mark(`opening “${a.name}”`)
-                        setBg(a.art.bg)
-                        setSel([])
-                        setHidden([])
-                        setLayer(0)
-                        setLayerNames(a.art.layers ?? [])
-                        if (a.art.fps) setFps(a.art.fps)
-                        /* ⚠️ AND ITS SHAPE. A drawing's ratio is its proportions; opening it onto
-                           whatever shape this window happens to be was the same stretch as
-                           resizing — see freeAr. */
-                        if (a.art.ratio > 0.05 && a.art.ratio < 20) setFreeAr(a.art.ratio)
-                        /* so keeping it again updates this picture rather than making a second */
-                        setDocName(a.name)
-                        setStrokes(a.art.strokes)
-                      }}
-                      title="Open this, replacing what is on the board"
-                    >
-                      Open
-                    </button>
-                    <button
-                      className="btn"
-                      onClick={() => setSaving(a.art)}
-                      title={`Save “${a.name}” as a picture or an animation`}
-                    >
-                      ⤓
-                    </button>
-                    <button
-                      className="btn"
-                      onClick={() => {
-                        if (window.confirm(`Delete “${a.name}”?`)) removeArt(a.id)
-                      }}
-                    >
-                      ✕
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        )}
-
         {/* ⚠️ The paper is a BACKDROP, not paint. See `bg` above — this is the same colour a
           profile block will put behind the strokes, so what you draw against is what other
           people will see it against. With no paper the checkerboard shows through, which is how
@@ -3705,14 +3633,104 @@ export function PaintRoom() {
             stroke count are about the DOCUMENT, which is what this row already is — and that row
             had fourteen controls in it, twice its own width, so it wrapped onto three lines and
             pushed the paper off the bottom of the screen. */}
-        <button
-          className={'btn' + (galleryOpen ? ' is-on' : '')}
-          aria-pressed={galleryOpen}
-          onClick={() => setGalleryOpen((v) => !v)}
-          title="Pictures you have kept"
-        >
-          🖼 Gallery{saved.length ? ` · ${saved.length}` : ''}
-        </button>
+        {/**
+         * ⚠️ A MENU ON ITS OWN BUTTON, NOT A ROW IN THE RAIL. The list used to be a full-width
+         * row in the layout, which on a wide screen meant it opened INSIDE the column of controls
+         * and pushed everything under it down: "when gallery is open it makes you have to scroll
+         * the settings". Sixteen kept pictures is a taller list than the rail is, and always will
+         * be, so it cannot be a thing the rail makes room for.
+         *
+         * Anchored to the button that opens it, it costs the layout nothing whether it is up or
+         * down — the same bargain the tool grid makes, and it opens UPWARDS because this row sits
+         * at the bottom of the screen.
+         */}
+        <span className="paint-gallery-anchor">
+          <button
+            className={'btn' + (galleryOpen ? ' is-on' : '')}
+            aria-expanded={galleryOpen}
+            onClick={() => setGalleryOpen((v) => !v)}
+            title="Pictures you have kept"
+          >
+            🖼 Gallery{saved.length ? ` · ${saved.length}` : ''}
+          </button>
+          {galleryOpen && (
+            <div className="paint-gallery">
+              {!saved.length ? (
+                <span className="muted">
+                  Nothing kept yet. Draw something, then press <strong>Keep</strong>.
+                </span>
+              ) : (
+                <ul className="paint-gallery-list">
+                  {saved.map((a: Art) => (
+                    <li key={a.id}>
+                      <ArtThumb art={a.art} />
+                      <span className="paint-gallery-name" title={a.name}>
+                        {a.name}
+                      </span>
+                      <span className="muted paint-gallery-meta">
+                        {a.art.strokes.length} strokes
+                      </span>
+                      <button
+                        className="btn"
+                        onClick={() => {
+                          /**
+                           * ⚠️ OPENING A PICTURE BROUGHT BACK ITS STROKES AND NOTHING ELSE, and the
+                           * missing part was the layer NAMES. They saved correctly the whole time —
+                           * the gallery holds them, packDrawing writes them, readDrawing reads them
+                           * — they simply were not put back on the board, so every creature you
+                           * reopened had its parts again and no idea what any of them were. Reported
+                           * as the names not saving, which is what it looks like from the outside
+                           * and is the one thing that was never true.
+                           *
+                           * ⚠️ AND THE REST OF THE BOARD IS THE PICTURE'S TOO. Frames a second
+                           * belongs to the drawing that was made at it. Which layers are switched
+                           * off does NOT travel with a picture (see the party handler, same rule),
+                           * but the ones you had hidden refer to a drawing that is no longer here —
+                           * left alone, layer 2 of whatever you just opened comes back invisible and
+                           * reads as content that failed to load. A selection and an active layer
+                           * belonging to the old picture are stale in exactly the same way.
+                           */
+                          mark(`opening “${a.name}”`)
+                          setBg(a.art.bg)
+                          setSel([])
+                          setHidden([])
+                          setLayer(0)
+                          setLayerNames(a.art.layers ?? [])
+                          if (a.art.fps) setFps(a.art.fps)
+                          /* ⚠️ AND ITS SHAPE. A drawing's ratio is its proportions; opening it onto
+                             whatever shape this window happens to be was the same stretch as
+                             resizing — see freeAr. */
+                          if (a.art.ratio > 0.05 && a.art.ratio < 20) setFreeAr(a.art.ratio)
+                          /* so keeping it again updates this picture rather than making a second */
+                          setDocName(a.name)
+                          setStrokes(a.art.strokes)
+                        }}
+                        title="Open this, replacing what is on the board"
+                      >
+                        Open
+                      </button>
+                      <button
+                        className="btn"
+                        onClick={() => setSaving(a.art)}
+                        title={`Save “${a.name}” as a picture or an animation`}
+                      >
+                        ⤓
+                      </button>
+                      <button
+                        className="btn"
+                        onClick={() => {
+                          if (window.confirm(`Delete “${a.name}”?`)) removeArt(a.id)
+                        }}
+                      >
+                        ✕
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+        </span>
         <button
           className="btn"
           disabled={!strokes.length}

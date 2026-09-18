@@ -7672,10 +7672,6 @@ a.cz-msg-author:focus-visible {
     flex: 1 1 100%;
   }
   /* the gallery is a full-width strip under everything, never a column beside the paper */
-  .paint-wrap:not(.tools-hidden) .paint-row.paint-gallery {
-    order: 5;
-    flex: 1 1 100%;
-  }
 
   /**
    * ⚠️ AND FULLSCREEN IS THIS LAYOUT, FULL SIZE. Fullscreen used to mean "hide every tool",
@@ -9577,9 +9573,47 @@ a.cz-msg-author:focus-visible {
 }
 
 /* Pictures you have kept, and who you are drawing with. */
+/**
+ * The kept pictures, as a menu hanging off their own button.
+ *
+ * ⚠️ UPWARDS, because the row this button lives in is the last one on the screen. Opening
+ * downwards would put the list off the bottom, which is the bug this is fixing in a new direction.
+ */
+/**
+ * ⚠️ THE MENU HANGS OFF THE ROW, NOT OFF THE BUTTON. Anchored to the button it is placed at
+ * whatever x the button happens to sit at, so on a narrow screen a wide menu runs off the right
+ * edge — and its width came from a `rem`, which on this site is fluid and cannot promise pixels.
+ * Against the row it is bounded by the row, which is bounded by the page, so overflow is not a
+ * thing that can happen at any width. Capped at 32rem so it does not become a 1300px list on a
+ * desktop.
+ */
+.paint-shape-row {
+  position: relative;
+}
+.paint-gallery-anchor {
+  display: inline-flex;
+}
 .paint-gallery {
+  /* ⚠️ BLOCK, AND IT CARRIED .paint-row UNTIL IT WAS NOT A ROW. As a flex row the list inside
+     was a flex item with min-width:auto, so it grew to its widest name — 750px inside a 563px
+     menu — instead of the name giving way. Stated here as well as dropped from the markup,
+     because this is the rule that has to be true for the ellipsis below to mean anything. */
   display: block;
-  width: 100%;
+  position: absolute;
+  z-index: 40;
+  bottom: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  width: auto;
+  max-width: min(32rem, 100%);
+  /* its own scroll, so a long gallery is a long menu and never a taller page */
+  max-height: min(62vh, 30rem);
+  overflow-y: auto;
+  padding: 0.6rem 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--panel);
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.4);
 }
 .paint-gallery-list {
   list-style: none;
@@ -9589,21 +9623,69 @@ a.cz-msg-author:focus-visible {
   flex-direction: column;
   gap: 0.3rem;
 }
+/**
+ * ⚠️ NOWRAP, AND A NAME THAT GIVES WAY. This wrapped, so a long name or a four-digit stroke
+ * count pushed the buttons onto a second line and made that one row twice as tall as its
+ * neighbours — "eyepatchheadhit" and "lil demon dude" both did it in his screenshot, each leaving
+ * a lone ✕ sitting under the row. The name is the only part that can afford to be cut, so it is
+ * the only part allowed to shrink; everything else keeps its size.
+ */
 .paint-gallery-list li {
   display: flex;
   align-items: center;
   gap: 0.45rem;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  /* ⚠️ AND THE ROW ITSELF HAS TO BE ABLE TO SHRINK. A flex item's min-width is `auto`, which
+     means "never smaller than my content" — so with nowrap the row simply grew past the menu and
+     pushed the buttons out of sight sideways, which is the old bug turned ninety degrees.
+     Measured with a 66-character name: the row ran past the right edge and the name was not
+     clipped at all, because nothing was ever asking it to be. */
+  min-width: 0;
   padding: 0.3rem 0;
   border-bottom: 1px solid color-mix(in srgb, var(--line) 55%, transparent);
+}
+.paint-gallery-list li > .btn {
+  flex: 0 0 auto;
 }
 .paint-gallery-name {
   font-weight: 600;
   font-size: 0.85rem;
+  /* min-width:0 is what actually lets a flex item shrink below its text — ellipsis alone cannot */
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .paint-gallery-meta {
   font-size: 0.72rem;
   margin-right: auto;
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+/* the picture, which is the thing you actually recognise a drawing by */
+.art-thumb-box {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  /* transparent paper reads as transparent, the same way the board says it */
+  background-image:
+    linear-gradient(45deg, color-mix(in srgb, var(--text) 10%, transparent) 25%, transparent 25%),
+    linear-gradient(-45deg, color-mix(in srgb, var(--text) 10%, transparent) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, color-mix(in srgb, var(--text) 10%, transparent) 75%),
+    linear-gradient(-45deg, transparent 75%, color-mix(in srgb, var(--text) 10%, transparent) 75%);
+  background-size: 8px 8px;
+  background-position:
+    0 0,
+    0 4px,
+    4px -4px,
+    -4px 0;
+}
+.art-thumb {
+  display: block;
 }
 .paint-peers {
   font-size: 0.75rem;
