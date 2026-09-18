@@ -7541,8 +7541,12 @@ a.cz-msg-author:focus-visible {
    */
   .paint-wrap:not(.tools-hidden) .paint-tools-panel {
     display: flex;
-    flex: 1 1 21rem;
-    min-width: 21rem;
+    /* ⚠️ A RAIL, AND ONLY A RAIL. Letting it grow fixed the thin-column case and bought a worse
+       one: on a portrait page the board is narrow, and a growing panel swallowed everything the
+       canvas could not use — half the window given to controls. The board is capped to leave room
+       for this instead, so the two never wrap apart and this never has to fill a line. */
+    flex: 0 0 21rem;
+    width: 21rem;
     order: 2;
     /* ⚠️ its own scrollbar, not the page's: twelve layers must not be able to make the
        column taller than the picture it is standing next to */
@@ -7584,10 +7588,21 @@ a.cz-msg-author:focus-visible {
   }
   /* ⚠️ and the same hand-back here — see the note on the other one. `flex` stops growing too,
      or the row stretches the width straight back past the shape. */
+  /**
+   * ⚠️ AS BIG AS ITS SHAPE AND THE RAIL BOTH ALLOW. Three limits: the height it is given, the
+   * room on the line, and what is left once the tools have their column. The third is the new one
+   * — without it a wide page pushed the rail onto its own line, where it sat as a thin strip under
+   * the paper with the rest of the row empty. Capping the paper instead keeps them side by side at
+   * every shape, which is the arrangement the rail was built for.
+   */
   .paint-wrap:not(.tools-hidden) .paint-board.has-shape {
     flex: 0 1 auto;
     height: auto;
-    width: min(100%, calc(clamp(18rem, calc(100vh - 318px), 60rem) * var(--paint-ar)));
+    width: min(
+      100%,
+      calc(clamp(18rem, calc(100vh - 318px), 60rem) * var(--paint-ar)),
+      calc(100% - 22rem)
+    );
   }
   .paint-wrap:not(.tools-hidden) .paint-shape-row {
     order: 3;
