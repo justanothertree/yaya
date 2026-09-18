@@ -7316,6 +7316,29 @@ a.cz-msg-author:focus-visible {
 /* ── The paint room ──────────────────────────────────────────────────────────
    See src/draw/strokes.ts: what you make is a list of strokes, and the canvas is
    a rendering of it that is thrown away whenever the window changes size. */
+/**
+ * ⚠️ PAINT IS A WORKSPACE, SO IT LOSES ITS TITLE AT EVERY SIZE. The short-screen rules
+ * already hide every room's h2 and say why — the title repeats the tab you just pressed. Paint
+ * is the room where that row costs the most, because the thing underneath it is a canvas that
+ * wants every pixel, and it was the first thing he named: "the paint tab still has Paint at the
+ * top which takes up 3 times the height of the nav bar". Measured at 1440x810: 86px, and the
+ * board grows into all of it — see the furniture budget below.
+ *
+ * ⚠️ HIDDEN FROM EYES, NOT FROM SCREEN READERS, the same way and for the same reason as the
+ * short-screen rule this borrows from. It keeps its place in the heading order.
+ */
+#paint > h2 {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 .paint-wrap {
   display: flex;
   flex-direction: column;
@@ -7442,7 +7465,8 @@ a.cz-msg-author:focus-visible {
    * not a fixed number of pixels and cannot be used to cancel a measured layout.
    */
   .paint-wrap:not(.tools-hidden) .paint-board {
-    height: clamp(14rem, calc(100vh - 420px), 40rem);
+    /* ⚠️ 334, down from 420: the 86px heading this used to pay for is gone — see #paint > h2 */
+    height: clamp(14rem, calc(100vh - 334px), 40rem);
   }
   /**
    * ⚠️ A CHOSEN SHAPE OUTRANKS THE LAYOUT'S HEIGHT, and it did not. `.paint-board.has-shape`
@@ -7454,7 +7478,7 @@ a.cz-msg-author:focus-visible {
    */
   .paint-wrap:not(.tools-hidden) .paint-board.has-shape {
     height: auto;
-    width: min(100%, calc(clamp(14rem, calc(100vh - 420px), 40rem) * var(--paint-ar)));
+    width: min(100%, calc(clamp(14rem, calc(100vh - 334px), 40rem) * var(--paint-ar)));
   }
   .paint-bar {
     order: -3;
@@ -7525,6 +7549,33 @@ a.cz-msg-author:focus-visible {
  * this block sits after that one and wins on source order at equal specificity.
  */
 @media (min-width: 64rem) {
+  /**
+   * How tall the paper and the rail beside it are allowed to be.
+   *
+   * ⚠️ ONE BUDGET, THREE USERS. The board's height, the shaped board's WIDTH (height times
+   * its proportions) and the tool rail's max-height were three copies of the same subtraction,
+   * which is three places to change and three chances to leave one behind. They are the same
+   * number by construction now.
+   *
+   * ⚠️ 262px, DOWN FROM 318. The old figure paid for "the heading and the one row below",
+   * and the heading no longer exists here — see #paint > h2. Measured at 1440x810: the title was
+   * 86px of the 318 and the board sat at 492 tall with 108px of dead screen under it. Handing
+   * that back takes a 4:3 page from 657x492 to 741x548, which is 25% more paper.
+   *
+   * ⚠️ AND IT PAYS FOR THE ROW UNDER THE PAPER, which is the part the old number got wrong
+   * in the other direction. Shape, Gallery, Keep, Make a minion and Download live below the
+   * board, and at 232 they sat 22px past the bottom of the screen — controls you had to scroll
+   * to reach, which is the thing he asked to stop happening. The budget is what is above the
+   * paper PLUS what has to stay visible below it. The standing note and the promo line are
+   * prose and may scroll; a control may not.
+   *
+   * ⚠️ px, NOT rem, IN THE SUBTRACTION — the root font-size on this site is fluid, so a rem
+   * cannot cancel a measured layout. The clamp's ends are rem because they are limits, not
+   * cancellations.
+   */
+  .paint-wrap {
+    --paint-h: clamp(18rem, calc(100vh - 262px), 60rem);
+  }
   .paint-wrap:not(.tools-hidden) {
     flex-flow: row wrap;
     align-items: flex-start;
@@ -7550,7 +7601,7 @@ a.cz-msg-author:focus-visible {
     order: 2;
     /* ⚠️ its own scrollbar, not the page's: twelve layers must not be able to make the
        column taller than the picture it is standing next to */
-    max-height: calc(100vh - 318px);
+    max-height: var(--paint-h);
     overflow-y: auto;
     padding-right: 0.3rem;
   }
@@ -7583,8 +7634,7 @@ a.cz-msg-author:focus-visible {
     order: 1;
     flex: 1 1 22rem;
     min-width: 0;
-    /* ⚠️ only the heading and the one row below are left to pay for now */
-    height: clamp(18rem, calc(100vh - 318px), 60rem);
+    height: var(--paint-h);
   }
   /* ⚠️ and the same hand-back here — see the note on the other one. `flex` stops growing too,
      or the row stretches the width straight back past the shape. */
@@ -7598,11 +7648,7 @@ a.cz-msg-author:focus-visible {
   .paint-wrap:not(.tools-hidden) .paint-board.has-shape {
     flex: 0 1 auto;
     height: auto;
-    width: min(
-      100%,
-      calc(clamp(18rem, calc(100vh - 318px), 60rem) * var(--paint-ar)),
-      calc(100% - 22rem)
-    );
+    width: min(100%, calc(var(--paint-h) * var(--paint-ar)), calc(100% - 22rem));
   }
   .paint-wrap:not(.tools-hidden) .paint-shape-row {
     order: 3;
