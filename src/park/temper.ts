@@ -144,8 +144,21 @@ export function temperOf(art: Drawing): Temper {
    * walk past. bodyRatio is width over height, and it is the creature's own shape rather than
    * the picture's, so a long attack drawn off the side does not shrink it.
    */
-  const wide = hold(bodyRatio(art), [0.35, 2.2] as const)
-  const scale = hold(2.62 * (1.18 - 0.28 * wide), BAND.scale)
+  const wide = bodyRatio(art)
+  /**
+   * ⚠️ PIVOTED ON THE SHAPE A CREATURE ACTUALLY IS, NOT ON A SQUARE. This was linear either
+   * side of wide = 1, which quietly assumed the neutral creature is as tall as it is broad — and
+   * none of them are. The default paper is Free, which pins to the board, so a creature drawn to
+   * fill a normal page lands somewhere around 1.5–2.0. Measured across the 13 drawings on this
+   * machine: bodyRatio ran 0.93–3.51 and TEN of them came out at 2.05, the floor. A dial that
+   * returns the same number for four fifths of its inputs is not a dial, and this is the one a
+   * player would notice first, because it is how big the thing is.
+   *
+   * ⚠️ AND IN OCTAVES, because a ratio is multiplicative — twice as broad is one step
+   * whichever end you start from. Half an octave of shape is half the band, so the range real
+   * drawings occupy is the range the height actually uses.
+   */
+  const scale = hold(2.55 - 0.5 * Math.log2(wide / 1.6), BAND.scale)
 
   /**
    * ⚠️ WHAT IT MOVES WITH, AND THEN WHAT IT NEEDS. Legs and wings make a thing quick and fire
@@ -248,5 +261,10 @@ export function saysOf(t: Temper): string {
         : 'keeps you at arm’s length'
   const how = t.charge > 0.45 ? 'charges' : t.beat > 0.62 ? 'picks its moment' : 'keeps swinging'
   const hold = t.nerve > 0.6 ? 'never gives ground' : t.nerve < 0.4 ? 'darts away' : 'circles'
-  return `A ${speed} boss that ${where}. It ${how} and ${hold}.`
+  /* ⚠️ HOW BIG IT IS WAS THE ONE THING THIS DID NOT SAY, and it is the first thing you see on
+     the field. Same rule as the thresholds above — 2.55/2.47 split the 13 drawings on this machine
+     4 / 5 / 4 rather than agreeing about everybody. Nothing is said in the middle, because "about
+     the usual size" is not worth a word. */
+  const size = t.scale > 2.55 ? 'towering, ' : t.scale < 2.47 ? 'squat, ' : ''
+  return `A ${size}${speed} boss that ${where}. It ${how} and ${hold}.`
 }

@@ -44,6 +44,7 @@ import { savePet } from '../pets/pets'
 import { PetView } from '../pets/PetView'
 import { PART_DOES, PART_WORDS, inFrontOfOrder, inkBox, partOf, rigOf } from '../pets/rig'
 import { MoveShow } from '../pets/MoveShow'
+import { saysOf, temperOf } from '../park/temper'
 import { attacksOf, moveTable } from '../pets/attack'
 import { AlsoTogether } from '../ui/AlsoTogether'
 import { useVoiceSession } from '../voice/useVoiceSession'
@@ -1525,6 +1526,24 @@ export function PaintRoom() {
     const parts = attacksOf(rigOf(petPreview))
     if (!parts.length) return null
     return moveTable(parts)
+  }, [petPreview])
+
+  /**
+   * What this drawing would be if somebody stood it up in the park.
+   *
+   * ⚠️ THE PARK ALREADY SAYS THIS AND THE PLACE YOU DRAW DID NOT. Size, health, pace, nerve and
+   * the range it fights at are all read out of the picture — and the one room where you can still
+   * change the picture was the one room that never mentioned them. Asked for twice, in those words:
+   * the more you can see of what everything will be, the better.
+   *
+   * ⚠️ THE SAME temperOf THE BOSS IS BUILT FROM, not a second reading of the drawing. A sentence
+   * that could disagree with the creature it describes is worse than no sentence.
+   *
+   * ⚠️ MEMOISED with the move table beside it: it walks every stroke through rigOf twice.
+   */
+  const petBoss = useMemo(() => {
+    const t = temperOf(petPreview)
+    return { says: saysOf(t), life: t.life }
   }, [petPreview])
 
   const addLayer = () => {
@@ -3507,6 +3526,9 @@ export function PaintRoom() {
                       Every part you name is a move. Press one to watch it.
                     </span>
                     <MoveShow art={petPreview} moves={petMoves} tall={92} />
+                    <span className="muted paint-pet-moves">
+                      Called out as a boss: {petBoss.says} <strong>{petBoss.life}</strong> health.
+                    </span>
                   </>
                 )}
               </div>
