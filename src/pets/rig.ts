@@ -522,7 +522,12 @@ export function rigOf(d: Drawing): Part[] {
 
   const parts: Part[] = []
   for (const [layer, strokes] of [...byLayer].sort((a, b) => a[0] - b[0])) {
-    const box = boxOf(strokes)
+    /* ⚠️ THE PAPER'S SHAPE HERE TOO. The whole-creature box passes it and this did not, so a
+       part carrying symmetry or echo had its copies placed by a rotation in the wrong aspect —
+       which is the box `bulk` reads for reach and the box the pivot is taken from. Measured on a
+       six-fold wing on a 16:9 page: the renderer painted y 0.152 to 0.998 and this said 0.258 to
+       0.842, missing the ink at both ends while overshooting sideways. */
+    const box = boxOf(strokes, d.ratio)
     if (!box) continue
     const name = d.layers?.[layer] ?? ''
     const kind = partOf(name)
