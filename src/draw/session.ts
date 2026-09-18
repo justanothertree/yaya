@@ -45,6 +45,15 @@ export type PaintSession = {
    * into a duplicate.
    */
   name?: string
+  /**
+   * Frames a second, when the picture is an animation.
+   *
+   * ⚠️ IT IS PART OF THE DRAWING, NOT OF THE ROOM. packDrawing carries fps and the gallery
+   * restores it on open — but the room's own state started at a constant 8 and the handoff had
+   * nowhere to put it, so leaving Paint and coming back reset the rate, and opening an animated
+   * creature from the minion room and keeping it again wrote 8 over whatever it was.
+   */
+  fps?: number
 }
 
 let held: PaintSession | null = null

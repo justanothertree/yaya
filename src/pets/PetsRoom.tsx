@@ -447,6 +447,8 @@ export function PetsRoom({ onControlChange }: { onControlChange?: (on: boolean) 
                         ratio: chosen.art.ratio,
                         /* and its own name, or keeping it again makes a second creature */
                         name: chosen.name,
+                        /* and its own rate, or an animated one comes back at the default */
+                        fps: chosen.art.fps,
                       })
                       window.location.hash = '#paint'
                     }}

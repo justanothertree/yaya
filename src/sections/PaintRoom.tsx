@@ -204,7 +204,8 @@ export function PaintRoom() {
   const [frame, setFrame] = useState<number | null>(null)
   const [onion, setOnion] = useState(2)
   const [playing, setPlaying] = useState(false)
-  const [fps, setFps] = useState(8)
+  /* ⚠️ the picture's rate, not the room's — see PaintSession.fps */
+  const [fps, setFps] = useState(() => paintSession.restore()?.fps ?? 8)
 
   /**
    * ⚠️ SELECTING IS NOT A TOOL, and deliberately not in the TOOLS list.
@@ -383,6 +384,7 @@ export function PaintRoom() {
     /* an empty page has no proportions to protect — see freeAr — and is nothing's edit */
     setFreeAr(null)
     setDocName('')
+    setFps(8)
     /* the guide was walking you through parts that no longer exist */
     setPetStep(null)
     /* nothing to come back to — carrying the cleared picture forward would be the bug */
@@ -403,8 +405,9 @@ export function PaintRoom() {
       layerNames,
       ratio: shapeAr || undefined,
       name: docName || undefined,
+      fps,
     })
-  }, [strokes, bg, hidden, layerNames, shapeAr, docName])
+  }, [strokes, bg, hidden, layerNames, shapeAr, docName, fps])
 
   /**
    * ⚠️ PINNED ON THE FIRST STROKE, not on every render. Before there is anything on the page
