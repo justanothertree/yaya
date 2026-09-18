@@ -7529,10 +7529,20 @@ a.cz-msg-author:focus-visible {
     flex-flow: row wrap;
     align-items: flex-start;
   }
+  /**
+   * ⚠️ A RAIL BESIDE THE PAPER, OR A STRIP UNDER IT — NEVER A THIN COLUMN IN AN EMPTY ROW.
+   * With a fixed 21rem and no growth, a board too wide to share its line pushed the panel onto
+   * the next one, where it stayed 21rem: measured on Wide 16:9 at 1280x780, a 370px column of
+   * controls under an 821px board in a 1161px row, with about 790px of nothing beside it and the
+   * whole lot to be scrolled past. Reported in those words — still thin, and awkward to scroll to.
+   *
+   * Growing from the same basis costs nothing while it fits beside the paper, and fills the line
+   * the moment it cannot. Its rows already wrap, so a wide strip lays itself out.
+   */
   .paint-wrap:not(.tools-hidden) .paint-tools-panel {
     display: flex;
-    flex: 0 0 21rem;
-    width: 21rem;
+    flex: 1 1 21rem;
+    min-width: 21rem;
     order: 2;
     /* ⚠️ its own scrollbar, not the page's: twelve layers must not be able to make the
        column taller than the picture it is standing next to */
@@ -9155,6 +9165,26 @@ a.cz-msg-author:focus-visible {
   min-height: 0;
   aspect-ratio: var(--paint-ar);
   margin-inline: auto;
+}
+/**
+ * ⚠️ FULLSCREEN MEANS THE ROW IT WAS GIVEN, NOT A SHARE OF THE WINDOW. The rule that sizes a
+ * shaped board for the ordinary rail takes its height from `100vh` minus the furniture, which is
+ * a guess about a page — and in fullscreen there is no page, there is a grid row already holding
+ * exactly the space left over. The two selectors weigh the same, so the guess was winning by
+ * where it sits in the file: measured in the fullscreen layout at 1400x820, a square board came
+ * out 502 tall inside a 556px row and took 29% of the screen, with about 400px of nothing beside
+ * it. Naming both conditions settles it properly rather than by line number.
+ *
+ * ⚠️ THE SAME SHAPE OF SUM, WITH FULLSCREEN'S OWN FURNITURE: about 160px of bar, shape row and
+ * padding rather than the page's 318. A percentage height would have been tidier and cannot be
+ * used — `height: 100%` needs a definite row to resolve against, which a real fullscreen element
+ * has and the `.is-full` stand-in does not, so it would be a rule that could only be tested in the
+ * one place nobody can automate. vh behaves the same in both.
+ */
+.paint-wrap:fullscreen:not(.tools-hidden) .paint-board.has-shape,
+.paint-wrap.is-full:not(.tools-hidden) .paint-board.has-shape {
+  height: auto;
+  width: min(100%, calc(clamp(18rem, calc(100vh - 160px), 60rem) * var(--paint-ar)));
 }
 /**
  * ⚠️ AND THE PROSE GOES. Two paragraphs sit after the board — the "anyone in a call can draw

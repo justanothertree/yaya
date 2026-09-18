@@ -26,6 +26,7 @@ import {
   frameCount,
   layerCount,
   packDrawing,
+  reshapeStrokes,
   readDrawing,
   strokeBox,
   floodFill,
@@ -3434,9 +3435,30 @@ export function PaintRoom() {
             className="viz-select"
             value={shape}
             onChange={(e) => {
-              setShape(e.target.value)
+              /**
+               * ⚠️ THE PICTURE COMES WITH IT. Points are a fraction of the page, so a new page
+               * shape re-proportions everything already on it — see reshapeStrokes. The strokes are
+               * re-laid to keep what was drawn, and only the empty page is a free swap.
+               *
+               * ⚠️ AND FREE KEEPS WHAT YOU HAD rather than handing the page back to the
+               * furniture, which is the same rule the first stroke follows.
+               */
+              const id = e.target.value
+              const before = shapeAr || (dims.h ? dims.w / dims.h : 0)
+              const after = PAPER_SHAPES.find(([k]) => k === id)?.[2] || 0
+              if (
+                strokes.length &&
+                before > 0 &&
+                after > 0 &&
+                Math.abs(before / after - 1) > 0.002
+              ) {
+                mark('changing the paper shape')
+                setStrokes((list) => reshapeStrokes(list, before, after))
+              }
+              if (!after && before > 0) setFreeAr(before)
+              setShape(id)
               try {
-                localStorage.setItem('paint_shape_v1', e.target.value)
+                localStorage.setItem('paint_shape_v1', id)
               } catch {
                 /* private mode: it holds for this visit */
               }

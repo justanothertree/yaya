@@ -1362,6 +1362,42 @@ export type PackedDrawing = {
  * ⚠️ Clamped to the range readStroke allows, so a transform cannot produce a stroke the
  * reader would later reject or clamp differently on the way back in.
  */
+/**
+ * The same strokes, re-laid on a page of a different shape, keeping their proportions.
+ *
+ * ⚠️ CHANGING THE PAPER USED TO CHANGE THE PICTURE. Points are stored 0–1 against the page, so
+ * a point sits at the same FRACTION of a page whatever shape it is — which means swapping a 16:9
+ * page for a square one squashes everything on it. Right if the page is a window onto a bigger
+ * idea, wrong for a drawing, where the thing you made is the thing you want to keep. Reported as
+ * changing the shape still stretching the strokes.
+ *
+ * ⚠️ FITS RATHER THAN FILLS, so nothing is ever pushed off the page. Whichever axis has gained
+ * room is the one that gives it back: going wider compresses x and leaves margins at the sides,
+ * going narrower compresses y. The picture keeps its shape and its position in the middle.
+ *
+ * ⚠️ AND THE WIDTHS ARE LEFT ALONE. A stroke's width is a fraction of the page's SHORT side, and
+ * the point of this is that the drawing comes out the same size on screen — scaling the widths by
+ * the squeeze, the way a free transform does, would thin every line for no reason anybody asked
+ * for.
+ */
+export function reshapeStrokes(strokes: Stroke[], from: number, to: number): Stroke[] {
+  if (!(from > 0) || !(to > 0)) return strokes
+  const k = from / to
+  if (Math.abs(k - 1) < 0.002) return strokes
+  const sx = k <= 1 ? k : 1
+  const sy = k <= 1 ? 1 : 1 / k
+  /* the same range readStroke allows, for the same reason xformStroke clamps */
+  const at = (v: number, by: number) => Math.max(-0.5, Math.min(1.5, 0.5 + (v - 0.5) * by))
+  return strokes.map((st) => {
+    const p = st.p.slice()
+    for (let i = 0; i + 1 < p.length; i += 2) {
+      p[i] = at(p[i], sx)
+      p[i + 1] = at(p[i + 1], sy)
+    }
+    return { ...st, p }
+  })
+}
+
 export function xformStroke(
   s: Stroke,
   m: [number, number, number, number, number, number],
