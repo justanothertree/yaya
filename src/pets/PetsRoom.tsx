@@ -445,6 +445,8 @@ export function PetsRoom({ onControlChange }: { onControlChange?: (on: boolean) 
                         layerNames: chosen.art.layers ?? [],
                         /* its own proportions, or Paint re-shapes it to whatever this window is */
                         ratio: chosen.art.ratio,
+                        /* and its own name, or keeping it again makes a second creature */
+                        name: chosen.name,
                       })
                       window.location.hash = '#paint'
                     }}

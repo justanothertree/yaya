@@ -36,6 +36,15 @@ export type PaintSession = {
    * PaintRoom.
    */
   ratio?: number
+  /**
+   * What the picture is called, when it has been called something.
+   *
+   * ⚠️ A NAME IS HOW A PICTURE IS OVERWRITTEN. Both stores replace by name, so keeping a
+   * drawing under the name it already had updates it and keeping it under any other name makes a
+   * second one — which means losing the name on the way into the room quietly turns every edit
+   * into a duplicate.
+   */
+  name?: string
 }
 
 let held: PaintSession | null = null

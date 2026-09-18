@@ -288,6 +288,16 @@ export function PaintRoom() {
    * back.
    */
   const [freeAr, setFreeAr] = useState<number | null>(() => paintSession.restore()?.ratio ?? null)
+  /**
+   * What this picture is called, if it has been called anything.
+   *
+   * ⚠️ BOTH STORES REPLACE BY NAME, and the room was asking for the name from scratch every
+   * time. Keeping a drawing under the name it already had updates it; under any other name it
+   * makes a second one — so a blank prompt turns every edit into a duplicate unless you happen to
+   * remember the old name and type it exactly. Worst on the minion room's Edit, which exists to
+   * open something you already keep.
+   */
+  const [docName, setDocName] = useState<string>(() => paintSession.restore()?.name ?? '')
   const chosenAr = PAPER_SHAPES.find(([id]) => id === shape)?.[2] || 0
   /* a shape you picked beats one the page settled into, and either beats the furniture */
   const shapeAr = chosenAr || freeAr || 0
@@ -370,8 +380,9 @@ export function PaintRoom() {
     setLayerNames([])
     setHidden([])
     setLayer(0)
-    /* an empty page has no proportions to protect — see freeAr */
+    /* an empty page has no proportions to protect — see freeAr — and is nothing's edit */
     setFreeAr(null)
+    setDocName('')
     /* the guide was walking you through parts that no longer exist */
     setPetStep(null)
     /* nothing to come back to — carrying the cleared picture forward would be the bug */
@@ -385,8 +396,15 @@ export function PaintRoom() {
    * few times a minute, so this is cheap.
    */
   useEffect(() => {
-    paintSession.keep({ strokes, bg, hidden, layerNames, ratio: shapeAr || undefined })
-  }, [strokes, bg, hidden, layerNames, shapeAr])
+    paintSession.keep({
+      strokes,
+      bg,
+      hidden,
+      layerNames,
+      ratio: shapeAr || undefined,
+      name: docName || undefined,
+    })
+  }, [strokes, bg, hidden, layerNames, shapeAr, docName])
 
   /**
    * ⚠️ PINNED ON THE FIRST STROKE, not on every render. Before there is anything on the page
@@ -564,7 +582,7 @@ export function PaintRoom() {
   })
   drawingRef.current = {
     v: 1,
-    name: 'Untitled',
+    name: docName || 'Untitled',
     ratio: size.current.h ? size.current.w / size.current.h : 1.5,
     bg,
     layers: layerNames.length ? layerNames : undefined,
@@ -1289,8 +1307,10 @@ export function PaintRoom() {
   }, [strokes, petStep])
 
   const finishPet = () => {
-    const name = window.prompt('What is your minion called?', '')?.trim() ?? ''
+    /* ⚠️ offered back, so keeping an edited creature under its own name updates it */
+    const name = window.prompt('What is your minion called?', docName)?.trim() ?? ''
     if (!name) return
+    setDocName(name)
     const art = { ...drawingRef.current, name }
     saveArt(art)
     const made = savePet(name, art)
@@ -3259,6 +3279,8 @@ export function PaintRoom() {
                            whatever shape this window happens to be was the same stretch as
                            resizing — see freeAr. */
                         if (a.art.ratio > 0.05 && a.art.ratio < 20) setFreeAr(a.art.ratio)
+                        /* so keeping it again updates this picture rather than making a second */
+                        setDocName(a.name)
                         setStrokes(a.art.strokes)
                       }}
                       title="Open this, replacing what is on the board"
@@ -3487,8 +3509,9 @@ export function PaintRoom() {
           className="btn"
           disabled={!strokes.length}
           onClick={() => {
-            const name = window.prompt('Name this picture', '')?.trim() ?? ''
+            const name = window.prompt('Name this picture', docName)?.trim() ?? ''
             if (!name) return
+            setDocName(name)
             const item = saveArt({ ...drawingRef.current, name })
             setNote(item ? `Kept “${item.name}”` : 'Nothing to keep yet.')
             window.setTimeout(() => setNote(null), 4000)
