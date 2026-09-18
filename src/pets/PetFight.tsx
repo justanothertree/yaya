@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Drawing } from '../draw/strokes'
 import { PetView } from './PetView'
 import { ScrapFriend } from './ScrapFriend'
-import { petCanvas, rigOf } from './rig'
+import { footRoom, petCanvas, rigOf } from './rig'
 import { attacksOf, moveTable, pairOf, petWide, type Attack } from './attack'
 import {
   fightEffort,
@@ -481,7 +481,7 @@ export function PetFight({
                     f.facing *
                     lungeOf(f, kit.moves[i] ?? []) *
                     100
-                  ).toFixed(1)}%), -100%)`,
+                  ).toFixed(1)}%), calc(-100% + ${(footRoom(p.art) * 100).toFixed(1)}%))`,
                 }}
               >
                 <PetView

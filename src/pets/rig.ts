@@ -453,6 +453,35 @@ export function petCanvas(d: Drawing, tall: number): number {
 }
 
 /**
+ * How much of a pet's canvas hangs BELOW its feet, as a fraction of the canvas's height.
+ *
+ * ⚠️ BECAUSE THE CANVAS IS NOT THE CREATURE. Every room that stands a pet on a floor does it
+ * by putting the bottom of the picture on the floor line — `translateY(-100%)` — and the bottom
+ * of the picture is the bottom of the INK BOX, which carries the 12% animation headroom and
+ * whatever was drawn below the body, an attack that sweeps at the ground included. So the feet
+ * ended up that far above the floor. Reported as everyone in the scrap floating a little and not
+ * being clean with the floor; measured across the thirteen drawings on this machine as a median
+ * of 17.3% of the creature's own height, and 24.7% at worst.
+ *
+ * ⚠️ ONE COPY OF THIS SUM, for the same reason petCanvas is one copy of its own: the park,
+ * the ring and the boss all stand creatures on the same floor, and three versions of a correction
+ * is three places for it to drift.
+ *
+ * ⚠️ IT MOVES THE PICTURE, NEVER THE CREATURE. The position is the simulation's and nothing
+ * here may touch it — the same rule the lunge follows. A downward attack still renders below the
+ * floor line, which is what a swing at the ground should look like.
+ */
+export function footRoom(d: Drawing): number {
+  const whole = inkBox(d)
+  const body = inkBox(d, hitLayers(d), false)
+  if (!whole || !body) return 0
+  const h = whole.y1 - whole.y0
+  if (!(h > 0)) return 0
+  /* capped: a creature drawn entirely above a huge ground attack must not be hoisted off screen */
+  return Math.max(0, Math.min(0.4, (whole.y1 - body.y1) / h))
+}
+
+/**
  * The shape a pet's view should be: the ink's own proportions, not the paper's.
  *
  * ⚠️ x and y are fractions of DIFFERENT lengths — the paper's width and its height — so the ink

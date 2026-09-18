@@ -42,7 +42,7 @@ import {
   type Striker,
 } from './strike'
 import { attacksOf, moveTable, petWide, type Attack } from '../pets/attack'
-import { rigOf } from '../pets/rig'
+import { footRoom, rigOf } from '../pets/rig'
 import { lungeOf } from '../pets/fight'
 import {
   beaten,
@@ -165,7 +165,9 @@ function BossFigure({
         left: `${on.x * 100}%`,
         top: `${on.y * 100}%`,
         zIndex: depthOf(at),
-        transform: `translate(calc(-50% + ${(facing * lunge * 100).toFixed(1)}%), -100%)`,
+        transform: `translate(calc(-50% + ${(facing * lunge * 100).toFixed(1)}%), calc(-100% + ${(
+          footRoom(art) * 100
+        ).toFixed(1)}%))`,
       }}
     >
       <PetView
@@ -1106,7 +1108,7 @@ export function ParkRoom({
                       /* the swing moves the picture, never the creature — see the scrap's note */
                       transform: `translate(calc(-50% + ${(one.facing * one.lunge * 100).toFixed(
                         1,
-                      )}%), -100%)`,
+                      )}%), calc(-100% + ${(footRoom(one.art) * 100).toFixed(1)}%))`,
                     }}
                   >
                     <PetView
