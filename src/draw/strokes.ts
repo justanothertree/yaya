@@ -1759,6 +1759,47 @@ export function paintDrawing(
  * the region it covered the first time means the worst a moved boundary can now do is leave the
  * colour where it was, instead of swallowing the drawing.
  */
+/**
+ * A colour as three bytes, whatever kind of colour string it is.
+ *
+ * ⚠️ THE BUCKET ASSUMED HEX AND THE RAINBOW IS NOT HEX. Every other tool hands the canvas a
+ * colour string and lets it parse; this one writes bytes into an ImageData by hand, and it read
+ * them with parseInt on slices of a `#rrggbb`. A rainbow is `hsl(300 92% 58%)`, so slice(1,3) is
+ * "sl", parseInt of that is NaN, and NaN stored into a Uint8ClampedArray is zero — which is why
+ * filling with the rainbow painted flat black. Reported by somebody trying it for the first time.
+ *
+ * ⚠️ ASKED OF THE CANVAS RATHER THAN PARSED, because the set of colour syntaxes only grows and
+ * a second parser beside the browser's is a second thing to be wrong. Hex stays a fast path since
+ * it is nearly every fill.
+ */
+let inkPad: CanvasRenderingContext2D | null = null
+function inkBytes(colour: string | null): [number, number, number] {
+  if (!colour) return [0, 0, 0]
+  if (/^#[0-9a-f]{6}$/i.test(colour))
+    return [
+      parseInt(colour.slice(1, 3), 16),
+      parseInt(colour.slice(3, 5), 16),
+      parseInt(colour.slice(5, 7), 16),
+    ]
+  try {
+    if (!inkPad) {
+      const c = document.createElement('canvas')
+      c.width = 1
+      c.height = 1
+      inkPad = c.getContext('2d', { willReadFrequently: true })
+    }
+    if (!inkPad) return [0, 0, 0]
+    inkPad.clearRect(0, 0, 1, 1)
+    inkPad.fillStyle = '#000000'
+    inkPad.fillStyle = colour
+    inkPad.fillRect(0, 0, 1, 1)
+    const d = inkPad.getImageData(0, 0, 1, 1).data
+    return [d[0], d[1], d[2]]
+  } catch {
+    return [0, 0, 0]
+  }
+}
+
 export function floodFill(
   ctx: CanvasRenderingContext2D,
   cssX: number,
@@ -1810,9 +1851,7 @@ export function floodFill(
   const t3 = d[start + 3]
 
   // a null colour is the bucket loaded with nothing: it clears the region instead of filling it
-  const r = hex ? parseInt(hex.slice(1, 3), 16) : 0
-  const g = hex ? parseInt(hex.slice(3, 5), 16) : 0
-  const b = hex ? parseInt(hex.slice(5, 7), 16) : 0
+  const [r, g, b] = inkBytes(hex)
   const a = hex ? Math.round(alpha * 255) : 0
   if (!measure && t0 === r && t1 === g && t2 === b && t3 === a) return null // already this colour
 
