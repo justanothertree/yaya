@@ -1,4 +1,4 @@
-import { ECHOES, SYMMETRIES, xformStroke, type Stroke } from './strokes'
+import { ECHOES, MAX_LAYERS, SYMMETRIES, xformStroke, type Stroke } from './strokes'
 
 /**
  * Changing the stack of layers — as one definition, so it happens the same way for everybody.
@@ -156,7 +156,15 @@ export function applyLayerOp(stack: Stack, op: LayerOp, layers: number): Stack {
   }
 
   if (op.k === 'add') {
-    if (layers >= 12) return stack
+    /**
+     * ⚠️ THE FORMAT'S LIMIT, NOT A SECOND COPY OF IT. This said 12, and MAX_LAYERS became 24 —
+     * raised precisely because the pet guide suggests more parts than a drawing could hold and the
+     * "+ layer" button went dead partway through following its own instructions. Half of that fix
+     * landed: the format and the room both moved, this did not, so the button is enabled all the
+     * way to 24 and has quietly done nothing since 12. Measured: added at 5 and 11, refused at 12,
+     * 13 and 20, with sixteen parts on offer in the maker.
+     */
+    if (layers >= MAX_LAYERS) return stack
     const n = padded()
     n.push(op.name ?? '')
     // ⚠️ `layer` deliberately untouched. The person who pressed + moves to the new layer; a peer
@@ -319,8 +327,15 @@ export function applyLayerOp(stack: Stack, op: LayerOp, layers: number): Stack {
 export function readLayerOp(raw: unknown): LayerOp | null {
   if (!raw || typeof raw !== 'object') return null
   const o = raw as Record<string, unknown>
+  /**
+   * ⚠️ AND THE SAME NUMBER ON THE WAY IN. With 12 here, every rename, hide, reorder, merge and
+   * remove aimed at layers 12 to 23 read as null and was dropped — so two people drawing together
+   * could not agree about the top half of a creature's stack, which is the exact divergence the
+   * note at the top of this file says the module exists to prevent. Checked at 0 and 11 (through),
+   * 12, 15 and 23 (all four ops dropped).
+   */
   const whole = (v: unknown) =>
-    typeof v === 'number' && Number.isInteger(v) && v >= 0 && v < 12 ? v : null
+    typeof v === 'number' && Number.isInteger(v) && v >= 0 && v < MAX_LAYERS ? v : null
   if (o.k === 'add')
     return { k: 'add', ...(typeof o.name === 'string' ? { name: o.name.slice(0, 24) } : {}) }
   if (o.k === 'hide') {
