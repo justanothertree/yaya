@@ -75,15 +75,12 @@ export function boutCode(): string {
   return out
 }
 
-export const boutLink = (code: string): string =>
-  `${location.origin}${location.pathname}#games?play=fight&bout=${encodeURIComponent(code)}`
-
-/** The bout a hash is asking for, or null. */
-export function boutFromHash(hash: string): string | null {
-  const q = new URLSearchParams(hash.split('?')[1] ?? '')
-  const code = (q.get('bout') ?? '').trim().toLowerCase()
-  return /^[a-z0-9]{4,16}$/.test(code) ? code : null
-}
+/**
+ * ⚠️ THE LINK LIVES IN boutInvite.ts NOW, and is re-exported here so nothing that already knew
+ * where to find it has to change. Chat has to recognise one of these to draw a Join card, and a
+ * chat window loading a game's relay client to read a URL is a chunk nobody asked for.
+ */
+export { boutFromHash, boutLink } from './boutInvite'
 
 export const boutRoom = (code: string) => `fight:${code}`
 

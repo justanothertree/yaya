@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Drawing } from '../draw/strokes'
 import { PetView } from './PetView'
+import { ScrapFriend } from './ScrapFriend'
 import { petCanvas, rigOf } from './rig'
 import { attacksOf, moveTable, pairOf, petWide, type Attack } from './attack'
 import {
@@ -634,6 +635,10 @@ export function PetFight({
             >
               🔗 Copy the link
             </button>
+            {/* ⚠️ BESIDE THE LINK RATHER THAN INSTEAD OF IT. Copying still wins for somebody you
+                are already talking to somewhere else; this is for the case the link cannot
+                serve — asked for directly, because Snake has it and a scrap did not. */}
+            <ScrapFriend code={code} />
             <span className="muted pet-fight-code">{code}</span>
           </>
         )}

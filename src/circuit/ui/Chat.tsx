@@ -13,6 +13,7 @@ import { notificationsChanged } from '../../hooks/notifySignal'
 import { useRoomPresence } from '../../voice/useRoomPresence'
 import { VoiceBar } from '../../voice/VoiceBar'
 import { challengeRoomOf, challengeText } from '../../game/challenge'
+import { boutCodeOf, boutInviteText } from '../../pets/boutInvite'
 import { circuitInviteText, circuitJoinCodeOf } from '../inviteLink'
 
 /**
@@ -633,6 +634,20 @@ export function Chat({
                             href={`#snake?room=${encodeURIComponent(challengeRoomOf(m.body)!)}`}
                           >
                             🎮 Join the game
+                          </a>
+                        </div>
+                      ) : boutCodeOf(m.body) ? (
+                        /* A scrap invite is the same idea again, with the bout code in the link —
+                           see src/pets/boutInvite.ts. Same card, so all three read alike. */
+                        <div className="cz-challenge">
+                          {boutInviteText(m.body) && (
+                            <div className="cz-challenge-say">{boutInviteText(m.body)}</div>
+                          )}
+                          <a
+                            className="btn cz-challenge-join"
+                            href={`#games?play=fight&bout=${encodeURIComponent(boutCodeOf(m.body)!)}`}
+                          >
+                            ⚔️ Join the scrap
                           </a>
                         </div>
                       ) : circuitJoinCodeOf(m.body) ? (
