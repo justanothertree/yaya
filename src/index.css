@@ -8417,6 +8417,31 @@ a.cz-msg-author:focus-visible {
 .park-one.is-beaten .park-life {
   display: none;
 }
+/* ⚠️ YOURS IS NOT THE BOSS'S COLOUR. Two red bars on one field during a fight are two bars
+   you have to work out by position; the accent says "this one is me" the same way the name tag
+   already does. */
+.park-life.is-mine i {
+  background: var(--accent, #7c6af7);
+}
+/* ⚠️ DOWN READS AS DOWN WITHOUT A WORD FOR IT — tipped over and drained of colour, which is
+   the same language the beaten boss uses, so one glance tells you who is on the floor. The
+   transform sits on the PICTURE rather than on .park-one, because the wrapper already carries the
+   positioning transform and overwriting it would move the creature off its own feet. */
+.park-one.is-down canvas {
+  transform: rotate(-72deg) translateY(12%);
+  filter: grayscale(0.8) brightness(0.75);
+  transition:
+    transform 260ms ease-out,
+    filter 260ms ease-out;
+}
+.park-one.is-down .park-name {
+  opacity: 0.8;
+}
+@media (prefers-reduced-motion: reduce) {
+  .park-one.is-down canvas {
+    transition: none;
+  }
+}
 .park-one.is-stroll {
   opacity: 0.62;
 }

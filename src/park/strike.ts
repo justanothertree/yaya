@@ -34,7 +34,7 @@ export type Striker = Walker & {
   stun: number
   /** the freeze on contact, for both of them — see fight.ts, same idea and same reason */
   hold: number
-  /** damage taken; the park does nothing with it but a boss will */
+  /** damage taken from bosses; a neighbour's shove never adds to it — see mauled */
   hurt: number
   /** the attack buttons as they were last frame, because a swing is a press */
   heldQ: boolean
@@ -181,10 +181,70 @@ export const busy = (s: Striker): boolean => s.swing > 0 || s.stun > 0 || s.hold
  *
  * ⚠️ SHOVE AND STAGGER, NOT DAMAGE AND DEATH. The park is somewhere people walk about together,
  * and a swing that could take somebody's creature off them would turn the one shared space on the
- * site into somewhere you can be griefed. A boss is the thing that will care about `hurt`; between
- * two people it is a push and a moment of being off balance, which is play rather than harm.
+ * site into somewhere you can be griefed. Between two people it is a push and a moment of being
+ * off balance, which is play rather than harm.
+ *
+ * ⚠️ AND THE BOSS IS THE EXCEPTION THIS ALWAYS MEANT TO MAKE — see mauled. This used to add
+ * `a.bite` to `hurt` on every blow including a neighbour's, which was harmless only because
+ * nothing read `hurt` at all. Now that a pool reads it, the two have to be different functions,
+ * or walking past somebody mid-swing would take your health off.
  */
 export const SHOVE = 0.55
+
+/**
+ * How much a creature can take from a boss before it goes down.
+ *
+ * ⚠️ FLAT, AND DELIBERATELY NOT READ FROM THE DRAWING. The boss's own life is already
+ * budgeted against how dangerous it is — see BUDGET in temper.ts — so a nastier boss is a
+ * shorter fight, not a fight you lose faster from a pool that also moved. Two dials pulling on
+ * the same balance is how a fight ends up impossible for the creature that drew it.
+ */
+export const PLAYER_LIFE = 100
+
+/**
+ * How long you are down for before you get back up.
+ *
+ * ⚠️ A SETBACK, NOT A PUNISHMENT. Going down costs you the seconds and hands the boss a free
+ * run at whoever else is fighting it; it does not cost you the creature, the progress, or the
+ * walk home. The park is somewhere you can wander into a fight without checking first, and a
+ * death that took something off you would make it somewhere you have to be ready for.
+ */
+export const DOWN_FOR = 3
+
+/**
+ * One step of going down and getting back up.
+ *
+ * ⚠️ OUT HERE RATHER THAN IN THE ROOM, for the reason everything else in this file is: the
+ * park runs on requestAnimationFrame, which never fires in the pane the rest of this is checked
+ * in, so a knockout that lived inside the loop would be a knockout nobody could ask a question
+ * of. Called directly it answers "how many of this boss's hits can I take" with no browser.
+ *
+ * ⚠️ HELD AS A LONG STUN rather than a flag of its own, because stun already means every
+ * single thing being down has to mean — nothing steers (busy), nothing swings, and the guard on
+ * every incoming blow is `stun <= 0`, so you cannot be kicked while you are lying there.
+ *
+ * ⚠️ AND YOU COME BACK WHOLE WHILE THE BOSS DOES NOT. `hurt` is cleared on the way up; the
+ * boss keeps every point you took off it. A boss that reset the fight each time it won would be
+ * a boss nobody ever finishes.
+ *
+ * @returns the seconds left, the creature, and whether this step crossed a threshold — 'down'
+ * and 'up' happen once each, which is all the room needs to redraw.
+ */
+export function stepDown(
+  down: number,
+  s: Striker,
+  dt: number,
+): { down: number; s: Striker; went: 'down' | 'up' | null } {
+  const t = Math.max(0, Math.min(0.05, dt))
+  if (down > 0) {
+    const left = Math.max(0, down - t)
+    return left > 0
+      ? { down: left, s: { ...s, swing: 0, stun: Math.max(s.stun, left) }, went: null }
+      : { down: 0, s: { ...s, hurt: 0, stun: 0, vx: 0, vy: 0 }, went: 'up' }
+  }
+  if (s.hurt < PLAYER_LIFE) return { down: 0, s, went: null }
+  return { down: DOWN_FOR, s: { ...s, swing: 0, stun: DOWN_FOR }, went: 'down' }
+}
 
 export function shoved(s: Striker, from: Spot, a: Attack): Striker {
   const dx = s.x - from.x
@@ -200,6 +260,17 @@ export function shoved(s: Striker, from: Spot, a: Attack): Striker {
     swing: 0,
     stun: 0.1 + power * 0.22,
     hold: 0.05 + a.bite * 0.004,
-    hurt: s.hurt + a.bite,
   }
+}
+
+/**
+ * The same blow, from something that is allowed to hurt you.
+ *
+ * ⚠️ ONLY A BOSS CALLS THIS, which is the whole distinction shoved's note is about. It is a
+ * separate function rather than a flag because the call site is where somebody will look to ask
+ * "can this take my health off", and a `true` sitting in an argument list does not answer that.
+ */
+export const mauled = (s: Striker, from: Spot, a: Attack): Striker => {
+  const p = shoved(s, from, a)
+  return { ...p, hurt: p.hurt + a.bite }
 }

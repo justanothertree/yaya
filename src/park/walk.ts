@@ -156,7 +156,15 @@ export function stepWalker(w: Walker, steer: Steer, dt: number, speed = 1): Walk
     y,
     vx,
     vy,
-    facing: vx > quiet ? 1 : vx < -quiet ? -1 : w.facing,
+    /**
+     * ⚠️ WHICH WAY YOU MEANT TO GO, NOT WHICH WAY YOU ARE TRAVELLING. These are the same
+     * thing whenever you are walking, and they come apart exactly when something has thrown you:
+     * a boss's shove sets a velocity pointing away from it while you are steering nothing, so
+     * reading the velocity spun the creature round to face away mid-fight. Reported as "when he
+     * hits me my guy turns around". A wish is 0 or ±something, so it needs no quiet threshold
+     * either — coasting to a stop holds the last facing, same as before.
+     */
+    facing: wx > 0 ? 1 : wx < 0 ? -1 : w.facing,
     moving: Math.hypot(vx, vy) > quiet,
   }
 }

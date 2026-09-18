@@ -31,8 +31,11 @@ import { MAX_WANDERERS, wanderAt } from './wander'
 import {
   busy,
   inArea,
+  mauled,
+  PLAYER_LIFE,
   restingStriker,
   shoved,
+  stepDown,
   stepStrike,
   strikeArea,
   type StrikeInput,
@@ -349,6 +352,15 @@ export function ParkRoom({
   const state = useRef<ParkState>({ me: null, here: new Map(), boss: null, trouble: null })
   const park = useRef<Park | null>(null)
   const you = useRef<Striker>(restingStriker(restingWalker()))
+  /**
+   * Seconds left of being knocked out, 0 when you are on your feet.
+   *
+   * ⚠️ A REF DRIVEN PER FRAME, A STATE FLIPPED TWICE. The countdown belongs with everything
+   * else the loop owns; only going down and getting up are worth a render, which is what
+   * `knocked` is for.
+   */
+  const downFor = useRef(0)
+  const [knocked, setKnocked] = useState(false)
   const held = useRef<Steer>({ ...STILL })
   const hitting = useRef<StrikeInput>({ quick: false, heavy: false, up: false, down: false })
   /** bumped when a swing starts or ends, so the render follows without owning the loop */
@@ -609,7 +621,8 @@ export function ParkRoom({
         if (cur.swing > 0 && !cur.spent && bm) {
           const area = strikeArea(cur, cur.facing, bm, bm.span - cur.swing, cur.scale)
           if (area && you.current.stun <= 0 && inArea(you.current, myWide, area)) {
-            you.current = shoved(you.current, cur, bm)
+            /* ⚠️ mauled, not shoved — a boss is the one thing allowed to take health off */
+            you.current = mauled(you.current, cur, bm)
             cur = { ...cur, spent: true }
           }
         }
@@ -704,7 +717,8 @@ export function ParkRoom({
           if (!tb.spent) {
             const area = strikeArea(tb.shown, tb.facing, theirMove, tb.swingFor, kit.temper.scale)
             if (area && you.current.stun <= 0 && inArea(you.current, myWide, area)) {
-              you.current = shoved(you.current, tb.shown, theirMove)
+              /* somebody else's boss is still a boss — see mauled */
+              you.current = mauled(you.current, tb.shown, theirMove)
               tb.spent = true
             }
           }
@@ -729,6 +743,12 @@ export function ParkRoom({
         n.x *= ease
         n.y *= ease
       }
+
+      /* ⚠️ only a boss can fill the pool that this reads — see mauled and stepDown */
+      const fall = stepDown(downFor.current, you.current, dt)
+      downFor.current = fall.down
+      you.current = fall.s
+      if (fall.went) setKnocked(fall.went === 'down')
 
       setShownYou(you.current)
 
@@ -1074,7 +1094,10 @@ export function ParkRoom({
                   <span
                     key={one.key}
                     className={
-                      'park-one' + (one.mine ? ' is-me' : '') + (one.stroll ? ' is-stroll' : '')
+                      'park-one' +
+                      (one.mine ? ' is-me' : '') +
+                      (one.stroll ? ' is-stroll' : '') +
+                      (one.mine && knocked ? ' is-down' : '')
                     }
                     style={{
                       left: `${at.x * 100}%`,
@@ -1106,7 +1129,25 @@ export function ParkRoom({
                           : `${one.name}, in the park`
                       }
                     />
-                    <span className="park-name">{one.name}</span>
+                    {/* ⚠️ ONLY ONCE SOMETHING HAS HIT YOU, and only a boss can. A bar over
+                        everybody at all times is four bars on a field where three of the
+                        creatures are out for a walk — this appears on the blow that makes it
+                        mean something, and goes again when you get back up. */}
+                    {one.mine && shownYou.hurt > 0 && (
+                      <span
+                        className="park-life is-mine"
+                        aria-label={`${Math.max(0, Math.round((1 - shownYou.hurt / PLAYER_LIFE) * 100))}% left`}
+                      >
+                        <i
+                          style={{
+                            width: `${Math.max(0, Math.min(1, 1 - shownYou.hurt / PLAYER_LIFE)) * 100}%`,
+                          }}
+                        />
+                      </span>
+                    )}
+                    <span className="park-name">
+                      {one.mine && knocked ? `${one.name} — down` : one.name}
+                    </span>
                   </span>
                 )
               })}
