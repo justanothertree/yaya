@@ -35,9 +35,15 @@ what it just made stale — copy, empty states, the thing a neighbouring feature
 - `npm run lint`, then `npm run build`. The pre-push hook runs the build, so a broken tree cannot
   reach the remote — but finding out at push time is finding out late.
 - Exercise the **actual user flow** in the Browser pane where the change is observable.
-  `.claude/launch.json` defines the dev server; `#dev-profile`, `#dev-admin`, `#dev-usage` and
-  `#dev-investments` are workbenches for surfaces that need a session. `DEV_PREVIEW` is read at
-  module scope, so those need a full reload, not a hash change.
+  `.claude/launch.json` defines the dev server; `#dev-profile`, `#dev-admin`, `#dev-usage`,
+  `#dev-investments` and `#dev-park` are workbenches for surfaces that need a session. `DEV_PREVIEW`
+  is read at module scope, so those need a full reload, not a hash change.
+- **`#dev-park` is the only workbench for a GAME, and it earns the difference.** The park is
+  members-only, so its whole boss fight shipped on reasoning alone until it existed; the first
+  fight run in it found a boss that walked off the map and never came back. It joins `park-dev`,
+  never `park`, so a test creature never appears on somebody's screen — and it grants nothing,
+  because ParkRoom's `authed` is a courtesy rather than a lock (the relay socket is
+  unauthenticated regardless). Walking the park needs the `requestAnimationFrame` stand-in above.
 - **Measurement lies more often than code does.** `.card` transitions `box-shadow`, so
   `getComputedStyle` reports interpolated values — inject `*{transition:none!important}` before
   measuring. `performance.now()` cannot see canvas work. The Browser pane collapses to 0×0 between
