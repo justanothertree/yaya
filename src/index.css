@@ -9060,7 +9060,15 @@ a.cz-msg-author:focus-visible {
   /* ⚠️ flex-basis auto and no shrinking: this is a column flex item, and a max-height with an
      overflow let the others squeeze it to a single 25px line — a cap is not a collapse */
   flex: 0 0 auto;
-  max-height: min(40vh, 22rem);
+  /**
+   * ⚠️ TALL ENOUGH TO HOLD THE WHOLE JOB, which is the heading, the line under it, the
+   * fifteen parts and the done button — 261px measured at 1440x810. At 40vh/22rem the cap was
+   * 322px, which held all of that only because the preview had been ordered above it and pushed
+   * it out; with the parts back on top, 52vh leaves room for them AND most of the preview rather
+   * than a choice between the two. min() so a short screen still gets a cap and not a column
+   * that runs off the bottom.
+   */
+  max-height: min(52vh, 30rem);
   overflow-y: auto;
   /* the parts row and the move chips wrap; nothing in here wants a sideways scrollbar */
   overflow-x: hidden;
@@ -9082,15 +9090,18 @@ a.cz-msg-author:focus-visible {
 }
 /* the live pet, beside what it has understood */
 /**
- * ⚠️ THE CREATURE GOES FIRST IN THE GUIDE. The panel is capped so it cannot push the toolbar off
- * the screen, which means something has to be below the fold — and it should not be the part that
- * shows you what you are making. Fifteen part buttons are a menu you already know how to use;
- * the preview and the move chips are the answer to what any of it does. Asked for in those words:
- * the more you can see of what everything will be, the better.
+ * ⚠️ THE PART BUTTONS GO FIRST, AND THIS USED TO SAY THE OPPOSITE. The argument was that
+ * fifteen part buttons are a menu you already know how to use, so the preview should have the
+ * space — and using it proved that backwards. The preview is 526px tall in a rail capped at 322,
+ * so it swallowed the whole visible area and put the parts row 620px down: "after i start making
+ * a minion i have to scroll down below the animation preview to see the rest of the body part
+ * layer buttons which seem very hidden". The parts are what you PRESS, over and over, and the
+ * preview is what you glance at between presses — so the thing you act on is the thing on screen.
+ *
+ * The preview is last in the DOM already, so this needs no order at all; it needed one to be
+ * wrong. It keeps its place, one short scroll down, and the cap below is raised so most of it is
+ * on screen anyway.
  */
-.paint-pet-guide .paint-pet-preview {
-  order: -1;
-}
 .paint-pet-preview {
   display: flex;
   align-items: center;
