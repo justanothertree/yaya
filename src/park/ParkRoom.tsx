@@ -262,9 +262,20 @@ export function ParkRoom({
   myName,
   authed,
   onControlChange,
+  room = PARK_ROOM,
 }: {
   pets: ParkPet[]
   myName: string
+  /**
+   * Which park this is.
+   *
+   * ⚠️ A PROP SO THE WORKBENCH CANNOT WALK INTO THE REAL ONE. There is one park and there is
+   * meant to be one — see PARK_ROOM — but #dev-park exists to let a signed-out developer stand
+   * on the grass, and standing on the grass in the room the family is using is not a workbench,
+   * it is an uninvited stranger with a test creature. Defaulted, so every real caller is
+   * unchanged and nothing has to remember to pass it.
+   */
+  room?: string
   /**
    * ⚠️ RAISED ONLY WHILE WALKING, which is what makes this a prop rather than a line in the
    * games room. Everywhere else in that tab, being on the page IS playing; here you stand at the
@@ -448,7 +459,7 @@ export function ParkRoom({
     cam.current = camWant(you.current)
     setCamAt(cam.current)
     const bump = () => setRoster((n) => n + 1)
-    const p = joinPark(PARK_ROOM, { name: myName, art: myArt }, state.current, bump)
+    const p = joinPark(room, { name: myName, art: myArt }, state.current, bump)
     if (!p) {
       state.current.trouble = 'The park is not switched on in this build'
       bump()
@@ -464,7 +475,7 @@ export function ParkRoom({
       boss.current = null
       setBossShown(null)
     }
-  }, [walking, myArt, myName])
+  }, [walking, myArt, myName, room])
 
   /* ⚠️ one per wanderer, rebuilt when the roster of them changes — an index into this must
      always mean the same creature as the same index into strollPets */

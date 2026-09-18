@@ -126,6 +126,13 @@ const ProfileLookPreview = import.meta.env.DEV
       (m) => m.ProfileLookPreview,
     )
   : null
+/** Same bargain again — the park cannot be walked at all without an account. See ParkPreview. */
+const ParkPreview = import.meta.env.DEV
+  ? lazyRetry(
+      () => import('./dev/ParkPreview'),
+      (m) => m.ParkPreview,
+    )
+  : null
 
 /** The one-account path a family member takes — see the file header for why it needs a route. */
 const InvestmentsMemberPreview = import.meta.env.DEV
@@ -1978,6 +1985,15 @@ export default function App() {
           )}
           {/* The family member's own card. Same workbench reasoning as #dev-profile, and the same
             privacy rule: every person in it is invented. */}
+          {/* The park is members-only, so every fix to it shipped on reasoning alone — the boss's
+            health bar and the knockout were checked as pure functions and never once seen on a
+            field. This is the one workbench that is about a GAME rather than a layout, and it
+            joins a room of its own so it can never be the real park. */}
+          {ParkPreview && DEV_PREVIEW === 'park' && (
+            <Suspense fallback={<div aria-busy>Finding the park…</div>}>
+              <ParkPreview />
+            </Suspense>
+          )}
           {InvestmentsMemberPreview && DEV_PREVIEW === 'investments' && (
             <Suspense fallback={<div aria-busy>Loading…</div>}>
               <InvestmentsMemberPreview />
