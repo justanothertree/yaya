@@ -443,6 +443,8 @@ export function PetsRoom({ onControlChange }: { onControlChange?: (on: boolean) 
                         bg: chosen.art.bg,
                         hidden: [],
                         layerNames: chosen.art.layers ?? [],
+                        /* its own proportions, or Paint re-shapes it to whatever this window is */
+                        ratio: chosen.art.ratio,
                       })
                       window.location.hash = '#paint'
                     }}

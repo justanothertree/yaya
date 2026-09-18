@@ -27,6 +27,15 @@ export type PaintSession = {
   /** which layers are hidden, and what they are called — part of the picture, not the tool */
   hidden: number[]
   layerNames: string[]
+  /**
+   * The paper's shape, when the picture has one.
+   *
+   * ⚠️ PROPORTIONS TRAVEL WITH A PICTURE OR IT IS NOT THE SAME PICTURE. Strokes are stored
+   * 0–1 against the paper, so handing over the strokes alone hands over a drawing that will be
+   * re-proportioned by whatever shape the room it lands in happens to be — see freeAr in
+   * PaintRoom.
+   */
+  ratio?: number
 }
 
 let held: PaintSession | null = null

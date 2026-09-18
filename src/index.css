@@ -1818,6 +1818,29 @@ h2 {
   h2 {
     font-size: clamp(1.05rem, 0.95rem + 0.5vw, 1.25rem);
   }
+  /**
+   * ⚠️ THE TITLE REPEATS THE TAB YOU JUST PRESSED, so on a short screen it is a row spent
+   * saying where you already know you are. Measured at 1280x660 on Minions: 37% of the screen
+   * went to the nav, the gap, the title and the blurb before a single minion. The blurb earns
+   * its space — the rooms have to be learnable without somebody standing over you — and the
+   * title does not.
+   *
+   * ⚠️ HIDDEN FROM EYES, NOT FROM SCREEN READERS. Every page has exactly one h2 in its top
+   * card and it is always this title — checked across Minions, Paint, Games, Ratings, People,
+   * Instrument, Visualiser and Circuit, none of which has a second one for this to swallow. It
+   * keeps its place in the heading order; it just stops being drawn.
+   */
+  main section.card h2 {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
 }
 p,
 li {
@@ -7421,6 +7444,18 @@ a.cz-msg-author:focus-visible {
   .paint-wrap:not(.tools-hidden) .paint-board {
     height: clamp(14rem, calc(100vh - 420px), 40rem);
   }
+  /**
+   * ⚠️ A CHOSEN SHAPE OUTRANKS THE LAYOUT'S HEIGHT, and it did not. `.paint-board.has-shape`
+   * is two classes; `.paint-wrap:not(.tools-hidden) .paint-board` is three, so every rule that
+   * sizes the board for a layout quietly beat the one that gives it its proportions — and the
+   * board stretched with the window while claiming an aspect-ratio it was not keeping. Measured:
+   * 1.768 at 1400 wide, 1.995 at 900, 2.131 at 1600, with aspect-ratio computing to 1.767 the
+   * whole time. The height has to be handed back for the shaped case at the same weight.
+   */
+  .paint-wrap:not(.tools-hidden) .paint-board.has-shape {
+    height: auto;
+    width: min(100%, calc(clamp(14rem, calc(100vh - 420px), 40rem) * var(--paint-ar)));
+  }
   .paint-bar {
     order: -3;
   }
@@ -7536,6 +7571,13 @@ a.cz-msg-author:focus-visible {
     min-width: 0;
     /* ⚠️ only the heading and the one row below are left to pay for now */
     height: clamp(18rem, calc(100vh - 318px), 60rem);
+  }
+  /* ⚠️ and the same hand-back here — see the note on the other one. `flex` stops growing too,
+     or the row stretches the width straight back past the shape. */
+  .paint-wrap:not(.tools-hidden) .paint-board.has-shape {
+    flex: 0 1 auto;
+    height: auto;
+    width: min(100%, calc(clamp(18rem, calc(100vh - 318px), 60rem) * var(--paint-ar)));
   }
   .paint-wrap:not(.tools-hidden) .paint-shape-row {
     order: 3;

@@ -272,6 +272,25 @@ export function PaintRoom() {
   /** the board's real pixel size, so the shape you are drawing on is never a guess */
   const [dims, setDims] = useState({ w: 0, h: 0 })
   /**
+   * The shape a FREE page settled on, once there was something on it.
+   *
+   * ⚠️ A PICTURE CANNOT KEEP CHANGING SHAPE UNDER ITS OWN STROKES. Points are stored 0–1
+   * against the paper, so the paper's aspect IS the drawing's proportions — and on Free the board
+   * simply filled whatever space the furniture left it. Measured at 1400x820: pressing ⌈ Tools took
+   * the board from 1.768 to 2.102, which stretches everything already drawn 19% sideways, and
+   * dragging the window edge did the same thing continuously. Reported as the paint tripping him
+   * out, and as not being able to tell what was real.
+   *
+   * ⚠️ SO FREE MEANS "YOU HAVE NOT CHOSEN YET", NOT "IT FOLLOWS THE FURNITURE". The moment a
+   * stroke lands, the shape the room had is the shape the picture has, and from then on the board
+   * scales rather than stretches. Choosing a real shape still wins, and clearing hands the choice
+   * back.
+   */
+  const [freeAr, setFreeAr] = useState<number | null>(() => paintSession.restore()?.ratio ?? null)
+  const chosenAr = PAPER_SHAPES.find(([id]) => id === shape)?.[2] || 0
+  /* a shape you picked beats one the page settled into, and either beats the furniture */
+  const shapeAr = chosenAr || freeAr || 0
+  /**
    * ⚠️ ALWAYS FULL AT THE START, and deliberately not restored from the last session.
    *
    * Every other brush setting is worth remembering — the tool, the colour, the width are all
@@ -350,6 +369,8 @@ export function PaintRoom() {
     setLayerNames([])
     setHidden([])
     setLayer(0)
+    /* an empty page has no proportions to protect — see freeAr */
+    setFreeAr(null)
     /* the guide was walking you through parts that no longer exist */
     setPetStep(null)
     /* nothing to come back to — carrying the cleared picture forward would be the bug */
@@ -363,8 +384,20 @@ export function PaintRoom() {
    * few times a minute, so this is cheap.
    */
   useEffect(() => {
-    paintSession.keep({ strokes, bg, hidden, layerNames })
-  }, [strokes, bg, hidden, layerNames])
+    paintSession.keep({ strokes, bg, hidden, layerNames, ratio: shapeAr || undefined })
+  }, [strokes, bg, hidden, layerNames, shapeAr])
+
+  /**
+   * ⚠️ PINNED ON THE FIRST STROKE, not on every render. Before there is anything on the page
+   * there is nothing to distort, so Free is free; after there is, the shape is part of what has
+   * been made. Reading it from the measured board rather than from a constant means the page you
+   * started on is the page you keep.
+   */
+  useEffect(() => {
+    if (chosenAr || freeAr !== null) return
+    if (!strokes.length || dims.w < 2 || dims.h < 2) return
+    setFreeAr(dims.w / dims.h)
+  }, [strokes.length, chosenAr, freeAr, dims.w, dims.h])
 
   useEffect(() => drawParty.start(), [])
   useEffect(() => {
@@ -457,8 +490,6 @@ export function PaintRoom() {
     apply()
     return together.subscribe(apply)
   }, [])
-
-  const shapeAr = PAPER_SHAPES.find(([id]) => id === shape)?.[2] || 0
 
   /**
    * ⚠️ A CLICK ANYWHERE ELSE CLOSES THEM. A popover you can only shut by finding the button that
@@ -3223,6 +3254,10 @@ export function PaintRoom() {
                         setLayer(0)
                         setLayerNames(a.art.layers ?? [])
                         if (a.art.fps) setFps(a.art.fps)
+                        /* ⚠️ AND ITS SHAPE. A drawing's ratio is its proportions; opening it onto
+                           whatever shape this window happens to be was the same stretch as
+                           resizing — see freeAr. */
+                        if (a.art.ratio > 0.05 && a.art.ratio < 20) setFreeAr(a.art.ratio)
                         setStrokes(a.art.strokes)
                       }}
                       title="Open this, replacing what is on the board"
