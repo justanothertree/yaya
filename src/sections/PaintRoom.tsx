@@ -160,7 +160,13 @@ export function PaintRoom() {
    * bg, hidden and layer names, and packDrawing writes the fields it lists. A history cannot
    * reach a file, a gallery item, a profile block or a peer.
    */
-  type Step = { label: string; strokes: Stroke[]; names: string[] }
+  /**
+   * ⚠️ THE PAPER IS IN HERE TOO, and it was not. Clear deliberately resets the background — a
+   * page with a colour on it and nothing drawn is still a page with something to clear — but the
+   * history only ever held the strokes and the names, so undoing a Clear brought the drawing back
+   * onto a page whose colour had gone. Two halves of one picture, one of them undoable.
+   */
+  type Step = { label: string; strokes: Stroke[]; names: string[]; bg: string | null }
   const [past, setPast] = useState<Step[]>([])
   const [future, setFuture] = useState<Step[]>([])
   /* read by mark() and by undo/redo, which run from handlers rather than from a render */
@@ -179,8 +185,13 @@ export function PaintRoom() {
      are the rig a pet is read from now (see pets/rig.ts), so losing one to a mis-tap is work
      lost. Twelve short strings is nothing next to the stroke array beside it. */
   const namesNow = useRef<string[]>([])
+  /* read by mark() and by undo/redo, which run from handlers rather than from a render */
+  const bgNow = useRef<string | null>(null)
   const markAs = useCallback((label: string, snap: Stroke[]) => {
-    setPast((p) => [...p.slice(-(HISTORY - 1)), { label, strokes: snap, names: namesNow.current }])
+    setPast((p) => [
+      ...p.slice(-(HISTORY - 1)),
+      { label, strokes: snap, names: namesNow.current, bg: bgNow.current },
+    ])
     setFuture([])
   }, [])
   const mark = useCallback((label: string) => markAs(label, strokesNow.current), [markAs])
@@ -195,6 +206,7 @@ export function PaintRoom() {
     () => paintSession.restore()?.layerNames ?? [],
   )
   namesNow.current = layerNames
+  bgNow.current = bg
   /**
    * ⚠️ NULL MEANS "NOT ANIMATING", and that is the default so the room stays a paint
    * program until you ask for more. A stroke drawn while this is null gets no frame at all,
@@ -1283,6 +1295,9 @@ export function PaintRoom() {
 
   const nameLayerIfBlank = (i: number, to: string) => {
     if ((layerNames[i] ?? '').trim()) return
+    /* a name is in the snapshot, so writing one without marking leaves the history describing a
+       picture that is not the one on the page — see markAs */
+    mark(`naming it ${to}`)
     runLayerOp({ k: 'name', i, name: to }, true)
   }
 
@@ -1514,6 +1529,9 @@ export function PaintRoom() {
 
   const addLayer = () => {
     if (layers >= MAX_LAYERS) return
+    /* ⚠️ the wizard's part button marks and this one did not, so the same action — adding a
+       layer — was undoable from one path and not from the other, and this is the common one */
+    mark('a new layer')
     runLayerOp({ k: 'add' }, true)
     /* ⚠️ Only the person who pressed it moves to the new layer — see applyLayerOp. Taking a
        peer's brush off what they were drawing on is not sharing, it is interfering. */
@@ -2369,6 +2387,7 @@ export function PaintRoom() {
     setSel([])
     setStrokes(next)
     setLayerNames(step.names)
+    setBg(step.bg)
     // ⚠️ outside the updater: React may run an updater twice, and this one leaves the machine
     tellRoom(cur, next)
   }
@@ -2379,7 +2398,12 @@ export function PaintRoom() {
     setPast((p) => p.slice(0, -1))
     setFuture((f) => [
       ...f,
-      { label: step.label, strokes: strokesNow.current, names: namesNow.current },
+      {
+        label: step.label,
+        strokes: strokesNow.current,
+        names: namesNow.current,
+        bg: bgNow.current,
+      },
     ])
     restore(step)
   }
@@ -2390,7 +2414,12 @@ export function PaintRoom() {
     setFuture((f) => f.slice(0, -1))
     setPast((p) => [
       ...p,
-      { label: step.label, strokes: strokesNow.current, names: namesNow.current },
+      {
+        label: step.label,
+        strokes: strokesNow.current,
+        names: namesNow.current,
+        bg: bgNow.current,
+      },
     ])
     restore(step)
   }
@@ -2583,6 +2612,10 @@ export function PaintRoom() {
               <button
                 className="paint-layer-eye"
                 aria-pressed={!hidden.includes(i)}
+                /* ⚠️ DELIBERATELY NOT MARKED, and it is the only layer op that is not. A Step holds
+                   the strokes, the names and the paper — what the picture IS — and `hidden` is
+                   what you are looking at while you work on it. Marking would push a step that
+                   restores nothing, so Undo would appear to do nothing at all. */
                 onClick={() => runLayerOp({ k: 'hide', i, on: !hidden.includes(i) }, true)}
                 title={hidden.includes(i) ? 'Show this layer' : 'Hide this layer'}
               >
