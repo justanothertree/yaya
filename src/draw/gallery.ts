@@ -73,7 +73,20 @@ export function saveArt(art: Drawing): Art | null {
     at: Date.now(),
     art: clean,
   }
-  write([item, ...gallery()])
+  /**
+   * ⚠️ ONE NAME, ONE PICTURE — the same rule savePet has always had, and the two stores
+   * disagreeing was the bug. Keeping under a name that is already here REPLACES it; this simply
+   * prepended, so the same gesture updated a minion and accumulated pictures. Measured: three
+   * keeps of one name gave three gallery entries and one minion.
+   *
+   * ⚠️ WHICH MATTERS MOST WHERE BOTH ARE WRITTEN AT ONCE. Finishing a minion saves to both, so
+   * editing a creature three times left one creature and three copies of its drawing — and the
+   * name prompt now offers the existing name back, which makes pressing OK the normal thing to do.
+   *
+   * ⚠️ CASE-INSENSITIVE, because "Flappy" and "flappy" are one picture to everybody except a
+   * string comparison.
+   */
+  write([item, ...gallery().filter((a) => a.name.toLowerCase() !== clean.name.toLowerCase())])
   return item
 }
 
