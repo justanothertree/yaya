@@ -2612,75 +2612,84 @@ export function PaintRoom() {
        * what makes the overlay below possible at all, and it costs one element.
        */}
       {/**
-       * The brushes, above the paper and outside the panel.
+       * The brushes, back in the panel and directly above the colour.
        *
-       * ⚠️ OUT OF THE PANEL SO IT CAN LEAVE IT. Once the panel became a side rail the tool
-       * grid was in it, and at 21rem the seventeen tools wrap to five rows and eat 190px of a
-       * column that only has 538 — measured, with one layer, Effects, Undo, Redo, Clear, Zoom and
-       * Fit all pushed below the rail's fold. Undo is the button you reach for most and it was off
-       * screen in the layout's resting state, which is a worse fault than the one the rail fixed.
+       * ⚠️ THIS NOTE USED TO ARGUE THE OPPOSITE, and the measurement it was built on was
+       * real: the tool grid lived in the rail once, and at 21rem the seventeen tools wrapped to
+       * five rows and ate 190px of a column that only has 538, with Effects, Undo, Redo, Clear,
+       * Zoom and Fit all pushed below the fold. Undo is the button you reach for most and it was
+       * off screen in the layout's resting state. So the tools went out to a full-width strip.
        *
-       * Out here it is a full-width row again above the picture: every tool on two rows, and the
-       * rail left holding only the things that genuinely want to be a column. It is still ordered
-       * into place in the stacked layout, which never cared which box it was in.
+       * ⚠️ WHAT CHANGED IS THAT THERE ARE NO LONGER SEVENTEEN OF THEM HERE. The belt is five
+       * and a button, and the grid behind that button is an overlay that is only in the DOM while
+       * it is open — so the thing that could not fit in the column is not in the column. The
+       * strip had a cost of its own, which is the one that brought this back: "the brushes feel
+       * far from the colors and stuff", and a full-width row at the top of the screen is about as
+       * far from the rail as anything can be.
+       *
+       * ⚠️ AND THE STACKED LAYOUT DOES NOT NOTICE. Below 781px the board is order -2 and this
+       * is order -1, with the panel after both — so being the panel's FIRST child puts it in
+       * exactly the same place it was, between the paper and the rest of the controls. Between 781
+       * and 1024 the panel is display:contents, so it is a wrap child either way. Only the rail
+       * layout and fullscreen see a difference, which is where the complaint came from.
        */}
-      <div className="paint-bar">
-        {/**
-         * The belt: the last few you used, plus the way to everything else. See BELT_SIZE.
-         *
-         * ⚠️ THE CURRENT TOOL IS ALWAYS ON IT, because choosing one puts it there — so the
-         * belt never shows you five brushes none of which is the one you are holding.
-         */}
-        <div className="paint-belt">
-          {belt.map((id) => {
-            const found = TOOLS.find(([x]) => x === id)
-            if (!found) return null
-            const [, icon, label] = found
-            return (
-              <button
-                key={id}
-                className={'fx-style-btn' + (tool === id ? ' is-on' : '')}
-                aria-pressed={tool === id}
-                onClick={() => chooseTool(id)}
-              >
-                <span aria-hidden>{icon}</span>
-                <span className="fx-style-label">{label}</span>
-              </button>
-            )
-          })}
-          <button
-            className="btn paint-tool-open"
-            aria-expanded={toolsOpen}
-            onClick={() => setToolsOpen((v) => !v)}
-            title="Every brush"
-          >
-            <span aria-hidden>⋯</span> All
-            <span aria-hidden>{toolsOpen ? '▴' : '▾'}</span>
-          </button>
-        </div>
-        {/* ⚠️ RENDERED ONLY WHEN OPEN, not hidden with CSS, so the seventeen tools take no
-          room in the column at all — which is the thing that drove them out of the rail. It is
-          an overlay when it is up; see .paint-tools.is-open. */}
-        {toolsOpen && (
-          <div className="fx-style-row paint-tools is-open">
-            {/* ⚠️ Retired ones are hidden here rather than deleted from TOOLS — the packed format
-            stores a tool as an index into that list, so removing one repaints every saved
-            drawing. See RETIRED_TOOLS. */}
-            {TOOLS.filter(([id]) => !RETIRED_TOOLS.has(id)).map(([id, icon, label]) => (
-              <button
-                key={id}
-                className={'fx-style-btn' + (tool === id ? ' is-on' : '')}
-                aria-pressed={tool === id}
-                onClick={() => chooseTool(id)}
-              >
-                <span aria-hidden>{icon}</span>
-                <span className="fx-style-label">{label}</span>
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
       <div className="paint-tools-panel">
+        <div className="paint-bar">
+          {/**
+           * The belt: the last few you used, plus the way to everything else. See BELT_SIZE.
+           *
+           * ⚠️ THE CURRENT TOOL IS ALWAYS ON IT, because choosing one puts it there — so the
+           * belt never shows you five brushes none of which is the one you are holding.
+           */}
+          <div className="paint-belt">
+            {belt.map((id) => {
+              const found = TOOLS.find(([x]) => x === id)
+              if (!found) return null
+              const [, icon, label] = found
+              return (
+                <button
+                  key={id}
+                  className={'fx-style-btn' + (tool === id ? ' is-on' : '')}
+                  aria-pressed={tool === id}
+                  onClick={() => chooseTool(id)}
+                >
+                  <span aria-hidden>{icon}</span>
+                  <span className="fx-style-label">{label}</span>
+                </button>
+              )
+            })}
+            <button
+              className="btn paint-tool-open"
+              aria-expanded={toolsOpen}
+              onClick={() => setToolsOpen((v) => !v)}
+              title="Every brush"
+            >
+              <span aria-hidden>⋯</span> All
+              <span aria-hidden>{toolsOpen ? '▴' : '▾'}</span>
+            </button>
+          </div>
+          {/* ⚠️ RENDERED ONLY WHEN OPEN, not hidden with CSS, so the seventeen tools take no
+            room in the column at all — which is the thing that drove them out of the rail. It is
+            an overlay when it is up; see .paint-tools.is-open. */}
+          {toolsOpen && (
+            <div className="fx-style-row paint-tools is-open">
+              {/* ⚠️ Retired ones are hidden here rather than deleted from TOOLS — the packed format
+              stores a tool as an index into that list, so removing one repaints every saved
+              drawing. See RETIRED_TOOLS. */}
+              {TOOLS.filter(([id]) => !RETIRED_TOOLS.has(id)).map(([id, icon, label]) => (
+                <button
+                  key={id}
+                  className={'fx-style-btn' + (tool === id ? ' is-on' : '')}
+                  aria-pressed={tool === id}
+                  onClick={() => chooseTool(id)}
+                >
+                  <span aria-hidden>{icon}</span>
+                  <span className="fx-style-label">{label}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
         <div className="paint-row paint-select">
           {/* ⚠️ SELECTING USED TO BE HERE, and the note that argued for it was about space:
             two rows each holding one button most of the time. It has gone to sit beside opacity

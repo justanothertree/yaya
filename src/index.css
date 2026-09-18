@@ -7557,9 +7557,11 @@ a.cz-msg-author:focus-visible {
    * which is three places to change and three chances to leave one behind. They are the same
    * number by construction now.
    *
-   * ⚠️ 241px, DOWN FROM 318 — 262 first, then 21 more once the tool belt replaced the
-   * seventeen-tool strip and the furniture above the paper got shorter. The budget is measured,
-   * so it has to be re-measured whenever what it pays for changes. The old figure paid for "the heading and the one row below",
+   * ⚠️ 159px, DOWN FROM 318, in three steps — 262 when the heading went, 241 when the belt
+   * replaced the seventeen-tool strip, and 159 when the belt moved into the rail and stopped
+   * sitting above the paper at all. The budget is a MEASUREMENT of what is above the paper and
+   * what has to stay visible below it, so it has to be re-measured every time either changes;
+   * leaving it at 241 would have been 82px of screen held open for a row that is not there. The old figure paid for "the heading and the one row below",
    * and the heading no longer exists here — see #paint > h2. Measured at 1440x810: the title was
    * 86px of the 318 and the board sat at 492 tall with 108px of dead screen under it. Handing
    * that back takes a 4:3 page from 657x492 to 741x548, which is 25% more paper.
@@ -7576,7 +7578,7 @@ a.cz-msg-author:focus-visible {
    * cancellations.
    */
   .paint-wrap {
-    --paint-h: clamp(18rem, calc(100vh - 241px), 60rem);
+    --paint-h: clamp(18rem, calc(100vh - 159px), 60rem);
   }
   .paint-wrap:not(.tools-hidden) {
     flex-flow: row wrap;
@@ -7614,11 +7616,19 @@ a.cz-msg-author:focus-visible {
    * things reached for most, pushed under the two reached for least. Same ranking as the stacked
    * layout, running down instead of along.
    */
-  /* ⚠️ full width, above both — the brushes are not a column, and in one they cost the rail
-     190 of its 538 pixels and pushed Undo off the bottom of it. See the note in the room. */
+  /**
+   * ⚠️ FIRST IN THE RAIL, DIRECTLY ABOVE THE COLOUR. `order: 0` against paint-draw's 1, and
+   * paint-draw is the row with the swatches, the opacity and the size — so picking a brush and
+   * picking what to draw with it are one place now. Asked for: "move it into the panel next to
+   * the colors".
+   *
+   * ⚠️ `flex: 0 0 auto`, NOT `1 1 100%`. It used to be a full-width row in a WRAP, where a
+   * 100% basis means 100% of the width; it is a child of a COLUMN now, where the basis is a
+   * HEIGHT — the same declaration would have told the belt to be as tall as the rail and to grow.
+   */
   .paint-wrap:not(.tools-hidden) .paint-bar {
     order: 0;
-    flex: 1 1 100%;
+    flex: 0 0 auto;
   }
   .paint-wrap:not(.tools-hidden) .paint-row.paint-draw {
     order: 1;
@@ -7731,11 +7741,10 @@ a.cz-msg-author:focus-visible {
   .paint-wrap.is-full.tools-hidden {
     grid-template-columns: minmax(0, 1fr);
   }
-  .paint-wrap:fullscreen .paint-bar,
-  .paint-wrap.is-full .paint-bar {
-    grid-column: 1 / -1;
-    grid-row: 1;
-  }
+  /* ⚠️ THE BAR IS NOT A GRID ITEM ANY MORE — it is inside the panel, which is the cell at
+     column 2. It used to be placed in a full-width row 1 of its own; that row is now empty and
+     collapses, which is height the picture gets. Placement rules for a non-child are silently
+     ignored, so the old pair went rather than sitting here looking like they do something. */
   .paint-wrap:fullscreen .paint-board,
   .paint-wrap.is-full .paint-board {
     grid-column: 1;
