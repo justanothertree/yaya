@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Drawing } from '../draw/strokes'
 import { PetView } from '../pets/PetView'
-import { petRatio } from '../pets/rig'
+import { petCanvas } from '../pets/rig'
 import { PET_TALL } from '../pets/play'
 import {
   camWant,
@@ -780,11 +780,8 @@ export function ParkRoom({
   }, [walking, myMoves, myWide, bossKit])
 
   /* the same sizing as everywhere else — PetView's size is the LONG side, not the height */
-  const petSize = (art: Drawing) => {
-    const tall = Math.max(22, size.h * PET_TALL * 0.8)
-    const wh = petRatio(art)
-    return Math.round(wh >= 1 ? tall * wh : tall)
-  }
+  /* ⚠️ the CREATURE is this tall, not its canvas — see petCanvas */
+  const petSize = (art: Drawing) => petCanvas(art, Math.max(22, size.h * PET_TALL * 0.8))
 
   /**
    * Your other creatures, out for a walk of their own.

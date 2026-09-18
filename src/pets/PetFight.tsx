@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Drawing } from '../draw/strokes'
 import { PetView } from './PetView'
-import { petRatio, rigOf } from './rig'
+import { petCanvas, rigOf } from './rig'
 import { attacksOf, moveTable, pairOf, petWide, type Attack } from './attack'
 import {
   fightEffort,
@@ -375,11 +375,8 @@ export function PetFight({
   }, [kit, round, online])
 
   /* the same sizing as the playground, and for the same reason — PetView's size is the LONG side */
-  const petSize = (art: Drawing) => {
-    const tall = Math.max(22, size.h * PET_TALL)
-    const wh = petRatio(art)
-    return Math.round(wh >= 1 ? tall * wh : tall)
-  }
+  /* ⚠️ the CREATURE is this tall, not its canvas — see petCanvas */
+  const petSize = (art: Drawing) => petCanvas(art, Math.max(22, size.h * PET_TALL))
 
   if (pets.length < 1) return null
 

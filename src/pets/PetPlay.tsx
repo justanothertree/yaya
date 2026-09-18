@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Drawing } from '../draw/strokes'
 import { PetView } from './PetView'
-import { petRatio, rigOf } from './rig'
+import { petCanvas, rigOf } from './rig'
 import { useOneShot } from './oneShot'
 import {
   COURSE,
@@ -276,11 +276,8 @@ export function PetPlay({ pets, startAt = 0 }: { pets: PlayPet[]; startAt?: numb
    * touches a treat are different creatures. It was the same 0.2 typed in both files with a
    * comment asking the reader to keep them in step; now there is nothing to keep in step.
    */
-  const petSize = (art: Drawing) => {
-    const tall = Math.max(26, size.h * PET_TALL)
-    const wh = petRatio(art)
-    return Math.round(wh >= 1 ? tall * wh : tall)
-  }
+  /* ⚠️ the CREATURE is this tall, not its canvas — see petCanvas */
+  const petSize = (art: Drawing) => petCanvas(art, Math.max(26, size.h * PET_TALL))
   const boss = shown[lead]
 
   return (

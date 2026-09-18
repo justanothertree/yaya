@@ -393,15 +393,63 @@ export function hitLayers(d: Drawing): number[] {
  * can throw. Without this, drawing a long slash makes the creature itself render small inside a
  * canvas sized to hold an attack that is invisible almost all of the time.
  */
-export function inkBox(d: Drawing, skip: number[] = []): Box | null {
+/**
+ * @param room whether to leave the headroom a moving limb needs.
+ *
+ * ⚠️ TWO DIFFERENT QUESTIONS SHARED ONE BOX, and one of them was getting the wrong answer. The
+ * headroom exists so a wing that swings past where it rests is not clipped by its own canvas —
+ * right for the picture, and wrong for HIT DETECTION, which was reading the same padded box and
+ * so made every creature a third bigger than it looks. Measured with the real renderer: a canvas
+ * 200 tall holds 154 of creature, and bodyRatio claimed 200px of width where the ink was 149.
+ *
+ * ⚠️ HALF THE FATTEST STROKE IS NOT HEADROOM, it is ink. A stroke paints half its width either
+ * side of the line it was dragged along, so that much is part of the picture in both modes.
+ */
+export function inkBox(d: Drawing, skip: number[] = [], room = true): Box | null {
   const keep = skip.length ? d.strokes.filter((k) => !skip.includes(k.l ?? 0)) : d.strokes
   const b = boxOf(keep.length ? keep : d.strokes, d.ratio)
   if (!b) return null
   let fat = 0
   for (const s of keep) if (s.w > fat) fat = s.w
-  const padX = fat / 2 + (b.x1 - b.x0) * 0.12 + 0.02
-  const padY = fat / 2 + (b.y1 - b.y0) * 0.12 + 0.02
+  const grow = room ? 0.12 : 0
+  const edge = room ? 0.02 : 0
+  const padX = fat / 2 + (b.x1 - b.x0) * grow + edge
+  const padY = fat / 2 + (b.y1 - b.y0) * grow + edge
   return { x0: b.x0 - padX, y0: b.y0 - padY, x1: b.x1 + padX, y1: b.y1 + padY }
+}
+
+/**
+ * How much of its own canvas a creature's body fills, top to bottom.
+ *
+ * ⚠️ SO THAT A CREATURE IS THE SIZE THE GAME THINKS IT IS. Everything about a fight is measured
+ * in pet-heights — how far a move reaches, how deep a footprint is — and the canvas is taller than
+ * the creature in it, by the headroom above plus whatever a drawn attack adds. Drawing the canvas
+ * at one pet-height therefore drew a creature at about three quarters of one, and left every
+ * hitbox a third too generous. A room that wants a creature `n` tall asks for a canvas of
+ * `n / bodyFill`, and then the thing on screen is `n` tall.
+ */
+export function bodyFill(d: Drawing): number {
+  const all = inkBox(d)
+  const body = inkBox(d, hitLayers(d), false)
+  if (!all || !body) return 1
+  const ah = all.y1 - all.y0
+  const bh = body.y1 - body.y0
+  if (!(ah > 0) || !(bh > 0)) return 1
+  /* ⚠️ floored, so a creature drawn beside an enormous attack cannot be inflated off the field */
+  return Math.max(0.35, Math.min(1, bh / ah))
+}
+
+/**
+ * The canvas a room should ask PetView for, so the CREATURE comes out `tall` pixels tall.
+ *
+ * ⚠️ ONE COPY OF THIS SUM. The park, the ring and the playground each had their own three
+ * lines of it, all reading petRatio and none of them accounting for the headroom — which is three
+ * places to fix anything ever learned about sizing a creature, and three places it can drift.
+ */
+export function petCanvas(d: Drawing, tall: number): number {
+  const whole = tall / bodyFill(d)
+  const wh = petRatio(d)
+  return Math.round(wh >= 1 ? whole * wh : whole)
 }
 
 /**
@@ -439,7 +487,8 @@ export function petRatio(d: Drawing): number {
  * quietly widen your own hitbox.
  */
 export function bodyRatio(d: Drawing): number {
-  const b = inkBox(d, hitLayers(d))
+  /* ⚠️ no headroom: this is what an enemy has to reach, not what the canvas has to hold */
+  const b = inkBox(d, hitLayers(d), false)
   const paper = d.ratio > 0.05 && d.ratio < 20 ? d.ratio : 1
   if (!b) return paper
   const bw = b.x1 - b.x0

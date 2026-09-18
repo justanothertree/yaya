@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { Drawing } from '../draw/strokes'
 import { PetView } from './PetView'
-import { bodyRatio, petRatio } from './rig'
+import { bodyRatio, petCanvas } from './rig'
 import { lungeOf, phaseOf } from './fight'
 import type { Attack } from './attack'
 
@@ -133,8 +133,8 @@ export function MoveShow({
   const lunge = gone < a.span ? lungeOf(swinging, [a]) : 0
   const { wide, tall: high } = spanOf(a)
 
-  const wh = petRatio(art)
-  const size = Math.round(wh >= 1 ? tall * wh : tall)
+  /* ⚠️ the same sum the games use, so the box drawn here is the box you are hit by there */
+  const size = petCanvas(art, tall)
 
   return (
     <div className="move-show">
