@@ -2540,10 +2540,42 @@ export function PaintRoom() {
     restore(step)
   }
 
+  /**
+   * A menu closes when you press somewhere that is not it.
+   *
+   * ⚠️ CAPTURE, AND pointerdown RATHER THAN click. Capture means this runs before the
+   * button's own handler, so pressing the Gallery button while it is open is still that button's
+   * toggle and not a close-then-reopen that leaves it stuck open. pointerdown means the menu is
+   * gone the instant you touch the paper rather than on the mouse-up — the stroke you started is
+   * the stroke you get.
+   *
+   * ⚠️ A PRESS INSIDE THE MENU IS NOT OUTSIDE IT, which is what the closest() checks are for:
+   * choosing a tool, opening a picture or deleting one all happen inside and must not be treated
+   * as dismissals. Each of those closes the menu itself where that is the right thing to do.
+   */
+  useEffect(() => {
+    if (!galleryOpen && !toolsOpen) return
+    const away = (e: PointerEvent) => {
+      const t = e.target as Element | null
+      if (galleryOpen && !t?.closest?.('.paint-gallery-anchor')) setGalleryOpen(false)
+      if (toolsOpen && !t?.closest?.('.paint-bar')) setToolsOpen(false)
+    }
+    document.addEventListener('pointerdown', away, true)
+    return () => document.removeEventListener('pointerdown', away, true)
+  }, [galleryOpen, toolsOpen])
+
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement | null
       if (t && /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)) return
+      /* ⚠️ A MENU GETS ESCAPE FIRST, before the selection ladder below. What is on top of the
+         screen is what a person means to dismiss, and Escape falling through to "drop the
+         selection" while a menu covers half the room is a keypress that appears to do nothing. */
+      if (e.key === 'Escape' && (galleryOpen || toolsOpen)) {
+        setGalleryOpen(false)
+        setToolsOpen(false)
+        return
+      }
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
         e.preventDefault()
         if (e.shiftKey) redo()
