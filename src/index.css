@@ -8955,6 +8955,15 @@ a.cz-msg-author:focus-visible {
  */
 .paint-pet-guide {
   flex-direction: column;
+  /**
+   * ⚠️ NOWRAP, AND THE CAP IS WHY IT HAS TO BE SAID. .paint-row wraps, which costs nothing
+   * while a column has no height to run out of — and the moment a max-height was put on it, the
+   * overflow did what a wrapping flex column does: started a SECOND column beside the first. The
+   * move preview went out to the right, off the panel, and left a tall blank space where it used
+   * to be. Seen in a screenshot before it was measured: every child reported an offset of 12 from
+   * the top, which is four things claiming the same row.
+   */
+  flex-wrap: nowrap;
   align-items: flex-start;
   gap: 0.4rem;
   padding: 0.65rem 0.8rem;
@@ -8986,6 +8995,16 @@ a.cz-msg-author:focus-visible {
   gap: 0.3rem;
 }
 /* the live pet, beside what it has understood */
+/**
+ * ⚠️ THE CREATURE GOES FIRST IN THE GUIDE. The panel is capped so it cannot push the toolbar off
+ * the screen, which means something has to be below the fold — and it should not be the part that
+ * shows you what you are making. Fifteen part buttons are a menu you already know how to use;
+ * the preview and the move chips are the answer to what any of it does. Asked for in those words:
+ * the more you can see of what everything will be, the better.
+ */
+.paint-pet-guide .paint-pet-preview {
+  order: -1;
+}
 .paint-pet-preview {
   display: flex;
   align-items: center;
