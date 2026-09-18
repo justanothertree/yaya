@@ -1475,6 +1475,22 @@ export function PaintRoom() {
    * ⚠️ `s.l ?? 0` everywhere, because absent means the bottom layer. Comparing s.l directly would
    * quietly leave every stroke from before layers existed behind on layer zero.
    */
+  /**
+   * Dragging one layer onto another pours it in.
+   *
+   * ⚠️ THE ROW IS THE HANDLE, not a separate grip, because the row is already the thing you
+   * point at to choose a layer — and a merge is "put this one into that one", which is a sentence
+   * about two rows. Asked for directly.
+   *
+   * ⚠️ ONE OP. A move followed by a remove would be two ops off one handler, both reading the
+   * stack as it was before either — see the note on `add` in layerOps.
+   */
+  const [dragLayer, setDragLayer] = useState<number | null>(null)
+  const mergeLayer = (i: number, into: number) => {
+    if (i === into) return
+    runLayerOp({ k: 'merge', i, into }, true)
+  }
+
   const moveLayer = (i: number, dir: 1 | -1) => {
     const to = i + dir
     if (to < 0 || to >= layers) return
@@ -2449,7 +2465,37 @@ export function PaintRoom() {
             stack. Frames left for its own row for a different reason; see the note there. */}
           <span className="muted paint-stack-label">Layers</span>
           {Array.from({ length: layers }, (_, i) => layers - 1 - i).map((i) => (
-            <span key={i} className={'paint-layer' + (layer === i ? ' is-on' : '')}>
+            <span
+              key={i}
+              className={
+                'paint-layer' +
+                (layer === i ? ' is-on' : '') +
+                (dragLayer === i ? ' is-lifting' : '') +
+                (dragLayer !== null && dragLayer !== i ? ' is-target' : '')
+              }
+              draggable
+              onDragStart={(e) => {
+                setDragLayer(i)
+                e.dataTransfer.effectAllowed = 'move'
+                /* Firefox will not start a drag without something on the transfer */
+                e.dataTransfer.setData('text/plain', String(i))
+              }}
+              onDragEnd={() => setDragLayer(null)}
+              onDragOver={(e) => {
+                if (dragLayer === null || dragLayer === i) return
+                e.preventDefault()
+                e.dataTransfer.dropEffect = 'move'
+              }}
+              onDrop={(e) => {
+                e.preventDefault()
+                const from = dragLayer
+                setDragLayer(null)
+                if (from !== null) mergeLayer(from, i)
+              }}
+              title={
+                dragLayer !== null && dragLayer !== i ? `Drop to pour into ${nameOf(i)}` : undefined
+              }
+            >
               <button
                 className="paint-layer-pick"
                 aria-pressed={layer === i}

@@ -9187,6 +9187,15 @@ a.cz-msg-author:focus-visible {
    surface, and a box you cannot draw through is a box that has broken the room. */
 /* ⚠️ AN EFFECT THAT IS ON SAYS SO FROM ACROSS THE ROOM. Folded away, the only sign a six-fold
    kaleidoscope was multiplying every stroke was a small badge, and it went unnoticed. */
+/* ⚠️ a row being carried, and the rows it could be poured into */
+.paint-layer.is-lifting {
+  opacity: 0.45;
+}
+.paint-layer.is-target {
+  outline: 1px dashed color-mix(in srgb, var(--accent, #7c6af7) 70%, transparent);
+  outline-offset: 1px;
+  border-radius: 6px;
+}
 .paint-fold-open.is-live {
   border-color: var(--accent, #7c6af7);
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent, #7c6af7) 35%, transparent);

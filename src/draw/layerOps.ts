@@ -47,6 +47,14 @@ export type LayerOp =
   /** swap with the neighbour at `to` — an index rather than a direction, so it cannot mean
       something different on a screen whose list is drawn the other way up */
   | { k: 'move'; i: number; to: number }
+  /**
+   * Pour one layer into another and drop the empty row.
+   *
+   * ⚠️ ONE OP, NOT A MOVE FOLLOWED BY A REMOVE. Two ops fired from one handler both read the
+   * stack as it was before either of them — the note on `add` above is the bug that taught this
+   * room so — and half a merge is a layer of strokes with no row to its name.
+   */
+  | { k: 'merge'; i: number; into: number }
   | { k: 'remove'; i: number }
   /**
    * Give a layer a name.
@@ -251,6 +259,39 @@ export function applyLayerOp(stack: Stack, op: LayerOp, layers: number): Stack {
     }
   }
 
+  if (op.k === 'merge') {
+    const { i, into } = op
+    if (i === into || i < 0 || into < 0 || i >= layers || into >= layers || layers <= 1)
+      return stack
+    /* which number the survivor ends up on, once the row below it has gone */
+    const landed = into > i ? into - 1 : into
+    const low = Math.min(i, into)
+    const high = Math.max(i, into)
+    const down = (l: number) => (l > i ? l - 1 : l)
+    /**
+     * ⚠️ THE LOWER LAYER'S STROKES STAY UNDERNEATH. Paint order is the layer number first and
+     * the array order within it, so renumbering alone would let a stroke that was behind come out
+     * in front of one it used to sit under — and a merge that changes the picture is not a merge.
+     * Reordering across layers is free: the painter sorts by layer and the sort is stable.
+     */
+    const kept: Stroke[] = []
+    const lower: Stroke[] = []
+    const upper: Stroke[] = []
+    for (const st of strokes) {
+      const l = at(st)
+      if (l === low) lower.push({ ...st, l: landed })
+      else if (l === high) upper.push({ ...st, l: landed })
+      else kept.push({ ...st, l: down(l) })
+    }
+    return {
+      strokes: [...kept, ...lower, ...upper],
+      /* the row you dropped ONTO keeps its name, because that is the one you aimed at */
+      names: names.filter((_, k) => k !== i),
+      hidden: hidden.filter((x) => x !== i).map((x) => (x > i ? x - 1 : x)),
+      layer: landed,
+    }
+  }
+
   // remove
   const { i } = op
   if (layers <= 1 || i < 0 || i >= layers) return stack
@@ -290,6 +331,11 @@ export function readLayerOp(raw: unknown): LayerOp | null {
     const i = whole(o.i)
     const to = whole(o.to)
     return i === null || to === null ? null : { k: 'move', i, to }
+  }
+  if (o.k === 'merge') {
+    const i = whole(o.i)
+    const into = whole(o.into)
+    return i === null || into === null ? null : { k: 'merge', i, into }
   }
   if (o.k === 'remove') {
     const i = whole(o.i)
