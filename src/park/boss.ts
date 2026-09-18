@@ -135,7 +135,6 @@ export function bossThink(
    */
   const beat = Math.floor(b.think / t.beat)
   const charging = runsAtYou(beat, t) && away > step * 1.1
-  const backOff = !charging && givesGround(beat, t)
 
   /**
    * ⚠️ WHERE IT WANTS TO STAND IS ITS OWN REACH, NOT A CONSTANT. A creature made of one long
@@ -143,6 +142,20 @@ export function bossThink(
    * behave like it knows that. This one number is most of why two bosses feel different to fight.
    */
   const want = step * t.range
+
+  /**
+   * ⚠️ GIVING GROUND HAS A FLOOR, AND IT HAD NONE. `givesGround` is a coin weighted by nerve,
+   * and a nervous boss (nerve is allowed down to 0.2) came up "back away" on four beats in five
+   * — against an approach that only happens when it is already too far out. The drift is one
+   * way. Watched in the workbench: a boss landed one hit, turned, and walked to 155% of a screen
+   * and kept going, with the health bar frozen at 90% because nothing could reach anything.
+   *
+   * So backing off is a thing you do IN a fight, not a way out of one: it only applies while the
+   * boss is still within half again of where it wants to stand. Past that there is nothing to
+   * retreat from and it closes. The character is untouched — a darter still darts when you are
+   * on top of it, which is the only place darting means anything.
+   */
+  const backOff = !charging && away < want * 1.5 && givesGround(beat, t)
   const wantX = backOff ? -Math.sign(dx) : away > want ? Math.sign(dx) : 0
 
   /**
