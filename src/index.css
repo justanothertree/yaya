@@ -1801,6 +1801,24 @@ h1 {
 h2 {
   font-size: clamp(1.2rem, 1rem + 1vw, 1.6rem);
 }
+/**
+ * ⚠️ A SHORT SCREEN SPENDS ITS FIRST ROW ON A TITLE. Every section opens with its name and a
+ * sentence saying what it is for, which is right — the rooms have to be learnable without
+ * somebody standing over you — and on a laptop 640 tall it was the title, the blurb and the card's
+ * own padding before anything you came for. Reported after watching somebody browse on a smaller
+ * screen than mine.
+ *
+ * ⚠️ TIGHTENED, NOT REMOVED. Hiding the sentence would buy the most room and cost the thing it
+ * is there for. This is spacing and type size only, and only where the room is actually short.
+ */
+@media (max-height: 760px) {
+  :root {
+    --card-pad: 0.85rem;
+  }
+  h2 {
+    font-size: clamp(1.05rem, 0.95rem + 0.5vw, 1.25rem);
+  }
+}
 p,
 li {
   font-size: clamp(0.95rem, 0.9rem + 0.3vw, 1.05rem);
