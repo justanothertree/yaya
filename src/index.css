@@ -9064,6 +9064,23 @@ a.cz-msg-author:focus-visible {
   background: var(--accent, #7c6af7);
   color: #fff;
 }
+/**
+ * ⚠️ A THUMB ON THE ONE SCREEN THAT IS ABOUT CHOOSING. The move row came out 25px tall on a
+ * phone and the shape row 18px, which is under half a thumb — on the wizard, whose entire job
+ * is letting somebody pick what their creature does. The cast row beside it was already 40,
+ * so the two halves of the same panel disagreed about whether a phone was a real place.
+ *
+ * ⚠️ AND ONLY ON A COARSE POINTER, because with a mouse these are fine and a row of 44px
+ * chips would push the animation that matters off the bottom of the panel.
+ */
+@media (pointer: coarse) {
+  .move-show-pick .btn,
+  .move-show-shape .btn {
+    min-height: 40px;
+    padding: 4px 11px;
+    font-size: 0.74rem;
+  }
+}
 .move-show-stage {
   position: relative;
   border-radius: 8px;
