@@ -132,6 +132,17 @@ export type Someone = {
    * a friend's swing landing for five to seven times what their creature's move is worth.
    */
   spent: boolean
+  /**
+   * The same rule for their CAST, and it has to be its own flag.
+   *
+   * ⚠️ IT SHARED `spent` WITH THEIR SWING AND THAT MADE A FRIEND'S CAST DO NOTHING, ever.
+   * `spent` is cleared when their SWING SLOT changes — and while they are casting their swing
+   * slot is 0, so a flag left true by any earlier swing of theirs was never cleared again and
+   * the cast loop skipped on every frame. Found the first time two clients were actually put
+   * in one park: the host drew the peer's fissure correctly, right on top of its boss, and took
+   * nothing off it.
+   */
+  castSpent: boolean
 }
 
 /**
@@ -251,6 +262,7 @@ function readSomeone(v: unknown): Someone | null {
     aim: { x: 1, y: 0 },
     hop: 0,
     spent: false,
+    castSpent: false,
   }
 }
 
@@ -446,9 +458,12 @@ export function joinPark(
           if (!theirCast) {
             who.cast = null
             who.castFor = 0
+            who.castSpent = false
           } else if (who.cast?.kind !== theirCast) {
             who.cast = { kind: theirCast }
             who.castFor = 0
+            /* ⚠️ a NEW cast has not landed yet, the same reset a new swing gets below */
+            who.castSpent = false
           }
           who.aim = aimFromOctant(typeof msg.d === 'number' ? msg.d : who.facing < 0 ? 4 : 0)
           /* absent reads as standing on the ground, which is exactly what an older client is */

@@ -1615,7 +1615,9 @@ export function ParkRoom({
         o.castFor += dt
         const b = boss.current
         if (!b || !bossKit || beaten(b)) continue
-        if (o.spent) continue
+        /* ⚠️ THEIR CAST'S OWN FLAG, NOT THEIR SWING'S — see Someone.castSpent. Sharing
+           `spent` meant a friend's cast never landed at all. */
+        if (o.castSpent) continue
         /* their own move table, already here because their drawing arrived with them */
         const kit = foeMoves.current.get(o.id)
         const weight = kit?.length ? kit.reduce((n, m) => n + m.bite, 0) / kit.length : 6
@@ -1624,7 +1626,7 @@ export function ParkRoom({
           if (!inPatch(b, bossKit.wide, patch, b.scale)) continue
           boss.current = wounded(b, { ...bossKit.moves[0], bite: weight * 1.1 })
           setBossShown(boss.current)
-          o.spent = true
+          o.castSpent = true
           break
         }
       }
