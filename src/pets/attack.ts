@@ -651,6 +651,58 @@ const SCORE: Record<Role, (a: Attack) => number> = {
   down: (a) => a.reach,
 }
 
+/**
+ * The same move, thrown upward — and the same move, swept low.
+ *
+ * ⚠️ BECAUSE SIX BUTTONS ON A SIMPLE DRAWING WERE TWO MOVES. Slots are won by being best at
+ * something, so a creature with one named part wins every slot with the same attack and the
+ * table comes out [A, big A, A, big A, A, big A]. Reported in those words — "a lot of the
+ * attacks seem to be so similar" — and they were not similar, they were identical.
+ *
+ * ⚠️ AND IT IS THE PERSON WHO CAN LEAST AFFORD IT WHO PAYS. Said out loud: "it doesnt make
+ * sense to add a horn/wings or things i dont want but i lack in ability now". Wanting four
+ * distinct moves should not require being able to draw four distinct limbs; the variety a
+ * confident drawing gets for free is the variety a plain one should be able to earn by
+ * pressing a different key.
+ *
+ * ⚠️ SO IT IS A DERIVATION, EXACTLY LIKE heavier. That one has always turned any attack into
+ * its committed version rather than demanding you draw a second heavier limb, and nobody
+ * thinks of it as a cheat — these are the same idea on the other axis. A thing thrown upward
+ * gets there sooner, reaches less far and launches harder; a thing swept low goes further,
+ * takes longer and stays down.
+ *
+ * ⚠️ AND THE SWEEP DROPS UNDER HOP.under ON PURPOSE, so the low variant is a move that can be
+ * JUMPED. That is the mechanical difference doing the work: it is not a reskin with different
+ * numbers, it is the one of your six that a jumping opponent goes straight over.
+ *
+ * Clamped to the same bounds a drawn attack is held inside, so a derived move can never be
+ * outside the range something drawn could have reached.
+ */
+const upward = (a: Attack): Attack => ({
+  ...a,
+  name: 'rising ' + a.name,
+  span: a.span * 0.92,
+  reach: Math.max(0.5, a.reach * 0.78),
+  rise: Math.min(0.9, a.rise * 1.35),
+  bite: Math.max(3, Math.round(a.bite * 0.9)),
+  shove: a.shove * 0.95,
+  lift: Math.min(0.85, Math.max(0.5, a.lift * 1.5)),
+  rest: a.rest * 0.95,
+})
+
+const sweeping = (a: Attack): Attack => ({
+  ...a,
+  name: 'low ' + a.name,
+  span: a.span * 1.18,
+  reach: Math.min(1.6, a.reach * 1.3),
+  rise: Math.max(0.2, a.rise * 0.7),
+  bite: Math.max(3, Math.round(a.bite * 1.05)),
+  shove: a.shove * 1.05,
+  /* ⚠️ under HOP.under, which is 0.35 — see the note above; this is the jumpable one */
+  lift: Math.max(0.1, Math.min(0.28, a.lift * 0.45)),
+  rest: a.rest * 1.1,
+})
+
 export function moveTable(list: Attack[]): Attack[] {
   const src = list.length ? list : [POUNCE]
 
@@ -694,8 +746,20 @@ export function moveTable(list: Attack[]): Attack[] {
      button you throw out without thinking, and a drawn attack claiming it would take that away */
   const quick = src[0]
   const hardest = forRole('neutral')
-  const up = forRole('up')
-  const down = forRole('down')
+  const upPick = forRole('up')
+  const downPick = forRole('down')
+  /**
+   * ⚠️ ONLY WHEN THE DRAWING HAS NOTHING BETTER, so a creature that DID draw a horn and a
+   * tail is untouched — those already win their own slots and derived variants would be
+   * throwing away the thing its owner drew. The test is identity: if the winner of a
+   * direction is the very attack already sitting in a neutral slot, that direction has no
+   * specialist and gets a derived one instead of a copy.
+   */
+  const up = upPick === quick || upPick === hardest ? upward(upPick) : upPick
+  const down =
+    downPick === quick || downPick === hardest || downPick === upPick
+      ? sweeping(downPick)
+      : downPick
   return [
     quick,
     /* a heavy must always cost more than the quick beside it — for a one-part creature the

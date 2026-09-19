@@ -42,6 +42,19 @@ const ROLE = ['quick', 'heavy', 'up, quick', 'up, heavy', 'down, quick', 'down, 
  * asked for; "draw the horn longer" is the same fact pointed at the pencil.
  */
 function tweakFor(a: Attack): string {
+  /**
+   * ⚠️ A DERIVED MOVE HAS TO SAY IT IS ONE. moveTable fills a direction nothing you drew is
+   * suited to by throwing something you DID draw up or sweeping it low — which is how a plain
+   * creature gets six moves instead of two. Shown without that, "rising pounce" reads as a
+   * second thing the drawing produced, and the one sentence that would tell you how to change
+   * it is missing: draw something suited to that direction and it takes the slot back.
+   */
+  const rising = a.name.startsWith('rising ') || a.name.startsWith('big rising ')
+  const low = a.name.startsWith('low ') || a.name.startsWith('big low ')
+  if (rising || low)
+    return rising
+      ? 'Nothing you drew is built for going up, so this is the same part thrown upward — shorter, but it launches. Draw something high on the creature and it takes this slot.'
+      : 'Nothing you drew is built for going low, so this is the same part swept along the ground — longer and slower, and low enough that somebody can jump it. Draw something long and low and it takes this slot.'
   if (a.from === 'hit')
     return 'You drew this one. Further from the middle reaches further, higher up launches harder, and bigger hurts more.'
   const part: Record<string, string> = {
