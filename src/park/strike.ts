@@ -781,6 +781,45 @@ export const busy = (s: Striker): boolean => s.swing > 0 || s.stun > 0 || s.hold
 export const SHOVE = 0.55
 
 /**
+ * How much further a hurt creature flies.
+ *
+ * ⚠️ THE FIELD HAS PROMISED THIS SINCE IT WAS WRITTEN AND NOTHING DELIVERED IT. Attack.shove
+ * is documented as "how hard it launches, BEFORE the damage already taken is counted", and
+ * nothing anywhere counted it — every blow threw you exactly as far on your last point of
+ * health as on your first. A comment describing a mechanic that does not exist is the worst
+ * kind, because the next person reads it and builds against it.
+ *
+ * ⚠️ AND IT IS THE ONE MECHANIC THE STATED REFERENCE IS BUILT ON. "Think super smash bros,
+ * but top down" — the thing that makes that game feel like that game is that the longer a
+ * fight goes the further you get thrown, so the same attack that nudged you at the start
+ * sends you across the field at the end. It turns the end of a fight into a different fight
+ * without changing a single attack.
+ *
+ * ⚠️ POSITION AND TIME, NEVER DEATH. There is no ring-out in the park and there is not going
+ * to be one — you go down at PLAYER_LIFE and get back up, which is the deal stepDown's note
+ * makes. So being flung further costs you your spacing and the second it takes to get it back,
+ * which against a boss in its last stand is quite enough.
+ *
+ * ⚠️ 0.85 IS A VELOCITY, AND THE DISTANCE GOES AS ITS SQUARE. stepWalker's drag subtracts a
+ * fixed amount per second rather than a fraction — constant deceleration — so a launch twice
+ * as fast travels four times as far, and the 1.85x multiplier here comes out as 3.74x on the
+ * ground. Measured, not assumed: 0.19 pet-heights flung at full health against 0.71 at the
+ * brink. That is kept rather than corrected, because a heavier hit SHOULD feel more than
+ * proportionally heavier and 3.74 times a very small number is still under one creature's
+ * height. The number is written here so the next person changing it knows which one they are
+ * changing.
+ *
+ * ⚠️ AND THE STAGGER SCALES WITH IT FOR FREE, because stun is already computed from power.
+ * That is the right shape — a bigger launch should be a longer recovery — and it comes out at
+ * 0.22s at full health against 0.32s at the brink rather than anything dramatic.
+ */
+export const KNOCK = 0.85
+
+/** The launch multiplier for how battered this creature already is, 1 to 1 + KNOCK. */
+export const flung = (s: Striker): number =>
+  1 + Math.max(0, Math.min(1, s.hurt / PLAYER_LIFE)) * KNOCK
+
+/**
  * How much a creature can take from a boss before it goes down.
  *
  * ⚠️ FLAT, AND DELIBERATELY NOT READ FROM THE DRAWING. The boss's own life is already
@@ -847,7 +886,8 @@ export function shoved(s: Striker, from: Spot, a: Attack): Striker {
   const dy = s.y - from.y
   const len = Math.hypot(dx, dy) || 1
   const met = guarded(s, from)
-  const power = a.shove * SHOVE * (met ? GUARD.slide : 1)
+  /* ⚠️ the damage already taken, at last — see KNOCK and Attack.shove's own description */
+  const power = a.shove * SHOVE * (met ? GUARD.slide : 1) * flung(s)
   /* ⚠️ the same shape stepWalker uses for its own speeds — x in world units, y scaled by
      SQUASH — so being shoved north looks as fast as being shoved east */
   return {

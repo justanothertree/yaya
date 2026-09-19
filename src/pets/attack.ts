@@ -49,7 +49,13 @@ export type Attack = {
   both?: boolean
   /** how much damage it adds */
   bite: number
-  /** how hard it launches, before the damage already taken is counted */
+  /**
+   * How hard it launches, before the damage already taken is counted.
+   *
+   * ⚠️ AND IT IS COUNTED IN THE PARK — see KNOCK in strike.ts. This sentence described a
+   * mechanic nothing implemented for a long time; it is true now, and the multiplier lives at
+   * the one door every blow goes through rather than at any call site.
+   */
   shove: number
   /** how much of that launch is upward, 0–1 */
   lift: number
