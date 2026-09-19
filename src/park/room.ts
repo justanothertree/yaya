@@ -1,7 +1,7 @@
 import { NetClient } from '../game/net'
 import { packDrawing, readDrawing, simplifyDrawing, type Drawing } from '../draw/strokes'
 import type { Spot, Walker } from './walk'
-import { aimFromOctant, type Aimed } from './strike'
+import { aimFromOctant, HOP, type Aimed } from './strike'
 import { castFromSlot, type CastKind } from './cast'
 
 /**
@@ -26,7 +26,16 @@ import { castFromSlot, type CastKind } from './cast'
 /** What the relay is told. The hello and the auth token are NetClient's own — see its send. */
 type Out =
   | { type: 'look'; name: string; art: unknown }
-  | { type: 'walk'; x: number; y: number; f: number; m: number; a: number; d: number }
+  | {
+      type: 'walk'
+      x: number
+      y: number
+      f: number
+      m: number
+      a: number
+      d: number
+      j: number
+    }
   /* calling a boss out, or — with a null drawing — putting it away */
   | { type: 'boss'; name: string; art: unknown | null }
   /* where it is and what is left of it, from the one machine running it */
@@ -47,6 +56,7 @@ type In =
       m?: number
       a?: number
       d?: number
+      j?: number
     }
   | { type: 'boss'; from?: string; name?: string; art?: unknown }
   | {
@@ -105,6 +115,14 @@ export type Someone = {
    * walk too.
    */
   aim: Aimed
+  /**
+   * How far off the ground they are, in pet-heights.
+   *
+   * ⚠️ A PICTURE AND NOT A RULE, which is why a tenth of the arc is enough precision. What can
+   * hit YOU is worked out from your own height on your own machine; this exists so that a friend
+   * clearing a fissure looks like a friend clearing a fissure rather than one walking through it.
+   */
+  hop: number
   /**
    * True once this swing of theirs has already landed on something here.
    *
@@ -231,6 +249,7 @@ function readSomeone(v: unknown): Someone | null {
     cast: null,
     castFor: 0,
     aim: { x: 1, y: 0 },
+    hop: 0,
     spent: false,
   }
 }
@@ -265,7 +284,7 @@ function readBoss(v: unknown): BossEcho | null {
 }
 
 export type Park = {
-  send: (w: Walker, swing: number, aim: number) => void
+  send: (w: Walker, swing: number, aim: number, hop: number) => void
   /** stand one of your minions up for everybody, or pass null to put it away */
   callBoss: (name: string, art: Drawing | null) => void
   /** where your boss is and what is left of it, at the same rate as a walk */
@@ -432,6 +451,8 @@ export function joinPark(
             who.castFor = 0
           }
           who.aim = aimFromOctant(typeof msg.d === 'number' ? msg.d : who.facing < 0 ? 4 : 0)
+          /* absent reads as standing on the ground, which is exactly what an older client is */
+          who.hop = (Math.max(0, Math.min(9, Math.round(num(msg.j)))) / 9) * HOP.up
           const slot = theirCast ? 0 : Math.max(0, Math.min(6, a))
           if (slot !== who.swing) {
             who.swingFor = 0
@@ -470,8 +491,18 @@ export function joinPark(
   net.connect(room, { create: true })
 
   return {
-    send: (w, swing, aim) => {
-      net.send({ type: 'walk', x: w.x, y: w.y, f: w.facing, m: w.moving ? 1 : 0, a: swing, d: aim })
+    send: (w, swing, aim, hop) => {
+      net.send({
+        type: 'walk',
+        x: w.x,
+        y: w.y,
+        f: w.facing,
+        m: w.moving ? 1 : 0,
+        a: swing,
+        d: aim,
+        /* in tenths of the top of the arc, which is all a drawing of it needs — see HOP */
+        j: Math.max(0, Math.min(9, Math.round((hop / HOP.up) * 9))),
+      })
     },
     callBoss: (name, art) => {
       net.send({ type: 'boss', name, art: art ? packLook(art) : null })

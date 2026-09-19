@@ -1960,6 +1960,13 @@ wss.on('connection', (ws, req) => {
           a: Math.max(0, Math.min(9, Math.round(num(msg.a)))),
           /** which of eight ways it is aimed — see octantOf; absent reads as straight ahead */
           d: Math.max(0, Math.min(7, Math.round(num(msg.d)))),
+          /**
+           * ⚠️ HOW FAR OFF THE GROUND, IN TENTHS. A jump is drawn on everybody's screen, so
+           * the height has to travel — but it is a picture rather than a rule: nothing anybody
+           * else sends decides what hits YOU, so a tenth is all the precision that is worth
+           * fifteen messages a second. Absent reads as standing, which is what an old client is.
+           */
+          j: Math.max(0, Math.min(9, Math.round(num(msg.j)))),
         }
         st.at = at
         room.state.set(id, st)

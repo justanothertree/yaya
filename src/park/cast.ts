@@ -39,10 +39,21 @@ export type Patch = {
  * covers ground a swipe cannot reach and it costs a second and a half of doing nothing else,
  * which is the window the whole fight is built around.
  */
-export const CAST: Record<CastKind, { time: number; says: string }> = {
-  bloom: { time: 1.5, says: 'it swells — get out, and keep going' },
-  mark: { time: 1.45, says: 'it marks the ground ahead — leave' },
-  wave: { time: 1.9, says: 'it splits the ground away from itself — cross it' },
+/**
+ * ⚠️ AND HOW HIGH EACH ONE IS, which is what decides whether jumping answers it. Two of these
+ * travel along the floor and one of them engulfs — so the fissure and the marked ground can be
+ * cleared and the swelling cannot, and each cast now has a different right answer instead of
+ * three having the same one. The numbers are on the same scale as Attack.lift so that overHead
+ * asks one question of a swing and a cast alike; see HOP.under.
+ */
+export const CAST: Record<CastKind, { time: number; says: string; lift: number }> = {
+  bloom: { time: 1.5, lift: 0.7, says: 'it swells — get out, and keep going' },
+  mark: { time: 1.45, lift: 0.12, says: 'it marks the ground ahead — leave it or jump it' },
+  wave: {
+    time: 1.9,
+    lift: 0.08,
+    says: 'it splits the ground away from itself — cross it or jump it',
+  },
 }
 
 /**

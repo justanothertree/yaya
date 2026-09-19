@@ -8524,6 +8524,20 @@ a.cz-msg-author:focus-visible {
   }
 }
 /**
+ * What a creature in the air leaves behind.
+ *
+ * ⚠️ SOFT-EDGED ON PURPOSE. A hard ellipse reads as a hole in the grass; the point is only to
+ * say "the feet are here and the body is not", which a blur says better than an outline.
+ */
+.park-shade {
+  position: absolute;
+  pointer-events: none;
+  border-radius: 50%;
+  background: radial-gradient(closest-side, rgba(0, 0, 0, 0.85), rgba(0, 0, 0, 0));
+  transform: translate(-50%, -50%);
+}
+
+/**
  * The guard, held up.
  *
  * ⚠️ THE ARC IS THE ONLY THING THAT SAYS WHICH WAY IT FACES, so nothing here may make it look

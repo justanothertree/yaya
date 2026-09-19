@@ -52,6 +52,10 @@ export type Striker = Walker & {
   dodge: number
   /** seconds before another may be thrown, so it is an answer and not a way of walking */
   dodgeRest: number
+  /** seconds left of being off the ground, 0 when standing — see stepHop */
+  hop: number
+  /** seconds before another jump, so it is an answer rather than a way of getting about */
+  hopRest: number
   /** 1 for a whole guard, 0 for a broken one — see stepGuard */
   guard: number
   /** true while the guard is actually up */
@@ -76,6 +80,8 @@ export const restingStriker = (w: Walker): Striker => ({
   aim: { x: 1, y: 0 },
   dodge: 0,
   dodgeRest: 0,
+  hop: 0,
+  hopRest: 0,
   guard: 1,
   braced: false,
   guardLit: 0,
@@ -168,6 +174,97 @@ export const canBeHurt = (s: Striker): boolean => s.stun <= 0 && s.dodge <= 0
  * fight that does not care where you are standing. It covers everything but a wedge behind you,
  * which is what makes circling a boss while braced a thing you can get wrong.
  */
+/**
+ * Leaving the ground, in a game with no ground to leave.
+ *
+ * ⚠️ THE THIRD ANSWER, AND IT HAD TO BE A DIFFERENT SHAPE FROM THE OTHER TWO. A dodge is
+ * timed and beats anything; a guard is untimed and beats everything a bit. Both of those are
+ * about WHEN. A jump is about WHAT: it beats the things that travel along the floor and nothing
+ * else, so the fissure you jump is the one attack the roll and the stance are worst against.
+ *
+ * ⚠️ AND WHAT COUNTS AS LOW IS ALREADY IN THE DRAWING. Attack.lift is how high above the
+ * creature's middle the ink was drawn — that is what makes a hit the up-attack rather than the
+ * down-attack, and it is the same question "can I get over this" is asking. Nothing new is
+ * classified, nobody has to tag a move, and a creature whose every hit is drawn overhead is
+ * simply one you cannot jump. Where you drew it is the move, one rule further on.
+ *
+ * ⚠️ YOU CAN WALK IN THE AIR AND YOU CANNOT FIGHT. Keeping the walk is the whole point —
+ * jumping a wave while crossing it is the move — and taking the swing away is what stops this
+ * being a free half-second added to every approach.
+ */
+export const HOP = {
+  /** how high the picture rises, in pet-heights */
+  up: 0.62,
+  /** how long the whole jump takes */
+  time: 0.5,
+  /** and how long before another */
+  rest: 0.5,
+  /**
+   * ⚠️ CLEAR OF THE FLOOR ONCE THIS HIGH, and the height is the rule rather than a window
+   * beside it. A separate "safe from 0.12s to 0.38s" is a second copy of the arc that can drift
+   * from the one being drawn, and then the creature is visibly in the air and taking a hit. At
+   * 0.26 of 0.62 the safe part is 0.376s of a 0.5s jump, which has to be aimed at something.
+   */
+  clear: 0.26,
+  /**
+   * ⚠️ AN ATTACK THIS LOW OR LOWER PASSES UNDERNEATH, and the number is placed inside the
+   * spread that actually occurs rather than the one the formula could produce. Across 36 real
+   * moves off three drawings, lift runs 0.20 to 0.76 with its middle at 0.38 — against the
+   * theoretical 0.1–0.85 a "low third" would have been 0.35 and caught nothing much; measured,
+   * 0.35 is the low third. This is the third dial in this module to be set this way after two
+   * were found pinned against their own floor.
+   */
+  under: 0.35,
+}
+
+/**
+ * How high off the ground, in pet-heights.
+ *
+ * ⚠️ A PARABOLA RATHER THAN A PHYSICS. play.ts has real gravity because the platformer is
+ * about falling; here nothing falls, there is no floor to land on and no ledge to miss, so an
+ * arc that starts and ends at nought is the whole of the behaviour. Same argument walk.ts makes
+ * for not sharing stepBody.
+ */
+export const hopHeight = (hop: number): number => {
+  if (hop <= 0) return 0
+  const p = 1 - hop / HOP.time
+  return HOP.up * 4 * p * (1 - p)
+}
+
+/** Off the ground at all — the one question the room asks before letting you start something. */
+export const aloft = (s: Striker): boolean => s.hop > 0
+
+/**
+ * Did this one go under you?
+ *
+ * ⚠️ ASKED BY shoved AND BY mauled, the same two doors the guard uses, so a blow cannot pass
+ * under your feet and shove you anyway.
+ */
+export const overHead = (s: Striker, a: Attack): boolean =>
+  hopHeight(s.hop) >= HOP.clear && a.lift <= HOP.under
+
+/**
+ * One step of being in the air.
+ *
+ * ⚠️ PURE, like everything else here: the arc, the safe window and the reach of a jump all
+ * have to be answerable without a browser, because the park's animation frame does not fire in
+ * the pane any of it is checked in.
+ *
+ * ⚠️ NOT OUT OF A ROLL, A STANCE OR A SWING. Each of the three answers costs you the other
+ * two while it runs, or the right play is always to press all of them.
+ */
+export function stepHop(s: Striker, want: boolean, dt: number): { s: Striker; went: boolean } {
+  const t = Math.max(0, Math.min(0.05, dt))
+  if (s.hop > 0) {
+    const left = Math.max(0, s.hop - t)
+    return { s: { ...s, hop: left, hopRest: left > 0 ? s.hopRest : HOP.rest }, went: false }
+  }
+  const rest = Math.max(0, s.hopRest - t)
+  if (!want || rest > 0 || s.swing > 0 || s.stun > 0 || s.hold > 0 || s.dodge > 0 || s.braced)
+    return { s: { ...s, hopRest: rest }, went: false }
+  return { s: { ...s, hop: HOP.time, hopRest: 0 }, went: true }
+}
+
 export const GUARD = {
   /** seconds it can be held up with nothing landing on it */
   hold: 3.2,
@@ -744,6 +841,8 @@ export function stepDown(
  * somebody's defence off them before the boss swings. Only mauled spends the pool.
  */
 export function shoved(s: Striker, from: Spot, a: Attack): Striker {
+  /* straight over the top: no push, no stagger, nothing to react to — see overHead */
+  if (overHead(s, a)) return s
   const dx = s.x - from.x
   const dy = s.y - from.y
   const len = Math.hypot(dx, dy) || 1
@@ -775,6 +874,7 @@ export function shoved(s: Striker, from: Spot, a: Attack): Striker {
  * guard that works against a swing and not against a wave, which is worse than not having one.
  */
 export const mauled = (s: Striker, from: Spot, a: Attack): Striker => {
+  if (overHead(s, a)) return s
   const p = shoved(s, from, a)
   if (!guarded(s, from)) return { ...p, hurt: p.hurt + a.bite }
   const stopped = a.bite * (1 - GUARD.soak)

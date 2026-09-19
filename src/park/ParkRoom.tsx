@@ -42,7 +42,11 @@ import {
   shoved,
   stepDodge,
   stepGuard,
+  stepHop,
+  hopHeight,
+  aloft,
   GUARD,
+  HOP,
   stepDown,
   stepStrike,
   FOOT,
@@ -276,6 +280,36 @@ const FIELD_ASPECT = 16 / 10
  * aura it has; a ring at arm's length reads as something held up, which is the verb.
  */
 const GUARD_SHOW = PARK_TALL * 0.82
+
+/**
+ * Where a creature in the air actually is.
+ *
+ * ⚠️ WITHOUT THIS A JUMP IS INVISIBLE, and not slightly — in a world seen from above, moving
+ * a picture up the screen and moving it north are the same pixels. The only thing that tells
+ * the two apart is something left behind on the ground, so the shadow is not decoration here,
+ * it is the entire readout. It shrinks as the creature rises, which is the second half of it:
+ * a shadow the same size at every height says "somebody walked away", not "somebody jumped".
+ */
+function HopShade({ at, cam, height }: { at: Spot; cam: Spot; height: number }) {
+  if (height <= 0.001) return null
+  const p = onScreen(at, cam)
+  const shrink = 1 - 0.45 * Math.min(1, height / HOP.up)
+  const wide = PARK_TALL * 0.5 * shrink
+  return (
+    <span
+      className="park-shade"
+      aria-hidden
+      style={{
+        left: `${p.x * 100}%`,
+        top: `${p.y * 100}%`,
+        width: `${(wide / FIELD_ASPECT) * 100}%`,
+        height: `${wide * 0.42 * 100}%`,
+        zIndex: depthOf(at) - 2,
+        opacity: 0.42 * shrink,
+      }}
+    />
+  )
+}
 
 /**
  * The guard, drawn on the ground.
@@ -585,6 +619,8 @@ export function ParkRoom({
   /* the loop is installed once; a ref is how a toggle reaches inside it without rebuilding it */
   /* ⚠️ one cast is one hit on you, however many patches it is made of — see the wave */
   const castSpent = useRef(false)
+  /** the same one-cast-one-hit rule, for a boss somebody else is running */
+  const theirCastSpent = useRef(false)
   /**
    * Your own big committed thing, and how long before another.
    *
@@ -606,6 +642,9 @@ export function ParkRoom({
   const myCastHit = useRef<Set<string>>(new Set())
   /** Q, held — unlike the dodge this one is a hold all the way through, so no edge is taken */
   const bracing = useRef(false)
+  /** Space, and a press like the dodge, so holding it does not bounce you across the park */
+  const hopping = useRef(false)
+  const hopped = useRef(false)
   /** Shift, held — a dodge is a press, so the loop takes the rising edge itself */
   const rolling = useRef(false)
   const rolled = useRef(false)
@@ -755,6 +794,14 @@ export function ParkRoom({
         rolling.current = on
         return
       }
+      /* ⚠️ SPACE, WHICH IS THE ONE KEY EVERYBODY ALREADY GUESSES. It also scrolls the page,
+         so the preventDefault below is not tidiness — without it every jump scrolls the park
+         out from under the person jumping. */
+      if (e.key === ' ' || e.key === 'Spacebar') {
+        e.preventDefault()
+        hopping.current = on
+        return
+      }
       /* ⚠️ Q, HELD, AND NOT A SECOND JOB FOR SHIFT. Smash puts the roll on the shield button
          and a direction, which works there because a shield is the default thing your thumb is
          doing; here you are holding a direction almost the whole fight, so the same mapping
@@ -793,6 +840,7 @@ export function ParkRoom({
       rolling.current = false
       castWanted.current = false
       bracing.current = false
+      hopping.current = false
     }
     window.addEventListener('keydown', down)
     window.addEventListener('keyup', up)
@@ -842,13 +890,33 @@ export function ParkRoom({
         myCastRest.current = Math.max(0, myCastRest.current - dt)
         const press = castWanted.current && !castHeld.current
         castHeld.current = castWanted.current
-        if (press && myCastRest.current <= 0 && !busy(you.current) && myKit) {
+        if (
+          press &&
+          myCastRest.current <= 0 &&
+          !busy(you.current) &&
+          !aloft(you.current) &&
+          myKit
+        ) {
           myCast.current = { kind: myKit.casts[0], t: 0 }
           you.current = { ...you.current, aim: aimFromKeys(held.current, you.current.aim) }
           setCasting(myKit.casts[0])
         }
       }
       const iAmCasting = !!myCast.current
+
+      /**
+       * ⚠️ THE RISING EDGE, like the dodge and unlike the guard: holding space would otherwise
+       * be a way of getting about rather than an answer to something.
+       *
+       * ⚠️ AND BEFORE THE GUARD, so the two cannot both start on the same frame. stepHop
+       * refuses to leave the ground out of a stance and stepGuard refuses to raise one off it;
+       * putting the jump first is what makes that pair of refusals decide the same way every
+       * time rather than depending on which key the loop happened to read.
+       */
+      const wantHop = hopping.current && !hopped.current && !iAmCasting
+      hopped.current = hopping.current
+      you.current = stepHop(you.current, wantHop, dt).s
+      const inAir = aloft(you.current)
 
       /**
        * ⚠️ BEFORE THE SWING, because busy() now includes being braced and everything below
@@ -863,7 +931,7 @@ export function ParkRoom({
        */
       you.current = stepGuard(
         you.current,
-        bracing.current && !iAmCasting,
+        bracing.current && !iAmCasting && !inAir,
         aimFromKeys(held.current, you.current.aim),
         dt,
       )
@@ -871,7 +939,7 @@ export function ParkRoom({
       const wasSwinging = you.current.swing > 0
       const struck = stepStrike(
         you.current,
-        iAmCasting || you.current.braced
+        iAmCasting || you.current.braced || inAir
           ? { quick: false, heavy: false, up: false, down: false }
           : hitting.current,
         myMoves,
@@ -894,7 +962,7 @@ export function ParkRoom({
        * ⚠️ THE RISING EDGE, taken here rather than in the key handler: a dodge is a press,
        * and reading "is Shift down" every frame would roll continuously while it is held.
        */
-      const wantRoll = rolling.current && !rolled.current && !iAmCasting
+      const wantRoll = rolling.current && !rolled.current && !iAmCasting && !inAir
       rolled.current = rolling.current
       const roll = stepDodge(
         you.current,
@@ -1092,7 +1160,14 @@ export function ParkRoom({
              */
             const weight =
               bossKit.moves.reduce((n, m) => n + m.bite, 0) / Math.max(1, bossKit.moves.length)
-            you.current = mauled(you.current, patch.at, { ...bossKit.moves[0], bite: weight * 1.1 })
+            you.current = mauled(you.current, patch.at, {
+              ...bossKit.moves[0],
+              bite: weight * 1.1,
+              /* ⚠️ THE CAST'S OWN HEIGHT, not whatever moves[0] happened to be drawn at. The
+                 borrowed move is only here for its shove and its feel; how high the thing is
+                 decides whether jumping answers it, and that is a property of the cast. */
+              lift: CAST[cs.kind].lift,
+            })
             castSpent.current = true
             break
           }
@@ -1209,6 +1284,40 @@ export function ParkRoom({
             }
           }
         }
+        /**
+         * ⚠️ AND ITS CASTS REACH YOU TOO, WHICH THEY DID NOT. A viewer already re-derived a
+         * remote boss's patches in order to DRAW them, in exactly the right places — nothing
+         * ever asked whether you were standing in one. So a friend's boss swung at you and its
+         * three big attacks were scenery, which is the half of a shared fight that only happens
+         * when the boss is somebody else's. Same weight rule and same one-hit rule as your own.
+         *
+         * ⚠️ AND THE SAME ARGUMENTS AS THE DRAWING BELOW, deliberately written to match it:
+         * patches you can see and patches that can hurt you must come out of one call shape, or
+         * the fight is decided somewhere the picture is not.
+         */
+        if (tb.cast && !theirCastSpent.current) {
+          const weight = kit.moves.reduce((n, m) => n + m.bite, 0) / Math.max(1, kit.moves.length)
+          for (const patch of patchesOf(
+            tb.cast.kind,
+            tb.shown,
+            tb.aim,
+            tb.castFor,
+            kit.temper.scale,
+          )) {
+            if (!patch.live) continue
+            if (!canBeHurt(you.current)) break
+            if (!inPatch(you.current, myWide, patch)) continue
+            you.current = mauled(you.current, patch.at, {
+              ...kit.moves[0],
+              bite: weight * 1.1,
+              lift: CAST[tb.cast.kind].lift,
+            })
+            theirCastSpent.current = true
+            break
+          }
+        }
+        if (!tb.cast) theirCastSpent.current = false
+
         /* ⚠️ MY HIT ON IT IS FELT HERE AND COUNTED THERE. The freeze lands on this frame so the
            swing has weight; the bar moves when the machine running the boss says so, a fraction of
            a second later. Taking the health off locally as well would be showing a number that is
@@ -1391,7 +1500,12 @@ export function ParkRoom({
           : you.current.swing > 0
             ? you.current.move + 1
             : 0
-        park.current?.send(you.current, mySlot, octantOf(you.current.aim))
+        park.current?.send(
+          you.current,
+          mySlot,
+          octantOf(you.current.aim),
+          hopHeight(you.current.hop),
+        )
         /* ⚠️ THE BOSS GOES OUT AT THE SAME RATE AS A WALK AND NO FASTER — it is one more
            creature moving in the park, and fifteen a second is what everything else in here
            costs. What is left of it rides along as a fraction, so the relay never learns how
@@ -1697,6 +1811,11 @@ export function ParkRoom({
             aria-hidden
           />
           {walking && <GuardArc me={shownYou} cam={camAt} />}
+          {walking && <HopShade at={shownYou} cam={camAt} height={hopHeight(shownYou.hop)} />}
+          {walking &&
+            [...state.current.here.values()].map((o) => (
+              <HopShade key={'shade-' + o.id} at={o.shown} cam={camAt} height={o.hop} />
+            ))}
           {walking &&
             [
               /* ⚠️ IN THE SAME SORT AS EVERYBODY ELSE, so a wanderer that is nearer the camera
@@ -1711,6 +1830,8 @@ export function ParkRoom({
                 moving: w.moving,
                 mine: false,
                 stroll: true,
+                /* a wanderer keeps its feet on the grass */
+                up: 0,
                 lunge: 0,
                 /* a wanderer never swings, so this is only here to keep the list one shape */
                 aim: { x: w.facing, y: 0 },
@@ -1725,6 +1846,10 @@ export function ParkRoom({
                 moving: o.moving,
                 mine: false,
                 stroll: false,
+                /* ⚠️ THEIRS IS DRAWN FROM WHAT THEY SENT AND DECIDES NOTHING. A peer's height
+                   is a picture; what can hit YOU is worked out from YOUR height on this
+                   machine, the same split every other thing a neighbour does already makes. */
+                up: o.hop,
                 /* their swing, animated from the slot they sent and the drawing they sent */
                 lunge: lungeOf(
                   { swing: o.swing > 0 ? 1 : 0, move: 0, spent: false, stun: 0, hold: 0 },
@@ -1746,6 +1871,7 @@ export function ParkRoom({
                 moving: shownYou.moving,
                 mine: true,
                 stroll: false,
+                up: hopHeight(shownYou.hop),
                 lunge: lungeOf(shownYou, myMoves),
                 aim: shownYou.aim,
                 show: shownYou.swing > 0 ? myMoves[shownYou.move]?.layer : undefined,
@@ -1781,10 +1907,22 @@ export function ParkRoom({
                       zIndex: depthOf(one.at),
                       /* the swing moves the picture, never the creature — see the scrap's note */
                       transform: (() => {
-                        const p = lungePush(one.lunge, one.aim, one.art, petSize(one.art))
+                        const size = petSize(one.art)
+                        const p = lungePush(one.lunge, one.aim, one.art, size)
+                        /* ⚠️ THE PICTURE GOES UP AND THE POSITION DOES NOT, which is the whole
+                           of the height axis. one.at is still where the creature stands, so its
+                           depth, its hitboxes and its shadow all stay on the ground it left.
+                           ⚠️ AND AGAINST THE DRAWN BODY, not petSize. The height is in
+                           pet-heights and petSize is the box the drawing is fitted INTO, which
+                           for these creatures is three and a half times taller than the ink —
+                           so 0.62 of a creature came out at 106px over a body 49px tall. Same
+                           trap lungePush hit from the other side; petBox is the answer both
+                           times, because it is the only thing here that knows how big the
+                           creature actually is. */
+                        const lift = one.up * petBox(one.art, size).h
                         return `translate(calc(-50% + ${p.x.toFixed(1)}px), calc(-100% + ${(
                           footRoom(one.art) * 100
-                        ).toFixed(1)}% + ${p.y.toFixed(1)}px))`
+                        ).toFixed(1)}% + ${(p.y - lift).toFixed(1)}px))`
                       })(),
                     }}
                   >
@@ -2040,7 +2178,11 @@ export function ParkRoom({
         quarter still gets through, it only covers the way you are facing, and it drains whether
         anything hits it or not. Break it and you are on the floor for longer than any single hit
         would have put you there. You can still turn on the spot while it is up; you cannot walk,
-        swing or throw the big one, and rolling out of it is always allowed. <strong>F</strong> and{' '}
+        swing or throw the big one, and rolling out of it is always allowed. <strong>Space</strong>{' '}
+        jumps: half a second off the ground, where anything drawn low on its owner — a tail sweep, a
+        fissure, a marked patch — goes under you and misses completely. It does not save you from a
+        hit drawn overhead, and you cannot swing, guard, roll or cast while you are up there, so it
+        is an answer to one kind of attack rather than to all of them. <strong>F</strong> and{' '}
         <strong>G</strong> swing, the same six moves your creature has anywhere else. Call a boss
         and one of your own minions stands up big with a health bar, where <em>everybody</em> in the
         park can see it and hit it — one boss at a time, run by whoever called it, and it goes when
