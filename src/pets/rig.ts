@@ -282,6 +282,21 @@ export type Part = {
  */
 const boxOf = (strokes: Stroke[], ratio = 1): Box | null => {
   const r = ratio > 0.05 && ratio < 20 ? ratio : 1
+  /**
+   * ⚠️ A FILL IS PAINT, NOT ANATOMY. Every other tool's points are a shape somebody dragged;
+   * a bucket's are a SEED and the rectangle the flood happened to spread across, which is not a
+   * drawn outline and must not be measured as one. Fill the page behind a creature — the ordinary
+   * way to give it a background — and the whole window became the creature: measured at
+   * [-0.15,-0.15,1.15,1.15] against a body of [0.37,0.35,0.63,0.65], so the footprint, the reach
+   * of every move and the crop frame were all the size of the paper. Reported as the hitbox taking
+   * up the entire window when the fill tool is used, which is exactly what it was.
+   *
+   * ⚠️ AND IT COSTS NOTHING TO IGNORE THEM, because a fill is bounded BY the strokes around
+   * it: whatever contains the paint is already in this box. The fallback is for the degenerate
+   * picture that is nothing but fills, which has no outline to measure and may as well use them.
+   */
+  const drawn = strokes.filter((k) => k.t !== 'fill')
+  const list = drawn.length ? drawn : strokes
   let x0 = Infinity
   let y0 = Infinity
   let x1 = -Infinity
@@ -293,7 +308,7 @@ const boxOf = (strokes: Stroke[], ratio = 1): Box | null => {
     if (y > y1) y1 = y
   }
 
-  for (const s of strokes) {
+  for (const s of list) {
     if (s.p.length < 2) continue
     let ax = Infinity
     let ay = Infinity
