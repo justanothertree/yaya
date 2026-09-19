@@ -270,15 +270,23 @@ export function GamesRoom({
             </button>
           </>
         ) : (
+          /**
+           * ⚠️ THIS IS THE ONLY THING A VISITOR WITH NO CREATURES IS TOLD, and it had been
+           * describing two games since before the park existed. Somebody arriving with nothing
+           * drawn read "a platformer and a fighting ring", went away, and never learned that
+           * the one place on this site where you meet other people was behind the same door.
+           * The tiles above it were updated when the park was added; the sign on the locked
+           * door was not, because nobody with a minion ever sees it.
+           */
           <a className="games-tile is-locked" href="#minions">
             <span className="games-tile-art" aria-hidden>
               🐾
             </span>
             <span className="games-tile-body">
-              <span className="games-tile-name">Playground &amp; Scrap</span>
+              <span className="games-tile-name">The park, Playground &amp; Scrap</span>
               <span className="games-tile-line">
-                A platformer and a fighting ring for the creatures you drew — draw one first, then
-                come back. The Minions room shows you how.
+                A park everybody shares, a platformer, and a fighting ring — all for the creatures
+                you drew, so draw one first and then come back. The Minions room shows you how.
               </span>
             </span>
           </a>

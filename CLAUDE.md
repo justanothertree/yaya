@@ -61,6 +61,16 @@ what it just made stale — copy, empty states, the thing a neighbouring feature
   number that looks like a bug in the feature and is a bug in the harness. Keep a call under
   the limit, split long runs across calls, and have every loop capture a generation counter and
   return when it changes.
+- **The dev server is not the thing you ship, and `yaya-prod` exists for that.** Thirty-odd
+  changes were verified against `npm run dev` and none against the built bundle, which is a
+  different program: `import.meta.env.DEV` strips whole branches, chunks split, and the
+  workbenches go. `preview_start` with `yaya-prod` serves the real build on :4173. Two things
+  are different there and both matter — **`#dev-park` does not exist**, so the park's
+  production path is one I cannot reach at all without an account; and **:4173 is its own
+  origin**, so localStorage is empty and every room starts as a first-time visitor sees it.
+  That second one is worth the trip by itself: it is the only way to see the empty states,
+  and it is how the Games page turned out to be telling somebody with no creatures about two
+  games when there were three.
 - **Co-op IS testable, with two tabs and a doorless relay.** "Only a second machine can check
   this" was written on seventeen commits and was not true. The real relay refuses to show one
   person to another until Supabase has verified their token server-side, and a local relay has
