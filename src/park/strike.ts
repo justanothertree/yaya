@@ -58,6 +58,10 @@ export type Striker = Walker & {
   hopRest: number
   /** 1 for a whole guard, 0 for a broken one — see stepGuard */
   guard: number
+  /** seconds this guard has been up, which is what makes a parry a parry — see GUARD.parry */
+  braceFor: number
+  /** seconds left of a parry landing, for the room to punish with and the arc to flash */
+  parried: number
   /** true while the guard is actually up */
   braced: boolean
   /** seconds left of the flash a met blow leaves, so the room has an edge to draw */
@@ -83,6 +87,8 @@ export const restingStriker = (w: Walker): Striker => ({
   hop: 0,
   hopRest: 0,
   guard: 1,
+  braceFor: 0,
+  parried: 0,
   braced: false,
   guardLit: 0,
 })
@@ -286,7 +292,31 @@ export const GUARD = {
   broken: 1.2,
   /** the cosine of the half-angle it covers: everything but a 160° wedge behind you */
   arc: Math.cos((100 * Math.PI) / 180),
+  /**
+   * ⚠️ THE FOURTH ANSWER, AND IT WAS ASKED FOR BY NAME. "in a fihgting system i like counter
+   * play, so if every move can be avoided with an i frame or A COUNTER or you have time to run
+   * away or jump" — the i-frame is the roll, running away is the walk, the jump is the jump,
+   * and the counter was the one of the four that never got built.
+   *
+   * ⚠️ IT IS THE SAME KEY, NOT A NEW ONE. A guard raised in the last moment before a blow
+   * lands takes nothing at all and opens the thing that threw it; raised any earlier it is
+   * simply the guard it always was. That is the whole mechanic — one button whose value is
+   * decided entirely by WHEN, on top of one whose value was decided by WHERE. Nothing new to
+   * learn, and the thing you were already practising against the sparring dummy is the thing
+   * that earns it.
+   *
+   * ⚠️ AND FISHING FOR IT COSTS. A guard thrown up early is up: you cannot walk, swing or cast
+   * while it is, and it drains whether anything hits it or not. Missing the window is not free,
+   * which is what stops the answer to everything being "mash Q".
+   *
+   * 0.16s against a boss's 400ms wind-up — tighter than the roll's 0.26s, because it refuses
+   * the blow completely rather than merely surviving it.
+   */
+  parry: 0.16,
 }
+
+/** seconds a landed parry stays visible, and stays readable by the room */
+const PARRY_SHOW = 0.3
 
 /**
  * Is this blow arriving where the guard is pointing?
@@ -297,6 +327,16 @@ export const GUARD = {
  * ⚠️ EXPORTED AND ASKED BY shoved, so the shove and the damage can never disagree about
  * whether something was met — they are two halves of one blow.
  */
+/**
+ * Was this blow met at the very moment the guard came up?
+ *
+ * ⚠️ BUILT ON guarded RATHER THAN BESIDE IT, so a parry can never cover an angle a guard does
+ * not. The facing rule is the guard's and the timing rule is this one, and a counter has to
+ * satisfy both.
+ */
+export const parries = (s: Striker, from: Spot): boolean =>
+  guarded(s, from) && s.braceFor <= GUARD.parry
+
 export const guarded = (s: Striker, from: Spot): boolean => {
   if (!s.braced || s.guard <= 0) return false
   const { sx, sy } = toScreen(s.x - from.x, s.y - from.y)
@@ -331,11 +371,23 @@ export function stepGuard(s: Striker, want: boolean, aim: Aimed | null, dt: numb
   const up = s.braced
     ? want && open && s.guard > 0
     : want && open && s.swing <= 0 && s.guard >= GUARD.least
-  if (!up) return { ...s, braced: false, guardLit, guard: Math.min(1, s.guard + t / GUARD.mend) }
+  const parried = Math.max(0, s.parried - t)
+  if (!up)
+    return {
+      ...s,
+      braced: false,
+      guardLit,
+      parried,
+      braceFor: 0,
+      guard: Math.min(1, s.guard + t / GUARD.mend),
+    }
   return {
     ...s,
     braced: true,
     guardLit,
+    parried,
+    /* ⚠️ counted from the frame it went up, which is the only clock a parry can be judged on */
+    braceFor: s.braced ? s.braceFor + t : 0,
     guard: Math.max(0, s.guard - t / GUARD.hold),
     aim: aim ?? s.aim,
   }
@@ -882,6 +934,8 @@ export function stepDown(
 export function shoved(s: Striker, from: Spot, a: Attack): Striker {
   /* straight over the top: no push, no stagger, nothing to react to — see overHead */
   if (overHead(s, a)) return s
+  /* met on the frame it went up: nothing lands at all — see GUARD.parry */
+  if (parries(s, from)) return { ...s, parried: PARRY_SHOW }
   const dx = s.x - from.x
   const dy = s.y - from.y
   const len = Math.hypot(dx, dy) || 1
@@ -898,6 +952,14 @@ export function shoved(s: Striker, from: Spot, a: Attack): Striker {
     /* met, you keep your feet: a stagger would drop the guard on the first thing it stopped */
     stun: met ? s.stun : 0.1 + power * 0.22,
     hold: 0.05 + a.bite * 0.004,
+    /**
+     * ⚠️ A BLOCK HAS TO LOOK LIKE ONE HERE TOO. guardLit was set by mauled and not by this,
+     * which was invisible while only a boss could be blocked — and then the sparring dummy
+     * arrived, which shoves and never mauls. So the one thing in the park built for LEARNING
+     * the guard was the one thing that gave you nothing back when the guard worked. Found by
+     * watching a practice run land eight blows on a raised guard with no flash at all.
+     */
+    guardLit: met ? 0.22 : s.guardLit,
   }
 }
 
@@ -915,6 +977,9 @@ export function shoved(s: Striker, from: Spot, a: Attack): Striker {
  */
 export const mauled = (s: Striker, from: Spot, a: Attack): Striker => {
   if (overHead(s, a)) return s
+  /* ⚠️ AND NOT A POINT OF DAMAGE, NOT A DROP OF GUARD. A parry that still chipped you would
+     be a guard with extra steps; the reason to risk the timing is that it costs nothing. */
+  if (parries(s, from)) return { ...s, parried: PARRY_SHOW }
   const p = shoved(s, from, a)
   if (!guarded(s, from)) return { ...p, hurt: p.hurt + a.bite }
   const stopped = a.bite * (1 - GUARD.soak)

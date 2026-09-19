@@ -8705,6 +8705,13 @@ a.cz-msg-author:focus-visible {
   stroke: #fff;
   stroke-width: 15;
 }
+/* ⚠️ LOUDER THAN A BLOCK, because it is a different outcome and not a better one. A met blow
+   is the stance working; a parried one is the stance winning, and the player has to be able to
+   tell which just happened without reading a bar. */
+.park-guard.is-parry path {
+  stroke: #ffd24a;
+  stroke-width: 20;
+}
 .park-guard.is-spent path {
   stroke: #e8534e;
   stroke-width: 5;

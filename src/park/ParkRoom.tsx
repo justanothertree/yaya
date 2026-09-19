@@ -363,6 +363,15 @@ const FIELD_ASPECT = 16 / 10
 const CAST_WAIT = 4
 
 /**
+ * How long a parried boss is left standing there.
+ *
+ * ⚠️ LONG ENOUGH FOR THE HEAVY, which is what makes the risk worth taking. The slowest thing
+ * a creature can throw commits for about 0.6s, so half a second of a boss doing nothing is one
+ * real punish and not two — the reward for reading an attack is a hit, not a combo.
+ */
+const PARRY_OPENS = 0.55
+
+/**
  * How big the guard's arc is drawn, in screen-heights.
  *
  * ⚠️ JUST OUTSIDE THE CREATURE, not around it. A ring the creature sits inside reads as an
@@ -429,7 +438,11 @@ function GuardArc({ me, cam }: { me: Striker; cam: Spot }) {
   const r = GUARD_SHOW * (0.82 + 0.18 * me.guard)
   return (
     <span
-      className={'park-guard' + (me.guardLit > 0 ? ' is-met' : '') + (spent ? ' is-spent' : '')}
+      className={
+        'park-guard' +
+        (me.parried > 0 ? ' is-parry' : me.guardLit > 0 ? ' is-met' : '') +
+        (spent ? ' is-spent' : '')
+      }
       aria-hidden
       style={{
         left: `${at.x * 100}%`,
@@ -769,6 +782,8 @@ export function ParkRoom({
   const myCastHit = useRef<Set<string>>(new Set())
   /** Q, held — unlike the dodge this one is a hold all the way through, so no edge is taken */
   const bracing = useRef(false)
+  /** one punish per parry, not one per frame it is still flashing */
+  const parryShown = useRef(false)
   /** Space, and a press like the dodge, so holding it does not bounce you across the park */
   const hopping = useRef(false)
   const hopped = useRef(false)
@@ -1105,6 +1120,27 @@ export function ParkRoom({
         dodgeShown.current = you.current.dodge > 0
         setDodging(dodgeShown.current)
       }
+      /**
+       * ⚠️ A PARRY HAS TO OPEN THE THING THAT THREW IT, or it is a guard that happens to cost
+       * nothing and the timing buys you only what waiting would have. strike.ts cannot reach
+       * the boss — it is handed one creature and a point a blow came from — so the flag comes
+       * back on the defender and the punishment is applied here, which is also the only place
+       * that knows whose boss it is.
+       *
+       * ⚠️ AND ONLY TO A BOSS YOU ARE RUNNING. Somebody else's is staggered on THEIR machine
+       * by THEIR reading, the same rule every other hit on a shared boss follows — a peer
+       * cannot be told to flinch by somebody else's frame.
+       */
+      if (you.current.parried > 0 && !parryShown.current) {
+        parryShown.current = true
+        const b = boss.current
+        if (b && !beaten(b)) {
+          boss.current = { ...b, stun: Math.max(b.stun, PARRY_OPENS), swing: 0, cast: null }
+          setBossShown(boss.current)
+        }
+      }
+      if (you.current.parried <= 0) parryShown.current = false
+
       /* ⚠️ and the move carries you, if it is one that does — see Attack.drive */
       you.current = driven(you.current, myMoves[you.current.move], struck.hold > 0 ? 0 : dt)
       if (wasSwinging !== you.current.swing > 0) setSwingAt((n) => n + 1)
@@ -2590,7 +2626,10 @@ export function ParkRoom({
           <dt>
             <kbd>{keyName(PARK_KEYS.guard)}</kbd>
           </dt>
-          <dd>Guard, held — only covers the way you face, and a quarter still gets through</dd>
+          <dd>
+            Guard, held — only covers the way you face, and a quarter still gets through. Raise it
+            as the blow lands and you take nothing at all, and whatever threw it is left wide open.
+          </dd>
         </div>
         <div>
           <dt>
