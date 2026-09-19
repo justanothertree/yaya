@@ -1920,7 +1920,22 @@ export function ParkRoom({
     if (bossShown) return `${bossShown.name} — ${saysOf(bossShown.temper)}`
     if (theirBoss) {
       const t = echoKit.current?.by === theirBoss.by ? echoKit.current.temper : null
-      return t ? `${theirBoss.name} — ${saysOf(t)}` : null
+      if (!t) return null
+      /**
+       * ⚠️ WHOSE IT IS, WHICH THE PARK KNEW AND NEVER SAID. The help has always promised a
+       * boss is "run by whoever called it", and that mattered — it goes when they go, and its
+       * health is decided on their machine — but the only thing on screen was the creature's
+       * own name. Somebody walks into a park, finds a boss, and has no idea which of the
+       * people standing there stood it up.
+       *
+       * ⚠️ AND IT COSTS NOTHING TO SEND, because it was already here. The echo carries the id
+       * of the client running it and the roster carries that client's name, so this is two
+       * things already on this machine being put next to each other.
+       */
+      const caller = state.current.here.get(theirBoss.by)?.name
+      return caller
+        ? `${theirBoss.name}, stood up by ${caller} — ${saysOf(t)}`
+        : `${theirBoss.name} — ${saysOf(t)}`
     }
     if (!bossKit || !bossArt) return null
     const who = (bossable[bossPick] ?? bossable[0])?.name ?? 'It'

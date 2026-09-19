@@ -36,6 +36,12 @@ if (process.env.PARK_STUB_RELAY !== 'yes') {
 }
 
 const PORT = Number(process.env.PORT || 8080)
+/**
+ * ⚠️ LAG IS A FEATURE HERE. On this machine a round trip is about a millisecond, which hides
+ * every race the park can actually have — two people pressing the same button "at the same
+ * time" over a real relay are 20 to 80ms apart, not one. STUB_LAG=60 makes that reproducible.
+ */
+const LAG = Number(process.env.STUB_LAG || 0)
 const wss = new WebSocketServer({ port: PORT })
 /** roomId -> Map<clientId, { ws, look, name }> */
 const rooms = new Map()
@@ -44,11 +50,15 @@ const bosses = new Map()
 let next = 1
 
 const send = (ws, o) => {
-  try {
-    ws.send(JSON.stringify(o))
-  } catch {
-    /* gone */
+  const go = () => {
+    try {
+      ws.send(JSON.stringify(o))
+    } catch {
+      /* gone */
+    }
   }
+  if (LAG > 0) setTimeout(go, LAG)
+  else go()
 }
 
 wss.on('connection', (ws) => {
@@ -98,8 +108,21 @@ wss.on('connection', (ws) => {
       }
     }
     if (msg.type === 'boss') {
-      if (msg.art == null) bosses.delete(roomId)
-      else bosses.set(roomId, { by: id, name: msg.name, art: msg.art })
+      const had = bosses.get(roomId)
+      /**
+       * ⚠️ ONE BOSS AT A TIME IS ENFORCED AT THE SERVER, and a double that let two stand up
+       * would be testing itself rather than the park. The real relay refuses a second one and
+       * answers the caller with the one that is already out — see its own `room.boss.by !== id`
+       * branch — so this does the same, including the refusal message.
+       */
+      if (had && had.by !== id && msg.art != null) {
+        send(ws, { type: 'boss', from: had.by, name: had.name, art: had.art })
+        console.log(`[stub] ${id} boss refused — ${had.by} already has one out`)
+        return
+      }
+      if (msg.art == null) {
+        if (had && had.by === id) bosses.delete(roomId)
+      } else bosses.set(roomId, { by: id, name: msg.name, art: msg.art })
       console.log(`[stub] ${id} boss ${msg.art == null ? 'away' : msg.name}`)
     }
 
