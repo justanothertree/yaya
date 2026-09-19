@@ -98,6 +98,28 @@ export type ParkPet = { name: string; art: Drawing }
  * them are the same six read from the same drawing, so a different key would be a different name
  * for exactly the same thing.
  */
+/**
+ * The keys that are not already in a table, in one place.
+ *
+ * ⚠️ BECAUSE THE HANDLER AND THE HELP BOTH HAVE TO NAME THEM. Walking and swinging were
+ * already tables and so could never disagree with a list; rolling, guarding, jumping and
+ * casting were four string literals in the key handler and four more in a paragraph of prose,
+ * which is exactly the hand-maintained list this repository has learned not to keep. Now the
+ * reference below is rendered FROM the thing the handler tests.
+ */
+const PARK_KEYS = { roll: 'shift', guard: 'q', jump: ' ', cast: 'e' } as const
+
+/**
+ * What a key is called on screen.
+ *
+ * ⚠️ THE TABLE HOLDS WHAT e.key.toLowerCase() PRODUCES, so 'shift' comes out of it in lower
+ * case and went on screen that way — the cost of deriving the reference from the thing the
+ * handler tests is that the thing the handler tests is not spelt for reading. A space has to
+ * be named outright for the same reason.
+ */
+const keyName = (k: string): string =>
+  k === ' ' ? 'Space' : k.length === 1 ? k.toUpperCase() : k[0].toUpperCase() + k.slice(1)
+
 const HITS: Record<string, 'quick' | 'heavy'> = {
   f: 'quick',
   F: 'quick',
@@ -894,7 +916,8 @@ export function ParkRoom({
     const set = (e: KeyboardEvent, on: boolean) => {
       /* ⚠️ Shift, because it is the one key near the movement hand that nothing else here
          wants — F and G are the swings and WASD is the walk */
-      if (e.key === 'Shift') {
+      const low = e.key.toLowerCase()
+      if (low === PARK_KEYS.roll) {
         e.preventDefault()
         rolling.current = on
         return
@@ -902,7 +925,7 @@ export function ParkRoom({
       /* ⚠️ SPACE, WHICH IS THE ONE KEY EVERYBODY ALREADY GUESSES. It also scrolls the page,
          so the preventDefault below is not tidiness — without it every jump scrolls the park
          out from under the person jumping. */
-      if (e.key === ' ' || e.key === 'Spacebar') {
+      if (low === PARK_KEYS.jump || e.key === 'Spacebar') {
         e.preventDefault()
         hopping.current = on
         return
@@ -911,7 +934,7 @@ export function ParkRoom({
          and a direction, which works there because a shield is the default thing your thumb is
          doing; here you are holding a direction almost the whole fight, so the same mapping
          would mean you could never raise a guard while circling — the one moment you want one. */
-      if (e.key === 'q' || e.key === 'Q') {
+      if (low === PARK_KEYS.guard) {
         e.preventDefault()
         bracing.current = on
         return
@@ -922,7 +945,7 @@ export function ParkRoom({
        * yesterday stopped working — it throws slot one, which is the one the drawing is best
        * suited to and the one E always threw.
        */
-      const slot = e.key === 'e' || e.key === 'E' ? 1 : '123'.indexOf(e.key) + 1
+      const slot = low === PARK_KEYS.cast ? 1 : '123'.indexOf(e.key) + 1
       if (slot > 0) {
         e.preventDefault()
         castWanted.current = on ? slot : castWanted.current === slot ? 0 : castWanted.current
@@ -2517,40 +2540,76 @@ export function ParkRoom({
         </div>
       )}
 
-      <p className="muted park-keys">
-        <strong>← → ↑ ↓</strong> or <strong>WASD</strong> to walk about. The park is {PARK.across}{' '}
-        screens across and {PARK.down} down, so keep going and the view follows you — the little map
-        shows the whole of it, where you are, and everybody else. Everyone is in the same park, so
+      {/*
+        ⚠️ A REFERENCE, NOT AN ESSAY, AND THAT IS A REPAIR RATHER THAN A PREFERENCE. This was
+        one paragraph of 468 words describing fourteen keys, and it got that way honestly —
+        every new control appended a sentence or two and nobody ever read the whole thing back.
+        Four hundred and sixty-eight words of prose is not how anybody finds out what Q does,
+        least of all the people this site is actually for.
+
+        ⚠️ AND IT IS RENDERED FROM WHAT THE HANDLER TESTS. Walking and swinging were already
+        tables; rolling, guarding, jumping and casting are PARK_KEYS now, so the letters on
+        screen cannot drift from the letters that work. The descriptions still have to be
+        written by hand — but a wrong description is a thing you notice, and a wrong key is not.
+      */}
+      <dl className="park-keys">
+        <div>
+          <dt>
+            <kbd>WASD</kbd> <kbd>←</kbd> <kbd>→</kbd> <kbd>↑</kbd> <kbd>↓</kbd>
+          </dt>
+          <dd>Walk</dd>
+        </div>
+        <div>
+          <dt>
+            <kbd>F</kbd> <kbd>G</kbd>
+          </dt>
+          <dd>Swing — quick, and heavy</dd>
+        </div>
+        <div>
+          <dt>
+            <kbd>W</kbd>/<kbd>S</kbd> + <kbd>F</kbd>/<kbd>G</kbd>
+          </dt>
+          <dd>Aim it high or low — six moves in all</dd>
+        </div>
+        <div>
+          <dt>
+            <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd>
+          </dt>
+          <dd>
+            Your three big moves, on one shared wait — <kbd>{keyName(PARK_KEYS.cast)}</kbd> throws
+            the first
+          </dd>
+        </div>
+        <div>
+          <dt>
+            <kbd>{keyName(PARK_KEYS.roll)}</kbd>
+          </dt>
+          <dd>Roll — a quarter-second where nothing can touch you</dd>
+        </div>
+        <div>
+          <dt>
+            <kbd>{keyName(PARK_KEYS.guard)}</kbd>
+          </dt>
+          <dd>Guard, held — only covers the way you face, and a quarter still gets through</dd>
+        </div>
+        <div>
+          <dt>
+            <kbd>{keyName(PARK_KEYS.jump)}</kbd>
+          </dt>
+          <dd>Jump — clears anything drawn low, but never an overhead</dd>
+        </div>
+      </dl>
+      <p className="muted park-about">
+        The park is {PARK.across} screens across and {PARK.down} down, and the view follows you —
+        the little map shows the whole of it and everybody in it. Everyone shares one park, so
         whoever is online is who you will meet.
-        {strolling.length > 0 && (
-          <> The faded ones are your own other minions having a wander — only you see those.</>
-        )}{' '}
-        <strong>1</strong>, <strong>2</strong> and <strong>3</strong> throw your creature's three
-        big moves — a <em>swell</em> that grows around you, a <em>mark</em>
-        thrown out ahead, and a <em>fissure</em> that rolls away from you in a line. Which one is
-        which comes out of your drawing, the same reading a boss made from it would get, and the
-        strip in the corner names yours. They share one cooldown, so throwing one is choosing it
-        over the other two, and any of them roots you while it goes off. <strong>E</strong> still
-        throws the first, which is the one your drawing suits best. <strong>Shift</strong> rolls — a
-        quarter of a second where nothing can touch you, and then a moment before you can do it
-        again, so it is an answer to something rather than a way of getting about.{' '}
-        <strong>Q</strong> holds a guard up instead: it always works, so it is what you reach for
-        when you could not read the attack — but a quarter still gets through, it only covers the
-        way you are facing, and it drains whether anything hits it or not. Break it and you are on
-        the floor for longer than any single hit would have put you there. You can still turn on the
-        spot while it is up; you cannot walk, swing or throw the big one, and rolling out of it is
-        always allowed. <strong>Space</strong> jumps: half a second off the ground, where anything
-        drawn low on its owner — a tail sweep, a fissure, a marked patch — goes under you and misses
-        completely. It does not save you from a hit drawn overhead, and you cannot swing, guard,
-        roll or cast while you are up there, so it is an answer to one kind of attack rather than to
-        all of them. Stand a target out with <strong>🎯 Hit dummy</strong> to feel how far a swing
-        reaches, and then let it <strong>hit back</strong> to practise those three answers on
-        something that throws on a slow steady beat and can never take a point of health off you:
-        roll through it, face it and guard, or jump the low one. <strong>F</strong> and{' '}
-        <strong>G</strong> swing, the same six moves your creature has anywhere else. Call a boss
-        and one of your own minions stands up big with a health bar, where <em>everybody</em> in the
-        park can see it and hit it — one boss at a time, run by whoever called it, and it goes when
-        they do.
+        {strolling.length > 0 &&
+          ' The faded ones are your own other minions having a wander, and only you see those.'}{' '}
+        Call a boss and one of your minions stands up big with a health bar that <em>everybody</em>{' '}
+        can see and hit — one at a time, run by whoever called it, and it goes when they do. Not
+        sure what your moves do? Stand a target out with <strong>Hit dummy</strong> to feel how far
+        a swing reaches, then let it <strong>hit back</strong> to practise rolling, guarding and
+        jumping against something that can never take a point of health off you.
       </p>
     </div>
   )

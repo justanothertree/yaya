@@ -9059,7 +9059,57 @@ a.cz-msg-author:focus-visible {
   font-style: italic;
   line-height: 1.45;
 }
+/**
+ * The controls, as a reference.
+ *
+ * ⚠️ A GRID THAT COLLAPSES RATHER THAN A TABLE, because a two-column table on a 375px phone
+ * is either a squeezed column of wrapped keys or a sideways scroll, and the park already has a
+ * rule about neither. Above 30rem the keys sit in their own column and the whole thing reads
+ * down the left edge; below it each row stacks, which is still a list and still scannable.
+ *
+ * ⚠️ AND THE KEYS DO NOT WRAP MID-CHORD. "W/S + F/G" breaking across two lines reads as four
+ * separate keys, which is the one thing this is here to prevent.
+ */
 .park-keys {
+  display: grid;
+  gap: 4px 14px;
+  margin: 10px 0 6px;
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+.park-keys > div {
+  display: grid;
+  gap: 1px 14px;
+  align-items: baseline;
+}
+@media (min-width: 30rem) {
+  .park-keys > div {
+    grid-template-columns: minmax(9.5rem, max-content) 1fr;
+  }
+}
+.park-keys dt {
+  white-space: nowrap;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  align-items: center;
+}
+.park-keys dd {
+  margin: 0;
+}
+.park-keys kbd {
+  font: inherit;
+  font-size: 0.76rem;
+  min-width: 1.5em;
+  text-align: center;
+  padding: 1px 5px;
+  border-radius: 5px;
+  border: 1px solid color-mix(in srgb, var(--text) 26%, transparent);
+  border-bottom-width: 2px;
+  background: color-mix(in srgb, var(--text) 8%, transparent);
+  color: var(--text);
+}
+.park-about {
   font-size: 0.82rem;
   line-height: 1.5;
 }
