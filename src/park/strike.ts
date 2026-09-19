@@ -52,6 +52,12 @@ export type Striker = Walker & {
   dodge: number
   /** seconds before another may be thrown, so it is an answer and not a way of walking */
   dodgeRest: number
+  /** 1 for a whole guard, 0 for a broken one — see stepGuard */
+  guard: number
+  /** true while the guard is actually up */
+  braced: boolean
+  /** seconds left of the flash a met blow leaves, so the room has an edge to draw */
+  guardLit: number
 }
 
 export type StrikeInput = { quick: boolean; heavy: boolean; up: boolean; down: boolean }
@@ -70,6 +76,9 @@ export const restingStriker = (w: Walker): Striker => ({
   aim: { x: 1, y: 0 },
   dodge: 0,
   dodgeRest: 0,
+  guard: 1,
+  braced: false,
+  guardLit: 0,
 })
 
 /**
@@ -139,6 +148,101 @@ export function stepDodge(
  * module has shipped twice.
  */
 export const canBeHurt = (s: Striker): boolean => s.stun <= 0 && s.dodge <= 0
+
+/**
+ * How much standing your ground is worth, and what it costs.
+ *
+ * ⚠️ THE SECOND HALF OF A PAIR, and it only means anything because the first half exists. A
+ * dodge answers a blow by not being there: it is free if you time it and useless if you do not.
+ * A guard answers the same blow by being there on purpose: it always works and it always costs,
+ * which makes it the option you take when you could not read the attack. Having only the timed
+ * one meant every mistake was the same mistake.
+ *
+ * ⚠️ IT DOES NOT STOP A BLOW, IT SOFTENS ONE. A quarter still gets through, so holding it
+ * through a fight loses the fight slowly — and the pool drains on its own while it is up, so
+ * holding it through a fight also loses the guard. Both of those are on purpose: a defence with
+ * no clock is a defence with no decision in it.
+ *
+ * ⚠️ AND IT FACES ONE WAY. Everything else here became omnidirectional — the aim, the swings,
+ * the casts, the boss's turn — and a guard that covered all of it would be the one thing in the
+ * fight that does not care where you are standing. It covers everything but a wedge behind you,
+ * which is what makes circling a boss while braced a thing you can get wrong.
+ */
+export const GUARD = {
+  /** seconds it can be held up with nothing landing on it */
+  hold: 3.2,
+  /** seconds an untouched guard takes to come back from nothing */
+  mend: 5,
+  /**
+   * ⚠️ YOU CANNOT RAISE ONE BELOW THIS, or a break is not a gap. Without it the answer to
+   * being broken is to tap the key again and get a sliver of guard back on the next frame,
+   * which turns the one real punishment here into a stutter.
+   */
+  least: 0.22,
+  /** the fraction of a met blow that gets through anyway */
+  soak: 0.25,
+  /** guard spent per point of damage stopped */
+  cost: 0.018,
+  /** what is left of a met blow's shove */
+  slide: 0.4,
+  /** seconds of being wide open after it breaks */
+  broken: 1.2,
+  /** the cosine of the half-angle it covers: everything but a 160° wedge behind you */
+  arc: Math.cos((100 * Math.PI) / 180),
+}
+
+/**
+ * Is this blow arriving where the guard is pointing?
+ *
+ * ⚠️ IN SCREEN-HEIGHTS, like every other angle in this file, because the field is 16:10 and a
+ * direction measured in world units is not the direction it looks like. See toScreen.
+ *
+ * ⚠️ EXPORTED AND ASKED BY shoved, so the shove and the damage can never disagree about
+ * whether something was met — they are two halves of one blow.
+ */
+export const guarded = (s: Striker, from: Spot): boolean => {
+  if (!s.braced || s.guard <= 0) return false
+  const { sx, sy } = toScreen(s.x - from.x, s.y - from.y)
+  const d = Math.hypot(sx, sy)
+  /* on top of you is met: there is no direction to have got wrong */
+  if (d < 1e-6) return true
+  /* the way you would have to look to see it coming, against the way you are looking */
+  return (-sx / d) * s.aim.x + (-sy / d) * s.aim.y >= GUARD.arc
+}
+
+/**
+ * One step of holding the line.
+ *
+ * ⚠️ PURE, for the reason everything else in this file is: the park's animation frame does not
+ * fire in the pane this is checked in, so "how many of this boss's hits does a full guard stop"
+ * has to be a question something can be asked directly.
+ *
+ * ⚠️ IT DOES NOT TOUCH VELOCITY. The room hands stepWalker STILL while you are braced, so you
+ * decelerate into the stance rather than stopping dead — and a blow that gets through still
+ * slides you, because shoved set a velocity and nothing here takes it away.
+ *
+ * ⚠️ AND A BLOCKED BLOW MUST NOT DROP THE GUARD, which is why hold is not in the test below
+ * while stun is. The contact freeze is both creatures' and lasts a twentieth of a second; being
+ * staggered is the thing that means you lost the exchange.
+ *
+ * @param aim where the guard should point, or null to keep the one it has
+ */
+export function stepGuard(s: Striker, want: boolean, aim: Aimed | null, dt: number): Striker {
+  const t = Math.max(0, Math.min(0.05, dt))
+  const guardLit = Math.max(0, s.guardLit - t)
+  const open = s.stun <= 0 && s.dodge <= 0
+  const up = s.braced
+    ? want && open && s.guard > 0
+    : want && open && s.swing <= 0 && s.guard >= GUARD.least
+  if (!up) return { ...s, braced: false, guardLit, guard: Math.min(1, s.guard + t / GUARD.mend) }
+  return {
+    ...s,
+    braced: true,
+    guardLit,
+    guard: Math.max(0, s.guard - t / GUARD.hold),
+    aim: aim ?? s.aim,
+  }
+}
 
 /**
  * Which way the keys are pointing, as a unit vector in screen-heights.
@@ -556,7 +660,13 @@ export function stepStrike(s: Striker, input: StrikeInput, moves: Attack[], dt: 
 }
 
 /** True while this creature is not steering itself — mid-swing, staggered, or frozen on contact. */
-export const busy = (s: Striker): boolean => s.swing > 0 || s.stun > 0 || s.hold > 0
+/**
+ * ⚠️ BRACED COUNTS, and it belongs in here rather than at the four places that ask. "Busy"
+ * is the one question the room asks before letting you steer, swing or cast, and a guard is
+ * exactly a state where none of those three are yours — putting it at the call sites is how
+ * you end up able to cast out of a stance you cannot walk out of.
+ */
+export const busy = (s: Striker): boolean => s.swing > 0 || s.stun > 0 || s.hold > 0 || s.braced
 
 /**
  * What a landed blow does here.
@@ -628,19 +738,26 @@ export function stepDown(
   return { down: DOWN_FOR, s: { ...s, swing: 0, stun: DOWN_FOR }, went: 'down' }
 }
 
+/**
+ * ⚠️ A NEIGHBOUR'S SHOVE IS SOFTENED BY A GUARD BUT DOES NOT SPEND ONE. Standing braced and
+ * being bumped by a friend should feel like being braced; it should not be a way to take
+ * somebody's defence off them before the boss swings. Only mauled spends the pool.
+ */
 export function shoved(s: Striker, from: Spot, a: Attack): Striker {
   const dx = s.x - from.x
   const dy = s.y - from.y
   const len = Math.hypot(dx, dy) || 1
-  const power = a.shove * SHOVE
+  const met = guarded(s, from)
+  const power = a.shove * SHOVE * (met ? GUARD.slide : 1)
   /* ⚠️ the same shape stepWalker uses for its own speeds — x in world units, y scaled by
      SQUASH — so being shoved north looks as fast as being shoved east */
   return {
     ...s,
     vx: (dx / len) * power * VIEW.w,
     vy: (dy / len) * power * VIEW.w * SQUASH,
-    swing: 0,
-    stun: 0.1 + power * 0.22,
+    swing: met ? s.swing : 0,
+    /* met, you keep your feet: a stagger would drop the guard on the first thing it stopped */
+    stun: met ? s.stun : 0.1 + power * 0.22,
     hold: 0.05 + a.bite * 0.004,
   }
 }
@@ -652,7 +769,26 @@ export function shoved(s: Striker, from: Spot, a: Attack): Striker {
  * separate function rather than a flag because the call site is where somebody will look to ask
  * "can this take my health off", and a `true` sitting in an argument list does not answer that.
  */
+/**
+ * ⚠️ THE GUARD IS ANSWERED HERE AND NOWHERE ELSE, for the reason canBeHurt gives above: five
+ * places land a boss's blow and they must all agree. A guard checked at the call sites is a
+ * guard that works against a swing and not against a wave, which is worse than not having one.
+ */
 export const mauled = (s: Striker, from: Spot, a: Attack): Striker => {
   const p = shoved(s, from, a)
-  return { ...p, hurt: p.hurt + a.bite }
+  if (!guarded(s, from)) return { ...p, hurt: p.hurt + a.bite }
+  const stopped = a.bite * (1 - GUARD.soak)
+  const guard = Math.max(0, p.guard - stopped * GUARD.cost)
+  const broke = guard <= 0
+  return {
+    ...p,
+    hurt: p.hurt + a.bite * GUARD.soak,
+    guard,
+    guardLit: 0.22,
+    braced: broke ? false : p.braced,
+    /* ⚠️ a break is the punishment, and it has to be worse than not guarding: wide open, on
+       the ground the boss is standing on, for longer than any single stagger */
+    stun: broke ? GUARD.broken : p.stun,
+    swing: broke ? 0 : p.swing,
+  }
 }

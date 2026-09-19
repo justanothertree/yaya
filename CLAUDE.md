@@ -54,6 +54,13 @@ what it just made stale — copy, empty states, the thing a neighbouring feature
   width, a pixel rectangle, a readback of painted pixels. And when a conversion goes wrong twice,
   the fix is not a third careful call site: it is `outBy(petHeights)`, which has nowhere to put a
   wrong factor.
+- **A timed-out browser call keeps running, and its keypresses land in your next trial.** The
+  pane gives up on the promise; the page does not. A three-trial fight harness that ran over
+  the limit was still holding the guard key during the _next_ call's control run, which duly
+  reported a defence that was up for 0.4s and broke twice while nothing was pressing it — a
+  number that looks like a bug in the feature and is a bug in the harness. Keep a call under
+  the limit, split long runs across calls, and have every loop capture a generation counter and
+  return when it changes.
 - **Measurement lies more often than code does.** `.card` transitions `box-shadow`, so
   `getComputedStyle` reports interpolated values — inject `*{transition:none!important}` before
   measuring. `performance.now()` cannot see canvas work. The Browser pane collapses to 0×0 between

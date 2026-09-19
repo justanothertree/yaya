@@ -41,6 +41,8 @@ import {
   restingStriker,
   shoved,
   stepDodge,
+  stepGuard,
+  GUARD,
   stepDown,
   stepStrike,
   FOOT,
@@ -266,6 +268,63 @@ function SwipePatch({
 
 /** The field is 16:10, and a screen-height is its height — see SwipePatch. */
 const FIELD_ASPECT = 16 / 10
+
+/**
+ * How big the guard's arc is drawn, in screen-heights.
+ *
+ * ⚠️ JUST OUTSIDE THE CREATURE, not around it. A ring the creature sits inside reads as an
+ * aura it has; a ring at arm's length reads as something held up, which is the verb.
+ */
+const GUARD_SHOW = PARK_TALL * 0.82
+
+/**
+ * The guard, drawn on the ground.
+ *
+ * ⚠️ AN ARC AND NOT A CIRCLE, because the guard is not one. The gap in the drawing IS the gap
+ * in the defence — a full ring would promise cover behind you that mauled does not give, and
+ * the player would learn the wrong rule from the only picture of it they get.
+ *
+ * ⚠️ AND ON THE GROUND RATHER THAN ON THE CREATURE, for the reason the telegraphs are there:
+ * the thing that matters about a guard is which way it points, and PetView mirrors rather than
+ * rotates, so nothing drawn on the picture itself could say "this side". Placed and sized the
+ * same way a swipe is — screen-heights, which are isotropic in pixels, so the rotation is
+ * honest at all eight angles rather than only the four it was built on.
+ */
+function GuardArc({ me, cam }: { me: Striker; cam: Spot }) {
+  /**
+   * ⚠️ SPENT MEANS "YOU HAVE NONE", NOT "YOU HAVE LITTLE", and the difference is the whole
+   * value of the class. Drawn on a guard that was merely low, the broken styling said the
+   * stance had failed while it was still up and still stopping things — the one reading a
+   * player would act on immediately and wrongly. Held up, how much is left is the arc's own
+   * weight; down here, red and dashed is the gap you cannot close yet.
+   */
+  const spent = !me.braced && me.guard < GUARD.least
+  if (!me.braced && !spent) return null
+  const at = onScreen(me, cam)
+  const deg = (Math.atan2(me.aim.y, me.aim.x) * 180) / Math.PI
+  /* it shrinks a little as it goes, so a guard about to break looks like one */
+  const r = GUARD_SHOW * (0.82 + 0.18 * me.guard)
+  return (
+    <span
+      className={'park-guard' + (me.guardLit > 0 ? ' is-met' : '') + (spent ? ' is-spent' : '')}
+      aria-hidden
+      style={{
+        left: `${at.x * 100}%`,
+        top: `${at.y * 100}%`,
+        width: `${((r * 2) / FIELD_ASPECT) * 100}%`,
+        height: `${r * 2 * 100}%`,
+        zIndex: depthOf(me) - 1,
+        transform: `translate(-50%, -50%) rotate(${deg.toFixed(1)}deg)`,
+        opacity: spent ? 1 : 0.4 + 0.6 * me.guard,
+      }}
+    >
+      {/* an arc of 200°, centred on +x, so the whole span rotates to the aim */}
+      <svg viewBox="-50 -50 100 100" preserveAspectRatio="none">
+        <path d="M -6.95 -39.39 A 40 40 0 1 1 -6.95 39.39" />
+      </svg>
+    </span>
+  )
+}
 
 /**
  * A lunge, pushed along the way the swing is aimed.
@@ -545,6 +604,8 @@ export function ParkRoom({
   const castHeld = useRef(false)
   /** so one cast is one hit on each thing, however many patches it is made of */
   const myCastHit = useRef<Set<string>>(new Set())
+  /** Q, held — unlike the dodge this one is a hold all the way through, so no edge is taken */
+  const bracing = useRef(false)
   /** Shift, held — a dodge is a press, so the loop takes the rising edge itself */
   const rolling = useRef(false)
   const rolled = useRef(false)
@@ -694,8 +755,17 @@ export function ParkRoom({
         rolling.current = on
         return
       }
+      /* ⚠️ Q, HELD, AND NOT A SECOND JOB FOR SHIFT. Smash puts the roll on the shield button
+         and a direction, which works there because a shield is the default thing your thumb is
+         doing; here you are holding a direction almost the whole fight, so the same mapping
+         would mean you could never raise a guard while circling — the one moment you want one. */
+      if (e.key === 'q' || e.key === 'Q') {
+        e.preventDefault()
+        bracing.current = on
+        return
+      }
       /* ⚠️ E, next to the walking hand and next to nothing else here — F and G swing, Shift
-         rolls, WASD walks */
+         rolls, Q braces, WASD walks */
       if (e.key === 'e' || e.key === 'E') {
         e.preventDefault()
         castWanted.current = on
@@ -722,6 +792,7 @@ export function ParkRoom({
       hitting.current = { quick: false, heavy: false, up: false, down: false }
       rolling.current = false
       castWanted.current = false
+      bracing.current = false
     }
     window.addEventListener('keydown', down)
     window.addEventListener('keyup', up)
@@ -779,10 +850,30 @@ export function ParkRoom({
       }
       const iAmCasting = !!myCast.current
 
+      /**
+       * ⚠️ BEFORE THE SWING, because busy() now includes being braced and everything below
+       * this line asks busy() what it is allowed to do. Raising the guard after the swing step
+       * would give you one frame of swinging out of a stance every time you pressed both.
+       *
+       * ⚠️ AND THE AIM COMES FROM THE KEYS EVERY FRAME, which is the opposite of the rule a
+       * swing follows. A swing's aim is frozen because a live hitbox that follows you is
+       * unfair; a guard is the other way round — it is the defender's own commitment, and
+       * turning it is the thing you are doing while you hold it. What it costs is that you
+       * cannot walk at the same time.
+       */
+      you.current = stepGuard(
+        you.current,
+        bracing.current && !iAmCasting,
+        aimFromKeys(held.current, you.current.aim),
+        dt,
+      )
+
       const wasSwinging = you.current.swing > 0
       const struck = stepStrike(
         you.current,
-        iAmCasting ? { quick: false, heavy: false, up: false, down: false } : hitting.current,
+        iAmCasting || you.current.braced
+          ? { quick: false, heavy: false, up: false, down: false }
+          : hitting.current,
         myMoves,
         dt,
       )
@@ -1605,6 +1696,7 @@ export function ParkRoom({
             }}
             aria-hidden
           />
+          {walking && <GuardArc me={shownYou} cam={camAt} />}
           {walking &&
             [
               /* ⚠️ IN THE SAME SORT AS EVERYBODY ELSE, so a wanderer that is nearer the camera
@@ -1943,10 +2035,16 @@ export function ParkRoom({
         a boss made from the same drawing would reach for, on a few seconds of cooldown, and it
         roots you while it goes off. <strong>Shift</strong> rolls — a quarter of a second where
         nothing can touch you, and then a moment before you can do it again, so it is an answer to
-        something rather than a way of getting about. <strong>F</strong> and <strong>G</strong>{' '}
-        swing, the same six moves your creature has anywhere else. Call a boss and one of your own
-        minions stands up big with a health bar, where <em>everybody</em> in the park can see it and
-        hit it — one boss at a time, run by whoever called it, and it goes when they do.
+        something rather than a way of getting about. <strong>Q</strong> holds a guard up instead:
+        it always works, so it is what you reach for when you could not read the attack — but a
+        quarter still gets through, it only covers the way you are facing, and it drains whether
+        anything hits it or not. Break it and you are on the floor for longer than any single hit
+        would have put you there. You can still turn on the spot while it is up; you cannot walk,
+        swing or throw the big one, and rolling out of it is always allowed. <strong>F</strong> and{' '}
+        <strong>G</strong> swing, the same six moves your creature has anywhere else. Call a boss
+        and one of your own minions stands up big with a health bar, where <em>everybody</em> in the
+        park can see it and hit it — one boss at a time, run by whoever called it, and it goes when
+        they do.
       </p>
     </div>
   )

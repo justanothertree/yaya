@@ -8524,6 +8524,44 @@ a.cz-msg-author:focus-visible {
   }
 }
 /**
+ * The guard, held up.
+ *
+ * ⚠️ THE ARC IS THE ONLY THING THAT SAYS WHICH WAY IT FACES, so nothing here may make it look
+ * round. It is drawn pointing +x and the span is rotated to the aim; the span's two sides are
+ * both measured in screen-heights, which are the same number of pixels, so the rotation cannot
+ * shear it — the same reason SwipePatch can be rotated at all.
+ *
+ * ⚠️ AND SPENT IS RED AND FULL-STRENGTH, because the moment you cannot raise one is the moment
+ * the picture matters most. Everything else about a break is an absence — no stance, no stopping
+ * power, nothing to look at — and an absence is not a thing anybody learns from.
+ */
+.park-guard {
+  position: absolute;
+  pointer-events: none;
+}
+.park-guard svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+.park-guard path {
+  fill: none;
+  stroke: var(--accent, #7c6af7);
+  stroke-width: 9;
+  stroke-linecap: round;
+}
+.park-guard.is-met path {
+  stroke: #fff;
+  stroke-width: 15;
+}
+.park-guard.is-spent path {
+  stroke: #e8534e;
+  stroke-width: 5;
+  stroke-dasharray: 9 11;
+}
+
+/**
  * The ground where a swing is about to land.
  *
  * ⚠️ BENEATH THE CREATURES, because it is the floor lighting up and not a thing in the air.
