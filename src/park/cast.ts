@@ -46,12 +46,18 @@ export type Patch = {
  * three having the same one. The numbers are on the same scale as Attack.lift so that overHead
  * asks one question of a swing and a cast alike; see HOP.under.
  */
-export const CAST: Record<CastKind, { time: number; says: string; lift: number }> = {
-  bloom: { time: 1.5, lift: 0.7, says: 'it swells — get out, and keep going' },
-  mark: { time: 1.45, lift: 0.12, says: 'it marks the ground ahead — leave it or jump it' },
+export const CAST: Record<CastKind, { time: number; says: string; lift: number; short: string }> = {
+  bloom: { time: 1.5, lift: 0.7, short: 'swell', says: 'it swells — get out, and keep going' },
+  mark: {
+    time: 1.45,
+    lift: 0.12,
+    short: 'mark',
+    says: 'it marks the ground ahead — leave it or jump it',
+  },
   wave: {
     time: 1.9,
     lift: 0.08,
+    short: 'fissure',
     says: 'it splits the ground away from itself — cross it or jump it',
   },
 }

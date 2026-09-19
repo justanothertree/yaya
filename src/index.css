@@ -8524,6 +8524,72 @@ a.cz-msg-author:focus-visible {
   }
 }
 /**
+ * Your three big moves, in the corner of the field.
+ *
+ * ⚠️ IT SITS OVER THE GRASS AND MUST NOT EAT IT. Pinned to the bottom-left corner, small, and
+ * out of the way of the map in the other one — the field is the game, and a HUD that takes a
+ * quarter of it to say three words has cost more than it gave.
+ *
+ * ⚠️ AND IT IS NOT CLICKABLE, on purpose. These are a readout of keys, not buttons: a chip you
+ * can press on a phone would promise a control the rest of the fight does not have, since every
+ * other combat key here is a keyboard key. pointer-events stays off until that is untrue.
+ */
+.park-belt {
+  position: absolute;
+  left: 8px;
+  bottom: 8px;
+  display: flex;
+  gap: 4px;
+  pointer-events: none;
+  z-index: 40;
+}
+.park-belt-one {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 7px;
+  border-radius: 7px;
+  font-size: 0.66rem;
+  line-height: 1.5;
+  white-space: nowrap;
+  background: color-mix(in srgb, var(--bg, #111) 72%, transparent);
+  border: 1px solid color-mix(in srgb, var(--text) 18%, transparent);
+  color: var(--text);
+}
+.park-belt-one b {
+  font-size: 0.6rem;
+  opacity: 0.65;
+}
+.park-belt-one.is-waiting {
+  opacity: 0.5;
+}
+.park-belt-one.is-ready {
+  border-color: color-mix(in srgb, var(--accent, #7c6af7) 60%, transparent);
+}
+/* the one that is actually out, so the strip says what is happening as well as what is ready */
+.park-belt-one.is-out {
+  background: var(--accent, #7c6af7);
+  color: #fff;
+  opacity: 1;
+}
+.park-belt-one.is-out b {
+  opacity: 0.9;
+}
+/* ⚠️ THE WAIT DRAINS UNDER THE WORD rather than beside it: a fourth element in a row this
+   small is a row that no longer fits a phone, and a bar behind the text is read at a glance
+   without being looked at. */
+.park-belt-one i {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 2px;
+  background: var(--accent, #7c6af7);
+  opacity: 0.75;
+}
+
+/**
  * What a creature in the air leaves behind.
  *
  * ⚠️ SOFT-EDGED ON PURPOSE. A hard ellipse reads as a hole in the grass; the point is only to

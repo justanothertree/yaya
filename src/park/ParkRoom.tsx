@@ -274,6 +274,20 @@ function SwipePatch({
 const FIELD_ASPECT = 16 / 10
 
 /**
+ * How long after one big move before the next.
+ *
+ * ⚠️ ONE WAIT FOR ALL THREE, which is what keeps three casts from being three times the
+ * casting. Nothing about the rate of them moved when the other two arrived; what moved is that
+ * you now choose WHICH one to spend the wait on, and spending it on the fissure means not
+ * having the swell for four seconds. Three separate cooldowns would have been a different
+ * feature — chain all three, then wait — and a much harder one to balance against a boss.
+ *
+ * ⚠️ AND IT IS A CONSTANT BECAUSE THE BAR DRAWS IT. A 4 in the loop and a 4 in the readout
+ * is a readout that quietly starts lying the first time somebody tunes one of them.
+ */
+const CAST_WAIT = 4
+
+/**
  * How big the guard's arc is drawn, in screen-heights.
  *
  * ⚠️ JUST OUTSIDE THE CREATURE, not around it. A ring the creature sits inside reads as an
@@ -636,8 +650,20 @@ export function ParkRoom({
   const myCast = useRef<{ kind: CastKind; t: number } | null>(null)
   const myCastRest = useRef(0)
   const [casting, setCasting] = useState<CastKind | null>(null)
-  const castWanted = useRef(false)
-  const castHeld = useRef(false)
+  /**
+   * ⚠️ WHICH ONE, NOT WHETHER. A creature has always had three big moves — temper.ts scores
+   * all three off the drawing and sorts them best-first — and the boss has always rotated
+   * through the lot while the player only ever got casts[0]. Two thirds of that table was
+   * worked out every frame and thrown away, which is the sort of thing that reads as a missing
+   * feature to whoever drew the creature and as dead code to whoever reads the file.
+   *
+   * 0 is nothing and 1..3 are the slots, so the rising edge can tell "pressed 2 while holding
+   * 1" from "still holding 1" — which a boolean cannot.
+   */
+  const castWanted = useRef(0)
+  const castHeld = useRef(0)
+  /** seconds until the next one, in state because the readout needs to draw the wait */
+  const [castLeft, setCastLeft] = useState(0)
   /** so one cast is one hit on each thing, however many patches it is made of */
   const myCastHit = useRef<Set<string>>(new Set())
   /** Q, held — unlike the dodge this one is a hold all the way through, so no edge is taken */
@@ -811,11 +837,16 @@ export function ParkRoom({
         bracing.current = on
         return
       }
-      /* ⚠️ E, next to the walking hand and next to nothing else here — F and G swing, Shift
-         rolls, Q braces, WASD walks */
-      if (e.key === 'e' || e.key === 'E') {
+      /**
+       * ⚠️ 1, 2 AND 3 PICK ONE, AND E IS STILL THE FIRST. The number row is where everybody
+       * already looks for a list of abilities, and keeping E means nothing anybody learned
+       * yesterday stopped working — it throws slot one, which is the one the drawing is best
+       * suited to and the one E always threw.
+       */
+      const slot = e.key === 'e' || e.key === 'E' ? 1 : '123'.indexOf(e.key) + 1
+      if (slot > 0) {
         e.preventDefault()
-        castWanted.current = on
+        castWanted.current = on ? slot : castWanted.current === slot ? 0 : castWanted.current
         return
       }
       const hit = HITS[e.key]
@@ -838,7 +869,7 @@ export function ParkRoom({
       held.current = { ...STILL }
       hitting.current = { quick: false, heavy: false, up: false, down: false }
       rolling.current = false
-      castWanted.current = false
+      castWanted.current = 0
       bracing.current = false
       hopping.current = false
     }
@@ -881,25 +912,22 @@ export function ParkRoom({
         if (ct >= CAST[myCast.current.kind].time) {
           myCast.current = null
           myCastHit.current.clear()
-          myCastRest.current = 4
+          myCastRest.current = CAST_WAIT
           setCasting(null)
         } else {
           myCast.current = { ...myCast.current, t: ct }
         }
       } else {
         myCastRest.current = Math.max(0, myCastRest.current - dt)
-        const press = castWanted.current && !castHeld.current
+        /* ⚠️ a DIFFERENT slot counts as a press even with the old key still down, which is
+           what a boolean edge could not say — see castWanted */
+        const press = castWanted.current !== 0 && castWanted.current !== castHeld.current
         castHeld.current = castWanted.current
-        if (
-          press &&
-          myCastRest.current <= 0 &&
-          !busy(you.current) &&
-          !aloft(you.current) &&
-          myKit
-        ) {
-          myCast.current = { kind: myKit.casts[0], t: 0 }
+        const pick = myKit?.casts[castWanted.current - 1]
+        if (press && pick && myCastRest.current <= 0 && !busy(you.current) && !aloft(you.current)) {
+          myCast.current = { kind: pick, t: 0 }
           you.current = { ...you.current, aim: aimFromKeys(held.current, you.current.aim) }
-          setCasting(myKit.casts[0])
+          setCasting(pick)
         }
       }
       const iAmCasting = !!myCast.current
@@ -1464,6 +1492,7 @@ export function ParkRoom({
       if (fall.went) setKnocked(fall.went === 'down')
 
       setShownYou(you.current)
+      setCastLeft(myCastRest.current)
 
       clockRef.current = (now - started) / 1000
       setClockAt(clockRef.current)
@@ -1810,6 +1839,37 @@ export function ParkRoom({
             }}
             aria-hidden
           />
+          {/*
+            ⚠️ THREE THINGS SHARING ONE WAIT IS UNREADABLE WITHOUT THIS. One cast needed no
+            readout: you pressed it, it either went off or it did not, and a second later it
+            worked again. Three of them on a single cooldown is a CHOICE, and a choice you
+            cannot see the terms of is a guess — which of mine are these, and is any of them
+            ready. The strip is the feature's other half rather than decoration on it.
+
+            ⚠️ IN THE FIELD, BOTTOM LEFT, because that is where your eyes are during a fight
+            and the paragraph under the park is not. The map already holds the other corner.
+          */}
+          {walking && myKit && (
+            <div className="park-belt" role="status" aria-label="your big moves">
+              {myKit.casts.map((k, i) => (
+                <span
+                  key={k}
+                  className={
+                    'park-belt-one' +
+                    (castLeft > 0 ? ' is-waiting' : ' is-ready') +
+                    (casting === k ? ' is-out' : '')
+                  }
+                >
+                  <b>{i + 1}</b>
+                  {CAST[k].short}
+                  {/* the wait, drained rather than counted — a bar is read without being read */}
+                  <i
+                    style={{ width: `${Math.max(0, Math.min(1, castLeft / CAST_WAIT)) * 100}%` }}
+                  />
+                </span>
+              ))}
+            </div>
+          )}
           {walking && <GuardArc me={shownYou} cam={camAt} />}
           {walking && <HopShade at={shownYou} cam={camAt} height={hopHeight(shownYou.hop)} />}
           {walking &&
@@ -2169,24 +2229,28 @@ export function ParkRoom({
         {strolling.length > 0 && (
           <> The faded ones are your own other minions having a wander — only you see those.</>
         )}{' '}
-        <strong>E</strong> throws the big thing your creature is built for — whichever of the three
-        a boss made from the same drawing would reach for, on a few seconds of cooldown, and it
-        roots you while it goes off. <strong>Shift</strong> rolls — a quarter of a second where
-        nothing can touch you, and then a moment before you can do it again, so it is an answer to
-        something rather than a way of getting about. <strong>Q</strong> holds a guard up instead:
-        it always works, so it is what you reach for when you could not read the attack — but a
-        quarter still gets through, it only covers the way you are facing, and it drains whether
-        anything hits it or not. Break it and you are on the floor for longer than any single hit
-        would have put you there. You can still turn on the spot while it is up; you cannot walk,
-        swing or throw the big one, and rolling out of it is always allowed. <strong>Space</strong>{' '}
-        jumps: half a second off the ground, where anything drawn low on its owner — a tail sweep, a
-        fissure, a marked patch — goes under you and misses completely. It does not save you from a
-        hit drawn overhead, and you cannot swing, guard, roll or cast while you are up there, so it
-        is an answer to one kind of attack rather than to all of them. <strong>F</strong> and{' '}
-        <strong>G</strong> swing, the same six moves your creature has anywhere else. Call a boss
-        and one of your own minions stands up big with a health bar, where <em>everybody</em> in the
-        park can see it and hit it — one boss at a time, run by whoever called it, and it goes when
-        they do.
+        <strong>1</strong>, <strong>2</strong> and <strong>3</strong> throw your creature's three
+        big moves — a <em>swell</em> that grows around you, a <em>mark</em>
+        thrown out ahead, and a <em>fissure</em> that rolls away from you in a line. Which one is
+        which comes out of your drawing, the same reading a boss made from it would get, and the
+        strip in the corner names yours. They share one cooldown, so throwing one is choosing it
+        over the other two, and any of them roots you while it goes off. <strong>E</strong> still
+        throws the first, which is the one your drawing suits best. <strong>Shift</strong> rolls — a
+        quarter of a second where nothing can touch you, and then a moment before you can do it
+        again, so it is an answer to something rather than a way of getting about.{' '}
+        <strong>Q</strong> holds a guard up instead: it always works, so it is what you reach for
+        when you could not read the attack — but a quarter still gets through, it only covers the
+        way you are facing, and it drains whether anything hits it or not. Break it and you are on
+        the floor for longer than any single hit would have put you there. You can still turn on the
+        spot while it is up; you cannot walk, swing or throw the big one, and rolling out of it is
+        always allowed. <strong>Space</strong> jumps: half a second off the ground, where anything
+        drawn low on its owner — a tail sweep, a fissure, a marked patch — goes under you and misses
+        completely. It does not save you from a hit drawn overhead, and you cannot swing, guard,
+        roll or cast while you are up there, so it is an answer to one kind of attack rather than to
+        all of them. <strong>F</strong> and <strong>G</strong> swing, the same six moves your
+        creature has anywhere else. Call a boss and one of your own minions stands up big with a
+        health bar, where <em>everybody</em> in the park can see it and hit it — one boss at a time,
+        run by whoever called it, and it goes when they do.
       </p>
     </div>
   )
