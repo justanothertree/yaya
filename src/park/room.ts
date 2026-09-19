@@ -35,6 +35,7 @@ type Out =
       a: number
       d: number
       j: number
+      k: number
     }
   /* calling a boss out, or — with a null drawing — putting it away */
   | { type: 'boss'; name: string; art: unknown | null }
@@ -57,6 +58,7 @@ type In =
       a?: number
       d?: number
       j?: number
+      k?: number
     }
   | { type: 'boss'; from?: string; name?: string; art?: unknown }
   | {
@@ -123,6 +125,20 @@ export type Someone = {
    * clearing a fissure looks like a friend clearing a fissure rather than one walking through it.
    */
   hop: number
+  /**
+   * Whether they are on the floor.
+   *
+   * ⚠️ A FRIEND ON THE GROUND LOOKED EXACTLY LIKE A FRIEND STANDING THERE. Being down is
+   * drawn — tipped over, drained of colour, "— down" on the tag — and all of it was gated on
+   * `one.mine`, so the one moment in a shared fight where you would actually do something about
+   * somebody else was the one moment nothing showed. Found by putting two clients in a park and
+   * watching one of them get knocked out in front of the other, to no visible effect at all.
+   *
+   * ⚠️ AND IT IS A PICTURE, LIKE THEIR HEIGHT. Nothing here decides anything: a peer cannot
+   * hurt you and you cannot hurt them, so a client claiming to be down all day changes nobody's
+   * fight. That is what makes it safe to take their word for it.
+   */
+  down: boolean
   /**
    * True once this swing of theirs has already landed on something here.
    *
@@ -261,6 +277,7 @@ function readSomeone(v: unknown): Someone | null {
     castFor: 0,
     aim: { x: 1, y: 0 },
     hop: 0,
+    down: false,
     spent: false,
     castSpent: false,
   }
@@ -296,7 +313,7 @@ function readBoss(v: unknown): BossEcho | null {
 }
 
 export type Park = {
-  send: (w: Walker, swing: number, aim: number, hop: number) => void
+  send: (w: Walker, swing: number, aim: number, hop: number, down: boolean) => void
   /** stand one of your minions up for everybody, or pass null to put it away */
   callBoss: (name: string, art: Drawing | null) => void
   /** where your boss is and what is left of it, at the same rate as a walk */
@@ -467,6 +484,7 @@ export function joinPark(
           }
           who.aim = aimFromOctant(typeof msg.d === 'number' ? msg.d : who.facing < 0 ? 4 : 0)
           /* absent reads as standing on the ground, which is exactly what an older client is */
+          who.down = !!msg.k
           who.hop = (Math.max(0, Math.min(9, Math.round(num(msg.j)))) / 9) * HOP.up
           const slot = theirCast ? 0 : Math.max(0, Math.min(6, a))
           if (slot !== who.swing) {
@@ -506,7 +524,7 @@ export function joinPark(
   net.connect(room, { create: true })
 
   return {
-    send: (w, swing, aim, hop) => {
+    send: (w, swing, aim, hop, down) => {
       net.send({
         type: 'walk',
         x: w.x,
@@ -517,6 +535,7 @@ export function joinPark(
         d: aim,
         /* in tenths of the top of the arc, which is all a drawing of it needs — see HOP */
         j: Math.max(0, Math.min(9, Math.round((hop / HOP.up) * 9))),
+        k: down ? 1 : 0,
       })
     },
     callBoss: (name, art) => {

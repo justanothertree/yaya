@@ -1969,6 +1969,13 @@ wss.on('connection', (ws, req) => {
            * fifteen messages a second. Absent reads as standing, which is what an old client is.
            */
           j: Math.max(0, Math.min(9, Math.round(num(msg.j)))),
+          /**
+           * ⚠️ ON THE FLOOR, AS ONE BIT. Being down is already drawn for yourself; without
+           * this it was drawn for nobody else, so the one moment in a shared fight worth
+           * reacting to was invisible. It decides nothing — a peer can neither hurt you nor be
+           * hurt by you — so the worst a lie here buys is lying down.
+           */
+          k: msg.k ? 1 : 0,
         }
         st.at = at
         room.state.set(id, st)

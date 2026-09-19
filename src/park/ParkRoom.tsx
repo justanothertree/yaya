@@ -1800,6 +1800,7 @@ export function ParkRoom({
           mySlot,
           octantOf(you.current.aim),
           hopHeight(you.current.hop),
+          downFor.current > 0,
         )
         /* ⚠️ THE BOSS GOES OUT AT THE SAME RATE AS A WALK AND NO FASTER — it is one more
            creature moving in the park, and fifteen a second is what everything else in here
@@ -2289,6 +2290,7 @@ export function ParkRoom({
                 moving: w.moving,
                 mine: false,
                 stroll: true,
+                down: false,
                 /* a wanderer keeps its feet on the grass */
                 up: 0,
                 lunge: 0,
@@ -2309,6 +2311,9 @@ export function ParkRoom({
                    is a picture; what can hit YOU is worked out from YOUR height on this
                    machine, the same split every other thing a neighbour does already makes. */
                 up: o.hop,
+                /* ⚠️ theirs comes off the wire where mine comes off my own loop — see
+                   Someone.down. It is a picture either way and decides nothing. */
+                down: o.down,
                 /* their swing, animated from the slot they sent and the drawing they sent */
                 lunge: lungeOf(
                   { swing: o.swing > 0 ? 1 : 0, move: 0, spent: false, stun: 0, hold: 0 },
@@ -2330,6 +2335,7 @@ export function ParkRoom({
                 moving: shownYou.moving,
                 mine: true,
                 stroll: false,
+                down: knocked,
                 up: hopHeight(shownYou.hop),
                 lunge: lungeOf(shownYou, myMoves),
                 aim: shownYou.aim,
@@ -2352,7 +2358,7 @@ export function ParkRoom({
                       'park-one' +
                       (one.mine ? ' is-me' : '') +
                       (one.stroll ? ' is-stroll' : '') +
-                      (one.mine && knocked ? ' is-down' : '') +
+                      (one.down ? ' is-down' : '') +
                       /* ⚠️ A DODGE YOU CANNOT SEE IS A DODGE YOU CANNOT LEARN TO TIME. The
                          0.26s of safety is the whole feature, so the creature has to look
                          untouchable for exactly as long as it is. */
@@ -2421,9 +2427,7 @@ export function ParkRoom({
                         />
                       </span>
                     )}
-                    <span className="park-name">
-                      {one.mine && knocked ? `${one.name} — down` : one.name}
-                    </span>
+                    <span className="park-name">{one.down ? `${one.name} — down` : one.name}</span>
                   </span>
                 )
               })}
