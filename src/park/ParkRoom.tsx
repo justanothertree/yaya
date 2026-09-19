@@ -54,6 +54,7 @@ import {
   PARK_TALL,
   strikeSwipe,
   swipeTell,
+  type Aimed,
   type StrikeInput,
   type Striker,
 } from './strike'
@@ -284,6 +285,43 @@ function SwipePatch({
  */
 const aimWord = (k: { up: boolean; down: boolean }): 'up' | 'down' | 'neutral' =>
   k.up ? 'up' : k.down ? 'down' : 'neutral'
+
+/**
+ * What a sparring dummy throws.
+ *
+ * ⚠️ THREE VERBS ARRIVED WITH NOWHERE TO LEARN THEM. A dodge has to be timed inside a 400ms
+ * telegraph, a guard only covers the way you are facing, and a jump only clears the things
+ * drawn low — and the only thing in the park that attacks is a boss, so all three were learnt
+ * while being killed by something that also circles, backs off and changes its mind. The still
+ * dummy solved exactly the mirror of this for your own swings: against something that moves,
+ * "did that land" and "was it still there" are one question.
+ *
+ * ⚠️ IT SHOVES AND CANNOT HURT, which is not a special case — it is the split the module was
+ * built around. shoved() and mauled() are separate functions precisely so that a thing can push
+ * you about without being allowed near your health, and a sparring partner is the honest use of
+ * that. Nothing here can put you on the floor.
+ *
+ * ⚠️ SLOWER AND PLAINER THAN ANY REAL MOVE, on purpose. A wind-up you can comfortably read is
+ * the point of a practice target; the fight is where it gets hard. And the lift is above
+ * HOP.under, so the swing must be dodged or met and CANNOT be jumped — the jump gets its own
+ * thing to answer.
+ */
+const SPAR: Attack = {
+  name: 'spar',
+  from: 'body',
+  span: 0.95,
+  live: [0.46, 0.7],
+  reach: 1.7,
+  rise: 0.5,
+  bite: 6,
+  shove: 1,
+  lift: 0.55,
+  rest: 0,
+}
+
+/** how often it throws, and how often that throw is the low one instead */
+const SPAR_BEAT = 2.9
+const SPAR_LOW_EVERY = 3
 
 /** The field is 16:10, and a screen-height is its height — see SwipePatch. */
 const FIELD_ASPECT = 16 / 10
@@ -631,6 +669,20 @@ export function ParkRoom({
    * ⚠️ A REF FOR THE POSITION, A STATE FOR WHAT IS DRAWN, the same split everything else in
    * this loop uses: the hit test runs sixty times a second and a render does not.
    */
+  /**
+   * ⚠️ THE RHYTHM LIVES BESIDE THE DUMMY RATHER THAN INSIDE IT, so that turning sparring off
+   * leaves the still target exactly as it was — its whole value is being the one thing in the
+   * park with no variables in it, and a half-cleared attack clock is a variable.
+   */
+  const spar = useRef<{ on: boolean; t: number; turn: number; aim: Aimed; low: boolean }>({
+    on: false,
+    t: 0,
+    turn: 0,
+    aim: { x: 1, y: 0 },
+    low: false,
+  })
+  const [sparring, setSparring] = useState(false)
+  const sparHit = useRef(false)
   const dummy = useRef<{ x: number; y: number; hurt: number; hits: number; lit: number } | null>(
     null,
   )
@@ -1096,6 +1148,60 @@ export function ParkRoom({
         dummy.current = { ...dummy.current, lit: Math.max(0, dummy.current.lit - dt) }
 
       /**
+       * The sparring partner's own clock.
+       *
+       * ⚠️ A FIXED BEAT AND NOTHING ELSE. A boss decides when to attack out of its temper, its
+       * distance and a roll; a practice target must be the opposite of that, or you are learning
+       * its mind instead of your own timing. It throws every SPAR_BEAT seconds, always, and the
+       * only thing that varies is which of the two things it throws.
+       *
+       * ⚠️ AND IT AIMS AT YOU, so the guard's facing is the thing being practised rather than
+       * a thing you can stand out of. Where you put yourself is the exercise.
+       *
+       * ⚠️ shoved, NEVER mauled, so this cannot take a point of health from anybody. That is
+       * the whole licence for a thing that hits back living in a park people walk through.
+       */
+      if (spar.current.on && dummy.current) {
+        const d = dummy.current
+        const was = spar.current.t
+        let t = was + dt
+        if (t >= SPAR_BEAT) {
+          t -= SPAR_BEAT
+          const turn = spar.current.turn + 1
+          spar.current = {
+            on: true,
+            t,
+            turn,
+            aim: aimOf(you.current.x - d.x, you.current.y - d.y, { x: 1, y: 0 }),
+            low: turn % SPAR_LOW_EVERY === 0,
+          }
+          sparHit.current = false
+        } else {
+          spar.current = { ...spar.current, t }
+        }
+        const { aim, low } = spar.current
+        const gone = spar.current.t
+        if (!sparHit.current && canBeHurt(you.current)) {
+          if (low) {
+            /* ⚠️ THE LOW ONE IS A REAL FISSURE, out of patchesOf, so what you practise jumping
+               is the same shape and the same clock as the thing a boss throws at you. */
+            for (const patch of patchesOf('wave', d, aim, gone)) {
+              if (!patch.live || !inPatch(you.current, myWide, patch)) continue
+              you.current = shoved(you.current, patch.at, { ...SPAR, lift: CAST.wave.lift })
+              sparHit.current = true
+              break
+            }
+          } else {
+            const area = strikeSwipe(d, aim, SPAR, gone)
+            if (area && inSwipe(you.current, myWide, area)) {
+              you.current = shoved(you.current, d, SPAR)
+              sparHit.current = true
+            }
+          }
+        }
+      }
+
+      /**
        * The boss takes its turn: it thinks, it walks, it swings, and it is hit.
        *
        * ⚠️ THROUGH THE SAME stepStrike AND stepWalker A PERSON IS, so it cannot do anything you
@@ -1476,6 +1582,17 @@ export function ParkRoom({
         for (const o of state.current.here.values())
           if (o.cast) others.push(...patchesOf(o.cast.kind, o.shown, o.aim, o.castFor, 1))
         setMyPatches(others)
+        /**
+         * ⚠️ THE INCOMING CHANNEL, NOT THE MINE ONE. Patches come in two colours here and the
+         * colour is the whole meaning: `is-mine` says "you did this and it cannot hurt you".
+         * The sparring fissure went out on that channel first and read as your own — an
+         * incoming attack painted in the colour of a harmless one, on the practice target
+         * whose entire job is teaching you to read incoming attacks.
+         */
+        const sparLow =
+          spar.current.on && spar.current.low && dummy.current
+            ? patchesOf('wave', dummy.current, spar.current.aim, spar.current.t)
+            : null
         setPatches(
           b?.cast
             ? patchesOf(b.cast.kind, b, b.aim, b.cast.t, b.scale)
@@ -1487,7 +1604,7 @@ export function ParkRoom({
                   tb.castFor,
                   echoKit.current?.temper.scale ?? BOSS.scale,
                 )
-              : [],
+              : (sparLow ?? []),
         )
       }
 
@@ -1513,7 +1630,15 @@ export function ParkRoom({
                 echoKit.current?.temper.scale ?? BOSS.scale,
               )
             : null
-        setTell(t ?? t2)
+        /* ⚠️ THE SAME CHANNEL THE BOSS USES, deliberately: what you practise reading has to
+           look exactly like what you will be reading. One tell at a time is right too — a
+           sparring dummy is for when you are not already being attacked. */
+        const sd = spar.current.on ? dummy.current : null
+        const t3 =
+          !t && !t2 && sd && !spar.current.low
+            ? swipeTell(sd, spar.current.aim, SPAR, spar.current.t)
+            : null
+        setTell(t ?? t2 ?? t3)
       }
 
       /**
@@ -1793,6 +1918,8 @@ export function ParkRoom({
               if (dummy.current) {
                 dummy.current = null
                 setDummyShown(null)
+                spar.current = { on: false, t: 0, turn: 0, aim: { x: 1, y: 0 }, low: false }
+                setSparring(false)
                 return
               }
               /* just inside a comfortable swing, so the first press lands without walking */
@@ -1809,6 +1936,31 @@ export function ParkRoom({
             title="Stand a target in front of you that never moves and never hits back"
           >
             {dummyShown ? '✕ Dummy away' : '🎯 Hit dummy'}
+          </button>
+        )}
+        {/*
+          ⚠️ ONLY WHEN THERE IS A DUMMY, so the toolbar does not grow a button that does
+          nothing most of the time — it already carries enough, and a control that is only
+          meaningful in one state should only exist in that state.
+
+          ⚠️ AND A SEPARATE SWITCH RATHER THAN A THIRD STATE OF THE FIRST. The still dummy's
+          whole value is being the one thing in the park with no variables in it, which is what
+          makes a swing's reach measurable; folding an attack clock into the same button would
+          mean you could not have that any more.
+        */}
+        {walking && dummyShown && (
+          <button
+            className={'btn' + (sparring ? ' is-on' : '')}
+            aria-pressed={sparring}
+            onClick={() => {
+              const on = !spar.current.on
+              spar.current = { on, t: 0, turn: 0, aim: { x: 1, y: 0 }, low: false }
+              sparHit.current = false
+              setSparring(on)
+            }}
+            title="Let the target attack you on a slow, steady beat. It pushes you about and can never take any health."
+          >
+            {sparring ? '✕ Stop sparring' : '🥊 Let it hit back'}
           </button>
         )}
         {walking && (
@@ -2391,10 +2543,14 @@ export function ParkRoom({
         drawn low on its owner — a tail sweep, a fissure, a marked patch — goes under you and misses
         completely. It does not save you from a hit drawn overhead, and you cannot swing, guard,
         roll or cast while you are up there, so it is an answer to one kind of attack rather than to
-        all of them. <strong>F</strong> and <strong>G</strong> swing, the same six moves your
-        creature has anywhere else. Call a boss and one of your own minions stands up big with a
-        health bar, where <em>everybody</em> in the park can see it and hit it — one boss at a time,
-        run by whoever called it, and it goes when they do.
+        all of them. Stand a target out with <strong>🎯 Hit dummy</strong> to feel how far a swing
+        reaches, and then let it <strong>hit back</strong> to practise those three answers on
+        something that throws on a slow steady beat and can never take a point of health off you:
+        roll through it, face it and guard, or jump the low one. <strong>F</strong> and{' '}
+        <strong>G</strong> swing, the same six moves your creature has anywhere else. Call a boss
+        and one of your own minions stands up big with a health bar, where <em>everybody</em> in the
+        park can see it and hit it — one boss at a time, run by whoever called it, and it goes when
+        they do.
       </p>
     </div>
   )
