@@ -23,9 +23,10 @@ import { VIEW } from '../park/walk'
  * which is the one failure mode that would make it worse than having none. The only thing this
  * invents is where the creature stands.
  *
- * ⚠️ AND THE ORDER IS THE DRAWING'S, not the declaration's. temperOf sorts the three by how
- * well they suit the picture, and that sort IS what 1, 2 and 3 do in the park — so this row is
- * the loadout rather than a catalogue, and redrawing a horn visibly reorders it.
+ * ⚠️ AND THE ORDER IS THE DRAWING'S, not the declaration's. temperOf picks three of the four
+ * kinds and sorts them by how well they suit the picture, and that sort IS what 1, 2 and 3 do
+ * in the park — so this row is the loadout rather than a catalogue. Redrawing a horn reorders
+ * it; changing how quick the thing is swaps one of the three for a different attack entirely.
  */
 
 /** how long it sits empty at the end before going round again, so the cooldown reads as a cost */
@@ -44,13 +45,15 @@ const STANDS = { x: 0.17, y: 0.54 }
  * asked for, "a horn pushes this up" is the same fact aimed at the thing you can actually do.
  *
  * ⚠️ AND IT HAS TO STAY TRUE. Each line below names the parts that feed the dial temper.ts
- * actually scores this cast on — charge for the swell, reach for the mark, nerve for the
- * fissure. A sentence that could disagree with the creature it describes is worse than none.
+ * actually uses — charge for the swell, nerve for the fissure, reach for the ranged slot, and
+ * pace for which of the two ranged answers fills it. A sentence that could disagree with the
+ * creature it describes is worse than none, so these move when that scoring moves.
  */
 const WHY: Record<CastKind, string> = {
   bloom:
     'Won by creatures that get on top of you: a horn, a wheel or a mouth pushes this up, and so does having no long parts to fight at the end of.',
-  mark: 'Won by reach. The longer the furthest thing you drew — a tail, a big hit of your own — the more this one suits you.',
+  mark: 'Won by reach: the longer the furthest thing you drew, the more this suits you. Slow and long-limbed marks the ground — quicker on its feet and it throws a bolt instead.',
+  bolt: 'The quick creature’s answer to fighting at range. Legs and short parts make a thrower; slower and longer-limbed marks the ground instead. Too high to jump — step out of the line or meet it with a guard.',
   wave: 'Won by creatures that never give ground: legs, a horn or a flame push this up, and wings or a float pull it down.',
 }
 

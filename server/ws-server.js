@@ -1953,11 +1953,13 @@ wss.on('connection', (ws, req) => {
            * range. Everything about what the move IS lives in the drawing the other end already
            * has.
            *
-           * ⚠️ 9 RATHER THAN 6 BECAUSE A CAST HAS TO REACH THE HOST. Damage to a shared boss
+           * ⚠️ 10 RATHER THAN 6 BECAUSE A CAST HAS TO REACH THE HOST, and 10 rather than 9 because
+           * there is a fourth kind now — the ceiling is SLOTS.length + 6 and moves whenever that
+           * list does. Damage to a shared boss
            * is worked out by the machine running it, from what everybody else broadcasts — so a
            * cast the relay clipped was a cast that did nothing to a friend's boss at all.
            */
-          a: Math.max(0, Math.min(9, Math.round(num(msg.a)))),
+          a: Math.max(0, Math.min(10, Math.round(num(msg.a)))),
           /** which of eight ways it is aimed — see octantOf; absent reads as straight ahead */
           d: Math.max(0, Math.min(7, Math.round(num(msg.d)))),
           /**
@@ -2091,7 +2093,7 @@ wss.on('connection', (ws, req) => {
            * message of their own — see cast.ts. Still clamped, because this object is rebuilt
            * rather than relayed and a console should not be able to name a tenth thing.
            */
-          a: Math.max(0, Math.min(9, Math.round(bnum(msg.a)))),
+          a: Math.max(0, Math.min(10, Math.round(bnum(msg.a)))),
           h: Math.max(0, Math.min(1, bnum(msg.h))),
           /**
            * Mid-pivot, so the window is visible to everybody and not only to whoever is running

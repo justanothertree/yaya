@@ -19,7 +19,14 @@ import type { Spot } from './walk'
  * does not fire in the pane any of this is checked in.
  */
 
-export type CastKind = 'bloom' | 'mark' | 'wave'
+/**
+ * ⚠️ FOUR KINDS AND THREE SLOTS, which is what makes the fourth one worth adding rather than
+ * just more. A creature gets the three that suit its drawing best, so one of the four is always
+ * missing — and which one is missing is as much a fact about the picture as which three are
+ * there. With three of three everybody had all of them in a different order; with three of four
+ * two creatures can genuinely not share an attack.
+ */
+export type CastKind = 'bloom' | 'mark' | 'wave' | 'bolt'
 
 /** One dangerous circle, at one moment. */
 export type Patch = {
@@ -60,6 +67,18 @@ export const CAST: Record<CastKind, { time: number; says: string; lift: number; 
     short: 'fissure',
     says: 'it splits the ground away from itself — cross it or jump it',
   },
+  /**
+   * ⚠️ CHEST HIGH ON PURPOSE, which is the whole reason it is not a fourth ground attack. Its
+   * lift sits above HOP.under, so a jump does nothing about it — you step out of the line, or
+   * you meet it with a guard. Two of the four are answered by jumping and two are not, so no
+   * single key is the answer to a boss's whole repertoire.
+   */
+  bolt: {
+    time: 1.2,
+    lift: 0.45,
+    short: 'bolt',
+    says: 'it throws something at you — step out of the line, or meet it',
+  },
 }
 
 /**
@@ -86,13 +105,17 @@ export const CAST: Record<CastKind, { time: number; says: string; lift: number; 
  * ⚠️ ABOVE THE SIX MOVE SLOTS. 0 is "nothing" and 1..6 are a creature's own moves, so casts
  * start at 7 — which is why the relay clamps that field to 9 rather than 6.
  */
-const SLOTS: CastKind[] = ['bloom', 'mark', 'wave']
+const SLOTS: CastKind[] = ['bloom', 'mark', 'wave', 'bolt']
 
 export const castSlot = (kind: CastKind): number => SLOTS.indexOf(kind) + 7
 
 export const castFromSlot = (n: number): CastKind | null => SLOTS[Math.round(n) - 7] ?? null
 
 const MARK_RANGE = 2.6
+/** where the bolt leaves from, how long it is telegraphed, and how fast it travels */
+const BOLT_FROM = 1.0
+const BOLT_WARN = 0.42
+const BOLT_SPEED = 7
 const WAVE_STEPS = 5
 const WAVE_GAP = 1.15
 const WAVE_ROLL = 0.16
@@ -126,6 +149,29 @@ export function patchesOf(kind: CastKind, from: Spot, aim: Aimed, t: number, sca
         r,
         ready: Math.min(1, t / warn),
         live: t >= warn && t <= warn + 0.26,
+      },
+    ]
+  }
+  if (kind === 'bolt') {
+    /**
+     * ⚠️ A PROJECTILE IS ONE PATCH WHOSE PLACE IS A FUNCTION OF TIME, and that is the entire
+     * implementation. Everything else in this module already treats a cast as "what is
+     * dangerous right now, given how long it has been going" — so a thing that travels needed
+     * no position on the wire, no per-frame state, no spawn and no despawn. The relay carries
+     * the same slot and the same elapsed it already carried for a fissure.
+     *
+     * ⚠️ WHICH ALSO MEANS EVERY MACHINE AGREES ABOUT WHERE IT IS without being told. Two
+     * players watching the same bolt compute the same circle from the same four numbers, which
+     * is the bargain the boss's other three already make and the reason none of them desync.
+     */
+    const flying = Math.max(0, t - BOLT_WARN)
+    const r = 0.34 * PARK_TALL * s
+    return [
+      {
+        at: stepFrom(from, aim, (BOLT_FROM + flying * BOLT_SPEED) * easedScale(s)),
+        r,
+        ready: Math.min(1, t / BOLT_WARN),
+        live: t >= BOLT_WARN,
       },
     ]
   }

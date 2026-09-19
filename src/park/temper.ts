@@ -272,6 +272,7 @@ export function temperOf(art: Drawing): Temper {
   const inBand = (v: number, lo: number, hi: number) =>
     Math.max(0, Math.min(1, (v - lo) / (hi - lo)))
   const chargeN = inBand(charge, 0, 0.95)
+  const paceN = inBand(pace, BAND.pace[0], BAND.pace[1])
   const rangeN = inBand(range, BAND.range[0], BAND.range[1])
   const nerveN = inBand(nerve, BAND.nerve[0], BAND.nerve[1])
   /* ⚠️ WEIGHTS SET AGAINST THE MEASURED SPREAD, the way saysOf's thresholds are. Picked by
@@ -281,10 +282,32 @@ export function temperOf(art: Drawing): Temper {
   const likesClose = chargeN * 1.4 + (1 - rangeN) * 0.2
   const likesRange = rangeN * 0.9
   const likesLines = nerveN * 0.9
+  /**
+   * ⚠️ THE RANGED SLOT IS A FORK, NOT A FOURTH COMPETITOR, and that is a decision about the
+   * population rather than about the attack. Scoring four things against each other needs the
+   * four scores to separate on real drawings — and the real drawings do not oblige: across the
+   * thirteen on this machine there are only FOUR distinct tempers (eight are test probes with
+   * identical dials), charge sits between 0.12 and 0.34 inside a 0..0.95 band, and the three
+   * existing scores already land within 6% of each other on the commonest profile. A fourth
+   * weight tuned to separate four points is a weight fitted to four points, which is how the
+   * size dial and the first cast dial both ended up pinned.
+   *
+   * So the two RANGED answers split on a second question instead of competing on the first.
+   * Something that fights at the end of its reach either plants and marks the ground or throws
+   * something at you, and which of those it is comes down to how quick it is. That is legible
+   * at the pencil — shorter legs and longer parts make a marker, the other way round makes a
+   * thrower — and it cannot be pinned, because it is a side of a threshold rather than the top
+   * of a ranking.
+   *
+   * ⚠️ AND THE THRESHOLD IS THE OBSERVED MEDIAN. Normalised pace runs 0.47 to 0.67 on the real
+   * shapes with its middle at about 0.52, so that is where the fork goes: against the band's own
+   * midpoint of 0.5 it would look identical and mean something else entirely.
+   */
+  const ranged: CastKind = paceN >= 0.52 ? 'bolt' : 'mark'
   const casts = (
     [
       ['bloom', likesClose],
-      ['mark', likesRange],
+      [ranged, likesRange],
       ['wave', likesLines],
     ] as Array<[CastKind, number]>
   )
