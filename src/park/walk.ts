@@ -116,6 +116,20 @@ export const MARKS: Mark[] = [
  * the field is 16:10, so a circle in world units is an ellipse to look at and "near" would mean
  * something different going north than going east.
  */
+/**
+ * The place nearest to somewhere, which is never null.
+ *
+ * ⚠️ markAt ASKS "AM I AT ONE", THIS ASKS "WHICH ONE IS THIS NEAR". Two different questions:
+ * the first is for telling you where you are standing and has to be able to say "nowhere in
+ * particular"; the second is for putting something somewhere nameable and must always answer.
+ */
+export const nearestMark = (at: Spot): Mark =>
+  MARKS.reduce((best, m) => {
+    const d = (o: Mark) =>
+      Math.hypot((((at.x - o.at.x) / VIEW.w) * 16) / 10, (at.y - o.at.y) / VIEW.h)
+    return d(m) < d(best) ? m : best
+  }, MARKS[0])
+
 export const markAt = (me: Spot): Mark | null => {
   for (const m of MARKS) {
     const dx = ((me.x - m.at.x) / VIEW.w) * (16 / 10)

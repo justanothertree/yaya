@@ -12,6 +12,7 @@ import {
   PARK,
   MARKS,
   markAt,
+  nearestMark,
   restingWalker,
   stepWalker,
   STILL,
@@ -1931,7 +1932,10 @@ export function ParkRoom({
   const whereIAm = walking ? markAt(shownYou) : null
 
   const bossSays = (() => {
-    if (bossShown) return `${bossShown.name} — ${saysOf(bossShown.temper)}`
+    /* ⚠️ WHERE IT IS, out of the same table the map draws from — see nearestMark. The one
+       thing a friend needs in order to come and help is which way to walk. */
+    if (bossShown)
+      return `${bossShown.name}, at ${nearestMark(bossShown).name} — ${saysOf(bossShown.temper)}`
     if (theirBoss) {
       const t = echoKit.current?.by === theirBoss.by ? echoKit.current.temper : null
       if (!t) return null
@@ -1947,9 +1951,10 @@ export function ParkRoom({
        * things already on this machine being put next to each other.
        */
       const caller = state.current.here.get(theirBoss.by)?.name
+      const place = nearestMark(theirBoss.shown).name
       return caller
-        ? `${theirBoss.name}, stood up by ${caller} — ${saysOf(t)}`
-        : `${theirBoss.name} — ${saysOf(t)}`
+        ? `${theirBoss.name}, stood up by ${caller} at ${place} — ${saysOf(t)}`
+        : `${theirBoss.name}, at ${place} — ${saysOf(t)}`
     }
     if (!bossKit || !bossArt) return null
     const who = (bossable[bossPick] ?? bossable[0])?.name ?? 'It'
@@ -1999,11 +2004,27 @@ export function ParkRoom({
                 return
               }
               const art = bossable[bossPick] ?? bossable[0]
-              /* ⚠️ a little way off rather than on top of you, so a boss arriving is something
-                 you walk towards rather than something that lands on your head */
+              /**
+               * ⚠️ AT THE NEAREST PLACE, NOT AT YOUR FEET. A boss used to stand up a fixed
+               * step east of wherever you happened to be, which meant a fight could happen
+               * anywhere and therefore happened nowhere — the one thing the park had no word
+               * for. Now it goes to the nearest landmark, so every fight is AT somewhere: you
+               * can tell a friend where it is, they can see it on the map, and the ring is
+               * finally named after what it is for.
+               *
+               * ⚠️ AND IT IS STILL A STEP AWAY RATHER THAN ON YOUR HEAD, which is what the
+               * old offset was for. If you are already standing at the middle of the place,
+               * it takes the same step east from there.
+               */
+              const spot = nearestMark(you.current).at
+              const onTop =
+                Math.hypot(
+                  ((spot.x - you.current.x) / VIEW.w) * 1.6,
+                  (spot.y - you.current.y) / VIEW.h,
+                ) < 0.14
               boss.current = makeBoss(art.name, art.art, {
-                x: Math.max(0.05, Math.min(0.95, you.current.x + 0.1)),
-                y: you.current.y,
+                x: Math.max(0.05, Math.min(0.95, onTop ? spot.x + 0.1 : spot.x)),
+                y: spot.y,
               })
               bossDoneAt.current = 0
               /* last fight's line goes when the next one starts, or it reads as this one's */
