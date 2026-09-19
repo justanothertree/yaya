@@ -8566,6 +8566,24 @@ a.cz-msg-author:focus-visible {
   border: 1px dashed color-mix(in srgb, var(--text) 38%, transparent);
   background: color-mix(in srgb, var(--text) 5%, transparent);
 }
+/* the one question the drawing cannot answer — see MoveShow */
+.move-show-shape {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 2px;
+  padding-top: 6px;
+  border-top: 1px solid color-mix(in srgb, var(--line) 55%, transparent);
+}
+.move-show-shape > .muted {
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+.move-show-shape-why {
+  font-size: 0.72rem;
+  font-weight: 400;
+  line-height: 1.35;
+}
 .move-show-dup {
   opacity: 0.6;
   font-style: normal;

@@ -54,6 +54,14 @@ export type PaintSession = {
    * creature from the minion room and keeping it again wrote 8 over whatever it was.
    */
   fps?: number
+  /**
+   * What kind of hit each part throws — see Drawing.hits.
+   *
+   * ⚠️ PART OF THE DRAWING, LIKE fps ABOVE, and here for exactly the reason that note gives:
+   * the handoff is how a creature travels between the minion room and Paint, and a field the
+   * handoff cannot carry is a field that silently resets every time you cross between them.
+   */
+  hits?: Record<string, string>
 }
 
 let held: PaintSession | null = null

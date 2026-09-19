@@ -1,5 +1,5 @@
 import type { Drawing } from '../draw/strokes'
-import { attacksOf, moveTable, type Attack } from '../pets/attack'
+import { movesOf, type Attack } from '../pets/attack'
 import { bodyRatio, rigOf, type PartKind } from '../pets/rig'
 
 /**
@@ -132,7 +132,7 @@ export function temperOf(art: Drawing): Temper {
   const has = (k: PartKind) => count.has(k)
   const many = (k: PartKind) => Math.min(2, count.get(k) ?? 0)
 
-  const moves = moveTable(attacksOf(rigOf(art)))
+  const moves = movesOf(art)
   const reach = longest(moves)
   /* 0 for a stub, 1 for the longest thing the templates can produce — see the reach note */
   const far = hold((reach - 0.7) / 0.9, [0, 1] as const)

@@ -43,10 +43,10 @@ import { applyLayerOp, type LayerOp, type Stack } from '../draw/layerOps'
 import { paintSession } from '../draw/session'
 import { savePet } from '../pets/pets'
 import { PetView } from '../pets/PetView'
-import { PART_DOES, PART_WORDS, inFrontOfOrder, inkBox, partOf, rigOf } from '../pets/rig'
+import { PART_DOES, PART_WORDS, inFrontOfOrder, inkBox, partOf } from '../pets/rig'
 import { MoveShow } from '../pets/MoveShow'
 import { saysOf, temperOf } from '../park/temper'
-import { attacksOf, moveTable } from '../pets/attack'
+import { movesOf } from '../pets/attack'
 import { AlsoTogether } from '../ui/AlsoTogether'
 import { useVoiceSession } from '../voice/useVoiceSession'
 
@@ -280,6 +280,15 @@ export function PaintRoom() {
   const [tool, setTool] = useState<Tool>(() => LAST?.tool ?? 'brush')
   const [belt, setBelt] = useState<Tool[]>(readBelt)
   /**
+   * What kind of hit each part throws, when it has been asked.
+   *
+   * ⚠️ KEYED BY PART WORD, NOT BY LAYER. attacksOf builds one attack per KIND — the biggest
+   * part of that kind wins — so two layers both called "arm" are one move, and a map keyed by
+   * layer would be two answers to a question that has one. It also survives renaming a layer from
+   * "arm" to "arm 2", which a layer index would not.
+   */
+  const [hits, setHits] = useState<Record<string, string>>(() => paintSession.restore()?.hits ?? {})
+  /**
    * When each tool was last picked, as a counter rather than a clock.
    *
    * ⚠️ A REF, BECAUSE NOTHING RENDERS FROM IT. It only decides which slot a new tool takes,
@@ -446,6 +455,7 @@ export function PaintRoom() {
     /* an empty page has no proportions to protect — see freeAr — and is nothing's edit */
     setFreeAr(null)
     setDocName('')
+    setHits({})
     setFps(8)
     /* the guide was walking you through parts that no longer exist */
     setPetStep(null)
@@ -468,8 +478,9 @@ export function PaintRoom() {
       ratio: shapeAr || undefined,
       name: docName || undefined,
       fps,
+      hits: Object.keys(hits).length ? hits : undefined,
     })
-  }, [strokes, bg, hidden, layerNames, shapeAr, docName, fps])
+  }, [strokes, bg, hidden, layerNames, shapeAr, docName, fps, hits])
 
   /**
    * ⚠️ PINNED ON THE FIRST STROKE, not on every render. Before there is anything on the page
@@ -652,6 +663,7 @@ export function PaintRoom() {
     bg,
     layers: layerNames.length ? layerNames : undefined,
     fps,
+    hits: Object.keys(hits).length ? hits : undefined,
     strokes,
   }
 
@@ -1402,7 +1414,7 @@ export function PaintRoom() {
   const petPreview = useMemo(
     () => ({ ...drawingRef.current }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [strokes, layerNames, bg, fps],
+    [strokes, layerNames, bg, fps, hits],
   )
 
   /**
@@ -1572,9 +1584,8 @@ export function PaintRoom() {
   }, [petStep, petPreview])
 
   const petMoves = useMemo(() => {
-    const parts = attacksOf(rigOf(petPreview))
-    if (!parts.length) return null
-    return moveTable(parts)
+    const table = movesOf(petPreview)
+    return table.length ? table : null
   }, [petPreview])
 
   /**
@@ -3604,7 +3615,24 @@ export function PaintRoom() {
                     <span className="muted paint-pet-moves">
                       Every part you name is a move. Press one to watch it.
                     </span>
-                    <MoveShow art={petPreview} moves={petMoves} tall={92} />
+                    <MoveShow
+                      art={petPreview}
+                      moves={petMoves}
+                      tall={92}
+                      hits={hits}
+                      onShape={(part, shape) =>
+                        setHits((h) => {
+                          /* ⚠️ swipe is the ABSENCE of a choice, not a choice. Storing it would
+                             put a map on every drawing anybody ever opened the wizard on, and
+                             "nothing said means the drawing decides" is what keeps a creature
+                             made before today fighting exactly as it did. */
+                          const next = { ...h }
+                          if (shape === 'swipe') delete next[part]
+                          else next[part] = shape
+                          return next
+                        })
+                      }
+                    />
                     <span className="muted paint-pet-moves">
                       Called out as a boss: {petBoss.says} <strong>{petBoss.life}</strong> health.
                     </span>
@@ -3729,6 +3757,10 @@ export function PaintRoom() {
                           setLayer(0)
                           setLayerNames(a.art.layers ?? [])
                           if (a.art.fps) setFps(a.art.fps)
+                          /* ⚠️ AND ITS MOVES. The shapes are part of what was made, the same way
+                           the layer names are — opening a creature to find its slam had gone back
+                           to a swipe is the "names not saving" bug in a second place. */
+                          setHits(a.art.hits ?? {})
                           /* ⚠️ AND ITS SHAPE. A drawing's ratio is its proportions; opening it onto
                              whatever shape this window happens to be was the same stretch as
                              resizing — see freeAr. */

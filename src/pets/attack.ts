@@ -1,5 +1,5 @@
 import { PET_TALL } from './play'
-import { bodyRatio, type Box, type Part, type PartKind } from './rig'
+import { bodyRatio, rigOf, type Box, type Part, type PartKind } from './rig'
 import type { Drawing } from '../draw/strokes'
 
 /**
@@ -64,7 +64,94 @@ export type Attack = {
    * what all the derived moves want.
    */
   layer?: number
+  /**
+   * True when its owner chose this move's shape rather than letting the drawing decide.
+   *
+   * ⚠️ IT IS A CLAIM ON A BUTTON, which is the whole reason it exists — see moveTable. A
+   * shape is a trade, so a shaped move is deliberately worse at something, and "worst at
+   * everything it is not for" is exactly the profile that wins no slot at all. Measured: a head
+   * given a spin lost all six buttons on a creature with a tail and a wing, so choosing it made
+   * the move unreachable. Drawn attacks already had this problem and already have this answer.
+   */
+  chosen?: boolean
 }
+
+/**
+ * What shape a hit is, when its owner has said.
+ *
+ * ⚠️ THE ONE THING THE DRAWING CANNOT TELL YOU. Everything else about a move is read off the
+ * picture — how far it reaches, how hard it lands, how long it takes — and that works because
+ * those are all questions about SIZE, which a drawing answers by being a size. "Does this sweep
+ * the ground or come round both sides" is not a question about size, and inferring it from stroke
+ * direction would be a guess that is wrong often enough to feel like the game ignoring you.
+ *
+ * ⚠️ AND SHAPES ARE TRADES, NEVER UPGRADES. Every one of these gives something up for what
+ * it gains: a slam is short and slow for its damage, a lunge is long and quick for being feeble
+ * and punishable, a spin covers both sides for reaching least of all. That is what lets somebody
+ * choose freely without it being a question of who picked the strongest — the worry about
+ * balancing everyone's drawing, answered by there being nothing to win.
+ *
+ * ⚠️ SIZE STILL COMES FROM THE PICTURE. These are multipliers on the derived move, so a long
+ * arm slams further than a stubby one. Choosing the kind never overrules what you drew.
+ */
+export type HitShape = 'swipe' | 'slam' | 'lunge' | 'spin'
+
+export const HIT_SHAPES: Array<[HitShape, string, string]> = [
+  ['swipe', 'Swipe', 'A straight hit in front of it. No surprises either way.'],
+  ['slam', 'Slam', 'Short, slow and heavy, low to the ground. Telegraphed — and answerable.'],
+  ['lunge', 'Lunge', 'Long and quick, but feeble, and it is left hanging afterwards.'],
+  ['spin', 'Spin', 'Comes round BOTH sides, so facing does not save you. Reaches least.'],
+]
+
+export const isHitShape = (v: unknown): v is HitShape => HIT_SHAPES.some(([id]) => id === v)
+
+/** The trades, as multipliers on whatever the drawing already earned. */
+const SHAPED: Record<HitShape, (a: Attack) => Attack> = {
+  swipe: (a) => a,
+  slam: (a) => ({
+    ...a,
+    reach: a.reach * 0.78,
+    rise: a.rise * 1.5,
+    /* ⚠️ 1.25 AND NOT 1.35, which is what it was until it was measured. A slam is 1.25 times
+       as long to commit to, so 1.35 damage made it the hardest hitter AND the best damage per
+       second at once — measured at 12.4 against a swipe's 11.5, which is a shape with no downside
+       and therefore the shape everybody picks. Matched to the commitment, it trades reach and
+       speed for weight and wins nothing on the exchange. */
+    bite: a.bite * 1.25,
+    span: a.span * 1.3,
+    rest: a.rest * 1.2,
+    /* ⚠️ a longer wind-up INSIDE a longer swing: the whole point of a slam is that you can
+       see it coming, which is a fraction of the span rather than a number of seconds */
+    live: [Math.min(0.72, a.live[0] * 1.25), a.live[1]],
+  }),
+  lunge: (a) => ({
+    ...a,
+    reach: a.reach * 1.35,
+    bite: a.bite * 0.75,
+    span: a.span * 0.85,
+    rest: a.rest * 1.15,
+    live: [a.live[0], Math.min(a.live[1], a.live[0] + (a.live[1] - a.live[0]) * 0.7)],
+  }),
+  spin: (a) => ({
+    ...a,
+    both: true,
+    reach: a.reach * 0.72,
+    bite: a.bite * 0.85,
+    span: a.span * 1.2,
+    rest: a.rest * 1.35,
+  }),
+}
+
+/**
+ * The move as its owner shaped it.
+ *
+ * ⚠️ UNKNOWN NAMES ARE LEFT ALONE, not defaulted to swipe and not dropped. A drawing can
+ * arrive from localStorage, from a profile block or from the relay, and the one thing it must
+ * never do is turn into a different creature because it mentions a shape this build has not heard
+ * of. Nothing said means the drawing decides, which is what it did before any of this existed.
+ */
+export const shaped = (a: Attack, shape: string | undefined): Attack =>
+  shape && isHitShape(shape) ? { ...SHAPED[shape](a), chosen: true } : a
 
 /**
  * One template per kind of part, which is the whole roster.
@@ -320,7 +407,7 @@ function bulk(p: Part, ink: Box): number {
  * is always the one you have to mean. The room binds two buttons to the ends of this list, which
  * is why the order is part of the answer rather than a detail of how it was built.
  */
-export function attacksOf(parts: Part[]): Attack[] {
+export function attacksOf(parts: Part[], hits?: Record<string, string>): Attack[] {
   /**
    * ⚠️ THE BODY, NOT THE BODY PLUS WHATEVER IT CAN SWING. Every measurement below is relative
    * to how big the creature is, and a hit layer is an attack rather than anatomy — so counting
@@ -328,7 +415,10 @@ export function attacksOf(parts: Part[]): Attack[] {
    * slash itself score as a smaller fraction of a creature it had just inflated.
    */
   const ink = inkOf(parts.filter((p) => p.kind !== 'hit')) ?? inkOf(parts)
-  if (!ink) return [POUNCE]
+  /* ⚠️ THE FALLBACK IS SHAPEABLE TOO. A creature with nothing named still has one move, and
+     it is the only move it has — leaving this path unshaped would mean the wizard did nothing at
+     all for the simplest creature anybody can make, which is the first one everybody makes. */
+  if (!ink) return [shaped(POUNCE, hits?.[POUNCE.from])]
 
   const best = new Map<PartKind, number>()
   for (const p of parts) {
@@ -362,9 +452,27 @@ export function attacksOf(parts: Part[]): Attack[] {
    * it here as well produced a "big big sweep": a heavy made out of a heavy, commitment squared.
    */
   const drawn = drawnAttacks(parts, ink)
-  const all = [...out, ...drawn]
-  return all.length ? all.sort((a, b) => a.span + a.rest - (b.span + b.rest)) : [POUNCE]
+  /**
+   * ⚠️ SHAPED HERE, BEFORE THE SORT AND BEFORE THE TABLE. The order these come out in is by
+   * total commitment, and a shape CHANGES the commitment — a slam is slower than the swipe it was
+   * made from. Shaping afterwards would sort them by what they used to be, and then moveTable
+   * would hand the six slots out on the same stale reading.
+   */
+  const all = [...out, ...drawn].map((a) => shaped(a, hits?.[a.from]))
+  return all.length
+    ? all.sort((a, b) => a.span + a.rest - (b.span + b.rest))
+    : [shaped(POUNCE, hits?.[POUNCE.from])]
 }
+
+/**
+ * Every move a drawing has, shaped as its owner asked, in button order.
+ *
+ * ⚠️ ONE DOOR, because five rooms were each writing `moveTable(attacksOf(rigOf(art)))` by
+ * hand and a sixth wrote a variant of it. Adding the shapes to that expression meant adding them
+ * in five places and hoping — and the thing this repository has learned most often is that the
+ * call site you did not think of is the one that is wrong. There is nothing to remember now.
+ */
+export const movesOf = (art: Drawing): Attack[] => moveTable(attacksOf(rigOf(art), art.hits))
 
 /**
  * A committed version of a move, for a creature that only has the one.
@@ -460,7 +568,9 @@ export function moveTable(list: Attack[]): Attack[] {
   }
   const claimed = new Map<Role, Attack>()
   for (const a of src) {
-    if (a.from !== 'hit') continue
+    /* ⚠️ A HIT YOU DREW OR A SHAPE YOU CHOSE — both are somebody saying what they want, and
+       both lose on the raw scores for exactly the reason they are interesting. See `chosen`. */
+    if (a.from !== 'hit' && !a.chosen) continue
     const r = roleOf(a)
     const had = claimed.get(r)
     if (!had || SCORE[r](a) > SCORE[r](had)) claimed.set(r, a)

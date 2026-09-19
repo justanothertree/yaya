@@ -41,8 +41,8 @@ import {
   type StrikeInput,
   type Striker,
 } from './strike'
-import { attacksOf, moveTable, petWide, type Attack } from '../pets/attack'
-import { footRoom, rigOf } from '../pets/rig'
+import { movesOf, petWide, type Attack } from '../pets/attack'
+import { footRoom } from '../pets/rig'
 import { lungeOf } from '../pets/fight'
 import {
   beaten,
@@ -312,10 +312,7 @@ export function ParkRoom({
   const tooBig = useMemo(() => (myArt ? !lookFits(myArt) : false), [myArt])
 
   /* ⚠️ read once per creature, never per frame — rigOf walks every stroke */
-  const myMoves = useMemo<Attack[]>(
-    () => (myArt ? moveTable(attacksOf(rigOf(myArt))) : []),
-    [myArt],
-  )
+  const myMoves = useMemo<Attack[]>(() => (myArt ? movesOf(myArt) : []), [myArt])
   const boss = useRef<Boss | null>(null)
   const [bossShown, setBossShown] = useState<Boss | null>(null)
   const [bossPick, setBossPick] = useState(0)
@@ -848,7 +845,7 @@ export function ParkRoom({
   void swingAt
   const others: Someone[] = [...state.current.here.values()]
   for (const o of others)
-    if (!foeMoves.current.has(o.id)) foeMoves.current.set(o.id, moveTable(attacksOf(rigOf(o.art))))
+    if (!foeMoves.current.has(o.id)) foeMoves.current.set(o.id, movesOf(o.art))
   /* roster is read so this recomputes when somebody joins or leaves — see the note on the loop */
   void roster
   /* somebody else's boss, which this screen echoes rather than runs — see BossEcho */

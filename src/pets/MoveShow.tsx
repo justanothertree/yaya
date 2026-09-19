@@ -3,7 +3,7 @@ import type { Drawing } from '../draw/strokes'
 import { PetView } from './PetView'
 import { bodyRatio, petCanvas } from './rig'
 import { lungeOf, phaseOf } from './fight'
-import type { Attack } from './attack'
+import { HIT_SHAPES, type Attack, type HitShape } from './attack'
 
 /**
  * What your creature's moves actually look like.
@@ -67,10 +67,16 @@ export function MoveShow({
   moves,
   /** the creature's height in the preview, in pixels */
   tall = 104,
+  hits,
+  onShape,
 }: {
   art: Drawing
   moves: Attack[]
   tall?: number
+  /** what kind each part throws — see Drawing.hits */
+  hits?: Record<string, string>
+  /** given, this turns the preview into the place you DECIDE rather than only watch */
+  onShape?: (part: string, shape: HitShape) => void
 }) {
   /**
    * Which earlier button already throws this exact move.
@@ -86,6 +92,21 @@ export function MoveShow({
     ),
   )
   const [pick, setPick] = useState(0)
+  /**
+   * Which PART you were last looking at, so shaping it does not move it out from under you.
+   *
+   * ⚠️ A SLOT IS NOT A MOVE. The six buttons are won by whichever attack is best at going
+   * that way, and a shape changes what an attack is best at — so pressing Slam on the head made
+   * the head slower, handed that slot to the wing, and left the wizard showing the wing with
+   * Swipe marked. Watched exactly that: press Slam, panel says Swipe, because it was no longer
+   * the same creature's head being asked about. The belt learned the same lesson the other way
+   * round; a control that answers a different question after you press it is worse than one that
+   * refuses.
+   *
+   * So the selection follows the PART. The slot it lives in may move; what you are editing does
+   * not.
+   */
+  const want = useRef<string | null>(null)
   /* ⚠️ asked here rather than taken as a prop, so this cannot be dropped into a room that
      forgot about it — and unverifiable in the Browser pane, which cannot emulate the setting */
   const [still, setStill] = useState(
@@ -100,6 +121,15 @@ export function MoveShow({
   }, [])
   const [gone, setGone] = useState(0)
   const a = moves[pick] ?? moves[0]
+
+  useEffect(() => {
+    const here = moves[pick]
+    if (!want.current || !here || here.from === want.current) return
+    const again = moves.findIndex((m) => m.from === want.current)
+    /* gone entirely — the part lost every slot — so stop chasing it and stay where we are */
+    if (again < 0) want.current = here.from
+    else setPick(again)
+  }, [moves, pick])
   const cycle = a ? a.span + a.rest + PAUSE : 1
 
   /**
@@ -146,6 +176,8 @@ export function MoveShow({
             aria-pressed={i === pick}
             onClick={() => {
               setPick(i)
+              /* what you chose is a PART from here on — see `want` */
+              want.current = m.from
               at.current = 0
               setGone(0)
             }}
@@ -210,6 +242,51 @@ export function MoveShow({
           ? `The same move as ${BUTTON[sameAs[pick]]}. Name another layer and this button gets one of its own.`
           : tweakFor(a)}
       </p>
+
+      {/**
+       * The one question the drawing cannot answer, asked where you can see the answer.
+       *
+       * ⚠️ UNDER THE MOVE PLAYING, NOT IN A PANEL OF ITS OWN. "Very easy follow-along wizard"
+       * is the ask, and the thing that makes this one followable is that pressing a shape changes
+       * the animation above it on the spot — the box the move covers, how long it winds up, how
+       * far it goes. It is one question about the thing you are looking at.
+       *
+       * ⚠️ IT SETS THE PART, NOT THE BUTTON. Six buttons share however many parts you drew,
+       * so shaping "the F button" would silently shape whatever else that part answers for. The
+       * line underneath says which part is being changed, so that is never a surprise.
+       */}
+      {onShape && (
+        <div className="move-show-shape">
+          <span className="muted">What does this do?</span>
+          <span className="move-show-pick">
+            {HIT_SHAPES.map(([id, label, why]) => {
+              const on = (hits?.[a.from] ?? 'swipe') === id
+              return (
+                <button
+                  key={id}
+                  className={'btn' + (on ? ' is-on' : '')}
+                  aria-pressed={on}
+                  title={why}
+                  onClick={() => {
+                    /* ⚠️ claimed BEFORE the table is rebuilt, or the first thing you shape is
+                       the one thing this cannot follow — see `want` */
+                    want.current = a.from
+                    onShape(a.from, id)
+                  }}
+                >
+                  {label}
+                </button>
+              )
+            })}
+          </span>
+          <span className="muted move-show-shape-why">
+            {HIT_SHAPES.find(([id]) => id === (hits?.[a.from] ?? 'swipe'))?.[2]}
+            <br />
+            Sets every move thrown with the <strong>{a.from}</strong>. Size still comes from how big
+            you drew it.
+          </span>
+        </div>
+      )}
     </div>
   )
 }

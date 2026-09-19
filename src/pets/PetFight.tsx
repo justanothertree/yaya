@@ -3,7 +3,7 @@ import type { Drawing } from '../draw/strokes'
 import { PetView } from './PetView'
 import { ScrapFriend } from './ScrapFriend'
 import { footRoom, petCanvas, rigOf } from './rig'
-import { attacksOf, moveTable, pairOf, petWide, type Attack } from './attack'
+import { movesOf, pairOf, petWide, type Attack } from './attack'
 import {
   fightEffort,
   fightStance,
@@ -151,7 +151,7 @@ export function PetFight({
       /* ⚠️ the six-slot table, not the raw part list — see moveTable. A fighter stores which
          move it is throwing as an index into whatever it was given, so this has to be the same
          list the hit test, the phase readout and the network all look up. */
-      moves: rigs.map((r) => moveTable(attacksOf(r))) as Attack[][],
+      moves: side.map((p) => movesOf(p.art)) as Attack[][],
       traits: rigs.map((r) => traitsOf(r)) as Traits[],
       wides: side.map((p) => petWide(p.art)),
     }

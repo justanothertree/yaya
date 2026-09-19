@@ -200,6 +200,19 @@ export type Drawing = {
   layers?: string[]
   /** frames a second when this is played back */
   fps?: number
+  /**
+   * What KIND of hit each part throws, when its owner has said — part word to shape name.
+   *
+   * ⚠️ PLAIN STRINGS, BECAUSE THIS FILE MUST NOT KNOW WHAT THEY MEAN. The shapes and the
+   * part kinds both live in the pets module, and rig.ts already imports from here — typing this
+   * against PartKind or HitShape would make the dependency a circle. So the drawing carries the
+   * map and the module that understands attacks does the understanding, which is the same split
+   * layer NAMES already follow: a layer called "wing" means nothing here either.
+   *
+   * ⚠️ ABSENT MEANS THE DRAWING DECIDES, which is what it did before any of this existed.
+   * Every creature made until now has no map, and must keep fighting exactly as it did.
+   */
+  hits?: Record<string, string>
   strokes: Stroke[]
 }
 
@@ -303,8 +316,37 @@ export function readDrawing(v: unknown): Drawing | null {
       ? o.layers.slice(0, MAX_LAYERS).map((n) => (typeof n === 'string' ? n.slice(0, 24) : ''))
       : undefined,
     fps: typeof o.fps === 'number' && o.fps >= 1 && o.fps <= 24 ? Math.round(o.fps) : undefined,
+    hits: hitMap(o.hits),
     strokes,
   }
+}
+
+/**
+ * The part-to-shape map, re-validated on the way OUT like everything else here.
+ *
+ * ⚠️ BOUNDED, NOT UNDERSTOOD. This cannot check that "slam" is a real shape without knowing
+ * what shapes are, which is the pets module's business — so it checks what it CAN: that this is
+ * an object of short strings and not very many of them. A name this build has never heard of is
+ * left alone and simply ignored downstream, so a drawing from a newer build loses a shape rather
+ * than becoming a different creature. localStorage is editable by anything on this origin and a
+ * drawing ends up rendered on somebody else's profile, so an unbounded map is an unbounded map
+ * somebody else's browser has to hold.
+ */
+const MAX_HITS = 16
+function hitMap(v: unknown): Record<string, string> | undefined {
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return undefined
+  const out: Record<string, string> = {}
+  let n = 0
+  for (const [k, val] of Object.entries(v as Record<string, unknown>)) {
+    if (n >= MAX_HITS) break
+    if (typeof k !== 'string' || typeof val !== 'string') continue
+    const key = k.slice(0, 20).trim()
+    const shape = val.slice(0, 12).trim()
+    if (!key || !shape) continue
+    out[key] = shape
+    n++
+  }
+  return n ? out : undefined
 }
 
 /** Only the offered segment counts, so a hand-edited file cannot ask for 4000 copies. */
@@ -1329,6 +1371,16 @@ export type PackedDrawing = {
   /** frames a second, v5 only */
   fp?: number
   /**
+   * What kind of hit each part throws — see Drawing.hits.
+   *
+   * ⚠️ NO VERSION BUMP, AND THAT IS NOT AN OVERSIGHT. The rule above is about the stroke ROW,
+   * which is positional — a new fixed field there shifts everything after it, so a reader that
+   * did not know about it would take a modifier as a coordinate. This is a NAMED key on the
+   * document, so an older build simply does not look at it and reads the same picture it always
+   * did, and a newer build reading an older file finds nothing and lets the drawing decide.
+   */
+  h?: Record<string, string>
+  /**
    * [tool, colour, alpha%, width‰, segments, echoes, ...points‰] — colour 0 none, 1 rainbow.
    * v5 inserts [layer, frame] after echoes, frame -1 meaning every frame.
    */
@@ -1552,6 +1604,11 @@ export function packDrawing(d: Drawing): PackedDrawing {
     b: d.bg ? d.bg.slice(1) : 0,
     ...(layered && d.layers?.length ? { l: d.layers } : {}),
     ...(layered && d.fps ? { fp: d.fps } : {}),
+    /* ⚠️ NOT GATED ON `layered`, unlike the two above. Those are animation fields and the note
+       on packDrawing is about not making a flat drawing pay for being an animation — but a
+       creature with one layer can still have chosen what its pounce does, and dropping that
+       because it has no second layer would lose the choice of the simplest creature there is. */
+    ...(d.hits && Object.keys(d.hits).length ? { h: d.hits } : {}),
     /* ⚠️ The words go on the END of the row, after the points. A reader that does not know
        about text does `row.slice(fixed)` and then keeps only the numbers — so an older build
        drops the string and still draws the baseline, rather than choking on it. */
@@ -1605,6 +1662,8 @@ function unpack(v: Record<string, unknown>): Drawing | null {
     bg: typeof v.b === 'string' ? `#${v.b}` : null,
     layers: Array.isArray(v.l) ? v.l : undefined,
     fps: typeof v.fp === 'number' ? v.fp : undefined,
+    /* readDrawing is what decides whether any of this is allowed — see hitMap */
+    hits: v.h,
     strokes,
   })
 }
