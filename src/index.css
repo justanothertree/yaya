@@ -8499,6 +8499,15 @@ a.cz-msg-author:focus-visible {
    the same language the beaten boss uses, so one glance tells you who is on the floor. The
    transform sits on the PICTURE rather than on .park-one, because the wrapper already carries the
    positioning transform and overwriting it would move the creature off its own feet. */
+/**
+ * ⚠️ ROLLING READS AS NOT-QUITE-THERE. It is a quarter of a second, so anything slow enough
+ * to animate would finish after the invulnerability had — a flat change of state is the honest
+ * thing here, on for exactly as long as the safety is.
+ */
+.park-one.is-rolling canvas {
+  opacity: 0.45;
+  filter: brightness(1.5) saturate(0.4);
+}
 .park-one.is-down canvas {
   transform: rotate(-72deg) translateY(12%);
   filter: grayscale(0.8) brightness(0.75);

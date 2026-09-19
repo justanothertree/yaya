@@ -48,6 +48,10 @@ export type Striker = Walker & {
    * free because there was only ever one.
    */
   aim: Aimed
+  /** seconds left of a dodge, 0 when not rolling — see stepDodge */
+  dodge: number
+  /** seconds before another may be thrown, so it is an answer and not a way of walking */
+  dodgeRest: number
 }
 
 export type StrikeInput = { quick: boolean; heavy: boolean; up: boolean; down: boolean }
@@ -64,7 +68,76 @@ export const restingStriker = (w: Walker): Striker => ({
   heldQ: false,
   heldH: false,
   aim: { x: 1, y: 0 },
+  dodge: 0,
+  dodgeRest: 0,
 })
+
+/**
+ * How long a dodge lasts, how far it goes, and how long before another.
+ *
+ * ⚠️ LONGER THAN THE THING IT ANSWERS IS NOT THE POINT — SHORTER IS. A boss's dangerous
+ * window is 111 to 456ms; a dodge that outlasted it would be an off switch. 0.26s of
+ * invulnerability inside a 400ms telegraph means the dodge has to be TIMED, which is the whole
+ * reason to have one rather than just walking.
+ *
+ * ⚠️ AND IT COVERS MORE GROUND THAN THE DEPTH OF A SWING, or it would move you within the
+ * thing you were trying to leave. 1.3 pet-heights against a cap of 0.28 of the field.
+ */
+export const DODGE = { time: 0.26, rest: 0.55, reach: 1.3 }
+
+/**
+ * One step of rolling out of the way.
+ *
+ * ⚠️ PURE, and the only place a dodge exists, so "how long am I safe for" is a question that
+ * can be asked without a browser — the park's animation frame does not fire in the pane this is
+ * checked in.
+ *
+ * ⚠️ IT DOES NOT TOUCH VELOCITY, for the same reason `driven` does not: a displacement stops
+ * when the dodge does, where a velocity would leave you skating out of it. The distance is eased
+ * so it leaves quickly and settles, which is what makes it read as a roll rather than a teleport.
+ */
+export function stepDodge(
+  s: Striker,
+  want: boolean,
+  aim: Aimed,
+  dt: number,
+): { s: Striker; went: boolean } {
+  const t = Math.max(0, Math.min(0.05, dt))
+  if (s.dodge > 0) {
+    const left = Math.max(0, s.dodge - t)
+    /* eased: most of the ground is covered early, so it snaps out and settles */
+    const gone = 1 - left / DODGE.time
+    const was = 1 - s.dodge / DODGE.time
+    const ease = (v: number) => 1 - Math.pow(1 - v, 2)
+    /* ⚠️ PET-HEIGHTS INTO SCREEN-HEIGHTS BEFORE across(), which is what PARK_TALL is for.
+       Without it the roll came out 8.12 pet-heights instead of 1.3 — five and a half times too
+       far, a dodge that crossed most of the field. `driven` already does this correctly; this
+       is the same sum written a second time and got wrong, which is its own argument. */
+    const step = (ease(gone) - ease(was)) * DODGE.reach * PARK_TALL
+    const { x, y } = holdInPark(s.x + across(step * s.aim.x), s.y + down(step * s.aim.y))
+    return {
+      s: { ...s, x, y, dodge: left, dodgeRest: left > 0 ? s.dodgeRest : DODGE.rest },
+      went: false,
+    }
+  }
+  const rest = Math.max(0, s.dodgeRest - t)
+  /* ⚠️ not while committed to a swing: a dodge that cancelled a recovery would make every
+     attack safe, which is the one thing the whole fight is built on not being */
+  if (!want || rest > 0 || s.swing > 0 || s.stun > 0 || s.hold > 0)
+    return { s: { ...s, dodgeRest: rest }, went: false }
+  return { s: { ...s, dodge: DODGE.time, aim, dodgeRest: 0 }, went: true }
+}
+
+/**
+ * Can this creature be hurt right now?
+ *
+ * ⚠️ ONE DOOR, because there are five places that ask and they must agree. Being knocked
+ * about already granted a moment of safety — that is what makes a knockdown survivable rather
+ * than a loop — and a dodge is the same promise, bought on purpose instead of paid for in
+ * damage. Adding the second condition at four of the five call sites is exactly the bug this
+ * module has shipped twice.
+ */
+export const canBeHurt = (s: Striker): boolean => s.stun <= 0 && s.dodge <= 0
 
 /**
  * Which way the keys are pointing, as a unit vector in screen-heights.

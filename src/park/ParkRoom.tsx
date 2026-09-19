@@ -30,6 +30,7 @@ import {
 import { MAX_WANDERERS, wanderAt } from './wander'
 import {
   busy,
+  canBeHurt,
   driven,
   aimFromKeys,
   aimOf,
@@ -39,6 +40,7 @@ import {
   PLAYER_LIFE,
   restingStriker,
   shoved,
+  stepDodge,
   stepDown,
   stepStrike,
   FOOT,
@@ -516,6 +518,11 @@ export function ParkRoom({
   /* the loop is installed once; a ref is how a toggle reaches inside it without rebuilding it */
   /* ⚠️ one cast is one hit on you, however many patches it is made of — see the wave */
   const castSpent = useRef(false)
+  /** Shift, held — a dodge is a press, so the loop takes the rising edge itself */
+  const rolling = useRef(false)
+  const rolled = useRef(false)
+  const [dodging, setDodging] = useState(false)
+  const dodgeShown = useRef(false)
   /** the patches on the ground right now, drawn for everybody — see patchesOf */
   const [patches, setPatches] = useState<Patch[]>([])
   const debugRef = useRef(false)
@@ -641,6 +648,13 @@ export function ParkRoom({
   useEffect(() => {
     if (!walking) return
     const set = (e: KeyboardEvent, on: boolean) => {
+      /* ⚠️ Shift, because it is the one key near the movement hand that nothing else here
+         wants — F and G are the swings and WASD is the walk */
+      if (e.key === 'Shift') {
+        e.preventDefault()
+        rolling.current = on
+        return
+      }
       const hit = HITS[e.key]
       if (hit) {
         e.preventDefault()
@@ -660,6 +674,7 @@ export function ParkRoom({
     const drop = () => {
       held.current = { ...STILL }
       hitting.current = { quick: false, heavy: false, up: false, down: false }
+      rolling.current = false
     }
     window.addEventListener('keydown', down)
     window.addEventListener('keyup', up)
@@ -700,6 +715,27 @@ export function ParkRoom({
         struck.aim = aimFromKeys(held.current, { x: you.current.facing, y: 0 })
       const steer = busy(struck) ? STILL : held.current
       you.current = { ...struck, ...stepWalker(struck, steer, struck.hold > 0 ? 0 : dt) }
+      /**
+       * ⚠️ AFTER THE WALK, so a dodge overrides where walking put you rather than adding to
+       * it — otherwise holding a direction would make the roll longer than it is meant to be,
+       * which is the difference between an answer and an escape.
+       *
+       * ⚠️ THE RISING EDGE, taken here rather than in the key handler: a dodge is a press,
+       * and reading "is Shift down" every frame would roll continuously while it is held.
+       */
+      const wantRoll = rolling.current && !rolled.current
+      rolled.current = rolling.current
+      const roll = stepDodge(
+        you.current,
+        wantRoll,
+        aimFromKeys(held.current, { x: you.current.facing, y: 0 }),
+        dt,
+      )
+      you.current = roll.s
+      if (you.current.dodge > 0 !== dodgeShown.current) {
+        dodgeShown.current = you.current.dodge > 0
+        setDodging(dodgeShown.current)
+      }
       /* ⚠️ and the move carries you, if it is one that does — see Attack.drive */
       you.current = driven(you.current, myMoves[you.current.move], struck.hold > 0 ? 0 : dt)
       if (wasSwinging !== you.current.swing > 0) setSwingAt((n) => n + 1)
@@ -847,7 +883,7 @@ export function ParkRoom({
         if (cs && !castSpent.current) {
           for (const patch of patchesOf(cs.kind, cur, cur.aim, cs.t, cur.scale)) {
             if (!patch.live) continue
-            if (you.current.stun > 0) break
+            if (!canBeHurt(you.current)) break
             if (!inPatch(you.current, myWide, patch)) continue
             you.current = mauled(you.current, patch.at, {
               ...bossKit.moves[0],
@@ -863,7 +899,7 @@ export function ParkRoom({
         const bm = bossKit.moves[cur.move]
         if (cur.swing > 0 && !cur.spent && bm) {
           const area = strikeSwipe(cur, cur.aim, bm, bm.span - cur.swing, cur.scale)
-          if (area && you.current.stun <= 0 && inSwipe(you.current, myWide, area)) {
+          if (area && canBeHurt(you.current) && inSwipe(you.current, myWide, area)) {
             /* ⚠️ mauled, not shoved — a boss is the one thing allowed to take health off */
             you.current = mauled(you.current, cur, bm)
             cur = { ...cur, spent: true }
@@ -927,7 +963,7 @@ export function ParkRoom({
           o.spent = true
           continue
         }
-        if (you.current.stun > 0) continue
+        if (!canBeHurt(you.current)) continue
         if (!inSwipe(you.current, myWide, area)) continue
         you.current = shoved(you.current, o.shown, theirs)
         o.spent = true
@@ -962,7 +998,7 @@ export function ParkRoom({
           tb.swingFor += dt
           if (!tb.spent) {
             const area = strikeSwipe(tb.shown, tb.aim, theirMove, tb.swingFor, kit.temper.scale)
-            if (area && you.current.stun <= 0 && inSwipe(you.current, myWide, area)) {
+            if (area && canBeHurt(you.current) && inSwipe(you.current, myWide, area)) {
               /* somebody else's boss is still a boss — see mauled */
               you.current = mauled(you.current, tb.shown, theirMove)
               tb.spent = true
@@ -1480,7 +1516,11 @@ export function ParkRoom({
                       'park-one' +
                       (one.mine ? ' is-me' : '') +
                       (one.stroll ? ' is-stroll' : '') +
-                      (one.mine && knocked ? ' is-down' : '')
+                      (one.mine && knocked ? ' is-down' : '') +
+                      /* ⚠️ A DODGE YOU CANNOT SEE IS A DODGE YOU CANNOT LEARN TO TIME. The
+                         0.26s of safety is the whole feature, so the creature has to look
+                         untouchable for exactly as long as it is. */
+                      (one.mine && dodging ? ' is-rolling' : '')
                     }
                     style={{
                       left: `${at.x * 100}%`,
@@ -1719,10 +1759,12 @@ export function ParkRoom({
         {strolling.length > 0 && (
           <> The faded ones are your own other minions having a wander — only you see those.</>
         )}{' '}
-        <strong>F</strong> and <strong>G</strong> swing, the same six moves your creature has
-        anywhere else. Call a boss and one of your own minions stands up big with a health bar,
-        where <em>everybody</em> in the park can see it and hit it — one boss at a time, run by
-        whoever called it, and it goes when they do.
+        <strong>Shift</strong> rolls — a quarter of a second where nothing can touch you, and then a
+        moment before you can do it again, so it is an answer to something rather than a way of
+        getting about. <strong>F</strong> and <strong>G</strong> swing, the same six moves your
+        creature has anywhere else. Call a boss and one of your own minions stands up big with a
+        health bar, where <em>everybody</em> in the park can see it and hit it — one boss at a time,
+        run by whoever called it, and it goes when they do.
       </p>
     </div>
   )
