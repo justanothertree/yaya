@@ -9209,15 +9209,69 @@ a.cz-msg-author:focus-visible {
   font-size: 0.82rem;
   line-height: 1.5;
 }
+/* ⚠️ ONLY WHERE IT IS TRUE. On a desktop there is no pad, so a paragraph about one is a
+   paragraph about nothing — the same rule the pad itself follows. */
+.park-touch {
+  display: none;
+}
+@media (pointer: coarse) {
+  .park-touch {
+    display: block;
+    font-size: 0.82rem;
+    line-height: 1.5;
+  }
+}
 /* the pad borrows .pet-play-key, which is defined under the same coarse-pointer query */
 .park-pad {
   display: none;
 }
+/**
+ * ⚠️ TWO CLUSTERS, ONE PER THUMB. Walking lives on the left and the five things you do live
+ * on the right, because a phone is held in two hands and the one thing this layout has to get
+ * right is that you can walk and swing at the same time — which is most of the fight.
+ *
+ * ⚠️ AND THE ACTIONS WRAP WHERE THE ARROWS DO NOT. Four arrows are a shape and must keep it;
+ * five actions are a list and may take two rows on a narrow phone rather than shrinking below
+ * a thumb.
+ */
 @media (pointer: coarse) {
   .park-pad {
     display: flex;
-    justify-content: center;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  .park-pad-walk,
+  .park-pad-do {
+    display: flex;
     gap: 8px;
+  }
+  .park-pad-do {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+  /* ⚠️ the guard is the one you hold, so it says so by staying lit while it is down */
+  .park-pad-do .pet-play-key.is-guard:active {
+    background: color-mix(in srgb, var(--accent, #7c6af7) 55%, transparent);
+  }
+  /**
+   * ⚠️ AND THE BELT BECOMES PRESSABLE, which its own note said to wait for: "a chip you can
+   * press on a phone would promise a control the rest of the fight does not have — pointer
+   * events stays off until that is untrue". The pad above makes it untrue. Only here, because
+   * a keyboard already has the number row and a mouse should not be poking at a readout.
+   */
+  .park-belt {
+    pointer-events: auto;
+  }
+  /* ⚠️ 44px, because the moment it became a button it acquired a thumb. It was 30 for one
+     measurement, which is exactly the size a readout is allowed to be and a control is not. */
+  .park-belt-one {
+    pointer-events: auto;
+    min-height: 44px;
+    font-size: 0.72rem;
+    padding: 4px 11px;
+    cursor: pointer;
   }
 }
 

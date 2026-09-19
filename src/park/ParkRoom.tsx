@@ -2277,13 +2277,33 @@ export function ParkRoom({
           {walking && myKit && (
             <div className="park-belt" role="status" aria-label="your big moves">
               {myKit.casts.map((k, i) => (
-                <span
+                /**
+                 * ⚠️ THE CHIPS ARE BUTTONS NOW, WHICH THEIR OWN NOTE SAID TO WAIT FOR. It read
+                 * "a chip you can press on a phone would promise a control the rest of the
+                 * fight does not have… pointer-events stays off until that is untrue". The pad
+                 * below makes it untrue, so these are the three keys a phone has no room for.
+                 * They stay unpressable with a mouse — a keyboard has the number row.
+                 */
+                <button
                   key={k}
+                  type="button"
+                  aria-label={`Throw your ${CAST[k].short}`}
                   className={
                     'park-belt-one' +
                     (castLeft > 0 ? ' is-waiting' : ' is-ready') +
                     (casting === k ? ' is-out' : '')
                   }
+                  onPointerDown={(e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    castWanted.current = i + 1
+                  }}
+                  onPointerUp={() => {
+                    if (castWanted.current === i + 1) castWanted.current = 0
+                  }}
+                  onPointerCancel={() => {
+                    if (castWanted.current === i + 1) castWanted.current = 0
+                  }}
                 >
                   <b>{i + 1}</b>
                   {CAST[k].short}
@@ -2291,7 +2311,7 @@ export function ParkRoom({
                   <i
                     style={{ width: `${Math.max(0, Math.min(1, castLeft / CAST_WAIT)) * 100}%` }}
                   />
-                </span>
+                </button>
               ))}
             </div>
           )}
@@ -2678,25 +2698,93 @@ export function ParkRoom({
         </div>
       </div>
 
+      {/*
+        ⚠️ ON A PHONE YOU COULD WALK INTO THE PARK AND DO NOTHING ELSE. Four arrows and no way
+        to swing, roll, guard, jump or throw anything — every one of the eleven controls added
+        over the last month was a keyboard key, and "the park's existing line" was the excuse
+        each time. It is the wrong line for a site whose whole audience is somebody's family
+        opening it on a phone: they could watch a boss hit them and had no answer to it.
+
+        ⚠️ FIVE, NOT ELEVEN. A phone cannot hold the keyboard's whole hand, so this is the set
+        that makes the fight playable rather than complete: the quick swing you throw without
+        thinking, the heavy you mean, and the three answers. The aimed swings are the deliberate
+        omission — they need a direction held at the same time, which is a second thumb nobody
+        has, and the neutral pair covers the fight. The casts get the belt instead, which was
+        already on screen naming them.
+
+        ⚠️ AND GUARD IS A HOLD, like its key. The others fire on the way down; this one is down
+        for as long as your thumb is, which is the whole of what makes a parry a parry.
+      */}
       {walking && (
         <div className="park-pad">
-          {(['left', 'up', 'down', 'right'] as const).map((k) => (
-            <button
-              key={k}
-              className="pet-play-key"
-              aria-label={`Walk ${k}`}
-              onPointerDown={(e) => {
-                e.preventDefault()
-                e.stopPropagation()
-                held.current[k] = true
-              }}
-              onPointerUp={() => (held.current[k] = false)}
-              onPointerCancel={() => (held.current[k] = false)}
-              onPointerLeave={() => (held.current[k] = false)}
-            >
-              {k === 'left' ? '◀' : k === 'right' ? '▶' : k === 'up' ? '▲' : '▼'}
-            </button>
-          ))}
+          <div className="park-pad-walk">
+            {(['left', 'up', 'down', 'right'] as const).map((k) => (
+              <button
+                key={k}
+                className="pet-play-key"
+                aria-label={`Walk ${k}`}
+                onPointerDown={(e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  held.current[k] = true
+                }}
+                onPointerUp={() => (held.current[k] = false)}
+                onPointerCancel={() => (held.current[k] = false)}
+                onPointerLeave={() => (held.current[k] = false)}
+              >
+                {k === 'left' ? '◀' : k === 'right' ? '▶' : k === 'up' ? '▲' : '▼'}
+              </button>
+            ))}
+          </div>
+          <div className="park-pad-do">
+            {(
+              [
+                ['quick', '✦', 'Quick swing'],
+                ['heavy', '✸', 'Heavy swing'],
+                ['roll', '↻', 'Roll'],
+                ['guard', '🛡', 'Guard — hold it'],
+                ['jump', '⤒', 'Jump'],
+              ] as const
+            ).map(([k, glyph, label]) => (
+              <button
+                key={k}
+                className={'pet-play-key is-' + k}
+                aria-label={label}
+                onPointerDown={(e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  if (k === 'quick') hitting.current.quick = true
+                  else if (k === 'heavy') hitting.current.heavy = true
+                  else if (k === 'roll') rolling.current = true
+                  else if (k === 'guard') bracing.current = true
+                  else hopping.current = true
+                }}
+                onPointerUp={() => {
+                  if (k === 'quick') hitting.current.quick = false
+                  else if (k === 'heavy') hitting.current.heavy = false
+                  else if (k === 'roll') rolling.current = false
+                  else if (k === 'guard') bracing.current = false
+                  else hopping.current = false
+                }}
+                onPointerCancel={() => {
+                  if (k === 'quick') hitting.current.quick = false
+                  else if (k === 'heavy') hitting.current.heavy = false
+                  else if (k === 'roll') rolling.current = false
+                  else if (k === 'guard') bracing.current = false
+                  else hopping.current = false
+                }}
+                onPointerLeave={() => {
+                  if (k === 'quick') hitting.current.quick = false
+                  else if (k === 'heavy') hitting.current.heavy = false
+                  else if (k === 'roll') rolling.current = false
+                  else if (k === 'guard') bracing.current = false
+                  else hopping.current = false
+                }}
+              >
+                {glyph}
+              </button>
+            ))}
+          </div>
         </div>
       )}
 
@@ -2772,6 +2860,13 @@ export function ParkRoom({
           You are at <strong>{whereIAm.name}</strong>.
         </p>
       )}
+      {/* ⚠️ THE KEY LIST IS A KEY LIST, so the phone gets its own sentence rather than a
+          column of blanks next to keys it does not have. */}
+      <p className="muted park-touch">
+        On a phone the pad under the park walks you about and gives you the five things you do —
+        swing, swing harder, roll, guard and jump — and the three chips in the corner throw your big
+        moves.
+      </p>
       <p className="muted park-about">
         The park is {PARK.across} screens across and {PARK.down} down, and the view follows you —
         the little map shows the whole of it, everybody in it, and the few places worth naming: the
