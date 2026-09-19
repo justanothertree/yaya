@@ -8467,6 +8467,25 @@ a.cz-msg-author:focus-visible {
      steps. A step shorter than the gap between them reads as a bar draining rather than ticking. */
   transition: width 90ms linear;
 }
+/**
+ * ⚠️ PIVOTING READS AS SQUASHED, because PetView mirrors rather than rotates — there is no
+ * turn to animate, only two facings and the moment between them. Narrowing it is what a thing
+ * edge-on looks like, so the 450ms it cannot attack for is 450ms you can SEE it cannot attack for.
+ */
+.park-one.is-boss.is-turning canvas {
+  transform: scaleX(0.55);
+  filter: brightness(1.12);
+}
+.park-one.is-boss canvas {
+  transition:
+    transform 110ms ease-out,
+    filter 110ms ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .park-one.is-boss canvas {
+    transition: none;
+  }
+}
 .park-one.is-beaten .park-life {
   display: none;
 }

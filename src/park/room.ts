@@ -28,7 +28,7 @@ type Out =
   /* calling a boss out, or — with a null drawing — putting it away */
   | { type: 'boss'; name: string; art: unknown | null }
   /* where it is and what is left of it, from the one machine running it */
-  | { type: 'bstep'; x: number; y: number; f: number; a: number; h: number }
+  | { type: 'bstep'; x: number; y: number; f: number; a: number; h: number; t: boolean }
 
 /** What arrives. */
 type In =
@@ -38,7 +38,16 @@ type In =
   | { type: 'look'; from?: string; name?: string; art?: unknown }
   | { type: 'walk'; from?: string; x?: number; y?: number; f?: number; m?: number; a?: number }
   | { type: 'boss'; from?: string; name?: string; art?: unknown }
-  | { type: 'bstep'; from?: string; x?: number; y?: number; f?: number; a?: number; h?: number }
+  | {
+      type: 'bstep'
+      from?: string
+      x?: number
+      y?: number
+      f?: number
+      a?: number
+      h?: number
+      t?: boolean
+    }
   /* ⚠️ the relay already says this when anybody leaves any room, so a departure needs no new
      message on the server — `over` with a `from` is "that peer is gone", whatever ended. */
   | { type: 'over'; from?: string }
@@ -106,6 +115,15 @@ export type BossEcho = {
   spent: boolean
   /** what is LEFT of it, 0..1 */
   hp: number
+  /**
+   * Mid-pivot, so everybody sees the window and not only whoever is running it.
+   *
+   * ⚠️ OPTIONAL ON THE WIRE, AND FALSE WHEN IT IS NOT THERE. A relay that has not been
+   * redeployed strips unknown fields, so an old server simply means nobody downstream sees the
+   * tell — which is exactly the behaviour before this existed. Nothing breaks either way, and it
+   * starts working the moment the relay is updated.
+   */
+  turning: boolean
 }
 
 export type ParkState = {
@@ -185,6 +203,7 @@ function readBoss(v: unknown): BossEcho | null {
     facing: o.f === -1 ? -1 : 1,
     swing: 0,
     swingFor: 0,
+    turning: false,
     spent: false,
     /* ⚠️ a boss with no health reported yet has not been stepped at all, which is a FULL one —
        reading a missing number as zero would draw it already beaten the moment it arrived */
@@ -197,7 +216,7 @@ export type Park = {
   /** stand one of your minions up for everybody, or pass null to put it away */
   callBoss: (name: string, art: Drawing | null) => void
   /** where your boss is and what is left of it, at the same rate as a walk */
-  stepBoss: (at: Spot, facing: number, swing: number, hp: number) => void
+  stepBoss: (at: Spot, facing: number, swing: number, hp: number, turning: boolean) => void
   leave: () => void
 }
 
@@ -297,6 +316,7 @@ export function joinPark(
           b.swing = slot
           if (typeof msg.h === 'number' && Number.isFinite(msg.h))
             b.hp = Math.max(0, Math.min(1, msg.h))
+          b.turning = msg.t === true
           /* deliberately no onChange — the loop reads this every frame, the same as a walk */
           break
         }
@@ -369,8 +389,8 @@ export function joinPark(
     callBoss: (name, art) => {
       net.send({ type: 'boss', name, art: art ? packLook(art) : null })
     },
-    stepBoss: (at, facing, swing, hp) => {
-      net.send({ type: 'bstep', x: at.x, y: at.y, f: facing, a: swing, h: hp })
+    stepBoss: (at, facing, swing, hp, turning) => {
+      net.send({ type: 'bstep', x: at.x, y: at.y, f: facing, a: swing, h: hp, t: turning })
     },
     leave: () => {
       stop = true

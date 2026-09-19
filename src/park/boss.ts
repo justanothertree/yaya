@@ -42,6 +42,57 @@ export type Boss = Striker & {
   think: number
   /** which way it last chose to go */
   lean: number
+  /** seconds left of pivoting to face the other way, 0 when it is settled — see stepTurn */
+  turn: number
+}
+
+/**
+ * How long a boss takes to come about.
+ *
+ * ⚠️ SO THAT GETTING BEHIND IT BUYS TIME AND NOT JUST POSITION. Facing snapped the instant
+ * the boss was not mid-swing, so slipping to its far side was answered before you arrived — you
+ * could be beside it and it was already looking at you. Asked for as wanting to bait on one axis,
+ * dodge, and come back in from another angle: the angle only means something if turning costs it
+ * something.
+ *
+ * ⚠️ 0.45s AGAINST A 0.32s WIND-UP, so a turn is worth more than a swing is. That is what
+ * makes going round it the better answer than backing straight off, which is the whole of the
+ * movement game this is trying to have.
+ */
+export const TURN_TIME = 0.45
+
+/**
+ * ⚠️ A DEADBAND, or standing level with a boss makes it pirouette. Crossing its centre by a
+ * pixel is not a decision anybody made, and a creature that spins on the spot while you shuffle
+ * is a creature that looks broken rather than one that is being outmanoeuvred.
+ */
+const TURN_EDGE = 0.012
+
+/**
+ * One step of a boss changing which way it looks.
+ *
+ * ⚠️ PURE, and out here rather than in the room, for the reason everything else in this
+ * module is: the park runs on requestAnimationFrame, which does not fire in the pane this is
+ * checked in. Called directly it answers "how long is the window if I get behind it".
+ */
+export function stepTurn(
+  b: { x: number; facing: number; turn: number },
+  targetX: number,
+  committed: boolean,
+  dt: number,
+): { facing: number; turn: number; turning: boolean } {
+  const t = Math.max(0, Math.min(0.05, dt))
+  if (b.turn > 0) {
+    const left = Math.max(0, b.turn - t)
+    return left > 0
+      ? { facing: b.facing, turn: left, turning: true }
+      : { facing: -b.facing, turn: 0, turning: false }
+  }
+  /* mid-swing it is already committed to the way it is looking — see the facing lock in the room */
+  if (committed) return { facing: b.facing, turn: 0, turning: false }
+  const want = targetX < b.x - TURN_EDGE ? -1 : targetX > b.x + TURN_EDGE ? 1 : b.facing
+  if (want === b.facing) return { facing: b.facing, turn: 0, turning: false }
+  return { facing: b.facing, turn: TURN_TIME, turning: true }
 }
 
 /**
@@ -73,6 +124,7 @@ export function makeBoss(name: string, art: Drawing, at: Spot): Boss {
     lifeMax: temper.life,
     think: 0,
     lean: -1,
+    turn: 0,
     facing: -1,
   }
 }

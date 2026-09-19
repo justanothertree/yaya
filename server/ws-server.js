@@ -2071,6 +2071,19 @@ wss.on('connection', (ws, req) => {
           f: msg.f === -1 ? -1 : 1,
           a: Math.max(0, Math.min(6, Math.round(bnum(msg.a)))),
           h: Math.max(0, Math.min(1, bnum(msg.h))),
+          /**
+           * Mid-pivot, so the window is visible to everybody and not only to whoever is running
+           * the boss.
+           *
+           * ⚠️ COERCED, NOT FORWARDED. Every other field here is clamped or squared off
+           * because this object is rebuilt rather than relayed — a whitelist is what stops a
+           * console sending a boss with a thousand-wide hitbox. A boolean gets the same
+           * treatment, which is `=== true` rather than anything truthy.
+           *
+           * ⚠️ AND A CLIENT THAT DOES NOT SEND IT IS FINE. Absent reads as false, which is
+           * what the park did before the pivot existed.
+           */
+          t: msg.t === true,
         }
         room.boss.at = bat
         broadcastVouched(room, { type: 'bstep', from: id, ...bat }, id)

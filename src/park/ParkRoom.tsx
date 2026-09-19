@@ -52,6 +52,7 @@ import {
   bossWide,
   makeBoss,
   ringSpot,
+  stepTurn,
   wounded,
   type Boss,
 } from './boss'
@@ -143,6 +144,7 @@ function BossFigure({
   hp,
   hit,
   moving,
+  turning,
 }: {
   name: string
   art: Drawing
@@ -156,12 +158,22 @@ function BossFigure({
   hp: number
   hit: boolean
   moving: boolean
+  /** mid-pivot, so the window it is giving you can be seen — see stepTurn */
+  turning: boolean
 }) {
   const on = onScreen(at, cam)
   const done = hp <= 0
   return (
     <span
-      className={'park-one is-boss' + (hit ? ' is-hit' : '') + (done ? ' is-beaten' : '')}
+      className={
+        'park-one is-boss' +
+        (hit ? ' is-hit' : '') +
+        (done ? ' is-beaten' : '') +
+        /* ⚠️ A WINDOW NOBODY CAN SEE IS NOT A WINDOW. Turning costs the boss its swing for
+           450ms, which is the reward for getting round it — and without a tell that is just a
+           boss that sometimes does not attack for no visible reason. */
+        (turning ? ' is-turning' : '')
+      }
       style={{
         left: `${on.x * 100}%`,
         top: `${on.y * 100}%`,
@@ -657,7 +669,20 @@ export function ParkRoom({
           }
         }
         const plan = bossThink(cur, target, bossKit.moves)
-        const struckBoss = stepStrike(cur, plan.hit, bossKit.moves, dt)
+        /**
+         * ⚠️ COMING ABOUT COSTS IT THE SWING, which is the whole point of it costing anything
+         * — see stepTurn. A turn it could attack through would be a turn you cannot punish, and
+         * then getting behind it buys position without buying time, which is what it did before.
+         *
+         * ⚠️ WORKED OUT BEFORE stepStrike RUNS, because the input has to be suppressed on the
+         * way in. Cancelling a swing after the fact would let it start one on the frame it began
+         * turning, and a swing that comes out backwards is worse than no swing at all.
+         */
+        const spun = stepTurn(cur, target.x, busy(cur), dt)
+        const bHit = spun.turning
+          ? { quick: false, heavy: false, up: false, down: false }
+          : plan.hit
+        const struckBoss = stepStrike(cur, bHit, bossKit.moves, dt)
         const bSteer = busy(struckBoss) ? STILL : { ...STILL, ...plan.steer }
         const walked = stepWalker(
           struckBoss,
@@ -666,12 +691,12 @@ export function ParkRoom({
           /* its own pace, and half again when it is running at somebody — see bossThink */
           plan.speed,
         )
-        /* ⚠️ it turns to face you when it is not committed, because a creature that only faced
-           the way it walked would back away and then swing at nothing */
-        const facing = struckBoss.swing > 0 ? cur.facing : target.x < cur.x ? -1 : 1
+        /* ⚠️ mid-swing it keeps the way it was looking, because a creature that only faced the
+           way it walked would back away and then swing at nothing — stepTurn owns the rest */
+        const facing = struckBoss.swing > 0 ? cur.facing : spun.facing
         /* ⚠️ cur first: stepStrike and stepWalker each return only the part they own, so
            spreading them alone would quietly drop the name, the art and the health */
-        cur = { ...cur, ...struckBoss, ...walked, facing }
+        cur = { ...cur, ...struckBoss, ...walked, facing, turn: spun.turn }
 
         /* its swing against me */
         const bm = bossKit.moves[cur.move]
@@ -884,6 +909,7 @@ export function ParkRoom({
             mineOut.facing,
             mineOut.swing > 0 ? mineOut.move + 1 : 0,
             mineOut.lifeMax > 0 ? mineOut.life / mineOut.lifeMax : 0,
+            mineOut.turn > 0,
           )
       }
       raf = requestAnimationFrame(tick)
@@ -1334,6 +1360,7 @@ export function ParkRoom({
               size={petSize(bossShown.art) * bossShown.scale}
               lunge={lungeOf(bossShown, bossKit?.moves ?? [])}
               show={bossShown.swing > 0 ? (bossKit?.moves ?? [])[bossShown.move]?.layer : undefined}
+              turning={bossShown.turn > 0}
               hp={bossShown.lifeMax > 0 ? bossShown.life / bossShown.lifeMax : 0}
               hit={bossShown.hold > 0}
               moving={bossShown.moving}
@@ -1346,6 +1373,7 @@ export function ParkRoom({
               at={theirBoss.shown}
               cam={camAt}
               facing={theirBoss.facing}
+              turning={theirBoss.turning}
               size={petSize(theirBoss.art) * (echoKit.current?.temper.scale ?? 2.6)}
               lunge={echoLunge(theirMove, theirBoss.swingFor)}
               show={theirMove?.layer}
