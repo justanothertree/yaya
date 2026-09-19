@@ -233,15 +233,35 @@ export const shaped = (a: Attack, shape: string | undefined): Attack =>
  * keeps the fight the length it was and changes what it is made of: fewer, heavier, readable
  * blows instead of a stream of unanswerable ones.
  */
-const BOSS_WINDUP = 0.32
+/**
+ * ⚠️ 0.40, UP FROM 0.32, and the span with it. Reported twice: readable, and then "still
+ * slightly too fast". Reaction is about 250ms, so 320 was past it on paper and only just — a
+ * telegraph you can theoretically answer is not the same as one you can comfortably answer, and
+ * the difference between those two is the whole feel of a fight.
+ */
+const BOSS_WINDUP = 0.4
 export const bossPace = (a: Attack): Attack => {
-  const span = a.span * 1.45
-  const start = Math.max(a.live[0], Math.min(0.66, BOSS_WINDUP / span))
+  const span = a.span * 1.8
+  /**
+   * ⚠️ 0.72 OF THE SWING MAY BE WIND-UP, up from 0.66, because the cap was binding before
+   * the target did: at 0.66 a 400ms telegraph came out between 299 and 400 depending on the
+   * move, which is the slow ones being slow and the quick ones still quick. A boss's swing is
+   * mostly anticipation by design — the recovery it owes you lives in `rest`, after the span,
+   * so spending more of the span on the wind-up costs the punish window nothing.
+   */
+  const start = Math.max(a.live[0], Math.min(0.72, BOSS_WINDUP / span))
   return {
     ...a,
     span,
     rest: a.rest * 1.5,
-    bite: a.bite * 1.45,
+    /**
+     * ⚠️ DELIBERATELY SHORT OF THE PACE, 1.62 against a span of 1.8, where it used to match
+     * exactly. Matching keeps the fight the same length — temperOf budgets health against danger
+     * — but a boss now also throws casts, and those do damage the budget knows nothing about.
+     * Holding the swing back a little is where that is paid for, rather than letting the two
+     * stack into a boss that kills you in five.
+     */
+    bite: a.bite * 1.62,
     live: [start, Math.min(0.94, start + (a.live[1] - a.live[0]))],
   }
 }

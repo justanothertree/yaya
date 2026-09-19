@@ -2,6 +2,7 @@ import { NetClient } from '../game/net'
 import { packDrawing, readDrawing, simplifyDrawing, type Drawing } from '../draw/strokes'
 import type { Spot, Walker } from './walk'
 import { aimFromOctant, type Aimed } from './strike'
+import type { CastKind } from './cast'
 
 /**
  * The shared park, over the relay.
@@ -118,6 +119,16 @@ export type BossEcho = {
   /** what is LEFT of it, 0..1 */
   hp: number
   /**
+   * The big thing it is doing, and how long it has been doing it — see cast.ts.
+   *
+   * ⚠️ IT RIDES IN THE SAME SLOT FIELD A SWING DOES, above the six move slots, so it costs
+   * no new message. `castFor` is counted locally the way swingFor already is, because how long
+   * something has been going is a thing a viewer can measure rather than be told fifteen times
+   * a second.
+   */
+  cast: { kind: CastKind } | null
+  castFor: number
+  /**
    * Which way its swing is pointed — see octantOf. Absent on the wire means straight ahead,
    * which is exactly what a client from before omnidirectional attacks was saying.
    */
@@ -212,6 +223,8 @@ function readBoss(v: unknown): BossEcho | null {
     swingFor: 0,
     turning: false,
     aim: { x: 1, y: 0 },
+    cast: null,
+    castFor: 0,
     spent: false,
     /* ⚠️ a boss with no health reported yet has not been stepped at all, which is a FULL one —
        reading a missing number as zero would draw it already beaten the moment it arrived */
@@ -322,7 +335,23 @@ export function joinPark(
           b.at = spot(msg)
           b.facing = msg.f === -1 ? -1 : 1
           const a = typeof msg.a === 'number' && Number.isFinite(msg.a) ? Math.round(msg.a) : 0
-          const slot = Math.max(0, Math.min(6, a))
+          /**
+           * ⚠️ SEVEN AND ABOVE IS A CAST, NOT A SLOT. The six move slots are 1–6 and 0 is
+           * "nothing" — everything past that is one of the big committed things, which is how a
+           * cast reaches a viewer without a message of its own. A relay that has not been
+           * redeployed clamps this to 6, so an old server turns a cast into a swing that is not
+           * there rather than into anything broken.
+           */
+          const castKind: CastKind | null =
+            a === 7 ? 'bloom' : a === 8 ? 'mark' : a === 9 ? 'wave' : null
+          if (!castKind) {
+            b.cast = null
+            b.castFor = 0
+          } else if (b.cast?.kind !== castKind) {
+            b.cast = { kind: castKind }
+            b.castFor = 0
+          }
+          const slot = castKind ? 0 : Math.max(0, Math.min(6, a))
           /* a NEW swing restarts the clock; the same one carrying on does not — as for a peer */
           if (slot !== b.swing) {
             b.swingFor = 0

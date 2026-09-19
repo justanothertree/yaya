@@ -51,6 +51,7 @@ import {
 } from './strike'
 import { movesOf, petWide, type Attack } from '../pets/attack'
 import { footRoom, petBox } from '../pets/rig'
+import { CAST, inPatch, patchesOf, type Patch } from './cast'
 import { lungeOf } from '../pets/fight'
 import {
   beaten,
@@ -513,6 +514,10 @@ export function ParkRoom({
   const [tell, setTell] = useState<{ swipe: Swipe; ready: number } | null>(null)
   const [debug, setDebug] = useState(false)
   /* the loop is installed once; a ref is how a toggle reaches inside it without rebuilding it */
+  /* ⚠️ one cast is one hit on you, however many patches it is made of — see the wave */
+  const castSpent = useRef(false)
+  /** the patches on the ground right now, drawn for everybody — see patchesOf */
+  const [patches, setPatches] = useState<Patch[]>([])
   const debugRef = useRef(false)
   debugRef.current = debug
   const boxesOn = useRef(false)
@@ -777,6 +782,22 @@ export function ParkRoom({
         }
         const plan = bossThink(cur, target, bossKit.moves)
         /**
+         * ⚠️ A CAST OWNS THE BOSS WHILE IT RUNS. It cannot walk, turn or swing through one —
+         * which is the price that makes it worth dodging rather than ignoring, and the window
+         * that pays a player for reading it. Started here, before stepStrike, for the same
+         * reason the turn is: the swing input has to be suppressed on the way in.
+         */
+        if (cur.cast) {
+          const ct = cur.cast.t + dt
+          cur =
+            ct >= CAST[cur.cast.kind].time
+              ? { ...cur, cast: null }
+              : { ...cur, cast: { ...cur.cast, t: ct } }
+        } else if (plan.cast) {
+          cur = { ...cur, cast: { kind: plan.cast, t: 0 } }
+        }
+        const casting = !!cur.cast
+        /**
          * ⚠️ COMING ABOUT COSTS IT THE SWING, which is the whole point of it costing anything
          * — see stepTurn. A turn it could attack through would be a turn you cannot punish, and
          * then getting behind it buys position without buying time, which is what it did before.
@@ -785,10 +806,11 @@ export function ParkRoom({
          * way in. Cancelling a swing after the fact would let it start one on the frame it began
          * turning, and a swing that comes out backwards is worse than no swing at all.
          */
-        const spun = stepTurn(cur, target.x, busy(cur), dt)
-        const bHit = spun.turning
-          ? { quick: false, heavy: false, up: false, down: false }
-          : plan.hit
+        const spun = stepTurn(cur, target.x, busy(cur) || casting, dt)
+        const bHit =
+          spun.turning || casting
+            ? { quick: false, heavy: false, up: false, down: false }
+            : plan.hit
         const wasSwing = cur.swing > 0
         const struckBoss = stepStrike(cur, bHit, bossKit.moves, dt)
         /**
@@ -799,7 +821,7 @@ export function ParkRoom({
          */
         if (!wasSwing && struckBoss.swing > 0)
           struckBoss.aim = aimOf(target.x - cur.x, target.y - cur.y, { x: cur.facing, y: 0 })
-        const bSteer = busy(struckBoss) ? STILL : { ...STILL, ...plan.steer }
+        const bSteer = busy(struckBoss) || casting ? STILL : { ...STILL, ...plan.steer }
         const walked = stepWalker(
           struckBoss,
           bSteer,
@@ -815,6 +837,27 @@ export function ParkRoom({
         cur = { ...cur, ...struckBoss, ...walked, facing, turn: spun.turn }
         /* the same rule a player travels by — see driven */
         cur = { ...cur, ...driven(cur, bossKit.moves[cur.move], struckBoss.hold > 0 ? 0 : dt) }
+
+        /**
+         * ⚠️ THE CAST HURTS THROUGH THE SAME GUARD A SWING DOES — stun above zero means you
+         * cannot be hit, so being knocked about by one thing does not feed you into another.
+         * One patch landing spends the cast, so a wave rolling over you is one hit and not five.
+         */
+        const cs = cur.cast
+        if (cs && !castSpent.current) {
+          for (const patch of patchesOf(cs.kind, cur, cur.aim, cs.t, cur.scale)) {
+            if (!patch.live) continue
+            if (you.current.stun > 0) break
+            if (!inPatch(you.current, myWide, patch)) continue
+            you.current = mauled(you.current, patch.at, {
+              ...bossKit.moves[0],
+              bite: bossKit.moves[0].bite * 1.15,
+            })
+            castSpent.current = true
+            break
+          }
+        }
+        if (!cs) castSpent.current = false
 
         /* its swing against me */
         const bm = bossKit.moves[cur.move]
@@ -911,6 +954,9 @@ export function ParkRoom({
         tb.shown = farFrom(tb.shown, tb.at)
           ? tb.at
           : easeTo(tb.shown, tb.at, dt, stillRef.current ? 60 : 14)
+        /* ⚠️ a viewer counts how long their cast has been going rather than being told —
+           see BossEcho.castFor. Its patches then come out identical to the host's. */
+        if (tb.cast) tb.castFor += dt
         const theirMove = tb.swing > 0 ? kit.moves[tb.swing - 1] : undefined
         if (theirMove) {
           tb.swingFor += dt
@@ -945,6 +991,30 @@ export function ParkRoom({
       }
 
       setDummyShown(dummy.current)
+
+      /**
+       * ⚠️ DERIVED, NOT STORED, and the same on every machine. A cast is a pure function of
+       * where the boss is, which way it is aimed and how long it has been going — all of which
+       * are already on the wire — so a viewer works out the identical patches without a single
+       * new message. See the note at the top of cast.ts.
+       */
+      {
+        const b = boss.current
+        const tb = state.current.boss
+        setPatches(
+          b?.cast
+            ? patchesOf(b.cast.kind, b, b.aim, b.cast.t, b.scale)
+            : tb?.cast
+              ? patchesOf(
+                  tb.cast.kind,
+                  tb.shown,
+                  tb.aim,
+                  tb.castFor,
+                  echoKit.current?.temper.scale ?? BOSS.scale,
+                )
+              : [],
+        )
+      }
 
       /**
        * ⚠️ THE TELEGRAPH IS PART OF THE GAME, NOT OF THE DEBUG VIEW. Reported after playing:
@@ -1042,11 +1112,19 @@ export function ParkRoom({
            costs. What is left of it rides along as a fraction, so the relay never learns how
            much health a boss has. */
         const mineOut = boss.current
+        /* ⚠️ seven and above is a cast — see the note where this is read back */
+        const castSlot = mineOut?.cast
+          ? mineOut.cast.kind === 'bloom'
+            ? 7
+            : mineOut.cast.kind === 'mark'
+              ? 8
+              : 9
+          : null
         if (mineOut)
           park.current?.stepBoss(
             mineOut,
             mineOut.facing,
-            mineOut.swing > 0 ? mineOut.move + 1 : 0,
+            castSlot ?? (mineOut.swing > 0 ? mineOut.move + 1 : 0),
             mineOut.lifeMax > 0 ? mineOut.life / mineOut.lifeMax : 0,
             mineOut.turn > 0,
             octantOf(mineOut.aim),
@@ -1471,6 +1549,31 @@ export function ParkRoom({
            * the air — drawn before the creatures so they stand on it. The debug boxes go over
            * the top; this goes beneath, which is most of what tells them apart at a glance.
            */}
+          {/**
+           * ⚠️ THE GROUND AGAIN, on the same layer as the swing telegraph and for the same
+           * reason — what is about to hurt you belongs underfoot, where it is in the world
+           * rather than floating over it. A patch that is live is drawn hard; one still winding
+           * up grows into place, which is the whole of how a cast is read.
+           */}
+          {walking &&
+            patches.map((p, i) => {
+              const at = onScreen(p.at, camAt)
+              return (
+                <span
+                  key={i}
+                  className={'park-patch' + (p.live ? ' is-live' : '')}
+                  aria-hidden
+                  style={{
+                    left: `${at.x * 100}%`,
+                    top: `${at.y * 100}%`,
+                    width: `${((p.r * 2) / FIELD_ASPECT) * 100}%`,
+                    height: `${p.r * 2 * 100}%`,
+                    transform: `translate(-50%, -50%) scale(${(0.5 + p.ready * 0.5).toFixed(3)})`,
+                    opacity: p.live ? 0.9 : 0.2 + p.ready * 0.5,
+                  }}
+                />
+              )
+            })}
           {walking && tell && (
             <SwipePatch
               swipe={tell.swipe}

@@ -1,4 +1,5 @@
 import type { Drawing } from '../draw/strokes'
+import type { CastKind } from './cast'
 import { bossPace, movesOf, petWide, type Attack } from '../pets/attack'
 import { restingWalker, VIEW, type Spot } from './walk'
 import { across, footOf, PARK_TALL, restingStriker, type StrikeInput, type Striker } from './strike'
@@ -44,6 +45,15 @@ export type Boss = Striker & {
   lean: number
   /** seconds left of pivoting to face the other way, 0 when it is settled — see stepTurn */
   turn: number
+  /**
+   * The big thing it is in the middle of doing, and how long it has been doing it.
+   *
+   * ⚠️ A CAST IS NOT A SWING, and keeping them separate is what stops the six slots becoming
+   * a grab bag. A swing comes off a part somebody drew and is answered by not being in front of
+   * it; a cast covers ground the boss cannot reach with its body and is answered by leaving
+   * somewhere. They commit differently and they are read differently, so they are two things.
+   */
+  cast: { kind: CastKind; t: number } | null
 }
 
 /**
@@ -125,6 +135,7 @@ export function makeBoss(name: string, art: Drawing, at: Spot): Boss {
     think: 0,
     lean: -1,
     turn: 0,
+    cast: null,
     facing: -1,
   }
 }
@@ -161,6 +172,8 @@ export function bossThink(
   hit: StrikeInput
   /** what to hand stepWalker, so a charge is visibly a charge */
   speed: number
+  /** a big committed thing to start this frame, or null — see castWanted */
+  cast: CastKind | null
 } {
   const t = b.temper
   const dx = target.x - b.x
@@ -244,7 +257,43 @@ export function bossThink(
   const swings = inRange && beat % 2 === 0
   const big = goesBig(beat, t)
 
+  /**
+   * ⚠️ A CAST IS THE ANSWER TO STANDING OFF. Every swing this boss has is answered by being
+   * somewhere else, so a player who learns the reach can simply live outside it — and a boss you
+   * can out-space forever is a boss with nothing to say past the first minute. These reach where
+   * it cannot, and the kind follows the distance: something to run out of when you are on top of
+   * it, something thrown ahead when you are not, and a rolling line when you are a long way off.
+   *
+   * ⚠️ ON ITS OWN BEATS, AND NOT MANY. One in four, and never while it is already swinging,
+   * so a cast stays the thing you notice rather than the thing you are always in.
+   */
+  /**
+   * ⚠️ ROTATED, NOT CHOSEN BY DISTANCE ALONE, because distance barely varies. A boss holds
+   * station at its own reach — `want` above — so `gap` lives between about 0.5 and 1.0 and never
+   * goes near the thresholds a purely spatial rule needs. Watched it: banding the three by range
+   * meant the wave could not fire at all, because the boss simply never let anybody get that far
+   * away. Each cast takes the next kind in turn, so all three are things you will actually meet.
+   *
+   * ⚠️ WITH TWO OVERRIDES AT THE ENDS, so the choice still reads as a reaction rather than a
+   * cycle: standing on top of it gets the one that grows out from under you, and being a long
+   * way off gets the one thrown ahead.
+   */
+  const turn = Math.floor(beat / 4) % 3
+  const cast: CastKind | null =
+    b.cast || b.swing > 0 || beat % 4 !== 1
+      ? null
+      : gap < 0.5
+        ? 'bloom'
+        : gap > 2
+          ? 'mark'
+          : turn === 0
+            ? 'bloom'
+            : turn === 1
+              ? 'wave'
+              : 'mark'
+
   return {
+    cast,
     steer: {
       left: charging ? dx < 0 : wantX < 0,
       right: charging ? dx > 0 : wantX > 0,

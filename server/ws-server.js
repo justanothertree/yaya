@@ -2069,7 +2069,15 @@ wss.on('connection', (ws, req) => {
           x: Math.max(0, Math.min(1, bnum(msg.x))),
           y: Math.max(0, Math.min(1, bnum(msg.y))),
           f: msg.f === -1 ? -1 : 1,
-          a: Math.max(0, Math.min(6, Math.round(bnum(msg.a)))),
+          /**
+           * The move slot, or a cast above it.
+           *
+           * ⚠️ 0–9 RATHER THAN 0–6. Six are the move slots and 0 is "nothing"; seven, eight
+           * and nine are the boss's big committed attacks, which ride here so they cost no
+           * message of their own — see cast.ts. Still clamped, because this object is rebuilt
+           * rather than relayed and a console should not be able to name a tenth thing.
+           */
+          a: Math.max(0, Math.min(9, Math.round(bnum(msg.a)))),
           h: Math.max(0, Math.min(1, bnum(msg.h))),
           /**
            * Mid-pivot, so the window is visible to everybody and not only to whoever is running

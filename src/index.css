@@ -8540,6 +8540,37 @@ a.cz-msg-author:focus-visible {
   box-shadow: inset 0 0 0 1px color-mix(in srgb, #e8534e 45%, transparent);
 }
 
+/**
+ * A patch of ground a cast is about to ruin.
+ *
+ * ⚠️ THE SAME LAYER AS THE SWING TELEGRAPH, because they are the same promise: this is where
+ * it is going to hurt, and you have until it fills. Winding up it is faint and small and grows
+ * into place; live it is hard-edged, which is the moment you needed to already be gone.
+ */
+.park-patch {
+  position: absolute;
+  z-index: 1;
+  pointer-events: none;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle at center,
+    color-mix(in srgb, #f59e0b 30%, transparent) 0%,
+    color-mix(in srgb, #f59e0b 16%, transparent) 70%,
+    transparent 100%
+  );
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, #f59e0b 60%, transparent);
+  transition: opacity 70ms linear;
+}
+.park-patch.is-live {
+  background: radial-gradient(
+    circle at center,
+    color-mix(in srgb, #e8534e 72%, transparent) 0%,
+    color-mix(in srgb, #e8534e 40%, transparent) 72%,
+    transparent 100%
+  );
+  box-shadow: inset 0 0 0 2px #e8534e;
+}
+
 /* ── a thing to hit, and the boxes that say why it was hit ───────────────────── */
 .park-dummy {
   position: absolute;
