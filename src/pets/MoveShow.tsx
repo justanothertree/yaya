@@ -56,7 +56,11 @@ function tweakFor(a: Attack): string {
       ? 'Nothing you drew is built for going up, so this is the same part thrown upward — shorter, but it launches. Draw something high on the creature and it takes this slot.'
       : 'Nothing you drew is built for going low, so this is the same part swept along the ground — longer and slower, and low enough that somebody can jump it. Draw something long and low and it takes this slot.'
   if (a.from === 'hit')
-    return 'You drew this one. Further from the middle reaches further, higher up launches harder, and bigger hurts more.'
+    /* ⚠️ "OUT TO THE EDGE OF THE PAGE" IS THE ACTIONABLE HALF. Reach is measured against the
+       creature's own height, so how far you have to draw to max it out depends on how big you
+       drew the body — and the one instruction that is true whatever size that is, is the edge
+       of the paper. See the note on `room` in drawnAttacks. */
+    return 'You drew this one. Further from the middle reaches further — out to the edge of the page is as far as it goes — higher up launches harder, and bigger hurts more.'
   const part: Record<string, string> = {
     arm: 'arm',
     leg: 'leg',

@@ -449,6 +449,24 @@ function drawnAttacks(parts: Part[], body: Box): Attack[] {
     .map((p) => {
       /* how far the ink gets from the middle of the creature, in creature-heights */
       const out = Math.max(cx - p.box.x0, p.box.x1 - cx) / h
+      /**
+       * ⚠️ THE PAGE RUNS OUT BEFORE THE SCALE DOES, AND IT PUNISHES DRAWING WELL. Reach is
+       * measured in creature-heights and capped at 1.6 — but a creature drawn to fill the page
+       * is tall in page terms, so 1.6 of its height is off the paper and the cap is simply
+       * unreachable. Measured across the thirteen drawings here: a body 0.70 of the page tall
+       * can never get past 0.79, one at 0.54 caps out at 1.17, and only the small cramped ones
+       * reach 1.6 at all. Drawing your creature big quietly halved every attack you drew for
+       * it, which is the opposite of the incentive this module wants, and is exactly what was
+       * reported — "there isnt too much space to draw outside of your guy".
+       *
+       * ⚠️ SO IT IS A RESCUE, NOT A NEW SCALE. Where there IS room for the full range nothing
+       * changes: `out` is used as it always was, and every creature that was not being
+       * penalised keeps the reach it had. Only when the paper is the binding constraint does
+       * the range it CAN express get stretched over the range the game uses, so that drawing a
+       * hit out to the edge of the page means the same thing whatever size the body is.
+       */
+      const room = Math.max(cx, 1 - cx) / h
+      const far = room >= 1.6 ? out : 0.5 + (out / Math.max(1e-6, room)) * 1.1
       const tall = (p.box.y1 - p.box.y0) / h
       /* above the middle is positive; a hit drawn overhead launches, one at the feet does not */
       const high = (cy - (p.box.y0 + p.box.y1) / 2) / h
@@ -461,7 +479,7 @@ function drawnAttacks(parts: Part[], body: Box): Attack[] {
         from: 'hit' as PartKind,
         span: 0.24 + heft * 0.2,
         live: [0.32, 0.72] as [number, number],
-        reach: Math.max(0.5, Math.min(1.6, out)),
+        reach: Math.max(0.5, Math.min(1.6, far)),
         rise: Math.max(0.2, Math.min(0.9, tall / 2)),
         ...(both ? { both: true } : {}),
         bite: Math.round(Math.max(3, Math.min(16, 4 + heft * 8))),
