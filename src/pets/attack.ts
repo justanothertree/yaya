@@ -98,7 +98,7 @@ export type HitShape = 'swipe' | 'slam' | 'lunge' | 'spin'
 
 export const HIT_SHAPES: Array<[HitShape, string, string]> = [
   ['swipe', 'Swipe', 'A straight hit in front of it. No surprises either way.'],
-  ['slam', 'Slam', 'Short, slow and heavy, low to the ground. Telegraphed — and answerable.'],
+  ['slam', 'Slam', 'Slow and heavy, low to the ground. You can SEE it coming — and move.'],
   ['lunge', 'Lunge', 'Long and quick, but feeble, and it is left hanging afterwards.'],
   ['spin', 'Spin', 'Comes round BOTH sides, so facing does not save you. Reaches least.'],
 ]
@@ -108,22 +108,34 @@ export const isHitShape = (v: unknown): v is HitShape => HIT_SHAPES.some(([id]) 
 /** The trades, as multipliers on whatever the drawing already earned. */
 const SHAPED: Record<HitShape, (a: Attack) => Attack> = {
   swipe: (a) => a,
-  slam: (a) => ({
-    ...a,
-    reach: a.reach * 0.78,
-    rise: a.rise * 1.5,
-    /* ⚠️ 1.25 AND NOT 1.35, which is what it was until it was measured. A slam is 1.25 times
-       as long to commit to, so 1.35 damage made it the hardest hitter AND the best damage per
-       second at once — measured at 12.4 against a swipe's 11.5, which is a shape with no downside
-       and therefore the shape everybody picks. Matched to the commitment, it trades reach and
-       speed for weight and wins nothing on the exchange. */
-    bite: a.bite * 1.25,
-    span: a.span * 1.3,
-    rest: a.rest * 1.2,
-    /* ⚠️ a longer wind-up INSIDE a longer swing: the whole point of a slam is that you can
-       see it coming, which is a fraction of the span rather than a number of seconds */
-    live: [Math.min(0.72, a.live[0] * 1.25), a.live[1]],
-  }),
+  slam: (a) => {
+    /**
+     * ⚠️ A WIND-UP IN SECONDS, NOT IN FRACTIONS, because the thing it has to beat is measured
+     * in seconds: a person reacts in about 250ms. As a multiplier on the move's own live window
+     * this came out at 185ms on a median move — still quicker than anybody can answer, which made
+     * "telegraphed" a word in a description and nothing in the game. Measured across all 78 moves
+     * on this machine, the LONGEST wind-up of anything was 224ms, so nothing was reactable at all.
+     *
+     * ⚠️ AND THE DANGEROUS WINDOW HAS TO MOVE WITH IT. Pushing the start out without pushing
+     * the end left one measured at 18ms of danger, which is a move you dodge by existing. A fixed
+     * share of the swing after the wind-up keeps it a real hit.
+     */
+    const span = a.span * 1.6
+    const start = Math.max(a.live[0], Math.min(0.62, 0.26 / span))
+    return {
+      ...a,
+      reach: a.reach * 0.78,
+      rise: a.rise * 1.5,
+      /* ⚠️ MATCHED TO THE COMMITMENT, so the shape wins nothing on the exchange. It was 1.35
+         against a 1.25 commitment and came out the hardest hitter AND the best damage per second
+         at once — 12.4 against a swipe's 11.5, which is a shape with no downside and therefore the
+         shape everybody picks. Now it is slower again, so it may hit harder again. */
+      bite: a.bite * 1.5,
+      span,
+      rest: a.rest * 1.2,
+      live: [start, Math.min(0.96, start + 0.28)] as [number, number],
+    }
+  },
   lunge: (a) => ({
     ...a,
     reach: a.reach * 1.35,
