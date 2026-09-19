@@ -61,6 +61,23 @@ what it just made stale — copy, empty states, the thing a neighbouring feature
   number that looks like a bug in the feature and is a bug in the harness. Keep a call under
   the limit, split long runs across calls, and have every loop capture a generation counter and
   return when it changes.
+- **Co-op IS testable, with two tabs and a doorless relay.** "Only a second machine can check
+  this" was written on seventeen commits and was not true. The real relay refuses to show one
+  person to another until Supabase has verified their token server-side, and a local relay has
+  no Supabase config — so two dev tabs never meet. That door is correct and must not be
+  weakened; `scripts/park-stub-relay.mjs` stands in for the pipe behind it instead. Start it
+  with `PARK_STUB_RELAY=yes` (it refuses otherwise), point `VITE_WS_URL` at it, open two tabs
+  on `#dev-park` and walk both in. The first minute of the first run found a friend's cast
+  landing for nothing on the host's boss — a flag shared with their swing, dead for weeks.
+- **A faithful double is the hard part, and an unfaithful one looks exactly like a product
+  bug.** Three of the four "bugs" that first run turned up were mine: the roster keyed peers by
+  `id` where `readSomeone` reads `from`, it did not carry the room's boss the way the relay's
+  `outNow` does, and it sent `presence` on a disconnect where the client only removes somebody
+  on `over`. Read the server before believing the client is wrong.
+- **`.park-field` is always rendered, so it does not mean you are in the park.** The field is
+  the frame; only its contents are gated on `walking`. Two long measuring runs this session
+  produced nothing because they were driving a park nobody had walked into. Check for
+  `.park-one.is-me`, or for the Leave button.
 - **Measurement lies more often than code does.** `.card` transitions `box-shadow`, so
   `getComputedStyle` reports interpolated values — inject `*{transition:none!important}` before
   measuring. `performance.now()` cannot see canvas work. The Browser pane collapses to 0×0 between
