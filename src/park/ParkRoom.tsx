@@ -53,7 +53,7 @@ import {
 } from './strike'
 import { movesOf, petWide, type Attack } from '../pets/attack'
 import { footRoom, petBox } from '../pets/rig'
-import { CAST, inPatch, patchesOf, type Patch } from './cast'
+import { CAST, inPatch, patchesOf, type CastKind, type Patch } from './cast'
 import { lungeOf } from '../pets/fight'
 import {
   beaten,
@@ -446,6 +446,14 @@ export function ParkRoom({
     temper: Temper
   } | null>(null)
   const myWide = useMemo(() => (myArt ? petWide(myArt) : 0.2), [myArt])
+  /**
+   * What your own creature is like, read the same way a boss's is.
+   *
+   * ⚠️ THE SAME temperOf A BOSS GETS. Its casts list is what you throw with E, so the big
+   * thing your creature does is the big thing it would do if somebody else were fighting it —
+   * one reading of a drawing, used from both ends.
+   */
+  const myKit = useMemo(() => (myArt ? temperOf(myArt) : null), [myArt])
 
   /* ⚠️ the drawing again, not the wrapper — this one feeds the animation loop's deps, and a
      loop rebuilt every render is a loop whose clock starts again every render */
@@ -518,6 +526,25 @@ export function ParkRoom({
   /* the loop is installed once; a ref is how a toggle reaches inside it without rebuilding it */
   /* ⚠️ one cast is one hit on you, however many patches it is made of — see the wave */
   const castSpent = useRef(false)
+  /**
+   * Your own big committed thing, and how long before another.
+   *
+   * ⚠️ THE BOSS HAD THREE OF THESE AND YOU HAD NONE, which is the asymmetry that had been
+   * growing all session: every addition was on its side of the fight. The machinery was already
+   * here — patchesOf, inPatch, the ground telegraph — and the only thing missing was a way for a
+   * player to reach it.
+   *
+   * ⚠️ AND IT IS YOUR CREATURE'S FAVOURITE, not a fourth thing to learn. temperOf already
+   * works out which of the three a drawing leans towards; that lean is now something you get to
+   * throw rather than only something thrown at you.
+   */
+  const myCast = useRef<{ kind: CastKind; t: number } | null>(null)
+  const myCastRest = useRef(0)
+  const [casting, setCasting] = useState<CastKind | null>(null)
+  const castWanted = useRef(false)
+  const castHeld = useRef(false)
+  /** so one cast is one hit on each thing, however many patches it is made of */
+  const myCastHit = useRef<Set<string>>(new Set())
   /** Shift, held — a dodge is a press, so the loop takes the rising edge itself */
   const rolling = useRef(false)
   const rolled = useRef(false)
@@ -525,6 +552,8 @@ export function ParkRoom({
   const dodgeShown = useRef(false)
   /** the patches on the ground right now, drawn for everybody — see patchesOf */
   const [patches, setPatches] = useState<Patch[]>([])
+  /** yours, drawn apart from the boss's so you can tell whose ground is about to go */
+  const [myPatches, setMyPatches] = useState<Patch[]>([])
   const debugRef = useRef(false)
   debugRef.current = debug
   const boxesOn = useRef(false)
@@ -655,6 +684,13 @@ export function ParkRoom({
         rolling.current = on
         return
       }
+      /* ⚠️ E, next to the walking hand and next to nothing else here — F and G swing, Shift
+         rolls, WASD walks */
+      if (e.key === 'e' || e.key === 'E') {
+        e.preventDefault()
+        castWanted.current = on
+        return
+      }
       const hit = HITS[e.key]
       if (hit) {
         e.preventDefault()
@@ -675,6 +711,7 @@ export function ParkRoom({
       held.current = { ...STILL }
       hitting.current = { quick: false, heavy: false, up: false, down: false }
       rolling.current = false
+      castWanted.current = false
     }
     window.addEventListener('keydown', down)
     window.addEventListener('keyup', up)
@@ -704,8 +741,41 @@ export function ParkRoom({
        * mid-attack is committed — the same rule the scrap follows — so it keeps whatever speed it
        * had and gains none, which is what makes a long recovery cost something.
        */
+      /**
+       * ⚠️ A CAST OWNS YOU WHILE IT RUNS, exactly as it owns the boss — no walking, no
+       * swinging, no rolling out of it. It reaches where your swings cannot and it costs you a
+       * second and a half of being a target, which is the trade that stops it being the only
+       * button anybody presses.
+       */
+      if (myCast.current) {
+        const ct = myCast.current.t + dt
+        if (ct >= CAST[myCast.current.kind].time) {
+          myCast.current = null
+          myCastHit.current.clear()
+          myCastRest.current = 4
+          setCasting(null)
+        } else {
+          myCast.current = { ...myCast.current, t: ct }
+        }
+      } else {
+        myCastRest.current = Math.max(0, myCastRest.current - dt)
+        const press = castWanted.current && !castHeld.current
+        castHeld.current = castWanted.current
+        if (press && myCastRest.current <= 0 && !busy(you.current) && myKit) {
+          myCast.current = { kind: myKit.casts[0], t: 0 }
+          you.current = { ...you.current, aim: aimFromKeys(held.current, you.current.aim) }
+          setCasting(myKit.casts[0])
+        }
+      }
+      const iAmCasting = !!myCast.current
+
       const wasSwinging = you.current.swing > 0
-      const struck = stepStrike(you.current, hitting.current, myMoves, dt)
+      const struck = stepStrike(
+        you.current,
+        iAmCasting ? { quick: false, heavy: false, up: false, down: false } : hitting.current,
+        myMoves,
+        dt,
+      )
       /**
        * ⚠️ THE AIM IS TAKEN ON THE FRAME THE SWING STARTS and not touched again. Reading the
        * keys every frame would let you steer a live hitbox round somebody after committing to
@@ -713,7 +783,7 @@ export function ParkRoom({
        */
       if (!wasSwinging && struck.swing > 0)
         struck.aim = aimFromKeys(held.current, { x: you.current.facing, y: 0 })
-      const steer = busy(struck) ? STILL : held.current
+      const steer = busy(struck) || iAmCasting ? STILL : held.current
       you.current = { ...struck, ...stepWalker(struck, steer, struck.hold > 0 ? 0 : dt) }
       /**
        * ⚠️ AFTER THE WALK, so a dodge overrides where walking put you rather than adding to
@@ -723,7 +793,7 @@ export function ParkRoom({
        * ⚠️ THE RISING EDGE, taken here rather than in the key handler: a dodge is a press,
        * and reading "is Shift down" every frame would roll continuously while it is held.
        */
-      const wantRoll = rolling.current && !rolled.current
+      const wantRoll = rolling.current && !rolled.current && !iAmCasting
       rolled.current = rolling.current
       const roll = stepDodge(
         you.current,
@@ -772,6 +842,32 @@ export function ParkRoom({
           you.current = { ...you.current, spent: true, hold: 0.05 + mv.bite * 0.004 }
         }
       }
+      /**
+       * ⚠️ ONE PATCH IS ONE HIT PER THING, tracked by name rather than by a single flag — a
+       * wave rolling over the boss AND the dummy should hit both once, which a shared "spent"
+       * would have made one or the other.
+       */
+      const mine = myCast.current
+      if (mine && myMoves.length) {
+        const weight = myMoves.reduce((n, m) => n + m.bite, 0) / myMoves.length
+        for (const patch of patchesOf(mine.kind, you.current, you.current.aim, mine.t, 1)) {
+          if (!patch.live) continue
+          const b = boss.current
+          if (b && bossKit && !beaten(b) && !myCastHit.current.has('boss')) {
+            if (inPatch(b, bossKit.wide, patch, b.scale)) {
+              boss.current = wounded(b, { ...myMoves[0], bite: weight * 1.1 })
+              setBossShown(boss.current)
+              myCastHit.current.add('boss')
+            }
+          }
+          const d = dummy.current
+          if (d && !myCastHit.current.has('dummy') && inPatch(d, myWide, patch)) {
+            dummy.current = { ...d, hurt: d.hurt + weight * 1.1, hits: d.hits + 1, lit: 0.18 }
+            myCastHit.current.add('dummy')
+          }
+        }
+      }
+
       if (dummy.current && dummy.current.lit > 0)
         dummy.current = { ...dummy.current, lit: Math.max(0, dummy.current.lit - dt) }
 
@@ -1044,6 +1140,10 @@ export function ParkRoom({
       {
         const b = boss.current
         const tb = state.current.boss
+        const mineNow = myCast.current
+        setMyPatches(
+          mineNow ? patchesOf(mineNow.kind, you.current, you.current.aim, mineNow.t, 1) : [],
+        )
         setPatches(
           b?.cast
             ? patchesOf(b.cast.kind, b, b.aim, b.cast.t, b.scale)
@@ -1177,7 +1277,7 @@ export function ParkRoom({
     }
     raf = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(raf)
-  }, [walking, myMoves, myWide, bossKit])
+  }, [walking, myMoves, myWide, bossKit, myKit])
 
   /* the same sizing as everywhere else — PetView's size is the LONG side, not the height */
   /* ⚠️ the CREATURE is this tall, not its canvas — see petCanvas */
@@ -1527,7 +1627,9 @@ export function ParkRoom({
                       /* ⚠️ A DODGE YOU CANNOT SEE IS A DODGE YOU CANNOT LEARN TO TIME. The
                          0.26s of safety is the whole feature, so the creature has to look
                          untouchable for exactly as long as it is. */
-                      (one.mine && dodging ? ' is-rolling' : '')
+                      (one.mine && dodging ? ' is-rolling' : '') +
+                      /* committed, and visibly so — the same reason the boss squashes to turn */
+                      (one.mine && casting ? ' is-casting' : '')
                     }
                     style={{
                       left: `${at.x * 100}%`,
@@ -1602,6 +1704,25 @@ export function ParkRoom({
            * rather than floating over it. A patch that is live is drawn hard; one still winding
            * up grows into place, which is the whole of how a cast is read.
            */}
+          {walking &&
+            myPatches.map((p, i) => {
+              const at = onScreen(p.at, camAt)
+              return (
+                <span
+                  key={'mine' + i}
+                  className={'park-patch is-mine' + (p.live ? ' is-live' : '')}
+                  aria-hidden
+                  style={{
+                    left: `${at.x * 100}%`,
+                    top: `${at.y * 100}%`,
+                    width: `${((p.r * 2) / FIELD_ASPECT) * 100}%`,
+                    height: `${p.r * 2 * 100}%`,
+                    transform: `translate(-50%, -50%) scale(${(0.5 + p.ready * 0.5).toFixed(3)})`,
+                    opacity: p.live ? 0.9 : 0.2 + p.ready * 0.5,
+                  }}
+                />
+              )
+            })}
           {walking &&
             patches.map((p, i) => {
               const at = onScreen(p.at, camAt)
@@ -1766,12 +1887,14 @@ export function ParkRoom({
         {strolling.length > 0 && (
           <> The faded ones are your own other minions having a wander — only you see those.</>
         )}{' '}
-        <strong>Shift</strong> rolls — a quarter of a second where nothing can touch you, and then a
-        moment before you can do it again, so it is an answer to something rather than a way of
-        getting about. <strong>F</strong> and <strong>G</strong> swing, the same six moves your
-        creature has anywhere else. Call a boss and one of your own minions stands up big with a
-        health bar, where <em>everybody</em> in the park can see it and hit it — one boss at a time,
-        run by whoever called it, and it goes when they do.
+        <strong>E</strong> throws the big thing your creature is built for — whichever of the three
+        a boss made from the same drawing would reach for, on a few seconds of cooldown, and it
+        roots you while it goes off. <strong>Shift</strong> rolls — a quarter of a second where
+        nothing can touch you, and then a moment before you can do it again, so it is an answer to
+        something rather than a way of getting about. <strong>F</strong> and <strong>G</strong>{' '}
+        swing, the same six moves your creature has anywhere else. Call a boss and one of your own
+        minions stands up big with a health bar, where <em>everybody</em> in the park can see it and
+        hit it — one boss at a time, run by whoever called it, and it goes when they do.
       </p>
     </div>
   )

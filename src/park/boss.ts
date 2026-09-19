@@ -264,8 +264,14 @@ export function bossThink(
    * it cannot, and the kind follows the distance: something to run out of when you are on top of
    * it, something thrown ahead when you are not, and a rolling line when you are a long way off.
    *
-   * ⚠️ ON ITS OWN BEATS, AND NOT MANY. One in four, and never while it is already swinging,
+   * ⚠️ ON ITS OWN BEATS, AND NOT MANY. One in seven, and never while it is already swinging,
    * so a cast stays the thing you notice rather than the thing you are always in.
+   *
+   * ⚠️ SEVEN, UP FROM FOUR, BECAUSE TWO OF THE THREE NEVER USED TO LAND. A mark and a wave
+   * were both placed with a conversion that put them off the edge of the world, so the numbers
+   * here were set while only the bloom could touch anybody. With all three connecting, one in
+   * four took a player from 84% to nothing in about ten seconds. The rate is where that is paid
+   * for rather than the damage, because a cast that does not hurt is not worth dodging.
    */
   /**
    * ⚠️ ROTATED, NOT CHOSEN BY DISTANCE ALONE, because distance barely varies. A boss holds
@@ -278,9 +284,9 @@ export function bossThink(
    * cycle: standing on top of it gets the one that grows out from under you, and being a long
    * way off gets the one thrown ahead.
    */
-  const turn = Math.floor(beat / 4) % 3
+  const turn = Math.floor(beat / 7) % 3
   const cast: CastKind | null =
-    b.cast || b.swing > 0 || beat % 4 !== 1
+    b.cast || b.swing > 0 || beat % 7 !== 1
       ? null
       : gap < 0.5
         ? t.casts.find((k) => k === 'bloom') || t.casts[0]
