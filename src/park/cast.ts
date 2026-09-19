@@ -1,4 +1,4 @@
-import { across, down, footSpan, PARK_TALL, toScreen, type Aimed } from './strike'
+import { footSpan, PARK_TALL, stepFrom, toScreen, type Aimed } from './strike'
 import type { Spot } from './walk'
 
 /**
@@ -66,25 +66,6 @@ const WAVE_ROLL = 0.16
 const easedScale = (s: number) => 1 + (s - 1) * 0.4
 
 /**
- * A point that many PET-HEIGHTS along the aim.
- *
- * ⚠️ PET-HEIGHTS INTO SCREEN-HEIGHTS BEFORE across(), which is what PARK_TALL is for, and
- * this is the THIRD time that conversion has been left out in this module — `driven` has it
- * right, `stepDodge` had it wrong, and so did this. Without it a wave's five steps landed at
- * 6.87 to 35.62 pet-heights instead of 1.1 to 5.7, on a field ten across: the whole attack past
- * the edge of the world, which is why nothing a wave or a mark did ever touched anybody.
- *
- * ⚠️ AND THE MEASUREMENT THAT MISSED IT DIVIDED BY THE SAME WRONG CONSTANT. Checking the
- * step positions with `offset / across(PARK_TALL) * PARK_TALL` cancels the bug out exactly and
- * reports the number that was intended rather than the one on screen. A test built from the
- * same mistaken sum as the code confirms the mistake.
- */
-const along = (from: Spot, aim: Aimed, heights: number): Spot => ({
-  x: from.x + across(aim.x * heights * PARK_TALL),
-  y: from.y + down(aim.y * heights * PARK_TALL),
-})
-
-/**
  * Every patch a cast covers right now.
  *
  * @param t seconds since the cast began
@@ -107,7 +88,7 @@ export function patchesOf(kind: CastKind, from: Spot, aim: Aimed, t: number, sca
     const r = 0.62 * PARK_TALL * s
     return [
       {
-        at: along(from, aim, MARK_RANGE * easedScale(s)),
+        at: stepFrom(from, aim, MARK_RANGE * easedScale(s)),
         r,
         ready: Math.min(1, t / warn),
         live: t >= warn && t <= warn + 0.26,
@@ -125,7 +106,7 @@ export function patchesOf(kind: CastKind, from: Spot, aim: Aimed, t: number, sca
     const startsAt = warn + i * WAVE_ROLL
     const r = 0.46 * PARK_TALL * s
     out.push({
-      at: along(from, aim, 1.1 * easedScale(s) + i * WAVE_GAP),
+      at: stepFrom(from, aim, 1.1 * easedScale(s) + i * WAVE_GAP),
       r,
       ready: Math.min(1, t / startsAt),
       live: t >= startsAt && t <= startsAt + 0.24,

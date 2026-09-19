@@ -113,8 +113,9 @@ export function stepDodge(
        Without it the roll came out 8.12 pet-heights instead of 1.3 — five and a half times too
        far, a dodge that crossed most of the field. `driven` already does this correctly; this
        is the same sum written a second time and got wrong, which is its own argument. */
-    const step = (ease(gone) - ease(was)) * DODGE.reach * PARK_TALL
-    const { x, y } = holdInPark(s.x + across(step * s.aim.x), s.y + down(step * s.aim.y))
+    const step = (ease(gone) - ease(was)) * DODGE.reach
+    const to = stepFrom(s, s.aim, step)
+    const { x, y } = holdInPark(to.x, to.y)
     return {
       s: { ...s, x, y, dodge: left, dodgeRest: left > 0 ? s.dodgeRest : DODGE.rest },
       went: false,
@@ -184,6 +185,32 @@ export const toScreen = (dx: number, dy: number) => ({
 
 /** Eight ways, because a keyboard has eight and a drawing has two. */
 export type Aimed = { x: number; y: number }
+
+/**
+ * Pet-heights straight into world units.
+ *
+ * ⚠️ THESE EXIST BECAUSE THE SAME MISTAKE HAPPENED THREE TIMES. `across` and `down` take
+ * SCREEN-HEIGHTS, and almost nothing in this game is written in screen-heights — a reach, a
+ * footprint, a dodge, a lunge and every cast are all in PET-heights, which is PARK_TALL of a
+ * screen. So the correct call has always been `across(v * PARK_TALL)`, and leaving the factor
+ * out silently multiplies a distance by five and a half.
+ *
+ * It cost: a dodge that crossed most of the field, and a boss's mark and wave landing past the
+ * edge of the world so that two of its three big attacks could never hit anybody at all. Both
+ * looked exactly like working code.
+ *
+ * ⚠️ AND THE UNIT IS NOW IN THE NAME, which is the actual fix. `across(x * PARK_TALL)` reads
+ * as fine whether or not the PARK_TALL is there; `outBy(x)` has nowhere to put a wrong one.
+ * `across` and `down` stay for the handful of places that genuinely hold screen-heights.
+ */
+export const outBy = (petHeights: number): number => across(petHeights * PARK_TALL)
+export const downBy = (petHeights: number): number => down(petHeights * PARK_TALL)
+
+/** A point that many pet-heights along an aim — the shape every cast and every dash needs. */
+export const stepFrom = (from: Spot, aim: Aimed, petHeights: number): Spot => ({
+  x: from.x + outBy(petHeights * aim.x),
+  y: from.y + downBy(petHeights * aim.y),
+})
 
 /**
  * The nearest of the eight compass directions, as a unit vector in screen-heights.
@@ -288,7 +315,7 @@ export const DODGE_ROOM = 0.28
 
 export const footOf = (wide: number, scale = 1): { x: number; y: number } => ({
   x: across(wide * 0.8 * scale) / 2,
-  y: down(FOOT.deep * PARK_TALL * scale) / 2,
+  y: downBy(FOOT.deep * scale) / 2,
 })
 
 /**
@@ -422,7 +449,7 @@ export function inSwipe(at: Spot, wide: number, s: Swipe, scale = 1): boolean {
 }
 
 function areaOf(at: Spot, facing: number, a: Attack, scale: number): Box {
-  const reach = across(a.reach * PARK_TALL * scale)
+  const reach = outBy(a.reach * scale)
   /**
    * ⚠️ DEPTH IS THE DODGE AXIS, SO IT MUST NOT GROW THE WAY REACH DOES. A bigger creature
    * genuinely has a longer arm, and reach scaling with size is the whole reason a boss is
@@ -438,7 +465,7 @@ function areaOf(at: Spot, facing: number, a: Attack, scale: number): Box {
    * Bowser's moves are bigger than Kirby's and the stage does not shrink to match.
    */
   const grow = Math.pow(Math.max(0.05, scale), 0.45)
-  const deep = Math.min(down(hurtHalf(a, PARK_DEEP) * PARK_TALL * grow), (VIEW.h * DODGE_ROOM) / 2)
+  const deep = Math.min(downBy(hurtHalf(a, PARK_DEEP) * grow), (VIEW.h * DODGE_ROOM) / 2)
   const x0 = a.both ? at.x - reach : facing > 0 ? at.x : at.x - reach
   return {
     x0,
@@ -470,8 +497,8 @@ export function driven(s: Striker, a: Attack | undefined, dt: number): Striker {
   /* ⚠️ ALONG THE AIM, not along the facing. A lunge thrown up-and-left has to travel
      up-and-left, or the one shape whose identity is that it travels would travel somewhere the
      attack is not — see Striker.aim. Screen-heights out, world units in, one axis each. */
-  const reach = speed * PARK_TALL * t
-  const { x, y } = holdInPark(s.x + across(reach * s.aim.x), s.y + down(reach * s.aim.y))
+  const to = stepFrom(s, s.aim, speed * t)
+  const { x, y } = holdInPark(to.x, to.y)
   return { ...s, x, y }
 }
 

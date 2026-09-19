@@ -1,8 +1,8 @@
 import type { Drawing } from '../draw/strokes'
 import type { CastKind } from './cast'
 import { bossPace, movesOf, petWide, type Attack } from '../pets/attack'
-import { restingWalker, VIEW, type Spot } from './walk'
-import { across, footOf, PARK_TALL, restingStriker, type StrikeInput, type Striker } from './strike'
+import { restingWalker, type Spot } from './walk'
+import { footOf, outBy, PARK_TALL, restingStriker, type StrikeInput, type Striker } from './strike'
 import { givesGround, goesBig, runsAtYou, temperOf, type Temper } from './temper'
 
 /**
@@ -189,8 +189,10 @@ export function bossThink(
    * that can hit you from further away should be standing further away.
    */
   const long = moves.reduce((most, a) => Math.max(most, a.reach), moves[0]?.reach ?? 0.9)
-  const reach = (long * PARK_TALL * b.scale) / (16 / 10)
-  const step = reach * VIEW.w
+  /* ⚠️ outBy, not a hand-written across() — this was `(long * PARK_TALL * scale) / (16/10)`
+     then multiplied by VIEW.w, which is the same sum spelled out and the same place the factor
+     goes missing. See outBy. */
+  const step = outBy(long * b.scale)
 
   /**
    * ⚠️ A BEAT OF COMMITMENT: re-deciding every frame is what makes a thing look like a machine.
@@ -336,7 +338,7 @@ export function ringSpot(b: Spot, n: number, reach = 1, scale = BOSS.scale): Spo
 
      ⚠️ AND ITS OWN SIZE, for the same reason: reach is multiplied by scale everywhere it is
      used, and bosses no longer all stand the same height. */
-  const out = across((reach + 0.25) * PARK_TALL * scale)
+  const out = outBy((reach + 0.25) * scale)
   const side = n % 2 === 0 ? -1 : 1
   /* everybody after the first two stands a little further back, so a crowd is a crowd rather
      than four creatures in the same square foot */
