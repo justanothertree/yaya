@@ -97,6 +97,17 @@ export const FOOT = { deep: 0.28 }
  */
 export const PARK_DEEP = 0.4
 
+/**
+ * The deepest any swing may be, as a fraction of the visible field's height.
+ *
+ * ⚠️ THE FLOOR YOU ARE ALWAYS LEFT. At 0.28 there is 72% of the screen that a single swing
+ * cannot reach, whatever creature threw it, which is what makes stepping out of one a thing you
+ * can always do rather than a thing that depends on what the boss was drawn like. A player's own
+ * swings come out at about 14% of the screen deep, so this never touches them — it exists for
+ * what happens when a drawing is scaled up into a boss.
+ */
+export const DODGE_ROOM = 0.28
+
 export const footOf = (wide: number, scale = 1): { x: number; y: number } => ({
   x: across(wide * 0.8 * scale) / 2,
   y: down(FOOT.deep * PARK_TALL * scale) / 2,
@@ -119,7 +130,22 @@ export function strikeArea(
   const f = gone / a.span
   if (f < a.live[0] || f > a.live[1]) return null
   const reach = across(a.reach * PARK_TALL * scale)
-  const deep = down(hurtHalf(a, PARK_DEEP) * PARK_TALL * scale)
+  /**
+   * ⚠️ DEPTH IS THE DODGE AXIS, SO IT MUST NOT GROW THE WAY REACH DOES. A bigger creature
+   * genuinely has a longer arm, and reach scaling with size is the whole reason a boss is
+   * frightening. Depth is a different question: seen from above, stepping out of a swing means
+   * crossing it in y, so the deeper the band the less there is anywhere to stand — and scaling
+   * it linearly meant a 2.5x boss swung a band 48% of the screen deep and 31% wide. Watched with
+   * the boxes on and reported exactly right: "a boss is just attacking a giant rectangle that I'm
+   * not sure how to even fight". It was not a fight, it was a room with no floor left.
+   *
+   * ⚠️ TWO LIMITS, BECAUSE ONE IS NOT ENOUGH. The power curve keeps a big creature's swing
+   * meaningfully deeper than a small one's without it being proportional; the cap is the promise
+   * that whatever anybody draws, MOST OF THE SCREEN IS ALWAYS SAFE. This is the Smash bargain:
+   * Bowser's moves are bigger than Kirby's and the stage does not shrink to match.
+   */
+  const grow = Math.pow(Math.max(0.05, scale), 0.45)
+  const deep = Math.min(down(hurtHalf(a, PARK_DEEP) * PARK_TALL * grow), (VIEW.h * DODGE_ROOM) / 2)
   const x0 = a.both ? at.x - reach : facing > 0 ? at.x : at.x - reach
   return {
     x0,
