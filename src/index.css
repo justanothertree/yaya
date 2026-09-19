@@ -8524,6 +8524,38 @@ a.cz-msg-author:focus-visible {
   }
 }
 /**
+ * Where your next swing lands.
+ *
+ * ⚠️ UNDER EVERYTHING, UNLIKE THE DEBUG BOXES. Those sit on top on purpose so they can be
+ * read against the drawing; this is part of the game and belongs on the grass with the boss's
+ * own telegraphs, or it is a rectangle over your creature for the whole fight.
+ *
+ * ⚠️ AND IT IS QUIET UNTIL IT MATTERS. Faint while it is only telling you where your reach
+ * goes, and lit the moment something is standing in it — the second state is the whole feature,
+ * because "am I close enough" is the question a player is actually asking.
+ */
+.park-reach {
+  position: absolute;
+  z-index: 1;
+  pointer-events: none;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent, #7c6af7) 11%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent, #7c6af7) 26%, transparent);
+  transition:
+    background 90ms linear,
+    box-shadow 90ms linear;
+}
+.park-reach.is-on {
+  background: color-mix(in srgb, var(--accent, #7c6af7) 26%, transparent);
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--accent, #7c6af7) 78%, transparent);
+}
+@media (prefers-reduced-motion: reduce) {
+  .park-reach {
+    transition: none;
+  }
+}
+
+/**
  * A boss on its last legs, and the line that says it is over.
  *
  * ⚠️ THE TELL IS A PULSE RATHER THAN A COLOUR, because a boss already uses colour for two

@@ -57,7 +57,7 @@ import {
   type StrikeInput,
   type Striker,
 } from './strike'
-import { movesOf, petWide, type Attack } from '../pets/attack'
+import { movesOf, slotFor, petWide, type Attack } from '../pets/attack'
 import { footRoom, petBox } from '../pets/rig'
 import { CAST, castSlot, inPatch, patchesOf, type CastKind, type Patch } from './cast'
 import { lungeOf } from '../pets/fight'
@@ -274,6 +274,16 @@ function SwipePatch({
     />
   )
 }
+
+/**
+ * Which way a swing is aimed, as the word slotFor wants.
+ *
+ * ⚠️ OFF THE SAME TWO FLAGS stepStrike READS, so the move drawn is the move thrown. Up wins
+ * over down and nothing held is neutral, which is stepStrike's own rule copied nowhere — this
+ * takes the very input object it is given.
+ */
+const aimWord = (k: { up: boolean; down: boolean }): 'up' | 'down' | 'neutral' =>
+  k.up ? 'up' : k.down ? 'down' : 'neutral'
 
 /** The field is 16:10, and a screen-height is its height — see SwipePatch. */
 const FIELD_ASPECT = 16 / 10
@@ -1653,6 +1663,41 @@ export function ParkRoom({
   const theirBoss: BossEcho | null = state.current.boss
 
   /**
+   * Where your next swing would land, and whether anything is standing in it.
+   *
+   * ⚠️ DERIVED FROM THE SAME CALLS THE HIT TEST MAKES — slotFor to choose the move,
+   * strikeSwipe to shape it, inSwipe to ask. A second idea of "your reach" living beside the
+   * real one is the bug this module keeps paying for, so there is not one: if the picture is
+   * wrong then the hit is wrong in the same way, which is a thing a test can catch.
+   *
+   * ⚠️ ASKED AT THE MIDDLE OF THE LIVE WINDOW, which is the only time it answers at all.
+   * strikeSwipe returns null outside a.live — the area does not grow, it simply does not exist
+   * until the move is out — so the obvious call with gone = span returns nothing and the
+   * indicator never appears. Watched exactly that. The midpoint is the same frame MoveShow
+   * parks on when motion is turned off, for the same reason: it is the frame the move IS.
+   */
+  const myReach = (() => {
+    if (!bossShown && !theirBoss && !dummyShown) return null
+    if (!myMoves.length || knocked) return null
+    const aim = aimFromKeys(held.current, shownYou.aim)
+    const mv = myMoves[Math.min(myMoves.length - 1, slotFor(false, aimWord(hitting.current)))]
+    if (!mv) return null
+    const swipe = strikeSwipe(shownYou, aim, mv, mv.span * ((mv.live[0] + mv.live[1]) / 2))
+    if (!swipe) return null
+    const kit = echoKit.current
+    const onTarget =
+      (!!bossShown &&
+        !beaten(bossShown) &&
+        inSwipe(bossShown, bossWide(bossShown.art), swipe, bossShown.scale)) ||
+      (!!theirBoss &&
+        theirBoss.hp > 0 &&
+        !!kit &&
+        inSwipe(theirBoss.shown, kit.wide, swipe, kit.temper.scale)) ||
+      (!!dummyShown && inSwipe(dummyShown, myWide, swipe))
+    return { swipe, onTarget }
+  })()
+
+  /**
    * What the picture will fight like, or what the one in the field is fighting like.
    *
    * ⚠️ THE TEMPER THAT IS ACTUALLY IN USE, never a fresh reading. bossShown carries the temper
@@ -1943,6 +1988,31 @@ export function ParkRoom({
                 </span>
               ))}
             </div>
+          )}
+          {/*
+        ⚠️ REACH IS THE WHOLE FIGHT AND NOTHING SAID WHAT YOURS WAS. Measured rather than
+        guessed: a scripted player that walks at the boss lands 70% of its swings and one that
+        does not lands 33%, for identical timing and identical moves — spacing is worth more
+        than twice everything else put together. And it was already known in the room, said
+        plainly: "i would only ever play with the hitboxes turned on because thats currently
+        required to win". The debug overlay was carrying a job the game should do itself.
+
+        ⚠️ SO IT IS THE REAL SWIPE, NOT A RING. A ring at reach distance would promise cover
+        behind you that a swing does not give — the area drawn here is strikeSwipe of the move
+        F would actually throw given the keys you are holding right now, which is the same call
+        the hit test makes. Change your aim and it turns; hold nothing and it points where you
+        are facing.
+
+        ⚠️ AND IT ONLY EXISTS WHEN THERE IS SOMETHING TO HIT. A permanent wedge under your feet
+        while you are walking about a park with friends is furniture; it appears when a boss or
+        the dummy is out, which is exactly when knowing your reach is the thing you need.
+      */}
+          {walking && myReach && (
+            <SwipePatch
+              swipe={myReach.swipe}
+              cam={camAt}
+              className={'park-reach' + (myReach.onTarget ? ' is-on' : '')}
+            />
           )}
           {walking && <GuardArc me={shownYou} cam={camAt} />}
           {walking && <HopShade at={shownYou} cam={camAt} height={hopHeight(shownYou.hop)} />}
