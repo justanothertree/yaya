@@ -286,9 +286,17 @@ export function bossThink(
    * cycle: standing on top of it gets the one that grows out from under you, and being a long
    * way off gets the one thrown ahead.
    */
-  const turn = Math.floor(beat / 7) % 3
+  /**
+   * ⚠️ ONE IN FOUR ONCE IT IS CORNERED, up from one in seven. Seven was set so a cast stays
+   * the thing you notice rather than the thing you are always in — that is still right for most
+   * of a fight, and stops being right for the end of one. The last third is where a boss should
+   * be spending everything it has.
+   */
+  const low = cornered(b.lifeMax > 0 ? b.life / b.lifeMax : 1)
+  const every = low ? 4 : 7
+  const turn = Math.floor(beat / every) % 3
   const cast: CastKind | null =
-    b.cast || b.swing > 0 || beat % 7 !== 1
+    b.cast || b.swing > 0 || beat % every !== 1
       ? null
       : gap < 0.5
         ? t.casts.find((k) => k === 'bloom') || t.casts[0]
@@ -358,3 +366,26 @@ export const wounded = (b: Boss, a: Attack): Boss => ({
 })
 
 export const beaten = (b: Boss): boolean => b.life <= 0
+
+/**
+ * How little is left before a boss stops pacing itself.
+ *
+ * ⚠️ A FIGHT WITH NO SHAPE IS A FIGHT WITH NO END IN SIGHT. A boss behaved identically at five
+ * per cent as at a hundred, so a long fight was the same fifteen seconds repeated until the bar
+ * ran out — nothing told you it was nearly over and nothing made the last bit worth the first.
+ *
+ * ⚠️ AND THE THING THAT CHANGES IS HOW OFTEN IT COMMITS, NOT HOW FAST IT REACTS. "The attacks
+ * are still slightly too fast" was said out loud about this fight, so the one lever deliberately
+ * NOT pulled here is speed: the wind-ups, the turn and the beat stay exactly as they are. What
+ * goes up is how often the big telegraphed things come, which raises the threat by giving you
+ * MORE to read rather than less time to read it.
+ *
+ * ⚠️ ONE LEVER, ALSO BECAUSE OF WHERE IT IS DECIDED. The cast rate is chosen by the machine
+ * running the boss and broadcast as a slot, so a rate change cannot desync. Anything that
+ * altered the SHAPE of a cast would have to be re-derived identically by every viewer, and a
+ * second copy of this rule living on the other side of the wire is a second copy to get wrong.
+ */
+export const LAST_STAND = 0.35
+
+/** Is this boss on its last legs? Takes the fraction, so a viewer can ask it of an echo too. */
+export const cornered = (left: number): boolean => left > 0 && left <= LAST_STAND

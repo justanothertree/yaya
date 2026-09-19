@@ -8524,6 +8524,44 @@ a.cz-msg-author:focus-visible {
   }
 }
 /**
+ * A boss on its last legs, and the line that says it is over.
+ *
+ * ⚠️ THE TELL IS A PULSE RATHER THAN A COLOUR, because a boss already uses colour for two
+ * other things — brightness for "that hit" and grey for "beaten" — and a third meaning on the
+ * same channel is three meanings nobody can separate mid-fight. A slow breath is unused here
+ * and reads as effort.
+ */
+@keyframes park-cornered {
+  0%,
+  100% {
+    filter: brightness(1.06) saturate(1.15);
+  }
+  50% {
+    filter: brightness(1.3) saturate(1.5);
+  }
+}
+.park-one.is-boss.is-cornered canvas {
+  animation: park-cornered 620ms ease-in-out infinite;
+}
+.park-one.is-boss.is-cornered .park-life i {
+  background: #ffb020;
+}
+/* ⚠️ a pulse is motion, and motion is a thing people switch off — the bar keeps saying it */
+@media (prefers-reduced-motion: reduce) {
+  .park-one.is-boss.is-cornered canvas {
+    animation: none;
+    filter: brightness(1.2) saturate(1.4);
+  }
+}
+.park-result {
+  margin: 4px 0 0;
+  font-size: 0.86rem;
+}
+.park-result strong {
+  color: var(--accent, #7c6af7);
+}
+
+/**
  * Your three big moves, in the corner of the field.
  *
  * ⚠️ IT SITS OVER THE GRASS AND MUST NOT EAT IT. Pinned to the bottom-left corner, small, and

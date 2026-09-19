@@ -63,6 +63,7 @@ import { CAST, castSlot, inPatch, patchesOf, type CastKind, type Patch } from '.
 import { lungeOf } from '../pets/fight'
 import {
   beaten,
+  cornered,
   BOSS,
   bossMoves,
   bossThink,
@@ -189,6 +190,10 @@ function BossFigure({
         'park-one is-boss' +
         (hit ? ' is-hit' : '') +
         (done ? ' is-beaten' : '') +
+        /* ⚠️ A DIFFICULTY CHANGE NOBODY CAN SEE IS A DIFFICULTY SPIKE. The last third throws
+           its big moves nearly twice as often, so the creature has to visibly change when it
+           crosses — otherwise the fight just gets harder for no reason you could point at. */
+        (!done && cornered(hp) ? ' is-cornered' : '') +
         /* ⚠️ A WINDOW NOBODY CAN SEE IS NOT A WINDOW. Turning costs the boss its swing for
            450ms, which is the reward for getting round it — and without a tell that is just a
            boss that sometimes does not attack for no visible reason. */
@@ -532,6 +537,18 @@ export function ParkRoom({
   const [bossPick, setBossPick] = useState(0)
   /** when your boss was beaten, so it can take itself away — see BOSS_LINGER */
   const bossDoneAt = useRef(0)
+  /**
+   * What the fight cost, so beating something is an event rather than a thing that stops.
+   *
+   * ⚠️ ASKED DIRECTLY AND NOT ANSWERED FOR A LONG TIME: "i hit it and it disappeared and this
+   * popped up ... now what". A boss went grey, lingered and vanished, and the only thing on the
+   * screen afterwards was the same description it had before the fight. How long it took and
+   * what it cost you are the two facts that make a win a result, and both were already being
+   * counted for other reasons.
+   */
+  const fightFrom = useRef(0)
+  const fightDowns = useRef(0)
+  const [result, setResult] = useState<{ name: string; secs: number; downs: number } | null>(null)
   /**
    * What somebody else's boss can throw, worked out once from the drawing they sent.
    *
@@ -1228,11 +1245,23 @@ export function ParkRoom({
 
         /* ⚠️ A BEATEN BOSS TAKES ITSELF AWAY. One park has one boss, and whoever called it is
            not necessarily still at the keyboard — see BOSS_LINGER. */
-        if (beaten(cur) && !bossDoneAt.current) bossDoneAt.current = now / 1000
+        if (!fightFrom.current) {
+          fightFrom.current = now / 1000
+          fightDowns.current = 0
+        }
+        if (beaten(cur) && !bossDoneAt.current) {
+          bossDoneAt.current = now / 1000
+          setResult({
+            name: cur.name,
+            secs: Math.max(1, Math.round(now / 1000 - fightFrom.current)),
+            downs: fightDowns.current,
+          })
+        }
         if (bossDoneAt.current && now / 1000 - bossDoneAt.current > BOSS_LINGER) {
           boss.current = null
           setBossShown(null)
           bossDoneAt.current = 0
+          fightFrom.current = 0
           park.current?.callBoss('', null)
         } else {
           boss.current = cur
@@ -1285,6 +1314,10 @@ export function ParkRoom({
        * your own screen, against your own position, out of its own drawing's reach.
        */
       const tb = state.current.boss
+      if (!tb && !boss.current && fightFrom.current) {
+        fightFrom.current = 0
+        bossDoneAt.current = 0
+      }
       if (tb) {
         if (echoKit.current?.by !== tb.by)
           echoKit.current = {
@@ -1300,6 +1333,24 @@ export function ParkRoom({
         /* ⚠️ a viewer counts how long their cast has been going rather than being told —
            see BossEcho.castFor. Its patches then come out identical to the host's. */
         if (tb.cast) tb.castFor += dt
+        /**
+         * ⚠️ AND A FRIEND'S BOSS FALLING IS YOUR RESULT TOO. Most of the bosses in a shared
+         * park are somebody else's, so a win line that only fired for the host would be a win
+         * line most people never see. The clock is your own — it starts when the thing appeared
+         * on YOUR screen — which is honest for somebody who walked over halfway through.
+         */
+        if (!fightFrom.current) {
+          fightFrom.current = now / 1000
+          fightDowns.current = 0
+        }
+        if (tb.hp <= 0 && !bossDoneAt.current) {
+          bossDoneAt.current = now / 1000
+          setResult({
+            name: tb.name,
+            secs: Math.max(1, Math.round(now / 1000 - fightFrom.current)),
+            downs: fightDowns.current,
+          })
+        }
         const theirMove = tb.swing > 0 ? kit.moves[tb.swing - 1] : undefined
         if (theirMove) {
           tb.swingFor += dt
@@ -1490,6 +1541,7 @@ export function ParkRoom({
       downFor.current = fall.down
       you.current = fall.s
       if (fall.went) setKnocked(fall.went === 'down')
+      if (fall.went === 'down') fightDowns.current++
 
       setShownYou(you.current)
       setCastLeft(myCastRest.current)
@@ -1668,6 +1720,8 @@ export function ParkRoom({
                 y: you.current.y,
               })
               bossDoneAt.current = 0
+              /* last fight's line goes when the next one starts, or it reads as this one's */
+              setResult(null)
               setBossShown(boss.current)
               /* ⚠️ AND EVERYBODY ELSE IS TOLD AT ONCE. A boss too detailed to send is refused by
                  the relay, which answers with the reason — the same door a look goes through. */
@@ -1792,6 +1846,26 @@ export function ParkRoom({
       {walking && bossSays && (
         <p className="muted park-says" role="status">
           {bossSays}
+        </p>
+      )}
+      {/*
+        ⚠️ THE ANSWER TO "NOW WHAT". A boss went grey, lingered and vanished, and the only thing
+        left on the screen was the same description it had before the fight — so the end of a
+        fight looked exactly like a fight that had stopped. Two facts make it a result instead,
+        and both were already being counted: how long it took, and how many times it put you on
+        the floor. No score, no table, nothing stored — just the thing that happened, said.
+      */}
+      {walking && result && (
+        <p className="park-result" role="status">
+          <strong>{result.name} is down.</strong>{' '}
+          {result.secs >= 60
+            ? `${Math.floor(result.secs / 60)}m ${result.secs % 60}s`
+            : `${result.secs} seconds`}
+          {result.downs === 0
+            ? ', and it never put you on the floor.'
+            : result.downs === 1
+              ? ', and it put you on the floor once.'
+              : `, and it put you on the floor ${result.downs} times.`}
         </p>
       )}
       {/* ⚠️ role=alert, not status: this is the one line on the page that is about something
