@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import type { Drawing } from '../draw/strokes'
 import { PetView } from '../pets/PetView'
 import { petCanvas } from '../pets/rig'
@@ -64,7 +64,7 @@ import {
 import { movesOf, slotFor, petWide, type Attack } from '../pets/attack'
 import { footRoom, petBox } from '../pets/rig'
 import { CAST, castSlot, inPatch, patchesOf, type CastKind, type Patch } from './cast'
-import { recordWin, winFor } from './records'
+import { recordWin, subscribeWins, winFor, wins } from './records'
 import { lungeOf } from '../pets/fight'
 import {
   beaten,
@@ -1938,6 +1938,13 @@ export function ParkRoom({
    * it was built with and the echo's kit carries the one its hitboxes use — reading the drawing
    * again here would be a second answer free to drift from the one doing the hitting.
    */
+  /**
+   * ⚠️ SUBSCRIBED RATHER THAN READ ONCE, so a win appears in the list the moment it is
+   * written rather than the next time something else happens to re-render the page. The store
+   * already tells its watchers; this is the two lines that listen.
+   */
+  const myWins = useSyncExternalStore(subscribeWins, wins, wins)
+
   /* ⚠️ off shownYou, which already re-renders every frame — no new clock for a five-item scan */
   const whereIAm = walking ? markAt(shownYou) : null
 
@@ -2896,6 +2903,36 @@ export function ParkRoom({
         swing, swing harder, roll, guard and jump — and the three chips in the corner throw your big
         moves.
       </p>
+      {/*
+        ⚠️ A RECORD YOU CANNOT LOOK AT IS A RECORD THAT ONLY EXISTS WHEN YOU HAPPEN TO PICK
+        THE SAME CREATURE AGAIN. The line before a fight tells you about THAT one; this is the
+        "look what we have done" that is the actual reason to keep any of it, and on a site
+        for somebody's family that is most of the point.
+
+        ⚠️ AND IT IS NOT THERE UNTIL THERE IS SOMETHING IN IT, so a first visit is not a table
+        of noughts explaining a feature nobody has used yet.
+      */}
+      {myWins.length > 0 && (
+        <details className="park-won">
+          <summary>
+            Beaten: <strong>{myWins.length}</strong>{' '}
+            {myWins.length === 1 ? 'creature' : 'creatures'}
+          </summary>
+          <ul>
+            {[...myWins]
+              .sort((a, b) => b.at - a.at)
+              .map((w) => (
+                <li key={w.name}>
+                  <strong>{w.name}</strong>
+                  <span>
+                    {w.beaten === 1 ? 'once' : `${w.beaten} times`} · quickest {said(w.best)}
+                    {w.fell === 0 ? ' without going down' : ''}
+                  </span>
+                </li>
+              ))}
+          </ul>
+        </details>
+      )}
       <p className="muted park-about">
         The park is {PARK.across} screens across and {PARK.down} down, and the view follows you —
         the little map shows the whole of it, everybody in it, and the few places worth naming: the

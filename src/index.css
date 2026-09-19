@@ -8761,6 +8761,46 @@ a.cz-msg-author:focus-visible {
   margin: 4px 0 0;
   font-size: 0.82rem;
 }
+/**
+ * What you have beaten.
+ *
+ * ⚠️ FOLDED SHUT. It is a thing you look at on purpose, not a thing that should sit open
+ * under the park growing a row every time somebody wins — and a details element is the one
+ * control that needs no state, works with a keyboard and is already open to a screen reader.
+ */
+.park-won {
+  margin: 8px 0 0;
+  font-size: 0.82rem;
+}
+.park-won summary {
+  cursor: pointer;
+  padding: 4px 0;
+}
+.park-won ul {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 3px;
+}
+.park-won li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  align-items: baseline;
+}
+.park-won li span {
+  color: color-mix(in srgb, var(--text) 68%, transparent);
+  font-variant-numeric: tabular-nums;
+}
+@media (pointer: coarse) {
+  /* a thumb opens it, so the row it presses is a row a thumb can hit */
+  .park-won summary {
+    min-height: 40px;
+    display: flex;
+    align-items: center;
+  }
+}
 
 /**
  * The guard, held up.

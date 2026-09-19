@@ -130,6 +130,16 @@ export function recordWin(name: string, secs: number, fell: number): { win: Win;
   return { win, best: better }
 }
 
+/**
+ * ⚠️ AND DELIBERATELY NOT ON library/cloud.ts, WHICH WOULD LOSE THE THING THIS IS FOR. That
+ * sync is add-only and keyed by name: "if it is here already, skip it". Right for a song or a
+ * drawing, which you either have or do not — and wrong for a record, where the copy on the
+ * other machine might be the QUICKER one and would be dropped without a word. Merging records
+ * is well defined (see restoreWins) but it is a second contract for that file to hold, so it
+ * is a deliberate piece of work rather than a fifth line in its list. Until then a record
+ * moves between machines the way everything did before the sync existed: in the backup file.
+ */
+
 /** For the backup file, which already carries everything else a person has made here. */
 export const packWins = (): Win[] => wins()
 
