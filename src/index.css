@@ -8685,6 +8685,84 @@ a.cz-msg-author:focus-visible {
 }
 
 /**
+ * Places in the park.
+ *
+ * ⚠️ SOFT AND UNDERFOOT. These are scenery and must never be mistaken for something that
+ * hurts — the park already uses hard-edged circles for exactly that, so a landmark that looked
+ * like a patch would be a landmark people dodge. Blurred edges, low contrast, and z-index 0 so
+ * every creature and every telegraph is drawn over them.
+ *
+ * ⚠️ AND NO ANIMATION AT ALL, which is why there is no reduced-motion rule to write: a field
+ * of gently pulsing ponds is a field nobody can read a telegraph in.
+ */
+.park-mark {
+  position: absolute;
+  z-index: 0;
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+}
+.park-mark.is-pond {
+  background: radial-gradient(
+    closest-side,
+    color-mix(in srgb, #4aa3d8 46%, transparent),
+    color-mix(in srgb, #4aa3d8 16%, transparent) 70%,
+    transparent
+  );
+}
+.park-mark.is-grove {
+  background: radial-gradient(
+    closest-side,
+    color-mix(in srgb, #2f7d3f 42%, transparent),
+    color-mix(in srgb, #2f7d3f 12%, transparent) 72%,
+    transparent
+  );
+}
+.park-mark.is-ring {
+  background: radial-gradient(
+    closest-side,
+    transparent 52%,
+    color-mix(in srgb, #c9a86a 44%, transparent) 58%,
+    color-mix(in srgb, #c9a86a 10%, transparent) 78%,
+    transparent
+  );
+}
+.park-mark.is-rocks {
+  background: radial-gradient(
+    closest-side,
+    color-mix(in srgb, #8b8577 44%, transparent),
+    color-mix(in srgb, #8b8577 12%, transparent) 68%,
+    transparent
+  );
+}
+/* on the little map they are flat marks, because a gradient at 6px is a smudge */
+.park-map-mark {
+  position: absolute;
+  width: 9px;
+  height: 9px;
+  margin: -4.5px 0 0 -4.5px;
+  border-radius: 50%;
+  opacity: 0.55;
+}
+.park-map-mark.is-pond {
+  background: #4aa3d8;
+}
+.park-map-mark.is-grove {
+  background: #2f7d3f;
+}
+.park-map-mark.is-rocks {
+  background: #8b8577;
+}
+.park-map-mark.is-ring {
+  background: transparent;
+  box-shadow: inset 0 0 0 2px #c9a86a;
+}
+.park-where {
+  margin: 4px 0 0;
+  font-size: 0.82rem;
+}
+
+/**
  * The guard, held up.
  *
  * ⚠️ THE ARC IS THE ONLY THING THAT SAYS WHICH WAY IT FACES, so nothing here may make it look

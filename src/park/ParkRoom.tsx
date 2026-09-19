@@ -10,6 +10,8 @@ import {
   farFrom,
   onScreen,
   PARK,
+  MARKS,
+  markAt,
   restingWalker,
   stepWalker,
   STILL,
@@ -522,6 +524,15 @@ function MiniMap({
 }) {
   return (
     <div className="park-map" aria-hidden>
+      {/* ⚠️ THE PLACES FIRST, so the window and the dots sit on top of them rather than
+          under — the map is for finding people, and a landmark is the thing you find them BY. */}
+      {MARKS.map((m) => (
+        <span
+          key={m.name}
+          className={'park-map-mark is-' + m.kind}
+          style={{ left: `${m.at.x * 100}%`, top: `${m.at.y * 100}%` }}
+        />
+      ))}
       <span
         className="park-map-view"
         style={{
@@ -1916,6 +1927,9 @@ export function ParkRoom({
    * it was built with and the echo's kit carries the one its hitboxes use — reading the drawing
    * again here would be a second answer free to drift from the one doing the hitting.
    */
+  /* ⚠️ off shownYou, which already re-renders every frame — no new clock for a five-item scan */
+  const whereIAm = walking ? markAt(shownYou) : null
+
   const bossSays = (() => {
     if (bossShown) return `${bossShown.name} — ${saysOf(bossShown.temper)}`
     if (theirBoss) {
@@ -2285,6 +2299,32 @@ export function ParkRoom({
               className={'park-reach' + (myReach.onTarget ? ' is-on' : '')}
             />
           )}
+          {/*
+            ⚠️ DRAWN IN WORLD UNITS LIKE EVERYTHING ELSE, so the pond stays where the pond is
+            while the ground slides past it — the same onScreen every creature uses. Sized in
+            screenfuls and corrected for the field's 16:10, or a round pond would be an oval.
+
+            ⚠️ AND BEHIND EVERYBODY. z-index below the lowest creature: this is scenery, and a
+            landmark that covered a boss would be a landmark somebody had to walk around twice.
+          */}
+          {walking &&
+            MARKS.map((m) => {
+              const p = onScreen(m.at, camAt)
+              if (p.x < -0.8 || p.x > 1.8 || p.y < -0.8 || p.y > 1.8) return null
+              return (
+                <span
+                  key={m.name}
+                  className={'park-mark is-' + m.kind}
+                  aria-hidden
+                  style={{
+                    left: `${p.x * 100}%`,
+                    top: `${p.y * 100}%`,
+                    width: `${((m.size * 2) / FIELD_ASPECT) * 100}%`,
+                    height: `${m.size * 2 * 100}%`,
+                  }}
+                />
+              )
+            })}
           {walking && <GuardArc me={shownYou} cam={camAt} />}
           {walking && <HopShade at={shownYou} cam={camAt} height={hopHeight(shownYou.hop)} />}
           {walking &&
@@ -2701,10 +2741,21 @@ export function ParkRoom({
           <dd>Jump — clears anything drawn low, but never an overhead</dd>
         </div>
       </dl>
+      {/*
+        ⚠️ A PLACE IS ONLY A PLACE ONCE SOMETHING NAMES IT. The landmarks give the map
+        something to look at; this is what makes them usable — you can tell somebody where you
+        are, and where you found them. Without it they are wallpaper with a shape.
+      */}
+      {walking && whereIAm && (
+        <p className="muted park-where" role="status">
+          You are at <strong>{whereIAm.name}</strong>.
+        </p>
+      )}
       <p className="muted park-about">
         The park is {PARK.across} screens across and {PARK.down} down, and the view follows you —
-        the little map shows the whole of it and everybody in it. Everyone shares one park, so
-        whoever is online is who you will meet.
+        the little map shows the whole of it, everybody in it, and the few places worth naming: the
+        pond, the ring, the rocks and two lots of trees. Everyone shares one park, so whoever is
+        online is who you will meet.
         {strolling.length > 0 &&
           ' The faded ones are your own other minions having a wander, and only you see those.'}{' '}
         Call a boss and one of your minions stands up big with a health bar that <em>everybody</em>{' '}

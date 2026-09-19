@@ -74,6 +74,58 @@ export const PARK = {
 export const VIEW = { w: 1 / PARK.across, h: 1 / PARK.down }
 
 /**
+ * Places in the park, so that nine screens of grass are somewhere rather than anywhere.
+ *
+ * ⚠️ A WORLD WITH NO LANDMARKS IS A WORLD WITH NO REASON TO GO ANYWHERE. The park has been
+ * three screens by three since it grew, and every one of them looks exactly like the others —
+ * so "the park is big" has only ever meant "the walk is long". You cannot arrange to meet
+ * anybody, you cannot say where you found something, and the little map is nine identical
+ * squares with dots on it. This is the first half of the thing asked for as map making and an
+ * exploration game: before anywhere can be interesting, somewhere has to be distinguishable.
+ *
+ * ⚠️ A FIXED TABLE, NOT A SEED, because everybody has to be standing in the same park. A
+ * generated layout would need the seed on the wire and agreement about the generator; a list
+ * in the code is the same park on every machine for nothing, and it can be edited by hand the
+ * day somebody wants to move the pond.
+ *
+ * ⚠️ AND THEY DECIDE NOTHING. No collision, no bonus, no spawn rule — a landmark that changed
+ * the fight would be a fight you have to learn the map to win, and the map is supposed to be
+ * the friendly part. They are here to be pointed at.
+ */
+export type Mark = {
+  /** where it sits, in world units across the whole park */
+  at: Spot
+  /** how wide it is, as a fraction of a screenful — used for the drawing and nothing else */
+  size: number
+  kind: 'pond' | 'grove' | 'ring' | 'rocks'
+  name: string
+}
+
+export const MARKS: Mark[] = [
+  { at: { x: 0.22, y: 0.26 }, size: 0.34, kind: 'pond', name: 'the pond' },
+  { at: { x: 0.76, y: 0.2 }, size: 0.3, kind: 'grove', name: 'the little wood' },
+  { at: { x: 0.5, y: 0.52 }, size: 0.26, kind: 'ring', name: 'the ring' },
+  { at: { x: 0.18, y: 0.78 }, size: 0.24, kind: 'rocks', name: 'the rocks' },
+  { at: { x: 0.82, y: 0.74 }, size: 0.28, kind: 'grove', name: 'the far trees' },
+]
+
+/**
+ * Which place you are at, or null if you are just in the grass between them.
+ *
+ * ⚠️ MEASURED ON SCREEN, NOT IN WORLD UNITS, for the same reason every other distance here is:
+ * the field is 16:10, so a circle in world units is an ellipse to look at and "near" would mean
+ * something different going north than going east.
+ */
+export const markAt = (me: Spot): Mark | null => {
+  for (const m of MARKS) {
+    const dx = ((me.x - m.at.x) / VIEW.w) * (16 / 10)
+    const dy = (me.y - m.at.y) / VIEW.h
+    if (Math.hypot(dx, dy) <= m.size) return m
+  }
+  return null
+}
+
+/**
  * ⚠️ BUILT FROM THE SHAPE OF THE WORLD, not picked. Equal speed on SCREEN needs the vertical to
  * be multiplied by (across/down) × the screen's own aspect — and the 0.82 is the only part that
  * is a choice: a little slower up and down still reads as a field you are looking down at.
