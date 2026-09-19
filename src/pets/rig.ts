@@ -497,6 +497,22 @@ export function footRoom(d: Drawing): number {
 }
 
 /**
+ * The pixel box a pet is drawn into, given the size a room asked for.
+ *
+ * ⚠️ ONE COPY OF THIS SUM. PetView worked it out to size its canvas and the park worked it
+ * out again to offset a lunge in two directions — and the moment two places compute a box, a
+ * creature's picture and the push applied to it can disagree about how big it is. `size` is the
+ * LONG side, which is the part everybody gets wrong the first time.
+ */
+export const petBox = (d: Drawing, size: number): { w: number; h: number } => {
+  const wh = petRatio(d)
+  return {
+    w: Math.round(wh >= 1 ? size : size * wh),
+    h: Math.round(wh >= 1 ? size / wh : size),
+  }
+}
+
+/**
  * The shape a pet's view should be: the ink's own proportions, not the paper's.
  *
  * ⚠️ x and y are fractions of DIFFERENT lengths — the paper's width and its height — so the ink

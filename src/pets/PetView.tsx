@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef } from 'react'
 import type { Drawing } from '../draw/strokes'
 import { paintPet } from './paint'
-import { petRatio, rigOf, type Mood } from './rig'
+import { petBox, rigOf, type Mood } from './rig'
 
 /**
  * A pet, alive, at whatever size it is given.
@@ -59,9 +59,8 @@ export function PetView({
 
   /* ⚠️ THE INK'S SHAPE, NOT THE PAPER'S. paintPet crops to the creature, and the crop is only
      a magnification rather than a stretch if the canvas is this shape — see the note there. */
-  const wh = useMemo(() => petRatio(art), [art])
-  const w = Math.round(wh >= 1 ? size : size * wh)
-  const h = Math.round(wh >= 1 ? size / wh : size)
+  /* ⚠️ the same sum the park uses to push a lunge about — see petBox */
+  const { w, h } = useMemo(() => petBox(art, size), [art, size])
 
   /**
    * ⚠️ THE CLOCK OUTLIVES THE LOOP. Energy changes when the pet is prodded, and if the start

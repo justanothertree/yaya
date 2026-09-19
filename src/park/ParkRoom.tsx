@@ -50,7 +50,7 @@ import {
   type Striker,
 } from './strike'
 import { movesOf, petWide, type Attack } from '../pets/attack'
-import { footRoom } from '../pets/rig'
+import { footRoom, petBox } from '../pets/rig'
 import { lungeOf } from '../pets/fight'
 import {
   beaten,
@@ -153,6 +153,7 @@ function BossFigure({
   hit,
   moving,
   turning,
+  aim,
 }: {
   name: string
   art: Drawing
@@ -168,6 +169,8 @@ function BossFigure({
   moving: boolean
   /** mid-pivot, so the window it is giving you can be seen — see stepTurn */
   turning: boolean
+  /** which way its swing points, so the body leans that way too — see lungePush */
+  aim: { x: number; y: number }
 }) {
   const on = onScreen(at, cam)
   const done = hp <= 0
@@ -186,9 +189,12 @@ function BossFigure({
         left: `${on.x * 100}%`,
         top: `${on.y * 100}%`,
         zIndex: depthOf(at),
-        transform: `translate(calc(-50% + ${(facing * lunge * 100).toFixed(1)}%), calc(-100% + ${(
-          footRoom(art) * 100
-        ).toFixed(1)}%))`,
+        transform: (() => {
+          const p = lungePush(lunge, aim, art, size)
+          return `translate(calc(-50% + ${p.x.toFixed(1)}px), calc(-100% + ${(
+            footRoom(art) * 100
+          ).toFixed(1)}% + ${p.y.toFixed(1)}px))`
+        })(),
       }}
     >
       <PetView
@@ -257,6 +263,35 @@ function SwipePatch({
 
 /** The field is 16:10, and a screen-height is its height — see SwipePatch. */
 const FIELD_ASPECT = 16 / 10
+
+/**
+ * A lunge, pushed along the way the swing is aimed.
+ *
+ * ⚠️ THE LUNGE WAS ALWAYS HORIZONTAL, because until now a creature could only attack left or
+ * right. With eight directions the geometry and the telegraph turned and the BODY did not, so an
+ * up-right attack had the right hitbox and a picture that still leaned sideways — the half of
+ * the move that a player actually looks at.
+ *
+ * ⚠️ IN PIXELS, AND THAT IS THE SECOND VERSION. A CSS translate in percent is a percent of
+ * the element's OWN width for x and its OWN height for y — and the element here is the WRAPPER,
+ * which is the canvas plus a name tag underneath it, so its aspect is not the creature's. The
+ * first version corrected by the canvas's aspect and every diagonal came out 3.9 degrees off,
+ * identically on all four, which is what a systematic factor looks like rather than noise.
+ *
+ * Pixels have no basis to be wrong about. The lunge is a fraction of the creature's own width,
+ * so one multiplication gives a displacement that is the same distance in both axes and the
+ * wrapper's shape stops mattering at all.
+ */
+function lungePush(
+  lunge: number,
+  aim: { x: number; y: number },
+  art: Drawing,
+  size: number,
+): { x: number; y: number } {
+  if (!lunge) return { x: 0, y: 0 }
+  const reach = petBox(art, size).w * lunge
+  return { x: aim.x * reach, y: aim.y * reach }
+}
 
 /** The one park, until there is a reason for a second. */
 export const PARK_ROOM = 'park'
@@ -1312,6 +1347,8 @@ export function ParkRoom({
                 mine: false,
                 stroll: true,
                 lunge: 0,
+                /* a wanderer never swings, so this is only here to keep the list one shape */
+                aim: { x: w.facing, y: 0 },
                 show: undefined as number | undefined,
               })),
               ...others.map((o) => ({
@@ -1328,6 +1365,11 @@ export function ParkRoom({
                   { swing: o.swing > 0 ? 1 : 0, move: 0, spent: false, stun: 0, hold: 0 },
                   [],
                 ),
+                /* ⚠️ a peer's aim is not on the wire, only their facing — so their lunge is
+                   straight ahead, exactly as it was before any of this. It costs nothing: a
+                   neighbour's swing shoves and cannot hurt you, so there is no reading to get
+                   wrong. The boss, which CAN hurt you, does send its aim. */
+                aim: { x: o.facing, y: 0 },
                 show: (foeMoves.current.get(o.id) ?? [])[o.swing - 1]?.layer,
               })),
               {
@@ -1340,6 +1382,7 @@ export function ParkRoom({
                 mine: true,
                 stroll: false,
                 lunge: lungeOf(shownYou, myMoves),
+                aim: shownYou.aim,
                 show: shownYou.swing > 0 ? myMoves[shownYou.move]?.layer : undefined,
               },
             ]
@@ -1366,9 +1409,12 @@ export function ParkRoom({
                       top: `${at.y * 100}%`,
                       zIndex: depthOf(one.at),
                       /* the swing moves the picture, never the creature — see the scrap's note */
-                      transform: `translate(calc(-50% + ${(one.facing * one.lunge * 100).toFixed(
-                        1,
-                      )}%), calc(-100% + ${(footRoom(one.art) * 100).toFixed(1)}%))`,
+                      transform: (() => {
+                        const p = lungePush(one.lunge, one.aim, one.art, petSize(one.art))
+                        return `translate(calc(-50% + ${p.x.toFixed(1)}px), calc(-100% + ${(
+                          footRoom(one.art) * 100
+                        ).toFixed(1)}% + ${p.y.toFixed(1)}px))`
+                      })(),
                     }}
                   >
                     <PetView
@@ -1489,6 +1535,7 @@ export function ParkRoom({
               lunge={lungeOf(bossShown, bossKit?.moves ?? [])}
               show={bossShown.swing > 0 ? (bossKit?.moves ?? [])[bossShown.move]?.layer : undefined}
               turning={bossShown.turn > 0}
+              aim={bossShown.aim}
               hp={bossShown.lifeMax > 0 ? bossShown.life / bossShown.lifeMax : 0}
               hit={bossShown.hold > 0}
               moving={bossShown.moving}
@@ -1502,6 +1549,7 @@ export function ParkRoom({
               cam={camAt}
               facing={theirBoss.facing}
               turning={theirBoss.turning}
+              aim={theirBoss.aim}
               size={petSize(theirBoss.art) * (echoKit.current?.temper.scale ?? 2.6)}
               lunge={echoLunge(theirMove, theirBoss.swingFor)}
               show={theirMove?.layer}
