@@ -637,12 +637,30 @@ export type At = { x: number; y: number; facing: number }
  * the same trap `touching` documents for treats. Everything here is measured from the middle of
  * the creature, half a pet-height up.
  */
+/**
+ * How far above and below its middle a move can hurt you, as a half-height in pet-heights.
+ *
+ * ⚠️ ONE ANSWER, BECAUSE THERE WERE THREE. The ring measured `a.rise`, the park measured
+ * `max(a.rise, 0.4)` and the maker's preview drew `max(a.rise, 0.2)` — so the box somebody was
+ * shown while drawing matched the ring exactly and the park only four times in ten. Measured on
+ * the real move table: a tail sweep is drawn at 0.28 and hits you at 0.4 in the park, which is
+ * 43% further out than the picture said. Reported as buffered gaps in hitboxes and swings that
+ * feel unfair, and that is exactly what being hit from outside the drawn box is.
+ *
+ * ⚠️ THE FLOOR IS THE GAME'S, NOT THE MOVE'S, which is why it is an argument. Seen from
+ * above, y is DEPTH rather than height, and a swing dangerous only within a razor-thin band of
+ * depth is one nobody could ever land — so the park needs a floor and the side-on ring does not.
+ * Passing it in keeps that a decision each room makes out loud, rather than three numbers that
+ * drifted apart quietly.
+ */
+export const hurtHalf = (a: Attack, floor = 0): number => Math.max(a.rise, floor)
+
 export function hurtBox(at: At, a: Attack, gone: number): Box | null {
   const f = gone / a.span
   if (f < a.live[0] || f > a.live[1]) return null
   const reach = a.reach * PET_TALL
   const cy = at.y - PET_TALL / 2
-  const rise = a.rise * PET_TALL
+  const rise = hurtHalf(a) * PET_TALL
   const x0 = a.both ? at.x - reach : at.facing > 0 ? at.x : at.x - reach
   return { x0, y0: cy - rise, x1: x0 + (a.both ? reach * 2 : reach), y1: cy + rise }
 }

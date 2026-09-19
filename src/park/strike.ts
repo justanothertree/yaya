@@ -1,5 +1,5 @@
 import { PET_TALL } from '../pets/play'
-import { slotFor, type Aim, type Attack } from '../pets/attack'
+import { hurtHalf, slotFor, type Aim, type Attack } from '../pets/attack'
 import type { Box } from '../pets/rig'
 import { SQUASH, VIEW, type Spot, type Walker } from './walk'
 
@@ -88,6 +88,15 @@ export const PARK_TALL = PET_TALL * 0.8
  */
 export const FOOT = { deep: 0.28 }
 
+/**
+ * The shallowest a swing may be from above, as a half-height in pet-heights.
+ *
+ * ⚠️ NAMED AND EXPORTED so the maker can draw the box this game actually uses — see
+ * hurtHalf. It was a bare 0.4 inside strikeArea, which meant nothing outside this file could ask
+ * what the park's hitbox really was, and the preview guessed a different number.
+ */
+export const PARK_DEEP = 0.4
+
 export const footOf = (wide: number, scale = 1): { x: number; y: number } => ({
   x: across(wide * 0.8 * scale) / 2,
   y: down(FOOT.deep * PARK_TALL * scale) / 2,
@@ -110,7 +119,7 @@ export function strikeArea(
   const f = gone / a.span
   if (f < a.live[0] || f > a.live[1]) return null
   const reach = across(a.reach * PARK_TALL * scale)
-  const deep = down(Math.max(a.rise, 0.4) * PARK_TALL * scale)
+  const deep = down(hurtHalf(a, PARK_DEEP) * PARK_TALL * scale)
   const x0 = a.both ? at.x - reach : facing > 0 ? at.x : at.x - reach
   return {
     x0,

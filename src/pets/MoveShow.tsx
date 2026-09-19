@@ -3,7 +3,8 @@ import type { Drawing } from '../draw/strokes'
 import { PetView } from './PetView'
 import { bodyRatio, petCanvas } from './rig'
 import { lungeOf, phaseOf } from './fight'
-import { HIT_SHAPES, type Attack, type HitShape } from './attack'
+import { HIT_SHAPES, hurtHalf, type Attack, type HitShape } from './attack'
+import { PARK_DEEP } from '../park/strike'
 
 /**
  * What your creature's moves actually look like.
@@ -60,7 +61,16 @@ function tweakFor(a: Attack): string {
 }
 
 /** How far a move reaches and how tall it is, as fractions of the creature's height. */
-const spanOf = (a: Attack) => ({ wide: a.reach, tall: Math.max(a.rise, 0.2) * 2 })
+/**
+ * The patch a move can hurt you in, as the games measure it.
+ *
+ * ⚠️ PARK_DEEP, NOT A NUMBER OF ITS OWN. This drew max(rise, 0.2) and the park hits within
+ * max(rise, 0.4), so the box in the maker was as little as 70% of the one you are actually struck
+ * by — see hurtHalf. Drawing the LARGER of the two rooms is the honest way round: you are shown
+ * the whole of where you can be hit, and the side-on ring is shallower than advertised rather
+ * than deeper. Being surprised by a smaller hitbox is not a complaint anybody makes.
+ */
+const spanOf = (a: Attack) => ({ wide: a.reach, tall: hurtHalf(a, PARK_DEEP) * 2 })
 
 export function MoveShow({
   art,

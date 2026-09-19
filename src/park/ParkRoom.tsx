@@ -30,6 +30,7 @@ import {
 import { MAX_WANDERERS, wanderAt } from './wander'
 import {
   busy,
+  footOf,
   inArea,
   mauled,
   PLAYER_LIFE,
@@ -371,6 +372,42 @@ export function ParkRoom({
    */
   const downFor = useRef(0)
   const [knocked, setKnocked] = useState(false)
+  /**
+   * A thing to hit that hits nothing back.
+   *
+   * ⚠️ BECAUSE YOU CANNOT TUNE A SWING AGAINST SOMETHING THAT MOVES. A boss circles, backs
+   * off and swings back, so "did that land" and "was it even still there" are the same question
+   * — which is most of why the reach of a move is hard to feel. A dummy stands exactly still and
+   * counts, so the only variable left is the swing.
+   *
+   * ⚠️ A REF FOR THE POSITION, A STATE FOR WHAT IS DRAWN, the same split everything else in
+   * this loop uses: the hit test runs sixty times a second and a render does not.
+   */
+  const dummy = useRef<{ x: number; y: number; hurt: number; hits: number; lit: number } | null>(
+    null,
+  )
+  const [dummyShown, setDummyShown] = useState<{
+    x: number
+    y: number
+    hurt: number
+    hits: number
+    lit: number
+  } | null>(null)
+  /**
+   * ⚠️ DRAWN FROM THE SAME CALLS THE HIT TEST MAKES, which is the whole point of it. A debug
+   * overlay that draws its own idea of a hitbox is a second implementation, and a second
+   * implementation is the thing that was wrong in the first place — the maker's preview and the
+   * park disagreed by 43% on a tail sweep and nobody could see it. These boxes come out of
+   * strikeArea and footOf, so if they are wrong the game is wrong in exactly the same way.
+   */
+  const [debug, setDebug] = useState(false)
+  /* the loop is installed once; a ref is how a toggle reaches inside it without rebuilding it */
+  const debugRef = useRef(false)
+  debugRef.current = debug
+  const boxesOn = useRef(false)
+  const [boxes, setBoxes] = useState<
+    Array<{ k: string; box: { x0: number; y0: number; x1: number; y1: number }; kind: string }>
+  >([])
   const held = useRef<Steer>({ ...STILL })
   const hitting = useRef<StrikeInput>({ quick: false, heavy: false, up: false, down: false })
   /** bumped when a swing starts or ends, so the render follows without owning the loop */
@@ -566,7 +603,17 @@ export function ParkRoom({
         })
         /* ⚠️ the other people in the park are shoved by their OWN reading of my swing, never by
            mine — see the note on hits below. Nothing here reaches across the wire. */
+
+        /* ⚠️ the dummy is hit by the SAME inArea the boss is, with the same footprint sum, so
+           landing one on it means the same thing as landing one on anything else */
+        const d = dummy.current
+        if (d && !you.current.spent && inArea(d, myWide, area)) {
+          dummy.current = { ...d, hurt: d.hurt + mv.bite, hits: d.hits + 1, lit: 0.18 }
+          you.current = { ...you.current, spent: true, hold: 0.05 + mv.bite * 0.004 }
+        }
       }
+      if (dummy.current && dummy.current.lit > 0)
+        dummy.current = { ...dummy.current, lit: Math.max(0, dummy.current.lit - dt) }
 
       /**
        * The boss takes its turn: it thinks, it walks, it swings, and it is hit.
@@ -754,6 +801,42 @@ export function ParkRoom({
         n.y *= ease
       }
 
+      setDummyShown(dummy.current)
+
+      /**
+       * ⚠️ BUILT ONLY WHILE IT IS ON, and out of the very calls the hit test just made. Every
+       * box here is a strikeArea or a footOf, so there is no second opinion to drift — what is
+       * drawn is what you are hit by, by construction rather than by agreement.
+       */
+      if (debugRef.current) {
+        const out: Array<{
+          k: string
+          box: { x0: number; y0: number; x1: number; y1: number }
+          kind: string
+        }> = []
+        const footBox = (at: { x: number; y: number }, wide: number, scale = 1) => {
+          const f = footOf(wide, scale)
+          return { x0: at.x - f.x, y0: at.y - f.y, x1: at.x + f.x, y1: at.y + f.y }
+        }
+        out.push({ k: 'me', box: footBox(you.current, myWide), kind: 'foot' })
+        if (area0) out.push({ k: 'my-swing', box: area0, kind: 'hit' })
+        const d = dummy.current
+        if (d) out.push({ k: 'dummy', box: footBox(d, myWide), kind: 'foot' })
+        const b = boss.current
+        if (b && bossKit) {
+          out.push({ k: 'boss', box: footBox(b, bossKit.wide, b.scale), kind: 'foot' })
+          const bm = bossKit.moves[b.move]
+          if (b.swing > 0 && bm) {
+            const ba = strikeArea(b, b.facing, bm, bm.span - b.swing, b.scale)
+            if (ba) out.push({ k: 'boss-swing', box: ba, kind: 'hit' })
+          }
+        }
+        setBoxes(out)
+      } else if (boxesOn.current) {
+        setBoxes([])
+      }
+      boxesOn.current = debugRef.current
+
       /* ⚠️ only a boss can fill the pool that this reads — see mauled and stepDown */
       const fall = stepDown(downFor.current, you.current, dt)
       downFor.current = fall.down
@@ -933,6 +1016,44 @@ export function ParkRoom({
             }
           >
             {bossShown ? '✕ Boss away' : '☠ Call a boss'}
+          </button>
+        )}
+        {/* ⚠️ A THING TO HIT THAT DOES NOT MOVE. See the note on `dummy`: against anything
+            that circles, "did that land" and "was it still there" are one question. */}
+        {walking && (
+          <button
+            className={'btn' + (dummyShown ? ' is-on' : '')}
+            aria-pressed={!!dummyShown}
+            onClick={() => {
+              if (dummy.current) {
+                dummy.current = null
+                setDummyShown(null)
+                return
+              }
+              /* just inside a comfortable swing, so the first press lands without walking */
+              const at = {
+                x: Math.min(1 - 0.04 * VIEW.w, you.current.x + 0.06 * VIEW.w),
+                y: you.current.y,
+                hurt: 0,
+                hits: 0,
+                lit: 0,
+              }
+              dummy.current = at
+              setDummyShown(at)
+            }}
+            title="Stand a target in front of you that never moves and never hits back"
+          >
+            {dummyShown ? '✕ Dummy away' : '🎯 Hit dummy'}
+          </button>
+        )}
+        {walking && (
+          <button
+            className={'btn' + (debug ? ' is-on' : '')}
+            aria-pressed={debug}
+            onClick={() => setDebug((v) => !v)}
+            title="Draw the boxes the hit test actually uses"
+          >
+            {debug ? '✕ Boxes off' : '▦ Show hitboxes'}
           </button>
         )}
         {/* ⚠️ JOINING IS A BUTTON, NOT A WALK. The park is nine screens; a boss is in one of
@@ -1161,6 +1282,48 @@ export function ParkRoom({
                   </span>
                 )
               })}
+          {/**
+           * The dummy, and the boxes.
+           *
+           * ⚠️ DRAWN LAST so they sit over everything — an overlay you have to look behind is
+           * not an overlay. Both are positioned through the same onScreen the creatures are, so
+           * a box lines up with the thing it belongs to at every camera position.
+           */}
+          {walking && dummyShown && (
+            <span
+              className={'park-dummy' + (dummyShown.lit > 0 ? ' is-hit' : '')}
+              style={{
+                left: `${onScreen(dummyShown, camAt).x * 100}%`,
+                top: `${onScreen(dummyShown, camAt).y * 100}%`,
+                zIndex: depthOf(dummyShown),
+              }}
+            >
+              <span className="park-dummy-post" aria-hidden />
+              <span className="park-name">
+                {dummyShown.hits} hit{dummyShown.hits === 1 ? '' : 's'} ·{' '}
+                {Math.round(dummyShown.hurt)}
+              </span>
+            </span>
+          )}
+          {walking &&
+            debug &&
+            boxes.map((b) => {
+              const a = onScreen({ x: b.box.x0, y: b.box.y0 }, camAt)
+              const c = onScreen({ x: b.box.x1, y: b.box.y1 }, camAt)
+              return (
+                <span
+                  key={b.k}
+                  className={'park-box is-' + b.kind}
+                  aria-hidden
+                  style={{
+                    left: `${a.x * 100}%`,
+                    top: `${a.y * 100}%`,
+                    width: `${(c.x - a.x) * 100}%`,
+                    height: `${(c.y - a.y) * 100}%`,
+                  }}
+                />
+              )
+            })}
           {walking && bossShown && (
             <BossFigure
               name={bossShown.name}

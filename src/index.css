@@ -8495,6 +8495,51 @@ a.cz-msg-author:focus-visible {
     transition: none;
   }
 }
+/* ── a thing to hit, and the boxes that say why it was hit ───────────────────── */
+.park-dummy {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  transform: translate(-50%, -100%);
+  pointer-events: none;
+}
+.park-dummy-post {
+  width: 16px;
+  height: 46px;
+  border-radius: 4px 4px 2px 2px;
+  border: 2px solid color-mix(in srgb, var(--text) 55%, transparent);
+  background: repeating-linear-gradient(
+    -45deg,
+    color-mix(in srgb, var(--text) 22%, transparent) 0 6px,
+    transparent 6px 12px
+  );
+  transition: background-color 90ms linear;
+}
+.park-dummy.is-hit .park-dummy-post {
+  background-color: color-mix(in srgb, #e8534e 70%, transparent);
+  border-color: #e8534e;
+}
+/**
+ * ⚠️ OUTLINES ONLY, AND NEVER IN THE WAY. These sit over the creatures so they can be read,
+ * which means a filled box would hide the thing it describes — the point is to see the drawing
+ * and the box it is hit by at the same time.
+ */
+.park-box {
+  position: absolute;
+  pointer-events: none;
+  z-index: 60;
+  border: 1px solid;
+}
+.park-box.is-foot {
+  border-color: #38bdf8;
+  background: color-mix(in srgb, #38bdf8 12%, transparent);
+}
+.park-box.is-hit {
+  border-color: #e8534e;
+  background: color-mix(in srgb, #e8534e 18%, transparent);
+}
 .park-one.is-stroll {
   opacity: 0.62;
 }
