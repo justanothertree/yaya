@@ -2,7 +2,7 @@ import { NetClient } from '../game/net'
 import { packDrawing, readDrawing, simplifyDrawing, type Drawing } from '../draw/strokes'
 import type { Spot, Walker } from './walk'
 import { aimFromOctant, type Aimed } from './strike'
-import type { CastKind } from './cast'
+import { castFromSlot, type CastKind } from './cast'
 
 /**
  * The shared park, over the relay.
@@ -26,7 +26,7 @@ import type { CastKind } from './cast'
 /** What the relay is told. The hello and the auth token are NetClient's own — see its send. */
 type Out =
   | { type: 'look'; name: string; art: unknown }
-  | { type: 'walk'; x: number; y: number; f: number; m: number; a: number }
+  | { type: 'walk'; x: number; y: number; f: number; m: number; a: number; d: number }
   /* calling a boss out, or — with a null drawing — putting it away */
   | { type: 'boss'; name: string; art: unknown | null }
   /* where it is and what is left of it, from the one machine running it */
@@ -38,7 +38,16 @@ type In =
   | { type: 'presence'; count: number }
   | { type: 'park'; who?: unknown[]; boss?: unknown }
   | { type: 'look'; from?: string; name?: string; art?: unknown }
-  | { type: 'walk'; from?: string; x?: number; y?: number; f?: number; m?: number; a?: number }
+  | {
+      type: 'walk'
+      from?: string
+      x?: number
+      y?: number
+      f?: number
+      m?: number
+      a?: number
+      d?: number
+    }
   | { type: 'boss'; from?: string; name?: string; art?: unknown }
   | {
       type: 'bstep'
@@ -76,6 +85,26 @@ export type Someone = {
   swing: number
   /** how long their current swing has been out, kept locally so it can be animated */
   swingFor: number
+  /**
+   * The big thing they are in the middle of, and how long it has been going.
+   *
+   * ⚠️ A BOSS IS HURT BY ITS HOST AND NOBODY ELSE — see the note on the swing that lands
+   * below. Everybody's damage to a shared boss is worked out by the machine running it, from
+   * what the rest of them broadcast, so a cast that never reached the wire was a cast that did
+   * nothing at all to somebody else's boss. It rides in the same slot field a swing does,
+   * above the six move slots, which is the trick bosses already use for theirs.
+   */
+  cast: { kind: CastKind } | null
+  castFor: number
+  /**
+   * Which way their swing or cast points — see octantOf.
+   *
+   * ⚠️ A PEER'S SWING WAS ALWAYS READ AS STRAIGHT AHEAD, which was honest while nothing they
+   * did could hurt anybody. It stops being honest the moment their CAST has to be aimed to work
+   * out where it lands on a shared boss, so the same octant a boss already sends now rides on a
+   * walk too.
+   */
+  aim: Aimed
   /**
    * True once this swing of theirs has already landed on something here.
    *
@@ -199,6 +228,9 @@ function readSomeone(v: unknown): Someone | null {
     moving: false,
     swing: 0,
     swingFor: 0,
+    cast: null,
+    castFor: 0,
+    aim: { x: 1, y: 0 },
     spent: false,
   }
 }
@@ -233,7 +265,7 @@ function readBoss(v: unknown): BossEcho | null {
 }
 
 export type Park = {
-  send: (w: Walker, swing: number) => void
+  send: (w: Walker, swing: number, aim: number) => void
   /** stand one of your minions up for everybody, or pass null to put it away */
   callBoss: (name: string, art: Drawing | null) => void
   /** where your boss is and what is left of it, at the same rate as a walk */
@@ -342,8 +374,7 @@ export function joinPark(
            * redeployed clamps this to 6, so an old server turns a cast into a swing that is not
            * there rather than into anything broken.
            */
-          const castKind: CastKind | null =
-            a === 7 ? 'bloom' : a === 8 ? 'mark' : a === 9 ? 'wave' : null
+          const castKind = castFromSlot(a)
           if (!castKind) {
             b.cast = null
             b.castFor = 0
@@ -391,7 +422,17 @@ export function joinPark(
           /* ⚠️ a NEW swing restarts the clock; the same one carrying on does not, or a peer's
              attack would appear to start again on every packet that arrived during it */
           const a = typeof msg.a === 'number' && Number.isFinite(msg.a) ? Math.round(msg.a) : 0
-          const slot = Math.max(0, Math.min(6, a))
+          /* ⚠️ seven and above is a cast, exactly as it is for a boss — see the note there */
+          const theirCast = castFromSlot(a)
+          if (!theirCast) {
+            who.cast = null
+            who.castFor = 0
+          } else if (who.cast?.kind !== theirCast) {
+            who.cast = { kind: theirCast }
+            who.castFor = 0
+          }
+          who.aim = aimFromOctant(typeof msg.d === 'number' ? msg.d : who.facing < 0 ? 4 : 0)
+          const slot = theirCast ? 0 : Math.max(0, Math.min(6, a))
           if (slot !== who.swing) {
             who.swingFor = 0
             /* ⚠️ AND THE NEW SWING HAS NOT LANDED YET. Forgetting this line means one swing is one
@@ -429,8 +470,8 @@ export function joinPark(
   net.connect(room, { create: true })
 
   return {
-    send: (w, swing) => {
-      net.send({ type: 'walk', x: w.x, y: w.y, f: w.facing, m: w.moving ? 1 : 0, a: swing })
+    send: (w, swing, aim) => {
+      net.send({ type: 'walk', x: w.x, y: w.y, f: w.facing, m: w.moving ? 1 : 0, a: swing, d: aim })
     },
     callBoss: (name, art) => {
       net.send({ type: 'boss', name, art: art ? packLook(art) : null })

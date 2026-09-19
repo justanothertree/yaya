@@ -53,7 +53,7 @@ import {
 } from './strike'
 import { movesOf, petWide, type Attack } from '../pets/attack'
 import { footRoom, petBox } from '../pets/rig'
-import { CAST, inPatch, patchesOf, type CastKind, type Patch } from './cast'
+import { CAST, castSlot, inPatch, patchesOf, type CastKind, type Patch } from './cast'
 import { lungeOf } from '../pets/fight'
 import {
   beaten,
@@ -1132,6 +1132,31 @@ export function ParkRoom({
           you.current = { ...you.current, spent: true, hold: 0.06 + mv0.bite * 0.004 }
       }
 
+      /**
+       * ⚠️ A PEER'S CAST, LANDING ON MY BOSS. Damage to a shared boss is always worked out by
+       * the machine running it — see the note on their swing above — so this is the only place a
+       * friend's cast can take anything off it. It does NOT touch the player: a neighbour cannot
+       * hurt you here, which is the same rule their swing follows.
+       */
+      for (const o of state.current.here.values()) {
+        if (!o.cast) continue
+        o.castFor += dt
+        const b = boss.current
+        if (!b || !bossKit || beaten(b)) continue
+        if (o.spent) continue
+        /* their own move table, already here because their drawing arrived with them */
+        const kit = foeMoves.current.get(o.id)
+        const weight = kit?.length ? kit.reduce((n, m) => n + m.bite, 0) / kit.length : 6
+        for (const patch of patchesOf(o.cast.kind, o.shown, o.aim, o.castFor, 1)) {
+          if (!patch.live) continue
+          if (!inPatch(b, bossKit.wide, patch, b.scale)) continue
+          boss.current = wounded(b, { ...bossKit.moves[0], bite: weight * 1.1 })
+          setBossShown(boss.current)
+          o.spent = true
+          break
+        }
+      }
+
       /* a nudge decays back to nothing, so the path stays the truth */
       for (const n of nudges.current) {
         const ease = Math.exp(-3.2 * Math.min(0.05, dt))
@@ -1152,9 +1177,16 @@ export function ParkRoom({
         const tb = state.current.boss
         const mineNow = myCast.current
         setBossCasting(b?.cast?.kind ?? tb?.cast?.kind ?? null)
-        setMyPatches(
-          mineNow ? patchesOf(mineNow.kind, you.current, you.current.aim, mineNow.t, 1) : [],
-        )
+        /* ⚠️ A FRIEND'S CAST IS DRAWN LIKE YOURS, because it is a thing happening on the same
+           ground and standing in it is the same mistake. Theirs cannot hurt YOU — see the note
+           where a peer's cast lands — but not seeing it at all would make a shared boss fight
+           look like one person doing something inexplicable. */
+        const others: Patch[] = []
+        if (mineNow)
+          others.push(...patchesOf(mineNow.kind, you.current, you.current.aim, mineNow.t, 1))
+        for (const o of state.current.here.values())
+          if (o.cast) others.push(...patchesOf(o.cast.kind, o.shown, o.aim, o.castFor, 1))
+        setMyPatches(others)
         setPatches(
           b?.cast
             ? patchesOf(b.cast.kind, b, b.aim, b.cast.t, b.scale)
@@ -1260,25 +1292,27 @@ export function ParkRoom({
          what anybody can see and four times what the relay has to forward */
       if (now - sent > 1000 / SEND_HZ) {
         sent = now
-        park.current?.send(you.current, you.current.swing > 0 ? you.current.move + 1 : 0)
+        /* ⚠️ a cast rides above the six slots, the same way a boss's does — without it a
+           friend's machine never learns you cast, and your cast does nothing to their boss */
+        const myOut = myCast.current
+        const mySlot = myOut
+          ? castSlot(myOut.kind)
+          : you.current.swing > 0
+            ? you.current.move + 1
+            : 0
+        park.current?.send(you.current, mySlot, octantOf(you.current.aim))
         /* ⚠️ THE BOSS GOES OUT AT THE SAME RATE AS A WALK AND NO FASTER — it is one more
            creature moving in the park, and fifteen a second is what everything else in here
            costs. What is left of it rides along as a fraction, so the relay never learns how
            much health a boss has. */
         const mineOut = boss.current
-        /* ⚠️ seven and above is a cast — see the note where this is read back */
-        const castSlot = mineOut?.cast
-          ? mineOut.cast.kind === 'bloom'
-            ? 7
-            : mineOut.cast.kind === 'mark'
-              ? 8
-              : 9
-          : null
+        /* ⚠️ seven and above is a cast — see castSlot, which is the only place that decides */
+        const bossSlot = mineOut?.cast ? castSlot(mineOut.cast.kind) : null
         if (mineOut)
           park.current?.stepBoss(
             mineOut,
             mineOut.facing,
-            castSlot ?? (mineOut.swing > 0 ? mineOut.move + 1 : 0),
+            bossSlot ?? (mineOut.swing > 0 ? mineOut.move + 1 : 0),
             mineOut.lifeMax > 0 ? mineOut.life / mineOut.lifeMax : 0,
             mineOut.turn > 0,
             octantOf(mineOut.aim),

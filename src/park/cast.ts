@@ -58,6 +58,23 @@ export const CAST: Record<CastKind, { time: number; says: string }> = {
  * straight multiple a 2.5 boss threw it 6.5 heights, which is most of the screen away from
  * itself and reads as unrelated to the creature that did it.
  */
+/**
+ * A cast as a slot number, for the wire, and back again.
+ *
+ * ⚠️ ONE TABLE, BECAUSE THERE WERE FOUR. A boss encodes its cast, a player encodes theirs,
+ * and the other end decodes each of them — four hand-written ternary chains of the same three
+ * names, across two files, that all have to agree or somebody's wave arrives as somebody else's
+ * bloom. Nothing had gone wrong yet; the point is that nothing WOULD have told us.
+ *
+ * ⚠️ ABOVE THE SIX MOVE SLOTS. 0 is "nothing" and 1..6 are a creature's own moves, so casts
+ * start at 7 — which is why the relay clamps that field to 9 rather than 6.
+ */
+const SLOTS: CastKind[] = ['bloom', 'mark', 'wave']
+
+export const castSlot = (kind: CastKind): number => SLOTS.indexOf(kind) + 7
+
+export const castFromSlot = (n: number): CastKind | null => SLOTS[Math.round(n) - 7] ?? null
+
 const MARK_RANGE = 2.6
 const WAVE_STEPS = 5
 const WAVE_GAP = 1.15

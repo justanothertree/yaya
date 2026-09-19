@@ -1947,12 +1947,19 @@ wss.on('connection', (ws, req) => {
           f: msg.f === -1 ? -1 : 1,
           m: msg.m ? 1 : 0,
           /**
-           * ⚠️ WHICH SWING IS OUT, AS A SMALL WHOLE NUMBER. 0 is none and 1..6 are the slots of
-           * the mover's own move table — the relay does not know or care what any of them mean,
-           * it just will not forward a number outside that range. Everything about what the move
-           * IS lives in the drawing the other end already has.
+           * ⚠️ WHICH SWING IS OUT, AS A SMALL WHOLE NUMBER. 0 is none, 1..6 are the slots of
+           * the mover's own move table, and 7..9 are the three big casts — the relay does not
+           * know or care what any of them mean, it just will not forward a number outside that
+           * range. Everything about what the move IS lives in the drawing the other end already
+           * has.
+           *
+           * ⚠️ 9 RATHER THAN 6 BECAUSE A CAST HAS TO REACH THE HOST. Damage to a shared boss
+           * is worked out by the machine running it, from what everybody else broadcasts — so a
+           * cast the relay clipped was a cast that did nothing to a friend's boss at all.
            */
-          a: Math.max(0, Math.min(6, Math.round(num(msg.a)))),
+          a: Math.max(0, Math.min(9, Math.round(num(msg.a)))),
+          /** which of eight ways it is aimed — see octantOf; absent reads as straight ahead */
+          d: Math.max(0, Math.min(7, Math.round(num(msg.d)))),
         }
         st.at = at
         room.state.set(id, st)
