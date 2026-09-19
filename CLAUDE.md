@@ -44,6 +44,16 @@ what it just made stale — copy, empty states, the thing a neighbouring feature
   never `park`, so a test creature never appears on somebody's screen — and it grants nothing,
   because ParkRoom's `authed` is a courtesy rather than a lock (the relay socket is
   unauthenticated regardless). Walking the park needs the `requestAnimationFrame` stand-in above.
+- **A test built from the same sum as the code confirms the mistake.** The park's `across()` and
+  `down()` take SCREEN-heights while nearly everything is written in PET-heights, so the correct
+  call is `across(v * PARK_TALL)` — and the factor went missing three times: a dodge that crossed
+  most of the field, and a boss's mark and wave landing past the edge of the world so two of its
+  three big attacks could never hit anybody. The wave was "verified" landing in the right place,
+  because the check divided by `across(PARK_TALL)` and cancelled the error out exactly. **Measure
+  through a path that shares no arithmetic with the thing being measured** — the field's own
+  width, a pixel rectangle, a readback of painted pixels. And when a conversion goes wrong twice,
+  the fix is not a third careful call site: it is `outBy(petHeights)`, which has nowhere to put a
+  wrong factor.
 - **Measurement lies more often than code does.** `.card` transitions `box-shadow`, so
   `getComputedStyle` reports interpolated values — inject `*{transition:none!important}` before
   measuring. `performance.now()` cannot see canvas work. The Browser pane collapses to 0×0 between
