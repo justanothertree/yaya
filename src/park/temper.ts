@@ -1,5 +1,6 @@
 import type { Drawing } from '../draw/strokes'
 import { bossPace, movesOf, type Attack } from '../pets/attack'
+import type { CastKind } from './cast'
 import { bodyRatio, rigOf, type PartKind } from '../pets/rig'
 
 /**
@@ -39,6 +40,20 @@ export type Temper = {
   nerve: number
   /** 0..1, how much it commits to a straight run at you */
   charge: number
+  /**
+   * The big committed things it reaches for, best first.
+   *
+   * ⚠️ THREE CASTS THAT EVERY CREATURE THREW IDENTICALLY was the one place in this module
+   * where the drawing stopped deciding. Size, health, pace, range, rhythm and nerve are all read
+   * off the picture; the casts were a rotation through a fixed list, so two completely different
+   * bosses had exactly the same three big attacks in exactly the same order. Whatever somebody
+   * drew, this was the part of the fight that ignored them.
+   *
+   * ⚠️ AND IT IS AN ORDER, NOT A CHOICE OF ONE. A boss with only its favourite would be a
+   * boss you learn in ten seconds; a boss that never throws its favourite has no character. The
+   * order is the character, and the rotation still visits all three.
+   */
+  casts: CastKind[]
 }
 
 /**
@@ -237,7 +252,46 @@ export function temperOf(art: Drawing): Temper {
     Math.pow(0.62 / beat, 0.35)
   const life = Math.round(hold(BUDGET / Math.max(0.05, danger), BAND.life) / 5) * 5
 
-  return { scale, life, pace, range, beat, nerve, charge }
+  /**
+   * ⚠️ READ OFF THE SAME DIALS EVERYTHING ELSE IS, rather than given a roll of their own. A
+   * creature that runs at you wants the one that grows out from under it; one that hangs at the
+   * end of a long reach wants the one thrown ahead; one that neither charges nor keeps its
+   * distance gets the rolling line, which is the answer to standing anywhere in particular.
+   * Scoring all three and sorting means the favourite is the drawing's, and the other two are
+   * still in the fight.
+   */
+  /**
+   * ⚠️ SCORED ON WHERE EACH DIAL SITS IN ITS OWN BAND, not on its raw value — and the first
+   * version of this did the latter and gave all thirteen creatures on this machine the same
+   * favourite. The dials do not share a scale: `charge` starts at 0.12 and only climbs if you
+   * drew a horn, a spin or a mouth, so it lives near its floor; `range` lives in the top half of
+   * its band. Comparing them raw is comparing a number that is usually 0.12 against one that is
+   * usually 0.8, and the second one wins every time regardless of the drawing. This is the same
+   * mistake the boss's SIZE dial made, which also came out pinned for ten of thirteen.
+   */
+  const inBand = (v: number, lo: number, hi: number) =>
+    Math.max(0, Math.min(1, (v - lo) / (hi - lo)))
+  const chargeN = inBand(charge, 0, 0.95)
+  const rangeN = inBand(range, BAND.range[0], BAND.range[1])
+  const nerveN = inBand(nerve, BAND.nerve[0], BAND.nerve[1])
+  /* ⚠️ WEIGHTS SET AGAINST THE MEASURED SPREAD, the way saysOf's thresholds are. Picked by
+     eye the first two times and both times one cast took every creature on this machine — these
+     are the set, out of a search over the real thirteen, that actually leaves all three as
+     somebody's favourite. */
+  const likesClose = chargeN * 1.4 + (1 - rangeN) * 0.2
+  const likesRange = rangeN * 0.9
+  const likesLines = nerveN * 0.9
+  const casts = (
+    [
+      ['bloom', likesClose],
+      ['mark', likesRange],
+      ['wave', likesLines],
+    ] as Array<[CastKind, number]>
+  )
+    .sort((a, b) => b[1] - a[1])
+    .map(([k]) => k)
+
+  return { scale, life, pace, range, beat, nerve, charge, casts }
 }
 
 /**

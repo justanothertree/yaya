@@ -283,14 +283,13 @@ export function bossThink(
     b.cast || b.swing > 0 || beat % 4 !== 1
       ? null
       : gap < 0.5
-        ? 'bloom'
+        ? t.casts.find((k) => k === 'bloom') || t.casts[0]
         : gap > 2
-          ? 'mark'
-          : turn === 0
-            ? 'bloom'
-            : turn === 1
-              ? 'wave'
-              : 'mark'
+          ? t.casts.find((k) => k === 'mark') || t.casts[0]
+          : /* ⚠️ ITS OWN ORDER, so the one it reaches for first is the one its drawing asked
+               for — see Temper.casts. The rotation still visits all three, which is what stops a
+               boss being one trick. */
+            t.casts[turn]
 
   return {
     cast,

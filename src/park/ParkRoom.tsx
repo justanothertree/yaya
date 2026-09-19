@@ -885,10 +885,17 @@ export function ParkRoom({
             if (!patch.live) continue
             if (!canBeHurt(you.current)) break
             if (!inPatch(you.current, myWide, patch)) continue
-            you.current = mauled(you.current, patch.at, {
-              ...bossKit.moves[0],
-              bite: bossKit.moves[0].bite * 1.15,
-            })
+            /**
+             * ⚠️ ITS OWN WEIGHT, NOT A CONSTANT. This took the first move in the table and
+             * added 15%, which meant a cast hit for whatever the CHEAPEST thing the creature had
+             * hit for — the table is sorted by commitment, so entry zero is always the quickest
+             * jab. A boss made of one heavy tail threw exactly as feeble a bloom as a boss made
+             * of a flick. Averaged across everything it can throw, a cast is as heavy as the
+             * creature that cast it.
+             */
+            const weight =
+              bossKit.moves.reduce((n, m) => n + m.bite, 0) / Math.max(1, bossKit.moves.length)
+            you.current = mauled(you.current, patch.at, { ...bossKit.moves[0], bite: weight * 1.1 })
             castSpent.current = true
             break
           }
