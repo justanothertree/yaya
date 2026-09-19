@@ -1,5 +1,5 @@
 import type { Drawing } from '../draw/strokes'
-import { movesOf, type Attack } from '../pets/attack'
+import { bossPace, movesOf, type Attack } from '../pets/attack'
 import { bodyRatio, rigOf, type PartKind } from '../pets/rig'
 
 /**
@@ -132,7 +132,10 @@ export function temperOf(art: Drawing): Temper {
   const has = (k: PartKind) => count.has(k)
   const many = (k: PartKind) => Math.min(2, count.get(k) ?? 0)
 
-  const moves = movesOf(art)
+  /* ⚠️ THE MOVES THE BOSS WILL ACTUALLY THROW, not the ones the creature throws. Reading the
+     player's timings here would budget health against a danger the boss does not have — see
+     bossPace, which slows it down and hits harder in the same breath. */
+  const moves = movesOf(art).map(bossPace)
   const reach = longest(moves)
   /* 0 for a stub, 1 for the longest thing the templates can produce — see the reach note */
   const far = hold((reach - 0.7) / 0.9, [0, 1] as const)

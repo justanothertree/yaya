@@ -1,5 +1,5 @@
 import type { Drawing } from '../draw/strokes'
-import { movesOf, petWide, type Attack } from '../pets/attack'
+import { bossPace, movesOf, petWide, type Attack } from '../pets/attack'
 import { restingWalker, VIEW, type Spot } from './walk'
 import { across, footOf, PARK_TALL, restingStriker, type StrikeInput, type Striker } from './strike'
 import { givesGround, goesBig, runsAtYou, temperOf, type Temper } from './temper'
@@ -77,7 +77,8 @@ export function makeBoss(name: string, art: Drawing, at: Spot): Boss {
   }
 }
 
-export const bossMoves = (art: Drawing): Attack[] => movesOf(art)
+/* ⚠️ ponderous, and temperOf reads the same list — see bossPace */
+export const bossMoves = (art: Drawing): Attack[] => movesOf(art).map(bossPace)
 export const bossWide = (art: Drawing): number => petWide(art)
 
 /** Its footprint, which is its own size rather than everybody's. */

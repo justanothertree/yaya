@@ -166,6 +166,39 @@ export const shaped = (a: Attack, shape: string | undefined): Attack =>
   shape && isHitShape(shape) ? { ...SHAPED[shape](a), chosen: true } : a
 
 /**
+ * The same move, thrown by something the size of a boss.
+ *
+ * ⚠️ A BOSS COMMITS HARDER THAN A PERSON DOES, and that is a design decision rather than an
+ * oversight being corrected. A player's swing winds up in 82 to 224ms; a person reacts in about
+ * 250, so nothing a boss threw could be answered by seeing it — and its decisions are a weighted
+ * coin per beat, so it could not be learned either. Between those two you can neither react nor
+ * predict, which is the whole of why "bait an attack, dodge it, hit it from somewhere else" did
+ * not work: there was nothing to bait, only something to be standing in the wrong place for.
+ *
+ * ⚠️ THE WIND-UP IS IN SECONDS, because what it has to beat is measured in seconds — the same
+ * reasoning slam already uses. 320ms is comfortably past reaction, so the swing is a thing you
+ * watch start and then leave.
+ *
+ * ⚠️ AND IT HITS HARDER TO PAY FOR IT. Slowing a boss without raising its damage makes it
+ * less dangerous per second, and temperOf budgets health AGAINST danger — so the fight would not
+ * get more readable, it would get longer by the same factor. Matching the damage to the pace
+ * keeps the fight the length it was and changes what it is made of: fewer, heavier, readable
+ * blows instead of a stream of unanswerable ones.
+ */
+const BOSS_WINDUP = 0.32
+export const bossPace = (a: Attack): Attack => {
+  const span = a.span * 1.45
+  const start = Math.max(a.live[0], Math.min(0.66, BOSS_WINDUP / span))
+  return {
+    ...a,
+    span,
+    rest: a.rest * 1.5,
+    bite: a.bite * 1.45,
+    live: [start, Math.min(0.94, start + (a.live[1] - a.live[0]))],
+  }
+}
+
+/**
  * One template per kind of part, which is the whole roster.
  *
  * ⚠️ TUNED AGAINST EACH OTHER, NOT IN ISOLATION. The trade is always reach and damage against
