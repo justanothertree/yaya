@@ -1,7 +1,7 @@
 import { PET_TALL } from '../pets/play'
 import { driveAt, hurtHalf, slotFor, type Aim, type Attack } from '../pets/attack'
 import type { Box } from '../pets/rig'
-import { holdInPark, SQUASH, VIEW, type Spot, type Walker } from './walk'
+import { holdInPark, SQUASH, VIEW, type Spot, type Steer, type Walker } from './walk'
 
 /**
  * Hitting things from above.
@@ -39,6 +39,15 @@ export type Striker = Walker & {
   /** the attack buttons as they were last frame, because a swing is a press */
   heldQ: boolean
   heldH: boolean
+  /**
+   * Which way the swing being thrown is pointed, as a unit vector in screen-heights.
+   *
+   * ⚠️ FIXED WHEN THE SWING STARTS, never after. It is the aim you committed to, so turning
+   * or walking mid-swing cannot drag the hitbox round after somebody — the same promise the
+   * frozen position and the locked facing already make, extended to the one axis that was still
+   * free because there was only ever one.
+   */
+  aim: Aimed
 }
 
 export type StrikeInput = { quick: boolean; heavy: boolean; up: boolean; down: boolean }
@@ -54,7 +63,23 @@ export const restingStriker = (w: Walker): Striker => ({
   hurt: 0,
   heldQ: false,
   heldH: false,
+  aim: { x: 1, y: 0 },
 })
+
+/**
+ * Which way the keys are pointing, as a unit vector in screen-heights.
+ *
+ * ⚠️ NO CONVERSION, because a steer is ALREADY a screen intention — somebody holding
+ * down-and-right means down-and-right on the screen in front of them, not in world units that
+ * the field's shape would then bend. Converting it would be the aspect trap in reverse.
+ */
+export function aimFromKeys(steer: Steer, fallback: Aimed): Aimed {
+  const dx = (steer.right ? 1 : 0) - (steer.left ? 1 : 0)
+  const dy = (steer.down ? 1 : 0) - (steer.up ? 1 : 0)
+  if (!dx && !dy) return fallback
+  const len = Math.hypot(dx, dy)
+  return { x: dx / len, y: dy / len }
+}
 
 /**
  * ⚠️ A CREATURE'S WIDTH IS MEASURED IN SCREEN HEIGHTS AND THE WORLD IS MEASURED IN SCREEN
@@ -69,6 +94,86 @@ export const restingStriker = (w: Walker): Striker => ({
 const ASPECT = 16 / 10
 export const across = (screenHeights: number) => (screenHeights / ASPECT) * VIEW.w
 export const down = (screenHeights: number) => screenHeights * VIEW.h
+
+/**
+ * The world, measured in the one unit that is the same in both directions.
+ *
+ * ⚠️ A DIAGONAL IS ONLY A DIAGONAL ON SCREEN. x is a fraction of the world's WIDTH and y of
+ * its HEIGHT, and the field is 16:10 — so equal steps in x and y are not equal distances to look
+ * at, and an attack pointed at (1,1) in world units comes out at 32 degrees rather than 45. Every
+ * piece of geometry with an angle in it therefore happens in screen-heights and converts on the
+ * way in and out. This is the same trap `across` and `down` exist for, one dimension further on.
+ */
+export const toScreen = (dx: number, dy: number) => ({
+  sx: (dx / VIEW.w) * ASPECT,
+  sy: dy / VIEW.h,
+})
+
+/** Eight ways, because a keyboard has eight and a drawing has two. */
+export type Aimed = { x: number; y: number }
+
+/**
+ * The nearest of the eight compass directions, as a unit vector in screen-heights.
+ *
+ * ⚠️ SNAPPED, NOT FREE. The creature itself can only face left or right — PetView mirrors,
+ * it does not rotate — so a freely-aimed attack would point somewhere its owner visibly is not.
+ * Eight is what the keys give you and what a player can mean on purpose; anything finer would be
+ * a direction nobody chose and nobody could read.
+ */
+export function aimOf(dx: number, dy: number, fallback: Aimed = { x: 1, y: 0 }): Aimed {
+  const { sx, sy } = toScreen(dx, dy)
+  const len = Math.hypot(sx, sy)
+  if (len < 1e-6) return fallback
+  const a = Math.round(Math.atan2(sy, sx) / (Math.PI / 4)) * (Math.PI / 4)
+  return { x: Math.cos(a), y: Math.sin(a) }
+}
+
+/**
+ * An aim as one number, for the wire.
+ *
+ * ⚠️ AN OCTANT RATHER THAN TWO FLOATS, because the aim is snapped to eight anyway — sending
+ * a vector would be sending precision that does not exist, twice a message, fifteen times a
+ * second. It also clamps trivially at the relay, which matters: every field in a park message is
+ * squared off there rather than trusted.
+ *
+ * ⚠️ AND IT HAS TO TRAVEL AT ALL. A remote creature's swing is re-derived on your machine
+ * from what it sent; with only a facing, its diagonal attack would be diagonal on its own screen
+ * and horizontal on yours — two machines disagreeing about what hit you, which is the one
+ * disagreement a fight cannot survive.
+ */
+export const octantOf = (aim: Aimed): number => {
+  const a = Math.atan2(aim.y, aim.x)
+  return ((Math.round(a / (Math.PI / 4)) % 8) + 8) % 8
+}
+
+export const aimFromOctant = (n: number): Aimed => {
+  const a = (((Math.round(n) % 8) + 8) % 8) * (Math.PI / 4)
+  return { x: Math.cos(a), y: Math.sin(a) }
+}
+
+/**
+ * What a swing covers, as a patch pointed the way it was thrown.
+ *
+ * ⚠️ AN ORIENTED REGION RATHER THAN A BOX, which is the whole of what omnidirectional
+ * fighting needs. An axis-aligned rectangle can point four ways at best and the park only ever
+ * used two of them, so every fight was left-right in a world you can walk round in circles.
+ *
+ * ⚠️ STILL THE SAME reach AND depth, so nothing about balance moved: `reach` is how far
+ * along the aim it goes and `half` is how wide across it is, both in screen-heights, and both
+ * come from the same numbers the axis-aligned version used — including the dodge-room cap.
+ */
+export type Swipe = {
+  /** where it comes from, in world units */
+  from: Spot
+  /** unit direction, in screen-heights */
+  aim: Aimed
+  /** along the aim, in screen-heights */
+  reach: number
+  /** either side of the aim, in screen-heights */
+  half: number
+  /** it comes out both ways along the aim, so facing does not matter */
+  both: boolean
+}
 
 /**
  * How tall a creature stands here, as a fraction of the field's height.
@@ -160,6 +265,89 @@ export function strikeTell(
   return { box: areaOf(at, facing, a, scale), ready: Math.max(0, Math.min(1, f / a.live[0])) }
 }
 
+/**
+ * The patch a swing is hurting right now, pointed the way it was thrown.
+ *
+ * ⚠️ THE SAME live WINDOW AND THE SAME NUMBERS as the box it replaces — only the direction
+ * is new. Reach along the aim, depth either side of it, the dodge-room cap still applying to the
+ * depth because depth is still the axis you step out through.
+ */
+export function strikeSwipe(
+  at: Spot,
+  aim: Aimed,
+  a: Attack,
+  gone: number,
+  scale = 1,
+): Swipe | null {
+  const f = gone / a.span
+  if (f < a.live[0] || f > a.live[1]) return null
+  return swipeOf(at, aim, a, scale)
+}
+
+/** Where a swing is ABOUT to land, and how far through its wind-up it is — see strikeTell. */
+export function swipeTell(
+  at: Spot,
+  aim: Aimed,
+  a: Attack,
+  gone: number,
+  scale = 1,
+): { swipe: Swipe; ready: number } | null {
+  const f = gone / a.span
+  if (f >= a.live[0] || a.live[0] <= 0) return null
+  return { swipe: swipeOf(at, aim, a, scale), ready: Math.max(0, Math.min(1, f / a.live[0])) }
+}
+
+function swipeOf(at: Spot, aim: Aimed, a: Attack, scale: number): Swipe {
+  const grow = Math.pow(Math.max(0.05, scale), 0.45)
+  /* ⚠️ the field is one screen-height tall by definition, so DODGE_ROOM — a fraction of that
+     height — is already in these units and halves into a half-depth directly */
+  const capped = Math.min(hurtHalf(a, PARK_DEEP) * PARK_TALL * grow, DODGE_ROOM / 2)
+  return {
+    from: at,
+    aim,
+    reach: a.reach * PARK_TALL * scale,
+    half: capped,
+    both: !!a.both,
+  }
+}
+
+/**
+ * How far a creature's footprint extends along one direction, in screen-heights.
+ *
+ * ⚠️ AN ELLIPSE, NOT A CIRCLE, and the first version of this got it wrong. Seen from above a
+ * creature covers a shallow patch — that is what FOOT.deep is for — so in screen-heights the
+ * footprint is about 0.098 across and 0.025 deep, four to one. Treating it as one radius meant
+ * picking which lie to tell: the larger made every creature four times deeper to hit than it
+ * looks, the smaller made it impossible to catch side-on.
+ *
+ * ⚠️ THE EXACT EXTENT IS ONE LINE, so there is no reason to approximate. For radii (a, b)
+ * the support of an ellipse along a unit direction is hypot(a·ux, b·uy) — which gives the wide
+ * answer along x, the shallow one along y, and the right thing at every angle between.
+ */
+export const footSpan = (wide: number, scale: number, ux: number, uy: number): number => {
+  const rx = (wide * 0.8 * scale) / 2
+  const ry = (FOOT.deep * PARK_TALL * scale) / 2
+  return Math.hypot(rx * ux, ry * uy)
+}
+
+/**
+ * Is this creature caught by that swing?
+ *
+ * ⚠️ MEASURED ALONG THE AIM AND ACROSS IT, with the target's own footprint expanding the
+ * region in each of those two directions by however much it actually reaches that way. That is
+ * what stops an attack from the corner covering more ground than the same attack from the side,
+ * which is the unfairness this whole direction exists to remove.
+ */
+export function inSwipe(at: Spot, wide: number, s: Swipe, scale = 1): boolean {
+  const { sx, sy } = toScreen(at.x - s.from.x, at.y - s.from.y)
+  const along = sx * s.aim.x + sy * s.aim.y
+  const side = Math.abs(sx * -s.aim.y + sy * s.aim.x)
+  const padAlong = footSpan(wide, scale, s.aim.x, s.aim.y)
+  const padSide = footSpan(wide, scale, -s.aim.y, s.aim.x)
+  const back = s.both ? -(s.reach + padAlong) : -padAlong
+  return along >= back && along <= s.reach + padAlong && side <= s.half + padSide
+}
+
 function areaOf(at: Spot, facing: number, a: Attack, scale: number): Box {
   const reach = across(a.reach * PARK_TALL * scale)
   /**
@@ -206,8 +394,11 @@ export function driven(s: Striker, a: Attack | undefined, dt: number): Striker {
   const speed = driveAt(a, a.span - s.swing)
   if (!speed) return s
   const t = Math.max(0, Math.min(0.05, dt))
-  const step = across(speed * PARK_TALL) * t * s.facing
-  const { x, y } = holdInPark(s.x + step, s.y)
+  /* ⚠️ ALONG THE AIM, not along the facing. A lunge thrown up-and-left has to travel
+     up-and-left, or the one shape whose identity is that it travels would travel somewhere the
+     attack is not — see Striker.aim. Screen-heights out, world units in, one axis each. */
+  const reach = speed * PARK_TALL * t
+  const { x, y } = holdInPark(s.x + across(reach * s.aim.x), s.y + down(reach * s.aim.y))
   return { ...s, x, y }
 }
 

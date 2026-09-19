@@ -31,16 +31,21 @@ import { MAX_WANDERERS, wanderAt } from './wander'
 import {
   busy,
   driven,
-  footOf,
-  inArea,
+  aimFromKeys,
+  aimOf,
+  inSwipe,
+  type Swipe,
   mauled,
   PLAYER_LIFE,
   restingStriker,
   shoved,
   stepDown,
   stepStrike,
-  strikeArea,
-  strikeTell,
+  FOOT,
+  octantOf,
+  PARK_TALL,
+  strikeSwipe,
+  swipeTell,
   type StrikeInput,
   type Striker,
 } from './strike'
@@ -206,39 +211,52 @@ function BossFigure({
 }
 
 /**
- * The ground lighting up where a swing is about to land.
+ * A swing's patch, pointed the way it was thrown.
  *
- * ⚠️ ITS OWN COMPONENT so the two corners are mapped once. Written inline it was four
- * onScreen calls in a style object, one of which I got wrong — a ternary whose branches were
- * identical — and nothing would have told me, because it would simply have been the right answer
- * by accident.
+ * ⚠️ ONE COMPONENT FOR THE TELEGRAPH AND THE DEBUG BOX, because they must never disagree
+ * about where a swing is — that disagreement is the whole bug this module keeps paying for.
+ *
+ * ⚠️ EVERYTHING IS SIZED IN SCREEN-HEIGHTS, which are isotropic in PIXELS: one screen-height
+ * across and one down are the same number of pixels, because the field's width is its height
+ * times the aspect and the width percentage divides that back out. That is what makes a CSS
+ * rotate correct here — rotating a box whose two sides are measured in different units would
+ * shear it, and a sheared hitbox is one that lies at every angle except the four it was built on.
  */
-function Telegraph({
-  box,
-  ready,
+function SwipePatch({
+  swipe,
   cam,
+  className,
+  style,
 }: {
-  box: { x0: number; y0: number; x1: number; y1: number }
-  ready: number
+  swipe: Swipe
   cam: Spot
+  className: string
+  style?: React.CSSProperties
 }) {
-  const a = onScreen({ x: box.x0, y: box.y0 }, cam)
-  const b = onScreen({ x: box.x1, y: box.y1 }, cam)
+  const at = onScreen(swipe.from, cam)
+  const deg = (Math.atan2(swipe.aim.y, swipe.aim.x) * 180) / Math.PI
+  const long = swipe.both ? swipe.reach * 2 : swipe.reach
   return (
     <span
-      className="park-tell"
+      className={className}
       aria-hidden
       style={{
-        left: `${a.x * 100}%`,
-        top: `${a.y * 100}%`,
-        width: `${(b.x - a.x) * 100}%`,
-        height: `${(b.y - a.y) * 100}%`,
-        opacity: 0.25 + ready * 0.6,
-        transform: `scaleY(${(0.55 + ready * 0.45).toFixed(3)})`,
+        left: `${at.x * 100}%`,
+        top: `${at.y * 100}%`,
+        width: `${(long / FIELD_ASPECT) * 100}%`,
+        height: `${swipe.half * 2 * 100}%`,
+        transformOrigin: swipe.both ? '50% 50%' : '0 50%',
+        transform: swipe.both
+          ? `translate(-50%, -50%) rotate(${deg.toFixed(1)}deg)`
+          : `translateY(-50%) rotate(${deg.toFixed(1)}deg)`,
+        ...style,
       }}
     />
   )
 }
+
+/** The field is 16:10, and a screen-height is its height — see SwipePatch. */
+const FIELD_ASPECT = 16 / 10
 
 /** The one park, until there is a reason for a second. */
 export const PARK_ROOM = 'park'
@@ -457,18 +475,14 @@ export function ParkRoom({
    * to redraw. It is one small object a frame, set beside setShownYou which already runs every
    * frame, so it costs a render that was happening anyway.
    */
-  const [tell, setTell] = useState<{
-    box: { x0: number; y0: number; x1: number; y1: number }
-    ready: number
-  } | null>(null)
+  const [tell, setTell] = useState<{ swipe: Swipe; ready: number } | null>(null)
   const [debug, setDebug] = useState(false)
   /* the loop is installed once; a ref is how a toggle reaches inside it without rebuilding it */
   const debugRef = useRef(false)
   debugRef.current = debug
   const boxesOn = useRef(false)
-  const [boxes, setBoxes] = useState<
-    Array<{ k: string; box: { x0: number; y0: number; x1: number; y1: number }; kind: string }>
-  >([])
+  const [feet, setFeet] = useState<Array<{ k: string; at: Spot; wide: number; scale: number }>>([])
+  const [swings, setSwings] = useState<Array<{ k: string; swipe: Swipe }>>([])
   const held = useRef<Steer>({ ...STILL })
   const hitting = useRef<StrikeInput>({ quick: false, heavy: false, up: false, down: false })
   /** bumped when a swing starts or ends, so the render follows without owning the loop */
@@ -637,6 +651,13 @@ export function ParkRoom({
        */
       const wasSwinging = you.current.swing > 0
       const struck = stepStrike(you.current, hitting.current, myMoves, dt)
+      /**
+       * ⚠️ THE AIM IS TAKEN ON THE FRAME THE SWING STARTS and not touched again. Reading the
+       * keys every frame would let you steer a live hitbox round somebody after committing to
+       * it, which is the same unfairness the frozen position and locked facing already refuse.
+       */
+      if (!wasSwinging && struck.swing > 0)
+        struck.aim = aimFromKeys(held.current, { x: you.current.facing, y: 0 })
       const steer = busy(struck) ? STILL : held.current
       you.current = { ...struck, ...stepWalker(struck, steer, struck.hold > 0 ? 0 : dt) }
       /* ⚠️ and the move carries you, if it is one that does — see Attack.drive */
@@ -647,14 +668,14 @@ export function ParkRoom({
       const mv0 = myMoves[you.current.move]
       const area0 =
         you.current.swing > 0 && !you.current.spent && mv0
-          ? strikeArea(you.current, you.current.facing, mv0, mv0.span - you.current.swing)
+          ? strikeSwipe(you.current, you.current.aim, mv0, mv0.span - you.current.swing)
           : null
       const area = area0
       const mv = mv0
       if (area && mv) {
         nudges.current.forEach((n, i) => {
           const w = wanderAt(i, clockRef.current)
-          if (!inArea(w.at, wides.current[i] ?? 0.2, area)) return
+          if (!inSwipe(w.at, wides.current[i] ?? 0.2, area)) return
           const dx = w.at.x - you.current.x
           const dy = w.at.y - you.current.y
           const len = Math.hypot(dx, dy) || 1
@@ -670,7 +691,7 @@ export function ParkRoom({
         /* ⚠️ the dummy is hit by the SAME inArea the boss is, with the same footprint sum, so
            landing one on it means the same thing as landing one on anything else */
         const d = dummy.current
-        if (d && !you.current.spent && inArea(d, myWide, area)) {
+        if (d && !you.current.spent && inSwipe(d, myWide, area)) {
           dummy.current = { ...d, hurt: d.hurt + mv.bite, hits: d.hits + 1, lit: 0.18 }
           you.current = { ...you.current, spent: true, hold: 0.05 + mv.bite * 0.004 }
         }
@@ -733,7 +754,16 @@ export function ParkRoom({
         const bHit = spun.turning
           ? { quick: false, heavy: false, up: false, down: false }
           : plan.hit
+        const wasSwing = cur.swing > 0
         const struckBoss = stepStrike(cur, bHit, bossKit.moves, dt)
+        /**
+         * ⚠️ IT AIMS AT YOU, NOT ALONG ITSELF. A boss can still only FACE two ways, because a
+         * drawing mirrors and does not rotate — but WHERE it swings is a separate question, and
+         * tying the two together is what made every fight a line. Snapped to the same eight a
+         * player gets, and fixed on the frame the swing starts, like theirs.
+         */
+        if (!wasSwing && struckBoss.swing > 0)
+          struckBoss.aim = aimOf(target.x - cur.x, target.y - cur.y, { x: cur.facing, y: 0 })
         const bSteer = busy(struckBoss) ? STILL : { ...STILL, ...plan.steer }
         const walked = stepWalker(
           struckBoss,
@@ -754,8 +784,8 @@ export function ParkRoom({
         /* its swing against me */
         const bm = bossKit.moves[cur.move]
         if (cur.swing > 0 && !cur.spent && bm) {
-          const area = strikeArea(cur, cur.facing, bm, bm.span - cur.swing, cur.scale)
-          if (area && you.current.stun <= 0 && inArea(you.current, myWide, area)) {
+          const area = strikeSwipe(cur, cur.aim, bm, bm.span - cur.swing, cur.scale)
+          if (area && you.current.stun <= 0 && inSwipe(you.current, myWide, area)) {
             /* ⚠️ mauled, not shoved — a boss is the one thing allowed to take health off */
             you.current = mauled(you.current, cur, bm)
             cur = { ...cur, spent: true }
@@ -769,7 +799,7 @@ export function ParkRoom({
           mv0 &&
           !you.current.spent &&
           !beaten(cur) &&
-          inArea(cur, bossKit.wide, area0, cur.scale)
+          inSwipe(cur, bossKit.wide, area0, cur.scale)
         ) {
           cur = wounded(cur, mv0)
           you.current = { ...you.current, spent: true, hold: 0.06 + mv0.bite * 0.004 }
@@ -803,7 +833,7 @@ export function ParkRoom({
         const list = foeMoves.current.get(o.id)
         const theirs = list?.[o.swing - 1]
         if (!theirs) continue
-        const area = strikeArea(o.shown, o.facing, theirs, o.swingFor)
+        const area = strikeSwipe(o.shown, { x: o.facing, y: 0 }, theirs, o.swingFor)
         if (!area) continue
         /**
          * ⚠️ AND WHOEVER CALLED THE BOSS DECIDES WHAT IT TAKES. Everybody's swing is tested
@@ -813,14 +843,14 @@ export function ParkRoom({
          * bar moves, and buys one health bar that both of you believe.
          */
         const b = boss.current
-        if (b && bossKit && !beaten(b) && inArea(b, bossKit.wide, area, b.scale)) {
+        if (b && bossKit && !beaten(b) && inSwipe(b, bossKit.wide, area, b.scale)) {
           boss.current = wounded(b, theirs)
           setBossShown(boss.current)
           o.spent = true
           continue
         }
         if (you.current.stun > 0) continue
-        if (!inArea(you.current, myWide, area)) continue
+        if (!inSwipe(you.current, myWide, area)) continue
         you.current = shoved(you.current, o.shown, theirs)
         o.spent = true
       }
@@ -850,8 +880,8 @@ export function ParkRoom({
         if (theirMove) {
           tb.swingFor += dt
           if (!tb.spent) {
-            const area = strikeArea(tb.shown, tb.facing, theirMove, tb.swingFor, kit.temper.scale)
-            if (area && you.current.stun <= 0 && inArea(you.current, myWide, area)) {
+            const area = strikeSwipe(tb.shown, tb.aim, theirMove, tb.swingFor, kit.temper.scale)
+            if (area && you.current.stun <= 0 && inSwipe(you.current, myWide, area)) {
               /* somebody else's boss is still a boss — see mauled */
               you.current = mauled(you.current, tb.shown, theirMove)
               tb.spent = true
@@ -867,7 +897,7 @@ export function ParkRoom({
           mv0 &&
           !you.current.spent &&
           tb.hp > 0 &&
-          inArea(tb.shown, kit.wide, area0, kit.temper.scale)
+          inSwipe(tb.shown, kit.wide, area0, kit.temper.scale)
         )
           you.current = { ...you.current, spent: true, hold: 0.06 + mv0.bite * 0.004 }
       }
@@ -890,14 +920,14 @@ export function ParkRoom({
         const b = boss.current
         const bm = b && bossKit ? bossKit.moves[b.move] : null
         const t =
-          b && bm && b.swing > 0 ? strikeTell(b, b.facing, bm, bm.span - b.swing, b.scale) : null
+          b && bm && b.swing > 0 ? swipeTell(b, b.aim, bm, bm.span - b.swing, b.scale) : null
         const tb = state.current.boss
         const tm = tb && echoKit.current ? echoKit.current.moves[tb.swing - 1] : null
         const t2 =
           !t && tb && tm
-            ? strikeTell(
+            ? swipeTell(
                 tb.shown,
-                tb.facing,
+                tb.aim,
                 tm,
                 tb.swingFor,
                 echoKit.current?.temper.scale ?? BOSS.scale,
@@ -912,31 +942,27 @@ export function ParkRoom({
        * drawn is what you are hit by, by construction rather than by agreement.
        */
       if (debugRef.current) {
-        const out: Array<{
-          k: string
-          box: { x0: number; y0: number; x1: number; y1: number }
-          kind: string
-        }> = []
-        const footBox = (at: { x: number; y: number }, wide: number, scale = 1) => {
-          const f = footOf(wide, scale)
-          return { x0: at.x - f.x, y0: at.y - f.y, x1: at.x + f.x, y1: at.y + f.y }
-        }
-        out.push({ k: 'me', box: footBox(you.current, myWide), kind: 'foot' })
-        if (area0) out.push({ k: 'my-swing', box: area0, kind: 'hit' })
+        const f: Array<{ k: string; at: Spot; wide: number; scale: number }> = [
+          { k: 'me', at: you.current, wide: myWide, scale: 1 },
+        ]
+        const sw: Array<{ k: string; swipe: Swipe }> = []
+        if (area0) sw.push({ k: 'my-swing', swipe: area0 })
         const d = dummy.current
-        if (d) out.push({ k: 'dummy', box: footBox(d, myWide), kind: 'foot' })
+        if (d) f.push({ k: 'dummy', at: d, wide: myWide, scale: 1 })
         const b = boss.current
         if (b && bossKit) {
-          out.push({ k: 'boss', box: footBox(b, bossKit.wide, b.scale), kind: 'foot' })
+          f.push({ k: 'boss', at: b, wide: bossKit.wide, scale: b.scale })
           const bm = bossKit.moves[b.move]
           if (b.swing > 0 && bm) {
-            const ba = strikeArea(b, b.facing, bm, bm.span - b.swing, b.scale)
-            if (ba) out.push({ k: 'boss-swing', box: ba, kind: 'hit' })
+            const ba = strikeSwipe(b, b.aim, bm, bm.span - b.swing, b.scale)
+            if (ba) sw.push({ k: 'boss-swing', swipe: ba })
           }
         }
-        setBoxes(out)
+        setFeet(f)
+        setSwings(sw)
       } else if (boxesOn.current) {
-        setBoxes([])
+        setFeet([])
+        setSwings([])
       }
       boxesOn.current = debugRef.current
 
@@ -988,6 +1014,7 @@ export function ParkRoom({
             mineOut.swing > 0 ? mineOut.move + 1 : 0,
             mineOut.lifeMax > 0 ? mineOut.life / mineOut.lifeMax : 0,
             mineOut.turn > 0,
+            octantOf(mineOut.aim),
           )
       }
       raf = requestAnimationFrame(tick)
@@ -1398,7 +1425,14 @@ export function ParkRoom({
            * the air — drawn before the creatures so they stand on it. The debug boxes go over
            * the top; this goes beneath, which is most of what tells them apart at a glance.
            */}
-          {walking && tell && <Telegraph box={tell.box} ready={tell.ready} cam={camAt} />}
+          {walking && tell && (
+            <SwipePatch
+              swipe={tell.swipe}
+              cam={camAt}
+              className="park-tell"
+              style={{ opacity: 0.25 + tell.ready * 0.6 }}
+            />
+          )}
           {walking && dummyShown && (
             <span
               className={'park-dummy' + (dummyShown.lit > 0 ? ' is-hit' : '')}
@@ -1415,25 +1449,35 @@ export function ParkRoom({
               </span>
             </span>
           )}
+          {/* ⚠️ the feet are ELLIPSES here because that is what inSwipe tests against — see
+              footSpan. Drawing the box they used to be would be drawing a shape nothing uses. */}
           {walking &&
             debug &&
-            boxes.map((b) => {
-              const a = onScreen({ x: b.box.x0, y: b.box.y0 }, camAt)
-              const c = onScreen({ x: b.box.x1, y: b.box.y1 }, camAt)
+            feet.map((f) => {
+              const at = onScreen(f.at, camAt)
+              const rx = (f.wide * 0.8 * f.scale) / 2
+              const ry = (FOOT.deep * PARK_TALL * f.scale) / 2
               return (
                 <span
-                  key={b.k}
-                  className={'park-box is-' + b.kind}
+                  key={f.k}
+                  className="park-box is-foot"
                   aria-hidden
                   style={{
-                    left: `${a.x * 100}%`,
-                    top: `${a.y * 100}%`,
-                    width: `${(c.x - a.x) * 100}%`,
-                    height: `${(c.y - a.y) * 100}%`,
+                    left: `${at.x * 100}%`,
+                    top: `${at.y * 100}%`,
+                    width: `${((rx * 2) / FIELD_ASPECT) * 100}%`,
+                    height: `${ry * 2 * 100}%`,
+                    transform: 'translate(-50%, -50%)',
+                    borderRadius: '50%',
                   }}
                 />
               )
             })}
+          {walking &&
+            debug &&
+            swings.map((w) => (
+              <SwipePatch key={w.k} swipe={w.swipe} cam={camAt} className="park-box is-hit" />
+            ))}
           {walking && bossShown && (
             <BossFigure
               name={bossShown.name}

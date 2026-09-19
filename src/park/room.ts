@@ -1,6 +1,7 @@
 import { NetClient } from '../game/net'
 import { packDrawing, readDrawing, simplifyDrawing, type Drawing } from '../draw/strokes'
 import type { Spot, Walker } from './walk'
+import { aimFromOctant, type Aimed } from './strike'
 
 /**
  * The shared park, over the relay.
@@ -28,7 +29,7 @@ type Out =
   /* calling a boss out, or — with a null drawing — putting it away */
   | { type: 'boss'; name: string; art: unknown | null }
   /* where it is and what is left of it, from the one machine running it */
-  | { type: 'bstep'; x: number; y: number; f: number; a: number; h: number; t: boolean }
+  | { type: 'bstep'; x: number; y: number; f: number; a: number; h: number; t: boolean; d: number }
 
 /** What arrives. */
 type In =
@@ -47,6 +48,7 @@ type In =
       a?: number
       h?: number
       t?: boolean
+      d?: number
     }
   /* ⚠️ the relay already says this when anybody leaves any room, so a departure needs no new
      message on the server — `over` with a `from` is "that peer is gone", whatever ended. */
@@ -115,6 +117,11 @@ export type BossEcho = {
   spent: boolean
   /** what is LEFT of it, 0..1 */
   hp: number
+  /**
+   * Which way its swing is pointed — see octantOf. Absent on the wire means straight ahead,
+   * which is exactly what a client from before omnidirectional attacks was saying.
+   */
+  aim: Aimed
   /**
    * Mid-pivot, so everybody sees the window and not only whoever is running it.
    *
@@ -204,6 +211,7 @@ function readBoss(v: unknown): BossEcho | null {
     swing: 0,
     swingFor: 0,
     turning: false,
+    aim: { x: 1, y: 0 },
     spent: false,
     /* ⚠️ a boss with no health reported yet has not been stepped at all, which is a FULL one —
        reading a missing number as zero would draw it already beaten the moment it arrived */
@@ -216,7 +224,14 @@ export type Park = {
   /** stand one of your minions up for everybody, or pass null to put it away */
   callBoss: (name: string, art: Drawing | null) => void
   /** where your boss is and what is left of it, at the same rate as a walk */
-  stepBoss: (at: Spot, facing: number, swing: number, hp: number, turning: boolean) => void
+  stepBoss: (
+    at: Spot,
+    facing: number,
+    swing: number,
+    hp: number,
+    turning: boolean,
+    aim: number,
+  ) => void
   leave: () => void
 }
 
@@ -317,6 +332,8 @@ export function joinPark(
           if (typeof msg.h === 'number' && Number.isFinite(msg.h))
             b.hp = Math.max(0, Math.min(1, msg.h))
           b.turning = msg.t === true
+          /* ⚠️ absent means straight ahead, which is what every client before this sent */
+          b.aim = aimFromOctant(typeof msg.d === 'number' ? msg.d : b.facing < 0 ? 4 : 0)
           /* deliberately no onChange — the loop reads this every frame, the same as a walk */
           break
         }
@@ -389,8 +406,8 @@ export function joinPark(
     callBoss: (name, art) => {
       net.send({ type: 'boss', name, art: art ? packLook(art) : null })
     },
-    stepBoss: (at, facing, swing, hp, turning) => {
-      net.send({ type: 'bstep', x: at.x, y: at.y, f: facing, a: swing, h: hp, t: turning })
+    stepBoss: (at, facing, swing, hp, turning, aim) => {
+      net.send({ type: 'bstep', x: at.x, y: at.y, f: facing, a: swing, h: hp, t: turning, d: aim })
     },
     leave: () => {
       stop = true

@@ -2084,6 +2084,19 @@ wss.on('connection', (ws, req) => {
            * what the park did before the pivot existed.
            */
           t: msg.t === true,
+          /**
+           * Which of eight ways its swing points — see octantOf.
+           *
+           * ⚠️ IT HAS TO TRAVEL OR TWO MACHINES DISAGREE ABOUT WHAT HIT YOU. A remote boss's
+           * swing is re-derived on each viewer's machine from what it sent; with only a facing,
+           * a diagonal attack is diagonal on the host's screen and horizontal on everyone
+           * else's. That is the one disagreement a fight cannot survive.
+           *
+           * ⚠️ CLAMPED TO 0–7 like every other field here, because this object is rebuilt
+           * rather than relayed. Absent reads as 0, which is straight ahead — what a client from
+           * before omnidirectional attacks was effectively saying.
+           */
+          d: Math.max(0, Math.min(7, Math.round(bnum(msg.d)))),
         }
         room.boss.at = bat
         broadcastVouched(room, { type: 'bstep', from: id, ...bat }, id)
