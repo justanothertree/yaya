@@ -1584,6 +1584,66 @@ export function PaintRoom() {
     return { x0: at(b.x0), y0: at(b.y0), x1: at(b.x1), y1: at(b.y1) }
   }, [petStep, petPreview])
 
+  /**
+   * A ruler for the one layer nobody can see the rules of.
+   *
+   * ⚠️ NOBODY HAS EVER DRAWN ONE. Across the thirteen drawings on this machine there is not a
+   * single `hit` layer — the feature for drawing your own attack is a feature nothing uses, and
+   * the owner said why: "it doesnt make sense to add a horn/wings or things i dont want but i
+   * lack in ability now", and "there isnt too much space to draw outside of your guy if thats
+   * what is supposed to happen". The second half of that is the real barrier. You are asked to
+   * draw in the empty space around a creature with no idea where the scale starts, where it
+   * ends, or whether what you have drawn counts as long.
+   *
+   * ⚠️ SO THE RULE IS DRAWN ON THE PAPER. Reach is measured from the middle of the BODY, in
+   * body-heights, and it stops mattering past a point — so the middle gets a line and the point
+   * gets a line, and the space between them is the whole of what "further reaches further"
+   * means. A rule you can see is a rule you can aim at.
+   *
+   * ⚠️ AND THE NUMBERS COME FROM THE SAME SUM drawnAttacks USES, including the rescue for a
+   * body too big for its page: where there is room the far mark sits at 1.6 body-heights, and
+   * where there is not it sits at the edge of the paper, because that is exactly where maximum
+   * reach now lands. A ruler that disagreed with the scoring would be worse than no ruler.
+   */
+  const hitGuide = useMemo(() => {
+    if (!petStep) return null
+    if (partOf(layerNames[layer] ?? '') !== 'hit') return null
+    /* the body, never the swing — the same exclusion drawnAttacks makes */
+    const body = inkBox({
+      ...petPreview,
+      strokes: petPreview.strokes.filter((k) => partOf(layerNames[k.l ?? 0] ?? '') !== 'hit'),
+    })
+    if (!body) return null
+    const h = body.y1 - body.y0
+    if (h <= 0.01) return null
+    const cx = (body.x0 + body.x1) / 2
+    const cy = (body.y0 + body.y1) / 2
+    /* ⚠️ the roomier side decides, because that is the side drawnAttacks measures */
+    const room = Math.max(cx, 1 - cx)
+    const at = Math.min(1.6 * h, room)
+    return {
+      cx,
+      cy,
+      left: Math.max(0, cx - at),
+      right: Math.min(1, cx + at),
+      pinched: 1.6 * h > room,
+    }
+  }, [petStep, layer, layerNames, petPreview])
+
+  /**
+   * And what the hit you have drawn so far is actually worth.
+   *
+   * ⚠️ ASKED FOR IN THOSE WORDS — "a balanced stat mechanic that showed you live as you draw
+   * it". This is the cheapest true version of that: the move table already falls out of the
+   * drawing on every stroke, so the attack you are drawing has a reach and a bite right now and
+   * nothing was showing them until you left the canvas.
+   */
+  const hitNow = useMemo(() => {
+    if (!hitGuide) return null
+    const drawn = movesOf(petPreview).find((m) => m.from === 'hit')
+    return drawn ? { reach: drawn.reach, bite: drawn.bite } : null
+  }, [hitGuide, petPreview])
+
   const petMoves = useMemo(() => {
     const table = movesOf(petPreview)
     return table.length ? table : null
@@ -4002,6 +4062,24 @@ export function PaintRoom() {
           onPointerCancel={onUp}
           onContextMenu={(e) => e.preventDefault()}
         />
+        {hitGuide && (
+          <span className="paint-reach" aria-hidden>
+            <i className="paint-reach-mid" style={{ left: `${hitGuide.cx * 100}%` }} />
+            <i style={{ left: `${hitGuide.left * 100}%` }} />
+            <i style={{ left: `${hitGuide.right * 100}%` }} />
+            <b style={{ left: `${hitGuide.right * 100}%`, top: `${hitGuide.cy * 100}%` }}>
+              {/* ⚠️ THE PINCHED CASE HAS TO SAY SO. When the body is big the outer mark lands
+                  on the page edge and the dashed line coincides with the board's own border,
+                  where it is invisible — watched exactly that. The line being lost is fine
+                  because the answer is then simply "the edge", but only if something says it. */}
+              {hitNow
+                ? `reach ${hitNow.reach.toFixed(1)} · hits for ${hitNow.bite}`
+                : hitGuide.pinched
+                  ? 'full reach — the edge of the page'
+                  : 'full reach'}
+            </b>
+          </span>
+        )}
         {petCrop && (
           <span
             className="paint-crop"
