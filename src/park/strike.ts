@@ -129,6 +129,38 @@ export function strikeArea(
 ): Box | null {
   const f = gone / a.span
   if (f < a.live[0] || f > a.live[1]) return null
+  return areaOf(at, facing, a, scale)
+}
+
+/**
+ * Where a swing is ABOUT to land, and how far through its wind-up it is.
+ *
+ * ⚠️ THE GAME HAS TO SAY WHAT THE DEBUG VIEW SAYS. Reported after playing it: "I would only
+ * ever play with the hitboxes turned on because that's currently required to win." A debug
+ * overlay being load-bearing is the clearest possible statement that the presentation is not
+ * carrying the information the simulation has — the boss telegraphs for 320ms and nothing on
+ * screen tells you what the telegraph is FOR, so the only readable thing was the red rectangle.
+ *
+ * ⚠️ THE SAME GEOMETRY, NOT A SECOND ONE. areaOf is shared with strikeArea, so the patch
+ * that lights up is the patch that will hurt — by construction, the way the overlay is. A
+ * telegraph that drew its own idea of the box would be the maker-preview bug all over again.
+ *
+ * ⚠️ NULL ONCE IT IS LIVE, because from that moment the real box takes over and two things
+ * drawing the same patch is one thing too many.
+ */
+export function strikeTell(
+  at: Spot,
+  facing: number,
+  a: Attack,
+  gone: number,
+  scale = 1,
+): { box: Box; ready: number } | null {
+  const f = gone / a.span
+  if (f >= a.live[0] || a.live[0] <= 0) return null
+  return { box: areaOf(at, facing, a, scale), ready: Math.max(0, Math.min(1, f / a.live[0])) }
+}
+
+function areaOf(at: Spot, facing: number, a: Attack, scale: number): Box {
   const reach = across(a.reach * PARK_TALL * scale)
   /**
    * ⚠️ DEPTH IS THE DODGE AXIS, SO IT MUST NOT GROW THE WAY REACH DOES. A bigger creature

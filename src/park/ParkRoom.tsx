@@ -39,6 +39,7 @@ import {
   stepDown,
   stepStrike,
   strikeArea,
+  strikeTell,
   type StrikeInput,
   type Striker,
 } from './strike'
@@ -47,6 +48,7 @@ import { footRoom } from '../pets/rig'
 import { lungeOf } from '../pets/fight'
 import {
   beaten,
+  BOSS,
   bossMoves,
   bossThink,
   bossWide,
@@ -199,6 +201,41 @@ function BossFigure({
       </span>
       <span className="park-name">{done ? `${name} — beaten` : name}</span>
     </span>
+  )
+}
+
+/**
+ * The ground lighting up where a swing is about to land.
+ *
+ * ⚠️ ITS OWN COMPONENT so the two corners are mapped once. Written inline it was four
+ * onScreen calls in a style object, one of which I got wrong — a ternary whose branches were
+ * identical — and nothing would have told me, because it would simply have been the right answer
+ * by accident.
+ */
+function Telegraph({
+  box,
+  ready,
+  cam,
+}: {
+  box: { x0: number; y0: number; x1: number; y1: number }
+  ready: number
+  cam: Spot
+}) {
+  const a = onScreen({ x: box.x0, y: box.y0 }, cam)
+  const b = onScreen({ x: box.x1, y: box.y1 }, cam)
+  return (
+    <span
+      className="park-tell"
+      aria-hidden
+      style={{
+        left: `${a.x * 100}%`,
+        top: `${a.y * 100}%`,
+        width: `${(b.x - a.x) * 100}%`,
+        height: `${(b.y - a.y) * 100}%`,
+        opacity: 0.25 + ready * 0.6,
+        transform: `scaleY(${(0.55 + ready * 0.45).toFixed(3)})`,
+      }}
+    />
   )
 }
 
@@ -412,6 +449,17 @@ export function ParkRoom({
    * park disagreed by 43% on a tail sweep and nobody could see it. These boxes come out of
    * strikeArea and footOf, so if they are wrong the game is wrong in exactly the same way.
    */
+  /**
+   * Where the boss is about to hit, and how close that is — see strikeTell.
+   *
+   * ⚠️ A STATE RATHER THAN A REF, because unlike the debug boxes this is always on and has
+   * to redraw. It is one small object a frame, set beside setShownYou which already runs every
+   * frame, so it costs a render that was happening anyway.
+   */
+  const [tell, setTell] = useState<{
+    box: { x0: number; y0: number; x1: number; y1: number }
+    ready: number
+  } | null>(null)
   const [debug, setDebug] = useState(false)
   /* the loop is installed once; a ref is how a toggle reaches inside it without rebuilding it */
   const debugRef = useRef(false)
@@ -827,6 +875,31 @@ export function ParkRoom({
       }
 
       setDummyShown(dummy.current)
+
+      /**
+       * ⚠️ THE TELEGRAPH IS PART OF THE GAME, NOT OF THE DEBUG VIEW. Reported after playing:
+       * the boxes were "currently required to win". The wind-up was already 320ms; what was
+       * missing was anything on screen saying what those 320ms were FOR.
+       */
+      {
+        const b = boss.current
+        const bm = b && bossKit ? bossKit.moves[b.move] : null
+        const t =
+          b && bm && b.swing > 0 ? strikeTell(b, b.facing, bm, bm.span - b.swing, b.scale) : null
+        const tb = state.current.boss
+        const tm = tb && echoKit.current ? echoKit.current.moves[tb.swing - 1] : null
+        const t2 =
+          !t && tb && tm
+            ? strikeTell(
+                tb.shown,
+                tb.facing,
+                tm,
+                tb.swingFor,
+                echoKit.current?.temper.scale ?? BOSS.scale,
+              )
+            : null
+        setTell(t ?? t2)
+      }
 
       /**
        * ⚠️ BUILT ONLY WHILE IT IS ON, and out of the very calls the hit test just made. Every
@@ -1315,6 +1388,12 @@ export function ParkRoom({
            * not an overlay. Both are positioned through the same onScreen the creatures are, so
            * a box lines up with the thing it belongs to at every camera position.
            */}
+          {/**
+           * ⚠️ UNDER EVERYTHING, because it is the ground lighting up rather than a thing in
+           * the air — drawn before the creatures so they stand on it. The debug boxes go over
+           * the top; this goes beneath, which is most of what tells them apart at a glance.
+           */}
+          {walking && tell && <Telegraph box={tell.box} ready={tell.ready} cam={camAt} />}
           {walking && dummyShown && (
             <span
               className={'park-dummy' + (dummyShown.lit > 0 ? ' is-hit' : '')}

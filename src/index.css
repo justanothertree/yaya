@@ -8514,6 +8514,32 @@ a.cz-msg-author:focus-visible {
     transition: none;
   }
 }
+/**
+ * The ground where a swing is about to land.
+ *
+ * ⚠️ BENEATH THE CREATURES, because it is the floor lighting up and not a thing in the air.
+ * The debug boxes sit OVER everything on purpose; this sits under, which is most of what tells
+ * the two apart without reading either.
+ *
+ * ⚠️ IT GROWS INTO THE SHAPE IT WILL HURT IN, rather than blinking on at full size. The
+ * opacity and the vertical scale are driven from how far through the wind-up it is, so the
+ * 320ms telegraph is something you watch ARRIVE — which is the difference between a warning and
+ * a flash. Reported as the wind-up being snappy and hard to read.
+ */
+.park-tell {
+  position: absolute;
+  z-index: 1;
+  pointer-events: none;
+  border-radius: 999px;
+  background: radial-gradient(
+    ellipse at center,
+    color-mix(in srgb, #e8534e 55%, transparent) 0%,
+    color-mix(in srgb, #e8534e 26%, transparent) 62%,
+    transparent 100%
+  );
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, #e8534e 45%, transparent);
+}
+
 /* ── a thing to hit, and the boxes that say why it was hit ───────────────────── */
 .park-dummy {
   position: absolute;
