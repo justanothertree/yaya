@@ -30,6 +30,7 @@ import {
 import { MAX_WANDERERS, wanderAt } from './wander'
 import {
   busy,
+  driven,
   footOf,
   inArea,
   mauled,
@@ -638,6 +639,8 @@ export function ParkRoom({
       const struck = stepStrike(you.current, hitting.current, myMoves, dt)
       const steer = busy(struck) ? STILL : held.current
       you.current = { ...struck, ...stepWalker(struck, steer, struck.hold > 0 ? 0 : dt) }
+      /* ⚠️ and the move carries you, if it is one that does — see Attack.drive */
+      you.current = driven(you.current, myMoves[you.current.move], struck.hold > 0 ? 0 : dt)
       if (wasSwinging !== you.current.swing > 0) setSwingAt((n) => n + 1)
 
       /* what my swing is hurting right now, if anything */
@@ -745,6 +748,8 @@ export function ParkRoom({
         /* ⚠️ cur first: stepStrike and stepWalker each return only the part they own, so
            spreading them alone would quietly drop the name, the art and the health */
         cur = { ...cur, ...struckBoss, ...walked, facing, turn: spun.turn }
+        /* the same rule a player travels by — see driven */
+        cur = { ...cur, ...driven(cur, bossKit.moves[cur.move], struckBoss.hold > 0 ? 0 : dt) }
 
         /* its swing against me */
         const bm = bossKit.moves[cur.move]

@@ -1,7 +1,7 @@
 import { PET_TALL } from '../pets/play'
-import { hurtHalf, slotFor, type Aim, type Attack } from '../pets/attack'
+import { driveAt, hurtHalf, slotFor, type Aim, type Attack } from '../pets/attack'
 import type { Box } from '../pets/rig'
-import { SQUASH, VIEW, type Spot, type Walker } from './walk'
+import { holdInPark, SQUASH, VIEW, type Spot, type Walker } from './walk'
 
 /**
  * Hitting things from above.
@@ -185,6 +185,30 @@ function areaOf(at: Spot, facing: number, a: Attack, scale: number): Box {
     x1: x0 + (a.both ? reach * 2 : reach),
     y1: at.y + deep,
   }
+}
+
+/**
+ * Carry a creature along with the move it is throwing.
+ *
+ * ⚠️ PURE, AND ONE OF THEM, so the player and the boss travel by the same rule. Two copies of
+ * "a lunge moves you" is two copies that can disagree about how far, and this module has already
+ * paid for that once with three different ideas of how deep a hitbox was.
+ *
+ * ⚠️ THROUGH holdInPark, because walking is no longer the only thing that moves a creature
+ * and a second mover with its own idea of the edges is a second way to end up outside them.
+ *
+ * ⚠️ IT DOES NOT TOUCH VELOCITY. The drive is a displacement for exactly as long as the move
+ * is live, so it stops dead when the move does rather than leaving the creature skating — which
+ * is what setting vx would do, and what would make a lunge into a shove you gave yourself.
+ */
+export function driven(s: Striker, a: Attack | undefined, dt: number): Striker {
+  if (!a) return s
+  const speed = driveAt(a, a.span - s.swing)
+  if (!speed) return s
+  const t = Math.max(0, Math.min(0.05, dt))
+  const step = across(speed * PARK_TALL) * t * s.facing
+  const { x, y } = holdInPark(s.x + step, s.y)
+  return { ...s, x, y }
 }
 
 /** Is this creature standing in that patch? */

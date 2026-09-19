@@ -74,6 +74,22 @@ export type Attack = {
    * the move unreachable. Drawn attacks already had this problem and already have this answer.
    */
   chosen?: boolean
+  /**
+   * How hard this move carries its owner forward while it is live, in pet-heights per second.
+   *
+   * ⚠️ THE LUNGE WAS ONLY EVER A PICTURE. lungeOf shifts the drawing inside its own box and
+   * says so — "it moves the picture without moving where it actually IS" — which is right for a
+   * flourish and wrong for a move whose whole identity is that it travels. Four shapes that
+   * differ in their numbers and move identically were reported, correctly, as not looking
+   * different.
+   *
+   * ⚠️ IT MOVES THE CREATURE, so the hitbox goes with it — strikeArea is computed from where
+   * the thing IS. That is the point: a lunge closes distance, which makes it a different question
+   * to answer rather than a different animation to watch.
+   *
+   * ⚠️ ABSENT MEANS ROOTED, which is what every template move has always done.
+   */
+  drive?: number
 }
 
 /**
@@ -105,8 +121,31 @@ export const HIT_SHAPES: Array<[HitShape, string, string]> = [
 
 export const isHitShape = (v: unknown): v is HitShape => HIT_SHAPES.some(([id]) => id === v)
 
+/**
+ * How fast a move is carrying its owner right now, in pet-heights per second.
+ *
+ * ⚠️ THE BACK HALF OF THE WIND-UP, AND THEN THE LIVE WINDOW. Live-only was the first
+ * version and it moved a lunge four hundredths of a walk — measured, and invisible — because a
+ * live window is about fifty milliseconds and nothing travels anywhere in fifty milliseconds
+ * without teleporting. Starting partway through the wind-up gives it something to travel FOR:
+ * the creature leans, then goes, and the danger arrives with it.
+ *
+ * ⚠️ AND THE TELEGRAPH COMES ALONG, which is the part that makes this honest rather than a
+ * cheat — strikeTell is computed from where the creature IS on each frame, so the patch sweeps
+ * forward with the lunge instead of promising a place the attack has already left.
+ *
+ * ⚠️ NOT THROUGH THE RECOVERY, ever. Sliding away afterwards would take back the punish the
+ * recovery just handed somebody.
+ */
+export const driveAt = (a: Attack, gone: number): number => {
+  if (!a.drive) return 0
+  const f = gone / a.span
+  return f >= a.live[0] * 0.6 && f <= a.live[1] ? a.drive : 0
+}
+
 /** The trades, as multipliers on whatever the drawing already earned. */
 const SHAPED: Record<HitShape, (a: Attack) => Attack> = {
+  /* ⚠️ rooted, like every template move — the shape you pick when you want none of this */
   swipe: (a) => a,
   slam: (a) => {
     /**
@@ -133,6 +172,9 @@ const SHAPED: Record<HitShape, (a: Attack) => Attack> = {
       bite: a.bite * 1.5,
       span,
       rest: a.rest * 1.2,
+      /* ⚠️ PLANTED. A slam commits hardest, and a heavy blow that also carries you is a heavy
+         blow with no downside — see the note on shapes being trades rather than upgrades. */
+      drive: 0,
       live: [start, Math.min(0.96, start + 0.28)] as [number, number],
     }
   },
@@ -142,6 +184,10 @@ const SHAPED: Record<HitShape, (a: Attack) => Attack> = {
     bite: a.bite * 0.75,
     span: a.span * 0.85,
     rest: a.rest * 1.15,
+    /* ⚠️ THE ONE THAT TRAVELS, which is what the word means and what it never did. Tuned to
+       close a little over half a pet-height — far enough to catch somebody who backed just out
+       of range, short enough that it stays an attack rather than a movement button. */
+    drive: 5,
     live: [a.live[0], Math.min(a.live[1], a.live[0] + (a.live[1] - a.live[0]) * 0.7)],
   }),
   spin: (a) => ({
@@ -149,6 +195,8 @@ const SHAPED: Record<HitShape, (a: Attack) => Attack> = {
     both: true,
     reach: a.reach * 0.72,
     bite: a.bite * 0.85,
+    /* a spin wanders, because a thing turning about itself does not hold a line */
+    drive: 1.2,
     span: a.span * 1.2,
     rest: a.rest * 1.35,
   }),

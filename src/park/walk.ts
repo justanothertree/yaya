@@ -104,6 +104,24 @@ export const restingWalker = (x = 0.5, y = 0.6): Walker => ({
 })
 
 /**
+ * Keep a creature inside the park.
+ *
+ * ⚠️ MARGINS ARE A FRACTION OF A SCREEN, converted — an inset in world units would be three
+ * times as generous in a three-screen park as it was in a one-screen one.
+ *
+ * ⚠️ EXPORTED because walking is no longer the only thing that moves a creature: an attack
+ * can carry its owner forward now (see Attack.drive), and a second way to move with its own idea
+ * of where the edges are is a second way to end up outside them.
+ */
+export const holdInPark = (x: number, y: number): Spot => {
+  const padX = 0.03 * VIEW.w
+  return {
+    x: Math.max(padX, Math.min(1 - padX, x)),
+    y: Math.max(PARK.tall * 0.6 * VIEW.h, Math.min(1 - 0.03 * VIEW.h, y)),
+  }
+}
+
+/**
  * One step.
  *
  * ⚠️ EIGHT WAYS, AND A DIAGONAL IS NOT FASTER. Pressing two keys adds two full-speed vectors,
@@ -144,11 +162,7 @@ export function stepWalker(w: Walker, steer: Steer, dt: number, speed = 1): Walk
   const vx = pull(w.vx, wx, top, ax, dx)
   const vy = pull(w.vy, wy, top * SQUASH, ax * SQUASH, dx * SQUASH)
 
-  /* ⚠️ margins are a fraction of a SCREEN, converted — an inset in world units would be three
-     times as generous in a three-screen park as it was in a one-screen one */
-  const padX = 0.03 * VIEW.w
-  const x = Math.max(padX, Math.min(1 - padX, w.x + vx * t))
-  const y = Math.max(PARK.tall * 0.6 * VIEW.h, Math.min(1 - 0.03 * VIEW.h, w.y + vy * t))
+  const { x, y } = holdInPark(w.x + vx * t, w.y + vy * t)
 
   const quiet = TUNE.quiet * per
   return {
