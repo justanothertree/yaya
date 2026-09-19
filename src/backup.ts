@@ -4,6 +4,7 @@ import { gallery, saveArt } from './draw/gallery'
 import { packDrawing, readDrawing } from './draw/strokes'
 import { readPresets, savePreset } from './audio/vizPresets'
 import { packPet, pets, readPet, savePet } from './pets/pets'
+import { packWins, restoreWins } from './park/records'
 
 /**
  * Everything you have made that lives only in this browser, as one file.
@@ -49,6 +50,14 @@ export type Backup = {
    * with Array.isArray — so a file made before today restores exactly as it did.
    */
   minions: unknown[]
+  /**
+   * ⚠️ ADDED THE DAY THE PARK STARTED KEEPING ANY, and optional on the way in for the same
+   * reason `minions` is: a file written before today has none, and must restore exactly as it
+   * did. The mistake this field is avoiding is the one `minions` records above — a store
+   * arrived and nobody came back here, so a person who backed up and restored got everything
+   * except the thing they had made most recently.
+   */
+  wins?: unknown[]
 }
 
 export function makeBackup(): Backup {
@@ -59,6 +68,7 @@ export function makeBackup(): Backup {
     art: gallery().map((a) => packDrawing(a.art)),
     looks: readPresets().map((p) => ({ name: p.name, s: p.s })),
     minions: pets().map(packPet),
+    wins: packWins(),
   }
 }
 
@@ -74,6 +84,7 @@ export type Restored = {
   art: number
   looks: number
   minions: number
+  wins: number
   skipped: number
 }
 
@@ -86,7 +97,7 @@ export type Restored = {
  * with everything twice.
  */
 export function restoreBackup(raw: unknown): Restored {
-  const out: Restored = { songs: 0, art: 0, looks: 0, minions: 0, skipped: 0 }
+  const out: Restored = { songs: 0, art: 0, looks: 0, minions: 0, wins: 0, skipped: 0 }
   if (!raw || typeof raw !== 'object') return out
   const b = raw as Partial<Backup>
 
@@ -167,6 +178,10 @@ export function restoreBackup(raw: unknown): Restored {
       } else out.skipped++
     }
   }
+
+  /* ⚠️ merged rather than counted-and-skipped like the rest, because a record is not a thing
+     you can already have a copy of — see restoreWins, which takes the better of the two. */
+  if (Array.isArray(b.wins)) out.wins = restoreWins(b.wins)
 
   return out
 }

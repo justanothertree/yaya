@@ -855,10 +855,16 @@ function BackupCard() {
       }
       const got = restoreBackup(raw)
       const added = got.songs + got.art + got.looks + got.minions
+      /* ⚠️ counted separately, because a record is merged rather than added — restoring onto a
+         machine that has played since keeps whichever time was quicker, so "added 3" would be
+         the wrong word for it and a silent merge would be the wrong amount of nothing. */
+      const kept = got.wins ? ` Park records: ${got.wins} brought over.` : ''
       showToast(
         added
-          ? `Added ${added} — ${got.songs} songs, ${got.art} drawings, ${got.looks} looks, ${got.minions} minions`
-          : 'Everything in that file was already here',
+          ? `Added ${added} — ${got.songs} songs, ${got.art} drawings, ${got.looks} looks, ${got.minions} minions.${kept}`
+          : kept
+            ? `Nothing new to add.${kept}`
+            : 'Everything in that file was already here',
       )
     } catch {
       showToast('That file could not be read')

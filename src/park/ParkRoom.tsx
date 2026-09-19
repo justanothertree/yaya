@@ -64,6 +64,7 @@ import {
 import { movesOf, slotFor, petWide, type Attack } from '../pets/attack'
 import { footRoom, petBox } from '../pets/rig'
 import { CAST, castSlot, inPatch, patchesOf, type CastKind, type Patch } from './cast'
+import { recordWin, winFor } from './records'
 import { lungeOf } from '../pets/fight'
 import {
   beaten,
@@ -365,6 +366,10 @@ const FIELD_ASPECT = 16 / 10
  */
 const CAST_WAIT = 4
 
+/** ⚠️ ONE PLACE, because three lines say a duration now and they must say it the same way. */
+const said = (secs: number): string =>
+  secs >= 60 ? `${Math.floor(secs / 60)}m ${secs % 60}s` : `${secs} seconds`
+
 /**
  * How long a parried boss is left standing there.
  *
@@ -659,7 +664,13 @@ export function ParkRoom({
    */
   const fightFrom = useRef(0)
   const fightDowns = useRef(0)
-  const [result, setResult] = useState<{ name: string; secs: number; downs: number } | null>(null)
+  const [result, setResult] = useState<{
+    name: string
+    secs: number
+    downs: number
+    best: boolean
+    win: { beaten: number; best: number }
+  } | null>(null)
   /**
    * What somebody else's boss can throw, worked out once from the drawing they sent.
    *
@@ -1456,11 +1467,10 @@ export function ParkRoom({
         }
         if (beaten(cur) && !bossDoneAt.current) {
           bossDoneAt.current = now / 1000
-          setResult({
-            name: cur.name,
-            secs: Math.max(1, Math.round(now / 1000 - fightFrom.current)),
-            downs: fightDowns.current,
-          })
+          const secs = Math.max(1, Math.round(now / 1000 - fightFrom.current))
+          /* ⚠️ written before the line is shown, so the line can say whether it was your best */
+          const rec = recordWin(cur.name, secs, fightDowns.current)
+          setResult({ name: cur.name, secs, downs: fightDowns.current, ...rec })
         }
         if (bossDoneAt.current && now / 1000 - bossDoneAt.current > BOSS_LINGER) {
           boss.current = null
@@ -1550,11 +1560,11 @@ export function ParkRoom({
         }
         if (tb.hp <= 0 && !bossDoneAt.current) {
           bossDoneAt.current = now / 1000
-          setResult({
-            name: tb.name,
-            secs: Math.max(1, Math.round(now / 1000 - fightFrom.current)),
-            downs: fightDowns.current,
-          })
+          const secs = Math.max(1, Math.round(now / 1000 - fightFrom.current))
+          /* ⚠️ a friend's boss counts too. You were there and it went down; whose socket was
+             running it is an implementation detail of the fight, not of the evening. */
+          const rec = recordWin(tb.name, secs, fightDowns.current)
+          setResult({ name: tb.name, secs, downs: fightDowns.current, ...rec })
         }
         const theirMove = tb.swing > 0 ? kit.moves[tb.swing - 1] : undefined
         if (theirMove) {
@@ -1958,7 +1968,13 @@ export function ParkRoom({
     }
     if (!bossKit || !bossArt) return null
     const who = (bossable[bossPick] ?? bossable[0])?.name ?? 'It'
-    return `${who} as a boss: ${saysOf(bossKit.temper)} ${bossKit.temper.life} health.`
+    /* ⚠️ BEFORE YOU CALL IT, which is when it is a reason to pick this one rather than a
+       souvenir of picking it. Silent for a creature you have never beaten. */
+    const had = winFor(who)
+    const done = had
+      ? ` Beaten ${had.beaten === 1 ? 'once' : `${had.beaten} times`}, quickest ${said(had.best)}.`
+      : ''
+    return `${who} as a boss: ${saysOf(bossKit.temper)} ${bossKit.temper.life} health.${done}`
   })()
   const theirMove =
     theirBoss && echoKit.current?.by === theirBoss.by && theirBoss.swing > 0
@@ -2208,15 +2224,28 @@ export function ParkRoom({
       )}
       {walking && result && (
         <p className="park-result" role="status">
-          <strong>{result.name} is down.</strong>{' '}
-          {result.secs >= 60
-            ? `${Math.floor(result.secs / 60)}m ${result.secs % 60}s`
-            : `${result.secs} seconds`}
+          <strong>{result.name} is down.</strong> {said(result.secs)}
           {result.downs === 0
             ? ', and it never put you on the floor.'
             : result.downs === 1
               ? ', and it put you on the floor once.'
-              : `, and it put you on the floor ${result.downs} times.`}
+              : `, and it put you on the floor ${result.downs} times.`}{' '}
+          {/*
+            ⚠️ THE FIGHT HAD NO MEMORY AND THAT WAS THE LAST THING MISSING. "Now what" had no
+            answer but "draw another one"; a boss you had already beaten looked exactly like
+            one you had not, and a four-minute win looked exactly like a ninety-second one.
+            Your own times only — the park is where a family go to hit a drawing together, so
+            the thing worth keeping is "we did that, and faster than last time".
+          */}
+          {result.best && result.win.beaten > 1 ? (
+            <em>Your quickest yet.</em>
+          ) : result.win.beaten > 1 ? (
+            <em>
+              That is {result.win.beaten} times now; your quickest is {said(result.win.best)}.
+            </em>
+          ) : (
+            <em>First time.</em>
+          )}
         </p>
       )}
       {/* ⚠️ role=alert, not status: this is the one line on the page that is about something
