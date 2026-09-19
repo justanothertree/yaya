@@ -2255,36 +2255,23 @@ export function ParkRoom({
           )}
         </p>
       )}
-      {/* ⚠️ role=alert, not status: this is the one line on the page that is about something
-          happening RIGHT NOW, and it is gone in a second and a half. */}
-      {walking && bossCasting && (
-        <p className="park-warning" role="alert">
-          {CAST[bossCasting].says}
+      {/*
+        ⚠️ A PLACE IS ONLY A PLACE ONCE SOMETHING NAMES IT. The landmarks give the map
+        something to look at; this is what makes them usable — you can tell somebody where you
+        are, and where you found them. Without it they are wallpaper with a shape.
+      */}
+      {walking && whereIAm && (
+        <p className="muted park-where" role="status">
+          You are at <strong>{whereIAm.name}</strong>.
         </p>
       )}
-
-      {/* ⚠️ A PROBLEM IS SAID OUT LOUD. A room that silently fails to connect is a room that
-          looks like an empty park, and somebody waits in it for a friend who cannot arrive. */}
-      {state.current.trouble && (
-        <p className="muted park-trouble" role="status">
-          {state.current.trouble}
-        </p>
-      )}
-      {!authed && !walking && (
-        <p className="muted park-trouble" role="status">
-          The park is for people with an account. Snake is open to everybody — but in here your
-          creature is drawn on everyone else's screen, and a picture is the one thing nobody can
-          filter, so this one asks who you are first. <a href="#signin">Sign in</a> and walk right
-          in.
-        </p>
-      )}
-      {tooBig && !walking && (
-        <p className="muted park-trouble" role="status">
-          {mine?.name} is too detailed to carry into the park — everybody here has to be sent your
-          creature, so there is a size limit. Something with fewer strokes will walk in fine.
-        </p>
-      )}
-
+      {/* ⚠️ THE KEY LIST IS A KEY LIST, so the phone gets its own sentence rather than a
+          column of blanks next to keys it does not have. */}
+      <p className="muted park-touch">
+        On a phone the pad under the park walks you about and gives you the five things you do —
+        swing, swing harder, roll, guard and jump — and the three chips in the corner throw your big
+        moves.
+      </p>
       <div className={'park-stage' + (full ? ' is-full' : '')} ref={stage}>
         <div className="park-field" ref={field}>
           {/* ⚠️ THE GROUND MOVES, NOT THE CREATURES. Everything in the park is placed by the same
@@ -2825,6 +2812,73 @@ export function ParkRoom({
       )}
 
       {/*
+        ⚠️ A RECORD YOU CANNOT LOOK AT IS A RECORD THAT ONLY EXISTS WHEN YOU HAPPEN TO PICK
+        THE SAME CREATURE AGAIN. The line before a fight tells you about THAT one; this is the
+        "look what we have done" that is the actual reason to keep any of it, and on a site
+        for somebody's family that is most of the point.
+
+        ⚠️ AND IT IS NOT THERE UNTIL THERE IS SOMETHING IN IT, so a first visit is not a table
+        of noughts explaining a feature nobody has used yet.
+      */}
+      {myWins.length > 0 && (
+        <details className="park-won">
+          <summary>
+            Beaten: <strong>{myWins.length}</strong>{' '}
+            {myWins.length === 1 ? 'creature' : 'creatures'}
+          </summary>
+          <ul>
+            {[...myWins]
+              .sort((a, b) => b.at - a.at)
+              .map((w) => (
+                <li key={w.name}>
+                  <strong>{w.name}</strong>
+                  <span>
+                    {w.beaten === 1 ? 'once' : `${w.beaten} times`} · quickest {said(w.best)}
+                    {w.fell === 0 ? ' without going down' : ''}
+                  </span>
+                </li>
+              ))}
+          </ul>
+        </details>
+      )}
+      {/* ⚠️ role=alert, not status: this is the one line on the page that is about something
+          happening RIGHT NOW, and it is gone in a second and a half. */}
+      {walking && bossCasting && (
+        <p className="park-warning" role="alert">
+          {CAST[bossCasting].says}
+        </p>
+      )}
+
+      {/* ⚠️ A PROBLEM IS SAID OUT LOUD. A room that silently fails to connect is a room that
+          looks like an empty park, and somebody waits in it for a friend who cannot arrive. */}
+      {state.current.trouble && (
+        <p className="muted park-trouble" role="status">
+          {state.current.trouble}
+        </p>
+      )}
+      {!authed && !walking && (
+        <p className="muted park-trouble" role="status">
+          The park is for people with an account. Snake is open to everybody — but in here your
+          creature is drawn on everyone else's screen, and a picture is the one thing nobody can
+          filter, so this one asks who you are first. <a href="#signin">Sign in</a> and walk right
+          in.
+        </p>
+      )}
+      {tooBig && !walking && (
+        <p className="muted park-trouble" role="status">
+          {mine?.name} is too detailed to carry into the park — everybody here has to be sent your
+          creature, so there is a size limit. Something with fewer strokes will walk in fine.
+        </p>
+      )}
+
+      {/*
+        ⚠️ WHAT IS HAPPENING SITS ABOVE THE FIELD AND WHAT YOU CAN DO SITS BELOW IT, which is
+        the ordering this page kept losing. "You are at the ring" is a live line and had ended
+        up underneath two hundred pixels of key reference, because every addition went at the
+        bottom and nobody read the page top to bottom afterwards. Three groups now: what is
+        happening now, above; what you have done, here; what the controls are, below.
+      */}
+      {/*
         ⚠️ A REFERENCE, NOT AN ESSAY, AND THAT IS A REPAIR RATHER THAN A PREFERENCE. This was
         one paragraph of 468 words describing fourteen keys, and it got that way honestly —
         every new control appended a sentence or two and nobody ever read the whole thing back.
@@ -2886,53 +2940,6 @@ export function ParkRoom({
           <dd>Jump — clears anything drawn low, but never an overhead</dd>
         </div>
       </dl>
-      {/*
-        ⚠️ A PLACE IS ONLY A PLACE ONCE SOMETHING NAMES IT. The landmarks give the map
-        something to look at; this is what makes them usable — you can tell somebody where you
-        are, and where you found them. Without it they are wallpaper with a shape.
-      */}
-      {walking && whereIAm && (
-        <p className="muted park-where" role="status">
-          You are at <strong>{whereIAm.name}</strong>.
-        </p>
-      )}
-      {/* ⚠️ THE KEY LIST IS A KEY LIST, so the phone gets its own sentence rather than a
-          column of blanks next to keys it does not have. */}
-      <p className="muted park-touch">
-        On a phone the pad under the park walks you about and gives you the five things you do —
-        swing, swing harder, roll, guard and jump — and the three chips in the corner throw your big
-        moves.
-      </p>
-      {/*
-        ⚠️ A RECORD YOU CANNOT LOOK AT IS A RECORD THAT ONLY EXISTS WHEN YOU HAPPEN TO PICK
-        THE SAME CREATURE AGAIN. The line before a fight tells you about THAT one; this is the
-        "look what we have done" that is the actual reason to keep any of it, and on a site
-        for somebody's family that is most of the point.
-
-        ⚠️ AND IT IS NOT THERE UNTIL THERE IS SOMETHING IN IT, so a first visit is not a table
-        of noughts explaining a feature nobody has used yet.
-      */}
-      {myWins.length > 0 && (
-        <details className="park-won">
-          <summary>
-            Beaten: <strong>{myWins.length}</strong>{' '}
-            {myWins.length === 1 ? 'creature' : 'creatures'}
-          </summary>
-          <ul>
-            {[...myWins]
-              .sort((a, b) => b.at - a.at)
-              .map((w) => (
-                <li key={w.name}>
-                  <strong>{w.name}</strong>
-                  <span>
-                    {w.beaten === 1 ? 'once' : `${w.beaten} times`} · quickest {said(w.best)}
-                    {w.fell === 0 ? ' without going down' : ''}
-                  </span>
-                </li>
-              ))}
-          </ul>
-        </details>
-      )}
       <p className="muted park-about">
         The park is {PARK.across} screens across and {PARK.down} down, and the view follows you —
         the little map shows the whole of it, everybody in it, and the few places worth naming: the
