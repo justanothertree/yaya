@@ -561,12 +561,28 @@ function MiniMap({
 
 export function ParkRoom({
   pets,
+  extras = [],
   myName,
   authed,
   onControlChange,
   room = PARK_ROOM,
 }: {
   pets: ParkPet[]
+  /**
+   * Other drawings of yours that can be stood up as a boss, but are not you.
+   *
+   * ⚠️ EVERY DOODLE IS ALREADY A CREATURE AND NOTHING ASKED THEM. temperOf, movesOf and
+   * makeBoss take a Drawing and read whatever is there — and since a plain drawing now gets
+   * six distinct moves rather than two, a picture with no named parts at all makes a perfectly
+   * good opponent. Meanwhile the park offered your adopted minions and nothing else, so a
+   * gallery with ten things in it and three adopted was a gallery with seven unused opponents
+   * sitting in it.
+   *
+   * ⚠️ BOSSES ONLY, NEVER YOU. Who you walk in as is a thing you adopted on purpose; what you
+   * stand up to fight is just a picture, and keeping the two lists apart is what stops "fight
+   * that thing" from quietly becoming "be that thing".
+   */
+  extras?: ParkPet[]
   myName: string
   /**
    * Which park this is.
@@ -664,7 +680,9 @@ export function ParkRoom({
 
   /* ⚠️ the drawing again, not the wrapper — this one feeds the animation loop's deps, and a
      loop rebuilt every render is a loop whose clock starts again every render */
-  const bossArt = (pets[bossPick] ?? pets[0])?.art
+  /** what can be stood up: your minions first, then the rest of your drawings */
+  const bossable = useMemo(() => [...pets, ...extras], [pets, extras])
+  const bossArt = (bossable[bossPick] ?? bossable[0])?.art
   const bossKit = useMemo(
     () =>
       bossArt
@@ -1870,9 +1888,16 @@ export function ParkRoom({
     if (!swipe) return null
     const kit = echoKit.current
     const onTarget =
+      /* ⚠️ THE CACHED WIDTH, NOT A FRESH READING. bossWide walks every stroke and every point
+         of the drawing, and this runs on every render of a room that renders every frame — so
+         the reach indicator quietly re-measured the boss sixty times a second. Measured before
+         changing it: 0.049ms on the biggest drawing the park will accept, which is 3ms of every
+         second and 0.3% of a frame. Waste rather than a problem, and bossKit has held the same
+         number since the boss was called, so there was never a reason to ask twice. */
       (!!bossShown &&
         !beaten(bossShown) &&
-        inSwipe(bossShown, bossWide(bossShown.art), swipe, bossShown.scale)) ||
+        !!bossKit &&
+        inSwipe(bossShown, bossKit.wide, swipe, bossShown.scale)) ||
       (!!theirBoss &&
         theirBoss.hp > 0 &&
         !!kit &&
@@ -1895,7 +1920,7 @@ export function ParkRoom({
       return t ? `${theirBoss.name} — ${saysOf(t)}` : null
     }
     if (!bossKit || !bossArt) return null
-    const who = (pets[bossPick] ?? pets[0])?.name ?? 'It'
+    const who = (bossable[bossPick] ?? bossable[0])?.name ?? 'It'
     return `${who} as a boss: ${saysOf(bossKit.temper)} ${bossKit.temper.life} health.`
   })()
   const theirMove =
@@ -1930,7 +1955,7 @@ export function ParkRoom({
             </select>
           </label>
         )}
-        {walking && pets.length > 0 && !theirBoss && (
+        {walking && bossable.length > 0 && !theirBoss && (
           <button
             className="btn"
             onClick={() => {
@@ -1941,7 +1966,7 @@ export function ParkRoom({
                 park.current?.callBoss('', null)
                 return
               }
-              const art = pets[bossPick] ?? pets[0]
+              const art = bossable[bossPick] ?? bossable[0]
               /* ⚠️ a little way off rather than on top of you, so a boss arriving is something
                  you walk towards rather than something that lands on your head */
               boss.current = makeBoss(art.name, art.art, {
@@ -2056,11 +2081,11 @@ export function ParkRoom({
             ⚔ Join the fight
           </button>
         )}
-        {walking && pets.length > 1 && !bossShown && !theirBoss && (
+        {walking && bossable.length > 1 && !bossShown && !theirBoss && (
           <label className="park-seat">
-            <span className="sr-only">Which minion to fight</span>
+            <span className="sr-only">Which drawing to fight</span>
             <select value={bossPick} onChange={(e) => setBossPick(Number(e.target.value))}>
-              {pets.map((p, i) => (
+              {bossable.map((p, i) => (
                 <option key={i} value={i}>
                   {p.name}
                 </option>

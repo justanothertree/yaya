@@ -1,6 +1,7 @@
 import { useMemo, useSyncExternalStore } from 'react'
 import { ParkRoom } from '../park/ParkRoom'
 import { pets as myPets, subscribePets } from '../pets/pets'
+import { gallery, subscribeGallery } from '../draw/gallery'
 import { readHandle } from '../game/handle'
 
 /**
@@ -29,13 +30,19 @@ import { readHandle } from '../game/handle'
 export function ParkPreview() {
   const mine = useSyncExternalStore(subscribePets, myPets, myPets)
   const playable = useMemo(() => mine.map((p) => ({ name: p.name, art: p.art })), [mine])
+  /* the workbench gets the same boss list the real park does, or it cannot test it */
+  const kept = useSyncExternalStore(subscribeGallery, gallery, gallery)
+  const extras = useMemo(() => {
+    const had = new Set(mine.map((p) => p.name))
+    return kept.filter((a) => !had.has(a.name)).map((a) => ({ name: a.name, art: a.art }))
+  }, [kept, mine])
   return (
     <section className="card">
       <p className="muted" style={{ marginTop: 0, fontSize: '0.8rem' }}>
         dev preview — #dev-park · room <code>park-dev</code>, never the real one
       </p>
       {playable.length ? (
-        <ParkRoom pets={playable} myName={readHandle()} authed room="park-dev" />
+        <ParkRoom pets={playable} extras={extras} myName={readHandle()} authed room="park-dev" />
       ) : (
         <p className="muted">
           No minions in this browser yet — make one in Paint first, or the field has nobody to put

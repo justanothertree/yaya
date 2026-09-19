@@ -2,6 +2,7 @@ import { Suspense, useCallback, useEffect, useMemo, useState, useSyncExternalSto
 import { lazyRetry } from '../lazyRetry'
 import { PetView } from '../pets/PetView'
 import { pets as myPets, subscribePets } from '../pets/pets'
+import { gallery, subscribeGallery } from '../draw/gallery'
 import { readHandle } from '../game/handle'
 
 /**
@@ -94,6 +95,22 @@ export function GamesRoom({
    */
   const playable = useMemo(() => mine.map((p) => ({ name: p.name, art: p.art })), [mine])
 
+  /**
+   * The rest of your drawings, which can be stood up as a boss even though they are not minions.
+   *
+   * ⚠️ MEMOISED FOR THE SAME REASON playable IS, and the note above it says why: this feeds a
+   * prop that reaches the park's animation loop, and a new array every render is a loop torn
+   * down and rebuilt every render.
+   *
+   * ⚠️ AND THE ONES ALREADY ADOPTED ARE LEFT OUT, by name, or the picker lists the same
+   * creature twice and the second one does exactly what the first does.
+   */
+  const kept = useSyncExternalStore(subscribeGallery, gallery, gallery)
+  const extras = useMemo(() => {
+    const had = new Set(mine.map((p) => p.name))
+    return kept.filter((a) => !had.has(a.name)).map((a) => ({ name: a.name, art: a.art }))
+  }, [kept, mine])
+
   /** Snake's relay connection, mirrored here as well as raised — see the note on Back below. */
   const liveChange = useCallback(
     (on: boolean) => {
@@ -184,6 +201,7 @@ export function GamesRoom({
         <Suspense fallback={<div aria-busy>Finding the park…</div>}>
           <ParkRoom
             pets={playable}
+            extras={extras}
             myName={readHandle()}
             authed={!!authed}
             onControlChange={onControlChange}
