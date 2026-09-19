@@ -8825,6 +8825,59 @@ a.cz-msg-author:focus-visible {
 }
 /* ⚠️ THE MOVE PREVIEW IN THE MAKER. Sits inside the pet panel, which is narrow, so the row of
    moves wraps and the stage is sized by its own content rather than by a viewport. */
+/**
+ * The three big moves, played out.
+ *
+ * ⚠️ A REAL 16:10 BOX, because everything inside it is placed in screen-heights and a box of
+ * the wrong shape would put every circle in the wrong place — the preview's whole job is being
+ * the same geometry as the park, and the aspect is half of that geometry.
+ *
+ * ⚠️ AND IT CLIPS. A fissure reaches most of a screen; drawn in a box that let it spill, it
+ * would overlap the wizard's own controls and read as a bug rather than as a long attack.
+ */
+.cast-show {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+}
+.cast-show-pick {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  justify-content: center;
+}
+.cast-show-pick .btn b {
+  opacity: 0.6;
+  margin-right: 3px;
+}
+.cast-show-field {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  overflow: hidden;
+  border-radius: 10px;
+  background:
+    radial-gradient(
+      circle at 30% 20%,
+      color-mix(in srgb, var(--text) 5%, transparent),
+      transparent 60%
+    ),
+    color-mix(in srgb, var(--text) 7%, transparent);
+}
+/* ⚠️ anchored at the FEET, like every creature in the park, or the circles centre on its chest */
+.cast-show-pet {
+  position: absolute;
+  transform: translate(-50%, -100%);
+  pointer-events: none;
+  z-index: 2;
+}
+.cast-show-why {
+  margin: 0;
+  font-size: 0.72rem;
+  text-align: center;
+}
+
 .move-show {
   display: flex;
   flex-direction: column;

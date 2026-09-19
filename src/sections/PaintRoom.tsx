@@ -46,6 +46,7 @@ import { PetView } from '../pets/PetView'
 import { PART_DOES, PART_WORDS, inFrontOfOrder, inkBox, partOf } from '../pets/rig'
 import { MoveShow } from '../pets/MoveShow'
 import { saysOf, temperOf } from '../park/temper'
+import { CastShow } from '../pets/CastShow'
 import { movesOf } from '../pets/attack'
 import { AlsoTogether } from '../ui/AlsoTogether'
 import { useVoiceSession } from '../voice/useVoiceSession'
@@ -1603,7 +1604,7 @@ export function PaintRoom() {
    */
   const petBoss = useMemo(() => {
     const t = temperOf(petPreview)
-    return { says: saysOf(t), life: t.life }
+    return { says: saysOf(t), life: t.life, casts: t.casts }
   }, [petPreview])
 
   const addLayer = () => {
@@ -3633,6 +3634,19 @@ export function PaintRoom() {
                         })
                       }
                     />
+                    {/*
+                      ⚠️ THE BIG ONES GET THE SAME TREATMENT THE SIX SWINGS ALREADY HAD, and
+                      they needed it more: a swing at least happens next to the creature that
+                      threw it. These cover most of a screen, arrive in pieces, and are the
+                      only part of a creature you could not see without adopting it and walking
+                      into the park. Asked for in those words.
+                    */}
+                    <span className="muted paint-pet-moves">
+                      And three big ones, on one shared cooldown — <strong>1</strong>,{' '}
+                      <strong>2</strong> and <strong>3</strong> in the park. Which three, and in
+                      what order, comes out of the same picture.
+                    </span>
+                    <CastShow art={petPreview} casts={petBoss.casts} />
                     <span className="muted paint-pet-moves">
                       Called out as a boss: {petBoss.says} <strong>{petBoss.life}</strong> health.
                     </span>
