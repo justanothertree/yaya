@@ -2136,6 +2136,23 @@ export function ParkRoom({
         and both were already being counted: how long it took, and how many times it put you on
         the floor. No score, no table, nothing stored — just the thing that happened, said.
       */}
+      {/*
+        ⚠️ GOING DOWN NEVER EXPLAINED ITSELF, and it is the one moment in the loop that most
+        needs to. The creature tips over, the name tag says "down", and the two things that
+        actually make it survivable are both invisible: nothing can touch you while you are
+        there, and you come back with a full pool. stepDown's own note calls it "a setback, not
+        a punishment" — that was true in the code and nowhere on the screen, so the first time
+        it happens it reads as losing.
+
+        ⚠️ AND IT IS THE ONE PIECE OF COPY HERE AIMED SQUARELY AT SOMEBODY'S FIRST FIGHT, which
+        is who this site is for.
+      */}
+      {walking && knocked && (
+        <p className="park-down" role="status">
+          <strong>Down.</strong> Nothing can touch you until you are up again, and you get back up
+          whole — the boss keeps everything you took off it.
+        </p>
+      )}
       {walking && result && (
         <p className="park-result" role="status">
           <strong>{result.name} is down.</strong>{' '}

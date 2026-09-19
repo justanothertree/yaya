@@ -194,6 +194,13 @@ const at = (f: Fighter): At => ({ x: f.x, y: f.y, facing: f.facing })
  * line: the launch scales with the damage the target is carrying.
  */
 export const launchOf = (a: Attack, hurt: number): number => a.shove * (0.6 + hurt / 90)
+/**
+ * ⚠️ AND THE PARK HAS ITS OWN, DELIBERATELY DIFFERENT — see KNOCK in park/strike.ts. That one
+ * runs 1 to 1.85 and stops, because the park has a pool that fills, no edge to fall off, and
+ * going down is a setback. This one starts below baseline and has no ceiling, because the
+ * launch growing without limit is how a scrap is won. Same idea, two jobs; neither should be
+ * quietly merged into the other.
+ */
 
 /**
  * One step of one fighter.

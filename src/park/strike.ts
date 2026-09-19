@@ -865,6 +865,14 @@ export const SHOVE = 0.55
  * That is the right shape — a bigger launch should be a longer recovery — and it comes out at
  * 0.22s at full health against 0.32s at the brink rather than anything dramatic.
  */
+/**
+ * ⚠️ THE SCRAP HAS ITS OWN, AND THEY ARE NOT THE SAME NUMBER ON PURPOSE. fight.ts's launchOf
+ * is `shove * (0.6 + hurt/90)`: it starts BELOW baseline and has no ceiling, because that game
+ * has no health bar and nothing ends until somebody leaves the stage — the launch growing
+ * without limit IS the win condition. Here there is a pool that fills, no edge to fall off,
+ * and going down is a setback rather than a loss, so this starts at 1 and stops at 1.85.
+ * Two games, two jobs, one idea; written down at both ends so the next person finds the other.
+ */
 export const KNOCK = 0.85
 
 /** The launch multiplier for how battered this creature already is, 1 to 1 + KNOCK. */

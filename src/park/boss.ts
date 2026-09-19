@@ -41,8 +41,6 @@ export type Boss = Striker & {
   lifeMax: number
   /** seconds since it last decided anything, so it commits instead of twitching */
   think: number
-  /** which way it last chose to go */
-  lean: number
   /** seconds left of pivoting to face the other way, 0 when it is settled — see stepTurn */
   turn: number
   /**
@@ -133,7 +131,6 @@ export function makeBoss(name: string, art: Drawing, at: Spot): Boss {
     life: temper.life,
     lifeMax: temper.life,
     think: 0,
-    lean: -1,
     turn: 0,
     cast: null,
     facing: -1,

@@ -8589,6 +8589,17 @@ a.cz-msg-author:focus-visible {
   margin: 4px 0 0;
   font-size: 0.86rem;
 }
+/* ⚠️ THE SAME WEIGHT AS THE RESULT LINE, not a warning colour. Being down is a setback the
+   fight is built around, and dressing it in red would tell a first-timer the opposite of what
+   the words say. */
+.park-down {
+  margin: 4px 0 0;
+  font-size: 0.86rem;
+  opacity: 0.85;
+}
+.park-down strong {
+  color: var(--accent, #7c6af7);
+}
 .park-result strong {
   color: var(--accent, #7c6af7);
 }
