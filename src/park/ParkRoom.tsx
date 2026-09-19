@@ -554,6 +554,16 @@ export function ParkRoom({
   const [patches, setPatches] = useState<Patch[]>([])
   /** yours, drawn apart from the boss's so you can tell whose ground is about to go */
   const [myPatches, setMyPatches] = useState<Patch[]>([])
+  /**
+   * What the boss is winding up, in words, while it winds it up.
+   *
+   * ⚠️ THE GROUND SAYS WHERE AND THIS SAYS WHAT. A telegraph tells you to leave a patch; it
+   * cannot tell you that a bloom will follow you outward, or that a wave is five in a row and
+   * the second one is where people die. Three casts that all light the floor orange are three
+   * things you learn by dying to each of them — and the sentences already existed, written for
+   * the maker and never shown anywhere.
+   */
+  const [bossCasting, setBossCasting] = useState<CastKind | null>(null)
   const debugRef = useRef(false)
   debugRef.current = debug
   const boxesOn = useRef(false)
@@ -1141,6 +1151,7 @@ export function ParkRoom({
         const b = boss.current
         const tb = state.current.boss
         const mineNow = myCast.current
+        setBossCasting(b?.cast?.kind ?? tb?.cast?.kind ?? null)
         setMyPatches(
           mineNow ? patchesOf(mineNow.kind, you.current, you.current.aim, mineNow.t, 1) : [],
         )
@@ -1513,6 +1524,13 @@ export function ParkRoom({
       {walking && bossSays && (
         <p className="muted park-says" role="status">
           {bossSays}
+        </p>
+      )}
+      {/* ⚠️ role=alert, not status: this is the one line on the page that is about something
+          happening RIGHT NOW, and it is gone in a second and a half. */}
+      {walking && bossCasting && (
+        <p className="park-warning" role="alert">
+          {CAST[bossCasting].says}
         </p>
       )}
 

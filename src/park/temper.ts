@@ -1,6 +1,6 @@
 import type { Drawing } from '../draw/strokes'
 import { bossPace, movesOf, type Attack } from '../pets/attack'
-import type { CastKind } from './cast'
+import { CAST, type CastKind } from './cast'
 import { bodyRatio, rigOf, type PartKind } from '../pets/rig'
 
 /**
@@ -323,5 +323,9 @@ export function saysOf(t: Temper): string {
      4 / 5 / 4 rather than agreeing about everybody. Nothing is said in the middle, because "about
      the usual size" is not worth a word. */
   const size = t.scale > 2.55 ? 'towering, ' : t.scale < 2.47 ? 'squat, ' : ''
-  return `A ${size}${speed} boss that ${where}. It ${how} and ${hold}.`
+  /* ⚠️ AND THE BIG THING IT IS BUILT FOR. Every other line here describes a swing, and a
+     creature's cast is the part of it that reaches where swings cannot — leaving it out of the
+     one sentence that says what a boss IS meant a maker could not see the thing it would do
+     most memorably. The wording is the cast's own, so the maker and the field agree. */
+  return `A ${size}${speed} boss that ${where}. It ${how} and ${hold}. Then ${CAST[t.casts[0]].says}.`
 }

@@ -8550,6 +8550,31 @@ a.cz-msg-author:focus-visible {
 }
 
 /**
+ * What the boss is winding up, said out loud.
+ *
+ * ⚠️ LOUDER THAN THE STANDING DESCRIPTION IT SITS UNDER, because one of them is a fact about
+ * the boss and the other is a thing happening in the next second and a half. Same red as the
+ * telegraph on the floor, so the words and the ground are obviously about each other.
+ */
+.park-warning {
+  margin: 0.2rem 0 0;
+  font-size: 0.86rem;
+  font-weight: 700;
+  color: #e8534e;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .park-warning {
+    animation: park-warn-in 140ms ease-out;
+  }
+}
+@keyframes park-warn-in {
+  from {
+    opacity: 0;
+    transform: translateY(-2px);
+  }
+}
+
+/**
  * A patch of ground a cast is about to ruin.
  *
  * ⚠️ THE SAME LAYER AS THE SWING TELEGRAPH, because they are the same promise: this is where
