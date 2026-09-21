@@ -941,6 +941,16 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
      * A <select> is listed because it does letter type-ahead of its own: pressing S while one is
      * focused jumps it to the next option starting with S, which is how choosing a key and then
      * playing changed the key underneath you.
+     *
+     * ⚠️ AND IT WAS UNDONE NINE DAYS LATER BY TWO `onKeyDown={(e) => e.stopPropagation()}`, one
+     * on the layer volume and one on the octave slider. This listener is on `window`, and React
+     * dispatches from the root container — so stopping propagation there means the event never
+     * reaches window at all and the guard above never gets asked. Reported again in the same
+     * words as the first time: "changing a layer volume makes you have to click the keys to use
+     * your keyboard." Measured before the fix: with the octave slider focused, window saw 0 of
+     * 2 keydowns; with nothing focused, 2 of 2. Neither slider needs the stop — a range takes
+     * arrows, Home/End and PageUp/Down, none of which are letters and none of which are mapped.
+     * If a control here ever does need to swallow a key, swallow THAT key, not all of them.
      */
     const typing = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement | null
@@ -950,8 +960,32 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
       const kind = (t as HTMLInputElement).type
       return !['range', 'checkbox', 'radio', 'button', 'submit', 'color'].includes(kind)
     }
+    /**
+     * ⚠️ SPACE STARTS AND STOPS THE LOOP, because that is what it does in every DAW anybody
+     * here has used — asked for in those words, "if spacebar could always play/stop thats what
+     * im use to from fl studio". It is free to take: space plays no note, so nothing is lost.
+     *
+     * ⚠️ EXCEPT ON A BUTTON, WHICH IS THE WHOLE CARE THIS NEEDS. Space is how a keyboard
+     * presses a focused button, so a global binding would make the transport fire AND re-press
+     * whatever you last clicked — pressing space after Keep song would keep it again. A link
+     * has the same problem with Enter but not with space; a summary toggles on both. So those
+     * three keep their key and the rest of the page gets the transport.
+     */
+    const spaceIsTheirs = (t: HTMLElement | null) =>
+      !!t && (t.tagName === 'BUTTON' || t.tagName === 'SUMMARY' || t.tagName === 'A')
+
     const down = (e: KeyboardEvent) => {
       if (e.repeat || e.metaKey || e.ctrlKey || e.altKey || typing(e)) return
+      if (e.key === ' ') {
+        if (spaceIsTheirs(e.target as HTMLElement | null)) return
+        e.preventDefault()
+        /* ⚠️ loopState(), not the `loop` from render: this listener is bound once and would
+           otherwise hold whichever `playing` was true when it was created, so space would
+           start the loop forever and never stop it. The store's snapshot is always current. */
+        if (loopState().playing) stopLoop()
+        else startLoop()
+        return
+      }
       const off = KEY_MAP[e.key.toLowerCase()]
       if (off === undefined) return
       e.preventDefault()
@@ -1876,7 +1910,6 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
                     step={0.05}
                     value={l.gain ?? 1}
                     onChange={(e) => setLayerGain(l.id, Number(e.target.value))}
-                    onKeyDown={(e) => e.stopPropagation()}
                   />
                 </label>
                 <button
@@ -2006,7 +2039,6 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
           step={1}
           value={octave}
           onChange={(e) => setOctave(Number(e.target.value))}
-          onKeyDown={(e) => e.stopPropagation()}
           aria-label="Slide up and down the keyboard"
           title={`Octave ${octave} — slide to reach higher or lower keys`}
         />
