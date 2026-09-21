@@ -53,18 +53,43 @@ export type Patch = {
  * three having the same one. The numbers are on the same scale as Attack.lift so that overHead
  * asks one question of a swing and a cast alike; see HOP.under.
  */
-export const CAST: Record<CastKind, { time: number; says: string; lift: number; short: string }> = {
-  bloom: { time: 1.5, lift: 0.7, short: 'swell', says: 'it swells — get out, and keep going' },
+/**
+ * ⚠️ AND WHAT EACH ONE COSTS, which used to be one number for all three. Every cast waited
+ * four seconds and rooted you for its whole length, so the three big moves were one economy
+ * with three skins — and the bolt, which is a thrown thing rather than a piece of ground
+ * being torn up, paid a ground-tearing price for it. Asked for as "rapid shoot bolt".
+ *
+ * `holds` is whether it takes you over while it runs; `wait` is its own cooldown. The two
+ * earth-movers keep the old bargain — a second and a half of being a target, four seconds
+ * before the next — and the bolt becomes something you can move while throwing and throw
+ * again soon after.
+ */
+export const CAST: Record<
+  CastKind,
+  { time: number; says: string; lift: number; short: string; holds: boolean; wait: number }
+> = {
+  bloom: {
+    time: 1.5,
+    lift: 0.7,
+    short: 'swell',
+    holds: true,
+    wait: 4,
+    says: 'it swells — get out, and keep going',
+  },
   mark: {
     time: 1.45,
     lift: 0.12,
     short: 'mark',
+    holds: true,
+    wait: 4,
     says: 'it marks the ground ahead — leave it or jump it',
   },
   wave: {
     time: 1.9,
     lift: 0.08,
     short: 'fissure',
+    holds: true,
+    wait: 4,
     says: 'it splits the ground away from itself — cross it or jump it',
   },
   /**
@@ -77,6 +102,10 @@ export const CAST: Record<CastKind, { time: number; says: string; lift: number; 
     time: 1.2,
     lift: 0.45,
     short: 'bolt',
+    /* ⚠️ it does not root you, which is the whole difference. A bolt is thrown; the other two
+       are the ground being done something to, and you cannot do that on the move. */
+    holds: false,
+    wait: 0.55,
     says: 'it throws something at you — step out of the line, or meet it',
   },
 }

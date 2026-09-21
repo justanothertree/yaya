@@ -76,6 +76,19 @@ export type Striker = Walker & {
   /** seconds of float left in this jump, spent by holding the key on the way down */
   float: number
   /**
+   * Committed to coming down hard: an attack thrown while off the ground.
+   *
+   * ⚠️ THE PLAYER'S HALF OF THE BOSS'S LEAP, and it had to exist once the boss had one.
+   * Swinging in the air already worked and did nothing that being on the ground would not —
+   * so height was a thing you could escape to and never a thing you could attack FROM, which
+   * is half an idea. Asked for as "if i jump and am in the air i want to be able to attack
+   * ability on ground hit".
+   *
+   * ⚠️ AND IT ENDS THE GLIDE, because a dive and a float are opposite intentions and letting
+   * a winged creature hold both would mean hanging in the air with a loaded attack.
+   */
+  dive: boolean
+  /**
    * How high this one jumps, 1 being the plain arc — wings buy more. From traitsOf, the same
    * function the platformer has used since the pets room existed.
    *
@@ -104,6 +117,7 @@ export const restingStriker = (w: Walker, jump = 1, glide = 1): Striker => ({
   jump,
   glide,
   float: 0,
+  dive: false,
   swing: 0,
   move: 0,
   spent: false,
@@ -272,6 +286,29 @@ export const HOP = {
    */
   glide: 0.85,
   /**
+   * The dive: how hard an attack thrown in the air drags you down, in pet-heights a second.
+   *
+   * ⚠️ FASTER THAN FALLING, which is what makes it a commitment rather than a pause. A free
+   * fall from the top of a jump reaches 4.96; this starts at 7 and keeps accelerating, so the
+   * moment you press it you have chosen where you are going to be and roughly when.
+   */
+  drop: 7,
+  /** how far from where you land a dive reaches, in pet-heights */
+  spot: 0.6,
+  /**
+   * What a dive hits for, against your own heaviest swing.
+   *
+   * ⚠️ IT IS LOW BECAUSE IT NEVER MISSES, which is the thing a bite number alone cannot see.
+   * A swing has to be aimed, in reach, and land before the boss moves; a dive is a circle
+   * around wherever you come down, and you come down where you were going anyway. Measured
+   * against a null control of six ordinary swings over the same seconds: the swings took 9.7%
+   * of a boss and six dives took 47%, which is five times the damage for the same number of
+   * presses and makes every other button pointless. At 0.45 it is worth about what a swing
+   * that connects is worth, and what you pay for the certainty is the commitment — you cannot
+   * turn out of a dive, and it puts you next to the thing you are fighting.
+   */
+  diveBite: 0.45,
+  /**
    * How fast a wing lets it down, pet-heights a second, against a free fall that reaches 4.96.
    *
    * ⚠️ SET FROM THE MEASUREMENT RATHER THAN CHOSEN. Before altitude was a position this was a
@@ -345,10 +382,15 @@ export const aloft = (s: Striker): boolean => s.up > s.ground + 1e-6 || s.vz > 0
  * and `rise` your own height, so a fight between two things on the same ground is bit for bit
  * the fight that was tuned. The two new lines only fire when something is genuinely elsewhere.
  *
- * ⚠️ A STEP IS NOT AN ESCAPE, and the numbers say so rather than a rule saying it: the tallest
- * lift is 0.85 and a body is 1, so nothing you can climb onto — the highest is 0.72 — lifts
- * you clear of a swing from below on its own. It takes a leap, or a boss that has leapt. A
- * plateau you could stand on to be safe would be a camping spot rather than a place.
+ * ⚠️ A STEP DOES CLEAR A LOW SWING, AND I WROTE THE OPPOSITE HERE FIRST. The claim was that
+ * nothing you can climb onto lifts you out of reach, which is true of the SECOND rule — the
+ * tallest lift is 0.85 and a body is 1, so no plateau puts you clean above a whole swing. It
+ * is not true of the first: a sweep that reaches 0.35 cannot touch somebody standing 0.5 up,
+ * and the test said so the moment the rule took two heights. Physically right, so it stays.
+ *
+ * ⚠️ AND A LEDGE IS THEREFORE A REAL POSITION, which is only fair because the boss has an
+ * answer to it. It climbs, and it leaps at whoever is standing above it — see LEAP. Without
+ * those two this would be a camping spot; with them it is a trade, and the trade is the game.
  */
 /** A creature is one pet-height tall, which is what makes a height difference a miss. */
 export const BODY = 1
@@ -391,7 +433,7 @@ export function stepAir(
   dt: number,
   held = want,
   floor = 0,
-): { s: Striker; went: boolean } {
+): { s: Striker; went: boolean; landed: boolean } {
   const t = Math.max(0, Math.min(0.05, dt))
 
   /**
@@ -415,7 +457,8 @@ export function stepAir(
      * nobody hangs at the top. `float` is the budget; see HOP.glide for why a rate alone is
      * not an ability but a place to live.
      */
-    const floating = held && s.vz < 0 && s.glide < 1 && float > 0
+    /* ⚠️ a dive cancels the glide outright — see Striker.dive */
+    const floating = !s.dive && held && s.vz < 0 && s.glide < 1 && float > 0
     /**
      * ⚠️ THE EXACT KINEMATIC STEP, NOT EULER. `up += vz * t` after updating vz undershoots the
      * top of the arc by an amount that depends on the frame length — 0.610 against 0.620 at
@@ -429,20 +472,26 @@ export function stepAir(
     /* ⚠️ landed on whatever is under it NOW, which is how a jump onto the rocks becomes
        standing on the rocks without anything anywhere saying the word "rocks". */
     if (vz <= 0 && up <= floor) {
+      /* ⚠️ `landed` is how the room knows a dive arrived. It cannot ask afterwards — `dive`
+         is cleared here, and a flag the caller has to remember to clear is a flag that gets
+         left set on the one path nobody tested. */
       return {
-        s: { ...s, up: floor, vz: 0, ground: floor, float: 0, hopRest: HOP.rest },
+        s: { ...s, up: floor, vz: 0, ground: floor, float: 0, dive: false, hopRest: HOP.rest },
         went: false,
+        landed: true,
       }
     }
     return {
       s: { ...s, up, vz, ground: floor, float: Math.max(0, float - (floating ? t : 0)) },
       went: false,
+      landed: false,
     }
   }
 
   const rest = Math.max(0, s.hopRest - t)
   const stuck = rest > 0 || s.swing > 0 || s.stun > 0 || s.hold > 0 || s.dodge > 0 || s.braced
-  if (!want || stuck) return { s: { ...s, up: floor, ground: floor, hopRest: rest }, went: false }
+  if (!want || stuck)
+    return { s: { ...s, up: floor, ground: floor, hopRest: rest }, went: false, landed: false }
   /* a fresh budget every jump, and none at all for a creature with nothing to glide on */
   return {
     s: {
@@ -458,10 +507,22 @@ export function stepAir(
       vz: LEAP * Math.sqrt(s.jump),
       hopRest: 0,
       float: s.glide < 1 ? HOP.glide : 0,
+      dive: false,
     },
     went: true,
+    landed: false,
   }
 }
+
+/**
+ * Throw yourself at the ground.
+ *
+ * ⚠️ ONLY ONCE, AND ONLY IN THE AIR. Diving out of a dive would be free downward speed, and
+ * diving from standing is just a swing — the whole shape of the move is that you spent a jump
+ * to get up there and cannot change your mind on the way down.
+ */
+export const diveNow = (s: Striker): Striker =>
+  !s.dive && s.up > s.ground + 1e-6 ? { ...s, dive: true, vz: Math.min(s.vz, -HOP.drop) } : s
 
 export const GUARD = {
   /** seconds it can be held up with nothing landing on it */

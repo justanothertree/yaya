@@ -123,7 +123,33 @@ export const CHARGE = { warn: 0.2, run: 0.7, speed: 1.75 }
  * overHead taking both heights rather than being written here. A leap is an exchange: it buys
  * the slam and spends the seconds either side of it.
  */
-export const LEAP = { warn: 0.26, rise: 0.42, fall: 0.3, high: 1.9, bite: 1.35, rest: 3.4 }
+export const LEAP = {
+  warn: 0.26,
+  rise: 0.42,
+  fall: 0.3,
+  high: 1.9,
+  /**
+   * ⚠️ 0.85 OF THE HARDEST MOVE, DOWN FROM 1.35. "the leap is cool but its way overpowered."
+   * Measured against the four creatures here: at 1.35 a slam took 34% of a player's health in
+   * one hit, and on a ledge — where it fired every 4.4 seconds — that is a knockdown every
+   * thirteen seconds from slams alone, before the boss swings at you once. At 0.85 it is the
+   * biggest single thing it throws and not a third of you.
+   */
+  bite: 0.85,
+  /**
+   * ⚠️ AND THE CIRCLE WAS A BOSS WIDE. `scale * 0.95` is nearly three pet-heights across for
+   * a big drawing, which is not a place you failed to leave — it is most of the ground near
+   * you. A slam you can step out of has to have an edge you can see the far side of.
+   */
+  spot: 0.62,
+  /**
+   * ⚠️ SIX SECONDS, UP FROM 3.4, which is the rate rather than the damage doing most of the
+   * work. It is in the air and untouchable for a second of every cycle; at 3.4 that was 22%
+   * of the fight spent out of reach, which is a boss you cannot answer as much as one you
+   * cannot dodge.
+   */
+  rest: 6,
+}
 
 /**
  * How long a boss takes to come about.

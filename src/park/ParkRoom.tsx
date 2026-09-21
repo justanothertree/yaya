@@ -51,6 +51,7 @@ import {
   stepAir,
   airFrac,
   aloft,
+  diveNow,
   GUARD,
   HOP,
   stepDown,
@@ -388,7 +389,6 @@ const FIELD_ASPECT = 16 / 10
  * ⚠️ AND IT IS A CONSTANT BECAUSE THE BAR DRAWS IT. A 4 in the loop and a 4 in the readout
  * is a readout that quietly starts lying the first time somebody tunes one of them.
  */
-const CAST_WAIT = 4
 
 /** ⚠️ ONE PLACE, because three lines say a duration now and they must say it the same way. */
 const said = (secs: number): string =>
@@ -1166,9 +1166,9 @@ export function ParkRoom({
       if (myCast.current) {
         const ct = myCast.current.t + dt
         if (ct >= CAST[myCast.current.kind].time) {
+          myCastRest.current = CAST[myCast.current.kind].wait
           myCast.current = null
           myCastHit.current.clear()
-          myCastRest.current = CAST_WAIT
           setCasting(null)
         } else {
           myCast.current = { ...myCast.current, t: ct }
@@ -1186,7 +1186,9 @@ export function ParkRoom({
           setCasting(pick)
         }
       }
-      const iAmCasting = !!myCast.current
+      /* ⚠️ CASTING IS NOT THE SAME AS BEING HELD BY ONE any more. A bolt runs its timeline
+         while you keep walking and swinging; the two earth-movers still own you outright. */
+      const iAmCasting = !!myCast.current && CAST[myCast.current.kind].holds
 
       /**
        * ⚠️ THE RISING EDGE, like the dodge and unlike the guard: holding space would otherwise
@@ -1203,13 +1205,24 @@ export function ParkRoom({
          stepAir. A creature with no wings has no float budget, so holding does nothing. The
          floor is whatever it is standing over, which is how the rocks become somewhere to
          land and somewhere to walk off. */
-      you.current = stepAir(
+      /**
+       * ⚠️ AN ATTACK IN THE AIR IS A DIVE, and it is read here rather than in stepStrike
+       * because it is a change of where you are, not of what you are swinging. Pressing
+       * either swing while off the ground commits you downwards; what lands is decided when
+       * you arrive, which is the whole of "attack ability on ground hit".
+       */
+      if (aloft(you.current) && (hitting.current.quick || hitting.current.heavy))
+        you.current = diveNow(you.current)
+
+      const air = stepAir(
         you.current,
         wantHop,
         dt,
         hopping.current && !iAmCasting,
         groundAt(you.current),
-      ).s
+      )
+      const diveLanded = air.landed && you.current.dive
+      you.current = air.s
       const inAir = aloft(you.current)
 
       /**
@@ -1515,7 +1528,7 @@ export function ParkRoom({
                 ((you.current.x - cur.leap.x) / VIEW.w) * FIELD_ASPECT,
                 (you.current.y - cur.leap.y) / VIEW.h,
               ) <
-              PARK_TALL * cur.scale * 0.95
+              PARK_TALL * cur.scale * LEAP.spot
             if (hardest && near && canBeHurt(you.current)) {
               you.current = mauled(
                 you.current,
@@ -1647,6 +1660,27 @@ export function ParkRoom({
 
         /* and mine against it — one swing is one hit, so a swipe that already caught a
            wanderer does not also land on the boss */
+        /**
+         * ⚠️ A DIVE LANDS AS A PLACE, NOT A SWING — the same shape as the boss's slam, and
+         * deliberately so: the two moves are each other's answer and reading one should teach
+         * you the other. No aim, no facing, no arc; it hit the ground and you were on it or
+         * you were not. Built from your own heaviest swing, so what you drew still decides
+         * what it costs.
+         */
+        if (diveLanded && mv0 && !beaten(cur)) {
+          const heaviest = myMoves.reduce((m, x) => (x.bite > m.bite ? x : m), myMoves[0])
+          const near =
+            Math.hypot(
+              ((cur.x - you.current.x) / VIEW.w) * FIELD_ASPECT,
+              (cur.y - you.current.y) / VIEW.h,
+            ) <
+            PARK_TALL * (1 + cur.scale) * HOP.spot
+          if (heaviest && near) {
+            cur = wounded(cur, { ...heaviest, bite: Math.round(heaviest.bite * HOP.diveBite) })
+            you.current = { ...you.current, hold: 0.08 + heaviest.bite * 0.004 }
+          }
+        }
+
         /**
          * ⚠️ AND HEIGHT CUTS BOTH WAYS, which is the whole reason overHead takes two sides. A
          * boss up in the trees is over a ground swing exactly as a jumping player is over its
@@ -2609,7 +2643,12 @@ export function ParkRoom({
                   {CAST[k].short}
                   {/* the wait, drained rather than counted — a bar is read without being read */}
                   <i
-                    style={{ width: `${Math.max(0, Math.min(1, castLeft / CAST_WAIT)) * 100}%` }}
+                    /* ⚠️ against ITS OWN wait, not a shared one. The bolt comes back in half
+                       a second and the earth-movers in four; one denominator would draw the
+                       bolt's chip as full the instant it fired and empty the next frame. */
+                    style={{
+                      width: `${Math.max(0, Math.min(1, castLeft / CAST[k].wait)) * 100}%`,
+                    }}
                   />
                 </button>
               ))}
