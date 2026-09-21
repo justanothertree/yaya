@@ -4,7 +4,7 @@ import { useOneShot } from './oneShot'
 import { PetPlay } from './PetPlay'
 import { PetView } from './PetView'
 import { PART_DOES, PART_WORDS, STANCES, rigOf, type PartKind, type Mood } from './rig'
-import { nextSlotAt, partsAllowed, partsUsed, slotsFor } from './budget'
+import { PART_BASE, inPlay, nextSlotAt, partsAllowed, partsUsed, slotsFor } from './budget'
 import { recordsVersion, subscribeWins, winsWith } from '../park/records'
 import { pets, removePet, renamePet, savePet, subscribePets, type Pet } from './pets'
 import { companion, cornerSize, setCompanion, subscribeCompanion } from './companion'
@@ -101,22 +101,35 @@ export function PetsRoom({ onControlChange }: { onControlChange?: (on: boolean) 
   useEffect(() => () => window.clearTimeout(calmTimer.current), [])
 
   const parts = useMemo(() => (chosen ? rigOf(chosen.art) : []), [chosen])
+  /* what it has named, what it may use, and the gap — the three numbers every line below reads */
+  const named = chosen ? partsUsed(chosen.art) : 0
+  const allowed = chosen ? partsAllowed(winsWith(chosen.name)) : PART_BASE
+  const asleepCount = Math.max(0, named - allowed)
   /**
    * ⚠️ IT SAYS THE WORD YOU TYPED, not the kind it matched. A layer called `wheel` matches the
    * spin kind, and reading "spin — spins" back at somebody who wrote "wheel" is the engine talking
    * about itself. An unnamed layer has no word of its own, so it falls back to the kind.
    */
+  /**
+   * ⚠️ AND WHICH OF THEM ARE ASLEEP, counted against the same inPlay the park fights with, so
+   * this list and that fight can never disagree about what counts. inPlay demotes in rig order
+   * and rigOf walks layers low to high, so the parts listed FIRST are the ones with slots —
+   * which makes the order of this list a fact rather than an arrangement.
+   */
   const known = useMemo(() => {
-    const seen = new Map<PartKind, { n: number; word: string }>()
-    for (const p of parts) {
+    const live = inPlay(parts, allowed)
+    const seen = new Map<PartKind, { n: number; word: string; asleep: number }>()
+    for (let i = 0; i < parts.length; i++) {
+      const p = parts[i]
       const had = seen.get(p.kind)
       seen.set(p.kind, {
         n: (had?.n ?? 0) + 1,
         word: had?.word ?? (p.name === 'unnamed' ? p.kind : p.name.toLowerCase().slice(0, 18)),
+        asleep: (had?.asleep ?? 0) + (live[i].kind === p.kind ? 0 : 1),
       })
     }
     return [...seen]
-  }, [parts])
+  }, [parts, allowed])
   const unnamed = parts.filter((p) => p.name === 'unnamed').length
   const following = follows.on && (follows.name === chosen?.name || !follows.name)
 
@@ -380,12 +393,15 @@ export function PetsRoom({ onControlChange }: { onControlChange?: (on: boolean) 
                 </span>
                 {/* the rig, in the words of this person's own drawing — see the note at the top */}
                 <ul className="pets-parts">
-                  {known.map(([kind, { n, word }]) => (
+                  {known.map(([kind, { n, word, asleep }]) => (
                     <li key={kind}>
-                      <span className="pets-part">{word}</span>
+                      <span className={'pets-part' + (asleep === n ? ' is-asleep' : '')}>
+                        {word}
+                      </span>
                       <span className="muted">
                         {n > 1 ? ` ×${n} — ` : ' — '}
                         {PART_DOES[kind]}
+                        {asleep > 0 && (n > asleep ? ` (${asleep} asleep)` : ' (asleep)')}
                       </span>
                     </li>
                   ))}
@@ -404,25 +420,41 @@ export function PetsRoom({ onControlChange }: { onControlChange?: (on: boolean) 
                 <span className="muted pets-hint">
                   {(() => {
                     const won = winsWith(chosen.name)
-                    const used = partsUsed(chosen.art)
-                    const room = partsAllowed(won) - used
+                    /* ⚠️ AWAKE, NOT NAMED. A budget is a cap rather than a bill, so a creature
+                       drawn with more parts than it has slots is over the line rather than in
+                       debt — and the old sum said "9 of 4 parts", which is not a sentence. */
+                    const awake = Math.min(named, allowed)
+                    const room = allowed - named
                     const next = nextSlotAt(won)
                     const earned = slotsFor(won)
+                    const wins = next ? next - won : 0
                     return (
                       <>
-                        {used} of {partsAllowed(won)} parts
+                        {awake} of {allowed} parts
                         {earned > 0 &&
                           ` — ${earned} slot${earned === 1 ? '' : 's'} earned fighting`}
                         {'. '}
-                        {room > 0
-                          ? `Room for ${room} more.`
-                          : next
-                            ? `Full. ${next - won} more win${next - won === 1 ? '' : 's'} makes room.`
-                            : 'Full, and nothing left to earn.'}
+                        {asleepCount > 0
+                          ? next
+                            ? `${asleepCount} asleep. ${wins} more win${wins === 1 ? '' : 's'} wakes one.`
+                            : `${asleepCount} asleep, and nothing left to earn.`
+                          : room > 0
+                            ? `Room for ${room} more.`
+                            : next
+                              ? `Full. ${wins} more win${wins === 1 ? '' : 's'} makes room.`
+                              : 'Full, and nothing left to earn.'}
                       </>
                     )
                   })()}
                 </span>
+                {/* ⚠️ BECAUSE YOU CAN SEE IT ON THE CREATURE. A part with no slot is still
+                    drawn and still breathes, so "asleep" would otherwise look like a bug in the
+                    list rather than a rule about the park. One line, once, only when it applies. */}
+                {asleepCount > 0 && (
+                  <span className="muted pets-hint">
+                    Asleep parts still draw. They just do nothing in a fight.
+                  </span>
+                )}
                 {unnamed > 0 && (
                   <span className="muted pets-hint">
                     {unnamed === parts.length

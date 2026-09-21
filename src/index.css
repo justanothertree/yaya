@@ -8058,6 +8058,12 @@ a.cz-msg-author:focus-visible {
 .pets-part {
   font-weight: 600;
 }
+/* a part with no slot: still drawn on the creature, so dimmed rather than struck through —
+   it is waiting, not wrong. See inPlay in pets/budget.ts. */
+.pets-part.is-asleep {
+  font-weight: 500;
+  opacity: 0.55;
+}
 .pets-hint {
   font-size: 0.76rem;
   max-width: 34rem;

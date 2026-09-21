@@ -1,4 +1,4 @@
-import { rigOf } from './rig'
+import { rigOf, type Part } from './rig'
 import type { Drawing } from '../draw/strokes'
 
 /**
@@ -53,3 +53,34 @@ export const partsUsed = (art: Drawing): number =>
 
 /** What a creature may spend, given how often it has won. */
 export const partsAllowed = (wins: number): number => PART_BASE + slotsFor(wins)
+
+/**
+ * The parts that actually do something, given what a creature has earned.
+ *
+ * ⚠️ OVER-BUDGET PARTS DO NOT DISAPPEAR, THEY FALL ASLEEP. Evan, asked whether the maker
+ * should refuse: "not count until earned". So a layer beyond the budget is demoted to `body`
+ * — which is what an UNNAMED layer already is, so it still draws, still breathes with the
+ * rest of the creature, and simply grants nothing. Nobody is ever stopped from drawing, and
+ * nothing anybody has drawn is ever deleted or refused; the wing is there, it is just not
+ * doing anything yet.
+ *
+ * ⚠️ AND IT IS LAYER ORDER, WHICH IS A THING YOU CAN SEE AND CHANGE. The first parts you named
+ * are the ones that count, so which of them is asleep is decided by the layer stack in the
+ * paint room rather than by a rule nobody can inspect — and reordering layers is already a
+ * button. The alternative, picking by ink or by whichever is "best", would be the game making
+ * a choice on your behalf and not telling you where.
+ *
+ * ⚠️ AND A BUDGET OF -1 MEANS "NO BUDGET", not "nothing counts". Everywhere that only wants to
+ * DRAW a creature — the paint room, the previews, the maker — has no business asking how many
+ * fights it has won, and a default that quietly disabled parts in those places would be the
+ * worst kind of bug: correct-looking code with a creature that breathes wrong.
+ */
+export function inPlay(parts: Part[], allowed = -1): Part[] {
+  if (allowed < 0) return parts
+  let spent = 0
+  return parts.map((p) => {
+    if (p.kind === 'body') return p
+    spent += 1
+    return spent <= allowed ? p : { ...p, kind: 'body' as const }
+  })
+}

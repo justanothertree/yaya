@@ -4,6 +4,7 @@ import { PetView } from '../pets/PetView'
 import { petCanvas, rigOf } from '../pets/rig'
 import { PLAIN, traitsOf } from '../pets/play'
 import type { Stance } from '../pets/rig'
+import { PART_BASE, inPlay, partsAllowed } from '../pets/budget'
 import { PLANES, groundAt } from './ground'
 import {
   camWant,
@@ -70,7 +71,7 @@ import {
 import { movesOf, slotFor, petWide, type Attack } from '../pets/attack'
 import { footRoom, petBox } from '../pets/rig'
 import { CAST, castSlot, inPatch, patchesOf, type CastKind, type Patch } from './cast'
-import { recordFought, recordWin, subscribeWins, winFor, wins } from './records'
+import { recordFought, recordWin, subscribeWins, winFor, wins, winsWith } from './records'
 import { lungeOf } from '../pets/fight'
 import {
   beaten,
@@ -699,7 +700,28 @@ export function ParkRoom({
   const tooBig = useMemo(() => (myArt ? !lookFits(myArt) : false), [myArt])
 
   /* ⚠️ read once per creature, never per frame — rigOf walks every stroke */
-  const myMoves = useMemo<Attack[]>(() => (myArt ? movesOf(myArt) : []), [myArt])
+  /**
+   * How many of its named parts this creature has earned the right to use.
+   *
+   * ⚠️ THE PARK IS WHERE A BUDGET MEANS ANYTHING, because the park is where a part becomes an
+   * ability. The paint room draws every layer and always will — over-budget parts are asleep,
+   * not deleted, and a sleeping part still breathes with the rest of the body. See inPlay.
+   */
+  /* ⚠️ READ THROUGH THE STORE, not called during render. winsWith reads localStorage, which
+     React cannot see changing — subscribing means a slot earned this session takes effect
+     without a reload, and it keeps the dependency honest rather than passing a tick the lint
+     rule can only call unnecessary. */
+  const foughtWith = useSyncExternalStore(
+    subscribeWins,
+    () => winsWith(mine?.name ?? ''),
+    () => 0,
+  )
+  const myBudget = mine ? partsAllowed(foughtWith) : PART_BASE
+
+  const myMoves = useMemo<Attack[]>(
+    () => (myArt ? movesOf(myArt, myBudget) : []),
+    [myArt, myBudget],
+  )
   const boss = useRef<Boss | null>(null)
   const [bossShown, setBossShown] = useState<Boss | null>(null)
   const [bossPick, setBossPick] = useState(0)
@@ -809,7 +831,10 @@ export function ParkRoom({
    * creature walked at one speed and jumped one height. Asked for as "jump + minion ability
    * movement": the abilities were already derived, they just were not plugged in here.
    */
-  const myTraits = useMemo(() => (myArt ? traitsOf(rigOf(myArt)) : PLAIN), [myArt])
+  const myTraits = useMemo(
+    () => (myArt ? traitsOf(inPlay(rigOf(myArt), myBudget)) : PLAIN),
+    [myArt, myBudget],
+  )
 
   /* ⚠️ the drawing again, not the wrapper — this one feeds the animation loop's deps, and a
      loop rebuilt every render is a loop whose clock starts again every render */

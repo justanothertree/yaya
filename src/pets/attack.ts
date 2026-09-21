@@ -1,4 +1,5 @@
 import { PET_TALL } from './play'
+import { inPlay } from './budget'
 import { bodyRatio, rigOf, type Box, type Part, type PartKind } from './rig'
 import type { Drawing } from '../draw/strokes'
 
@@ -609,7 +610,12 @@ export function attacksOf(parts: Part[], hits?: Record<string, string>): Attack[
  * in five places and hoping — and the thing this repository has learned most often is that the
  * call site you did not think of is the one that is wrong. There is nothing to remember now.
  */
-export const movesOf = (art: Drawing): Attack[] => moveTable(attacksOf(rigOf(art), art.hits))
+/**
+ * @param allowed how many named parts this creature has earned the right to use, or -1 for
+ * everything. Everywhere that only draws a creature passes nothing — see inPlay.
+ */
+export const movesOf = (art: Drawing, allowed = -1): Attack[] =>
+  moveTable(attacksOf(inPlay(rigOf(art), allowed), art.hits))
 
 /**
  * A committed version of a move, for a creature that only has the one.
