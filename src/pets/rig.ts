@@ -747,7 +747,24 @@ function blink(t: number): number {
  * scaled, plus a whole-body adjustment — so a stance cannot forget about a part, and a part added
  * later works in every stance without anybody revisiting this table.
  */
-export type Stance = 'idle' | 'alert' | 'run' | 'crouch' | 'sleep' | 'pounce'
+/**
+ * ⚠️ THREE OF THESE ARE NEW AND NONE OF THEM NEEDED DRAWING, which is the point. A stance is
+ * seven numbers — see Tune — so a creature that leaves the ground can look like it without
+ * anybody opening the paint room. The park had six poses available and used exactly one of
+ * them: everything from walking to gliding to being thrown at the floor was `idle` with the
+ * clock running faster or slower. Asked for as "the animation gaps are a must fix. automated
+ * where possible while looking good".
+ */
+export type Stance =
+  | 'idle'
+  | 'alert'
+  | 'run'
+  | 'crouch'
+  | 'sleep'
+  | 'pounce'
+  | 'fly'
+  | 'glide'
+  | 'dive'
 
 export type Mood = {
   stance: Stance
@@ -827,6 +844,38 @@ export const TUNE: Record<Stance, Tune> = {
     squashY: 0.76,
     shut: false,
   },
+  /**
+   * Off the ground: tucked up, stretched tall, limbs beating.
+   *
+   * ⚠️ TALLER AND NARROWER, because that is what leaving the ground looks like from above —
+   * a thing gathering itself. The rate is up because legs and wings are working, not idling.
+   */
+  fly: { rate: 2, swing: 1.5, lean: 0.06, drop: -0.05, squashX: 0.9, squashY: 1.12, shut: false },
+  /**
+   * Wings out, coming down slowly.
+   *
+   * ⚠️ WIDE AND SLOW, THE OPPOSITE OF THE DIVE. A glide is a held pose with everything spread
+   * to catch air, so the clock runs under idle and the body flattens — which also makes the
+   * two air poses tell each other apart at a glance, the thing a single airborne pose could
+   * never do.
+   */
+  glide: {
+    rate: 0.55,
+    swing: 1.25,
+    lean: 0.02,
+    drop: -0.03,
+    squashX: 1.16,
+    squashY: 0.9,
+    shut: false,
+  },
+  /**
+   * Thrown at the ground head first.
+   *
+   * ⚠️ THE HARDEST POSE IN THE TABLE, because it is the most committed move in the game. Leant
+   * right over, squeezed thin, everything moving at three times — and it reads against the
+   * glide from the same silhouette, which is what stops the air looking like one state.
+   */
+  dive: { rate: 3, swing: 2.1, lean: 0.42, drop: 0.04, squashX: 0.82, squashY: 1.2, shut: false },
   /* almost still, settled, eyes shut. Not stopped: a sleeping thing still breathes. */
   sleep: {
     rate: 0.32,

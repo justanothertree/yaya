@@ -3,6 +3,7 @@ import type { Drawing } from '../draw/strokes'
 import { PetView } from '../pets/PetView'
 import { petCanvas, rigOf } from '../pets/rig'
 import { PLAIN, traitsOf } from '../pets/play'
+import type { Stance } from '../pets/rig'
 import { PLANES, groundAt } from './ground'
 import {
   camWant,
@@ -772,6 +773,26 @@ export function ParkRoom({
 
   /* which landmarks are ground you can stand on, and how high — see ground.ts */
   const raised = useMemo(() => new Map(PLANES.map((g) => [g.name, g.top])), [])
+
+  /**
+   * Which pose a creature of yours is in.
+   *
+   * ⚠️ THE PARK USED NONE OF THEM. Six stances have existed in rig.ts since the pets room did,
+   * and this room passed exactly zero — so walking, guarding, swinging, jumping, gliding and
+   * being thrown at the floor were all `idle` with the clock sped up or slowed down. That is
+   * the animation gap, and closing it needed no drawing at all: a stance is seven numbers.
+   *
+   * ⚠️ ORDER IS THE WHOLE LOGIC. The most committed thing a creature is doing wins, because
+   * that is the one a player needs to read — a dive while also technically moving is a dive.
+   */
+  const poseOfMine = (w: Striker): Stance => {
+    if (w.dive) return 'dive'
+    if (w.swing > 0) return 'pounce'
+    if (aloft(w)) return w.vz < 0 && w.float > 0 && w.glide < 1 ? 'glide' : 'fly'
+    if (w.braced) return 'crouch'
+    if (w.moving) return 'run'
+    return 'idle'
+  }
 
   const myKit = useMemo(() => (myArt ? temperOf(myArt) : null), [myArt])
   /**
@@ -2740,6 +2761,7 @@ export function ParkRoom({
                 down: false,
                 /* a wanderer keeps its feet on the grass */
                 up: 0,
+                pose: (w.moving ? 'run' : 'idle') as Stance,
                 lunge: 0,
                 /* a wanderer never swings, so this is only here to keep the list one shape */
                 aim: { x: w.facing, y: 0 },
@@ -2761,6 +2783,9 @@ export function ParkRoom({
                 /* ⚠️ theirs comes off the wire where mine comes off my own loop — see
                    Someone.down. It is a picture either way and decides nothing. */
                 down: o.down,
+                /* ⚠️ read off what they already send: moving or not, off the ground or not.
+                   A peer's pose costs the wire nothing — see Someone's note on their move. */
+                pose: (o.hop > 0.02 ? 'fly' : o.moving ? 'run' : 'idle') as Stance,
                 /* their swing, animated from the slot they sent and the drawing they sent */
                 lunge: lungeOf(
                   { swing: o.swing > 0 ? 1 : 0, move: 0, spent: false, stun: 0, hold: 0 },
@@ -2784,6 +2809,7 @@ export function ParkRoom({
                 stroll: false,
                 down: knocked,
                 up: shownYou.up,
+                pose: poseOfMine(shownYou),
                 lunge: lungeOf(shownYou, myMoves),
                 /**
                  * ⚠️ A DIVE LEANS DOWN, NOT AT THE CURSOR. lungePush shoves the drawing along
@@ -2851,6 +2877,10 @@ export function ParkRoom({
                       size={petSize(one.art)}
                       facing={one.facing}
                       show={one.show}
+                      /* ⚠️ a peer's pose is read from what their message already says: they
+                         are moving or they are not, and they are off the ground or not. The
+                         wire gains nothing — see Someone. */
+                      stance={one.pose}
                       energy={
                         one.mine
                           ? walkEffort(shownYou, stillRef.current)
