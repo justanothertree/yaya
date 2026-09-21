@@ -3266,7 +3266,10 @@ export function ParkRoom({
           <dt>
             <kbd>{keyName(PARK_KEYS.jump)}</kbd>
           </dt>
-          <dd>Jump — clears anything drawn low, but never an overhead</dd>
+          <dd>
+            Jump — clears anything drawn low, never an overhead. Wings glide if you hold it. Swing
+            in the air to dive.
+          </dd>
         </div>
       </dl>
       {/*
