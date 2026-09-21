@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'reac
 import type { Drawing } from '../draw/strokes'
 import { PetView } from '../pets/PetView'
 import { petCanvas, rigOf } from '../pets/rig'
-import { PET_TALL, PLAIN, traitsOf } from '../pets/play'
+import { PLAIN, traitsOf } from '../pets/play'
 import {
   camWant,
   stepCam,
@@ -1874,7 +1874,20 @@ export function ParkRoom({
 
   /* the same sizing as everywhere else — PetView's size is the LONG side, not the height */
   /* ⚠️ the CREATURE is this tall, not its canvas — see petCanvas */
-  const petSize = (art: Drawing) => petCanvas(art, Math.max(22, size.h * PET_TALL * 0.8))
+  /**
+   * ⚠️ PARK_TALL, not a second copy of the factor. These two have to agree or the hitbox is
+   * not where the creature is, which is the thing PARK_TALL's own note has always warned about
+   * — and they were nevertheless two numbers until the park was zoomed out.
+   *
+   * ⚠️ AND THE FLOOR IS 18, NOT 22, BECAUSE THE ZOOM MOVED WHERE IT BITES. The floor stops a
+   * creature becoming a speck, and it is the one place the picture and the hitbox are allowed
+   * to disagree: below it the drawing stops shrinking and PARK_TALL does not. At the old zoom
+   * that happened under a 137px field, which is not a park anybody was playing in. At 0.104 it
+   * would have started at 212px — and a phone's field measures 205, so every phone would have
+   * been playing with a hitbox a little smaller than the creature it draws. 18 puts the corner
+   * back under 173px, where it is out of the way again.
+   */
+  const petSize = (art: Drawing) => petCanvas(art, Math.max(18, size.h * PARK_TALL))
 
   /**
    * Your other creatures, out for a walk of their own.

@@ -153,7 +153,14 @@ export const SQUASH = (PARK.across / PARK.down) * ASPECT * 0.82
  * that just means "slower". Everything here is converted at the point of use.
  */
 export const TUNE = {
-  speed: 0.38,
+  /**
+   * ⚠️ 0.25, DOWN FROM 0.38, BECAUSE THE CREATURE GOT SMALLER. This is screenfuls a second and
+   * PARK_TALL is what a creature stands in a screen, so the two together decide the only pace
+   * a hand can feel: body-lengths a second. Zooming out from 0.8 to 0.52 without touching this
+   * would have left the same creature crossing its own length half again as fast as before —
+   * a smaller, twitchier thing rather than a wider view of the same one.
+   */
+  speed: 0.25,
   /**
    * ⚠️ THERE WAS NO WEIGHT AND THAT IS MOST OF WHAT "IT DOES NOT FEEL SMOOTH" MEANT. At 3.4
    * and 6.5 a creature reached top speed in 0.104s and stopped dead in 0.058s, sliding 0.09 of
@@ -166,12 +173,14 @@ export const TUNE = {
    * and 0.146s to stop, sliding a quarter of its own length — enough to feel the thing you are
    * steering, short of the ice that makes a fight unfair. scripts/park-feel.py prints the row.
    *
-   * ⚠️ NO DISTANCE CHANGED. Top speed is untouched, so every reach, dodge, cast and charge in
-   * the park still relates to the walk exactly as it was tuned to. This is the ramp either
-   * side of the same top speed, which is the part that was missing.
+   * ⚠️ AND THEY SCALE WITH `speed`, WHICH IS EASY TO MISS. Time to top is speed/accel, so
+   * zooming the park out and dropping the speed from 0.38 to 0.25 quietly shortened the ramp
+   * from 0.188s to 0.125s and handed back a third of the weight that had just been added.
+   * These two came down by the same fraction to hold the TIMES, because a time is what a hand
+   * feels — the raw numbers are screenfuls a second squared and feel like nothing at all.
    */
-  accel: 1.9,
-  drag: 2.6,
+  accel: 1.25,
+  drag: 1.71,
   /** below this it is standing still, not creeping */
   quiet: 0.012,
 }

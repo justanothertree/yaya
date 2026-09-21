@@ -553,10 +553,24 @@ export type Swipe = {
 /**
  * How tall a creature stands here, as a fraction of the field's height.
  *
- * ⚠️ 0.8 OF THE PLATFORMER'S, matching what the park actually draws — see petSize in
- * ParkRoom. A hitbox sized from a different number than the picture is a hitbox nobody can see.
+ * ⚠️ THE PICTURE READS THIS TOO, and it did not used to. The factor was written twice — here
+ * and again in ParkRoom's petSize — under a comment saying a hitbox sized from a different
+ * number than the picture is a hitbox nobody can see. Two copies of a number that must agree
+ * is the same thing one step later, so petSize asks for this one now and the park has a single
+ * zoom.
+ *
+ * ⚠️ 0.52, DOWN FROM 0.8. At 0.8 a creature stood 17.6% of the screen's height, which is a
+ * long way zoomed in for a game you look down on — Evan, on why SUPERVIVE reads better:
+ * "you are zoomed out a bit". At 0.52 it stands 11.4%, so you see about half as much creature
+ * and half again as much world.
+ *
+ * ⚠️ AND EVERY DISTANCE IN THE PARK FOLLOWS IT, which is what makes this a zoom rather than a
+ * rebalance. Reach, footprint, dodge, lunge and every cast are in PET-heights and converted
+ * through this, so the fight keeps exactly the shape it was tuned to and only gets smaller.
+ * The walk is NOT in pet-heights — it is screenfuls a second — so TUNE.speed came down with
+ * it, or the same creature would cross its own body a third again as fast as it used to.
  */
-export const PARK_TALL = PET_TALL * 0.8
+export const PARK_TALL = PET_TALL * 0.52
 
 /**
  * How big a creature is to hit, in world units.
