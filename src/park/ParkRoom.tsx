@@ -1082,6 +1082,7 @@ export function ParkRoom({
       restingWalker(0.3 + Math.random() * 0.4, 0.35 + Math.random() * 0.4),
       myTraits.jump,
       myTraits.glide,
+      myTraits.gravity,
     )
     cam.current = camWant(you.current)
     setCamAt(cam.current)

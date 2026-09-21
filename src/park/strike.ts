@@ -98,6 +98,23 @@ export type Striker = Walker & {
    * follows. Defaults to 1, so a boss or a peer we know nothing about behaves exactly as before.
    */
   jump: number
+  /**
+   * How heavily this one falls, 1 being the plain arc — a halo, a balloon or a cloud makes it
+   * less. From traitsOf, the same number the platformer has multiplied TUNE.gravity by since
+   * the pets room existed.
+   *
+   * ⚠️ IT IS THE LAST OF THE FOUR TRAITS TO REACH THE PARK, and it was the only one doing
+   * nothing here: speed steers the walk, jump and glide live on this type, and `gravity` was
+   * read out of the drawing, shown on the card as "light", and then consulted by nobody
+   * outside the platformer. A trait the maker advertises and the game ignores is worse than
+   * one that does not exist.
+   *
+   * ⚠️ AND IT ACTS ON THE ACCELERATION, NOT ON THE LAUNCH. Lighter means it keeps rising
+   * for longer and comes down more slowly, which is what "light" means — so unlike `jump` it
+   * takes no square root: halving the gravity doubles the peak AND stretches the hang, and
+   * both of those are the point. See LEAP for the arc the two of them bend.
+   */
+  weight: number
   /** 1 for a whole guard, 0 for a broken one — see stepGuard */
   guard: number
   /** seconds this guard has been up, which is what makes a parry a parry — see GUARD.parry */
@@ -112,10 +129,11 @@ export type Striker = Walker & {
 
 export type StrikeInput = { quick: boolean; heavy: boolean; up: boolean; down: boolean }
 
-export const restingStriker = (w: Walker, jump = 1, glide = 1): Striker => ({
+export const restingStriker = (w: Walker, jump = 1, glide = 1, weight = 1): Striker => ({
   ...w,
   jump,
   glide,
+  weight,
   float: 0,
   dive: false,
   swing: 0,
@@ -492,8 +510,12 @@ export function stepAir(
      * machine is drawing, and `clear` is a height. Constant acceleration has a closed form and
      * it costs one extra term.
      */
-    const vz = floating ? Math.max(s.vz - GRAV * t, -HOP.sink) : s.vz - GRAV * t
-    const up = floating ? s.up + vz * t : s.up + s.vz * t - 0.5 * GRAV * t * t
+    /* ⚠️ THE GLIDE CAP IS NOT SCALED BY IT. A glide is a wing finding air — a terminal
+       speed — and a terminal speed is not an acceleration, so a light winged creature glides
+       down at the same rate as a heavy one and only its unheld fall is gentler. */
+    const g = GRAV * s.weight
+    const vz = floating ? Math.max(s.vz - g * t, -HOP.sink) : s.vz - g * t
+    const up = floating ? s.up + vz * t : s.up + s.vz * t - 0.5 * g * t * t
 
     /* ⚠️ landed on whatever is under it NOW, which is how a jump onto the rocks becomes
        standing on the rocks without anything anywhere saying the word "rocks". */
