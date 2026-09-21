@@ -3079,6 +3079,12 @@ export function ParkRoom({
         A boss is one of your minions, big — <em>everybody</em> can hit it, and it goes when you do.
         The dummy hits back and cannot hurt you.
       </p>
+      {/* ⚠️ Only the part a mouse changes. The key table above already says what the six moves
+          and the three casts are; repeating them for a second input would be the tour this
+          room had cut out of it. */}
+      <p className="muted park-about">
+        With a mouse: it aims, left swings quick, right swings heavy.
+      </p>
     </div>
   )
 }
