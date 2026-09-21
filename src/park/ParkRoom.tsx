@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import type { Drawing } from '../draw/strokes'
 import { PetView } from '../pets/PetView'
 import { petCanvas, rigOf } from '../pets/rig'
@@ -37,6 +37,7 @@ import {
   canBeHurt,
   driven,
   aimFromKeys,
+  aimFromPoint,
   aimOf,
   inSwipe,
   type Swipe,
@@ -633,6 +634,10 @@ export function ParkRoom({
   const stage = useRef<HTMLDivElement>(null)
   const [full, setFull] = useState(false)
   const [size, setSize] = useState({ w: 0, h: 0 })
+  /* ⚠️ the same measurement as a ref, so aimNow can be a stable callback. Reading the state
+     would put `size` in its deps, which would put aimNow in the animation loop's deps, which
+     would restart the loop's clock on every resize — see the note on the loop. */
+  const sizeRef = useRef({ w: 0, h: 0 })
   const [pick, setPick] = useState(0)
   const [walking, setWalking] = useState(false)
   /** bumped whenever the roster changes, so the render follows without owning the positions */
@@ -702,6 +707,31 @@ export function ParkRoom({
    * thing your creature does is the big thing it would do if somebody else were fighting it —
    * one reading of a drawing, used from both ends.
    */
+  /**
+   * Which way you are aiming.
+   *
+   * ⚠️ THE POINTER IF YOU HAVE ONE, THE KEYS IF YOU DO NOT, and the keyboard scheme is
+   * untouched — asked for as "i want the mouse to be used for aim and activity along side wasd
+   * q e 1234". A mouse gives a direction a keyboard cannot: eight octants is what W/S+F/G can
+   * express, and a cursor is continuous, which is the difference between pointing an attack
+   * and picking one of eight.
+   *
+   * ⚠️ IT AIMS FROM THE FEET, because that is where every attack is measured from — stepFrom
+   * takes the creature's spot, so aiming from anywhere else would point the cursor at one
+   * place and the swing at another.
+   *
+   * ⚠️ AND W/S STILL PICK WHICH OF THE SIX. The cursor says WHERE, the modifiers say high, low
+   * or neither — two separate questions that were only ever answered by one control because a
+   * keyboard had nothing else to answer them with.
+   */
+  const aimNow = useCallback((fallback: Aimed): Aimed => {
+    const p = point.current
+    const box = sizeRef.current
+    if (!p || box.w < 2) return aimFromKeys(held.current, fallback)
+    const me = onScreen(you.current, cam.current)
+    return aimFromPoint((p.fx - me.x) * box.w, (p.fy - me.y) * box.h, fallback)
+  }, [])
+
   const myKit = useMemo(() => (myArt ? temperOf(myArt) : null), [myArt])
   /**
    * How your creature moves, off the same drawing everything else here comes from.
@@ -867,6 +897,14 @@ export function ParkRoom({
   const [swings, setSwings] = useState<Array<{ k: string; swipe: Swipe }>>([])
   const held = useRef<Steer>({ ...STILL })
   const hitting = useRef<StrikeInput>({ quick: false, heavy: false, up: false, down: false })
+  /**
+   * Where the pointer is in the field, as a fraction of it, or null until one is used here.
+   *
+   * ⚠️ A FRACTION, NOT PIXELS, so the rect is read once per move rather than five times per
+   * frame — every aim below asks this, and a getBoundingClientRect in the animation loop is a
+   * forced layout on a room that already has enough to do.
+   */
+  const point = useRef<{ fx: number; fy: number } | null>(null)
   /** bumped when a swing starts or ends, so the render follows without owning the loop */
   const [swingAt, setSwingAt] = useState(0)
   /**
@@ -919,7 +957,11 @@ export function ParkRoom({
   useEffect(() => {
     const fit = () => {
       const r = field.current?.getBoundingClientRect()
-      if (r && r.width > 1) setSize({ w: Math.round(r.width), h: Math.round(r.height) })
+      if (r && r.width > 1) {
+        const next = { w: Math.round(r.width), h: Math.round(r.height) }
+        sizeRef.current = next
+        setSize(next)
+      }
     }
     fit()
     window.addEventListener('resize', fit)
@@ -1098,7 +1140,7 @@ export function ParkRoom({
         const pick = myKit?.casts[castWanted.current - 1]
         if (press && pick && myCastRest.current <= 0 && !busy(you.current) && !aloft(you.current)) {
           myCast.current = { kind: pick, t: 0 }
-          you.current = { ...you.current, aim: aimFromKeys(held.current, you.current.aim) }
+          you.current = { ...you.current, aim: aimNow(you.current.aim) }
           setCasting(pick)
         }
       }
@@ -1132,7 +1174,7 @@ export function ParkRoom({
       you.current = stepGuard(
         you.current,
         bracing.current && !iAmCasting && !inAir,
-        aimFromKeys(held.current, you.current.aim),
+        aimNow(you.current.aim),
         dt,
       )
 
@@ -1150,8 +1192,7 @@ export function ParkRoom({
        * keys every frame would let you steer a live hitbox round somebody after committing to
        * it, which is the same unfairness the frozen position and locked facing already refuse.
        */
-      if (!wasSwinging && struck.swing > 0)
-        struck.aim = aimFromKeys(held.current, { x: you.current.facing, y: 0 })
+      if (!wasSwinging && struck.swing > 0) struck.aim = aimNow({ x: you.current.facing, y: 0 })
       const steer = busy(struck) || iAmCasting ? STILL : held.current
       you.current = {
         ...struck,
@@ -1167,12 +1208,7 @@ export function ParkRoom({
        */
       const wantRoll = rolling.current && !rolled.current && !iAmCasting && !inAir
       rolled.current = rolling.current
-      const roll = stepDodge(
-        you.current,
-        wantRoll,
-        aimFromKeys(held.current, { x: you.current.facing, y: 0 }),
-        dt,
-      )
+      const roll = stepDodge(you.current, wantRoll, aimNow({ x: you.current.facing, y: 0 }), dt)
       you.current = roll.s
       if (you.current.dodge > 0 !== dodgeShown.current) {
         dodgeShown.current = you.current.dodge > 0
@@ -1870,7 +1906,7 @@ export function ParkRoom({
     }
     raf = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(raf)
-  }, [walking, myMoves, myWide, bossKit, myKit, myTraits])
+  }, [walking, myMoves, myWide, bossKit, myKit, myTraits, aimNow])
 
   /* the same sizing as everywhere else — PetView's size is the LONG side, not the height */
   /* ⚠️ the CREATURE is this tall, not its canvas — see petCanvas */
@@ -1944,7 +1980,7 @@ export function ParkRoom({
   const myReach = (() => {
     if (!bossShown && !theirBoss && !dummyShown) return null
     if (!myMoves.length || knocked) return null
-    const aim = aimFromKeys(held.current, shownYou.aim)
+    const aim = aimNow(shownYou.aim)
     const mv = myMoves[Math.min(myMoves.length - 1, slotFor(false, aimWord(hitting.current)))]
     if (!mv) return null
     const swipe = strikeSwipe(shownYou, aim, mv, mv.span * ((mv.live[0] + mv.live[1]) / 2))
@@ -2310,7 +2346,49 @@ export function ParkRoom({
         chips throw your big moves.
       </p>
       <div className={'park-stage' + (full ? ' is-full' : '')} ref={stage}>
-        <div className="park-field" ref={field}>
+        {/*
+          ⚠️ THE FIELD TAKES THE POINTER, not the window, so a cursor over the reference table
+          below does not aim your creature. Only while walking: outside a fight these are the
+          controls of a page, and a right-click that will not open a menu on a page you are
+          merely reading is a page that feels broken.
+
+          ⚠️ LEFT IS QUICK AND RIGHT IS HEAVY, which is the pair F and G already are — "aim and
+          activity", and the two buttons a hand on a mouse has. They set the same refs the keys
+          set rather than a second path, so there is one place a swing starts however it was
+          asked for.
+
+          ⚠️ AND THE MENU IS SUPPRESSED ONLY WHILE WALKING, for the same reason: a heavy swing
+          that also opens a context menu is not a control.
+        */}
+        <div
+          className="park-field"
+          ref={field}
+          onPointerMove={(e) => {
+            if (!walking) return
+            const r = e.currentTarget.getBoundingClientRect()
+            if (r.width < 2) return
+            point.current = {
+              fx: (e.clientX - r.left) / r.width,
+              fy: (e.clientY - r.top) / r.height,
+            }
+          }}
+          onPointerLeave={() => {
+            hitting.current.quick = false
+            hitting.current.heavy = false
+          }}
+          onPointerDown={(e) => {
+            if (!walking || e.pointerType === 'touch') return
+            if (e.button === 0) hitting.current.quick = true
+            else if (e.button === 2) hitting.current.heavy = true
+          }}
+          onPointerUp={(e) => {
+            if (e.button === 0) hitting.current.quick = false
+            else if (e.button === 2) hitting.current.heavy = false
+          }}
+          onContextMenu={(e) => {
+            if (walking) e.preventDefault()
+          }}
+        >
           {/* ⚠️ THE GROUND MOVES, NOT THE CREATURES. Everything in the park is placed by the same
               onScreen() the walkers are, so the grass, the path and the people can never disagree
               about where the middle of the world is. */}

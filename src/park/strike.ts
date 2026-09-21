@@ -431,6 +431,25 @@ export function aimFromKeys(steer: Steer, fallback: Aimed): Aimed {
 }
 
 /**
+ * Which way the pointer is, from wherever the creature is standing.
+ *
+ * ⚠️ PIXELS NEED NO CONVERSION, which is the whole reason this is three lines. An aim is a
+ * unit vector in SCREEN-heights — see aimFromKeys, which does no conversion either — and
+ * screen-heights are isotropic in pixels. A pixel delta off the field is therefore already in
+ * the right space, and putting an `across`/`down` anywhere near it would bend the angle by the
+ * field's 16:10 exactly as toScreen's note warns.
+ *
+ * ⚠️ AND IT REFUSES TO ANSWER WHEN THE POINTER IS ON YOU. Under a few pixels the direction is
+ * noise, and an aim that flickers is worse than an aim that holds still — so the last one
+ * stands, the same way aimFromKeys keeps the facing when nothing is held.
+ */
+export function aimFromPoint(dxPx: number, dyPx: number, fallback: Aimed): Aimed {
+  const len = Math.hypot(dxPx, dyPx)
+  if (len < 6) return fallback
+  return { x: dxPx / len, y: dyPx / len }
+}
+
+/**
  * ⚠️ A CREATURE'S WIDTH IS MEASURED IN SCREEN HEIGHTS AND THE WORLD IS MEASURED IN SCREEN
  * WIDTHS, and mixing the two is the whole of what went wrong first. `petWide` is PET_TALL times
  * the drawing's shape, so it is a fraction of the field's HEIGHT; VIEW.w is a fraction of the
