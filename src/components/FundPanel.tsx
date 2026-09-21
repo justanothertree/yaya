@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { getSupabaseClient } from '../finance/client'
+import { fundToday } from '../finance/fundDay'
 
 /**
  * Money set aside for the family that has not been invested yet.
@@ -37,7 +38,9 @@ type Row = {
 const money = (n: number) =>
   n.toLocaleString(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 2 })
 
-const today = () => new Date().toISOString().slice(0, 10)
+/* ⚠️ the fund's day, which is also what admin_add_contribution refuses to accept a date past.
+   On UTC this input would let you log a contribution dated tomorrow all evening. */
+const today = () => fundToday()
 
 export function FundPanel() {
   const [status, setStatus] = useState<Status | null>(null)

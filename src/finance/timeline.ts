@@ -3,7 +3,8 @@
 // invested / promised / value curves. Value only spans days a price is known for —
 // history accrues from the daily price sweep, so that line grows richer over time.
 import { getSupabaseClient } from './client'
-import { daysOnPlan } from './portfolio'
+import { daysBetween } from './portfolio'
+import { fundToday } from './fundDay'
 
 export type TimelineAccount = { dollarPerDay: number; startDate: string | null }
 export type TimelineEvent = { date: string; symbol: string; units: number; cost: number }
@@ -144,8 +145,11 @@ export function buildDailySeries(t: Timeline, fromISO: string, toISO: string): S
     let promised = 0
     for (const a of t.accounts) {
       if (!a.dollarPerDay || !a.startDate) continue
-      // the same day count the summary card uses — see daysOnPlan for why that matters
-      promised += a.dollarPerDay * daysOnPlan(a.startDate, d)
+      /* ⚠️ THE BUCKET'S OWN DATE, not its timestamp. `dayISO` is already the day this point
+         stands for; handing the millisecond to a function that asks a clock what day it is
+         would let the fund's timezone move a bucket that was never ambiguous. Same count the
+         summary card uses — see daysBetween. */
+      promised += a.dollarPerDay * daysBetween(a.startDate, dayISO)
     }
 
     let shares: number | null = null
@@ -247,8 +251,13 @@ export function demoTimeline(): Timeline {
    * hadn't moved in seven weeks, over a caption reading "prices through Jul 1". The start stays
    * fixed because the whole story is "$1/day since Jan 1"; only the end should follow the clock.
    * `weeks` is derived rather than hardcoded so the buy events keep spanning the real range.
+   *
+   * ⚠️ AND IT ENDS ON THE FUND'S TODAY, not the raw instant. Every date in this file is a
+   * UTC-midnight timestamp turned back into a string by `iso()`, so `Date.now()` put one extra
+   * day on the walk for the whole evening: the public demo quoted prices from tomorrow, which
+   * is a poor advertisement for a page whose job is to look trustworthy.
    */
-  const end = Date.now()
+  const end = Date.parse(fundToday() + 'T00:00:00Z')
   const weeks = Math.max(1, Math.round((end - start) / (7 * DAY)))
 
   // aggregate demo holdings by symbol

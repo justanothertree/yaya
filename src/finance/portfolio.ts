@@ -3,6 +3,7 @@
 // get_my_portfolio RPC so a member sees their holdings without owning the host's raw trades.
 // Profit/loss is intentionally absent for now (no live prices) — `cost` is the dollars allocated.
 import { getSupabaseClient } from './client'
+import { fundToday } from './fundDay'
 
 export type Holding = {
   symbol: string
@@ -381,25 +382,37 @@ export const accountReserved = (a: AccountPortfolio): number =>
   a.holdings.reduce((s, h) => (h.price != null ? s + h.units * h.price : s), 0)
 
 /**
- * Whole days from an account's start date to a moment, both taken at UTC midnight.
+ * Whole days between two calendar dates, both `YYYY-MM-DD`.
  *
- * ⚠️ ONE DEFINITION, because there were two and they disagreed by a day. This function parsed
- * the start at LOCAL midnight and measured to Date.now(); buildDailySeries in timeline.ts
- * parses at UTC midnight and measures to a UTC-midnight day, and the chart's last point is
- * taken from toISOString(). For a viewer west of UTC in the evening the two differed by one
- * day — with 33 accounts at $1/day that is $33 between the chart's Promised line and the
- * card's behind-the-promise figure, for no reason a reader could ever discover.
+ * ⚠️ ONE DEFINITION, because there were two and they disagreed by a day. This used to parse the
+ * start at LOCAL midnight and measure to Date.now(); buildDailySeries in timeline.ts parses at
+ * UTC midnight and measures to a UTC-midnight day. For a viewer west of UTC in the evening the
+ * two differed by one — with 33 accounts at $1/day that is $33 between the chart's Promised
+ * line and the card's behind-the-promise figure, for no reason a reader could ever discover.
  *
- * UTC on both sides, because the server counts in UTC too (current_date) and the chart's day
- * buckets already are.
+ * ⚠️ AND IT TAKES DATES, NOT AN INSTANT, WHICH IS THE HALF THAT KEEPS GOING WRONG. Answering
+ * "what day is it" and answering "how far apart are these two days" are different questions,
+ * and folding them into one function is what let a timezone leak into the second one. A chart
+ * bucket already IS a date; converting it through a clock could only move it. So this does
+ * pure date arithmetic and consults no zone at all, and everything that needs today's date
+ * asks fundToday for it — the one place a zone is allowed to matter.
  */
-export function daysOnPlan(startDate: string, atMs: number = Date.now()): number {
+export function daysBetween(startDate: string, dayISO: string): number {
   const start = Date.parse(startDate + 'T00:00:00Z')
-  if (!Number.isFinite(start)) return 0
-  const at = Date.parse(new Date(atMs).toISOString().slice(0, 10) + 'T00:00:00Z')
-  if (!Number.isFinite(at)) return 0
+  const at = Date.parse(dayISO + 'T00:00:00Z')
+  if (!Number.isFinite(start) || !Number.isFinite(at)) return 0
   return Math.max(0, Math.round((at - start) / 86_400_000))
 }
+
+/**
+ * Whole days an account has been on the plan, up to today.
+ *
+ * ⚠️ TODAY ON THE FUND'S CALENDAR, matching `finance.fund_today()` on the server, which the
+ * `promised` figure in my_fund_status and admin_fund_status is computed from. Both sides have
+ * to name the same day or the card and the server disagree — see fundDay.ts.
+ */
+export const daysOnPlan = (startDate: string, atMs: number = Date.now()): number =>
+  daysBetween(startDate, fundToday(new Date(atMs)))
 
 /** Dollars promised to date = rate × days since the account's start date (null if unset). */
 export function promisedToDate(a: AccountPortfolio): number | null {

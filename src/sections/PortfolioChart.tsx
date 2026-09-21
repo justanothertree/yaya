@@ -4,6 +4,7 @@
 // Circuit's charts — no chart library.
 import { useMemo, useRef, useState } from 'react'
 import { buildDailySeries, type Timeline } from '../finance/timeline'
+import { fundToday } from '../finance/fundDay'
 import { usd } from '../finance/portfolio'
 
 const RANGES = [
@@ -75,7 +76,10 @@ export function PortfolioChart({ timeline, title }: { timeline: Timeline; title?
   })
   const svgRef = useRef<SVGSVGElement | null>(null)
 
-  const today = new Date().toISOString().slice(0, 10)
+  /* ⚠️ the fund's day, matching the server's promised figure and the summary card — see
+     finance/fundDay.ts. This was toISOString(), so the axis ran a day past the reader's
+     calendar all evening and the caption under it said "prices through" a date in the future. */
+  const today = fundToday()
 
   // "All" means the fund era (earliest account start), not the whole trade history —
   // pre-fund churn from years past would drown the story otherwise.
