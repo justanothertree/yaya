@@ -3,6 +3,7 @@ import type { Drawing } from '../draw/strokes'
 import { PetView } from '../pets/PetView'
 import { petCanvas, rigOf } from '../pets/rig'
 import { PLAIN, traitsOf } from '../pets/play'
+import { PLANES, groundAt } from './ground'
 import {
   camWant,
   stepCam,
@@ -47,9 +48,8 @@ import {
   shoved,
   stepDodge,
   stepGuard,
-  stepHop,
-  hopFrac,
-  hopHeight,
+  stepAir,
+  airFrac,
   aloft,
   GUARD,
   HOP,
@@ -732,6 +732,9 @@ export function ParkRoom({
     return aimFromPoint((p.fx - me.x) * box.w, (p.fy - me.y) * box.h, fallback)
   }, [])
 
+  /* which landmarks are ground you can stand on, and how high — see ground.ts */
+  const raised = useMemo(() => new Map(PLANES.map((g) => [g.name, g.top])), [])
+
   const myKit = useMemo(() => (myArt ? temperOf(myArt) : null), [myArt])
   /**
    * How your creature moves, off the same drawing everything else here comes from.
@@ -1151,16 +1154,24 @@ export function ParkRoom({
        * ⚠️ THE RISING EDGE, like the dodge and unlike the guard: holding space would otherwise
        * be a way of getting about rather than an answer to something.
        *
-       * ⚠️ AND BEFORE THE GUARD, so the two cannot both start on the same frame. stepHop
+       * ⚠️ AND BEFORE THE GUARD, so the two cannot both start on the same frame. stepAir
        * refuses to leave the ground out of a stance and stepGuard refuses to raise one off it;
        * putting the jump first is what makes that pair of refusals decide the same way every
        * time rather than depending on which key the loop happened to read.
        */
       const wantHop = hopping.current && !hopped.current && !iAmCasting
       hopped.current = hopping.current
-      /* ⚠️ the EDGE starts a jump and the HELD state stretches its descent — see stepHop. A
-         creature with no wings has no float budget, so holding it does nothing at all. */
-      you.current = stepHop(you.current, wantHop, dt, hopping.current && !iAmCasting).s
+      /* ⚠️ the EDGE starts a jump and the HELD state caps how fast it comes down — see
+         stepAir. A creature with no wings has no float budget, so holding does nothing. The
+         floor is whatever it is standing over, which is how the rocks become somewhere to
+         land and somewhere to walk off. */
+      you.current = stepAir(
+        you.current,
+        wantHop,
+        dt,
+        hopping.current && !iAmCasting,
+        groundAt(you.current),
+      ).s
       const inAir = aloft(you.current)
 
       /**
@@ -1885,7 +1896,7 @@ export function ParkRoom({
           you.current,
           mySlot,
           octantOf(you.current.aim),
-          hopFrac(you.current.hop),
+          airFrac(you.current),
           downFor.current > 0,
         )
         /* ⚠️ THE BOSS GOES OUT AT THE SAME RATE AS A WALK AND NO FASTER — it is one more
@@ -2500,21 +2511,26 @@ export function ParkRoom({
               return (
                 <span
                   key={m.name}
-                  className={'park-mark is-' + m.kind}
+                  /* ⚠️ THE RAISED ONES SAY SO, or a place you can stand on looks exactly like
+                     a place you cannot and the first anybody knows about the rocks is landing
+                     on them. `--top` is how high in pet-heights, so the rim can grow with it
+                     rather than every plateau looking the same height. */
+                  className={'park-mark is-' + m.kind + (raised.has(m.name) ? ' is-raised' : '')}
                   aria-hidden
-                  style={{
-                    left: `${p.x * 100}%`,
-                    top: `${p.y * 100}%`,
-                    width: `${((m.size * 2) / FIELD_ASPECT) * 100}%`,
-                    height: `${m.size * 2 * 100}%`,
-                  }}
+                  style={
+                    {
+                      left: `${p.x * 100}%`,
+                      top: `${p.y * 100}%`,
+                      width: `${((m.size * 2) / FIELD_ASPECT) * 100}%`,
+                      height: `${m.size * 2 * 100}%`,
+                      '--top': raised.get(m.name) ?? 0,
+                    } as React.CSSProperties
+                  }
                 />
               )
             })}
           {walking && <GuardArc me={shownYou} cam={camAt} />}
-          {walking && (
-            <HopShade at={shownYou} cam={camAt} height={hopHeight(shownYou.hop, shownYou.jump)} />
-          )}
+          {walking && <HopShade at={shownYou} cam={camAt} height={shownYou.up} />}
           {walking &&
             [...state.current.here.values()].map((o) => (
               <HopShade key={'shade-' + o.id} at={o.shown} cam={camAt} height={o.hop} />
@@ -2579,7 +2595,7 @@ export function ParkRoom({
                 mine: true,
                 stroll: false,
                 down: knocked,
-                up: hopHeight(shownYou.hop, shownYou.jump),
+                up: shownYou.up,
                 lunge: lungeOf(shownYou, myMoves),
                 aim: shownYou.aim,
                 show: shownYou.swing > 0 ? myMoves[shownYou.move]?.layer : undefined,
@@ -3084,6 +3100,11 @@ export function ParkRoom({
           room had cut out of it. */}
       <p className="muted park-about">
         With a mouse: it aims, left swings quick, right swings heavy.
+      </p>
+      {/* ⚠️ A rule you cannot see: the trees are above a plain jump. That the ring and the
+          rocks are raised at all is visible the moment you walk onto one, so it is not said. */}
+      <p className="muted park-about">
+        The ring and the rocks can be stood on. The far trees need wings.
       </p>
     </div>
   )

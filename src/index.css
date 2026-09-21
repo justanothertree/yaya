@@ -8708,6 +8708,22 @@ a.cz-msg-author:focus-visible {
   transform: translate(-50%, -50%);
   border-radius: 50%;
 }
+/* ⚠️ GROUND YOU CAN STAND ON HAS TO LOOK LIKE IT, or the first anybody learns about the rocks
+   is landing on them by accident. The rim is drawn from --top, which is the height in
+   pet-heights, so the tall one reads as taller than the low one instead of every plateau
+   looking the same. Under the creatures, like the rest of the scenery — see park-mark. */
+.park-mark.is-raised {
+  box-shadow:
+    inset 0 0 0 calc(1px + var(--top) * 3px) rgb(255 255 255 / 0.13),
+    0 calc(var(--top) * 7px) calc(var(--top) * 9px) rgb(0 0 0 / 0.38);
+}
+.park-mark.is-raised::after {
+  content: '';
+  position: absolute;
+  inset: 12%;
+  border-radius: 50%;
+  background: rgb(255 255 255 / calc(0.03 + var(--top) * 0.05));
+}
 .park-mark.is-pond {
   background: radial-gradient(
     closest-side,

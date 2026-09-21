@@ -52,8 +52,20 @@ export type Striker = Walker & {
   dodge: number
   /** seconds before another may be thrown, so it is an answer and not a way of walking */
   dodgeRest: number
-  /** seconds left of being off the ground, 0 when standing — see stepHop */
-  hop: number
+  /**
+   * How high off the FIELD it is, in pet-heights — not off whatever it is standing on.
+   *
+   * ⚠️ AN ALTITUDE, NOT A TIMER, AND THE ARC DID NOT CHANGE. This was seconds-left of a fixed
+   * parabola, which cannot answer "am I above that ledge yet" — the question every plane in
+   * ground.ts asks. It is a position and a speed now, under a constant gravity chosen to
+   * reproduce the old curve exactly: a jump still peaks at HOP.up and still takes HOP.time,
+   * because for a parabola those two numbers ARE a gravity and a launch speed. See LEAP.
+   */
+  up: number
+  /** how fast it is rising, pet-heights a second; negative is falling */
+  vz: number
+  /** how high the ground is under it — 0 on the grass, see ground.ts */
+  ground: number
   /** seconds before another jump, so it is an answer rather than a way of getting about */
   hopRest: number
   /**
@@ -104,7 +116,9 @@ export const restingStriker = (w: Walker, jump = 1, glide = 1): Striker => ({
   aim: { x: 1, y: 0 },
   dodge: 0,
   dodgeRest: 0,
-  hop: 0,
+  up: 0,
+  vz: 0,
+  ground: 0,
   hopRest: 0,
   guard: 1,
   braceFor: 0,
@@ -257,6 +271,15 @@ export const HOP = {
    * is still the better answer to one blow; this is for crossing ground and for the second.
    */
   glide: 0.85,
+  /**
+   * How fast a wing lets it down, pet-heights a second, against a free fall that reaches 4.96.
+   *
+   * ⚠️ SET FROM THE MEASUREMENT RATHER THAN CHOSEN. Before altitude was a position this was a
+   * factor on the clock, and it produced 0.99s in the air against a plain jump's 0.50. A
+   * terminal speed is the honest shape of the same thing — a wing finds air, it does not
+   * weaken gravity — so this is the number that reproduces that airtime.
+   */
+  sink: 0.95,
 }
 
 /**
@@ -276,16 +299,32 @@ export const HOP = {
  * creature, and the other end already has the drawing to work out how tall that fraction is —
  * the rule Someone's `move` note states: send one small number, derive the meaning both sides.
  */
-export const hopFrac = (hop: number): number => {
-  if (hop <= 0) return 0
-  const p = 1 - hop / HOP.time
-  return 4 * p * (1 - p)
+/**
+ * ⚠️ THE ARC IS A GRAVITY AND A LAUNCH SPEED, which is why swapping the timer for a position
+ * cost nothing. A projectile's airtime is 2v/g and its peak is v²/2g; solve those for HOP.up
+ * and HOP.time and you get exactly one answer. So a plain jump still rises 0.62 pet-heights
+ * and still takes half a second — the same curve, now expressed as something that can be asked
+ * where it is rather than how long it has left.
+ */
+export const LEAP = (4 * HOP.up) / HOP.time
+export const GRAV = (2 * LEAP) / HOP.time
+
+/**
+ * How far through its own jump something is, 0 on its feet and 1 at the top of its arc.
+ *
+ * ⚠️ STILL WHAT GOES ON THE WIRE, and still for the reason it always was: a height is measured
+ * against the sender's own jump, and a fraction means the same for every creature. The far end
+ * adds the ground under them itself — it knows where they are standing and ground.ts is not a
+ * secret — so a peer on the rocks is drawn on the rocks without a byte being spent saying so.
+ */
+export const airFrac = (s: Striker): number => {
+  const over = s.up - s.ground
+  if (over <= 0) return 0
+  return Math.max(0, Math.min(1, over / (HOP.up * s.jump)))
 }
 
-export const hopHeight = (hop: number, jump = 1): number => HOP.up * jump * hopFrac(hop)
-
 /** Off the ground at all — the one question the room asks before letting you start something. */
-export const aloft = (s: Striker): boolean => s.hop > 0
+export const aloft = (s: Striker): boolean => s.up > s.ground + 1e-6 || s.vz > 0
 
 /**
  * Did this one go under you?
@@ -293,8 +332,16 @@ export const aloft = (s: Striker): boolean => s.hop > 0
  * ⚠️ ASKED BY shoved AND BY mauled, the same two doors the guard uses, so a blow cannot pass
  * under your feet and shove you anyway.
  */
+/**
+ * ⚠️ ABOVE YOUR OWN GROUND, NOT ABOVE THE FIELD, and that is a deliberate refusal. Now that a
+ * creature can stand on the rocks, absolute height would mean standing there is permanent
+ * immunity to every low swing — a camping spot rather than a place, and a balance change
+ * smuggled in under a traversal feature. A ledge is not a dodge. Whether a boss on the grass
+ * SHOULD be able to reach somebody on a ledge is a real question and a separate one, and it
+ * wants playing rather than guessing; until then the fight is exactly as it was tuned.
+ */
 export const overHead = (s: Striker, a: Attack): boolean =>
-  hopHeight(s.hop, s.jump) >= HOP.clear && a.lift <= HOP.under
+  s.up - s.ground >= HOP.clear && a.lift <= HOP.under
 
 /**
  * One step of being in the air.
@@ -307,45 +354,91 @@ export const overHead = (s: Striker, a: Attack): boolean =>
  * two while it runs, or the right play is always to press all of them.
  */
 /**
+ * One step of being off the ground: a jump, a fall off a ledge, and a glide are one thing.
+ *
+ * ⚠️ THEY WERE NEVER THREE DIFFERENT EVENTS, they just looked like it while altitude was a
+ * countdown. Rising is a positive vz, falling off the rocks is a vz of zero over ground that
+ * has dropped away, and a glide is a cap on how fast either of them comes down. One integrator
+ * answers all three, which is why adding ledges added no second way to be in the air.
+ *
  * @param want true on the frame the key goes DOWN — a jump is an edge, not a state
  * @param held true for as long as it is down, which is what a glide is asked with
+ * @param floor how high the ground is where it is standing — see groundAt
  */
-export function stepHop(
+export function stepAir(
   s: Striker,
   want: boolean,
   dt: number,
   held = want,
+  floor = 0,
 ): { s: Striker; went: boolean } {
   const t = Math.max(0, Math.min(0.05, dt))
-  if (s.hop > 0) {
+
+  /**
+   * ⚠️ THE GROUND WENT AWAY, WHICH IS NOT A SEPARATE BRANCH. Walking off the rocks leaves a
+   * creature above a floor that has dropped, which the airborne path below already handles
+   * with vz at nought — a fall is the top of a jump without the jump. It gets a float budget
+   * here because it did not get one on takeoff, and gliding down from somewhere is most of
+   * what a wing is for; without this line a creature could glide off a jump and not off a
+   * cliff, which is exactly backwards.
+   */
+  const steppedOff = s.vz === 0 && floor < s.ground - 1e-6 && s.up > floor + 1e-6
+  const float = steppedOff && s.glide < 1 ? HOP.glide : s.float
+
+  /* ⚠️ the same question aloft() asks, and it has to stay that way — on the frame a jump
+     starts, up is still the floor and only vz says it has left. Two ideas of "in the air" is
+     how something ends up able to cast on the first frame of a jump. */
+  if (aloft({ ...s, ground: floor })) {
     /**
-     * ⚠️ ONLY ON THE WAY DOWN, which is what makes it a glide rather than a hover. The arc
-     * counts from HOP.time to 0 and peaks in the middle, so the second half is the descent —
-     * stretching the first half would let somebody hang at the top, which is the position
-     * nothing can reach and nothing can punish.
-     *
-     * ⚠️ AND IT COSTS `float`, so it ends whether or not the key does. A rate with no budget
-     * is a way to live in the air; see HOP.glide.
+     * ⚠️ A CAP ON THE WAY DOWN, NOT A WEAKER GRAVITY. A glide is a wing finding air, which is
+     * a terminal speed — and it only applies while falling, so the climb is untouched and
+     * nobody hangs at the top. `float` is the budget; see HOP.glide for why a rate alone is
+     * not an ability but a place to live.
      */
-    const falling = s.hop < HOP.time / 2
-    const floating = held && falling && s.glide < 1 && s.float > 0
-    const left = Math.max(0, s.hop - t * (floating ? s.glide : 1))
+    const floating = held && s.vz < 0 && s.glide < 1 && float > 0
+    /**
+     * ⚠️ THE EXACT KINEMATIC STEP, NOT EULER. `up += vz * t` after updating vz undershoots the
+     * top of the arc by an amount that depends on the frame length — 0.610 against 0.620 at
+     * 240 a second, worse at 60 — which would make how high you jump depend on how fast the
+     * machine is drawing, and `clear` is a height. Constant acceleration has a closed form and
+     * it costs one extra term.
+     */
+    const vz = floating ? Math.max(s.vz - GRAV * t, -HOP.sink) : s.vz - GRAV * t
+    const up = floating ? s.up + vz * t : s.up + s.vz * t - 0.5 * GRAV * t * t
+
+    /* ⚠️ landed on whatever is under it NOW, which is how a jump onto the rocks becomes
+       standing on the rocks without anything anywhere saying the word "rocks". */
+    if (vz <= 0 && up <= floor) {
+      return {
+        s: { ...s, up: floor, vz: 0, ground: floor, float: 0, hopRest: HOP.rest },
+        went: false,
+      }
+    }
     return {
-      s: {
-        ...s,
-        hop: left,
-        float: Math.max(0, s.float - (floating ? t : 0)),
-        hopRest: left > 0 ? s.hopRest : HOP.rest,
-      },
+      s: { ...s, up, vz, ground: floor, float: Math.max(0, float - (floating ? t : 0)) },
       went: false,
     }
   }
+
   const rest = Math.max(0, s.hopRest - t)
-  if (!want || rest > 0 || s.swing > 0 || s.stun > 0 || s.hold > 0 || s.dodge > 0 || s.braced)
-    return { s: { ...s, hopRest: rest }, went: false }
+  const stuck = rest > 0 || s.swing > 0 || s.stun > 0 || s.hold > 0 || s.dodge > 0 || s.braced
+  if (!want || stuck) return { s: { ...s, up: floor, ground: floor, hopRest: rest }, went: false }
   /* a fresh budget every jump, and none at all for a creature with nothing to glide on */
   return {
-    s: { ...s, hop: HOP.time, hopRest: 0, float: s.glide < 1 ? HOP.glide : 0 },
+    s: {
+      ...s,
+      up: floor,
+      ground: floor,
+      /**
+       * ⚠️ THE SQUARE ROOT IS NOT A FLOURISH. A peak is v²/2g, so scaling the launch speed by
+       * the jump trait scales the HEIGHT by its square — a 1.26 creature would have gone 1.59
+       * times as high, which is not what the trait says and not what shipped. traitsOf means
+       * "26% higher", so the launch speed goes up by the root of it and the height by it.
+       */
+      vz: LEAP * Math.sqrt(s.jump),
+      hopRest: 0,
+      float: s.glide < 1 ? HOP.glide : 0,
+    },
     went: true,
   }
 }

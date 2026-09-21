@@ -3,6 +3,7 @@ import { packDrawing, readDrawing, simplifyDrawing, type Drawing } from '../draw
 import type { Spot, Walker } from './walk'
 import { aimFromOctant, HOP, type Aimed } from './strike'
 import { traitsOf } from '../pets/play'
+import { groundAt } from './ground'
 import { rigOf } from '../pets/rig'
 import { castFromSlot, type CastKind } from './cast'
 
@@ -488,12 +489,20 @@ export function joinPark(
           who.aim = aimFromOctant(typeof msg.d === 'number' ? msg.d : who.facing < 0 ? 4 : 0)
           /* absent reads as standing on the ground, which is exactly what an older client is */
           who.down = !!msg.k
-          /* ⚠️ THEIR jump, off THEIR drawing, which we already hold in order to draw them at
-             all. A creature with wings goes higher on every screen, not just its own. */
+          /**
+           * ⚠️ THEIR jump, off THEIR drawing, which we already hold in order to draw them at
+           * all. A creature with wings goes higher on every screen, not just its own.
+           *
+           * ⚠️ AND THE GROUND THEY ARE OVER, WHICH THE WIRE NEVER MENTIONS. `j` is how far
+           * through their own arc they are; where the rocks are is not news, it is in
+           * ground.ts on every machine. So a peer standing on the rocks is drawn on the rocks
+           * from a message that says nothing about rocks — the same trade as their move slot.
+           */
           who.hop =
+            groundAt(who.at) +
             (Math.max(0, Math.min(9, Math.round(num(msg.j)))) / 9) *
-            HOP.up *
-            traitsOf(rigOf(who.art)).jump
+              HOP.up *
+              traitsOf(rigOf(who.art)).jump
           const slot = theirCast ? 0 : Math.max(0, Math.min(6, a))
           if (slot !== who.swing) {
             who.swingFor = 0
