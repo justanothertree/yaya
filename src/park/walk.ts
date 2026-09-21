@@ -261,6 +261,35 @@ export const camWant = (me: Spot): Spot => ({
   y: Math.max(0, Math.min(1 - VIEW.h, me.y - VIEW.h / 2)),
 })
 
+/**
+ * How far in front of you the frame looks, in seconds of travel.
+ *
+ * ⚠️ THE CAMERA WAS BEHIND, WHICH IS THE WRONG WAY ROUND. An eased follow settles at v/k behind
+ * whatever it is chasing, so at the old rate of 7 a creature at top speed sat 5.4% of a screen
+ * BACK from the middle — drifting towards the edge it was walking at, showing least of the
+ * direction it was going. That is the opposite of what a top-down game wants, and it is most
+ * of why this felt worse to play than it should: you were always looking at where you had
+ * been. Aiming the frame a fifth of a second ahead of the velocity puts the same drift in
+ * front of you instead.
+ *
+ * ⚠️ OFF THE VELOCITY, NOT THE KEYS, so it settles rather than snapping the moment a key goes
+ * down — the velocity already ramps, so the look-ahead ramps with it for free.
+ */
+export const CAM = { lead: 0.22, rate: 12 }
+
+/**
+ * One step of the frame following you.
+ *
+ * ⚠️ FRAMERATE-INDEPENDENT: 1 - e^(-k·t), not a fraction per frame, or the camera moves at a
+ * different speed on a different machine. `still` is reduced motion, where it simply arrives.
+ */
+export function stepCam(cam: Spot, me: Walker, dt: number, still: boolean): Spot {
+  const want = camWant({ x: me.x + me.vx * CAM.lead, y: me.y + me.vy * CAM.lead })
+  if (still) return want
+  const k = 1 - Math.exp(-CAM.rate * Math.max(0, Math.min(0.05, dt)))
+  return { x: cam.x + (want.x - cam.x) * k, y: cam.y + (want.y - cam.y) * k }
+}
+
 /** Where something in the world sits in the frame, as a fraction of the frame. */
 export const onScreen = (at: Spot, cam: Spot): Spot => ({
   x: (at.x - cam.x) / VIEW.w,

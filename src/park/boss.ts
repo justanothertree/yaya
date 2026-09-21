@@ -52,7 +52,30 @@ export type Boss = Striker & {
    * somewhere. They commit differently and they are read differently, so they are two things.
    */
   cast: { kind: CastKind; t: number } | null
+  /**
+   * A run it has committed to: the direction it locked on, and how long it has been going.
+   *
+   * ⚠️ IT USED TO RE-AIM EVERY FRAME, WHICH IS BEING TRACKED RATHER THAN CHASED. `charging`
+   * only changed the SPEED; the direction was Math.sign(dx) recomputed sixty times a second, so
+   * a charge followed you round corners and through a dodge, and the only answer was to out-run
+   * a thing that is faster than you. A chase is fun because it can miss. This locks the line
+   * when the run starts, so stepping off it makes the boss go past — and then it is turning,
+   * which is the window stepTurn already says a turn is meant to be.
+   *
+   * ⚠️ SAME SHAPE AS `cast`, on purpose: started by bossThink, owned and ticked by the room,
+   * and it stops the ordinary walk while it runs. Two things that take the boss over should not
+   * be two different patterns.
+   */
+  charge: { x: number; y: number; t: number } | null
 }
+
+/**
+ * ⚠️ IT STANDS STILL FIRST, AND THAT IS THE POINT. A run with no wind-up is one you can only
+ * react to after it has already covered the ground, so it reads as unfair however slow it is.
+ * A fifth of a second of a big thing NOT moving is the cheapest tell there is and needs no art
+ * to draw. Then it commits for half a second, which at this speed is about a screen.
+ */
+export const CHARGE = { warn: 0.2, run: 0.5, speed: 1.75 }
 
 /**
  * How long a boss takes to come about.
@@ -133,6 +156,7 @@ export function makeBoss(name: string, art: Drawing, at: Spot): Boss {
     think: 0,
     turn: 0,
     cast: null,
+    charge: null,
     facing: -1,
   }
 }
@@ -171,6 +195,8 @@ export function bossThink(
   speed: number
   /** a big committed thing to start this frame, or null — see castWanted */
   cast: CastKind | null
+  /** a run to commit to this frame, as a unit direction, or null — see Boss.charge */
+  charge: { x: number; y: number } | null
 } {
   const t = b.temper
   const dx = target.x - b.x
@@ -198,6 +224,31 @@ export function bossThink(
    * boss on the site re-decided on exactly the same 0.625 second tick.
    */
   const beat = Math.floor(b.think / t.beat)
+
+  /**
+   * ⚠️ A RUN ALREADY UNDER WAY OWNS THE STEERING, and nothing below gets a say. This is the
+   * whole of "chased rather than tracked": the line was chosen when the run began and it does
+   * not bend, so stepping off it works.
+   */
+  if (b.charge) {
+    const winding = b.charge.t < CHARGE.warn
+    return {
+      /* the tell is a big thing going still, so it steers nowhere while it winds up */
+      steer: winding
+        ? { left: false, right: false, up: false, down: false }
+        : {
+            left: b.charge.x < -0.2,
+            right: b.charge.x > 0.2,
+            up: b.charge.y < -0.2,
+            down: b.charge.y > 0.2,
+          },
+      hit: { quick: false, heavy: false, up: false, down: false },
+      speed: winding ? 0 : t.pace * CHARGE.speed,
+      cast: null,
+      charge: null,
+    }
+  }
+
   const charging = runsAtYou(beat, t) && away > step * 1.1
 
   /**
@@ -304,8 +355,16 @@ export function bossThink(
                boss being one trick. */
             t.casts[turn]
 
+  /**
+   * ⚠️ THE LINE IS TAKEN NOW, from where you are standing at the instant it decides — and never
+   * again. Normalised so a diagonal run is not the faster one, the same rule stepWalker follows.
+   */
+  const far = Math.hypot(dx, dy) || 1
+  const startCharge = charging && !b.cast ? { x: dx / far, y: dy / far } : null
+
   return {
     cast,
+    charge: startCharge,
     steer: {
       left: charging ? dx < 0 : wantX < 0,
       right: charging ? dx > 0 : wantX > 0,

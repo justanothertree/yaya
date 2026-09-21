@@ -5,6 +5,7 @@ import { petCanvas, rigOf } from '../pets/rig'
 import { PET_TALL, PLAIN, traitsOf } from '../pets/play'
 import {
   camWant,
+  stepCam,
   depthOf,
   easeTo,
   farFrom,
@@ -72,6 +73,7 @@ import {
   cornered,
   BOSS,
   bossMoves,
+  CHARGE,
   bossThink,
   bossWide,
   makeBoss,
@@ -1373,6 +1375,20 @@ export function ParkRoom({
         } else if (plan.cast) {
           cur = { ...cur, cast: { kind: plan.cast, t: 0 } }
         }
+        /**
+         * ⚠️ THE RUN IS OWNED HERE FOR THE SAME REASON THE CAST IS: bossThink is asked what to
+         * do, it does not keep anything. A charge that lived inside it would be a second place
+         * the boss's state exists, and the two would disagree the first time a fight was reset.
+         */
+        if (cur.charge) {
+          const rt = cur.charge.t + dt
+          cur =
+            rt >= CHARGE.warn + CHARGE.run
+              ? { ...cur, charge: null }
+              : { ...cur, charge: { ...cur.charge, t: rt } }
+        } else if (plan.charge) {
+          cur = { ...cur, charge: { ...plan.charge, t: 0 } }
+        }
         const casting = !!cur.cast
         /**
          * ⚠️ COMING ABOUT COSTS IT THE SWING, which is the whole point of it costing anything
@@ -1800,13 +1816,7 @@ export function ParkRoom({
       clockRef.current = (now - started) / 1000
       setClockAt(clockRef.current)
 
-      const want = camWant(you.current)
-      /* framerate-independent easing, not a fixed fraction per frame — see PetPlay's camera */
-      const k = stillRef.current ? 1 : 1 - Math.exp(-7 * Math.min(0.05, dt))
-      cam.current = {
-        x: cam.current.x + (want.x - cam.current.x) * k,
-        y: cam.current.y + (want.y - cam.current.y) * k,
-      }
+      cam.current = stepCam(cam.current, you.current, dt, stillRef.current)
       setCamAt(cam.current)
 
       /**
