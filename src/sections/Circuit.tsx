@@ -528,8 +528,8 @@ function DemoBanner() {
       <span style={{ flex: 1, minWidth: 220, fontSize: '0.9rem' }}>
         <strong>You’re exploring Evan’s Circuit.</strong>{' '}
         <span className="muted">
-          Try every feature with my real data — anything you change stays in your browser and won’t
-          touch mine. Sign in to save your own progress and start a Circuit with your friends.
+          Try everything with my real data — nothing you change touches mine. Sign in to start your
+          own.
         </span>
       </span>
       <span style={{ display: 'inline-flex', gap: '0.4rem' }}>

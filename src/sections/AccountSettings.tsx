@@ -766,8 +766,7 @@ function CircuitsCard() {
     <article className="card" style={{ display: 'grid', gap: '0.7rem' }}>
       <h3 style={{ margin: 0 }}>Your circuits &amp; friends</h3>
       <p className="muted" style={{ margin: 0, fontSize: '0.85rem' }}>
-        The crews you share with — everyone in a circuit sees each other’s stats. Manage members and
-        invites in The Circuit.
+        Everyone in a circuit sees each other’s stats. Manage members and invites in The Circuit.
       </p>
       {rows.length === 0 ? (
         <p className="muted" style={{ margin: 0 }}>
@@ -882,9 +881,8 @@ function BackupCard() {
             true the moment the library started syncing. A settings page that describes the old
             behaviour is worse than one that says nothing: somebody reads it and backs up out of a
             fear that no longer applies, or worse, believes a copy exists where it does not. */}
-        These follow your account now — sign in anywhere and they come with you. A file is still
-        worth keeping: it is the copy that survives losing the account itself, and the way to carry
-        work onto a machine you are not signed in on.
+        These follow your account now — sign in anywhere and they come with you. A file is the copy
+        that survives losing the account.
       </p>
       <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
         <button className="btn" type="button" onClick={download} disabled={!total}>
@@ -975,8 +973,8 @@ function PublishCard() {
       <h3 style={{ margin: 0 }}>Your page</h3>
       <p className="muted" style={{ margin: 0, fontSize: '0.82rem' }}>
         {on
-          ? 'Anyone with the link can open your profile, signed in or not. They see only the blocks you set to “Anyone” — the guestbook and your activity stay between members either way.'
-          : 'Your profile is for members only. Turn this on and a link to it works for anyone — the blocks you set to “Anyone” would then mean anyone at all, not just members.'}
+          ? 'Anyone with the link can open your page. They see only the blocks set to “Anyone”; the guestbook and your activity stay between members.'
+          : 'Members only. Turn this on and “Anyone” starts meaning anyone at all.'}
       </p>
       <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
         <button className="btn" type="button" disabled={busy} onClick={() => void flip(!on)}>

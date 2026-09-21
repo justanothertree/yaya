@@ -183,8 +183,8 @@ export function PetsRoom({ onControlChange }: { onControlChange?: (on: boolean) 
       <div className="pets-head">
         <h2>Minions</h2>
         <p className="muted">
-          A minion is a drawing that moves. Draw each part of a creature on its own layer, tell the
-          layer what that part is, and it starts doing what that part does.
+          A minion is a drawing that moves. Draw each part on its own layer and name it, and that
+          part starts moving.
         </p>
         {/**
          * ⚠️ THE INSTRUCTIONS WERE ONE SENTENCE AND NOBODY COULD ACT ON THEM. "Name its layers"
@@ -223,10 +223,8 @@ export function PetsRoom({ onControlChange }: { onControlChange?: (on: boolean) 
             </li>
           </ol>
           <p className="muted">
-            Each named part then moves by itself — a <code>wing</code> flaps, a <code>tail</code>{' '}
-            wags, <code>legs</code> take turns. Anything you leave unnamed just breathes along with
-            the body, which is why a drawing with one layer still makes a minion: it simply
-            breathes.
+            A <code>wing</code> flaps, a <code>tail</code> wags, <code>legs</code> take turns.
+            Anything unnamed just breathes, so a one-layer drawing still makes a minion.
           </p>
           {/*
             ⚠️ EVERY OTHER NAME IN THAT LIST EXPLAINS ITSELF AND THIS ONE DOES NOT. A wing flaps
@@ -242,14 +240,12 @@ export function PetsRoom({ onControlChange }: { onControlChange?: (on: boolean) 
             hits for 11–25 against 5–10 for the same creature without one.
           */}
           <p className="muted">
-            One of those is not a part of the creature. A layer called <code>hit</code> is the{' '}
-            <em>attack</em> — draw it out to one side, clear of the body, because how far the ink
-            reaches is how far the attack reaches and how much of it there is is how hard it lands.
-            It stays invisible until your creature swings it, in the park and the fighting ring.
+            <code>hit</code> is not a part of the creature — it is the <em>attack</em>, and nobody
+            sees it until your creature swings. Draw it out to one side — the further out, the
+            further it reaches, and bigger hurts more.
           </p>
           <p className="muted">
-            It does not matter how big you drew it or where on the page — a minion is cropped to the
-            creature. And if you would rather animate it yourself, a drawing made with{' '}
+            It does not matter how big you drew it or where on the page. A drawing made with{' '}
             <strong>🎬 Frames</strong> plays its frames instead of being moved for you.
           </p>
         </details>

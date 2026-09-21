@@ -166,8 +166,7 @@ export function VoiceBar({
             />
           </label>
           <p className="voice-hint muted">
-            Speak normally and watch the bar. Put the marker just below where it reaches, and quiet
-            rooms stop being broadcast. Leave it at 0 to always send.
+            Speak normally and put the marker just below where the bar reaches. 0 always sends.
           </p>
           {/* The layer under the UI, for bug reports: whether the relay is held, each
               connection's real state, and signalling counters both ways. "In the call" via

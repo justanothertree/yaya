@@ -320,8 +320,7 @@ export function SettingsMenu({
       )}
       {authed && status === 'invisible' && (
         <p className="nav-menu-note muted">
-          Invisible on this device — nothing is broadcast from this browser at all. Other devices
-          you are signed in on announce themselves separately.
+          Invisible on this device. Others you are signed in on announce themselves separately.
         </p>
       )}
       {authed && status !== 'invisible' && (

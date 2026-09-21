@@ -1074,8 +1074,7 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
       </section>
       {!call.inCall && (
         <AlsoTogether id="instrument">
-          Everyone in a call hears what you play, and you all share one metronome — so you can
-          actually play together rather than take turns.
+          Everyone in a call hears what you play, on one shared metronome.
         </AlsoTogether>
       )}
       {/**
@@ -1311,8 +1310,8 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
         <div className="inst-row inst-library">
           {!saved.length ? (
             <span className="muted">
-              Nothing kept yet. Record something, then <strong>Keep song</strong> — or keep a single
-              layer with the ⬇ on its row and reuse it in a different song later.
+              Nothing kept yet. Record something, then <strong>Keep song</strong> — or ⬇ a single
+              layer to reuse later.
             </span>
           ) : (
             <ul className="inst-lib-list">
@@ -1632,8 +1631,7 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
       {beatsOpen && (
         <div className="inst-beats card">
           <p className="muted inst-beats-lede">
-            Picking one swaps the beat rather than adding a second — try a few. Yours to change
-            afterwards: mute a drum, move its bars, or open the notes.
+            Picking one swaps the beat rather than adding a second. Change it afterwards.
           </p>
           {drumGenres().map((genre) => (
             <div key={genre} className="inst-beats-row">
@@ -2085,8 +2083,8 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
           : 'Nothing is recorded or sent anywhere.'}
       </p>
       <p className="muted inst-note">
-        Open the <strong>🎚️ Visualiser</strong> and pick <strong>Instrument</strong> as the source
-        to watch yourself play — or set the Audio background and it follows you around the site.
+        Open the <strong>🎚️ Visualiser</strong> and pick <strong>Instrument</strong> to watch
+        yourself play.
       </p>
 
       {/**

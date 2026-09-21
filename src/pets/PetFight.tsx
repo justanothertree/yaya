@@ -425,9 +425,8 @@ export function PetFight({
 
       {online && !authed && (
         <p className="muted pet-fight-say" role="status">
-          Fighting online is for people with an account — your creature is drawn on somebody else's
-          screen, and a picture is the one thing nobody can filter. <a href="#signin">Sign in</a>{' '}
-          and the bout opens.
+          Members only — your creature is drawn on somebody else's screen.{' '}
+          <a href="#signin">Sign in</a>.
         </p>
       )}
       {online && authed && bout.current.trouble && (
@@ -438,7 +437,7 @@ export function PetFight({
       {online && authed && !bout.current.foe && !bout.current.trouble && (
         <p className="muted pet-fight-say" role="status">
           Waiting for somebody to take the other side — the link is on your clipboard. They need an
-          account, and they bring their own creature.
+          account and a creature of their own.
         </p>
       )}
       {online && stalled > 0 && (
@@ -703,9 +702,7 @@ export function PetFight({
         <strong>{online ? 'You' : 'Player one'}</strong> — <strong>A D</strong> to move,{' '}
         <strong>W</strong> to jump (again in the air to recover), <strong>F</strong> quick,{' '}
         <strong>G</strong> heavy. <strong>Hold W or S as you hit</strong> for an up or down attack —
-        six in all, and which part answers each direction is decided by what you drew: the most
-        launching one goes up, the longest-reaching one goes down, and the hardest hitter is your
-        neutral heavy.
+        six in all, out of what you drew.
         {!cpu && !online && (
           <>
             {' '}

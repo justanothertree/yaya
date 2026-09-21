@@ -159,8 +159,8 @@ export function PalettePicker({
               the 4.5:1 line repeatedly, and mounting/unmounting this paragraph resized the whole
               dialog each time — the same "something is always shifting" problem as the pads. */}
           <p className={'pal-warn' + (worst < 4.5 ? '' : ' is-clear')} aria-hidden={worst >= 4.5}>
-            Some of this is hard to read at normal text size. Try a lighter text colour on a dark
-            background — or a darker one on a light background — until every line says good.
+            Some of this is hard to read. Push the text and the background further apart until every
+            line says good.
           </p>
         </div>
 

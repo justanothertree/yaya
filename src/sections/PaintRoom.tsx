@@ -3578,8 +3578,7 @@ export function PaintRoom() {
               <>
                 <strong>1 · Draw the body.</strong>
                 <span className="muted">
-                  Just the middle of the creature — head, wings and legs come next, each on their
-                  own layer. This step finishes itself the moment you draw something.
+                  Just the body — head, wings and legs come next, one layer each.
                 </span>
               </>
             )}
@@ -3590,12 +3589,14 @@ export function PaintRoom() {
                 {/* ⚠️ A HIT IS NOT A BODY PART AND THE GENERIC SENTENCE SAID IT WAS. "Draw it
                     where it belongs on the body" is meaningless for an attack, and the word itself
                     is ambiguous — asked directly whether `hit` meant hitting them or being hit. */}
+                {/* ⚠️ THE ONE PLACE THE MECHANIC HAS TO BE SAID. Where you draw it decides
+                    reach, height and damage, and none of that is visible while you draw. The word
+                    is also ambiguous — asked directly whether `hit` meant hitting them or being
+                    hit — so it says whose swing it is in four words rather than a sentence. */}
                 {partOf(petStep.part) === 'hit' ? (
                   <span className="muted">
-                    A <code>hit</code> is an attack <em>you throw</em>, not a wound you take — and
-                    it is the one layer nobody sees until you swing. Draw the shape of the blow
-                    where it lands: out to the side reaches further, above the head sends them
-                    flying, and a bigger shape hurts more.
+                    A <code>hit</code> is a swing <em>you throw</em>. Out to the side reaches
+                    further, above the head launches, bigger hurts more.
                   </span>
                 ) : (
                   <span className="muted">
@@ -3613,10 +3614,7 @@ export function PaintRoom() {
             {petStep.phase === 'pick' && (
               <>
                 <strong>Add a part that moves.</strong>
-                <span className="muted">
-                  Press one, then draw it. Each becomes its own layer, and the name is what makes it
-                  move.
-                </span>
+                <span className="muted">Press one, then draw it. The name is what moves it.</span>
                 <span className="paint-pet-parts">
                   {PART_WORDS.map((w) => (
                     <button
@@ -3665,10 +3663,9 @@ export function PaintRoom() {
                  */}
                 {frameCount(petPreview) <= 1 && petStack && (
                   <span className="muted paint-pet-moves">
-                    Your <strong>{petStack.name}</strong> is painted in front of your{' '}
-                    <strong>{petStack.over}</strong>. That usually looks better the other way round
-                    — the <strong>▼</strong> on its layer row tucks it behind. Nothing about the
-                    fighting changes either way.
+                    Your <strong>{petStack.name}</strong> is in front of your{' '}
+                    <strong>{petStack.over}</strong>. <strong>▼</strong> on its row tucks it behind.
+                    Looks only.
                   </span>
                 )}
                 {frameCount(petPreview) <= 1 && petMoves && (
@@ -3702,9 +3699,8 @@ export function PaintRoom() {
                       into the park. Asked for in those words.
                     */}
                     <span className="muted paint-pet-moves">
-                      And three big ones, on one shared cooldown — <strong>1</strong>,{' '}
-                      <strong>2</strong> and <strong>3</strong> in the park. Which three, and in
-                      what order, comes out of the same picture.
+                      And three big ones on one cooldown — <strong>1</strong>, <strong>2</strong>{' '}
+                      and <strong>3</strong> in the park. The picture decides which.
                     </span>
                     <CastShow art={petPreview} casts={petBoss.casts} />
                     <span className="muted paint-pet-moves">
@@ -4099,16 +4095,14 @@ export function PaintRoom() {
       {/* ⚠️ BELOW THE PICTURE. It is a standing note rather than a control, and thirty-five
           pixels of it sat between the tools and the paper on every visit. */}
       {!call.inCall && (
-        <AlsoTogether id="paint">
-          Anyone in a call with you can draw on this page at the same time — same picture, same
-          paper, live.
-        </AlsoTogether>
+        <AlsoTogether id="paint">Anyone in a call with you can draw on this page too.</AlsoTogether>
       )}
-      <p className="muted paint-note">
-        Drawings are kept as the strokes you made, not as an image — so they redraw sharp at any
-        size, undo is free, and one fits in a profile without being hosted anywhere. Nothing here is
-        uploaded.
-      </p>
+      {/* ⚠️ THE ONLY PART OF THIS ANYBODY NEEDED. It used to explain that drawings are kept as
+          strokes rather than an image, and that this is why they stay sharp, why undo is free and
+          why one fits in a profile — all of which are reasons the format was chosen, not things
+          somebody drawing a cat has to know. The sentence they might actually want is the last
+          one. */}
+      <p className="muted paint-note">Nothing here is uploaded.</p>
     </section>
   )
 }

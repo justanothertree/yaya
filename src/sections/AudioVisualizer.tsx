@@ -3209,8 +3209,7 @@ export function AudioVisualizer({ embedded = false }: { embedded?: boolean } = {
                 what is happening right now. */}
             {tab === 'sound' && (
               <p className="muted viz-note">
-                Nothing is recorded or uploaded. A dropped file is played from your own disk, and
-                the mic is read on this device and thrown away frame by frame.
+                Nothing is recorded or uploaded. A dropped file plays from your own disk.
               </p>
             )}
           </div>

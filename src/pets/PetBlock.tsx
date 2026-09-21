@@ -205,8 +205,7 @@ export function PetPicker({
         (p) => !names.includes(p.name) && used + (costs.get(p.id) ?? 0) > CONFIG_LIMIT,
       ) && (
         <span className="muted" style={{ fontSize: '0.75rem' }}>
-          Greyed-out minions are too detailed to fit in a block — a block carries the whole drawing
-          so the page can show it without hosting anything.
+          Greyed-out minions have too many strokes to fit in a block.
         </span>
       )}
     </div>

@@ -285,8 +285,8 @@ export function GamesRoom({
             <span className="games-tile-body">
               <span className="games-tile-name">The park, Playground &amp; Scrap</span>
               <span className="games-tile-line">
-                A park everybody shares, a platformer, and a fighting ring — all for the creatures
-                you drew, so draw one first and then come back. The Minions room shows you how.
+                A park everybody shares, a platformer, and a fighting ring — all for creatures you
+                drew. Make one in Minions first.
               </span>
             </span>
           </a>

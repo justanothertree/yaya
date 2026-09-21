@@ -522,8 +522,7 @@ export function CircuitsPanel() {
               }}
             >
               <p className="muted" style={{ margin: 0, fontSize: '0.78rem' }}>
-                If one of these unclaimed people is you, claim it to own your logs. Otherwise leave
-                it — they’ll claim it when they sign in.
+                If one of these is you, claim it to own your logs. Otherwise leave it.
               </p>
               {claimable.map((p) => (
                 <div key={p.id} style={personRow(p.color)}>

@@ -827,9 +827,7 @@ function LooksPicker({
 
   if (!mine.length)
     return (
-      <p className="muted">
-        No saved looks yet — make one under the cog, in Appearance → Looks, and it will appear here.
-      </p>
+      <p className="muted">No saved looks yet — make one under the cog, in Appearance → Looks.</p>
     )
 
   return (
@@ -1687,8 +1685,7 @@ function BlockFields({
     case 'guestbook':
       return (
         <p className="muted" style={{ margin: 0 }}>
-          Friends can leave notes on your page. Whoever this block is visible to can write in it —
-          you can remove anything left here.
+          Anyone who can see this block can write in it. You can remove anything left here.
         </p>
       )
     default:
@@ -2455,8 +2452,8 @@ export function ProfileBlocksEditor({
         <h3>Your page</h3>
         <p className="muted">
           {arranging
-            ? 'Every block, small enough to see at once. Move them around, then go back to filling them in.'
-            : 'This is the page itself, at the widths it really uses. Click a block to change what is in it, drag the handle to move it.'}
+            ? 'Every block at once. Move them around.'
+            : 'The page at the widths it really uses. Click a block to change it, drag the handle to move it.'}
         </p>
         {/* ⚠️ Only worth offering once there is something to arrange. One block has no order. */}
         {/* ⚠️ NAMED, not just arrows. "Undo" is a promise you have to take on trust; "Undo
@@ -2583,8 +2580,8 @@ export function ProfileBlocksEditor({
         <div className="profile-starters">
           <p className="muted profile-starters-lead">
             {blocks.length
-              ? 'Pick one and the page becomes it. What you have now is one press from coming back.'
-              : 'Start from one of these and change anything you like — or add blocks one at a time below.'}
+              ? 'Pick one and the page becomes it. One press to come back.'
+              : 'Start from one of these, or add blocks one at a time below.'}
           </p>
           <div className="profile-starters-row">
             {STARTERS.map((st) => (

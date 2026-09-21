@@ -274,7 +274,7 @@ function LookCard({
  * rows are the exception by construction, since they hold their own state, but each tab is
  * unmounted while it is not showing and so re-reads storage on the way back in.
  */
-function LooksTab({ c, touch }: { c: AppearanceControls; touch: boolean }) {
+function LooksTab({ c }: { c: AppearanceControls }) {
   const mine = useSyncExternalStore(subscribeLooks, myLooks, myLooks)
   const [name, setName] = useState('')
   const [said, setSaid] = useState('')
@@ -326,9 +326,8 @@ function LooksTab({ c, touch }: { c: AppearanceControls; touch: boolean }) {
   return (
     <div className="appearance-body">
       <p className="muted appearance-note">
-        A Look is every tab at once — colours, background, {touch ? 'tap' : 'click'}, trail and
-        pointer — under one name. Try one freely: save what you have first and it is one press to
-        come back.
+        A Look is every tab at once, under one name. Save what you have first and it is one press
+        back.
       </p>
 
       <div className="look-save">
@@ -388,9 +387,12 @@ function LooksTab({ c, touch }: { c: AppearanceControls; touch: boolean }) {
           <LookCard key={l.name} look={l} onApply={() => applyLook(l, c)} />
         ))}
       </div>
+      {/* ⚠️ THIS SAID THE OPPOSITE OF WHAT IS TRUE. "Kept in this browser rather than on your
+          account, so they stay on this device" was written before library/cloud.ts, which syncs
+          kind 'look' along with songs, drawings and minions — and the Account page has been
+          telling people the right thing on the next tab over ever since. */}
       <p className="muted appearance-note">
-        Kept in this browser rather than on your account, so they stay on this device. Copy one to a
-        code and anybody you send it to can add it to theirs.
+        Looks follow your account. Copy one to a code to send it to somebody.
       </p>
     </div>
   )
@@ -443,7 +445,7 @@ export function AppearanceDialog({
           ))}
         </div>
 
-        {tab === 'looks' && <LooksTab c={c} touch={touch} />}
+        {tab === 'looks' && <LooksTab c={c} />}
 
         {tab === 'colour' && (
           <div className="appearance-body">
@@ -550,8 +552,8 @@ export function AppearanceDialog({
           <div className="appearance-body">
             {touch && (
               <p className="muted appearance-note">
-                Your screen has no pointer to skin — this one needs a mouse or a trackpad. Pick one
-                anyway and it will be waiting if you open the site on a computer.
+                No pointer to skin on a touchscreen. Pick one anyway — it will be there on a
+                computer.
               </p>
             )}
             <div className="fx-style-row">
@@ -572,8 +574,7 @@ export function AppearanceDialog({
                 copy of it in a box would be showing you a picture of the thing you are
                 holding. */}
             <p className="muted appearance-note">
-              It takes your accent colour, so it follows your palette. Text boxes keep their I-beam
-              — that one is telling you where you can type, not decorating the page.
+              Takes your accent colour. Text boxes keep their I-beam.
             </p>
           </div>
         )}
@@ -582,8 +583,8 @@ export function AppearanceDialog({
           <div className="appearance-body">
             {touch && (
               <p className="muted appearance-note">
-                A trail follows a pointer, and a finger already covers the place it would be — so
-                this stays off on a touchscreen. Your choice is kept for when you are on a computer.
+                Off on a touchscreen — your finger is already there. Your choice waits for a
+                computer.
               </p>
             )}
             <div className="fx-style-row">
@@ -608,8 +609,7 @@ export function AppearanceDialog({
             <ScaleRow cat="trail" kind="size" label="Size" />
             <ScaleRow cat="trail" kind="speed" label="Speed" />
             <p className="muted appearance-note">
-              Move the pointer to try it. Off under Reduce motion, and not on touch — there is no
-              cursor to follow.
+              Move the pointer to try it. Off under Reduce motion and on touch.
             </p>
           </div>
         )}

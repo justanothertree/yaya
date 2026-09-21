@@ -94,8 +94,7 @@ export class ErrorBoundary extends Component<Props, State> {
           <p className="muted">{detail}</p>
           {this.props.scoped && (
             <p className="muted">
-              Anything already running — a call, or the music — is still going, and refreshing is
-              what would stop it. Finish up first if you're in the middle of something.
+              A call or the music is still going. Refreshing is what would stop it.
             </p>
           )}
           <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>

@@ -2225,8 +2225,8 @@ export function ParkRoom({
       */}
       {walking && knocked && (
         <p className="park-down" role="status">
-          <strong>Down.</strong> Nothing can touch you until you are up again, and you get back up
-          whole — the boss keeps everything you took off it.
+          <strong>Down.</strong> Nothing can touch you, and you get back up whole. The boss keeps
+          what you took off it.
         </p>
       )}
       {walking && result && (
