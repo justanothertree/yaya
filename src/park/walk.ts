@@ -154,8 +154,24 @@ export const SQUASH = (PARK.across / PARK.down) * ASPECT * 0.82
  */
 export const TUNE = {
   speed: 0.38,
-  accel: 3.4,
-  drag: 6.5,
+  /**
+   * ⚠️ THERE WAS NO WEIGHT AND THAT IS MOST OF WHAT "IT DOES NOT FEEL SMOOTH" MEANT. At 3.4
+   * and 6.5 a creature reached top speed in 0.104s and stopped dead in 0.058s, sliding 0.09 of
+   * its own body length — which is not movement with mass, it is a sprite being teleported
+   * about by the keys. Evan, comparing it to SUPERVIVE: "there is some weight and solid
+   * movement to the player".
+   *
+   * ⚠️ MEASURED IN BODY-LENGTHS, not in the numbers themselves, because the numbers are in
+   * screenfuls a second and mean nothing to a hand. At 1.9 and 2.6 it takes 0.188s to get going
+   * and 0.146s to stop, sliding a quarter of its own length — enough to feel the thing you are
+   * steering, short of the ice that makes a fight unfair. scripts/park-feel.py prints the row.
+   *
+   * ⚠️ NO DISTANCE CHANGED. Top speed is untouched, so every reach, dodge, cast and charge in
+   * the park still relates to the walk exactly as it was tuned to. This is the ramp either
+   * side of the same top speed, which is the part that was missing.
+   */
+  accel: 1.9,
+  drag: 2.6,
   /** below this it is standing still, not creeping */
   quiet: 0.012,
 }
