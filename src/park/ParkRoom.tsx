@@ -2785,7 +2785,15 @@ export function ParkRoom({
                 down: knocked,
                 up: shownYou.up,
                 lunge: lungeOf(shownYou, myMoves),
-                aim: shownYou.aim,
+                /**
+                 * ⚠️ A DIVE LEANS DOWN, NOT AT THE CURSOR. lungePush shoves the drawing along
+                 * its aim, and a dive's aim is wherever you were pointing — so the creature
+                 * threw a sideways swing while plummeting, which is the ground animation
+                 * played in the air. Reported as "i can attack in the air but it triggers the
+                 * animation which appears to be a ground attack". The move IS downward; the
+                 * pose should say the same thing the physics does.
+                 */
+                aim: shownYou.dive ? { x: 0, y: 1 } : shownYou.aim,
                 show: shownYou.swing > 0 ? myMoves[shownYou.move]?.layer : undefined,
               },
             ]

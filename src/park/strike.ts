@@ -293,6 +293,20 @@ export const HOP = {
    * moment you press it you have chosen where you are going to be and roughly when.
    */
   drop: 7,
+  /**
+   * How hard a wing beats, in pet-heights a second — against a standing jump's 4.96.
+   *
+   * ⚠️ TAP TO CLIMB, HOLD TO GLIDE, out of one budget. Asked for as "if you have wings being
+   * able to space and flap yourself into the air up up up". They are the same wing doing the
+   * same work, so they draw on the same `float`: a creature can beat its way higher OR hang
+   * in the air on the way down, and spending it on one is not spending it on the other.
+   *
+   * ⚠️ WEAKER THAN THE JUMP THAT STARTED IT, so climbing is something you work at rather than
+   * a second jump. Three beats of a full budget, each adding less than the first leap.
+   */
+  flap: 3.1,
+  /** what one beat costs out of the glide budget */
+  flapCost: 0.26,
   /** how far from where you land a dive reaches, in pet-heights */
   spot: 0.6,
   /**
@@ -451,6 +465,18 @@ export function stepAir(
      starts, up is still the floor and only vz says it has left. Two ideas of "in the air" is
      how something ends up able to cast on the first frame of a jump. */
   if (aloft({ ...s, ground: floor })) {
+    /**
+     * ⚠️ A BEAT OF THE WINGS, and it is the same key that started the jump. Pressing it again
+     * in the air climbs, if there is anything left to climb on — and a creature with nothing
+     * to glide on has no budget, so for everything else this line does not exist.
+     */
+    if (want && s.glide < 1 && float >= HOP.flapCost && !s.dive) {
+      return {
+        s: { ...s, ground: floor, vz: Math.max(s.vz, 0) + HOP.flap, float: float - HOP.flapCost },
+        went: true,
+        landed: false,
+      }
+    }
     /**
      * ⚠️ A CAP ON THE WAY DOWN, NOT A WEAKER GRAVITY. A glide is a wing finding air, which is
      * a terminal speed — and it only applies while falling, so the climb is untouched and
