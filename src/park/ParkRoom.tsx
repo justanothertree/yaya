@@ -2927,8 +2927,8 @@ export function ParkRoom({
             <kbd>{keyName(PARK_KEYS.guard)}</kbd>
           </dt>
           <dd>
-            Guard, held. Covers the way you face; a quarter still gets through. Raise it as the blow
-            lands to parry — no damage, and the attacker is left open.
+            Guard, held — front only, and a quarter gets through. Time it to the blow to parry: no
+            damage, attacker wide open.
           </dd>
         </div>
         <div>
@@ -2939,21 +2939,20 @@ export function ParkRoom({
         </div>
       </dl>
       {/*
-        ⚠️ FACTS, NOT A TOUR. This was one 140-word paragraph that narrated the park at you —
-        "the few places worth naming", "having a wander", "Not sure what your moves do?" — and
-        the reader has to get through all of it to find the two sentences that say what the
-        buttons do. Same information, said once each. The reasoning behind any of it belongs in
-        a comment like this one, where it is useful, rather than on the page.
+        ⚠️ ONLY WHAT LOOKING CANNOT TELL YOU. This was a 140-word tour, then a shorter one that
+        still described the map, the landmarks and the size of the field — all of which are on
+        the screen already. Evan: "this website is me to my friends and family, i wouldn't
+        explain all of that." So the test for a line here is whether somebody would still be
+        wondering after walking around for a minute: who the see-through ones are (nobody else
+        sees them, so they cannot ask), and whose boss it is and when it leaves. Everything else
+        the park shows them.
       */}
+      {strolling.length > 0 && (
+        <p className="muted park-about">Faded minions are your own. Only you see them.</p>
+      )}
       <p className="muted park-about">
-        {PARK.across} screens across, {PARK.down} down. The map shows all of it — pond, ring, rocks,
-        two woods. One park, shared: whoever is online is who you meet.
-        {strolling.length > 0 && ' Faded minions are your own. Only you see them.'}
-      </p>
-      <p className="muted park-about">
-        <strong>Call a boss</strong> stands one of your minions up big, with a health bar{' '}
-        <em>everybody</em> can hit. One at a time, and it goes when you do.{' '}
-        <strong>Hit dummy</strong> stands out a target that hits back and cannot hurt you.
+        A boss is one of your minions, big — <em>everybody</em> can hit it, and it goes when you do.
+        The dummy hits back and cannot hurt you.
       </p>
     </div>
   )
