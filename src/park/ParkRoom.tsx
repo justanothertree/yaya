@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import type { Drawing } from '../draw/strokes'
 import { PetView } from '../pets/PetView'
-import { petCanvas } from '../pets/rig'
-import { PET_TALL } from '../pets/play'
+import { petCanvas, rigOf } from '../pets/rig'
+import { PET_TALL, PLAIN, traitsOf } from '../pets/play'
 import {
   camWant,
   depthOf,
@@ -46,6 +46,7 @@ import {
   stepDodge,
   stepGuard,
   stepHop,
+  hopFrac,
   hopHeight,
   aloft,
   GUARD,
@@ -700,6 +701,16 @@ export function ParkRoom({
    * one reading of a drawing, used from both ends.
    */
   const myKit = useMemo(() => (myArt ? temperOf(myArt) : null), [myArt])
+  /**
+   * How your creature moves, off the same drawing everything else here comes from.
+   *
+   * ⚠️ traitsOf, NOT A SECOND IDEA OF WHAT LEGS DO. The platformer has read legs, wings and
+   * floats into speed, jump, gravity and glide since the pets room existed, and the park was
+   * the one room where a drawing's body made no difference to how it got about — every
+   * creature walked at one speed and jumped one height. Asked for as "jump + minion ability
+   * movement": the abilities were already derived, they just were not plugged in here.
+   */
+  const myTraits = useMemo(() => (myArt ? traitsOf(rigOf(myArt)) : PLAIN), [myArt])
 
   /* ⚠️ the drawing again, not the wrapper — this one feeds the animation loop's deps, and a
      loop rebuilt every render is a loop whose clock starts again every render */
@@ -933,6 +944,7 @@ export function ParkRoom({
        arriving separately do not always land on top of each other */
     you.current = restingStriker(
       restingWalker(0.3 + Math.random() * 0.4, 0.35 + Math.random() * 0.4),
+      myTraits.jump,
     )
     cam.current = camWant(you.current)
     setCamAt(cam.current)
@@ -953,7 +965,7 @@ export function ParkRoom({
       boss.current = null
       setBossShown(null)
     }
-  }, [walking, myArt, myName, room])
+  }, [walking, myArt, myName, room, myTraits])
 
   /* ⚠️ one per wanderer, rebuilt when the roster of them changes — an index into this must
      always mean the same creature as the same index into strollPets */
@@ -1139,7 +1151,10 @@ export function ParkRoom({
       if (!wasSwinging && struck.swing > 0)
         struck.aim = aimFromKeys(held.current, { x: you.current.facing, y: 0 })
       const steer = busy(struck) || iAmCasting ? STILL : held.current
-      you.current = { ...struck, ...stepWalker(struck, steer, struck.hold > 0 ? 0 : dt) }
+      you.current = {
+        ...struck,
+        ...stepWalker(struck, steer, struck.hold > 0 ? 0 : dt, myTraits.speed),
+      }
       /**
        * ⚠️ AFTER THE WALK, so a dodge overrides where walking put you rather than adding to
        * it — otherwise holding a direction would make the roll longer than it is meant to be,
@@ -1821,7 +1836,7 @@ export function ParkRoom({
           you.current,
           mySlot,
           octantOf(you.current.aim),
-          hopHeight(you.current.hop),
+          hopFrac(you.current.hop),
           downFor.current > 0,
         )
         /* ⚠️ THE BOSS GOES OUT AT THE SAME RATE AS A WALK AND NO FASTER — it is one more
@@ -1845,7 +1860,7 @@ export function ParkRoom({
     }
     raf = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(raf)
-  }, [walking, myMoves, myWide, bossKit, myKit])
+  }, [walking, myMoves, myWide, bossKit, myKit, myTraits])
 
   /* the same sizing as everywhere else — PetView's size is the LONG side, not the height */
   /* ⚠️ the CREATURE is this tall, not its canvas — see petCanvas */
@@ -2389,7 +2404,9 @@ export function ParkRoom({
               )
             })}
           {walking && <GuardArc me={shownYou} cam={camAt} />}
-          {walking && <HopShade at={shownYou} cam={camAt} height={hopHeight(shownYou.hop)} />}
+          {walking && (
+            <HopShade at={shownYou} cam={camAt} height={hopHeight(shownYou.hop, shownYou.jump)} />
+          )}
           {walking &&
             [...state.current.here.values()].map((o) => (
               <HopShade key={'shade-' + o.id} at={o.shown} cam={camAt} height={o.hop} />
@@ -2454,7 +2471,7 @@ export function ParkRoom({
                 mine: true,
                 stroll: false,
                 down: knocked,
-                up: hopHeight(shownYou.hop),
+                up: hopHeight(shownYou.hop, shownYou.jump),
                 lunge: lungeOf(shownYou, myMoves),
                 aim: shownYou.aim,
                 show: shownYou.swing > 0 ? myMoves[shownYou.move]?.layer : undefined,

@@ -56,6 +56,16 @@ export type Striker = Walker & {
   hop: number
   /** seconds before another jump, so it is an answer rather than a way of getting about */
   hopRest: number
+  /**
+   * How high this one jumps, 1 being the plain arc — wings buy more. From traitsOf, the same
+   * function the platformer has used since the pets room existed.
+   *
+   * ⚠️ IT LIVES ON THE STRIKER BECAUSE overHead ASKS IT. Clearing a low attack is a question
+   * about height, so a creature that jumps higher is safe sooner and for longer, and if that
+   * fact lived anywhere but here the two would drift — the one-door rule the rest of this file
+   * follows. Defaults to 1, so a boss or a peer we know nothing about behaves exactly as before.
+   */
+  jump: number
   /** 1 for a whole guard, 0 for a broken one — see stepGuard */
   guard: number
   /** seconds this guard has been up, which is what makes a parry a parry — see GUARD.parry */
@@ -70,8 +80,9 @@ export type Striker = Walker & {
 
 export type StrikeInput = { quick: boolean; heavy: boolean; up: boolean; down: boolean }
 
-export const restingStriker = (w: Walker): Striker => ({
+export const restingStriker = (w: Walker, jump = 1): Striker => ({
   ...w,
+  jump,
   swing: 0,
   move: 0,
   spent: false,
@@ -231,11 +242,22 @@ export const HOP = {
  * arc that starts and ends at nought is the whole of the behaviour. Same argument walk.ts makes
  * for not sharing stepBody.
  */
-export const hopHeight = (hop: number): number => {
+/**
+ * How far through the arc, 0 on the ground and 1 at the top — the shape without the size.
+ *
+ * ⚠️ THIS IS WHAT GOES ON THE WIRE, not the height. A height would be measured against the
+ * sender's own jump, so a winged creature's peak would clamp against a constant built for a
+ * plain one and arrive looking like a normal hop. A fraction means the same thing for every
+ * creature, and the other end already has the drawing to work out how tall that fraction is —
+ * the rule Someone's `move` note states: send one small number, derive the meaning both sides.
+ */
+export const hopFrac = (hop: number): number => {
   if (hop <= 0) return 0
   const p = 1 - hop / HOP.time
-  return HOP.up * 4 * p * (1 - p)
+  return 4 * p * (1 - p)
 }
+
+export const hopHeight = (hop: number, jump = 1): number => HOP.up * jump * hopFrac(hop)
 
 /** Off the ground at all — the one question the room asks before letting you start something. */
 export const aloft = (s: Striker): boolean => s.hop > 0
@@ -247,7 +269,7 @@ export const aloft = (s: Striker): boolean => s.hop > 0
  * under your feet and shove you anyway.
  */
 export const overHead = (s: Striker, a: Attack): boolean =>
-  hopHeight(s.hop) >= HOP.clear && a.lift <= HOP.under
+  hopHeight(s.hop, s.jump) >= HOP.clear && a.lift <= HOP.under
 
 /**
  * One step of being in the air.

@@ -2,6 +2,8 @@ import { NetClient } from '../game/net'
 import { packDrawing, readDrawing, simplifyDrawing, type Drawing } from '../draw/strokes'
 import type { Spot, Walker } from './walk'
 import { aimFromOctant, HOP, type Aimed } from './strike'
+import { traitsOf } from '../pets/play'
+import { rigOf } from '../pets/rig'
 import { castFromSlot, type CastKind } from './cast'
 
 /**
@@ -313,6 +315,7 @@ function readBoss(v: unknown): BossEcho | null {
 }
 
 export type Park = {
+  /** `hop` is hopFrac — how far through the arc, not how high. See the note where it is sent. */
   send: (w: Walker, swing: number, aim: number, hop: number, down: boolean) => void
   /** stand one of your minions up for everybody, or pass null to put it away */
   callBoss: (name: string, art: Drawing | null) => void
@@ -485,7 +488,12 @@ export function joinPark(
           who.aim = aimFromOctant(typeof msg.d === 'number' ? msg.d : who.facing < 0 ? 4 : 0)
           /* absent reads as standing on the ground, which is exactly what an older client is */
           who.down = !!msg.k
-          who.hop = (Math.max(0, Math.min(9, Math.round(num(msg.j)))) / 9) * HOP.up
+          /* ⚠️ THEIR jump, off THEIR drawing, which we already hold in order to draw them at
+             all. A creature with wings goes higher on every screen, not just its own. */
+          who.hop =
+            (Math.max(0, Math.min(9, Math.round(num(msg.j)))) / 9) *
+            HOP.up *
+            traitsOf(rigOf(who.art)).jump
           const slot = theirCast ? 0 : Math.max(0, Math.min(6, a))
           if (slot !== who.swing) {
             who.swingFor = 0
@@ -533,8 +541,11 @@ export function joinPark(
         m: w.moving ? 1 : 0,
         a: swing,
         d: aim,
-        /* in tenths of the top of the arc, which is all a drawing of it needs — see HOP */
-        j: Math.max(0, Math.min(9, Math.round((hop / HOP.up) * 9))),
+        /* ⚠️ in tenths of the way THROUGH the arc, not tenths of a height. A height is measured
+           against the sender's own jump, and a winged creature's peak would clamp against a
+           constant built for a plain one — arriving as a normal hop on every other screen. The
+           fraction means the same for everybody and the far end has the drawing. See hopFrac. */
+        j: Math.max(0, Math.min(9, Math.round(hop * 9))),
         k: down ? 1 : 0,
       })
     },
