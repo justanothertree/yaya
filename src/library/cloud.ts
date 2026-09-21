@@ -5,6 +5,7 @@ import { gallery, saveArt, subscribeGallery } from '../draw/gallery'
 import { packDrawing, readDrawing } from '../draw/strokes'
 import { readPresets, savePreset, subscribePresets } from '../audio/vizPresets'
 import { packPet, pets, readPet, savePet, subscribePets } from '../pets/pets'
+import { mergeWins, packWins, subscribeWins } from '../park/records'
 
 /**
  * The library, on your account instead of in one browser.
@@ -26,13 +27,39 @@ import { packPet, pets, readPet, savePet, subscribePets } from '../pets/pets'
  * tombstones to tell those apart, a tidy-looking two-way delete would quietly eat work the first
  * time somebody signed in on a fresh browser. Deletions travel only as they happen, while the app
  * is open and watching.
+ *
+ * ⚠️ AND SOME KINDS MERGE, WHICH IS THE SECOND CONTRACT THIS FILE HOLDS. Add-only answers "who
+ * wins?" with "whoever got here first", which is right for a song or a drawing — you either have
+ * it or you do not, and two copies of the same name are the same thing. It is wrong for a park
+ * record, where both copies are real and the one on the other machine might be the QUICKER one.
+ * Skipping it would drop somebody's best time without a word, which is why records stayed out of
+ * here when they were written. So a kind is now one of two things, and MERGED says which:
+ *
+ *   add-only  song, loop, art, look, pet   having it at all is the whole question
+ *   merged    wins                          both copies are real; the answer is built from both
+ *
+ * A merged kind is never skipped on the way in, and is pushed back out whenever the merge left
+ * this machine holding something the server does not have. The rule for who wins is not here —
+ * it belongs to the thing being merged, and lives in park/records.ts beside the rule a restored
+ * backup file already followed.
  */
 
-type Kind = 'song' | 'loop' | 'art' | 'look' | 'pet'
+type Kind = 'song' | 'loop' | 'art' | 'look' | 'pet' | 'wins'
 type Row = { kind: Kind; name: string; body: unknown }
 
-const KINDS: Kind[] = ['song', 'loop', 'art', 'look', 'pet']
+const KINDS: Kind[] = ['song', 'loop', 'art', 'look', 'pet', 'wins']
 const isKind = (v: unknown): v is Kind => typeof v === 'string' && (KINDS as string[]).includes(v)
+
+/** Kinds where two copies can both be real, so neither side may simply skip the other. */
+const MERGED: Kind[] = ['wins']
+const merges = (k: Kind) => MERGED.includes(k)
+
+/**
+ * ⚠️ ONE SLOT FOR ALL OF THEM. The park's records are one document, not one row each — 200
+ * records at ~90 bytes would otherwise spend half of a person's 400-item library on 18KB. Named
+ * for the arena so a second one later needs no change here or on the server.
+ */
+const WINS_SLOT = 'park'
 
 /** Everything kept on this machine, in the shape the server stores. */
 function localRows(): Row[] {
@@ -43,6 +70,10 @@ function localRows(): Row[] {
   /* ⚠️ A pet is a drawing with a name, so it costs the library one more kind and no new
      anything — see pets.ts. The name is the slot, which is also why savePet refuses duplicates. */
   for (const p of pets()) out.push({ kind: 'pet', name: p.name, body: packPet(p) })
+  /* ⚠️ Only when there are any. An empty list is not a document worth a row, and emitting one
+     would have watchLibrary push an empty array over a server copy that had records in it. */
+  const won = packWins()
+  if (won.length) out.push({ kind: 'wins', name: WINS_SLOT, body: won })
   return out
 }
 
@@ -56,6 +87,10 @@ const slot = (kind: string, name: string) => `${kind}:${name.trim().toLowerCase(
  * this does not go around them.
  */
 function adoptLocally(r: Row): boolean {
+  /* ⚠️ Merged rather than adopted: what is here already is half the answer, not a reason to
+     stop. mergeWins reports whether this machine actually changed, so a sync that found the
+     two already level counts nothing rather than claiming a pull. */
+  if (r.kind === 'wins') return mergeWins(r.body) > 0
   if (r.kind === 'art') {
     const d = readDrawing(r.body)
     return d ? !!saveArt(d) : false
@@ -105,14 +140,25 @@ export async function syncLibrary(): Promise<SyncResult | null> {
 
   const here = new Set(localRows().map((r) => slot(r.kind, r.name)))
   for (const r of remote) {
-    if (here.has(slot(r.kind, r.name))) continue
+    /* ⚠️ A merged kind is never skipped for being present. "I already have one" is the whole
+       test for a song and is no answer at all for a record — theirs may be the quicker time. */
+    if (!merges(r.kind) && here.has(slot(r.kind, r.name))) continue
     if (adoptLocally(r)) out.pulled++
-    else out.failed++
+    else if (!merges(r.kind)) out.failed++
+    /* a merged kind that changed nothing is neither a pull nor a failure — it was already level */
   }
 
-  const there = new Set(remote.map((r) => slot(r.kind, r.name)))
+  /* ⚠️ READ AGAIN, AFTER THE MERGE. localRows() was snapshotted above to answer "what is here";
+     the pull has since rewritten the merged kinds, and pushing the pre-merge copy would send
+     back exactly the version we just improved on. */
+  const theirs = new Map(remote.map((r) => [slot(r.kind, r.name), r]))
   for (const r of localRows()) {
-    if (there.has(slot(r.kind, r.name))) continue
+    const had = theirs.get(slot(r.kind, r.name))
+    if (had) {
+      if (!merges(r.kind)) continue
+      /* the merge has run, so ours is theirs-or-better; only send it if it is actually better */
+      if (JSON.stringify(had.body) === JSON.stringify(r.body)) continue
+    }
     if (await put(r)) out.pushed++
     else out.failed++
   }
@@ -156,11 +202,15 @@ export function watchLibrary(): () => void {
     })()
   }
 
+  /* ⚠️ The park too, or a record set in this session would sit here until the next sign-in.
+     A win only ever improves the document, so the push half is all that ever fires for it —
+     the drop half needs the slot to disappear, which takes deleting every record you have. */
   const offs = [
     subscribeLibrary(settle),
     subscribeGallery(settle),
     subscribePresets(settle),
     subscribePets(settle),
+    subscribeWins(settle),
   ]
   return () => offs.forEach((off) => off())
 }

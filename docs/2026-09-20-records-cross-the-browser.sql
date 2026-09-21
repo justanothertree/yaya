@@ -1,0 +1,85 @@
+-- ✅ APPLIED as migrations `library_put_accepts_wins` and `member_library_kind_allows_wins`,
+-- 20 Sept 2026. It took TWO, and the second one is the lesson — see "THE GATE I MISSED" below.
+--
+-- WHAT THIS IS
+-- ─────────────
+-- The park started keeping records on 19 Sept: how many times you have beaten a creature and
+-- how quickly. They lived in localStorage and nowhere else, and records.ts said plainly why
+-- they did NOT ride src/library/cloud.ts like the songs, drawings, looks and minions do:
+--
+--     "That sync is add-only and keyed by name: 'if it is here already, skip it'. Right for a
+--      song or a drawing, which you either have or do not — and wrong for a record, where the
+--      copy on the other machine might be the QUICKER one and would be dropped without a word."
+--
+-- That was correct and it was a deferral, not a design. This is the second contract that file
+-- was waiting for: some kinds are add-only, and some kinds are MERGED, where two copies can
+-- both be real and the answer is a third thing built from both.
+--
+-- WHY ONE ROW AND NOT TWO HUNDRED
+-- ────────────────────────────────
+-- member_library caps a person at 400 items and 20MB. The park keeps up to 200 win records at
+-- roughly 90 bytes each. One row per record would spend HALF of somebody's library allowance
+-- on 18KB — a song is measured in kilobytes and a drawing in tens of them, so the accounting
+-- would be wildly wrong about what is actually costing anything.
+--
+-- The deeper reason is that a record is not a separable thing the way a song is. Nobody shares
+-- one record, renames one, deletes one, or has "a record" they would notice missing. The list
+-- is the unit. So it is one row: kind 'wins', name 'park' — one document per arena, leaving
+-- room for a second arena later without touching this function again.
+--
+-- THE GATE I MISSED
+-- ──────────────────
+-- CLAUDE.md §4 records that `profile_blocks.block_type` has NO check constraint and that every
+-- block type is enforced by save_my_profile_blocks and nowhere else. I carried that across to
+-- member_library and was wrong: this table enforces `kind` TWICE, once in library_put and once
+-- in a table CHECK. Widening only the function left library_put raising 23514 on the insert —
+-- and because the client treats a refusal as "this item stays local", every park record sync
+-- would have failed quietly forever, counted as `failed` in a result nothing displays.
+--
+-- It was caught by actually calling the function in a rolled-back transaction rather than
+-- reading it and believing the read. A whitelist is worth grepping for twice:
+--
+--   select conname, pg_get_constraintdef(oid) from pg_constraint
+--    where conrelid = 'public.member_library'::regclass;
+--
+-- WHAT CHANGED HERE
+-- ──────────────────
+-- Two gates widened by one value each: 'wins' joins the accepted-kind whitelist in library_put,
+-- and the same value joins member_library_kind_check. No table, no column, no policy,
+-- no grant, no row. The function still refuses anon, still runs SECURITY DEFINER, still applies
+-- the same per-item 128KB cap and the same 400/20MB ceiling to the new kind as to every old
+-- one. A 200-record document is ~18KB, comfortably inside the per-item cap.
+--
+-- The merge itself is deliberately NOT here. Which copy wins is a question about park times,
+-- and it is answered in src/park/records.ts, where the rule already existed for restoring a
+-- backup file: better time wins, larger count wins, and the best run keeps its own knockdowns
+-- so a "best" is always a run somebody actually had. The database stores what it is handed.
+--
+-- BASELINE, per CLAUDE.md §4
+-- ───────────────────────────
+--   before  md5(pg_get_functiondef) = 47c1b6966cd84dea9f22d8eee4d14e8f
+--   after   md5(pg_get_functiondef) = 88fecf31dfed634462796f393711c233
+--   member_library: 44 rows across art, look, pet, song — unchanged either side.
+--   anon execute = false, authenticated execute = true, prosecdef = true — unchanged.
+--   constraint before: kind = any (array['song','loop','art','look','pet'])
+--   constraint after:  kind = any (array['song','loop','art','look','pet','wins'])
+--
+-- BEHAVIOURAL CHECKS RUN, all inside begin/rollback as one member:
+--   library_put('wins','park', <2-record document>)  → accepted
+--   library_list()                                   → returns it, kind/name/body intact
+--   library_drop('wins','park')                      → accepted
+--   library_put('trophy','park','[]')                → still 'unknown kind'
+--   a direct `select` on member_library as authenticated → still permission denied, which is
+--     the house pattern doing its job: no grants, reached only through the definer RPCs.
+--   afterwards: 44 rows across art, look, pet, song. Nothing left behind.
+
+-- The standing check this project keeps as a query rather than a table (see docs/rpc-inventory.md):
+-- nothing reachable by anon should have appeared.
+select p.proname, has_function_privilege('anon', p.oid, 'execute') as anon
+  from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+ where n.nspname = 'public' and p.prokind = 'f'
+   and has_function_privilege('anon', p.oid, 'execute');
+
+-- And the shape of what is stored, once anybody has synced a park record:
+--   select kind, name, octet_length(body::text) as bytes, jsonb_array_length(body) as records
+--     from public.member_library where kind = 'wins';

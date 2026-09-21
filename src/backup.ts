@@ -4,25 +4,22 @@ import { gallery, saveArt } from './draw/gallery'
 import { packDrawing, readDrawing } from './draw/strokes'
 import { readPresets, savePreset } from './audio/vizPresets'
 import { packPet, pets, readPet, savePet } from './pets/pets'
-import { packWins, restoreWins } from './park/records'
+import { mergeWins, packWins } from './park/records'
 
 /**
- * Everything you have made that lives only in this browser, as one file.
+ * Everything you have made here, as one file you can keep.
  *
- * ⚠️ FOUR STORES ARE LOCAL AND ONLY LOCAL: the song library, the paint gallery, the saved
- * looks and your minions — and the minions were missing from here for their whole life, because
- * this file was written when there were three and nobody came back to it when a fourth arrived.
- * A person who backed up, wiped, and restored got everything they had made except their
- * creatures, and the file gave them no reason to expect that. That is written down as a deliberate first step in each of them — it works with no
- * schema change and no new way for one person's data to reach another — and the bill for it
- * came due twice in one week. Somebody lost songs they made weeks ago without changing browser
- * or clearing anything, which is a browser evicting site data and is entirely normal; and a song
- * made in one browser could not be edited from another, because the library is not there.
+ * ⚠️ NO LONGER THE ONLY WAY OUT, AND STILL WORTH HAVING. This file was written when the song
+ * library, the paint gallery, the saved looks and the minions were localStorage and nothing
+ * else, and it said so at length: a stopgap until a real server copy existed. That copy exists
+ * now — library/cloud.ts keeps all of them, and the park's records, level on your account. What
+ * this is FOR changed with it. It is no longer the thing standing between somebody and losing
+ * a year of songs; it is the copy that does not need an account, does not need this site to
+ * still be up, and does not need anybody's permission — which is a different job, and one the
+ * sync cannot do.
  *
- * ⚠️ THIS IS NOT THE FIX, it is the thing that means the fix is not urgent enough to rush. A
- * library on the server is the real answer and it is a migration against a live database. Until
- * then, work that can be carried to another machine and put back after a wipe is work that is
- * not one browser setting away from gone.
+ * ⚠️ WHAT SIGNED-OUT MEANS IS UNCHANGED. The sync is for members; a visitor who draws something
+ * on the Paint page still has it in one browser only, and this file is still their whole answer.
  *
  * ⚠️ PACKED, and restored through the same readers a file from a stranger goes through. A backup
  * comes back off a disk, which makes it exactly as trustworthy as anything else that arrives from
@@ -180,8 +177,10 @@ export function restoreBackup(raw: unknown): Restored {
   }
 
   /* ⚠️ merged rather than counted-and-skipped like the rest, because a record is not a thing
-     you can already have a copy of — see restoreWins, which takes the better of the two. */
-  if (Array.isArray(b.wins)) out.wins = restoreWins(b.wins)
+     you can already have a copy of — see mergeWins, which takes the better of the two. It is
+     the same function the account sync uses, so a file and a second browser cannot disagree
+     about whose time was quicker. */
+  if (Array.isArray(b.wins)) out.wins = mergeWins(b.wins)
 
   return out
 }

@@ -131,53 +131,71 @@ export function recordWin(name: string, secs: number, fell: number): { win: Win;
 }
 
 /**
- * ⚠️ AND DELIBERATELY NOT ON library/cloud.ts, WHICH WOULD LOSE THE THING THIS IS FOR. That
- * sync is add-only and keyed by name: "if it is here already, skip it". Right for a song or a
- * drawing, which you either have or do not — and wrong for a record, where the copy on the
- * other machine might be the QUICKER one and would be dropped without a word. Merging records
- * is well defined (see restoreWins) but it is a second contract for that file to hold, so it
- * is a deliberate piece of work rather than a fifth line in its list. Until then a record
- * moves between machines the way everything did before the sync existed: in the backup file.
+ * ⚠️ THE MERGE IS THE CONTRACT, and it is the reason these took a second step to reach the
+ * account. library/cloud.ts was add-only and keyed by name — "if it is here already, skip it" —
+ * which is right for a song or a drawing, things you either have or do not, and wrong for a
+ * record, where the copy on the other machine might be the QUICKER one and would have been
+ * dropped without a word. So the sync asks this file who wins rather than assuming the first
+ * copy it met does, and this one function answers for both callers: a backup file off a disk
+ * and a row off the account. One rule, or they would drift.
+ *
+ * ⚠️ MERGED, NEVER REPLACED. Times take the better, counts take the larger, and the newest
+ * timestamp survives — so restoring an old backup onto a machine that has played more since
+ * cannot throw the newer fights away, and neither can signing in on a second browser.
+ *
+ * @returns how many records this actually changed — zero when the two were already level,
+ *          which is what the sync counts and what a restore summary should be honest about.
  */
-
-/** For the backup file, which already carries everything else a person has made here. */
-export const packWins = (): Win[] => wins()
-
-export function restoreWins(v: unknown): number {
+export function mergeWins(v: unknown): number {
   if (!Array.isArray(v)) return 0
-  let n = 0
+  const next = new Map(wins().map((w) => [w.name, w]))
+  let changed = 0
+
   for (const raw of v) {
     if (!raw || typeof raw !== 'object') continue
     const o = raw as Record<string, unknown>
+    const num = (x: unknown) => (typeof x === 'number' && Number.isFinite(x) ? Math.round(x) : 0)
     const name = typeof o.name === 'string' ? o.name.trim().slice(0, 40) : ''
-    const best = typeof o.best === 'number' && Number.isFinite(o.best) ? Math.round(o.best) : 0
-    const beaten =
-      typeof o.beaten === 'number' && Number.isFinite(o.beaten) ? Math.round(o.beaten) : 0
+    const best = num(o.best)
+    const beaten = num(o.beaten)
     if (!name || best <= 0 || beaten <= 0) continue
-    const had = winFor(name)
-    /**
-     * ⚠️ MERGED, NEVER REPLACED, the same add-only rule the library sync follows and for the
-     * same reason: a backup restored onto a machine that has since played more should not
-     * throw away the newer fights. Times take the better, counts take the larger.
-     */
-    const fell = typeof o.fell === 'number' && Number.isFinite(o.fell) ? Math.round(o.fell) : 0
+
+    const had = next.get(name)
+    /* ⚠️ THE BEST RUN KEEPS ITS OWN KNOCKDOWNS, the same rule recordWin follows above: the
+       falls come from whichever copy holds the quicker time, or a "best" would be a time from
+       one fight and a count from another, presented as one run nobody ever had. */
+    const quicker = !had || best < had.best
     const merged: Win = {
       name,
       beaten: Math.max(beaten, had?.beaten ?? 0),
       best: had ? Math.min(best, had.best) : best,
-      fell: !had || best < had.best ? fell : had.fell,
-      at: Math.max(typeof o.at === 'number' && Number.isFinite(o.at) ? o.at : 0, had?.at ?? 0),
+      fell: quicker ? num(o.fell) : had.fell,
+      at: Math.max(num(o.at), had?.at ?? 0),
     }
-    const rest = wins().filter((w) => w.name !== name)
-    try {
-      localStorage.setItem(KEY, JSON.stringify([merged, ...rest].slice(0, MAX)))
-    } catch {
-      /* full — stop rather than half-write the rest */
-      break
-    }
-    cache = null
-    n++
+    if (had && JSON.stringify(had) === JSON.stringify(merged)) continue
+    next.set(name, merged)
+    changed++
+  }
+
+  if (!changed) return 0
+  /* newest first, so the cap drops what you have not touched in longest — same order recordWin
+     writes in, because the cap has to mean the same thing whichever door a record came through */
+  const list = [...next.values()].sort((a, b) => b.at - a.at).slice(0, MAX)
+  try {
+    localStorage.setItem(KEY, JSON.stringify(list))
+  } catch {
+    /* full or blocked — nothing was written, so nothing is half-merged */
+    return 0
   }
   tell()
-  return n
+  return changed
 }
+
+/**
+ * ⚠️ ONE ROW ON THE ACCOUNT, NOT TWO HUNDRED. member_library caps a person at 400 items, and a
+ * record is about 90 bytes — one row each would spend half of somebody's whole library on 18KB
+ * of text, next to songs and drawings that are measured in kilobytes. A record is also not a
+ * separable thing the way a song is: nobody shares one, renames one or deletes one. The list is
+ * the unit, so it travels as one document. See docs/2026-09-20-records-cross-the-browser.sql.
+ */
+export const packWins = (): Win[] => wins()
