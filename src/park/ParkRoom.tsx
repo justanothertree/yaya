@@ -70,7 +70,7 @@ import {
 import { movesOf, slotFor, petWide, type Attack } from '../pets/attack'
 import { footRoom, petBox } from '../pets/rig'
 import { CAST, castSlot, inPatch, patchesOf, type CastKind, type Patch } from './cast'
-import { recordWin, subscribeWins, winFor, wins } from './records'
+import { recordFought, recordWin, subscribeWins, winFor, wins } from './records'
 import { lungeOf } from '../pets/fight'
 import {
   beaten,
@@ -691,6 +691,11 @@ export function ParkRoom({
    * it is the half that cannot be broken from outside.
    */
   const myArt = mine?.art
+  /* ⚠️ a ref, because the animation loop needs it and depending on it there would rebuild the
+     loop whenever the picker changed. The name of the creature you are PLAYING, which is what
+     a win pays for — see budget.ts. */
+  const myPetName = useRef('')
+  myPetName.current = mine?.name ?? ''
   const tooBig = useMemo(() => (myArt ? !lookFits(myArt) : false), [myArt])
 
   /* ⚠️ read once per creature, never per frame — rigOf walks every stroke */
@@ -1732,6 +1737,9 @@ export function ParkRoom({
           const secs = Math.max(1, Math.round(now / 1000 - fightFrom.current))
           /* ⚠️ written before the line is shown, so the line can say whether it was your best */
           const rec = recordWin(cur.name, secs, fightDowns.current)
+          /* ⚠️ AND WHO WON IT. A Win says what went down; this says what put it down, which
+             is the only thing that can pay for a part — see budget.ts. */
+          recordFought(myPetName.current)
           setResult({ name: cur.name, secs, downs: fightDowns.current, ...rec })
         }
         if (bossDoneAt.current && now / 1000 - bossDoneAt.current > BOSS_LINGER) {
@@ -1826,6 +1834,10 @@ export function ParkRoom({
           /* ⚠️ a friend's boss counts too. You were there and it went down; whose socket was
              running it is an implementation detail of the fight, not of the evening. */
           const rec = recordWin(tb.name, secs, fightDowns.current)
+          /* ⚠️ a friend's boss counts for your creature too, the same reason the win does:
+             you were there and it went down, and whose socket ran it is an implementation
+             detail of the fight rather than of the evening. */
+          recordFought(myPetName.current)
           setResult({ name: tb.name, secs, downs: fightDowns.current, ...rec })
         }
         const theirMove = tb.swing > 0 ? kit.moves[tb.swing - 1] : undefined

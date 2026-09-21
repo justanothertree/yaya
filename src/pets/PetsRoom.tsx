@@ -4,6 +4,8 @@ import { useOneShot } from './oneShot'
 import { PetPlay } from './PetPlay'
 import { PetView } from './PetView'
 import { PART_DOES, PART_WORDS, STANCES, rigOf, type PartKind, type Mood } from './rig'
+import { nextSlotAt, partsAllowed, partsUsed, slotsFor } from './budget'
+import { recordsVersion, subscribeWins, winsWith } from '../park/records'
 import { pets, removePet, renamePet, savePet, subscribePets, type Pet } from './pets'
 import { companion, cornerSize, setCompanion, subscribeCompanion } from './companion'
 import { PET_WIDTHS, petGif, petSeconds, petStill } from './petFile'
@@ -43,6 +45,7 @@ const CALM_AFTER_MS = 2600
 
 export function PetsRoom({ onControlChange }: { onControlChange?: (on: boolean) => void } = {}) {
   const mine = useSyncExternalStore(subscribePets, pets, pets)
+  useSyncExternalStore(subscribeWins, recordsVersion, recordsVersion)
   const drawings = useSyncExternalStore(subscribeGallery, gallery, gallery)
   const follows = useSyncExternalStore(subscribeCompanion, companion, companion)
   const [openId, setOpenId] = useState<string | null>(null)
@@ -387,6 +390,39 @@ export function PetsRoom({ onControlChange }: { onControlChange?: (on: boolean) 
                     </li>
                   ))}
                 </ul>
+                {/*
+                  ⚠️ WHAT IT HAS EARNED, WHICH IS THE ONLY PLACE A SLOT IS VISIBLE. A creature
+                  that has fought is a creature with something to show for it — Evan: "having
+                  a limited amount of parts could be an interesting power creep if you level
+                  up and can add more stuff", and slots earned "by being used". Without a line
+                  saying so, winning would change a number nobody could see.
+
+                  ⚠️ AND IT OFFERS RATHER THAN SUGGESTS — "i dont want to suggest parts but i
+                  want to offer them". It says how much room there is and what the room is
+                  for; it never names a part you should draw.
+                */}
+                <span className="muted pets-hint">
+                  {(() => {
+                    const won = winsWith(chosen.name)
+                    const used = partsUsed(chosen.art)
+                    const room = partsAllowed(won) - used
+                    const next = nextSlotAt(won)
+                    const earned = slotsFor(won)
+                    return (
+                      <>
+                        {used} of {partsAllowed(won)} parts
+                        {earned > 0 &&
+                          ` — ${earned} slot${earned === 1 ? '' : 's'} earned fighting`}
+                        {'. '}
+                        {room > 0
+                          ? `Room for ${room} more.`
+                          : next
+                            ? `Full. ${next - won} more win${next - won === 1 ? '' : 's'} makes room.`
+                            : 'Full, and nothing left to earn.'}
+                      </>
+                    )
+                  })()}
+                </span>
                 {unnamed > 0 && (
                   <span className="muted pets-hint">
                     {unnamed === parts.length

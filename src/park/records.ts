@@ -27,6 +27,30 @@
 const KEY = 'park_wins_v1'
 const MAX = 200
 
+/**
+ * How many fights each of YOUR creatures has won.
+ *
+ * ⚠️ A SECOND KEY BECAUSE IT IS A SECOND QUESTION. A Win is keyed by what you BEAT — "Gribble
+ * has gone down four times, quickest 95 seconds" — and says nothing about who you were
+ * playing. Slots are earned by a creature being USED, so the thing that has to be counted is
+ * the fighter, and no amount of looking at the other list will produce it.
+ *
+ * ⚠️ AND IT MERGES BY THE SAME RULE, deliberately: the larger count wins, the newer timestamp
+ * survives, and a machine that has played more never loses to one that has played less. The
+ * alternative is a second merge contract, and two contracts is how two stores start
+ * disagreeing about the same evening.
+ */
+const FOUGHT_KEY = 'park_fought_v1'
+
+export type Fought = {
+  /** your creature's name, which is the key */
+  name: string
+  /** fights it has won */
+  wins: number
+  /** when it last won one */
+  at: number
+}
+
 export type Win = {
   /** the creature's name, which is the key */
   name: string
@@ -41,12 +65,27 @@ export type Win = {
 }
 
 let cache: Win[] | null = null
+let foughtCache: Fought[] | null = null
+let ver = 0
 const watchers = new Set<() => void>()
 
 const tell = () => {
   cache = null
+  foughtCache = null
+  ver++
   for (const w of watchers) w()
 }
+
+/**
+ * A number that changes whenever any record does.
+ *
+ * ⚠️ BECAUSE A READ DURING RENDER IS NOT A SUBSCRIPTION. The minions room asks winsWith() to
+ * work out a creature's budget, which is correct and completely inert: winning a fight
+ * changed the answer and nothing redrew, so a page left open showed the old number. Caught it
+ * by recording five wins with the room in front of me and watching the line not move. This is
+ * the snapshot useSyncExternalStore needs — a primitive, stable between changes.
+ */
+export const recordsVersion = (): number => ver
 
 export function subscribeWins(fn: () => void) {
   watchers.add(fn)
@@ -199,3 +238,90 @@ export function mergeWins(v: unknown): number {
  * the unit, so it travels as one document. See docs/2026-09-20-records-cross-the-browser.sql.
  */
 export const packWins = (): Win[] => wins()
+
+/* ── what YOUR creatures have done, which is the other half of a fight ────────────────── */
+
+const readFought = (raw: unknown): Fought | null => {
+  if (!raw || typeof raw !== 'object') return null
+  const o = raw as Record<string, unknown>
+  const num = (x: unknown) => (typeof x === 'number' && Number.isFinite(x) ? Math.round(x) : 0)
+  const name = typeof o.name === 'string' ? o.name.trim().slice(0, 40) : ''
+  const won = num(o.wins)
+  if (!name || won <= 0) return null
+  return { name, wins: Math.min(99999, won), at: num(o.at) }
+}
+
+/** ⚠️ Re-validated on the way out, the same rule wins() states: localStorage is editable. */
+export function fought(): Fought[] {
+  if (foughtCache) return foughtCache
+  let out: Fought[] = []
+  try {
+    const raw = JSON.parse(localStorage.getItem(FOUGHT_KEY) || '[]')
+    if (Array.isArray(raw))
+      out = raw
+        .map(readFought)
+        .filter((v): v is Fought => !!v)
+        .slice(0, MAX)
+  } catch {
+    out = []
+  }
+  foughtCache = out
+  return out
+}
+
+/** How many fights this creature of yours has won. */
+export const winsWith = (name: string): number =>
+  fought().find((f) => f.name === name.trim().slice(0, 40))?.wins ?? 0
+
+/** One more for the creature you were playing. */
+export function recordFought(name: string): number {
+  const key = name.trim().slice(0, 40)
+  if (!key) return 0
+  const had = winsWith(key)
+  const next: Fought = { name: key, wins: had + 1, at: Date.now() }
+  const rest = fought().filter((f) => f.name !== key)
+  try {
+    localStorage.setItem(FOUGHT_KEY, JSON.stringify([next, ...rest].slice(0, MAX)))
+  } catch {
+    /* full or blocked — the fight still happened */
+  }
+  tell()
+  return next.wins
+}
+
+/**
+ * ⚠️ THE SAME MERGE AS mergeWins, and it has to be. Larger count wins, newer timestamp
+ * survives — so a machine that has played more never loses to one that has played less, and
+ * signing in on a second browser cannot cost a creature the slots it earned.
+ */
+export function mergeFought(v: unknown): number {
+  if (!Array.isArray(v)) return 0
+  const next = new Map(fought().map((f) => [f.name, f]))
+  let changed = 0
+  for (const raw of v) {
+    const f = readFought(raw)
+    if (!f) continue
+    const had = next.get(f.name)
+    const merged: Fought = {
+      name: f.name,
+      wins: Math.max(f.wins, had?.wins ?? 0),
+      at: Math.max(f.at, had?.at ?? 0),
+    }
+    if (had && JSON.stringify(had) === JSON.stringify(merged)) continue
+    next.set(f.name, merged)
+    changed++
+  }
+  if (!changed) return 0
+  try {
+    localStorage.setItem(
+      FOUGHT_KEY,
+      JSON.stringify([...next.values()].sort((a, b) => b.at - a.at).slice(0, MAX)),
+    )
+  } catch {
+    return 0
+  }
+  tell()
+  return changed
+}
+
+export const packFought = (): Fought[] => fought()

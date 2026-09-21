@@ -5,7 +5,7 @@ import { gallery, saveArt, subscribeGallery } from '../draw/gallery'
 import { packDrawing, readDrawing } from '../draw/strokes'
 import { readPresets, savePreset, subscribePresets } from '../audio/vizPresets'
 import { packPet, pets, readPet, savePet, subscribePets } from '../pets/pets'
-import { mergeWins, packWins, subscribeWins } from '../park/records'
+import { mergeFought, mergeWins, packFought, packWins, subscribeWins } from '../park/records'
 
 /**
  * The library, on your account instead of in one browser.
@@ -72,8 +72,19 @@ function localRows(): Row[] {
   for (const p of pets()) out.push({ kind: 'pet', name: p.name, body: packPet(p) })
   /* ⚠️ Only when there are any. An empty list is not a document worth a row, and emitting one
      would have watchLibrary push an empty array over a server copy that had records in it. */
+  /**
+   * ⚠️ BOTH HALVES OF A FIGHT IN ONE ROW, because they are one thing: what you beat and what
+   * you beat it with. Two rows would be two things that can arrive out of step, and a
+   * creature whose slots and whose record disagreed would be a creature that gained a part on
+   * one machine and lost it on another.
+   *
+   * ⚠️ AND THE OLD SHAPE IS STILL READ. The body used to be a bare array of wins; mergeWins
+   * takes either, so an account written before today restores exactly as it did.
+   */
   const won = packWins()
-  if (won.length) out.push({ kind: 'wins', name: WINS_SLOT, body: won })
+  const used = packFought()
+  if (won.length || used.length)
+    out.push({ kind: 'wins', name: WINS_SLOT, body: { v: 2, beat: won, fought: used } })
   return out
 }
 
@@ -90,7 +101,13 @@ function adoptLocally(r: Row): boolean {
   /* ⚠️ Merged rather than adopted: what is here already is half the answer, not a reason to
      stop. mergeWins reports whether this machine actually changed, so a sync that found the
      two already level counts nothing rather than claiming a pull. */
-  if (r.kind === 'wins') return mergeWins(r.body) > 0
+  if (r.kind === 'wins') {
+    /* ⚠️ either shape: a bare array is the pre-v2 body, an object carries both halves */
+    const body = r.body as { beat?: unknown; fought?: unknown } | unknown[]
+    const beat = Array.isArray(body) ? body : body?.beat
+    const used = Array.isArray(body) ? [] : body?.fought
+    return mergeWins(beat) + mergeFought(used) > 0
+  }
   if (r.kind === 'art') {
     const d = readDrawing(r.body)
     return d ? !!saveArt(d) : false
