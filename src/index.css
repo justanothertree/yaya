@@ -8598,6 +8598,38 @@ a.cz-msg-author:focus-visible {
 /* ⚠️ THE SAME WEIGHT AS THE RESULT LINE, not a warning colour. Being down is a setback the
    fight is built around, and dressing it in red would tell a first-timer the opposite of what
    the words say. */
+/**
+ * The live lines, over the top of the field.
+ *
+ * ⚠️ ABSOLUTE SO THAT APPEARING COSTS NOTHING. Both of these come and go while somebody is
+ * playing — "You are at the pond" the moment you reach one, "Down." for a second and a half —
+ * and in the flow above the stage each arrival pushed the field and the little map down and
+ * back up again. A game's status text cannot be allowed to move the game.
+ *
+ * ⚠️ AND IT IS NOT IN THE WAY OF THE POINTER. The field takes the pointer for aiming, so this
+ * strip lets everything through; a status line that swallowed a swing would cost a fight.
+ */
+.park-live {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 40;
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  padding: 6px 10px 0;
+  pointer-events: none;
+  text-align: center;
+}
+.park-live p {
+  margin: 0;
+  max-width: 34rem;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: rgb(0 0 0 / 0.42);
+  backdrop-filter: blur(3px);
+}
 .park-down {
   margin: 4px 0 0;
   font-size: 0.86rem;
@@ -8782,6 +8814,7 @@ a.cz-msg-author:focus-visible {
 .park-where {
   margin: 4px 0 0;
   font-size: 0.82rem;
+  opacity: 0.8;
 }
 /**
  * What you have beaten.

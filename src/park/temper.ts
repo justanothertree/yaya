@@ -109,6 +109,29 @@ const roll = (n: number, salt: number): number => {
 /** Which beat is a backing-off one, and which is a run at you. */
 export const givesGround = (beat: number, t: Temper): boolean => roll(beat, 1) > t.nerve
 export const runsAtYou = (beat: number, t: Temper): boolean => roll(beat, 2) < t.charge * 0.55
+
+/**
+ * Which beat is a pounce.
+ *
+ * ⚠️ IT IS PART OF THE KIT, NOT A REACTION TO A LEDGE. The leap first fired only when
+ * somebody was standing on something — which is the case it was built for and is also almost
+ * never: you have to be on the rocks or in the trees at the moment its beat comes round.
+ * Reported as "i cant notice any leap". A boss that can only leap at a ledge has a move
+ * nobody meets; one that pounces is a boss whose answer to a ledge reads as something you
+ * have already seen it do.
+ *
+ * ⚠️ OFF THE SAME `charge` THE RUN USES, because they are the same instinct — a creature
+ * drawn to come at you does both.
+ *
+ * ⚠️ AND SET AGAINST THE SPREAD THAT ACTUALLY OCCURS, which is the second time a dial in this
+ * module has been placed against the range the formula COULD produce rather than the one it
+ * does. `charge * 0.5` looked reasonable and was tested against 0.2 to 0.8; the four creatures
+ * on this machine come out at 0.12, 0.12, 0.32 and 0.34. Six percent of a beat, on beats
+ * approaching a second, is a leap every fifteen seconds — a move nobody meets, which is
+ * exactly what was reported. Measured, 0.12 to 0.34 maps onto one pounce every seven beats for
+ * the least eager and every four for the keenest, which the cooldown then paces.
+ */
+export const pounces = (beat: number, t: Temper): boolean => roll(beat, 5) < 0.08 + t.charge * 0.45
 /**
  * Whether this beat's swing is a committed one.
  *

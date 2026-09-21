@@ -420,11 +420,29 @@ const GUARD_SHOW = PARK_TALL * 0.82
  * it is the entire readout. It shrinks as the creature rises, which is the second half of it:
  * a shadow the same size at every height says "somebody walked away", not "somebody jumped".
  */
-function HopShade({ at, cam, height }: { at: Spot; cam: Spot; height: number }) {
+/**
+ * ⚠️ THE SHADOW IS THE ONLY THING THAT SAYS SOMETHING IS IN THE AIR. A creature drawn higher
+ * up the screen is, in a top-down world, indistinguishable from a creature standing further
+ * away — the whole leap read as the boss sliding about until it had one. Reported as "i cant
+ * notice any leap".
+ *
+ * @param size how many times a creature's height the thing is, so a boss casts a boss's shadow
+ */
+function HopShade({
+  at,
+  cam,
+  height,
+  size = 1,
+}: {
+  at: Spot
+  cam: Spot
+  height: number
+  size?: number
+}) {
   if (height <= 0.001) return null
   const p = onScreen(at, cam)
   const shrink = 1 - 0.45 * Math.min(1, height / HOP.up)
-  const wide = PARK_TALL * 0.5 * shrink
+  const wide = PARK_TALL * 0.5 * shrink * size
   return (
     <span
       className="park-shade"
@@ -1475,6 +1493,7 @@ export function ParkRoom({
          * ⚠️ AND IT LANDS ON WHATEVER IS UNDER THE SPOT. Leaping at somebody on the rocks puts
          * it on the rocks; the terrain is not something the move has to know about.
          */
+        cur = { ...cur, leapRest: Math.max(0, cur.leapRest - dt) }
         if (cur.leap) {
           const lt = cur.leap.t + dt
           const whole = LEAP.warn + LEAP.rise + LEAP.fall
@@ -1505,7 +1524,7 @@ export function ParkRoom({
                 floor,
               )
             }
-            cur = { ...cur, leap: null, up: floor, ground: floor, vz: 0 }
+            cur = { ...cur, leap: null, up: floor, ground: floor, vz: 0, leapRest: LEAP.rest }
           } else {
             const from = { x: cur.x, y: cur.y }
             const p = Math.max(0, (lt - LEAP.warn) / (LEAP.rise + LEAP.fall))
@@ -2422,12 +2441,6 @@ export function ParkRoom({
         ⚠️ AND IT IS THE ONE PIECE OF COPY HERE AIMED SQUARELY AT SOMEBODY'S FIRST FIGHT, which
         is who this site is for.
       */}
-      {walking && knocked && (
-        <p className="park-down" role="status">
-          <strong>Down.</strong> Nothing can touch you, and you get back up whole. The boss keeps
-          what you took off it.
-        </p>
-      )}
       {walking && result && (
         <p className="park-result" role="status">
           <strong>{result.name} is down.</strong> {said(result.secs)}
@@ -2459,11 +2472,6 @@ export function ParkRoom({
         something to look at; this is what makes them usable — you can tell somebody where you
         are, and where you found them. Without it they are wallpaper with a shape.
       */}
-      {walking && whereIAm && (
-        <p className="muted park-where" role="status">
-          You are at <strong>{whereIAm.name}</strong>.
-        </p>
-      )}
       {/* ⚠️ THE KEY LIST IS A KEY LIST, so the phone gets its own sentence rather than a
           column of blanks next to keys it does not have. */}
       <p className="muted park-touch">
@@ -2471,6 +2479,35 @@ export function ParkRoom({
         chips throw your big moves.
       </p>
       <div className={'park-stage' + (full ? ' is-full' : '')} ref={stage}>
+        {/*
+          ⚠️ OVER THE FIELD, NOT ABOVE IT, BECAUSE THESE TWO COME AND GO WHILE YOU PLAY. "You
+          are at the pond" appears the moment you reach one and vanishes when you leave, and
+          being knocked down lasts a second and a half — and every one of those, sitting in the
+          flow above the stage, shoved the field and the little map down and back up again.
+          Reported exactly that way: "shifts the map down as the messages show and hide as
+          youre playing". A game's live text belongs on the game, where appearing costs nothing.
+
+          ⚠️ THE ORDERING NOTE STILL HOLDS. "What is happening sits above the field" was about
+          reading order, and the top of the field is still above the field — what it cannot be
+          is a thing that moves the field when it arrives.
+
+          ⚠️ AND IT CANNOT BE CLICKED THROUGH. pointer-events stays off: the field under it
+          takes the pointer for aiming now, and a status line that swallowed a swing would be
+          a status line that cost you a fight.
+        */}
+        <div className="park-live" aria-live="polite">
+          {walking && knocked && (
+            <p className="park-down" role="status">
+              <strong>Down.</strong> Nothing can touch you, and you get back up whole. The boss
+              keeps what you took off it.
+            </p>
+          )}
+          {walking && whereIAm && (
+            <p className="park-where" role="status">
+              You are at <strong>{whereIAm.name}</strong>.
+            </p>
+          )}
+        </div>
         {/*
           ⚠️ THE FIELD TAKES THE POINTER, not the window, so a cursor over the reference table
           below does not aim your creature. Only while walking: outside a fight these are the
@@ -2638,6 +2675,11 @@ export function ParkRoom({
             })}
           {walking && <GuardArc me={shownYou} cam={camAt} />}
           {walking && <HopShade at={shownYou} cam={camAt} height={shownYou.up} />}
+          {/* ⚠️ the boss gets one too, and it is the difference between a leap and a slide.
+              Its own scale, or a thing three times the size casts a creature's shadow. */}
+          {walking && bossShown && (
+            <HopShade at={bossShown} cam={camAt} height={bossShown.up} size={bossShown.scale} />
+          )}
           {walking &&
             [...state.current.here.values()].map((o) => (
               <HopShade key={'shade-' + o.id} at={o.shown} cam={camAt} height={o.hop} />

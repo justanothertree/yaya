@@ -3,7 +3,7 @@ import type { CastKind } from './cast'
 import { bossPace, movesOf, petWide, type Attack } from '../pets/attack'
 import { restingWalker, type Spot } from './walk'
 import { footOf, outBy, PARK_TALL, restingStriker, type StrikeInput, type Striker } from './strike'
-import { givesGround, goesBig, runsAtYou, temperOf, type Temper } from './temper'
+import { givesGround, goesBig, pounces, runsAtYou, temperOf, type Temper } from './temper'
 
 /**
  * A boss.
@@ -76,6 +76,17 @@ export type Boss = Striker & {
    * nobody could say what the boss is doing on a given frame.
    */
   leap: { x: number; y: number; t: number } | null
+  /**
+   * Seconds before it may leap again.
+   *
+   * ⚠️ THE ROLL WAS PACING IT AND THAT DOES NOT WORK BOTH WAYS. On level ground the dice made
+   * a leap rare enough to miss entirely — measured at one every seventeen seconds, which is
+   * why the first report was "i cant notice any leap". Standing on a ledge made the condition
+   * true on almost every beat instead, and with nothing to stop it the next leap began the
+   * frame the last one ended. A cooldown paces both: the dice decide WHETHER, this decides
+   * HOW OFTEN, and the two stop fighting over the same job.
+   */
+  leapRest: number
 }
 
 /**
@@ -112,7 +123,7 @@ export const CHARGE = { warn: 0.2, run: 0.7, speed: 1.75 }
  * overHead taking both heights rather than being written here. A leap is an exchange: it buys
  * the slam and spends the seconds either side of it.
  */
-export const LEAP = { warn: 0.26, rise: 0.42, fall: 0.3, high: 1.9, bite: 1.35 }
+export const LEAP = { warn: 0.26, rise: 0.42, fall: 0.3, high: 1.9, bite: 1.35, rest: 3.4 }
 
 /**
  * How long a boss takes to come about.
@@ -195,6 +206,7 @@ export function makeBoss(name: string, art: Drawing, at: Spot): Boss {
     cast: null,
     charge: null,
     leap: null,
+    leapRest: 0,
     facing: -1,
   }
 }
@@ -447,7 +459,11 @@ export function bossThink(
    */
   const gapUp = Math.abs(b.up - targetUp)
   const onADifferentLevel = gapUp >= 0.35
-  const leaping = onADifferentLevel && !b.cast && !charging && away < step * 2.2 && beat % 5 === 3
+  /* ⚠️ A LEDGE ALWAYS, AND OTHERWISE WHEN IT IS THAT KIND OF CREATURE — see pounces. Gating
+     the whole move on a height difference made it something almost nobody ever met. The rate
+     is leapRest's job now, not a second condition on the beat. */
+  const wantsLeap = onADifferentLevel || pounces(beat, t)
+  const leaping = wantsLeap && !b.cast && !charging && b.leapRest <= 0 && away < step * 2.2
 
   return {
     cast: leaping ? null : cast,
