@@ -333,15 +333,35 @@ export const aloft = (s: Striker): boolean => s.up > s.ground + 1e-6 || s.vz > 0
  * under your feet and shove you anyway.
  */
 /**
- * ⚠️ ABOVE YOUR OWN GROUND, NOT ABOVE THE FIELD, and that is a deliberate refusal. Now that a
- * creature can stand on the rocks, absolute height would mean standing there is permanent
- * immunity to every low swing — a camping spot rather than a place, and a balance change
- * smuggled in under a traversal feature. A ledge is not a dodge. Whether a boss on the grass
- * SHOULD be able to reach somebody on a ledge is a real question and a separate one, and it
- * wants playing rather than guessing; until then the fight is exactly as it was tuned.
+ * Is this attack passing somewhere other than where the target is?
+ *
+ * ⚠️ MEASURED AGAINST THE ATTACKER'S FEET, NOT THE TARGET'S OWN GROUND. Height was a question
+ * with one side to it while everything stood on the grass: your own height was the only thing
+ * a swing could miss over. Now the rocks are somewhere to stand and the boss climbs them too,
+ * so what decides a miss is the DIFFERENCE, and it works both ways — a boss swinging from the
+ * trees passes over your head exactly as your jump passes over its sweep.
+ *
+ * ⚠️ AND THE OLD RULE IS THE FIRST LINE, UNCHANGED. Everything on the grass makes `fromUp` 0
+ * and `rise` your own height, so a fight between two things on the same ground is bit for bit
+ * the fight that was tuned. The two new lines only fire when something is genuinely elsewhere.
+ *
+ * ⚠️ A STEP IS NOT AN ESCAPE, and the numbers say so rather than a rule saying it: the tallest
+ * lift is 0.85 and a body is 1, so nothing you can climb onto — the highest is 0.72 — lifts
+ * you clear of a swing from below on its own. It takes a leap, or a boss that has leapt. A
+ * plateau you could stand on to be safe would be a camping spot rather than a place.
  */
-export const overHead = (s: Striker, a: Attack): boolean =>
-  s.up - s.ground >= HOP.clear && a.lift <= HOP.under
+/** A creature is one pet-height tall, which is what makes a height difference a miss. */
+export const BODY = 1
+
+export const overHead = (s: Striker, a: Attack, fromUp = 0): boolean => {
+  const rise = s.up - fromUp
+  /* ducked under, or jumped over, a thing that swings low — the original rule, unchanged */
+  if (rise >= HOP.clear && a.lift <= HOP.under) return true
+  /* clean above the whole swing, which takes a real height difference */
+  if (rise >= a.lift + BODY) return true
+  /* and it is swinging over your head from somewhere far enough up */
+  return rise <= -BODY
+}
 
 /**
  * One step of being in the air.
@@ -1145,9 +1165,10 @@ export function stepDown(
  * being bumped by a friend should feel like being braced; it should not be a way to take
  * somebody's defence off them before the boss swings. Only mauled spends the pool.
  */
-export function shoved(s: Striker, from: Spot, a: Attack): Striker {
-  /* straight over the top: no push, no stagger, nothing to react to — see overHead */
-  if (overHead(s, a)) return s
+export function shoved(s: Striker, from: Spot, a: Attack, fromUp = 0): Striker {
+  /* straight over the top, or clean under: no push, no stagger, nothing to react to. The
+     height it was thrown FROM matters as much as the height you are at — see overHead. */
+  if (overHead(s, a, fromUp)) return s
   /* met on the frame it went up: nothing lands at all — see GUARD.parry */
   if (parries(s, from)) return { ...s, parried: PARRY_SHOW }
   const dx = s.x - from.x
@@ -1189,12 +1210,12 @@ export function shoved(s: Striker, from: Spot, a: Attack): Striker {
  * places land a boss's blow and they must all agree. A guard checked at the call sites is a
  * guard that works against a swing and not against a wave, which is worse than not having one.
  */
-export const mauled = (s: Striker, from: Spot, a: Attack): Striker => {
-  if (overHead(s, a)) return s
+export const mauled = (s: Striker, from: Spot, a: Attack, fromUp = 0): Striker => {
+  if (overHead(s, a, fromUp)) return s
   /* ⚠️ AND NOT A POINT OF DAMAGE, NOT A DROP OF GUARD. A parry that still chipped you would
      be a guard with extra steps; the reason to risk the timing is that it costs nothing. */
   if (parries(s, from)) return { ...s, parried: PARRY_SHOW }
-  const p = shoved(s, from, a)
+  const p = shoved(s, from, a, fromUp)
   if (!guarded(s, from)) return { ...p, hurt: p.hurt + a.bite }
   const stopped = a.bite * (1 - GUARD.soak)
   const guard = Math.max(0, p.guard - stopped * GUARD.cost)

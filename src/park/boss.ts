@@ -67,6 +67,15 @@ export type Boss = Striker & {
    * be two different patterns.
    */
   charge: { x: number; y: number; t: number } | null
+  /**
+   * A leap it has committed to: where it is coming down, and how long it has been in the air.
+   *
+   * ⚠️ SAME SHAPE AS `cast` AND `charge`, which is now three things that take the boss over
+   * and one pattern between them: bossThink asks for it, the room owns it and ticks it, and
+   * the ordinary walk stops while it runs. A third pattern here would be the point at which
+   * nobody could say what the boss is doing on a given frame.
+   */
+  leap: { x: number; y: number; t: number } | null
 }
 
 /**
@@ -75,7 +84,35 @@ export type Boss = Striker & {
  * A fifth of a second of a big thing NOT moving is the cheapest tell there is and needs no art
  * to draw. Then it commits for half a second, which at this speed is about a screen.
  */
-export const CHARGE = { warn: 0.2, run: 0.5, speed: 1.75 }
+/**
+ * ⚠️ `run` IS 0.7 BECAUSE THE RAMP GOT HEAVIER, not because a longer charge was wanted. A run
+ * is worth the name at about three and a bit body-lengths, and it was — until the walk was
+ * given weight and the park zoomed out. Neither touched this, and both took from it: the
+ * slower acceleration eats the first part of the window, so the same half second covered 2.4
+ * lengths instead of 3.3. Measured in body-lengths rather than screenfuls, which is what hid
+ * it — an assertion in screens was quietly measuring the camera.
+ */
+export const CHARGE = { warn: 0.2, run: 0.7, speed: 1.75 }
+
+/**
+ * The leap: it goes up, and it comes down where you were.
+ *
+ * ⚠️ IT EXISTS BECAUSE HEIGHT WAS ONLY EVER A PLACE TO STAND. The boss climbs the rocks now,
+ * but climbing is something the ground does to it — without this, every attack it has still
+ * comes off its feet, and a fight where one side can leave the ground and the other cannot is
+ * a fight with a right answer. Asked for directly: "have a skillset that adapts to new
+ * heights… so from the sky attacks or jump attacks".
+ *
+ * ⚠️ AND IT IS DODGED THE SAME WAY EVERYTHING ELSE IS — by not being there. The spot is taken
+ * when the leap starts and never re-aimed, exactly like a charge, so stepping off it is the
+ * answer. Being on a ledge is not: it comes down at a PLACE, and the place has whatever
+ * height it has.
+ *
+ * ⚠️ WHILE IT IS UP, ITS SWINGS CANNOT REACH YOU AND YOURS CANNOT REACH IT — that falls out of
+ * overHead taking both heights rather than being written here. A leap is an exchange: it buys
+ * the slam and spends the seconds either side of it.
+ */
+export const LEAP = { warn: 0.26, rise: 0.42, fall: 0.3, high: 1.9, bite: 1.35 }
 
 /**
  * How long a boss takes to come about.
@@ -157,6 +194,7 @@ export function makeBoss(name: string, art: Drawing, at: Spot): Boss {
     turn: 0,
     cast: null,
     charge: null,
+    leap: null,
     facing: -1,
   }
 }
@@ -188,6 +226,8 @@ export function bossThink(
   b: Boss,
   target: Spot,
   moves: Attack[],
+  /** how high the target is standing, in pet-heights — see ground.ts */
+  targetUp = 0,
 ): {
   steer: { left: boolean; right: boolean; up: boolean; down: boolean }
   hit: StrikeInput
@@ -197,6 +237,8 @@ export function bossThink(
   cast: CastKind | null
   /** a run to commit to this frame, as a unit direction, or null — see Boss.charge */
   charge: { x: number; y: number } | null
+  /** a leap to commit to this frame, as the spot it comes down on — see Boss.leap */
+  leap: { x: number; y: number } | null
 } {
   const t = b.temper
   const dx = target.x - b.x
@@ -230,6 +272,22 @@ export function bossThink(
    * whole of "chased rather than tracked": the line was chosen when the run began and it does
    * not bend, so stepping off it works.
    */
+  /**
+   * ⚠️ A LEAP OWNS IT COMPLETELY: no steering, no swinging, no casting. It is in the air and
+   * the air is not a place it can change its mind from — the same bargain a charge makes and
+   * a longer one, which is what the slam is paid for with.
+   */
+  if (b.leap) {
+    return {
+      steer: { left: false, right: false, up: false, down: false },
+      hit: { quick: false, heavy: false, up: false, down: false },
+      speed: 0,
+      cast: null,
+      charge: null,
+      leap: null,
+    }
+  }
+
   if (b.charge) {
     const winding = b.charge.t < CHARGE.warn
     return {
@@ -246,6 +304,7 @@ export function bossThink(
       speed: winding ? 0 : t.pace * CHARGE.speed,
       cast: null,
       charge: null,
+      leap: null,
     }
   }
 
@@ -362,9 +421,38 @@ export function bossThink(
   const far = Math.hypot(dx, dy) || 1
   const startCharge = charging && !b.cast ? { x: dx / far, y: dy / far } : null
 
+  /**
+   * ⚠️ WHEN YOU ARE STANDING SOMEWHERE IT CANNOT SWING AT, which is the one thing it had no
+   * answer to the moment the park grew ledges. A boss whose every attack comes off its feet
+   * can be beaten by standing a body-length above it and waiting — so the leap is aimed at
+   * exactly that: it fires when the height between you is more than its swings can cross.
+   *
+   * ⚠️ AND AT ARM'S LENGTH OR NEARER, not across the park. It is a pounce, not a way of
+   * closing ground — that is what the charge is for, and two moves that both mean "come here"
+   * would make the boss read as one idea repeated.
+   *
+   * ⚠️ ON ITS OWN BEAT AND NOT MANY, the same rule the cast follows: one in five. A boss that
+   * leaps whenever it could is a boss you cannot be above OR beside.
+   */
+  /**
+   * ⚠️ IT LEAPS AT A LEDGE, NOT AT AN IMPOSSIBILITY, and the first version of this had it the
+   * wrong way round. Gating on "your height is more than my swing can cross" reads correctly
+   * and never fires: the tallest lift is 0.85 and a body is 1, so it would take a height
+   * difference of nearly two body-lengths, and the highest thing in the park to stand on is
+   * 0.72. The move existed and could not happen.
+   *
+   * A third of a body is the real line — that is somebody standing on something rather than
+   * standing near you, and a boss whose answer to the rocks is to come up onto the rocks is
+   * the whole point of it climbing at all.
+   */
+  const gapUp = Math.abs(b.up - targetUp)
+  const onADifferentLevel = gapUp >= 0.35
+  const leaping = onADifferentLevel && !b.cast && !charging && away < step * 2.2 && beat % 5 === 3
+
   return {
-    cast,
+    cast: leaping ? null : cast,
     charge: startCharge,
+    leap: leaping ? { x: target.x, y: target.y } : null,
     steer: {
       left: charging ? dx < 0 : wantX < 0,
       right: charging ? dx > 0 : wantX > 0,

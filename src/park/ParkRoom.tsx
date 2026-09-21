@@ -57,6 +57,7 @@ import {
   stepStrike,
   FOOT,
   octantOf,
+  overHead,
   PARK_TALL,
   strikeSwipe,
   swipeTell,
@@ -75,6 +76,7 @@ import {
   BOSS,
   bossMoves,
   CHARGE,
+  LEAP,
   bossThink,
   bossWide,
   makeBoss,
@@ -195,6 +197,8 @@ function BossFigure({
   moving,
   turning,
   aim,
+  up = 0,
+  scale = 1,
 }: {
   name: string
   art: Drawing
@@ -212,6 +216,10 @@ function BossFigure({
   turning: boolean
   /** which way its swing points, so the body leans that way too — see lungePush */
   aim: { x: number; y: number }
+  /** how high off the field it is standing, in pet-heights — see ground.ts */
+  up?: number
+  /** how many times a creature's height it stands, so an altitude can be un-scaled */
+  scale?: number
 }) {
   const on = onScreen(at, cam)
   const done = hp <= 0
@@ -236,9 +244,21 @@ function BossFigure({
         zIndex: depthOf(at),
         transform: (() => {
           const p = lungePush(lunge, aim, art, size)
+          /**
+           * ⚠️ AGAINST THE DRAWN BODY, NOT THE CANVAS — petBox, the same measure the player's
+           * own height uses. The box is about three and a half times the ink.
+           *
+           * ⚠️ AND DIVIDED BY THE SCALE, WHICH IS THE WHOLE TRAP. `up` is in PET-heights — the
+           * unit the rocks, the jump and every cast are written in — but this drawing is
+           * rendered at `scale` times a creature, so multiplying by its own body height
+           * multiplies the altitude by the scale as well. Caught it leaping 383px on a 476px
+           * field, which is a boss flying off the top of the screen, and the same error would
+           * have put it two and a half body-lengths up merely for standing on the rocks.
+           */
+          const lift = (up * petBox(art, size).h) / scale
           return `translate(calc(-50% + ${p.x.toFixed(1)}px), calc(-100% + ${(
             footRoom(art) * 100
-          ).toFixed(1)}% + ${p.y.toFixed(1)}px))`
+          ).toFixed(1)}% + ${(p.y - lift).toFixed(1)}px))`
         })(),
       }}
     >
@@ -1409,7 +1429,12 @@ export function ParkRoom({
             target = o.shown
           }
         }
-        const plan = bossThink(cur, target, bossKit.moves)
+        /* ⚠️ how high the thing it is hunting is standing, so it can tell the difference
+           between somebody beside it and somebody it cannot reach — see the leap. The nearest
+           peer's altitude is not on the wire as a number, but where they are IS, and ground.ts
+           turns one into the other. */
+        const targetUp = target === (you.current as Spot) ? you.current.up : groundAt(target)
+        const plan = bossThink(cur, target, bossKit.moves, targetUp)
         /**
          * ⚠️ A CAST OWNS THE BOSS WHILE IT RUNS. It cannot walk, turn or swing through one —
          * which is the price that makes it worth dodging rather than ignoring, and the window
@@ -1438,6 +1463,67 @@ export function ParkRoom({
               : { ...cur, charge: { ...cur.charge, t: rt } }
         } else if (plan.charge) {
           cur = { ...cur, charge: { ...plan.charge, t: 0 } }
+        }
+
+        /**
+         * ⚠️ THE LEAP IS FLOWN HERE RATHER THAN BY stepAir, and that is the one place the
+         * boss is allowed to differ from a person. stepAir is ballistics: you choose a launch
+         * speed and the arc decides where you come down. A leap is the other way round — the
+         * spot is chosen first and the arc has to arrive at it — so it is driven off its own
+         * clock, up through LEAP.rise, held, and down onto the ground that is actually there.
+         *
+         * ⚠️ AND IT LANDS ON WHATEVER IS UNDER THE SPOT. Leaping at somebody on the rocks puts
+         * it on the rocks; the terrain is not something the move has to know about.
+         */
+        if (cur.leap) {
+          const lt = cur.leap.t + dt
+          const whole = LEAP.warn + LEAP.rise + LEAP.fall
+          if (lt >= whole) {
+            const floor = groundAt(cur.leap)
+            /**
+             * ⚠️ IT LANDS ON YOU, OR IT LANDS. The slam is the whole reason for the move and
+             * it is a place rather than a swing — no aim, no facing, no arc to read; you are
+             * either where it came down or you are not. Built from the boss's hardest move so
+             * that what it is made of still decides what it hits for, the same rule every
+             * other thing it throws follows.
+             */
+            const hardest = bossKit.moves.reduce(
+              (m, x) => (x.bite > m.bite ? x : m),
+              bossKit.moves[0],
+            )
+            const near =
+              Math.hypot(
+                ((you.current.x - cur.leap.x) / VIEW.w) * FIELD_ASPECT,
+                (you.current.y - cur.leap.y) / VIEW.h,
+              ) <
+              PARK_TALL * cur.scale * 0.95
+            if (hardest && near && canBeHurt(you.current)) {
+              you.current = mauled(
+                you.current,
+                cur.leap,
+                { ...hardest, bite: Math.round(hardest.bite * LEAP.bite), lift: 0.9 },
+                floor,
+              )
+            }
+            cur = { ...cur, leap: null, up: floor, ground: floor, vz: 0 }
+          } else {
+            const from = { x: cur.x, y: cur.y }
+            const p = Math.max(0, (lt - LEAP.warn) / (LEAP.rise + LEAP.fall))
+            const arc = Math.sin(Math.min(1, p) * Math.PI)
+            const floor = groundAt(cur.leap)
+            cur = {
+              ...cur,
+              leap: { ...cur.leap, t: lt },
+              /* it does not move at all while it winds up — the tell a charge has too */
+              x: lt < LEAP.warn ? from.x : from.x + (cur.leap.x - from.x) * Math.min(1, p * 1.15),
+              y: lt < LEAP.warn ? from.y : from.y + (cur.leap.y - from.y) * Math.min(1, p * 1.15),
+              up: floor + arc * LEAP.high,
+              ground: floor,
+              vz: 0,
+            }
+          }
+        } else if (plan.leap) {
+          cur = { ...cur, leap: { ...plan.leap, t: 0 } }
         }
         const casting = !!cur.cast
         /**
@@ -1482,6 +1568,19 @@ export function ParkRoom({
         cur = { ...cur, ...driven(cur, bossKit.moves[cur.move], struckBoss.hold > 0 ? 0 : dt) }
 
         /**
+         * ⚠️ IT CLIMBS, THROUGH THE SAME stepAir A PERSON DOES. A boss that walked through the
+         * rocks while everybody else stood on them would make the terrain a thing only one
+         * side of the fight lives in — and this room's oldest rule about the boss is that it
+         * cannot do anything you could not. It never presses the key, so it never jumps; the
+         * ground simply carries it up and drops it off, and the leap it DOES have is its own
+         * move rather than a hop.
+         */
+        /* ⚠️ NOT WHILE IT IS LEAPING, or two things own its altitude and gravity quietly
+           drags the arc down out from under the slam. The leap flies itself; the ground only
+           carries it when it is walking. */
+        if (!cur.leap) cur = { ...cur, ...stepAir(cur, false, dt, false, groundAt(cur)).s }
+
+        /**
          * ⚠️ THE CAST HURTS THROUGH THE SAME GUARD A SWING DOES — stun above zero means you
          * cannot be hit, so being knocked about by one thing does not feed you into another.
          * One patch landing spends the cast, so a wave rolling over you is one hit and not five.
@@ -1522,18 +1621,26 @@ export function ParkRoom({
           const area = strikeSwipe(cur, cur.aim, bm, bm.span - cur.swing, cur.scale)
           if (area && canBeHurt(you.current) && inSwipe(you.current, myWide, area)) {
             /* ⚠️ mauled, not shoved — a boss is the one thing allowed to take health off */
-            you.current = mauled(you.current, cur, bm)
+            you.current = mauled(you.current, cur, bm, cur.up)
             cur = { ...cur, spent: true }
           }
         }
 
         /* and mine against it — one swing is one hit, so a swipe that already caught a
            wanderer does not also land on the boss */
+        /**
+         * ⚠️ AND HEIGHT CUTS BOTH WAYS, which is the whole reason overHead takes two sides. A
+         * boss up in the trees is over a ground swing exactly as a jumping player is over its
+         * sweep — if only one direction counted, climbing would be a thing the boss could do
+         * TO you and not a thing you could answer. Asked of the boss as a striker, with your
+         * own feet as the height it is being swung at from.
+         */
         if (
           area0 &&
           mv0 &&
           !you.current.spent &&
           !beaten(cur) &&
+          !overHead(cur, mv0, you.current.up) &&
           inSwipe(cur, bossKit.wide, area0, cur.scale)
         ) {
           cur = wounded(cur, mv0)
@@ -2814,6 +2921,8 @@ export function ParkRoom({
               hp={bossShown.lifeMax > 0 ? bossShown.life / bossShown.lifeMax : 0}
               hit={bossShown.hold > 0}
               moving={bossShown.moving}
+              up={bossShown.up}
+              scale={bossShown.scale}
             />
           )}
           {walking && theirBoss && (
