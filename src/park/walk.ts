@@ -154,13 +154,13 @@ export const SQUASH = (PARK.across / PARK.down) * ASPECT * 0.82
  */
 export const TUNE = {
   /**
-   * ⚠️ 0.25, DOWN FROM 0.38, BECAUSE THE CREATURE GOT SMALLER. This is screenfuls a second and
+   * ⚠️ 0.212, DOWN FROM 0.38, BECAUSE THE CREATURE GOT SMALLER — twice, in step with it. This is screenfuls a second and
    * PARK_TALL is what a creature stands in a screen, so the two together decide the only pace
    * a hand can feel: body-lengths a second. Zooming out from 0.8 to 0.52 without touching this
    * would have left the same creature crossing its own length half again as fast as before —
    * a smaller, twitchier thing rather than a wider view of the same one.
    */
-  speed: 0.25,
+  speed: 0.212,
   /**
    * ⚠️ THERE WAS NO WEIGHT AND THAT IS MOST OF WHAT "IT DOES NOT FEEL SMOOTH" MEANT. At 3.4
    * and 6.5 a creature reached top speed in 0.104s and stopped dead in 0.058s, sliding 0.09 of
@@ -179,8 +179,8 @@ export const TUNE = {
    * These two came down by the same fraction to hold the TIMES, because a time is what a hand
    * feels — the raw numbers are screenfuls a second squared and feel like nothing at all.
    */
-  accel: 1.25,
-  drag: 1.71,
+  accel: 1.06,
+  drag: 1.45,
   /** below this it is standing still, not creeping */
   quiet: 0.012,
 }

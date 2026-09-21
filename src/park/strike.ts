@@ -57,6 +57,13 @@ export type Striker = Walker & {
   /** seconds before another jump, so it is an answer rather than a way of getting about */
   hopRest: number
   /**
+   * How slowly it can let itself down, 1 being not at all and 0.34 being a pair of wings. The
+   * same traitsOf number the platformer glides on.
+   */
+  glide: number
+  /** seconds of float left in this jump, spent by holding the key on the way down */
+  float: number
+  /**
    * How high this one jumps, 1 being the plain arc — wings buy more. From traitsOf, the same
    * function the platformer has used since the pets room existed.
    *
@@ -80,9 +87,11 @@ export type Striker = Walker & {
 
 export type StrikeInput = { quick: boolean; heavy: boolean; up: boolean; down: boolean }
 
-export const restingStriker = (w: Walker, jump = 1): Striker => ({
+export const restingStriker = (w: Walker, jump = 1, glide = 1): Striker => ({
   ...w,
   jump,
+  glide,
+  float: 0,
   swing: 0,
   move: 0,
   spent: false,
@@ -232,6 +241,22 @@ export const HOP = {
    * were found pinned against their own floor.
    */
   under: 0.35,
+  /**
+   * Most seconds a pair of wings can stretch a descent.
+   *
+   * ⚠️ IT DOES NOT CURRENTLY BIND, AND IT IS STILL RIGHT TO HAVE. traitsOf gives 0.34 for any
+   * number of wings, and a descent at 0.34 takes 0.735s against this 0.85 — so the arc runs
+   * out before the budget does and about 0.11s goes unspent every jump. The cap is here for
+   * the day some part glides harder than a wing: a rate with no budget is not traversal, it is
+   * immunity to every low swing for as long as a key is held, and finding that out later would
+   * mean finding it out in somebody's fight.
+   *
+   * ⚠️ MEASURED, what wings actually buy: 0.99s in the air against a plain jump's 0.50, and
+   * 0.81s above `clear` against 0.38 — so a bit over twice as long out of reach of anything
+   * drawn low, in exchange for being unable to attack, guard or roll for all of it. The roll
+   * is still the better answer to one blow; this is for crossing ground and for the second.
+   */
+  glide: 0.85,
 }
 
 /**
@@ -281,16 +306,48 @@ export const overHead = (s: Striker, a: Attack): boolean =>
  * ⚠️ NOT OUT OF A ROLL, A STANCE OR A SWING. Each of the three answers costs you the other
  * two while it runs, or the right play is always to press all of them.
  */
-export function stepHop(s: Striker, want: boolean, dt: number): { s: Striker; went: boolean } {
+/**
+ * @param want true on the frame the key goes DOWN — a jump is an edge, not a state
+ * @param held true for as long as it is down, which is what a glide is asked with
+ */
+export function stepHop(
+  s: Striker,
+  want: boolean,
+  dt: number,
+  held = want,
+): { s: Striker; went: boolean } {
   const t = Math.max(0, Math.min(0.05, dt))
   if (s.hop > 0) {
-    const left = Math.max(0, s.hop - t)
-    return { s: { ...s, hop: left, hopRest: left > 0 ? s.hopRest : HOP.rest }, went: false }
+    /**
+     * ⚠️ ONLY ON THE WAY DOWN, which is what makes it a glide rather than a hover. The arc
+     * counts from HOP.time to 0 and peaks in the middle, so the second half is the descent —
+     * stretching the first half would let somebody hang at the top, which is the position
+     * nothing can reach and nothing can punish.
+     *
+     * ⚠️ AND IT COSTS `float`, so it ends whether or not the key does. A rate with no budget
+     * is a way to live in the air; see HOP.glide.
+     */
+    const falling = s.hop < HOP.time / 2
+    const floating = held && falling && s.glide < 1 && s.float > 0
+    const left = Math.max(0, s.hop - t * (floating ? s.glide : 1))
+    return {
+      s: {
+        ...s,
+        hop: left,
+        float: Math.max(0, s.float - (floating ? t : 0)),
+        hopRest: left > 0 ? s.hopRest : HOP.rest,
+      },
+      went: false,
+    }
   }
   const rest = Math.max(0, s.hopRest - t)
   if (!want || rest > 0 || s.swing > 0 || s.stun > 0 || s.hold > 0 || s.dodge > 0 || s.braced)
     return { s: { ...s, hopRest: rest }, went: false }
-  return { s: { ...s, hop: HOP.time, hopRest: 0 }, went: true }
+  /* a fresh budget every jump, and none at all for a creature with nothing to glide on */
+  return {
+    s: { ...s, hop: HOP.time, hopRest: 0, float: s.glide < 1 ? HOP.glide : 0 },
+    went: true,
+  }
 }
 
 export const GUARD = {
@@ -578,10 +635,11 @@ export type Swipe = {
  * is the same thing one step later, so petSize asks for this one now and the park has a single
  * zoom.
  *
- * ⚠️ 0.52, DOWN FROM 0.8. At 0.8 a creature stood 17.6% of the screen's height, which is a
- * long way zoomed in for a game you look down on — Evan, on why SUPERVIVE reads better:
- * "you are zoomed out a bit". At 0.52 it stands 11.4%, so you see about half as much creature
- * and half again as much world.
+ * ⚠️ 0.44, DOWN FROM 0.8 IN TWO STEPS. At 0.8 a creature stood 16% of the screen's height,
+ * which is a long way zoomed in for a game you look down on — Evan, on why SUPERVIVE reads
+ * better: "you are zoomed out a bit". 0.52 was better and still not enough ("it could be a bit
+ * more zoomed out"), so 0.44: a creature stands 8.8% and a screen is 55 body-lengths across
+ * where it started at 30.
  *
  * ⚠️ AND EVERY DISTANCE IN THE PARK FOLLOWS IT, which is what makes this a zoom rather than a
  * rebalance. Reach, footprint, dodge, lunge and every cast are in PET-heights and converted
@@ -589,7 +647,7 @@ export type Swipe = {
  * The walk is NOT in pet-heights — it is screenfuls a second — so TUNE.speed came down with
  * it, or the same creature would cross its own body a third again as fast as it used to.
  */
-export const PARK_TALL = PET_TALL * 0.52
+export const PARK_TALL = PET_TALL * 0.44
 
 /**
  * How big a creature is to hit, in world units.

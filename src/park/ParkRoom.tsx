@@ -989,6 +989,7 @@ export function ParkRoom({
     you.current = restingStriker(
       restingWalker(0.3 + Math.random() * 0.4, 0.35 + Math.random() * 0.4),
       myTraits.jump,
+      myTraits.glide,
     )
     cam.current = camWant(you.current)
     setCamAt(cam.current)
@@ -1157,7 +1158,9 @@ export function ParkRoom({
        */
       const wantHop = hopping.current && !hopped.current && !iAmCasting
       hopped.current = hopping.current
-      you.current = stepHop(you.current, wantHop, dt).s
+      /* ⚠️ the EDGE starts a jump and the HELD state stretches its descent — see stepHop. A
+         creature with no wings has no float budget, so holding it does nothing at all. */
+      you.current = stepHop(you.current, wantHop, dt, hopping.current && !iAmCasting).s
       const inAir = aloft(you.current)
 
       /**
@@ -1915,15 +1918,19 @@ export function ParkRoom({
    * not where the creature is, which is the thing PARK_TALL's own note has always warned about
    * — and they were nevertheless two numbers until the park was zoomed out.
    *
-   * ⚠️ AND THE FLOOR IS 18, NOT 22, BECAUSE THE ZOOM MOVED WHERE IT BITES. The floor stops a
-   * creature becoming a speck, and it is the one place the picture and the hitbox are allowed
-   * to disagree: below it the drawing stops shrinking and PARK_TALL does not. At the old zoom
-   * that happened under a 137px field, which is not a park anybody was playing in. At 0.104 it
-   * would have started at 212px — and a phone's field measures 205, so every phone would have
-   * been playing with a hitbox a little smaller than the creature it draws. 18 puts the corner
-   * back under 173px, where it is out of the way again.
+   * ⚠️ AND THE FLOOR MOVES WITH THE ZOOM, WHICH IS THE PART THAT KEEPS CATCHING PEOPLE OUT.
+   * The floor stops a creature becoming a speck, and it is the one place the picture and the
+   * hitbox are allowed to disagree: below it the drawing stops shrinking and PARK_TALL does
+   * not. At the original zoom it bit under a 137px field, which is not a park anybody plays
+   * in. Each zoom out raises that — 0.104 would have made it 212px, and a phone's field
+   * measures 205. At 0.088, 14 puts it back under 159px, clear of a phone again.
+   *
+   * ⚠️ A PHONE IS AT THE EDGE OF THIS ZOOM. 205px of field puts a creature at 18px, which is
+   * small. The zoom cannot be made responsive — see PARK_TALL, the park is shared — so if it
+   * is ever to be comfortable on a phone that will be by giving the field more of the page
+   * there, not by drawing a bigger creature in the same field.
    */
-  const petSize = (art: Drawing) => petCanvas(art, Math.max(18, size.h * PARK_TALL))
+  const petSize = (art: Drawing) => petCanvas(art, Math.max(14, size.h * PARK_TALL))
 
   /**
    * Your other creatures, out for a walk of their own.
