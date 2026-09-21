@@ -3212,8 +3212,14 @@ section[id] {
   border-radius: 5px;
   max-width: 6.5rem;
 }
+/* ⚠️ IT DOES NOT GROW, IT ONLY SHRINKS. `flex: 1` made the name eat every spare pixel in the
+   row, so on a wide screen "3. 14 notes" sat in a button forty characters long and shoved the
+   instrument picker — the control that belongs to that very layer — to the far edge of the
+   page. Reported as "the layer drop down is so wide with the instrument far on the opposite
+   side of the screen". Now the name takes the width of its own text, the picker sits next to
+   it, and the spare space is claimed further along by the fader instead. */
 .inst-layer-name {
-  flex: 1;
+  flex: 0 1 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -11160,6 +11166,10 @@ a.cz-msg-author:focus-visible {
 .inst-layer-vol {
   display: inline-flex;
   align-items: center;
+  /* ⚠️ The mixer half keeps the right-hand edge, so the faders line up down the list instead of
+     each one starting wherever its layer's name happened to end — see .inst-layer-name, which
+     stopped growing to let the instrument picker sit beside the layer it belongs to. */
+  margin-left: auto;
 }
 .inst-layer-vol input[type='range'] {
   /* ⚠️ narrow on purpose. It sits in a row with six other controls and only has to be nudged;
