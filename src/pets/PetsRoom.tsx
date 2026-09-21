@@ -202,7 +202,8 @@ export function PetsRoom({ onControlChange }: { onControlChange?: (on: boolean) 
               Go to <strong>🎨 Paint</strong> and draw the <em>body</em> of a creature.
             </li>
             <li>
-              Press <strong>+ layer</strong>, then draw one part on it — a wing, a leg, a tail.
+              Press <strong>+ layer</strong>, then draw one part on it — a wing, a leg, a tail. Any
+              size, anywhere on the page.
             </li>
             <li>
               Press <strong>✎</strong> on that layer and name it after the part:{' '}
@@ -244,9 +245,14 @@ export function PetsRoom({ onControlChange }: { onControlChange?: (on: boolean) 
             sees it until your creature swings. Draw it out to one side — the further out, the
             further it reaches, and bigger hurts more.
           </p>
+          {/* ⚠️ TWO UNRELATED FACTS WERE SHARING A PARAGRAPH, which is why the second one read
+              as an afterthought — it is the whole alternative way of making a minion, not a
+              footnote to how a drawing gets cropped. Split, and the crop reassurance goes up
+              beside the drawing instructions where it answers the question somebody is actually
+              asking while they draw. */}
           <p className="muted">
-            It does not matter how big you drew it or where on the page. A drawing made with{' '}
-            <strong>🎬 Frames</strong> plays its frames instead of being moved for you.
+            A drawing made with <strong>🎬 Frames</strong> plays its frames instead of being moved
+            for you.
           </p>
         </details>
       </div>

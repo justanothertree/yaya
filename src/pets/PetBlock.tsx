@@ -140,8 +140,7 @@ export function PetPicker({
               stored word never changed, only the one on the heading), so a
               browser that has none gets them as soon as it is signed in. Saying a thing is
               permanent when it fixes itself in a moment sends somebody off to redraw one. */}
-          {names.join(', ')} — added from another browser, and they show here fine. Your own minions
-          arrive on this machine once you are signed in.
+          {names.join(', ')} — added from another browser. Sign in and yours arrive here too.
         </span>
       )}
       <div className="fx-style-row">

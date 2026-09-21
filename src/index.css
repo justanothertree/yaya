@@ -9223,34 +9223,45 @@ a.cz-msg-author:focus-visible {
  * ⚠️ AND THE KEYS DO NOT WRAP MID-CHORD. "W/S + F/G" breaking across two lines reads as four
  * separate keys, which is the one thing this is here to prevent.
  */
-.park-keys {
+/* ⚠️ TWO ROOMS, ONE RULE. The fighting ring had the same job — a keyboard map in a room where
+   the keyboard IS the interface and a phone has no tooltips — and was doing it as a paragraph.
+   It borrows this rather than restating it, the same reason its thumb pad borrows
+   .pet-play-key: same layout, one place to fix. `.fight-keys` so the ring is not asking for a
+   class named after the park. */
+.park-keys,
+.fight-keys {
   display: grid;
   gap: 4px 14px;
   margin: 10px 0 6px;
   font-size: 0.82rem;
   line-height: 1.5;
 }
-.park-keys > div {
+.park-keys > div,
+.fight-keys > div {
   display: grid;
   gap: 1px 14px;
   align-items: baseline;
 }
 @media (min-width: 30rem) {
-  .park-keys > div {
+  .park-keys > div,
+  .fight-keys > div {
     grid-template-columns: minmax(9.5rem, max-content) 1fr;
   }
 }
-.park-keys dt {
+.park-keys dt,
+.fight-keys dt {
   white-space: nowrap;
   display: flex;
   flex-wrap: wrap;
   gap: 3px;
   align-items: center;
 }
-.park-keys dd {
+.park-keys dd,
+.fight-keys dd {
   margin: 0;
 }
-.park-keys kbd {
+.park-keys kbd,
+.fight-keys kbd {
   font: inherit;
   font-size: 0.76rem;
   min-width: 1.5em;

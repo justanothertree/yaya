@@ -697,22 +697,52 @@ export function PetFight({
       </div>
 
       {/* ⚠️ in the room rather than in a tooltip, the same as the playground: this is the other
-          place on the site where the keyboard IS the interface, and a phone has no tooltips */}
-      <p className="muted pet-fight-keys">
-        <strong>{online ? 'You' : 'Player one'}</strong> — <strong>A D</strong> to move,{' '}
-        <strong>W</strong> to jump (again in the air to recover), <strong>F</strong> quick,{' '}
-        <strong>G</strong> heavy. <strong>Hold W or S as you hit</strong> for an up or down attack —
-        six in all, out of what you drew.
+          place on the site where the keyboard IS the interface, and a phone has no tooltips.
+
+          ⚠️ A TABLE, BECAUSE IT IS A TABLE. This was a paragraph — "A D to move, W to jump
+          (again in the air to recover), F quick, G heavy. Hold W or S as you hit for an up or
+          down attack" — which is five key bindings written as a sentence, so finding one meant
+          reading all of them. The park does the same job as a <dl> and has for weeks; this
+          borrows its layout rather than restating it. */}
+      <dl className="muted fight-keys">
+        <div>
+          <dt>
+            <kbd>A</kbd> <kbd>D</kbd>
+          </dt>
+          <dd>Move</dd>
+        </div>
+        <div>
+          <dt>
+            <kbd>W</kbd>
+          </dt>
+          <dd>Jump — again in the air to recover</dd>
+        </div>
+        <div>
+          <dt>
+            <kbd>F</kbd> <kbd>G</kbd>
+          </dt>
+          <dd>Quick, and heavy</dd>
+        </div>
+        <div>
+          <dt>
+            <kbd>W</kbd>/<kbd>S</kbd> + <kbd>F</kbd>/<kbd>G</kbd>
+          </dt>
+          <dd>Aim it high or low — six moves in all</dd>
+        </div>
+        {/* ⚠️ Only in a local two-player bout, and it is what tells you the rows above are
+            yours — against the computer or online there is nobody to be player two. */}
         {!cpu && !online && (
-          <>
-            {' '}
-            <strong>Player two</strong> — <strong>← →</strong>, <strong>↑</strong>,{' '}
-            <strong>.</strong> and <strong>/</strong>.
-          </>
-        )}{' '}
-        Nobody has a health bar: damage makes you fly further, and you lose by leaving the stage.
-        What each creature is made of is what it can hit you with — a tail sweeps, wings send you
-        upward, a mouth bites hardest
+          <div>
+            <dt>
+              <kbd>←</kbd> <kbd>→</kbd> <kbd>↑</kbd> <kbd>.</kbd> <kbd>/</kbd>
+            </dt>
+            <dd>Player two</dd>
+          </div>
+        )}
+      </dl>
+      <p className="muted pet-fight-keys">
+        No health bars — damage sends you further, and you lose by leaving the stage. What a
+        creature is made of is what it hits with
         {side[0] && traitWords(kit.traits[0] ?? { speed: 1, jump: 1, gravity: 1, glide: 1 }).length
           ? `. ${side[0].name} ${traitWords(kit.traits[0]).join(', ')}.`
           : '.'}
