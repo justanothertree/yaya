@@ -2268,9 +2268,8 @@ export function ParkRoom({
       {/* ⚠️ THE KEY LIST IS A KEY LIST, so the phone gets its own sentence rather than a
           column of blanks next to keys it does not have. */}
       <p className="muted park-touch">
-        On a phone the pad under the park walks you about and gives you the five things you do —
-        swing, swing harder, roll, guard and jump — and the three chips in the corner throw your big
-        moves.
+        On a phone: the pad below walks and does the five — swing, heavy, roll, guard, jump. The
+        chips throw your big moves.
       </p>
       <div className={'park-stage' + (full ? ' is-full' : '')} ref={stage}>
         <div className="park-field" ref={field}>
@@ -2700,10 +2699,10 @@ export function ParkRoom({
           )}
           {!walking && (
             <div className="park-empty">
-              <p className="muted">
-                A field three screens across, and whoever else is standing in it. Take one of your
-                minions for a walk and anybody else in the park will see them.
-              </p>
+              {/* ⚠️ SAYS WHAT TO DO, because the reference below already says what the place
+                  is. This used to open with "a field three screens across" and the fact list
+                  now says that too — one statement each. */}
+              <p className="muted">Take a minion for a walk. Everybody in the park sees them.</p>
             </div>
           )}
           {/* ⚠️ INSIDE THE FIELD, NOT BESIDE IT. It pins to the top-right of whatever box it sits
@@ -2856,18 +2855,17 @@ export function ParkRoom({
           {state.current.trouble}
         </p>
       )}
+      {/* ⚠️ THE REASON, NOT THE ESSAY. This ran to three sentences explaining why a picture
+          cannot be filtered and that Snake is open to everybody. The fact is the reason. */}
       {!authed && !walking && (
         <p className="muted park-trouble" role="status">
-          The park is for people with an account. Snake is open to everybody — but in here your
-          creature is drawn on everyone else's screen, and a picture is the one thing nobody can
-          filter, so this one asks who you are first. <a href="#signin">Sign in</a> and walk right
-          in.
+          Members only — in here your creature is drawn on everybody else's screen.{' '}
+          <a href="#signin">Sign in</a>.
         </p>
       )}
       {tooBig && !walking && (
         <p className="muted park-trouble" role="status">
-          {mine?.name} is too detailed to carry into the park — everybody here has to be sent your
-          creature, so there is a size limit. Something with fewer strokes will walk in fine.
+          {mine?.name} has too many strokes to send to everybody in the park. Take a simpler one.
         </p>
       )}
 
@@ -2929,8 +2927,8 @@ export function ParkRoom({
             <kbd>{keyName(PARK_KEYS.guard)}</kbd>
           </dt>
           <dd>
-            Guard, held — only covers the way you face, and a quarter still gets through. Raise it
-            as the blow lands and you take nothing at all, and whatever threw it is left wide open.
+            Guard, held. Covers the way you face; a quarter still gets through. Raise it as the blow
+            lands to parry — no damage, and the attacker is left open.
           </dd>
         </div>
         <div>
@@ -2940,18 +2938,22 @@ export function ParkRoom({
           <dd>Jump — clears anything drawn low, but never an overhead</dd>
         </div>
       </dl>
+      {/*
+        ⚠️ FACTS, NOT A TOUR. This was one 140-word paragraph that narrated the park at you —
+        "the few places worth naming", "having a wander", "Not sure what your moves do?" — and
+        the reader has to get through all of it to find the two sentences that say what the
+        buttons do. Same information, said once each. The reasoning behind any of it belongs in
+        a comment like this one, where it is useful, rather than on the page.
+      */}
       <p className="muted park-about">
-        The park is {PARK.across} screens across and {PARK.down} down, and the view follows you —
-        the little map shows the whole of it, everybody in it, and the few places worth naming: the
-        pond, the ring, the rocks and two lots of trees. Everyone shares one park, so whoever is
-        online is who you will meet.
-        {strolling.length > 0 &&
-          ' The faded ones are your own other minions having a wander, and only you see those.'}{' '}
-        Call a boss and one of your minions stands up big with a health bar that <em>everybody</em>{' '}
-        can see and hit — one at a time, run by whoever called it, and it goes when they do. Not
-        sure what your moves do? Stand a target out with <strong>Hit dummy</strong> to feel how far
-        a swing reaches, then let it <strong>hit back</strong> to practise rolling, guarding and
-        jumping against something that can never take a point of health off you.
+        {PARK.across} screens across, {PARK.down} down. The map shows all of it — pond, ring, rocks,
+        two woods. One park, shared: whoever is online is who you meet.
+        {strolling.length > 0 && ' Faded minions are your own. Only you see them.'}
+      </p>
+      <p className="muted park-about">
+        <strong>Call a boss</strong> stands one of your minions up big, with a health bar{' '}
+        <em>everybody</em> can hit. One at a time, and it goes when you do.{' '}
+        <strong>Hit dummy</strong> stands out a target that hits back and cannot hurt you.
       </p>
     </div>
   )
