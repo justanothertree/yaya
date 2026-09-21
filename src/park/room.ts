@@ -240,10 +240,38 @@ export type ParkState = {
  * afterwards rather than finding out from an error.
  */
 export const PARK_LOOK_LIMIT = 11500
-const THIN = 0.0022
 
-export const packLook = (art: Drawing) => packDrawing(simplifyDrawing(art, THIN))
+/**
+ * How hard to thin, in order, until it fits.
+ *
+ * ⚠️ IT THINNED ONCE AND GAVE UP, which turned a size limit into a refusal to play. A drawing
+ * over the line was answered with "too many strokes to send to everybody in the park. Take a
+ * simpler one" — which is the maker and the game contradicting each other: the paint room
+ * says draw whatever you like and the park says not that. Reported about a creature with an
+ * eyepatch, a head and a hit, which is three layers and not an extravagance.
+ *
+ * ⚠️ SO IT THINS AS HARD AS IT HAS TO AND NO HARDER. The first rung is the tolerance that was
+ * always used, so a drawing that already fitted travels exactly as it did — nothing anybody
+ * has made looks different today. Only a creature that would have been TURNED AWAY gets a
+ * rougher copy, and a rougher copy of your creature in the park beats your creature not being
+ * allowed in it.
+ *
+ * ⚠️ AND ONLY THE COPY THAT TRAVELS. simplifyDrawing returns a new drawing; the gallery, the
+ * minions room and your own screen keep every point you drew. The thinning is what other
+ * people see, at the size the park draws it, which is a tenth of the screen's height.
+ */
+const THIN_LADDER = [0.0022, 0.0038, 0.0065, 0.011, 0.018, 0.03]
 
+export const packLook = (art: Drawing) => {
+  let last = packDrawing(simplifyDrawing(art, THIN_LADDER[0]))
+  for (const tol of THIN_LADDER) {
+    last = packDrawing(simplifyDrawing(art, tol))
+    if (JSON.stringify(last).length <= PARK_LOOK_LIMIT) return last
+  }
+  return last
+}
+
+/** Whether it fits even at the roughest the ladder goes. */
 export const lookFits = (art: Drawing): boolean =>
   JSON.stringify(packLook(art)).length <= PARK_LOOK_LIMIT
 
