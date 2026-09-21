@@ -228,6 +228,25 @@ export function PetsRoom({ onControlChange }: { onControlChange?: (on: boolean) 
             the body, which is why a drawing with one layer still makes a minion: it simply
             breathes.
           </p>
+          {/*
+            ⚠️ EVERY OTHER NAME IN THAT LIST EXPLAINS ITSELF AND THIS ONE DOES NOT. A wing flaps
+            and a tail wags; `hit` is not a part of the creature at all, it is the weapon, and it
+            was sitting in the middle of the list with nothing to say what it was for. Watched a
+            drawing get made from these instructions and the one thing it could not tell you was
+            the only thing on the page you cannot guess.
+
+            ⚠️ AND WHERE YOU DRAW IT IS THE WHOLE POINT, so the sentence has to say so. The reach
+            and the damage are read straight off the ink — how far it gets from the middle of the
+            body, and how much of it there is — which is a real mechanic nobody can use without
+            being told it exists. Measured on a drawing made this way: a creature with a hit layer
+            hits for 11–25 against 5–10 for the same creature without one.
+          */}
+          <p className="muted">
+            One of those is not a part of the creature. A layer called <code>hit</code> is the{' '}
+            <em>attack</em> — draw it out to one side, clear of the body, because how far the ink
+            reaches is how far the attack reaches and how much of it there is is how hard it lands.
+            It stays invisible until your creature swings it, in the park and the fighting ring.
+          </p>
           <p className="muted">
             It does not matter how big you drew it or where on the page — a minion is cropped to the
             creature. And if you would rather animate it yourself, a drawing made with{' '}

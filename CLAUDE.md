@@ -103,6 +103,12 @@ what it just made stale — copy, empty states, the thing a neighbouring feature
   `prefers-reduced-motion` cannot be emulated. And `window.confirm` is auto-dismissed, which
   returns `false` — so a confirmed action appears to do nothing and the feature appears broken
   (this cost an hour on the paint room's Clear button, which was fine).
+- **`window.prompt` is worse than `confirm`: it THROWS.** `prompt() is not supported` comes
+  straight back out of the call, so it does not return null quietly — it aborts whatever handler
+  asked, halfway through. Every naming flow in the app goes through it: ⬇ Keep, Make a minion,
+  and renaming a layer. Untouched, those look like crashes rather than a pane limitation. Stand
+  it in the same way as rAF, with a queue, before driving any of them:
+  `window.__answers = ['Clawbert']; window.prompt = (q, d) => { const a = window.__answers.shift(); return a === undefined ? d : a }`
 - **So put the logic where it can be asked a question, and leave the wiring in the component.**
   The pets module's physics is pure functions in `src/pets/play.ts` for exactly this reason: with
   no rAF, a loop that owns its own maths is a loop nobody can check. Called directly, `stepBody`
