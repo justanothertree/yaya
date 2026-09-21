@@ -1906,7 +1906,7 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
                   <input
                     type="range"
                     min={0}
-                    max={1.5}
+                    max={2}
                     step={0.05}
                     value={l.gain ?? 1}
                     onChange={(e) => setLayerGain(l.id, Number(e.target.value))}

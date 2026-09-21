@@ -105,7 +105,19 @@ type Shape = {
   filter?: { from: number; to: number; q: number }
   /** a pitch that falls (or rises) into place: multiplier at note-on, and how long it takes */
   pitch?: { mult: number; time: number }
-  /** peak gain, so a bass patch does not drown a bell */
+  /**
+   * Peak gain, so a bass patch does not drown a bell.
+   *
+   * ⚠️ IT IS PER PARTIAL, AND THE PARTIALS SUM, which is why reading this column on its own
+   * says nothing about loudness: a four-partial patch at 0.30 is louder than a one-partial
+   * patch at 0.50. What the ear gets is level x sum(partial gains), and what it gets from a
+   * HELD note is that times `s`. Measured across all 27 presets: peaks were already within
+   * 2.5x, but held notes ran from 0.052 to 0.636 — so in a loop, where every note is held, a
+   * whistle layer sat three times under an organ one and the layer fader could not close the
+   * gap. Six were raised to bring the peaks inside 0.50-0.78; the other 21 were already there.
+   * If you change one of these, run scripts/synth-levels.py and look at the PEAK column rather
+   * than at the number you just typed.
+   */
   level: number
 }
 
@@ -133,7 +145,7 @@ const SHAPES: Record<Exclude<InstrumentId, 'drums'>, Shape> = {
     wave: 'sawtooth',
     partials: [{ ratio: 1, detune: 0, gain: 1 }],
     filter: { from: 4200, to: 500, q: 3 },
-    level: 0.42,
+    level: 0.55,
   },
   // 2.76 is deliberately not a musical interval — inharmonic partials are what make metal ring
   bell: {
@@ -217,7 +229,7 @@ const SHAPES: Record<Exclude<InstrumentId, 'drums'>, Shape> = {
       { ratio: 5, detune: 0, gain: 0.09 },
     ],
     filter: { from: 2200, to: 1500, q: 1 },
-    level: 0.3,
+    level: 0.42,
   },
   // wooden bars: a hard transient and gone. Short decay does the work, not the waveform.
   marimba: {
@@ -301,7 +313,7 @@ const SHAPES: Record<Exclude<InstrumentId, 'drums'>, Shape> = {
       { ratio: 6.1, detune: 0, gain: 0.03 },
     ],
     filter: { from: 6000, to: 2400, q: 0.6 },
-    level: 0.34,
+    level: 0.42,
   },
   /**
    * Bowed rather than blown or struck: a slow swell, a full sustain, and a sawtooth stack tuned
@@ -371,7 +383,7 @@ const SHAPES: Record<Exclude<InstrumentId, 'drums'>, Shape> = {
      * flute at 0.34 went 3.91% distortion on a three-note chord and 6.68% on five; with scaling
      * it never reaches the limiter at all up to five voices.
      */
-    level: 0.34,
+    level: 0.48,
   },
   /**
    * A clavinet: plucked and gone in a moment, but bright the whole way. Where Pluck rounds off,
@@ -390,7 +402,7 @@ const SHAPES: Record<Exclude<InstrumentId, 'drums'>, Shape> = {
       { ratio: 5, detune: 0, gain: 0.14 },
     ],
     filter: { from: 4800, to: 1600, q: 4 },
-    level: 0.3,
+    level: 0.4,
   },
   /**
    * The synth voice the set was missing: a detuned saw pair under a filter that opens on the
@@ -571,7 +583,7 @@ const SHAPES: Record<Exclude<InstrumentId, 'drums'>, Shape> = {
     filter: { from: 4000, to: 3200, q: 0.5 },
     /* Same story as flute above — purest patch in the set, so it exposed the limiter the same
        way. Back to 0.30 now that polyphony scaling keeps a chord under the threshold. */
-    level: 0.3,
+    level: 0.5,
   },
   /**
    * Fifths: a chord from a single key.

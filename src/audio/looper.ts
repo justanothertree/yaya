@@ -58,7 +58,14 @@ export type Layer = {
    * the scheduling changes.
    */
   /**
-   * How loud this layer is against the others, 0 to 1.5, 1 being as recorded.
+   * How loud this layer is against the others, 0 to 2, 1 being as recorded.
+   *
+   * ⚠️ IT WAS 1.5 AND THAT WAS NOT ENOUGH TO CLOSE THE GAP. Held notes across the presets run
+   * about 3x from quietest to loudest (see scripts/synth-levels.py), so a quiet layer under a
+   * loud one could be pushed to the end of its travel and still sit under it — a fader that
+   * cannot reach is a broken control whatever the presets do. The presets were evened up in
+   * the same pass; this is the headroom for the part of the spread that is deliberate, like a
+   * bass patch that is meant to sit below a bell.
    *
    * ⚠️ Undefined means 1, so nothing that already exists changes. It rides on the part's own bus
    * rather than scaling the notes, which means it applies to the tail of a note already sounding
@@ -1247,7 +1254,7 @@ export function clearLayerBars(id: string) {
 
 /** How loud one layer is. Takes effect on whatever is already ringing, not just the next note. */
 export function setLayerGain(id: string, gain: number) {
-  const v = Math.max(0, Math.min(1.5, gain))
+  const v = Math.max(0, Math.min(2, gain))
   set({ layers: state.layers.map((l) => (l.id === id ? { ...l, gain: v } : l)) })
 }
 
