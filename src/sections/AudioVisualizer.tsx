@@ -735,6 +735,13 @@ export function AudioVisualizer({ embedded = false }: { embedded?: boolean } = {
     useCallback(() => '', []),
   )
   const liveSet = live ? live.split(',') : []
+  const micLive = liveSet.includes('mic') || liveSet.includes('local')
+  /**
+   * Is the chosen source silent? Read twice: once by the hint that says so, and once by the
+   * idle watcher below, which must not tidy the controls away over a canvas with nothing on it.
+   */
+  const nothingOn =
+    src === ALL ? liveSet.length === 0 : isMic(src) ? !micLive : !liveSet.includes(src)
 
   const [reduced, setReduced] = useState(motionReduced)
   useEffect(() => onMotionChange(() => setReduced(motionReduced())), [])
@@ -852,10 +859,18 @@ export function AudioVisualizer({ embedded = false }: { embedded?: boolean } = {
    * ⚠️ Never while the pointer is over the controls, and never while one of them has focus. The
    * whole failure mode of an auto-hiding panel is it vanishing out from under the slider you are
    * reaching for, and stillness is exactly what careful aiming looks like.
+   *
+   * ⚠️ AND NEVER OVER AN EMPTY CANVAS, which is what a first visit is. The duck is for getting
+   * out of the way of something worth watching; with nothing playing there is nothing to watch,
+   * and 2.6 seconds is less than it takes to read the paragraph at the top of the page. A
+   * stranger opening the Visualiser therefore lost every control on it — all thirty-four modes,
+   * the source picker, the mic — before they had looked away from the heading, and the way back
+   * was one unlabelled ▾ whose only explanation is a tooltip, which a phone does not have. The
+   * room was telling them "use your mic" and hiding the mic button while it said so.
    */
   const [ducked, setDucked] = useState(false)
   useEffect(() => {
-    if (!panel) return
+    if (!panel || nothingOn) return
     let timer = 0
     const overControls = (t: EventTarget | null) =>
       t instanceof Element && !!t.closest('.viz-controls')
@@ -882,7 +897,7 @@ export function AudioVisualizer({ embedded = false }: { embedded?: boolean } = {
       window.removeEventListener('keydown', arm)
       setDucked(false)
     }
-  }, [panel])
+  }, [panel, nothingOn])
   const showPanel = panel && !ducked
 
   // fullscreen can also be left with Escape, which fires no click of ours — so track the browser
@@ -2090,9 +2105,6 @@ export function AudioVisualizer({ embedded = false }: { embedded?: boolean } = {
   const needsTrail =
     'Turn Trails up in ✨ Motion first — with no trail there is no previous frame to work on'
 
-  const micLive = liveSet.includes('mic') || liveSet.includes('local')
-  const nothingOn =
-    src === ALL ? liveSet.length === 0 : isMic(src) ? !micLive : !liveSet.includes(src)
   const srcLabel = isMic(src)
     ? 'your mic'
     : src === ALL
