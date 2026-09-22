@@ -2841,6 +2841,15 @@ section[id] {
 .inst-takes-list li > button:last-child {
   margin-left: auto;
 }
+/* the bounce button and whatever it produced — its own row, because a song with six parts
+   makes six links and they must not squeeze the button that made them */
+.inst-takes-stems {
+  flex: 1 0 100%;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+}
 .inst-takes-say {
   flex: 1 0 100%;
   font-size: 0.8rem;

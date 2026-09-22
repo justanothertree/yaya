@@ -6,6 +6,7 @@ import { allTakes, dropTake, putTake, takenBytes, TAKE_CAP, type TakeRow } from 
 import { liftTake, muteTake, placeTake, subscribeLoop, loopState, takeFx, takeChop } from './looper'
 import { PLAIN_VOICE, type VoiceFx } from './takeFx'
 import { CHOP_RATES, CHOP_SHAPES, NO_CHOP, type ChopShape } from './chop'
+import { bounceStems, type Stem, type StemProgress } from './stems'
 
 /**
  * Singing, kept beside the song.
@@ -63,6 +64,8 @@ export function TakesPanel() {
   const [onLoop, setOnLoop] = useState(() => loopState().takes)
   /** which take's controls are showing, if any */
   const [open, setOpen] = useState<string | null>(null)
+  const [stems, setStems] = useState<Stem[]>([])
+  const [bouncing, setBouncing] = useState<StemProgress | null>(null)
   useEffect(() => subscribeLoop(() => setOnLoop(loopState().takes)), [])
 
   const refresh = useCallback(async () => {
@@ -181,6 +184,24 @@ export function TakesPanel() {
     },
     [onLoop],
   )
+
+  /**
+   * ⚠️ IT TAKES AS LONG AS THE SONG, ONCE PER PART, and the button says so before you press
+   * it rather than after. A bounce is the one thing in here that cannot be instant — see the
+   * note in stems.ts about why it is a real-time bounce — and a control that goes quiet for
+   * twenty seconds without having warned you reads as broken.
+   */
+  const doBounce = useCallback(async () => {
+    setStems([])
+    setSay('')
+    try {
+      const got = await bounceStems(setBouncing)
+      setStems(got)
+      if (!got.length) setSay('Nothing to bounce — record a layer or a take first.')
+    } finally {
+      setBouncing(null)
+    }
+  }, [])
 
   if (!canRecord())
     return (
@@ -342,6 +363,31 @@ export function TakesPanel() {
           )}
         </div>
       )}
+      {/* ⚠️ WITH THE TAKES, because a stem is the same idea one step on: a take is one part
+          of a song you recorded, and a stem is one part of a song you are taking somewhere
+          else. Both are "a piece of this, on its own". */}
+      <div className="inst-takes-stems">
+        <button
+          className={'btn btn-ghost' + (bouncing ? ' is-on' : '')}
+          disabled={!!bouncing}
+          onClick={() => void doBounce()}
+          title="Bounce every layer and every take to its own WAV, in real time"
+        >
+          {bouncing
+            ? `Bouncing ${bouncing.doing || '…'} (${bouncing.done}/${bouncing.of})`
+            : '⬇ Stems'}
+        </button>
+        {stems.map((st) => (
+          <a
+            key={st.name}
+            className="btn btn-ghost"
+            href={URL.createObjectURL(st.blob)}
+            download={st.name}
+          >
+            {st.name}
+          </a>
+        ))}
+      </div>
       {rows.length > 0 && (
         <span className="muted inst-takes-meta">
           {mb(used)} of {mb(TAKE_CAP)}MB
