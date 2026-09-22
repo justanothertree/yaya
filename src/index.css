@@ -13821,3 +13821,29 @@ a.cz-msg-author:focus-visible {
     min-height: 32px;
   }
 }
+
+/**
+ * Reading a drawing as a map — see MapReading.
+ *
+ * ⚠️ ITS OWN ROW AND FULL WIDTH, because the list grows with however many places somebody
+ * named and the layer strip above it already decides where a wrapping row lands.
+ */
+.paint-asmap {
+  align-items: flex-start;
+}
+.paint-asmap-list {
+  flex: 1 0 100%;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 0.15rem;
+  font-size: 0.8rem;
+}
+.paint-asmap-name {
+  font-weight: 600;
+}
+.paint-asmap-meta {
+  flex: 1 0 100%;
+  font-size: 0.76rem;
+}

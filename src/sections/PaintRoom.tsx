@@ -50,6 +50,7 @@ import { CastShow } from '../pets/CastShow'
 import { movesOf } from '../pets/attack'
 import { AlsoTogether } from '../ui/AlsoTogether'
 import { useVoiceSession } from '../voice/useVoiceSession'
+import { MapReading } from '../park/MapReading'
 
 /**
  * A place to draw.
@@ -2981,6 +2982,12 @@ export function PaintRoom() {
             + layer
           </button>
         </div>
+
+        {/* ⚠️ UNDER THE LAYERS, because it is a reading OF them — see MapReading. A map is
+            a drawing whose layer names say what each shape is, the same bargain a creature
+            already makes, so the panel that says what was understood belongs beside the names
+            that were typed. */}
+        <MapReading strokes={strokes} layerNames={layerNames} ratio={drawingRef.current.ratio} />
 
         {/**
          * Animating, on a line of its own.

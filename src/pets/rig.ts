@@ -280,7 +280,7 @@ export type Part = {
  * ⚠️ IN THE PAPER'S OWN SHAPE. The rotation happens in PIXELS, so it mixes x and y through the
  * page's aspect — doing it in 0-1 space would be a different rotation on every canvas shape.
  */
-const boxOf = (strokes: Stroke[], ratio = 1): Box | null => {
+export const boxOf = (strokes: Stroke[], ratio = 1): Box | null => {
   const r = ratio > 0.05 && ratio < 20 ? ratio : 1
   /**
    * ⚠️ A FILL IS PAINT, NOT ANATOMY. Every other tool's points are a shape somebody dragged;
