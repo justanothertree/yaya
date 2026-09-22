@@ -1,6 +1,7 @@
 import { sharedCtx, resumeAudio } from './context'
 import { takeBus } from './takeBus'
 import { makeVoiceChain, PLAIN_VOICE, type VoiceChain, type VoiceFx } from './takeFx'
+import { chopEnvelope, stutterAt, NO_CHOP, type Chop } from './chop'
 import { fxSnapshot, noteOff, noteOn, type Fx, type InstrumentId } from './synth'
 import { detectTempo, lastPlayedAt, playedBetween } from './capture'
 import { toEvents, toNotes } from './noteEdit'
@@ -185,6 +186,8 @@ export type SongTake = {
    * and the expensive two of those are unplugged unless they are turned up.
    */
   fx?: VoiceFx
+  /** how it is cut up against the bar — see chop.ts */
+  chop?: Chop
 }
 
 const BEATS_PER_BAR = 4
@@ -425,6 +428,9 @@ function scheduleWindow(from: number, to: number) {
       }
     }
 
+    /* one bar, used by both the takes below and the planned layers under them */
+    const barLen = (60 / state.bpm) * BEATS_PER_BAR
+
     /**
      * ⚠️ A TAKE IS PLACED, NOT REPEATED. A note layer shorter than the loop repeats to
      * fill it, because that is what a looper pedal does with a part you played. A recording of
@@ -452,18 +458,93 @@ function scheduleWindow(from: number, to: number) {
       /* ⚠️ through its own chain if it has one, and straight to the bus if it does not.
          The chain outlives the source: it is per TAKE, and a new source is made every pass. */
       g.connect(chains.get(take.id)?.in ?? takeBus())
-      src.onended = () => {
-        playing.delete(src)
+      /**
+       * ⚠️ THE GAIN OUTLIVES THE SOURCE THAT MADE IT, and this cost an hour. `g` used to be
+       * disconnected when the main source ended — which is correct right up until a stutter,
+       * because a stutter DELIBERATELY cuts the main source early and then plays its repeats
+       * through the same node. The node was therefore torn down at the exact moment the fill
+       * began, and every repeat played perfectly into nothing. Measured: sound stopped at 1.98s
+       * and never came back, while the repeats were scheduled and started on time.
+       *
+       * The same shape as the makeGain bug in takeBus, and just as quiet: everything downstream
+       * of "is it connected" looks like working code.
+       */
+      let live = 1
+      const done = () => {
+        if (--live > 0) return
         try {
           g.disconnect()
         } catch {
           /* the context went away under it */
         }
       }
+      src.onended = () => {
+        playing.delete(src)
+        done()
+      }
       playing.add(src)
-      src.start(at)
       const room = base + len - at
-      if (buf.duration > room) src.stop(base + len)
+      const ends = at + Math.min(buf.duration, room)
+
+      /**
+       * ⚠️ THE CHOP IS LOCKED TO THE BAR, NOT TO THE TAKE. That is the whole character of
+       * the effect — a gate that lands on the eighth sounds deliberate, and the same gate
+       * running from wherever the take happened to start is a wobble. So the envelope is laid
+       * out from each BAR line and the take is simply what happens to be underneath it. See
+       * chop.ts.
+       */
+      const chop = take.chop
+      const stut = chop ? stutterAt(chop, barLen) : []
+      let cutAt = ends
+      if (chop && chop.shape !== 'off' && chop.amount > 0) {
+        const pts = chopEnvelope(chop, barLen)
+        if (pts.length) {
+          /* ⚠️ an anchor first, or the first linearRamp has nothing to ramp FROM and the
+             browser is entitled to start it at whatever the value happened to be */
+          g.gain.setValueAtTime(take.gain ?? 1, at)
+          for (let b = 0; b < state.bars; b++) {
+            const barAt = base + b * barLen
+            if (barAt + barLen < at || barAt > ends) continue
+            for (const pt of pts) {
+              const when = barAt + pt.t
+              if (when < at + 1e-6 || when > ends) continue
+              const v = (take.gain ?? 1) * pt.v
+              if (pt.snap) g.gain.setValueAtTime(v, when)
+              else g.gain.linearRampToValueAtTime(v, when)
+            }
+          }
+        }
+      }
+
+      /**
+       * ⚠️ A STUTTER IS EXTRA SOURCES, and the main one has to get out of the way. Playing
+       * the repeats over the top of the take still running would be the fill AND the thing it
+       * is supposed to be replacing, which is just a mess — so the take is cut where the fill
+       * begins and the repeats carry the bar to its end.
+       */
+      for (let b = 0; chop && stut.length && b < state.bars; b++) {
+        const barAt = base + b * barLen
+        for (const rep of stut) {
+          const when = barAt + rep.at
+          const into = barAt + rep.from - at
+          if (when < at || when >= ends || into < 0 || into >= buf.duration) continue
+          if (when < cutAt) cutAt = when
+          const echo = ctx.createBufferSource()
+          echo.buffer = buf
+          echo.connect(g)
+          live++
+          echo.onended = () => {
+            playing.delete(echo)
+            done()
+          }
+          playing.add(echo)
+          echo.start(when, into, Math.min(rep.len, buf.duration - into))
+        }
+      }
+
+      src.start(at)
+      if (cutAt < ends) src.stop(cutAt)
+      else if (buf.duration > room) src.stop(base + len)
     }
 
     for (const layer of state.layers) {
@@ -492,7 +573,6 @@ function scheduleWindow(from: number, to: number) {
       const own = Math.max(0.05, layer.len)
       const reps = Math.max(1, Math.floor(len / own + 1e-6))
       const end = base + len
-      const barLen = (60 / state.bpm) * BEATS_PER_BAR
 
       /**
        * ⚠️ A PLANNED LAYER IS SCHEDULED BY BAR, an unplanned one by repetition, and the two
@@ -1712,3 +1792,16 @@ export function muteTake(id: string) {
 
 /** Which takes are on the loop, for a song file and for the panel. */
 export const placedTakes = (): SongTake[] => state.takes
+
+/** Change how a take is cut up — see chop.ts. */
+export function takeChop(id: string, chop: Partial<Chop>) {
+  const was = state.takes.find((t) => t.id === id)
+  if (!was) return
+  /* ⚠️ what is already scheduled keeps its old shape, so the change is heard from the next
+     pass rather than halfway through this one — which is what a bar-locked effect should do */
+  set({
+    takes: state.takes.map((t) =>
+      t.id === id ? { ...t, chop: { ...NO_CHOP, ...was.chop, ...chop } } : t,
+    ),
+  })
+}

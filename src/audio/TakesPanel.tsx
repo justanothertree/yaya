@@ -3,8 +3,9 @@ import { sharedCtx, resumeAudio } from './context'
 import { takeBus } from './takeBus'
 import { canRecord, decodeTake, recordTake, type Recording } from './recordTake'
 import { allTakes, dropTake, putTake, takenBytes, TAKE_CAP, type TakeRow } from './takes'
-import { liftTake, muteTake, placeTake, subscribeLoop, loopState, takeFx } from './looper'
+import { liftTake, muteTake, placeTake, subscribeLoop, loopState, takeFx, takeChop } from './looper'
 import { PLAIN_VOICE, type VoiceFx } from './takeFx'
+import { CHOP_RATES, CHOP_SHAPES, NO_CHOP, type ChopShape } from './chop'
 
 /**
  * Singing, kept beside the song.
@@ -36,6 +37,16 @@ const KNOBS: [keyof VoiceFx, string, string][] = [
 ]
 
 const fxOf = (fx: VoiceFx | undefined): VoiceFx => ({ ...PLAIN_VOICE, ...fx })
+
+/** what each chop shape does, in the fewest words that are true — see chop.ts */
+const CHOP_SAYS: Record<ChopShape, string> = {
+  off: 'No chopping',
+  gate: 'Cut in and out on the beat',
+  swell: 'Fade up into every beat',
+  duck: 'Drop on the beat and breathe back',
+  tremolo: 'Wobble in time',
+  stutter: 'Repeat the last bit of the bar',
+}
 
 const mb = (n: number) => (n / (1024 * 1024)).toFixed(1)
 const secs = (n: number) => `${Math.floor(n / 60)}:${String(Math.floor(n % 60)).padStart(2, '0')}`
@@ -285,6 +296,50 @@ export function TakesPanel() {
           >
             Flat
           </button>
+          {/* ⚠️ THE CHOP SITS WITH THE REST, because from where somebody is standing it is
+              one more thing you do to a take — even though underneath it is the only control
+              here that is timed against the bar rather than applied to a signal. */}
+          <label className="inst-takes-knob" title="How it is cut up against the bar">
+            <span className="muted">Chop</span>
+            <select
+              value={(onLoop.find((t) => t.id === open)?.chop ?? NO_CHOP).shape}
+              onChange={(e) => takeChop(open, { shape: e.target.value as ChopShape })}
+            >
+              {CHOP_SHAPES.map((sh) => (
+                <option key={sh} value={sh} title={CHOP_SAYS[sh]}>
+                  {sh === 'off' ? 'none' : sh}
+                </option>
+              ))}
+            </select>
+          </label>
+          {(onLoop.find((t) => t.id === open)?.chop ?? NO_CHOP).shape !== 'off' && (
+            <>
+              <label className="inst-takes-knob" title="How many cuts to a bar">
+                <span className="muted">Per bar</span>
+                <select
+                  value={(onLoop.find((t) => t.id === open)?.chop ?? NO_CHOP).rate}
+                  onChange={(e) => takeChop(open, { rate: Number(e.target.value) })}
+                >
+                  {CHOP_RATES.map((r) => (
+                    <option key={r} value={r}>
+                      {r}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="inst-takes-knob" title="How much of it">
+                <span className="muted">Depth</span>
+                <input
+                  type="range"
+                  min={0}
+                  max={1}
+                  step={0.02}
+                  value={(onLoop.find((t) => t.id === open)?.chop ?? NO_CHOP).amount}
+                  onChange={(e) => takeChop(open, { amount: Number(e.target.value) })}
+                />
+              </label>
+            </>
+          )}
         </div>
       )}
       {rows.length > 0 && (
