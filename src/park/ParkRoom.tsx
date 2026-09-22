@@ -1224,7 +1224,19 @@ export function ParkRoom({
         state.current.trouble = 'The park is not switched on in this build'
       }
       bump()
-      return () => setWorld(null)
+      /* ⚠️ AND LEAVING STILL CLEARS THE FIGHT, SOCKET OR NO SOCKET. This path used to hand
+         back only the world, so a boss called on a map you drew was still standing when you
+         walked into the shared park a moment later — yours alone and invisible to everybody
+         in it, because the map it was called on had no wire to send it down. The connected
+         path below has cleared the boss since the day it was written; a park with no relay
+         looked like the one place the clearing did not matter, and is the one place a boss
+         can outlive the room it belongs to. */
+      return () => {
+        boss.current = null
+        setBossShown(null)
+        state.current = { me: null, here: new Map(), boss: null, trouble: null }
+        setWorld(null)
+      }
     }
     park.current = p
     bump()
@@ -2673,16 +2685,32 @@ export function ParkRoom({
               /* last fight's line goes when the next one starts, or it reads as this one's */
               setResult(null)
               setBossShown(boss.current)
-              /* ⚠️ AND EVERYBODY ELSE IS TOLD AT ONCE. A boss too detailed to send is refused by
-                 the relay, which answers with the reason — the same door a look goes through. */
-              if (lookFits(art.art)) park.current?.callBoss(art.name, art.art)
-              else
-                state.current.trouble = `${art.name} is too detailed to stand up where everybody can see — something with fewer strokes will.`
+              /* ⚠️ AND EVERYBODY ELSE IS TOLD AT ONCE — WHEN THERE IS AN EVERYBODY. A boss too
+                 detailed to send is refused by the relay, which answers with the reason — the
+                 same door a look goes through.
+
+                 ⚠️ SO THE REFUSAL BELONGS TO THE SOCKET, NOT TO THE BOSS. park.current is null
+                 exactly when there is no relay to refuse anything: a map you drew (joinPark
+                 returns null while worldIsDrawn) or a build with no VITE_WS_URL. The boss above
+                 is already standing and already fightable in both — the stroke limit is the
+                 wire's rule and there is no wire. Warning anyway told somebody their minion was
+                 too detailed to be seen while it stood in the field in front of them: a failure
+                 message laid over a success. */
+              if (park.current) {
+                if (lookFits(art.art)) park.current.callBoss(art.name, art.art)
+                else
+                  state.current.trouble = `${art.name} is too detailed to stand up where everybody can see — something with fewer strokes will.`
+              }
             }}
+            /* ⚠️ AND WHO IT STANDS UP FOR DEPENDS ON WHICH PARK, the same split the three
+               sentences below the field already make. A map you drew opens no socket, so there
+               is nobody else there to fight it. */
             title={
               bossShown
                 ? 'Send it away'
-                : 'Stand one of your minions up for everybody in the park to fight'
+                : walkingMap
+                  ? 'Stand one of your minions up in your map to fight'
+                  : 'Stand one of your minions up for everybody in the park to fight'
             }
           >
             {bossShown ? '✕ Boss away' : '☠ Call a boss'}
