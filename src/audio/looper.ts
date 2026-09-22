@@ -1,7 +1,10 @@
 import { sharedCtx, resumeAudio } from './context'
+import { takeBus } from './takeBus'
 import { fxSnapshot, noteOff, noteOn, type Fx, type InstrumentId } from './synth'
 import { detectTempo, lastPlayedAt, playedBetween } from './capture'
 import { toEvents, toNotes } from './noteEdit'
+import { getTake } from './takes'
+import { decodeTake } from './recordTake'
 
 /**
  * A loop you play into, and then play over.
@@ -146,6 +149,32 @@ type State = {
   countIn: number
   /** the layer a take will REPLACE, if you armed onto one */
   replacing: string | null
+  /**
+   * Recordings placed on the loop — see takes.ts.
+   *
+   * ⚠️ BESIDE THE LAYERS, NOT AMONG THEM, and that separation is the whole design. A Layer
+   * is note events, and everything in this file that walks `layers` — quantise, transpose,
+   * replay on another instrument, rescale on a tempo change — is meaningful only for notes. A
+   * take is a sound; none of those operations mean anything to it, and putting it in the same
+   * list would mean every one of them growing a branch that does nothing.
+   */
+  takes: SongTake[]
+}
+
+/**
+ * A recording, placed.
+ *
+ * ⚠️ THE ID IS THE ONE IN IndexedDB and there is deliberately no audio here. The state
+ * this module keeps is what goes in a song file; the bytes are somewhere a song file cannot
+ * reach. See takes.ts for why, and for what that costs.
+ */
+export type SongTake = {
+  id: string
+  /** seconds into the loop where it starts */
+  at: number
+  muted?: boolean
+  /** 0 to 2, 1 being as recorded — the same scale a layer's gain uses */
+  gain?: number
 }
 
 const BEATS_PER_BAR = 4
@@ -198,7 +227,25 @@ let state: State = {
   position: 0,
   countIn: 0,
   replacing: null,
+  takes: [],
 }
+
+/**
+ * The decoded audio for each placed take, and the sources currently sounding.
+ *
+ * ⚠️ DECODED ONCE, HELD BY ID. decodeAudioData on a minute of opus is tens of
+ * milliseconds; doing it per loop pass would be a stall every bar. The buffer is the only
+ * thing in this module that is not part of the song, which is why it lives beside the state
+ * rather than in it.
+ *
+ * ⚠️ AND EVERY SOURCE IS TRACKED, because a buffer that has been start()ed is out of
+ * reach otherwise. A note has a note-off; a sample has only the node you kept, so stopping the
+ * loop with an untracked source playing means a voice singing over a silent room until it
+ * finishes. See hushTakes.
+ */
+const heard = new Map<string, AudioBuffer>()
+/* named apart from `sounding`, which is the note voices — two different things being kept alive */
+const playing = new Set<AudioBufferSourceNode>()
 
 const listeners = new Set<() => void>()
 let snapshot = state
@@ -364,6 +411,45 @@ function scheduleWindow(from: number, to: number) {
         const at = base + b * beat
         if (at >= from && at < to) click(at, b % BEATS_PER_BAR === 0)
       }
+    }
+
+    /**
+     * ⚠️ A TAKE IS PLACED, NOT REPEATED. A note layer shorter than the loop repeats to
+     * fill it, because that is what a looper pedal does with a part you played. A recording of
+     * a voice is not a part in that sense — it is a thing that happens at a moment, and a
+     * sung line looping four times inside one pass is not "make it longer", it is a stutter
+     * nobody asked for. So it sounds once per pass, at `at`, and that is all.
+     *
+     * ⚠️ AND IT IS CUT AT THE BOUNDARY, the same rule a long note layer follows. A take
+     * that runs past the end of the loop would otherwise still be singing underneath the next
+     * pass of itself.
+     */
+    for (const take of state.takes) {
+      if (take.muted) continue
+      const buf = heard.get(take.id)
+      if (!buf) continue
+      const at = base + Math.max(0, take.at)
+      if (at < from || at >= to) continue
+      const ctx = sharedCtx()
+      const src = ctx.createBufferSource()
+      src.buffer = buf
+      /* ⚠️ the takes' own bus, NOT makeGain — see takeBus for what that costs */
+      const g = ctx.createGain()
+      g.gain.value = take.gain ?? 1
+      src.connect(g)
+      g.connect(takeBus())
+      src.onended = () => {
+        playing.delete(src)
+        try {
+          g.disconnect()
+        } catch {
+          /* the context went away under it */
+        }
+      }
+      playing.add(src)
+      src.start(at)
+      const room = base + len - at
+      if (buf.duration > room) src.stop(base + len)
     }
 
     for (const layer of state.layers) {
@@ -691,6 +777,7 @@ export function stopLoop() {
   // ⚠️ before commitTake, not after: a take being committed can add a layer, and releasing
   // afterwards would then chase notes that were never started
   releaseAllLayers()
+  hushTakes()
   if (state.recording) commitTake()
   armAt = null
   set({
@@ -1046,8 +1133,27 @@ export function setBars(bars: number) {
  * get stuck. Releasing and restarting from the top is both the safe answer and the legible one:
  * you changed the shape of the loop, so the loop starts again.
  */
+/**
+ * Stop every take that is sounding or scheduled.
+ *
+ * ⚠️ SCHEDULED COUNTS. A source start()ed for a moment in the future is already committed
+ * to the audio clock — stopping the transport does not un-schedule it, so without this a take
+ * scheduled a fraction of a second ahead sings once into a room that has been stopped.
+ */
+function hushTakes() {
+  for (const src of playing) {
+    try {
+      src.stop()
+    } catch {
+      /* already finished, or never started */
+    }
+  }
+  playing.clear()
+}
+
 function restart() {
   releaseAllLayers()
+  hushTakes()
   if (!state.playing) return
   const c = sharedCtx()
   loopStart = c.currentTime
@@ -1534,3 +1640,43 @@ export function soleDrumPiece(l: Layer): number | null {
   const first = ((l.events[0].midi % 12) + 12) % 12
   return l.events.every((e) => ((e.midi % 12) + 12) % 12 === first) ? first : null
 }
+
+/**
+ * Put a recording on the loop, or take it off again.
+ *
+ * ⚠️ THE AUDIO IS FETCHED AND DECODED HERE, ONCE, and the loop simply will not play a take
+ * whose buffer is missing — see the `if (!buf) continue` in scheduleWindow. That is the right
+ * failure: a song that refers to a recording this browser does not have is a song with a silent
+ * take, not a song that refuses to play. It is also exactly what happens to a song file carried
+ * to another machine, which is the cost takes.ts documents.
+ */
+export async function placeTake(id: string, at = 0): Promise<boolean> {
+  if (!heard.has(id)) {
+    const row = await getTake(id)
+    if (!row) return false
+    const buf = await decodeTake(row.blob)
+    if (!buf) return false
+    heard.set(id, buf)
+  }
+  const had = state.takes.some((t) => t.id === id)
+  set({
+    takes: had
+      ? state.takes.map((t) => (t.id === id ? { ...t, at } : t))
+      : [...state.takes, { id, at }],
+  })
+  return true
+}
+
+export function liftTake(id: string) {
+  hushTakes()
+  heard.delete(id)
+  set({ takes: state.takes.filter((t) => t.id !== id) })
+}
+
+export function muteTake(id: string) {
+  hushTakes()
+  set({ takes: state.takes.map((t) => (t.id === id ? { ...t, muted: !t.muted } : t)) })
+}
+
+/** Which takes are on the loop, for a song file and for the panel. */
+export const placedTakes = (): SongTake[] => state.takes

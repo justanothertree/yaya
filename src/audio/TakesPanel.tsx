@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { sharedCtx, resumeAudio } from './context'
-import { makeGain, releaseGain } from './mixer'
+import { takeBus } from './takeBus'
 import { canRecord, decodeTake, recordTake, type Recording } from './recordTake'
 import { allTakes, dropTake, putTake, takenBytes, TAKE_CAP, type TakeRow } from './takes'
+import { liftTake, muteTake, placeTake, subscribeLoop, loopState } from './looper'
 
 /**
  * Singing, kept beside the song.
@@ -28,6 +29,9 @@ export function TakesPanel() {
   const [playing, setPlaying] = useState<string | null>(null)
   const [say, setSay] = useState('')
   const out = useRef<{ src: AudioBufferSourceNode; gain: GainNode } | null>(null)
+  /* which takes are on the loop, straight from the transport so the two cannot disagree */
+  const [onLoop, setOnLoop] = useState(() => loopState().takes)
+  useEffect(() => subscribeLoop(() => setOnLoop(loopState().takes)), [])
 
   const refresh = useCallback(async () => {
     setRows(await allTakes())
@@ -52,8 +56,11 @@ export function TakesPanel() {
    */
   useEffect(
     () => () => {
-      out.current?.src.stop()
-      releaseGain('instrument')
+      try {
+        out.current?.src.stop()
+      } catch {
+        /* never started */
+      }
     },
     [],
   )
@@ -64,10 +71,10 @@ export function TakesPanel() {
     out.current = null
     try {
       on.src.stop()
+      on.gain.disconnect()
     } catch {
       /* already finished on its own */
     }
-    releaseGain('instrument')
     setPlaying(null)
   }, [])
 
@@ -78,11 +85,13 @@ export function TakesPanel() {
       const buf = await decodeTake(row.blob)
       if (!buf) return setSay('That take will not play in this browser.')
       const ctx = sharedCtx()
-      /* ⚠️ the instrument bus, so the take obeys the same fader everything else does */
-      const gain = makeGain(ctx, 'instrument')
+      /* ⚠️ the takes' bus, so this obeys the instrument fader — and see takeBus for why
+         it is not makeGain, which would play into nowhere and steal the slider on the way */
+      const gain = ctx.createGain()
       const src = ctx.createBufferSource()
       src.buffer = buf
       src.connect(gain)
+      gain.connect(takeBus())
       src.onended = () => {
         if (out.current?.src === src) stopPlaying()
       }
@@ -122,10 +131,23 @@ export function TakesPanel() {
   const bin = useCallback(
     async (id: string) => {
       stopPlaying()
+      /* ⚠️ off the loop first. Deleting the audio under a placed take would leave the
+         transport holding an id with no bytes — which plays silence rather than breaking, but
+         silently, and a row you deleted still listed is worse than either. */
+      liftTake(id)
       await dropTake(id)
       await refresh()
     },
     [refresh, stopPlaying],
+  )
+
+  const toLoop = useCallback(
+    async (row: TakeRow) => {
+      const on = onLoop.some((t) => t.id === row.id)
+      if (on) return liftTake(row.id)
+      if (!(await placeTake(row.id))) setSay('That take will not play in this browser.')
+    },
+    [onLoop],
   )
 
   if (!canRecord())
@@ -176,6 +198,28 @@ export function TakesPanel() {
               <span className="muted inst-takes-meta">
                 {new Date(r.at).toLocaleDateString()} · {mb(r.bytes)}MB
               </span>
+              {/* ⚠️ WHAT IT DOES, NOT WHERE IT GOES. "Add to loop" describes the mechanism;
+                  this says the outcome, which is the thing somebody is deciding between. */}
+              <button
+                className={'btn btn-ghost' + (onLoop.some((t) => t.id === r.id) ? ' is-on' : '')}
+                onClick={() => void toLoop(r)}
+                title={
+                  onLoop.some((t) => t.id === r.id)
+                    ? 'Stop playing this with the loop'
+                    : 'Play this every time the loop comes round'
+                }
+              >
+                {onLoop.some((t) => t.id === r.id) ? '● In the loop' : '○ In the loop'}
+              </button>
+              {onLoop.some((t) => t.id === r.id) && (
+                <button
+                  className="btn btn-ghost"
+                  onClick={() => muteTake(r.id)}
+                  title={onLoop.find((t) => t.id === r.id)?.muted ? 'Unmute' : 'Mute'}
+                >
+                  {onLoop.find((t) => t.id === r.id)?.muted ? '🔇' : '🔊'}
+                </button>
+              )}
               <button className="btn btn-ghost" onClick={() => void bin(r.id)} title="Delete">
                 ✕
               </button>
