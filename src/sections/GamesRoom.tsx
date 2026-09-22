@@ -250,9 +250,15 @@ export function GamesRoom({
               </span>
               <span className="games-tile-body">
                 <span className="games-tile-name">The park</span>
+                {/* ⚠️ TWO MODES NOW, AND THIS IS WHERE YOU FIND OUT. "One field" stopped
+                    being the whole truth when the park learned to walk a drawing, and this
+                    tile is the way in — somebody who had drawn a map would read the room's
+                    description and never learn the map was walkable. The three sentences
+                    inside the room were fixed when the mode shipped; the sign on the door
+                    was not, which is the same miss as the locked tile below. */}
                 <span className="games-tile-line">
-                  One field, everybody in it. Take a minion for a walk and whoever else is online is
-                  who you will meet.
+                  One field everybody shares — whoever else is online is who you will meet. Or a map
+                  you drew, on your own.
                 </span>
               </span>
             </button>
