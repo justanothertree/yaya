@@ -2,6 +2,7 @@ import type { Drawing } from '../draw/strokes'
 import type { CastKind } from './cast'
 import { bossPace, movesOf, petWide, type Attack } from '../pets/attack'
 import { restingWalker, type Spot } from './walk'
+import { NOTICE, hunted, unseen, wary, type Watch } from './notice'
 import { footOf, outBy, PARK_TALL, restingStriker, type StrikeInput, type Striker } from './strike'
 import { givesGround, goesBig, pounces, runsAtYou, temperOf, type Temper } from './temper'
 
@@ -87,6 +88,14 @@ export type Boss = Striker & {
    * HOW OFTEN, and the two stop fighting over the same job.
    */
   leapRest: number
+  /**
+   * Whether it has noticed you — see notice.ts.
+   *
+   * ⚠️ ON THE BOSS RATHER THAN IN THE ROOM, for the same reason its charge is: the room
+   * rebuilds its state when a fight resets and a boss that kept its awareness across that would
+   * be onto you before it existed.
+   */
+  watch: Watch
 }
 
 /**
@@ -234,6 +243,9 @@ export function makeBoss(name: string, art: Drawing, at: Spot): Boss {
     leap: null,
     leapRest: 0,
     facing: -1,
+    /* ⚠️ IT ARRIVES WITHOUT HAVING SEEN YOU, which is what makes walking up to one a
+       decision rather than a starting gun — see notice.ts */
+    watch: unseen(),
   }
 }
 
@@ -320,6 +332,45 @@ export function bossThink(
       steer: { left: false, right: false, up: false, down: false },
       hit: { quick: false, heavy: false, up: false, down: false },
       speed: 0,
+      cast: null,
+      charge: null,
+      leap: null,
+    }
+  }
+
+  /**
+   * ⚠️ IT ONLY FIGHTS WHAT IT HAS NOTICED, and this is where a chase gets a shape. Above
+   * this line the boss is doing something because it is hunting you; below it, it is deciding
+   * what. Without the split every one of the returns below was reachable from across the park
+   * by a boss that had never laid eyes on anybody. See notice.ts.
+   *
+   * ⚠️ WARY IS A WHOLE STATE, NOT A PAUSE. It turns toward the last place it saw
+   * something and walks there slowly, and it does not swing, charge, leap or cast on the way —
+   * so the window where it is suspicious is a window you can still back out of, which is the
+   * only thing that makes creeping a decision rather than a slower walk.
+   */
+  if (!hunted(b.watch)) {
+    const look = b.watch.mark
+    if (!look || !wary(b.watch))
+      return {
+        steer: { left: false, right: false, up: false, down: false },
+        hit: { quick: false, heavy: false, up: false, down: false },
+        speed: 0,
+        cast: null,
+        charge: null,
+        leap: null,
+      }
+    const lx = look.x - b.x
+    const ly = look.y - b.y
+    /* close enough to the mark that there is nothing left to walk to */
+    const there = Math.abs(lx) < outBy(0.6) && Math.abs(ly) < bossFoot(b).y
+    return {
+      steer: there
+        ? { left: false, right: false, up: false, down: false }
+        : { left: lx < 0, right: lx > 0, up: ly < 0, down: ly > 0 },
+      hit: { quick: false, heavy: false, up: false, down: false },
+      /* ⚠️ slower than a walk, because it is looking rather than going somewhere */
+      speed: there ? 0 : t.pace * NOTICE.creep,
       cast: null,
       charge: null,
       leap: null,

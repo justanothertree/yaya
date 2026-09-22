@@ -4,6 +4,7 @@ import { PetView } from '../pets/PetView'
 import { petCanvas, rigOf } from '../pets/rig'
 import { PLAIN, traitsOf, traitWords } from '../pets/play'
 import { poseOf } from './pose'
+import { NOTICE, hunted, stepWatch, wary } from './notice'
 import type { Stance } from '../pets/rig'
 import { PART_BASE, inPlay, partsAllowed } from '../pets/budget'
 import { PLANES, groundAt } from './ground'
@@ -63,6 +64,7 @@ import {
   octantOf,
   overHead,
   PARK_TALL,
+  toScreen,
   strikeSwipe,
   swipeTell,
   type Aimed,
@@ -121,7 +123,11 @@ export type ParkPet = { name: string; art: Drawing }
  * which is exactly the hand-maintained list this repository has learned not to keep. Now the
  * reference below is rendered FROM the thing the handler tests.
  */
-const PARK_KEYS = { roll: 'shift', guard: 'q', jump: ' ', cast: 'e' } as const
+/**
+ * ⚠️ C FOR CREEPING, because it is the one key near the walking hand that nothing else
+ * here wants — WASD walks, F and G swing, Q guards, Shift rolls, Space jumps and E123 cast.
+ */
+const PARK_KEYS = { roll: 'shift', guard: 'q', jump: ' ', cast: 'e', sneak: 'c' } as const
 
 /**
  * What a key is called on screen.
@@ -824,7 +830,7 @@ export function ParkRoom({
    * ⚠️ ORDER IS THE WHOLE LOGIC. The most committed thing a creature is doing wins, because
    * that is the one a player needs to read — a dive while also technically moving is a dive.
    */
-  const poseOfMine = (w: Striker, down: boolean, cast: boolean): Stance =>
+  const poseOfMine = (w: Striker, down: boolean, cast: boolean, sneak: boolean): Stance =>
     poseOf({
       down,
       dive: w.dive,
@@ -836,7 +842,9 @@ export function ParkRoom({
          freeze on contact; both are a creature that has just been hit and could not steer. */
       hurt: w.stun > 0 || w.hold > 0,
       cast,
-      braced: w.braced,
+      /* ⚠️ creeping IS a crouch, and it borrows the guard's pose rather than inventing a
+         second one — the two never read as the same thing because a guard draws an arc */
+      braced: w.braced || sneak,
       moving: w.moving,
     })
 
@@ -1000,6 +1008,10 @@ export function ParkRoom({
   const rolled = useRef(false)
   const [dodging, setDodging] = useState(false)
   const dodgeShown = useRef(false)
+  /* ⚠️ held, so it is a ref like the guard rather than an edge like the roll — see PARK_KEYS */
+  const creeping = useRef(false)
+  const [sneaking, setSneaking] = useState(false)
+  const sneakShown = useRef(false)
   /** the patches on the ground right now, drawn for everybody — see patchesOf */
   const [patches, setPatches] = useState<Patch[]>([])
   /** yours, drawn apart from the boss's so you can tell whose ground is about to go */
@@ -1155,6 +1167,16 @@ export function ParkRoom({
       /* ⚠️ Shift, because it is the one key near the movement hand that nothing else here
          wants — F and G are the swings and WASD is the walk */
       const low = e.key.toLowerCase()
+      /**
+       * ⚠️ HELD, LIKE THE GUARD AND UNLIKE THE ROLL. Creeping is a way of going somewhere
+       * rather than a thing you do once, so it is a state for as long as you hold it — and it
+       * is the one movement key with no cooldown, because the cost is already that it is slow.
+       */
+      if (low === PARK_KEYS.sneak) {
+        e.preventDefault()
+        creeping.current = on
+        return
+      }
       if (low === PARK_KEYS.roll) {
         e.preventDefault()
         rolling.current = on
@@ -1209,6 +1231,7 @@ export function ParkRoom({
       held.current = { ...STILL }
       hitting.current = { quick: false, heavy: false, up: false, down: false }
       rolling.current = false
+      creeping.current = false
       castWanted.current = 0
       bracing.current = false
       hopping.current = false
@@ -1343,9 +1366,21 @@ export function ParkRoom({
        */
       if (!wasSwinging && struck.swing > 0) struck.aim = aimNow({ x: you.current.facing, y: 0 })
       const steer = busy(struck) || iAmCasting ? STILL : held.current
+      /* ⚠️ ONLY ON THE GROUND. There is nothing to creep on in mid-air, and a jump that
+         went half as far because a key was held would read as the jump being broken. */
+      const crept = creeping.current && !inAir && !busy(struck)
       you.current = {
         ...struck,
-        ...stepWalker(struck, steer, struck.hold > 0 ? 0 : dt, myTraits.speed),
+        ...stepWalker(
+          struck,
+          steer,
+          struck.hold > 0 ? 0 : dt,
+          myTraits.speed * (crept ? NOTICE.crept : 1),
+        ),
+      }
+      if (crept !== sneakShown.current) {
+        sneakShown.current = crept
+        setSneaking(crept)
       }
       /**
        * ⚠️ AFTER THE WALK, so a dodge overrides where walking put you rather than adding to
@@ -1549,6 +1584,40 @@ export function ParkRoom({
            peer's altitude is not on the wire as a number, but where they are IS, and ground.ts
            turns one into the other. */
         const targetUp = target === (you.current as Spot) ? you.current.up : groundAt(target)
+
+        /**
+         * ⚠️ WHETHER IT HAS NOTICED, BEFORE IT DECIDES ANYTHING. bossThink reads the watch
+         * on its first line, so this has to run first — and it runs against the same `target`
+         * the fight uses, so the thing it is hunting and the thing it is looking for cannot
+         * come apart. See notice.ts.
+         *
+         * ⚠️ DISTANCE IN PET-HEIGHTS, THROUGH toScreen. x is a fraction of the world's
+         * width and y of its height, so hypot on the raw delta is not a distance — the same
+         * trap outBy exists for, taken the other way round.
+         */
+        const seenFrom = toScreen(target.x - cur.x, target.y - cur.y)
+        const flat = Math.hypot(seenFrom.sx, seenFrom.sy)
+        const mine = target === (you.current as Spot)
+        cur = {
+          ...cur,
+          watch: stepWatch(
+            cur.watch,
+            {
+              off: flat / PARK_TALL,
+              /* it faces left or right and nothing else, so this is the honest cone */
+              ahead: flat < 1e-6 ? 1 : (seenFrom.sx / flat) * cur.facing,
+              moving: mine ? you.current.moving : true,
+              /* ⚠️ only your own creeping is known here. A peer does not send it, so a
+                 friend is never treated as quieter than they are — the safe way round. */
+              sneaking: mine && sneakShown.current,
+              /* ⚠️ being hit, or hitting it, is not something creeping hides */
+              loud: cur.hold > 0 || cur.stun > 0 || (mine && you.current.swing > 0),
+            },
+            target,
+            dt,
+          ),
+        }
+
         const plan = bossThink(cur, target, bossKit.moves, targetUp)
         /**
          * ⚠️ A CAST OWNS THE BOSS WHILE IT RUNS. It cannot walk, turn or swing through one —
@@ -2295,7 +2364,21 @@ export function ParkRoom({
     /* ⚠️ WHERE IT IS, out of the same table the map draws from — see nearestMark. The one
        thing a friend needs in order to come and help is which way to walk. */
     if (bossShown)
-      return `${bossShown.name}, at ${nearestMark(bossShown).name} — ${saysOf(bossShown.temper)}`
+      /**
+       * ⚠️ WHETHER IT HAS SEEN YOU, FIRST, because it is the only part of this sentence
+       * that changes while you read it. Everything else here is a reading of the drawing and
+       * is true all fight; this is the state you are acting on right now, and a stealth
+       * mechanic whose one bit of state is invisible is a stealth mechanic nobody can play.
+       * The pose says it too — see the alert stance — but a pose is a thing you have to know
+       * to read and a sentence is not.
+       */
+      return `${bossShown.name}, at ${nearestMark(bossShown).name} — ${
+        hunted(bossShown.watch)
+          ? 'it has you'
+          : wary(bossShown.watch)
+            ? 'it heard something'
+            : 'it has not noticed you'
+      }. ${saysOf(bossShown.temper)}`
     if (theirBoss) {
       const t = echoKit.current?.by === theirBoss.by ? echoKit.current.temper : null
       if (!t) return null
@@ -2913,7 +2996,7 @@ export function ParkRoom({
                 stroll: false,
                 down: knocked,
                 up: shownYou.up,
-                pose: poseOfMine(shownYou, knocked, !!casting),
+                pose: poseOfMine(shownYou, knocked, !!casting, sneaking),
                 lunge: lungeOf(shownYou, myMoves),
                 /**
                  * ⚠️ A DIVE LEANS DOWN, NOT AT THE CURSOR. lungePush shoves the drawing along
@@ -3162,7 +3245,11 @@ export function ParkRoom({
                 aloft: !!bossShown.leap && bossShown.leap.t >= LEAP.warn,
                 hurt: bossShown.stun > 0 || bossShown.hold > 0,
                 cast: !!bossShown.cast,
+                /* ⚠️ AND WHILE IT IS ONLY WONDERING, which is the pose alert was made for:
+                   a boss walking to where it thought it saw something is telegraphing exactly
+                   as much as one winding up a charge. See notice.ts. */
                 warning:
+                  wary(bossShown.watch) ||
                   (!!bossShown.charge && bossShown.charge.t < CHARGE.warn) ||
                   (!!bossShown.leap && bossShown.leap.t < LEAP.warn),
                 moving: bossShown.moving,
@@ -3429,6 +3516,14 @@ export function ParkRoom({
             <kbd>{keyName(PARK_KEYS.roll)}</kbd>
           </dt>
           <dd>Roll — a quarter-second where nothing can touch you</dd>
+        </div>
+        <div>
+          <dt>
+            <kbd>{keyName(PARK_KEYS.sneak)}</kbd>
+          </dt>
+          {/* ⚠️ WHAT IT BUYS, NOT WHAT IT DOES. "Move slowly" is a description of the
+              downside; the reason to press it is the other half of the sentence. */}
+          <dd>Creep — slower, and much harder to notice. A boss looks where it last saw you</dd>
         </div>
         <div>
           <dt>
