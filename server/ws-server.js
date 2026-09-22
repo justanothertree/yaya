@@ -1970,6 +1970,14 @@ wss.on('connection', (ws, req) => {
            */
           j: Math.max(0, Math.min(9, Math.round(num(msg.j)))),
           /**
+           * ⚠️ HOW HARD A BOLT WAS THROWN, IN TENTHS. Only the bolt charges, so this is 0
+           * for everything else — and a client that does not send it means exactly that, which
+           * is why absent reads as none rather than as anything. Damage to a shared boss is
+           * worked out by the machine running it from what everybody broadcasts, so without
+           * this a friend's charged bolt landed as a plain one. See BOLT_UP in cast.ts.
+           */
+          c: Math.max(0, Math.min(9, Math.round(num(msg.c)))),
+          /**
            * ⚠️ ON THE FLOOR, AS ONE BIT. Being down is already drawn for yourself; without
            * this it was drawn for nobody else, so the one moment in a shared fight worth
            * reacting to was invisible. It decides nothing — a peer can neither hurt you nor be
@@ -2095,12 +2103,17 @@ wss.on('connection', (ws, req) => {
           /**
            * The move slot, or a cast above it.
            *
-           * ⚠️ 0–9 RATHER THAN 0–6. Six are the move slots and 0 is "nothing"; seven, eight
-           * and nine are the boss's big committed attacks, which ride here so they cost no
-           * message of their own — see cast.ts. Still clamped, because this object is rebuilt
-           * rather than relayed and a console should not be able to name a tenth thing.
+           * ⚠️ 0–10 RATHER THAN 0–6. Six are the move slots and 0 is "nothing"; everything
+           * above is one of the boss's big committed attacks, which ride here so they cost no
+           * message of their own — see cast.ts. The ceiling is SLOTS.length + 6 and moves when
+           * that list does; this said "seven, eight and nine" while the code already allowed
+           * ten, which is the arithmetic a fourth kind changed. Still clamped, because this
+           * object is rebuilt rather than relayed and a console should not name a kind that
+           * does not exist.
            */
           a: Math.max(0, Math.min(10, Math.round(bnum(msg.a)))),
+          /* how hard a charged thing was thrown, in tenths — see the note on the peer's `c` */
+          c: Math.max(0, Math.min(9, Math.round(bnum(msg.c)))),
           h: Math.max(0, Math.min(1, bnum(msg.h))),
           /**
            * Mid-pivot, so the window is visible to everybody and not only to whoever is running

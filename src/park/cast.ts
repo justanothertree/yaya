@@ -132,7 +132,11 @@ export const CAST: Record<
  * bloom. Nothing had gone wrong yet; the point is that nothing WOULD have told us.
  *
  * ⚠️ ABOVE THE SIX MOVE SLOTS. 0 is "nothing" and 1..6 are a creature's own moves, so casts
- * start at 7 — which is why the relay clamps that field to 9 rather than 6.
+ * start at 7, and the ceiling is SLOTS.length + 6 — which is 10 with four kinds, and is what
+ * the relay clamps that field to. This said 9, which was true for exactly as long as there were
+ * three kinds: at 9 a bolt arrives as a wave, because castFromSlot(9) is the third entry. The
+ * server has the right number and says why; this had the stale one. If a fifth kind is ever
+ * added, the clamp in ws-server.js moves with this list.
  */
 const SLOTS: CastKind[] = ['bloom', 'mark', 'wave', 'bolt']
 
@@ -145,6 +149,33 @@ const MARK_RANGE = 2.6
 const BOLT_FROM = 1.0
 const BOLT_WARN = 0.42
 const BOLT_SPEED = 7
+
+/**
+ * What holding the throw buys, at full charge.
+ *
+ * ⚠️ ONLY THE BOLT CHARGES, and that follows from what the other three ARE. A bloom, a
+ * mark and a fissure are the ground being done something to — they root you, they take a
+ * second and a half, and "hold it longer" is not a thing you can do to a hole in the floor.
+ * A bolt is a thrown object, it already does not root you, and winding up to throw something
+ * harder is the most obvious verb there is. Asked for as "charge and shoot the bolt".
+ *
+ * ⚠️ AND IT IS THE SAME KIND, NOT A FIFTH ONE. Adding a charged bolt to SLOTS would make
+ * it slot 11, and the relay clamps that field at 10 — see castSlot. A charged bolt is a bolt
+ * that is bigger, faster and hits harder, which is three numbers rather than a new thing to
+ * learn.
+ */
+export const BOLT_UP = {
+  /** seconds of holding to reach full charge */
+  full: 0.9,
+  /** how much fatter the patch gets */
+  fat: 0.5,
+  /** how much faster it flies */
+  quick: 0.6,
+  /** how much harder it lands — read by the room, not here */
+  bite: 1.2,
+  /** how much longer before the next one */
+  wait: 1,
+}
 const WAVE_STEPS = 5
 const WAVE_GAP = 1.15
 const WAVE_ROLL = 0.16
@@ -156,8 +187,19 @@ const easedScale = (s: number) => 1 + (s - 1) * 0.4
  *
  * @param t seconds since the cast began
  */
-export function patchesOf(kind: CastKind, from: Spot, aim: Aimed, t: number, scale = 1): Patch[] {
+/**
+ * @param charge 0 to 1, and only the bolt reads it — see BOLT_UP
+ */
+export function patchesOf(
+  kind: CastKind,
+  from: Spot,
+  aim: Aimed,
+  t: number,
+  scale = 1,
+  charge = 0,
+): Patch[] {
   const s = Math.max(0.4, scale)
+  const up = Math.max(0, Math.min(1, charge))
   if (kind === 'bloom') {
     /**
      * ⚠️ LIVE WHILE IT GROWS, which is what makes it different from everything else here. A
@@ -194,10 +236,14 @@ export function patchesOf(kind: CastKind, from: Spot, aim: Aimed, t: number, sca
      * is the bargain the boss's other three already make and the reason none of them desync.
      */
     const flying = Math.max(0, t - BOLT_WARN)
-    const r = 0.34 * PARK_TALL * s
+    /* ⚠️ BIGGER AND FASTER, WHICH IS ONE DECISION TWICE. A charged bolt that was only
+       harder would be an invisible upgrade; making it visibly fatter and visibly quicker is
+       what lets somebody else read how long you held it. */
+    const r = 0.34 * (1 + BOLT_UP.fat * up) * PARK_TALL * s
+    const speed = BOLT_SPEED * (1 + BOLT_UP.quick * up)
     return [
       {
-        at: stepFrom(from, aim, (BOLT_FROM + flying * BOLT_SPEED) * easedScale(s)),
+        at: stepFrom(from, aim, (BOLT_FROM + flying * speed) * easedScale(s)),
         r,
         ready: Math.min(1, t / BOLT_WARN),
         live: t >= BOLT_WARN,

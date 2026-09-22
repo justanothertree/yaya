@@ -73,7 +73,7 @@ import {
 } from './strike'
 import { movesOf, slotFor, petWide, type Attack } from '../pets/attack'
 import { footRoom, petBox } from '../pets/rig'
-import { CAST, castSlot, inPatch, patchesOf, type CastKind, type Patch } from './cast'
+import { BOLT_UP, CAST, castSlot, inPatch, patchesOf, type CastKind, type Patch } from './cast'
 import { recordFought, recordWin, subscribeWins, winFor, wins, winsWith } from './records'
 import { lungeOf } from '../pets/fight'
 import {
@@ -977,7 +977,15 @@ export function ParkRoom({
    * works out which of the three a drawing leans towards; that lean is now something you get to
    * throw rather than only something thrown at you.
    */
-  const myCast = useRef<{ kind: CastKind; t: number } | null>(null)
+  const myCast = useRef<{ kind: CastKind; t: number; charge: number } | null>(null)
+  /**
+   * Seconds the throw key has been held, before it becomes a bolt.
+   *
+   * ⚠️ A REF AND NOT PART OF myCast, because it is the state BEFORE there is a cast. The
+   * bolt does not exist yet while you are winding up — nothing is in the air, nothing can hurt
+   * anybody, and releasing is what makes it a thing.
+   */
+  const winding = useRef(0)
   const myCastRest = useRef(0)
   const [casting, setCasting] = useState<CastKind | null>(null)
   /**
@@ -1273,7 +1281,9 @@ export function ParkRoom({
       if (myCast.current) {
         const ct = myCast.current.t + dt
         if (ct >= CAST[myCast.current.kind].time) {
-          myCastRest.current = CAST[myCast.current.kind].wait
+          /* ⚠️ a charged bolt costs longer before the next, or holding it would be free */
+          myCastRest.current =
+            CAST[myCast.current.kind].wait * (1 + BOLT_UP.wait * myCast.current.charge)
           myCast.current = null
           myCastHit.current.clear()
           setCasting(null)
@@ -1285,12 +1295,42 @@ export function ParkRoom({
         /* ⚠️ a DIFFERENT slot counts as a press even with the old key still down, which is
            what a boolean edge could not say — see castWanted */
         const press = castWanted.current !== 0 && castWanted.current !== castHeld.current
+        const heldBefore = castHeld.current
         castHeld.current = castWanted.current
         const pick = myKit?.casts[castWanted.current - 1]
-        if (press && pick && myCastRest.current <= 0 && !busy(you.current) && !aloft(you.current)) {
-          myCast.current = { kind: pick, t: 0 }
+        const ready = myCastRest.current <= 0 && !busy(you.current) && !aloft(you.current)
+
+        /**
+         * ⚠️ A BOLT IS THROWN ON THE RELEASE, EVERYTHING ELSE ON THE PRESS. Asked for as
+         * "charge and shoot the bolt — rapid shoot bolt (clicking)", which is both halves of
+         * one control: a tap is the quick bolt that already shipped, and holding it is the
+         * same throw wound up. The other three are the ground being torn open and have
+         * nothing to hold.
+         *
+         * ⚠️ THE WIND-UP IS NOT A CAST. Nothing is in the air while you hold, so nothing
+         * can hurt anybody and the cooldown has not started — see winding.
+         */
+        const windingBolt = winding.current > 0
+        if (pick === 'bolt' && ready) {
+          winding.current += dt
+        } else if (press && pick && ready) {
+          myCast.current = { kind: pick, t: 0, charge: 0 }
           you.current = { ...you.current, aim: aimNow(you.current.aim) }
           setCasting(pick)
+        }
+        /* let go, or lost the right to throw: the wind-up becomes the bolt */
+        if (windingBolt && (castWanted.current === 0 || !ready || pick !== 'bolt')) {
+          const held = winding.current
+          winding.current = 0
+          if (ready && heldBefore !== 0) {
+            myCast.current = {
+              kind: 'bolt',
+              t: 0,
+              charge: Math.max(0, Math.min(1, held / BOLT_UP.full)),
+            }
+            you.current = { ...you.current, aim: aimNow(you.current.aim) }
+            setCasting('bolt')
+          }
         }
       }
       /* ⚠️ CASTING IS NOT THE SAME AS BEING HELD BY ONE any more. A bolt runs its timeline
@@ -1463,19 +1503,28 @@ export function ParkRoom({
       const mine = myCast.current
       if (mine && myMoves.length) {
         const weight = myMoves.reduce((n, m) => n + m.bite, 0) / myMoves.length
-        for (const patch of patchesOf(mine.kind, you.current, you.current.aim, mine.t, 1)) {
+        /* ⚠️ the same charge that made the patch fat makes it bite — see BOLT_UP */
+        const wound = weight * 1.1 * (1 + BOLT_UP.bite * mine.charge)
+        for (const patch of patchesOf(
+          mine.kind,
+          you.current,
+          you.current.aim,
+          mine.t,
+          1,
+          mine.charge,
+        )) {
           if (!patch.live) continue
           const b = boss.current
           if (b && bossKit && !beaten(b) && !myCastHit.current.has('boss')) {
             if (inPatch(b, bossKit.wide, patch, b.scale)) {
-              boss.current = wounded(b, { ...myMoves[0], bite: weight * 1.1 })
+              boss.current = wounded(b, { ...myMoves[0], bite: wound })
               setBossShown(boss.current)
               myCastHit.current.add('boss')
             }
           }
           const d = dummy.current
           if (d && !myCastHit.current.has('dummy') && inPatch(d, myWide, patch)) {
-            dummy.current = { ...d, hurt: d.hurt + weight * 1.1, hits: d.hits + 1, lit: 0.18 }
+            dummy.current = { ...d, hurt: d.hurt + wound, hits: d.hits + 1, lit: 0.18 }
             myCastHit.current.add('dummy')
           }
         }
@@ -1998,6 +2047,7 @@ export function ParkRoom({
             tb.aim,
             tb.castFor,
             kit.temper.scale,
+            tb.cast.charge,
           )) {
             if (!patch.live) continue
             if (!canBeHurt(you.current)) break
@@ -2044,7 +2094,7 @@ export function ParkRoom({
         /* their own move table, already here because their drawing arrived with them */
         const kit = foeMoves.current.get(o.id)
         const weight = kit?.length ? kit.reduce((n, m) => n + m.bite, 0) / kit.length : 6
-        for (const patch of patchesOf(o.cast.kind, o.shown, o.aim, o.castFor, 1)) {
+        for (const patch of patchesOf(o.cast.kind, o.shown, o.aim, o.castFor, 1, o.cast.charge)) {
           if (!patch.live) continue
           if (!inPatch(b, bossKit.wide, patch, b.scale)) continue
           boss.current = wounded(b, { ...bossKit.moves[0], bite: weight * 1.1 })
@@ -2080,9 +2130,12 @@ export function ParkRoom({
            look like one person doing something inexplicable. */
         const others: Patch[] = []
         if (mineNow)
-          others.push(...patchesOf(mineNow.kind, you.current, you.current.aim, mineNow.t, 1))
+          others.push(
+            ...patchesOf(mineNow.kind, you.current, you.current.aim, mineNow.t, 1, mineNow.charge),
+          )
         for (const o of state.current.here.values())
-          if (o.cast) others.push(...patchesOf(o.cast.kind, o.shown, o.aim, o.castFor, 1))
+          if (o.cast)
+            others.push(...patchesOf(o.cast.kind, o.shown, o.aim, o.castFor, 1, o.cast.charge))
         setMyPatches(others)
         /**
          * ⚠️ THE INCOMING CHANNEL, NOT THE MINE ONE. Patches come in two colours here and the
@@ -2218,6 +2271,8 @@ export function ParkRoom({
           octantOf(you.current.aim),
           airFrac(you.current),
           downFor.current > 0,
+          /* ⚠️ so a friend's screen throws the bolt you actually threw — see BOLT_UP */
+          myOut?.charge ?? 0,
         )
         /* ⚠️ THE BOSS GOES OUT AT THE SAME RATE AS A WALK AND NO FASTER — it is one more
            creature moving in the park, and fifteen a second is what everything else in here

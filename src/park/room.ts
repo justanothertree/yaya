@@ -26,6 +26,17 @@ import { castFromSlot, type CastKind } from './cast'
  * purpose, so this is the only place that check happens.
  */
 
+/**
+ * A tenth off the wire, 0 to 1, with anything missing or rubbish reading as none.
+ *
+ * ⚠️ ABSENT IS 0 AND THAT IS THE WHOLE COMPATIBILITY STORY. A relay that has not been
+ * redeployed drops the field, an older client never sends it, and both of those mean "not
+ * charged" — so a friend's charged bolt arrives as the plain bolt it used to be rather than
+ * as something wrong. See BOLT_UP.
+ */
+const tenth = (v: unknown): number =>
+  typeof v === 'number' && Number.isFinite(v) ? Math.max(0, Math.min(1, Math.round(v) / 9)) : 0
+
 /** What the relay is told. The hello and the auth token are NetClient's own — see its send. */
 type Out =
   | { type: 'look'; name: string; art: unknown }
@@ -39,11 +50,22 @@ type Out =
       d: number
       j: number
       k: number
+      c: number
     }
   /* calling a boss out, or — with a null drawing — putting it away */
   | { type: 'boss'; name: string; art: unknown | null }
   /* where it is and what is left of it, from the one machine running it */
-  | { type: 'bstep'; x: number; y: number; f: number; a: number; h: number; t: boolean; d: number }
+  | {
+      type: 'bstep'
+      x: number
+      y: number
+      f: number
+      a: number
+      h: number
+      t: boolean
+      d: number
+      c: number
+    }
 
 /** What arrives. */
 type In =
@@ -62,6 +84,7 @@ type In =
       d?: number
       j?: number
       k?: number
+      c?: number
     }
   | { type: 'boss'; from?: string; name?: string; art?: unknown }
   | {
@@ -74,6 +97,7 @@ type In =
       h?: number
       t?: boolean
       d?: number
+      c?: number
     }
   /* ⚠️ the relay already says this when anybody leaves any room, so a departure needs no new
      message on the server — `over` with a `from` is "that peer is gone", whatever ended. */
@@ -109,7 +133,7 @@ export type Someone = {
    * nothing at all to somebody else's boss. It rides in the same slot field a swing does,
    * above the six move slots, which is the trick bosses already use for theirs.
    */
-  cast: { kind: CastKind } | null
+  cast: { kind: CastKind; charge: number } | null
   castFor: number
   /**
    * Which way their swing or cast points — see octantOf.
@@ -203,7 +227,7 @@ export type BossEcho = {
    * something has been going is a thing a viewer can measure rather than be told fifteen times
    * a second.
    */
-  cast: { kind: CastKind } | null
+  cast: { kind: CastKind; charge: number } | null
   castFor: number
   /**
    * Which way its swing is pointed — see octantOf. Absent on the wire means straight ahead,
@@ -345,7 +369,15 @@ function readBoss(v: unknown): BossEcho | null {
 
 export type Park = {
   /** `hop` is hopFrac — how far through the arc, not how high. See the note where it is sent. */
-  send: (w: Walker, swing: number, aim: number, hop: number, down: boolean) => void
+  send: (
+    w: Walker,
+    swing: number,
+    aim: number,
+    hop: number,
+    down: boolean,
+    /** how hard a bolt was thrown, 0 to 1 — see BOLT_UP. Everything else sends 0. */
+    charge?: number,
+  ) => void
   /** stand one of your minions up for everybody, or pass null to put it away */
   callBoss: (name: string, art: Drawing | null) => void
   /** where your boss is and what is left of it, at the same rate as a walk */
@@ -356,6 +388,7 @@ export type Park = {
     hp: number,
     turning: boolean,
     aim: number,
+    charge?: number,
   ) => void
   leave: () => void
 }
@@ -459,7 +492,7 @@ export function joinPark(
             b.cast = null
             b.castFor = 0
           } else if (b.cast?.kind !== castKind) {
-            b.cast = { kind: castKind }
+            b.cast = { kind: castKind, charge: tenth(msg.c) }
             b.castFor = 0
           }
           const slot = castKind ? 0 : Math.max(0, Math.min(6, a))
@@ -509,7 +542,13 @@ export function joinPark(
             who.castFor = 0
             who.castSpent = false
           } else if (who.cast?.kind !== theirCast) {
-            who.cast = { kind: theirCast }
+            /**
+             * ⚠️ HOW HARD THEY THREW IT, IN TENTHS, and absent reads as not at all — which
+             * is exactly what a relay that has not been redeployed sends, and what an older
+             * client means. A friend's charged bolt then arrives as the plain one it used to
+             * be rather than as anything wrong. See BOLT_UP and the `a` clamp in ws-server.js.
+             */
+            who.cast = { kind: theirCast, charge: tenth(msg.c) }
             who.castFor = 0
             /* ⚠️ a NEW cast has not landed yet, the same reset a new swing gets below */
             who.castSpent = false
@@ -569,7 +608,7 @@ export function joinPark(
   net.connect(room, { create: true })
 
   return {
-    send: (w, swing, aim, hop, down) => {
+    send: (w, swing, aim, hop, down, charge = 0) => {
       net.send({
         type: 'walk',
         x: w.x,
@@ -584,13 +623,28 @@ export function joinPark(
            fraction means the same for everybody and the far end has the drawing. See hopFrac. */
         j: Math.max(0, Math.min(9, Math.round(hop * 9))),
         k: down ? 1 : 0,
+        /* ⚠️ how hard a bolt was thrown, in tenths — see BOLT_UP. Nothing else charges,
+           so this is 0 for every other cast and for every swing. */
+        c: Math.max(0, Math.min(9, Math.round(charge * 9))),
       })
     },
     callBoss: (name, art) => {
       net.send({ type: 'boss', name, art: art ? packLook(art) : null })
     },
-    stepBoss: (at, facing, swing, hp, turning, aim) => {
-      net.send({ type: 'bstep', x: at.x, y: at.y, f: facing, a: swing, h: hp, t: turning, d: aim })
+    stepBoss: (at, facing, swing, hp, turning, aim, charge = 0) => {
+      net.send({
+        type: 'bstep',
+        x: at.x,
+        y: at.y,
+        f: facing,
+        a: swing,
+        h: hp,
+        t: turning,
+        d: aim,
+        /* a boss does not charge anything today, and the field is here so that if one ever
+           does it travels the same way a player's does — see BOLT_UP */
+        c: Math.max(0, Math.min(9, Math.round(charge * 9))),
+      })
     },
     leave: () => {
       stop = true
