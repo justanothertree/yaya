@@ -66,7 +66,23 @@ export function TakesPanel() {
   const [open, setOpen] = useState<string | null>(null)
   const [stems, setStems] = useState<Stem[]>([])
   const [bouncing, setBouncing] = useState<StemProgress | null>(null)
-  useEffect(() => subscribeLoop(() => setOnLoop(loopState().takes)), [])
+  /**
+   * How many parts there are to bounce.
+   *
+   * ⚠️ A FIRST VISIT HAS NONE, and the button was offered anyway. Found by clearing the
+   * built site's origin and looking at the instrument the way somebody arriving does: an empty
+   * one showed ⬇ Stems, and pressing it answered "nothing to bounce". A control whose only
+   * possible outcome is an apology should not be there yet.
+   */
+  const [parts, setParts] = useState(() => loopState().layers.length + loopState().takes.length)
+  useEffect(
+    () =>
+      subscribeLoop(() => {
+        setOnLoop(loopState().takes)
+        setParts(loopState().layers.length + loopState().takes.length)
+      }),
+    [],
+  )
 
   const refresh = useCallback(async () => {
     setRows(await allTakes())
@@ -367,16 +383,18 @@ export function TakesPanel() {
           of a song you recorded, and a stem is one part of a song you are taking somewhere
           else. Both are "a piece of this, on its own". */}
       <div className="inst-takes-stems">
-        <button
-          className={'btn btn-ghost' + (bouncing ? ' is-on' : '')}
-          disabled={!!bouncing}
-          onClick={() => void doBounce()}
-          title="Bounce every layer and every take to its own WAV, in real time"
-        >
-          {bouncing
-            ? `Bouncing ${bouncing.doing || '…'} (${bouncing.done}/${bouncing.of})`
-            : '⬇ Stems'}
-        </button>
+        {parts > 0 && (
+          <button
+            className={'btn btn-ghost' + (bouncing ? ' is-on' : '')}
+            disabled={!!bouncing}
+            onClick={() => void doBounce()}
+            title="Bounce every layer and every take to its own WAV, in real time"
+          >
+            {bouncing
+              ? `Bouncing ${bouncing.doing || '…'} (${bouncing.done}/${bouncing.of})`
+              : '⬇ Stems'}
+          </button>
+        )}
         {stems.map((st) => (
           <a
             key={st.name}
