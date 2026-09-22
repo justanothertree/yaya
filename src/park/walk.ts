@@ -116,34 +116,12 @@ export const MARKS: Mark[] = [
 ]
 
 /**
- * Which place you are at, or null if you are just in the grass between them.
- *
- * ⚠️ MEASURED ON SCREEN, NOT IN WORLD UNITS, for the same reason every other distance here is:
- * the field is 16:10, so a circle in world units is an ellipse to look at and "near" would mean
- * something different going north than going east.
+ * ⚠️ "WHICH PLACE AM I AT" AND "WHICH IS NEAREST" LIVE IN world.ts, NOT HERE, and they
+ * used to live in both. They read a list of places, and the park you are standing in may be a
+ * drawing rather than MARKS — so a copy beside the built-in table is a copy that answers about
+ * the built-in park forever. The move was made and the originals were left behind for three
+ * commits, unimported, which is exactly the drift world.ts's own note warns about.
  */
-/**
- * The place nearest to somewhere, which is never null.
- *
- * ⚠️ markAt ASKS "AM I AT ONE", THIS ASKS "WHICH ONE IS THIS NEAR". Two different questions:
- * the first is for telling you where you are standing and has to be able to say "nowhere in
- * particular"; the second is for putting something somewhere nameable and must always answer.
- */
-export const nearestMark = (at: Spot): Mark =>
-  MARKS.reduce((best, m) => {
-    const d = (o: Mark) =>
-      Math.hypot((((at.x - o.at.x) / VIEW.w) * 16) / 10, (at.y - o.at.y) / VIEW.h)
-    return d(m) < d(best) ? m : best
-  }, MARKS[0])
-
-export const markAt = (me: Spot): Mark | null => {
-  for (const m of MARKS) {
-    const dx = ((me.x - m.at.x) / VIEW.w) * (16 / 10)
-    const dy = (me.y - m.at.y) / VIEW.h
-    if (Math.hypot(dx, dy) <= m.size) return m
-  }
-  return null
-}
 
 /**
  * ⚠️ BUILT FROM THE SHAPE OF THE WORLD, not picked. Equal speed on SCREEN needs the vertical to

@@ -738,7 +738,8 @@ export function aimFromPoint(dxPx: number, dyPx: number, fallback: Aimed): Aimed
  * So anything horizontal is divided by the field's own aspect on the way out, and anything
  * vertical is not. These two functions are the only place that conversion happens.
  */
-const ASPECT = 16 / 10
+/** the field's own shape, which is why anything horizontal is divided on the way out */
+export const ASPECT = 16 / 10
 export const across = (screenHeights: number) => (screenHeights / ASPECT) * VIEW.w
 export const down = (screenHeights: number) => screenHeights * VIEW.h
 

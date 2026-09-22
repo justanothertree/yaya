@@ -52,10 +52,15 @@ export function MapReading({
   strokes,
   layerNames,
   ratio,
+  guide,
+  setGuide,
 }: {
   strokes: Stroke[]
   layerNames: string[]
   ratio: number
+  /** whether the park's grid is drawn over the paper — see MAP_GUIDE */
+  guide: boolean
+  setGuide: (on: boolean) => void
 }) {
   const [open, setOpen] = useState(false)
   const places = useMemo(
@@ -74,6 +79,28 @@ export function MapReading({
       >
         🗺 As a map
       </button>
+      {/**
+       * ⚠️ THE OTHER HALF OF THE TOOL, and the half I needed first. Drawing a map with no
+       * guide is drawing blind: the paper is three screens by three, a creature is about a
+       * thirtieth of its height, and nothing on the page says either. Every place I drew while
+       * building this came out bigger than any landmark in the real park, and I only found out
+       * by measuring the numbers afterwards — which is not a thing anybody else is going to do.
+       */}
+      <button
+        className={'btn btn-ghost' + (guide ? ' is-on' : '')}
+        aria-pressed={guide}
+        onClick={() => setGuide(!guide)}
+        title="Show the park's screens and how big a creature is on this paper"
+      >
+        ▦ Map guide
+      </button>
+      {guide && (
+        <span className="muted paint-asmap-meta">
+          Each square is one screenful of the park. The ring is how big a landmark is, and the dot
+          inside it is a creature. Both look round on <strong>Park map 16:10</strong> paper — any
+          other shape arrives in the park stretched.
+        </span>
+      )}
       {open && !places.length && (
         <span className="muted">
           No places yet. Press ✎ on a layer and call it <strong>pond</strong>,{' '}

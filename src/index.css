@@ -10336,6 +10336,59 @@ a.cz-msg-author:focus-visible {
   background: color-mix(in srgb, var(--accent, #7c6af7) 88%, transparent);
 }
 
+/**
+ * The map guide — see MapGuide.tsx.
+ *
+ * ⚠️ QUIETER THAN THE REACH RULER, because it covers the whole page rather than marking
+ * two columns of it, and it is on for as long as somebody is drawing a map. A grid you stop
+ * noticing is the goal; a grid you have to turn off to see your own drawing is a grid nobody
+ * leaves on.
+ *
+ * ⚠️ AND ITS MARKS ARE SIZED IN PERCENT OF THE BOARD, which is what makes them true. The
+ * board IS the paper, so a percentage here is a fraction of the park — no pixels to keep in
+ * step with a canvas that resizes, and correct in fullscreen for free.
+ */
+.paint-mapguide {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2;
+}
+.paint-mapguide i {
+  position: absolute;
+  border: 0 solid color-mix(in srgb, var(--accent, #7c6af7) 30%, transparent);
+}
+.paint-mapguide i.is-v {
+  top: 0;
+  bottom: 0;
+  border-left-width: 1px;
+}
+.paint-mapguide i.is-h {
+  left: 0;
+  right: 0;
+  border-top-width: 1px;
+}
+/* ⚠️ BOTTOM RIGHT, where the reach ruler's label is not — both can be on at once */
+.paint-mapguide-ref {
+  position: absolute;
+  right: 3%;
+  bottom: 8%;
+  display: grid;
+  place-items: center;
+}
+.paint-mapguide-ref u {
+  position: absolute;
+  inset: 0;
+  border: 1px dashed color-mix(in srgb, var(--accent, #7c6af7) 62%, transparent);
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--accent, #7c6af7) 7%, transparent);
+}
+.paint-mapguide-ref b {
+  position: relative;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--accent, #7c6af7) 78%, transparent);
+}
+
 .paint-crop {
   position: absolute;
   pointer-events: none;

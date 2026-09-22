@@ -1,5 +1,6 @@
 import type { Drawing, Stroke } from '../draw/strokes'
 import { boxOf } from '../pets/rig'
+import { ASPECT, across, down, PARK_TALL } from './strike'
 import { PARK, type Spot } from './walk'
 
 /**
@@ -171,3 +172,45 @@ export function mapOf(d: Mappable): Place[] {
 
 /** Which of them you can stand on, which is the only part the ground cares about. */
 export const standable = (places: Place[]): Place[] => places.filter((p) => p.top > 0)
+
+/**
+ * The same conversion the other way round: something in the park, drawn on the paper.
+ *
+ * ⚠️ BECAUSE NOTHING ON THE PAGE SAYS HOW BIG ANYTHING IS, and that is not a small gap.
+ * The paper is the whole park — three screens by three — so a shape drawn at a comfortable
+ * size is enormous, and every test map built while writing mapOf came out bigger than any
+ * landmark the real park has. I only found that out by printing the numbers, which is not a
+ * thing anybody else is going to do. A guide is the difference between a rule you are told and
+ * a rule you can see.
+ *
+ * ⚠️ AND THE STRETCH IS THE HALF NOBODY WOULD GUESS. World x is a fraction of the park's
+ * WIDTH and world y of its HEIGHT, and the park is three 16:10 screens each way — so the world
+ * is 1.6 times wider than it is tall, and a circle drawn on square paper arrives as an ellipse.
+ * Asking for a square in the park therefore asks for two different numbers here, and a mark
+ * drawn with both of them looks round exactly when the paper is the park's own shape.
+ */
+export const onPaper = (screenHeights: number) => ({
+  w: across(screenHeights),
+  h: down(screenHeights),
+})
+
+/**
+ * How wide a typical landmark is, in screenfuls.
+ *
+ * ⚠️ THE MIDDLE OF THE FIVE THAT EXIST — 0.24, 0.26, 0.28, 0.30 and 0.34 — rather than a
+ * round number. MapReading's SMALL and BIG were first guessed against the range the measurement
+ * could take and called every real place in the game small; this is the same mistake's fix,
+ * which is to band a measurement against what has actually been built.
+ */
+export const PLACE_MID = 0.28
+
+/** Everything a guide drawn over the paper needs, all of it derived rather than typed. */
+export const MAP_GUIDE = {
+  /** how many screenfuls the paper is, across and down — the grid is the lines between them */
+  cols: PARK.across,
+  rows: PARK.down,
+  /** a creature, standing */
+  creature: onPaper(PARK_TALL),
+  /** a landmark the size of the ones the park already has */
+  place: onPaper(PLACE_MID * ASPECT),
+}

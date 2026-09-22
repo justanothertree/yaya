@@ -50,6 +50,7 @@ import { CastShow } from '../pets/CastShow'
 import { movesOf } from '../pets/attack'
 import { AlsoTogether } from '../ui/AlsoTogether'
 import { useVoiceSession } from '../voice/useVoiceSession'
+import { MapGuide } from '../park/MapGuide'
 import { MapReading } from '../park/MapReading'
 
 /**
@@ -143,6 +144,10 @@ const PAPER_SHAPES: Array<[string, string, number]> = [
   ['16/9', 'Wide 16:9', 16 / 9],
   ['3/2', 'Photo 3:2', 3 / 2],
   ['4/3', 'Classic 4:3', 4 / 3],
+  /* ⚠️ THE PARK'S OWN SHAPE, which is three 16:10 screens each way — so the whole world is
+     1.6 wide. It is in the list because the map guide can point out that a drawing will be
+     stretched and then leave somebody with nothing to do about it; this is the something. */
+  ['16/10', 'Park map 16:10', 16 / 10],
   ['1/1', 'Square', 1],
   ['3/4', 'Portrait 3:4', 3 / 4],
   ['9/16', 'Phone 9:16', 9 / 16],
@@ -409,6 +414,28 @@ export function PaintRoom() {
   }, [tool, colour, alpha, width, symmetry, echo])
 
   const live = useRef<Stroke | null>(null)
+  /**
+   * Whether the park's measurements are drawn over the paper — see MapGuide.
+   *
+   * ⚠️ REMEMBERED, LIKE THE PAPER SHAPE, because a map is not drawn in one sitting and
+   * turning the guide back on every visit is the kind of small tax that stops somebody using
+   * it. It is a boolean out of storage, so there is nothing to validate beyond the word.
+   */
+  const [mapGuide, setMapGuide] = useState(() => {
+    try {
+      return localStorage.getItem('paint_mapguide_v1') === 'yes'
+    } catch {
+      return false
+    }
+  })
+  const showGuide = (on: boolean) => {
+    setMapGuide(on)
+    try {
+      localStorage.setItem('paint_mapguide_v1', on ? 'yes' : 'no')
+    } catch {
+      /* private mode: it holds for this visit */
+    }
+  }
   const [galleryOpen, setGalleryOpen] = useState(false)
   /**
    * The picture the download panel is pointed at — the board, or one out of the gallery.
@@ -2905,9 +2932,15 @@ export function PaintRoom() {
                   <button
                     className="paint-layer-eye"
                     onClick={() => {
+                      /* ⚠️ BOTH VOCABULARIES, because a layer name now decides two different
+                         things and this text only knew about one of them. mapOf shipped the day
+                         `pond` started meaning somewhere you can walk, and the only place the
+                         words are ever offered still listed parts of a creature — see
+                         MapReading, which exists because naming a layer is otherwise an act of
+                         faith. */
                       const to = window
                         .prompt(
-                          'Name this layer — wing, head, leg, tail, ear, eye, arm and antenna give it movement in the Minions room.',
+                          'Name this layer. wing, head, leg, tail, ear, eye, arm and antenna give it movement in the Minions room — pond, trees, rocks, hedge or clearing make it a place on a map, and a number after it is how high you stand on it.',
                           layerNames[i] ?? '',
                         )
                         ?.trim()
@@ -2987,7 +3020,13 @@ export function PaintRoom() {
             a drawing whose layer names say what each shape is, the same bargain a creature
             already makes, so the panel that says what was understood belongs beside the names
             that were typed. */}
-        <MapReading strokes={strokes} layerNames={layerNames} ratio={drawingRef.current.ratio} />
+        <MapReading
+          strokes={strokes}
+          layerNames={layerNames}
+          ratio={drawingRef.current.ratio}
+          guide={mapGuide}
+          setGuide={showGuide}
+        />
 
         {/**
          * Animating, on a line of its own.
@@ -4065,6 +4104,11 @@ export function PaintRoom() {
           onPointerCancel={onUp}
           onContextMenu={(e) => e.preventDefault()}
         />
+        {/* ⚠️ ABOVE THE CANVAS AND BELOW EVERYTHING ELSE, and it never becomes ink —
+            see MapGuide. It is deliberately not exclusive with the reach ruler: a creature and
+            a map are different drawings, so the two are never both wanted, but nothing breaks
+            if they are and a rule that forbids it is a rule to maintain. */}
+        {mapGuide && <MapGuide />}
         {hitGuide && (
           <span className="paint-reach" aria-hidden>
             <i className="paint-reach-mid" style={{ left: `${hitGuide.cx * 100}%` }} />
