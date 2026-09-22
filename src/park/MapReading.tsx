@@ -38,6 +38,7 @@ const KIND_SAYS: Record<Place['kind'], string> = {
   grove: 'trees',
   ring: 'a clearing',
   rocks: 'rocks',
+  wall: 'something you cannot walk through',
   flat: 'nothing in particular',
 }
 
@@ -93,13 +94,15 @@ export function MapReading({
                 {/* ⚠️ THE HEIGHT IN WHAT IT MEANS, not in the number they typed. 0.72 is not a
                     unit anybody has a feel for; "only with wings" is the fact behind it — see
                     HOP.up, which a plain jump peaks at. */}
-                {p.top <= 0
-                  ? ', flat'
-                  : p.top < 0.3
-                    ? ', a step up'
-                    : p.top <= 0.62
-                      ? ', a jump up'
-                      : ', only with wings'}
+                {p.kind === 'wall'
+                  ? ''
+                  : p.top <= 0
+                    ? ', flat'
+                    : p.top < 0.3
+                      ? ', a step up'
+                      : p.top <= 0.62
+                        ? ', a jump up'
+                        : ', only with wings'}
               </span>
             </li>
           ))}

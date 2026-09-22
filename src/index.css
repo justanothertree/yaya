@@ -8870,6 +8870,17 @@ a.cz-msg-author:focus-visible {
     transparent
   );
 }
+/* ⚠️ solid all the way to its edge, unlike every other mark here, because it is the one
+   you are stopped by — a soft-edged wall would look like something you could squeeze past.
+   See solid.ts, and SOLID for how much of it actually stops you. */
+.park-mark.is-wall {
+  background: radial-gradient(
+    closest-side,
+    color-mix(in srgb, #57503f 72%, transparent) 60%,
+    color-mix(in srgb, #57503f 30%, transparent) 78%,
+    transparent
+  );
+}
 /* ⚠️ a drawn place whose name matched no word — see Mark.kind. Deliberately the plainest
    of them: it is somewhere, and the map is not pretending to know what. */
 .park-mark.is-flat {
@@ -8904,6 +8915,9 @@ a.cz-msg-author:focus-visible {
 }
 .park-map-mark.is-flat {
   background: #9aa0a6;
+}
+.park-map-mark.is-wall {
+  background: #57503f;
 }
 .park-where {
   margin: 4px 0 0;

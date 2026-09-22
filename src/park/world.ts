@@ -1,4 +1,5 @@
 import type { Ground } from './ground'
+import { wallOf, type Wall } from './solid'
 import type { Place } from './mapOf'
 import { MARKS, VIEW, type Mark, type Spot } from './walk'
 
@@ -48,6 +49,7 @@ const BUILT_IN: Ground[] = MARKS.filter((m) => m.name in TOPS).map((m) => ({
 let drawn: Place[] | null = null
 let shownMarks: Mark[] = MARKS
 let shownPlanes: Ground[] = BUILT_IN
+let shownWalls: Wall[] = []
 
 const listeners = new Set<() => void>()
 let version = 0
@@ -63,6 +65,15 @@ export const worldVersion = () => version
 export const worldMarks = (): Mark[] => shownMarks
 /** every one of them you can stand on top of */
 export const worldPlanes = (): Ground[] => shownPlanes
+/**
+ * Every one you cannot walk through — see solid.ts.
+ *
+ * ⚠️ THE BUILT-IN PARK HAS NONE, and that is deliberate rather than an omission. Its five
+ * landmarks have never stopped anybody and the note on MARKS says why: "they decide nothing",
+ * because a landmark that changed the fight would be a fight you have to learn the map to win.
+ * A drawn map is where somebody chooses otherwise, for their own map.
+ */
+export const worldWalls = (): Wall[] => shownWalls
 /** true while the park is something somebody drew */
 export const worldIsDrawn = (): boolean => drawn !== null
 
@@ -79,11 +90,18 @@ export function setWorld(places: Place[] | null) {
   if (!drawn) {
     shownMarks = MARKS
     shownPlanes = BUILT_IN
+    shownWalls = []
   } else {
     shownMarks = drawn.map((p) => ({ at: p.at, size: p.size, kind: p.kind, name: p.name }))
+    /* ⚠️ A WALL IS NOT SOMETHING YOU STAND ON, whatever height was typed after it. The
+       two are different answers to different questions and a place that was both would have
+       to decide what happens when you walk into it from above — see solid.ts. */
     shownPlanes = drawn
-      .filter((p) => p.top > 0)
+      .filter((p) => p.top > 0 && p.kind !== 'wall')
       .map((p) => ({ at: p.at, size: p.size, top: p.top, name: p.name, kind: p.kind }))
+    shownWalls = drawn
+      .filter((p) => p.kind === 'wall')
+      .map((p) => wallOf(p.box.x0, p.box.y0, p.box.x1, p.box.y1, p.name))
   }
   version++
   for (const fn of listeners) fn()

@@ -8,7 +8,8 @@ import { NOTICE, hunted, stepWatch, wary } from './notice'
 import type { Stance } from '../pets/rig'
 import { PART_BASE, inPlay, partsAllowed } from '../pets/budget'
 import { groundAt } from './ground'
-import { markAt, nearestMark, subscribeWorld, worldMarks, worldPlanes } from './world'
+import { canSee, slideAround } from './solid'
+import { markAt, nearestMark, subscribeWorld, worldMarks, worldPlanes, worldWalls } from './world'
 import {
   camWant,
   stepCam,
@@ -1419,15 +1420,24 @@ export function ParkRoom({
       /* ⚠️ ONLY ON THE GROUND. There is nothing to creep on in mid-air, and a jump that
          went half as far because a key was held would read as the jump being broken. */
       const crept = creeping.current && !inAir && !busy(struck)
-      you.current = {
-        ...struck,
-        ...stepWalker(
-          struck,
-          steer,
-          struck.hold > 0 ? 0 : dt,
-          myTraits.speed * (crept ? NOTICE.crept : 1),
-        ),
-      }
+      const walked = stepWalker(
+        struck,
+        steer,
+        struck.hold > 0 ? 0 : dt,
+        myTraits.speed * (crept ? NOTICE.crept : 1),
+      )
+      /**
+       * ⚠️ AFTER THE WALK AND NOT INSIDE IT. stepWalker lives in walk.ts and the walls live
+       * in world.ts, which reads walk.ts — putting the check inside the walker would be a
+       * cycle. Applying it to the result is also the honest shape: the walk says where you
+       * meant to go and this says where you got.
+       *
+       * ⚠️ THE VELOCITY IS LEFT ALONE, so holding a direction against a wall keeps you
+       * pressed against it and sliding rather than stopping dead and having to re-accelerate
+       * every frame. See slideAround, which pushes out rather than refusing.
+       */
+      const past = slideAround(struck, walked, worldWalls())
+      you.current = { ...struck, ...walked, x: past.x, y: past.y }
       if (crept !== sneakShown.current) {
         sneakShown.current = crept
         setSneaking(crept)
@@ -1662,7 +1672,15 @@ export function ParkRoom({
           watch: stepWatch(
             cur.watch,
             {
-              off: flat / PARK_TALL,
+              /**
+               * ⚠️ OUT OF SIGHT IS OUT OF RANGE, which is how a wall becomes somewhere to
+               * hide. notice.ts already treats anything past NOTICE.far as unnoticeable and
+               * starts the clock running down — so a blocked line reuses exactly that, rather
+               * than inventing a second way of not being seen that would cool off differently.
+               * This is the piece the sneaking commit said was missing: "the only escapes are
+               * distance and waiting, because there is nothing to break line of sight with".
+               */
+              off: canSee(cur, target, worldWalls()) ? flat / PARK_TALL : NOTICE.far,
               /* it faces left or right and nothing else, so this is the honest cone */
               ahead: flat < 1e-6 ? 1 : (seenFrom.sx / flat) * cur.facing,
               moving: mine ? you.current.moving : true,
@@ -1805,9 +1823,13 @@ export function ParkRoom({
         /* ⚠️ mid-swing it keeps the way it was looking, because a creature that only faced the
            way it walked would back away and then swing at nothing — stepTurn owns the rest */
         const facing = struckBoss.swing > 0 ? cur.facing : spun.facing
+        /* ⚠️ A WALL STOPS THE BOSS TOO, which is not a courtesy — a chase you can break by
+           putting something between you only works if the thing is between you for both of
+           you. A boss that walked through a hedge would make hiding behind one pointless. */
+        const bPast = slideAround(struckBoss, walked, worldWalls())
         /* ⚠️ cur first: stepStrike and stepWalker each return only the part they own, so
            spreading them alone would quietly drop the name, the art and the health */
-        cur = { ...cur, ...struckBoss, ...walked, facing, turn: spun.turn }
+        cur = { ...cur, ...struckBoss, ...walked, x: bPast.x, y: bPast.y, facing, turn: spun.turn }
         /* the same rule a player travels by — see driven */
         cur = { ...cur, ...driven(cur, bossKit.moves[cur.move], struckBoss.hold > 0 ? 0 : dt) }
 

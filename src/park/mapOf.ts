@@ -26,7 +26,7 @@ import { PARK, type Spot } from './walk'
  */
 
 /** What a place IS, which decides how it is drawn — see the .park-mark styles. */
-export type PlaceKind = 'pond' | 'grove' | 'ring' | 'rocks' | 'flat'
+export type PlaceKind = 'pond' | 'grove' | 'ring' | 'rocks' | 'wall' | 'flat'
 
 export type Place = {
   /** the layer name as it was typed, minus the height */
@@ -46,6 +46,15 @@ export type Place = {
    * own means rocks you walk past.
    */
   top: number
+  /**
+   * The box its ink filled, in world units.
+   *
+   * ⚠️ BECAUSE A WALL IS NOT ROUND. Every other place is a blob and a centre plus a width
+   * describes it well enough; a wall is long and thin and its height is the whole point of it.
+   * Carrying the box costs four numbers and is the difference between a hedge that reaches
+   * across a gap and a small circle you walk round the end of. See solid.ts.
+   */
+  box: { x0: number; y0: number; x1: number; y1: number }
 }
 
 /**
@@ -57,7 +66,7 @@ export type Place = {
  */
 const WORDS: Array<[PlaceKind, string[]]> = [
   ['pond', ['pond', 'water', 'lake', 'pool', 'river', 'puddle', 'stream']],
-  ['grove', ['tree', 'wood', 'grove', 'forest', 'bush', 'hedge']],
+  ['grove', ['tree', 'wood', 'grove', 'forest', 'bush']],
   /* ⚠️ NO `yard` OR `court`. They were in here for one commit and `courtyard 0.3` — the
      example in the panel's own help text — came out as a gold ring, because it contains both.
      The kind decides how a place is DRAWN, so a word we are not sure about is better left
@@ -65,6 +74,9 @@ const WORDS: Array<[PlaceKind, string[]]> = [
      something about their own map that is not true. */
   ['ring', ['ring', 'circle', 'arena', 'clearing']],
   ['rocks', ['rock', 'stone', 'cliff', 'crag', 'boulder', 'ledge', 'hill', 'mound', 'step']],
+  /* ⚠️ A HEDGE IS A WALL HERE, not a grove. You cannot walk through one, and in a game
+     that is the only thing about a hedge that matters — see solid.ts. */
+  ['wall', ['wall', 'fence', 'hedge', 'barrier', 'building', 'house']],
 ]
 
 export function placeKind(name: string): PlaceKind {
@@ -151,6 +163,7 @@ export function mapOf(d: Mappable): Place[] {
       size: w * PARK.across,
       kind: placeKind(raw),
       top: topOf(raw),
+      box: { x0: box.x0, y0: box.y0, x1: box.x1, y1: box.y1 },
     })
   }
   return out

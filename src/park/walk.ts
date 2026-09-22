@@ -103,7 +103,7 @@ export type Mark = {
    * words is still a place — it has a position, a size and a name you can say. Drawing it as
    * a clearing instead would quietly tell somebody their `courtyard` was a ring.
    */
-  kind: 'pond' | 'grove' | 'ring' | 'rocks' | 'flat'
+  kind: 'pond' | 'grove' | 'ring' | 'rocks' | 'wall' | 'flat'
   name: string
 }
 
