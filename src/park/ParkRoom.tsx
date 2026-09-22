@@ -3,6 +3,7 @@ import type { Drawing } from '../draw/strokes'
 import { PetView } from '../pets/PetView'
 import { petCanvas, rigOf } from '../pets/rig'
 import { PLAIN, traitsOf, traitWords } from '../pets/play'
+import { poseOf } from './pose'
 import type { Stance } from '../pets/rig'
 import { PART_BASE, inPlay, partsAllowed } from '../pets/budget'
 import { PLANES, groundAt } from './ground'
@@ -202,6 +203,7 @@ function BossFigure({
   aim,
   up = 0,
   scale = 1,
+  pose = 'idle',
 }: {
   name: string
   art: Drawing
@@ -223,6 +225,15 @@ function BossFigure({
   up?: number
   /** how many times a creature's height it stands, so an altitude can be un-scaled */
   scale?: number
+  /**
+   * How it stands — see poseOf.
+   *
+   * ⚠️ THE BOSS HAD NO POSE AT ALL, which is the largest of the animation gaps and the
+   * one on the thing you spend a fight looking at. It leant into a swing and its clock sped
+   * up when it walked, and beyond that a boss casting, charging, leaping, stunned and beaten
+   * were the same idling body. Everything needed was already on the Boss.
+   */
+  pose?: Stance
 }) {
   const on = onScreen(at, cam)
   const done = hp <= 0
@@ -270,6 +281,7 @@ function BossFigure({
         size={size}
         facing={facing}
         energy={done ? 0 : moving ? 1.3 : 0.5}
+        stance={pose}
         show={show}
         label={`${name}, the boss`}
       />
@@ -812,14 +824,21 @@ export function ParkRoom({
    * ⚠️ ORDER IS THE WHOLE LOGIC. The most committed thing a creature is doing wins, because
    * that is the one a player needs to read — a dive while also technically moving is a dive.
    */
-  const poseOfMine = (w: Striker): Stance => {
-    if (w.dive) return 'dive'
-    if (w.swing > 0) return 'pounce'
-    if (aloft(w)) return w.vz < 0 && w.float > 0 && w.glide < 1 ? 'glide' : 'fly'
-    if (w.braced) return 'crouch'
-    if (w.moving) return 'run'
-    return 'idle'
-  }
+  const poseOfMine = (w: Striker, down: boolean, cast: boolean): Stance =>
+    poseOf({
+      down,
+      dive: w.dive,
+      roll: w.dodge > 0,
+      swing: w.swing > 0,
+      aloft: aloft(w),
+      gliding: w.vz < 0 && w.float > 0 && w.glide < 1,
+      /* ⚠️ STUN AND HOLD, THE SAME POSE. One is being knocked about and the other is the
+         freeze on contact; both are a creature that has just been hit and could not steer. */
+      hurt: w.stun > 0 || w.hold > 0,
+      cast,
+      braced: w.braced,
+      moving: w.moving,
+    })
 
   const myKit = useMemo(() => (myArt ? temperOf(myArt) : null), [myArt])
   /**
@@ -2859,9 +2878,18 @@ export function ParkRoom({
                 /* ⚠️ theirs comes off the wire where mine comes off my own loop — see
                    Someone.down. It is a picture either way and decides nothing. */
                 down: o.down,
-                /* ⚠️ read off what they already send: moving or not, off the ground or not.
-                   A peer's pose costs the wire nothing — see Someone's note on their move. */
-                pose: (o.hop > 0.02 ? 'fly' : o.moving ? 'run' : 'idle') as Stance,
+                /* ⚠️ THE SAME LADDER YOURS GOES THROUGH, and it costs the wire nothing: a
+                   peer already sends a slot, a height and whether they are down, and a slot
+                   above six already means a cast because that is how their cast reaches your
+                   boss. Reading three fields instead of two turned a neighbour who only ever
+                   ran or flew into one you can watch wind up. See Someone. */
+                pose: poseOf({
+                  down: o.down,
+                  swing: o.swing > 0,
+                  aloft: o.hop > 0.02,
+                  cast: !!o.cast,
+                  moving: o.moving,
+                }),
                 /* their swing, animated from the slot they sent and the drawing they sent */
                 lunge: lungeOf(
                   { swing: o.swing > 0 ? 1 : 0, move: 0, spent: false, stun: 0, hold: 0 },
@@ -2885,7 +2913,7 @@ export function ParkRoom({
                 stroll: false,
                 down: knocked,
                 up: shownYou.up,
-                pose: poseOfMine(shownYou),
+                pose: poseOfMine(shownYou, knocked, !!casting),
                 lunge: lungeOf(shownYou, myMoves),
                 /**
                  * ⚠️ A DIVE LEANS DOWN, NOT AT THE CURSOR. lungePush shoves the drawing along
@@ -3118,6 +3146,27 @@ export function ParkRoom({
               moving={bossShown.moving}
               up={bossShown.up}
               scale={bossShown.scale}
+              /**
+               * ⚠️ ITS OWN STATE, THROUGH THE LADDER EVERYBODY ELSE USES. Every question
+               * here was already being answered somewhere in the loop; none of it reached the
+               * drawing. The two wind-ups are the ones worth the trip — a charge and a leap
+               * both open with a beat of standing perfectly still, which is the window you
+               * are meant to read, and standing still in the idle pose is indistinguishable
+               * from a boss that has not decided yet.
+               */
+              pose={poseOf({
+                down: bossShown.life <= 0,
+                swing: bossShown.swing > 0,
+                /* mid-leap once it is past the crouch — the leap is flown off its own clock
+                   rather than by stepAir, so `up` alone would miss the rise */
+                aloft: !!bossShown.leap && bossShown.leap.t >= LEAP.warn,
+                hurt: bossShown.stun > 0 || bossShown.hold > 0,
+                cast: !!bossShown.cast,
+                warning:
+                  (!!bossShown.charge && bossShown.charge.t < CHARGE.warn) ||
+                  (!!bossShown.leap && bossShown.leap.t < LEAP.warn),
+                moving: bossShown.moving,
+              })}
             />
           )}
           {walking && theirBoss && (
@@ -3140,6 +3189,20 @@ export function ParkRoom({
                   Math.abs(theirBoss.at.y - theirBoss.shown.y) >
                 0.0006
               }
+              /* ⚠️ LESS THAN THE HOST KNOWS, ON PURPOSE. A charge and a leap are not on the
+                 wire — nothing new goes over it, which is cast.ts's rule and the reason none
+                 of this needs a relay change. What does arrive is the slot and the health, so
+                 a friend's boss swings, casts and goes down in pose; its wind-ups read as the
+                 walk they already read as. */
+              pose={poseOf({
+                down: theirBoss.hp <= 0,
+                swing: theirBoss.swingFor > 0 && !!theirMove,
+                cast: !!theirBoss.cast,
+                moving:
+                  Math.abs(theirBoss.at.x - theirBoss.shown.x) +
+                    Math.abs(theirBoss.at.y - theirBoss.shown.y) >
+                  0.0006,
+              })}
             />
           )}
           {!walking && (

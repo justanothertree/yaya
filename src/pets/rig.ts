@@ -765,6 +765,9 @@ export type Stance =
   | 'fly'
   | 'glide'
   | 'dive'
+  | 'cast'
+  | 'roll'
+  | 'hurt'
 
 export type Mood = {
   stance: Stance
@@ -876,6 +879,64 @@ export const TUNE: Record<Stance, Tune> = {
    * glide from the same silhouette, which is what stops the air looking like one state.
    */
   dive: { rate: 3, swing: 2.1, lean: 0.42, drop: 0.04, squashX: 0.82, squashY: 1.2, shut: false },
+  /**
+   * Gathering something big: planted, rocked back, drawn up tall.
+   *
+   * ⚠️ SLOWER THAN IDLE, WHICH IS THE WHOLE TELL. A cast roots you for a second and a half
+   * and the park had no pose for it at all — you threw a fissure and the creature stood there
+   * looking idle, so the most committed second in the fight was the one that looked like doing
+   * nothing. Winding UP is a thing that visibly slows and swells; the discharge is the patch on
+   * the ground, which is already drawn.
+   */
+  cast: {
+    rate: 0.8,
+    swing: 1.5,
+    lean: -0.12,
+    drop: 0.03,
+    squashX: 0.94,
+    squashY: 1.08,
+    shut: false,
+  },
+  /**
+   * Tucked low and thrown along the ground.
+   *
+   * ⚠️ LIMBS IN, NOT OUT, which is what makes it read against run rather than as more of
+   * it. A dodge is a quarter of a second of being untouchable, and it used to draw as a
+   * slightly faster walk — so the one move in the game with invincibility frames had no
+   * silhouette of its own and nobody could see they had used it. Measured off the painted
+   * pixels: 1.22 times as wide and 0.86 as tall as the same creature standing still.
+   *
+   * ⚠️ AND THE LEAN IS 0.1 BECAUSE LEAN FIGHTS squashY. This started at 0.34 — thrown
+   * hard forward, which is what a roll looks like — and measured 1.01 times the resting
+   * height, i.e. not flattened at all, because leaning ROTATES the body and a rotated wide
+   * thing is taller than a flat one. The squash was being handed back by the lean. At 0.05
+   * the same tuning measures 0.78; 0.1 keeps most of the flattening and still reads as going
+   * somewhere. Worth knowing before tuning any other pose: those two dials are not independent.
+   *
+   * ⚠️ IT ALSO HAS TO FIT. At 0.34 every single frame of the roll ran off the top of the
+   * canvas, which is sized to the ink and has no headroom — see petBox. At 0.1, none do.
+   *
+   * ⚠️ EYES SHUT, borrowed from sleep for a quarter of a second. On a roll it does not read
+   * as asleep, it reads as bracing, and it is the one cue every part of a drawing shares.
+   */
+  roll: { rate: 3.2, swing: 0.3, lean: 0.1, drop: 0.06, squashX: 1.2, squashY: 0.74, shut: true },
+  /**
+   * Hit, and wearing it.
+   *
+   * ⚠️ THE ONLY POSE THAT LEANS BACKWARDS. Everything else in this table leans into what
+   * it is doing; being hit is the one thing that happens TO a creature, so the lean inverts and
+   * the clock drops below sleep. Stun already stopped you steering and already flashed the
+   * sprite — what it never did was change how the thing stood.
+   */
+  hurt: {
+    rate: 0.6,
+    swing: 0.7,
+    lean: -0.22,
+    drop: 0.04,
+    squashX: 1.1,
+    squashY: 0.9,
+    shut: false,
+  },
   /* almost still, settled, eyes shut. Not stopped: a sleeping thing still breathes. */
   sleep: {
     rate: 0.32,
