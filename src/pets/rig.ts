@@ -913,8 +913,10 @@ export const TUNE: Record<Stance, Tune> = {
    * the same tuning measures 0.78; 0.1 keeps most of the flattening and still reads as going
    * somewhere. Worth knowing before tuning any other pose: those two dials are not independent.
    *
-   * ⚠️ IT ALSO HAS TO FIT. At 0.34 every single frame of the roll ran off the top of the
-   * canvas, which is sized to the ink and has no headroom — see petBox. At 0.1, none do.
+   * ⚠️ IT USED TO HAVE TO FIT, TOO, AND NO LONGER DOES. At 0.34 every frame of the roll
+   * ran off the top of the bitmap; that is fixed properly now — see poseRoom, which measures
+   * what a pose needs and gives the bitmap that much margin. The number stays at 0.1 on the
+   * flattening argument above, which was always the better of the two reasons.
    *
    * ⚠️ EYES SHUT, borrowed from sleep for a quarter of a second. On a roll it does not read
    * as asleep, it reads as bracing, and it is the one cue every part of a drawing shares.

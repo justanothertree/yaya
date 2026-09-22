@@ -3,11 +3,14 @@ import {
   bodyPose,
   inkBox,
   PART_PARENT,
+  petRatio,
   poseOf,
+  rigOf,
   TUNE,
   type Mood,
   type Part,
   type PartKind,
+  type Stance,
 } from './rig'
 
 /**
@@ -48,6 +51,18 @@ export function paintPet(
   w: number,
   h: number,
   { t, energy = 1, facing = 1, mood, show }: PetPaint,
+  /**
+   * Called with each part once its own transform is on the context, INSTEAD of painting it.
+   *
+   * ⚠️ THE ONE WAY TO ASK WHERE A POSE PUTS THINGS WITHOUT A SECOND COPY OF THIS FUNCTION.
+   * poseRoom needs the transform every part ends up under, and the obvious way to get it is to
+   * write the chain out again somewhere else — which was tried, and was wrong four times over
+   * before it was thrown away: the pivot mapped through the wrong crop, the part offsets scaled
+   * by the wrong axis, worst cases compounded that never co-occur. Every one of those was a
+   * confident, plausible, silently-too-small answer. Handing out the real matrix cannot be any
+   * of those things, because it is the matrix the ink is actually drawn with.
+   */
+  onPart?: (part: Part, ctx: CanvasRenderingContext2D) => void,
 ) {
   /* ⚠️ A stance is the same rig with the clock and the amplitude scaled — see TUNE. Nothing
      below branches on which stance it is, so a part added later works in all of them. */
@@ -154,8 +169,11 @@ export function paintPet(
   for (const part of parts) {
     /* ⚠️ AN ATTACK IS NOT PART OF STANDING THERE. A hit layer is drawn only while it is the
        one being thrown, which is what lets somebody draw a slash across the whole creature
-       without it being there the rest of the time — see PetPaint.show. */
-    if (part.kind === 'hit' && part.layer !== show) continue
+       without it being there the rest of the time — see PetPaint.show.
+
+       ⚠️ EXCEPT WHEN SOMETHING IS MEASURING. A bitmap has to be big enough for the frame
+       the slash IS out, so `onPart` sees every layer. */
+    if (!onPart && part.kind === 'hit' && part.layer !== show) continue
     ctx.save()
     /* ⚠️ the parent's movement first, so the child is posed in a frame that has already moved —
        an ear turns with the head AND twitches, instead of having to choose. See PART_PARENT. */
@@ -163,8 +181,150 @@ export function paintPet(
     const parent = up ? byKind.get(up) : undefined
     if (parent && parent !== part) place(parent)
     place(part)
-    for (const s of part.strokes) paintStroke(ctx, s, w, h)
+    if (onPart) onPart(part, ctx)
+    else for (const s of part.strokes) paintStroke(ctx, s, w, h)
     ctx.restore()
   }
   ctx.restore()
+}
+
+/** how many samples of each stance's own clock make an envelope */
+const POSE_LOOK = 36
+/**
+ * A sliver of slack.
+ *
+ * ⚠️ BECAUSE SAMPLING IS NOT PROOF. Two of the part poses are spikes rather than waves —
+ * `twitch` for an ear and `blink` for an eye — so a grid of samples can step over the top of
+ * one. This is the couple of pixels that costs nothing and covers it, and it is an admission
+ * rather than a tuning: the honest alternative is solving each pose for its maximum, which is
+ * a second copy of poseOf and the thing this whole function exists to avoid.
+ */
+const POSE_EDGE = 0.02
+/**
+ * The most margin a drawing may ask for, per side.
+ *
+ * ⚠️ A 4:1 CREATURE GENUINELY NEEDS SIX TIMES THE PIXELS, because a limb on it is longer
+ * than the creature is tall and a dive swings that limb through a quarter turn. That is real
+ * and it is drawn correctly. This is only here so that something pathological — a hairline
+ * twenty times as wide as it is tall — cannot ask for a bitmap that will not fit in memory.
+ * Past this a pose is clipped again, which is the better of the two failures.
+ */
+const POSE_MOST = 2
+
+/**
+ * How far outside its box a creature's own animation paints, as a fraction of that box per side.
+ *
+ * ⚠️ THE CANVAS IS NOT THE PICTURE, and that is the distinction this exists to make.
+ * inkBox answers "how big is the drawing", and every room, every hitbox, bodyFill, footRoom and
+ * the altitude of a jump are measured against it and must not move. This answers "how much room
+ * does POSING it need", and the answer is margin on the bitmap, not a bigger drawing.
+ *
+ * ⚠️ WHICH IS WHY IT IS NOT MORE PADDING IN inkBox. That is the obvious fix and it is wrong
+ * twice over: bodyFill is floored at 0.35 and footRoom capped at 0.4, so past a certain padding
+ * both compensations saturate and every creature quietly renders small and floating.
+ *
+ * ⚠️ AND IT ASKS paintPet RATHER THAN WORKING IT OUT. There is no arithmetic here that the
+ * renderer does not do — the matrix comes back from the real transform stack, with the real
+ * stance table, the real poseOf and the real parent chain on it. A hand-written copy of that
+ * chain was tried first and was wrong four separate ways, each time by a plausible margin that
+ * looked like a tuning problem rather than a bug. This cannot be off by a factor, because it is
+ * not computing the factor.
+ *
+ * ⚠️ NO PIXELS ARE DRAWN. The context is one pixel and nothing is painted into it; only the
+ * transform is read. That is what makes it cheap enough to do per drawing.
+ */
+/**
+ * ⚠️ ONCE PER DRAWING, FOREVER. This walks every stance and is the most expensive thing in
+ * the module by a wide margin — and the park mounts the same art several times over: a boss, a
+ * walker, and whatever else is out. Measured unmemoised at 30 to 70ms each, which is a visible
+ * hitch on walking into a room. Keyed on the drawing object, so it lives exactly as long as the
+ * drawing does and a redrawn creature gets a fresh answer.
+ */
+const ROOMS = new WeakMap<Drawing, { x: number; y: number }>()
+
+export function poseRoom(art: Drawing, parts?: Part[]): { x: number; y: number } {
+  const had = ROOMS.get(art)
+  if (had) return had
+  const got = measureRoom(art, parts)
+  ROOMS.set(art, got)
+  return got
+}
+
+function measureRoom(art: Drawing, parts?: Part[]): { x: number; y: number } {
+  const rig = parts ?? rigOf(art)
+  if (!rig.length || typeof document === 'undefined') return { x: 0, y: 0 }
+  const box = inkBox(art)
+  if (!box) return { x: 0, y: 0 }
+  const bw = box.x1 - box.x0
+  const bh = box.y1 - box.y0
+  if (!(bw > 0) || !(bh > 0)) return { x: 0, y: 0 }
+
+  /* the shape the bitmap will be, which is the space the transform reports in */
+  const wh = petRatio(art)
+  const w = wh >= 1 ? 1000 : Math.round(1000 * wh)
+  const h = wh >= 1 ? Math.round(1000 / wh) : 1000
+  const probe = document.createElement('canvas')
+  probe.width = 1
+  probe.height = 1
+  const ctx = probe.getContext('2d')
+  if (!ctx) return { x: 0, y: 0 }
+
+  let fat = 0
+  for (const k of art.strokes) if (k.w > fat) fat = k.w
+  /* ⚠️ half the brush either side of the line it was dragged along — the same correction
+     inkBox makes, and worth up to 25 pixels of clipping on its own. See paintStroke. */
+  const half = (Math.max(0.5, fat * Math.min(w, h)) / 2) * 1.02
+
+  let x0 = 0
+  let y0 = 0
+  let x1 = w
+  let y1 = h
+  const look = (part: Part, c: CanvasRenderingContext2D) => {
+    const m = c.getTransform()
+    /* how much the matrix magnifies, so the brush is fattened by whatever the pose did */
+    const grow = Math.sqrt(Math.max(m.a * m.a + m.b * m.b, m.c * m.c + m.d * m.d))
+    const pad = half * grow
+    for (const px of [part.box.x0 * w, part.box.x1 * w])
+      for (const py of [part.box.y0 * h, part.box.y1 * h]) {
+        const tx = m.a * px + m.c * py + m.e
+        const ty = m.b * px + m.d * py + m.f
+        if (tx - pad < x0) x0 = tx - pad
+        if (ty - pad < y0) y0 = ty - pad
+        if (tx + pad > x1) x1 = tx + pad
+        if (ty + pad > y1) y1 = ty + pad
+      }
+  }
+
+  for (const stance of Object.keys(TUNE) as Stance[]) {
+    const tune = TUNE[stance]
+    for (let i = 0; i < POSE_LOOK; i++) {
+      /* ⚠️ TWO SECONDS OF THE STANCE'S OWN CLOCK. A `spin` is `rot: t * 3.2` and does not
+         come back, so this has to cover a whole turn rather than a wobble — see poseOf.
+         ⚠️ AND 1.3 ENERGY, which is what the park drives a moving creature at.
+         ⚠️ AND THE LOOK AT FULL DEFLECTION, because a head follows the pointer. */
+      const t = ((i / POSE_LOOK) * 4) / Math.max(0.2, tune.rate)
+      paintPet(
+        ctx,
+        art,
+        rig,
+        w,
+        h,
+        { t, energy: 1.3, facing: 1, mood: { stance, lookX: 1, lookY: 1 } },
+        look,
+      )
+      paintPet(
+        ctx,
+        art,
+        rig,
+        w,
+        h,
+        { t, energy: 1.3, facing: 1, mood: { stance, lookX: -1, lookY: -1 } },
+        look,
+      )
+    }
+  }
+
+  /* ⚠️ PER SIDE AND SYMMETRIC, because the bitmap is centred on the box it pads */
+  const cap = (v: number) => Math.min(POSE_MOST, Math.max(0, v) + POSE_EDGE)
+  return { x: cap(Math.max(-x0, x1 - w) / w), y: cap(Math.max(-y0, y1 - h) / h) }
 }

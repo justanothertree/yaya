@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef } from 'react'
 import type { Drawing } from '../draw/strokes'
-import { paintPet } from './paint'
+import { paintPet, poseRoom } from './paint'
 import { petBox, rigOf, type Mood } from './rig'
 
 /**
@@ -61,6 +61,24 @@ export function PetView({
      a magnification rather than a stretch if the canvas is this shape — see the note there. */
   /* ⚠️ the same sum the park uses to push a lunge about — see petBox */
   const { w, h } = useMemo(() => petBox(art, size), [art, size])
+
+  /**
+   * The margin the bitmap carries so a pose is not cut off by its own edge.
+   *
+   * ⚠️ THE PICTURE DOES NOT MOVE AND DOES NOT RESIZE. paintPet is still handed w and h and
+   * still crops the ink to exactly that box; the bitmap is bigger and the drawing is painted at
+   * an offset into the middle of it, so every pixel of the creature lands where it always did.
+   * That is what makes this safe to add under everything: petBox is what the park's altitude,
+   * the lunge push, bodyFill and footRoom are all measured against, and none of them can tell.
+   *
+   * ⚠️ AND THE ELEMENT IS PULLED BACK BY WHAT IT GREW. A canvas that is bigger in the
+   * layout would push its neighbours about and shift itself inside anything centring it, so the
+   * extra is taken straight back off as margin. The laid-out box stays w by h.
+   */
+  const room = useMemo(() => {
+    const r = poseRoom(art, parts)
+    return { x: Math.round(w * r.x), y: Math.round(h * r.y) }
+  }, [art, parts, w, h])
 
   /**
    * ⚠️ THE CLOCK OUTLIVES THE LOOP. Energy changes when the pet is prodded, and if the start
@@ -135,11 +153,17 @@ export function PetView({
     const ctx = el.getContext('2d')
     if (!ctx) return
     const dpr = Math.min(window.devicePixelRatio || 1, 2)
-    el.style.width = w + 'px'
-    el.style.height = h + 'px'
-    el.width = Math.round(w * dpr)
-    el.height = Math.round(h * dpr)
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+    const fullW = w + room.x * 2
+    const fullH = h + room.y * 2
+    el.style.width = fullW + 'px'
+    el.style.height = fullH + 'px'
+    /* pulled back to the box the layout expects — see room */
+    el.style.margin = `${-room.y}px ${-room.x}px`
+    el.width = Math.round(fullW * dpr)
+    el.height = Math.round(fullH * dpr)
+    /* ⚠️ the margin is baked into the transform, so everything below is written in the
+       creature's own coordinates exactly as it was before there was any margin */
+    ctx.setTransform(dpr, 0, 0, dpr, room.x * dpr, room.y * dpr)
 
     /**
      * ⚠️ THE WHOLE SCREEN MAPS TO THE WHOLE RANGE, measured from wherever the pet happens to
@@ -157,17 +181,30 @@ export function PetView({
       if (!p) return { x: 0, y: 0 }
       const r = el.getBoundingClientRect()
       if (!r.width || !r.height) return { x: 0, y: 0 }
+      /* ⚠️ the rect is the PADDED bitmap now, and the margin is symmetric, so the middle
+         of it is still the middle of the creature — which is all this needs. */
       const cx = r.left + r.width / 2
       const cy = r.top + r.height / 2
       const span = (v: number, c: number, max: number) => {
-        const room = v < c ? c : max - c
-        return room > 1 ? Math.max(-1, Math.min(1, (v - c) / room)) : 0
+        const gap = v < c ? c : max - c
+        return gap > 1 ? Math.max(-1, Math.min(1, (v - c) / gap)) : 0
       }
       return { x: span(p.x, cx, window.innerWidth), y: span(p.y, cy, window.innerHeight) }
     }
 
     const draw = (t: number) => {
       const look = watch === 'page' ? lookAt() : live.current.look
+      /**
+       * ⚠️ THE MARGIN HAS TO BE CLEARED HERE. paintPet clears 0,0,w,h — the creature's
+       * own box — and with the offset transform that leaves the surrounding room untouched,
+       * so anything a pose painted out there last frame stayed painted. A leaning creature
+       * smeared a trail of itself around its own edge. Clearing in device space covers the
+       * whole bitmap whatever the transform is doing.
+       */
+      ctx.save()
+      ctx.setTransform(1, 0, 0, 1, 0, 0)
+      ctx.clearRect(0, 0, el.width, el.height)
+      ctx.restore()
       paintPet(ctx, art, parts, w, h, {
         t,
         energy: live.current.energy,
@@ -199,7 +236,7 @@ export function PetView({
      * repainted nothing at all. It is a rare, deliberate press, so restarting the loop for it
      * costs nothing, and the clock lives in a ref so the creature does not snap back to t=0.
      */
-  }, [art, parts, w, h, moving, stance, watch])
+  }, [art, parts, w, h, room, moving, stance, watch])
 
   return (
     <canvas
