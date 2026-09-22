@@ -97,7 +97,13 @@ export type Mark = {
   at: Spot
   /** how wide it is, as a fraction of a screenful — used for the drawing and nothing else */
   size: number
-  kind: 'pond' | 'grove' | 'ring' | 'rocks'
+  /**
+   * ⚠️ `flat` IS FOR DRAWN MAPS. The built-in park has four kinds and uses all of them;
+   * a map somebody drew can name a layer anything, and a place whose name matches none of the
+   * words is still a place — it has a position, a size and a name you can say. Drawing it as
+   * a clearing instead would quietly tell somebody their `courtyard` was a ring.
+   */
+  kind: 'pond' | 'grove' | 'ring' | 'rocks' | 'flat'
   name: string
 }
 

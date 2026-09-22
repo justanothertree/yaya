@@ -1,4 +1,5 @@
-import { MARKS, VIEW, type Spot } from './walk'
+import { VIEW, type Spot } from './walk'
+import { worldPlanes } from './world'
 
 /**
  * How high the ground is, place by place.
@@ -31,21 +32,15 @@ export type Plane = {
   top: number
 }
 
-const TOPS: Record<string, number> = {
-  'the ring': 0.22,
-  'the rocks': 0.5,
-  'the far trees': 0.72,
-}
-
 export type Ground = { at: Spot; size: number; top: number; name: string; kind: string }
 
-export const PLANES: Ground[] = MARKS.filter((m) => m.name in TOPS).map((m) => ({
-  at: m.at,
-  size: m.size,
-  top: TOPS[m.name],
-  name: m.name,
-  kind: m.kind,
-}))
+/**
+ * ⚠️ THE TABLE MOVED TO world.ts AND THE REASONING STAYED HERE. The three heights above
+ * are still the argument — a step, a scramble, and the one only wings reach — but which
+ * places exist is now a thing that can be a drawing, so the list and the heights have to live
+ * together. This file is the geometry: given the places, where is the ground.
+ */
+export const PLANES = worldPlanes
 
 /**
  * ⚠️ STOOD ON, NOT STOOD IN. A landmark's `size` is how big it looks; the ground you can put
@@ -66,7 +61,7 @@ const STAND = 0.66
  */
 export function groundAt(s: Spot): number {
   let top = 0
-  for (const p of PLANES) {
+  for (const p of worldPlanes()) {
     const dx = ((s.x - p.at.x) / VIEW.w) * (16 / 10)
     const dy = (s.y - p.at.y) / VIEW.h
     if (Math.hypot(dx, dy) <= p.size * STAND && p.top > top) top = p.top
@@ -77,7 +72,7 @@ export function groundAt(s: Spot): number {
 /** Which place you are stood on top of, or null on the grass. */
 export function planeAt(s: Spot): Ground | null {
   let best: Ground | null = null
-  for (const p of PLANES) {
+  for (const p of worldPlanes()) {
     const dx = ((s.x - p.at.x) / VIEW.w) * (16 / 10)
     const dy = (s.y - p.at.y) / VIEW.h
     if (Math.hypot(dx, dy) <= p.size * STAND && (!best || p.top > best.top)) best = p

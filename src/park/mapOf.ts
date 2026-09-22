@@ -56,10 +56,15 @@ export type Place = {
  * program knows.
  */
 const WORDS: Array<[PlaceKind, string[]]> = [
-  ['pond', ['pond', 'water', 'lake', 'pool', 'river']],
-  ['grove', ['tree', 'wood', 'grove', 'forest', 'bush']],
+  ['pond', ['pond', 'water', 'lake', 'pool', 'river', 'puddle', 'stream']],
+  ['grove', ['tree', 'wood', 'grove', 'forest', 'bush', 'hedge']],
+  /* ⚠️ NO `yard` OR `court`. They were in here for one commit and `courtyard 0.3` — the
+     example in the panel's own help text — came out as a gold ring, because it contains both.
+     The kind decides how a place is DRAWN, so a word we are not sure about is better left
+     neutral than guessed: a courtyard drawn as a clearing is the map telling somebody
+     something about their own map that is not true. */
   ['ring', ['ring', 'circle', 'arena', 'clearing']],
-  ['rocks', ['rock', 'stone', 'cliff', 'crag', 'boulder']],
+  ['rocks', ['rock', 'stone', 'cliff', 'crag', 'boulder', 'ledge', 'hill', 'mound', 'step']],
 ]
 
 export function placeKind(name: string): PlaceKind {
@@ -103,6 +108,21 @@ export type Mappable = Pick<Drawing, 'strokes' | 'ratio'> & { layers?: string[] 
  * somewhere — the same rule the rig follows for a layer nobody named, and for the same reason:
  * drawing is the part that should never be refused.
  */
+/**
+ * Is this layer name describing a place at all?
+ *
+ * ⚠️ A NAME ALONE IS NOT ENOUGH, and finding that out cost nothing because the picker
+ * said so out loud: every creature in the gallery came up as a map. `Flappy — 4 places`,
+ * because a layer called `leg` is a named layer and the first version asked for nothing more
+ * than that. A drawing is a map when it says so — either with a word that names a KIND of
+ * place, or with a height, which is a thing only terrain has.
+ *
+ * ⚠️ WHICH ALSO MEANS THE RULE IS TEACHABLE. "Call it pond, trees, rocks or a clearing,
+ * or give it a height" is a sentence; "name the layer anything" was not a rule at all, it was
+ * the absence of one.
+ */
+const isPlace = (raw: string): boolean => placeKind(raw) !== 'flat' || topOf(raw) > 0
+
 export function mapOf(d: Mappable): Place[] {
   const byLayer = new Map<number, Stroke[]>()
   for (const s of d.strokes) {
@@ -115,7 +135,7 @@ export function mapOf(d: Mappable): Place[] {
   const out: Place[] = []
   for (const [layer, strokes] of [...byLayer].sort((a, b) => a[0] - b[0])) {
     const raw = (d.layers?.[layer] ?? '').trim()
-    if (!raw || raw === 'unnamed') continue
+    if (!raw || raw === 'unnamed' || !isPlace(raw)) continue
     /* ⚠️ boxOf, not a second box measurer. It already knows that a fill is paint rather than
        shape — fill the page behind a map and every place would be the size of the park. */
     const box = boxOf(strokes, d.ratio)

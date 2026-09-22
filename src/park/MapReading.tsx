@@ -75,9 +75,9 @@ export function MapReading({
       </button>
       {open && !places.length && (
         <span className="muted">
-          Nothing named yet. Press ✎ on a layer and call it <strong>pond</strong>,{' '}
-          <strong>trees</strong>, <strong>rocks</strong> or <strong>clearing</strong> — and add a
-          number for how high it stands, like <strong>rocks 0.5</strong>.
+          No places yet. Press ✎ on a layer and call it <strong>pond</strong>,{' '}
+          <strong>trees</strong>, <strong>rocks</strong> or <strong>clearing</strong> — or give it a
+          height, like <strong>courtyard 0.3</strong>. A layer that does neither is scenery.
         </span>
       )}
       {open && places.length > 0 && (

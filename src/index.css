@@ -8870,6 +8870,16 @@ a.cz-msg-author:focus-visible {
     transparent
   );
 }
+/* ⚠️ a drawn place whose name matched no word — see Mark.kind. Deliberately the plainest
+   of them: it is somewhere, and the map is not pretending to know what. */
+.park-mark.is-flat {
+  background: radial-gradient(
+    closest-side,
+    color-mix(in srgb, #9aa0a6 26%, transparent),
+    color-mix(in srgb, #9aa0a6 8%, transparent) 70%,
+    transparent
+  );
+}
 /* on the little map they are flat marks, because a gradient at 6px is a smudge */
 .park-map-mark {
   position: absolute;
@@ -8891,6 +8901,9 @@ a.cz-msg-author:focus-visible {
 .park-map-mark.is-ring {
   background: transparent;
   box-shadow: inset 0 0 0 2px #c9a86a;
+}
+.park-map-mark.is-flat {
+  background: #9aa0a6;
 }
 .park-where {
   margin: 4px 0 0;

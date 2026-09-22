@@ -7,7 +7,8 @@ import { poseOf } from './pose'
 import { NOTICE, hunted, stepWatch, wary } from './notice'
 import type { Stance } from '../pets/rig'
 import { PART_BASE, inPlay, partsAllowed } from '../pets/budget'
-import { PLANES, groundAt } from './ground'
+import { groundAt } from './ground'
+import { markAt, nearestMark, subscribeWorld, worldMarks, worldPlanes } from './world'
 import {
   camWant,
   stepCam,
@@ -16,9 +17,6 @@ import {
   farFrom,
   onScreen,
   PARK,
-  MARKS,
-  markAt,
-  nearestMark,
   restingWalker,
   stepWalker,
   STILL,
@@ -590,11 +588,14 @@ function MiniMap({
    */
   strolling: Array<{ at: Spot }>
 }) {
+  /* ⚠️ its own subscription rather than a prop, because the little map is the one thing
+     that must never disagree with the field about where the places are — see setWorld */
+  const shownMarks = useSyncExternalStore(subscribeWorld, worldMarks, worldMarks)
   return (
     <div className="park-map" aria-hidden>
       {/* ⚠️ THE PLACES FIRST, so the window and the dots sit on top of them rather than
           under — the map is for finding people, and a landmark is the thing you find them BY. */}
-      {MARKS.map((m) => (
+      {shownMarks.map((m) => (
         <span
           key={m.name}
           className={'park-map-mark is-' + m.kind}
@@ -817,7 +818,16 @@ export function ParkRoom({
   }, [])
 
   /* which landmarks are ground you can stand on, and how high — see ground.ts */
-  const raised = useMemo(() => new Map(PLANES.map((g) => [g.name, g.top])), [])
+  /**
+   * ⚠️ THE PARK ITSELF CAN CHANGE NOW — see setWorld. Read through the store rather than
+   * called, for the reason the budget memo already documents: worldMarks reads a module
+   * variable React cannot see changing, so subscribing is both what makes the room redraw and
+   * what keeps the dependency honest instead of a tick the lint rule can only call unnecessary.
+   * Both return the same array identity until the park actually changes.
+   */
+  const shownMarks = useSyncExternalStore(subscribeWorld, worldMarks, worldMarks)
+  const shownPlanes = useSyncExternalStore(subscribeWorld, worldPlanes, worldPlanes)
+  const raised = useMemo(() => new Map(shownPlanes.map((g) => [g.name, g.top])), [shownPlanes])
 
   /**
    * Which pose a creature of yours is in.
@@ -2942,7 +2952,7 @@ export function ParkRoom({
             landmark that covered a boss would be a landmark somebody had to walk around twice.
           */}
           {walking &&
-            MARKS.map((m) => {
+            shownMarks.map((m) => {
               const p = onScreen(m.at, camAt)
               if (p.x < -0.8 || p.x > 1.8 || p.y < -0.8 || p.y > 1.8) return null
               return (
