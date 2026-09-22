@@ -9,7 +9,16 @@ import type { Stance } from '../pets/rig'
 import { PART_BASE, inPlay, partsAllowed } from '../pets/budget'
 import { groundAt } from './ground'
 import { canSee, slideAround } from './solid'
-import { markAt, nearestMark, subscribeWorld, worldMarks, worldPlanes, worldWalls } from './world'
+import { mapOf } from './mapOf'
+import {
+  markAt,
+  nearestMark,
+  setWorld,
+  subscribeWorld,
+  worldMarks,
+  worldPlanes,
+  worldWalls,
+} from './world'
 import {
   camWant,
   stepCam,
@@ -699,11 +708,43 @@ export function ParkRoom({
      would restart the loop's clock on every resize — see the note on the loop. */
   const sizeRef = useRef({ w: 0, h: 0 })
   const [pick, setPick] = useState(0)
+  /**
+   * Which of your own drawings you are walking, or '' for the park everybody shares.
+   *
+   * ⚠️ THIS IS WHAT THE MAP MAKER WAS MISSING, and without it the two halves already
+   * shipped were unusable by anybody but me. mapOf reads a drawing as a park and MapGuide
+   * helps you draw one to scale — and the only thing that could ever WALK the result was
+   * #dev-park, which does not exist in a production build. A tool whose output nobody can
+   * reach is not finished.
+   *
+   * ⚠️ AND CHOOSING ONE PUTS YOU ON YOUR OWN, which is the honest answer rather than a
+   * limitation to apologise for. A drawn map is not on the wire, so two people in one room
+   * with different maps would stand on rocks the other cannot see — see joinPark, which
+   * refuses the socket outright while the park is a drawing.
+   */
+  const [mapPick, setMapPick] = useState('')
   const [walking, setWalking] = useState(false)
   /** bumped whenever the roster changes, so the render follows without owning the positions */
   const [roster, setRoster] = useState(0)
 
   const mine = pets[pick] ?? pets[0]
+  /**
+   * ⚠️ OUT OF THE PICTURES ALREADY HERE, not a new prop and not a second store. `extras`
+   * is every kept drawing that is not one of your creatures, which is exactly the set a map
+   * can come from — and mapOf already refuses anything that does not name a place, which is
+   * the check that stopped every creature in the gallery reading as a four-place map.
+   */
+  const maps = useMemo(() => extras.filter((a) => mapOf(a.art).length > 0), [extras])
+  const walkingMap = mapPick ? (maps.find((m) => m.name === mapPick) ?? null) : null
+  /**
+   * ⚠️ THE NAME IS WHAT THE SOCKET DEPENDS ON, NOT THE DRAWING, and this is the same
+   * trap myArt was already written around one note below. `maps` is rebuilt whenever `extras`
+   * is, `extras` is rebuilt whenever the gallery changes, and a chosen map read straight out
+   * of it is a fresh object every time — so keeping a picture in another tab would have
+   * reconnected the park underneath somebody standing in it. A string cannot do that.
+   */
+  const mapsRef = useRef(maps)
+  mapsRef.current = maps
   /**
    * ⚠️ THE DRAWING, NOT THE WRAPPER AROUND IT, is what the socket depends on. The effect below
    * owns the connection and uses only the art and the name — so depending on the object that
@@ -1153,6 +1194,15 @@ export function ParkRoom({
   useEffect(() => {
     if (!walking || !myArt) return
     state.current = { me: null, here: new Map(), boss: null, trouble: null }
+    /**
+     * ⚠️ THE PARK AND THE SOCKET ARE DECIDED IN ONE PLACE, ON PURPOSE. Which world you
+     * are in and whether you are connected to anybody are the same decision — split across
+     * two effects they can disagree for a frame, and a frame is all it takes to tell the relay
+     * where you are standing in a park nobody else has. So the world is set here, immediately
+     * before the join, and put back in the same teardown.
+     */
+    const drawn = mapPick ? (mapsRef.current.find((m) => m.name === mapPick) ?? null) : null
+    setWorld(drawn ? mapOf(drawn.art) : null)
     /* ⚠️ somewhere in the middle of the park rather than the middle of a screen, so two people
        arriving separately do not always land on top of each other */
     you.current = restingStriker(
@@ -1166,9 +1216,15 @@ export function ParkRoom({
     const bump = () => setRoster((n) => n + 1)
     const p = joinPark(room, { name: myName, art: myArt }, state.current, bump)
     if (!p) {
-      state.current.trouble = 'The park is not switched on in this build'
+      /* ⚠️ ON YOUR OWN ON PURPOSE IS NOT A PROBLEM, and this line used to say it was.
+         A drawn map refuses the socket by design — see joinPark — so reporting "the park is
+         not switched on" for it would be the room telling somebody their own choice had
+         broken something. The sentence below the field says what is actually true instead. */
+      if (!drawn) {
+        state.current.trouble = 'The park is not switched on in this build'
+      }
       bump()
-      return
+      return () => setWorld(null)
     }
     park.current = p
     bump()
@@ -1179,8 +1235,12 @@ export function ParkRoom({
       /* the relay drops your boss when your socket goes; this is the same thing on this side */
       boss.current = null
       setBossShown(null)
+      /* ⚠️ AND THE WORLD GOES BACK. It is a module-level thing, so leaving it pointed at
+         a drawing would mean the next room somebody opened was somebody's sketch — the same
+         rule the dev workbench already follows. */
+      setWorld(null)
     }
-  }, [walking, myArt, myName, room, myTraits])
+  }, [walking, myArt, myName, room, myTraits, mapPick])
 
   /* ⚠️ one per wanderer, rebuilt when the roster of them changes — an index into this must
      always mean the same creature as the same index into strollPets */
@@ -2558,6 +2618,23 @@ export function ParkRoom({
             </select>
           </label>
         )}
+        {/* ⚠️ ONLY WHEN YOU HAVE ONE, like the creature picker beside it. A control
+            offering a choice of one thing is a control explaining a feature, and this room has
+            enough to read already — the words that teach you to make a map belong in Paint,
+            where you would be when you needed them. */}
+        {maps.length > 0 && !walking && (
+          <label className="park-seat">
+            <span className="sr-only">Which park</span>
+            <select value={mapPick} onChange={(e) => setMapPick(e.target.value)}>
+              <option value="">🌳 the park</option>
+              {maps.map((m) => (
+                <option key={m.name} value={m.name}>
+                  🗺 {m.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         {walking && bossable.length > 0 && !theirBoss && (
           <button
             className="btn"
@@ -3432,8 +3509,19 @@ export function ParkRoom({
             <div className="park-empty">
               {/* ⚠️ SAYS WHAT TO DO, because the reference below already says what the place
                   is. This used to open with "a field three screens across" and the fact list
-                  now says that too — one statement each. */}
-              <p className="muted">Take a minion for a walk. Everybody in the park sees them.</p>
+                  now says that too — one statement each.
+
+                  ⚠️ AND THE SECOND HALF DEPENDS ON WHICH PARK. "Everybody sees them" is the
+                  point of the shared field and is simply false on a map you drew, which opens
+                  no socket at all. Three sentences on this page carried that claim and a drawn
+                  map made all three wrong at once — this one, the members-only line, and the
+                  one the picker adds. Copy that explains a feature goes stale the moment the
+                  feature grows a second mode. */}
+              <p className="muted">
+                {walkingMap
+                  ? `Take a minion for a walk around ${walkingMap.name}.`
+                  : 'Take a minion for a walk. Everybody in the park sees them.'}
+              </p>
             </div>
           )}
           {/* ⚠️ INSIDE THE FIELD, NOT BESIDE IT. It pins to the top-right of whatever box it sits
@@ -3579,6 +3667,17 @@ export function ParkRoom({
         </p>
       )}
 
+      {/* ⚠️ SAID BEFORE YOU GO IN AND WHILE YOU ARE IN, because it is the answer to two
+          different questions — "what will happen if I pick this" and "why is nobody here".
+          The second one is the whole reason this line exists: an empty park that looks exactly
+          like a broken one is the failure the trouble line below was written for. */}
+      {walkingMap && (
+        <p className="muted park-trouble" role="status">
+          {walking
+            ? `You are walking ${walkingMap.name}, on your own — a map you drew is not sent to anybody else.`
+            : `${walkingMap.name} is a map you drew, so you will walk it on your own. Pick the park to be with everybody.`}
+        </p>
+      )}
       {/* ⚠️ A PROBLEM IS SAID OUT LOUD. A room that silently fails to connect is a room that
           looks like an empty park, and somebody waits in it for a friend who cannot arrive. */}
       {state.current.trouble && (
@@ -3590,7 +3689,14 @@ export function ParkRoom({
           cannot be filtered and that Snake is open to everybody. The fact is the reason. */}
       {!authed && !walking && (
         <p className="muted park-trouble" role="status">
-          Members only — in here your creature is drawn on everybody else's screen.{' '}
+          {/* ⚠️ THE REASON HAS TO STILL BE TRUE, and for a drawn map it stopped being. This
+              line explains the gate by what happens in the shared park — your creature on
+              everybody else's screen — and a map you drew opens no socket at all, so the page
+              was saying "on your own" and "drawn on everybody's screen" one line apart. The
+              gate itself is unchanged; only the sentence that was lying about it. */}
+          {walkingMap
+            ? 'Members only — the park needs an account, even on your own map. '
+            : "Members only — in here your creature is drawn on everybody else's screen. "}
           <a href="#signin">Sign in</a>.
         </p>
       )}

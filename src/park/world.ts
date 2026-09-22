@@ -12,10 +12,14 @@ import { MARKS, VIEW, type Mark, type Spot } from './walk'
  * the built-in map is what you get, and it is what every shared room gets.
  *
  * ⚠️ WHAT THIS ADDS IS ONE SWAPPABLE SLOT, so a drawing CAN be the park somewhere it is safe
- * to be. A drawn map is not on the wire, so two people with different maps would be standing
- * on rocks the other cannot see — which is why the only thing that sets one is the dev
- * workbench. That is enforcement by construction rather than by a rule somebody has to
- * remember: there is no control anywhere else.
+ * to be. A drawn map is not on the wire, so two people with different maps would be standing on
+ * rocks the other cannot see.
+ *
+ * ⚠️ AND THE SAFETY MOVED, WHICH IS WHY THIS NOTE CHANGED. For three commits the guarantee
+ * was "the only control is in the dev workbench", which is a guarantee that lasts exactly until
+ * somebody adds a second control — and the map maker was useless to anybody else until somebody
+ * did. It is a lock now instead: joinPark refuses the socket outright while worldIsDrawn(), so a
+ * drawn park is a park with nobody else in it no matter who calls setWorld or why.
  *
  * ⚠️ AND THE QUERIES LIVE HERE RATHER THAN IN walk.ts, which is the whole reason this file
  * exists. `nearestMark` and `markAt` read the list of places; if they stayed beside the
@@ -74,7 +78,12 @@ export const worldPlanes = (): Ground[] => shownPlanes
  * A drawn map is where somebody chooses otherwise, for their own map.
  */
 export const worldWalls = (): Wall[] => shownWalls
-/** true while the park is something somebody drew */
+/**
+ * True while the park is something somebody drew.
+ *
+ * ⚠️ READ BY joinPark, AND THAT IS THE POINT OF IT. This is the one question that decides
+ * whether the relay may be spoken to at all — see the note at the top.
+ */
 export const worldIsDrawn = (): boolean => drawn !== null
 
 /**

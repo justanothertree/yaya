@@ -6,6 +6,7 @@ import { traitsOf } from '../pets/play'
 import { groundAt } from './ground'
 import { rigOf } from '../pets/rig'
 import { castFromSlot, type CastKind } from './cast'
+import { worldIsDrawn } from './world'
 
 /**
  * The shared park, over the relay.
@@ -407,6 +408,18 @@ export function joinPark(
   state: ParkState,
   onChange: () => void,
 ): Park | null {
+  /**
+   * ⚠️ A DRAWN PARK IS A PARK WITH NOBODY ELSE IN IT, AND THAT IS A LOCK RATHER THAN A
+   * HABIT. Nothing about a map somebody drew goes over the wire — the relay has no message
+   * for one and adding it would mean every client agreeing about how to read a drawing. Two
+   * people in one room with different maps would stand on rocks the other cannot see and get
+   * stopped by hedges that are not there.
+   *
+   * The caller already knows this and sets the world before it joins; this is the same rule
+   * written where it cannot be forgotten. A room that refuses the socket cannot leak a map by
+   * anybody's mistake, including a future one — and it costs a single question.
+   */
+  if (worldIsDrawn()) return null
   const raw = (import.meta as unknown as { env?: Record<string, string> }).env?.VITE_WS_URL
   if (!raw) return null
   /* ⚠️ a page served over https cannot open a ws:// socket — the same upgrade the game does */
