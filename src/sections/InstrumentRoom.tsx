@@ -87,6 +87,7 @@ import { together } from '../party/together'
 import { jam } from '../party/jam'
 import { hueFor } from '../party/party'
 import { useVoiceSession } from '../voice/useVoiceSession'
+import { TakesPanel } from '../audio/TakesPanel'
 import {
   armRecord,
   cancelRecord,
@@ -1394,6 +1395,12 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
           )}
         </div>
       )}
+
+      {/* ⚠️ OUTSIDE THE LIBRARY TOGGLE, not inside it. A take is a thing you kept, so the
+          library is where it belongs — but the library row collapses, and a recording you can
+          only reach by opening a panel is one nobody finds. It is not in the layer list either,
+          on purpose: a take is not a Layer. See TakesPanel. */}
+      <TakesPanel />
 
       {capMsg && (
         <p className="muted inst-capture-note" role="status">

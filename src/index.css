@@ -2801,6 +2801,44 @@ section[id] {
 .inst-row .appearance-slider {
   flex: 1 1 10rem;
 }
+/**
+ * Recorded takes — see TakesPanel.
+ *
+ * ⚠️ THE LIST TAKES THE WHOLE ROW rather than sitting in the flex beside the buttons. It
+ * is the only thing in here that grows without limit, so left as a flex child it squeezed the
+ * Record button off the end as soon as there were three of them.
+ */
+.inst-takes-list {
+  flex: 1 0 100%;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 0.3rem;
+}
+.inst-takes-list li {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+/* the duration does the work, so it gets a fixed column and the date does not shove it about */
+.inst-takes-list li > button:first-child {
+  min-width: 5.2rem;
+  font-variant-numeric: tabular-nums;
+}
+.inst-takes-meta {
+  font-size: 0.76rem;
+  font-variant-numeric: tabular-nums;
+}
+/* ⚠️ pushed to the end so the delete is never next to the play button on a phone, where
+   they would be two thumb-widths apart and one of them is not undoable */
+.inst-takes-list li > button:last-child {
+  margin-left: auto;
+}
+.inst-takes-say {
+  flex: 1 0 100%;
+  font-size: 0.8rem;
+}
 .inst-oct {
   display: inline-flex;
   align-items: center;
