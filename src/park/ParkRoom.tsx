@@ -758,6 +758,20 @@ export function ParkRoom({
      a win pays for — see budget.ts. */
   const myPetName = useRef('')
   myPetName.current = mine?.name ?? ''
+  /**
+   * Whether your creature is too detailed to go down the wire.
+   *
+   * ⚠️ WHICH IS ONLY A QUESTION WHERE THERE IS A WIRE, and both places that read it have
+   * to say so. lookFits asks what the relay will accept; a map you drew opens no socket at
+   * all — joinPark refuses it outright — so nothing about you is sent to anybody and there
+   * is nothing for the limit to protect. Read bare, it disabled the Walk button on a drawn
+   * map and explained the block as "too many strokes to send to everybody in the park",
+   * which shut the map maker's output off from exactly the people most likely to have drawn
+   * a detailed creature, for the sake of an audience that mode guarantees there is none of.
+   *
+   * The account gate is a different question and is not paired with this one: the park is
+   * members-only on your own map too.
+   */
   const tooBig = useMemo(() => (myArt ? !lookFits(myArt) : false), [myArt])
 
   /* ⚠️ read once per creature, never per frame — rigOf walks every stroke */
@@ -2610,7 +2624,11 @@ export function ParkRoom({
     <div className="park">
       <div className="park-bar">
         {!walking ? (
-          <button className="btn" disabled={tooBig || !authed} onClick={() => setWalking(true)}>
+          <button
+            className="btn"
+            disabled={(tooBig && !walkingMap) || !authed}
+            onClick={() => setWalking(true)}
+          >
             🌳 Walk into the park
           </button>
         ) : (
@@ -3728,7 +3746,8 @@ export function ParkRoom({
           <a href="#signin">Sign in</a>.
         </p>
       )}
-      {tooBig && !walking && (
+      {/* ⚠️ only where there is something to send — see tooBig, and the Walk button */}
+      {tooBig && !walkingMap && !walking && (
         <p className="muted park-trouble" role="status">
           {mine?.name} has too many strokes to send to everybody in the park. Take a simpler one.
         </p>
