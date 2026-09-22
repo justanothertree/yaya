@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 import type { Drawing } from '../draw/strokes'
 import { PetView } from '../pets/PetView'
 import { petCanvas, rigOf } from '../pets/rig'
-import { PLAIN, traitsOf } from '../pets/play'
+import { PLAIN, traitsOf, traitWords } from '../pets/play'
 import type { Stance } from '../pets/rig'
 import { PART_BASE, inPlay, partsAllowed } from '../pets/budget'
 import { PLANES, groundAt } from './ground'
@@ -835,6 +835,19 @@ export function ParkRoom({
     () => (myArt ? traitsOf(inPlay(rigOf(myArt), myBudget)) : PLAIN),
     [myArt, myBudget],
   )
+
+  /**
+   * The same four traits, in words, for the line under the bar.
+   *
+   * ⚠️ traitWords, WHICH PetPlay AND PetFight ALREADY SAY. Three rooms reading the same
+   * drawing should not have three vocabularies for it — "glides" has to mean the same thing
+   * in the maker and in the fight or the maker is lying.
+   *
+   * ⚠️ AND IT IS THE CAPPED RIG, because myTraits is. A creature whose wing is asleep for
+   * want of a slot does not say it glides here, which is the point: the line describes what
+   * the thing will actually do when you press the key, not what it was drawn with.
+   */
+  const myWords = useMemo(() => traitWords(myTraits), [myTraits])
 
   /* ⚠️ the drawing again, not the wrapper — this one feeds the animation loop's deps, and a
      loop rebuilt every render is a loop whose clock starts again every render */
@@ -2511,6 +2524,31 @@ export function ParkRoom({
         ⚠️ AND IT DESCRIBES THE ONE THAT IS OUT once there is one, including somebody else's,
         because the answer to "why is this thing so fast" should be on the screen it is fast on.
       */}
+      {/*
+        ⚠️ AND WHAT YOURS TURNED INTO, above the boss's, because it is true before there is
+        a boss and it is the half you chose. traitsOf has steered the park since jumping did,
+        and until now the only way to find out that your four legs made you quicker was to
+        have walked something slower first — a derived ability nobody is told about is
+        indistinguishable from no ability.
+
+        ⚠️ NOT IN park-live. That overlay is for what is HAPPENING and it fades; this is a
+        fact about your creature that holds all session, and it belongs where the boss's
+        reading is so the two can be compared. It appears once, when you walk in, which is not
+        the flicker the overlay was built to stop.
+
+        ⚠️ AND NOTHING AT ALL FOR A PLAIN CREATURE, the same choice PetPlay makes. An empty
+        list means every multiplier is 1, and "nothing special" is a sentence nobody needs to
+        read about the thing they drew.
+      */}
+      {walking && mine && myWords.length > 0 && (
+        <p className="muted park-says">
+          {/* ⚠️ A DASH, NOT A VERB. traitWords mixes the two — "glides" and "jumps higher"
+              read as things it does, "light" and "fast" as things it is — so "Kitted glides,
+              light" is not a sentence. A label and a list is, and it is the form PetPlay
+              already prints the same words in. */}
+          <strong>{mine.name}</strong> — {myWords.join(', ')}.
+        </p>
+      )}
       {walking && bossSays && (
         <p className="muted park-says" role="status">
           {bossSays}
