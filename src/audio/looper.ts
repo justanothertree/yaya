@@ -1,5 +1,6 @@
 import { sharedCtx, resumeAudio } from './context'
 import { takeBus } from './takeBus'
+import { makeVoiceChain, PLAIN_VOICE, type VoiceChain, type VoiceFx } from './takeFx'
 import { fxSnapshot, noteOff, noteOn, type Fx, type InstrumentId } from './synth'
 import { detectTempo, lastPlayedAt, playedBetween } from './capture'
 import { toEvents, toNotes } from './noteEdit'
@@ -175,6 +176,15 @@ export type SongTake = {
   muted?: boolean
   /** 0 to 2, 1 being as recorded — the same scale a layer's gain uses */
   gain?: number
+  /**
+   * What it is put through — see takeFx.
+   *
+   * ⚠️ PER TAKE, NOT PER BUS. Two recordings in one song are usually two different things
+   * — a lead and a harmony, a voice and a room — and a single chain for all of them would
+   * mean the harmony gets whatever the lead needed. The cost is a handful of native nodes each,
+   * and the expensive two of those are unplugged unless they are turned up.
+   */
+  fx?: VoiceFx
 }
 
 const BEATS_PER_BAR = 4
@@ -244,6 +254,8 @@ let state: State = {
  * finishes. See hushTakes.
  */
 const heard = new Map<string, AudioBuffer>()
+/* one voice chain per placed take, living as long as the take is on the loop — see takeFx */
+const chains = new Map<string, VoiceChain>()
 /* named apart from `sounding`, which is the note voices — two different things being kept alive */
 const playing = new Set<AudioBufferSourceNode>()
 
@@ -437,7 +449,9 @@ function scheduleWindow(from: number, to: number) {
       const g = ctx.createGain()
       g.gain.value = take.gain ?? 1
       src.connect(g)
-      g.connect(takeBus())
+      /* ⚠️ through its own chain if it has one, and straight to the bus if it does not.
+         The chain outlives the source: it is per TAKE, and a new source is made every pass. */
+      g.connect(chains.get(take.id)?.in ?? takeBus())
       src.onended = () => {
         playing.delete(src)
         try {
@@ -1658,18 +1672,36 @@ export async function placeTake(id: string, at = 0): Promise<boolean> {
     if (!buf) return false
     heard.set(id, buf)
   }
+  if (!chains.has(id)) {
+    const chain = makeVoiceChain(sharedCtx(), takeBus())
+    chain.set(PLAIN_VOICE)
+    chains.set(id, chain)
+  }
   const had = state.takes.some((t) => t.id === id)
   set({
     takes: had
       ? state.takes.map((t) => (t.id === id ? { ...t, at } : t))
-      : [...state.takes, { id, at }],
+      : [...state.takes, { id, at, fx: { ...PLAIN_VOICE } }],
   })
   return true
+}
+
+/** Change what a take is put through. */
+export function takeFx(id: string, fx: Partial<VoiceFx>) {
+  const was = state.takes.find((t) => t.id === id)
+  if (!was) return
+  const next = { ...PLAIN_VOICE, ...was.fx, ...fx }
+  chains.get(id)?.set(next)
+  set({ takes: state.takes.map((t) => (t.id === id ? { ...t, fx: next } : t)) })
 }
 
 export function liftTake(id: string) {
   hushTakes()
   heard.delete(id)
+  /* ⚠️ the chain goes with it. A convolver left connected keeps being processed every
+     render quantum whether or not anything feeds it — see the note in takeFx. */
+  chains.get(id)?.dispose()
+  chains.delete(id)
   set({ takes: state.takes.filter((t) => t.id !== id) })
 }
 

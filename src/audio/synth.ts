@@ -1070,8 +1070,7 @@ function makeBus(c: AudioContext): Bus {
   const wet = c.createGain()
   const fb = c.createGain()
   const verb = c.createConvolver()
-  if (!verbBuf) verbBuf = impulse(c, 2.2)
-  verb.buffer = verbBuf
+  verb.buffer = sharedImpulse(c)
   const verbWet = c.createGain()
 
   input.connect(dry).connect(fxOut!)
@@ -1271,6 +1270,19 @@ function evictBus(c: AudioContext) {
  * room this size the difference is inaudible. Two channels of decaying noise IS the mathematical
  * shape of a room's response; the fancy ones just have a real room's colour on top.
  */
+/**
+ * The one impulse every reverb in the app points at.
+ *
+ * ⚠️ SHARED, AND THE COMMENT ON makeBus ALREADY SAYS WHY: an AudioBuffer is immutable as
+ * far as the graph is concerned, so generating 2.2 seconds of stereo noise once and pointing
+ * every convolver at it costs one buffer rather than one per part. A take's voice chain is one
+ * more convolver and has no business generating a second copy — see takeFx.
+ */
+export function sharedImpulse(c: AudioContext): AudioBuffer {
+  if (!verbBuf) verbBuf = impulse(c, 2.2)
+  return verbBuf
+}
+
 function impulse(c: AudioContext, seconds: number): AudioBuffer {
   const len = Math.floor(c.sampleRate * seconds)
   const buf = c.createBuffer(2, len, c.sampleRate)

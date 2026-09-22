@@ -2810,16 +2810,22 @@ section[id] {
  */
 .inst-takes-list {
   flex: 1 0 100%;
+  min-width: 0;
   margin: 0;
   padding: 0;
   list-style: none;
   display: grid;
   gap: 0.3rem;
 }
+/* ⚠️ WRAPS, because six controls do not fit on one line at 375. Measured before this: the
+   list came out 383px wide inside a 375px page and pushed the whole document sideways — on top
+   of the keyboard, which scrolls sideways on purpose and hides anything else that does. */
 .inst-takes-list li {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.35rem 0.5rem;
+  min-width: 0;
 }
 /* the duration does the work, so it gets a fixed column and the date does not shove it about */
 .inst-takes-list li > button:first-child {
@@ -2838,6 +2844,28 @@ section[id] {
 .inst-takes-say {
   flex: 1 0 100%;
   font-size: 0.8rem;
+}
+/* the voice chain's controls — see takeFx. Its own row, because six sliders never fit beside
+   a list of takes, and they wrap to one per line on a phone rather than being squeezed. */
+.inst-takes-fx {
+  flex: 1 0 100%;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: 0.4rem 0.8rem;
+  align-items: center;
+  padding: 0.5rem 0.6rem;
+  border-radius: 0.5rem;
+  background: rgb(255 255 255 / 0.04);
+}
+.inst-takes-knob {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.76rem;
+}
+.inst-takes-knob input {
+  flex: 1 1 4rem;
+  min-width: 0;
 }
 .inst-oct {
   display: inline-flex;

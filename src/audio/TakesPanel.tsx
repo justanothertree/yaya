@@ -3,7 +3,8 @@ import { sharedCtx, resumeAudio } from './context'
 import { takeBus } from './takeBus'
 import { canRecord, decodeTake, recordTake, type Recording } from './recordTake'
 import { allTakes, dropTake, putTake, takenBytes, TAKE_CAP, type TakeRow } from './takes'
-import { liftTake, muteTake, placeTake, subscribeLoop, loopState } from './looper'
+import { liftTake, muteTake, placeTake, subscribeLoop, loopState, takeFx } from './looper'
+import { PLAIN_VOICE, type VoiceFx } from './takeFx'
 
 /**
  * Singing, kept beside the song.
@@ -18,6 +19,24 @@ import { liftTake, muteTake, placeTake, subscribeLoop, loopState } from './loope
  * layers rather than pretending to be one. See takes.ts.
  */
 
+/**
+ * The five things worth turning on a voice, in the order the chain applies them.
+ *
+ * ⚠️ NAMED FOR WHAT THEY DO TO A VOICE, not for the node underneath. "Highpass and
+ * highshelf" is two controls and a lesson; "Tone" is one slider that goes from warm to thin,
+ * which is the thing somebody actually wants to move. See takeFx.
+ */
+const KNOBS: [keyof VoiceFx, string, string][] = [
+  ['tone', 'Tone', 'Warm on the left, thin on the right'],
+  ['squeeze', 'Even', 'Holds the loud bits down so the quiet ones can be heard'],
+  ['double', 'Double', 'A second copy just behind it, so one voice sounds like two'],
+  ['echo', 'Echo', 'Repeats'],
+  ['echoTime', 'Echo gap', 'How far apart the repeats are'],
+  ['space', 'Space', 'The room it sounds like it was sung in'],
+]
+
+const fxOf = (fx: VoiceFx | undefined): VoiceFx => ({ ...PLAIN_VOICE, ...fx })
+
 const mb = (n: number) => (n / (1024 * 1024)).toFixed(1)
 const secs = (n: number) => `${Math.floor(n / 60)}:${String(Math.floor(n % 60)).padStart(2, '0')}`
 
@@ -31,6 +50,8 @@ export function TakesPanel() {
   const out = useRef<{ src: AudioBufferSourceNode; gain: GainNode } | null>(null)
   /* which takes are on the loop, straight from the transport so the two cannot disagree */
   const [onLoop, setOnLoop] = useState(() => loopState().takes)
+  /** which take's controls are showing, if any */
+  const [open, setOpen] = useState<string | null>(null)
   useEffect(() => subscribeLoop(() => setOnLoop(loopState().takes)), [])
 
   const refresh = useCallback(async () => {
@@ -220,12 +241,51 @@ export function TakesPanel() {
                   {onLoop.find((t) => t.id === r.id)?.muted ? '🔇' : '🔊'}
                 </button>
               )}
+              {/* ⚠️ ONLY ONCE IT IS ON THE LOOP, because that is when the chain exists and
+                  when a change is audible. Six sliders on a take nobody has placed is a wall of
+                  controls for something that is not playing. */}
+              {onLoop.some((t) => t.id === r.id) && (
+                <button
+                  className={'btn btn-ghost' + (open === r.id ? ' is-on' : '')}
+                  onClick={() => setOpen(open === r.id ? null : r.id)}
+                  title="How it sounds"
+                >
+                  ⚙
+                </button>
+              )}
               <button className="btn btn-ghost" onClick={() => void bin(r.id)} title="Delete">
                 ✕
               </button>
             </li>
           ))}
         </ul>
+      )}
+      {open !== null && onLoop.some((t) => t.id === open) && (
+        <div className="inst-takes-fx">
+          {KNOBS.map(([key, label, hint]) => (
+            <label key={key} className="inst-takes-knob" title={hint}>
+              <span className="muted">{label}</span>
+              <input
+                type="range"
+                min={key === 'tone' ? -1 : 0}
+                max={key === 'echoTime' ? 0.8 : 1}
+                step={0.02}
+                value={fxOf(onLoop.find((t) => t.id === open)?.fx)[key]}
+                onChange={(e) => takeFx(open, { [key]: Number(e.target.value) })}
+                /* ⚠️ the instrument's keyboard listens on window, and a range takes only
+                   arrows and Home/End — none of which are notes. See the note in
+                   InstrumentRoom about the two sliders that swallowed every key. */
+              />
+            </label>
+          ))}
+          <button
+            className="btn btn-ghost"
+            onClick={() => takeFx(open, PLAIN_VOICE)}
+            title="Back to how it was recorded"
+          >
+            Flat
+          </button>
+        </div>
       )}
       {rows.length > 0 && (
         <span className="muted inst-takes-meta">
