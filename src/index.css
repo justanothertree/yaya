@@ -13874,3 +13874,22 @@ a.cz-msg-author:focus-visible {
   flex: 1 0 100%;
   font-size: 0.76rem;
 }
+
+/**
+ * A bolt being wound up — see BOLT_UP.
+ *
+ * ⚠️ IT FILLS FROM THE BOTTOM, because that is the shape of a thing being loaded and it
+ * reads at a glance without a number. The chip is 24px tall and there is no room for a
+ * readout; there is room for it to go up.
+ *
+ * ⚠️ AND IT IS AN <i>, LIKE THE WAIT BAR, not a pseudo-element. See the note where it
+ * is rendered: the pseudo version never drew and could not be measured.
+ */
+.park-belt-wind {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: color-mix(in srgb, var(--accent, #7c6af7) 34%, transparent);
+  pointer-events: none;
+}

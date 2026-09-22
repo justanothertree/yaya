@@ -1000,6 +1000,20 @@ export function ParkRoom({
   const myCastRest = useRef(0)
   const [casting, setCasting] = useState<CastKind | null>(null)
   /**
+   * How far a bolt has been wound up, 0 to 1, for the chip to fill.
+   *
+   * ⚠️ A CHARGE NOBODY CAN SEE IS A KEY THAT APPEARS TO DO NOTHING. Holding the throw
+   * did exactly that: no bolt, no sound, no change, and then a bigger one arrived on the
+   * release. Anybody would let go early and conclude the key was broken. The mechanic is only
+   * worth having if the winding is the visible part — see BOLT_UP.
+   *
+   * ⚠️ AND IT IS STEPPED RATHER THAN CONTINUOUS. It only reaches state when it has moved
+   * a twentieth, because this runs on every frame of the loop and a fill nobody can see
+   * changing is not worth a render.
+   */
+  const [wound, setWound] = useState(0)
+  const woundShown = useRef(0)
+  /**
    * ⚠️ WHICH ONE, NOT WHETHER. A creature has always had three big moves — temper.ts scores
    * all three off the drawing and sorts them best-first — and the boss has always rotated
    * through the lot while the player only ever got casts[0]. Two thirds of that table was
@@ -1344,6 +1358,22 @@ export function ParkRoom({
           }
         }
       }
+      /**
+       * ⚠️ OUTSIDE THE BRANCH ABOVE, which is where it was and where it was wrong. That
+       * block only runs while NO cast is in flight — so the moment the bolt launched, the
+       * charge stopped being published and the chip stayed full for the whole 1.2 seconds the
+       * bolt was in the air. Out here it is read every frame, and a cast in flight means
+       * winding is zero, which empties it.
+       */
+      const nowWound = Math.max(0, Math.min(1, winding.current / BOLT_UP.full))
+      if (
+        Math.abs(nowWound - woundShown.current) > 0.05 ||
+        (nowWound === 0) !== (woundShown.current === 0)
+      ) {
+        woundShown.current = nowWound
+        setWound(nowWound)
+      }
+
       /* ⚠️ CASTING IS NOT THE SAME AS BEING HELD BY ONE any more. A bolt runs its timeline
          while you keep walking and swinging; the two earth-movers still own you outright. */
       const iAmCasting = !!myCast.current && CAST[myCast.current.kind].holds
@@ -2907,11 +2937,19 @@ export function ParkRoom({
                 <button
                   key={k}
                   type="button"
-                  aria-label={`Throw your ${CAST[k].short}`}
+                  /* ⚠️ the bolt says what holding it does, and only the bolt — the other two
+                     are the ground being torn up and have nothing to hold. See BOLT_UP. */
+                  aria-label={
+                    k === 'bolt'
+                      ? 'Throw your bolt — hold to throw it harder'
+                      : `Throw your ${CAST[k].short}`
+                  }
+                  title={k === 'bolt' ? 'Hold to throw it harder' : undefined}
                   className={
                     'park-belt-one' +
                     (castLeft > 0 ? ' is-waiting' : ' is-ready') +
-                    (casting === k ? ' is-out' : '')
+                    (casting === k ? ' is-out' : '') +
+                    (k === 'bolt' && wound > 0 ? ' is-winding' : '')
                   }
                   onPointerDown={(e) => {
                     e.preventDefault()
@@ -2927,6 +2965,17 @@ export function ParkRoom({
                 >
                   <b>{i + 1}</b>
                   {CAST[k].short}
+                  {/**
+                   * ⚠️ A REAL ELEMENT, THE SAME WAY THE WAIT BAR BESIDE IT IS ONE. This was
+                   * a ::after first, and it never showed: the height stayed put whatever the
+                   * charge was, and it stayed put for a literal `height: 12px` too, so it was
+                   * not the calc and not the custom property. The chip had already solved
+                   * "draw a bar inside me" with an <i>, and a second mechanism that has to be
+                   * measured through getComputedStyle on a pseudo is one nobody can check.
+                   */}
+                  {k === 'bolt' && wound > 0 && (
+                    <i className="park-belt-wind" style={{ height: `${wound * 100}%` }} />
+                  )}
                   {/* the wait, drained rather than counted — a bar is read without being read */}
                   <i
                     /* ⚠️ against ITS OWN wait, not a shared one. The bolt comes back in half
@@ -3595,7 +3644,8 @@ export function ParkRoom({
           </dt>
           <dd>
             Your three big moves, on one shared wait — <kbd>{keyName(PARK_KEYS.cast)}</kbd> throws
-            the first
+            the first. If one of them is a <strong>bolt</strong>, holding the key winds it up and
+            letting go throws it harder
           </dd>
         </div>
         <div>
