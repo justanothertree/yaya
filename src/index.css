@@ -14045,3 +14045,18 @@ a.cz-msg-author:focus-visible {
   font-size: 0.8rem;
   margin: 0;
 }
+
+/* ⚠️ A STAMPED PLACE DRAWS ITS PICTURE INSTEAD OF ITS MOUND. The gradient is what the built-in
+   park's five landmarks are, and they keep it — this only fires where a map carried art. The
+   wrapper has to be freed as well as the canvas, for the reason .map-piece already found out:
+   ArtThumb writes its pixel size onto the box, not the canvas. */
+.park-mark.has-art {
+  background: none;
+  display: grid;
+  place-items: center;
+}
+.park-mark.has-art .art-thumb-box,
+.park-mark.has-art canvas {
+  width: 100% !important;
+  height: 100% !important;
+}

@@ -101,7 +101,14 @@ export function setWorld(places: Place[] | null) {
     shownPlanes = BUILT_IN
     shownWalls = []
   } else {
-    shownMarks = drawn.map((p) => ({ at: p.at, size: p.size, kind: p.kind, name: p.name }))
+    shownMarks = drawn.map((p) => ({
+      at: p.at,
+      size: p.size,
+      kind: p.kind,
+      name: p.name,
+      /* the picture rides along, or the mark falls back to its kind's mound — see Mark.art */
+      art: p.art,
+    }))
     /* ⚠️ A WALL IS NOT SOMETHING YOU STAND ON, whatever height was typed after it. The
        two are different answers to different questions and a place that was both would have
        to decide what happens when you walk into it from above — see solid.ts. */

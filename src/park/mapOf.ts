@@ -56,6 +56,11 @@ export type Place = {
    * across a gap and a small circle you walk round the end of. See solid.ts.
    */
   box: { x0: number; y0: number; x1: number; y1: number }
+  /**
+   * What to draw for it, when the map says. A layer-named map leaves this off and keeps the
+   * coloured mound it has always had; a stamped one carries the picture that was stamped.
+   */
+  art?: Drawing
 }
 
 /**

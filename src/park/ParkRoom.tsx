@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import type { Drawing } from '../draw/strokes'
 import { PetView } from '../pets/PetView'
+import { ArtThumb } from '../draw/ArtThumb'
+import { placesOf } from './mapDoc'
+import { parkMaps, subscribeMaps } from './maps'
 import { petCanvas, rigOf } from '../pets/rig'
 import { PLAIN, traitsOf, traitWords } from '../pets/play'
 import { poseOf } from './pose'
@@ -734,7 +737,28 @@ export function ParkRoom({
    * can come from — and mapOf already refuses anything that does not name a place, which is
    * the check that stopped every creature in the gallery reading as a four-place map.
    */
-  const maps = useMemo(() => extras.filter((a) => mapOf(a.art).length > 0), [extras])
+  const layerMaps = useMemo(() => extras.filter((a) => mapOf(a.art).length > 0), [extras])
+  /** the ones made by stamping things onto a field — see MapMaker */
+  const stamped = useSyncExternalStore(subscribeMaps, parkMaps, parkMaps)
+  /**
+   * Every map you can walk, whichever maker made it.
+   *
+   * ⚠️ ONE LIST, BECAUSE THE PICKER IS ONE QUESTION. "Which park" is the thing being
+   * asked; how a map was built is this file's problem and not the reader's, so each entry
+   * carries the function that turns it into places and nothing here branches on which kind it
+   * is again.
+   *
+   * ⚠️ STAMPED ONES FIRST, so a name held by both resolves to the newer maker. The old
+   * reader is on its way out and a collision should not favour the thing being replaced.
+   */
+  const walkable = useMemo(
+    () => [
+      ...stamped.map((m) => ({ name: m.name, places: () => placesOf(m.doc) })),
+      ...layerMaps.map((a) => ({ name: a.name, places: () => mapOf(a.art) })),
+    ],
+    [stamped, layerMaps],
+  )
+  const maps = walkable
   const walkingMap = mapPick ? (maps.find((m) => m.name === mapPick) ?? null) : null
   /**
    * ⚠️ THE NAME IS WHAT THE SOCKET DEPENDS ON, NOT THE DRAWING, and this is the same
@@ -1220,7 +1244,9 @@ export function ParkRoom({
      * before the join, and put back in the same teardown.
      */
     const drawn = mapPick ? (mapsRef.current.find((m) => m.name === mapPick) ?? null) : null
-    setWorld(drawn ? mapOf(drawn.art) : null)
+    /* ⚠️ the entry knows how to read itself — see `walkable`, which is why this line does
+       not ask which kind of map it was handed */
+    setWorld(drawn ? drawn.places() : null)
     /* ⚠️ somewhere in the middle of the park rather than the middle of a screen, so two people
        arriving separately do not always land on top of each other */
     you.current = restingStriker(
@@ -3185,7 +3211,12 @@ export function ParkRoom({
                      a place you cannot and the first anybody knows about the rocks is landing
                      on them. `--top` is how high in pet-heights, so the rim can grow with it
                      rather than every plateau looking the same height. */
-                  className={'park-mark is-' + m.kind + (raised.has(m.name) ? ' is-raised' : '')}
+                  className={
+                    'park-mark is-' +
+                    m.kind +
+                    (raised.has(m.name) ? ' is-raised' : '') +
+                    (m.art ? ' has-art' : '')
+                  }
                   aria-hidden
                   style={
                     {
@@ -3196,7 +3227,27 @@ export function ParkRoom({
                       '--top': raised.get(m.name) ?? 0,
                     } as React.CSSProperties
                   }
-                />
+                >
+                  {/* ⚠️ THE PICTURE SOMEBODY STAMPED, WHERE THERE IS ONE. Without this a map made
+                      of your own drawings came out as the same coloured mounds the built-in park
+                      uses, which is the feature not happening — the editor showed your rock and
+                      the field showed a hill. The built-in five carry no art and keep their
+                      gradients, so a shared park still draws its scenery in CSS.
+
+                      ⚠️ A FIXED BACKING SIZE, SCALED BY CSS. The mark's box is a percentage of
+                      a field that changes with the window, and ArtThumb redraws whenever its
+                      pixel size changes — handing it the live size would repaint every landmark
+                      on every resize. 160 is plenty for something a fraction of a screen wide. */}
+                  {m.art && (
+                    <ArtThumb
+                      art={m.art}
+                      w={160}
+                      h={Math.round(
+                        160 / (m.art.ratio > 0.05 && m.art.ratio < 20 ? m.art.ratio : 1),
+                      )}
+                    />
+                  )}
+                </span>
               )
             })}
           {walking && <GuardArc me={shownYou} cam={camAt} />}

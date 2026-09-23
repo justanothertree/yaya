@@ -153,6 +153,10 @@ export function placesOf(doc: MapDoc): Place[] {
       top: p.top,
       /* the box is in world units and always has been — see solid.ts, where a wall is its box */
       box: { x0: p.at.x - half, y0: p.at.y - half, x1: p.at.x + half, y1: p.at.y + half },
+      /* ⚠️ AND THE PICTURE ITSELF, which is the whole point of stamping one. Without this the
+         park draws its own mound for the kind and the drawing never appears anywhere but the
+         editor — two views of one map that do not agree. */
+      art: doc.palette[p.art],
     }
   })
 }

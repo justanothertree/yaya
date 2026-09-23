@@ -1,3 +1,4 @@
+import type { Drawing } from '../draw/strokes'
 import { PET_TALL } from '../pets/play'
 
 /**
@@ -105,6 +106,16 @@ export type Mark = {
    */
   kind: 'pond' | 'grove' | 'ring' | 'rocks' | 'wall' | 'flat'
   name: string
+  /**
+   * The picture to draw instead of a coloured mound, when there is one.
+   *
+   * ⚠️ OPTIONAL, BECAUSE THE BUILT-IN PARK HAS NONE. Its five landmarks are CSS gradients
+   * and should stay that way — they are the same five on everybody's screen and a shared park
+   * that shipped five canvases per frame to draw scenery nobody chose would be paying for a
+   * choice it does not offer. A stamped map is the opposite: the picture IS the choice, and a
+   * rock somebody drew showing up as a generic mound is the feature not happening.
+   */
+  art?: Drawing
 }
 
 export const MARKS: Mark[] = [
