@@ -14065,3 +14065,35 @@ a.cz-msg-author:focus-visible {
 .park-stage.is-away {
   display: none;
 }
+
+/* the maps already kept, inside the maker — open one to work on it, or bin it */
+.map-kept {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  align-items: center;
+}
+.map-kept-one {
+  display: inline-flex;
+  align-items: stretch;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.map-kept-open,
+.map-kept-bin {
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
+  min-height: 36px;
+  padding: 0 0.55rem;
+}
+.map-kept-bin {
+  border-left: 1px solid var(--border);
+  min-width: 36px;
+}
+.map-kept-bin:hover {
+  background: color-mix(in srgb, #e04a4a 30%, transparent);
+}

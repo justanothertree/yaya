@@ -4,7 +4,7 @@ import { gallery, subscribeGallery } from '../draw/gallery'
 import type { Drawing } from '../draw/strokes'
 import { worldOf, type MapDoc, type Piece } from './mapDoc'
 import type { PlaceKind } from './mapOf'
-import { mapBytes, MAP_LIMIT, saveMap } from './maps'
+import { mapBytes, MAP_LIMIT, parkMaps, removeMap, saveMap, subscribeMaps } from './maps'
 
 /**
  * Making a map by putting things on it.
@@ -52,6 +52,8 @@ const SIZES: Array<[number, string]> = [
 
 export function MapMaker() {
   const kept = useSyncExternalStore(subscribeGallery, gallery, gallery)
+  /** the maps already kept, live — so one saved here is in this list without a reload */
+  const mine = useSyncExternalStore(subscribeMaps, parkMaps, parkMaps)
   const [name, setName] = useState('')
   const [palette, setPalette] = useState<Drawing[]>([])
   const [pieces, setPieces] = useState<Piece[]>([])
@@ -135,8 +137,13 @@ export function MapMaker() {
           maxLength={40}
           onChange={(e) => setName(e.target.value)}
         />
+        {/* ⚠️ IT SAYS WHICH IT IS. Keeping under a name already taken REPLACES it — the rule
+            the gallery and the minions share — and a button that said "keep" either way would
+            be the only warning somebody got that their other map had gone. */}
         <button className="btn" onClick={keep} disabled={!doc}>
-          ⬇ Keep the map
+          {mine.some((m) => m.name.toLowerCase() === (name.trim() || 'Map').toLowerCase())
+            ? '⬇ Replace that map'
+            : '⬇ Keep the map'}
         </button>
         <span className="muted map-count">
           {pieces.length} thing{pieces.length === 1 ? '' : 's'}
@@ -241,6 +248,47 @@ export function MapMaker() {
         <p className="muted" role="status">
           {said}
         </p>
+      )}
+      {/**
+        ⚠️ THE ONES ALREADY KEPT, WITH A WAY OUT OF THEM. The store holds twelve and had no
+        way to delete one or to fix one after keeping it — a cap with no door, and a typo in a
+        name meaning start again. Pressing one loads it back in to work on; the ✕ puts it out.
+      */}
+      {mine.length > 0 && (
+        <div className="map-kept">
+          <span className="muted map-count">
+            {mine.length} of {MAP_LIMIT.items} kept
+          </span>
+          {mine.map((m) => (
+            <span key={m.id} className="map-kept-one">
+              <button
+                className="map-kept-open"
+                title={`Work on ${m.name}`}
+                onClick={() => {
+                  setName(m.doc.name)
+                  setPalette(m.doc.palette)
+                  setPieces(m.doc.pieces)
+                  setErasing(false)
+                  setSaid(`Working on "${m.doc.name}".`)
+                }}
+              >
+                🗺 {m.name}
+                <span className="muted"> · {m.doc.pieces.length}</span>
+              </button>
+              <button
+                className="map-kept-bin"
+                aria-label={`Delete ${m.name}`}
+                title={`Delete ${m.name}`}
+                onClick={() => {
+                  removeMap(m.id)
+                  setSaid(`Deleted "${m.name}".`)
+                }}
+              >
+                ✕
+              </button>
+            </span>
+          ))}
+        </div>
       )}
       <p className="muted map-note">
         Pick a picture, then press the field to put it down. The same picture can go down as many
