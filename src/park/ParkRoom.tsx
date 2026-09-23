@@ -1139,9 +1139,13 @@ export function ParkRoom({
    * something that actually plays behind it. See boss.ts for why that is the design rather than
    * the shortcut.
    *
-   * ⚠️ AND IT IS YOURS ALONE FOR NOW. Nothing about it crosses the wire, so you and a friend in
-   * the same park are each fighting your own. Sharing one is the next piece and needs somebody to
-   * own its state — saying that out loud beats letting two people wonder why their hits disagree.
+   * ⚠️ AND IT IS SHARED, WITH ITS CALLER OWNING IT. This note used to say the opposite —
+   * "yours alone for now, nothing about it crosses the wire" — and named sharing as the next
+   * piece, needing somebody to own its state. That piece was built: callBoss stands it up for
+   * the room, stepBoss sends its position and health from the one screen that decides them, and
+   * readBoss is what everybody else draws and swings at. The note outlived the problem it
+   * described, which is the more expensive kind of stale: a true warning becomes a false map of
+   * what is left to do.
    */
   /**
    * How far each wanderer has been knocked from its path, and how fast it is drifting back.
