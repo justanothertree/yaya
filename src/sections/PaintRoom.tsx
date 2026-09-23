@@ -1307,6 +1307,53 @@ export function PaintRoom() {
     restyle({ c })
   }
 
+  /**
+   * Armed to take the next colour off the picture instead of drawing with it.
+   *
+   * ⚠️ NOT A TOOL, because it makes no mark. `Tool` is the union a stroke's `t` is drawn
+   * from — putting a dropper in it would mean a stroke type that paintStroke, the packer and
+   * every reader of a drawing have to know about and then do nothing with. It is a mode the way
+   * the selection is a mode: a flag that changes what the next press means.
+   *
+   * ⚠️ AND IT DISARMS ITSELF. One press, one colour. A sampler you have to turn off is a
+   * sampler that eats the stroke you meant to draw next, which is the same trap the text tool
+   * was reported for: a button that stayed lit and swallowed every drag after it.
+   */
+  const [dropper, setDropper] = useState(false)
+
+  /**
+   * The colour actually on the paper at a point.
+   *
+   * ⚠️ READ OFF `base`, WHICH IS THE COMPOSITE. It is what the picture looks like with
+   * every visible layer stacked — so this answers "the colour I can see there", which is the
+   * only question somebody pointing at their own drawing is asking. Reading the current layer
+   * would hand back nothing wherever the colour they are pointing at came from another one.
+   *
+   * ⚠️ DEVICE PIXELS, NOT CSS PIXELS, for the reason floodFill spells out one file over:
+   * the context carries a dpr transform, and getImageData ignores transforms entirely and
+   * always addresses the backing store. Using the CSS size here would sample the top-left
+   * quarter of the picture on any normal phone.
+   */
+  const sampleAt = (x: number, y: number): string | null => {
+    const b = base.current
+    const bc = b?.getContext('2d')
+    if (!b || !bc) return null
+    const px = Math.max(0, Math.min(b.width - 1, Math.round(x * b.width)))
+    const py = Math.max(0, Math.min(b.height - 1, Math.round(y * b.height)))
+    let d: Uint8ClampedArray
+    try {
+      d = bc.getImageData(px, py, 1, 1).data
+    } catch {
+      return null // a tainted canvas; nothing should taint it, and a colour is not worth throwing over
+    }
+    /* ⚠️ BARE PAPER IS TRANSPARENT, WHICH IS A COLOUR HERE. The swatch row already carries
+       it as something any tool can be loaded with, so pointing at a blank part of the page and
+       getting the rubber is a true answer rather than a failure to find one. */
+    if (d[3] < 8) return NONE
+    const hex = (n: number) => n.toString(16).padStart(2, '0')
+    return '#' + hex(d[0]) + hex(d[1]) + hex(d[2])
+  }
+
   const nameOf = (i: number) => layerNames[i]?.trim() || `Layer ${i + 1}`
 
   /**
@@ -2248,6 +2295,15 @@ export function PaintRoom() {
       return
     }
     const [x, y] = at(e)
+    /* ⚠️ BEFORE THE CAPTURE AND BEFORE EVERY TOOL. Taking a colour is not the start of a
+       gesture — there is nothing to follow with the pointer and nothing to end on release — so
+       it must not capture, or the press that sampled would go on owning the pointer. */
+    if (dropper) {
+      const got = sampleAt(x, y)
+      if (got) pickColour(got)
+      setDropper(false)
+      return
+    }
     try {
       e.currentTarget.setPointerCapture(e.pointerId)
     } catch {
@@ -3270,6 +3326,25 @@ export function PaintRoom() {
             )}
           </span>
           {/**
+           * ⚠️ BESIDE THE PAD, BECAUSE IT IS THE OTHER ANSWER TO THE SAME QUESTION. The pad
+           * is for mixing a colour the swatches do not have; this is for one that is already in
+           * the picture, and mixing it again by eye is the thing nobody should have to do.
+           *
+           * ⚠️ IT SAYS WHAT IT IS IN WORDS. A control explained only by a `title` is a
+           * control unexplained on every phone on this site — the rule the games bar follows for
+           * the same reason — and the label changes while it is armed, because on a touch screen
+           * there is no hover to tell you the room is waiting for you to point at something.
+           */}
+          <button
+            type="button"
+            className={'btn paint-dropper' + (dropper ? ' is-on' : '')}
+            aria-pressed={dropper}
+            title="Take a colour that is already in the picture"
+            onClick={() => setDropper((v) => !v)}
+          >
+            <span aria-hidden>💧</span> {dropper ? 'Choose a spot' : 'Copy a colour'}
+          </button>
+          {/**
            * ⚠️ PAPER IS FOLDED AWAY, and the reason is how often each one is wanted rather than
            * how important they are. Two identical pads side by side read as one choice with two
            * halves, so the wrong half got hit — and changing the paper is the rarer intention by a
@@ -4119,7 +4194,7 @@ export function PaintRoom() {
       >
         <canvas
           ref={view}
-          className="paint-canvas"
+          className={'paint-canvas' + (dropper ? ' is-picking' : '')}
           onPointerDown={onDown}
           onPointerMove={onMove}
           onPointerUp={onUp}

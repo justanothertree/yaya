@@ -10438,6 +10438,12 @@ a.cz-msg-author:focus-visible {
   touch-action: none;
   cursor: crosshair;
 }
+/* ⚠️ A DIFFERENT CURSOR, BECAUSE THE PAPER IS ALREADY A CROSSHAIR. Arming the dropper has
+   to change something under the pointer or the only sign the next press means something else is
+   a button at the other end of the toolbar. */
+.paint-canvas.is-picking {
+  cursor: copy;
+}
 .paint-note {
   font-size: 0.8rem;
   margin: 0;
@@ -11735,9 +11741,12 @@ a.cz-msg-author:focus-visible {
   gap: 0.35rem;
 }
 /* the chequer shows through when the paper is None, which is what transparent means here */
+/* ⚠️ BIG ENOUGH TO READ AT A GLANCE. This chip is the only thing that says which colour
+   you are on once the pad is folded away, and at 0.85rem it was reported as hard to tell what
+   you were picking. It is a swatch, not an icon. */
 .paint-fold-chip {
-  width: 0.85rem;
-  height: 0.85rem;
+  width: 1.15rem;
+  height: 1.15rem;
   border-radius: 3px;
   border: 1px solid var(--border);
   background-image:
