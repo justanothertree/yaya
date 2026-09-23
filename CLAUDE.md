@@ -88,6 +88,14 @@ what it just made stale — copy, empty states, the thing a neighbouring feature
   the frame; only its contents are gated on `walking`. Two long measuring runs this session
   produced nothing because they were driving a park nobody had walked into. Check for
   `.park-one.is-me`, or for the Leave button.
+- **A dynamic `import()` in the pane is a SECOND COPY of the module, and the app is bound to
+  the other one.** Reaching into a module store from the console to drive a room —
+  `setWorld(...)`, and the like — can update that store, fire a listener you registered on it,
+  and move nothing on screen, because the component imported its own instance. It is worse than
+  a technique that never works: it worked earlier in the same session and failed later, decided
+  by load order, so a passing run proves nothing about the next one. Anything that survives a
+  reload can cross the gap — write to localStorage, reload, and drive the app's own controls
+  like a person would. Module state cannot.
 - **Measurement lies more often than code does.** `.card` transitions `box-shadow`, so
   `getComputedStyle` reports interpolated values — inject `*{transition:none!important}` before
   measuring. `performance.now()` cannot see canvas work. The Browser pane collapses to 0×0 between
