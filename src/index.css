@@ -14120,8 +14120,41 @@ a.cz-msg-author:focus-visible {
   .viz-wrap .viz-swatch {
     height: 36px;
   }
-  /* a taller box is a bigger thing to grab; the thumb stays where the browser draws it */
-  .viz-wrap input[type='range'] {
+}
+
+/* ⚠️ EVERY SLIDER ON THE SITE, IN ONE RULE, because it was the same 16px everywhere and
+   three rooms wearing the same wrapper is one problem rather than three. `.appearance-slider`
+   is what the visualiser, the instrument and the paint room all put a range inside — measured
+   at 375, the instrument alone had six of them at 16px tall, which is a line to drag with a
+   fingertip that is itself wider than the line.
+
+   A taller box is a bigger thing to grab; the thumb stays where the browser draws it, so
+   nothing about how it LOOKS changes, only how much of it is catchable.
+
+   ⚠️ AND THE INSTRUMENT'S OWN TWO ROWS, which are not sliders: the octave step and the
+   snap picker were 16 to 18px. Those are the controls somebody reaches for mid-tune, on a
+   phone, one-handed, which is the whole way that room is used away from a desk. */
+@media (max-width: 700px) {
+  .appearance-slider input[type='range'] {
+    min-height: 36px;
+  }
+  .inst-oct .btn,
+  .snap-pick .btn {
+    min-height: 36px;
+  }
+  /* ⚠️ WIDE ENOUGH TOO, not only tall. A minus and a plus are one character each, so a
+     height rule alone left them 24px across — a target that is easy to hit downwards and easy
+     to miss sideways, which is the half of the problem a min-height quietly does not fix. */
+  .inst-oct .btn {
+    min-width: 36px;
+  }
+  /* the one slider that is not wrapped in .appearance-slider — it sits straight in the room */
+  .inst-keyslide {
+    min-height: 36px;
+  }
+  /* on its own line already, so height costs nothing around it — unlike the footer's
+     "What's here?", which sits INSIDE a line of text and is left alone deliberately */
+  .also-together-go {
     min-height: 36px;
   }
 }
