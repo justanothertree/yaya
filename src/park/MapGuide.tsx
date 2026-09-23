@@ -3,8 +3,10 @@ import { MAP_GUIDE } from './mapOf'
 /**
  * The park's own measurements, drawn over the paper.
  *
- * ⚠️ THE HALF OF THE MAP TOOL I NEEDED FIRST AND DID NOT HAVE. MapReading says what the game
- * made of a drawing AFTER it is drawn; this says how big things are WHILE you draw them. Both
+ * ⚠️ IT SAYS HOW BIG THINGS ARE WHILE YOU PLACE THEM. It began as half of the old map
+ * tool, beside a panel that reported what the game had made of a drawing after the fact; that
+ * panel is gone with the layer-named maker and this outlived it, because the map maker's field
+ * is the whole three-screen world and nothing else on it says so. Both
  * halves of "extra tools as UI to help anyone draw the components to make the map", and this is
  * the half that stops the mistake rather than reporting it: every test map built alongside mapOf
  * came out bigger than any landmark the real park has, and nothing on the page could have said

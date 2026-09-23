@@ -203,8 +203,9 @@ export const onPaper = (screenHeights: number) => ({
  * How wide a typical landmark is, in screenfuls.
  *
  * ⚠️ THE MIDDLE OF THE FIVE THAT EXIST — 0.24, 0.26, 0.28, 0.30 and 0.34 — rather than a
- * round number. MapReading's SMALL and BIG were first guessed against the range the measurement
- * could take and called every real place in the game small; this is the same mistake's fix,
+ * round number. The old reading panel's SMALL and BIG were first guessed against the range the
+ * measurement could take and called every real place in the game small; this is that mistake's
+ * fix,
  * which is to band a measurement against what has actually been built.
  */
 export const PLACE_MID = 0.28

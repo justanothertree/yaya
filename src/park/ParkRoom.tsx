@@ -3,7 +3,6 @@ import type { Drawing } from '../draw/strokes'
 import { PetView } from '../pets/PetView'
 import { ArtThumb } from '../draw/ArtThumb'
 import { placesOf } from './mapDoc'
-import { MapMaker } from './MapMaker'
 import { parkMaps, subscribeMaps } from './maps'
 import { petCanvas, rigOf } from '../pets/rig'
 import { PLAIN, traitsOf, traitWords } from '../pets/play'
@@ -727,19 +726,6 @@ export function ParkRoom({
    * refuses the socket outright while the park is a drawing.
    */
   const [mapPick, setMapPick] = useState('')
-  /**
-   * Whether the map maker is open.
-   *
-   * ⚠️ IT LIVES HERE RATHER THAN IN THE NAV, because this is where the want turns up. The
-   * moment somebody wishes for somewhere else to walk is the moment they are looking at the
-   * picker deciding where to walk, and nothing but the park reads a map. A row of its own on a
-   * nav already carrying fifteen would be a permanent reminder of a tool most visits skip.
-   *
-   * ⚠️ AND IT CLOSES THE LOOP WITH NO RELOAD. The picker reads parkMaps through
-   * useSyncExternalStore, so a map kept in the maker is in the list behind it the same instant:
-   * make it, close it, walk it.
-   */
-  const [making, setMaking] = useState(false)
   const [walking, setWalking] = useState(false)
   /** bumped whenever the roster changes, so the render follows without owning the positions */
   const [roster, setRoster] = useState(0)
@@ -1260,11 +1246,35 @@ export function ParkRoom({
     const drawn = mapPick ? (mapsRef.current.find((m) => m.name === mapPick) ?? null) : null
     /* ⚠️ the entry knows how to read itself — see `walkable`, which is why this line does
        not ask which kind of map it was handed */
-    setWorld(drawn ? drawn.places() : null)
-    /* ⚠️ somewhere in the middle of the park rather than the middle of a screen, so two people
-       arriving separately do not always land on top of each other */
+    const places = drawn ? drawn.places() : null
+    setWorld(places)
+    /**
+     * ⚠️ IN THE MIDDLE OF WHAT YOU DREW, when you drew it.
+     *
+     * The random spread below exists so two people arriving in the SHARED park do not land on
+     * top of each other. A map you drew has nobody else in it, so the spread buys nothing there
+     * and costs the whole thing: the world is three screenfuls across, a mark is dropped once it
+     * is more than 0.8 of a screen from the camera, and the editor's field is the WHOLE world —
+     * so a stamp near its edge is a screen and a half from a spawn near the middle. Reported as
+     * placing things and then not being able to find anything on the map.
+     *
+     * The average of the pieces is not the cleverest possible answer — a map of two far-apart
+     * clusters still starts between them — but it is the one that cannot strand you, because
+     * every piece pulls the start towards itself.
+     */
+    const heart = places?.length
+      ? places.reduce(
+          (a, pl) => ({ x: a.x + pl.at.x / places.length, y: a.y + pl.at.y / places.length }),
+          { x: 0, y: 0 },
+        )
+      : null
     you.current = restingStriker(
-      restingWalker(0.3 + Math.random() * 0.4, 0.35 + Math.random() * 0.4),
+      heart
+        ? restingWalker(
+            Math.max(0.06, Math.min(0.94, heart.x)),
+            Math.max(0.06, Math.min(0.94, heart.y)),
+          )
+        : restingWalker(0.3 + Math.random() * 0.4, 0.35 + Math.random() * 0.4),
       myTraits.jump,
       myTraits.glide,
       myTraits.gravity,
@@ -2696,19 +2706,6 @@ export function ParkRoom({
             offering a choice of one thing is a control explaining a feature, and this room has
             enough to read already — the words that teach you to make a map belong in Paint,
             where you would be when you needed them. */}
-        {/* ⚠️ SHOWN WITH NO MAPS YET, unlike the picker beside it. A picker offering one
-            choice is a control explaining a feature, so that one waits until there is something
-            to pick — but the way to GET a first map cannot itself wait for a first map, which
-            is the shape the old maker was stuck in: its output was unreachable for a week. */}
-        {!walking && (
-          <button
-            className={'btn' + (making ? ' is-on' : '')}
-            aria-pressed={making}
-            onClick={() => setMaking((v) => !v)}
-          >
-            {making ? '✕ Close the maker' : '🗺 Make a map'}
-          </button>
-        )}
         {maps.length > 0 && !walking && (
           <label className="park-seat">
             <span className="sr-only">Which park</span>
@@ -3008,15 +3005,7 @@ export function ParkRoom({
         On a phone: the pad below walks and does the five — swing, heavy, roll, guard, jump. The
         chips throw your big moves.
       </p>
-      {/* ⚠️ IN PLACE OF THE FIELD, not above it — two big green boxes stacked is a room
-          asking which one you meant. The stage is hidden rather than unmounted because it owns
-          the measuring refs and the fullscreen listener, and tearing those down and rebuilding
-          them to show an editor would be paying for a teardown nobody asked for. */}
-      {making && !walking && <MapMaker />}
-      <div
-        className={'park-stage' + (full ? ' is-full' : '') + (making && !walking ? ' is-away' : '')}
-        ref={stage}
-      >
+      <div className={'park-stage' + (full ? ' is-full' : '')} ref={stage}>
         {/*
           ⚠️ OVER THE FIELD, NOT ABOVE IT, BECAUSE THESE TWO COME AND GO WHILE YOU PLAY. "You
           are at the pond" appears the moment you reach one and vanishes when you leave, and

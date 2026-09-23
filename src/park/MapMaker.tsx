@@ -2,6 +2,7 @@ import { useMemo, useState, useSyncExternalStore } from 'react'
 import { ArtThumb } from '../draw/ArtThumb'
 import { gallery, subscribeGallery } from '../draw/gallery'
 import type { Drawing } from '../draw/strokes'
+import { MapGuide } from './MapGuide'
 import { worldOf, type MapDoc, type Piece } from './mapDoc'
 import type { PlaceKind } from './mapOf'
 import { mapBytes, MAP_LIMIT, parkMaps, removeMap, saveMap, subscribeMaps } from './maps'
@@ -222,6 +223,13 @@ export function MapMaker() {
         onClick={put}
         role="presentation"
       >
+        {/* ⚠️ HOW BIG A SCREEN IS, DRAWN ON THE FIELD. This field is the WHOLE world, which
+            is three screenfuls across — so two stamps at opposite ends are nowhere near each
+            other and nothing said so. That is the same mistake the old paint-room guide was
+            built to stop ("every test map came out bigger than any landmark the real park
+            has"), which is why this is that guide rather than a second one: same lines, same
+            creature-inside-a-place reference, derived from the same PARK numbers. */}
+        <MapGuide />
         {pieces.map((p, i) => {
           const art = palette[p.art]
           if (!art) return null

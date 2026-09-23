@@ -50,8 +50,7 @@ import { CastShow } from '../pets/CastShow'
 import { movesOf } from '../pets/attack'
 import { AlsoTogether } from '../ui/AlsoTogether'
 import { useVoiceSession } from '../voice/useVoiceSession'
-import { MapGuide } from '../park/MapGuide'
-import { MapReading } from '../park/MapReading'
+import { MapMaker } from '../park/MapMaker'
 
 /**
  * A place to draw.
@@ -415,27 +414,17 @@ export function PaintRoom() {
 
   const live = useRef<Stroke | null>(null)
   /**
-   * Whether the park's measurements are drawn over the paper — see MapGuide.
+   * Whether the map maker is open instead of the paper.
    *
-   * ⚠️ REMEMBERED, LIKE THE PAPER SHAPE, because a map is not drawn in one sitting and
-   * turning the guide back on every visit is the kind of small tax that stops somebody using
-   * it. It is a boolean out of storage, so there is nothing to validate beyond the word.
+   * ⚠️ IT LIVES HERE NOW, WHERE THE DRAWINGS ARE. It was in the park, beside the picker
+   * that chooses where to walk — which is where the WANT turns up, but not where the material
+   * is. Every stamp is a picture out of this room's own gallery, so the maker belongs next to
+   * the thing that makes them. Asked for directly.
+   *
+   * ⚠️ AND IT REPLACES THE BOARD RATHER THAN SITTING UNDER IT, for the reason the park
+   * learned: two big fields stacked is a room asking which one you meant.
    */
-  const [mapGuide, setMapGuide] = useState(() => {
-    try {
-      return localStorage.getItem('paint_mapguide_v1') === 'yes'
-    } catch {
-      return false
-    }
-  })
-  const showGuide = (on: boolean) => {
-    setMapGuide(on)
-    try {
-      localStorage.setItem('paint_mapguide_v1', on ? 'yes' : 'no')
-    } catch {
-      /* private mode: it holds for this visit */
-    }
-  }
+  const [making, setMaking] = useState(false)
   const [galleryOpen, setGalleryOpen] = useState(false)
   /**
    * The picture the download panel is pointed at — the board, or one out of the gallery.
@@ -3026,9 +3015,9 @@ export function PaintRoom() {
                       /* ⚠️ BOTH VOCABULARIES, because a layer name now decides two different
                          things and this text only knew about one of them. mapOf shipped the day
                          `pond` started meaning somewhere you can walk, and the only place the
-                         words are ever offered still listed parts of a creature — see
-                         MapReading, which exists because naming a layer is otherwise an act of
-                         faith. */
+                         words are ever offered still listed parts of a creature. The map half
+                         of that vocabulary is now the stamp maker's pickers, where a kind is
+                         chosen rather than typed. */
                       const to = window
                         .prompt(
                           'Name this layer. wing, head, leg, tail, ear, eye, arm and antenna give it movement in the Minions room — pond, trees, rocks, hedge or clearing make it a place on a map, and a number after it is how high you stand on it.',
@@ -3107,17 +3096,17 @@ export function PaintRoom() {
           </button>
         </div>
 
-        {/* ⚠️ UNDER THE LAYERS, because it is a reading OF them — see MapReading. A map is
-            a drawing whose layer names say what each shape is, the same bargain a creature
-            already makes, so the panel that says what was understood belongs beside the names
-            that were typed. */}
-        <MapReading
-          strokes={strokes}
-          layerNames={layerNames}
-          ratio={drawingRef.current.ratio}
-          guide={mapGuide}
-          setGuide={showGuide}
-        />
+        {/* ⚠️ WHERE THE OLD MAP PANEL WAS. That one read a DRAWING as a map — one named
+            layer per place — and the stamp maker replaced it: you draw a thing once and put it
+            down as often as you like, with nothing to name. Two ways to make a map would be two
+            things to keep right. */}
+        <button
+          className={'btn' + (making ? ' is-on' : '')}
+          aria-pressed={making}
+          onClick={() => setMaking((v) => !v)}
+        >
+          {making ? '✕ Close the map maker' : '🗺 Make a map'}
+        </button>
 
         {/**
          * Animating, on a line of its own.
@@ -4186,8 +4175,14 @@ export function PaintRoom() {
         />
       )}
       {saving && <SaveArt art={saving} onClose={() => setSaving(null)} />}
+      {making && <MapMaker />}
       <div
-        className={'paint-board' + (bg ? ' has-paper' : '') + (shapeAr ? ' has-shape' : '')}
+        className={
+          'paint-board' +
+          (bg ? ' has-paper' : '') +
+          (shapeAr ? ' has-shape' : '') +
+          (making ? ' is-away' : '')
+        }
         ref={host}
         /* ⚠️ Asked for, and the cost is honest: a double-click here also leaves two dots, because
            the board is a drawing surface and every press on it paints. The browser's own
@@ -4214,11 +4209,6 @@ export function PaintRoom() {
           onPointerCancel={onUp}
           onContextMenu={(e) => e.preventDefault()}
         />
-        {/* ⚠️ ABOVE THE CANVAS AND BELOW EVERYTHING ELSE, and it never becomes ink —
-            see MapGuide. It is deliberately not exclusive with the reach ruler: a creature and
-            a map are different drawings, so the two are never both wanted, but nothing breaks
-            if they are and a rule that forbids it is a rule to maintain. */}
-        {mapGuide && <MapGuide />}
         {hitGuide && (
           <span className="paint-reach" aria-hidden>
             <i className="paint-reach-mid" style={{ left: `${hitGuide.cx * 100}%` }} />

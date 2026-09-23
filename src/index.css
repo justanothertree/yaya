@@ -14167,3 +14167,8 @@ a.cz-msg-author:focus-visible {
     min-width: 36px;
   }
 }
+
+/* the paper steps aside while the map maker is open — see PaintRoom, `making` */
+.paint-board.is-away {
+  display: none;
+}
