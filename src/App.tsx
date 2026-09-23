@@ -134,19 +134,6 @@ const ParkPreview = import.meta.env.DEV
     )
   : null
 
-/**
- * ⚠️ A WORKBENCH WHILE THE TWO HALVES DISAGREE. The stamp editor puts your own drawings on
- * a field; the park still draws a place as a coloured blob by kind, so what this makes and what
- * the park shows are not yet the same picture. Behind #dev-map until they are — shipping a
- * maker whose output looks like something else is worse than shipping neither.
- */
-const MapMakerPreview = import.meta.env.DEV
-  ? lazyRetry(
-      () => import('./park/MapMaker'),
-      (m) => m.MapMaker,
-    )
-  : null
-
 /** The one-account path a family member takes — see the file header for why it needs a route. */
 const InvestmentsMemberPreview = import.meta.env.DEV
   ? lazyRetry(
@@ -2005,11 +1992,6 @@ export default function App() {
           {ParkPreview && DEV_PREVIEW === 'park' && (
             <Suspense fallback={<div aria-busy>Finding the park…</div>}>
               <ParkPreview />
-            </Suspense>
-          )}
-          {MapMakerPreview && DEV_PREVIEW === 'map' && (
-            <Suspense fallback={<div aria-busy>Laying out the field…</div>}>
-              <MapMakerPreview />
             </Suspense>
           )}
           {InvestmentsMemberPreview && DEV_PREVIEW === 'investments' && (

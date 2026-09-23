@@ -14060,3 +14060,8 @@ a.cz-msg-author:focus-visible {
   width: 100% !important;
   height: 100% !important;
 }
+
+/* the field steps aside while the map maker is open — see ParkRoom, `making` */
+.park-stage.is-away {
+  display: none;
+}
