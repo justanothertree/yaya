@@ -2374,8 +2374,21 @@ export function PaintRoom() {
        * ⚠️ `measure` leaves base alone; this reads the canvas and writes nothing.
        */
       const bc = base.current?.getContext('2d')
+      /**
+       * ⚠️ IN THE SAME UNITS THE STROKES ARE DRAWN IN, which is what this call was
+       * missing. `at` hands back 0–1 across the drawing; floodFill maps what it is given
+       * through the canvas transform, and `base` carries the dpr scale — so a fraction
+       * arrived as a pixel or two and every measurement was taken at the top-left CORNER of
+       * the page. It duly measured the region the corner is in, which is the background, so
+       * the box recorded on every fill ever made has been roughly the whole sheet.
+       *
+       * The painting was never wrong, because paintStroke multiplies by the drawing's size on
+       * the way in — which is exactly what is done here now. Only the SAFEGUARD was wrong,
+       * and a safeguard the size of the page is one that has never stopped anything.
+       */
+      const { w: pw, h: ph } = size.current
       const ext = bc
-        ? floodFill(bc, x, y, colour === NONE ? null : colour, alpha, null, true)
+        ? floodFill(bc, x * pw, y * ph, colour === NONE ? null : colour, alpha, null, true)
         : null
       commit({
         t: 'fill',

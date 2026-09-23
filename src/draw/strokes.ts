@@ -835,12 +835,16 @@ function paintOne(ctx: CanvasRenderingContext2D, s: Stroke, w: number, h: number
         Y(1),
         erasing ? null : rainbow ? wheel((X(0) + Y(1)) / TURN) : s.c,
         s.a,
+        /* ⚠️ IN THE SEED'S UNITS. X() and Y() are what turn a stored 0–1 point into the
+           space the seed above is written in; the box used to be handed over as the raw
+           fractions and scaled by the canvas instead, which is the mismatch floodFill's note
+           on `lim` describes. */
         s.p.length >= 6
           ? {
-              x0: Math.min(s.p[2], s.p[4]),
-              y0: Math.min(s.p[3], s.p[5]),
-              x1: Math.max(s.p[2], s.p[4]),
-              y1: Math.max(s.p[3], s.p[5]),
+              x0: Math.min(X(2), X(4)),
+              y0: Math.min(Y(3), Y(5)),
+              x1: Math.max(X(2), X(4)),
+              y1: Math.max(Y(3), Y(5)),
             }
           : null,
       )
@@ -1918,17 +1922,47 @@ export function floodFill(
   const W = ctx.canvas.width
   const H = ctx.canvas.height
   const t = ctx.getTransform()
-  const sx = Math.round(cssX * t.a + t.e)
-  const sy = Math.round(cssY * t.d + t.f)
+  /**
+   * ⚠️ THE WHOLE MATRIX, NOT TWO OF ITS SIX NUMBERS. `a` and `d` alone are a scale, which
+   * is all the paint room's own canvas ever carries — but a posed creature is drawn with each
+   * part under its own transform, and those turn. Using a/d there reads the wrong pixel by
+   * however much the part is rotated. Written out in full this is the same answer wherever
+   * b and c are zero, so nothing that worked stops working.
+   */
+  const toDevice = (x: number, y: number): [number, number] => [
+    x * t.a + y * t.c + t.e,
+    x * t.b + y * t.d + t.f,
+  ]
+  const [sxf, syf] = toDevice(cssX, cssY)
+  const sx = Math.round(sxf)
+  const sy = Math.round(syf)
   if (sx < 0 || sy < 0 || sx >= W || sy >= H) return null
-  /* the limit in device pixels, with a little slack for the soft edge a brush leaves */
+  /**
+   * The limit in device pixels, with a little slack for the soft edge a brush leaves.
+   *
+   * ⚠️ THROUGH THE SAME TRANSFORM AS THE SEED, which is what paintStroke's note beside
+   * points 2–5 always claimed happened and never did. The seed was mapped by the matrix and
+   * the box was multiplied by the canvas size, so the two only agreed where the drawing
+   * happened to cover the whole backing store at 1:1 — true of the paint room's `base`, and
+   * false of every posed creature, which is drawn cropped and scaled to its own ink box. The
+   * region a fill recorded therefore landed somewhere else entirely on exactly the surface it
+   * was supposed to be protecting.
+   *
+   * ⚠️ AND THE CORNERS ARE SORTED AFTERWARDS, because a creature facing left is drawn
+   * through scale(-1, 1). A flipped box comes back with its edges the other way round, and an
+   * x0 greater than x1 is a region nothing can be inside — the fill would simply never paint.
+   */
   const lim = limit
-    ? {
-        x0: Math.max(0, Math.floor(limit.x0 * W) - 6),
-        y0: Math.max(0, Math.floor(limit.y0 * H) - 6),
-        x1: Math.min(W - 1, Math.ceil(limit.x1 * W) + 6),
-        y1: Math.min(H - 1, Math.ceil(limit.y1 * H) + 6),
-      }
+    ? (() => {
+        const [ax, ay] = toDevice(limit.x0, limit.y0)
+        const [bx, by] = toDevice(limit.x1, limit.y1)
+        return {
+          x0: Math.max(0, Math.floor(Math.min(ax, bx)) - 6),
+          y0: Math.max(0, Math.floor(Math.min(ay, by)) - 6),
+          x1: Math.min(W - 1, Math.ceil(Math.max(ax, bx)) + 6),
+          y1: Math.min(H - 1, Math.ceil(Math.max(ay, by)) + 6),
+        }
+      })()
     : null
   if (lim && (sx < lim.x0 || sx > lim.x1 || sy < lim.y0 || sy > lim.y1)) return null
   let img: ImageData
