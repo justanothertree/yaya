@@ -238,14 +238,43 @@ export function AmbientBackdrop({
       <canvas
         ref={canvasRef}
         aria-hidden
-        style={{ position: 'absolute', inset: 0, zIndex: 0, pointerEvents: 'none' }}
+        /* ⚠️ WIDTH AND HEIGHT, NOT JUST `inset`. See the note on the portalled one below. */
+        style={{
+          position: 'absolute',
+          inset: 0,
+          width: '100%',
+          height: '100%',
+          zIndex: 0,
+          pointerEvents: 'none',
+        }}
       />
     )
   return createPortal(
     <canvas
       ref={canvasRef}
       aria-hidden
-      style={{ position: 'fixed', inset: 0, zIndex: -1, pointerEvents: 'none' }}
+      /**
+       * ⚠️ `inset: 0` DOES NOT SIZE A CANVAS, and this is the bug it hid. A canvas is a REPLACED
+       * element: with `width: auto` its used width is its INTRINSIC width — the `width`
+       * attribute — and the box is then over-constrained, so `right` is dropped and `left: 0`
+       * wins. The element renders at its backing-buffer size, anchored top left.
+       *
+       * The buffer is `W * dpr`, so this was only ever correct on a screen at dpr 1, which is
+       * the desk it was written at. Measured at 375x812 with the dpr capped at 1.5, the backdrop
+       * came out 562x1218 — half again too big, with a third of it off the bottom right of a
+       * phone. The stylesheet already says this out loud for the OTHER backdrop:
+       * `.site-backdrop canvas` carries `width: 100%; height: 100%` and a note explaining that
+       * without them a canvas falls back to its own layout size. This one portals to the body
+       * and so never met that rule.
+       */
+      style={{
+        position: 'fixed',
+        inset: 0,
+        width: '100%',
+        height: '100%',
+        zIndex: -1,
+        pointerEvents: 'none',
+      }}
     />,
     document.body,
   )
