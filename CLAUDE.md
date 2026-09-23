@@ -107,7 +107,11 @@ what it just made stale — copy, empty states, the thing a neighbouring feature
   were checked: replace `window.requestAnimationFrame` with a `setTimeout` at ~16ms, then leave
   the room and come back so the loop starts against the replacement. Everything the loop DRIVES
   is then observable; everything it computes should still live where it can be called directly.
-  `ResizeObserver` never fires, so anything that re-measures on resize cannot be exercised at all.
+  `ResizeObserver` never fires, so anything that re-measures through one cannot be exercised.
+  A `window` resize listener CAN be — but `resize_window` does not fire the event, it only
+  changes the emulated viewport, so a component that resizes correctly reads as broken until you
+  `dispatchEvent(new Event('resize'))` yourself. That misreading cost a wrong diagnosis of the
+  ambient backdrop: its listener had always worked and the first measurement said it did not.
   `prefers-reduced-motion` cannot be emulated. And `window.confirm` is auto-dismissed, which
   returns `false` — so a confirmed action appears to do nothing and the feature appears broken
   (this cost an hour on the paint room's Clear button, which was fine).
