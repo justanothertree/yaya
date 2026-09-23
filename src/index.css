@@ -13955,3 +13955,93 @@ a.cz-msg-author:focus-visible {
   background: color-mix(in srgb, var(--accent, #7c6af7) 34%, transparent);
   pointer-events: none;
 }
+
+/* ── the map maker ─────────────────────────────────────────────────────────
+   Stamping things onto a field, rather than naming layers — see MapMaker. */
+.map-maker {
+  display: grid;
+  gap: 0.6rem;
+}
+.map-bar,
+.map-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+.map-name {
+  flex: 1 1 10rem;
+  min-width: 0;
+}
+.map-count {
+  font-size: 0.8rem;
+}
+.map-palette {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+.map-stamp {
+  display: grid;
+  place-items: center;
+  padding: 0.2rem;
+  min-width: 44px;
+  min-height: 40px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: transparent;
+  cursor: pointer;
+}
+.map-stamp.is-on {
+  border-color: var(--accent, #22c55e);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent, #22c55e) 35%, transparent);
+}
+/* ⚠️ THE WORLD'S OWN SHAPE, not the card's. Where you put a thing is where it is, so the field
+   has to be the proportions of the park — three screenfuls by three — or every position would
+   be read back through a stretch. */
+.map-field {
+  position: relative;
+  aspect-ratio: 1;
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background:
+    radial-gradient(
+      circle at 30% 30%,
+      color-mix(in srgb, #4a7c3f 22%, transparent),
+      transparent 60%
+    ),
+    color-mix(in srgb, #3a5a32 14%, transparent);
+  cursor: crosshair;
+  overflow: hidden;
+  touch-action: manipulation;
+}
+.map-field.is-erasing {
+  cursor: not-allowed;
+}
+.map-piece {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  display: grid;
+  place-items: center;
+  /* the press belongs to the field: a stamp is scenery, not a target */
+  pointer-events: none;
+}
+/* ⚠️ ArtThumb writes its size in pixels onto its BOX, not onto the canvas — which is right
+   for a fixed thumbnail and wrong for a stamp that has to be a fraction of the field. Both have
+   to be freed: overriding only the canvas makes it fill a wrapper that is still 220px, which
+   measured as a 39px-wide piece containing a 220px picture. Keeping one drawing renderer is
+   worth two lines of override; a second renderer that existed only to be resizable would be a
+   second place for a drawing to look different. */
+.map-piece .art-thumb-box,
+.map-piece canvas {
+  width: 100% !important;
+  height: 100% !important;
+}
+.map-piece.is-wall {
+  outline: 1px dashed color-mix(in srgb, #57503f 60%, transparent);
+}
+.map-note {
+  font-size: 0.8rem;
+  margin: 0;
+}
