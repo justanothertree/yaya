@@ -14158,3 +14158,12 @@ a.cz-msg-author:focus-visible {
     min-height: 36px;
   }
 }
+
+/* the ⓘ on each investments account — inline padding makes it 20px tall, and a phone needs
+   more than that to aim at. Min-height rather than padding, so the look it was given stands. */
+@media (max-width: 700px) {
+  .inv-info {
+    min-height: 36px;
+    min-width: 36px;
+  }
+}

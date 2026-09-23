@@ -1027,10 +1027,19 @@ export function AccountCard({
             {usd(account.dollarPerDay)}/day
           </span>
         )}
+        {/* ⚠️ A CLASS SO A PHONE CAN MAKE IT BIGGER. The padding here is inline, and inline
+            beats a stylesheet — but a min-height is a different property, so the rule on
+            `.inv-info` can raise the target without touching the look it was given. Measured at
+            375 it was 20px tall, seven times over, one per account.
+
+            ⚠️ AND A NAME, not just a tooltip. Its label was a circled i and a `title`, and a
+            title is a thing that does not exist on a touch screen — the rule the games bar
+            already follows. aria-expanded carries the open state, so the name stays put. */}
         <button
-          className="btn btn-ghost"
+          className="btn btn-ghost inv-info"
           onClick={() => setShowInfo((s) => !s)}
           aria-expanded={showInfo}
+          aria-label="What do these numbers mean?"
           title="What do these numbers mean?"
           style={{ marginLeft: 'auto', fontSize: '0.82rem', padding: '0.1rem 0.5rem' }}
         >
