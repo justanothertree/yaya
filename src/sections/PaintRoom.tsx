@@ -2328,6 +2328,28 @@ export function PaintRoom() {
         w: width,
         k: 0,
         e: 0,
+        /**
+         * ⚠️ THE LAYER AND THE FRAME, WHICH THIS ONE CALL WAS MISSING. Every other tool
+         * builds its stroke through `live.current` a few lines below, which takes `l` and `f`
+         * from the room. The bucket is the only tool that commits directly, and `commit` adds
+         * neither — so it was the only tool that forgot them.
+         *
+         * ⚠️ AND AN ABSENT LAYER IS NOT "NO LAYER", IT IS LAYER 0 — `s.l ?? 0`, read that
+         * way everywhere. Strokes are drawn sorted by layer, so a fill with no layer sank to
+         * the bottom of the picture and was replayed BEFORE the outline meant to stop it. A
+         * fill is stored as an OPERATION and flood-filled again at replay, so a boundary that
+         * has not been drawn yet is a boundary that does not exist: the flood ran to the edge
+         * of the paper, held back only by the region box recorded above — which turns the
+         * shape somebody filled into the rectangle around it.
+         *
+         * ⚠️ WHICH IS WHY IT LOOKED FINE ALONE AND BROKE MAKING A MINION. The sort is
+         * stable, so a fill that shares its layer with the outline keeps its place after it and
+         * is bounded correctly. Drawing on one layer never showed this; the minion flow puts
+         * the body and each part on layers of their own, and every fill in it sank underneath
+         * them. Reported as the bucket filling the whole background.
+         */
+        l: layer,
+        f: frameForNew(),
         p: ext ? [x, y, ext.x0, ext.y0, ext.x1, ext.y1] : [x, y],
       })
       return
