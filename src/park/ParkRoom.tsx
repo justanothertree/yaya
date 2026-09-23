@@ -2987,10 +2987,19 @@ export function ParkRoom({
           controls of a page, and a right-click that will not open a menu on a page you are
           merely reading is a page that feels broken.
 
-          ⚠️ LEFT IS QUICK AND RIGHT IS HEAVY, which is the pair F and G already are — "aim and
-          activity", and the two buttons a hand on a mouse has. They set the same refs the keys
-          set rather than a second path, so there is one place a swing starts however it was
-          asked for.
+          ⚠️ RIGHT IS THE GUARD, AND THE HEAVY SWING MOVED TO THE MIDDLE. Right used to be
+          the heavy swing, paired with left as quick because F and G are that pair on the
+          keyboard. Asked for as "block on right click", which is the mapping every game with a
+          shield in it already has, and the reason it is worth overturning a tidy pairing: a
+          guard is the thing a hand reaches for WITHOUT LOOKING, and it is held, which is what
+          a button under a finger is good at and what a letter across the keyboard is not.
+
+          ⚠️ THE HEAVY SWING IS NOT DROPPED, because a mouse that can only swing one way is
+          a mouse that cannot fight. It goes to the middle button, which keeps all three on the
+          hand that is already aiming — and G still throws it, as it always did.
+
+          They set the same refs the keys set rather than a second path, so there is one place
+          a swing or a guard starts however it was asked for.
 
           ⚠️ AND THE MENU IS SUPPRESSED ONLY WHILE WALKING, for the same reason: a heavy swing
           that also opens a context menu is not a control.
@@ -3010,15 +3019,31 @@ export function ParkRoom({
           onPointerLeave={() => {
             hitting.current.quick = false
             hitting.current.heavy = false
+            /* ⚠️ THE GUARD LETS GO TOO. It is HELD, so a button released somewhere the field
+               never hears about would leave it up for the rest of the fight — a defence nothing
+               is paying for, which is worse than one that does not work. */
+            bracing.current = false
           }}
           onPointerDown={(e) => {
             if (!walking || e.pointerType === 'touch') return
+            /* ⚠️ the middle button scrolls a page by default, and a heavy swing that also
+               starts an autoscroll is not a control — the same reason the menu is suppressed */
+            if (e.button === 1) e.preventDefault()
             if (e.button === 0) hitting.current.quick = true
-            else if (e.button === 2) hitting.current.heavy = true
+            else if (e.button === 1) hitting.current.heavy = true
+            else if (e.button === 2) bracing.current = true
           }}
           onPointerUp={(e) => {
             if (e.button === 0) hitting.current.quick = false
-            else if (e.button === 2) hitting.current.heavy = false
+            else if (e.button === 1) hitting.current.heavy = false
+            else if (e.button === 2) bracing.current = false
+          }}
+          /* ⚠️ pointerup is not promised: a button let go outside the window never arrives,
+             and a guard is held, so it needs the cancel as well as the release. */
+          onPointerCancel={() => {
+            hitting.current.quick = false
+            hitting.current.heavy = false
+            bracing.current = false
           }}
           onContextMenu={(e) => {
             if (walking) e.preventDefault()
@@ -3854,7 +3879,7 @@ export function ParkRoom({
           and the three casts are; repeating them for a second input would be the tour this
           room had cut out of it. */}
       <p className="muted park-about">
-        With a mouse: it aims, left swings quick, right swings heavy.
+        With a mouse: it aims, left swings quick, right holds your guard up, middle swings heavy.
       </p>
       {/* ⚠️ A rule you cannot see: the trees are above a plain jump. That the ring and the
           rocks are raised at all is visible the moment you walk onto one, so it is not said. */}
