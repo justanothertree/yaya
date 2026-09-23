@@ -14097,3 +14097,31 @@ a.cz-msg-author:focus-visible {
 .map-kept-bin:hover {
   background: color-mix(in srgb, #e04a4a 30%, transparent);
 }
+
+/* ⚠️ THUMB-SIZED ON A PHONE, AND ONLY ON A PHONE. Measured at 375: the visualiser's controls
+   came out between 16px and 25px tall — the range sliders worst at 16 — which is a row of
+   things you aim at rather than press, on the one room most likely to be opened one-handed
+   while music is playing. Fifty-two of them were under the size the rest of this site settled
+   on (36px, what the park's bar and the map maker's chips already are).
+
+   Desktop is deliberately untouched: the panel is dense on purpose there, a mouse is not a
+   thumb, and widening it would cost the picture room it is the whole point of. The breakpoint
+   is the one the grid already collapses at, rather than a new number to keep in step.
+
+   Scoped to the visualiser's own containers rather than `.btn`, because `.btn` is the site's
+   button and a global minimum would quietly reflow every room at once. */
+@media (max-width: 700px) {
+  .viz-wrap .btn,
+  .viz-head .btn,
+  .viz-wrap .viz-tab,
+  .viz-wrap .viz-icon {
+    min-height: 36px;
+  }
+  .viz-wrap .viz-swatch {
+    height: 36px;
+  }
+  /* a taller box is a bigger thing to grab; the thumb stays where the browser draws it */
+  .viz-wrap input[type='range'] {
+    min-height: 36px;
+  }
+}
