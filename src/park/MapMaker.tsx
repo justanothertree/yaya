@@ -3,7 +3,7 @@ import { ArtThumb } from '../draw/ArtThumb'
 import { gallery, subscribeGallery } from '../draw/gallery'
 import type { Drawing } from '../draw/strokes'
 import { MapGuide } from './MapGuide'
-import { worldOf, type MapDoc, type Piece } from './mapDoc'
+import { cropToInk, worldOf, type MapDoc, type Piece } from './mapDoc'
 import type { PlaceKind } from './mapOf'
 import { mapBytes, MAP_LIMIT, parkMaps, removeMap, saveMap, subscribeMaps } from './maps'
 
@@ -24,25 +24,38 @@ import { mapBytes, MAP_LIMIT, parkMaps, removeMap, saveMap, subscribeMaps } from
  * — see mapDoc, where that is the reason a map can carry its own art at all.
  */
 
-const KINDS: Array<[PlaceKind, string]> = [
-  ['rocks', 'Rocks'],
-  ['grove', 'Trees'],
-  ['pond', 'Water'],
-  ['ring', 'Ring'],
-  ['wall', 'Wall'],
-  ['flat', 'Just a place'],
+/**
+ * What a piece DOES, in the only three answers that change anything.
+ *
+ * ⚠️ THE OLD LIST WAS THE PARK'S VOCABULARY, NOT A MAP-MAKER'S. Rocks, trees, water, ring
+ * and "just a place" are the five kinds the built-in park happens to contain, and offering them
+ * asked somebody to sort their own drawing into somebody else's categories — reported as not
+ * understanding what they were for, which is fair, because for a stamped map they decided almost
+ * nothing: the picture is the picture whichever word is picked.
+ *
+ * ⚠️ WHAT ACTUALLY DIFFERS IS WHETHER YOU CAN WALK THROUGH IT AND WHETHER YOU STAND ON
+ * TOP. So it asks that, and nothing else. Naming an area is a separate want and can wait for
+ * somebody to have it.
+ */
+const DOES: Array<[string, string, PlaceKind, number]> = [
+  ['past', 'Walk over it', 'flat', 0],
+  ['solid', 'Solid — blocks you', 'wall', 0],
+  ['stand', 'Stand on top', 'rocks', 0.5],
 ]
 
 /**
- * ⚠️ HEIGHTS AS WORDS, NOT A NUMBER TO TYPE. The old reader took `rocks 0.5` and meant half a
- * creature high, which is a thing you have to be told. Three choices cover what the built-in
- * park actually uses — its ring and rocks are low, its far trees need wings — and a person
- * picking "you can stand on it" does not have to know what 0.5 was measured in.
+ * ⚠️ ONLY ASKED WHEN IT MATTERS. Height means nothing for scenery you walk over and
+ * nothing for a wall you cannot climb, so the question only appears for something you stand on
+ * — which is half of why the old three-way was confusing: it was asked of everything.
+ *
+ * ⚠️ IN CREATURES, because that is the only ruler on this page. "Only with wings" was the
+ * park's own rule wearing a costume; this says the number and lets the reference creature in
+ * the guide underneath show what it means.
  */
-const TOPS: Array<[number, string]> = [
-  [0, 'Walk past it'],
-  [0.5, 'Stand on it'],
-  [0.8, 'Only with wings'],
+const HIGHS: Array<[number, string]> = [
+  [0.5, 'Half a creature high'],
+  [0.8, 'A creature high — needs wings'],
+  [1.4, 'Twice that'],
 ]
 
 const SIZES: Array<[number, string]> = [
@@ -59,13 +72,23 @@ export function MapMaker() {
   const [palette, setPalette] = useState<Drawing[]>([])
   const [pieces, setPieces] = useState<Piece[]>([])
   const [pick, setPick] = useState(0)
-  const [kind, setKind] = useState<PlaceKind>('rocks')
-  const [top, setTop] = useState(0.5)
+  const [does, setDoes] = useState('past')
+  const [high, setHigh] = useState(0.5)
   const [wide, setWide] = useState(0.12)
   const [erasing, setErasing] = useState(false)
   const [said, setSaid] = useState<string | null>(null)
 
-  const chosen = kept[pick]?.art ?? null
+  /**
+   * ⚠️ CROPPED ONCE, HERE, AND MEMOISED. A stamp is the thing somebody drew, not the sheet
+   * it was drawn on — see cropToInk. Doing it in a memo also keeps each cropped drawing's
+   * identity stable, which is what lets `palette.indexOf` go on recognising a repeat stamp as
+   * the same picture instead of adding a second copy of it.
+   */
+  const stamps = useMemo(
+    () => kept.map((a) => ({ id: a.id, name: a.name, art: cropToInk(a.art) })),
+    [kept],
+  )
+  const chosen = stamps[pick]?.art ?? null
 
   const doc: MapDoc | null = useMemo(
     () =>
@@ -111,7 +134,11 @@ export function MapMaker() {
       next = [...palette, chosen]
       setPalette(next)
     }
-    setPieces([...pieces, { art: at, at: { x, y }, wide, kind, top }])
+    const row = DOES.find((d) => d[0] === does) ?? DOES[0]
+    setPieces([
+      ...pieces,
+      { art: at, at: { x, y }, wide, kind: row[2], top: row[0] === 'stand' ? high : 0 },
+    ])
     setSaid(null)
   }
 
@@ -158,7 +185,7 @@ export function MapMaker() {
         <p className="muted">Nothing drawn yet — make something in Paint and it turns up here.</p>
       ) : (
         <div className="map-palette" role="group" aria-label="What to stamp">
-          {kept.map((a, i) => (
+          {stamps.map((a, i) => (
             <button
               key={a.id}
               className={'map-stamp' + (i === pick ? ' is-on' : '')}
@@ -177,25 +204,27 @@ export function MapMaker() {
 
       <div className="map-row">
         <label>
-          <span className="sr-only">What it is</span>
-          <select value={kind} onChange={(e) => setKind(e.target.value as PlaceKind)}>
-            {KINDS.map(([k, label]) => (
+          <span className="sr-only">What it does</span>
+          <select value={does} onChange={(e) => setDoes(e.target.value)}>
+            {DOES.map(([k, label]) => (
               <option key={k} value={k}>
                 {label}
               </option>
             ))}
           </select>
         </label>
-        <label>
-          <span className="sr-only">How high</span>
-          <select value={top} onChange={(e) => setTop(Number(e.target.value))}>
-            {TOPS.map(([v, label]) => (
-              <option key={v} value={v}>
-                {label}
-              </option>
-            ))}
-          </select>
-        </label>
+        {does === 'stand' && (
+          <label>
+            <span className="sr-only">How high</span>
+            <select value={high} onChange={(e) => setHigh(Number(e.target.value))}>
+              {HIGHS.map(([v, label]) => (
+                <option key={v} value={v}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         <label>
           <span className="sr-only">How big</span>
           <select value={wide} onChange={(e) => setWide(Number(e.target.value))}>

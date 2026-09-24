@@ -1,4 +1,5 @@
 import { readDrawing, type Drawing } from '../draw/strokes'
+import { inkBox } from '../pets/rig'
 import { ASPECT } from './strike'
 import { PARK, type Spot } from './walk'
 import type { Place, PlaceKind } from './mapOf'
@@ -48,6 +49,48 @@ export type MapDoc = {
   /** the drawings this map is made of, kept with it */
   palette: Drawing[]
   pieces: Piece[]
+}
+
+/**
+ * The same drawing with the empty paper around it taken off.
+ *
+ * ⚠️ BECAUSE A STAMP IS THE THING, NOT THE PAGE IT WAS DRAWN ON. Somebody draws a small
+ * tree in the corner of a big sheet, stamps it, and gets a mostly-empty square with a tree in
+ * one corner of it — the transparent paper is placed just as faithfully as the ink. Reported
+ * exactly that way. A creature does not have this problem because the pet renderer already
+ * crops to the ink; a map piece had nothing doing that for it.
+ *
+ * ⚠️ TIGHT, WITH NO HEADROOM. inkBox's `room` adds 12% for a creature to animate inside;
+ * a rock does not flap, and the headroom would be exactly the empty margin this exists to
+ * remove.
+ *
+ * ⚠️ AND THE STROKE WIDTHS COME WITH IT. `w` is a fraction of the SHORT SIDE, so cropping
+ * the paper without rescaling it makes every line thinner in proportion — zoom into a quarter
+ * of a page and the same line is a quarter as thick relative to what is around it. The factor
+ * is the short side before over the short side after, which is 1 when nothing was cropped.
+ */
+export function cropToInk(d: Drawing): Drawing {
+  const b = inkBox(d, [], false)
+  if (!b) return d
+  const bw = b.x1 - b.x0
+  const bh = b.y1 - b.y0
+  if (!(bw > 0) || !(bh > 0)) return d
+  /* already tight: nothing to gain, and a no-op keeps the palette's identity checks simple */
+  if (bw > 0.985 && bh > 0.985) return d
+  const ratio = d.ratio > 0.05 && d.ratio < 20 ? d.ratio : 1
+  const shortBefore = Math.min(ratio, 1)
+  const shortAfter = Math.min(bw * ratio, bh)
+  const fat = shortAfter > 0 ? shortBefore / shortAfter : 1
+  return {
+    ...d,
+    ratio: (ratio * bw) / bh,
+    strokes: d.strokes.map((k) => ({
+      ...k,
+      w: k.w * fat,
+      /* every pair in `p` is a point, including a fill's recorded region — see paintStroke */
+      p: k.p.map((n, i) => (i % 2 === 0 ? (n - b.x0) / bw : (n - b.y0) / bh)),
+    })),
+  }
 }
 
 const MAX_PALETTE = 24
