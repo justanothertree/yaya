@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
-import type { Drawing } from '../draw/strokes'
+import { paintDrawing, type Drawing } from '../draw/strokes'
 import { PetView } from '../pets/PetView'
-import { ArtThumb } from '../draw/ArtThumb'
 import { placesOf } from './mapDoc'
 import { parkMaps, subscribeMaps } from './maps'
 import { petCanvas, rigOf } from '../pets/rig'
@@ -35,6 +34,7 @@ import {
   STILL,
   VIEW,
   walkEffort,
+  type Mark,
   type Spot,
   type Steer,
 } from './walk'
@@ -407,6 +407,115 @@ const SPAR_LOW_EVERY = 3
 
 /** The field is 16:10, and a screen-height is its height — see SwipePatch. */
 const FIELD_ASPECT = 16 / 10
+
+/**
+ * How big a baked stamp is, in pixels across.
+ *
+ * ⚠️ ONE SIZE FOR EVERY DISTANCE, because a stamp is scenery rather than the subject: it
+ * is drawn somewhere between a tenth and two thirds of a screen wide, and 256 is comfortably
+ * above the top of that on a phone and acceptable on a desk. Baking per on-screen size would
+ * mean re-baking on every resize for a difference nobody can see at this scale.
+ */
+const SPRITE = 256
+
+/** A drawing, rasterised once, ready to be blitted wherever it was stamped. */
+const bake = (art: Drawing): HTMLCanvasElement => {
+  const ar = art.ratio > 0.05 && art.ratio < 20 ? art.ratio : 1
+  const c = document.createElement('canvas')
+  c.width = SPRITE
+  c.height = Math.max(1, Math.round(SPRITE / ar))
+  const ctx = c.getContext('2d')
+  if (ctx) paintDrawing(ctx, art, c.width, c.height)
+  return c
+}
+
+/**
+ * Every stamped place, on ONE canvas.
+ *
+ * ⚠️ BECAUSE A MAP IS NOT FIVE LANDMARKS ANY MORE. The built-in park has five places and
+ * drawing them as five elements is free; a stamped map is however many somebody put down.
+ * Measured with 250 of them: 231 survived the cull, each an element carrying its own canvas,
+ * 969 elements inside the field — and every one had its position rewritten by React on every
+ * frame the camera moved. Reported as the game going laggy while walking about, which is
+ * exactly what that is. It is not a slow function anywhere; it is the count.
+ *
+ * ⚠️ SO THE DRAWING IS BAKED ONCE AND BLITTED MANY TIMES. A palette holds at most
+ * twenty-four pictures however many pieces there are, so fifty rocks are one bake and fifty
+ * drawImage calls — which is the shape this project already reaches for when per-frame canvas
+ * work turns up: bake it, then move it.
+ *
+ * ⚠️ AND THE BUILT-IN FIVE ARE LEFT ALONE. They carry no art and their mounds are CSS
+ * gradients with a rim that grows out of `--top`; moving them here would mean rewriting that in
+ * canvas for no gain, on the one park everybody shares. Marks with a picture come here, marks
+ * without stay as they were.
+ */
+function Scenery({
+  marks,
+  cam,
+  w,
+  h,
+  raised,
+}: {
+  marks: Mark[]
+  cam: Spot
+  w: number
+  h: number
+  raised: Map<string, number>
+}) {
+  const cv = useRef<HTMLCanvasElement | null>(null)
+  const sprites = useRef(new Map<Drawing, HTMLCanvasElement>())
+
+  /* ⚠️ no dependency array on purpose: the camera moves every frame, and this IS the frame */
+  useEffect(() => {
+    const c = cv.current
+    if (!c || w < 2 || h < 2) return
+    const dpr = Math.min(2, window.devicePixelRatio || 1)
+    const pw = Math.round(w * dpr)
+    const ph = Math.round(h * dpr)
+    if (c.width !== pw || c.height !== ph) {
+      c.width = pw
+      c.height = ph
+    }
+    const ctx = c.getContext('2d')
+    if (!ctx) return
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+    ctx.clearRect(0, 0, w, h)
+    /* a walked map can only hold 24 pictures, so this is a ceiling for switching maps, not a cache */
+    if (sprites.current.size > 64) sprites.current.clear()
+    for (const m of marks) {
+      if (!m.art) continue
+      const p = onScreen(m.at, cam)
+      const mw = ((m.size * 2) / FIELD_ASPECT) * w
+      const mh = m.size * 2 * h
+      const px = p.x * w
+      const py = p.y * h
+      /* ⚠️ culled against its own box rather than a fixed margin, so a big stamp is kept
+         while its edge is still on screen and a small one goes as soon as it leaves */
+      if (px + mw / 2 < 0 || px - mw / 2 > w || py + mh / 2 < 0 || py - mh / 2 > h) continue
+      let sp = sprites.current.get(m.art)
+      if (!sp) {
+        sp = bake(m.art)
+        sprites.current.set(m.art, sp)
+      }
+      /* ⚠️ something you can stand ON still says so. The CSS rim cannot come with it — it
+         is a ring around a circle and a stamp is whatever shape it was drawn — so the cue is a
+         shadow under it instead, which is the same thing a raised object does in the world. */
+      const up = raised.get(m.name) ?? 0
+      if (up > 0) {
+        ctx.save()
+        ctx.globalAlpha = Math.min(0.42, 0.16 + up * 0.2)
+        ctx.fillStyle = '#000'
+        ctx.beginPath()
+        ctx.ellipse(px, py + mh * 0.34, mw * 0.36, mh * 0.12, 0, 0, Math.PI * 2)
+        ctx.fill()
+        ctx.restore()
+      }
+      ctx.drawImage(sp, px - mw / 2, py - mh / 2, mw, mh)
+    }
+  })
+
+  return <canvas ref={cv} className="park-scenery" aria-hidden />
+}
 
 /**
  * How long after one big move before the next.
@@ -3224,8 +3333,14 @@ export function ParkRoom({
             ⚠️ AND BEHIND EVERYBODY. z-index below the lowest creature: this is scenery, and a
             landmark that covered a boss would be a landmark somebody had to walk around twice.
           */}
+          {walking && (
+            <Scenery marks={shownMarks} cam={camAt} w={size.w} h={size.h} raised={raised} />
+          )}
           {walking &&
             shownMarks.map((m) => {
+              /* ⚠️ only the ones with no picture — the rest are on the canvas above, see
+                 Scenery. The built-in park's five come through here exactly as before. */
+              if (m.art) return null
               const p = onScreen(m.at, camAt)
               if (p.x < -0.8 || p.x > 1.8 || p.y < -0.8 || p.y > 1.8) return null
               return (
@@ -3235,12 +3350,7 @@ export function ParkRoom({
                      a place you cannot and the first anybody knows about the rocks is landing
                      on them. `--top` is how high in pet-heights, so the rim can grow with it
                      rather than every plateau looking the same height. */
-                  className={
-                    'park-mark is-' +
-                    m.kind +
-                    (raised.has(m.name) ? ' is-raised' : '') +
-                    (m.art ? ' has-art' : '')
-                  }
+                  className={'park-mark is-' + m.kind + (raised.has(m.name) ? ' is-raised' : '')}
                   aria-hidden
                   style={
                     {
@@ -3251,27 +3361,7 @@ export function ParkRoom({
                       '--top': raised.get(m.name) ?? 0,
                     } as React.CSSProperties
                   }
-                >
-                  {/* ⚠️ THE PICTURE SOMEBODY STAMPED, WHERE THERE IS ONE. Without this a map made
-                      of your own drawings came out as the same coloured mounds the built-in park
-                      uses, which is the feature not happening — the editor showed your rock and
-                      the field showed a hill. The built-in five carry no art and keep their
-                      gradients, so a shared park still draws its scenery in CSS.
-
-                      ⚠️ A FIXED BACKING SIZE, SCALED BY CSS. The mark's box is a percentage of
-                      a field that changes with the window, and ArtThumb redraws whenever its
-                      pixel size changes — handing it the live size would repaint every landmark
-                      on every resize. 160 is plenty for something a fraction of a screen wide. */}
-                  {m.art && (
-                    <ArtThumb
-                      art={m.art}
-                      w={160}
-                      h={Math.round(
-                        160 / (m.art.ratio > 0.05 && m.art.ratio < 20 ? m.art.ratio : 1),
-                      )}
-                    />
-                  )}
-                </span>
+                />
               )
             })}
           {walking && <GuardArc me={shownYou} cam={camAt} />}
