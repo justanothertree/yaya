@@ -28,6 +28,14 @@
   filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.4));
 }
 
+/* ⚠️ flex-shrink 0 because the name beside it is allowed to be ten rem wide, and a flex
+   row would sooner squash a 22px picture than wrap. The transform that puts the hotspot on the
+   point is written inline — see PartyCursors — and does not affect this layout. */
+.party-cursor-mark {
+  flex: 0 0 auto;
+  display: block;
+}
+
 .party-cursor-name {
   margin-top: 0.85rem;
   padding: 0.1rem 0.4rem;

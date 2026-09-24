@@ -1,5 +1,6 @@
 import { onParty, sendParty, voiceSession } from '../voice/voiceSession'
 import { together } from './together'
+import { isCursorSkin, myCursor, onCursorChange, type CursorSkin } from '../ui/cursorSkin'
 
 /**
  * Seeing each other move around the site.
@@ -132,6 +133,19 @@ export type PartyHere = {
   id: string
   name: string
   route: string
+  /**
+   * The pointer they chose to wear, if they wear one.
+   *
+   * ⚠️ ON THE PERSON, NOT ON THE POINTER SAMPLE, and that is the whole reason it lives
+   * in this type rather than in PartyPeer. A `ptr` goes out fifteen times a second; which cursor
+   * somebody is wearing changes about twice a year. Putting it in the sample would mean sending
+   * a fact that has not changed, fifteen times a second, per person — a realtime message should
+   * carry what changed.
+   *
+   * So it rides on `where`, which is sent on arrival, on changing page, on the heartbeat, and
+   * the moment somebody picks a different one. Missing simply means the plain arrow.
+   */
+  skin?: CursorSkin
   at: number
 }
 
@@ -238,15 +252,32 @@ function announceHere() {
   if (!state.sharing) return
   if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return
   if (routeIsPrivate()) return
-  sendParty('where', { route: currentRoute() })
+  /* ⚠️ the SHAPE only, never the colour. In the party a person's colour is how you tell
+     whose cursor is whose — see hueFor — and everybody on the default theme shares an accent,
+     so taking their accent too would turn a room into one colour. The shape is theirs; the hue
+     stays the room's. */
+  const { id } = myCursor()
+  sendParty(
+    'where',
+    id === 'system' ? { route: currentRoute() } : { route: currentRoute(), skin: id },
+  )
 }
 
 /** One shape from either message that proves presence, so the two paths cannot disagree. */
-function whereFrom(m: { from: string; name?: unknown }, route: string): PartyHere {
+function whereFrom(
+  m: { from: string; name?: unknown },
+  route: string,
+  skin?: CursorSkin,
+): PartyHere {
   return {
     id: m.from,
     name: typeof m.name === 'string' ? m.name.slice(0, 40) : 'Someone',
     route,
+    /* ⚠️ A `ptr` CARRIES NO SKIN, SO THE ONE ALREADY KNOWN HAS TO SURVIVE IT. Both
+       messages build a PartyHere through here, and a pointer sample arrives fifteen times a
+       second — rebuilt without this the skin would be wiped by the very next sample and the
+       cursor would flicker back to the default arrow almost immediately. */
+    skin: skin ?? state.here[m.from]?.skin,
     at: performance.now(),
   }
 }
@@ -292,10 +323,13 @@ export const party = {
         return
       }
       if (m.kind === 'where') {
-        const b = m.body as { route?: unknown }
+        const b = m.body as { route?: unknown; skin?: unknown }
         // somebody else's string, on its way into a lookup and a title attribute
         if (typeof b?.route !== 'string' || b.route.length > 64) return
-        set({ here: { ...state.here, [m.from]: whereFrom(m, b.route) } })
+        /* checked against the real list rather than taken as given: it decides which picture
+           gets drawn, and the client that sent it is one anybody can rewrite */
+        const skin = isCursorSkin(b.skin) && b.skin !== 'system' ? b.skin : undefined
+        set({ here: { ...state.here, [m.from]: whereFrom(m, b.route, skin) } })
         return
       }
       if (m.kind !== 'ptr') return
@@ -348,6 +382,11 @@ export const party = {
 
     const beat = window.setInterval(announceHere, HERE_MS)
 
+    /* ⚠️ trying a different pointer on says so at once rather than at the next heartbeat.
+       The beat would get there eventually, and "eventually" for a thing you just changed while
+       somebody is watching reads as it not having worked. */
+    const offCursor = onCursorChange(announceHere)
+
     // A peer who crashed or closed the tab never sends `gone`; this is what clears them.
     const sweep = window.setInterval(() => {
       const now = performance.now()
@@ -391,6 +430,7 @@ export const party = {
 
     detach = [
       off,
+      offCursor,
       offVoice,
       offAll,
       () => window.removeEventListener('pointermove', move),

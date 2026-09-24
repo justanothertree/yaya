@@ -375,12 +375,50 @@ function dataUri(skin: Skin, colour: string): string {
  * that is not a skin and a colour that is not a hex both come back as the safe answer rather
  * than as a string spliced into a document. Returns null for `system`, which is not a picture.
  */
+/**
+ * Where the point actually IS, as a fraction of the picture.
+ *
+ * ⚠️ BECAUSE A BADGE CAN GET AWAY WITH IGNORING THIS AND A DRAWN CURSOR CANNOT. The
+ * hotspot is the pixel the drawing points WITH — a crosshair points from its middle, an arrow
+ * from its corner, a pen from its nib — and anything drawing somebody else's pointer at a
+ * position has to put that pixel there, or a dot cursor lands half its own width down and to
+ * the right of where that person is actually pointing. See the SKINS table, which exists for
+ * this reason.
+ *
+ * ⚠️ A FRACTION, NOT PIXELS, so the 28-box never leaves this file. A caller multiplies
+ * by however big it chose to draw the thing.
+ */
+export function cursorHot(id: unknown): { x: number; y: number } | null {
+  if (!isCursorSkin(id) || id === 'system') return null
+  const skin = SKINS[id]
+  if (!skin) return null
+  return { x: skin.hot[0] / SIZE, y: skin.hot[1] / SIZE }
+}
+
+/**
+ * ⚠️ REMEMBERED, BECAUSE THE CALLERS ARE IN A HOT PATH. The party overlay re-renders on
+ * every pointer packet — fifteen a second per person in the call — and each render asks for
+ * every peer's mark again. The answer is a pure function of two small values, so building the
+ * SVG and percent-encoding it every time is the same string computed sixty times a second and
+ * thrown away. Bounded rather than unbounded: twenty-eight skins against a handful of colours
+ * is the real ceiling, and the cap is there so a peer sending a new colour every packet cannot
+ * make this grow without limit.
+ */
+const marks = new Map<string, string>()
+const MAX_MARKS = 64
+
 export function cursorMark(id: unknown, colour: unknown): string | null {
   if (!isCursorSkin(id) || id === 'system') return null
   const skin = SKINS[id]
   if (!skin) return null
   const c = typeof colour === 'string' && SAFE_COLOUR.test(colour.trim()) ? colour.trim() : ACCENT
-  return `data:image/svg+xml,${encodeURIComponent(markup(skin, c))}`
+  const key = `${id}|${c}`
+  const had = marks.get(key)
+  if (had) return had
+  const made = `data:image/svg+xml,${encodeURIComponent(markup(skin, c))}`
+  if (marks.size >= MAX_MARKS) marks.clear()
+  marks.set(key, made)
+  return made
 }
 
 const ACCENT = '#22c55e'
