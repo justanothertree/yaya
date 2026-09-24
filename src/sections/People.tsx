@@ -9,8 +9,9 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { errText } from '../ui/errText'
 import { notificationsChanged, onNotificationsChanged } from '../hooks/notifySignal'
 import { getSupabaseClient } from '../finance/client'
+import { cursorMark } from '../ui/cursorSkin'
 import { previewMember, PREVIEW_PEOPLE, type PreviewPerson } from '../dev/previewMember'
-import { usePresence } from '../hooks/usePresence'
+import { usePresence, type Seen } from '../hooks/usePresence'
 import {
   myStatus,
   onStatusChange,
@@ -273,6 +274,38 @@ export function People({ authed = false }: { authed?: boolean }) {
    */
   const waitingFirst = (list: Person[]) => [...list].sort((a, b) => unreadFor(b) - unreadFor(a))
 
+  /**
+   * The badge on somebody's avatar: that they are here, and which pointer they are here with.
+   *
+   * ⚠️ THEIR ACTUAL CURSOR, NOT A STAND-IN FOR IT. The skins are SVG bodies, so this is
+   * the very shape on the end of their hand in their accent colour — which is the whole reason
+   * to show it rather than another dot. Somebody wearing the system pointer has nothing to show
+   * and keeps the plain dot, so a directory is a mix of the two by design.
+   *
+   * ⚠️ AND AWAY STAYS TELLABLE BY SHAPE. The plain dot goes hollow for away, deliberately,
+   * because a difference that is only a hue is invisible to a good share of people — a pointer
+   * cannot do that trick, its shape is already saying who. So away gets a ring around it AND is
+   * faded, two differences rather than one, on top of the word beside the name that says it
+   * outright.
+   *
+   * ⚠️ AN <img>, NOT INLINE MARKUP. The colour inside that SVG came off a socket from
+   * another member's browser. cursorMark refuses anything that is not a hex, and an SVG loaded
+   * through an img cannot run script even if it had not — two locks, because the repo is public
+   * and a patched client is an afternoon's work.
+   */
+  const beacon = (seen: Seen) => {
+    const mark = cursorMark(seen.skin, seen.tint)
+    return (
+      <span
+        className={'cz-person-online' + (mark ? ' has-mark' : '')}
+        data-status={seen.status}
+        title={seen.status === 'away' ? 'Away' : 'Online now'}
+      >
+        {mark && <img src={mark} alt="" width={20} height={20} draggable={false} />}
+      </span>
+    )
+  }
+
   const row = (p: Person) => (
     <div key={p.username} className="cz-person">
       <a
@@ -288,13 +321,10 @@ export function People({ authed = false }: { authed?: boolean }) {
           {/* A missing entry covers offline AND invisible with one answer, deliberately: if
               those two rendered differently, invisible would be detectable and therefore
               pointless. See usePresence. */}
-          {!!p.user_id && online[p.user_id] && (
-            <span
-              className="cz-person-online"
-              data-status={online[p.user_id]}
-              title={online[p.user_id] === 'away' ? 'Away' : 'Online now'}
-            />
-          )}
+          {(() => {
+            const seen = p.user_id ? online[p.user_id] : undefined
+            return seen ? beacon(seen) : null
+          })()}
         </span>
         <span className="cz-person-text">
           <span className="cz-person-name">{p.name}</span>
@@ -304,7 +334,7 @@ export function People({ authed = false }: { authed?: boolean }) {
           <span className="cz-person-handle muted">
             @{p.username}
             {!!p.user_id && online[p.user_id] && (
-              <> · {online[p.user_id] === 'away' ? 'Away' : 'Online'}</>
+              <> · {online[p.user_id]?.status === 'away' ? 'Away' : 'Online'}</>
             )}
           </span>
         </span>

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { getSupabaseClient } from '../finance/client'
 import { getSessionUser, onAuthStateChange } from '../finance/auth'
 import { effectiveStatus, onStatusChange } from '../hooks/presenceStatus'
+import { myCursor, onCursorChange } from '../ui/cursorSkin'
 
 /**
  * Saying that you are here, from wherever you are on the site.
@@ -54,8 +55,23 @@ export function PresenceBeacon() {
         }
         return
       }
+      /**
+       * ⚠️ YOUR POINTER RIDES ALONG, AND IT COSTS NOTHING TO CARRY. A presence payload
+       * is an arbitrary object that is already being sent on a channel that already exists, so
+       * showing somebody which cursor you are wearing needs no column, no RPC and no policy —
+       * see the People directory, which draws it as the badge on your avatar.
+       *
+       * ⚠️ AND IT IS PRESENCE DATA, WHICH IS THE RIGHT HOME FOR IT. It reaches exactly
+       * the people who may already see that you are here, it goes when you go, and going
+       * invisible takes it with you because invisible never calls track() at all. Put on a
+       * profile instead it would be a new thing about you that outlives the session.
+       */
+      const mark = () => {
+        const { id, colour } = myCursor()
+        return id === 'system' ? {} : { skin: id, tint: colour }
+      }
       if (channel) {
-        void channel.track({ at: Date.now(), status })
+        void channel.track({ at: Date.now(), status, ...mark() })
         return
       }
       const ch = sb.channel(`presence:${myId}`, {
@@ -65,7 +81,7 @@ export function PresenceBeacon() {
       ch.subscribe((state, err) => {
         if (dropped) return
         const now = effectiveStatus()
-        if (state === 'SUBSCRIBED' && now) void ch.track({ at: Date.now(), status: now })
+        if (state === 'SUBSCRIBED' && now) void ch.track({ at: Date.now(), status: now, ...mark() })
         else if (state !== 'SUBSCRIBED' && state !== 'CLOSED')
           console.warn(`[realtime] presence beacon: ${state}${err ? ` — ${err.message}` : ''}`)
       })
@@ -73,9 +89,14 @@ export function PresenceBeacon() {
 
     sync()
     const off = onStatusChange(sync)
+    /* ⚠️ changing your pointer re-TRACKS, it does not rejoin — the same reasoning going
+       idle already follows: tearing the channel down would show watchers a moment of you being
+       gone every time you tried a different cursor on. */
+    const offCursor = onCursorChange(sync)
     return () => {
       dropped = true
       off()
+      offCursor()
       if (channel) void sb.removeChannel(channel)
     }
   }, [myId])

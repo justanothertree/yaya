@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { getSupabaseClient } from '../finance/client'
 import { type SeenStatus } from './presenceStatus'
+import { isCursorSkin, type CursorSkin } from '../ui/cursorSkin'
 
 /**
  * Who's online, among the people allowed to know that about you.
@@ -24,12 +25,22 @@ import { type SeenStatus } from './presenceStatus'
  * offline and invisible with one answer, on purpose. Distinguishing the two would leak exactly
  * what invisible exists to hide: "offline" and "hiding" must be indistinguishable from outside,
  * or invisibility is only a label.
+ *
+ * ⚠️ AND WHATEVER POINTER THEY ARE WEARING, when they chose one. It travels in the same packet
+ * as the status because it IS presence — it arrives with them, it leaves with them, and going
+ * invisible takes it along because invisible never sends a packet at all. Both fields are
+ * re-validated here rather than trusted: they were put on the wire by another member's browser,
+ * and the client that put them there is one anybody can rewrite.
  */
-export function usePresence(
-  myId: string | null,
-  ids: string[],
-): Record<string, SeenStatus | undefined> {
-  const [online, setOnline] = useState<Record<string, SeenStatus | undefined>>({})
+export type Seen = {
+  status: SeenStatus
+  skin?: CursorSkin
+  /** their accent at the moment they said so; cursorMark refuses anything that is not a hex */
+  tint?: string
+}
+
+export function usePresence(myId: string | null, ids: string[]): Record<string, Seen | undefined> {
+  const [online, setOnline] = useState<Record<string, Seen | undefined>>({})
   // stable key so the effect re-runs only when the SET of ids actually changes
   const idsKey = [...new Set(ids)].sort().join(',')
   /* Nothing here depends on YOUR status: going invisible stops you being broadcast, it does not
@@ -46,13 +57,28 @@ export function usePresence(
         const state = ch.presenceState()
         // Someone can be present from more than one device. Any device that is not away makes
         // them online — the alternative (last writer wins) would flicker between the two.
-        const entries = Object.values(state).flat() as Array<{ status?: string }>
-        const seen: SeenStatus | undefined = !entries.length
+        const entries = Object.values(state).flat() as Array<{
+          status?: string
+          skin?: unknown
+          tint?: unknown
+        }>
+        /* ⚠️ the pointer comes from the SAME device that decided the status, not from whichever
+           entry happens to be first. Somebody at a desk and on a phone can be wearing two
+           different cursors, and the one worth showing is the one they are actually at. */
+        const lead = entries.find((e) => e.status !== 'away') ?? entries[0]
+        const seen: Seen | undefined = !entries.length
           ? undefined
-          : entries.some((e) => e.status !== 'away')
-            ? 'online'
-            : 'away'
-        setOnline((prev) => (prev[id] === seen ? prev : { ...prev, [id]: seen }))
+          : {
+              status: lead && lead.status !== 'away' ? 'online' : 'away',
+              skin: isCursorSkin(lead?.skin) ? lead.skin : undefined,
+              tint: typeof lead?.tint === 'string' ? lead.tint : undefined,
+            }
+        setOnline((prev) => {
+          const was = prev[id]
+          if (was?.status === seen?.status && was?.skin === seen?.skin && was?.tint === seen?.tint)
+            return prev
+          return { ...prev, [id]: seen }
+        })
       })
       // Just listening -- announcing happens once, below, on `mine`. Being unable to join
       // simply leaves this id absent from `online`, which the default already covers.

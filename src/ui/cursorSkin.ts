@@ -336,12 +336,73 @@ const SKINS: Record<Exclude<CursorSkin, 'system'>, Skin> = {
  */
 const SIZE = 28
 
-function dataUri(skin: Skin, colour: string): string {
-  const svg =
+/**
+ * A colour this file is willing to put INSIDE markup.
+ *
+ * ⚠️ BECAUSE THE COLOUR CAN COME FROM SOMEBODY ELSE. For your own pointer it is read
+ * from your own stylesheet and could be anything CSS accepts; for the badge in the People
+ * directory it arrives in a presence packet from another member’s browser, and the repo is
+ * public, so writing a patched client that sends `"/><script…` is an afternoon’s work. A
+ * skin body interpolates its colour straight into an SVG string, so that string is a document
+ * and the colour is untrusted input into it.
+ *
+ * Two locks, not one. This is the first: a hex colour and nothing else, or the accent instead.
+ * The second is that a shared mark is only ever rendered through an `<img src>` — an SVG
+ * loaded as an image cannot run script even if something did get through here.
+ */
+const SAFE_COLOUR = /^#[0-9a-fA-F]{3,8}$/
+
+function markup(skin: Skin, colour: string): string {
+  return (
     `<svg xmlns="http://www.w3.org/2000/svg" width="${SIZE}" height="${SIZE}" viewBox="0 0 28 28">` +
     skin.body(colour) +
     `</svg>`
-  return `url("data:image/svg+xml,${encodeURIComponent(svg)}")`
+  )
+}
+
+function dataUri(skin: Skin, colour: string): string {
+  return `url("data:image/svg+xml,${encodeURIComponent(markup(skin, colour))}")`
+}
+
+/**
+ * The same pointer, as a picture something else can show.
+ *
+ * ⚠️ THE SHAPE ITSELF, NOT AN EMOJI THAT LOOKS LIKE IT. The skins are already SVG
+ * bodies on a 28-box, so a badge can be the very thing on the end of somebody’s hand rather
+ * than an approximation of it — which is the whole appeal of showing it at all.
+ *
+ * ⚠️ AND IT VALIDATES BOTH ARGUMENTS, because both can arrive over a socket. An id
+ * that is not a skin and a colour that is not a hex both come back as the safe answer rather
+ * than as a string spliced into a document. Returns null for `system`, which is not a picture.
+ */
+export function cursorMark(id: unknown, colour: unknown): string | null {
+  if (!isCursorSkin(id) || id === 'system') return null
+  const skin = SKINS[id]
+  if (!skin) return null
+  const c = typeof colour === 'string' && SAFE_COLOUR.test(colour.trim()) ? colour.trim() : ACCENT
+  return `data:image/svg+xml,${encodeURIComponent(markup(skin, c))}`
+}
+
+const ACCENT = '#22c55e'
+
+/**
+ * What this browser is wearing right now, for anything that has to tell somebody else.
+ *
+ * ⚠️ SET FROM applyCursorSkin RATHER THAN READ FROM STORAGE, because the colour is
+ * half of the answer and storage only holds the other half. The pointer is drawn from the live
+ * accent, so it changes when the THEME changes without the skin changing at all — and the
+ * one place that already knows both, on every change of either, is the function that puts it
+ * on the page.
+ */
+let worn: { id: CursorSkin; colour: string } = { id: 'system', colour: ACCENT }
+const WORN_EVENT = 'yaya:cursor'
+
+export const myCursor = (): { id: CursorSkin; colour: string } => worn
+
+/** the same shape presenceStatus uses, so a watcher wires up the same way */
+export function onCursorChange(fn: () => void): () => void {
+  window.addEventListener(WORN_EVENT, fn)
+  return () => window.removeEventListener(WORN_EVENT, fn)
 }
 
 const STYLE_ID = 'cursor-skin'
@@ -358,15 +419,25 @@ const STYLE_ID = 'cursor-skin'
  * — call this again when the accent changes.
  */
 export function applyCursorSkin(id: CursorSkin, colour: string) {
-  const existing = document.getElementById(STYLE_ID)
-  if (id === 'system') {
-    existing?.remove()
-    return
+  /* ⚠️ recorded across every path below, including the ones that draw nothing, so
+     `system` and an unknown id are both the truth about what is being worn rather than a stale
+     answer from last time. Announced at the END, so a listener that looks at the page sees the
+     page this call has already changed. */
+  const moved = worn.id !== id || worn.colour !== colour
+  worn = { id, colour }
+  const told = () => {
+    if (moved) window.dispatchEvent(new Event(WORN_EVENT))
   }
-  const skin = SKINS[id]
+  const existing = document.getElementById(STYLE_ID)
+  const skin = id === 'system' ? null : SKINS[id]
   if (!skin) {
     existing?.remove()
-    return
+    /* ⚠️ AND THE ATTRIBUTE GOES TOO. Going back to System removed the stylesheet and
+       left `data-cursor` behind saying you were still wearing the last one. Nothing else reads
+       it today, so it had no symptom — but it is now the second place that claims to know what
+       the pointer is, and two sources of truth about one thing is how the first one goes wrong. */
+    document.documentElement.removeAttribute('data-cursor')
+    return told()
   }
   const url = dataUri(skin, colour)
   const [hx, hy] = skin.hot
@@ -383,4 +454,5 @@ export function applyCursorSkin(id: CursorSkin, colour: string) {
     `{ cursor: ${url} ${hx} ${hy}, auto; }`
   if (!existing) document.head.appendChild(el)
   document.documentElement.setAttribute('data-cursor', id)
+  told()
 }
