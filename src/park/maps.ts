@@ -90,20 +90,27 @@ function write(items: ParkMap[]) {
  * outside — and the bill for that is paid here instead, where packDrawing is several times
  * smaller than the readable form. The pieces are already small; they are numbers.
  */
-const packed = (m: ParkMap) => ({
-  id: m.id,
-  at: m.at,
-  doc: { v: 1, name: m.doc.name, palette: m.doc.palette.map(packDrawing), pieces: m.doc.pieces },
+const onDisk = (doc: MapDoc) => ({
+  v: 1,
+  name: doc.name,
+  palette: doc.palette.map(packDrawing),
+  pieces: doc.pieces,
+  /* the ground is a drawing like any other, so it is packed like any other */
+  ground: doc.ground ? packDrawing(doc.ground) : null,
 })
 
-/** How big this map would be once kept, so a caller can say why rather than failing quietly. */
+const packed = (m: ParkMap) => ({ id: m.id, at: m.at, doc: onDisk(m.doc) })
+
+/**
+ * How big this map would be once kept, so a caller can say why rather than failing quietly.
+ *
+ * ⚠️ THE SAME FUNCTION THAT WRITES IT, not a second sum of the same fields. The two used to
+ * be written out separately and would have drifted the moment either grew a key — which is
+ * exactly what the ground was, and the editor would have reported a size that was not the one
+ * being stored.
+ */
 export function mapBytes(doc: MapDoc): number {
-  return JSON.stringify({
-    v: 1,
-    name: doc.name,
-    palette: doc.palette.map(packDrawing),
-    pieces: doc.pieces,
-  }).length
+  return JSON.stringify(onDisk(doc)).length
 }
 
 export const MAP_LIMIT = { items: MAX_ITEMS, bytes: MAX_BYTES }

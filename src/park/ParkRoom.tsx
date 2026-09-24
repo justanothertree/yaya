@@ -430,6 +430,47 @@ const bake = (art: Drawing): HTMLCanvasElement => {
 }
 
 /**
+ * How wide the whole painted ground is baked, in pixels.
+ *
+ * ⚠️ IT IS THE WORLD, NOT A SCREEN, so a third of it is what you can see at once. Baking at
+ * the field's own resolution would therefore mean three times the field across — about 5400
+ * device pixels on a desktop, which is a 42MB canvas held for as long as somebody is walking
+ * around. This asks for the field's resolution and then refuses to go past 3072, which is
+ * 1024 per screenful: sharp on a phone, slightly soft under a big monitor, and about 24MB at
+ * the very top.
+ *
+ * ⚠️ AND IT IS BUCKETED, because the alternative is re-baking a three-thousand-pixel canvas
+ * on every step of a window drag. Rounded to the nearest 512, so a resize re-bakes at most a
+ * handful of times and usually not at all.
+ */
+const groundWide = (w: number) => {
+  const dpr = Math.min(2, window.devicePixelRatio || 1)
+  const want = Math.round(w * dpr) * PARK.across
+  const capped = Math.max(1024, Math.min(3072, want))
+  return Math.round(capped / 512) * 512
+}
+
+/**
+ * The ground somebody painted, baked once across the whole world.
+ *
+ * ⚠️ BAKED RATHER THAN REPLAYED, for the reason every other per-frame canvas job in this
+ * project ends up baked: the strokes are a fixed picture and the camera is the only thing
+ * moving, so replaying them sixty times a second would be paying for the drawing again on
+ * every frame to get the identical pixels. Once baked, a frame is one drawImage of the
+ * rectangle you can currently see.
+ */
+const bakeGround = (art: Drawing, wide: number): HTMLCanvasElement => {
+  const c = document.createElement('canvas')
+  c.width = wide
+  /* the paper IS the world — see MapMaker, where ratio is set from MAP_GUIDE.paper */
+  const ar = art.ratio > 0.05 && art.ratio < 20 ? art.ratio : 1
+  c.height = Math.max(1, Math.round(wide / ar))
+  const ctx = c.getContext('2d')
+  if (ctx) paintDrawing(ctx, art, c.width, c.height)
+  return c
+}
+
+/**
  * Every stamped place, on ONE canvas.
  *
  * ⚠️ BECAUSE A MAP IS NOT FIVE LANDMARKS ANY MORE. The built-in park has five places and
@@ -451,12 +492,14 @@ const bake = (art: Drawing): HTMLCanvasElement => {
  */
 function Scenery({
   marks,
+  ground,
   cam,
   w,
   h,
   raised,
 }: {
   marks: Mark[]
+  ground: Drawing | null
   cam: Spot
   w: number
   h: number
@@ -464,6 +507,7 @@ function Scenery({
 }) {
   const cv = useRef<HTMLCanvasElement | null>(null)
   const sprites = useRef(new Map<Drawing, HTMLCanvasElement>())
+  const sod = useRef<{ art: Drawing; wide: number; pic: HTMLCanvasElement } | null>(null)
 
   /* ⚠️ no dependency array on purpose: the camera moves every frame, and this IS the frame */
   useEffect(() => {
@@ -480,6 +524,38 @@ function Scenery({
     if (!ctx) return
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
     ctx.clearRect(0, 0, w, h)
+
+    /**
+     * ⚠️ THE GROUND FIRST, because it is the ground. Everything below draws on top of it,
+     * which is the same order the editor puts them in — and the reason the ink canvas there
+     * sits under the stamps rather than over them.
+     *
+     * ⚠️ ONE drawImage OF THE BIT YOU CAN SEE. `cam` is the top-left of the view in world
+     * units and VIEW is one screenful of it, so the source rectangle is the camera written in
+     * the baked picture's pixels. No culling to do and no per-stroke work at all.
+     */
+    if (ground) {
+      const wide = groundWide(w)
+      if (!sod.current || sod.current.art !== ground || sod.current.wide !== wide) {
+        sod.current = { art: ground, wide, pic: bakeGround(ground, wide) }
+      }
+      const pic = sod.current.pic
+      ctx.drawImage(
+        pic,
+        cam.x * pic.width,
+        cam.y * pic.height,
+        VIEW.w * pic.width,
+        VIEW.h * pic.height,
+        0,
+        0,
+        w,
+        h,
+      )
+    } else if (sod.current) {
+      /* walked out of a painted map — do not hold a 24MB canvas for a park with no ground */
+      sod.current = null
+    }
+
     /* a walked map can only hold 24 pictures, so this is a ceiling for switching maps, not a cache */
     if (sprites.current.size > 64) sprites.current.clear()
     for (const m of marks) {
@@ -862,8 +938,15 @@ export function ParkRoom({
    */
   const walkable = useMemo(
     () => [
-      ...stamped.map((m) => ({ name: m.name, places: () => placesOf(m.doc) })),
-      ...layerMaps.map((a) => ({ name: a.name, places: () => mapOf(a.art) })),
+      /* ⚠️ the ground is a plain value rather than a function, because unlike `places` it is
+         already a drawing — there is nothing to convert and nothing to recompute */
+      ...stamped.map((m) => ({
+        name: m.name,
+        places: () => placesOf(m.doc),
+        ground: m.doc.ground,
+      })),
+      /* a layer-named map has no ground and never will; that reader is on its way out */
+      ...layerMaps.map((a) => ({ name: a.name, places: () => mapOf(a.art), ground: null })),
     ],
     [stamped, layerMaps],
   )
@@ -3334,7 +3417,18 @@ export function ParkRoom({
             landmark that covered a boss would be a landmark somebody had to walk around twice.
           */}
           {walking && (
-            <Scenery marks={shownMarks} cam={camAt} w={size.w} h={size.h} raised={raised} />
+            <Scenery
+              marks={shownMarks}
+              /* ⚠️ THE PICTURE, NOT THE ENTRY IT CAME OUT OF. `walkable` is a fresh array on
+                 every render of this room, so `walkingMap` is a fresh object — but the drawing
+                 inside it comes from the maps store's cache and only changes when a map is
+                 actually saved, which is what the bake below is keyed on. */
+              ground={walkingMap?.ground ?? null}
+              cam={camAt}
+              w={size.w}
+              h={size.h}
+              raised={raised}
+            />
           )}
           {walking &&
             shownMarks.map((m) => {

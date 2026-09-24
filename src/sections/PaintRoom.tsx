@@ -2801,6 +2801,11 @@ export function PaintRoom() {
         'paint-wrap' +
         (inWindow ? ' is-inwindow' : '') +
         (toolsHidden ? ' tools-hidden' : '') +
+        /* ⚠️ ON THE WRAP, NOT ON THE PANEL. Hiding the panel is already a decision this
+           section makes — `tools-hidden` — and it makes it from here because the rules that
+           lay the panel out are all `.paint-wrap X .paint-tools-panel`. A class on the panel
+           alone loses to every one of them on specificity and reads as doing nothing. */
+        (making ? ' is-mapping' : '') +
         (isFull ? ' is-full' : '')
       }
       ref={wrap}
@@ -2846,6 +2851,12 @@ export function PaintRoom() {
        * and 1024 the panel is display:contents, so it is a wrap child either way. Only the rail
        * layout and fullscreen see a difference, which is where the complaint came from.
        */}
+      {/* ⚠️ AND IT GOES AWAY WHILE THE MAP MAKER IS OPEN. Reported as the paint tools not
+          working in the map editor — and the first half of that was true, because the map maker
+          had no drawing surface at all. The second half is this: every one of these controls
+          stayed on screen, aimed at a canvas that was already hidden, so the room showed two
+          toolbars and only one of them did anything. On a phone it was fourteen hundred pixels
+          of dead controls to scroll past before reaching the map. */}
       <div className="paint-tools-panel">
         <div className="paint-bar">
           {/**
@@ -3100,12 +3111,11 @@ export function PaintRoom() {
             layer per place — and the stamp maker replaced it: you draw a thing once and put it
             down as often as you like, with nothing to name. Two ways to make a map would be two
             things to keep right. */}
-        <button
-          className={'btn' + (making ? ' is-on' : '')}
-          aria-pressed={making}
-          onClick={() => setMaking((v) => !v)}
-        >
-          {making ? '✕ Close the map maker' : '🗺 Make a map'}
+        {/* ⚠️ ONLY THE WAY IN. The way OUT lives with the map maker instead, because this
+            whole panel is hidden while it is open — a button that closes something has to be
+            beside the thing it closes, not underneath it. */}
+        <button className="btn" onClick={() => setMaking(true)}>
+          🗺 Make a map
         </button>
 
         {/**
@@ -4175,7 +4185,14 @@ export function PaintRoom() {
         />
       )}
       {saving && <SaveArt art={saving} onClose={() => setSaving(null)} />}
-      {making && <MapMaker />}
+      {making && (
+        <>
+          <button className="btn is-on paint-map-close" onClick={() => setMaking(false)}>
+            ✕ Close the map maker
+          </button>
+          <MapMaker />
+        </>
+      )}
       <div
         className={
           'paint-board' +

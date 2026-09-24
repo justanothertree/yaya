@@ -13998,10 +13998,15 @@ a.cz-msg-author:focus-visible {
 }
 /* ⚠️ THE WORLD'S OWN SHAPE, not the card's. Where you put a thing is where it is, so the field
    has to be the proportions of the park — three screenfuls by three — or every position would
-   be read back through a stretch. */
+   be read back through a stretch.
+
+   ⚠️ AND THE SHAPE COMES FROM THE PARK, NOT FROM HERE. It said `aspect-ratio: 1`, because
+   three by three sounds square; in screenfuls it is, and in PIXELS it is not — a screen is 16:10,
+   so the world is 1.6 times wider than it is tall. Every stamp was drawn four fifths as tall as
+   it really is, and the guide's reference ring was an egg and had a comment explaining that it
+   had to be. MapMaker sets it from MAP_GUIDE.paper. */
 .map-field {
   position: relative;
-  aspect-ratio: 1;
   width: 100%;
   border: 1px solid var(--border);
   border-radius: 10px;
@@ -14018,6 +14023,64 @@ a.cz-msg-author:focus-visible {
 }
 .map-field.is-erasing {
   cursor: not-allowed;
+}
+/* ⚠️ `none`, NOT `manipulation`. A drag across a drawing surface is a stroke, and the browser's
+   default reading of it on a phone is a scroll — which would pan the page and leave a one-point
+   dot behind. Only while drawing, so stamping keeps its double-tap-to-zoom. */
+.map-field.is-drawing {
+  cursor: crosshair;
+  touch-action: none;
+}
+/* the ground, under every stamp and under the guide — the press belongs to the field */
+.map-ink {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+.map-modes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.map-tool {
+  min-width: 44px;
+  min-height: 40px;
+  font-size: 1.1rem;
+  line-height: 1;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+.map-tool.is-on,
+.map-ink-pick.is-on {
+  border-color: var(--accent, #22c55e);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent, #22c55e) 35%, transparent);
+}
+/* ⚠️ 44 BY 34 AND NOT A 20px CHIP. A swatch row is the thing most likely to be tapped on a
+   phone and the thing most often built too small to tap — the same note .map-stamp carries. */
+.map-ink-pick {
+  min-width: 44px;
+  min-height: 34px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+}
+.map-ink-any {
+  display: inline-grid;
+  place-items: center;
+}
+.map-ink-any input[type='color'] {
+  width: 44px;
+  height: 34px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: transparent;
+  cursor: pointer;
 }
 .map-piece {
   position: absolute;
@@ -14171,6 +14234,22 @@ a.cz-msg-author:focus-visible {
 /* the paper steps aside while the map maker is open — see PaintRoom, `making` */
 .paint-board.is-away {
   display: none;
+}
+/* ⚠️ AND THE CONTROLS GO WITH IT. They act on the paper, the paper is hidden, and the map maker
+   brings its own tools — so leaving them up meant two toolbars where only one did anything.
+
+   ⚠️ QUALIFIED BY .paint-wrap, WHICH IS NOT DECORATION. Every rule that lays this panel out is
+   `.paint-wrap … .paint-tools-panel`, and one of them sets `display: contents` — so a rule naming
+   the panel alone is a class lower and loses silently. Written the short way first, it applied,
+   it was correct, and the panel stayed on screen. Specificity has to MATCH the rules it is
+   overruling, not merely exist. */
+.paint-wrap.is-mapping .paint-tools-panel,
+.paint-wrap.is-mapping .paint-shape-row {
+  display: none;
+}
+/* the way out, on its own line and where the eye already is — just above the map */
+.paint-map-close {
+  justify-self: start;
 }
 
 /* ⚠️ EVERY STAMPED PLACE ON ONE CANVAS — see Scenery. It sits in the same slot the individual

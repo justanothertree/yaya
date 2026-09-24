@@ -46,9 +46,11 @@ export function MapGuide() {
        * separate corners leave somebody to compare them by eye across the page. A creature
        * standing in a landmark-sized ring says "this is what a place is for" in one look.
        *
-       * ⚠️ AND BOTH ARE ROUND ONLY ON THE PARK'S OWN PAPER. Their width and height are two
-       * different fractions — see onPaper — so on square paper they arrive visibly taller than
-       * they are wide, which is the truthful warning that the drawing will be stretched.
+       * ⚠️ AND BOTH ARE ROUND NOW, WHICH THEY WERE NOT. Their width and height are
+       * fractions of two DIFFERENT sides — see onPaper — so they are only round on paper the
+       * shape of the world, and the field was square. It reads as a warning that the drawing
+       * will be stretched, and it was; the fix was to stop stretching it, which is
+       * MAP_GUIDE.paper. If these ever look like eggs again, the field is the wrong shape.
        */}
       <span
         className="paint-mapguide-ref"

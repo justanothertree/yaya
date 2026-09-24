@@ -215,6 +215,20 @@ export const MAP_GUIDE = {
   /** how many screenfuls the paper is, across and down — the grid is the lines between them */
   cols: PARK.across,
   rows: PARK.down,
+  /**
+   * The paper's own shape, width over height.
+   *
+   * ⚠️ THE WORLD'S, SO NOTHING ON IT IS STRETCHED. The map field used to be square, because
+   * three screens by three sounds square — and it is, in screenfuls. In pixels it is not: a
+   * screen is 16:10, so the world is `across × ASPECT` wide against `down` tall, which is 1.6
+   * times wider than it is high. On square paper every stamp came out four fifths as tall as
+   * it would really be, and anything drawn on it would have arrived stretched the same way.
+   *
+   * ⚠️ AND IT IS WHY onPaper's TWO NUMBERS NOW AGREE WITH EACH OTHER. `w` and `h` are
+   * fractions of two different sides; on paper of this shape they land as the same distance,
+   * so the reference ring below is round — which is what it is measuring against in the park.
+   */
+  paper: (PARK.across * ASPECT) / PARK.down,
   /** a creature, standing */
   creature: onPaper(PARK_TALL),
   /** a landmark the size of the ones the park already has */

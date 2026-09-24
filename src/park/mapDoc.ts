@@ -49,6 +49,25 @@ export type MapDoc = {
   /** the drawings this map is made of, kept with it */
   palette: Drawing[]
   pieces: Piece[]
+  /**
+   * What is painted on the ground, under every piece — one drawing across the whole world.
+   *
+   * ⚠️ BECAUSE STAMPING IS NOT DRAWING, and only one of the two was here. Asked for as
+   * "raw drawing on a massive map", and reported the short way round as the paint tools not
+   * working in the map editor — which was true: the editor was a field you pressed, with no
+   * surface to draw on at all. A stamp is a thing somebody made ONCE and repeated; a path
+   * worn through grass, a shoreline, a patch of sand are none of them things you make once.
+   *
+   * ⚠️ AND IT IS A Drawing, SO IT COSTS NOTHING NEW. Same strokes, same reader, same
+   * renderer, same packing — the ground is drawn by paintDrawing exactly as a creature is.
+   * A bitmap here would have been the one thing in this project that could not be resized,
+   * could not be undone with pop(), and could not fit in a hundred kilobytes.
+   *
+   * ⚠️ ITS PAPER IS THE WORLD, which is the whole reason MAP_GUIDE.paper exists. Points are
+   * fractions of the world the same way a Piece's `at` is, so a stroke at 0.5,0.5 is the
+   * middle of the park — and `ratio` is the world's own shape, so a circle stays a circle.
+   */
+  ground: Drawing | null
 }
 
 /**
@@ -118,7 +137,11 @@ export function readMapDoc(v: unknown): MapDoc | null {
     const art = readDrawing(raw)
     if (art && art.strokes.length) palette.push(art)
   }
-  if (!palette.length) return null
+
+  /* ⚠️ readDrawing, which caps strokes and points and refuses everything it should — the
+     ground is ink from the same boundary as every other drawing, not a special case */
+  const read = o.ground ? readDrawing(o.ground) : null
+  const ground = read && read.strokes.length ? read : null
 
   const pieces: Piece[] = []
   for (const raw of o.pieces.slice(0, MAX_PIECES)) {
@@ -138,10 +161,13 @@ export function readMapDoc(v: unknown): MapDoc | null {
       top: num(p.top, 0, 4, 0),
     })
   }
-  if (!pieces.length) return null
+  /* ⚠️ EITHER ONE IS A MAP. It used to insist on pieces, which was right when stamping was
+     the only thing this room could do; a map that is a painted island and nothing else is a
+     map, and refusing it would have silently eaten somebody's drawing on the way back in. */
+  if (!pieces.length && !ground) return null
 
   const name = typeof o.name === 'string' ? o.name.slice(0, 40).trim() : ''
-  return { v: 1, name: name || 'Map', palette, pieces }
+  return { v: 1, name: name || 'Map', palette, pieces, ground }
 }
 
 /**
