@@ -1,4 +1,4 @@
-import { readDrawing, type Drawing } from './strokes'
+import { packDrawing, readDrawing, type Drawing } from './strokes'
 
 /**
  * The pictures you have kept.
@@ -54,12 +54,47 @@ export function gallery(): Art[] {
   return out
 }
 
+/**
+ * One item as it is written down.
+ *
+ * ⚠️ PACKED, WHICH THE MAPS STORE HAS ALWAYS DONE AND THIS DID NOT. A drawing written
+ * the readable way is about 1.75 times the size of the same drawing packed — measured across
+ * three shapes, and the ratio barely moves. That matters here because this store's only limit
+ * is a COUNT: 120 items, and a detailed creature of 200 strokes at 40 points is 118KB written
+ * out long, so the cap is 13.8MB against a typical five-megabyte quota. Packed it is 67KB.
+ *
+ * ⚠️ IT IS NOT A MIGRATION, because readDrawing has always taken both forms. Everything
+ * already saved keeps reading exactly as it did, new writes are smaller, and the nine places
+ * that use this module go through gallery() and saveArt() rather than the key — so none of them
+ * can tell the difference.
+ *
+ * ⚠️ AND THE NAME IS NOT STORED, because it never was read. gallery() takes the name off
+ * the DRAWING; the copy beside it was a second answer to the same question, free to disagree
+ * and never consulted.
+ */
+const onDisk = (a: Art) => ({ id: a.id, at: a.at, art: packDrawing(a.art) })
+
+/**
+ * Whether the last write actually reached the disk.
+ *
+ * ⚠️ BECAUSE A FULL QUOTA USED TO BE SILENT, and silence is what turns a limit into a
+ * loss. The catch below is right — a keep that throws would be worse than one that half-works
+ * — but "it stays for this visit" is only an acceptable bargain if somebody is told it is the
+ * bargain they got. This is the flag; saying so is the room's job.
+ */
+let landed = true
+
+/** Did the last keep reach this browser's storage, or only this visit's memory? */
+export const gallerySaved = (): boolean => landed
+
 function write(items: Art[]) {
   cache = items.slice(0, MAX_ITEMS)
   try {
-    localStorage.setItem(KEY, JSON.stringify(cache))
+    localStorage.setItem(KEY, JSON.stringify(cache.map(onDisk)))
+    landed = true
   } catch {
-    /* storage full or blocked — it stays for this visit */
+    /* storage full or blocked — it stays for this visit, and gallerySaved() says so */
+    landed = false
   }
   listeners.forEach((l) => l())
 }

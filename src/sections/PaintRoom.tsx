@@ -34,7 +34,14 @@ import {
   MAX_LAYERS,
 } from '../draw/strokes'
 import { InCanvasWindow } from '../circuit/ui/canvasContext'
-import { gallery, removeArt, saveArt, subscribeGallery, type Art } from '../draw/gallery'
+import {
+  gallery,
+  gallerySaved,
+  removeArt,
+  saveArt,
+  subscribeGallery,
+  type Art,
+} from '../draw/gallery'
 import { ArtThumb } from '../draw/ArtThumb'
 import { SaveArt } from '../draw/SaveArt'
 import { together } from '../party/together'
@@ -1460,12 +1467,15 @@ export function PaintRoom() {
     saveArt(art)
     const made = savePet(name, art)
     setPetStep(null)
+    /* ⚠️ the same warning the Keep button gives, because this ends in a keep too */
     setNote(
-      made
-        ? `${made.name} is yours — find them in 🐾 Minions.`
-        : 'That could not be kept — is there anything on the page?',
+      !made
+        ? 'That could not be kept — is there anything on the page?'
+        : gallerySaved()
+          ? `${made.name} is yours — find them in 🐾 Minions.`
+          : `${made.name} is yours, but this browser is out of room — delete a picture, or they may not be here next time.`,
     )
-    window.setTimeout(() => setNote(null), 6000)
+    window.setTimeout(() => setNote(null), gallerySaved() ? 6000 : 9000)
   }
 
   /**
@@ -4028,8 +4038,20 @@ export function PaintRoom() {
             if (!name) return
             setDocName(name)
             const item = saveArt({ ...drawingRef.current, name })
-            setNote(item ? `Kept “${item.name}”` : 'Nothing to keep yet.')
-            window.setTimeout(() => setNote(null), 4000)
+            /**
+             * ⚠️ AND WHETHER IT REACHED THE DISK, which used to pass in silence. A full
+             * quota is caught inside the store and the picture stays for the visit — a keep
+             * that threw would be worse — but somebody who is told "Kept" and then loses it on
+             * reload has been misled by this line rather than by the storage. See gallerySaved.
+             */
+            setNote(
+              !item
+                ? 'Nothing to keep yet.'
+                : gallerySaved()
+                  ? `Kept “${item.name}”`
+                  : `“${item.name}” is here for now, but this browser is out of room — delete a picture to keep it for good.`,
+            )
+            window.setTimeout(() => setNote(null), gallerySaved() ? 4000 : 9000)
             if (item) setGalleryOpen(true)
           }}
         >

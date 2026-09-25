@@ -166,21 +166,13 @@ describe('the gallery', () => {
   })
 
   /**
-   * ⚠️ WHAT HAPPENS WHEN STORAGE IS FULL, WRITTEN DOWN BECAUSE IT IS A WAY TO LOSE
-   * WORK. `write` catches the quota error and carries on — "storage full or blocked, it stays
-   * for this visit" — so the drawing is in memory, absent from disk, and gone on reload with
-   * nothing said. This test asserts that as it IS rather than as it should be, so that the day
-   * somebody gives the gallery a byte budget or a way to complain, this is what turns red.
-   *
-   * ⚠️ AND IT IS REACHABLE, NOT THEORETICAL. Measured: a detailed drawing — 200 strokes
-   * of 40 points — is 118KB written the way this store writes it, so the 120-item cap is 13.8MB
-   * against a typical 5MB quota. The sibling maps store carries BOTH a byte ceiling and a packed
-   * palette for exactly this reason, and says so in its own comments; the gallery has neither.
-   * Packing alone would buy 1.75x and still not be enough, which is why this is a finding to
-   * decide about rather than a line to change.
+   * ⚠️ A FULL QUOTA NO LONGER PASSES IN SILENCE. `write` still catches — a keep that
+   * threw would be worse than one that half-works — but "it stays for this visit" is only an
+   * acceptable bargain if somebody is told it is the bargain they got.
    */
-  it('and when storage is full it keeps going, but the work is only in memory', async () => {
+  it('and when storage is full it keeps going, and says the work is only in memory', async () => {
     const g = await theGallery()
+    expect(g.gallerySaved()).toBe(true)
     vi.stubGlobal('localStorage', {
       ...fakeStorage,
       setItem: () => {
@@ -189,14 +181,91 @@ describe('the gallery', () => {
     })
     expect(() => g.saveArt(art('doomed'))).not.toThrow()
     expect(g.gallery(), 'it is there for this visit').toHaveLength(1)
-    /* but nothing reached disk, so a reload loses it and nobody was told */
     expect(store.get('paint_gallery_v1'), 'nothing was written down').toBeUndefined()
+    expect(g.gallerySaved(), 'and the room can find out').toBe(false)
   })
 
-  it('and the gallery has no byte budget, unlike the maps beside it', async () => {
+  it('and says so again once a write does land', async () => {
+    const g = await theGallery()
+    vi.stubGlobal('localStorage', {
+      ...fakeStorage,
+      setItem: () => {
+        throw new Error('quota')
+      },
+    })
+    g.saveArt(art('doomed'))
+    expect(g.gallerySaved()).toBe(false)
+    vi.stubGlobal('localStorage', fakeStorage)
+    g.saveArt(art('fine'))
+    expect(g.gallerySaved()).toBe(true)
+  })
+
+  /**
+   * ⚠️ PACKED ON DISK, WHICH IS WORTH ABOUT 1.75x. The store's only limit is a COUNT,
+   * so how much room 120 drawings need is decided entirely by how they are spelled. Measured on
+   * a realistic creature rather than asserted as a constant, because the ratio is a property of
+   * the format rather than a number anybody chose.
+   */
+  it('and writes drawings packed, which is most of the room it needs', async () => {
+    const g = await theGallery()
+    const big: Drawing = {
+      ...art('Clawbert'),
+      strokes: Array.from({ length: 200 }, (_, i) =>
+        stroke({
+          l: i % 3,
+          p: Array.from({ length: 80 }, (_, j) => +Math.abs(Math.sin(i * 7 + j)).toFixed(4)),
+        }),
+      ),
+      layers: ['body', 'wing', 'head'],
+    }
+    g.saveArt(big)
+    const onDisk = store.get('paint_gallery_v1')!.length
+    const readable = JSON.stringify([{ id: 'x', at: 0, art: big }]).length
+    expect(onDisk).toBeLessThan(readable * 0.75)
+  })
+
+  it('and still reads back everything it packed', async () => {
+    const g = await theGallery()
+    const d: Drawing = {
+      ...art('Detailed'),
+      bg: '#112233',
+      layers: ['body', 'wing'],
+      strokes: [stroke({ l: 0, k: 6, e: 2, a: 0.42 }), stroke({ l: 1, t: 'text', x: 'hi' })],
+    }
+    g.saveArt(d)
+    vi.resetModules()
+    const back = (await theGallery()).gallery()[0].art
+    expect(back.name).toBe('Detailed')
+    expect(back.bg).toBe('#112233')
+    expect(back.layers).toEqual(['body', 'wing'])
+    expect(back.strokes[0].k).toBe(6)
+    expect(back.strokes[0].e).toBe(2)
+    expect(back.strokes[0].a).toBeCloseTo(0.42, 2)
+    expect(back.strokes[1].x).toBe('hi')
+  })
+
+  /**
+   * ⚠️ AND A GALLERY WRITTEN THE OLD WAY STILL OPENS. readDrawing has always taken both
+   * forms, which is the whole reason this was a change rather than a migration — but "whole
+   * reason" is a claim, and this is the test of it.
+   */
+  it('and opens a gallery written the readable way, before any of this', async () => {
+    const old = art('Ancient')
+    store.set(
+      'paint_gallery_v1',
+      JSON.stringify([{ id: 'old-1', name: 'Ancient', at: 1, art: old }]),
+    )
+    const back = (await theGallery()).gallery()
+    expect(back).toHaveLength(1)
+    expect(back[0].name).toBe('Ancient')
+    expect(back[0].art.strokes.length).toBeGreaterThan(0)
+  })
+
+  it('and the gallery still has no byte budget, unlike the maps beside it', async () => {
     const m = await theMaps()
     const g = await theGallery()
-    /* maps knows how big it is allowed to be; the gallery counts items only */
+    /* maps knows how big it is allowed to be; the gallery counts items only. Packing bought
+       room; it did not turn the count into a budget, and 120 detailed drawings is still 7.9MB */
     expect(m.MAP_LIMIT.bytes).toBeGreaterThan(0)
     expect('GALLERY_LIMIT' in g || 'galleryBytes' in g, 'the gallery grew a byte cap').toBe(false)
   })
