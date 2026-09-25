@@ -131,7 +131,27 @@ export const runsAtYou = (beat: number, t: Temper): boolean => roll(beat, 2) < t
  * exactly what was reported. Measured, 0.12 to 0.34 maps onto one pounce every seven beats for
  * the least eager and every four for the keenest, which the cooldown then paces.
  */
-export const pounces = (beat: number, t: Temper): boolean => roll(beat, 5) < 0.08 + t.charge * 0.45
+/**
+ * ⚠️ AND A CEILING, BECAUSE THE FLOOR WAS FITTED TO THIRTEEN DRAWINGS. The rate above
+ * was set against `charge` landing between 0.12 and 0.34 — the spread of the creatures on one
+ * machine — inside a band that allows 0 to 0.95. That fix was right; the previous setting gave
+ * a leap every fifteen seconds. But a horned, four-legged creature comes out at 0.82 and
+ * pounces every 2.2 beats, which is twice as often as anything the tuning was aimed at, and
+ * nobody would find out until somebody drew one.
+ *
+ * ⚠️ THE NUMBER IS THE ONE THE NOTE ABOVE ALREADY NAMES. "Every four for the keenest" is
+ * a rate of 0.25, so that is the ceiling rather than something new invented for it — and every
+ * charge up to 0.378 is below it, which means no creature anybody has drawn changes at all.
+ * This bounds the part of the band nothing was ever tested against.
+ *
+ * ⚠️ A CAP ON THE RATE RATHER THAN ON THE INPUT, because a cap cannot be mis-fitted to a
+ * sample. Re-fitting the slope would be the third time a dial in this file was set against the
+ * range a formula happened to produce on the drawings that existed that week.
+ */
+const POUNCE_MOST = 0.25
+
+export const pounces = (beat: number, t: Temper): boolean =>
+  roll(beat, 5) < Math.min(POUNCE_MOST, 0.08 + t.charge * 0.45)
 /**
  * Whether this beat's swing is a committed one.
  *

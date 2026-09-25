@@ -218,13 +218,21 @@ describe('the questions the fight asks, beat by beat', () => {
    * what any single beat does — it is the RATE over many, and how that rate moves with the
    * dial that is supposed to drive it.
    */
+  /**
+   * ⚠️ FOUR THOUSAND BEATS, NOT FOUR HUNDRED, and the reason is the ceiling below. A
+   * measured rate is a SAMPLE of a roll, so at 400 beats the standard error on a rate of 0.25
+   * is 0.022 — wide enough that an honest bound would miss a cap set a fifth too high. It read
+   * 0.2625 against a true 0.25 and looked like a broken cap. At 4000 the error is 0.007 and the
+   * bound can mean something. Still microseconds.
+   */
+  const BEATS = 4000
   const rateOf = (
     fn: (beat: number, t: ReturnType<typeof temperOf>) => boolean,
     t: ReturnType<typeof temperOf>,
   ) => {
     let hits = 0
-    for (let beat = 0; beat < 400; beat++) if (fn(beat, t)) hits++
-    return hits / 400
+    for (let beat = 0; beat < BEATS; beat++) if (fn(beat, t)) hits++
+    return hits / BEATS
   }
 
   it.each([
@@ -245,19 +253,33 @@ describe('the questions the fight asks, beat by beat', () => {
    * it hard. `charge * 0.5` had been set against the range the formula COULD produce rather
    * than the one it does, which made a leap every fifteen seconds — "i cant notice any leap".
    *
-   * ⚠️ THE OTHER END IS DELIBERATELY LOOSE, because I nearly asserted a range the code
-   * never promised. The note on `pounces` records real creatures landing between 0.12 and 0.34
-   * charge, and my first upper bound came straight from that — then a horned, four-legged
-   * creature in the zoo came out at 0.82 and pounced every 2.3 beats. Legal: the band allows up
-   * to 0.95. So the bound here is only "not on nearly every beat", and how often the keenest
-   * creature SHOULD pounce is a tuning question for whoever owns the fight, not for a test.
+   * ⚠️ AND THE OTHER END IS NOW A REAL BOUND. It used to be only "not on nearly every
+   * beat", because the observed 0.12–0.34 charge range was a sample of thirteen and I would
+   * not assert a range the code never promised — then a horned, four-legged creature in this
+   * zoo came out at 0.82 and pounced every 2.3 beats, legal inside a band allowing 0.95.
+   * `pounces` carries a ceiling now, set to the rate its own note already named as the keenest:
+   * one every four beats. So both ends are the design rather than the sample.
    */
-  it('and a pounce is something you actually see, for every boss', () => {
+  it('and a pounce is something you actually see, and not a torrent', () => {
     for (const t of tempers()) {
       const r = rateOf(pounces, t)
       expect(r, `pounce every ${(1 / r).toFixed(1)} beats`).toBeGreaterThan(1 / 10)
-      expect(r, `pounce every ${(1 / r).toFixed(1)} beats`).toBeLessThan(0.6)
+      expect(r, `pounce every ${(1 / r).toFixed(1)} beats`).toBeLessThan(0.27)
     }
+  })
+
+  /**
+   * ⚠️ AND THE CAP CHANGES NOTHING FOR ANY CREATURE ANYBODY HAS DRAWN, which is the
+   * whole argument for it being safe: every charge up to 0.378 sits below the ceiling, and the
+   * thirteen real drawings the rate was fitted to run 0.12 to 0.34.
+   */
+  it('and the ceiling only touches charges nothing was ever tuned against', () => {
+    const under = fake({ charge: 0.34 })
+    const over = fake({ charge: 0.95 })
+    expect(rateOf(pounces, under)).toBeCloseTo(0.08 + 0.34 * 0.45, 1)
+    expect(rateOf(pounces, over)).toBeLessThan(0.27)
+    /* and it is still a ceiling rather than a flattening of everything below it */
+    expect(rateOf(pounces, fake({ charge: 0.1 }))).toBeLessThan(rateOf(pounces, under))
   })
 
   /**
