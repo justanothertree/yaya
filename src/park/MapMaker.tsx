@@ -7,7 +7,7 @@ import { cropToInk, MAX_PIECES, worldOf, type Door, type MapDoc, type Piece } fr
 import { MAP_GUIDE, type PlaceKind } from './mapOf'
 import { mapBytes, MAP_LIMIT, parkMaps, removeMap, saveMap, subscribeMaps } from './maps'
 import { downBy, outBy } from './strike'
-import type { Spot } from './walk'
+import { PARK, type Spot } from './walk'
 import { blankZone, brushZone, packZone, readZone, ZONE, zoneIsEmpty } from './zone'
 
 /**
@@ -346,7 +346,19 @@ export function MapMaker() {
         : null,
     [name, palette, pieces, inkDoc, spawn, block, doors],
   )
-  const world = doc ? worldOf(doc) : null
+  /**
+   * ⚠️ THE PARK IS THE SIZE IT IS, AND THIS SAID OTHERWISE. It read out worldOf — how
+   * big a world would hold everything placed — as though that were the size you get, so
+   * stamping something big against the right edge made it announce "4×3 screens" while the park
+   * has been a fixed three by three throughout. A readout that promises room nobody can walk in
+   * is worse than no readout.
+   *
+   * So it says the park's own size, and uses worldOf for the thing worldOf is actually good
+   * for: noticing that a piece hangs over the edge of the world. Which is worth knowing — the
+   * walker is held inside 0..1, so the far half of that piece is somewhere nobody can stand.
+   */
+  const needs = doc ? worldOf(doc) : null
+  const overEdge = !!needs && (needs.across > PARK.across || needs.down > PARK.down)
   const bytes = doc ? mapBytes(doc) : 0
 
   /**
@@ -1009,7 +1021,8 @@ export function MapMaker() {
         <span className="muted map-count">
           {pieces.length} thing{pieces.length === 1 ? '' : 's'}
           {ground.length ? ` · ${ground.length} line${ground.length === 1 ? '' : 's'}` : ''}
-          {world ? ` · ${world.across}×${world.down} screens` : ''}
+          {doc ? ` · ${PARK.across}×${PARK.down} screens` : ''}
+          {overEdge ? ' · something hangs over the edge' : ''}
         </span>
       </div>
 
