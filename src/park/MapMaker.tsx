@@ -3,10 +3,11 @@ import { ArtThumb } from '../draw/ArtThumb'
 import { gallery, subscribeGallery } from '../draw/gallery'
 import { paintDrawing, paintStroke, type Drawing, type Stroke, type Tool } from '../draw/strokes'
 import { MapGuide } from './MapGuide'
-import { cropToInk, worldOf, type MapDoc, type Piece } from './mapDoc'
+import { cropToInk, MAX_PIECES, worldOf, type MapDoc, type Piece } from './mapDoc'
 import { MAP_GUIDE, type PlaceKind } from './mapOf'
 import { mapBytes, MAP_LIMIT, parkMaps, removeMap, saveMap, subscribeMaps } from './maps'
-import { downBy } from './strike'
+import { downBy, outBy } from './strike'
+import type { Spot } from './walk'
 
 /**
  * Making a map by putting things on it, and by drawing on it.
@@ -64,11 +65,29 @@ const HIGHS: Array<[number, string]> = [
   [1.4, 'Twice that'],
 ]
 
-const SIZES: Array<[number, string]> = [
-  [0.06, 'Small'],
-  [0.12, 'Middling'],
-  [0.2, 'Big'],
-]
+/**
+ * How big a stamp is, in creatures across.
+ *
+ * ⚠️ A RANGE RATHER THAN THREE WORDS. It was Small / Middling / Big, which is three
+ * answers to a question with infinitely many — and reported as wanting to resize whatever you
+ * like. The three old sizes were 3.3, 6.5 and 11 creatures wide, so this covers them and a good
+ * deal either side.
+ *
+ * ⚠️ AND SAID IN CREATURES, like every other measurement on this page. The stored number
+ * is a fraction of the world, which means nothing to anybody; outBy is the one conversion, and
+ * it is the same one the fighting code measures reach with.
+ */
+const FAT = { min: 0.5, max: 24, step: 0.25, start: 6 }
+
+/** how fat a line is, the same way, so both sliders read in the same unit */
+const NIB = { min: 0.1, max: 10, step: 0.05, start: 1 }
+
+/**
+ * ⚠️ MULTIPLICATIVE, NOT A FIXED AMOUNT. A wheel notch that adds a quarter of a creature is a
+ * crawl at the big end and a jump at the small end; a notch that multiplies feels the same
+ * wherever you are, which is what every drawing program's brush size does.
+ */
+const WHEEL = 1.12
 
 /**
  * The tools that can draw on the ground.
@@ -135,11 +154,11 @@ const GROUND_INK = [
  * turns creature-heights into exactly that fraction, and it is the same function the fighting
  * code measures reach with.
  */
-const NIBS: Array<[number, string]> = [
-  [0.35, 'Thin'],
-  [1, 'A creature wide'],
-  [2.5, 'Broad'],
-]
+/** a size, said the way the rest of the page says sizes */
+const say = (creatures: number) =>
+  creatures < 1
+    ? `${Math.round(creatures * 100)}% of a creature`
+    : `${+creatures.toFixed(2)} creatures`
 
 /** how far the pointer has to move before a path records another point — see simplifyDrawing */
 const STEP = 0.0025
@@ -163,16 +182,20 @@ export function MapMaker() {
   const [pick, setPick] = useState(0)
   const [does, setDoes] = useState('past')
   const [high, setHigh] = useState(0.5)
-  const [wide, setWide] = useState(0.12)
+  /** how wide a stamp is, IN CREATURES — the world-unit width is outBy of this */
+  const [fat, setFat] = useState(FAT.start)
   const [erasing, setErasing] = useState(false)
+  const [scatter, setScatter] = useState(true)
   const [said, setSaid] = useState<string | null>(null)
+  const wide = outBy(fat)
 
-  /** stamping things down, or drawing on the ground under them */
-  const [mode, setMode] = useState<'stamp' | 'draw'>('stamp')
+  /** stamping things down, drawing the ground under them, or saying where you arrive */
+  const [mode, setMode] = useState<'stamp' | 'draw' | 'spawn'>('stamp')
   const [ground, setGround] = useState<Stroke[]>([])
+  const [spawn, setSpawn] = useState<Spot | null>(null)
   const [tool, setTool] = useState<Tool>('brush')
   const [ink, setInk] = useState(GROUND_INK[0])
-  const [nib, setNib] = useState(1)
+  const [nib, setNib] = useState(NIB.start)
 
   const field = useRef<HTMLDivElement | null>(null)
   const sheet = useRef<HTMLCanvasElement | null>(null)
@@ -184,6 +207,13 @@ export function MapMaker() {
    */
   const done = useRef<HTMLCanvasElement | null>(null)
   const live = useRef<Stroke | null>(null)
+  /** where the last stamp of a drag went, so the next one keeps its distance — see `sow` */
+  const sown = useRef<Spot | null>(null)
+  /** whether a stamping drag is in progress — the drawing modes use `live` for the same job */
+  const held = useRef(false)
+  /** ⚠️ read inside a non-passive wheel listener, which is wired once and cannot re-close */
+  const now = useRef({ mode, fat, nib })
+  now.current = { mode, fat, nib }
 
   /**
    * ⚠️ CROPPED ONCE, HERE, AND MEMOISED. A stamp is the thing somebody drew, not the sheet
@@ -217,9 +247,9 @@ export function MapMaker() {
   const doc: MapDoc | null = useMemo(
     () =>
       (palette.length && pieces.length) || inkDoc
-        ? { v: 1, name: name.trim() || 'Map', palette, pieces, ground: inkDoc }
+        ? { v: 1, name: name.trim() || 'Map', palette, pieces, ground: inkDoc, spawn }
         : null,
-    [name, palette, pieces, inkDoc],
+    [name, palette, pieces, inkDoc, spawn],
   )
   const world = doc ? worldOf(doc) : null
   const bytes = doc ? mapBytes(doc) : 0
@@ -280,6 +310,34 @@ export function MapMaker() {
     return () => window.removeEventListener('resize', again)
   }, [settle, show])
 
+  /**
+   * The wheel resizes whatever you are about to put down.
+   *
+   * ⚠️ addEventListener WITH passive:false, NOT onWheel. React attaches wheel handlers
+   * passively, and a passive listener may not call preventDefault — so through JSX the size
+   * would change AND the page would scroll out from under the field at the same time. This is
+   * the one thing here that cannot be written as a prop.
+   *
+   * ⚠️ AND IT READS ITS SETTINGS FROM A REF. Wired once, so a listener closing over
+   * `fat` would go on adding to whatever `fat` was when the field mounted.
+   */
+  useEffect(() => {
+    const el = field.current
+    if (!el) return
+    const turn = (e: WheelEvent) => {
+      if (e.deltaY === 0) return
+      const { mode: m, fat: f, nib: n } = now.current
+      if (m === 'spawn') return
+      e.preventDefault()
+      const by = e.deltaY < 0 ? WHEEL : 1 / WHEEL
+      if (m === 'stamp')
+        setFat(Math.max(FAT.min, Math.min(FAT.max, Math.round((f * by) / FAT.step) * FAT.step)))
+      else setNib(Math.max(NIB.min, Math.min(NIB.max, Math.round((n * by) / NIB.step) * NIB.step)))
+    }
+    el.addEventListener('wheel', turn, { passive: false })
+    return () => el.removeEventListener('wheel', turn)
+  }, [])
+
   /** where a press landed, as a fraction of the world */
   const spotOf = (e: React.PointerEvent | React.MouseEvent) => {
     const r = field.current?.getBoundingClientRect()
@@ -296,63 +354,116 @@ export function MapMaker() {
    * underneath is a click nobody can predict — the lesson the paint room's text tool already
    * learned about a control that swallowed the next drag.
    */
-  const put = (e: React.MouseEvent<HTMLDivElement>) => {
-    const s = spotOf(e)
-    if (!s) return
-    if (erasing) {
+
+  /**
+   * Put one down.
+   *
+   * ⚠️ AND A DRAG PUTS DOWN MANY, which is what a brush made out of a drawing IS. Asked for as
+   * making brushes from the things you draw, and the honest reading of it is not a new kind of
+   * ink: it is the stamp you already have, repeated along the gesture. That means a forest of
+   * fifty trees is fifty positions and ONE picture in the palette, every one of them a real
+   * place you can walk into — which a painted forest could never be.
+   *
+   * ⚠️ SPACED BY ITS OWN WIDTH, so the gap looks the same whatever size you are stamping.
+   * A fixed spacing lays big trees far apart and small ones in a solid smear.
+   */
+  const sow = (s: Spot) => {
+    if (!chosen) return
+    if (pieces.length >= MAX_PIECES) {
+      setSaid('That is as many things as one map holds.')
+      return
+    }
+    /* ⚠️ the drawing joins the palette once, on its first stamp, and every later copy is an index */
+    let at = palette.indexOf(chosen)
+    if (at < 0) {
+      at = palette.length
+      setPalette((was) => (was.includes(chosen) ? was : [...was, chosen]))
+    }
+    const row = DOES.find((d) => d[0] === does) ?? DOES[0]
+    /**
+     * ⚠️ SCATTER IS A CHOICE, because both answers are right for different things. Dragging
+     * a hedge wants them in a line and evenly sized; dragging a wood wants them not to look
+     * planted. Off by default would make the first drag of a forest look like fence posts.
+     */
+    const jig = scatter ? 1 + (Math.random() - 0.5) * 0.45 : 1
+    const off = scatter ? wide * 0.22 : 0
+    sown.current = s
+    setPieces((was) => [
+      ...was,
+      {
+        art: at,
+        at: {
+          x: Math.max(0, Math.min(1, s.x + (Math.random() - 0.5) * off)),
+          y: Math.max(0, Math.min(1, s.y + (Math.random() - 0.5) * off)),
+        },
+        wide: wide * jig,
+        kind: row[2],
+        top: row[0] === 'stand' ? high : 0,
+      },
+    ])
+    setSaid(null)
+  }
+
+  /** take off whatever the press is over — and keep taking them off while the press moves */
+  const rub = (s: Spot) => {
+    setPieces((was) => {
       /* the nearest piece to the press, within its own half-width — so a miss removes nothing */
       let best = -1
       let near = Infinity
-      pieces.forEach((p, i) => {
+      was.forEach((p, i) => {
         const d = Math.hypot(p.at.x - s.x, p.at.y - s.y)
         if (d < p.wide / 2 && d < near) {
           near = d
           best = i
         }
       })
-      if (best >= 0) setPieces(pieces.filter((_, i) => i !== best))
-      return
-    }
-    if (!chosen) return
-    /* ⚠️ the drawing joins the palette once, on its first stamp, and every later copy is an index */
-    let at = palette.indexOf(chosen)
-    let next = palette
-    if (at < 0) {
-      at = palette.length
-      next = [...palette, chosen]
-      setPalette(next)
-    }
-    const row = DOES.find((d) => d[0] === does) ?? DOES[0]
-    setPieces([
-      ...pieces,
-      { art: at, at: { x: s.x, y: s.y }, wide, kind: row[2], top: row[0] === 'stand' ? high : 0 },
-    ])
-    setSaid(null)
+      return best < 0 ? was : was.filter((_, i) => i !== best)
+    })
   }
 
   const down = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (mode !== 'draw' || e.button !== 0) return
+    if (e.button !== 0) return
     const s = spotOf(e)
     if (!s) return
+    /* ⚠️ capture on every mode, not only drawing. A drag that lays a line of trees has exactly
+       the same reason to keep receiving moves after the pointer leaves the field. */
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId)
+    } catch {
+      /* it still works; it just stops at the edge */
+    }
+    if (mode === 'spawn') {
+      setSpawn(s)
+      setSaid('That is where you will arrive.')
+      return
+    }
+    if (mode === 'stamp') {
+      held.current = true
+      if (erasing) rub(s)
+      else sow(s)
+      return
+    }
     if (ground.length >= MAX_GROUND) {
       setSaid(
         'That is as much ink as one map holds. Rub some out, or keep this one and start another.',
       )
       return
     }
-    /* ⚠️ capture is an OPTIMISATION, not the mechanism. It keeps a stroke coming when the
-       pointer leaves the field mid-drag, and it throws on a pointer id the browser does not
-       consider active — so a failure here must not cost the stroke. */
-    try {
-      e.currentTarget.setPointerCapture(e.pointerId)
-    } catch {
-      /* drawing still works; it just stops at the edge */
-    }
     live.current = { t: tool, c: ink, a: 1, w: downBy(nib), p: [s.x, s.y] }
     show()
   }
 
   const move = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (held.current) {
+      const s = spotOf(e)
+      if (!s) return
+      if (erasing) return rub(s)
+      /* far enough from the last one to be a separate thing rather than a smear */
+      const last = sown.current
+      const gap = wide * (scatter ? 0.72 : 0.92)
+      if (!last || Math.hypot(s.x - last.x, s.y - last.y) >= gap) sow(s)
+      return
+    }
     const k = live.current
     if (!k) return
     const s = spotOf(e)
@@ -372,6 +483,8 @@ export function MapMaker() {
   const up = (e: React.PointerEvent<HTMLDivElement>) => {
     const k = live.current
     live.current = null
+    held.current = false
+    sown.current = null
     try {
       if (e.currentTarget.hasPointerCapture(e.pointerId))
         e.currentTarget.releasePointerCapture(e.pointerId)
@@ -450,9 +563,22 @@ export function MapMaker() {
         >
           🖌 Draw the ground
         </button>
+        {/* ⚠️ ITS OWN TAB, though it is one press, because it is a different KIND of press
+            — it puts nothing on the map, it answers a question about the map. Folded in beside
+            the eraser it would be a third thing the same click could mean. */}
+        <button
+          className={'btn' + (mode === 'spawn' ? ' is-on' : '')}
+          aria-pressed={mode === 'spawn'}
+          onClick={() => {
+            setMode('spawn')
+            setErasing(false)
+          }}
+        >
+          ◎ Where you start
+        </button>
       </div>
 
-      {drawing ? (
+      {mode === 'spawn' ? null : drawing ? (
         <>
           <div className="map-row" role="group" aria-label="What to draw with">
             {INKS.map(([t, icon, label]) => (
@@ -467,15 +593,17 @@ export function MapMaker() {
                 {icon}
               </button>
             ))}
-            <label>
-              <span className="sr-only">How fat</span>
-              <select value={nib} onChange={(e) => setNib(Number(e.target.value))}>
-                {NIBS.map(([v, label]) => (
-                  <option key={v} value={v}>
-                    {label}
-                  </option>
-                ))}
-              </select>
+            <label className="map-size">
+              <span className="muted">Fat</span>
+              <input
+                type="range"
+                min={NIB.min}
+                max={NIB.max}
+                step={NIB.step}
+                value={nib}
+                onChange={(e) => setNib(Number(e.target.value))}
+              />
+              <span className="muted map-size-say">{say(nib)}</span>
             </label>
             <button
               className="btn"
@@ -568,16 +696,27 @@ export function MapMaker() {
                 </select>
               </label>
             )}
-            <label>
-              <span className="sr-only">How big</span>
-              <select value={wide} onChange={(e) => setWide(Number(e.target.value))}>
-                {SIZES.map(([v, label]) => (
-                  <option key={v} value={v}>
-                    {label}
-                  </option>
-                ))}
-              </select>
+            <label className="map-size">
+              <span className="muted">Size</span>
+              <input
+                type="range"
+                min={FAT.min}
+                max={FAT.max}
+                step={FAT.step}
+                value={fat}
+                onChange={(e) => setFat(Number(e.target.value))}
+              />
+              <span className="muted map-size-say">{say(fat)}</span>
             </label>
+            {/* the difference between a hedge and a wood, and both are things people want */}
+            <button
+              className={'btn' + (scatter ? ' is-on' : '')}
+              aria-pressed={scatter}
+              title="Vary the size and spacing as you drag"
+              onClick={() => setScatter((v) => !v)}
+            >
+              ✧ Scatter
+            </button>
             <button
               className={'btn' + (erasing ? ' is-on' : '')}
               aria-pressed={erasing}
@@ -595,12 +734,16 @@ export function MapMaker() {
       <div
         ref={field}
         className={
-          'map-field' + (erasing && !drawing ? ' is-erasing' : '') + (drawing ? ' is-drawing' : '')
+          'map-field' +
+          (erasing && mode === 'stamp' ? ' is-erasing' : '') +
+          (mode === 'spawn' ? ' is-placing' : '') +
+          /* ⚠️ a STAMPING drag is a drag too, so touch-action has to be none for it as well —
+             see .map-field.is-drawing, which is why this is not just `drawing` any more */
+          (mode !== 'spawn' ? ' is-drawing' : '')
         }
         /* ⚠️ THE WORLD'S SHAPE, NOT A SQUARE. Three screens by three is square in screenfuls
            and 16:10 in pixels — see MAP_GUIDE.paper, which is where that sum lives. */
         style={{ aspectRatio: String(MAP_GUIDE.paper) }}
-        onClick={drawing ? undefined : put}
         onPointerDown={down}
         onPointerMove={move}
         onPointerUp={up}
@@ -618,6 +761,17 @@ export function MapMaker() {
             has"), which is why this is that guide rather than a second one: same lines, same
             creature-inside-a-place reference, derived from the same PARK numbers. */}
         <MapGuide />
+        {/* ⚠️ ON TOP OF THE PIECES, because it is the one thing on this field that is not
+            scenery — it answers "where do I come in", and a tree drawn over it would hide the
+            answer. Not in the DOM at all until it has been set, so an unset map says so by
+            showing nothing rather than by parking a marker in the middle. */}
+        {spawn && (
+          <span
+            className="map-spawn"
+            style={{ left: `${spawn.x * 100}%`, top: `${spawn.y * 100}%` }}
+            aria-hidden
+          />
+        )}
         {pieces.map((p, i) => {
           const art = palette[p.art]
           if (!art) return null
@@ -670,6 +824,7 @@ export function MapMaker() {
                   setPalette(m.doc.palette)
                   setPieces(m.doc.pieces)
                   setGround(m.doc.ground?.strokes ?? [])
+                  setSpawn(m.doc.spawn)
                   setErasing(false)
                   setSaid(`Working on "${m.doc.name}".`)
                 }}
@@ -693,9 +848,11 @@ export function MapMaker() {
         </div>
       )}
       <p className="muted map-note">
-        {drawing
-          ? 'Drag on the field to draw. The whole field is the park, so a line across it is a walk of three screens.'
-          : 'Pick a picture, then press the field to put it down. The same picture can go down as many times as you like — it is only kept once.'}
+        {mode === 'spawn'
+          ? 'Press the field to say where you arrive. Without one you start in the middle of everything you placed.'
+          : drawing
+            ? 'Drag on the field to draw. The whole field is the park, so a line across it is a walk of three screens. The wheel changes how fat the line is.'
+            : 'Pick a picture, then press to put it down — or DRAG to lay a line of them. The same picture can go down as many times as you like, and is only kept once. The wheel changes the size.'}
       </p>
     </section>
   )

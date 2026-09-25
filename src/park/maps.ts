@@ -97,6 +97,7 @@ const onDisk = (doc: MapDoc) => ({
   pieces: doc.pieces,
   /* the ground is a drawing like any other, so it is packed like any other */
   ground: doc.ground ? packDrawing(doc.ground) : null,
+  spawn: doc.spawn,
 })
 
 const packed = (m: ParkMap) => ({ id: m.id, at: m.at, doc: onDisk(m.doc) })

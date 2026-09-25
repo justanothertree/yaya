@@ -68,6 +68,21 @@ export type MapDoc = {
    * middle of the park — and `ratio` is the world's own shape, so a circle stays a circle.
    */
   ground: Drawing | null
+  /**
+   * Where you land when you walk in, or null for the room to decide.
+   *
+   * ⚠️ BECAUSE THE GUESS CAN ONLY EVER BE A GUESS. Without one, the park starts you at
+   * the average of everything placed — which cannot strand you, and that is the whole of what
+   * it is good for. A map of two clusters starts you between them, in the empty middle; a map
+   * with a gate at one end starts you nowhere near the gate. Saying where a map begins is a
+   * thing only the person who drew it knows.
+   *
+   * ⚠️ A POINT, AND THE ROOM SPREADS AROUND IT. Asked for as a spawn AREA, and an area
+   * is what it has to become on arrival anyway — two people landing on one pixel is the bug
+   * the random spread already exists to stop. So this is the middle of that spread rather than
+   * a second rectangle to draw and keep in step.
+   */
+  spawn: Spot | null
 }
 
 /**
@@ -113,7 +128,7 @@ export function cropToInk(d: Drawing): Drawing {
 }
 
 const MAX_PALETTE = 24
-const MAX_PIECES = 400
+export const MAX_PIECES = 400
 const KINDS: PlaceKind[] = ['pond', 'grove', 'ring', 'rocks', 'wall', 'flat']
 
 const num = (v: unknown, lo: number, hi: number, fallback: number): number =>
@@ -166,8 +181,14 @@ export function readMapDoc(v: unknown): MapDoc | null {
      map, and refusing it would have silently eaten somebody's drawing on the way back in. */
   if (!pieces.length && !ground) return null
 
+  const at = o.spawn as { x?: unknown; y?: unknown } | undefined
+  const spawn =
+    at && typeof at === 'object' && typeof at.x === 'number' && typeof at.y === 'number'
+      ? { x: num(at.x, 0, 1, 0.5), y: num(at.y, 0, 1, 0.5) }
+      : null
+
   const name = typeof o.name === 'string' ? o.name.slice(0, 40).trim() : ''
-  return { v: 1, name: name || 'Map', palette, pieces, ground }
+  return { v: 1, name: name || 'Map', palette, pieces, ground, spawn }
 }
 
 /**

@@ -14101,6 +14101,48 @@ a.cz-msg-author:focus-visible {
   display: inline-grid;
   place-items: center;
 }
+/* a size and what it means, on one line — the number is said in creatures, see MapMaker */
+.map-size {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.8rem;
+}
+.map-size input[type='range'] {
+  width: 9rem;
+  max-width: 40vw;
+}
+/* ⚠️ a fixed width, or the row jiggles sideways every time the number changes under the
+   thumb — which is exactly when somebody is looking at it */
+.map-size-say {
+  min-width: 7.5rem;
+}
+/* ⚠️ WHERE YOU ARRIVE, drawn over the scenery rather than under it. It is the one mark on this
+   field that is not part of the picture, and a tree stamped on top of it would hide the answer
+   to the question it exists to answer. */
+.map-spawn {
+  position: absolute;
+  z-index: 2;
+  width: 22px;
+  height: 22px;
+  margin: -11px 0 0 -11px;
+  border-radius: 50%;
+  border: 2px solid var(--accent, #22c55e);
+  box-shadow:
+    0 0 0 2px rgba(0, 0, 0, 0.45),
+    inset 0 0 0 2px rgba(0, 0, 0, 0.35);
+  pointer-events: none;
+}
+.map-spawn::after {
+  content: '';
+  position: absolute;
+  inset: 6px;
+  border-radius: 50%;
+  background: var(--accent, #22c55e);
+}
+.map-field.is-placing {
+  cursor: cell;
+}
 .map-ink-any input[type='color'] {
   width: 44px;
   height: 34px;
@@ -14129,6 +14171,16 @@ a.cz-msg-author:focus-visible {
   width: 100% !important;
   height: 100% !important;
 }
+/* ⚠️ AND NO CHEQUERBOARD, WHICH IS THE OTHER HALF OF BORROWING ArtThumb. That pattern
+   is how a gallery thumbnail says "this paper is transparent", and it is exactly right there.
+   On a map it is a lie: the transparent part of a stamp is where the GROUND shows through, so
+   a tree arrived sitting on a grey chessboard tile instead of on the grass. The border goes for
+   the same reason — a stamp is scenery, not a framed picture. */
+.map-piece .art-thumb-box {
+  background-image: none;
+  border: 0;
+  border-radius: 0;
+}
 .map-piece.is-wall {
   outline: 1px dashed color-mix(in srgb, #57503f 60%, transparent);
 }
@@ -14137,20 +14189,11 @@ a.cz-msg-author:focus-visible {
   margin: 0;
 }
 
-/* ⚠️ A STAMPED PLACE DRAWS ITS PICTURE INSTEAD OF ITS MOUND. The gradient is what the built-in
-   park's five landmarks are, and they keep it — this only fires where a map carried art. The
-   wrapper has to be freed as well as the canvas, for the reason .map-piece already found out:
-   ArtThumb writes its pixel size onto the box, not the canvas. */
-.park-mark.has-art {
-  background: none;
-  display: grid;
-  place-items: center;
-}
-.park-mark.has-art .art-thumb-box,
-.park-mark.has-art canvas {
-  width: 100% !important;
-  height: 100% !important;
-}
+/* ⚠️ `.park-mark.has-art` USED TO LIVE HERE AND IS GONE. A stamped place drew its picture
+   as an element; every one of them now goes on a single canvas instead — see Scenery, which is
+   what took a 250-stamp map from 231 mark elements to none. The rules outlived the markup by one
+   commit, which is the ordinary way dead CSS happens: the thing that stopped rendering was in a
+   different file. */
 
 /* the field steps aside while the map maker is open — see ParkRoom, `making` */
 .park-stage.is-away {

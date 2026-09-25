@@ -46,12 +46,28 @@ export const SOLID = 0.66
 /** the gap left between a creature and a wall, so it rests against one rather than inside it */
 const SKIN = 0.0015
 
-/** Shrink a drawn box to the part that actually stops you. */
-export const wallOf = (x0: number, y0: number, x1: number, y1: number, name: string): Wall => {
+/**
+ * Shrink a drawn box to the part that actually stops you.
+ *
+ * ⚠️ AND `keep` IS 1 FOR ANYTHING SOMEBODY DREW. SOLID is the right answer for the
+ * park's own landmarks, which are soft-edged blobs: a creature stopped a full radius out from a
+ * smudge is a creature stopped by nothing visible. A stamped drawing is not a smudge — it has
+ * an outline, and the picture IS the shape — so taking a third of it away is a wall you can
+ * walk around the edges of, which is exactly how it was reported. The header above already
+ * claims "the box somebody drew IS the wall"; for stamps it was not, until this argument.
+ */
+export const wallOf = (
+  x0: number,
+  y0: number,
+  x1: number,
+  y1: number,
+  name: string,
+  keep: number = SOLID,
+): Wall => {
   const mx = (x0 + x1) / 2
   const my = (y0 + y1) / 2
-  const hw = ((x1 - x0) / 2) * SOLID
-  const hh = ((y1 - y0) / 2) * SOLID
+  const hw = ((x1 - x0) / 2) * keep
+  const hh = ((y1 - y0) / 2) * keep
   return { x0: mx - hw, y0: my - hh, x1: mx + hw, y1: my + hh, name }
 }
 

@@ -944,9 +944,15 @@ export function ParkRoom({
         name: m.name,
         places: () => placesOf(m.doc),
         ground: m.doc.ground,
+        spawn: m.doc.spawn,
       })),
-      /* a layer-named map has no ground and never will; that reader is on its way out */
-      ...layerMaps.map((a) => ({ name: a.name, places: () => mapOf(a.art), ground: null })),
+      /* a layer-named map has no ground and no spawn and never will; that reader is on its way out */
+      ...layerMaps.map((a) => ({
+        name: a.name,
+        places: () => mapOf(a.art),
+        ground: null,
+        spawn: null,
+      })),
     ],
     [stamped, layerMaps],
   )
@@ -1454,12 +1460,19 @@ export function ParkRoom({
      * clusters still starts between them — but it is the one that cannot strand you, because
      * every piece pulls the start towards itself.
      */
-    const heart = places?.length
-      ? places.reduce(
-          (a, pl) => ({ x: a.x + pl.at.x / places.length, y: a.y + pl.at.y / places.length }),
-          { x: 0, y: 0 },
-        )
-      : null
+    /**
+     * ⚠️ WHAT THE MAP SAYS, BEFORE WHAT THE MAP IMPLIES. A spawn point is somebody's answer
+     * to "where does this begin"; the average below is a guess that only promises not to
+     * strand you. A guess must never beat an answer.
+     */
+    const heart =
+      drawn?.spawn ??
+      (places?.length
+        ? places.reduce(
+            (a, pl) => ({ x: a.x + pl.at.x / places.length, y: a.y + pl.at.y / places.length }),
+            { x: 0, y: 0 },
+          )
+        : null)
     you.current = restingStriker(
       heart
         ? restingWalker(

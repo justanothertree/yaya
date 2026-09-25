@@ -117,7 +117,9 @@ export function setWorld(places: Place[] | null) {
       .map((p) => ({ at: p.at, size: p.size, top: p.top, name: p.name, kind: p.kind }))
     shownWalls = drawn
       .filter((p) => p.kind === 'wall')
-      .map((p) => wallOf(p.box.x0, p.box.y0, p.box.x1, p.box.y1, p.name))
+      /* ⚠️ a place carrying a PICTURE is solid to the edge of the box it was stamped in;
+         one without is a park landmark and keeps the two-thirds — see wallOf */
+      .map((p) => wallOf(p.box.x0, p.box.y0, p.box.x1, p.box.y1, p.name, p.art ? 1 : undefined))
   }
   version++
   for (const fn of listeners) fn()
