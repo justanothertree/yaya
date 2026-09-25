@@ -14059,13 +14059,44 @@ a.cz-msg-author:focus-visible {
   cursor: crosshair;
   touch-action: none;
 }
-/* the ground, under every stamp and under the guide — the press belongs to the field */
-.map-ink {
+/* ⚠️ THE TWO CANVASES ARE THE FIELD, NOT THE WORLD, which is the whole zoom design: they
+   are the size of what you can see and draw through a transform, so six times in is rendered at
+   the screen's own resolution rather than being a six-times magnification of pixels drawn for
+   one. Explicit width and height because `inset: 0` does NOT size a canvas — it is a replaced
+   element and keeps its intrinsic size. */
+.map-ink,
+.map-things {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
   pointer-events: none;
+}
+.map-ink {
+  z-index: 0;
+}
+.map-things {
+  z-index: 1;
+}
+/* ⚠️ AND THE WORLD LAYER IS THE FIELD SCALED AND SHIFTED — see `place`, which writes all
+   four of these. A child at `left: 40%` of a layer that is 300% wide and sits at -60% therefore
+   lands where 0.4 of the world belongs, with no transform and no second coordinate system. */
+.map-stage {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 2;
+  pointer-events: none;
+}
+/* a plus, a minus, and where you are */
+.map-zoom {
+  display: inline-flex;
+  gap: 0.25rem;
+}
+.map-zoom .btn {
+  min-width: 2.6rem;
 }
 .map-modes {
   display: flex;
@@ -14211,6 +14242,10 @@ a.cz-msg-author:focus-visible {
   height: 100%;
   z-index: 3;
   pointer-events: none;
+  /* ⚠️ THIS ONE *IS* IN THE WORLD LAYER, unlike the other two, and it is the exception
+     that makes sense: its buffer is one pixel per CELL, so stretching it is not a loss of
+     detail — there is no detail between cells. `pixelated` then keeps the edges where the
+     collision boxes actually are, which is honesty rather than style. */
   image-rendering: pixelated;
 }
 .map-ink-any input[type='color'] {

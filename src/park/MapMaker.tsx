@@ -91,6 +91,20 @@ const NIB = { min: 0.1, max: 10, step: 0.05, start: 1 }
 const WHEEL = 1.12
 
 /**
+ * How far in you can go, and how the wheel steps.
+ *
+ * ⚠️ THE FIELD IS THREE SCREENS ACROSS AND THE CARD IS ONE COLUMN WIDE, which is the whole
+ * reason this exists — reported as there being no way to zoom in or move around with any of the
+ * map tools. At 1× a creature is about eight pixels tall on a desk and four on a phone, so
+ * placing anything small was aiming at a speck. Six times in makes a creature the size it is in
+ * the game, which is as far as anybody needs to go.
+ */
+const ZOOM = { min: 1, max: 6, step: 1.18 }
+
+/** how big a stamp is baked before being blitted — the same argument as SPRITE in ParkRoom */
+const SPRITE = 192
+
+/**
  * The tools that can draw on the ground.
  *
  * ⚠️ NOT EVERY TOOL THE PAINT ROOM HAS, and the two that are missing are missing for a
@@ -220,8 +234,48 @@ export function MapMaker() {
   const [redo, setRedo] = useState<Stroke[]>([])
 
   const field = useRef<HTMLDivElement | null>(null)
+  const stage = useRef<HTMLDivElement | null>(null)
   const sheet = useRef<HTMLCanvasElement | null>(null)
+  const props = useRef<HTMLCanvasElement | null>(null)
   const fence = useRef<HTMLCanvasElement | null>(null)
+  /**
+   * What part of the world you are looking at: the world fraction at the field's top-left, and
+   * how far in.
+   *
+   * ⚠️ THE SAME MODEL THE PAINT ROOM USES, on purpose — `off` plus `scale`, zoom toward the
+   * pointer, and an offset clamped to `1 - 1/scale` so the view can never leave the paper. It
+   * is the room next door and somebody moving between them should not have to learn a second
+   * set of rules.
+   *
+   * ⚠️ A REF, BECAUSE PANNING IS SIXTY FRAMES A SECOND. The zoom is mirrored into state for
+   * the readout; the offset never is, and the things that depend on it are moved by hand in
+   * `place`.
+   */
+  const view = useRef({ x: 0, y: 0, z: 1 })
+  const [zoom, setZoom] = useState(1)
+  /** a middle-button or space-held drag that moves the view instead of drawing on it */
+  const shove = useRef<{ x: number; y: number; ox: number; oy: number } | null>(null)
+  const [spacing, setSpacing] = useState(false)
+  /**
+   * Every finger currently down, and what a two-finger gesture started from.
+   *
+   * ⚠️ BECAUSE A PHONE HAS NO ctrl KEY AND NO MIDDLE BUTTON, which is where the other
+   * two ways in fail — and the phone is where this matters most: the field is three hundred
+   * pixels wide there and holds three screenfuls of park. Without this, zooming in on a phone
+   * would work and then strand you, able to see a quarter of the map and unable to reach the
+   * rest.
+   */
+  const fingers = useRef(new Map<number, { x: number; y: number }>())
+  const pinch = useRef<{
+    d: number
+    cx: number
+    cy: number
+    z: number
+    wx: number
+    wy: number
+  } | null>(null)
+  /** each palette drawing rasterised once, then blitted wherever it was stamped */
+  const sprites = useRef(new Map<Drawing, HTMLCanvasElement>())
   /**
    * ⚠️ TWO SURFACES, THE SAME WAY THE PAINT ROOM DOES IT. Everything committed is painted
    * once onto `done`; the stroke being dragged is drawn on a copy of it each move. Repainting
@@ -234,6 +288,8 @@ export function MapMaker() {
   const sown = useRef<Spot | null>(null)
   /** whether a stamping drag is in progress — the drawing modes use `live` for the same job */
   const held = useRef(false)
+  /** how many pieces there were when this stamping gesture began, so a pinch can undo it */
+  const sank = useRef(0)
   /** ⚠️ read inside a non-passive wheel listener, which is wired once and cannot re-close */
   const now = useRef({ mode, fat, nib, zfat })
   now.current = { mode, fat, nib, zfat }
@@ -293,7 +349,20 @@ export function MapMaker() {
   const world = doc ? worldOf(doc) : null
   const bytes = doc ? mapBytes(doc) : 0
 
-  /** everything already committed, onto the off-screen copy — only when it actually changes */
+  /**
+   * Everything already committed, onto the off-screen copy — only when it actually changes.
+   *
+   * ⚠️ THE CANVAS IS THE FIELD, AND THE VIEW IS A TRANSFORM ON IT. The obvious way to zoom is
+   * to make the canvas as big as the zoomed world and let CSS scale it, and it is wrong twice:
+   * at six times in it would be a fifty-megapixel buffer, and it would be a six-times
+   * magnification of pixels drawn for one — soft edges on work somebody zoomed in to do
+   * precisely. Drawing through a transform means every zoom level is rendered at the screen's
+   * own resolution and the buffer never changes size.
+   *
+   * ⚠️ AND paintDrawing's WIDTH IS THE ZOOMED WORLD, not the field, which is what makes a
+   * stroke's width scale with the zoom — `w` is a fraction of the short side, so handing it the
+   * field's size would draw hairlines at 6× on a picture whose lines are a creature thick.
+   */
   const settle = useCallback(() => {
     const c = sheet.current
     if (!c) return
@@ -318,9 +387,71 @@ export function MapMaker() {
     const bc = back.getContext('2d')
     if (!bc) return
     bc.setTransform(1, 0, 0, 1, 0, 0)
-    if (inkDoc) paintDrawing(bc, inkDoc, pw, ph)
-    else bc.clearRect(0, 0, pw, ph)
+    bc.clearRect(0, 0, pw, ph)
+    if (inkDoc) {
+      const { x, y, z } = view.current
+      bc.translate(-x * z * pw, -y * z * ph)
+      paintDrawing(bc, inkDoc, pw * z, ph * z)
+    }
   }, [inkDoc])
+
+  /**
+   * Every stamped piece, on one canvas.
+   *
+   * ⚠️ THE SAME ARGUMENT Scenery MAKES IN THE PARK, and it became true here the moment the
+   * piece limit went from four hundred to two thousand: each one was an element carrying its own
+   * ArtThumb canvas, which is two thousand canvases in a card, rebuilt by React whenever the
+   * view moved. A palette holds at most twenty-four pictures however many pieces there are, so
+   * this is twenty-four bakes and however many drawImage calls survive the cull.
+   */
+  const stand = useCallback(() => {
+    const c = props.current
+    if (!c) return
+    const r = c.getBoundingClientRect()
+    if (r.width < 2) return
+    const dpr = Math.min(2, window.devicePixelRatio || 1)
+    const pw = Math.round(r.width * dpr)
+    const ph = Math.round(r.height * dpr)
+    if (c.width !== pw || c.height !== ph) {
+      c.width = pw
+      c.height = ph
+    }
+    const ctx = c.getContext('2d')
+    if (!ctx) return
+    ctx.setTransform(1, 0, 0, 1, 0, 0)
+    ctx.clearRect(0, 0, pw, ph)
+    const { x, y, z } = view.current
+    if (sprites.current.size > 48) sprites.current.clear()
+    for (const p of pieces) {
+      const art = palette[p.art]
+      if (!art) continue
+      const ar = art.ratio > 0.05 && art.ratio < 20 ? art.ratio : 1
+      /* a width in world-x is that fraction of the zoomed world; the height follows the
+         picture's own proportions, which is right because the field is the world's shape */
+      const mw = p.wide * z * pw
+      const mh = mw / ar
+      const cx = (p.at.x - x) * z * pw
+      const cy = (p.at.y - y) * z * ph
+      if (cx + mw / 2 < 0 || cx - mw / 2 > pw || cy + mh / 2 < 0 || cy - mh / 2 > ph) continue
+      let sp = sprites.current.get(art)
+      if (!sp) {
+        sp = document.createElement('canvas')
+        sp.width = SPRITE
+        sp.height = Math.max(1, Math.round(SPRITE / ar))
+        const sc = sp.getContext('2d')
+        if (sc) paintDrawing(sc, art, sp.width, sp.height)
+        sprites.current.set(art, sp)
+      }
+      ctx.drawImage(sp, cx - mw / 2, cy - mh / 2, mw, mh)
+      if (p.kind === 'wall') {
+        ctx.save()
+        ctx.strokeStyle = 'rgba(200,180,120,.55)'
+        ctx.setLineDash([4, 4])
+        ctx.strokeRect(cx - mw / 2, cy - mh / 2, mw, mh)
+        ctx.restore()
+      }
+    }
+  }, [pieces, palette])
 
   /** what you can see: everything committed, plus the one being dragged right now */
   const show = useCallback(() => {
@@ -332,22 +463,107 @@ export function MapMaker() {
     ctx.setTransform(1, 0, 0, 1, 0, 0)
     ctx.clearRect(0, 0, c.width, c.height)
     ctx.drawImage(back, 0, 0)
-    if (live.current) paintStroke(ctx, live.current, c.width, c.height)
+    if (live.current) {
+      /* the same transform `settle` painted the committed strokes with, or the one under your
+         hand would land somewhere else entirely the moment you zoomed in */
+      const { x, y, z } = view.current
+      ctx.translate(-x * z * c.width, -y * z * c.height)
+      paintStroke(ctx, live.current, c.width * z, c.height * z)
+    }
   }, [])
 
-  useEffect(() => {
+  /** put the world layer where the view says, without asking React to redraw two thousand things */
+  const place = useCallback(() => {
+    const w = stage.current
+    if (!w) return
+    const { x, y, z } = view.current
+    w.style.width = `${z * 100}%`
+    w.style.height = `${z * 100}%`
+    w.style.left = `${-x * z * 100}%`
+    w.style.top = `${-y * z * 100}%`
+  }, [])
+
+  const redraw = useCallback(() => {
+    place()
     settle()
     show()
+    stand()
+  }, [place, settle, show, stand])
+
+  /** the view can never leave the paper: at 1x it IS the paper, further in it can roam */
+  const rein = (z: number) => {
+    const span = 1 - 1 / z
+    view.current.x = Math.max(0, Math.min(span, view.current.x))
+    view.current.y = Math.max(0, Math.min(span, view.current.y))
+  }
+
+  /**
+   * ⚠️ TOWARD THE POINTER, NOT THE MIDDLE. Zooming about the centre slides the thing you were
+   * looking at off to one side and you spend the whole time chasing it — the same note the paint
+   * room's wheel carries, and the same arithmetic.
+   */
+  const closer = (to: number, fx = 0.5, fy = 0.5) => {
+    const now = view.current
+    /* going all the way out has only one answer for where the view sits, and it is the corner */
+    if (to <= ZOOM.min) {
+      now.x = 0
+      now.y = 0
+      now.z = 1
+      setZoom(1)
+      redraw()
+      return
+    }
+    const next = Math.max(ZOOM.min, Math.min(ZOOM.max, to))
+    const wx = now.x + fx / now.z
+    const wy = now.y + fy / now.z
+    now.x = wx - fx / next
+    now.y = wy - fy / next
+    now.z = next
+    rein(next)
+    setZoom(next)
+    redraw()
+  }
+  /**
+   * ⚠️ REACHED THROUGH A REF BY THE WHEEL LISTENER, which is wired once. Called
+   * directly it would be the `closer` from the first render forever, holding the first `stand`
+   * — so zooming would repaint the pieces you had when the field mounted, which is none.
+   */
+  const zoomer = useRef(closer)
+  zoomer.current = closer
+
+  useEffect(() => {
+    redraw()
     /* ⚠️ a window listener rather than a ResizeObserver: the field is a percentage of the
        card and the card is a percentage of the page, so the only thing that changes its
        size is the window changing. An observer here would also be untestable — see CLAUDE.md */
-    const again = () => {
-      settle()
-      show()
+    window.addEventListener('resize', redraw)
+    return () => window.removeEventListener('resize', redraw)
+  }, [redraw])
+
+  /**
+   * ⚠️ SPACE IS HELD, NOT PRESSED, which is why this is a key listener and not a button.
+   * Every mode already spends a drag on something — stamping, drawing, painting a zone — so
+   * the pan gesture has to be one that cannot be confused with any of them. Space-drag and the
+   * middle button are what every drawing program uses for exactly this reason.
+   */
+  useEffect(() => {
+    const down = (e: KeyboardEvent) => {
+      if (e.code !== 'Space' || e.repeat) return
+      const t = e.target as HTMLElement | null
+      /* not while somebody is typing the map's name */
+      if (t && /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)) return
+      setSpacing(true)
     }
-    window.addEventListener('resize', again)
-    return () => window.removeEventListener('resize', again)
-  }, [settle, show])
+    const up = (e: KeyboardEvent) => {
+      if (e.code === 'Space') setSpacing(false)
+    }
+    window.addEventListener('keydown', down)
+    window.addEventListener('keyup', up)
+    return () => {
+      window.removeEventListener('keydown', down)
+      window.removeEventListener('keyup', up)
+    }
+  }, [])
 
   /**
    * The wheel resizes whatever you are about to put down.
@@ -365,9 +581,25 @@ export function MapMaker() {
     if (!el) return
     const turn = (e: WheelEvent) => {
       if (e.deltaY === 0) return
+      e.preventDefault()
+      /**
+       * ⚠️ PLAIN WHEEL RESIZES AND ctrl/⌘ ZOOMS, which is the opposite way round from the
+       * paint room next door — deliberately, and it is the one place the two rooms differ.
+       * Resizing what you are about to put down was asked for on the bare wheel, and taking it
+       * back to make room for zoom would be undoing the thing that was wanted. The modifier is
+       * the browser's own zoom gesture, so it is the one people already reach for.
+       */
+      if (e.ctrlKey || e.metaKey) {
+        const r = el.getBoundingClientRect()
+        zoomer.current(
+          view.current.z * (e.deltaY < 0 ? ZOOM.step : 1 / ZOOM.step),
+          (e.clientX - r.left) / r.width,
+          (e.clientY - r.top) / r.height,
+        )
+        return
+      }
       const { mode: m, fat: f, nib: n, zfat: z } = now.current
       if (m === 'spawn' || m === 'door') return
-      e.preventDefault()
       const by = e.deltaY < 0 ? WHEEL : 1 / WHEEL
       const fat = (v: number) =>
         Math.max(FAT.min, Math.min(FAT.max, Math.round((v * by) / FAT.step) * FAT.step))
@@ -416,13 +648,20 @@ export function MapMaker() {
     ctx.putImageData(img, 0, 0)
   }, [blockTick, mode])
 
-  /** where a press landed, as a fraction of the world */
+  /**
+   * Where a press landed IN THE WORLD, not on the screen.
+   *
+   * ⚠️ THROUGH THE VIEW, or everything would land where the cursor is rather than where
+   * it is pointing the moment you zoom in — the inverse of what `place` and the canvases do to
+   * put the world on screen. The paint room's `at` is the same three lines for the same reason.
+   */
   const spotOf = (e: React.PointerEvent | React.MouseEvent) => {
     const r = field.current?.getBoundingClientRect()
     if (!r || r.width < 2) return null
+    const { x, y, z } = view.current
     return {
-      x: Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)),
-      y: Math.max(0, Math.min(1, (e.clientY - r.top) / r.height)),
+      x: Math.max(0, Math.min(1, x + (e.clientX - r.left) / r.width / z)),
+      y: Math.max(0, Math.min(1, y + (e.clientY - r.top) / r.height / z)),
     }
   }
 
@@ -500,6 +739,59 @@ export function MapMaker() {
   }
 
   const down = (e: React.PointerEvent<HTMLDivElement>) => {
+    fingers.current.set(e.pointerId, { x: e.clientX, y: e.clientY })
+    /**
+     * ⚠️ A SECOND FINGER CANCELS THE FIRST ONE'S WORK. Putting two fingers on a drawing
+     * surface means "move the paper", never "draw two lines" — and the stroke already begun is
+     * thrown away rather than committed, because it was the beginning of a gesture that turned
+     * out to be a pinch. Committing it would leave a stray mark every time somebody zoomed.
+     */
+    if (fingers.current.size === 2) {
+      const [a, b] = [...fingers.current.values()]
+      const r = field.current?.getBoundingClientRect()
+      live.current = null
+      /* ⚠️ AND THE STAMP THE FIRST FINGER ALREADY PUT DOWN GOES WITH IT. A touch places
+         one immediately — that is what makes a tap work — so reaching in to zoom left a tree
+         behind every time. The count at the start of the gesture is the whole undo. */
+      if (held.current) setPieces((was) => was.slice(0, sank.current))
+      held.current = false
+      sown.current = null
+      shove.current = null
+      if (r && r.width > 1) {
+        const cx = (a.x + b.x) / 2
+        const cy = (a.y + b.y) / 2
+        const { x, y, z } = view.current
+        pinch.current = {
+          d: Math.hypot(a.x - b.x, a.y - b.y) || 1,
+          cx,
+          cy,
+          z,
+          /* the world point between the fingers, which is the one that must not move */
+          wx: x + (cx - r.left) / r.width / z,
+          wy: y + (cy - r.top) / r.height / z,
+        }
+      }
+      redraw()
+      return
+    }
+    if (fingers.current.size > 2) return
+    /**
+     * ⚠️ THE MIDDLE BUTTON, OR SPACE HELD, AND NOTHING ELSE. Every mode already spends
+     * its drag: left-drag stamps a line, or draws, or paints a zone. A pan that shared any of
+     * those would be a gesture you could not predict — the lesson the erase MODE already
+     * learned about a press meaning two things.
+     */
+    if (e.button === 1 || (spacing && e.button === 0)) {
+      /* the browser's autoscroll steals the middle button unless this is stopped */
+      e.preventDefault()
+      shove.current = { x: e.clientX, y: e.clientY, ox: view.current.x, oy: view.current.y }
+      try {
+        e.currentTarget.setPointerCapture(e.pointerId)
+      } catch {
+        /* the drag still works while the pointer stays inside */
+      }
+      return
+    }
     if (e.button !== 0) return
     const s = spotOf(e)
     if (!s) return
@@ -530,6 +822,7 @@ export function MapMaker() {
     }
     if (mode === 'stamp') {
       held.current = true
+      sank.current = pieces.length
       if (erasing) rub(s)
       else sow(s)
       return
@@ -551,6 +844,38 @@ export function MapMaker() {
   }
 
   const move = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (fingers.current.has(e.pointerId))
+      fingers.current.set(e.pointerId, { x: e.clientX, y: e.clientY })
+    const grip = pinch.current
+    if (grip) {
+      if (fingers.current.size < 2) return
+      const [a, b] = [...fingers.current.values()]
+      const r = field.current?.getBoundingClientRect()
+      if (!r || r.width < 2) return
+      const d = Math.hypot(a.x - b.x, a.y - b.y) || 1
+      const cx = (a.x + b.x) / 2
+      const cy = (a.y + b.y) / 2
+      const z = Math.max(ZOOM.min, Math.min(ZOOM.max, (grip.z * d) / grip.d))
+      /* keep the world point that was between the fingers between the fingers */
+      view.current.z = z
+      view.current.x = grip.wx - (cx - r.left) / r.width / z
+      view.current.y = grip.wy - (cy - r.top) / r.height / z
+      rein(z)
+      setZoom(z)
+      redraw()
+      return
+    }
+    const push = shove.current
+    if (push) {
+      const r = field.current?.getBoundingClientRect()
+      if (!r || r.width < 2) return
+      const { z } = view.current
+      view.current.x = push.ox - (e.clientX - push.x) / r.width / z
+      view.current.y = push.oy - (e.clientY - push.y) / r.height / z
+      rein(z)
+      redraw()
+      return
+    }
     if (held.current) {
       const s = spotOf(e)
       if (!s) return
@@ -583,17 +908,27 @@ export function MapMaker() {
   }
 
   const up = (e: React.PointerEvent<HTMLDivElement>) => {
+    fingers.current.delete(e.pointerId)
+    if (pinch.current) {
+      /* ⚠️ lifting ONE of two fingers ends the gesture rather than handing the drag to the
+         other one — otherwise letting go of a pinch draws a line to wherever the remaining
+         thumb happens to be resting */
+      if (fingers.current.size < 2) pinch.current = null
+      return
+    }
     const k = live.current
     live.current = null
     held.current = false
     sown.current = null
+    const wasShoving = !!shove.current
+    shove.current = null
     try {
       if (e.currentTarget.hasPointerCapture(e.pointerId))
         e.currentTarget.releasePointerCapture(e.pointerId)
     } catch {
       /* nothing to release */
     }
-    if (!k) return
+    if (wasShoving || !k) return
     /**
      * ⚠️ A TAP IS A DOT, NOT NOTHING. A two-point tool dragged nowhere would be a zero-sized
      * box, and a path of one point has no direction to be drawn along — so both get a second
@@ -640,6 +975,37 @@ export function MapMaker() {
             ? '⬇ Replace that map'
             : '⬇ Keep the map'}
         </button>
+        {/* ⚠️ ALWAYS THERE, IN EVERY MODE, and next to the field rather than inside a
+            tool row. Zoom is not a property of the brush you are holding; it is where you are
+            standing, and it has to work while you are placing a door as much as while you are
+            drawing. The buttons exist because ctrl-wheel is a thing you have to be told and a
+            plus sign is not — see the note under the field. */}
+        <span className="map-zoom" role="group" aria-label="How close">
+          <button
+            className="btn"
+            aria-label="Further out"
+            disabled={zoom <= ZOOM.min}
+            onClick={() => closer(zoom / ZOOM.step)}
+          >
+            −
+          </button>
+          <button
+            className="btn"
+            onClick={() => closer(1)}
+            disabled={zoom === 1 && view.current.x === 0 && view.current.y === 0}
+            title="Show the whole map"
+          >
+            {zoom === 1 ? 'All of it' : `${zoom.toFixed(1)}×`}
+          </button>
+          <button
+            className="btn"
+            aria-label="Closer in"
+            disabled={zoom >= ZOOM.max}
+            onClick={() => closer(zoom * ZOOM.step)}
+          >
+            +
+          </button>
+        </span>
         <span className="muted map-count">
           {pieces.length} thing{pieces.length === 1 ? '' : 's'}
           {ground.length ? ` · ${ground.length} line${ground.length === 1 ? '' : 's'}` : ''}
@@ -996,61 +1362,53 @@ export function MapMaker() {
             the press belongs to the field, which is the only thing that knows which mode it
             is in. */}
         <canvas ref={sheet} className="map-ink" aria-hidden />
-        {/* ⚠️ HOW BIG A SCREEN IS, DRAWN ON THE FIELD. This field is the WHOLE world, which
-            is three screenfuls across — so two stamps at opposite ends are nowhere near each
-            other and nothing said so. That is the same mistake the old paint-room guide was
-            built to stop ("every test map came out bigger than any landmark the real park
-            has"), which is why this is that guide rather than a second one: same lines, same
-            creature-inside-a-place reference, derived from the same PARK numbers. */}
-        <MapGuide />
-        {/* only while you are painting it — see the effect that draws this */}
-        {mode === 'block' && <canvas ref={fence} className="map-fence" aria-hidden />}
-        {/* ⚠️ ON TOP OF THE PIECES, because it is the one thing on this field that is not
-            scenery — it answers "where do I come in", and a tree drawn over it would hide the
-            answer. Not in the DOM at all until it has been set, so an unset map says so by
-            showing nothing rather than by parking a marker in the middle. */}
-        {doors.map((d, i) => (
-          <span
-            key={i}
-            className="map-door"
-            style={{ left: `${d.at.x * 100}%`, top: `${d.at.y * 100}%`, width: `${d.wide * 100}%` }}
-            title={`To ${d.to}`}
-          >
-            <b>{d.to}</b>
-          </span>
-        ))}
-        {spawn && (
-          <span
-            className="map-spawn"
-            style={{ left: `${spawn.x * 100}%`, top: `${spawn.y * 100}%` }}
-            aria-hidden
-          />
-        )}
-        {pieces.map((p, i) => {
-          const art = palette[p.art]
-          if (!art) return null
-          const ar = art.ratio > 0.05 && art.ratio < 20 ? art.ratio : 1
-          return (
+        {/* ⚠️ AND EVERY STAMP ON ONE CANVAS ABOVE IT — see `stand`. These used to be an
+            element each, which was fine at a cap of four hundred and is two thousand canvases
+            now. */}
+        <canvas ref={props} className="map-things" aria-hidden />
+        {/**
+          ⚠️ THE WORLD LAYER, AND ONLY THE FEW THINGS THAT HAVE TO BE ELEMENTS ARE IN IT.
+          The canvases above draw through the view themselves, at the screen's own resolution;
+          everything in here is moved and scaled by `place` instead, which is one style write
+          rather than a React pass. A door carries text, the guide is lines with a creature in
+          them, and the spawn is one ring — nine elements at the very most.
+        */}
+        <div ref={stage} className="map-stage">
+          {/* ⚠️ HOW BIG A SCREEN IS, DRAWN ON THE FIELD. This field is the WHOLE world, which
+              is three screenfuls across — so two stamps at opposite ends are nowhere near each
+              other and nothing said so. That is the same mistake the old paint-room guide was
+              built to stop ("every test map came out bigger than any landmark the real park
+              has"), which is why this is that guide rather than a second one: same lines, same
+              creature-inside-a-place reference, derived from the same PARK numbers. */}
+          <MapGuide />
+          {/* only while you are painting it — see the effect that draws this */}
+          {mode === 'block' && <canvas ref={fence} className="map-fence" aria-hidden />}
+          {doors.map((d, i) => (
             <span
               key={i}
-              className={'map-piece is-' + p.kind}
+              className="map-door"
               style={{
-                left: `${p.at.x * 100}%`,
-                top: `${p.at.y * 100}%`,
-                width: `${p.wide * 100}%`,
-                /* ⚠️ RIGHT ONLY BECAUSE THE PAPER IS THE WORLD'S SHAPE. `aspect-ratio` keeps
-                   the drawing's own proportions in PIXELS, which is the park's answer exactly
-                   when a pixel here means the same distance in both directions. On the square
-                   field this used to sit on, every stamp was four fifths as tall as it would
-                   really be — see MAP_GUIDE.paper. */
-                aspectRatio: String(ar),
+                left: `${d.at.x * 100}%`,
+                top: `${d.at.y * 100}%`,
+                width: `${d.wide * 100}%`,
               }}
-              aria-hidden
+              title={`To ${d.to}`}
             >
-              <ArtThumb art={art} w={220} h={Math.round(220 / ar)} />
+              <b>{d.to}</b>
             </span>
-          )
-        })}
+          ))}
+          {/* ⚠️ ON TOP, because it is the one thing on this field that is not scenery — it
+              answers "where do I come in", and a tree drawn over it would hide the answer. Not
+              in the DOM at all until it has been set, so an unset map says so by showing
+              nothing rather than by parking a marker in the middle. */}
+          {spawn && (
+            <span
+              className="map-spawn"
+              style={{ left: `${spawn.x * 100}%`, top: `${spawn.y * 100}%` }}
+              aria-hidden
+            />
+          )}
+        </div>
       </div>
 
       {said && (
@@ -1105,6 +1463,11 @@ export function MapMaker() {
           ))}
         </div>
       )}
+      <p className="muted map-note">
+        {
+          'Hold ctrl (or ⌘) and scroll to zoom; drag with the middle button, or hold space, to move about. '
+        }
+      </p>
       <p className="muted map-note">
         {mode === 'door'
           ? 'Choose a map, then press the field to put a door there. Walk into it in the park and you come out where that map starts.'
