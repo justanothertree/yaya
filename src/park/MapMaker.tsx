@@ -8,6 +8,7 @@ import { MAP_GUIDE, type PlaceKind } from './mapOf'
 import { mapBytes, MAP_LIMIT, parkMaps, removeMap, saveMap, subscribeMaps } from './maps'
 import { downBy, outBy } from './strike'
 import type { Spot } from './walk'
+import { blankZone, brushZone, packZone, readZone, ZONE, zoneIsEmpty } from './zone'
 
 /**
  * Making a map by putting things on it, and by drawing on it.
@@ -190,7 +191,18 @@ export function MapMaker() {
   const wide = outBy(fat)
 
   /** stamping things down, drawing the ground under them, or saying where you arrive */
-  const [mode, setMode] = useState<'stamp' | 'draw' | 'spawn'>('stamp')
+  const [mode, setMode] = useState<'stamp' | 'draw' | 'spawn' | 'block'>('stamp')
+  /**
+   * ⚠️ A REF, NOT STATE, AND A TICK BESIDE IT. The grid is 23040 cells painted at
+   * pointer speed; copying it on every move to satisfy React would be twenty-three thousand
+   * bytes per frame for a picture React does not draw anyway — the canvas does. So the array
+   * is mutated in place and a counter says when it changed, which is the same split the ground
+   * already makes between `done` and what is on screen.
+   */
+  const cells = useRef<Uint8Array>(blankZone())
+  const [blockTick, setBlockTick] = useState(0)
+  const [blocking, setBlocking] = useState(true)
+  const [zfat, setZfat] = useState(2)
   const [ground, setGround] = useState<Stroke[]>([])
   const [spawn, setSpawn] = useState<Spot | null>(null)
   const [tool, setTool] = useState<Tool>('brush')
@@ -199,6 +211,7 @@ export function MapMaker() {
 
   const field = useRef<HTMLDivElement | null>(null)
   const sheet = useRef<HTMLCanvasElement | null>(null)
+  const fence = useRef<HTMLCanvasElement | null>(null)
   /**
    * ⚠️ TWO SURFACES, THE SAME WAY THE PAINT ROOM DOES IT. Everything committed is painted
    * once onto `done`; the stroke being dragged is drawn on a copy of it each move. Repainting
@@ -212,8 +225,8 @@ export function MapMaker() {
   /** whether a stamping drag is in progress — the drawing modes use `live` for the same job */
   const held = useRef(false)
   /** ⚠️ read inside a non-passive wheel listener, which is wired once and cannot re-close */
-  const now = useRef({ mode, fat, nib })
-  now.current = { mode, fat, nib }
+  const now = useRef({ mode, fat, nib, zfat })
+  now.current = { mode, fat, nib, zfat }
 
   /**
    * ⚠️ CROPPED ONCE, HERE, AND MEMOISED. A stamp is the thing somebody drew, not the sheet
@@ -244,12 +257,19 @@ export function MapMaker() {
     [ground],
   )
 
+  /* ⚠️ packed only when it actually changed, not on every render: see blockTick */
+  const block = useMemo(
+    () => (zoneIsEmpty(cells.current) ? null : packZone(cells.current)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [blockTick],
+  )
+
   const doc: MapDoc | null = useMemo(
     () =>
-      (palette.length && pieces.length) || inkDoc
-        ? { v: 1, name: name.trim() || 'Map', palette, pieces, ground: inkDoc, spawn }
+      (palette.length && pieces.length) || inkDoc || block
+        ? { v: 1, name: name.trim() || 'Map', palette, pieces, ground: inkDoc, spawn, block }
         : null,
-    [name, palette, pieces, inkDoc, spawn],
+    [name, palette, pieces, inkDoc, spawn, block],
   )
   const world = doc ? worldOf(doc) : null
   const bytes = doc ? mapBytes(doc) : 0
@@ -326,17 +346,56 @@ export function MapMaker() {
     if (!el) return
     const turn = (e: WheelEvent) => {
       if (e.deltaY === 0) return
-      const { mode: m, fat: f, nib: n } = now.current
+      const { mode: m, fat: f, nib: n, zfat: z } = now.current
       if (m === 'spawn') return
       e.preventDefault()
       const by = e.deltaY < 0 ? WHEEL : 1 / WHEEL
-      if (m === 'stamp')
-        setFat(Math.max(FAT.min, Math.min(FAT.max, Math.round((f * by) / FAT.step) * FAT.step)))
+      const fat = (v: number) =>
+        Math.max(FAT.min, Math.min(FAT.max, Math.round((v * by) / FAT.step) * FAT.step))
+      if (m === 'stamp') setFat(fat(f))
+      else if (m === 'block') setZfat(fat(z))
       else setNib(Math.max(NIB.min, Math.min(NIB.max, Math.round((n * by) / NIB.step) * NIB.step)))
     }
     el.addEventListener('wheel', turn, { passive: false })
     return () => el.removeEventListener('wheel', turn)
   }, [])
+
+  /**
+   * The painted zone, drawn over everything.
+   *
+   * ⚠️ OVER, NOT UNDER, and only while you are painting it. It is a RULE rather than
+   * scenery — nothing in the park will ever draw it — so on the field it has to be visible
+   * through whatever it covers, which is the one job a translucent wash over the top does and
+   * a layer underneath cannot. Hidden in the other modes because a red film over the whole map
+   * is not what you want to look at while placing a tree.
+   */
+  useEffect(() => {
+    const c = fence.current
+    if (!c) return
+    const r = c.getBoundingClientRect()
+    if (r.width < 2) return
+    if (c.width !== ZONE.w || c.height !== ZONE.h) {
+      c.width = ZONE.w
+      c.height = ZONE.h
+    }
+    const ctx = c.getContext('2d')
+    if (!ctx) return
+    ctx.clearRect(0, 0, ZONE.w, ZONE.h)
+    /* ⚠️ one cell is one PIXEL of this canvas and CSS stretches it to the field. Drawing
+       rectangles at field resolution would be 23040 fillRects a frame; this is one image the
+       size of the grid, and image-rendering:pixelated keeps the edges honest. */
+    const img = ctx.createImageData(ZONE.w, ZONE.h)
+    const g = cells.current
+    for (let i = 0; i < g.length; i++) {
+      if (!g[i]) continue
+      const o = i * 4
+      img.data[o] = 220
+      img.data[o + 1] = 60
+      img.data[o + 2] = 60
+      img.data[o + 3] = 150
+    }
+    ctx.putImageData(img, 0, 0)
+  }, [blockTick, mode])
 
   /** where a press landed, as a fraction of the world */
   const spotOf = (e: React.PointerEvent | React.MouseEvent) => {
@@ -443,6 +502,12 @@ export function MapMaker() {
       else sow(s)
       return
     }
+    if (mode === 'block') {
+      held.current = true
+      brushZone(cells.current, s.x, s.y, outBy(zfat) / 2, blocking)
+      setBlockTick((n) => n + 1)
+      return
+    }
     if (ground.length >= MAX_GROUND) {
       setSaid(
         'That is as much ink as one map holds. Rub some out, or keep this one and start another.',
@@ -457,6 +522,11 @@ export function MapMaker() {
     if (held.current) {
       const s = spotOf(e)
       if (!s) return
+      if (mode === 'block') {
+        brushZone(cells.current, s.x, s.y, outBy(zfat) / 2, blocking)
+        setBlockTick((n) => n + 1)
+        return
+      }
       if (erasing) return rub(s)
       /* far enough from the last one to be a separate thing rather than a smear */
       const last = sown.current
@@ -566,6 +636,20 @@ export function MapMaker() {
         {/* ⚠️ ITS OWN TAB, though it is one press, because it is a different KIND of press
             — it puts nothing on the map, it answers a question about the map. Folded in beside
             the eraser it would be a third thing the same click could mean. */}
+        {/* ⚠️ ITS OWN TAB, AND NOT A KIND OF STAMP. Where you may walk is a fact about
+            the MAP; a solid stamp is a property of one thing standing on it. Reported as a
+            solid you could get round the edges of, which is what a box round a picture always
+            is — a tree blocks its empty corners and two trees leave a gap between them. */}
+        <button
+          className={'btn' + (mode === 'block' ? ' is-on' : '')}
+          aria-pressed={mode === 'block'}
+          onClick={() => {
+            setMode('block')
+            setErasing(false)
+          }}
+        >
+          🚧 No-walk zones
+        </button>
         <button
           className={'btn' + (mode === 'spawn' ? ' is-on' : '')}
           aria-pressed={mode === 'spawn'}
@@ -578,7 +662,47 @@ export function MapMaker() {
         </button>
       </div>
 
-      {mode === 'spawn' ? null : drawing ? (
+      {mode === 'block' ? (
+        <div className="map-row" role="group" aria-label="Painting where you cannot walk">
+          <button
+            className={'btn' + (blocking ? ' is-on' : '')}
+            aria-pressed={blocking}
+            onClick={() => setBlocking(true)}
+          >
+            🚧 Block
+          </button>
+          <button
+            className={'btn' + (!blocking ? ' is-on' : '')}
+            aria-pressed={!blocking}
+            onClick={() => setBlocking(false)}
+          >
+            🧽 Open it back up
+          </button>
+          <label className="map-size">
+            <span className="muted">Fat</span>
+            <input
+              type="range"
+              min={FAT.min}
+              max={FAT.max}
+              step={FAT.step}
+              value={zfat}
+              onChange={(e) => setZfat(Number(e.target.value))}
+            />
+            <span className="muted map-size-say">{say(zfat)}</span>
+          </label>
+          <button
+            className="btn"
+            disabled={!block}
+            onClick={() => {
+              cells.current = blankZone()
+              setBlockTick((n) => n + 1)
+              setSaid('Every zone is gone — the whole map is walkable again.')
+            }}
+          >
+            Clear the zones
+          </button>
+        </div>
+      ) : mode === 'spawn' ? null : drawing ? (
         <>
           <div className="map-row" role="group" aria-label="What to draw with">
             {INKS.map(([t, icon, label]) => (
@@ -761,6 +885,8 @@ export function MapMaker() {
             has"), which is why this is that guide rather than a second one: same lines, same
             creature-inside-a-place reference, derived from the same PARK numbers. */}
         <MapGuide />
+        {/* only while you are painting it — see the effect that draws this */}
+        {mode === 'block' && <canvas ref={fence} className="map-fence" aria-hidden />}
         {/* ⚠️ ON TOP OF THE PIECES, because it is the one thing on this field that is not
             scenery — it answers "where do I come in", and a tree drawn over it would hide the
             answer. Not in the DOM at all until it has been set, so an unset map says so by
@@ -825,6 +951,8 @@ export function MapMaker() {
                   setPieces(m.doc.pieces)
                   setGround(m.doc.ground?.strokes ?? [])
                   setSpawn(m.doc.spawn)
+                  cells.current = readZone(m.doc.block) ?? blankZone()
+                  setBlockTick((n) => n + 1)
                   setErasing(false)
                   setSaid(`Working on "${m.doc.name}".`)
                 }}
@@ -848,11 +976,13 @@ export function MapMaker() {
         </div>
       )}
       <p className="muted map-note">
-        {mode === 'spawn'
-          ? 'Press the field to say where you arrive. Without one you start in the middle of everything you placed.'
-          : drawing
-            ? 'Drag on the field to draw. The whole field is the park, so a line across it is a walk of three screens. The wheel changes how fat the line is.'
-            : 'Pick a picture, then press to put it down — or DRAG to lay a line of them. The same picture can go down as many times as you like, and is only kept once. The wheel changes the size.'}
+        {mode === 'block'
+          ? 'Paint where nobody may walk. It is never drawn in the park — it is the rule, and the scenery is the picture, so put something there people can see.'
+          : mode === 'spawn'
+            ? 'Press the field to say where you arrive. Without one you start in the middle of everything you placed.'
+            : mode === 'draw'
+              ? 'Drag on the field to draw. The whole field is the park, so a line across it is a walk of three screens. The wheel changes how fat the line is.'
+              : 'Pick a picture, then press to put it down — or DRAG to lay a line of them. The same picture can go down as many times as you like, and is only kept once. The wheel changes the size.'}
       </p>
     </section>
   )

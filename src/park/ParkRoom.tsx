@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 import { paintDrawing, type Drawing } from '../draw/strokes'
 import { PetView } from '../pets/PetView'
 import { placesOf } from './mapDoc'
+import { readZone, zoneWalls } from './zone'
 import { parkMaps, subscribeMaps } from './maps'
 import { petCanvas, rigOf } from '../pets/rig'
 import { PLAIN, traitsOf, traitWords } from '../pets/play'
@@ -943,13 +944,22 @@ export function ParkRoom({
       ...stamped.map((m) => ({
         name: m.name,
         places: () => placesOf(m.doc),
+        /* ⚠️ a function, like `places`, because unpacking the grid and merging it into boxes
+           is real work and this list is rebuilt whenever the gallery changes — doing it here
+           would do it for every map you are NOT walking, several times a session */
+        blocks: () => {
+          const cells = readZone(m.doc.block)
+          return cells ? zoneWalls(cells) : []
+        },
         ground: m.doc.ground,
         spawn: m.doc.spawn,
       })),
-      /* a layer-named map has no ground and no spawn and never will; that reader is on its way out */
+      /* a layer-named map has no ground, no spawn and no zones, and never will; that reader is
+         on its way out */
       ...layerMaps.map((a) => ({
         name: a.name,
         places: () => mapOf(a.art),
+        blocks: () => [],
         ground: null,
         spawn: null,
       })),
@@ -1445,7 +1455,9 @@ export function ParkRoom({
     /* ⚠️ the entry knows how to read itself — see `walkable`, which is why this line does
        not ask which kind of map it was handed */
     const places = drawn ? drawn.places() : null
-    setWorld(places)
+    /* ⚠️ null means the built-in park, and an OBJECT means "this is a drawn world" however
+       little is in it — see setWorld, where that distinction is the whole signature */
+    setWorld(drawn ? { places, blocks: drawn.blocks() } : null)
     /**
      * ⚠️ IN THE MIDDLE OF WHAT YOU DREW, when you drew it.
      *

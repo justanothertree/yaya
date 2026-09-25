@@ -2,6 +2,7 @@ import { readDrawing, type Drawing } from '../draw/strokes'
 import { inkBox } from '../pets/rig'
 import { ASPECT } from './strike'
 import { PARK, type Spot } from './walk'
+import { readZone } from './zone'
 import type { Place, PlaceKind } from './mapOf'
 
 /**
@@ -83,6 +84,16 @@ export type MapDoc = {
    * a second rectangle to draw and keep in step.
    */
   spawn: Spot | null
+  /**
+   * Where you may not walk, painted as a grid — see zone.ts, which owns the format.
+   *
+   * ⚠️ PACKED EVEN IN MEMORY, unlike every other field here. The other parts of a map
+   * are the shapes you worked with; this is 23040 cells, and the editor keeps the Uint8Array it
+   * is painting while the document keeps the string. Storing the array would mean a MapDoc that
+   * cannot be compared, cannot be JSON'd without a custom step, and has a mutable buffer inside
+   * a value everything else treats as frozen.
+   */
+  block: string | null
 }
 
 /**
@@ -179,7 +190,7 @@ export function readMapDoc(v: unknown): MapDoc | null {
   /* ⚠️ EITHER ONE IS A MAP. It used to insist on pieces, which was right when stamping was
      the only thing this room could do; a map that is a painted island and nothing else is a
      map, and refusing it would have silently eaten somebody's drawing on the way back in. */
-  if (!pieces.length && !ground) return null
+  if (!pieces.length && !ground && !readZone(o.block)) return null
 
   const at = o.spawn as { x?: unknown; y?: unknown } | undefined
   const spawn =
@@ -187,8 +198,11 @@ export function readMapDoc(v: unknown): MapDoc | null {
       ? { x: num(at.x, 0, 1, 0.5), y: num(at.y, 0, 1, 0.5) }
       : null
 
+  /* readZone is the boundary: wrong length, wrong alphabet and wrong type all come back null */
+  const block = readZone(o.block) ? (o.block as string) : null
+
   const name = typeof o.name === 'string' ? o.name.slice(0, 40).trim() : ''
-  return { v: 1, name: name || 'Map', palette, pieces, ground, spawn }
+  return { v: 1, name: name || 'Map', palette, pieces, ground, spawn, block }
 }
 
 /**

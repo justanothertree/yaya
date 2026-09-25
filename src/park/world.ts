@@ -51,6 +51,8 @@ const BUILT_IN: Ground[] = MARKS.filter((m) => m.name in TOPS).map((m) => ({
 }))
 
 let drawn: Place[] | null = null
+/** whether ANY part of the world was supplied rather than built in — see setWorld */
+let custom = false
 let shownMarks: Mark[] = MARKS
 let shownPlanes: Ground[] = BUILT_IN
 let shownWalls: Wall[] = []
@@ -84,7 +86,7 @@ export const worldWalls = (): Wall[] => shownWalls
  * ⚠️ READ BY joinPark, AND THAT IS THE POINT OF IT. This is the one question that decides
  * whether the relay may be spoken to at all — see the note at the top.
  */
-export const worldIsDrawn = (): boolean => drawn !== null
+export const worldIsDrawn = (): boolean => custom
 
 /**
  * Walk a drawing instead of the built-in park, or pass null to go back.
@@ -94,12 +96,32 @@ export const worldIsDrawn = (): boolean => drawn !== null
  * not go in the planes. That is the same split the built-in park makes, where two of its five
  * places are scenery.
  */
-export function setWorld(places: Place[] | null) {
+/**
+ * ⚠️ ONE ARGUMENT THAT IS EITHER A WORLD OR NULL, rather than a list that might be
+ * empty. A map can be nothing but painted zones, or nothing but painted ground — both are
+ * somebody's map and neither has a single PLACE in it. Asked "is this list empty", the room
+ * answered "then you must be in the built-in park", and handed back the shared park's five
+ * landmarks to stand among, with its own walls bolted on. Worse, worldIsDrawn is the lock that
+ * makes joinPark refuse the socket, so that world would also have gone on the wire: a room
+ * where everybody else can walk through what stops you.
+ *
+ * Whether a world is DRAWN and whether it happens to CONTAIN anything are two questions, and
+ * only the caller knows the first one.
+ */
+export function setWorld(world: { places: Place[] | null; blocks?: Wall[] } | null) {
+  const places = world?.places ?? null
+  const blocks = world?.blocks ?? []
   drawn = places && places.length ? places : null
-  if (!drawn) {
+  custom = !!world
+  if (!custom) {
     shownMarks = MARKS
     shownPlanes = BUILT_IN
     shownWalls = []
+  } else if (!drawn) {
+    /* a drawn world with no places: no landmarks at all, rather than somebody else's */
+    shownMarks = []
+    shownPlanes = []
+    shownWalls = blocks
   } else {
     shownMarks = drawn.map((p) => ({
       at: p.at,
@@ -120,6 +142,9 @@ export function setWorld(places: Place[] | null) {
       /* ⚠️ a place carrying a PICTURE is solid to the edge of the box it was stamped in;
          one without is a park landmark and keeps the two-thirds — see wallOf */
       .map((p) => wallOf(p.box.x0, p.box.y0, p.box.x1, p.box.y1, p.name, p.art ? 1 : undefined))
+      /* painted zones are walls like any other, and by the time they arrive here they are
+         already boxes — see zoneWalls, which is what turns a grid into a few rectangles */
+      .concat(blocks)
   }
   version++
   for (const fn of listeners) fn()

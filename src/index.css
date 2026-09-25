@@ -14143,6 +14143,22 @@ a.cz-msg-author:focus-visible {
 .map-field.is-placing {
   cursor: cell;
 }
+/* ⚠️ OVER EVERYTHING, because it is the rule rather than the scenery — the park never
+   draws it at all, so on the field it has to show through whatever it covers.
+
+   ⚠️ AND `pixelated`, WHICH IS HONESTY RATHER THAN STYLE. The canvas is one pixel per
+   cell stretched to the field; smoothed, its edges would be soft and a zone would look like it
+   ended somewhere other than where it stops you. Painting at field resolution instead would be
+   twenty-three thousand fillRects a frame. */
+.map-fence {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 3;
+  pointer-events: none;
+  image-rendering: pixelated;
+}
 .map-ink-any input[type='color'] {
   width: 44px;
   height: 34px;

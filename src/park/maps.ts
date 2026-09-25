@@ -98,6 +98,8 @@ const onDisk = (doc: MapDoc) => ({
   /* the ground is a drawing like any other, so it is packed like any other */
   ground: doc.ground ? packDrawing(doc.ground) : null,
   spawn: doc.spawn,
+  /* already a string — see MapDoc.block, which is packed in memory for exactly this reason */
+  block: doc.block,
 })
 
 const packed = (m: ParkMap) => ({ id: m.id, at: m.at, doc: onDisk(m.doc) })
