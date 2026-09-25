@@ -14,7 +14,9 @@
     "preview": "vite preview",
     "prepare": "husky",
     "gen:public-seed": "node scripts/gen-public-seed.mjs",
-    "ws-server": "node --enable-source-maps server/ws-server.js"
+    "ws-server": "node --enable-source-maps server/ws-server.js",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@sapphi-red/web-noise-suppressor": "^0.4.0",
@@ -41,7 +43,8 @@
     "prettier": "^3.3.3",
     "typescript": "~5.9.3",
     "typescript-eslint": "^8.45.0",
-    "vite": "^7.3.6"
+    "vite": "^7.3.6",
+    "vitest": "^5.0.2"
   },
   "lint-staged": {
     "**/*.{ts,tsx,js,jsx,mjs,cjs,css,md,json,yml,yaml}": [

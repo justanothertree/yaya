@@ -34,6 +34,20 @@ what it just made stale — copy, empty states, the thing a neighbouring feature
   runs `tsc -b`.
 - `npm run lint`, then `npm run build`. The pre-push hook runs the build, so a broken tree cannot
   reach the remote — but finding out at push time is finding out late.
+- **`npm run test` is vitest over the PURE modules, and it exists because the code was already
+  shaped for it.** strike.ts, cast.ts, walk.ts, play.ts, zone.ts, mapDoc.ts and solid.ts all say
+  in their own comments that they are pure so they can be asked a question without a browser —
+  and for a long time nothing asked. It runs in about a third of a second, on pre-push and in CI.
+  What belongs in it is anything with a UNIT or an INVARIANT in it: the pet-height conversions,
+  a jump arc, a dodge's reach, a cast's radius, the gap between a fissure's steps, a round trip
+  through a saved format. What does not is anything needing a DOM — that is what the Browser
+  pane is for.
+- **Write the expectation from the world's SHAPE, never from the code's sum.** This is the same
+  rule as the note below about `across(PARK_TALL)`, and it is the difference between a test and
+  a second copy of the bug: `outBy(n) * PARK.across * ASPECT === n * PARK_TALL` says "a creature
+  is this tall on screen", while comparing against `across(n * PARK_TALL)` says nothing at all.
+  A new test earns its place by being made to FAIL once — reintroduce the bug it is for and
+  watch it go red, then put the code back.
 - Exercise the **actual user flow** in the Browser pane where the change is observable.
   `.claude/launch.json` defines the dev server; `#dev-profile`, `#dev-admin`, `#dev-usage`,
   `#dev-investments` and `#dev-park` are workbenches for surfaces that need a session. `DEV_PREVIEW`
