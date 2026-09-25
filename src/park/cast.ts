@@ -206,14 +206,25 @@ export function patchesOf(
      * burst you dodge once is a swipe with a bigger circle; something that keeps expanding while
      * it hurts is a thing you have to keep moving away from, and that is a different verb.
      */
+    /**
+     * ⚠️ IT ENDS HALF AS BIG AGAIN, and the growth is where the extra went rather than
+     * the start. Asked for as some of these hitting bigger, and the swell is the one whose
+     * whole idea is that it keeps coming — at 0.84 pet-heights it topped out barely wider
+     * than the mark, which made "keep going" advice about a circle you had already left. The
+     * opening size is nearly unchanged, so what you must react to is the same and what you
+     * must keep reacting to is more.
+     */
     const warn = 0.55
     const grown = Math.max(0, Math.min(1, (t - warn) / (CAST.bloom.time - warn)))
-    const r = (0.22 + 0.62 * grown) * PARK_TALL * s
+    const r = (0.26 + 0.95 * grown) * PARK_TALL * s
     return [{ at: from, r, ready: Math.min(1, t / warn), live: t >= warn }]
   }
   if (kind === 'mark') {
+    /* ⚠️ A CRATER RATHER THAN A DINNER PLATE. It is the slowest of the four to land —
+       1.05s of warning against the bolt's 0.42 — and it was paying that in full for a circle
+       two thirds of a creature wide. What you buy with a long telegraph is area. */
     const warn = 1.05
-    const r = 0.62 * PARK_TALL * s
+    const r = 0.95 * PARK_TALL * s
     return [
       {
         at: stepFrom(from, aim, MARK_RANGE * easedScale(s)),
@@ -239,6 +250,10 @@ export function patchesOf(
     /* ⚠️ BIGGER AND FASTER, WHICH IS ONE DECISION TWICE. A charged bolt that was only
        harder would be an invisible upgrade; making it visibly fatter and visibly quicker is
        what lets somebody else read how long you held it. */
+    /* ⚠️ AND THE BOLT IS DELIBERATELY LEFT ALONE. It is the cheap fast one — 0.55s of wait
+       against the other three's four seconds — and the thing it trades for that is being a
+       needle. Growing it too would have made "bigger" mean "every cast", which is the same as
+       nothing being bigger. */
     const r = 0.34 * (1 + BOLT_UP.fat * up) * PARK_TALL * s
     const speed = BOLT_SPEED * (1 + BOLT_UP.quick * up)
     return [
@@ -259,6 +274,18 @@ export function patchesOf(
   const warn = 0.5
   for (let i = 0; i < WAVE_STEPS; i++) {
     const startsAt = warn + i * WAVE_ROLL
+    /**
+     * ⚠️ AND THE FISSURE KEEPS ITS WIDTH, which I changed and put back. Widening the
+     * steps to 0.58 read as an obvious win — it is the one attack made of several circles, so
+     * bigger circles is a bigger fissure — and it closes the gaps: WAVE_GAP is 1.15 and two
+     * radii at 0.58 is 1.16, so consecutive steps touch and the line becomes a wall. At 0.46
+     * the sum is 0.92 and there is 0.23 of a pet-height of floor between each pair, which is
+     * the standing room the whole move is built around. Found by doing the sum, not by
+     * looking: on screen it is five circles either way.
+     *
+     * The two that grew are single circles with nothing to overlap — see the bloom and the
+     * mark above.
+     */
     const r = 0.46 * PARK_TALL * s
     out.push({
       at: stepFrom(from, aim, 1.1 * easedScale(s) + i * WAVE_GAP),

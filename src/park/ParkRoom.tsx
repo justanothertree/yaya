@@ -139,7 +139,29 @@ export type ParkPet = { name: string; art: Drawing }
  * ⚠️ C FOR CREEPING, because it is the one key near the walking hand that nothing else
  * here wants — WASD walks, F and G swing, Q guards, Shift rolls, Space jumps and E123 cast.
  */
-const PARK_KEYS = { roll: 'shift', guard: 'q', jump: ' ', cast: 'e', sneak: 'c' } as const
+/**
+ * ⚠️ Q AND E ARE BOTH ABILITIES NOW, and the guard moved off Q to make room. Asked for
+ * exactly that way — block stayed where it was liked, on the right mouse button, and the two
+ * keys under the fingers that were already on WASD became the two things you throw. It is the
+ * arrangement every game with abilities on a keyboard has settled on, and the reason is the
+ * same one: those are the keys your hand is already touching.
+ *
+ * ⚠️ E STILL THROWS THE FIRST, which is the promise the old note made and this keeps.
+ * Q takes the second, and 1 2 3 go on meaning what they meant — nothing anybody learned has
+ * stopped working, and the number row is still the full list.
+ *
+ * ⚠️ AND THE GUARD KEEPS A KEY, on V. Right-click is the one to reach for and the one
+ * the legend leads with, but taking the only keyboard guard away would leave a trackpad with
+ * no block at all — a control that exists on one input device and not the other.
+ */
+const PARK_KEYS = {
+  roll: 'shift',
+  guard: 'v',
+  jump: ' ',
+  cast: 'e',
+  cast2: 'q',
+  sneak: 'c',
+} as const
 
 /**
  * What a key is called on screen.
@@ -1620,7 +1642,8 @@ export function ParkRoom({
        * yesterday stopped working — it throws slot one, which is the one the drawing is best
        * suited to and the one E always threw.
        */
-      const slot = low === PARK_KEYS.cast ? 1 : '123'.indexOf(e.key) + 1
+      const slot =
+        low === PARK_KEYS.cast ? 1 : low === PARK_KEYS.cast2 ? 2 : '123'.indexOf(e.key) + 1
       if (slot > 0) {
         e.preventDefault()
         castWanted.current = on ? slot : castWanted.current === slot ? 0 : castWanted.current
@@ -4210,11 +4233,13 @@ export function ParkRoom({
         </div>
         <div>
           <dt>
-            <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd>
+            <kbd>{keyName(PARK_KEYS.cast2)}</kbd> <kbd>{keyName(PARK_KEYS.cast)}</kbd> <kbd>1</kbd>{' '}
+            <kbd>2</kbd> <kbd>3</kbd>
           </dt>
           <dd>
-            Your three big moves, on one shared wait — <kbd>{keyName(PARK_KEYS.cast)}</kbd> throws
-            the first. If one of them is a <strong>bolt</strong>, holding the key winds it up and
+            Your three big moves, on one shared wait. <kbd>{keyName(PARK_KEYS.cast)}</kbd> throws
+            the first and <kbd>{keyName(PARK_KEYS.cast2)}</kbd> the second; the numbers reach all
+            three. If one of them is a <strong>bolt</strong>, holding the key winds it up and
             letting go throws it harder
           </dd>
         </div>
@@ -4234,7 +4259,7 @@ export function ParkRoom({
         </div>
         <div>
           <dt>
-            <kbd>{keyName(PARK_KEYS.guard)}</kbd>
+            Right-click <span className="muted">or</span> <kbd>{keyName(PARK_KEYS.guard)}</kbd>
           </dt>
           <dd>
             Guard, held — front only, and a quarter gets through. Time it to the blow to parry: no
