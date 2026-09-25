@@ -549,6 +549,31 @@ export function stepAir(
     }
   }
 
+  /**
+   * ⚠️ ARRIVING HERE *IS* A LANDING, and for a long time it was not treated as one.
+   *
+   * aloft() asks `up > ground + 1e-6 || vz > 0`, so a descent that brings `up` to within a
+   * millionth of the floor while still falling stops being airborne BEFORE the branch above
+   * gets to notice it touching down — and leaves through this door instead, which used to
+   * return `landed: false` and keep whatever vz, float and dive it arrived with.
+   *
+   * ⚠️ AND IT IS NOT A RARE ALIGNMENT. A jump lasts exactly HOP.time, so any frame
+   * length that divides it lands precisely on a frame boundary: 60, 120 and 240 a second all
+   * do. It went unseen because a real frame comes from a rAF timestamp and jitters, so the
+   * landing usually overshoots by a hair and takes the other door — which is exactly the kind
+   * of thing that never reproduces when somebody is looking for it.
+   *
+   * What it cost: `dive` never cleared, and diveNow refuses a second dive while it is set, so
+   * a creature that landed on the boundary could not dive again until it landed some other
+   * way. `landed` is also what the room reads to apply a dive's damage on arrival.
+   */
+  const arriving = s.vz < 0 || s.dive || s.float > 0
+  if (arriving)
+    return {
+      s: { ...s, up: floor, vz: 0, ground: floor, float: 0, dive: false, hopRest: HOP.rest },
+      went: false,
+      landed: true,
+    }
   const rest = Math.max(0, s.hopRest - t)
   const stuck = rest > 0 || s.swing > 0 || s.stun > 0 || s.hold > 0 || s.dodge > 0 || s.braced
   if (!want || stuck)
