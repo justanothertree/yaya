@@ -998,6 +998,8 @@ export function ParkRoom({
    * you have been clear of every door since you arrived.
    */
   const doorArmed = useRef(false)
+  /** whether the one air dash has been spent since leaving the ground — see the roll below */
+  const dashedAloft = useRef(false)
   /**
    * ⚠️ THE DRAWING, NOT THE WRAPPER AROUND IT, is what the socket depends on. The effect below
    * owns the connection and uses only the art and the name — so depending on the object that
@@ -1639,7 +1641,25 @@ export function ParkRoom({
     }
     const down = (e: KeyboardEvent) => set(e, true)
     const up = (e: KeyboardEvent) => set(e, false)
-    /* a key held when the window loses focus never sends its keyup — see PetPlay */
+    /**
+     * A key held when the window loses focus never sends its keyup — see PetPlay.
+     *
+     * ⚠️ ON blur AND NOTHING ELSE, AND THAT IS THE FIX. This was also wired to `pointerup`
+     * and `pointercancel` on the WINDOW, which meant every mouse release anywhere emptied
+     * `held` — and the left mouse button is the quick swing, so every attack you threw with
+     * the mouse silently let go of the direction you were walking. Measured: holding D moved
+     * 0.044 of the world in 600ms, one pointerup arrived with the key still physically down,
+     * and the next 600ms moved 0.0000.
+     *
+     * Reported as a DIAGONAL attack losing "one of the directional movement outputs", which is
+     * the same bug seen from the hand: both keys are dropped, you notice the one you happen to
+     * re-press, and the other stays dead because a key that is already down never sends a
+     * second keydown.
+     *
+     * The pointer controls do not need this. Every pad button releases on pointerup, on
+     * pointercancel AND on pointerleave, and the field clears its own swings the same three
+     * ways — so nothing was relying on the window sweeping up after them.
+     */
     const drop = () => {
       held.current = { ...STILL }
       hitting.current = { quick: false, heavy: false, up: false, down: false }
@@ -1652,14 +1672,10 @@ export function ParkRoom({
     window.addEventListener('keydown', down)
     window.addEventListener('keyup', up)
     window.addEventListener('blur', drop)
-    window.addEventListener('pointerup', drop)
-    window.addEventListener('pointercancel', drop)
     return () => {
       window.removeEventListener('keydown', down)
       window.removeEventListener('keyup', up)
       window.removeEventListener('blur', drop)
-      window.removeEventListener('pointerup', drop)
-      window.removeEventListener('pointercancel', drop)
     }
   }, [walking])
 
@@ -1878,9 +1894,25 @@ export function ParkRoom({
        * ⚠️ THE RISING EDGE, taken here rather than in the key handler: a dodge is a press,
        * and reading "is Shift down" every frame would roll continuously while it is held.
        */
-      const wantRoll = rolling.current && !rolled.current && !iAmCasting && !inAir
+      /**
+       * ⚠️ IN THE AIR AS WELL, ONCE. It was refused off the ground outright, and asked for
+       * directly — an air dash is most of what makes a jump a decision rather than a pause.
+       * stepDodge only moves you along the floor plane, so this needs no new physics: you
+       * keep falling at the rate you were, and you arrive somewhere else.
+       *
+       * ⚠️ AND ONLY ONCE BEFORE TOUCHING DOWN, or it is a flight. The cooldown stepDodge
+       * already carries would let you chain them for as long as you had air to spend, which
+       * would cross the whole park without ever being on the ground to be hit on.
+       *
+       * ⚠️ NOT OUT OF A DIVE, the same rule diveNow states for itself: you spent a jump to get
+       * up there and the point of the move is that you cannot change your mind on the way down.
+       */
+      if (!inAir) dashedAloft.current = false
+      const canDash = !inAir || (!dashedAloft.current && !you.current.dive)
+      const wantRoll = rolling.current && !rolled.current && !iAmCasting && canDash
       rolled.current = rolling.current
       const roll = stepDodge(you.current, wantRoll, aimNow({ x: you.current.facing, y: 0 }), dt)
+      if (roll.went && inAir) dashedAloft.current = true
       you.current = roll.s
       if (you.current.dodge > 0 !== dodgeShown.current) {
         dodgeShown.current = you.current.dodge > 0

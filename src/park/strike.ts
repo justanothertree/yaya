@@ -269,8 +269,21 @@ export const HOP = {
   up: 0.62,
   /** how long the whole jump takes */
   time: 0.5,
-  /** and how long before another */
-  rest: 0.5,
+  /**
+   * And how long before another, measured from LANDING.
+   *
+   * ⚠️ IT WAS HALF A SECOND, WHICH IS AS LONG AS THE JUMP ITSELF. A jump takes
+   * HOP.time to complete, so a half-second floor after it meant one jump a second and a
+   * visible refusal every time you pressed again on landing — reported, correctly, as there
+   * being a cooldown on jumping whenever you land.
+   *
+   * ⚠️ AND ALMOST NOTHING WAS RELYING ON IT. A jump is an EDGE, not a state (see
+   * wantHop), so holding the key down has never repeated; and stepAir already refuses to
+   * leave the ground out of a swing, a stance, a stun, a hold or a roll. What is left for
+   * this number to do is stop the landing frame itself producing a second jump, which is a
+   * couple of frames rather than half a second.
+   */
+  rest: 0.08,
   /**
    * ⚠️ CLEAR OF THE FLOOR ONCE THIS HIGH, and the height is the rule rather than a window
    * beside it. A separate "safe from 0.12s to 0.38s" is a second copy of the arc that can drift
