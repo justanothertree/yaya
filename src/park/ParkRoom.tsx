@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { paintDrawing, type Drawing } from '../draw/strokes'
 import { PetView } from '../pets/PetView'
-import { placesOf } from './mapDoc'
+import { placesOf, type Door } from './mapDoc'
 import { readZone, zoneWalls } from './zone'
 import { parkMaps, subscribeMaps } from './maps'
 import { petCanvas, rigOf } from '../pets/rig'
@@ -418,6 +418,9 @@ const FIELD_ASPECT = 16 / 10
  * mean re-baking on every resize for a difference nobody can see at this scale.
  */
 const SPRITE = 256
+
+/** ⚠️ one frozen array, so a map with no doors does not hand the effects a new one each render */
+const EMPTY_DOORS: Door[] = []
 
 /** A drawing, rasterised once, ready to be blitted wherever it was stamped. */
 const bake = (art: Drawing): HTMLCanvasElement => {
@@ -912,6 +915,7 @@ export function ParkRoom({
    * refuses the socket outright while the park is a drawing.
    */
   const [mapPick, setMapPick] = useState('')
+
   const [walking, setWalking] = useState(false)
   /** bumped whenever the roster changes, so the render follows without owning the positions */
   const [roster, setRoster] = useState(0)
@@ -953,6 +957,7 @@ export function ParkRoom({
         },
         ground: m.doc.ground,
         spawn: m.doc.spawn,
+        doors: m.doc.doors,
       })),
       /* a layer-named map has no ground, no spawn and no zones, and never will; that reader is
          on its way out */
@@ -962,6 +967,7 @@ export function ParkRoom({
         blocks: () => [],
         ground: null,
         spawn: null,
+        doors: [],
       })),
     ],
     [stamped, layerMaps],
@@ -977,6 +983,21 @@ export function ParkRoom({
    */
   const mapsRef = useRef(maps)
   mapsRef.current = maps
+  const doors = walkingMap?.doors ?? EMPTY_DOORS
+  /**
+   * ⚠️ READ BY THE FRAME LOOP, WHICH IS WHY IT IS A REF. The loop is started once per join
+   * and closes over what it can see then; a door added to the list afterwards would never be
+   * walked into. Same reason `mapsRef` exists three lines up.
+   */
+  const doorsRef = useRef(doors)
+  doorsRef.current = doors
+  /**
+   * ⚠️ YOU ARRIVE STANDING ON SOMETHING, AND THAT MUST NOT COUNT. A door drops you at the
+   * far map's starting point, which can itself be on a door — and two doors pointing at each
+   * other would then bounce you between maps every frame forever. So a door only fires once
+   * you have been clear of every door since you arrived.
+   */
+  const doorArmed = useRef(false)
   /**
    * ⚠️ THE DRAWING, NOT THE WRAPPER AROUND IT, is what the socket depends on. The effect below
    * owns the connection and uses only the art and the name — so depending on the object that
@@ -1458,6 +1479,8 @@ export function ParkRoom({
     /* ⚠️ null means the built-in park, and an OBJECT means "this is a drawn world" however
        little is in it — see setWorld, where that distinction is the whole signature */
     setWorld(drawn ? { places, blocks: drawn.blocks() } : null)
+    /* you have just been put down somewhere, possibly on a door — see doorArmed */
+    doorArmed.current = false
     /**
      * ⚠️ IN THE MIDDLE OF WHAT YOU DREW, when you drew it.
      *
@@ -1825,6 +1848,24 @@ export function ParkRoom({
        */
       const past = slideAround(struck, walked, worldWalls())
       you.current = { ...struck, ...walked, x: past.x, y: past.y }
+      /**
+       * ⚠️ A DOOR IS A PLACE YOU STAND, NOT A THING YOU PRESS. It is checked after the walk
+       * resolves, against where you actually ENDED UP — checking the wanted position would
+       * take you through a door you were stopped short of by a wall.
+       */
+      const here = doorsRef.current
+      if (here.length) {
+        const on = here.find((d: Door) => Math.hypot(d.at.x - past.x, d.at.y - past.y) < d.wide / 2)
+        if (!on) doorArmed.current = true
+        else if (doorArmed.current) {
+          doorArmed.current = false
+          /* ⚠️ a door to a map that is gone does nothing, and has ALREADY said so: it is
+             drawn with "— gone" on it from the moment you can see it, which is a better place
+             to learn that than after walking across the map to it. See Door, where dangling is
+             the deliberate design rather than an oversight. */
+          if (mapsRef.current.some((m) => m.name === on.to)) setMapPick(on.to)
+        }
+      }
       if (crept !== sneakShown.current) {
         sneakShown.current = crept
         setSneaking(crept)
@@ -3455,6 +3496,37 @@ export function ParkRoom({
               raised={raised}
             />
           )}
+          {/**
+            ⚠️ DOORS ARE DOM, NOT CANVAS, AND THEY ARE THE EXCEPTION THAT PROVES Scenery.
+            Every stamped place went onto one canvas because a map can hold two thousand of
+            them; a map holds at most EIGHT doors, and each one carries the NAME of where it
+            goes — text, which canvas draws badly, cannot wrap, and cannot be read by anything
+            but an eye. Eight elements is not the problem that two hundred and thirty was.
+
+            ⚠️ AND UNLIKE A NO-WALK ZONE, A DOOR MUST BE VISIBLE. A zone is the rule and the
+            scenery is the picture; a door IS the thing you are looking for.
+          */}
+          {walking &&
+            doors.map((d, i) => {
+              const p = onScreen(d.at, camAt)
+              if (p.x < -0.5 || p.x > 1.5 || p.y < -0.5 || p.y > 1.5) return null
+              const gone = !maps.some((m) => m.name === d.to)
+              return (
+                <span
+                  key={i}
+                  className={'park-door' + (gone ? ' is-gone' : '')}
+                  style={{
+                    left: `${p.x * 100}%`,
+                    top: `${p.y * 100}%`,
+                    /* the same width-to-height correction every round thing in the field makes */
+                    width: `${d.wide * PARK.across * 100}%`,
+                    height: `${d.wide * PARK.across * FIELD_ASPECT * 100}%`,
+                  }}
+                >
+                  <b>{gone ? `${d.to} — gone` : d.to}</b>
+                </span>
+              )
+            })}
           {walking &&
             shownMarks.map((m) => {
               /* ⚠️ only the ones with no picture — the rest are on the canvas above, see

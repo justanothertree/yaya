@@ -14143,6 +14143,60 @@ a.cz-msg-author:focus-visible {
 .map-field.is-placing {
   cursor: cell;
 }
+/* a way out, and where it goes — on the field and in the park, the same shape both times */
+.map-door,
+.park-door {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  border: 2px dashed color-mix(in srgb, var(--accent, #22c55e) 85%, transparent);
+  background: radial-gradient(
+    circle,
+    color-mix(in srgb, var(--accent, #22c55e) 26%, transparent),
+    transparent 70%
+  );
+  pointer-events: none;
+}
+.map-door {
+  aspect-ratio: 1;
+}
+/* ⚠️ THE NAME SITS OUTSIDE THE RING, not inside it. A door is drawn at three creatures across,
+   which on a phone is about twenty pixels — a label inside would be one letter wide. */
+.map-door b,
+.park-door b {
+  position: absolute;
+  top: 100%;
+  font-size: 0.65rem;
+  font-weight: 600;
+  line-height: 1.4;
+  padding: 0 0.3rem;
+  border-radius: 0.3rem;
+  white-space: nowrap;
+  color: var(--bg, #0b0f19);
+  background: var(--accent, #22c55e);
+}
+/* ⚠️ A DOOR TO A MAP THAT IS GONE SAYS SO WHERE YOU CAN SEE IT, rather than when you reach it.
+   Maps are one-name-one-thing and a door points at a name, so deleting the far map leaves this
+   behind on purpose — see Door. */
+.park-door.is-gone,
+.map-door.is-gone {
+  border-color: color-mix(in srgb, #e02020 70%, transparent);
+  background: radial-gradient(
+    circle,
+    color-mix(in srgb, #e02020 18%, transparent),
+    transparent 70%
+  );
+}
+.park-door.is-gone b,
+.map-door.is-gone b {
+  background: #e02020;
+  color: #fff;
+}
+.park-door {
+  z-index: 1;
+}
 /* ⚠️ OVER EVERYTHING, because it is the rule rather than the scenery — the park never
    draws it at all, so on the field it has to show through whatever it covers.
 

@@ -3,7 +3,7 @@ import { ArtThumb } from '../draw/ArtThumb'
 import { gallery, subscribeGallery } from '../draw/gallery'
 import { paintDrawing, paintStroke, type Drawing, type Stroke, type Tool } from '../draw/strokes'
 import { MapGuide } from './MapGuide'
-import { cropToInk, MAX_PIECES, worldOf, type MapDoc, type Piece } from './mapDoc'
+import { cropToInk, MAX_PIECES, worldOf, type Door, type MapDoc, type Piece } from './mapDoc'
 import { MAP_GUIDE, type PlaceKind } from './mapOf'
 import { mapBytes, MAP_LIMIT, parkMaps, removeMap, saveMap, subscribeMaps } from './maps'
 import { downBy, outBy } from './strike'
@@ -191,7 +191,10 @@ export function MapMaker() {
   const wide = outBy(fat)
 
   /** stamping things down, drawing the ground under them, or saying where you arrive */
-  const [mode, setMode] = useState<'stamp' | 'draw' | 'spawn' | 'block'>('stamp')
+  const [mode, setMode] = useState<'stamp' | 'draw' | 'spawn' | 'block' | 'door'>('stamp')
+  const [doors, setDoors] = useState<Door[]>([])
+  /** which kept map the next door leads to; '' until one is chosen */
+  const [leadsTo, setLeadsTo] = useState('')
   /**
    * ⚠️ A REF, NOT STATE, AND A TICK BESIDE IT. The grid is 23040 cells painted at
    * pointer speed; copying it on every move to satisfy React would be twenty-three thousand
@@ -208,6 +211,13 @@ export function MapMaker() {
   const [tool, setTool] = useState<Tool>('brush')
   const [ink, setInk] = useState(GROUND_INK[0])
   const [nib, setNib] = useState(NIB.start)
+  const [alpha, setAlpha] = useState(1)
+  /**
+   * ⚠️ REDO IS A SECOND STACK, and undo is what fills it. The paint room has had this
+   * since it had undo; the ground shipped with a one-way Undo, which makes the button dangerous
+   * rather than safe — an undo you cannot take back is a delete with a friendly name.
+   */
+  const [redo, setRedo] = useState<Stroke[]>([])
 
   const field = useRef<HTMLDivElement | null>(null)
   const sheet = useRef<HTMLCanvasElement | null>(null)
@@ -267,9 +277,18 @@ export function MapMaker() {
   const doc: MapDoc | null = useMemo(
     () =>
       (palette.length && pieces.length) || inkDoc || block
-        ? { v: 1, name: name.trim() || 'Map', palette, pieces, ground: inkDoc, spawn, block }
+        ? {
+            v: 1,
+            name: name.trim() || 'Map',
+            palette,
+            pieces,
+            ground: inkDoc,
+            spawn,
+            block,
+            doors,
+          }
         : null,
-    [name, palette, pieces, inkDoc, spawn, block],
+    [name, palette, pieces, inkDoc, spawn, block, doors],
   )
   const world = doc ? worldOf(doc) : null
   const bytes = doc ? mapBytes(doc) : 0
@@ -347,7 +366,7 @@ export function MapMaker() {
     const turn = (e: WheelEvent) => {
       if (e.deltaY === 0) return
       const { mode: m, fat: f, nib: n, zfat: z } = now.current
-      if (m === 'spawn') return
+      if (m === 'spawn' || m === 'door') return
       e.preventDefault()
       const by = e.deltaY < 0 ? WHEEL : 1 / WHEEL
       const fat = (v: number) =>
@@ -496,6 +515,19 @@ export function MapMaker() {
       setSaid('That is where you will arrive.')
       return
     }
+    if (mode === 'door') {
+      if (!leadsTo) {
+        setSaid('Choose which map it leads to first.')
+        return
+      }
+      if (doors.length >= 8) {
+        setSaid('Eight doors is as many as one map holds.')
+        return
+      }
+      setDoors((was) => [...was, { at: s, wide: outBy(3), to: leadsTo }])
+      setSaid(`A door to "${leadsTo}".`)
+      return
+    }
     if (mode === 'stamp') {
       held.current = true
       if (erasing) rub(s)
@@ -514,7 +546,7 @@ export function MapMaker() {
       )
       return
     }
-    live.current = { t: tool, c: ink, a: 1, w: downBy(nib), p: [s.x, s.y] }
+    live.current = { t: tool, c: ink, a: alpha, w: downBy(nib), p: [s.x, s.y] }
     show()
   }
 
@@ -569,6 +601,9 @@ export function MapMaker() {
      */
     if (k.p.length < 4) k.p = [k.p[0], k.p[1], k.p[0] + 0.0004, k.p[1] + 0.0004]
     setGround((g) => [...g, k])
+    /* ⚠️ a new stroke ends the branch you could have redone into — the rule every editor
+       follows, and the one that stops Redo putting back something from a different picture */
+    setRedo([])
     setSaid(null)
   }
 
@@ -651,6 +686,16 @@ export function MapMaker() {
           🚧 No-walk zones
         </button>
         <button
+          className={'btn' + (mode === 'door' ? ' is-on' : '')}
+          aria-pressed={mode === 'door'}
+          onClick={() => {
+            setMode('door')
+            setErasing(false)
+          }}
+        >
+          🚪 Doors
+        </button>
+        <button
           className={'btn' + (mode === 'spawn' ? ' is-on' : '')}
           aria-pressed={mode === 'spawn'}
           onClick={() => {
@@ -662,7 +707,41 @@ export function MapMaker() {
         </button>
       </div>
 
-      {mode === 'block' ? (
+      {mode === 'door' ? (
+        <div className="map-row" role="group" aria-label="Doors">
+          {mine.length === 0 ? (
+            <p className="muted">
+              Keep another map first — a door has to lead somewhere that exists.
+            </p>
+          ) : (
+            <>
+              <label className="map-size">
+                <span className="muted">Leads to</span>
+                <select value={leadsTo} onChange={(e) => setLeadsTo(e.target.value)}>
+                  <option value="">Choose a map…</option>
+                  {mine
+                    /* ⚠️ not this one. A door back to the map you are standing on would drop
+                       you at its own spawn, which reads as the door doing nothing. */
+                    .filter((m) => m.name.toLowerCase() !== (name.trim() || 'Map').toLowerCase())
+                    .map((m) => (
+                      <option key={m.id} value={m.name}>
+                        {m.name}
+                      </option>
+                    ))}
+                </select>
+              </label>
+              <button
+                className="btn"
+                disabled={!doors.length}
+                onClick={() => setDoors((was) => was.slice(0, -1))}
+              >
+                ↶ Take the last one out
+              </button>
+              <span className="muted map-count">{doors.length} of 8</span>
+            </>
+          )}
+        </div>
+      ) : mode === 'block' ? (
         <div className="map-row" role="group" aria-label="Painting where you cannot walk">
           <button
             className={'btn' + (blocking ? ' is-on' : '')}
@@ -729,19 +808,58 @@ export function MapMaker() {
               />
               <span className="muted map-size-say">{say(nib)}</span>
             </label>
+            <label className="map-size">
+              <span className="muted">Solid</span>
+              <input
+                type="range"
+                min={0.08}
+                max={1}
+                step={0.02}
+                value={alpha}
+                onChange={(e) => setAlpha(Number(e.target.value))}
+              />
+              <span className="muted map-size-say">{Math.round(alpha * 100)}%</span>
+            </label>
             <button
               className="btn"
               disabled={!ground.length}
-              onClick={() => setGround((g) => g.slice(0, -1))}
+              /**
+               * ⚠️ BOTH STACKS MOVED FROM OUT HERE, not from inside an updater. Written as
+               * `setGround(g => { setRedo(...); return g.slice(0,-1) })` it is a state updater
+               * with a side effect in it, and React calls updaters TWICE in development to
+               * catch exactly that — so one Undo pushed the stroke onto the redo stack twice
+               * and one Redo put two copies of it back. Measured: draw one line, undo, redo,
+               * and the room says two lines. A click is a discrete event, so the values closed
+               * over here are the current ones and no updater is needed.
+               */
+              onClick={() => {
+                const last = ground[ground.length - 1]
+                if (!last) return
+                setGround(ground.slice(0, -1))
+                setRedo([...redo, last])
+              }}
             >
               ↶ Undo
             </button>
             <button
               className="btn"
+              disabled={!redo.length}
+              onClick={() => {
+                const back = redo[redo.length - 1]
+                if (!back) return
+                setRedo(redo.slice(0, -1))
+                setGround([...ground, back])
+              }}
+            >
+              ↷ Redo
+            </button>
+            <button
+              className="btn"
               disabled={!ground.length}
               onClick={() => {
+                setRedo(ground)
                 setGround([])
-                setSaid('The ground is bare again.')
+                setSaid('The ground is bare again — Redo puts it back.')
               }}
             >
               Clear the ground
@@ -860,10 +978,10 @@ export function MapMaker() {
         className={
           'map-field' +
           (erasing && mode === 'stamp' ? ' is-erasing' : '') +
-          (mode === 'spawn' ? ' is-placing' : '') +
+          (mode === 'spawn' || mode === 'door' ? ' is-placing' : '') +
           /* ⚠️ a STAMPING drag is a drag too, so touch-action has to be none for it as well —
              see .map-field.is-drawing, which is why this is not just `drawing` any more */
-          (mode !== 'spawn' ? ' is-drawing' : '')
+          (mode !== 'spawn' && mode !== 'door' ? ' is-drawing' : '')
         }
         /* ⚠️ THE WORLD'S SHAPE, NOT A SQUARE. Three screens by three is square in screenfuls
            and 16:10 in pixels — see MAP_GUIDE.paper, which is where that sum lives. */
@@ -891,6 +1009,16 @@ export function MapMaker() {
             scenery — it answers "where do I come in", and a tree drawn over it would hide the
             answer. Not in the DOM at all until it has been set, so an unset map says so by
             showing nothing rather than by parking a marker in the middle. */}
+        {doors.map((d, i) => (
+          <span
+            key={i}
+            className="map-door"
+            style={{ left: `${d.at.x * 100}%`, top: `${d.at.y * 100}%`, width: `${d.wide * 100}%` }}
+            title={`To ${d.to}`}
+          >
+            <b>{d.to}</b>
+          </span>
+        ))}
         {spawn && (
           <span
             className="map-spawn"
@@ -953,6 +1081,8 @@ export function MapMaker() {
                   setSpawn(m.doc.spawn)
                   cells.current = readZone(m.doc.block) ?? blankZone()
                   setBlockTick((n) => n + 1)
+                  setDoors(m.doc.doors)
+                  setRedo([])
                   setErasing(false)
                   setSaid(`Working on "${m.doc.name}".`)
                 }}
@@ -976,13 +1106,15 @@ export function MapMaker() {
         </div>
       )}
       <p className="muted map-note">
-        {mode === 'block'
-          ? 'Paint where nobody may walk. It is never drawn in the park — it is the rule, and the scenery is the picture, so put something there people can see.'
-          : mode === 'spawn'
-            ? 'Press the field to say where you arrive. Without one you start in the middle of everything you placed.'
-            : mode === 'draw'
-              ? 'Drag on the field to draw. The whole field is the park, so a line across it is a walk of three screens. The wheel changes how fat the line is.'
-              : 'Pick a picture, then press to put it down — or DRAG to lay a line of them. The same picture can go down as many times as you like, and is only kept once. The wheel changes the size.'}
+        {mode === 'door'
+          ? 'Choose a map, then press the field to put a door there. Walk into it in the park and you come out where that map starts.'
+          : mode === 'block'
+            ? 'Paint where nobody may walk. It is never drawn in the park — it is the rule, and the scenery is the picture, so put something there people can see.'
+            : mode === 'spawn'
+              ? 'Press the field to say where you arrive. Without one you start in the middle of everything you placed.'
+              : mode === 'draw'
+                ? 'Drag on the field to draw. The whole field is the park, so a line across it is a walk of three screens. The wheel changes how fat the line is.'
+                : 'Pick a picture, then press to put it down — or DRAG to lay a line of them. The same picture can go down as many times as you like, and is only kept once. The wheel changes the size.'}
       </p>
     </section>
   )

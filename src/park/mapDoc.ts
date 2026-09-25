@@ -44,6 +44,29 @@ export type Piece = {
   top: number
 }
 
+/**
+ * A way out, and where it goes.
+ *
+ * ⚠️ IT POINTS AT A NAME, NOT AT A MAP. Every other reference in this format was
+ * deliberately avoided — the palette carries whole drawings rather than pointing at the
+ * gallery, precisely so a map cannot be broken from outside. A door cannot work that way: the
+ * thing it leads to is another map, and copying it in would copy its doors, and theirs.
+ *
+ * ⚠️ SO IT IS ALLOWED TO DANGLE, AND THAT IS THE DESIGN RATHER THAN A GAP. Maps are
+ * one-name-one-thing, so a name is a stable handle; delete the map it leads to and the door
+ * stays, leading nowhere, and says so when you walk into it. The alternative — deleting doors
+ * that point at a deleted map — would reach into every other map from a delete button, and
+ * would quietly destroy work when somebody renames rather than removes.
+ */
+export type Door = {
+  /** the middle of it, in world units across the whole park */
+  at: Spot
+  /** how wide, in world units — the same unit Piece.wide uses */
+  wide: number
+  /** the NAME of the map it leads to */
+  to: string
+}
+
 export type MapDoc = {
   v: 1
   name: string
@@ -94,6 +117,7 @@ export type MapDoc = {
    * a value everything else treats as frozen.
    */
   block: string | null
+  doors: Door[]
 }
 
 /**
@@ -139,11 +163,93 @@ export function cropToInk(d: Drawing): Drawing {
 }
 
 const MAX_PALETTE = 24
-export const MAX_PIECES = 400
+
+/**
+ * ⚠️ FOUR HUNDRED WAS A NUMBER FOR CLICKING, AND THE BRUSH BROKE IT IMMEDIATELY. A
+ * press put one thing down, so four hundred was more than anybody would ever place by hand;
+ * a drag puts down ten a second, and it was reported as being hit straight away. What actually
+ * costs is bytes on a 200KB map and boxes to collide against — the drawing is in the palette
+ * and fifty copies of it are fifty positions, which is why the number can move at all.
+ *
+ * ⚠️ AND IT ONLY FITS BECAUSE OF `tight`. Written as objects a piece is about sixty-six
+ * characters, so two thousand of them is 132KB of a 200KB budget with the pictures still to
+ * pay for. As six numbers it is twenty-one, and the same two thousand is 42KB.
+ */
+export const MAX_PIECES = 2000
+
+/**
+ * ⚠️ APPEND ONLY, NEVER REORDER — the same rule TOOLS carries, for the same reason. A
+ * packed piece stores its kind as an INDEX into this list, so moving an entry turns every wall
+ * anybody has saved into a pond.
+ */
 const KINDS: PlaceKind[] = ['pond', 'grove', 'ring', 'rocks', 'wall', 'flat']
+
+/**
+ * How many doors a map may have.
+ *
+ * ⚠️ SMALL ON PURPOSE. A door is a thing you look for and walk to, and a map with
+ * thirty of them is not a place, it is a menu. Eight is more than any hand-drawn map has used.
+ */
+const MAX_DOORS = 8
 
 const num = (v: unknown, lo: number, hi: number, fallback: number): number =>
   typeof v === 'number' && Number.isFinite(v) ? Math.max(lo, Math.min(hi, v)) : fallback
+
+/**
+ * A piece as six numbers.
+ *
+ * ⚠️ BECAUSE THE KEYS WERE BIGGER THAN THE VALUES. `{"art":0,"at":{"x":0.1234,"y":0.5678},
+ * "wide":0.0366,"kind":"flat","top":0}` is sixty-six characters of which eleven are the actual
+ * numbers; the rest is the same five words repeated once per rock. Asked for as a smart way to
+ * save space after the brush hit the piece limit in a few seconds, and this is where the space
+ * was — not in what a map contains, in how it was spelled.
+ *
+ * ⚠️ AND QUANTISED, WHICH IS THE OTHER HALF. A position is stored to one part in ten thousand
+ * of the world, which is a third of a pixel on a phone and far finer than anything a hand
+ * places; a width to one in a hundred thousand; a height to one in a hundred of a creature.
+ * Full doubles would have put `0.30000000000000004` in the file more than once.
+ *
+ * ⚠️ AND THE OLD SHAPE STILL READS. Every map saved before this is objects, and `loose` below
+ * takes either — a format that could not read its own past would be a format that eats work.
+ */
+const tight = (p: Piece): number[] => [
+  p.art,
+  Math.round(p.at.x * 1e4),
+  Math.round(p.at.y * 1e4),
+  Math.round(p.wide * 1e5),
+  Math.max(0, KINDS.indexOf(p.kind)),
+  Math.round(p.top * 100),
+]
+
+export const packPieces = (pieces: Piece[]): number[][] => pieces.map(tight)
+
+const loose = (raw: unknown): Piece | null => {
+  if (Array.isArray(raw)) {
+    const [art, x, y, wide, kind, top] = raw
+    if (typeof art !== 'number' || typeof wide !== 'number') return null
+    const w = num(wide, 1, 1e5, 0) / 1e5
+    if (!(w > 0)) return null
+    return {
+      art: Math.round(num(art, 0, MAX_PALETTE - 1, -1)),
+      at: { x: num(x, 0, 1e4, 5e3) / 1e4, y: num(y, 0, 1e4, 5e3) / 1e4 },
+      wide: w,
+      kind: KINDS[Math.round(num(kind, 0, KINDS.length - 1, KINDS.length - 1))] ?? 'flat',
+      top: num(top, 0, 400, 0) / 100,
+    }
+  }
+  if (!raw || typeof raw !== 'object') return null
+  const p = raw as Record<string, unknown>
+  const at = p.at as { x?: unknown; y?: unknown } | undefined
+  const wide = num(p.wide, 0.001, 1, 0)
+  if (!(wide > 0)) return null
+  return {
+    art: Math.round(num(p.art, 0, MAX_PALETTE - 1, -1)),
+    at: { x: num(at?.x, 0, 1, 0.5), y: num(at?.y, 0, 1, 0.5) },
+    wide,
+    kind: KINDS.includes(p.kind as PlaceKind) ? (p.kind as PlaceKind) : 'flat',
+    top: num(p.top, 0, 4, 0),
+  }
+}
 
 /**
  * Read one, from anywhere.
@@ -171,21 +277,10 @@ export function readMapDoc(v: unknown): MapDoc | null {
 
   const pieces: Piece[] = []
   for (const raw of o.pieces.slice(0, MAX_PIECES)) {
-    if (!raw || typeof raw !== 'object') continue
-    const p = raw as Record<string, unknown>
-    const art = num(p.art, 0, palette.length - 1, -1)
+    const p = loose(raw)
     /* a piece pointing at a drawing that did not survive validation is a piece with no picture */
-    if (art < 0 || !Number.isInteger(art)) continue
-    const at = p.at as { x?: unknown; y?: unknown } | undefined
-    const wide = num(p.wide, 0.001, 1, 0)
-    if (!(wide > 0)) continue
-    pieces.push({
-      art,
-      at: { x: num(at?.x, 0, 1, 0.5), y: num(at?.y, 0, 1, 0.5) },
-      wide,
-      kind: KINDS.includes(p.kind as PlaceKind) ? (p.kind as PlaceKind) : 'flat',
-      top: num(p.top, 0, 4, 0),
-    })
+    if (!p || p.art < 0 || p.art >= palette.length) continue
+    pieces.push(p)
   }
   /* ⚠️ EITHER ONE IS A MAP. It used to insist on pieces, which was right when stamping was
      the only thing this room could do; a map that is a painted island and nothing else is a
@@ -201,8 +296,23 @@ export function readMapDoc(v: unknown): MapDoc | null {
   /* readZone is the boundary: wrong length, wrong alphabet and wrong type all come back null */
   const block = readZone(o.block) ? (o.block as string) : null
 
+  const doors: Door[] = []
+  if (Array.isArray(o.doors))
+    for (const raw of o.doors.slice(0, MAX_DOORS)) {
+      if (!raw || typeof raw !== 'object') continue
+      const d = raw as Record<string, unknown>
+      /* somebody else's string, and it is about to be looked up and shown on the field */
+      if (typeof d.to !== 'string' || !d.to.trim()) continue
+      const at = d.at as { x?: unknown; y?: unknown } | undefined
+      doors.push({
+        at: { x: num(at?.x, 0, 1, 0.5), y: num(at?.y, 0, 1, 0.5) },
+        wide: num(d.wide, 0.004, 0.5, 0.05),
+        to: d.to.slice(0, 40).trim(),
+      })
+    }
+
   const name = typeof o.name === 'string' ? o.name.slice(0, 40).trim() : ''
-  return { v: 1, name: name || 'Map', palette, pieces, ground, spawn, block }
+  return { v: 1, name: name || 'Map', palette, pieces, ground, spawn, block, doors }
 }
 
 /**

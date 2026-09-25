@@ -1,5 +1,5 @@
 import { packDrawing } from '../draw/strokes'
-import { readMapDoc, type MapDoc } from './mapDoc'
+import { packPieces, readMapDoc, type MapDoc } from './mapDoc'
 
 /**
  * The maps you have made.
@@ -94,10 +94,13 @@ const onDisk = (doc: MapDoc) => ({
   v: 1,
   name: doc.name,
   palette: doc.palette.map(packDrawing),
-  pieces: doc.pieces,
+  /* six numbers each rather than five repeated words — see packPieces, which is what makes
+     two thousand of them fit in a map at all */
+  pieces: packPieces(doc.pieces),
   /* the ground is a drawing like any other, so it is packed like any other */
   ground: doc.ground ? packDrawing(doc.ground) : null,
   spawn: doc.spawn,
+  doors: doc.doors,
   /* already a string — see MapDoc.block, which is packed in memory for exactly this reason */
   block: doc.block,
 })
