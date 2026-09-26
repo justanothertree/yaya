@@ -79,42 +79,81 @@ describe('walking', () => {
   })
 
   /**
-   * ⚠️ AND HOLDING TWO DIRECTIONS IS FASTER THAN ONE, WHICH IS A FINDING. This is the
-   * oldest bug in top-down movement — two full-speed vectors added give you 1.41x along the
-   * diagonal — and stepWalker plainly means to avoid it: it normalises the steer the moment
-   * `len > 1`, which has no other purpose. But the normalisation only reaches the ACCELERATION
-   * term; the speed CAP handed to `pull` stays the full `top` on each axis, so both axes ramp
-   * up more gently and then arrive at full speed anyway.
+   * ⚠️ AND A DIAGONAL IS NOT A SHORTCUT, WHICH TOOK TWO GOES. Normalising the steer is
+   * the standard answer to the oldest bug in top-down movement and it is only half of it: the
+   * normalised wish reached the ACCELERATION while the speed CAP stayed the full `top` on each
+   * axis, so both axes ramped gently and then arrived at full speed anyway. Measured before the
+   * fix, in screen-heights a second over three seconds at 240 frames: straight 0.3392, diagonal
+   * 0.4387 — 1.29x.
    *
-   * Measured in screen-heights a second, over three seconds at 240 frames: straight 0.3392,
-   * diagonal 0.4387 — 1.29x. Not the full 1.41 only because SQUASH makes the vertical 0.82 of
-   * the horizontal.
-   *
-   * ⚠️ AND THE OBVIOUS FIX OVERSHOOTS, which is why this is a finding and not a patch.
-   * Scaling the cap by the wish as well as the acceleration — the one-liner — was tried and
-   * measured: it lands the diagonal at 0.914x straight, not 1.0. Because SQUASH deliberately
-   * makes the vertical 0.82 of the horizontal, capping both axes at 0.707 gives
-   * hypot(1, 0.82) × 0.707 = 0.914, so "normalise the steer" and "the diagonal is as fast as
-   * walking across" stop being the same instruction the moment the two axes are not equal.
-   *
-   * Which of those two the park wants is a question about feel, not a bug with an answer — and
-   * how fast you cross the park is the most-felt number in the game, with two directions held
-   * most of the time. So this asserts what IS, and turns red the day somebody decides.
+   * ⚠️ THE EXPECTATION IS THE ELLIPSE THE TWO STRAIGHT LINES DESCRIBE, not a number.
+   * SQUASH deliberately makes up-and-down 0.82 of across, so "a diagonal is as fast as walking
+   * across" and "a diagonal is not a shortcut" are different instructions the moment the two
+   * axes are unequal — the honest target is the 45° point of the ellipse whose axes are the
+   * two speeds you can MEASURE, which is 0.707 × hypot(across, down). It comes out at 0.914 of
+   * across, and nothing here divides by SQUASH to get there.
    */
-  it('though holding two directions is currently about 1.3x faster than one', () => {
-    const straight = run(restingWalker(0.5, 0.5), press({ right: true }), 3, 1 / 240)
-    const diagonal = run(restingWalker(0.5, 0.5), press({ right: true, down: true }), 3, 1 / 240)
-    const ratio = speedOf(diagonal) / speedOf(straight)
-    expect(ratio, `diagonal is ${ratio.toFixed(3)}x straight`).toBeGreaterThan(1.2)
-    expect(ratio).toBeLessThan(Math.SQRT2)
+  it('and a diagonal is never quicker than the quickest straight line', () => {
+    const across = speedOf(run(restingWalker(0.5, 0.5), press({ right: true }), 3, 1 / 240))
+    const down = speedOf(run(restingWalker(0.5, 0.5), press({ down: true }), 3, 1 / 240))
+    const diagonal = speedOf(
+      run(restingWalker(0.5, 0.5), press({ right: true, down: true }), 3, 1 / 240),
+    )
+    expect(
+      diagonal,
+      `diagonal ${diagonal.toFixed(4)} beat across ${across.toFixed(4)}`,
+    ).toBeLessThanOrEqual(across * 1.001)
+    expect(diagonal, 'and it is not the slow way round either').toBeGreaterThanOrEqual(down * 0.999)
   })
 
-  it('and the steer IS normalised, which is what says the speed-up is unintended', () => {
-    /* a diagonal accelerates more gently than a straight line: that is the normalisation
-       working on the ramp. It is only the cap it never reaches. */
+  it('and it sits exactly where the two straight lines put it', () => {
+    const across = speedOf(run(restingWalker(0.5, 0.5), press({ right: true }), 3, 1 / 240))
+    const down = speedOf(run(restingWalker(0.5, 0.5), press({ down: true }), 3, 1 / 240))
+    const diagonal = speedOf(
+      run(restingWalker(0.5, 0.5), press({ right: true, down: true }), 3, 1 / 240),
+    )
+    expect(diagonal / Math.hypot(across, down)).toBeCloseTo(Math.SQRT1_2, 3)
+  })
+
+  it('and all four diagonals are the same speed', () => {
+    const ways = [
+      { right: true, down: true },
+      { right: true, up: true },
+      { left: true, down: true },
+      { left: true, up: true },
+    ]
+    const speeds = ways.map((w) => speedOf(run(restingWalker(0.5, 0.5), press(w), 3, 1 / 240)))
+    for (const v of speeds) expect(v).toBeCloseTo(speeds[0], 6)
+  })
+
+  it('and the steer is normalised, so a diagonal still ramps up more gently', () => {
     const one = stepWalker(restingWalker(0.5, 0.5), press({ right: true }), 1 / 240)
     const two = stepWalker(restingWalker(0.5, 0.5), press({ right: true, down: true }), 1 / 240)
     expect(Math.abs(two.vx)).toBeLessThan(Math.abs(one.vx))
+  })
+
+  /**
+   * ⚠️ AND ADDING THE SECOND KEY DOES NOT TAKE A CHUNK OFF THE FIRST. At a full-speed
+   * run the cap for that axis drops 29% the frame a second direction goes down, and clamping to
+   * it would spend that instantly — a hitch you would feel every time you turned, which is most
+   * of the time. `pull` walks down to the new cap at the drag rate instead.
+   *
+   * Asserted against the creature's own speed rather than against any constant, so there is
+   * nothing here to keep in step with TUNE.
+   */
+  it('and turning a run into a diagonal loses speed gradually, not in one frame', () => {
+    const flat = run(restingWalker(0.5, 0.5), press({ right: true }), 3, 1 / 240)
+    const oneFrame = stepWalker(flat, press({ right: true, down: true }), 1 / 240)
+    const lost = (flat.vx - oneFrame.vx) / flat.vx
+    expect(lost, `lost ${(lost * 100).toFixed(1)}% in a frame`).toBeLessThan(0.05)
+    expect(lost, 'and it is losing some, or it never arrives').toBeGreaterThan(0)
+  })
+
+  it('and it does arrive at the diagonal speed rather than bleeding forever', () => {
+    const flat = run(restingWalker(0.5, 0.5), press({ right: true }), 3, 1 / 240)
+    const turned = run(flat, press({ right: true, down: true }), 1, 1 / 240)
+    const fresh = run(restingWalker(0.5, 0.5), press({ right: true, down: true }), 3, 1 / 240)
+    expect(speedOf(turned)).toBeCloseTo(speedOf(fresh), 4)
   })
 
   /**

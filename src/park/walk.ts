@@ -210,10 +210,28 @@ export const holdInPark = (x: number, y: number): Spot => {
 /**
  * One step.
  *
- * ⚠️ EIGHT WAYS, AND A DIAGONAL IS NOT FASTER. Pressing two keys adds two full-speed vectors,
- * which is how every naive top-down game ends up with a diagonal that is 41% quicker than any
- * straight line — the one bug in this genre everybody ships once. The wish is normalised before
- * it is used.
+ * ⚠️ EIGHT WAYS, AND A DIAGONAL IS NOT FASTER — WHICH TOOK TWO GOES. Pressing two keys adds
+ * two full-speed vectors, and that is how every naive top-down game ends up with a diagonal 41%
+ * quicker than any straight line: the one bug in this genre everybody ships once. Normalising
+ * the wish is the standard answer to it and it is only HALF the answer, which is the part this
+ * shipped without for a long time. The normalised wish reached the ACCELERATION and the speed
+ * CAP stayed the full `top` on each axis — so both axes ramped up more gently and then arrived
+ * at full speed anyway. Measured before the fix: 0.4387 screen-heights a second diagonally
+ * against 0.3392 straight, 1.29x. A diagonal was slower to get going and then faster, which is
+ * not a shape anybody designs.
+ *
+ * ⚠️ SO THE CAP IS THE WISH TOO, and what that lands on is the ellipse SQUASH already
+ * describes rather than a circle. Across is 1.0, up and down is 0.82 because that is the choice
+ * SQUASH records, and a diagonal is hypot(0.707, 0.82 × 0.707) = 0.914 — between the two, and
+ * quicker than no single key can manage in that direction. The alternative reading, "every
+ * direction is the same speed on screen", is one line from here and was not taken: it would make
+ * walking north 22% FASTER than it is today, retiring a deliberate choice with its own note
+ * above, to fix a bug about diagonals.
+ *
+ * ⚠️ AND IT BLEEDS INTO THE CAP RATHER THAN SNAPPING TO IT. Turning a full-speed run into
+ * a diagonal drops that axis's cap by 29% in one frame, and a hard clamp would take the speed
+ * off instantly — a hitch you feel every time you add a second key, which is most of the time.
+ * `pull` walks it down at the drag rate instead, which takes about 43ms.
  *
  * @param dt seconds, clamped for the same reason play.ts clamps it: a backgrounded tab hands
  * you several seconds at once, and a creature that teleports is worse than one that stutters.
@@ -234,7 +252,11 @@ export function stepWalker(w: Walker, steer: Steer, dt: number, speed = 1): Walk
   const pull = (v: number, want: number, cap: number, accel: number, drag: number) => {
     if (want !== 0) {
       const next = v + want * accel * t
-      return Math.max(-cap, Math.min(cap, next))
+      if (Math.abs(next) <= cap) return next
+      /* over the cap this direction allows: walk down to it at the drag rate rather than
+         clamping, or adding a second key takes a chunk off the first one in a single frame */
+      const eased = Math.max(cap, Math.abs(v) - drag * t)
+      return Math.sign(next) * Math.min(Math.abs(next), eased)
     }
     /* towards zero rather than multiplied, so it arrives — see the same note in play.ts */
     const drop = drag * t
@@ -245,8 +267,9 @@ export function stepWalker(w: Walker, steer: Steer, dt: number, speed = 1): Walk
      and a bigger park feels twitchier than a small one for no reason anybody asked for */
   const ax = TUNE.accel * per
   const dx = TUNE.drag * per
-  const vx = pull(w.vx, wx, top, ax, dx)
-  const vy = pull(w.vy, wy, top * SQUASH, ax * SQUASH, dx * SQUASH)
+  /* ⚠️ the cap is scaled by the WISH, not left at the axis maximum — see the note above */
+  const vx = pull(w.vx, wx, top * Math.abs(wx), ax, dx)
+  const vy = pull(w.vy, wy, top * SQUASH * Math.abs(wy), ax * SQUASH, dx * SQUASH)
 
   const { x, y } = holdInPark(w.x + vx * t, w.y + vy * t)
 
