@@ -68,6 +68,16 @@ what it just made stale — copy, empty states, the thing a neighbouring feature
   width, a pixel rectangle, a readback of painted pixels. And when a conversion goes wrong twice,
   the fix is not a third careful call site: it is `outBy(petHeights)`, which has nowhere to put a
   wrong factor.
+- **And it is not only about factors: a test that asks the same QUESTION as the code gets the
+  same answer, including when that answer is wrong.** The fissure's test asked `gap > r + r` —
+  do the circles overlap — which is the sum `patchesOf` was making, so it agreed with it and
+  reported floor between the steps. The real question has a third term: `inPatch` expands every
+  patch by the TARGET's own footprint, so "there is a gap" and "somebody fits through it" are
+  different claims. Swept with `inPatch` itself, there was nowhere to stand from scale 1.0 up —
+  a plain player's own fissure was a wall, not only a boss's. The same shape twice in one
+  sitting: the gallery's cap was "120 items", which is the store's own limit, and the question
+  underneath it was how many BYTES that is and what happens to the one that does not fit.
+  **Measure a gap against the thing that has to occupy it, not against zero.**
 - **A timed-out browser call keeps running, and its keypresses land in your next trial.** The
   pane gives up on the promise; the page does not. A three-trial fight harness that ran over
   the limit was still holding the guard key during the _next_ call's control run, which duly
@@ -238,6 +248,16 @@ memoise anything derived that an effect depends on.
 Identify what a change could affect before making it. Protect database contracts, authentication,
 realtime, existing user data, public routes, mobile behaviour and deployment config. If a contract
 must break, say so explicitly and handle the migration deliberately.
+
+**A cache that evicts is a DELETE, once the store syncs.** Five stores here ended `write` with
+`slice(0, MAX)`, which reads as tidy housekeeping and was written when each of them was the only
+copy. `library/cloud.ts` then made four of them a cache: `watchLibrary` diffs `localRows()`
+against the previous snapshot and sends `library_drop` for anything that has gone, because while
+it is watching, "gone from here" can only mean somebody deleted it — the one thing a cold sync
+cannot establish, and the reason sync itself never deletes. An eviction is indistinguishable from
+a deletion, so keeping a 121st picture deleted your first off your account. **Nothing local may
+quietly drop an item that something else mirrors**: refuse the new one and say so. The fifth
+store, maps, does not sync and so holds the ONLY copy — where an eviction is worse still.
 
 **Read the comments before overturning a decision.** This codebase explains _why_ in the places it
 matters, and several of those notes were written after the obvious-looking change had already been
