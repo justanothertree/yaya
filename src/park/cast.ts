@@ -116,8 +116,13 @@ export const CAST: Record<
  * ⚠️ THE VISIBLE FIELD IS ABOUT NINE PET-HEIGHTS ACROSS, which is the number all of this has
  * to be read against. A wave spaced 1.15 apart AND multiplied by a 2.5 boss put its last step
  * fourteen heights out — half of it past the edge of the screen, where it is neither a threat
- * nor a thing anybody can learn. Spacing is therefore the pattern's own and does not scale;
- * only where it STARTS does, because a bigger creature reaches further before it begins.
+ * nor a thing anybody can learn.
+ *
+ * ⚠️ WHICH WAS ANSWERED BY FIXING THE SPACING, AND THAT ANSWER COST THE MOVE ITS GAPS.
+ * A spacing that does not scale while the radius does is a pattern that closes itself, and it
+ * had — see WAVE_FLOOR. The reach is now a BUDGET rather than a fixed stride: spacing grows
+ * with the steps so there is always floor between them, and the step count comes down to pay
+ * for it. Where it starts still scales, gently, for the same reason as before.
  *
  * ⚠️ AND A MARK IS THROWN GENTLY FURTHER BY A BIGGER BOSS, not proportionally further. At a
  * straight multiple a 2.5 boss threw it 6.5 heights, which is most of the screen away from
@@ -176,9 +181,47 @@ export const BOLT_UP = {
   /** how much longer before the next one */
   wait: 1,
 }
+/** the most steps a fissure is ever made of — a big creature tears the ground in fewer bites */
 const WAVE_STEPS = 5
-const WAVE_GAP = 1.15
-const WAVE_ROLL = 0.16
+/** each step's radius at scale 1, in pet-heights */
+const WAVE_R = 0.46
+/**
+ * Clear ground left between two steps, in pet-heights — the thing "cross it" means.
+ *
+ * ⚠️ A CREATURE HAS A WIDTH, WHICH IS WHAT THE OLD SUM FORGOT. The spacing used to be a
+ * flat 1.15 against two radii of 0.46, and the note here said that left "0.23 of a pet-height of
+ * floor between each pair, which is the standing room the whole move is built around". It is not
+ * standing room. inPatch expands every patch by the target's own footprint — footSpan, which
+ * along the aim is width × 0.4, and an ordinary creature is half a pet-height wide — so
+ * standing between two steps needs 0.4 of floor, not a number above zero. Swept with inPatch
+ * itself: at scale 1 there was NOWHERE on the axis a creature could stand, and that was true
+ * from scale 1.0 up rather than from 1.25 as the arithmetic suggested. Only a 0.4 creature,
+ * whose own footprint is small enough, ever fitted.
+ *
+ * So this is two footprints and a little over, and the test for it asks footSpan rather than
+ * repeating it — the one sum that must not be made twice is the one that was already wrong.
+ */
+const WAVE_FLOOR = 0.5
+/**
+ * How fast the tear travels outward, in pet-heights a second.
+ *
+ * ⚠️ A SPEED RATHER THAN A DELAY, because the spacing is no longer fixed. 1.15 apart every
+ * 0.16s is what this always was; holding the DELAY while the spacing grew would have made a big
+ * creature's tear fly outward twice as fast as a small one's, which is a different move.
+ */
+const WAVE_SPEED = 1.15 / 0.16
+/**
+ * How far the far edge of the last step may ever get from the caster, in pet-heights.
+ *
+ * ⚠️ THE VISIBLE FIELD IS ABOUT NINE PET-HEIGHTS ACROSS, and this is the budget that
+ * keeps the pattern inside it. It is what replaces the old fixed spacing: that spacing existed
+ * to stop a 2.5 boss throwing its last step half a screen past the edge of the world, and it
+ * bought that by closing the gaps instead. Spending the budget on spacing and taking the steps
+ * out of the count keeps both — measured, the far edge now runs 5.8 heights for a player and
+ * 6.7 for the biggest boss, against 6.2 and 8.0 before.
+ */
+const WAVE_FAR = 6.5
+const WAVE_START = 1.1
 /** a bigger creature starts further out, but not proportionally — see the note above */
 const easedScale = (s: number) => 1 + (s - 1) * 0.4
 
@@ -270,26 +313,38 @@ export function patchesOf(
    * fissure and a carpet of bombs the same feature. Each step lands a moment after the one
    * behind it, so the danger travels outward and the answer is to cross it rather than outrun it.
    */
+  /**
+   * ⚠️ THE SPACING IS THE RADIUS PLUS THE FLOOR, WHICH IS THE WHOLE FIX. It used to be
+   * a flat 1.15 whatever the creature, so a fissure closed itself the moment the steps grew
+   * past 0.575 — and with a crosser's own footprint counted, from scale 1.0 up. Deriving the
+   * spacing from the radius means the floor between two steps is the same crossable width
+   * whoever threw it, and a bigger creature spends its size on bigger holes rather than on
+   * joining them together.
+   *
+   * ⚠️ AND THE COUNT IS WHAT GIVES: fewer, fatter bites rather than a longer line. The
+   * pattern has a reach budget, so growing the spacing has to buy steps back out of the count
+   * or the last one lands off screen — which is exactly the failure the fixed spacing was
+   * protecting against, and the reason it was fixed in the first place. A player throws four
+   * and the biggest boss throws two.
+   *
+   * ⚠️ NEVER FEWER THAN TWO, or it is a mark with a different name.
+   */
+  const r = WAVE_R * s
+  const gap = 2 * r + WAVE_FLOOR
+  const start = WAVE_START * easedScale(s)
+  const room = WAVE_FAR - start - r
+  /* ⚠️ a hair of tolerance: (n - 1) × gap and room are the same number in decimal and not
+     always in binary, and without it a fissure silently loses its last step at some sizes */
+  const steps = Math.max(2, Math.min(WAVE_STEPS, 1 + Math.floor(room / gap + 1e-9)))
+  const roll = gap / WAVE_SPEED
+
   const out: Patch[] = []
   const warn = 0.5
-  for (let i = 0; i < WAVE_STEPS; i++) {
-    const startsAt = warn + i * WAVE_ROLL
-    /**
-     * ⚠️ AND THE FISSURE KEEPS ITS WIDTH, which I changed and put back. Widening the
-     * steps to 0.58 read as an obvious win — it is the one attack made of several circles, so
-     * bigger circles is a bigger fissure — and it closes the gaps: WAVE_GAP is 1.15 and two
-     * radii at 0.58 is 1.16, so consecutive steps touch and the line becomes a wall. At 0.46
-     * the sum is 0.92 and there is 0.23 of a pet-height of floor between each pair, which is
-     * the standing room the whole move is built around. Found by doing the sum, not by
-     * looking: on screen it is five circles either way.
-     *
-     * The two that grew are single circles with nothing to overlap — see the bloom and the
-     * mark above.
-     */
-    const r = 0.46 * PARK_TALL * s
+  for (let i = 0; i < steps; i++) {
+    const startsAt = warn + i * roll
     out.push({
-      at: stepFrom(from, aim, 1.1 * easedScale(s) + i * WAVE_GAP),
-      r,
+      at: stepFrom(from, aim, start + i * gap),
+      r: r * PARK_TALL,
       ready: Math.min(1, t / startsAt),
       live: t >= startsAt && t <= startsAt + 0.24,
     })
