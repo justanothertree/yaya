@@ -1356,6 +1356,61 @@ export function ParkRoom({
    * 1" from "still holding 1" — which a boolean cannot.
    */
   const castWanted = useRef(0)
+  /**
+   * Which cast the MOUSE is holding down, or 0.
+   *
+   * ⚠️ KEPT APART FROM castWanted SO LEAVING THE FIELD CANNOT CANCEL A KEY. The pointer
+   * handlers have to let go of what they are holding — a button released outside the window
+   * never arrives — but castWanted does not know who pressed it, so clearing it on
+   * pointerleave would also cancel a bolt somebody was winding up on E. That is the same shape
+   * as the bug where every mouse release emptied `held` and killed the direction you were
+   * walking, which cost a fortnight of "the diagonal attack loses a movement output".
+   */
+  const mouseCast = useRef(0)
+  /**
+   * Let go of whatever the mouse was holding, and only that.
+   *
+   * ⚠️ IT CHECKS THE SLOT MATCHES, so a release arriving after something else has taken
+   * the slot does not cancel that instead. All three of pointerup, pointerleave and
+   * pointercancel can fire for one press, and all three call this.
+   */
+  const dropMouseCast = () => {
+    if (!mouseCast.current) return
+    wantCast(mouseCast.current, false)
+    mouseCast.current = 0
+  }
+  /**
+   * A slot let go of before the loop ever saw it pressed.
+   *
+   * ⚠️ BECAUSE A CLICK CAN BE SHORTER THAN A FRAME, and the primary ability now lives
+   * on one. The loop reads castWanted once a frame and takes a press as an EDGE against what
+   * it read last time — so a press and a release that both land between two frames cancel out
+   * and the cast simply never happens. Measured in the pane: a synthetic click did nothing at
+   * all, while the same click held over one frame threw the mark. A person's click is 60-120ms
+   * and would nearly always survive, but "nearly always" is a control that occasionally ignores
+   * you, which is worse than one that is slow.
+   *
+   * A key has the same edge and never showed it, because nobody taps a key for under 16ms. One
+   * rule for both is cheaper than two, and it is the keyboard's latent bug as well.
+   */
+  const castLetGo = useRef(0)
+  /**
+   * Press or release a cast slot, however it was asked for.
+   *
+   * ⚠️ THE RELEASE WAITS FOR THE LOOP TO HAVE SEEN THE PRESS. castHeld is what the loop
+   * read last frame, so castHeld === slot is exactly "the press has landed" — and until it
+   * has, letting go is deferred rather than done.
+   */
+  const wantCast = (slot: number, on: boolean) => {
+    if (on) {
+      castWanted.current = slot
+      return
+    }
+    if (castWanted.current !== slot) return
+    if (castHeld.current === slot) castWanted.current = 0
+    else castLetGo.current = slot
+  }
+  /** which slot was wanted last frame, so a press is an edge rather than a hold — see below */
   const castHeld = useRef(0)
   /** seconds until the next one, in state because the readout needs to draw the wait */
   const [castLeft, setCastLeft] = useState(0)
@@ -1646,7 +1701,7 @@ export function ParkRoom({
         low === PARK_KEYS.cast ? 1 : low === PARK_KEYS.cast2 ? 2 : '123'.indexOf(e.key) + 1
       if (slot > 0) {
         e.preventDefault()
-        castWanted.current = on ? slot : castWanted.current === slot ? 0 : castWanted.current
+        wantCast(slot, on)
         return
       }
       const hit = HITS[e.key]
@@ -1775,6 +1830,19 @@ export function ParkRoom({
             you.current = { ...you.current, aim: aimNow(you.current.aim) }
             setCasting('bolt')
           }
+        }
+        /**
+         * ⚠️ A RELEASE HELD BACK BECAUSE IT BEAT THIS FRAME NOW APPLIES, and it has to be
+         * the LAST thing in here. Everything above reads castWanted — `pick` is the slot it
+         * names, and the bolt's release is "the slot is no longer wanted" — so clearing it any
+         * earlier makes the press this latch exists to save arrive with nothing behind it.
+         * Which is exactly what it did: the first version cleared it before `pick`, so a
+         * sub-frame click reached the cast with slot 0 and threw nothing, in the same silence
+         * as the bug it was fixing. See castLetGo.
+         */
+        if (castLetGo.current !== 0) {
+          if (castWanted.current === castLetGo.current) castWanted.current = 0
+          castLetGo.current = 0
         }
       }
       /**
@@ -3361,9 +3429,21 @@ export function ParkRoom({
           guard is the thing a hand reaches for WITHOUT LOOKING, and it is held, which is what
           a button under a finger is good at and what a letter across the keyboard is not.
 
-          ⚠️ THE HEAVY SWING IS NOT DROPPED, because a mouse that can only swing one way is
-          a mouse that cannot fight. It goes to the middle button, which keeps all three on the
-          hand that is already aiming — and G still throws it, as it always did.
+          ⚠️ AND LEFT IS YOUR FIRST BIG MOVE, NOT THE QUICK SWING. Asked for as "melee is
+          currently bad and everything should be a projectile or spell on mouse". The button the
+          hand rests on is the one that should throw the thing you came to throw, and a cast is
+          already aimed at the cursor — aimNow prefers the pointer over the keys — so the mouse
+          was already doing the aiming for a move it could not start. It is the same slot E
+          throws, set through the same ref, so there is one place a cast begins.
+
+          ⚠️ HOLDING IT WINDS A BOLT UP, for free, because the charge reads how long the
+          slot has been wanted rather than which key wanted it. "charge and shoot the bolt —
+          rapid shoot bolt (clicking)" is what that was asked for, and clicking is now literally
+          what it is.
+
+          ⚠️ THE SWINGS ARE NOT DROPPED, only moved off the button. F and G still throw
+          them and the middle button still throws the heavy one, so a mouse can still fight
+          close up — what has changed is which of the two the resting finger reaches.
 
           They set the same refs the keys set rather than a second path, so there is one place
           a swing or a guard starts however it was asked for.
@@ -3384,6 +3464,7 @@ export function ParkRoom({
             }
           }}
           onPointerLeave={() => {
+            dropMouseCast()
             hitting.current.quick = false
             hitting.current.heavy = false
             /* ⚠️ THE GUARD LETS GO TOO. It is HELD, so a button released somewhere the field
@@ -3396,18 +3477,21 @@ export function ParkRoom({
             /* ⚠️ the middle button scrolls a page by default, and a heavy swing that also
                starts an autoscroll is not a control — the same reason the menu is suppressed */
             if (e.button === 1) e.preventDefault()
-            if (e.button === 0) hitting.current.quick = true
-            else if (e.button === 1) hitting.current.heavy = true
+            if (e.button === 0) {
+              wantCast(1, true)
+              mouseCast.current = 1
+            } else if (e.button === 1) hitting.current.heavy = true
             else if (e.button === 2) bracing.current = true
           }}
           onPointerUp={(e) => {
-            if (e.button === 0) hitting.current.quick = false
+            if (e.button === 0) dropMouseCast()
             else if (e.button === 1) hitting.current.heavy = false
             else if (e.button === 2) bracing.current = false
           }}
           /* ⚠️ pointerup is not promised: a button let go outside the window never arrives,
              and a guard is held, so it needs the cancel as well as the release. */
           onPointerCancel={() => {
+            dropMouseCast()
             hitting.current.quick = false
             hitting.current.heavy = false
             bracing.current = false
@@ -4237,10 +4321,10 @@ export function ParkRoom({
             <kbd>2</kbd> <kbd>3</kbd>
           </dt>
           <dd>
-            Your three big moves, on one shared wait. <kbd>{keyName(PARK_KEYS.cast)}</kbd> throws
-            the first and <kbd>{keyName(PARK_KEYS.cast2)}</kbd> the second; the numbers reach all
-            three. If one of them is a <strong>bolt</strong>, holding the key winds it up and
-            letting go throws it harder
+            Your three big moves, on one shared wait. Left-click or{' '}
+            <kbd>{keyName(PARK_KEYS.cast)}</kbd> throws the first and{' '}
+            <kbd>{keyName(PARK_KEYS.cast2)}</kbd> the second; the numbers reach all three. If one of
+            them is a <strong>bolt</strong>, holding it winds it up and letting go throws it harder
           </dd>
         </div>
         <div>
@@ -4296,7 +4380,8 @@ export function ParkRoom({
           and the three casts are; repeating them for a second input would be the tour this
           room had cut out of it. */}
       <p className="muted park-about">
-        With a mouse: it aims, left swings quick, right holds your guard up, middle swings heavy.
+        With a mouse: it aims, left throws your first big move, right holds your guard up, middle
+        swings heavy.
       </p>
       {/* ⚠️ A rule you cannot see: the trees are above a plain jump. That the ring and the
           rocks are raised at all is visible the moment you walk onto one, so it is not said. */}
