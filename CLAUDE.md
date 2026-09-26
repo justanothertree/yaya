@@ -139,6 +139,15 @@ what it just made stale — copy, empty states, the thing a neighbouring feature
   `prefers-reduced-motion` cannot be emulated. And `window.confirm` is auto-dismissed, which
   returns `false` — so a confirmed action appears to do nothing and the feature appears broken
   (this cost an hour on the paint room's Clear button, which was fine).
+- **A `computer` click in the pane is about 1ms long, which is shorter than a frame.** Measured:
+  pointerdown and pointerup one millisecond apart. Anything that samples a LEVEL once a frame —
+  a held key, a held button, a cast slot — never sees it, so the feature reads as broken and is
+  not. Use `left_click_drag` when you need the button held, and take a control reading before
+  believing a click did nothing. It is also worth fixing in the product when the control is one
+  people tap: a person's click is 60-120ms and nearly always survives, and "nearly always" is a
+  control that occasionally ignores you. Two of today's readings were this, and a third was a
+  four-second cooldown still running from the previous trial — wait for the ready state, do not
+  count seconds.
 - **`window.prompt` is worse than `confirm`: it THROWS.** `prompt() is not supported` comes
   straight back out of the call, so it does not return null quietly — it aborts whatever handler
   asked, halfway through. Every naming flow in the app goes through it: ⬇ Keep, Make a minion,
