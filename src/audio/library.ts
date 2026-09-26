@@ -1,3 +1,4 @@
+import { keptAt } from '../library/kept'
 import { readSong, songNotes, type Song } from './songFile'
 
 /**
@@ -85,18 +86,29 @@ export function library(): LibraryItem[] {
   return out
 }
 
+const disk = keptAt(KEY)
+
+/** Did the last keep reach this browser's storage, or only this visit's memory? — see keptAt */
+export const librarySaved = (): boolean => disk.landed()
+
 function write(items: LibraryItem[]) {
   /* ⚠️ no slice — see saveToLibrary for why a cache that makes room is a cache that deletes */
   cache = items
-  try {
-    localStorage.setItem(KEY, JSON.stringify(cache))
-  } catch {
-    /* storage full or blocked — it stays for this visit, which is better than throwing */
-  }
+  disk.put(JSON.stringify(cache))
   emit()
 }
 
-/** Keep something. Returns the saved item, or null when there was nothing worth keeping. */
+/**
+ * No room for another one.
+ *
+ * ⚠️ SO THE ROOM CAN SAY WHICH, rather than guessing why null came back. A refusal now
+ * means either "there was nothing worth keeping" or "this is full", and those want two
+ * different things done about them. The rule stays here, where the cap is, so the room cannot
+ * hold a second copy of it that is free to disagree.
+ */
+export const libraryFull = (): boolean => library().length >= MAX_ITEMS
+
+/** Keep something. Returns the saved item, or null when it was empty or there is no room. */
 export function saveToLibrary(kind: 'song' | 'loop', song: Song): LibraryItem | null {
   const clean = readSong(song)
   if (!clean || !songNotes(clean)) return null

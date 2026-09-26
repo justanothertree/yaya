@@ -45,7 +45,13 @@ import {
 } from '../audio/palettes'
 import { readInk as readInkShared } from '../audio/ink'
 import { PATHS, pathPoint, type PathId } from '../audio/autoPath'
-import { deletePreset, readPresets, savePreset, type VizPreset } from '../audio/vizPresets'
+import {
+  deletePreset,
+  presetsSaved,
+  readPresets,
+  savePreset,
+  type VizPreset,
+} from '../audio/vizPresets'
 import { gallery, subscribeGallery } from '../draw/gallery'
 import { bakeSize, bakeSprite, type Sprite } from '../audio/artSprite'
 import { useSharedWindow } from '../party/useSharedWindow'
@@ -298,6 +304,35 @@ export function AudioVisualizer({ embedded = false }: { embedded?: boolean } = {
    */
   const [presets, setPresets] = useState<VizPreset[]>(() => readPresets())
   const [presetName, setPresetName] = useState('')
+  const [lookSaid, setLookSaid] = useState<string | null>(null)
+
+  /**
+   * Keep the panel as a look.
+   *
+   * ⚠️ ONE FUNCTION BECAUSE IT WAS TWO COPIES, and neither of them said anything at all.
+   * Enter and the Save button ran the same three lines, and savePreset can refuse — there is
+   * no room, or the write did not reach the disk — with the only sign being a dropdown that
+   * did not change. A save that silently does nothing is the failure this whole sweep is about.
+   *
+   * ⚠️ IT ASKS THE RETURNED LIST rather than a second copy of the rule: savePreset hands
+   * back what is now saved, so the look being in it IS the answer.
+   */
+  const keepLook = () => {
+    const name = presetName.trim()
+    if (!name) return
+    const next = savePreset(name, readSettings())
+    setPresets(next)
+    const kept = next.find((x) => x.name === name)
+    setChosen(kept?.id ?? '')
+    setLookSaid(
+      !kept
+        ? 'No room for another look — delete one to make space.'
+        : presetsSaved()
+          ? `Kept “${name}”`
+          : `“${name}” is here for now, but this browser is out of room — delete a look to keep it for good.`,
+    )
+    window.setTimeout(() => setLookSaid(null), kept && presetsSaved() ? 4000 : 9000)
+  }
   const [chosen, setChosen] = useState('')
 
   const [panel, setPanel] = useState(() => {
@@ -2392,20 +2427,14 @@ export function AudioVisualizer({ embedded = false }: { embedded?: boolean } = {
                 onKeyDown={(e) => {
                   if (e.key !== 'Enter' || !presetName.trim()) return
                   e.preventDefault()
-                  const next = savePreset(presetName, readSettings())
-                  setPresets(next)
-                  setChosen(next.find((x) => x.name === presetName.trim())?.id ?? '')
+                  keepLook()
                 }}
               />
               <button
                 className="btn"
                 disabled={!presetName.trim()}
                 title="Save every setting on this panel under that name"
-                onClick={() => {
-                  const next = savePreset(presetName, readSettings())
-                  setPresets(next)
-                  setChosen(next.find((x) => x.name === presetName.trim())?.id ?? '')
-                }}
+                onClick={keepLook}
               >
                 Save
               </button>
@@ -2423,6 +2452,11 @@ export function AudioVisualizer({ embedded = false }: { embedded?: boolean } = {
                 ✕
               </button>
             </div>
+            {lookSaid && (
+              <p className="muted viz-said" role="status">
+                {lookSaid}
+              </p>
+            )}
             {tab === 'modes' && (
               <div className="viz-modes" role="group" aria-label="Visual style">
                 {VISUALS.map(([id, icon, label]) => (

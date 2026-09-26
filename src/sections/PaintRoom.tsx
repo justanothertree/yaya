@@ -49,7 +49,7 @@ import { together } from '../party/together'
 import { drawParty } from '../party/draw'
 import { applyLayerOp, type LayerOp, type Stack } from '../draw/layerOps'
 import { paintSession } from '../draw/session'
-import { savePet } from '../pets/pets'
+import { petsFull, petsSaved, savePet } from '../pets/pets'
 import { PetView } from '../pets/PetView'
 import { PART_DOES, PART_WORDS, inFrontOfOrder, inkBox, partOf } from '../pets/rig'
 import { MoveShow } from '../pets/MoveShow'
@@ -1465,21 +1465,33 @@ export function PaintRoom() {
     if (!name) return
     setDocName(name)
     const art = { ...drawingRef.current, name }
-    saveArt(art)
+    /**
+     * ⚠️ THIS ENDS IN TWO KEEPS, AND THE MESSAGE USED TO ASK ONLY ONE OF THEM. Finishing
+     * a minion saves the drawing to the gallery AND the creature to the minions, which are
+     * separate stores with separate caps and separate disks — and this read gallerySaved() to
+     * decide whether a MINION had been kept. It can now say that the minion is yours while the
+     * picture was refused, which is a real outcome and was previously reported as success.
+     */
+    const kept = saveArt(art)
     const made = savePet(name, art)
     setPetStep(null)
-    /* ⚠️ the same three answers the Keep button gives, because this ends in a keep too —
-       and a minion has its own cap, so a refusal here can come from either store */
     setNote(
-      made
-        ? gallerySaved()
-          ? `${made.name} is yours — find them in 🐾 Minions.`
-          : `${made.name} is yours, but this browser is out of room — delete a picture, or they may not be here next time.`
-        : keepTrouble() === 'too-big'
-          ? 'That drawing is too big to keep. Try it with fewer strokes.'
-          : 'There is no room for another minion — delete one in 🐾 Minions to make space.',
+      !made
+        ? petsFull()
+          ? `There is no room for another minion — delete one in 🐾 Minions to make space.`
+          : 'That could not be kept — is there anything on the page?'
+        : !kept
+          ? `${made.name} is yours, but the picture was not kept: ${
+              keepTrouble() === 'too-big' ? 'it is too big' : 'your gallery is full'
+            }.`
+          : gallerySaved() && petsSaved()
+            ? `${made.name} is yours — find them in 🐾 Minions.`
+            : `${made.name} is yours, but this browser is out of room — delete something, or they may not be here next time.`,
     )
-    window.setTimeout(() => setNote(null), made && gallerySaved() ? 6000 : 9000)
+    window.setTimeout(
+      () => setNote(null),
+      made && kept && gallerySaved() && petsSaved() ? 6000 : 9000,
+    )
   }
 
   /**

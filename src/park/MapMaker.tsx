@@ -5,7 +5,16 @@ import { paintDrawing, paintStroke, type Drawing, type Stroke, type Tool } from 
 import { MapGuide } from './MapGuide'
 import { cropToInk, MAX_PIECES, worldOf, type Door, type MapDoc, type Piece } from './mapDoc'
 import { MAP_GUIDE, type PlaceKind } from './mapOf'
-import { mapBytes, MAP_LIMIT, parkMaps, removeMap, saveMap, subscribeMaps } from './maps'
+import {
+  MAP_LIMIT,
+  mapBytes,
+  mapsFull,
+  mapsSaved,
+  parkMaps,
+  removeMap,
+  saveMap,
+  subscribeMaps,
+} from './maps'
 import { downBy, outBy } from './strike'
 import { PARK, type Spot } from './walk'
 import { blankZone, brushZone, packZone, readZone, ZONE, zoneIsEmpty } from './zone'
@@ -960,7 +969,15 @@ export function MapMaker() {
       return setSaid(
         `Too big to keep — ${Math.round(bytes / 1024)}KB of ${Math.round(MAP_LIMIT.bytes / 1024)}KB. Use simpler drawings.`,
       )
-    setSaid(saveMap(doc) ? `Kept "${doc.name}".` : 'That could not be kept.')
+    /* ⚠️ a map has no account copy — it is not a kind in library/cloud.ts — so a keep
+       that did not reach the disk is the only copy not landing, and must not pass quietly */
+    if (mapsFull()) return setSaid(`No room for another map — delete one to make space.`)
+    if (!saveMap(doc)) return setSaid('That could not be kept.')
+    setSaid(
+      mapsSaved()
+        ? `Kept "${doc.name}".`
+        : `"${doc.name}" is here for now, but this browser is out of room — delete a map, and note it has no copy anywhere else.`,
+    )
   }
 
   const drawing = mode === 'draw'

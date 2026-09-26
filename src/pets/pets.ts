@@ -1,3 +1,4 @@
+import { keptAt } from '../library/kept'
 import { packDrawing, readDrawing, type Drawing } from '../draw/strokes'
 
 /**
@@ -71,17 +72,15 @@ export function pets(): Pet[] {
   return out
 }
 
+const disk = keptAt(KEY)
+
+/** Did the last minion reach this browser's storage, or only this visit's memory? — see keptAt */
+export const petsSaved = (): boolean => disk.landed()
+
 function write(items: Pet[]) {
   /* ⚠️ no slice — see savePet for why a cache that makes room is a cache that deletes */
   cache = items
-  try {
-    localStorage.setItem(
-      KEY,
-      JSON.stringify(cache.map((p) => ({ id: p.id, at: p.at, ...packPet(p) }))),
-    )
-  } catch {
-    /* storage full or blocked — it stays for this visit */
-  }
+  disk.put(JSON.stringify(cache.map((p) => ({ id: p.id, at: p.at, ...packPet(p) }))))
   listeners.forEach((l) => l())
 }
 
@@ -90,6 +89,16 @@ function write(items: Pet[]) {
  * wants, and it is the rule the library sync depends on — its slots are keyed on a lowercased
  * name, so a store that allowed duplicates would produce a pet that vanished on the next sync.
  */
+/**
+ * No room for another one.
+ *
+ * ⚠️ SO THE ROOM CAN SAY WHICH, rather than guessing why null came back. A refusal now
+ * means either "there was nothing worth keeping" or "this is full", and those want two
+ * different things done about them. The rule stays here, where the cap is, so the room cannot
+ * hold a second copy of it that is free to disagree.
+ */
+export const petsFull = (): boolean => pets().length >= MAX_PETS
+
 export function savePet(name: string, art: Drawing): Pet | null {
   const clean = readPet({ n: name, a: packDrawing(art) })
   if (!clean) return null

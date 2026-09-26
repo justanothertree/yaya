@@ -55,6 +55,27 @@ const art = (name: string): Drawing => ({
   strokes: [stroke()],
 })
 
+/* ⚠️ the shape readSong actually wants — layers with a note that is ON, since songNotes
+   counts those and refuses a song with none. Guessed wrong once; read songFile.ts for it. */
+const aSong = (name: string) => ({
+  v: 1,
+  name,
+  bpm: 120,
+  bars: 1,
+  layers: [
+    {
+      instrument: 'pad',
+      muted: false,
+      len: 2,
+      fx: {},
+      events: [
+        { t: 0, midi: 60, on: true },
+        { t: 0.5, midi: 60, on: false },
+      ],
+    },
+  ],
+})
+
 const mapDoc = (name: string): MapDoc => ({
   v: 1,
   name,
@@ -376,26 +397,7 @@ describe('no synced store makes room by dropping something', () => {
 
   it('and the song library does the same', async () => {
     const l = await import('../audio/library')
-    /* ⚠️ the shape readSong actually wants — layers with a note that is ON, since
-       songNotes counts those and refuses a song with none */
-    const song = (name: string) => ({
-      v: 1,
-      name,
-      bpm: 120,
-      bars: 1,
-      layers: [
-        {
-          instrument: 'pad',
-          muted: false,
-          len: 2,
-          fx: {},
-          events: [
-            { t: 0, midi: 60, on: true },
-            { t: 0.5, midi: 60, on: false },
-          ],
-        },
-      ],
-    })
+    const song = aSong
     let n = 0
     while (n < 500 && l.saveToLibrary('song', song(`Song ${n}`) as never)) n++
     expect(n, 'it kept saving forever, so it is still making room').toBeLessThan(500)
@@ -419,6 +421,115 @@ describe('no synced store makes room by dropping something', () => {
     v.savePreset('One too many', { hue: 999 })
     expect(v.readPresets().map((p) => p.name)).toEqual(before)
     expect(before).toContain('Look 0')
+  })
+})
+
+/**
+ * ⚠️ A FULL DISK USED TO BE SILENT IN FOUR STORES OUT OF FIVE. Every one of these catches
+ * the quota error and carries on, which is right — a keep that throws is a button people cannot
+ * trust, and the thing is still there for the visit. What was wrong is that the bargain was
+ * never offered: somebody told "Kept" who then loses it on reload was misled by the message
+ * rather than by the storage. The gallery grew a flag for it and the other four did not, which
+ * is the half-closed path this repository has a rule about now.
+ *
+ * ⚠️ AND IT STARTS true. A store nobody has written to has not failed to write, and a
+ * warning under every empty room would be worse than the silence it replaced.
+ */
+describe('every store says when a keep did not reach the disk', () => {
+  const full = () =>
+    vi.stubGlobal('localStorage', {
+      ...fakeStorage,
+      setItem: () => {
+        throw new Error('quota')
+      },
+    })
+
+  it('the gallery', async () => {
+    const g = await theGallery()
+    expect(g.gallerySaved(), 'before anybody saved anything').toBe(true)
+    full()
+    g.saveArt(art('One'))
+    expect(g.gallerySaved()).toBe(false)
+    vi.stubGlobal('localStorage', fakeStorage)
+    g.saveArt(art('Two'))
+    expect(g.gallerySaved()).toBe(true)
+  })
+
+  it('the minions', async () => {
+    const m = await import('../pets/pets')
+    expect(m.petsSaved()).toBe(true)
+    full()
+    expect(m.savePet('Bingo', art('Bingo')), 'it is still made, just not written').not.toBeNull()
+    expect(m.petsSaved()).toBe(false)
+    vi.stubGlobal('localStorage', fakeStorage)
+    m.savePet('Rex', art('Rex'))
+    expect(m.petsSaved()).toBe(true)
+  })
+
+  it('the song library', async () => {
+    const l = await import('../audio/library')
+    expect(l.librarySaved()).toBe(true)
+    full()
+    expect(l.saveToLibrary('song', aSong('One') as never)).not.toBeNull()
+    expect(l.librarySaved()).toBe(false)
+    vi.stubGlobal('localStorage', fakeStorage)
+    l.saveToLibrary('song', aSong('Two') as never)
+    expect(l.librarySaved()).toBe(true)
+  })
+
+  /* ⚠️ the one with no account copy, so a keep that did not land is the only copy not
+     landing — maps are not a kind in library/cloud.ts */
+  it('the maps, which have nowhere else to be', async () => {
+    const m = await theMaps()
+    expect(m.mapsSaved()).toBe(true)
+    full()
+    expect(m.saveMap(mapDoc('One'))).not.toBeNull()
+    expect(m.mapsSaved()).toBe(false)
+    vi.stubGlobal('localStorage', fakeStorage)
+    m.saveMap(mapDoc('Two'))
+    expect(m.mapsSaved()).toBe(true)
+  })
+
+  it('the saved looks', async () => {
+    const v = await import('../audio/vizPresets')
+    expect(v.presetsSaved()).toBe(true)
+    full()
+    v.savePreset('One', { hue: 1 })
+    expect(v.presetsSaved()).toBe(false)
+    vi.stubGlobal('localStorage', fakeStorage)
+    v.savePreset('Two', { hue: 2 })
+    expect(v.presetsSaved()).toBe(true)
+  })
+})
+
+/**
+ * ⚠️ AND A REFUSAL SAYS WHICH, because "there was nothing worth keeping" and "this is
+ * full" want two different things done about them and used to be the same null. The instrument
+ * room answered both with "Nothing to keep — record something first".
+ */
+describe('a refusal can be told apart from an empty one', () => {
+  it('the song library', async () => {
+    const l = await import('../audio/library')
+    expect(l.libraryFull()).toBe(false)
+    let n = 0
+    while (n < 500 && l.saveToLibrary('song', aSong(`S ${n}`) as never)) n++
+    expect(l.libraryFull(), 'it filled up and did not say so').toBe(true)
+  })
+
+  it('the minions', async () => {
+    const m = await import('../pets/pets')
+    expect(m.petsFull()).toBe(false)
+    let n = 0
+    while (n < 500 && m.savePet(`P ${n}`, art(`P ${n}`))) n++
+    expect(m.petsFull()).toBe(true)
+  })
+
+  it('the maps', async () => {
+    const m = await theMaps()
+    expect(m.mapsFull()).toBe(false)
+    let n = 0
+    while (n < 500 && m.saveMap(mapDoc(`M ${n}`))) n++
+    expect(m.mapsFull()).toBe(true)
   })
 })
 

@@ -1,3 +1,4 @@
+import { keptAt } from '../library/kept'
 import { packDrawing, readDrawing, type Drawing } from './strokes'
 
 /**
@@ -124,10 +125,10 @@ const onDisk = (a: Art) => ({ id: a.id, at: a.at, art: packDrawing(a.art) })
  * — but "it stays for this visit" is only an acceptable bargain if somebody is told it is the
  * bargain they got. This is the flag; saying so is the room's job.
  */
-let landed = true
+const disk = keptAt(KEY)
 
 /** Did the last keep reach this browser's storage, or only this visit's memory? */
-export const gallerySaved = (): boolean => landed
+export const gallerySaved = (): boolean => disk.landed()
 
 /**
  * Why the last keep did not happen, or null when it did.
@@ -161,13 +162,7 @@ export const artBytes = (art: Drawing): number => JSON.stringify(packDrawing(art
  */
 function write(items: Art[], body = bodyOf(items)) {
   cache = items
-  try {
-    localStorage.setItem(KEY, body)
-    landed = true
-  } catch {
-    /* storage full or blocked — it stays for this visit, and gallerySaved() says so */
-    landed = false
-  }
+  disk.put(body)
   listeners.forEach((l) => l())
 }
 

@@ -1,3 +1,4 @@
+import { keptAt } from '../library/kept'
 /**
  * Saved visualiser arrangements, by name.
  *
@@ -61,13 +62,14 @@ export function subscribePresets(fn: () => void): () => void {
   }
 }
 
+const disk = keptAt(KEY)
+
+/** Did the last look reach this browser's storage, or only this visit's memory? — see keptAt */
+export const presetsSaved = (): boolean => disk.landed()
+
 function write(list: VizPreset[]): VizPreset[] {
   /* ⚠️ no slice — see savePreset for why a store that makes room is a store that deletes */
-  try {
-    localStorage.setItem(KEY, JSON.stringify(list))
-  } catch {
-    /* private mode, or full: the list still holds for this visit */
-  }
+  disk.put(JSON.stringify(list))
   listeners.forEach((l) => l())
   return list
 }

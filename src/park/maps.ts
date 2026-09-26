@@ -1,3 +1,4 @@
+import { keptAt } from '../library/kept'
 import { packDrawing } from '../draw/strokes'
 import { packPieces, readMapDoc, type MapDoc } from './mapDoc'
 
@@ -74,14 +75,20 @@ export function parkMaps(): ParkMap[] {
   return out
 }
 
+const disk = keptAt(KEY)
+
+/**
+ * Did the last map reach this browser's storage, or only this visit's memory?
+ *
+ * ⚠️ IT MATTERS MOST HERE, because a map is not a kind in library/cloud.ts — there is no
+ * account copy to fall back on, so a keep that did not land is the only copy not landing.
+ */
+export const mapsSaved = (): boolean => disk.landed()
+
 function write(items: ParkMap[]) {
   /* ⚠️ no slice — see saveMap for why a store that makes room is a store that deletes */
   cache = items
-  try {
-    localStorage.setItem(KEY, JSON.stringify(cache.map(packed)))
-  } catch {
-    /* storage full or blocked — it stays for this visit */
-  }
+  disk.put(JSON.stringify(cache.map(packed)))
   listeners.forEach((l) => l())
 }
 
@@ -129,6 +136,16 @@ export const MAP_LIMIT = { items: MAX_ITEMS, bytes: MAX_BYTES }
  * share, and the bug that taught it to both: keeping under a name already there has to REPLACE,
  * or the same gesture quietly accumulates copies nobody chose to keep.
  */
+/**
+ * No room for another one.
+ *
+ * ⚠️ SO THE ROOM CAN SAY WHICH, rather than guessing why null came back. A refusal now
+ * means either "there was nothing worth keeping" or "this is full", and those want two
+ * different things done about them. The rule stays here, where the cap is, so the room cannot
+ * hold a second copy of it that is free to disagree.
+ */
+export const mapsFull = (): boolean => parkMaps().length >= MAX_ITEMS
+
 export function saveMap(doc: MapDoc): ParkMap | null {
   const clean = readMapDoc(doc)
   if (!clean) return null
