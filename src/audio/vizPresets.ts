@@ -62,8 +62,9 @@ export function subscribePresets(fn: () => void): () => void {
 }
 
 function write(list: VizPreset[]): VizPreset[] {
+  /* ⚠️ no slice — see savePreset for why a store that makes room is a store that deletes */
   try {
-    localStorage.setItem(KEY, JSON.stringify(list.slice(0, MAX)))
+    localStorage.setItem(KEY, JSON.stringify(list))
   } catch {
     /* private mode, or full: the list still holds for this visit */
   }
@@ -90,7 +91,18 @@ export function savePreset(name: string, s: Record<string, unknown>): VizPreset[
     s,
   }
   if (at >= 0) list[at] = entry
-  else list.unshift(entry)
+  else {
+    /**
+     * ⚠️ REFUSED RATHER THAN MADE ROOM FOR, AND THAT IS A DATA-LOSS FIX. `write` used to
+     * `slice` the list to the cap, so saving one past it dropped the oldest without a word — and
+     * this store is synced. watchLibrary compares localRows() against the previous snapshot and
+     * sends `library_drop` for anything that has gone, because while it is running "gone from here"
+     * can only mean somebody deleted it. An eviction looks exactly like a deletion, so the cache
+     * making room reached the account and took the real copy with it.
+     */
+    if (list.length >= MAX) return list
+    list.unshift(entry)
+  }
   return write(list)
 }
 

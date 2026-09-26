@@ -75,7 +75,8 @@ export function parkMaps(): ParkMap[] {
 }
 
 function write(items: ParkMap[]) {
-  cache = items.slice(0, MAX_ITEMS)
+  /* ⚠️ no slice — see saveMap for why a store that makes room is a store that deletes */
+  cache = items
   try {
     localStorage.setItem(KEY, JSON.stringify(cache.map(packed)))
   } catch {
@@ -138,7 +139,16 @@ export function saveMap(doc: MapDoc): ParkMap | null {
     at: Date.now(),
     doc: clean,
   }
-  write([item, ...parkMaps().filter((m) => m.name.toLowerCase() !== clean.name.toLowerCase())])
+  const rest = parkMaps().filter((m) => m.name.toLowerCase() !== clean.name.toLowerCase())
+  /**
+   * ⚠️ REFUSED RATHER THAN MADE ROOM FOR, AND HERE IT IS THE ONLY COPY. `write` used to
+   * `slice` to the cap, so keeping a thirteenth map dropped the oldest without a word — and
+   * unlike the gallery, the songs and the minions, maps are not a kind in library/cloud.ts.
+   * There is no account copy to come back, so an eviction here is the end of that map. Saying
+   * no is the kindest thing this can do.
+   */
+  if (rest.length >= MAX_ITEMS) return null
+  write([item, ...rest])
   return item
 }
 

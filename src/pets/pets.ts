@@ -72,7 +72,8 @@ export function pets(): Pet[] {
 }
 
 function write(items: Pet[]) {
-  cache = items.slice(0, MAX_PETS)
+  /* ⚠️ no slice — see savePet for why a cache that makes room is a cache that deletes */
+  cache = items
   try {
     localStorage.setItem(
       KEY,
@@ -98,7 +99,17 @@ export function savePet(name: string, art: Drawing): Pet | null {
     at: Date.now(),
     art: clean.art,
   }
-  write([item, ...pets().filter((p) => p.name.toLowerCase() !== clean.name.toLowerCase())])
+  const rest = pets().filter((p) => p.name.toLowerCase() !== clean.name.toLowerCase())
+  /**
+   * ⚠️ REFUSED RATHER THAN MADE ROOM FOR, AND THAT IS A DATA-LOSS FIX. `write` used to
+   * `slice` the list to the cap, so saving one past it dropped the oldest without a word — and
+   * this store is synced. watchLibrary compares localRows() against the previous snapshot and
+   * sends `library_drop` for anything that has gone, because while it is running "gone from here"
+   * can only mean somebody deleted it. An eviction looks exactly like a deletion, so the cache
+   * making room reached the account and took the real copy with it.
+   */
+  if (rest.length >= MAX_PETS) return null
+  write([item, ...rest])
   return item
 }
 

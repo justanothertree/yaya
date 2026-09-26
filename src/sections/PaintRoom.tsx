@@ -37,6 +37,7 @@ import { InCanvasWindow } from '../circuit/ui/canvasContext'
 import {
   gallery,
   gallerySaved,
+  keepTrouble,
   removeArt,
   saveArt,
   subscribeGallery,
@@ -1467,15 +1468,18 @@ export function PaintRoom() {
     saveArt(art)
     const made = savePet(name, art)
     setPetStep(null)
-    /* ⚠️ the same warning the Keep button gives, because this ends in a keep too */
+    /* ⚠️ the same three answers the Keep button gives, because this ends in a keep too —
+       and a minion has its own cap, so a refusal here can come from either store */
     setNote(
-      !made
-        ? 'That could not be kept — is there anything on the page?'
-        : gallerySaved()
+      made
+        ? gallerySaved()
           ? `${made.name} is yours — find them in 🐾 Minions.`
-          : `${made.name} is yours, but this browser is out of room — delete a picture, or they may not be here next time.`,
+          : `${made.name} is yours, but this browser is out of room — delete a picture, or they may not be here next time.`
+        : keepTrouble() === 'too-big'
+          ? 'That drawing is too big to keep. Try it with fewer strokes.'
+          : 'There is no room for another minion — delete one in 🐾 Minions to make space.',
     )
-    window.setTimeout(() => setNote(null), gallerySaved() ? 6000 : 9000)
+    window.setTimeout(() => setNote(null), made && gallerySaved() ? 6000 : 9000)
   }
 
   /**
@@ -4039,19 +4043,32 @@ export function PaintRoom() {
             setDocName(name)
             const item = saveArt({ ...drawingRef.current, name })
             /**
+             * ⚠️ WHICH WALL, RATHER THAN JUST "NO". A keep can now fail three ways and
+             * they want three different things done about them — draw something, simplify it,
+             * or delete a picture — so one message would be wrong twice. The store knows which
+             * and says so through keepTrouble; repeating its rules here would be a second copy
+             * free to disagree with them.
+             *
              * ⚠️ AND WHETHER IT REACHED THE DISK, which used to pass in silence. A full
              * quota is caught inside the store and the picture stays for the visit — a keep
              * that threw would be worse — but somebody who is told "Kept" and then loses it on
              * reload has been misled by this line rather than by the storage. See gallerySaved.
              */
+            const why = item
+              ? null
+              : keepTrouble() === 'too-big'
+                ? 'That picture is too big to keep. Try it with fewer strokes.'
+                : keepTrouble() === 'full'
+                  ? 'Your gallery is full — delete a picture to make room for this one.'
+                  : 'Nothing to keep yet.'
             setNote(
-              !item
-                ? 'Nothing to keep yet.'
+              why
+                ? why
                 : gallerySaved()
-                  ? `Kept “${item.name}”`
-                  : `“${item.name}” is here for now, but this browser is out of room — delete a picture to keep it for good.`,
+                  ? `Kept “${item!.name}”`
+                  : `“${item!.name}” is here for now, but this browser is out of room — delete a picture to keep it for good.`,
             )
-            window.setTimeout(() => setNote(null), gallerySaved() ? 4000 : 9000)
+            window.setTimeout(() => setNote(null), item && gallerySaved() ? 4000 : 9000)
             if (item) setGalleryOpen(true)
           }}
         >

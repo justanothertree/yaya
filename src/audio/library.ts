@@ -86,7 +86,8 @@ export function library(): LibraryItem[] {
 }
 
 function write(items: LibraryItem[]) {
-  cache = items.slice(0, MAX_ITEMS)
+  /* ⚠️ no slice — see saveToLibrary for why a cache that makes room is a cache that deletes */
+  cache = items
   try {
     localStorage.setItem(KEY, JSON.stringify(cache))
   } catch {
@@ -106,7 +107,17 @@ export function saveToLibrary(kind: 'song' | 'loop', song: Song): LibraryItem | 
     at: Date.now(),
     song: clean,
   }
-  write([item, ...library()])
+  const rest = library()
+  /**
+   * ⚠️ REFUSED RATHER THAN MADE ROOM FOR, AND THAT IS A DATA-LOSS FIX. `write` used to
+   * `slice` the list to the cap, so saving one past it dropped the oldest without a word — and
+   * this store is synced. watchLibrary compares localRows() against the previous snapshot and
+   * sends `library_drop` for anything that has gone, because while it is running "gone from here"
+   * can only mean somebody deleted it. An eviction looks exactly like a deletion, so the cache
+   * making room reached the account and took the real copy with it.
+   */
+  if (rest.length >= MAX_ITEMS) return null
+  write([item, ...rest])
   return item
 }
 

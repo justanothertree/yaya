@@ -261,13 +261,164 @@ describe('the gallery', () => {
     expect(back[0].art.strokes.length).toBeGreaterThan(0)
   })
 
-  it('and the gallery still has no byte budget, unlike the maps beside it', async () => {
-    const m = await theMaps()
+  /**
+   * ⚠️ A CACHE THAT MAKES ROOM IS A CACHE THAT DELETES, AND THIS ONE REACHED THE ACCOUNT.
+   * `write` used to `slice(0, MAX_ITEMS)`, so keeping a 121st picture dropped the oldest out of
+   * the list without a word. That is bad on its own; what makes it data loss is that this store
+   * is SYNCED. library/cloud.ts watchLibrary compares localRows() against the previous snapshot
+   * and sends `library_drop` for every slot that has gone, because while it is watching, "gone
+   * from here" can only mean somebody deleted it — the one thing a cold sync cannot establish
+   * and the reason sync itself never deletes. An eviction is indistinguishable from a deletion,
+   * so the browser tidying up took the real copy off the account with it.
+   *
+   * So the test is not "the cap holds". It is that NOTHING THAT WAS THERE HAS GONE, which is
+   * the precondition watchLibrary reads.
+   */
+  it('and a keep past the cap is refused rather than made room for', async () => {
     const g = await theGallery()
-    /* maps knows how big it is allowed to be; the gallery counts items only. Packing bought
-       room; it did not turn the count into a budget, and 120 detailed drawings is still 7.9MB */
-    expect(m.MAP_LIMIT.bytes).toBeGreaterThan(0)
-    expect('GALLERY_LIMIT' in g || 'galleryBytes' in g, 'the gallery grew a byte cap').toBe(false)
+    for (let i = 0; i < g.GALLERY_LIMIT.items; i++) g.saveArt(art(`pic ${i}`))
+    expect(g.gallery()).toHaveLength(g.GALLERY_LIMIT.items)
+
+    const before = g.gallery().map((a) => a.name)
+    expect(g.saveArt(art('one too many')), 'it should not have been kept').toBeNull()
+    expect(g.keepTrouble()).toBe('full')
+    expect(
+      g.gallery().map((a) => a.name),
+      'something disappeared, and a sync would drop it',
+    ).toEqual(before)
+    expect(before, 'the oldest is the one eviction used to take').toContain('pic 0')
+  })
+
+  it('and replacing a name you already have still works when it is full', async () => {
+    const g = await theGallery()
+    for (let i = 0; i < g.GALLERY_LIMIT.items; i++) g.saveArt(art(`pic ${i}`))
+    const again = g.saveArt({ ...art('pic 7'), bg: '#123456' })
+    expect(again, 'replacing takes no new room').not.toBeNull()
+    expect(g.gallery()).toHaveLength(g.GALLERY_LIMIT.items)
+    expect(g.gallery().find((a) => a.name === 'pic 7')!.art.bg).toBe('#123456')
+  })
+
+  /**
+   * ⚠️ AND A BUDGET IN BYTES, because a count decides nothing about room. 120 items was
+   * the only limit this store had, so how much of the origin it could take was settled entirely
+   * by how the items were spelled — measured, 120 detailed creatures is 7.9MB packed against a
+   * typical five-megabyte quota.
+   */
+  it('and one enormous picture is refused on its own', async () => {
+    const g = await theGallery()
+    const monster: Drawing = {
+      ...art('Monster'),
+      strokes: Array.from({ length: 400 }, (_, i) =>
+        stroke({
+          p: Array.from({ length: 400 }, (_, j) => +Math.abs(Math.sin(i * 3 + j)).toFixed(4)),
+        }),
+      ),
+    }
+    expect(g.artBytes(monster)).toBeGreaterThan(g.GALLERY_LIMIT.one)
+    expect(g.saveArt(monster)).toBeNull()
+    expect(g.keepTrouble()).toBe('too-big')
+    expect(g.gallery(), 'and nothing was disturbed getting there').toHaveLength(0)
+  })
+
+  it('and the budget is a total, not only a per-picture ceiling', async () => {
+    const g = await theGallery()
+    const chunky = (n: string): Drawing => ({
+      ...art(n),
+      strokes: Array.from({ length: 120 }, (_, i) =>
+        stroke({
+          p: Array.from({ length: 200 }, (_, j) => +Math.abs(Math.sin(i * 5 + j)).toFixed(4)),
+        }),
+      ),
+    })
+    let kept = 0
+    for (let i = 0; i < g.GALLERY_LIMIT.items; i++) {
+      if (!g.saveArt(chunky(`big ${i}`))) break
+      kept++
+    }
+    expect(kept, 'the item cap was reached before the byte one').toBeLessThan(g.GALLERY_LIMIT.items)
+    expect(g.keepTrouble()).toBe('full')
+    expect(g.galleryRoom().bytes).toBeLessThanOrEqual(g.GALLERY_LIMIT.bytes)
+  })
+
+  it('and the size it reports is the size it writes', async () => {
+    const g = await theGallery()
+    g.saveArt(art('One'))
+    g.saveArt(art('Two'))
+    expect(g.galleryRoom().bytes).toBe(store.get('paint_gallery_v1')!.length)
+    expect(g.galleryRoom().items).toBe(2)
+  })
+})
+
+/**
+ * ⚠️ THE SAME EVICTION LIVED IN EVERY STORE THAT SYNCS, which is what turns one bug into
+ * a rule. Songs, minions and saved looks all capped by slicing in `write`, all four are kinds in
+ * library/cloud.ts, and watchLibrary reads all of them the same way. Fixing one and leaving three
+ * would be worse than leaving all four: a data-loss path you have half-closed is one nobody looks
+ * at again.
+ */
+describe('no synced store makes room by dropping something', () => {
+  it('minions refuse the one past the cap rather than losing the first', async () => {
+    const m = await import('../pets/pets')
+    /* ⚠️ BOUNDED, because a while() that stops when the store refuses is a while() that
+       never stops if the store goes back to evicting — which is exactly the state this test
+       has to survive being run in. The probe that proves it must fail, not hang. */
+    let n = 0
+    while (n < 500 && m.savePet(`Minion ${n}`, art(`Minion ${n}`))) n++
+    expect(n, 'it kept saving forever, so it is still making room').toBeLessThan(500)
+    const before = m.pets().map((p) => p.name)
+    expect(m.savePet('One too many', art('One too many'))).toBeNull()
+    expect(
+      m.pets().map((p) => p.name),
+      'a minion disappeared, and a sync would drop it',
+    ).toEqual(before)
+    expect(before).toContain('Minion 0')
+  })
+
+  it('and the song library does the same', async () => {
+    const l = await import('../audio/library')
+    /* ⚠️ the shape readSong actually wants — layers with a note that is ON, since
+       songNotes counts those and refuses a song with none */
+    const song = (name: string) => ({
+      v: 1,
+      name,
+      bpm: 120,
+      bars: 1,
+      layers: [
+        {
+          instrument: 'pad',
+          muted: false,
+          len: 2,
+          fx: {},
+          events: [
+            { t: 0, midi: 60, on: true },
+            { t: 0.5, midi: 60, on: false },
+          ],
+        },
+      ],
+    })
+    let n = 0
+    while (n < 500 && l.saveToLibrary('song', song(`Song ${n}`) as never)) n++
+    expect(n, 'it kept saving forever, so it is still making room').toBeLessThan(500)
+    const before = l.library().map((i) => i.name)
+    expect(l.saveToLibrary('song', song('One too many') as never)).toBeNull()
+    expect(l.library().map((i) => i.name)).toEqual(before)
+    expect(before).toContain('Song 0')
+  })
+
+  it('and so do the saved looks', async () => {
+    const v = await import('../audio/vizPresets')
+    let n = 0
+    while (n < 500) {
+      const was = v.readPresets().length
+      v.savePreset(`Look ${n}`, { hue: n })
+      if (v.readPresets().length === was) break
+      n++
+    }
+    expect(n, 'it kept saving forever, so it is still making room').toBeLessThan(500)
+    const before = v.readPresets().map((p) => p.name)
+    v.savePreset('One too many', { hue: 999 })
+    expect(v.readPresets().map((p) => p.name)).toEqual(before)
+    expect(before).toContain('Look 0')
   })
 })
 
@@ -315,10 +466,22 @@ describe('the maps store', () => {
     expect(m.parkMaps()).toEqual([])
   })
 
-  it('and keeps no more than its cap however many you save', async () => {
+  /**
+   * ⚠️ AND REFUSES THE ONE PAST THE CAP RATHER THAN DROPPING THE OLDEST, which matters
+   * more here than anywhere: maps are not a kind in library/cloud.ts, so this store IS the copy.
+   * An eviction in the gallery costs you a trip to the server; an eviction here is the end of
+   * that map.
+   */
+  it('and refuses the one past the cap rather than losing the first', async () => {
     const m = await theMaps()
-    for (let i = 0; i < m.MAP_LIMIT.items + 5; i++) m.saveMap(mapDoc(`map ${i}`))
-    expect(m.parkMaps().length).toBeLessThanOrEqual(m.MAP_LIMIT.items)
+    for (let i = 0; i < m.MAP_LIMIT.items; i++) expect(m.saveMap(mapDoc(`map ${i}`))).not.toBeNull()
+    const before = m.parkMaps().map((x) => x.name)
+    expect(m.saveMap(mapDoc('one too many'))).toBeNull()
+    expect(
+      m.parkMaps().map((x) => x.name),
+      'a map disappeared, and nothing has a copy',
+    ).toEqual(before)
+    expect(before).toContain('map 0')
   })
 
   it('and survives a reload with its palette intact', async () => {
