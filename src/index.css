@@ -3488,6 +3488,7 @@ section[id] {
   line-height: 1.4;
   backdrop-filter: blur(6px);
 }
+
 /* The stage now HOLDS the controls, because fullscreen only shows one element and its
    descendants — a panel that was a sibling simply vanished the moment you went fullscreen. */
 .viz-stage {
@@ -5111,7 +5112,11 @@ button.appearance-slider-val:not(:disabled):focus-visible {
 }
 .hero-keys {
   display: grid;
-  grid-template-columns: repeat(12, 1fr);
+  /* ⚠️ HOW MANY, FROM THE COMPONENT. This was `repeat(12, 1fr)` and the twelve was written
+     here as well as in NOTES — so showing fewer keys on a phone made the ROW shorter instead of
+     the keys wider, which is the opposite of the point. Measured: eight keys still 23px across,
+     filling eight of twelve columns. The fallback keeps the old behaviour if nothing sets it. */
+  grid-template-columns: repeat(var(--keys, 12), 1fr);
   gap: 4px;
   align-items: end;
   margin-top: 0.3rem;
@@ -5257,6 +5262,27 @@ button.appearance-slider-val:not(:disabled):focus-visible {
 }
 .wh-open:hover {
   opacity: 1;
+}
+/**
+ * ⚠️ 91×21 WITH padding: 0, WHICH IS UNDER THE FLOOR AND IS ON EVERY ROOM. WCAG 2.5.8
+ * asks 24px in both directions and this is 21 tall, because the padding is zero and the height
+ * is whatever the line-height happens to be — measured at 375px on home, paint, the instrument,
+ * the visualiser and games. It is the only control on the site that failed that outright.
+ *
+ * ⚠️ THE PADDING BUYS THE HIT AREA AND THE MARGIN GIVES THE SPACE BACK, so nothing moves:
+ * the footer looks identical and only the part a thumb can land on changes. Measured in px
+ * rather than rem on purpose — the root font-size here is fluid, so rem is not a reliable unit
+ * for anything that has to come out a particular number of pixels.
+ *
+ * ⚠️ AND ON A COARSE POINTER RATHER THAN A NARROW SCREEN, because the thing that makes
+ * this too small is a finger, not a width. A tablet with a mouse does not need it and a big
+ * phone does.
+ */
+@media (pointer: coarse) {
+  .wh-open {
+    padding: 12px 6px;
+    margin: -12px 0 -12px 4px;
+  }
 }
 
 /* ─ the instrument's own scope ───────────────────────
@@ -14352,9 +14378,24 @@ a.cz-msg-author:focus-visible {
 @media (max-width: 700px) {
   .viz-wrap .btn,
   .viz-head .btn,
-  .viz-wrap .viz-tab,
-  .viz-wrap .viz-icon {
+  .viz-wrap .viz-tab {
     min-height: 36px;
+  }
+  /**
+   * ⚠️ THE TWO ICONS GET MORE THAN THE REST, because they are the only ones here without
+   * a word in them. Measured at 375px: 28×36, with 4.8px between them — the narrowest pair on
+   * the page, unlabelled, in the corner of the stage, and reached with the hand already holding
+   * the phone. The buttons beside them are 66-76px wide because they carry text, so 36 is
+   * already a comfortable target for those and raising them would reflow the panel for nothing.
+   *
+   * ⚠️ AND IT IS THIS RULE RATHER THAN A NEW ONE. I added `@media (pointer: coarse)
+   * .viz-icon` first and it silently lost — `.viz-wrap .viz-icon` is two classes and beats one
+   * — which would have left two rules disagreeing about one number and the losing one looking
+   * correct. The same specificity trap as `.btn.btn-ghost` above.
+   */
+  .viz-wrap .viz-icon {
+    min-width: 44px;
+    min-height: 44px;
   }
   .viz-wrap .viz-swatch {
     height: 36px;

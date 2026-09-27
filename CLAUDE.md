@@ -235,6 +235,20 @@ a phone.
 
 **Root font-size is fluid**, so `rem` is not a reliable unit for anything measured in pixels.
 
+**`scripts/mobile-audit.js` answers this rather than a checklist does.** Paste it into the
+Browser pane at 375 (the `mobile` preset also emulates touch, so `(pointer: coarse)` rules
+apply) and call `auditRooms()`. It reports sideways scroll, anything past the right edge,
+clipped text, targets under **24×24** — WCAG 2.5.8, an outside bar rather than a preference —
+and controls carrying no word that are explained only by a `title`.
+
+The exclusions are the whole value of it, and the first version had none: a naive sweep flagged
+fourteen things on home and twenty-seven in the instrument, and nearly all were correct by
+design. `sr-only` text is MEANT to be clipped to a pixel, a piano keyboard is MEANT to scroll
+sideways with adjacent keys, a palette is MEANT to be a tight grid, and a link in a sentence
+cannot be 24px tall without changing the line it sits in. **A checker that cries wolf about a
+room's whole toolbar is one nobody runs twice** — so each exclusion is a rule, never a skip
+list of names. What survived it was three things, and all three were real.
+
 **A new control counts as a UI change.** It is easy to remember the viewport pass for a layout and
 skip it for "just a button" — but buttons are what crowd a tile, overflow a toolbar and end up
 under a thumb. The block toolbar carries six of them on a cell that is 61px tall.

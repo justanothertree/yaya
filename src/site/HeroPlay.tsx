@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useRef, type PointerEvent as ReactPointerEvent } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type PointerEvent as ReactPointerEvent,
+} from 'react'
 import type { InstrumentId } from '../audio/synth'
 import { HomeSequencer, type SeqNote } from './HomeSequencer'
 import { withSynth } from './homeSynth'
@@ -34,6 +41,25 @@ const NOTES = [60, 62, 64, 67, 69, 72, 74, 76, 79, 81, 84, 86]
 const NAMES = ['C', 'D', 'E', 'G', 'A', 'C', 'D', 'E', 'G', 'A', 'C', 'D']
 
 /**
+ * How many keys a phone gets.
+ *
+ * ⚠️ BECAUSE TWELVE OF THEM IS 23px EACH, AND THIS IS THE FIRST THING ANYBODY TOUCHES.
+ * Measured at 375px: the row is 322 wide with 4px gaps, so twelve keys come out 23 across —
+ * under the 24 a target needs, and the only control on the site's front page that failed it.
+ * Ten would be 29 and eight is 37.
+ *
+ * ⚠️ EIGHT RATHER THAN TEN, even though ten is the tidier cut — two complete pentatonic
+ * octaves against one and a half. The scale is exactly why that does not matter: a major
+ * pentatonic has no wrong notes in it, which is the promise the line under this makes out
+ * loud, so a partial octave sounds every bit as good. 37px is a finger; 29 is a fingernail.
+ *
+ * ⚠️ AND ON WIDTH RATHER THAN POINTER, because what runs out here is room. A narrow
+ * window on a desktop has the same 23px problem and the same answer.
+ */
+const FEW = 8
+const NARROW = '(max-width: 480px)'
+
+/**
  * ⚠️ Marimba on purpose: soft attack, short decay, nothing to hold. The patches with a slow swell
  * are the ones still under investigation for clicking on release, and the front page is not where
  * anybody should find that out. It also forgives someone hammering one key, which they will.
@@ -65,6 +91,22 @@ export function HeroPlay() {
   const visible = useRef(true)
   /** handed out by the draw effect so a key press can wake the loop without owning it */
   const startRef = useRef<(() => void) | null>(null)
+
+  /**
+   * ⚠️ READ AT MOUNT AND THEN WATCHED, because a phone turned on its side crosses this
+   * and a window gets dragged. matchMedia's own `change` is the thing to listen to rather than
+   * `resize`: it fires once when the answer actually changes instead of on every pixel.
+   */
+  const [count, setCount] = useState(() =>
+    typeof window !== 'undefined' && window.matchMedia(NARROW).matches ? FEW : NOTES.length,
+  )
+  useEffect(() => {
+    const mq = window.matchMedia(NARROW)
+    const on = () => setCount(mq.matches ? FEW : NOTES.length)
+    on()
+    mq.addEventListener('change', on)
+    return () => mq.removeEventListener('change', on)
+  }, [])
 
   const still =
     typeof window !== 'undefined' &&
@@ -211,6 +253,15 @@ export function HeroPlay() {
       ?.classList.toggle('is-down', down)
   }
 
+  /**
+   * ⚠️ A REF BESIDE THE STATE, so `play` can stay on empty deps. It is wrapped in
+   * useCallback and `releaseAll` depends on it, which an effect depends on in turn — putting
+   * the count in its deps would tear that chain down and rebuild it every time the window
+   * crossed the breakpoint, to change one number nothing else reads.
+   */
+  const shown = useRef(NOTES.length)
+  shown.current = count
+
   const play = useCallback((i: number) => {
     if (held.current.has(i)) return
     held.current.add(i)
@@ -220,9 +271,9 @@ export function HeroPlay() {
     )
     const w = band.current?.clientWidth ?? 0
     plucks.current.push({
-      x: ((i + 0.5) / NOTES.length) * w,
+      x: ((i + 0.5) / shown.current) * w,
       /* higher note, higher string */
-      row: ROWS - 1 - Math.floor((i / NOTES.length) * ROWS),
+      row: ROWS - 1 - Math.floor((i / shown.current) * ROWS),
       t0: performance.now() / 1000,
     })
     startRef.current?.()
@@ -290,6 +341,8 @@ export function HeroPlay() {
       <div
         className="hero-keys"
         ref={keys}
+        /* ⚠️ the column count lives in the CSS and the number lives here — see .hero-keys */
+        style={{ ['--keys']: count } as CSSProperties}
         role="group"
         aria-label="Play a few notes"
         onPointerDown={(e) => {
@@ -302,7 +355,7 @@ export function HeroPlay() {
         onPointerUp={releaseAll}
         onPointerCancel={releaseAll}
       >
-        {NOTES.map((_, i) => (
+        {NOTES.slice(0, count).map((_, i) => (
           <button
             key={i}
             type="button"
