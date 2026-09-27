@@ -120,6 +120,14 @@ what it just made stale — copy, empty states, the thing a neighbouring feature
   by load order, so a passing run proves nothing about the next one. Anything that survives a
   reload can cross the gap — write to localStorage, reload, and drive the app's own controls
   like a person would. Module state cannot.
+- **`if (rule.cssRules)` is not how you tell a group rule from a style rule, and believing it
+  cost two wrong diagnoses in one sitting.** Chrome's `CSSStyleRule` implements
+  `CSSGroupingRule` now, for CSS nesting — so every plain rule HAS a `cssRules`, an empty list,
+  which is truthy. A walker that branches on it recurses into nothing, never examines the rule,
+  and reports that NO rule sets the property while the computed value plainly says one does.
+  Both times the honest-looking conclusion was "it must be an inline style" and both times it
+  was a stylesheet rule four lines from the one I was reading. Check `.length`, or use
+  `whoSets()` in `scripts/mobile-audit.js`, which does.
 - **Measurement lies more often than code does.** `.card` transitions `box-shadow`, so
   `getComputedStyle` reports interpolated values — inject `*{transition:none!important}` before
   measuring. `performance.now()` cannot see canvas work. The Browser pane collapses to 0×0 between

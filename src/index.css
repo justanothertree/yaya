@@ -12741,11 +12741,33 @@ a.cz-msg-author:focus-visible {
   border-radius: var(--r-sm, 8px);
   background: rgba(127, 127, 127, 0.08);
   border: 1px dashed var(--border);
+}
+
+/**
+ * ⚠️ ONLY THE PAD SWALLOWS THE GESTURE, AND IT USED TO BE ALL OF THEM. The rule above
+ * carried `touch-action: none` and `cursor: crosshair` as well, under a comment reasoning
+ * entirely about the pad — "without this a finger scrolls the page instead of drawing, which is
+ * the whole feature". True of the pad. But `.hag-art` is the shared class on EVERY picture on
+ * the Have a go tiles, so the pad's gesture-capture went to all of them: a selector list that
+ * grew for the SIZING took the pad's behaviour with it.
+ *
+ * ⚠️ WHICH THE BOARD'S OWN RULE HAD ALREADY REFUSED. `.hag-board` says, in as many
+ * words, "NO touch-action:none here, unlike the pad — steering is a TAP, so the board never
+ * needs to swallow a drag, and a second scroll-blocking island on a phone is one too many".
+ * It got one anyway, from four rules higher up, and so did the profile tile — which is
+ * `aria-hidden` decoration with no handler on it at all.
+ *
+ * ⚠️ REPORTED AS THE SYMPTOM: "scrolling down and trying to scroll past a demo is tricky,
+ * you have to swipe from above or below them". Measured on a 5021px home page at 375: five
+ * full-width bands of 86-94% of the screen, ~168px tall, each one a dead spot for a thumb.
+ * The pad is one of them and is meant to be; the other four were not.
+ *
+ * The comment above about the pad being "a contained strip rather than the whole card" is the
+ * design that makes ONE of these acceptable. It stops being true when there are five.
+ */
+.hag-pad-wrap,
+.hag-pad {
   cursor: crosshair;
-  /* ⚠️ WITHOUT THIS A FINGER SCROLLS THE PAGE INSTEAD OF DRAWING, which is the whole feature
-     on the device most people arrive on. It is also why the pad is a contained strip rather than
-     the whole card: everything outside it still scrolls normally, so nobody gets stuck trying to
-     get past the tile. */
   touch-action: none;
 }
 

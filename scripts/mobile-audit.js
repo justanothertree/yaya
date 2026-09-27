@@ -132,3 +132,82 @@ export async function auditRooms(
   }
   return all
 }
+
+/**
+ * Where a thumb cannot scroll the page.
+ *
+ * ⚠️ REPORTED AS "SCROLLING PAST A DEMO IS TRICKY — YOU HAVE TO SWIPE FROM ABOVE OR BELOW".
+ * Anything with `touch-action: none` swallows a vertical swipe, which is right for a surface you
+ * came to draw on and wrong for everything else. The home page had five such bands, each 86-94%
+ * of the screen and ~168px tall, because a rule reasoning about the scribble pad also listed
+ * `.hag-art` — the shared class on EVERY tile picture, including decoration with no handler.
+ *
+ * ⚠️ SO THE TEST IS NOT "IS IT none", IT IS "IS IT none SOMEWHERE NOBODY MEANT". Judge each hit
+ * by whether the thing under your thumb is the thing you came to touch: the paint canvas, the
+ * piano and the scribble pad all report here and all should.
+ */
+export function deadBands() {
+  const out = []
+  for (const el of document.querySelectorAll('body *')) {
+    const cs = getComputedStyle(el)
+    if (cs.display === 'none' || cs.visibility === 'hidden') continue
+    const ta = cs.touchAction
+    if (ta === 'auto' || ta === 'manipulation' || ta.startsWith('pan-y')) continue
+    const r = el.getBoundingClientRect()
+    /* only wide, tall things on a page that actually scrolls can strand somebody */
+    if (r.width < innerWidth * 0.5 || r.height < 40) continue
+    out.push({
+      el: el.tagName + '.' + (typeof el.className === 'string' ? el.className.split(' ')[0] : ''),
+      size: Math.round(r.width) + 'x' + Math.round(r.height),
+      shareOfWidth: Math.round((r.width / innerWidth) * 100) + '%',
+      touchAction: ta,
+    })
+  }
+  const once = new Set()
+  return {
+    scrolls: document.documentElement.scrollHeight > innerHeight + 40,
+    bands: out.filter((x) => (once.has(x.el) ? false : (once.add(x.el), true))),
+  }
+}
+
+/**
+ * Which CSS rule actually sets a property on an element.
+ *
+ * ⚠️ `if (rule.cssRules)` IS NOT HOW YOU TELL A GROUP FROM A STYLE RULE, and believing it cost
+ * two wrong diagnoses in one sitting. Chrome's CSSStyleRule implements CSSGroupingRule now, for
+ * CSS nesting — so every plain rule HAS a `cssRules`, an empty list, which is truthy. A walker
+ * branching on it recurses into nothing and never looks at the rule itself, then reports that
+ * no rule sets the property while the computed value plainly says one does. Check `.length`.
+ */
+export function whoSets(el, prop) {
+  const found = []
+  const walk = (list, cond) => {
+    for (const r of list) {
+      if (r.selectorText && r.style && r.style.getPropertyValue(prop)) {
+        for (const sel of r.selectorText.split(',')) {
+          try {
+            if (el.matches(sel.trim()))
+              found.push({ sel: sel.trim(), cond, value: r.style.getPropertyValue(prop) })
+          } catch {
+            /* a selector this browser cannot parse cannot be the one that matched */
+          }
+        }
+      }
+      if (r.cssRules && r.cssRules.length) walk(r.cssRules, r.conditionText || cond)
+    }
+  }
+  for (const sheet of document.styleSheets) {
+    let rules
+    try {
+      rules = sheet.cssRules
+    } catch {
+      continue /* another origin's stylesheet is not readable, and is not ours */
+    }
+    walk(rules, '')
+  }
+  return {
+    computed: getComputedStyle(el)[prop] ?? getComputedStyle(el).getPropertyValue(prop),
+    inline: el.style.getPropertyValue(prop) || null,
+    rules: found,
+  }
+}
