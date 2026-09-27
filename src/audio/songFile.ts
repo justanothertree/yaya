@@ -244,6 +244,8 @@ export type PackedSong = {
     i: string
     /** arrangement bitmask, one bit per bar; -1 means "every bar" */
     p: number
+    /** how many bars that mask covers — see packSong; absent in files written before it */
+    pb?: number
     d: number
     /**
      * ⚠️ [echo, echoTime, space, vibrato, glide] — and any future one goes on the END. A reader
@@ -276,6 +278,24 @@ export function packSong(song: Song): PackedSong {
       return {
         i: layer.instrument,
         p: layer.play ? mask : -1,
+        /**
+         * ⚠️ HOW LONG THE MASK IS, because the bits alone cannot say. A trailing `false` and an
+         * absent entry are the same bit, and they do NOT mean the same thing: the scheduler
+         * checks `bar < play.length` before consulting it, so a bar past the end PLAYS. That is
+         * deliberate and setBars depends on it — "going 2 -> 4 fill the new bars" is exactly a
+         * mask shorter than the loop.
+         *
+         * Without this, every saved mask came back 32 long and every bar past its real end came
+         * back silent. So a two-bar arrangement grown to four sounded right until you saved it,
+         * and lost bars three and four on the way back in — a song quietly shorter than the one
+         * you kept.
+         *
+         * ⚠️ AN ABSENT KEY STILL READS, which is what makes it safe to add. A client that has
+         * not seen this field ignores it and gets what it got before; a file written before it
+         * existed falls back to the song's own bar count, which is the length the mask was built
+         * with unless somebody has since changed it.
+         */
+        pb: layer.play ? layer.play.length : undefined,
         /* ⚠️ as hundredths, and only when it differs from 1 — an absent key is the common case */
         v: layer.gain !== undefined ? Math.round(layer.gain * 100) : undefined,
         /* ⚠️ -1 for silence, so the whole arrangement is one array of small integers. Absent
@@ -334,8 +354,14 @@ function readPacked(v: Record<string, unknown>): Song | null {
     if (!events.some((e) => e.on)) continue
     budget -= events.length
     const bits = typeof o.p === 'number' && Number.isInteger(o.p) ? o.p : -1
+    /* ⚠️ its own length when the file carries one, and the song's bars when it does not — see
+       the note on `pb`. 32 was the old fallback and is what silenced the bars past the mask. */
+    const span =
+      typeof o.pb === 'number' && Number.isInteger(o.pb) && o.pb > 0
+        ? Math.min(32, o.pb)
+        : Math.round(num(v.bars, 1, 8, 2))
     const play =
-      bits < 0 ? undefined : Array.from({ length: 32 }, (_, i) => (bits & (1 << i)) !== 0)
+      bits < 0 ? undefined : Array.from({ length: span }, (_, i) => (bits & (1 << i)) !== 0)
     // ⚠️ -1 back to null, and every entry re-checked: this is a file, not our own memory
     const plan = Array.isArray(o.q)
       ? o.q
