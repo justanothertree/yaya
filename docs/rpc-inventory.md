@@ -114,6 +114,46 @@ where c.relkind = 'r' and n.nspname in ('public','finance')
     or has_table_privilege('authenticated', c.oid, 'select'));
 ```
 
+## Rule 6 — no local store accepts what the account will refuse
+
+The client caps what it keeps, and the server caps what it stores. If the LOCAL cap is looser,
+somebody is told "Kept" about something the account will never hold: `put` in
+`src/library/cloud.ts` discards a refusal on purpose — it is not a crash, and the item is still
+exactly where it was — so the local ceiling is the only thing that can prevent the lie.
+
+This was wrong in three of the four synced kinds on 2026-09-27. The gallery allowed 200KB against
+the server's 128KB; minions and songs had no per-item ceiling at all.
+
+```sql
+-- what the server actually enforces, for the constant in src/library/kept.ts to be checked against
+select conname, pg_get_constraintdef(oid) as definition
+from pg_constraint
+where conrelid = 'public.member_library'::regclass
+order by conname;
+
+-- and the caps the RPC applies, which the table constraints do not cover
+select pg_get_functiondef(p.oid)
+from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+where n.nspname = 'public' and p.proname = 'library_put';
+```
+
+What the answers have to agree with, in the client:
+
+| what                           | server                                                | where the client's copy lives                          |
+| ------------------------------ | ----------------------------------------------------- | ------------------------------------------------------ |
+| bytes per item                 | `octet_length(body::text) <= 131072`                  | `ACCOUNT_ITEM_BYTES` in `src/library/kept.ts`          |
+| name length                    | truncated to 80                                       | every store slices to 40 or 60, so it is never reached |
+| kinds                          | six, in both the check constraint and the RPC         | `KINDS` in `src/library/cloud.ts`                      |
+| a replacement is not a new row | `not (kind = p_kind and lower(name) = lower(v_name))` | every store replaces by lowercased name                |
+| the whole library              | 400 items, 20MB                                       | local caps are all smaller, so they bind first         |
+
+**Measure bytes in the server's unit.** `octet_length` counts UTF-8 bytes; `JSON.stringify(x).length`
+counts UTF-16 code units. A name with an emoji measures smaller in the client than on the server,
+so a ceiling set to exactly the right number still leaks if it is measured in the wrong one —
+`bodyBytes` in `kept.ts` is the one that counts properly.
+
+---
+
 ## Rule 5 — one member cannot read another
 
 The full version is `docs/2026-09-15-member-to-member-sweep.sql`, which simulates a session. The
