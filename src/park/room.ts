@@ -310,8 +310,16 @@ const spot = (v: { x?: unknown; y?: unknown }): Spot => ({
   y: Math.max(0, Math.min(1, num(v.y))),
 })
 
-/** Somebody from the wire, or null. Never throws, never trusts. */
-function readSomeone(v: unknown): Someone | null {
+/**
+ * Somebody from the wire, or null. Never throws, never trusts.
+ *
+ * ⚠️ EXPORTED SO IT CAN BE ASKED QUESTIONS, like every other door of its kind here —
+ * readDrawing, readSong, readLook, readMapDoc, readPet and readZone are all exported and all
+ * tested. These two were the exceptions, and they guard the least trustworthy input on the
+ * site: the relay socket is unauthenticated, so anything on the internet can send this function
+ * anything it likes, and what comes out is drawn on somebody's screen. Nothing else calls it.
+ */
+export function readSomeone(v: unknown): Someone | null {
   if (!v || typeof v !== 'object') return null
   const o = v as Record<string, unknown>
   const id = str(o.from, 24)
@@ -339,8 +347,8 @@ function readSomeone(v: unknown): Someone | null {
   }
 }
 
-/** A boss from the wire, or null. The same door, and the same suspicion. */
-function readBoss(v: unknown): BossEcho | null {
+/** A boss from the wire, or null. The same door, the same suspicion, and see above. */
+export function readBoss(v: unknown): BossEcho | null {
   if (!v || typeof v !== 'object') return null
   const o = v as Record<string, unknown>
   const by = str(o.from, 24)
