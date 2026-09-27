@@ -1,4 +1,4 @@
-import { keptAt } from '../library/kept'
+import { ACCOUNT_ITEM_BYTES, bodyBytes, keptAt } from '../library/kept'
 import { packDrawing, readDrawing, type Drawing } from './strokes'
 
 /**
@@ -46,7 +46,7 @@ const MAX_ITEMS = 120
  * so it is not a limit anybody drawing will meet. It is the one that stops a single pasted
  * monster taking the whole budget.
  */
-const MAX_ONE = 200 * 1024
+const MAX_ONE = ACCOUNT_ITEM_BYTES
 /**
  * ⚠️ AND WHAT ALL OF THEM MAY TAKE TOGETHER. Five megabytes is the whole origin and the
  * pictures share it with the songs, the minions, the maps and the saved looks — the maps store
@@ -152,7 +152,7 @@ export const galleryRoom = (): { items: number; bytes: number } => {
 }
 
 /** How big one picture would be once kept — the same function that writes it, not a second sum. */
-export const artBytes = (art: Drawing): number => JSON.stringify(packDrawing(art)).length
+export const artBytes = (art: Drawing): number => bodyBytes(packDrawing(art))
 
 /**
  * ⚠️ NO SLICE. It used to cap here, which made every caller's list advisory and the

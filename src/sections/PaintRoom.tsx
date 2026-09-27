@@ -49,7 +49,7 @@ import { together } from '../party/together'
 import { drawParty } from '../party/draw'
 import { applyLayerOp, type LayerOp, type Stack } from '../draw/layerOps'
 import { paintSession } from '../draw/session'
-import { petsFull, petsSaved, savePet } from '../pets/pets'
+import { petsSaved, petsTrouble, savePet } from '../pets/pets'
 import { PetView } from '../pets/PetView'
 import { PART_DOES, PART_WORDS, inFrontOfOrder, inkBox, partOf } from '../pets/rig'
 import { MoveShow } from '../pets/MoveShow'
@@ -1477,9 +1477,11 @@ export function PaintRoom() {
     setPetStep(null)
     setNote(
       !made
-        ? petsFull()
+        ? petsTrouble() === 'full'
           ? `There is no room for another minion — delete one in 🐾 Minions to make space.`
-          : 'That could not be kept — is there anything on the page?'
+          : petsTrouble() === 'too-big'
+            ? 'That drawing is too big to keep as a minion. Try it with fewer strokes.'
+            : 'That could not be kept — is there anything on the page?'
         : !kept
           ? `${made.name} is yours, but the picture was not kept: ${
               keepTrouble() === 'too-big' ? 'it is too big' : 'your gallery is full'

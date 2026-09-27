@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Drawing, Stroke } from './strokes'
+import { ACCOUNT_ITEM_BYTES, bodyBytes } from '../library/kept'
 import type { MapDoc } from '../park/mapDoc'
 
 /**
@@ -530,6 +531,105 @@ describe('a refusal can be told apart from an empty one', () => {
     let n = 0
     while (n < 500 && m.saveMap(mapDoc(`M ${n}`))) n++
     expect(m.mapsFull()).toBe(true)
+  })
+})
+
+/**
+ * ⚠️ A LOCAL CEILING ABOVE THE ACCOUNT'S IS A KEEP THAT ONLY HALF-HAPPENS. member_library
+ * refuses a body over 128KB — `check (octet_length(body::text) <= 131072)` — and cloud.ts
+ * discards that error on purpose, because a refusal there is not a crash and the item is still
+ * exactly where it was. Which means the ONLY thing that can stop somebody being told "Kept"
+ * about something the account will never hold is the local ceiling.
+ *
+ * Three of the four synced kinds did not have one that worked. The gallery's was 200KB, copied
+ * from the maps store without checking what the account takes; minions and songs had no
+ * per-item ceiling at all. Maps are deliberately exempt — they do not sync, so there is no
+ * account copy to be refused by.
+ *
+ * ⚠️ THE TEST IS THE INVARIANT, NOT THE NUMBER: anything a synced store ACCEPTS has to fit.
+ * Asserting `MAX_ONE === 131072` would pass just as happily with the measurement in the wrong
+ * unit.
+ */
+describe('nothing a synced store keeps is bigger than the account takes', () => {
+  const fat = (strokes: number, points: number): Drawing => ({
+    ...art('Fat'),
+    strokes: Array.from({ length: strokes }, (_, i) =>
+      stroke({
+        p: Array.from({ length: points }, (_, j) => +Math.abs(Math.sin(i * 3 + j)).toFixed(4)),
+      }),
+    ),
+  })
+
+  /* ⚠️ 200x200 IS 162KB, WHICH IS THE POINT — it lands in the window between what the account
+     takes (128KB) and what the gallery's old ceiling allowed (200KB). A fatter fixture would be
+     refused either way and would prove nothing about the ceiling being wrong. */
+  it('the gallery refuses one the account would', async () => {
+    const g = await theGallery()
+    const big = fat(200, 200)
+    expect(g.artBytes(big), 'the fixture is not over the line').toBeGreaterThan(ACCOUNT_ITEM_BYTES)
+    expect(g.saveArt(big)).toBeNull()
+    expect(g.keepTrouble()).toBe('too-big')
+  })
+
+  it('and keeps one just under it', async () => {
+    const g = await theGallery()
+    const ok = fat(20, 40)
+    expect(g.artBytes(ok)).toBeLessThan(ACCOUNT_ITEM_BYTES)
+    expect(g.saveArt(ok)).not.toBeNull()
+    expect(g.keepTrouble()).toBeNull()
+  })
+
+  it('minions refuse one too', async () => {
+    const m = await import('../pets/pets')
+    expect(m.savePet('Chonk', fat(200, 200))).toBeNull()
+    expect(m.petsTrouble()).toBe('too-big')
+    expect(m.savePet('Slim', fat(20, 40)), 'and keep an ordinary one').not.toBeNull()
+    expect(m.petsTrouble()).toBeNull()
+  })
+
+  it('and so does the song library', async () => {
+    const l = await import('../audio/library')
+    const long = {
+      ...aSong('Epic'),
+      layers: Array.from({ length: 8 }, () => ({
+        instrument: 'pad',
+        muted: false,
+        len: 2,
+        fx: {},
+        events: Array.from({ length: 2000 }, (_, j) => ({
+          t: j * 0.01,
+          midi: 60 + (j % 12),
+          on: j % 2 === 0,
+        })),
+      })),
+    }
+    const kept = l.saveToLibrary('song', long as never)
+    if (kept) {
+      /* readSong caps layers and events, so it may land UNDER the line on its own — which is
+         fine and is the point: what must never happen is landing OVER it and being accepted */
+      expect(l.songBytes(kept.song)).toBeLessThanOrEqual(ACCOUNT_ITEM_BYTES)
+    } else {
+      expect(l.libraryTrouble()).toBe('too-big')
+    }
+  })
+
+  /**
+   * ⚠️ AND IT COUNTS BYTES, NOT CHARACTERS. `octet_length` counts UTF-8 bytes while
+   * `JSON.stringify(x).length` counts UTF-16 code units, so anything with an emoji or a
+   * non-Latin name measures smaller locally than it does on the server. A ceiling set to
+   * exactly the right number still leaks if it is measured in the wrong unit, which is the
+   * whole reason bodyBytes exists rather than a `.length`.
+   */
+  it('and it measures in the unit the server counts', () => {
+    const name = '🎨 こんにちは'
+    expect(bodyBytes(name)).toBeGreaterThan(JSON.stringify(name).length)
+    /* ascii is the one case where the two agree, which is why this was invisible */
+    expect(bodyBytes('plain')).toBe(JSON.stringify('plain').length)
+  })
+
+  it('and the gallery reports its ceiling as the account one', async () => {
+    const g = await theGallery()
+    expect(g.GALLERY_LIMIT.one).toBe(ACCOUNT_ITEM_BYTES)
   })
 })
 

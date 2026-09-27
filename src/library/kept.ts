@@ -45,3 +45,39 @@ export function keptAt(key: string): Kept {
     landed: () => landed,
   }
 }
+
+/**
+ * The most one item may be before the ACCOUNT refuses it, in bytes.
+ *
+ * ⚠️ THE SERVER'S NUMBER, NOT A LOCAL PREFERENCE. member_library carries
+ * `check (octet_length(body::text) <= 131072)` as a table constraint, and library_put checks it
+ * too so the caller is told which limit it hit. A local store that allows more than this is a
+ * store that says "Kept" for something the account will never take — and `put` in cloud.ts
+ * discards the error on purpose, because a refusal there is not a crash. So the only place that
+ * can prevent the lie is the local ceiling, and it has to be this number.
+ *
+ * ⚠️ THREE OF THE FOUR SYNCED KINDS DID NOT HAVE ONE. The gallery's was 200KB — mine, copied
+ * from the maps store's reasoning without checking what the account takes, which opened a
+ * window between 128KB and 200KB where a keep reported success and never reached the server.
+ * Minions and songs had no per-item ceiling at all. Looks had 60,000, safely under.
+ *
+ * ⚠️ AND MAPS ARE DELIBERATELY NOT HELD TO IT. They are not a kind in library/cloud.ts, so
+ * there is no account copy to be refused by — their 200KB answers a different question, which
+ * their own comment explains.
+ */
+export const ACCOUNT_ITEM_BYTES = 131072
+
+/**
+ * How big a body is in the unit the server counts.
+ *
+ * ⚠️ BYTES, NOT CHARACTERS, and the difference is not academic here. `octet_length` counts
+ * UTF-8 bytes while `JSON.stringify(x).length` counts UTF-16 code units — so a drawing whose
+ * name carries an emoji, or a layer named in a language that is not Latin-1, measures smaller
+ * locally than it does on the server. Measuring in the wrong unit is how a ceiling set to
+ * exactly the server's number still lets something through.
+ */
+export const bodyBytes = (body: unknown): number =>
+  new TextEncoder().encode(JSON.stringify(body)).length
+
+/** Will the account take this? Ask before keeping, so a room can say which wall it hit. */
+export const fitsAccount = (body: unknown): boolean => bodyBytes(body) <= ACCOUNT_ITEM_BYTES

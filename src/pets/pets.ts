@@ -1,4 +1,4 @@
-import { keptAt } from '../library/kept'
+import { bodyBytes, fitsAccount, keptAt } from '../library/kept'
 import { packDrawing, readDrawing, type Drawing } from '../draw/strokes'
 
 /**
@@ -99,14 +99,41 @@ function write(items: Pet[]) {
  */
 export const petsFull = (): boolean => pets().length >= MAX_PETS
 
+/** How big this minion would be on the account — the same packing that is sent. */
+export const petBytes = (p: Pet): number => bodyBytes(packPet(p))
+
+/**
+ * Why the last keep did not happen, or null when it did — the same shape the gallery uses.
+ *
+ * ⚠️ BECAUSE A REFUSAL NOW MEANS THREE THINGS. The room answered all of them with "is
+ * there anything on the page?", which is true of one.
+ */
+let trouble: 'empty' | 'too-big' | 'full' | null = null
+
+/** Which wall the last savePet hit, or null — see savePet. */
+export const petsTrouble = () => trouble
+
 export function savePet(name: string, art: Drawing): Pet | null {
   const clean = readPet({ n: name, a: packDrawing(art) })
-  if (!clean) return null
+  if (!clean) {
+    trouble = 'empty'
+    return null
+  }
   const item: Pet = {
     id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     name: clean.name,
     at: Date.now(),
     art: clean.art,
+  }
+  /**
+   * ⚠️ BIGGER THAN THE ACCOUNT WILL TAKE IS A KEEP THAT ONLY HALF-HAPPENS. member_library
+   * refuses a body over 128KB and cloud.ts discards that error by design — a refusal there is
+   * not a crash — so without this the minion sits in the browser, reports success, and is
+   * simply absent from the account. This store had no per-item ceiling at all.
+   */
+  if (!fitsAccount(packPet(item))) {
+    trouble = 'too-big'
+    return null
   }
   const rest = pets().filter((p) => p.name.toLowerCase() !== clean.name.toLowerCase())
   /**
@@ -117,7 +144,11 @@ export function savePet(name: string, art: Drawing): Pet | null {
    * can only mean somebody deleted it. An eviction looks exactly like a deletion, so the cache
    * making room reached the account and took the real copy with it.
    */
-  if (rest.length >= MAX_PETS) return null
+  if (rest.length >= MAX_PETS) {
+    trouble = 'full'
+    return null
+  }
+  trouble = null
   write([item, ...rest])
   return item
 }

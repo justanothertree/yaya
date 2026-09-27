@@ -1,5 +1,5 @@
-import { keptAt } from '../library/kept'
-import { readSong, songNotes, type Song } from './songFile'
+import { bodyBytes, fitsAccount, keptAt } from '../library/kept'
+import { packSong, readSong, songNotes, type Song } from './songFile'
 
 /**
  * The things you have made and kept.
@@ -108,10 +108,28 @@ function write(items: LibraryItem[]) {
  */
 export const libraryFull = (): boolean => library().length >= MAX_ITEMS
 
+/** How big this song would be on the account — the same packing that is sent. */
+export const songBytes = (song: Song): number => bodyBytes(packSong(song))
+
+/** Why the last keep did not happen, or null — the same shape the gallery and minions use. */
+let trouble: 'empty' | 'too-big' | 'full' | null = null
+
+/** Which wall the last saveToLibrary hit, or null — see saveToLibrary. */
+export const libraryTrouble = () => trouble
+
 /** Keep something. Returns the saved item, or null when it was empty or there is no room. */
 export function saveToLibrary(kind: 'song' | 'loop', song: Song): LibraryItem | null {
   const clean = readSong(song)
-  if (!clean || !songNotes(clean)) return null
+  if (!clean || !songNotes(clean)) {
+    trouble = 'empty'
+    return null
+  }
+  /* ⚠️ over what member_library takes is a keep that never reaches the account — see
+     ACCOUNT_ITEM_BYTES. readSong caps layers and events, which bounds this but does not cap it. */
+  if (!fitsAccount(packSong(clean))) {
+    trouble = 'too-big'
+    return null
+  }
   const item: LibraryItem = {
     id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     kind,
@@ -128,7 +146,11 @@ export function saveToLibrary(kind: 'song' | 'loop', song: Song): LibraryItem | 
    * can only mean somebody deleted it. An eviction looks exactly like a deletion, so the cache
    * making room reached the account and took the real copy with it.
    */
-  if (rest.length >= MAX_ITEMS) return null
+  if (rest.length >= MAX_ITEMS) {
+    trouble = 'full'
+    return null
+  }
+  trouble = null
   write([item, ...rest])
   return item
 }

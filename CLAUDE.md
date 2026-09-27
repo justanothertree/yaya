@@ -216,6 +216,17 @@ Assume real users and sensitive data, because there are and it is.
 - **Ask the owner before anything irreversible**: dropping tables or columns, deleting or
   rewriting rows, anything touching another member's data. A `create or replace` is recoverable; a
   `delete` is not.
+- **A local cap that is looser than the server's is a silent half-save.** `member_library`
+  carries `check (octet_length(body::text) <= 131072)`, and `put` in `library/cloud.ts`
+  deliberately discards a refusal — it is not a crash, and the item is still exactly where it
+  was. So the only thing that can stop somebody being told "Kept" about something the account
+  will never hold is the LOCAL ceiling, and three of the four synced kinds did not have one that
+  worked: the gallery's was 200KB (copied from the maps store, which does not sync and answers a
+  different question), and minions and songs had none at all. They share `ACCOUNT_ITEM_BYTES`
+  now. **And measure it in the server's unit**: `octet_length` counts UTF-8 bytes while
+  `JSON.stringify(x).length` counts UTF-16 code units, so a name with an emoji in it measures
+  smaller here than it does there — a ceiling set to exactly the right number still leaks if it
+  is measured in the wrong one.
 - Do not make unrelated changes to working Supabase functionality.
 
 ## 5 · Cost and third-party services

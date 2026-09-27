@@ -45,8 +45,8 @@ import { SnapPicker } from '../audio/SnapPicker'
 import { toSong, songNotes, songToLayers } from '../audio/songFile'
 import {
   library,
-  libraryFull,
   librarySaved,
+  libraryTrouble,
   removeFromLibrary,
   saveToLibrary,
   subscribeLibrary,
@@ -836,16 +836,17 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
      * "Kept" who then loses it on reload has been misled by this line rather than by the
      * storage. Same three answers the paint room gives, for the same reason.
      */
-    const full = libraryFull()
     const item = saveToLibrary(kind, toSong(name, loop.bpm, loop.bars, loop.layers, layerId))
     setCapMsg(
       item
         ? librarySaved()
           ? `Kept “${item.name}”`
           : `“${item.name}” is here for now, but this browser is out of room — delete something to keep it for good.`
-        : full
+        : libraryTrouble() === 'full'
           ? 'Your library is full — delete something to make room for this.'
-          : 'Nothing to keep — record something first.',
+          : libraryTrouble() === 'too-big'
+            ? 'That is too long to keep — try keeping one layer rather than the whole song.'
+            : 'Nothing to keep — record something first.',
     )
     window.setTimeout(() => setCapMsg(null), item && librarySaved() ? 4000 : 9000)
     if (item) setLibOpen(true)
