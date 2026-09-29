@@ -86,6 +86,7 @@ import {
 import { movesOf, slotFor, petWide, type Attack } from '../pets/attack'
 import { footRoom, petBox } from '../pets/rig'
 import { BOLT_UP, CAST, castSlot, inPatch, patchesOf, type CastKind, type Patch } from './cast'
+import { ALL_CASTS, castsFor, loadout, setLoadout } from './loadout'
 import { recordFought, recordWin, subscribeWins, winFor, wins, winsWith } from './records'
 import { lungeOf } from '../pets/fight'
 import {
@@ -622,11 +623,18 @@ function Scenery({
 /**
  * How long after one big move before the next.
  *
- * ⚠️ ONE WAIT FOR ALL THREE, which is what keeps three casts from being three times the
- * casting. Nothing about the rate of them moved when the other two arrived; what moved is that
- * you now choose WHICH one to spend the wait on, and spending it on the fissure means not
- * having the swell for four seconds. Three separate cooldowns would have been a different
- * feature — chain all three, then wait — and a much harder one to balance against a boss.
+ * ⚠️ IT USED TO BE ONE WAIT FOR ALL THREE, AND THAT NOTE WAS RIGHT ABOUT WHAT CHANGING IT
+ * WOULD COST. It read: "what keeps three casts from being three times the casting... Three
+ * separate cooldowns would have been a different feature — chain all three, then wait — and a
+ * much harder one to balance against a boss." It is now that different feature, on purpose,
+ * because the three stopped being handed to you and became a kit you choose — and one wait
+ * spent three ways is a resource you ration, where a chosen kit wants to be a rotation.
+ *
+ * ⚠️ SO THE THING THAT NOTE WARNED ABOUT IS REAL AND IS ANSWERED BY LOCK, not by wishing.
+ * Each move has its own wait AND there is a floor between any two of them, so an opening burst
+ * takes seconds a boss can act inside rather than three frames. The balance question it raises
+ * is still open: an opening burst followed by a dry spell is the shape this is aiming at, and
+ * whether the boss fight survives it is a thing to play rather than to reason about.
  *
  * ⚠️ AND IT IS A CONSTANT BECAUSE THE BAR DRAWS IT. A 4 in the loop and a 4 in the readout
  * is a readout that quietly starts lying the first time somebody tunes one of them.
@@ -1329,7 +1337,25 @@ export function ParkRoom({
    * anybody, and releasing is what makes it a thing.
    */
   const winding = useRef(0)
-  const myCastRest = useRef(0)
+  /**
+   * How long until each big move comes back, and the floor between any two of them.
+   *
+   * ⚠️ ONE WAIT PER KIND, WHICH OVERTURNS A DECISION MADE ON PURPOSE. The note this replaces
+   * argued for a single shared wait: "what keeps three casts from being three times the
+   * casting... Three separate cooldowns would have been a different feature — chain all three,
+   * then wait — and a much harder one to balance against a boss." That reading is right, and
+   * the feature is now the other one, deliberately: you choose your three, so they have to be a
+   * rotation rather than one wait spent three ways.
+   *
+   * ⚠️ AND NOTHING SPACES THEM BUT THE CASTS THEMSELVES, which is enough and was the surprise.
+   * A cast holds you for its own time — 1.2s to 1.9s — and no other can start while one runs,
+   * so the full kit back to back already costs about four and a half seconds of standing there.
+   * A second, invisible lockout on top of that was written here and taken out: see loadout.ts.
+   */
+  const myCastRest = useRef<Partial<Record<CastKind, number>>>({})
+  /** the last wait the belt was told about, so an unchanged frame is not a render */
+  const barsShown = useRef('')
+  const restOf = (k: CastKind) => myCastRest.current[k] ?? 0
   const [casting, setCasting] = useState<CastKind | null>(null)
   /**
    * How far a bolt has been wound up, 0 to 1, for the chip to fill.
@@ -1412,8 +1438,17 @@ export function ParkRoom({
   }
   /** which slot was wanted last frame, so a press is an edge rather than a hold — see below */
   const castHeld = useRef(0)
-  /** seconds until the next one, in state because the readout needs to draw the wait */
-  const [castLeft, setCastLeft] = useState(0)
+  /**
+   * The three you are taking in, and what each has left.
+   *
+   * ⚠️ YOUR CHOICE IN FRONT OF THE DRAWING'S, for one creature only — the one you steer. A
+   * boss's three still come straight out of temperOf, which is what gives it character; see
+   * loadout.ts for why that suits a boss and not a player.
+   */
+  const [myLoad, setMyLoad] = useState<CastKind[] | null>(() => loadout())
+  const myCasts = useMemo(() => castsFor(myKit?.casts, myLoad), [myKit, myLoad])
+  /** seconds until each one comes back, in state because the readout draws the wait */
+  const [castLeft, setCastLeft] = useState<Partial<Record<CastKind, number>>>({})
   /** so one cast is one hit on each thing, however many patches it is made of */
   const myCastHit = useRef<Set<string>>(new Set())
   /** Q, held — unlike the dodge this one is a hold all the way through, so no edge is taken */
@@ -1781,7 +1816,7 @@ export function ParkRoom({
         const ct = myCast.current.t + dt
         if (ct >= CAST[myCast.current.kind].time) {
           /* ⚠️ a charged bolt costs longer before the next, or holding it would be free */
-          myCastRest.current =
+          myCastRest.current[myCast.current.kind] =
             CAST[myCast.current.kind].wait * (1 + BOLT_UP.wait * myCast.current.charge)
           myCast.current = null
           myCastHit.current.clear()
@@ -1790,14 +1825,29 @@ export function ParkRoom({
           myCast.current = { ...myCast.current, t: ct }
         }
       } else {
-        myCastRest.current = Math.max(0, myCastRest.current - dt)
+        for (const k of ALL_CASTS) {
+          const left = myCastRest.current[k]
+          if (left) myCastRest.current[k] = Math.max(0, left - dt)
+        }
         /* ⚠️ a DIFFERENT slot counts as a press even with the old key still down, which is
            what a boolean edge could not say — see castWanted */
         const press = castWanted.current !== 0 && castWanted.current !== castHeld.current
         const heldBefore = castHeld.current
         castHeld.current = castWanted.current
-        const pick = myKit?.casts[castWanted.current - 1]
-        const ready = myCastRest.current <= 0 && !busy(you.current) && !aloft(you.current)
+        const pick = myCasts[castWanted.current - 1]
+        /**
+         * ⚠️ TWO CONDITIONS, NOT ONE, BECAUSE THE BOLT IS THROWN ON A FRAME WITH NO PICK.
+         * `able` is about you — not mid-swing, not in the air — and holds whether or not a slot
+         * is wanted. `ready` adds "and the move you are asking for has come back", which needs
+         * a move to ask about.
+         *
+         * Folding the per-kind wait into one `ready` looked right and silently deleted the
+         * bolt: it is released when the slot stops being wanted, so on that frame `pick` is
+         * undefined, `ready` was false, and the wind-up was binned instead of thrown. The old
+         * shared wait never noticed because it did not need to know WHICH move to ask about.
+         */
+        const able = !busy(you.current) && !aloft(you.current)
+        const ready = able && !!pick && restOf(pick) <= 0
 
         /**
          * ⚠️ A BOLT IS THROWN ON THE RELEASE, EVERYTHING ELSE ON THE PRESS. Asked for as
@@ -1821,7 +1871,10 @@ export function ParkRoom({
         if (windingBolt && (castWanted.current === 0 || !ready || pick !== 'bolt')) {
           const held = winding.current
           winding.current = 0
-          if (ready && heldBefore !== 0) {
+          /* ⚠️ `able`, not `ready` — see above. The bolt's own wait was clear when the wind-up
+             started and nothing has spent it since, so what matters here is only whether you
+             are still in a state to throw. */
+          if (able && heldBefore !== 0) {
             myCast.current = {
               kind: 'bolt',
               t: 0,
@@ -2817,7 +2870,24 @@ export function ParkRoom({
       if (fall.went === 'down') fightDowns.current++
 
       setShownYou(you.current)
-      setCastLeft(myCastRest.current)
+      /**
+       * ⚠️ ONLY WHEN A BAR WOULD MOVE. An object a frame is a re-render a frame even when
+       * nothing is on cooldown, which the old single number quietly avoided by being a
+       * primitive React could compare.
+       *
+       * ⚠️ AND THE KEY IS THE PERCENTAGE THAT GETS DRAWN, not the seconds behind it. Keyed on
+       * `Math.round(seconds * 20)` this froze: once a wait fell under 0.025s the key read 0 and
+       * stopped changing, so the frame where it actually reached zero never published and the
+       * bar sat at 2.28% for ever — an ability that looked permanently spent and was ready.
+       * A throttle has to be keyed on what it is throttling.
+       */
+      const bars = myCasts
+        .map((k) => Math.round(Math.min(1, restOf(k) / CAST[k].wait) * 100))
+        .join(',')
+      if (bars !== barsShown.current) {
+        barsShown.current = bars
+        setCastLeft(Object.fromEntries(myCasts.map((k) => [k, restOf(k)])))
+      }
 
       clockRef.current = (now - started) / 1000
       setClockAt(clockRef.current)
@@ -2878,7 +2948,9 @@ export function ParkRoom({
     }
     raf = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(raf)
-  }, [walking, myMoves, myWide, bossKit, myKit, myTraits, aimNow])
+    /* ⚠️ myCasts is in here because the loop reads it. It can only change while you are
+     OUT of the park — the picker is hidden once walking — so this never restarts a fight. */
+  }, [walking, myMoves, myWide, bossKit, myKit, myCasts, myTraits, aimNow])
 
   /* the same sizing as everywhere else — PetView's size is the LONG side, not the height */
   /* ⚠️ the CREATURE is this tall, not its canvas — see petCanvas */
@@ -3082,6 +3154,47 @@ export function ParkRoom({
               ))}
             </select>
           </label>
+        )}
+        {/**
+          ⚠️ WHAT YOU ARE TAKING IN, AND IT IS A CHOICE NOW. The three used to come off
+          your drawing through the same temperOf a boss uses — which forks the ranged slot on
+          pace, so a slow creature had a mark and NO WAY TO THROW A BOLT, or to find out that a
+          bolt exists. Reported exactly that way. A boss keeps the derived three, because there
+          the drawing deciding IS the character; see loadout.ts.
+
+          ⚠️ BEFORE YOU WALK IN, NOT DURING. A loadout is a thing you set and then play
+          with; a menu inside the fight is a menu you open mid-fight. It sits with the creature
+          and the map because those are the other two answers to "what am I taking in".
+
+          ⚠️ AND PICKING ONE YOU ALREADY HOLD SWAPS THEM, rather than refusing. Two of
+          the same is a slot spent on nothing, and a select that silently does not take is worse
+          than one that does something sensible.
+        */}
+        {!walking && myCasts.length > 0 && (
+          <span className="park-kit">
+            {(['Left-click', 'Q', 'E'] as const).map((how, slot) => (
+              <label className="park-seat" key={how}>
+                <span className="sr-only">{`What ${how} throws`}</span>
+                <select
+                  value={myCasts[slot]}
+                  onChange={(e) => {
+                    const want = e.target.value as CastKind
+                    const next = [...myCasts]
+                    const already = next.indexOf(want)
+                    if (already >= 0) next[already] = next[slot]
+                    next[slot] = want
+                    setMyLoad(setLoadout(next))
+                  }}
+                >
+                  {ALL_CASTS.map((k) => (
+                    <option key={k} value={k}>
+                      {`${how} · ${CAST[k].short}`}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ))}
+          </span>
         )}
         {/* ⚠️ ONLY WHEN YOU HAVE ONE, like the creature picker beside it. A control
             offering a choice of one thing is a control explaining a feature, and this room has
@@ -3514,18 +3627,19 @@ export function ParkRoom({
             aria-hidden
           />
           {/*
-            ⚠️ THREE THINGS SHARING ONE WAIT IS UNREADABLE WITHOUT THIS. One cast needed no
+            ⚠️ THREE THINGS ON THREE WAITS IS UNREADABLE WITHOUT THIS. One cast needed no
             readout: you pressed it, it either went off or it did not, and a second later it
-            worked again. Three of them on a single cooldown is a CHOICE, and a choice you
-            cannot see the terms of is a guess — which of mine are these, and is any of them
-            ready. The strip is the feature's other half rather than decoration on it.
+            worked again. Three of them, each coming back at its own rate, is a rotation — and a
+            rotation you cannot see the state of is a guess about which of yours is ready. The
+            strip is the feature's other half rather than decoration on it, and it matters more
+            now than it did when one bar answered for all three.
 
             ⚠️ IN THE FIELD, BOTTOM LEFT, because that is where your eyes are during a fight
             and the paragraph under the park is not. The map already holds the other corner.
           */}
-          {walking && myKit && (
+          {walking && myCasts.length > 0 && (
             <div className="park-belt" role="status" aria-label="your big moves">
-              {myKit.casts.map((k, i) => (
+              {myCasts.map((k, i) => (
                 /**
                  * ⚠️ THE CHIPS ARE BUTTONS NOW, WHICH THEIR OWN NOTE SAID TO WAIT FOR. It read
                  * "a chip you can press on a phone would promise a control the rest of the
@@ -3546,21 +3660,19 @@ export function ParkRoom({
                   title={k === 'bolt' ? 'Hold to throw it harder' : undefined}
                   className={
                     'park-belt-one' +
-                    (castLeft > 0 ? ' is-waiting' : ' is-ready') +
+                    ((castLeft[k] ?? 0) > 0 ? ' is-waiting' : ' is-ready') +
                     (casting === k ? ' is-out' : '') +
                     (k === 'bolt' && wound > 0 ? ' is-winding' : '')
                   }
+                  /* ⚠️ through wantCast like every other way of starting one, so a tap
+                     shorter than a frame is not dropped here while it survives on the mouse */
                   onPointerDown={(e) => {
                     e.preventDefault()
                     e.stopPropagation()
-                    castWanted.current = i + 1
+                    wantCast(i + 1, true)
                   }}
-                  onPointerUp={() => {
-                    if (castWanted.current === i + 1) castWanted.current = 0
-                  }}
-                  onPointerCancel={() => {
-                    if (castWanted.current === i + 1) castWanted.current = 0
-                  }}
+                  onPointerUp={() => wantCast(i + 1, false)}
+                  onPointerCancel={() => wantCast(i + 1, false)}
                 >
                   <b>{i + 1}</b>
                   {CAST[k].short}
@@ -3581,7 +3693,7 @@ export function ParkRoom({
                        a second and the earth-movers in four; one denominator would draw the
                        bolt's chip as full the instant it fired and empty the next frame. */
                     style={{
-                      width: `${Math.max(0, Math.min(1, castLeft / CAST[k].wait)) * 100}%`,
+                      width: `${Math.max(0, Math.min(1, (castLeft[k] ?? 0) / CAST[k].wait)) * 100}%`,
                     }}
                   />
                 </button>
@@ -4321,10 +4433,11 @@ export function ParkRoom({
             <kbd>2</kbd> <kbd>3</kbd>
           </dt>
           <dd>
-            Your three big moves, on one shared wait. Left-click or{' '}
+            The three big moves you chose, each with its own wait. Left-click or{' '}
             <kbd>{keyName(PARK_KEYS.cast)}</kbd> throws the first and{' '}
-            <kbd>{keyName(PARK_KEYS.cast2)}</kbd> the second; the numbers reach all three. If one of
-            them is a <strong>bolt</strong>, holding it winds it up and letting go throws it harder
+            <kbd>{keyName(PARK_KEYS.cast2)}</kbd> the second; the numbers reach all three. Pick
+            which is which before you walk in. If one of them is a <strong>bolt</strong>, holding it
+            winds it up and letting go throws it harder
           </dd>
         </div>
         <div>
