@@ -55,6 +55,8 @@ import { PART_DOES, PART_WORDS, inFrontOfOrder, inkBox, partOf } from '../pets/r
 import { MoveShow } from '../pets/MoveShow'
 import { saysOf, temperOf } from '../park/temper'
 import { CastShow } from '../pets/CastShow'
+import { swapRanged, whyCasts } from '../park/temper'
+import { CAST } from '../park/cast'
 import { movesOf } from '../pets/attack'
 import { AlsoTogether } from '../ui/AlsoTogether'
 import { useVoiceSession } from '../voice/useVoiceSession'
@@ -1756,7 +1758,9 @@ export function PaintRoom() {
    */
   const petBoss = useMemo(() => {
     const t = temperOf(petPreview)
-    return { says: saysOf(t), life: t.life, casts: t.casts }
+    /* ⚠️ the whole Temper now, not three fields off it. whyCasts and swapRanged read the dials
+       — that is the rule they follow, and picking fields here would decide for them which. */
+    return { ...t, says: saysOf(t) }
   }, [petPreview])
 
   const addLayer = () => {
@@ -3881,11 +3885,36 @@ export function PaintRoom() {
                       only part of a creature you could not see without adopting it and walking
                       into the park. Asked for in those words.
                     */}
+                    {/**
+                      ⚠️ TWO SENTENCES HERE WENT STALE THE DAY THE PARK CHANGED UNDER THEM. This
+                      said "three big ones on one cooldown" and "the picture decides which" —
+                      both true when written, both wrong now: each has its own wait, and as a
+                      PLAYER you choose your three before you walk in. The picture still decides
+                      for the boss, which is the half that is still true and the half this room
+                      is about.
+                    */}
                     <span className="muted paint-pet-moves">
-                      And three big ones on one cooldown — <strong>1</strong>, <strong>2</strong>{' '}
-                      and <strong>3</strong> in the park. The picture decides which.
+                      And three big ones, each with its own wait. As a boss the picture decides
+                      which; when you take it into the park yourself you choose.
                     </span>
                     <CastShow art={petPreview} casts={petBoss.casts} />
+                    {/**
+                      ⚠️ WHY IT GOT THESE, WHICH NOTHING SAID. CastShow plays the three at the
+                      real size and speed and saysOf describes how it fights, but nothing joined
+                      the two — so "the picture decides which" was a rule you could only learn by
+                      drawing twenty creatures. Reported the hard way: "I'm not sure how to cast
+                      the bolt", about a creature that did not have one and could not have had
+                      one. Every line is read off the same Temper the park fights, never off the
+                      layer names — see whyCasts.
+                    */}
+                    <ul className="paint-pet-why">
+                      {whyCasts(petBoss).map(({ kind, because }) => (
+                        <li key={kind}>
+                          <strong>{CAST[kind].short}</strong> — {because}
+                        </li>
+                      ))}
+                    </ul>
+                    <span className="muted paint-pet-moves">{swapRanged(petBoss)}</span>
                     <span className="muted paint-pet-moves">
                       Called out as a boss: {petBoss.says} <strong>{petBoss.life}</strong> health.
                     </span>

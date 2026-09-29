@@ -395,3 +395,54 @@ export function saysOf(t: Temper): string {
      most memorably. The wording is the cast's own, so the maker and the field agree. */
   return `A ${size}${speed} boss that ${where}. It ${how} and ${hold}. Then ${CAST[t.casts[0]].says}.`
 }
+
+/**
+ * Why it got the big moves it got.
+ *
+ * ⚠️ BECAUSE A MAKER COULD SEE WHAT THEY GOT AND NEVER WHY. saysOf describes how a boss FIGHTS
+ * and CastShow plays the three casts at the real size and speed — but nothing joined the two, so
+ * the picture deciding your abilities was a rule you could only learn by drawing twenty
+ * creatures. Reported the hard way: "I'm not sure how to cast the bolt", about a creature that
+ * did not have one and could not have had one.
+ *
+ * ⚠️ FROM THE DIALS, NOT FROM THE PARTS, which is saysOf's rule and matters more here. "You drew
+ * legs, so it is quick" would be a second copy of a weighting that lives in temperOf — free to
+ * drift the day somebody tunes it, and wrong in a way nobody would catch. Every line below is
+ * read off the same Temper the park itself fights.
+ *
+ * ⚠️ AND THE RANGED SLOT IS THE ONE THAT NEEDED SAYING. It is a fork rather than a contest:
+ * above the median pace a creature throws a bolt and below it a mark, never both, so half the
+ * makers on this site have never seen a bolt and had no way to find out one exists.
+ */
+export function whyCasts(t: Temper): Array<{ kind: CastKind; because: string }> {
+  return t.casts.map((kind) => ({
+    kind,
+    because:
+      kind === 'bloom'
+        ? t.charge > 0.45
+          ? 'it runs straight at you, and this is the one that grows out from under it'
+          : 'it likes to be close, and this is the one that fills the space it stands in'
+        : kind === 'wave'
+          ? t.nerve > 0.6
+            ? 'it never gives ground, and this draws a line it can hold'
+            : 'it works in lines rather than circles'
+          : kind === 'bolt'
+            ? `it is quick (pace ${t.pace.toFixed(2)}), and quick creatures throw a bolt rather than a mark`
+            : `it is steady (pace ${t.pace.toFixed(2)}), and steadier creatures mark the ground rather than throw a bolt`,
+  }))
+}
+
+/**
+ * The one sentence that says how to get the OTHER ranged move.
+ *
+ * ⚠️ WHAT TO CHANGE, NOT JUST WHAT YOU GOT. A readout that only describes is a readout you read
+ * once; the thing that makes a drawing tool out of it is knowing which way to push. The wording
+ * stays at the level of the dial — what makes a creature quick is temperOf's business and is
+ * allowed to change without this going stale.
+ */
+export const swapRanged = (t: Temper): string => {
+  const paceN = (t.pace - BAND.pace[0]) / (BAND.pace[1] - BAND.pace[0])
+  return paceN >= 0.52
+    ? 'Draw something slower and heavier if you want the mark instead.'
+    : 'Draw something quicker — more to move with, less to weigh it down — if you want the bolt instead.'
+}

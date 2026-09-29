@@ -10011,6 +10011,26 @@ a.cz-msg-author:focus-visible {
   border: 1px solid var(--border);
   border-radius: 4px;
 }
+/**
+ * Why the drawing got the three big moves it got.
+ *
+ * ⚠️ A LIST RATHER THAN A PARAGRAPH, because three reasons run together read as one claim and
+ * the whole value here is that each cast has its OWN cause you can go and change. Same muted
+ * size as the sentences either side of it, so it reads as part of the readout rather than as a
+ * warning about it.
+ */
+.paint-pet-why {
+  margin: 0.3rem 0 0;
+  padding-left: 1.1rem;
+  font-size: 0.8rem;
+  color: var(--muted);
+  max-width: 46rem;
+  display: grid;
+  gap: 0.2rem;
+}
+.paint-pet-why strong {
+  color: var(--text);
+}
 /* the eight words, as a row of presses rather than a sentence to read */
 .paint-pet-parts {
   display: flex;
