@@ -60,7 +60,7 @@ import { ArtBlock } from '../profile/ProfileArt'
 import { CONFIG_LIMIT, PROFILE_LIMIT, configSize } from '../profile/blockSize'
 import { PetBlock, PetPicker } from '../pets/PetBlock'
 import { gallery, subscribeGallery, type Art } from '../draw/gallery'
-import { frameCount, packDrawing, readDrawing } from '../draw/strokes'
+import { fitDrawing, frameCount, packDrawing, readDrawing } from '../draw/strokes'
 import { library, subscribeLibrary, type LibraryItem } from '../audio/library'
 import { ART_STYLES, VISUALS } from '../audio/visualModes'
 import { PALETTES } from '../audio/palettes'
@@ -1473,11 +1473,33 @@ function VisualPicker({
                 value={chosenName ?? ''}
                 onChange={(e) => {
                   const hit = items.find((a: Art) => a.name === e.target.value)
-                  const next = { ...value, art: hit ? packDrawing(hit.art) : undefined }
-                  /* ⚠️ Checked HERE rather than left to the save. The server measures the same
+                  /**
+                   * ⚠️ THINNED TO FIT RATHER THAN TURNED AWAY, which is what the park has done
+                   * since it stopped refusing creatures. This said "too many strokes for one
+                   * block — try a simpler drawing", which is the maker and the site
+                   * contradicting each other: the paint room says draw whatever you like and
+                   * the profile says not that. simplifyDrawing was written FOR this case and
+                   * its own note says so; the art block was the one place that never called it.
+                   *
+                   * ⚠️ ONLY THE COPY IN THE BLOCK. The gallery keeps every point you drew — a
+                   * block is about 180 pixels across, where the points being dropped were never
+                   * going to be visible anyway.
+                   */
+                  const next = {
+                    ...value,
+                    art: hit
+                      ? fitDrawing(
+                          hit.art,
+                          packDrawing,
+                          (packed) => configSize({ ...value, art: packed }) <= CONFIG_LIMIT,
+                        )
+                      : undefined,
+                  }
+                  /* ⚠️ and it can still be refused, for the drawing that genuinely will not go.
+                     Checked HERE rather than left to the save: the server measures the same
                      thing and refuses the whole block with "invalid block" — a message about the
                      wrong layer, arriving after you pressed Done, about a drawing you would have
-                     to guess at. A detailed picture is the one that trips it. */
+                     to guess at. */
                   if (configSize(next) > CONFIG_LIMIT) {
                     setTooBig(hit?.name ?? '')
                     return

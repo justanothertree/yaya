@@ -1,21 +1,38 @@
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react'
 import { CONFIG_LIMIT, configSize } from '../profile/blockSize'
 import { PetView } from './PetView'
-import { simplifyDrawing } from '../draw/strokes'
+import { fitDrawing } from '../draw/strokes'
 import { packPet, pets, readPet, subscribePets, type Pet } from './pets'
 
 /**
- * How far a point may move when a pet is packed into a block, in the drawing's own 0–1 space.
+ * ⚠️ THE FIXED TOLERANCE WENT, AND WHY IT EXISTED IS WORTH KEEPING. It was 0.0018 — a third of
+ * a pixel at the size a block draws a pet, since pets on a page are 120 to 180 across and the
+ * paint room samples a point every 0.002 while you draw at full canvas size. That is where all
+ * the detail a block cannot afford comes from, and one rung of thinning removed most of it.
  *
- * ⚠️ A THIRD OF A PIXEL AT THE SIZE A BLOCK DRAWS IT. Pets on a page are 120 to 180 across
- * (see the sizes below), so 0.0018 of the picture is well under one pixel of what a visitor
- * actually sees. The room samples a point every 0.002 while you draw at full canvas size, which is
- * where all the detail a block cannot afford comes from.
+ * What it could not do is try HARDER for a pet that still did not fit, which is why a detailed
+ * minion was greyed out rather than thinned. THIN_LADDER starts at 0.0022, a hair coarser than
+ * this was, and goes on from there — see fitDrawing.
  */
-const BLOCK_TOLERANCE = 0.0018
 
-/** the copy that travels — see simplifyDrawing */
-const packForBlock = (p: Pet) => packPet({ ...p, art: simplifyDrawing(p.art, BLOCK_TOLERANCE) })
+/**
+ * The copy that travels.
+ *
+ * ⚠️ DOWN THE LADDER RATHER THAN ONE RUNG, which is the same fix the park needed and the art
+ * block needed. This thinned once at BLOCK_TOLERANCE and greyed out anything still too big — so
+ * a detailed minion could not go on a profile at all, whatever its owner did. A rougher copy of
+ * your creature on your page beats your creature not being allowed on it.
+ *
+ * ⚠️ THE TOTAL IS STILL A REAL LIMIT, and this does not pretend otherwise. Each minion is now
+ * thinned until IT fits; several detailed ones together can still outgrow a block, which is the
+ * budget a visitor downloads and is correctly refused with "take one out".
+ */
+const packForBlock = (p: Pet) =>
+  fitDrawing(
+    p.art,
+    (art) => packPet({ ...p, art }),
+    (packed) => configSize(packed as unknown as Record<string, unknown>) <= CONFIG_LIMIT,
+  )
 
 /**
  * Somebody's pets, alive on their page.

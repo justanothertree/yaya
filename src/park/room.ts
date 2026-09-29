@@ -1,5 +1,5 @@
 import { NetClient } from '../game/net'
-import { packDrawing, readDrawing, simplifyDrawing, type Drawing } from '../draw/strokes'
+import { fitDrawing, packDrawing, readDrawing, type Drawing } from '../draw/strokes'
 import type { Spot, Walker } from './walk'
 import { aimFromOctant, HOP, type Aimed } from './strike'
 import { traitsOf } from '../pets/play'
@@ -285,16 +285,10 @@ export const PARK_LOOK_LIMIT = 11500
  * minions room and your own screen keep every point you drew. The thinning is what other
  * people see, at the size the park draws it, which is a tenth of the screen's height.
  */
-const THIN_LADDER = [0.0022, 0.0038, 0.0065, 0.011, 0.018, 0.03]
-
-export const packLook = (art: Drawing) => {
-  let last = packDrawing(simplifyDrawing(art, THIN_LADDER[0]))
-  for (const tol of THIN_LADDER) {
-    last = packDrawing(simplifyDrawing(art, tol))
-    if (JSON.stringify(last).length <= PARK_LOOK_LIMIT) return last
-  }
-  return last
-}
+/* ⚠️ the ladder moved to strokes.ts, beside simplifyDrawing, because two other places needed
+   it and had each answered the question their own way — see fitDrawing */
+export const packLook = (art: Drawing) =>
+  fitDrawing(art, packDrawing, (packed) => JSON.stringify(packed).length <= PARK_LOOK_LIMIT)
 
 /** Whether it fits even at the roughest the ladder goes. */
 export const lookFits = (art: Drawing): boolean =>

@@ -1492,6 +1492,49 @@ export function xformStroke(
  * ⚠️ Ramer–Douglas–Peucker, with an explicit stack rather than recursion: the depth is
  * data-dependent and a long smooth stroke is exactly the shape that makes it deep.
  */
+/**
+ * How hard to thin, in order, until it fits.
+ *
+ * ⚠️ ONE LADDER, BECAUSE THERE WERE THREE ANSWERS TO ONE QUESTION. Three places need a drawing
+ * to fit somewhere it does not: the park (11,500 characters on the wire), a pet block and an art
+ * block (64,000 in a profile config). The park thinned down a ladder until it fitted; the pet
+ * block thinned ONCE at a fixed tolerance and greyed out anything still too big; the art block
+ * did not thin at all and simply refused. Same problem, three behaviours, and two of them tell
+ * somebody to go and draw something simpler.
+ *
+ * ⚠️ AND THE FIRST RUNG IS THE TOLERANCE THAT WAS ALWAYS USED, so a drawing that already fitted
+ * travels exactly as it did — nothing anybody has made looks different today. Only a drawing
+ * that would have been TURNED AWAY gets a rougher copy, and a rougher copy of your creature
+ * somewhere beats your creature not being allowed there.
+ */
+export const THIN_LADDER = [0.0022, 0.0038, 0.0065, 0.011, 0.018, 0.03]
+
+/**
+ * Thin a drawing only as hard as it has to, until it fits where it is going.
+ *
+ * ⚠️ GENERIC IN WHAT IT MAKES, because the three callers measure different things: the park
+ * measures a packed drawing's JSON, a pet block measures a packed PET, and an art block measures
+ * the whole config object the drawing is one key of. Handing the ladder a `make` and a `fits` is
+ * what lets one implementation answer all three without any of them knowing about the others.
+ *
+ * ⚠️ IT RETURNS THE ROUGHEST ATTEMPT WHEN NOTHING FITS, rather than null. The caller still has
+ * to ask whether the answer fits — but it gets the best available copy to say that about, and
+ * incompressible input is the only case that reaches it. Measured: a hand-drawn creature thins
+ * 25x (282,690 characters to 11,361), while noise manages 43% and is what genuinely will not go.
+ */
+export function fitDrawing<T>(
+  art: Drawing,
+  make: (d: Drawing) => T,
+  fits: (made: T) => boolean,
+): T {
+  let last = make(simplifyDrawing(art, THIN_LADDER[0]))
+  for (const tol of THIN_LADDER) {
+    last = make(simplifyDrawing(art, tol))
+    if (fits(last)) return last
+  }
+  return last
+}
+
 export function simplifyDrawing(d: Drawing, tol: number): Drawing {
   return {
     ...d,
