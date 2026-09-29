@@ -10012,6 +10012,19 @@ a.cz-msg-author:focus-visible {
   border-radius: 4px;
 }
 /**
+ * Undo and Redo for the map, which sit with the zoom rather than with any one tool.
+ *
+ * ⚠️ THEY USED TO BE IN THE GROUND'S PANEL, so they vanished the moment you switched to
+ * stamping or to painting a no-walk zone — which is most of what making a map is. Beside the
+ * zoom and the count is where the things that are true in every mode live.
+ */
+.map-undo {
+  display: flex;
+  gap: 0.3rem;
+  flex-wrap: wrap;
+}
+
+/**
  * Why the drawing got the three big moves it got.
  *
  * ⚠️ A LIST RATHER THAN A PARAGRAPH, because three reasons run together read as one claim and

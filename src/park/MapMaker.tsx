@@ -18,6 +18,22 @@ import {
 import { downBy, outBy } from './strike'
 import { PARK, type Spot } from './walk'
 import { blankZone, brushZone, packZone, readZone, ZONE, zoneIsEmpty } from './zone'
+import { emptyHistory, noteEdit, stepBack, stepOn, type History } from './edits'
+
+/**
+ * One thing you can take back, as the part of the map it belongs to.
+ *
+ * ⚠️ FIVE PARTS AND ONE STACK. A map is pieces, ground, a no-walk zone, a spawn and doors, and
+ * Undo used to reach only the ground — so it silently did nothing after stamping a tree or
+ * painting a zone, which is worse than not being there. Tagging the slice is what lets one
+ * button take back the last thing you DID rather than the last line you drew.
+ */
+type Step =
+  | { k: 'pieces'; v: Piece[] }
+  | { k: 'ground'; v: Stroke[] }
+  | { k: 'spawn'; v: Spot | null }
+  | { k: 'doors'; v: Door[] }
+  | { k: 'zone'; v: Uint8Array }
 
 /**
  * Making a map by putting things on it, and by drawing on it.
@@ -236,11 +252,54 @@ export function MapMaker() {
   const [nib, setNib] = useState(NIB.start)
   const [alpha, setAlpha] = useState(1)
   /**
-   * ⚠️ REDO IS A SECOND STACK, and undo is what fills it. The paint room has had this
-   * since it had undo; the ground shipped with a one-way Undo, which makes the button dangerous
-   * rather than safe — an undo you cannot take back is a delete with a friendly name.
+   * Everything you can take back, whatever you did.
+   *
+   * ⚠️ IT WAS THE GROUND AND ONLY THE GROUND, which is worse than nothing: a button labelled
+   * Undo teaches you that mistakes are cheap, and then four of the five things you can do to a
+   * map could not be taken back. Reported after a real session — "there wasn't the undo's that
+   * I wanted when trying to edit things or draw the no walk zone". Stamping, the no-walk zone,
+   * the spawn and the doors were all one-way.
+   *
+   * ⚠️ A STEP IS THE SLICE THAT IS ABOUT TO CHANGE, not the whole document — see edits.ts. And
+   * it is taken at the START OF A GESTURE, so a drag that lays thirty trees or paints a long
+   * stroke of no-walk comes back in one press, which is what a hand expects. `sank` already
+   * counted pieces that way for the pinch; this is the same idea for everything.
    */
-  const [redo, setRedo] = useState<Stroke[]>([])
+  const [hist, setHist] = useState<History<Step>>(() => emptyHistory<Step>())
+
+  /** what a part of the map looks like right now, ready to be remembered */
+  const grab = (k: Step['k']): Step =>
+    k === 'pieces'
+      ? { k, v: pieces }
+      : k === 'ground'
+        ? { k, v: ground }
+        : k === 'spawn'
+          ? { k, v: spawn }
+          : k === 'doors'
+            ? { k, v: doors }
+            : /* ⚠️ copied, because the zone is mutated in place — a reference would be a step
+                 that changes underneath itself the moment you paint again */
+              { k, v: cells.current.slice() }
+
+  /** put a remembered part back */
+  const put = (step: Step) => {
+    if (step.k === 'pieces') setPieces(step.v)
+    else if (step.k === 'ground') setGround(step.v)
+    else if (step.k === 'spawn') setSpawn(step.v)
+    else if (step.k === 'doors') setDoors(step.v)
+    else {
+      cells.current = step.v
+      setBlockTick((n) => n + 1)
+    }
+  }
+
+  /**
+   * ⚠️ NOT INSIDE A STATE UPDATER, which is the bug this room already shipped once. React
+   * double-invokes an updater in StrictMode, so building the stack in one pushed every step
+   * twice: "draw one line, undo, redo" gave two lines. Called from an event handler, against
+   * the value this render already has, it happens exactly once.
+   */
+  const remember = (k: Step['k']) => setHist(noteEdit(hist, grab(k)))
 
   const field = useRef<HTMLDivElement | null>(null)
   const stage = useRef<HTMLDivElement | null>(null)
@@ -824,6 +883,7 @@ export function MapMaker() {
       /* it still works; it just stops at the edge */
     }
     if (mode === 'spawn') {
+      remember('spawn')
       setSpawn(s)
       setSaid('That is where you will arrive.')
       return
@@ -837,12 +897,15 @@ export function MapMaker() {
         setSaid('Eight doors is as many as one map holds.')
         return
       }
+      remember('doors')
       setDoors((was) => [...was, { at: s, wide: outBy(3), to: leadsTo }])
       setSaid(`A door to "${leadsTo}".`)
       return
     }
     if (mode === 'stamp') {
       held.current = true
+      /* ⚠️ once for the whole drag, so a line of thirty trees is one press to take back */
+      remember('pieces')
       sank.current = pieces.length
       if (erasing) rub(s)
       else sow(s)
@@ -850,6 +913,8 @@ export function MapMaker() {
     }
     if (mode === 'block') {
       held.current = true
+      /* ⚠️ the whole stroke of no-walk paint is one step, not one per pointermove */
+      remember('zone')
       brushZone(cells.current, s.x, s.y, outBy(zfat) / 2, blocking)
       setBlockTick((n) => n + 1)
       return
@@ -860,6 +925,9 @@ export function MapMaker() {
       )
       return
     }
+    /* ⚠️ at the start, like the stamping and the no-walk paint, so all five parts of a map
+       are remembered the same way rather than this one being special */
+    remember('ground')
     live.current = { t: tool, c: ink, a: alpha, w: downBy(nib), p: [s.x, s.y] }
     show()
   }
@@ -957,9 +1025,9 @@ export function MapMaker() {
      */
     if (k.p.length < 4) k.p = [k.p[0], k.p[1], k.p[0] + 0.0004, k.p[1] + 0.0004]
     setGround((g) => [...g, k])
-    /* ⚠️ a new stroke ends the branch you could have redone into — the rule every editor
-       follows, and the one that stops Redo putting back something from a different picture */
-    setRedo([])
+    /* ⚠️ the branch was already ended when this stroke STARTED — remember() does it, the same
+       way it does for a stamp or a zone. Clearing it again here would be a second rule saying
+       the same thing, free to disagree the day one of them moves. */
     setSaid(null)
   }
 
@@ -1033,6 +1101,58 @@ export function MapMaker() {
             onClick={() => closer(zoom * ZOOM.step)}
           >
             +
+          </button>
+        </span>
+        {/**
+         * ⚠️ OUT HERE, BECAUSE THEY LIVED INSIDE THE GROUND'S OWN PANEL. The tool strip is a
+         * ternary on the mode, so Undo and Redo only EXISTED while you were drawing the ground
+         * — stamp a tree or paint a no-walk zone and the buttons were not on the page at all.
+         * Reported from a real session as the undos "I wanted when trying to edit things or
+         * draw the no walk zone", and THAT was the reason rather than the stack: there was
+         * nothing to press. They belong beside the zoom and the count, which are the other two
+         * things true in every mode.
+         */}
+        <span className="map-undo">
+          <button
+            className="btn"
+            disabled={!hist.past.length}
+            /**
+             * ⚠️ ONE STACK FOR THE WHOLE MAP, so this takes back the last thing you DID rather
+             * than the last line you drew. Pieces, ground, the no-walk zone, the spawn and the
+             * doors all go through it — see edits.ts.
+             *
+             * ⚠️ AND BOTH STACKS MOVE FROM OUT HERE, not from inside an updater. Written as
+             * `setGround(g => { setRedo(...); return g.slice(0,-1) })` it is a state updater
+             * with a side effect in it, and React calls updaters TWICE in development to catch
+             * exactly that — so one Undo pushed the stroke onto the redo stack twice and one
+             * Redo put two copies back. Measured: draw one line, undo, redo, and the room said
+             * two lines. A click is a discrete event, so the values closed over here are the
+             * current ones and no updater is needed.
+             */
+            onClick={() => {
+              const top = hist.past[hist.past.length - 1]
+              if (!top) return
+              const step = stepBack(hist, grab(top.k))
+              if (!step) return
+              setHist(step.h)
+              put(step.to)
+            }}
+          >
+            ↶ Undo
+          </button>
+          <button
+            className="btn"
+            disabled={!hist.future.length}
+            onClick={() => {
+              const top = hist.future[hist.future.length - 1]
+              if (!top) return
+              const step = stepOn(hist, grab(top.k))
+              if (!step) return
+              setHist(step.h)
+              put(step.to)
+            }}
+          >
+            ↷ Redo
           </button>
         </span>
         <span className="muted map-count">
@@ -1129,7 +1249,10 @@ export function MapMaker() {
               <button
                 className="btn"
                 disabled={!doors.length}
-                onClick={() => setDoors((was) => was.slice(0, -1))}
+                onClick={() => {
+                  remember('doors')
+                  setDoors((was) => was.slice(0, -1))
+                }}
               >
                 ↶ Take the last one out
               </button>
@@ -1169,9 +1292,11 @@ export function MapMaker() {
             className="btn"
             disabled={!block}
             onClick={() => {
+              /* ⚠️ it was one-way too, like everything here that is not a ground stroke */
+              remember('zone')
               cells.current = blankZone()
               setBlockTick((n) => n + 1)
-              setSaid('Every zone is gone — the whole map is walkable again.')
+              setSaid('Every zone is gone — Undo puts them back.')
             }}
           >
             Clear the zones
@@ -1219,43 +1344,10 @@ export function MapMaker() {
             <button
               className="btn"
               disabled={!ground.length}
-              /**
-               * ⚠️ BOTH STACKS MOVED FROM OUT HERE, not from inside an updater. Written as
-               * `setGround(g => { setRedo(...); return g.slice(0,-1) })` it is a state updater
-               * with a side effect in it, and React calls updaters TWICE in development to
-               * catch exactly that — so one Undo pushed the stroke onto the redo stack twice
-               * and one Redo put two copies of it back. Measured: draw one line, undo, redo,
-               * and the room says two lines. A click is a discrete event, so the values closed
-               * over here are the current ones and no updater is needed.
-               */
               onClick={() => {
-                const last = ground[ground.length - 1]
-                if (!last) return
-                setGround(ground.slice(0, -1))
-                setRedo([...redo, last])
-              }}
-            >
-              ↶ Undo
-            </button>
-            <button
-              className="btn"
-              disabled={!redo.length}
-              onClick={() => {
-                const back = redo[redo.length - 1]
-                if (!back) return
-                setRedo(redo.slice(0, -1))
-                setGround([...ground, back])
-              }}
-            >
-              ↷ Redo
-            </button>
-            <button
-              className="btn"
-              disabled={!ground.length}
-              onClick={() => {
-                setRedo(ground)
+                remember('ground')
                 setGround([])
-                setSaid('The ground is bare again — Redo puts it back.')
+                setSaid('The ground is bare again — Undo puts it back.')
               }}
             >
               Clear the ground
@@ -1470,7 +1562,10 @@ export function MapMaker() {
                   cells.current = readZone(m.doc.block) ?? blankZone()
                   setBlockTick((n) => n + 1)
                   setDoors(m.doc.doors)
-                  setRedo([])
+                  /* ⚠️ a different map is a different history. Keeping it would let Undo put a
+                     piece of the last map into this one, which is the worst thing an undo can
+                     do: quietly mix two documents. */
+                  setHist(emptyHistory<Step>())
                   setErasing(false)
                   setSaid(`Working on "${m.doc.name}".`)
                 }}
