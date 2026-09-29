@@ -17,16 +17,25 @@ import { VIEW } from '../park/walk'
  * into the park and press 3. Asked for in those words: live previews like there are now, but for
  * the more complicated attacks.
  *
- * ⚠️ IT PLAYS THE REAL patchesOf, AT THE REAL SPEED, AT THE REAL SIZE. Not a diagram of one.
- * Every circle here is the circle that will be on the grass, taken from the same function the
- * park calls and drawn with the same class, so a preview cannot quietly drift from the game —
- * which is the one failure mode that would make it worse than having none. The only thing this
- * invents is where the creature stands.
+ * ⚠️ IT PLAYS THE REAL patchesOf, AT THE REAL SPEED AND IN THE REAL SHAPE. Not a diagram of
+ * one. Every circle here comes out of the same function the park calls and is drawn with the
+ * same class, so a preview cannot quietly drift from the game — which is the one failure mode
+ * that would make it worse than having none.
+ *
+ * ⚠️ BUT NOT AT THE REAL SIZE, WHICH THIS USED TO CLAIM. patchesOf is called without a scale,
+ * so every circle is a creature of scale 1 — while the panel around it is describing a BOSS,
+ * which is 2.05 to 3.05 times bigger, and says so two lines further down with its health. The
+ * shapes and the timings are exact; how big they are against the field is not.
+ *
+ * Passing the boss's scale is not the fix on its own: the creature in here is drawn at a fixed
+ * pixel height passed in as a prop rather than derived from the field, so scaling the patches
+ * alone would make them huge beside a creature that had not grown. It is a stylised model, and
+ * making it a true one means giving it the field's own scale to work in.
  *
  * ⚠️ AND THE ORDER IS THE DRAWING'S, not the declaration's. temperOf picks three of the four
- * kinds and sorts them by how well they suit the picture, and that sort IS what 1, 2 and 3 do
- * in the park — so this row is the loadout rather than a catalogue. Redrawing a horn reorders
- * it; changing how quick the thing is swaps one of the three for a different attack entirely.
+ * kinds and sorts them by how well they suit the picture. That sort IS what a BOSS throws —
+ * it was also what 1, 2 and 3 did for a player until loadout.ts, and a player now chooses their
+ * own three. So this row is the boss's kit, which is what the panel around it is about.
  */
 
 /** how long it sits empty at the end before going round again, so the cooldown reads as a cost */
