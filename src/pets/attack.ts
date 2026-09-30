@@ -552,7 +552,10 @@ export function attacksOf(parts: Part[], hits?: Record<string, string>): Attack[
    * it would mean drawing a longer slash quietly shrank every other move's reach, and made the
    * slash itself score as a smaller fraction of a creature it had just inflated.
    */
-  const ink = inkOf(parts.filter((p) => p.kind !== 'hit')) ?? inkOf(parts)
+  /* ⚠️ 'spell' is excluded for exactly the reason 'hit' is: it is an attack rather than
+     anatomy, so counting it would mean drawing a cast further out quietly shrank every swing's
+     reach and made the cast itself score against a creature it had just inflated. */
+  const ink = inkOf(parts.filter((p) => p.kind !== 'hit' && p.kind !== 'spell')) ?? inkOf(parts)
   /* ⚠️ THE FALLBACK IS SHAPEABLE TOO. A creature with nothing named still has one move, and
      it is the only move it has — leaving this path unshaped would mean the wizard did nothing at
      all for the simplest creature anybody can make, which is the first one everybody makes. */

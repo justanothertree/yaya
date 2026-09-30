@@ -46,6 +46,7 @@ export type PartKind =
   | 'float'
   | 'horn'
   | 'hit'
+  | 'spell'
 
 /**
  * What each name means, in the words people actually use.
@@ -66,6 +67,25 @@ const WORDS: Array<[PartKind, string[]]> = [
    * and none of its words contains or is contained by anything below.
    */
   ['hit', ['hit', 'attack', 'strike', 'slash', 'swipe', 'blast', 'swing']],
+  /**
+   * ⚠️ THE SECOND LAYER THAT IS NOT ANATOMY, and it is to the big casts what `hit` is to the
+   * six swings. A hit says where a SWING reaches; this says where a CAST lands — how far out
+   * the ground opens, and how wide. Everything else about the cast stays its own: a swell still
+   * swells, a fissure still rolls outward. Only the footprint is yours.
+   *
+   * ⚠️ IT COSTS THE WIRE NOTHING, which is the whole reason it can work this way. The shape is
+   * derived from the drawing and everybody in the park already HAS the drawing — the same
+   * bargain temperOf makes, and the reason a cast still travels as one small number.
+   *
+   * ⚠️ NOT 'blast', WHICH IS ALREADY A HIT. Checked rather than assumed: putting a second
+   * meaning on a word this list already owns would quietly turn somebody's attack layer into a
+   * spell and change a creature they drew months ago.
+   *
+   * ⚠️ AND DIRECTLY UNDER 'hit' BECAUSE THE TWO ARE A PAIR, and because none of these words
+   * contains or is contained by anything in the list — the substring trap the note above
+   * describes, which has caught this file twice.
+   */
+  ['spell', ['spell', 'magic', 'rune', 'sigil', 'cast']],
   ['eye', ['eye', 'pupil', 'blink']],
   /**
    * ⚠️ ORDER IS CORRECTNESS HERE, not taste, because these are SUBSTRINGS. "heart" contains
@@ -121,6 +141,10 @@ export const PART_WORDS: string[] = [
   'halo',
   'horn',
   'hit',
+  /* ⚠️ LAST, BESIDE 'hit', because the two are the pair that are not anatomy: one says where a
+     swing reaches and this says where the big casts land. A word that does something and is not
+     on this list is a feature nobody finds — the wizard's buttons are this array. */
+  'spell',
 ]
 
 export function partOf(name: string | undefined): PartKind {
@@ -147,6 +171,7 @@ export const PART_DOES: Record<PartKind, string> = {
   float: 'drifts',
   horn: 'juts out, and hits hardest of anything',
   hit: 'is hidden until you attack with it',
+  spell: 'is where your big moves land',
 }
 
 /**
@@ -204,6 +229,9 @@ export const PART_DEPTH: Record<PartKind, number> = {
   flame: 13,
   pulse: 14,
   hit: 15,
+  /* ⚠️ with `hit`, at the back of the ordering, because neither is anatomy and neither is drawn
+     as part of the standing creature — see the note on the kind itself */
+  spell: 16,
 }
 
 /**

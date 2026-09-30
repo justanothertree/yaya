@@ -1,4 +1,5 @@
 import { footSpan, PARK_TALL, stepFrom, toScreen, type Aimed } from './strike'
+import type { CastShape } from './castShape'
 import type { Spot } from './walk'
 
 /**
@@ -233,6 +234,10 @@ const easedScale = (s: number) => 1 + (s - 1) * 0.4
 /**
  * @param charge 0 to 1, and only the bolt reads it — see BOLT_UP
  */
+/**
+ * @param shape where this creature's casts land, from its own drawing, or null for the shape
+ * every cast had before anybody could draw one — see castShapeOf
+ */
 export function patchesOf(
   kind: CastKind,
   from: Spot,
@@ -240,9 +245,17 @@ export function patchesOf(
   t: number,
   scale = 1,
   charge = 0,
+  shape: CastShape | null = null,
 ): Patch[] {
   const s = Math.max(0.4, scale)
   const up = Math.max(0, Math.min(1, charge))
+  /**
+   * ⚠️ ONE MEANS "AS IT WAS", so a creature with nothing drawn takes the same path it always
+   * did rather than a path that happens to multiply out the same. Every creature anybody has
+   * already made is in that case.
+   */
+  const wide = shape?.spread ?? 1
+  const far = shape?.reach ?? 1
   if (kind === 'bloom') {
     /**
      * ⚠️ LIVE WHILE IT GROWS, which is what makes it different from everything else here. A
@@ -259,7 +272,9 @@ export function patchesOf(
      */
     const warn = 0.55
     const grown = Math.max(0, Math.min(1, (t - warn) / (CAST.bloom.time - warn)))
-    const r = (0.26 + 0.95 * grown) * PARK_TALL * s
+    /* ⚠️ no reach on this one: it swells where you stand, so there is nowhere for it to land
+       further away. Drawing a bigger spell makes a bigger swell and nothing else. */
+    const r = (0.26 + 0.95 * grown) * PARK_TALL * s * wide
     return [{ at: from, r, ready: Math.min(1, t / warn), live: t >= warn }]
   }
   if (kind === 'mark') {
@@ -267,10 +282,10 @@ export function patchesOf(
        1.05s of warning against the bolt's 0.42 — and it was paying that in full for a circle
        two thirds of a creature wide. What you buy with a long telegraph is area. */
     const warn = 1.05
-    const r = 0.95 * PARK_TALL * s
+    const r = 0.95 * PARK_TALL * s * wide
     return [
       {
-        at: stepFrom(from, aim, MARK_RANGE * easedScale(s)),
+        at: stepFrom(from, aim, MARK_RANGE * easedScale(s) * far),
         r,
         ready: Math.min(1, t / warn),
         live: t >= warn && t <= warn + 0.26,
@@ -297,11 +312,14 @@ export function patchesOf(
        against the other three's four seconds — and the thing it trades for that is being a
        needle. Growing it too would have made "bigger" mean "every cast", which is the same as
        nothing being bigger. */
-    const r = 0.34 * (1 + BOLT_UP.fat * up) * PARK_TALL * s
+    const r = 0.34 * (1 + BOLT_UP.fat * up) * PARK_TALL * s * wide
     const speed = BOLT_SPEED * (1 + BOLT_UP.quick * up)
+    /* ⚠️ the reach moves where it STARTS, not how fast it flies. A bolt somebody drew far out
+       leaves their hand further out; making it quicker instead would be a different stat with
+       the same name, and the charge already owns speed. */
     return [
       {
-        at: stepFrom(from, aim, (BOLT_FROM + flying * speed) * easedScale(s)),
+        at: stepFrom(from, aim, (BOLT_FROM * far + flying * speed) * easedScale(s)),
         r,
         ready: Math.min(1, t / BOLT_WARN),
         live: t >= BOLT_WARN,
@@ -329,9 +347,13 @@ export function patchesOf(
    *
    * ⚠️ NEVER FEWER THAN TWO, or it is a mark with a different name.
    */
-  const r = WAVE_R * s
+  /* ⚠️ straight into the spacing and the budget that already exist, so a wider fissure still
+     leaves a creature room to cross it and still fits on the field — see WAVE_FLOOR and
+     WAVE_FAR. Drawing a fatter one takes steps out of the count, exactly as a bigger creature
+     does, rather than closing the gaps. */
+  const r = WAVE_R * s * wide
   const gap = 2 * r + WAVE_FLOOR
-  const start = WAVE_START * easedScale(s)
+  const start = WAVE_START * easedScale(s) * far
   const room = WAVE_FAR - start - r
   /* ⚠️ a hair of tolerance: (n - 1) × gap and room are the same number in decimal and not
      always in binary, and without it a fissure silently loses its last step at some sizes */

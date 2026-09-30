@@ -87,6 +87,7 @@ import { movesOf, slotFor, petWide, type Attack } from '../pets/attack'
 import { footRoom, petBox } from '../pets/rig'
 import { BOLT_UP, CAST, castSlot, inPatch, patchesOf, type CastKind, type Patch } from './cast'
 import { ALL_CASTS, castsFor, loadout, setLoadout } from './loadout'
+import { shapeOf, type CastShape } from './castShape'
 import { recordFought, recordWin, subscribeWins, winFor, wins, winsWith } from './records'
 import { lungeOf } from '../pets/fight'
 import {
@@ -1248,6 +1249,23 @@ export function ParkRoom({
   const wides = useRef<number[]>([])
   wides.current = strollPets.map((p) => petWide(p.art))
 
+  /**
+   * Where your casts land, and where your boss's do — both off their own drawings.
+   *
+   * ⚠️ REFS RATHER THAN DEPS, which is the pattern `wides` above already follows. The loop reads
+   * these, so naming them as dependencies would tear the whole thing down and rebuild it —
+   * harmless for the creature, which can only change before you walk in, and not for the boss,
+   * whose picker is on screen during a fight. Restarting the loop mid-fight to change a
+   * multiplier is not a trade worth making.
+   *
+   * ⚠️ AND shapeOf IS CACHED PER DRAWING, so assigning these every render costs a WeakMap
+   * lookup rather than a walk through every stroke.
+   */
+  const myShape = useRef<CastShape | null>(null)
+  myShape.current = shapeOf(myArt)
+  const bossShape = useRef<CastShape | null>(null)
+  bossShape.current = shapeOf(bossArt)
+
   const state = useRef<ParkState>({ me: null, here: new Map(), boss: null, trouble: null })
   const park = useRef<Park | null>(null)
   const you = useRef<Striker>(restingStriker(restingWalker()))
@@ -2136,6 +2154,7 @@ export function ParkRoom({
           mine.t,
           1,
           mine.charge,
+          myShape.current,
         )) {
           if (!patch.live) continue
           const b = boss.current
@@ -2457,7 +2476,15 @@ export function ParkRoom({
          */
         const cs = cur.cast
         if (cs && !castSpent.current) {
-          for (const patch of patchesOf(cs.kind, cur, cur.aim, cs.t, cur.scale)) {
+          for (const patch of patchesOf(
+            cs.kind,
+            cur,
+            cur.aim,
+            cs.t,
+            cur.scale,
+            0,
+            bossShape.current,
+          )) {
             if (!patch.live) continue
             if (!canBeHurt(you.current)) break
             if (!inPatch(you.current, myWide, patch)) continue
@@ -2677,6 +2704,9 @@ export function ParkRoom({
          */
         if (tb.cast && !theirCastSpent.current) {
           const weight = kit.moves.reduce((n, m) => n + m.bite, 0) / Math.max(1, kit.moves.length)
+          /* ⚠️ the same footprint the host works out, from the same drawing that arrived
+             when it was called out — see the note on echoKit. A remote boss shaped by a default
+             would have a hitbox that disagreed with the one hitting the person running it. */
           for (const patch of patchesOf(
             tb.cast.kind,
             tb.shown,
@@ -2684,6 +2714,7 @@ export function ParkRoom({
             tb.castFor,
             kit.temper.scale,
             tb.cast.charge,
+            shapeOf(tb.art),
           )) {
             if (!patch.live) continue
             if (!canBeHurt(you.current)) break
@@ -2730,7 +2761,15 @@ export function ParkRoom({
         /* their own move table, already here because their drawing arrived with them */
         const kit = foeMoves.current.get(o.id)
         const weight = kit?.length ? kit.reduce((n, m) => n + m.bite, 0) / kit.length : 6
-        for (const patch of patchesOf(o.cast.kind, o.shown, o.aim, o.castFor, 1, o.cast.charge)) {
+        for (const patch of patchesOf(
+          o.cast.kind,
+          o.shown,
+          o.aim,
+          o.castFor,
+          1,
+          o.cast.charge,
+          shapeOf(o.art),
+        )) {
           if (!patch.live) continue
           if (!inPatch(b, bossKit.wide, patch, b.scale)) continue
           boss.current = wounded(b, { ...bossKit.moves[0], bite: weight * 1.1 })
@@ -2767,11 +2806,29 @@ export function ParkRoom({
         const others: Patch[] = []
         if (mineNow)
           others.push(
-            ...patchesOf(mineNow.kind, you.current, you.current.aim, mineNow.t, 1, mineNow.charge),
+            ...patchesOf(
+              mineNow.kind,
+              you.current,
+              you.current.aim,
+              mineNow.t,
+              1,
+              mineNow.charge,
+              myShape.current,
+            ),
           )
         for (const o of state.current.here.values())
           if (o.cast)
-            others.push(...patchesOf(o.cast.kind, o.shown, o.aim, o.castFor, 1, o.cast.charge))
+            others.push(
+              ...patchesOf(
+                o.cast.kind,
+                o.shown,
+                o.aim,
+                o.castFor,
+                1,
+                o.cast.charge,
+                shapeOf(o.art),
+              ),
+            )
         setMyPatches(others)
         /**
          * ⚠️ THE INCOMING CHANNEL, NOT THE MINE ONE. Patches come in two colours here and the
@@ -2786,7 +2843,7 @@ export function ParkRoom({
             : null
         setPatches(
           b?.cast
-            ? patchesOf(b.cast.kind, b, b.aim, b.cast.t, b.scale)
+            ? patchesOf(b.cast.kind, b, b.aim, b.cast.t, b.scale, 0, bossShape.current)
             : tb?.cast
               ? patchesOf(
                   tb.cast.kind,
@@ -2794,6 +2851,8 @@ export function ParkRoom({
                   tb.aim,
                   tb.castFor,
                   echoKit.current?.temper.scale ?? BOSS.scale,
+                  0,
+                  shapeOf(tb.art),
                 )
               : (sparLow ?? []),
         )

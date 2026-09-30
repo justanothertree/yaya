@@ -3,6 +3,7 @@ import type { Drawing } from '../draw/strokes'
 import { PetView } from './PetView'
 import { petCanvas } from './rig'
 import { CAST, patchesOf, type CastKind } from '../park/cast'
+import { shapeOf } from '../park/castShape'
 import { VIEW } from '../park/walk'
 
 /**
@@ -99,12 +100,16 @@ export function CastShow({
    * constants that go stale the first time one is tuned, and the still frame would then be the
    * wrong frame — silently, because a still picture cannot look mistimed.
    */
+  /* ⚠️ the creature's own footprint, so a spell layer changes this preview while you draw
+     it — which is the whole point of drawing one. See castShapeOf. */
+  const shape = useMemo(() => shapeOf(art), [art])
+
   const firstLive = useMemo(() => {
     const at = { x: 0.5, y: 0.5 }
     for (let t = 0; t <= CAST[kind].time; t += 1 / 60)
-      if (patchesOf(kind, at, { x: 1, y: 0 }, t).some((p) => p.live)) return t
+      if (patchesOf(kind, at, { x: 1, y: 0 }, t, 1, 0, shape).some((p) => p.live)) return t
     return CAST[kind].time * 0.7
-  }, [kind])
+  }, [kind, shape])
 
   const cycle = CAST[kind].time + PAUSE
   const [gone, setGone] = useState(0)
@@ -136,7 +141,15 @@ export function CastShow({
    * know anything about parks, cameras or where in one it is pretending to be.
    */
   const from = { x: 0.5, y: 0.5 }
-  const patches = patchesOf(kind, from, { x: 1, y: 0 }, Math.min(gone, CAST[kind].time))
+  const patches = patchesOf(
+    kind,
+    from,
+    { x: 1, y: 0 },
+    Math.min(gone, CAST[kind].time),
+    1,
+    0,
+    shape,
+  )
   const size = petCanvas(art, tall)
 
   return (
