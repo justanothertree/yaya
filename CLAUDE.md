@@ -78,6 +78,13 @@ what it just made stale — copy, empty states, the thing a neighbouring feature
   sitting: the gallery's cap was "120 items", which is the store's own limit, and the question
   underneath it was how many BYTES that is and what happens to the one that does not fit.
   **Measure a gap against the thing that has to occupy it, not against zero.**
+- **A dynamic `import()` in the pane is served from the BROWSER's module cache, and HMR does
+  not clear it.** Pure functions are the one thing that copy is safe to ask — but only if it is
+  the version on disk. A probe comparing a creature with and without a `spell` layer reported
+  them identical AFTER the fix that separates them, because the module it imported was the one
+  loaded before the edit; the honest-looking conclusion was "the fix does not work", and the fix
+  was fine. Add `?fresh=${Date.now()}` to every dynamic import in a probe. It costs nothing and
+  the failure mode is a wrong diagnosis, not an error.
 - **A timed-out browser call keeps running, and its keypresses land in your next trial.** The
   pane gives up on the promise; the page does not. A three-trial fight harness that ran over
   the limit was still holding the guard key during the _next_ call's control run, which duly
