@@ -10044,6 +10044,40 @@ a.cz-msg-author:focus-visible {
 .paint-pet-why strong {
   color: var(--text);
 }
+/**
+ * The reasoning, folded away.
+ *
+ * ⚠️ BECAUSE SEVEN TRUE PARAGRAPHS ARE LESS USE THAN ONE. Each line under the thumbnail arrived
+ * for its own good reason and none of them could see the others, and the result was a readout
+ * nobody read — in a preview already 526px tall inside a rail capped at 322. What stays out is
+ * what CHANGES as you draw; this is the part you read once. Same borrowed idiom as .pets-how,
+ * because a disclosure that looks like the other disclosures is one less thing to learn.
+ *
+ * ⚠️ A GRID, because its children are spans and a <ul>. Left inline they would run together
+ * into exactly the wall this exists to undo.
+ */
+.paint-pet-why-more {
+  font-size: 0.82rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.4rem 0.6rem;
+  max-width: 46rem;
+}
+.paint-pet-why-more > summary {
+  cursor: pointer;
+  font-weight: 600;
+  /* ⚠️ 24px of target, WCAG 2.5.8 — a one-line summary is 17px of text on its own */
+  min-height: 24px;
+  display: flex;
+  align-items: center;
+}
+.paint-pet-why-more[open] {
+  display: grid;
+  gap: 0.3rem;
+}
+.paint-pet-why-more .paint-pet-why {
+  margin: 0;
+}
 /* the eight words, as a row of presses rather than a sentence to read */
 .paint-pet-parts {
   display: flex;

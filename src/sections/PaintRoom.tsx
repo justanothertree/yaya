@@ -3893,9 +3893,7 @@ export function PaintRoom() {
                 )}
                 {frameCount(petPreview) <= 1 && petMoves && (
                   <>
-                    <span className="muted paint-pet-moves">
-                      Every part you name is a move. Press one to watch it.
-                    </span>
+                    <span className="muted paint-pet-moves">Press a part to watch its move.</span>
                     <MoveShow
                       art={petPreview}
                       moves={petMoves}
@@ -3930,8 +3928,7 @@ export function PaintRoom() {
                       is about.
                     */}
                     <span className="muted paint-pet-moves">
-                      And three big ones, each with its own wait. As a boss the picture decides
-                      which; when you take it into the park yourself you choose.
+                      And three big ones, each with its own wait.
                     </span>
                     <CastShow art={petPreview} casts={petBoss.casts} />
                     {/**
@@ -3943,14 +3940,38 @@ export function PaintRoom() {
                       one. Every line is read off the same Temper the park fights, never off the
                       layer names — see whyCasts.
                     */}
-                    <ul className="paint-pet-why">
-                      {whyCasts(petBoss).map(({ kind, because }) => (
-                        <li key={kind}>
-                          <strong>{CAST[kind].short}</strong> — {because}
-                        </li>
-                      ))}
-                    </ul>
-                    <span className="muted paint-pet-moves">{swapRanged(petBoss)}</span>
+                    {/**
+                      ⚠️ FOLDED, BECAUSE THE READOUT GREW PAST WHAT ANYBODY READS. Under the
+                      thumbnail there were seven paragraphs and a three-item list — each one
+                      added for a real reason, none of them aware of the others — in a preview
+                      that is already 526px tall inside a rail capped at 322. Reported plainly:
+                      "the wizard feels like a lot and its not exactly helpful to me". A wall of
+                      true sentences is not more helpful than one, it is less.
+
+                      ⚠️ ONE DISCLOSURE, NOT THREE, and it NAMES what it is about rather than
+                      saying "it" — both of those are EvanCook's lesson about the write-ups,
+                      which were three identical dropdowns in a row until somebody looked at the
+                      page signed out. What stays unfolded is what changes as you draw; what
+                      folds is the reasoning, which you read once.
+                    */}
+                    <details className="paint-pet-why-more">
+                      <summary>Why it got these three</summary>
+                      <ul className="paint-pet-why">
+                        {whyCasts(petBoss).map(({ kind, because }) => (
+                          <li key={kind}>
+                            <strong>{CAST[kind].short}</strong> — {because}
+                          </li>
+                        ))}
+                      </ul>
+                      <span className="muted paint-pet-moves">{swapRanged(petBoss)}</span>
+                      <span className="muted paint-pet-moves">
+                        As a boss the picture decides which three; walking it into the park
+                        yourself, you choose.
+                      </span>
+                      <span className="muted paint-pet-moves">
+                        Called out as a boss: {petBoss.says} <strong>{petBoss.life}</strong> health.
+                      </span>
+                    </details>
                     {/**
                       ⚠️ WHAT THE SPELL LAYER DID, BECAUSE IT SAID NOTHING AT ALL. The layer was
                       recognised — "spell is where your big moves land" appeared in the list of
@@ -3964,15 +3985,16 @@ export function PaintRoom() {
                       which has taught this idea for a long time: draw a longer one and it
                       reaches further.
                     */}
+                    {/* ⚠️ STAYS UNFOLDED, because it is the one line here that answers "did
+                       what I just drew do anything" — see the note above on what folds. Short
+                       enough to read at a glance: the how-to half only appears when there is no
+                       spell layer to describe, since that is the only time it is news. */}
                     <span className="muted paint-pet-moves">
                       {petSpell
-                        ? `Your spell layer makes these ${said(petSpell.reach)} and ${saidWide(
+                        ? `Your spell layer: these ${said(petSpell.reach)} and ${saidWide(
                             petSpell.spread,
-                          )} — a longer shape reaches further, a fatter one covers more.`
-                        : 'A layer called spell shapes these three: draw a long shape for casts that land further out, a fat one for casts that cover more ground.'}
-                    </span>
-                    <span className="muted paint-pet-moves">
-                      Called out as a boss: {petBoss.says} <strong>{petBoss.life}</strong> health.
+                          )}.`
+                        : 'Name a layer spell to shape these — long reaches further, fat covers more ground.'}
                     </span>
                   </>
                 )}
