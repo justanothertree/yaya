@@ -1,4 +1,4 @@
-import { footSpan, PARK_TALL, stepFrom, toScreen, type Aimed } from './strike'
+import { arcFrom, footSpan, PARK_TALL, stepFrom, toScreen, type Aimed } from './strike'
 import type { CastShape } from './castShape'
 import type { Spot } from './walk'
 
@@ -256,6 +256,14 @@ export function patchesOf(
    */
   const wide = shape?.spread ?? 1
   const far = shape?.reach ?? 1
+  /**
+   * ⚠️ ONLY THE TWO THAT TRAVEL READ THIS, which is the same rule reach already follows about
+   * the swell. A bend is a fact about a PATH, and a swell has none — it grows where you stand —
+   * while a mark is placed rather than thrown, and the one rule that makes it readable is that
+   * it lands where the thing is looking. Curving those two would be a flourish on something
+   * that does not move, and would cost the mark the only sentence anybody can dodge it by.
+   */
+  const bend = shape?.bend ?? 0
   if (kind === 'bloom') {
     /**
      * ⚠️ LIVE WHILE IT GROWS, which is what makes it different from everything else here. A
@@ -317,9 +325,11 @@ export function patchesOf(
     /* ⚠️ the reach moves where it STARTS, not how fast it flies. A bolt somebody drew far out
        leaves their hand further out; making it quicker instead would be a different stat with
        the same name, and the charge already owns speed. */
+    /* ⚠️ THE ARCLENGTH, so a curved bolt covers the same ground and gets less far — see
+       arcFrom, where that is the whole of what a curve costs. */
     return [
       {
-        at: stepFrom(from, aim, (BOLT_FROM * far + flying * speed) * easedScale(s)),
+        at: arcFrom(from, aim, (BOLT_FROM * far + flying * speed) * easedScale(s), bend),
         r,
         ready: Math.min(1, t / BOLT_WARN),
         live: t >= BOLT_WARN,
@@ -358,14 +368,40 @@ export function patchesOf(
   /* ⚠️ a hair of tolerance: (n - 1) × gap and room are the same number in decimal and not
      always in binary, and without it a fissure silently loses its last step at some sizes */
   const steps = Math.max(2, Math.min(WAVE_STEPS, 1 + Math.floor(room / gap + 1e-9)))
-  const roll = gap / WAVE_SPEED
+  /**
+   * How far apart the steps sit ALONG THE TEAR, so that the floor between them is `gap` in the
+   * straight line somebody actually crosses.
+   *
+   * ⚠️ THE CHORD IS WHAT A CROSSER WALKS, AND THE ARC IS WHAT THE TEAR TRAVELS — and spacing
+   * a curved fissure by its arclength quietly shuts it. Two steps an arclength of 5.6 apart on a
+   * 0.2 curve are only 5.31 apart in a straight line, which takes 0.29 pet-heights out of a
+   * floor of 0.5 and leaves less than the 0.4 a creature needs. Found by sweep, not by looking:
+   * it is crossable at every bend up to 0.1 and at every size at 0, so the one combination that
+   * shuts is the widest fissure a big boss can throw at full curve. This file already carries a
+   * long note about the last time the fissure became a wall, and the lesson is the same one —
+   * the spacing has to be measured in the units of the thing that has to fit through it.
+   *
+   * ⚠️ AND asin CANNOT BE ASKED FOR A CHORD LONGER THAN THE CIRCLE, so the argument is clamped.
+   * At the band's own limits it never comes close — a 0.2 curve is a circle 10 pet-heights
+   * across and the widest gap anybody can throw is 5.6 — but a clamp that is never reached is
+   * cheaper than a NaN that travels into everybody's hit detection.
+   */
+  const turn = Math.abs(bend)
+  const stride = turn ? (2 * Math.asin(Math.min(1, (turn * gap) / 2))) / turn : gap
+  /* ⚠️ the tear's SPEED is what is constant, so a longer way round takes longer to roll */
+  const roll = stride / WAVE_SPEED
 
   const out: Patch[] = []
   const warn = 0.5
   for (let i = 0; i < steps; i++) {
     const startsAt = warn + i * roll
     out.push({
-      at: stepFrom(from, aim, start + i * gap),
+      /* ⚠️ THE SAME ARC THE BOLT TAKES, so one drawn gesture means one thing across the two
+         casts that travel — a fissure that scythes round and a bolt that curves the same way
+         are the same picture read twice. The spacing is arclength, so the steps stay exactly as
+         far apart along the tear as they were in a straight line; what curves is where the tear
+         goes, not how crossable it is. */
+      at: arcFrom(from, aim, start + i * stride, bend),
       r: r * PARK_TALL,
       ready: Math.min(1, t / startsAt),
       live: t >= startsAt && t <= startsAt + 0.24,

@@ -825,6 +825,46 @@ export const stepFrom = (from: Spot, aim: Aimed, petHeights: number): Spot => ({
 })
 
 /**
+ * The same walk, but turning as it goes — the shape a drawn cast travels in.
+ *
+ * ⚠️ A CIRCULAR ARC, IN CLOSED FORM, BECAUSE EVERY MACHINE HAS TO AGREE. The whole cast module
+ * is built on "what is dangerous right now, given how long it has been going", so a travelling
+ * thing needs no position on the wire and no per-frame state — but that only holds if the path
+ * is a function rather than an accumulation. Stepping an angle round a loop would drift with
+ * whatever frame rate each machine happened to run, and two people would watch the same bolt
+ * curve differently. Integrated once, it cannot.
+ *
+ * ⚠️ `bend` IS RADIANS PER PET-HEIGHT, so the turn is a function of DISTANCE and not of time.
+ * That is what makes a fissure and a bolt curve the same way when they travel at different
+ * speeds — the path is the path, and how fast something runs along it is a separate fact.
+ *
+ * ⚠️ AND THE ARCLENGTH IS WHAT IS PASSED IN, WHICH IS WHERE THE COST COMES FROM. A curved cast
+ * covers exactly as much ground as a straight one and gets less FAR: forward progress is
+ * sin(θ)/bend rather than the distance travelled. Nothing had to be invented to charge for a
+ * curve, which is the same bargain the reach dial makes — see castShapeOf.
+ *
+ * ⚠️ ZERO RETURNS stepFrom ITSELF rather than a limit of this. sin(0)/0 is not a number, and
+ * "near enough at small bend" would mean every creature drawn before today moved by a formula
+ * that merely agrees with the old one to some number of decimal places.
+ */
+export const arcFrom = (from: Spot, aim: Aimed, petHeights: number, bend: number): Spot => {
+  if (!bend) return stepFrom(from, aim, petHeights)
+  const turn = bend * petHeights
+  const along = Math.sin(turn) / bend
+  const side = (1 - Math.cos(turn)) / bend
+  /* ⚠️ aim is a unit vector in SCREEN-heights, so the perpendicular is one there too — and it
+     has to be taken before outBy/downBy, which scale the two axes differently. Rotated after
+     the conversion, a curve aimed along x and the same curve aimed along y would bend by
+     different amounts, which is the axis mistake this file has a long note about. */
+  const px = -aim.y
+  const py = aim.x
+  return {
+    x: from.x + outBy(along * aim.x + side * px),
+    y: from.y + downBy(along * aim.y + side * py),
+  }
+}
+
+/**
  * The nearest of the eight compass directions, as a unit vector in screen-heights.
  *
  * ⚠️ SNAPPED, NOT FREE. The creature itself can only face left or right — PetView mirrors,

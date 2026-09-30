@@ -26,6 +26,11 @@ export type CastShape = {
   reach: number
   /** how wide it is, as a multiple of how wide it would have been — always 1 / reach */
   spread: number
+  /**
+   * How hard it curves as it travels, in radians per pet-height — signed, and 0 for a straight
+   * one. Only the two casts that actually GO somewhere read it; see patchesOf.
+   */
+  bend: number
 }
 
 /**
@@ -47,6 +52,32 @@ const BAND = { reach: [0.55, 1.9] } as const
  */
 const NEUTRAL = 2
 const TILT = 0.45
+
+/**
+ * How hard a drawn curve turns what it throws.
+ *
+ * ⚠️ BANDED IN RADIANS PER PET-HEIGHT, and the band is what keeps a curve a curve rather than
+ * a spiral. A bolt flies about 5.5 pet-heights, so the ceiling is a little over a right angle
+ * across its whole flight — enough that stepping sideways is no longer the automatic answer,
+ * not so much that it comes back round at you.
+ *
+ * ⚠️ AND A SEMICIRCLE IS THE FAR END, which is the most curved thing a single drawn gesture can
+ * be before it stops reading as a sweep and starts reading as a loop: its sagitta is exactly half
+ * its chord, so BEND_GAIN is set to hand that case the ceiling.
+ */
+const BAND_BEND = [-0.2, 0.2] as const
+const BEND_GAIN = 0.4
+
+/**
+ * How straight the gesture has to be to count as one.
+ *
+ * ⚠️ BECAUSE A CIRCLE IS NOT A SWEEP, AND IS THE OBVIOUS THING TO DRAW. A closed loop comes
+ * back to where it started, so its chord is nearly nothing while its path is long — and the
+ * signed bend of a shape whose two ends meet is noise, swinging on which pixel happened to be
+ * last. A blob already says something through its proportions, and what it should say about a
+ * PATH is nothing.
+ */
+const BEND_SWEEP = 0.35
 
 const hold = (v: number, [lo, hi]: readonly [number, number]) =>
   Math.max(lo, Math.min(hi, Number.isFinite(v) ? v : 1))
@@ -149,5 +180,75 @@ export function castShapeOf(art: Drawing): CastShape | null {
    * That is the trade being real rather than decorative: aiming your kit at range costs you the
    * one cast that is not about range.
    */
-  return { reach, spread: 1 / reach }
+  return { reach, spread: 1 / reach, bend: bendOf(art, spell) }
+}
+
+/**
+ * Which way the gesture you drew turns, in radians per pet-height.
+ *
+ * ⚠️ THE SECOND HALF OF "DRAW YOUR OWN ABILITIES", and the half the first one's note called
+ * "much harder". It is not harder because the geometry is hard; it is harder because a cast
+ * that MOVES has to move identically on every machine, and the module it feeds says why in its
+ * own first line — nothing new goes over the wire, so everyone derives the same patches from
+ * the same four numbers. A path derived from the drawing keeps that bargain exactly, because
+ * everybody already has the drawing. A path that were sent would break it.
+ *
+ * ⚠️ THE LONGEST STROKE IS THE GESTURE. A spell layer might hold a shape and then a couple of
+ * ticks and flourishes beside it, and averaging those together gives a direction nobody drew.
+ * "The longest line on the layer is the path it takes" is a rule you can hold in your head and
+ * aim at, which is the same standard the layer NAMES are held to.
+ *
+ * ⚠️ MEASURED AS SAGITTA OVER CHORD, which is scale-free by construction — the same arc drawn
+ * small in a corner and drawn across the page gives the same number. That is not a nicety here,
+ * it is the rule the rest of this file follows: how big you drew something is thrown away
+ * everywhere else, and the one place it was not thrown away is the free win that had to be
+ * taken out of the reach dial a day ago.
+ */
+function bendOf(art: Drawing, spell: Part[]): number {
+  /* ⚠️ x and y are fractions of DIFFERENT lengths — the paper's width and its height — so every
+     length below is taken in ratio-corrected space. Measured raw, the same curve drawn on wide
+     paper and on tall paper would be two different casts. rig.ts has the long note. */
+  const r = art.ratio > 0.05 && art.ratio < 20 ? art.ratio : 1
+
+  let path: number[] | null = null
+  let far = 0
+  for (const part of spell)
+    for (const k of part.strokes) {
+      /* a bucket's points are a seed and a flood, not a line somebody dragged — see boxOf */
+      if (k.t === 'fill' || k.p.length < 6) continue
+      let run = 0
+      for (let i = 2; i + 1 < k.p.length; i += 2)
+        run += Math.hypot((k.p[i] - k.p[i - 2]) * r, k.p[i + 1] - k.p[i - 1])
+      if (run > far) {
+        far = run
+        path = k.p
+      }
+    }
+  if (!path || !(far > 0)) return 0
+
+  const ax = path[0] * r
+  const ay = path[1]
+  const bx = path[path.length - 2] * r
+  const by = path[path.length - 1]
+  const cx = bx - ax
+  const cy = by - ay
+  const chord = Math.hypot(cx, cy)
+  /* a loop came back to where it started, so it has a long path and no chord — and no sweep */
+  if (chord < far * BEND_SWEEP) return 0
+
+  /**
+   * ⚠️ SIGNED, AND THE SIGN IS THE WHOLE POINT. An unsigned "how bent is it" would turn every
+   * curve the same way, which is a stylised flourish rather than a thing you drew. The cross
+   * product against the chord says which side of it the gesture bows out on, and the park
+   * applies that to the left or right of the way the cast is travelling — so "it curves the way
+   * you drew it" is true rather than nearly true.
+   */
+  let bow = 0
+  for (let i = 0; i + 1 < path.length; i += 2) {
+    const sx = path[i] * r - ax
+    const sy = path[i + 1] - ay
+    const off = (cx * sy - cy * sx) / chord
+    if (Math.abs(off) > Math.abs(bow)) bow = off
+  }
+  return hold((bow / chord) * BEND_GAIN, BAND_BEND)
 }

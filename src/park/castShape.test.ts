@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { castShapeOf, shapeOf } from './castShape'
-import { patchesOf } from './cast'
+import { inPatch, patchesOf } from './cast'
 import { PARK_TALL, ASPECT } from './strike'
 import { PARK } from './walk'
 import { partOf } from '../pets/rig'
@@ -200,14 +200,14 @@ describe('what it does to the casts', () => {
   })
 
   it('and a wider drawing makes every cast wider', () => {
-    const fat = { reach: 1, spread: 1.6 }
+    const fat = { reach: 1, spread: 1.6, bend: 0 }
     for (const k of ['bloom', 'mark', 'wave', 'bolt'] as const) {
       expect(wide(k, fat), `${k} did not widen`).toBeGreaterThan(wide(k, null))
     }
   })
 
   it('and a further drawing throws the aimed ones further', () => {
-    const far = { reach: 1.7, spread: 1 }
+    const far = { reach: 1.7, spread: 1, bend: 0 }
     for (const k of ['mark', 'bolt'] as const) {
       expect(out(k, far), `${k} did not reach further`).toBeGreaterThan(out(k, null))
     }
@@ -215,7 +215,7 @@ describe('what it does to the casts', () => {
 
   /** ⚠️ a swell grows where you stand, so there is nowhere further out for it to land */
   it('and leaves the swell where it stands, because that is what a swell is', () => {
-    const far = { reach: 1.9, spread: 1 }
+    const far = { reach: 1.9, spread: 1, bend: 0 }
     expect(out('bloom', far)).toBeCloseTo(out('bloom', null), 6)
   })
 
@@ -226,7 +226,7 @@ describe('what it does to the casts', () => {
    */
   it('and a fissure drawn fat still leaves room to walk through it', () => {
     for (const spread of [1, 1.4, 1 / 0.55]) {
-      const steps = patchesOf('wave', FROM, AIM, 0.6, 1, 0, { reach: 1, spread })
+      const steps = patchesOf('wave', FROM, AIM, 0.6, 1, 0, { reach: 1, spread, bend: 0 })
       for (let i = 1; i < steps.length; i++) {
         const apart = Math.hypot(
           (steps[i].at.x - steps[i - 1].at.x) * WORLD_WIDE,
@@ -242,7 +242,7 @@ describe('what it does to the casts', () => {
   it('and a fissure drawn far still lands where it can be seen', () => {
     for (const reach of [1, 1.5, 1.9]) {
       expect(
-        out('wave', { reach, spread: 1 / reach }),
+        out('wave', { reach, spread: 1 / reach, bend: 0 }),
         `reach ${reach} left the field`,
       ).toBeLessThan(9)
     }
@@ -253,5 +253,203 @@ describe('what it does to the casts', () => {
     const art = creature([body(), ['spell', [0.7, 0.4, 0.85, 0.6]]])
     expect(shapeOf(art)).toEqual(castShapeOf(art))
     expect(shapeOf(art), 'a second ask changed its mind').toEqual(castShapeOf(art))
+  })
+})
+
+/**
+ * Which way the thing you drew travels.
+ *
+ * ⚠️ THE SECOND HALF, AND THE ONE THE FIRST HALF'S NOTE CALLED "MUCH HARDER". Not because the
+ * geometry is hard — because a cast that MOVES has to move identically on every machine, and
+ * cast.ts opens by saying nothing new goes over the wire. A path derived from the drawing keeps
+ * that; a path that were sent would not.
+ */
+describe('which way a drawn cast travels', () => {
+  /** a spell layer that is an actual drawn gesture rather than a rectangle of ink */
+  const gesture = (p: number[], ratio = 1): Drawing => ({
+    v: 1,
+    name: 'Test',
+    ratio,
+    bg: null,
+    layers: ['body', 'spell'],
+    strokes: [stroke([0.4, 0.4, 0.6, 0.6], 0), { ...stroke(p, 1) }],
+  })
+
+  /** an arc bowing `bow` to one side of a chord of `wide`, starting at (x, y) */
+  const arc = (bow: number, wide = 0.7, x = 0.15, y = 0.5, n = 16) => {
+    const p: number[] = []
+    for (let i = 0; i <= n; i++) {
+      const u = i / n
+      p.push(x + u * wide, y + bow * Math.sin(u * Math.PI))
+    }
+    return p
+  }
+
+  it('says nothing for a line drawn straight', () => {
+    expect(castShapeOf(gesture(arc(0)))!.bend).toBe(0)
+  })
+
+  /** ⚠️ and a two-point stroke is a straight line however it is stored — every older fixture */
+  it('and nothing for a shape with no drawn path in it', () => {
+    expect(castShapeOf(creature([body(), ['spell', [0.6, 0.4, 0.9, 0.6]]]))!.bend).toBe(0)
+  })
+
+  /**
+   * ⚠️ AND NOTHING FOR A LOOP, WHICH IS THE OBVIOUS THING TO DRAW. A closed shape comes back to
+   * where it started, so its chord is nearly nothing and the side it "bows out on" is decided by
+   * whichever pixel happened to be last — noise, dressed up as a decision.
+   */
+  it('and nothing for a loop, which has no way it is going', () => {
+    const ring: number[] = []
+    for (let i = 0; i <= 24; i++) {
+      const a = (i / 24) * Math.PI * 2
+      ring.push(0.5 + Math.cos(a) * 0.2, 0.5 + Math.sin(a) * 0.2)
+    }
+    expect(castShapeOf(gesture(ring))!.bend).toBe(0)
+  })
+
+  it('and curves the way it was drawn, either way', () => {
+    const down = castShapeOf(gesture(arc(0.2)))!.bend
+    const up = castShapeOf(gesture(arc(-0.2)))!.bend
+    expect(down).toBeGreaterThan(0)
+    expect(up).toBeLessThan(0)
+    expect(up).toBeCloseTo(-down, 10)
+  })
+
+  it('and harder for a tighter curve', () => {
+    expect(castShapeOf(gesture(arc(0.3)))!.bend).toBeGreaterThan(
+      castShapeOf(gesture(arc(0.1)))!.bend,
+    )
+  })
+
+  /** ⚠️ scale-free by construction, which is the rule the reach dial had to be taught */
+  it('and the same curve drawn bigger is the same curve', () => {
+    const small = castShapeOf(gesture(arc(0.06, 0.21, 0.1, 0.2)))!.bend
+    const big = castShapeOf(gesture(arc(0.24, 0.84, 0.05, 0.5)))!.bend
+    expect(big).toBeCloseTo(small, 10)
+  })
+
+  /** ⚠️ and no drawing turns a cast round in circles */
+  it('and no drawing can curve one without limit', () => {
+    for (const bow of [0.5, 2, 40]) {
+      const b = castShapeOf(gesture(arc(bow)))!.bend
+      expect(Math.abs(b)).toBeLessThanOrEqual(0.2)
+    }
+  })
+})
+
+describe('what a curve does to the casts', () => {
+  const FROM = { x: 0.5, y: 0.5 }
+  const AIM = { x: 1, y: 0 }
+  /** an ordinary creature's width, the thing that has to fit between two steps */
+  const MY_WIDE = PARK_TALL * 0.5
+  const shape = (bend: number) => ({ reach: 1, spread: 1, bend })
+  const last = (k: 'bolt' | 'wave', bend: number, t = 0.9) => {
+    const ps = patchesOf(k, FROM, AIM, t, 1, 0, shape(bend))
+    return ps[ps.length - 1].at
+  }
+  /** how far from the caster, and how far FORWARD, in pet-heights */
+  const gone = (at: { x: number; y: number }) => ({
+    out: Math.hypot((at.x - FROM.x) * WORLD_WIDE, (at.y - FROM.y) * PARK.down) / PARK_TALL,
+    ahead: ((at.x - FROM.x) * WORLD_WIDE) / PARK_TALL,
+  })
+
+  /**
+   * ⚠️ THE TWO THAT DO NOT TRAVEL DO NOT CURVE, which is the same rule the reach dial follows
+   * about the swell. A bend is a fact about a path; a swell has none, and a mark is placed
+   * rather than thrown — curving it would cost the one sentence anybody dodges it by.
+   */
+  it('nothing at all to the two that stay where they are put', () => {
+    for (const k of ['bloom', 'mark'] as const) {
+      const straight = JSON.stringify(patchesOf(k, FROM, AIM, 0.9, 1, 0, shape(0)))
+      for (const bend of [-0.2, -0.05, 0.05, 0.2])
+        expect(JSON.stringify(patchesOf(k, FROM, AIM, 0.9, 1, 0, shape(bend))), `${k} moved`).toBe(
+          straight,
+        )
+    }
+  })
+
+  it('and takes the two that travel off the line, either way', () => {
+    for (const k of ['bolt', 'wave'] as const) {
+      expect(last(k, 0).y, `${k} did not start on the line`).toBeCloseTo(FROM.y, 10)
+      expect(last(k, 0.15).y, `${k} did not curve`).toBeGreaterThan(FROM.y)
+      expect(last(k, -0.15).y, `${k} did not curve back`).toBeLessThan(FROM.y)
+    }
+  })
+
+  /**
+   * ⚠️ THE COST, AND IT IS THE SAME COST A CURVE HAS IN THE WORLD. arcFrom is given the
+   * ARCLENGTH, so a curved cast covers exactly as much ground as a straight one and gets less
+   * far from you — forward progress is sin(θ)/bend rather than the distance travelled. Nothing
+   * was invented to charge for a curve, which is what stops this being the reach dial again:
+   * that one was a free win precisely because nothing was paying for it.
+   */
+  it('and a curved one gets less far, because it went the same distance round a bend', () => {
+    for (const k of ['bolt', 'wave'] as const) {
+      const flat = gone(last(k, 0))
+      for (const bend of [0.08, 0.15, 0.2]) {
+        const bent = gone(last(k, bend))
+        expect(bent.ahead, `${k} at ${bend} lost no ground`).toBeLessThan(flat.ahead)
+        /* ⚠️ and never further from the caster than a straight one, either — a chord cannot be
+           longer than the arc it is drawn under, and if this ever fails the cost is a gain */
+        expect(bent.out, `${k} at ${bend} travelled further overall`).toBeLessThanOrEqual(
+          flat.out + 1e-9,
+        )
+      }
+    }
+  })
+
+  /**
+   * ⚠️ AND IT STILL HAS TO BE CROSSABLE, which is the one thing about the fissure that has gone
+   * wrong before and the reason cast.test.ts carries a note about nearly shipping it shut. The
+   * old sweep walks the x axis at a fixed y, which is only the fissure's own line while it is
+   * straight — a curved one would stroll out from under the check and report floor everywhere.
+   *
+   * ⚠️ SO IT ASKS inPatch, BETWEEN EACH PAIR OF STEPS, along the line joining their centres:
+   * "is there anywhere on the way through that a creature of this width can be". That is the
+   * question somebody crossing is asking, and it shares no arithmetic with the spacing sum that
+   * places them.
+   */
+  const crossable = (bend: number, spread: number, scale: number) => {
+    const steps = patchesOf('wave', FROM, AIM, 0.6, scale, 0, { reach: 1, spread, bend })
+    for (let i = 1; i < steps.length; i++) {
+      const a = steps[i - 1].at
+      const b = steps[i].at
+      let room = false
+      for (let u = 0; u <= 1 && !room; u += 1 / 400) {
+        const at = { x: a.x + (b.x - a.x) * u, y: a.y + (b.y - a.y) * u }
+        /* ⚠️ THE CROSSER IS A PLAYER, and inPatch's fourth argument is the TARGET's scale —
+           not the caster's. Passed `scale` here it asked whether a boss-sized creature could
+           cross a boss's own fissure, which is a harder question nobody in the game is asking,
+           and it duly failed. The thing that has to fit through is a person. */
+        if (!steps.some((p) => inPatch(at, MY_WIDE, p))) room = true
+      }
+      if (!room) return false
+    }
+    return true
+  }
+
+  it('and a curved fissure is still one you can get through', () => {
+    for (const bend of [-0.2, -0.1, 0, 0.1, 0.2])
+      for (const spread of [1 / 1.9, 1, 1 / 0.55])
+        for (const scale of [1, 2.05, 3.05])
+          expect(
+            crossable(bend, spread, scale),
+            `bend ${bend} spread ${spread} scale ${scale}`,
+          ).toBe(true)
+  })
+
+  /** ⚠️ and the whole pattern still lands where somebody can see it — sideways counts too */
+  it('and a curved fissure still lands on the field', () => {
+    for (const bend of [-0.2, 0, 0.2])
+      for (const scale of [1, 3.05]) {
+        const steps = patchesOf('wave', FROM, AIM, 0.6, scale, 0, {
+          reach: 1.9,
+          spread: 1 / 1.9,
+          bend,
+        })
+        for (const p of steps)
+          expect(gone(p.at).out, `bend ${bend} scale ${scale} left the field`).toBeLessThan(9)
+      }
   })
 })
