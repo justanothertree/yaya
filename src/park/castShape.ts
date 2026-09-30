@@ -24,7 +24,7 @@ import type { Drawing } from '../draw/strokes'
 export type CastShape = {
   /** how far out it lands, as a multiple of where it would have landed */
   reach: number
-  /** how wide it is, as a multiple of how wide it would have been */
+  /** how wide it is, as a multiple of how wide it would have been — always 1 / reach */
   spread: number
 }
 
@@ -35,7 +35,18 @@ export type CastShape = {
  * relay decides this, so the worst picture anybody sends is still a move you can stand next to,
  * and the best one is still a move you can walk away from.
  */
-const BAND = { reach: [0.55, 1.9], spread: [0.6, 1.8] } as const
+const BAND = { reach: [0.55, 1.9] } as const
+
+/**
+ * The aspect that changes nothing, and how hard the dial turns.
+ *
+ * ⚠️ A SHAPE ABOUT TWICE AS LONG AS IT IS THICK IS "THE ORDINARY THING", so somebody who draws
+ * a spell mark without thinking about it lands where the cast already landed. A circle is the
+ * far end of one side and a 4:1 streak is the far end of the other, which is a dial a hand can
+ * actually draw both ends of.
+ */
+const NEUTRAL = 2
+const TILT = 0.45
 
 const hold = (v: number, [lo, hi]: readonly [number, number]) =>
   Math.max(lo, Math.min(hi, Number.isFinite(v) ? v : 1))
@@ -95,39 +106,48 @@ export function castShapeOf(art: Drawing): CastShape | null {
   const spell = parts.filter((p) => p.kind === 'spell')
   if (!spell.length) return null
 
-  const body = boxOf(parts.filter((p) => p.kind !== 'spell' && p.kind !== 'hit'))
   const mark = boxOf(spell)
-  if (!body || !mark) return null
+  if (!mark) return null
 
-  const across = Math.max(1e-6, body.x1 - body.x0, body.y1 - body.y0)
-
-  /**
-   * ⚠️ THE SHAPE'S OWN LENGTH AND THICKNESS, NOT WHERE IT SITS — AND THAT IS A CORRECTION.
-   * This measured how far the drawn shape sat from the body, which meant "a cast that lands
-   * further away" could only be said by drawing further away. Reported immediately, and it is
-   * the right complaint: "I can't really draw away from my guy on the same canvas space as I
-   * drew him in." A creature that fills its page has nowhere to put a far spell, and asking
-   * somebody to leave room for one is the tool telling the drawing what to be.
-   *
-   * ⚠️ AND THE `hit` LAYER HAD ALREADY SOLVED IT, in the words the wizard says out loud about
-   * every swing: "draw a longer one and it reaches further". Length is the thing a hand can
-   * always express — you can draw a long streak across a full page — where distance needs empty
-   * space that may not exist. Same idea, same sentence, one less rule to learn.
-   *
-   *   a long thin streak  ->  reaches far, stays narrow
-   *   a fat blob          ->  lands close, covers ground
-   */
-  const long = Math.max(mark.x1 - mark.x0, mark.y1 - mark.y0) / across
-  const thick = Math.min(mark.x1 - mark.x0, mark.y1 - mark.y0) / across
+  const w = mark.x1 - mark.x0
+  const h = mark.y1 - mark.y0
+  const long = Math.max(w, h)
+  if (!(long > 0)) return null
+  /* ⚠️ a perfectly straight line has no thickness at all, which is the far end of the dial
+     rather than a division by zero — it clamps to the ceiling either way, but through the
+     band instead of through hold()'s not-a-number fallback, which would read as NEUTRAL */
+  const thick = Math.max(Math.min(w, h), long / 1000)
 
   /**
-   * ⚠️ CENTRED ON 1 SO THAT DRAWING THE ORDINARY THING CHANGES NOTHING. A shape about half a
-   * body long and a quarter thick is what somebody draws without thinking about it, and it
-   * should land where the cast already landed. The multipliers move from there, which is what
-   * makes "further" and "wider" mean what they say.
+   * ⚠️ ITS PROPORTIONS DECIDE, AND ITS SIZE DECIDES NOTHING — AND THAT IS A CORRECTION. This
+   * read the shape's length and its thickness as two separate dials against the body, so both
+   * went UP together: a big blob was the maximum of everything at once and there was no shape
+   * you could draw that cost you anything. Said plainly, and it is the right objection: "im not
+   * liking that reach balancing, it should cost something."
+   *
+   * ⚠️ AND SIZE WAS NEVER THE RIGHT QUESTION ANYWAY. Everywhere else in this project how big
+   * you drew something is thrown away on purpose — a creature is cropped to its own ink and
+   * drawn at one fixed height, so a tiny sketch and a full page come out identical. A cast that
+   * got stronger the bigger you drew it was the one place that rule did not hold, which is
+   * also why it read as a free win: the thing it rewarded is the thing nothing else measures.
+   *
+   *   a circle           ->  lands close, covers the most ground
+   *   about 2:1          ->  exactly what it would have done anyway
+   *   a 4:1 streak       ->  reaches as far as it goes, and covers the least
    */
-  return {
-    reach: hold(0.62 + long * 0.76, BAND.reach),
-    spread: hold(0.62 + thick * 1.5, BAND.spread),
-  }
+  const reach = hold(1 + (long / thick - NEUTRAL) * TILT, BAND.reach)
+
+  /**
+   * ⚠️ THE COST, AS ONE LINE OF ARITHMETIC. Width is the reciprocal of reach, so the two
+   * multiply to exactly 1 for every drawing anybody can make — reaching twice as far covers
+   * half as much ground, and there is no shape that buys both. It is a band on the product
+   * rather than a band on each, which is why the spread needs no clamp of its own: it cannot
+   * leave [1/1.9, 1/0.55] without the reach leaving its band first.
+   *
+   * ⚠️ AND THE SWELL PAYS WITHOUT BEING PAID, deliberately. A swell grows where you stand, so
+   * it has no "further" to buy — drawing for reach makes it smaller and gives it nothing back.
+   * That is the trade being real rather than decorative: aiming your kit at range costs you the
+   * one cast that is not about range.
+   */
+  return { reach, spread: 1 / reach }
 }

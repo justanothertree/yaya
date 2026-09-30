@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { Drawing } from '../draw/strokes'
 import { PetView } from './PetView'
 import { petCanvas } from './rig'
 import { CAST, patchesOf, type CastKind } from '../park/cast'
+import { PARK_TALL } from '../park/strike'
 import { shapeOf } from '../park/castShape'
 import { VIEW } from '../park/walk'
 
@@ -23,15 +24,21 @@ import { VIEW } from '../park/walk'
  * same class, so a preview cannot quietly drift from the game — which is the one failure mode
  * that would make it worse than having none.
  *
- * ⚠️ BUT NOT AT THE REAL SIZE, WHICH THIS USED TO CLAIM. patchesOf is called without a scale,
- * so every circle is a creature of scale 1 — while the panel around it is describing a BOSS,
- * which is 2.05 to 3.05 times bigger, and says so two lines further down with its health. The
- * shapes and the timings are exact; how big they are against the field is not.
+ * ⚠️ AND AT THE REAL SIZE, WHICH IT SPENT A WHILE NOT BEING. The shapes and the timings were
+ * always exact and the SCALE was a lie: patchesOf was called without one, so every circle was a
+ * creature of scale 1 while the panel around it described a boss, which is 2.05 to 3.05 times
+ * bigger and says so two lines down with its health. The note that used to sit here worked out
+ * why passing the scale was not the fix on its own — the creature was drawn at a fixed pixel
+ * height passed in as a prop, so scaling the circles alone would have made them enormous beside
+ * a creature that had not grown — and then left it, because a stylised model is not wrong, only
+ * less useful. Asked for directly: the wizard should be "as 1:1 with how the drawings looks and
+ * moves/operate in game so you can see the scale of what you are drawing".
  *
- * Passing the boss's scale is not the fix on its own: the creature in here is drawn at a fixed
- * pixel height passed in as a prop rather than derived from the field, so scaling the patches
- * alone would make them huge beside a creature that had not grown. It is a stylised model, and
- * making it a true one means giving it the field's own scale to work in.
+ * So the field is the unit now. The box is one screenful, the same screenful the park's camera
+ * shows, and everything in it is a fraction of that: a creature is PARK_TALL of a screen times
+ * its own scale, and the circles come out of patchesOf at that same scale. Nothing here is a
+ * chosen pixel size any more, which is what makes it true rather than tuned — and it is why a
+ * boss now fills a third of the box and a cast lands where a cast lands.
  *
  * ⚠️ AND THE ORDER IS THE DRAWING'S, not the declaration's. temperOf picks three of the four
  * kinds and sorts them by how well they suit the picture. That sort IS what a BOSS throws —
@@ -70,12 +77,20 @@ const WHY: Record<CastKind, string> = {
 export function CastShow({
   art,
   casts,
-  tall = 84,
+  scale = 1,
 }: {
   art: Drawing
   /** the creature's three, best-first — temperOf's own order, which is what 1/2/3 press */
   casts: CastKind[]
-  tall?: number
+  /**
+   * How big this creature actually is, from its own Temper.
+   *
+   * ⚠️ IT DEFAULTS TO A PLAYER, NOT TO A BOSS. Everything in here is a fraction of the field,
+   * so a caller that forgets this gets a creature at player size rather than a creature at a
+   * size nobody has — wrong, but wrong in a way you can see, and the same size the four casts
+   * were previewed at for as long as this component has existed.
+   */
+  scale?: number
 }) {
   const [pick, setPick] = useState(0)
   const kind = casts[pick] ?? casts[0]
@@ -107,9 +122,39 @@ export function CastShow({
   const firstLive = useMemo(() => {
     const at = { x: 0.5, y: 0.5 }
     for (let t = 0; t <= CAST[kind].time; t += 1 / 60)
-      if (patchesOf(kind, at, { x: 1, y: 0 }, t, 1, 0, shape).some((p) => p.live)) return t
+      if (patchesOf(kind, at, { x: 1, y: 0 }, t, scale, 0, shape).some((p) => p.live)) return t
     return CAST[kind].time * 0.7
-  }, [kind, shape])
+  }, [kind, shape, scale])
+
+  /**
+   * How tall the field is, in pixels, because it is the unit everything in here is measured in.
+   *
+   * ⚠️ MEASURED RATHER THAN CHOSEN, which is the whole of "1:1". The box is `width: 100%` with
+   * a 16/10 aspect, so its height is whatever the rail's width makes it — and the creature has
+   * to be PARK_TALL of that, times its scale, or it is a creature of some pixel height standing
+   * next to circles of some other. Those two agreeing is the only thing that makes the picture
+   * mean anything.
+   *
+   * ⚠️ BEFORE PAINT, so the first frame is already right rather than being right on the second.
+   * A creature that pops from one size to another on load reads as a layout bug, and a measure
+   * taken in a plain effect is exactly how you get one.
+   *
+   * ⚠️ AND ResizeObserver DOES NOT FIRE IN THE BROWSER PANE, so this is the one line here that
+   * cannot be exercised where the rest was. It is the same guarded shape Charts and the ambient
+   * backdrop use, and the initial measure below is what a screenshot actually proves.
+   */
+  const field = useRef<HTMLDivElement | null>(null)
+  const [fieldTall, setFieldTall] = useState(0)
+  useLayoutEffect(() => {
+    const el = field.current
+    if (!el) return
+    const measure = () => setFieldTall(el.getBoundingClientRect().height)
+    measure()
+    if (typeof ResizeObserver === 'undefined') return
+    const ro = new ResizeObserver(measure)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
 
   const cycle = CAST[kind].time + PAUSE
   const [gone, setGone] = useState(0)
@@ -146,11 +191,14 @@ export function CastShow({
     from,
     { x: 1, y: 0 },
     Math.min(gone, CAST[kind].time),
-    1,
+    scale,
     0,
     shape,
   )
-  const size = petCanvas(art, tall)
+  /* ⚠️ PARK_TALL is a creature's height in SCREEN-heights and the box is one screenful, so this
+     is the same sum the park makes — and petCanvas turns a creature's height into the canvas
+     that holds it, headroom and all, which is the one part that is not a bare multiplication. */
+  const size = petCanvas(art, Math.max(1, fieldTall * PARK_TALL * scale))
 
   return (
     <div className="cast-show">
@@ -170,7 +218,7 @@ export function CastShow({
           </button>
         ))}
       </div>
-      <div className="cast-show-field">
+      <div className="cast-show-field" ref={field}>
         {patches.map((p, i) => (
           <span
             key={i}

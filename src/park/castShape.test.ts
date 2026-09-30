@@ -112,8 +112,51 @@ describe('what the drawing says about where a cast lands', () => {
     ])
     const a = castShapeOf(small)!
     const b = castShapeOf(grown)!
-    expect(b.spread).toBeCloseTo(a.spread, 1)
-    expect(b.reach).toBeCloseTo(a.reach, 1)
+    expect(b.spread).toBeCloseTo(a.spread, 10)
+    expect(b.reach).toBeCloseTo(a.reach, 10)
+  })
+
+  /**
+   * ⚠️ THE ONE THAT SAYS IT COSTS SOMETHING, and it is the whole point of the dial. Reach and
+   * width used to be two knobs that both turned up with size, so the best drawing was simply
+   * the biggest one and no shape you could draw cost you anything. Reported in those words:
+   * "im not liking that reach balancing, it should cost something."
+   *
+   * ⚠️ MULTIPLIED, NOT ADDED, because a cast that reaches twice as far should cover half the
+   * ground rather than a fixed amount less. Checked across the whole dial and a little past
+   * both ends of it, so the clamps cannot quietly buy something back.
+   */
+  it('and never buys reach and width at once', () => {
+    for (const [w, h] of [
+      [0.1, 0.1],
+      [0.2, 0.1],
+      [0.4, 0.1],
+      [0.9, 0.1],
+      [0.05, 0.4],
+      [0.9, 0.001],
+      [0.3, 0.29],
+      [80, 80],
+    ] as const) {
+      const out = castShapeOf(creature([body(), ['spell', [0.05, 0.05, 0.05 + w, 0.05 + h]]]))!
+      expect(out.reach * out.spread, `${w}x${h} came out to more than one cast`).toBeCloseTo(1, 10)
+    }
+  })
+
+  /**
+   * ⚠️ AND DRAWING IT BIGGER IS NOT DRAWING IT BETTER. The same proportions at four sizes is
+   * the same cast, which is the rule the REST of this project has always followed — a creature
+   * is cropped to its own ink and drawn at one fixed height, so how big you drew it is thrown
+   * away on purpose. The cast was the one place that was not true, and that is exactly where
+   * the free win was.
+   */
+  it('and the same shape drawn bigger is the same cast', () => {
+    const at = (k: number) =>
+      castShapeOf(creature([body(), ['spell', [0.1, 0.1, 0.1 + 0.3 * k, 0.1 + 0.1 * k]]]))!
+    const one = at(1)
+    for (const k of [0.25, 0.5, 2, 3]) {
+      expect(at(k).reach, `${k}x as big changed the reach`).toBeCloseTo(one.reach, 10)
+      expect(at(k).spread, `${k}x as big changed the width`).toBeCloseTo(one.spread, 10)
+    }
   })
 
   /**
@@ -127,7 +170,7 @@ describe('what the drawing says about where a cast lands', () => {
       ['spell', [-40, -40, 40, 40]],
     ])
     const out = castShapeOf(daft)!
-    expect(out.spread).toBeLessThanOrEqual(1.8)
+    expect(out.spread).toBeLessThanOrEqual(1 / 0.55 + 1e-9)
     expect(out.reach).toBeLessThanOrEqual(1.9)
     expect(out.spread).toBeGreaterThan(0)
     expect(out.reach).toBeGreaterThan(0)
@@ -182,7 +225,7 @@ describe('what it does to the casts', () => {
    * size once, for everybody, and a drawn footprint must not put it back.
    */
   it('and a fissure drawn fat still leaves room to walk through it', () => {
-    for (const spread of [1, 1.4, 1.8]) {
+    for (const spread of [1, 1.4, 1 / 0.55]) {
       const steps = patchesOf('wave', FROM, AIM, 0.6, 1, 0, { reach: 1, spread })
       for (let i = 1; i < steps.length; i++) {
         const apart = Math.hypot(
@@ -198,7 +241,10 @@ describe('what it does to the casts', () => {
   /** ⚠️ and still on the field, which is the budget the step count pays for */
   it('and a fissure drawn far still lands where it can be seen', () => {
     for (const reach of [1, 1.5, 1.9]) {
-      expect(out('wave', { reach, spread: 1.8 }), `reach ${reach} left the field`).toBeLessThan(9)
+      expect(
+        out('wave', { reach, spread: 1 / reach }),
+        `reach ${reach} left the field`,
+      ).toBeLessThan(9)
     }
   })
 

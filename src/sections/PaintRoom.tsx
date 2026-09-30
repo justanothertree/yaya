@@ -75,6 +75,21 @@ const saidWide = (v: number) =>
       : v < 0.92
         ? 'stay tighter'
         : 'cover about as much'
+
+/**
+ * What the spell layer you have drawn did, in one line.
+ *
+ * ⚠️ "BUT", NOT "AND", AND THAT ONE WORD IS THE WHOLE BALANCE CHANGE. Reach and width used to
+ * go up together, so a big shape was better at everything and the sentence honestly read "and".
+ * They trade now — reach times width is exactly 1 for every drawing — so the word joining the
+ * two halves is the only thing on screen that says drawing for range costs you ground. Asked
+ * for in those words: "it should cost something".
+ */
+const spellSays = (s: { reach: number; spread: number }) =>
+  s.reach > 0.92 && s.reach < 1.08
+    ? 'Your spell layer: these land about where they would anyway.'
+    : `Your spell layer: these ${said(s.reach)} but ${saidWide(s.spread)}.`
+
 import { CAST } from '../park/cast'
 import { movesOf } from '../pets/attack'
 import { AlsoTogether } from '../ui/AlsoTogether'
@@ -3930,7 +3945,7 @@ export function PaintRoom() {
                     <span className="muted paint-pet-moves">
                       And three big ones, each with its own wait.
                     </span>
-                    <CastShow art={petPreview} casts={petBoss.casts} />
+                    <CastShow art={petPreview} casts={petBoss.casts} scale={petBoss.scale} />
                     {/**
                       ⚠️ WHY IT GOT THESE, WHICH NOTHING SAID. CastShow plays the three at the
                       real size and speed and saysOf describes how it fights, but nothing joined
@@ -3991,10 +4006,8 @@ export function PaintRoom() {
                        spell layer to describe, since that is the only time it is news. */}
                     <span className="muted paint-pet-moves">
                       {petSpell
-                        ? `Your spell layer: these ${said(petSpell.reach)} and ${saidWide(
-                            petSpell.spread,
-                          )}.`
-                        : 'Name a layer spell to shape these — long reaches further, fat covers more ground.'}
+                        ? spellSays(petSpell)
+                        : 'Name a layer spell to aim these: long reaches further, fat covers wider — one or the other.'}
                     </span>
                   </>
                 )}
