@@ -51,11 +51,30 @@ import { applyLayerOp, type LayerOp, type Stack } from '../draw/layerOps'
 import { paintSession } from '../draw/session'
 import { petsSaved, petsTrouble, savePet } from '../pets/pets'
 import { PetView } from '../pets/PetView'
-import { PART_DOES, PART_WORDS, inFrontOfOrder, inkBox, partOf } from '../pets/rig'
+import { PART_DOES, PART_WORDS, inFrontOfOrder, inkBox, partOf, pictureBox } from '../pets/rig'
 import { MoveShow } from '../pets/MoveShow'
 import { saysOf, temperOf } from '../park/temper'
 import { CastShow } from '../pets/CastShow'
 import { swapRanged, whyCasts } from '../park/temper'
+import { castShapeOf } from '../park/castShape'
+
+/** how a footprint multiplier reads out loud — see petSpell */
+const said = (v: number) =>
+  v > 1.3
+    ? 'reach much further'
+    : v > 1.08
+      ? 'reach further'
+      : v < 0.92
+        ? 'land closer in'
+        : 'reach about as far'
+const saidWide = (v: number) =>
+  v > 1.3
+    ? 'cover much more ground'
+    : v > 1.08
+      ? 'cover more ground'
+      : v < 0.92
+        ? 'stay tighter'
+        : 'cover about as much'
 import { CAST } from '../park/cast'
 import { movesOf } from '../pets/attack'
 import { AlsoTogether } from '../ui/AlsoTogether'
@@ -1669,7 +1688,10 @@ export function PaintRoom() {
    * would be a box around your picture for no reason.
    */
   const petCrop = useMemo(() => {
-    const b = petStep ? inkBox(petPreview) : null
+    /* ⚠️ THE PICTURE'S BOX, because this frame is a promise about the real crop — paintPet uses
+       the same one, so a frame drawn from anything else would be a rectangle in the wrong place.
+       A cast layer sits outside it, which is true: the room paints those, not the bitmap. */
+    const b = petStep ? pictureBox(petPreview) : null
     if (!b) return null
     /* ⚠️ HELD INSIDE THE PAGE. inkBox pads out past the ink, and past the paper with it, so an
        unclamped frame hangs off the board — where the board's own overflow clips it and takes the
@@ -1702,10 +1724,15 @@ export function PaintRoom() {
   const hitGuide = useMemo(() => {
     if (!petStep) return null
     if (partOf(layerNames[layer] ?? '') !== 'hit') return null
-    /* the body, never the swing — the same exclusion drawnAttacks makes */
+    /* the body, never a move it can throw — the same exclusion drawnAttacks makes, and it is
+       BOTH kinds: a spell layer is no more part of the creature than a slash is, so leaving it
+       in moved this ruler the moment somebody drew one */
     const body = inkBox({
       ...petPreview,
-      strokes: petPreview.strokes.filter((k) => partOf(layerNames[k.l ?? 0] ?? '') !== 'hit'),
+      strokes: petPreview.strokes.filter((k) => {
+        const kind = partOf(layerNames[k.l ?? 0] ?? '')
+        return kind !== 'hit' && kind !== 'spell'
+      }),
     })
     if (!body) return null
     const h = body.y1 - body.y0
@@ -1756,6 +1783,15 @@ export function PaintRoom() {
    *
    * ⚠️ MEMOISED with the move table beside it: it walks every stroke through rigOf twice.
    */
+  /**
+   * What the spell layer is doing, in words, or null when there is not one.
+   *
+   * ⚠️ SAID IN MULTIPLES OF "AS IT WOULD HAVE BEEN", not in pet-heights, because that is
+   * what the number IS — a drawn footprint scales the cast the creature was already going to
+   * throw. "Half again as far" is a thing somebody can check by drawing; "1.4" is not.
+   */
+  const petSpell = useMemo(() => castShapeOf(petPreview), [petPreview])
+
   const petBoss = useMemo(() => {
     const t = temperOf(petPreview)
     /* ⚠️ the whole Temper now, not three fields off it. whyCasts and swapRanged read the dials
@@ -3915,6 +3951,26 @@ export function PaintRoom() {
                       ))}
                     </ul>
                     <span className="muted paint-pet-moves">{swapRanged(petBoss)}</span>
+                    {/**
+                      ⚠️ WHAT THE SPELL LAYER DID, BECAUSE IT SAID NOTHING AT ALL. The layer was
+                      recognised — "spell is where your big moves land" appeared in the list of
+                      parts — and then nothing anywhere told you it had changed the casts you
+                      were looking at. Reported as "the wizard tells me nothing about it", which
+                      is the same failure as a control explained only by a tooltip: the feature
+                      happened and the person could not tell.
+
+                      ⚠️ AND IT SAYS WHAT TO DRAW when there is none, because "you can shape
+                      these" is not discoverable from an absence. The wording is the hit layer's,
+                      which has taught this idea for a long time: draw a longer one and it
+                      reaches further.
+                    */}
+                    <span className="muted paint-pet-moves">
+                      {petSpell
+                        ? `Your spell layer makes these ${said(petSpell.reach)} and ${saidWide(
+                            petSpell.spread,
+                          )} — a longer shape reaches further, a fatter one covers more.`
+                        : 'A layer called spell shapes these three: draw a long shape for casts that land further out, a fat one for casts that cover more ground.'}
+                    </span>
                     <span className="muted paint-pet-moves">
                       Called out as a boss: {petBoss.says} <strong>{petBoss.life}</strong> health.
                     </span>

@@ -99,28 +99,35 @@ export function castShapeOf(art: Drawing): CastShape | null {
   const mark = boxOf(spell)
   if (!body || !mark) return null
 
-  const tall = Math.max(1e-6, body.y1 - body.y0)
-  const wide = Math.max(1e-6, body.x1 - body.x0)
-  const across = Math.max(tall, wide)
-
-  /* how far the drawn shape's middle sits from the body's, in bodies */
-  const bx = (body.x0 + body.x1) / 2
-  const by = (body.y0 + body.y1) / 2
-  const mx = (mark.x0 + mark.x1) / 2
-  const my = (mark.y0 + mark.y1) / 2
-  const away = Math.hypot(mx - bx, my - by) / across
-
-  /* and how big it is, against the same body */
-  const big = Math.max(mark.x1 - mark.x0, mark.y1 - mark.y0) / across
+  const across = Math.max(1e-6, body.x1 - body.x0, body.y1 - body.y0)
 
   /**
-   * ⚠️ CENTRED ON 1 SO THAT DRAWING THE ORDINARY THING CHANGES NOTHING. A spell layer about
-   * half a body across, sitting about half a body out, is the shape somebody draws without
-   * thinking about it — and it should land where the cast already landed. The multipliers move
-   * from there, which is what makes "further out" and "wider" mean what they say.
+   * ⚠️ THE SHAPE'S OWN LENGTH AND THICKNESS, NOT WHERE IT SITS — AND THAT IS A CORRECTION.
+   * This measured how far the drawn shape sat from the body, which meant "a cast that lands
+   * further away" could only be said by drawing further away. Reported immediately, and it is
+   * the right complaint: "I can't really draw away from my guy on the same canvas space as I
+   * drew him in." A creature that fills its page has nowhere to put a far spell, and asking
+   * somebody to leave room for one is the tool telling the drawing what to be.
+   *
+   * ⚠️ AND THE `hit` LAYER HAD ALREADY SOLVED IT, in the words the wizard says out loud about
+   * every swing: "draw a longer one and it reaches further". Length is the thing a hand can
+   * always express — you can draw a long streak across a full page — where distance needs empty
+   * space that may not exist. Same idea, same sentence, one less rule to learn.
+   *
+   *   a long thin streak  ->  reaches far, stays narrow
+   *   a fat blob          ->  lands close, covers ground
+   */
+  const long = Math.max(mark.x1 - mark.x0, mark.y1 - mark.y0) / across
+  const thick = Math.min(mark.x1 - mark.x0, mark.y1 - mark.y0) / across
+
+  /**
+   * ⚠️ CENTRED ON 1 SO THAT DRAWING THE ORDINARY THING CHANGES NOTHING. A shape about half a
+   * body long and a quarter thick is what somebody draws without thinking about it, and it
+   * should land where the cast already landed. The multipliers move from there, which is what
+   * makes "further" and "wider" mean what they say.
    */
   return {
-    reach: hold(0.6 + away * 0.8, BAND.reach),
-    spread: hold(0.55 + big * 0.9, BAND.spread),
+    reach: hold(0.62 + long * 0.76, BAND.reach),
+    spread: hold(0.62 + thick * 1.5, BAND.spread),
   }
 }

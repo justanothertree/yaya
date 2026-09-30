@@ -68,16 +68,34 @@ describe('what the drawing says about where a cast lands', () => {
     expect(partOf('wing')).toBe('wing')
   })
 
-  it('and a bigger drawn shape means a wider cast', () => {
-    const small = castShapeOf(creature([body(), ['spell', [0.62, 0.45, 0.68, 0.55]]]))!
-    const large = castShapeOf(creature([body(), ['spell', [0.62, 0.2, 0.95, 0.8]]]))!
-    expect(large.spread).toBeGreaterThan(small.spread)
+  it('and a fatter drawn shape means a wider cast', () => {
+    const thin = castShapeOf(creature([body(), ['spell', [0.62, 0.48, 0.9, 0.52]]]))!
+    const fat = castShapeOf(creature([body(), ['spell', [0.62, 0.25, 0.9, 0.75]]]))!
+    expect(fat.spread).toBeGreaterThan(thin.spread)
   })
 
-  it('and a shape drawn further out means a cast that lands further out', () => {
-    const near = castShapeOf(creature([body(), ['spell', [0.6, 0.47, 0.66, 0.53]]]))!
-    const far = castShapeOf(creature([body(), ['spell', [0.9, 0.47, 0.96, 0.53]]]))!
-    expect(far.reach).toBeGreaterThan(near.reach)
+  /**
+   * ⚠️ ITS LENGTH, NOT ITS DISTANCE, AND THAT IS A CORRECTION. Reach used to come from how far
+   * the shape sat from the body, so "lands further away" could only be drawn by drawing further
+   * away — and a creature filling its page has nowhere to do that. Reported at once: "I can't
+   * really draw away from my guy on the same canvas space as I drew him in."
+   */
+  it('and a longer drawn shape means a cast that lands further out', () => {
+    const stub = castShapeOf(creature([body(), ['spell', [0.62, 0.46, 0.7, 0.54]]]))!
+    const streak = castShapeOf(creature([body(), ['spell', [0.62, 0.46, 1.0, 0.54]]]))!
+    expect(streak.reach).toBeGreaterThan(stub.reach)
+  })
+
+  /**
+   * ⚠️ AND IT CAN BE DRAWN ANYWHERE, which is the whole point of the change. The same shape on
+   * top of the creature and off to one side has to mean the same thing, or the tool is still
+   * telling somebody where to draw.
+   */
+  it('and where it sits on the page makes no difference', () => {
+    const over = castShapeOf(creature([body(), ['spell', [0.3, 0.46, 0.68, 0.54]]]))!
+    const aside = castShapeOf(creature([body(), ['spell', [0.6, 0.46, 0.98, 0.54]]]))!
+    expect(aside.reach).toBeCloseTo(over.reach, 6)
+    expect(aside.spread).toBeCloseTo(over.spread, 6)
   })
 
   /**
@@ -87,10 +105,10 @@ describe('what the drawing says about where a cast lands', () => {
    * decided how far their fissure reached.
    */
   it('and the same creature drawn bigger on the page is the same creature', () => {
-    const small = creature([body(), ['spell', [0.62, 0.45, 0.68, 0.55]]])
+    const small = creature([body(), ['spell', [0.62, 0.45, 0.72, 0.55]]])
     const grown = creature([
       ['body', [0.2, 0.2, 0.8, 0.8]],
-      ['spell', [0.86, 0.35, 1.04, 0.65]],
+      ['spell', [0.2, 0.35, 0.5, 0.65]],
     ])
     const a = castShapeOf(small)!
     const b = castShapeOf(grown)!

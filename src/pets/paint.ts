@@ -1,9 +1,9 @@
 import { frameCount, paintDrawing, paintStroke, type Drawing } from '../draw/strokes'
 import {
   bodyPose,
-  inkBox,
   PART_PARENT,
   petRatio,
+  pictureBox,
   poseOf,
   rigOf,
   TUNE,
@@ -89,8 +89,9 @@ export function paintPet(
    * and a rotating wing rotates rather than shears. Size a pet's canvas any other way and it will.
    */
   /* ⚠️ the whole picture, so an attack drawn past the creature still lands on the bitmap —
-     see petRatio, which sizes the canvas from the same box for exactly this reason */
-  const box = inkBox(art)
+     see petRatio, which sizes the canvas from the same box for exactly this reason. A cast layer
+     is not in it, because the room draws those and no bitmap ever has to hold one. */
+  const box = pictureBox(art)
   const bw = box ? box.x1 - box.x0 : 0
   const bh = box ? box.y1 - box.y0 : 0
   const crop = () => {
@@ -173,7 +174,7 @@ export function paintPet(
 
        ⚠️ EXCEPT WHEN SOMETHING IS MEASURING. A bitmap has to be big enough for the frame
        the slash IS out, so `onPart` sees every layer. */
-    if (!onPart && part.kind === 'hit' && part.layer !== show) continue
+    if (!onPart && (part.kind === 'hit' || part.kind === 'spell') && part.layer !== show) continue
     ctx.save()
     /* ⚠️ the parent's movement first, so the child is posed in a frame that has already moved —
        an ear turns with the head AND twitches, instead of having to choose. See PART_PARENT. */
@@ -251,9 +252,13 @@ export function poseRoom(art: Drawing, parts?: Part[]): { x: number; y: number }
 }
 
 function measureRoom(art: Drawing, parts?: Part[]): { x: number; y: number } {
-  const rig = parts ?? rigOf(art)
+  /* ⚠️ minus the casts, for the same reason pictureBox leaves them out: this is asking how far
+     a POSE pushes ink past the bitmap, and a layer that is never painted cannot push anything.
+     Left in, a long cast streak bought headroom nothing draws into — and headroom is paid for
+     by the creature, which shrinks to make it. */
+  const rig = (parts ?? rigOf(art)).filter((p) => p.kind !== 'spell')
   if (!rig.length || typeof document === 'undefined') return { x: 0, y: 0 }
-  const box = inkBox(art)
+  const box = pictureBox(art)
   if (!box) return { x: 0, y: 0 }
   const bw = box.x1 - box.x0
   const bh = box.y1 - box.y0

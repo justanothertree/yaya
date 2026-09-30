@@ -423,12 +423,56 @@ export const boxOf = (strokes: Stroke[], ratio = 1): Box | null => {
  * creature, what shape is its canvas — are asked on every frame and must not walk every stroke
  * to find out. `rigOf` answers the same question the expensive way when it is already working.
  */
-export function hitLayers(d: Drawing): number[] {
+export function notBodyLayers(d: Drawing): number[] {
   const out: number[] = []
   d.layers?.forEach((n, i) => {
-    if (partOf(n) === 'hit') out.push(i)
+    const k = partOf(n)
+    /* ⚠️ BOTH OF THEM, AND IT WAS ONLY THE HIT. A spell layer says where the big moves
+       land; like a hit it is a MOVE rather than a piece of the creature, so counting it makes
+       the creature measure bigger, render smaller inside its own box and carry a hitbox nobody
+       drew. Reported the day the spell layer shipped: "it also seems to be influencing the size
+       and hit box of the minion". */
+    if (k === 'hit' || k === 'spell') out.push(i)
   })
   return out
+}
+
+/**
+ * Which layers are casts, and so are drawn by the ROOM rather than by the creature's picture.
+ *
+ * ⚠️ AND THAT IS WHAT SEPARATES A CAST FROM A HIT, which otherwise look like the same kind of
+ * thing. A hit layer IS drawn out of the creature's own picture, on the frame the swing is out —
+ * so the bitmap has to be big enough to hold it, which is why petRatio has counted hits since
+ * the day they existed. A cast is drawn by the park, out of patches on the floor, and never
+ * appears in the picture at all. A canvas stretched to hold one is stretched around nothing, and
+ * the creature inside comes out smaller to make the space: draw the long streak that means a
+ * far-reaching fissure and your minion visibly shrinks. Reported alongside the hitbox, in one
+ * breath: "it also seems to be influencing the size and hit box of the minion".
+ */
+export function castLayers(d: Drawing): number[] {
+  const out: number[] = []
+  d.layers?.forEach((n, i) => {
+    if (partOf(n) === 'spell') out.push(i)
+  })
+  return out
+}
+
+/**
+ * The box the creature's PICTURE fills — everything that ever gets painted, casts aside.
+ *
+ * ⚠️ ONE BOX, BECAUSE THE CROP AND THE CANVAS HAVE TO AGREE. paintPet crops the drawing to this
+ * and the caller shapes the bitmap from it; the note on that crop spells out what happens when
+ * the two differ — "the two cancel to one magnification and a rotating wing rotates rather than
+ * shears. Size a pet's canvas any other way and it will." So excluding a layer from one without
+ * the other does not make a picture slightly wrong, it shears it.
+ *
+ * ⚠️ AND IT FALLS BACK TO THE WHOLE THING, for a drawing that is nothing but a cast layer.
+ * Cropping that to an empty box would leave nothing on screen at all; showing it is better than
+ * showing a blank, and it is what attack.ts already does with the same problem.
+ */
+export function pictureBox(d: Drawing): Box | null {
+  const cast = castLayers(d)
+  return (cast.length ? inkBox(d, cast) : null) ?? inkBox(d)
 }
 
 /**
@@ -472,8 +516,8 @@ export function inkBox(d: Drawing, skip: number[] = [], room = true): Box | null
  * `n / bodyFill`, and then the thing on screen is `n` tall.
  */
 export function bodyFill(d: Drawing): number {
-  const all = inkBox(d)
-  const body = inkBox(d, hitLayers(d), false)
+  const all = pictureBox(d)
+  const body = inkBox(d, notBodyLayers(d), false)
   if (!all || !body) return 1
   const ah = all.y1 - all.y0
   const bh = body.y1 - body.y0
@@ -515,8 +559,8 @@ export function petCanvas(d: Drawing, tall: number): number {
  * floor line, which is what a swing at the ground should look like.
  */
 export function footRoom(d: Drawing): number {
-  const whole = inkBox(d)
-  const body = inkBox(d, hitLayers(d), false)
+  const whole = pictureBox(d)
+  const body = inkBox(d, notBodyLayers(d), false)
   if (!whole || !body) return 0
   const h = whole.y1 - whole.y0
   if (!(h > 0)) return 0
@@ -557,8 +601,15 @@ export function petRatio(d: Drawing): number {
    * ⚠️ WHICH IS NOT THE SAME QUESTION AS HOW BIG THE CREATURE IS. That one is bodyRatio below,
    * and hit detection asks that one — otherwise drawing a bigger attack would make you easier to
    * hit, which is the opposite of what drawing it should do.
+   *
+   * ⚠️ A CAST IS THE ONE THING IT LEAVES OUT — see castLayers. Everything else here is painted
+   * sooner or later, so the bitmap has to hold it; a cast is painted by the ROOM, out of patches
+   * on the floor, so a canvas stretched to fit one is stretched around nothing and the creature
+   * inside shrinks to make the space. And it MUST be the same box paintPet crops to, which is
+   * why both ask pictureBox: the note on that crop is explicit that a canvas shaped from any
+   * other box shears a rotating wing rather than rotating it.
    */
-  const b = inkBox(d)
+  const b = pictureBox(d)
   const paper = d.ratio > 0.05 && d.ratio < 20 ? d.ratio : 1
   if (!b) return paper
   const bw = b.x1 - b.x0
@@ -576,7 +627,7 @@ export function petRatio(d: Drawing): number {
  */
 export function bodyRatio(d: Drawing): number {
   /* ⚠️ no headroom: this is what an enemy has to reach, not what the canvas has to hold */
-  const b = inkBox(d, hitLayers(d), false)
+  const b = inkBox(d, notBodyLayers(d), false)
   const paper = d.ratio > 0.05 && d.ratio < 20 ? d.ratio : 1
   if (!b) return paper
   const bw = b.x1 - b.x0
@@ -595,7 +646,21 @@ export function bodyRatio(d: Drawing): number {
  * always toward the middle, because that is what a limb is.
  */
 export function rigOf(d: Drawing): Part[] {
-  const whole = boxOf(d.strokes, d.ratio)
+  /**
+   * ⚠️ THE CREATURE'S MIDDLE, AND A CAST IS NOT IN IT. Every pivot below is "the point on the
+   * part nearest the middle of the pet", so this one box decides which way every limb leans —
+   * and a cast layer drawn off to one side would tilt the whole rig toward a shape that is never
+   * painted. It was the last way a `spell` layer could still be felt after it stopped changing
+   * the creature's size: measured, it moved the pose room by about 2px.
+   *
+   * ⚠️ HITS STAY IN, DELIBERATELY. They have counted here since the day they existed, so every
+   * creature anybody has drawn is posed against a middle that includes them — taking them out
+   * now would quietly re-animate all of them, which is not a thing to do in passing. See
+   * castLayers for what actually separates the two.
+   */
+  const cast = castLayers(d)
+  const own = cast.length ? d.strokes.filter((k) => !cast.includes(k.l ?? 0)) : d.strokes
+  const whole = boxOf(own.length ? own : d.strokes, d.ratio)
   if (!whole) return []
   const cx = (whole.x0 + whole.x1) / 2
   const cy = (whole.y0 + whole.y1) / 2

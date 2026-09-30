@@ -184,7 +184,9 @@ const poise = (moves: Attack[]): number => {
 }
 
 export function temperOf(art: Drawing): Temper {
-  const parts = rigOf(art).filter((p) => p.kind !== 'hit')
+  /* ⚠️ 'spell' as well as 'hit': both are moves rather than anatomy, and counting either
+     makes a creature score as bigger than it is — see notBodyLayers */
+  const parts = rigOf(art).filter((p) => p.kind !== 'hit' && p.kind !== 'spell')
   const count = new Map<PartKind, number>()
   for (const p of parts) count.set(p.kind, (count.get(p.kind) ?? 0) + 1)
   const has = (k: PartKind) => count.has(k)

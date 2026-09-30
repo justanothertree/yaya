@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import {
+  bodyFill,
+  bodyRatio,
   boxOf,
+  footRoom,
   inFrontOfOrder,
   inkBox,
   partOf,
@@ -300,5 +303,125 @@ describe('the shape a creature is drawn at', () => {
       expect(Number.isFinite(r), `ratio ${ratio} gave ${r}`).toBe(true)
       expect(r).toBeGreaterThan(0)
     }
+  })
+})
+
+/**
+ * ⚠️ A MOVE IS NOT A PIECE OF THE CREATURE, AND THE SPELL LAYER FORGOT IT. Every sum that asks
+ * "how big is this thing" skips the layers that are moves rather than anatomy, and for a long
+ * time there was exactly one of those, so the helper was called `hitLayers` and listed one kind.
+ * A `spell` layer is the same sort of thing — it says where the big casts land and is drawn
+ * nowhere while the creature is just standing there — so leaving it in made a creature measure
+ * bigger than it is, render smaller inside its own box, sit off the floor, and carry a hitbox
+ * nobody drew. Reported the day it shipped, in those terms: "it also seems to be influencing the
+ * size and hit box of the minion".
+ *
+ * ⚠️ AND THE CONTROL IS THE POINT. Each of these asserts that the spell layer changed nothing
+ * AND that a real limb drawn in the same place would have changed it — otherwise the test passes
+ * just as happily against a function that ignores every layer it is given.
+ */
+describe('what a move-layer does to the size of the creature', () => {
+  /**
+   * A body, plus one extra layer of ink off to the right and hanging a little below it.
+   *
+   * ⚠️ A LITTLE BELOW, DELIBERATELY. footRoom is capped at 0.4 of the picture, so a move
+   * drawn a long way under the feet is meant NOT to be fully corrected for — "a creature drawn
+   * entirely above a huge ground attack must not be hoisted off screen". Drawn past that cap,
+   * the floor test below would be measuring the cap rather than the exclusion. The cap gets its
+   * own check instead.
+   */
+  const withLayer = (name: string): Drawing =>
+    drawing({
+      layers: ['body', name],
+      strokes: [
+        stroke({ p: [0.4, 0.3, 0.6, 0.6], l: 0 }),
+        stroke({ p: [0.7, 0.45, 0.95, 0.66], l: 1 }),
+      ],
+    })
+
+  const plain = (): Drawing =>
+    drawing({ layers: ['body'], strokes: [stroke({ p: [0.4, 0.3, 0.6, 0.6], l: 0 })] })
+
+  it('leaves how wide a target it makes exactly as it was', () => {
+    const bare = bodyRatio(plain())
+    expect(bodyRatio(withLayer('spell')), 'a spell layer moved it').toBeCloseTo(bare, 10)
+    expect(bodyRatio(withLayer('hit')), 'a hit layer moved it').toBeCloseTo(bare, 10)
+    /* ⚠️ the control: the same ink under a name that IS anatomy has to move it */
+    expect(bodyRatio(withLayer('tail')), 'a real limb did not move it').not.toBeCloseTo(bare, 3)
+  })
+
+  /**
+   * ⚠️ AND THE OTHER TWO ARE MEANT TO MOVE, SO ASK THE SCREEN INSTEAD. bodyFill and
+   * footRoom exist precisely BECAUSE a move layer grows the picture: they are the corrections
+   * that cancel it out, so "did adding a layer change bodyFill" is the wrong question and the
+   * first version of this test asked it. The claim worth pinning is the one somebody can see —
+   * a room asking for a creature 60px tall gets 60px of creature, with its feet on the floor,
+   * whatever it can throw. Worked out here from the ink boxes rather than from the helpers, so
+   * the two sides do not share the sum.
+   *
+   * ⚠️ AND IT FINDS ITS OWN BODY BOX, WHICH IS THE WHOLE DIFFERENCE. The first version
+   * asked notBodyLayers where the body was — the very thing being tested — so with the bug put
+   * back both sides agreed the spell layer was anatomy and both tests stayed green. Same shape
+   * CLAUDE.md warns about twice: a test built from the code's own sum confirms the mistake. Here
+   * the anatomy is picked out by NAME, the way somebody reading the layer list would.
+   */
+  const onScreen = (d: Drawing, tall: number) => {
+    const only = (names: string[]) => ({
+      ...d,
+      strokes: d.strokes.filter((k) => names.includes(d.layers?.[k.l ?? 0] ?? '')),
+    })
+    /* what actually gets painted: the creature and anything it swings, never a cast */
+    const all = inkBox(only(['body', 'tail', 'hit']))!
+    const body = inkBox(only(['body', 'tail']), undefined, false)!
+    const canvasH = tall / bodyFill(d)
+    return {
+      /* how much of that canvas the creature itself is */
+      bodyPx: canvasH * ((body.y1 - body.y0) / (all.y1 - all.y0)),
+      /* the gap the room has to close between the bottom of the picture and the feet */
+      wantLift: canvasH * ((all.y1 - body.y1) / (all.y1 - all.y0)),
+      /* the gap it actually closes */
+      getsLift: canvasH * footRoom(d),
+    }
+  }
+
+  it('and still renders the creature at the height the room asked for', () => {
+    for (const name of ['spell', 'hit', 'tail']) {
+      const { bodyPx } = onScreen(withLayer(name), 60)
+      expect(bodyPx, `a ${name} layer shrank the creature`).toBeCloseTo(60, 6)
+    }
+  })
+
+  it('and still stands it on the floor rather than above it', () => {
+    for (const name of ['spell', 'hit', 'tail']) {
+      const { wantLift, getsLift } = onScreen(withLayer(name), 60)
+      expect(getsLift, `a ${name} layer left it floating`).toBeCloseTo(wantLift, 6)
+    }
+  })
+
+  /**
+   * ⚠️ AND THE TWO MOVE KINDS PART COMPANY HERE, which is the whole of castLayers. A hit is
+   * PAINTED — out of the creature's own picture, on the frame the swing is out — so the bitmap
+   * has to be big enough to hold it or the slash lands off the edge and simply is not there. A
+   * cast is painted by the room, as patches on the floor, and never appears in the picture at
+   * all. So one has to stretch the canvas and the other must not.
+   */
+  it('and still leaves room on the bitmap for a swing, which is painted', () => {
+    expect(petRatio(withLayer('hit'))).toBeGreaterThan(petRatio(plain()))
+  })
+
+  it('and leaves none for a cast, which is not', () => {
+    expect(petRatio(withLayer('spell'))).toBeCloseTo(petRatio(plain()), 10)
+  })
+
+  /** ⚠️ and a move drawn far below the feet is still not allowed to hoist the creature away */
+  it('and will not lift a creature off the screen to reach a move drawn under it', () => {
+    const deep = drawing({
+      layers: ['body', 'spell'],
+      strokes: [
+        stroke({ p: [0.4, 0.05, 0.6, 0.2], l: 0 }),
+        stroke({ p: [0.3, 0.3, 0.9, 0.99], l: 1 }),
+      ],
+    })
+    expect(footRoom(deep)).toBeLessThanOrEqual(0.4)
   })
 })
