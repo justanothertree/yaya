@@ -126,7 +126,7 @@ const spellSays = (
 }
 
 import { CAST } from '../park/cast'
-import { movesOf } from '../pets/attack'
+import { movesOf, type Attack } from '../pets/attack'
 import { AlsoTogether } from '../ui/AlsoTogether'
 import { useVoiceSession } from '../voice/useVoiceSession'
 import { MapMaker } from '../park/MapMaker'
@@ -376,6 +376,9 @@ export function PaintRoom() {
   /* ⚠️ WHAT A LAYER IS, when that is not what it is called — see Drawing.acts. Absent means the
      name decides, which is what keeps every creature made before today exactly as it was. */
   const [acts, setActs] = useState<Record<string, string>>(() => paintSession.restore()?.acts ?? {})
+  /* ⚠️ which of the nine the park-scale field is showing: a swing picked above, or null for the
+     cast its own picker chose. One field, two pickers, no third row of buttons. */
+  const [shownSwing, setShownSwing] = useState<Attack | null>(null)
   /**
    * When each tool was last picked, as a counter rather than a clock.
    *
@@ -4071,6 +4074,9 @@ export function PaintRoom() {
                       moves={petMoves}
                       tall={92}
                       hits={hits}
+                      /* ⚠️ the field below shows whichever of the nine you last pressed — see
+                         CastShow.swing. No new control for it: the two pickers already exist. */
+                      onPick={setShownSwing}
                       onShape={(part, shape) =>
                         setHits((h) => {
                           /* ⚠️ swipe is the ABSENCE of a choice, not a choice. Storing it would
@@ -4103,7 +4109,13 @@ export function PaintRoom() {
                     <span className="muted paint-pet-moves">
                       And three big ones, on 1, 2 and 3 — each with its own wait.
                     </span>
-                    <CastShow art={petPreview} casts={petBoss.casts} scale={petBoss.scale} />
+                    <CastShow
+                      art={petPreview}
+                      casts={petBoss.casts}
+                      scale={petBoss.scale}
+                      swing={shownSwing}
+                      onPickCast={() => setShownSwing(null)}
+                    />
                     {/**
                       ⚠️ WHY IT GOT THESE, WHICH NOTHING SAID. CastShow plays the three at the
                       real size and speed and saysOf describes how it fights, but nothing joined

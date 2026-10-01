@@ -3,6 +3,9 @@ import type { Drawing } from '../draw/strokes'
 import { PetView } from './PetView'
 import { footRoom, petCanvas } from './rig'
 import { CAST, patchesOf, type CastKind } from '../park/cast'
+import { SwipePatch } from '../park/SwipePatch'
+import { strikeSwipe } from '../park/strike'
+import type { Attack } from './attack'
 import { footSpan, PARK_TALL } from '../park/strike'
 import { petWide } from './attack'
 import { shapeOf } from '../park/castShape'
@@ -79,6 +82,8 @@ export function CastShow({
   art,
   casts,
   scale = 1,
+  swing,
+  onPickCast,
 }: {
   art: Drawing
   /** the creature's three, best-first — temperOf's own order, which is what 1/2/3 press */
@@ -92,6 +97,22 @@ export function CastShow({
    * were previewed at for as long as this component has existed.
    */
   scale?: number
+  /**
+   * A SWING to show instead of a cast, from the row of moves above.
+   *
+   * ⚠️ NO NEW ROW OF BUTTONS, which matters more here than it sounds: there were already three
+   * rows of them, and being confused by exactly that was reported in one block. The six moves
+   * have a picker, the three casts have a picker, and this field shows whichever of the nine you
+   * last pressed — so the park-scale view with the hitboxes in it is driven entirely by controls
+   * that were already on the page.
+   *
+   * ⚠️ AND IT IS THE SAME MOVE THE PANEL ABOVE IS PLAYING, seen from above instead of side on.
+   * That one is what the swing looks like; this is where it actually reaches, at the size and in
+   * the place the park puts it.
+   */
+  swing?: Attack | null
+  /** pressed a cast, so the field stops showing a swing — the picker is the only switch */
+  onPickCast?: () => void
 }) {
   const [pick, setPick] = useState(0)
   const kind = casts[pick] ?? casts[0]
@@ -126,6 +147,9 @@ export function CastShow({
       if (patchesOf(kind, at, { x: 1, y: 0 }, t, scale, 0, shape).some((p) => p.live)) return t
     return CAST[kind].time * 0.7
   }, [kind, shape, scale])
+  /* ⚠️ the still frame for reduced motion has to be a moment the swing is OUT, or the one frame
+     somebody gets is a creature standing there — the same reason firstLive exists above */
+  const swingLive = swing ? swing.span * ((swing.live[0] + swing.live[1]) / 2) : 0
 
   /**
    * How tall the field is, in pixels, because it is the unit everything in here is measured in.
@@ -157,12 +181,12 @@ export function CastShow({
     return () => ro.disconnect()
   }, [])
 
-  const cycle = CAST[kind].time + PAUSE
+  const cycle = (swing ? swing.span : CAST[kind].time) + PAUSE
   const [gone, setGone] = useState(0)
   const at = useRef(0)
   useEffect(() => {
     if (still) {
-      setGone(firstLive)
+      setGone(swing ? swingLive : firstLive)
       return
     }
     at.current = 0
@@ -176,7 +200,7 @@ export function CastShow({
     }
     raf = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(raf)
-  }, [cycle, still, firstLive])
+  }, [cycle, still, firstLive, swing, swingLive])
 
   if (!casts.length) return null
 
@@ -187,6 +211,20 @@ export function CastShow({
    * know anything about parks, cameras or where in one it is pretending to be.
    */
   const from = { x: 0.5, y: 0.5 }
+  /**
+   * ⚠️ THE PARK'S OWN strikeSwipe, AND THE PARK'S OWN COMPONENT TO DRAW IT. Both of those are
+   * the point rather than a convenience: a swing's region is worked out once and painted once,
+   * so a box shown here cannot drift from the box that decides whether you were hit. The file
+   * that component came out of says it plainly — a telegraph and a debug box that disagree about
+   * where a swing is are the whole bug that module keeps paying for, and a preview in a third
+   * room is just a third place for them to disagree.
+   */
+  const swiped =
+    swing && !still
+      ? strikeSwipe(from, { x: 1, y: 0 }, swing, Math.min(gone, swing.span), scale)
+      : swing
+        ? strikeSwipe(from, { x: 1, y: 0 }, swing, swingLive, scale)
+        : null
   const patches = patchesOf(
     kind,
     from,
@@ -211,6 +249,7 @@ export function CastShow({
             aria-pressed={i === pick}
             onClick={() => {
               setPick(i)
+              onPickCast?.()
               at.current = 0
               setGone(0)
             }}
@@ -220,22 +259,32 @@ export function CastShow({
         ))}
       </div>
       <div className="cast-show-field" ref={field}>
-        {patches.map((p, i) => (
-          <span
-            key={i}
-            className={'park-patch' + (p.live ? ' is-live' : '')}
-            aria-hidden
-            style={{
-              left: `${(STANDS.x + (p.at.x - from.x) / VIEW.w) * 100}%`,
-              top: `${(STANDS.y + (p.at.y - from.y) / VIEW.h) * 100}%`,
-              width: `${((p.r * 2) / FIELD_ASPECT) * 100}%`,
-              height: `${p.r * 2 * 100}%`,
-              /* the same growth the park draws, so a wind-up looks like a wind-up in both */
-              transform: `translate(-50%, -50%) scale(${(0.5 + p.ready * 0.5).toFixed(3)})`,
-              opacity: p.live ? 0.9 : 0.2 + p.ready * 0.5,
-            }}
+        {swiped && (
+          <SwipePatch
+            swipe={swiped}
+            /* the creature stands at STANDS, and a swing comes from where the creature is */
+            at={STANDS}
+            aspect={FIELD_ASPECT}
+            className="park-box is-hit"
           />
-        ))}
+        )}
+        {!swing &&
+          patches.map((p, i) => (
+            <span
+              key={i}
+              className={'park-patch' + (p.live ? ' is-live' : '')}
+              aria-hidden
+              style={{
+                left: `${(STANDS.x + (p.at.x - from.x) / VIEW.w) * 100}%`,
+                top: `${(STANDS.y + (p.at.y - from.y) / VIEW.h) * 100}%`,
+                width: `${((p.r * 2) / FIELD_ASPECT) * 100}%`,
+                height: `${p.r * 2 * 100}%`,
+                /* the same growth the park draws, so a wind-up looks like a wind-up in both */
+                transform: `translate(-50%, -50%) scale(${(0.5 + p.ready * 0.5).toFixed(3)})`,
+                opacity: p.live ? 0.9 : 0.2 + p.ready * 0.5,
+              }}
+            />
+          ))}
         {/**
           ⚠️ THE HITBOX THE PARK ACTUALLY USES, drawn with the park's own sum at the park's own
           scale. Asked for directly — "im interested in being able to test your drawing in a park
@@ -282,8 +331,19 @@ export function CastShow({
           <PetView art={art} size={size} facing={1} energy={0} label="" />
         </span>
       </div>
+      {/* ⚠️ IT HAS TO SAY WHICH OF THE NINE IT IS SHOWING, because the field is now driven by
+          two pickers and a caption about a cast under a picture of a swing is worse than none. */}
       <p className="muted cast-show-why">
-        <strong>{CAST[kind].short}</strong> — {CAST[kind].says.replace(/^it /, '')}. {WHY[kind]}
+        {swing ? (
+          <>
+            <strong>{swing.name}</strong> — this is where it reaches, from above, at the size the
+            park throws it. The blue patch is what has to be hit to hit <em>you</em>.
+          </>
+        ) : (
+          <>
+            <strong>{CAST[kind].short}</strong> — {CAST[kind].says.replace(/^it /, '')}. {WHY[kind]}
+          </>
+        )}
       </p>
     </div>
   )

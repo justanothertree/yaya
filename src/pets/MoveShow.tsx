@@ -96,6 +96,7 @@ export function MoveShow({
   tall = 104,
   hits,
   onShape,
+  onPick,
 }: {
   art: Drawing
   moves: Attack[]
@@ -104,6 +105,8 @@ export function MoveShow({
   hits?: Record<string, string>
   /** given, this turns the preview into the place you DECIDE rather than only watch */
   onShape?: (part: string, shape: HitShape) => void
+  /** which move is being watched, so a park-scale field can show the same one from above */
+  onPick?: (a: Attack) => void
 }) {
   /**
    * Which earlier button already throws this exact move.
@@ -205,6 +208,8 @@ export function MoveShow({
               setPick(i)
               /* what you chose is a PART from here on — see `want` */
               want.current = m.from
+              /* ⚠️ and the field below shows the same move from above — see CastShow.swing */
+              onPick?.(m)
               at.current = 0
               setGone(0)
             }}

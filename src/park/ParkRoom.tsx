@@ -88,6 +88,7 @@ import { footRoom, petBox } from '../pets/rig'
 import { BOLT_UP, CAST, castSlot, inPatch, patchesOf, type CastKind, type Patch } from './cast'
 import { ALL_CASTS, castsFor, loadout, setLoadout } from './loadout'
 import { shapeOf, type CastShape } from './castShape'
+import { SwipePatch } from './SwipePatch'
 import { recordFought, recordWin, subscribeWins, winFor, wins, winsWith } from './records'
 import { lungeOf } from '../pets/fight'
 import {
@@ -339,51 +340,6 @@ function BossFigure({
         <span className="park-name">{done ? `${name} — beaten` : name}</span>
       </span>
     </span>
-  )
-}
-
-/**
- * A swing's patch, pointed the way it was thrown.
- *
- * ⚠️ ONE COMPONENT FOR THE TELEGRAPH AND THE DEBUG BOX, because they must never disagree
- * about where a swing is — that disagreement is the whole bug this module keeps paying for.
- *
- * ⚠️ EVERYTHING IS SIZED IN SCREEN-HEIGHTS, which are isotropic in PIXELS: one screen-height
- * across and one down are the same number of pixels, because the field's width is its height
- * times the aspect and the width percentage divides that back out. That is what makes a CSS
- * rotate correct here — rotating a box whose two sides are measured in different units would
- * shear it, and a sheared hitbox is one that lies at every angle except the four it was built on.
- */
-function SwipePatch({
-  swipe,
-  cam,
-  className,
-  style,
-}: {
-  swipe: Swipe
-  cam: Spot
-  className: string
-  style?: React.CSSProperties
-}) {
-  const at = onScreen(swipe.from, cam)
-  const deg = (Math.atan2(swipe.aim.y, swipe.aim.x) * 180) / Math.PI
-  const long = swipe.both ? swipe.reach * 2 : swipe.reach
-  return (
-    <span
-      className={className}
-      aria-hidden
-      style={{
-        left: `${at.x * 100}%`,
-        top: `${at.y * 100}%`,
-        width: `${(long / FIELD_ASPECT) * 100}%`,
-        height: `${swipe.half * 2 * 100}%`,
-        transformOrigin: swipe.both ? '50% 50%' : '0 50%',
-        transform: swipe.both
-          ? `translate(-50%, -50%) rotate(${deg.toFixed(1)}deg)`
-          : `translateY(-50%) rotate(${deg.toFixed(1)}deg)`,
-        ...style,
-      }}
-    />
   )
 }
 
@@ -3784,7 +3740,8 @@ export function ParkRoom({
           {walking && myReach && (
             <SwipePatch
               swipe={myReach.swipe}
-              cam={camAt}
+              at={onScreen(myReach.swipe.from, camAt)}
+              aspect={FIELD_ASPECT}
               className={'park-reach' + (myReach.onTarget ? ' is-on' : '')}
             />
           )}
@@ -4127,7 +4084,8 @@ export function ParkRoom({
           {walking && tell && (
             <SwipePatch
               swipe={tell.swipe}
-              cam={camAt}
+              at={onScreen(tell.swipe.from, camAt)}
+              aspect={FIELD_ASPECT}
               className="park-tell"
               style={{ opacity: 0.25 + tell.ready * 0.6 }}
             />
@@ -4179,7 +4137,13 @@ export function ParkRoom({
           {walking &&
             debug &&
             swings.map((w) => (
-              <SwipePatch key={w.k} swipe={w.swipe} cam={camAt} className="park-box is-hit" />
+              <SwipePatch
+                key={w.k}
+                swipe={w.swipe}
+                at={onScreen(w.swipe.from, camAt)}
+                aspect={FIELD_ASPECT}
+                className="park-box is-hit"
+              />
             ))}
           {walking && bossShown && (
             <BossFigure
