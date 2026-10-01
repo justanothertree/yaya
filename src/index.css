@@ -9323,6 +9323,47 @@ a.cz-msg-author:focus-visible {
     ),
     color-mix(in srgb, var(--text) 7%, transparent);
 }
+/**
+ * The field you can walk about in — see TryField.
+ *
+ * ⚠️ THE SAME BOX AS THE ONE IT REPLACES, deliberately, because it is answering the same question
+ * from the other side: one screenful, 16:10, with the creature at PARK_TALL of its height. If the
+ * two were different shapes then "how big am I" would have two answers in one panel.
+ */
+.try-field-wrap {
+  display: grid;
+  gap: 0.4rem;
+  width: 100%;
+}
+.try-field {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  overflow: hidden;
+  border-radius: 10px;
+  background:
+    radial-gradient(
+      circle at 30% 20%,
+      color-mix(in srgb, var(--text) 5%, transparent),
+      transparent 60%
+    ),
+    color-mix(in srgb, var(--text) 7%, transparent);
+}
+/* ⚠️ the feet on the spot, like every creature in the park — the transform is set inline */
+.try-field-pet {
+  position: absolute;
+  pointer-events: none;
+  z-index: 2;
+}
+.try-field-say {
+  margin: 0;
+  font-size: 0.76rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+}
+
 /* ⚠️ anchored at the FEET, like every creature in the park, or the circles centre on its chest */
 .cast-show-pet {
   position: absolute;

@@ -64,6 +64,7 @@ import {
 import { MoveShow } from '../pets/MoveShow'
 import { saysOf, temperOf } from '../park/temper'
 import { CastShow } from '../pets/CastShow'
+import { TryField } from '../pets/TryField'
 import { swapRanged, whyCasts } from '../park/temper'
 import { castShapeOf } from '../park/castShape'
 
@@ -379,6 +380,8 @@ export function PaintRoom() {
   /* ⚠️ which of the nine the park-scale field is showing: a swing picked above, or null for the
      cast its own picker chose. One field, two pickers, no third row of buttons. */
   const [shownSwing, setShownSwing] = useState<Attack | null>(null)
+  /* ⚠️ the field either plays a move AT you or hands it over — see TryField */
+  const [trying, setTrying] = useState(false)
   /**
    * When each tool was last picked, as a counter rather than a clock.
    *
@@ -4109,13 +4112,30 @@ export function PaintRoom() {
                     <span className="muted paint-pet-moves">
                       And three big ones, on 1, 2 and 3 — each with its own wait.
                     </span>
-                    <CastShow
-                      art={petPreview}
-                      casts={petBoss.casts}
-                      scale={petBoss.scale}
-                      swing={shownSwing}
-                      onPickCast={() => setShownSwing(null)}
-                    />
+                    {/**
+                      ⚠️ THE SAME SPACE, NOT A NEW PANEL. Everything above this is something you
+                      WATCH — a loop playing one move at a time — and what was asked for three
+                      times is to MOVE: how fast you walk, how far that swing reaches when you are
+                      the one swinging it, how big you are beside it. None of those are questions
+                      a loop answers. It takes over the field rather than sitting under it,
+                      because the wizard has already been cut down once for feeling like a lot.
+                    */}
+                    {trying ? (
+                      <TryField art={petPreview} onDone={() => setTrying(false)} />
+                    ) : (
+                      <CastShow
+                        art={petPreview}
+                        casts={petBoss.casts}
+                        scale={petBoss.scale}
+                        swing={shownSwing}
+                        onPickCast={() => setShownSwing(null)}
+                      />
+                    )}
+                    {!trying && (
+                      <button className="btn" onClick={() => setTrying(true)}>
+                        ▶ Walk it around
+                      </button>
+                    )}
                     {/**
                       ⚠️ WHY IT GOT THESE, WHICH NOTHING SAID. CastShow plays the three at the
                       real size and speed and saysOf describes how it fights, but nothing joined
