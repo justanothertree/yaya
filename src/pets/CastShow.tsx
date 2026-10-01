@@ -1,9 +1,10 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { Drawing } from '../draw/strokes'
 import { PetView } from './PetView'
-import { petCanvas } from './rig'
+import { footRoom, petCanvas } from './rig'
 import { CAST, patchesOf, type CastKind } from '../park/cast'
-import { PARK_TALL } from '../park/strike'
+import { footSpan, PARK_TALL } from '../park/strike'
+import { petWide } from './attack'
 import { shapeOf } from '../park/castShape'
 import { VIEW } from '../park/walk'
 
@@ -235,9 +236,48 @@ export function CastShow({
             }}
           />
         ))}
+        {/**
+          ⚠️ THE HITBOX THE PARK ACTUALLY USES, drawn with the park's own sum at the park's own
+          scale. Asked for directly — "im interested in being able to test your drawing in a park
+          like space live 1:1 with hitboxes on like in park as well so you see your hitbox" — and
+          this field is already that space: one screenful, the same one the camera shows, with the
+          creature at PARK_TALL times its own scale.
+
+          ⚠️ AN ELLIPSE, AND A SHALLOW ONE, because that is what footSpan tests against: seen from
+          above a creature covers a shallow patch, about four to one. A circle here would be a
+          picture of a hitbox rather than the hitbox.
+
+          ⚠️ AND IT IS NARROWER THAN THE CREATURE ON PURPOSE — 0.8 of the body's width, not the
+          picture's. There is no empty-space buffer in it to remove: it is already smaller than
+          you are, and the 12% padding that does exist belongs to the CANVAS, so a limb swinging
+          past where it rests is not clipped. Nothing about being hit reads that number.
+        */}
+        <span
+          className="park-box is-foot cast-show-foot"
+          aria-hidden
+          style={{
+            left: `${STANDS.x * 100}%`,
+            top: `${STANDS.y * 100}%`,
+            /* ⚠️ the hit test's own function, asked along each axis — never a second copy of
+               its arithmetic, which is how the park's debug ellipse came to agree with a bug */
+            width: `${((footSpan(petWide(art), scale, 1, 0) * 2) / FIELD_ASPECT) * 100}%`,
+            height: `${footSpan(petWide(art), scale, 0, 1) * 2 * 100}%`,
+            transform: 'translate(-50%, -50%)',
+            borderRadius: '50%',
+          }}
+        />
+        {/* ⚠️ STOOD ON ITS FEET, THE WAY THE PARK STANDS IT. The bottom of a pet's canvas is the
+            bottom of its ink box, which carries whatever was drawn below the body and the
+            animation headroom with it — so anchoring the canvas puts the creature that far above
+            the ground, and above the footprint drawn at its feet. Every room that stands a
+            creature on a floor makes this correction; this one is a floor. */}
         <span
           className="cast-show-pet"
-          style={{ left: `${STANDS.x * 100}%`, top: `${STANDS.y * 100}%` }}
+          style={{
+            left: `${STANDS.x * 100}%`,
+            top: `${STANDS.y * 100}%`,
+            transform: `translate(-50%, calc(-100% + ${(footRoom(art) * 100).toFixed(1)}%))`,
+          }}
         >
           <PetView art={art} size={size} facing={1} energy={0} label="" />
         </span>

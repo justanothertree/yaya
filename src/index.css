@@ -9240,6 +9240,11 @@ a.cz-msg-author:focus-visible {
   border-color: #38bdf8;
   background: color-mix(in srgb, #38bdf8 12%, transparent);
 }
+/* ⚠️ under the creature rather than over it, because in here it is a thing to understand
+   rather than a thing to debug — the park's own boxes go on top for the opposite reason */
+.cast-show-foot {
+  z-index: 1;
+}
 .park-box.is-hit {
   border-color: #e8534e;
   background: color-mix(in srgb, #e8534e 18%, transparent);

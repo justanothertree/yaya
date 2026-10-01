@@ -72,7 +72,7 @@ import {
   HOP,
   stepDown,
   stepStrike,
-  FOOT,
+  footSpan,
   octantOf,
   overHead,
   PARK_TALL,
@@ -4154,8 +4154,12 @@ export function ParkRoom({
             debug &&
             feet.map((f) => {
               const at = onScreen(f.at, camAt)
-              const rx = (f.wide * 0.8 * f.scale) / 2
-              const ry = (FOOT.deep * PARK_TALL * f.scale) / 2
+              /* ⚠️ ASKED, NOT REPEATED. This drew the ellipse out of its own copy of footSpan's
+                 arithmetic, so when that sum turned out to be holding two units the picture
+                 agreed with the bug exactly — a debug view whose whole job is to show what the
+                 hit test does, confirming it. One sum, asked along each axis. */
+              const rx = footSpan(f.wide, f.scale, 1, 0)
+              const ry = footSpan(f.wide, f.scale, 0, 1)
               return (
                 <span
                   key={f.k}

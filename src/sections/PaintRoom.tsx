@@ -875,6 +875,32 @@ export function PaintRoom() {
    */
   const bakeLive = useRef(false)
 
+  /**
+   * The frame that says how big your creature is, kept on the picture while you move it.
+   *
+   * ⚠️ IT IS FURNITURE DRAWN IN DOCUMENT COORDINATES, so it has to be mapped through the same
+   * zoom and pan the picture is. Positioned as a plain percentage of the board it simply stayed
+   * put while the drawing moved out from under it — reported as "i dont like how the hitbox
+   * stays if i zoom in", which is exactly what it did.
+   *
+   * ⚠️ AND IT MOVES ON blit RATHER THAN THROUGH REACT, because `off` is a ref on purpose: the
+   * note further up this file records that setting state per pan frame is where the stutter when
+   * zooming with a lot on the page came from. This is the one function that already knows both
+   * numbers, so the frame rides along with the picture it belongs to.
+   */
+  const cropRef = useRef<HTMLSpanElement>(null)
+  const placeCrop = useCallback(() => {
+    const el = cropRef.current
+    if (!el) return
+    const b = cropAt.current
+    if (!b) return
+    const at = (v: number, o: number) => `${((v - o) * scale * 100).toFixed(3)}%`
+    el.style.left = at(b.x0, off.current.x)
+    el.style.top = at(b.y0, off.current.y)
+    el.style.width = `${((b.x1 - b.x0) * scale * 100).toFixed(3)}%`
+    el.style.height = `${((b.y1 - b.y0) * scale * 100).toFixed(3)}%`
+  }, [scale])
+
   const blit = useCallback(() => {
     const b = base.current
     const v = view.current
@@ -915,6 +941,7 @@ export function PaintRoom() {
      * so it must not survive a save, appear in the gallery thumbnail, or be there when somebody
      * else opens the drawing. Anything painted into base is the drawing; this is furniture.
      */
+    placeCrop()
     const box = markRef.current
     if (box) {
       vc.setTransform(dpr, 0, 0, dpr, 0, 0)
@@ -967,7 +994,7 @@ export function PaintRoom() {
       vc.restore()
     }
     vc.setTransform(dpr, 0, 0, dpr, 0, 0)
-  }, [scale, gripPoints])
+  }, [scale, gripPoints, placeCrop])
 
   /** Rebuild `base` from the committed strokes, then show it. */
   const repaint = useCallback(() => {
@@ -1745,6 +1772,9 @@ export function PaintRoom() {
    * ⚠️ ONLY WHILE MAKING A MINION. On an ordinary drawing there is no creature and the frame
    * would be a box around your picture for no reason.
    */
+  /* ⚠️ held in a ref as well, so blit can place the frame without re-rendering — see placeCrop */
+  const cropAt = useRef<{ x0: number; y0: number; x1: number; y1: number } | null>(null)
+
   const petCrop = useMemo(() => {
     /**
      * ⚠️ THE BODY, NOT THE BITMAP — AND THAT IS A CORRECTION. This framed the whole picture,
@@ -1770,6 +1800,14 @@ export function PaintRoom() {
     const at = (v: number) => Math.max(0, Math.min(1, v))
     return { x0: at(b.x0), y0: at(b.y0), x1: at(b.x1), y1: at(b.y1) }
   }, [petStep, petPreview])
+
+  /* ⚠️ mirrored into a ref so blit can place the frame at the zoom and pan it already knows,
+     without this memo having to become a dependency of the thing that paints sixty times a
+     second — see placeCrop */
+  cropAt.current = petCrop
+  useEffect(() => {
+    placeCrop()
+  }, [petCrop, placeCrop])
 
   /**
    * A ruler for the one layer nobody can see the rules of.
@@ -4541,12 +4579,9 @@ export function PaintRoom() {
         {petCrop && (
           <span
             className="paint-crop"
-            style={{
-              left: `${petCrop.x0 * 100}%`,
-              top: `${petCrop.y0 * 100}%`,
-              width: `${(petCrop.x1 - petCrop.x0) * 100}%`,
-              height: `${(petCrop.y1 - petCrop.y0) * 100}%`,
-            }}
+            ref={cropRef}
+            /* ⚠️ no position here: placeCrop owns it, because the zoom and the pan live in refs
+               that React never re-renders for. Set in both places they would disagree. */
             aria-hidden
           >
             <i>your minion · hitbox</i>

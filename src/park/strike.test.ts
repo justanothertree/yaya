@@ -4,9 +4,11 @@ import {
   aimFromOctant,
   aimFromPoint,
   canBeHurt,
+  footSpan,
   GUARD,
   guarded,
   octantOf,
+  PARK_TALL,
   parries,
   restingStriker,
   toScreen,
@@ -14,6 +16,7 @@ import {
   type Striker,
 } from './strike'
 import { restingWalker } from './walk'
+import { PET_TALL } from '../pets/play'
 
 /**
  * Which way you are pointing, and whether a blow gets through.
@@ -200,5 +203,54 @@ describe('what cannot be touched', () => {
     const rolling = striker({ dodge: 0.1, braced: false })
     expect(canBeHurt(rolling)).toBe(false)
     expect(guarded(rolling, fromAngle(0)), 'a roll is not a block').toBe(false)
+  })
+})
+
+/**
+ * How big a target a creature makes in the park.
+ *
+ * ⚠️ THIS WENT UNTESTED AND WAS WRONG THE WHOLE TIME, which is the pair of facts that belong
+ * together. footSpan held two units: its DEPTH converted pet-heights to this screen (FOOT.deep ×
+ * PARK_TALL) and its WIDTH never did, so the horizontal half of every footprint came out 1/0.44
+ * too big and a creature was most of a body wider to hit than it looked. It is the mistake
+ * strike.ts has its loudest note about, in the one function that most quietly decides fights.
+ *
+ * ⚠️ AND THE TEST THAT CATCHES IT ASKS THE SIMPLEST QUESTION, not the arithmetic: is the thing
+ * that has to be hit SMALLER than the creature you can see? It must be — 0.8 of it — and under
+ * the old sum it was 1.82 times bigger. Measured against the creature's drawn width, which comes
+ * from PARK_TALL and the drawing's own proportions, not from the conversion being checked.
+ */
+describe('the footprint a creature makes', () => {
+  /** how wide a creature is drawn on this screen, in screen-heights — height times its shape */
+  const drawnWide = (ratio: number) => PARK_TALL * ratio
+  const span = (ratio: number, scale = 1) => footSpan(PET_TALL * ratio, scale, 1, 0) * 2
+
+  it('is narrower than the creature, never wider', () => {
+    for (const ratio of [0.5, 1, 1.6, 3]) {
+      expect(span(ratio), `a ${ratio}:1 creature`).toBeLessThan(drawnWide(ratio))
+    }
+  })
+
+  it('and is four fifths of it, which is the only number in there', () => {
+    for (const ratio of [0.5, 1, 1.6, 3]) {
+      expect(span(ratio)).toBeCloseTo(drawnWide(ratio) * 0.8, 10)
+    }
+  })
+
+  /** ⚠️ and it grows with a boss exactly as the boss does, rather than faster */
+  it('and scales with the creature', () => {
+    for (const scale of [1, 2.05, 3.05]) {
+      expect(span(1, scale)).toBeCloseTo(drawnWide(1) * 0.8 * scale, 10)
+    }
+  })
+
+  /**
+   * ⚠️ AND IT IS SHALLOW, which is the half that was always right: seen from above a creature
+   * covers a shallow patch, and treating it as a circle means picking which lie to tell.
+   */
+  it('and is far shallower than it is wide', () => {
+    const across = footSpan(PET_TALL, 1, 1, 0)
+    const deep = footSpan(PET_TALL, 1, 0, 1)
+    expect(deep).toBeLessThan(across / 2)
   })
 })

@@ -1091,8 +1091,26 @@ function swipeOf(at: Spot, aim: Aimed, a: Attack, scale: number): Swipe {
  * the support of an ellipse along a unit direction is hypot(a·ux, b·uy) — which gives the wide
  * answer along x, the shallow one along y, and the right thing at every angle between.
  */
-export const footSpan = (wide: number, scale: number, ux: number, uy: number): number => {
-  const rx = (wide * 0.8 * scale) / 2
+export const footSpan = (petWide: number, scale: number, ux: number, uy: number): number => {
+  /**
+   * ⚠️ THE WIDTH WAS IN THE WRONG UNIT, AND IT IS THE MISTAKE THIS FILE HAS A SHOUTING NOTE
+   * ABOUT. `petWide` is PET_TALL times the drawing's proportions — a fraction of the PETS room's
+   * world, where a creature stands 0.2 high. On this screen a creature stands PARK_TALL, which
+   * is 0.088. The depth beside it converts (FOOT.deep × PARK_TALL) and the width never did, so
+   * one function was holding two units and the horizontal half of every footprint came out
+   * 1/0.44 too big — 1.82 times the creature's own drawn width once the 0.8 is applied.
+   *
+   * Which is to say every creature in the park has been most of a body wider to hit than it
+   * looks, and the empty band around it is what that looked like. Reported as "should there be
+   * an empty space buffer still or no, i feel like no". There should not; there was not meant
+   * to be one; it was a conversion.
+   *
+   * ⚠️ MEASURED TWO WAYS BEFORE CHANGING IT. The arithmetic says PET_TALL × 0.8 / PARK_TALL =
+   * 1.818, and an ellipse drawn with the old sum beside the creature in the wizard's park-scale
+   * field measured 1.879 times its painted width. Those agree, and neither of them is the sum
+   * being corrected.
+   */
+  const rx = (petWide * (PARK_TALL / PET_TALL) * 0.8 * scale) / 2
   const ry = (FOOT.deep * PARK_TALL * scale) / 2
   return Math.hypot(rx * ux, ry * uy)
 }
