@@ -320,6 +320,12 @@ describe('the shape a creature is drawn at', () => {
  * AND that a real limb drawn in the same place would have changed it — otherwise the test passes
  * just as happily against a function that ignores every layer it is given.
  */
+/** the drawing with only these layers kept, picked by NAME rather than by the thing under test */
+const only = (d: Drawing, names: string[]): Drawing => ({
+  ...d,
+  strokes: d.strokes.filter((k) => names.includes(d.layers?.[k.l ?? 0] ?? '')),
+})
+
 describe('what a move-layer does to the size of the creature', () => {
   /**
    * A body, plus one extra layer of ink off to the right and hanging a little below it.
@@ -413,15 +419,44 @@ describe('what a move-layer does to the size of the creature', () => {
     expect(petRatio(withLayer('spell'))).toBeCloseTo(petRatio(plain()), 10)
   })
 
-  /** ⚠️ and a move drawn far below the feet is still not allowed to hoist the creature away */
-  it('and will not lift a creature off the screen to reach a move drawn under it', () => {
-    const deep = drawing({
-      layers: ['body', 'spell'],
+  /**
+   * ⚠️ AND THE CORRECTION HAS TO FINISH, which is what this used to assert the opposite of. It
+   * checked that footRoom stopped at 0.4 — the cap — and it passed for the wrong reason as well:
+   * its fixture used a `spell` layer, which pictureBox had already stopped counting, so the value
+   * was small and the cap was never reached. A test of a clamp, against a drawing that could not
+   * reach it.
+   *
+   * The claim worth making is the one somebody sees: a creature stands with its FEET on the
+   * floor line, whatever it has drawn below itself. footRoom is how far the room must push the
+   * picture down to put them there, so it has to equal that gap and not a ceiling.
+   */
+  it('and pushes the picture down far enough to stand a creature on its own feet', () => {
+    for (const [name, hit] of [
+      ['shallow', [0.3, 0.6, 0.8, 0.68]],
+      ['deep', [0.2, 0.6, 0.95, 0.88]],
+      ['very deep', [0.1, 0.62, 0.99, 0.99]],
+    ] as const) {
+      const d = drawing({
+        layers: ['body', 'hit'],
+        strokes: [stroke({ p: [0.42, 0.25, 0.58, 0.6], l: 0 }), stroke({ p: [...hit], l: 1 })],
+      })
+      const whole = inkBox(only(d, ['body', 'hit']))!
+      const feet = inkBox(only(d, ['body']), undefined, false)!.y1
+      /* the gap, worked out from the ink rather than from the function being tested */
+      const gap = (whole.y1 - feet) / (whole.y1 - whole.y0)
+      expect(footRoom(d), `${name} did not reach the floor`).toBeCloseTo(gap, 10)
+    }
+  })
+
+  /** ⚠️ and a degenerate drawing still cannot push the picture off the bottom of the world */
+  it('and still refuses a drawing that is almost entirely below its body', () => {
+    const silly = drawing({
+      layers: ['body', 'hit'],
       strokes: [
-        stroke({ p: [0.4, 0.05, 0.6, 0.2], l: 0 }),
-        stroke({ p: [0.3, 0.3, 0.9, 0.99], l: 1 }),
+        stroke({ p: [0.49, 0.001, 0.51, 0.004], l: 0 }),
+        stroke({ p: [0.0, 0.01, 1, 1], l: 1 }),
       ],
     })
-    expect(footRoom(deep)).toBeLessThanOrEqual(0.4)
+    expect(footRoom(silly)).toBeLessThanOrEqual(0.95)
   })
 })

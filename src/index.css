@@ -8556,9 +8556,39 @@ a.cz-msg-author:focus-visible {
 }
 /* ⚠️ translate(-50%, -100%): x is the middle of the creature and y is the ground under its
    feet, which is what every number in walk.ts means by a position — the same as the fight. */
+/**
+ * One creature on the field, anchored at its feet.
+ *
+ * ⚠️ THE NAME TAG IS OUT OF FLOW, AND THAT IS A BUG FIX RATHER THAN TIDYING. Every room stands
+ * a creature by putting the BOTTOM OF ITS PICTURE on the floor line — translate(-100%) — and the
+ * name tag and the life bar used to sit inside this element, under the canvas. So -100% anchored
+ * the bottom of the NAME, and the creature floated above its own feet by the whole height of the
+ * tag: measured against this stylesheet, a 120px creature makes a 145px element, which at an
+ * ordinary footRoom leaves it 22px — about a fifth of itself — above the ground it is standing
+ * on. Its hitbox, its shadow and its depth all stayed correctly on that ground, so what you saw
+ * was a creature hovering over its own hitbox. Reported exactly that way: "the hitbox + block
+ * centering is below most or all of my minions".
+ *
+ * ⚠️ AND IT GOT WORSE THE MORE A CREATURE HAD, because a life bar only appears once something
+ * has hit you — so a creature rose another 7px at the moment it was being fought, which is the
+ * one moment the hitbox matters.
+ *
+ * Out of flow, this element is exactly the picture, and translate(-100%) means what every room
+ * has always assumed it meant.
+ */
 .park-one {
   position: absolute;
   transform: translate(-50%, -100%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  pointer-events: none;
+}
+.park-tag {
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
   display: flex;
   flex-direction: column;
   align-items: center;

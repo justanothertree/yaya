@@ -330,10 +330,14 @@ function BossFigure({
       {/* ⚠️ what is LEFT of it, not what it has taken. A boss has a pool rather than the three
           lives a scrap gives you, and a bar is the only honest way to say how much of a thing that
           big is still coming — and with two people hitting it, the only way to agree on it. */}
-      <span className="park-life" aria-label={`${Math.round(hp * 100)}% left`}>
-        <i style={{ width: `${hp * 100}%` }} />
+      {/* ⚠️ OUT OF THE PICTURE'S OWN HEIGHT — see .park-tag. A boss floated furthest of
+          anything on the field, because its name tag is the biggest one here. */}
+      <span className="park-tag">
+        <span className="park-life" aria-label={`${Math.round(hp * 100)}% left`}>
+          <i style={{ width: `${hp * 100}%` }} />
+        </span>
+        <span className="park-name">{done ? `${name} — beaten` : name}</span>
       </span>
-      <span className="park-name">{done ? `${name} — beaten` : name}</span>
     </span>
   )
 }
@@ -4041,19 +4045,26 @@ export function ParkRoom({
                         everybody at all times is four bars on a field where three of the
                         creatures are out for a walk — this appears on the blow that makes it
                         mean something, and goes again when you get back up. */}
-                    {one.mine && shownYou.hurt > 0 && (
-                      <span
-                        className="park-life is-mine"
-                        aria-label={`${Math.max(0, Math.round((1 - shownYou.hurt / PLAYER_LIFE) * 100))}% left`}
-                      >
-                        <i
-                          style={{
-                            width: `${Math.max(0, Math.min(1, 1 - shownYou.hurt / PLAYER_LIFE)) * 100}%`,
-                          }}
-                        />
+                    {/* ⚠️ OUT OF THE PICTURE'S OWN HEIGHT — see .park-tag. The creature is
+                        stood on the floor by putting the bottom of this element there, so
+                        anything in flow underneath the canvas lifts it off its own feet. */}
+                    <span className="park-tag">
+                      {one.mine && shownYou.hurt > 0 && (
+                        <span
+                          className="park-life is-mine"
+                          aria-label={`${Math.max(0, Math.round((1 - shownYou.hurt / PLAYER_LIFE) * 100))}% left`}
+                        >
+                          <i
+                            style={{
+                              width: `${Math.max(0, Math.min(1, 1 - shownYou.hurt / PLAYER_LIFE)) * 100}%`,
+                            }}
+                          />
+                        </span>
+                      )}
+                      <span className="park-name">
+                        {one.down ? `${one.name} — down` : one.name}
                       </span>
-                    )}
-                    <span className="park-name">{one.down ? `${one.name} — down` : one.name}</span>
+                    </span>
                   </span>
                 )
               })}

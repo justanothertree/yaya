@@ -51,7 +51,7 @@ import { applyLayerOp, type LayerOp, type Stack } from '../draw/layerOps'
 import { paintSession } from '../draw/session'
 import { petsSaved, petsTrouble, savePet } from '../pets/pets'
 import { PetView } from '../pets/PetView'
-import { PART_DOES, PART_WORDS, inFrontOfOrder, inkBox, partOf, pictureBox } from '../pets/rig'
+import { PART_DOES, PART_WORDS, inFrontOfOrder, inkBox, notBodyLayers, partOf } from '../pets/rig'
 import { MoveShow } from '../pets/MoveShow'
 import { saysOf, temperOf } from '../park/temper'
 import { CastShow } from '../pets/CastShow'
@@ -1721,10 +1721,23 @@ export function PaintRoom() {
    * would be a box around your picture for no reason.
    */
   const petCrop = useMemo(() => {
-    /* ⚠️ THE PICTURE'S BOX, because this frame is a promise about the real crop — paintPet uses
-       the same one, so a frame drawn from anything else would be a rectangle in the wrong place.
-       A cast layer sits outside it, which is true: the room paints those, not the bitmap. */
-    const b = petStep ? pictureBox(petPreview) : null
+    /**
+     * ⚠️ THE BODY, NOT THE BITMAP — AND THAT IS A CORRECTION. This framed the whole picture,
+     * which is the box the CANVAS has to be, and a canvas has to hold whatever you can swing. So
+     * the moment somebody drew a hit layer across the page the frame became the page, and the
+     * one thing it was there to show — how big your creature is — was gone. Reported in those
+     * words: "even though there is a hitbox outline on the canvas it turns into full outline
+     * most of the time after im done drawing i think because of the hit or spell layers".
+     *
+     * ⚠️ AND THE BODY IS THE USEFUL FACT ANYWAY, because it is the one the GAME asks. It is what
+     * bodyRatio measures, so it is the size you are drawn at and the target anybody has to reach
+     * to hit you — see notBodyLayers. A swing drawn past it is still thrown; it is just not part
+     * of what you are, which is exactly what the frame now says by leaving it outside.
+     *
+     * ⚠️ UNPADDED, for the same reason bodyRatio is: this is what an enemy has to reach, not
+     * what the canvas has to hold.
+     */
+    const b = petStep ? inkBox(petPreview, notBodyLayers(petPreview), false) : null
     if (!b) return null
     /* ⚠️ HELD INSIDE THE PAGE. inkBox pads out past the ink, and past the paper with it, so an
        unclamped frame hangs off the board — where the board's own overflow clips it and takes the
@@ -4446,7 +4459,7 @@ export function PaintRoom() {
             }}
             aria-hidden
           >
-            <i>this becomes your minion</i>
+            <i>your minion — this is its size, and what has to be hit</i>
           </span>
         )}
       </div>

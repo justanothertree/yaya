@@ -564,8 +564,21 @@ export function footRoom(d: Drawing): number {
   if (!whole || !body) return 0
   const h = whole.y1 - whole.y0
   if (!(h > 0)) return 0
-  /* capped: a creature drawn entirely above a huge ground attack must not be hoisted off screen */
-  return Math.max(0, Math.min(0.4, (whole.y1 - body.y1) / h))
+  /**
+   * ⚠️ THE CAP WAS DOING THE OPPOSITE OF ITS NOTE, which read "a creature drawn entirely above a
+   * huge ground attack must not be hoisted off screen". Nothing is hoisted: this value only ever
+   * pushes the picture DOWN so the body's feet reach the line, and the part that goes below is
+   * the region the attack was drawn in — which is not painted at all unless that attack is out.
+   * What 0.4 actually did was stop the correction finishing. Measured on a creature with a low
+   * hit layer the honest answer is 0.44, and on a deep one 0.51, so both were clamped and both
+   * floated above their own hitbox. That was half of a bug reported as "the hitbox + block
+   * centering is below most or all of my minions"; .park-tag is the other half.
+   *
+   * ⚠️ IT IS BOUNDED BY ITS OWN ARITHMETIC ANYWAY, because the body is inside the picture: the
+   * gap below it cannot be the whole height. The clamp that is left is a guard against a
+   * degenerate drawing rather than a rule about how creatures stand.
+   */
+  return Math.max(0, Math.min(0.95, (whole.y1 - body.y1) / h))
 }
 
 /**
