@@ -55,7 +55,15 @@ export type PartKind =
  * "wing 2", "Wings". Matching on a substring costs nothing and is the difference between a
  * feature that works for the person who read the instructions and one that works.
  */
-const WORDS: Array<[PartKind, string[]]> = [
+/**
+ * ⚠️ EXPORTED FOR ONE TEST, AND IT EARNS IT. Matching is by SUBSTRING and first match wins, so
+ * the ORDER of this list is correctness rather than taste — this file has been caught by that
+ * twice, once turning a fang into a propeller. The test walks this array and asserts every word
+ * in it reads back as its own kind, which is a check that cannot go stale when a word is added:
+ * the alternative is a hand-written table of the same words somewhere else, and docs/ already
+ * records what happens to those.
+ */
+export const WORDS: Array<[PartKind, string[]]> = [
   /**
    * ⚠️ A LAYER YOU DO NOT SEE UNTIL YOU SWING IT. Everything else in this list is a piece of a
    * creature that is always there; a hit is the one part that is hidden by default, appears for
@@ -110,17 +118,57 @@ const WORDS: Array<[PartKind, string[]]> = [
    * drawn may change, which is the cost this list otherwise has to weigh every time.
    */
   ['horn', ['horn', 'spike', 'blade', 'sword', 'tusk', 'fang', 'stinger', 'pincer', 'antler']],
-  ['spin', ['wheel', 'rotor', 'propeller', 'gear', 'fan']],
-  ['flame', ['flame', 'fire', 'torch', 'candle']],
-  ['float', ['halo', 'aura', 'balloon', 'ghost', 'cloud', 'bubble', 'float']],
-  ['mouth', ['mouth', 'jaw', 'tongue', 'teeth', 'tooth']],
-  ['wing', ['wing', 'flap']],
+  ['spin', ['wheel', 'rotor', 'propeller', 'gear', 'fan', 'turbine']],
+  ['flame', ['flame', 'fire', 'torch', 'candle', 'ember', 'spark']],
+  [
+    'float',
+    ['halo', 'aura', 'balloon', 'ghost', 'cloud', 'bubble', 'float', 'wisp', 'mist', 'spirit'],
+  ],
+  ['mouth', ['mouth', 'jaw', 'tongue', 'teeth', 'tooth', 'lips', 'maw']],
+  /**
+   * ⚠️ THE THINNEST LIST HERE WAS THE MOST EXPRESSIVE MOTION, which is backwards and was the
+   * whole of a complaint. Flapping is the thing people most want and `wing` and `flap` were the
+   * only two ways in — while `horn`, which does not move at all, had nine. So a cape, a cloak, a
+   * sail, a petal or a banner all fell through to `body` and stood there breathing, and the only
+   * way to make the obvious thing happen was to call your cape a wing. Said as "in some scenarios
+   * you want the animation of a layer over drawing whatever it is".
+   *
+   * ⚠️ ADDING A WORD CHANGES CREATURES THAT ALREADY EXIST, and that is the point rather than a
+   * side effect: a layer somebody called `cape` breathes today and flaps tomorrow. It is what the
+   * name always said. Nothing MOVES kind — moving a word from one list to another would silently
+   * re-animate drawings whose owners chose that word under the old meaning, which is the thing
+   * this file's opening note warns about and is not worth any amount of tidiness.
+   *
+   * ⚠️ AND THESE DO NOT GO IN PART_WORDS, despite its note that a word nobody can find is a
+   * feature nobody finds. That note is about the ONE word per kind the room offers as a button,
+   * and the room has fifteen buttons already. These are not a thing to advertise: they are the
+   * net under somebody who names a layer what the thing IS. You press `wing` to ask for flapping;
+   * you type `cape` because you drew a cape, and this is what stops the answer being nothing.
+   */
+  [
+    'wing',
+    [
+      'wing',
+      'flap',
+      'cape',
+      'cloak',
+      'sail',
+      'frond',
+      'petal',
+      'leaf',
+      'banner',
+      'scarf',
+      'veil',
+      'shawl',
+      'membrane',
+    ],
+  ],
   ['antenna', ['antenna', 'antennae', 'feeler', 'whisker']],
   ['ear', ['ear']],
   ['tail', ['tail']],
   ['leg', ['leg', 'foot', 'feet', 'paw', 'claw', 'hoof', 'talon']],
   ['arm', ['arm', 'fin', 'hand', 'flipper', 'fist', 'tentacle']],
-  ['head', ['head', 'face', 'snout', 'beak', 'nose']],
+  ['head', ['head', 'face', 'snout', 'beak', 'nose', 'skull', 'muzzle']],
   ['body', ['body', 'shell', 'torso']],
 ]
 

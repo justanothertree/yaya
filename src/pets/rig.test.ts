@@ -12,6 +12,7 @@ import {
   PART_WORDS,
   petRatio,
   rigOf,
+  WORDS,
   type PartKind,
 } from './rig'
 import type { Drawing, Stroke } from '../draw/strokes'
@@ -48,6 +49,51 @@ const drawing = (over: Partial<Drawing> = {}): Drawing => ({
 })
 
 describe('reading a part out of a layer name', () => {
+  /**
+   * ⚠️ EVERY WORD READS BACK AS ITS OWN KIND, walked off the list itself so it cannot go stale.
+   * Matching is by SUBSTRING and first match wins, so a word added to a list that sits later than
+   * one of its own fragments silently means something else — this file's own opening note says it
+   * has been caught by that twice. A hand-written copy of these words would be a second list to
+   * keep true; this one fails the moment a new word lands in the wrong place.
+   */
+  it('and every word in the list means what it says', () => {
+    for (const [kind, words] of WORDS)
+      for (const w of words) expect(partOf(w), `"${w}" does not read as a ${kind}`).toBe(kind)
+  })
+
+  /**
+   * ⚠️ AND THE THINGS PEOPLE DRAW INSTEAD OF A WING, which is why the list was widened at all:
+   * flapping had two ways in and standing perfectly still had nine. Each of these used to fall
+   * through to `body` and breathe, so the only way to make a cape flap was to call it a wing.
+   */
+  it('and the things you would draw instead of a wing still flap', () => {
+    for (const word of ['cape', 'cloak', 'sail', 'petal', 'leaf', 'banner', 'scarf', 'membrane'])
+      expect(partOf(word), `a ${word} does not flap`).toBe('wing')
+  })
+
+  /** ⚠️ and nothing that already meant something changed its mind — the words that were here */
+  it('and leaves every word that was already taken alone', () => {
+    const was: Array<[string, PartKind]> = [
+      ['hit', 'hit'],
+      ['blast', 'hit'],
+      ['spell', 'spell'],
+      ['horn', 'horn'],
+      ['fang', 'horn'],
+      ['blade', 'horn'],
+      ['gear', 'spin'],
+      ['fan', 'spin'],
+      ['heart', 'pulse'],
+      ['ear', 'ear'],
+      ['fin', 'arm'],
+      ['tentacle', 'arm'],
+      ['halo', 'float'],
+      ['fire', 'flame'],
+      ['tail', 'tail'],
+      ['body', 'body'],
+    ]
+    for (const [word, kind] of was) expect(partOf(word), `"${word}" changed meaning`).toBe(kind)
+  })
+
   it('knows the word wherever it sits in the name', () => {
     expect(partOf('wing')).toBe('wing')
     expect(partOf('left wing')).toBe('wing')
