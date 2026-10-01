@@ -68,10 +68,6 @@ const PaintRoom = lazyRetry(
   () => import('./sections/PaintRoom'),
   (m) => m.PaintRoom,
 )
-const PetsRoom = lazyRetry(
-  () => import('./pets/PetsRoom'),
-  (m) => m.PetsRoom,
-)
 const SignIn = lazyRetry(
   () => import('./sections/SignIn'),
   (m) => m.SignIn,
@@ -1455,8 +1451,6 @@ export default function App() {
         return <InstrumentRoom inCanvas />
       case 'paint':
         return <PaintRoom />
-      case 'minions':
-        return <PetsRoom onControlChange={setGameHasControl} />
       case 'contact':
         return <ContactForm />
       case 'admin':
@@ -2344,13 +2338,6 @@ export default function App() {
                */}
               <Suspense fallback={<div aria-busy>Loading…</div>}>
                 <PaintRoom />
-              </Suspense>
-            </section>
-          )}
-          {!sharedCanvasShowing && active === 'minions' && (
-            <section id="minions" className="card reveal">
-              <Suspense fallback={<div aria-busy>Loading…</div>}>
-                <PetsRoom onControlChange={setGameHasControl} />
               </Suspense>
             </section>
           )}

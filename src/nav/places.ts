@@ -117,15 +117,12 @@ export const PLACES = [
   { id: 'visualizer', label: 'Visualiser', icon: '🎚️', title: 'Visualiser', nav: () => true },
   { id: 'instrument', label: 'Instrument', icon: '🎹', title: 'Instrument', nav: () => true },
   { id: 'paint', label: 'Paint', icon: '🎨', title: 'Paint', nav: () => true },
-  /* ⚠️ Beside Paint, because that is where its minions come from — every one of them is a
-     drawing somebody kept, and the first thing the room tells you to do is name its layers.
-
-     ⚠️ THEY WERE CALLED PETS UNTIL TODAY, so `#pets` is aliased below for the same reason
-     `#snake` is: the name a thing is called is the owner's to change, and a link somebody was
-     already sent is not. Everything the DATABASE and people's browsers have already written down
-     still says `pet` — the library kind, the profile block type, the localStorage key — because
-     renaming those rewrites other people's rows to change a word on a heading. */
-  { id: 'minions', label: 'Minions', icon: '🐾', title: 'Minions', nav: () => true },
+  /* ⚠️ MINIONS IS NOT A PLACE ANY MORE — it is the room inside Games, and `#minions` is aliased
+     below. Making one creature and playing it used to touch three tabs: Paint to draw it and to
+     reach the map maker, Minions to see it, Games to play it — and the map you had just drawn was
+     the hardest thing in the site to get back to. Said plainly: "having to go between all three
+     tabs and then navigate into a map that you made is not easy". Everything about a creature now
+     hangs off one door. */
   { id: 'contact', label: 'Contact', icon: '✉️', title: 'Contact', nav: () => true },
 
   /**
@@ -167,7 +164,33 @@ export const navFor = (v: Viewer): readonly Place[] => PLACES.filter((p) => p.na
  * did. So `#snake` keeps working, keeps its query, and lands on the games room with Snake
  * already open — which is exactly what it always did.
  */
-export const SECTION_ALIASES: Record<string, Section> = { snake: 'games', pets: 'minions' }
+/**
+ * ⚠️ AND `#minions` JOINED THEM when the room moved inside Games. It was a tab for months, it is
+ * linked from the games menu's own locked tile, and people have it open — so it keeps working and
+ * lands where the room went, which is the same promise `#snake` got. `#pets` points at Games now
+ * rather than at `minions`, because an alias that resolves to another alias is a chain nobody
+ * wrote and nothing tests.
+ */
+export const SECTION_ALIASES: Record<string, Section> = {
+  snake: 'games',
+  pets: 'games',
+  minions: 'games',
+}
+
+/**
+ * The hash the page was OPENED with, before anything normalised it.
+ *
+ * ⚠️ AN ALIAS LOSES THE WORD THAT WAS TYPED, and a room that wants to know which door you came
+ * through has to be told before it is gone. `#minions` resolves to `games` and the address bar is
+ * rewritten to say so — so by the time the games room mounts and asks what was wanted, the only
+ * thing left is `#games` and it opens its menu. `#snake` survived that for years by accident: the
+ * challenge links all carry `?room=`, and a query is preserved where a base is not.
+ *
+ * ⚠️ READ AT MODULE SCOPE, which is the whole mechanism — this file is imported by App before any
+ * effect runs, so the value is the one the browser arrived with. The same reason DEV_PREVIEW is
+ * read where it is, and the same reason it needs a full load rather than a hash change.
+ */
+export const LANDED_AT = typeof window === 'undefined' ? '' : window.location.hash
 
 /**
  * The section a hash names. One answer, for the first load and for every hashchange after it.

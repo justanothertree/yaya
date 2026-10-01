@@ -1537,6 +1537,26 @@ export function PaintRoom() {
     }
   }
 
+  /**
+   * What the address bar asked this room to OPEN, once, on the way in.
+   *
+   * ⚠️ BECAUSE "GO TO PAINT AND THEN PRESS THE BUTTON" IS THE JOURNEY BEING SHORTENED. The games
+   * room's Minions page offers Make a minion and Make a map, and a link that only reaches the
+   * page leaves you looking for the control — which is most of what was wrong with having these
+   * spread over three tabs in the first place.
+   *
+   * ⚠️ AN ENTRANCE, NOT A MIRROR, which is the rule GamesRoom's own hash reader states: read
+   * once and never written back, so the room never edits the address bar from under you. The
+   * empty dependency list is the whole of that promise.
+   */
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.hash.split('?')[1] ?? '')
+    const make = q.get('make')
+    if (make === 'map') setMaking(true)
+    else if (make === 'minion') startPetWizard()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   const nameLayerIfBlank = (i: number, to: string) => {
     if ((layerNames[i] ?? '').trim()) return
     /* a name is in the snapshot, so writing one without marking leaves the history describing a

@@ -4,6 +4,7 @@ import { PetView } from '../pets/PetView'
 import { pets as myPets, subscribePets } from '../pets/pets'
 import { gallery, subscribeGallery } from '../draw/gallery'
 import { readHandle } from '../game/handle'
+import { LANDED_AT } from '../nav/places'
 
 /**
  * The room the games live in.
@@ -40,7 +41,15 @@ const ParkRoom = lazyRetry(
   (m) => m.ParkRoom,
 )
 
-type GameId = 'snake' | 'playground' | 'fight' | 'park'
+const PetsRoom = lazyRetry(
+  () => import('../pets/PetsRoom'),
+  (m) => m.PetsRoom,
+)
+
+type GameId = 'snake' | 'playground' | 'fight' | 'park' | 'minions'
+
+/** the bases that mean something IN HERE, so a landing hash of `#home` does not win over `#games` */
+const KNOWN = /^(snake|minions|pets|games)$/
 
 /**
  * Which game the address bar asked for, or null for the menu.
@@ -51,14 +60,27 @@ type GameId = 'snake' | 'playground' | 'fight' | 'park'
  * ENTRANCE here, not a mirror — which is all a challenge link ever needed it to be.
  */
 function wantedFromHash(): GameId | null {
-  const raw = window.location.hash.replace(/^#/, '')
+  /* ⚠️ THE ONE IT ARRIVED WITH WINS, because an alias rewrites the address bar before this room
+     ever mounts: `#minions` is `#games` by the time anything here can read it, and the word that
+     said which door you came through is gone. Falling back to the current hash keeps a later
+     in-app jump to `#snake` or `#games?play=park` working, which is the other half of the job. */
+  const landed = LANDED_AT.replace(/^#/, '')
+  const now = window.location.hash.replace(/^#/, '')
+  const raw = KNOWN.test(landed.split('?')[0] ?? '') ? landed : now
   const [base, query] = raw.split('?')
   const q = new URLSearchParams(query ?? '')
   // A room to join or a score to beat is a Snake link whatever the base says — and `#snake` is
   // the alias every challenge message ever posted was built from.
   if (base === 'snake' || q.has('room') || q.has('beat')) return 'snake'
+  /* ⚠️ `#minions` and `#pets` were tabs and are links people hold — see SECTION_ALIASES. They
+     land on the room the tab became, which is this one, open at the creatures. */
+  if (base === 'minions' || base === 'pets') return 'minions'
   const play = q.get('play')
-  return play === 'snake' || play === 'playground' || play === 'fight' || play === 'park'
+  return play === 'snake' ||
+    play === 'playground' ||
+    play === 'fight' ||
+    play === 'park' ||
+    play === 'minions'
     ? play
     : null
 }
@@ -210,6 +232,53 @@ export function GamesRoom({
       </>
     )
 
+  /**
+   * Everything about a creature, behind one door.
+   *
+   * ⚠️ THE ROOM THE MINIONS TAB BECAME, and the reason it moved. Making one creature and playing
+   * it used to touch three tabs — Paint to draw it and to reach the map maker, Minions to see it,
+   * Games to play it — and the map you had just drawn was the hardest thing on the site to get
+   * back to. Reported in those words: "having to go between all three tabs and then navigate into
+   * a map that you made is not easy."
+   *
+   * ⚠️ THE WAYS IN COME FIRST AND THE ROSTER FOLLOWS, because the roster is what you LOOK at and
+   * these are what you PRESS. The paint room learned the same thing about its part buttons: the
+   * preview swallowed the visible area and put the things you act on six hundred pixels down.
+   */
+  if (game === 'minions')
+    return (
+      <>
+        <GamesBar onBack={() => setGame(null)} />
+        <div className="games-ways">
+          {mine.length ? (
+            <>
+              <button className="btn" onClick={() => setGame('park')}>
+                🌳 The park
+              </button>
+              <button className="btn" onClick={() => setGame('fight')}>
+                ⚔ Scrap
+              </button>
+              <button className="btn" onClick={() => setGame('playground')}>
+                🏃 Playground
+              </button>
+            </>
+          ) : null}
+          {/* ⚠️ A LINK, NOT A BUTTON, because it leaves the room — and it carries WHICH tool it
+              wants, so it opens the thing rather than the page the thing is on. Going to Paint and
+              being told to press something is the journey this room exists to shorten. */}
+          <a className="btn" href="#paint?make=minion">
+            🐾 Make a minion
+          </a>
+          <a className="btn" href="#paint?make=map">
+            🗺 Make a map
+          </a>
+        </div>
+        <Suspense fallback={<div aria-busy>Loading…</div>}>
+          <PetsRoom onControlChange={onControlChange} />
+        </Suspense>
+      </>
+    )
+
   return (
     <>
       <h2 style={{ marginTop: 0 }}>🎮 Games</h2>
@@ -228,75 +297,30 @@ export function GamesRoom({
           </span>
         </button>
 
-        {mine.length ? (
-          <>
-            <button className="games-tile" onClick={() => setGame('playground')}>
-              <span className="games-tile-art" aria-hidden>
-                {/* ⚠️ STILL, at energy 0. A row of idling creatures on a menu is movement you
-                    did not ask for, and the one on the card is a picture of what you get. */}
-                <PetView art={mine[0].art} size={56} energy={0} />
-              </span>
-              <span className="games-tile-body">
-                <span className="games-tile-name">Playground</span>
-                <span className="games-tile-line">
-                  A platformer for the creatures you drew. Arrow keys to run and jump, 1–9 to switch
-                  which one you are — the rest follow you.
-                </span>
-              </span>
-            </button>
-            <button className="games-tile" onClick={() => setGame('park')}>
-              <span className="games-tile-art" aria-hidden>
-                🌳
-              </span>
-              <span className="games-tile-body">
-                <span className="games-tile-name">The park</span>
-                {/* ⚠️ TWO MODES NOW, AND THIS IS WHERE YOU FIND OUT. "One field" stopped
-                    being the whole truth when the park learned to walk a drawing, and this
-                    tile is the way in — somebody who had drawn a map would read the room's
-                    description and never learn the map was walkable. The three sentences
-                    inside the room were fixed when the mode shipped; the sign on the door
-                    was not, which is the same miss as the locked tile below. */}
-                <span className="games-tile-line">
-                  One field everybody shares — whoever else is online is who you will meet. Or a map
-                  you drew, on your own.
-                </span>
-              </span>
-            </button>
-            <button className="games-tile" onClick={() => setGame('fight')}>
-              <span className="games-tile-art" aria-hidden>
-                <PetView art={mine[mine.length > 1 ? 1 : 0].art} size={56} energy={0} />
-              </span>
-              <span className="games-tile-body">
-                <span className="games-tile-name">Scrap</span>
-                <span className="games-tile-line">
-                  Two of your creatures, three lives each, on a stage you can be knocked off. What
-                  they are made of is what they hit with.
-                </span>
-              </span>
-            </button>
-          </>
-        ) : (
-          /**
-           * ⚠️ THIS IS THE ONLY THING A VISITOR WITH NO CREATURES IS TOLD, and it had been
-           * describing two games since before the park existed. Somebody arriving with nothing
-           * drawn read "a platformer and a fighting ring", went away, and never learned that
-           * the one place on this site where you meet other people was behind the same door.
-           * The tiles above it were updated when the park was added; the sign on the locked
-           * door was not, because nobody with a minion ever sees it.
-           */
-          <a className="games-tile is-locked" href="#minions">
-            <span className="games-tile-art" aria-hidden>
-              🐾
+        {/**
+         * ⚠️ ONE TILE FOR ALL OF IT, WHERE THERE WERE THREE AND A LOCKED SIGN. The park, the
+         * playground and the ring are all the same answer to "what can I do with the creatures I
+         * drew", and listing them here put the three PLACES on the menu while the thing they have
+         * in common — your creatures, and how to make another — was a different tab entirely.
+         *
+         * ⚠️ AND IT IS NEVER LOCKED. The old menu hid all three behind a sign saying make one
+         * first, which is a door you are told about and cannot open; this one opens on the room
+         * that has the Make buttons in it. Somebody with nothing drawn gets taken to where
+         * drawing happens instead of being told where it is.
+         */}
+        <button className="games-tile" onClick={() => setGame('minions')}>
+          <span className="games-tile-art" aria-hidden>
+            {mine.length ? <PetView art={mine[0].art} size={56} energy={0} /> : '🐾'}
+          </span>
+          <span className="games-tile-body">
+            <span className="games-tile-name">Minions</span>
+            <span className="games-tile-line">
+              {mine.length
+                ? 'Your creatures, and everywhere they go: the park everybody shares, a scrap, a platformer. Make another, or draw a map to walk.'
+                : 'Draw a creature and it can walk a park everybody shares, scrap with another, or run a platformer. Start here — you can draw a map for it too.'}
             </span>
-            <span className="games-tile-body">
-              <span className="games-tile-name">The park, Playground &amp; Scrap</span>
-              <span className="games-tile-line">
-                A park everybody shares, a platformer, and a fighting ring — all for creatures you
-                drew. Make one in Minions first.
-              </span>
-            </span>
-          </a>
-        )}
+          </span>
+        </button>
       </div>
     </>
   )

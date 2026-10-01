@@ -9330,6 +9330,23 @@ a.cz-msg-author:focus-visible {
  * from the other side: one screenful, 16:10, with the creature at PARK_TALL of its height. If the
  * two were different shapes then "how big am I" would have two answers in one panel.
  */
+/**
+ * The ways out of the minions room — see GamesRoom.
+ *
+ * ⚠️ A WRAPPING ROW, because there are five of them and two are links rather than buttons. At 375
+ * they stack into two or three lines rather than squeezing five controls across a phone, which is
+ * the row the block toolbar had to learn the same lesson about.
+ */
+.games-ways {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 0 0 0.7rem;
+}
+.games-ways .btn {
+  text-decoration: none;
+}
+
 .try-field-wrap {
   display: grid;
   gap: 0.4rem;
