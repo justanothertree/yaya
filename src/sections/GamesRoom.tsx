@@ -76,13 +76,11 @@ function wantedFromHash(): GameId | null {
      land on the room the tab became, which is this one, open at the creatures. */
   if (base === 'minions' || base === 'pets') return 'minions'
   const play = q.get('play')
-  return play === 'snake' ||
-    play === 'playground' ||
-    play === 'fight' ||
-    play === 'park' ||
-    play === 'minions'
-    ? play
-    : null
+  /* ⚠️ `play=playground` still means something, and what it means now is the minions room — the
+     playground is ON that page rather than a door off it. A link that stopped working would be
+     the one thing SECTION_ALIASES exists to prevent, one level down. */
+  if (play === 'playground') return 'minions'
+  return play === 'snake' || play === 'fight' || play === 'park' || play === 'minions' ? play : null
 }
 
 export function GamesRoom({
@@ -175,11 +173,16 @@ export function GamesRoom({
    * ⚠️ AND THE PARK SPEAKS FOR ITSELF, because it is the one room where being on the page is
    * not the same as playing: until you walk in, the arrows should still move between sections.
    */
+  /* ⚠️ A RULE RATHER THAN A LIST, which is what the note above asks for: a room in here takes the
+     keyboard when there is a game ON its page. That is the scrap, and the minions room now that
+     the playground lives in it — and only when there is actually a creature to play, or an empty
+     roster would eat the arrow keys for a platformer that is not on screen. */
+  const takesKeys = game === 'fight' || (game === 'minions' && mine.length > 0)
   useEffect(() => {
-    if (game !== 'playground' && game !== 'fight') return
+    if (!takesKeys) return
     onControlChange?.(true)
     return () => onControlChange?.(false)
-  }, [game, onControlChange])
+  }, [takesKeys, onControlChange])
 
   if (game === 'snake')
     return (
@@ -192,16 +195,6 @@ export function GamesRoom({
             onLiveChange={liveChange}
             autoFocus={autoFocus}
           />
-        </Suspense>
-      </>
-    )
-
-  if (game === 'playground')
-    return (
-      <>
-        <GamesBar onBack={() => setGame(null)} />
-        <Suspense fallback={<div aria-busy>Loading the playground…</div>}>
-          <PetPlay pets={playable} />
         </Suspense>
       </>
     )
@@ -258,9 +251,6 @@ export function GamesRoom({
               <button className="btn" onClick={() => setGame('fight')}>
                 ⚔ Scrap
               </button>
-              <button className="btn" onClick={() => setGame('playground')}>
-                🏃 Playground
-              </button>
             </>
           ) : null}
           {/* ⚠️ A LINK, NOT A BUTTON, because it leaves the room — and it carries WHICH tool it
@@ -273,6 +263,21 @@ export function GamesRoom({
             🗺 Make a map
           </a>
         </div>
+        {/**
+          ⚠️ THE PLAYGROUND IS THE PAGE, not a door off it. It was a tile of its own, which meant
+          the room that holds your creatures and the room where they run about were two places —
+          and the whole point of this move was that those are one thing. Asked for directly:
+          "maybe the minions is the playground with the minions tab".
+
+          ⚠️ AND IT COMES BEFORE THE ROSTER because it is the part that MOVES. Arriving at a page
+          where your creatures are already running about is a different welcome from arriving at a
+          list with a button marked play.
+        */}
+        {mine.length > 0 && (
+          <Suspense fallback={<div aria-busy>Loading the playground…</div>}>
+            <PetPlay pets={playable} />
+          </Suspense>
+        )}
         <Suspense fallback={<div aria-busy>Loading…</div>}>
           <PetsRoom onControlChange={onControlChange} />
         </Suspense>

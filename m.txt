@@ -1,0 +1,40 @@
+feat(games): the minions room is the playground
+
+"yes merge the playground into the minions page." It was a tile of its own, which meant
+the room holding your creatures and the room where they run about were two places — and
+the whole point of moving everything behind one door was that those are one thing.
+
+The playground is the page now, above the roster, because it is the part that MOVES:
+arriving somewhere your creatures are already running about is a different welcome from
+arriving at a list with a button marked play. The ways in are down to four — the park, a
+scrap, make a minion, make a map — because the fifth is what you are looking at.
+
+`?play=playground` still means something and what it means is this room. A link that
+stopped working is the one thing SECTION_ALIASES exists to prevent, one level down.
+
+The keyboard guard became a RULE rather than a list, which is what its own note asks for
+after the last time: a room in here takes the keys when there is a game ON its page. That
+is the scrap, and the minions room now — and only when there is a creature to play, or an
+empty roster would eat the arrow keys for a platformer that is not on screen.
+
+**And the audit cried wolf about a whole game**, which was worth fixing rather than
+noting. It treated an ancestor as owning its own width only when you could SCROLL it —
+`auto` or `scroll` — and missed the other way a container owns its width: a camera. The
+playground's stage clips a world wider than the screen, so its ledges and treats sit
+hundreds of pixels past the right edge on purpose, and cannot be seen, scrolled to, or
+made to overflow the page. Flagged, that is two findings on a main room at every run, and
+this file's whole doctrine is that a checker nobody runs twice is no checker. `hidden`
+counts now. It costs nothing, because `sideways` is the backstop and does not go through
+that rule: if anything ever does push the document wider than the window, that number
+says so whatever is clipping what.
+
+Verified in the pane: the room shows the ways in, then the playground, then the roster,
+and ArrowRight walks a creature from 0.14 to 0.5 of the stage. `?play=playground` lands
+here with the platformer on it. Re-audited at 375 across home, paint, games, instrument,
+visualiser and this room — every one clean on all four counts, and the two false
+positives gone. 608 tests.
+
+Not verified: whether one page holding a platformer and a roster is too much at once.
+That is a thing to feel rather than measure.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>

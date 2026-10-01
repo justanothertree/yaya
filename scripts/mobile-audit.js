@@ -32,11 +32,24 @@ const shown = (el) => {
   return r.width > 0 && r.height > 0
 }
 
-/** a scrolling ancestor means going past the edge is the design, not a bug */
+/**
+ * An ancestor that manages its own horizontal overflow means going past the edge is the design.
+ *
+ * ⚠️ `hidden` COUNTS, AND LEAVING IT OUT CRIED WOLF ON A WHOLE GAME. This asked only about
+ * `auto` and `scroll` — a thing you can scroll to — and missed the other way a container owns its
+ * own width: a camera. The playground's stage clips a world that is wider than the screen, so its
+ * ledges and treats sit hundreds of pixels past the right edge ON PURPOSE and cannot be seen,
+ * scrolled to, or made to overflow the page. Flagged, they are two findings on a main room at
+ * every run, and this file's whole doctrine is that a checker nobody runs twice is no checker.
+ *
+ * ⚠️ AND IT COSTS NOTHING, because `sideways` is the backstop and does not go through here: if
+ * anything ever DOES push the document wider than the window, that number says so whatever is
+ * clipping what. This rule only decides whether to blame an individual element for it.
+ */
 const scrollsX = (el) => {
   for (let p = el.parentElement; p; p = p.parentElement) {
     const o = getComputedStyle(p).overflowX
-    if (o === 'auto' || o === 'scroll') return true
+    if (o === 'auto' || o === 'scroll' || o === 'hidden') return true
   }
   return false
 }
