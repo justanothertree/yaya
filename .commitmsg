@@ -1,0 +1,5 @@
+chore: drop a scratch file that git add swept up
+
+The commit message for the playground merge was written to m.txt and handed to
+`git commit -F`, but `git add -A` ran first and staged it — so a throwaway file went
+to the remote with the change it described.
