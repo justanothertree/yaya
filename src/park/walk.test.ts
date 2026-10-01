@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { aimFromKeys } from './strike'
 import {
   CAM,
   camWant,
@@ -13,6 +14,7 @@ import {
   stepCam,
   stepWalker,
   STILL,
+  wishOf,
   TELEPORT,
   TUNE,
   VIEW,
@@ -397,5 +399,77 @@ describe('the odds and ends the room leans on', () => {
   it('and the world is the shape the rest of the code believes it is', () => {
     expect(VIEW.w).toBeCloseTo(1 / PARK.across, 10)
     expect(VIEW.h).toBeCloseTo(1 / PARK.down, 10)
+  })
+})
+
+/**
+ * Holding both ways at once.
+ *
+ * ⚠️ THIS IS HOW A STUCK KEY HID, and the reason it could not be reproduced. The wish was
+ * (right ? 1 : 0) - (left ? 1 : 0), so anything that leaves one direction latched true makes the
+ * OPPOSITE one silently stop working — and there is nothing to see: you are not drifting, you
+ * are not stuck, one key just does nothing. "a movement direction will stop working... cant
+ * recreate easily" is exactly what that feels like from the hand.
+ *
+ * ⚠️ AND THE FIX IS NOT A GUARD, IT IS THE RIGHT BEHAVIOUR. Last press wins is what action games
+ * do: rolling your fingers from one direction into the other turns you round rather than stopping
+ * you dead. That it also makes every latched-key fault impossible to feel is the bonus, not the
+ * argument.
+ */
+describe('holding two ways at once', () => {
+  const both = (over: Partial<Steer>): Steer => ({ ...STILL, ...over })
+
+  it('stands still when nothing says which came last, as it always did', () => {
+    expect(wishOf(both({ left: true, right: true }))).toEqual({ wx: 0, wy: 0 })
+    expect(wishOf(both({ up: true, down: true }))).toEqual({ wx: 0, wy: 0 })
+  })
+
+  it('and goes the way you asked for last', () => {
+    expect(wishOf(both({ left: true, right: true, lastX: 'left' })).wx).toBe(-1)
+    expect(wishOf(both({ left: true, right: true, lastX: 'right' })).wx).toBe(1)
+    expect(wishOf(both({ up: true, down: true, lastY: 'up' })).wy).toBe(-1)
+    expect(wishOf(both({ up: true, down: true, lastY: 'down' })).wy).toBe(1)
+  })
+
+  /**
+   * ⚠️ THE FAULT ITSELF: one key latched true that nobody is pressing. Pressing the other way
+   * has to move you, because from where you are sitting that key simply stopped working.
+   */
+  it('and a latched key cannot kill the direction opposite it', () => {
+    const stuck = both({ right: true, lastX: 'right' })
+    const press = both({ ...stuck, left: true, lastX: 'left' })
+    expect(wishOf(stuck).wx, 'the latched key still pushes').toBe(1)
+    expect(wishOf(press).wx, 'and pressing the other way is dead').toBe(-1)
+  })
+
+  /** ⚠️ and one axis jamming must not take the other with it */
+  it('and leaves the other axis alone', () => {
+    expect(wishOf(both({ left: true, right: true, up: true })).wy).toBe(-1)
+    expect(wishOf(both({ up: true, down: true, right: true })).wx).toBe(1)
+  })
+
+  /** ⚠️ and a stale `last` from a key nobody is holding changes nothing */
+  it('and ignores what you pressed last when only one is down', () => {
+    expect(wishOf(both({ right: true, lastX: 'left' })).wx).toBe(1)
+    expect(wishOf(both({ left: true, lastX: 'right' })).wx).toBe(-1)
+  })
+
+  /**
+   * ⚠️ AND THE AIM AGREES WITH THE WALK, which is the half that would have been easy to miss:
+   * each wrote the subtraction out for itself, so resolving it in the walk alone would mean
+   * walking left while every swing and cast went right.
+   */
+  it('and you aim where you are going', () => {
+    const s = both({ left: true, right: true, lastX: 'left' })
+    expect(aimFromKeys(s, { x: 1, y: 0 }).x).toBeLessThan(0)
+    expect(wishOf(s).wx).toBeLessThan(0)
+  })
+
+  /** ⚠️ and a creature actually moves that way, through the walker rather than through wishOf */
+  it('and the walker carries you there', () => {
+    let w = restingWalker(0.5, 0.5)
+    const s = both({ left: true, right: true, lastX: 'left' })
+    for (let i = 0; i < 30; i++) w = stepWalker(w, s, 1 / 60)
+    expect(w.x).toBeLessThan(0.5)
   })
 })

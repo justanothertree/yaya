@@ -1,7 +1,7 @@
 import { PET_TALL } from '../pets/play'
 import { driveAt, hurtHalf, slotFor, type Aim, type Attack } from '../pets/attack'
 import type { Box } from '../pets/rig'
-import { holdInPark, SQUASH, VIEW, type Spot, type Steer, type Walker } from './walk'
+import { holdInPark, SQUASH, VIEW, wishOf, type Spot, type Steer, type Walker } from './walk'
 
 /**
  * Hitting things from above.
@@ -740,8 +740,8 @@ export function stepGuard(s: Striker, want: boolean, aim: Aimed | null, dt: numb
  * the field's shape would then bend. Converting it would be the aspect trap in reverse.
  */
 export function aimFromKeys(steer: Steer, fallback: Aimed): Aimed {
-  const dx = (steer.right ? 1 : 0) - (steer.left ? 1 : 0)
-  const dy = (steer.down ? 1 : 0) - (steer.up ? 1 : 0)
+  /* ⚠️ the same resolution the walk uses, or you would aim where you are not going — see wishOf */
+  const { wx: dx, wy: dy } = wishOf(steer)
   if (!dx && !dy) return fallback
   const len = Math.hypot(dx, dy)
   return { x: dx / len, y: dy / len }

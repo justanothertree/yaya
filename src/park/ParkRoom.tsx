@@ -38,6 +38,7 @@ import {
   type Mark,
   type Spot,
   type Steer,
+  type Way,
 } from './walk'
 import {
   joinPark,
@@ -184,7 +185,7 @@ const HITS: Record<string, 'quick' | 'heavy'> = {
   G: 'heavy',
 }
 
-const KEYS: Record<string, keyof Steer> = {
+const KEYS: Record<string, Way> = {
   ArrowLeft: 'left',
   ArrowRight: 'right',
   ArrowUp: 'up',
@@ -1727,6 +1728,14 @@ export function ParkRoom({
       if (!k) return
       e.preventDefault()
       held.current[k] = on
+      /* ⚠️ WHICH WAY YOU ASKED FOR LAST, so holding both does not mean standing still — see
+         Steer.lastX. It is only ever set on the way DOWN: a release says nothing about which of
+         the two you meant, and clearing it on the way up would hand the axis back to whichever
+         key happens to still be latched, which is the fault this exists to absorb. */
+      if (on) {
+        if (k === 'left' || k === 'right') held.current.lastX = k
+        else held.current.lastY = k
+      }
       /* the aim is the same two keys you already hold — see the scrap's note on the same rule */
       if (k === 'up' || k === 'down') hitting.current[k] = on
     }
@@ -4288,6 +4297,9 @@ export function ParkRoom({
                   e.preventDefault()
                   e.stopPropagation()
                   held.current[k] = true
+                  /* ⚠️ a thumb can strand a pad button too — same resolution, same reason */
+                  if (k === 'left' || k === 'right') held.current.lastX = k
+                  else held.current.lastY = k
                 }}
                 onPointerUp={() => (held.current[k] = false)}
                 onPointerCancel={() => (held.current[k] = false)}

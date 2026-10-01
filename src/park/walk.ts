@@ -32,9 +32,64 @@ export type Walker = {
   moving: boolean
 }
 
-export type Steer = { left: boolean; right: boolean; up: boolean; down: boolean }
+/** the four directions, as distinct from the bookkeeping a Steer also carries */
+export type Way = 'left' | 'right' | 'up' | 'down'
+
+export type Steer = {
+  left: boolean
+  right: boolean
+  up: boolean
+  down: boolean
+  /**
+   * Which way you pressed MOST RECENTLY on each axis, when both are held.
+   *
+   * ⚠️ BECAUSE "BOTH HELD" USED TO MEAN "STAND STILL", AND THAT IS HOW A STUCK KEY HIDES. The
+   * wish was (right ? 1 : 0) - (left ? 1 : 0), so anything that leaves one key latched true —
+   * a keyup lost to a focus change, a pad button stranded by a pointer that never came back, a
+   * browser that reports a letter in a different case than it pressed it — makes the OPPOSITE
+   * direction silently stop working, with no other symptom to go on. Reported exactly that way:
+   * "a movement direction will stop working... cant recreate easily".
+   *
+   * ⚠️ AND LAST PRESS WINS IS WHAT ACTION GAMES DO ANYWAY. Rolling your fingers from one
+   * direction into the other should turn you round, not stop you dead, which matters more the
+   * closer this gets to the game it is trying to be. So this is not only a guard against a bug
+   * nobody could reproduce: it is how the controls should have read in the first place, and it
+   * happens to make the whole class of latched-key faults impossible to feel.
+   */
+  lastX?: 'left' | 'right'
+  lastY?: 'up' | 'down'
+}
 
 export const STILL: Steer = { left: false, right: false, up: false, down: false }
+
+/**
+ * Which way a steer is actually asking to go, with opposites resolved.
+ *
+ * ⚠️ ONE FUNCTION, BECAUSE THE WALK AND THE AIM BOTH ASKED. Each wrote the subtraction out for
+ * itself, so resolving it in one of them would have meant walking left while aiming right — and
+ * the aim is the thing every swing and every cast is thrown along.
+ *
+ * ⚠️ WITH NO HISTORY IT IS EXACTLY WHAT IT WAS, so a caller that never records a press — the
+ * dummy, a peer, anything built from STILL — stands still with both held, as before.
+ */
+export const wishOf = (s: Steer): { wx: number; wy: number } => ({
+  wx:
+    s.left && s.right
+      ? s.lastX === 'right'
+        ? 1
+        : s.lastX === 'left'
+          ? -1
+          : 0
+      : (s.right ? 1 : 0) - (s.left ? 1 : 0),
+  wy:
+    s.up && s.down
+      ? s.lastY === 'down'
+        ? 1
+        : s.lastY === 'up'
+          ? -1
+          : 0
+      : (s.down ? 1 : 0) - (s.up ? 1 : 0),
+})
 
 /**
  * ⚠️ THE CORRECTION WAS THE WRONG WAY ROUND, and it was reported as walking through quicksand
@@ -238,8 +293,8 @@ export const holdInPark = (x: number, y: number): Spot => {
  */
 export function stepWalker(w: Walker, steer: Steer, dt: number, speed = 1): Walker {
   const t = Math.max(0, Math.min(0.05, dt))
-  let wx = (steer.right ? 1 : 0) - (steer.left ? 1 : 0)
-  let wy = (steer.down ? 1 : 0) - (steer.up ? 1 : 0)
+  /* ⚠️ opposites resolved in one place, so the walk and the aim cannot disagree — see wishOf */
+  let { wx, wy } = wishOf(steer)
   const len = Math.hypot(wx, wy)
   if (len > 1) {
     wx /= len
