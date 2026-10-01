@@ -1549,13 +1549,39 @@ export function PaintRoom() {
    * once and never written back, so the room never edits the address bar from under you. The
    * empty dependency list is the whole of that promise.
    */
+  /**
+   * ⚠️ AND WHETHER THERE IS A WAY BACK, which is the other half of the errand. Arriving here from
+   * the minions room to make something and then being left in Paint means walking Games → Minions
+   * → whatever you were doing, by hand, every time: "after finishing in paint i still have to go
+   * into games > minions > whatever im doing". A round trip somebody STARTED is a round trip they
+   * should not have to finish on foot.
+   *
+   * ⚠️ ONLY WHEN THEY CAME TO MAKE SOMETHING. Somebody who opened Paint to draw a picture has not
+   * asked to be sent to the games room when they are done, and sending them would be worse than
+   * the walk. The outward journey is what earns the return one, which is why this is a ref set on
+   * arrival rather than a setting.
+   */
+  const errand = useRef<'minion' | 'map' | null>(null)
   useEffect(() => {
     const q = new URLSearchParams(window.location.hash.split('?')[1] ?? '')
     const make = q.get('make')
-    if (make === 'map') setMaking(true)
-    else if (make === 'minion') startPetWizard()
+    if (make === 'map') {
+      errand.current = 'map'
+      setMaking(true)
+    } else if (make === 'minion') {
+      errand.current = 'minion'
+      startPetWizard()
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  /** Back where the errand started, once, and never from a page somebody simply walked to. */
+  const goBackIfSent = (from: 'minion' | 'map') => {
+    if (errand.current !== from) return false
+    errand.current = null
+    window.location.hash = 'minions'
+    return true
+  }
 
   const nameLayerIfBlank = (i: number, to: string) => {
     if ((layerNames[i] ?? '').trim()) return
@@ -1619,6 +1645,14 @@ export function PaintRoom() {
             ? `${made.name} is yours — find them in 🐾 Minions.`
             : `${made.name} is yours, but this browser is out of room — delete something, or they may not be here next time.`,
     )
+    /**
+     * ⚠️ ONLY WHEN IT ALL WORKED, because every other outcome is a sentence somebody has to read.
+     * A minion that is yours while the picture was refused, or a browser out of room, is a real
+     * result and the note is the only place it is said — leaving the page would take the warning
+     * with it. On a clean finish the note says "find them in 🐾 Minions", which is a direction
+     * nobody needs when they are already standing there.
+     */
+    if (made && kept && gallerySaved() && petsSaved() && goBackIfSent('minion')) return
     window.setTimeout(
       () => setNote(null),
       made && kept && gallerySaved() && petsSaved() ? 6000 : 9000,
@@ -4571,8 +4605,17 @@ export function PaintRoom() {
       {saving && <SaveArt art={saving} onClose={() => setSaving(null)} />}
       {making && (
         <>
-          <button className="btn is-on paint-map-close" onClick={() => setMaking(false)}>
-            ✕ Close the map maker
+          {/* ⚠️ CLOSING IS FINISHING, so an errand that started in the minions room ends back
+              there — see goBackIfSent. A map is made to be walked, and the place you walk it is
+              exactly the room the button was pressed in. */}
+          <button
+            className="btn is-on paint-map-close"
+            onClick={() => {
+              if (goBackIfSent('map')) return
+              setMaking(false)
+            }}
+          >
+            {errand.current === 'map' ? '✓ Done — back to Minions' : '✕ Close the map maker'}
           </button>
           <MapMaker />
         </>
