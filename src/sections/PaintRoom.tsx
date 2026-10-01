@@ -51,7 +51,16 @@ import { applyLayerOp, type LayerOp, type Stack } from '../draw/layerOps'
 import { paintSession } from '../draw/session'
 import { petsSaved, petsTrouble, savePet } from '../pets/pets'
 import { PetView } from '../pets/PetView'
-import { PART_DOES, PART_WORDS, inFrontOfOrder, inkBox, notBodyLayers, partOf } from '../pets/rig'
+import {
+  PART_DOES,
+  PART_WORDS,
+  inFrontOfOrder,
+  inkBox,
+  kindOf,
+  notBodyLayers,
+  partOf,
+  type PartKind,
+} from '../pets/rig'
 import { MoveShow } from '../pets/MoveShow'
 import { saysOf, temperOf } from '../park/temper'
 import { CastShow } from '../pets/CastShow'
@@ -59,6 +68,14 @@ import { swapRanged, whyCasts } from '../park/temper'
 import { castShapeOf } from '../park/castShape'
 
 /** how a footprint multiplier reads out loud — see petSpell */
+/**
+ * Every kind a layer can be told to act like.
+ *
+ * ⚠️ OFF PART_DOES, so a kind added to the rig appears here without anybody remembering to come
+ * and add it — the same reason the word-list test walks the list rather than restating it.
+ */
+const ACT_KINDS = Object.keys(PART_DOES) as PartKind[]
+
 const said = (v: number) =>
   v > 1.3
     ? 'reach much further'
@@ -356,6 +373,9 @@ export function PaintRoom() {
    * "arm" to "arm 2", which a layer index would not.
    */
   const [hits, setHits] = useState<Record<string, string>>(() => paintSession.restore()?.hits ?? {})
+  /* ⚠️ WHAT A LAYER IS, when that is not what it is called — see Drawing.acts. Absent means the
+     name decides, which is what keeps every creature made before today exactly as it was. */
+  const [acts, setActs] = useState<Record<string, string>>(() => paintSession.restore()?.acts ?? {})
   /**
    * When each tool was last picked, as a counter rather than a clock.
    *
@@ -559,8 +579,9 @@ export function PaintRoom() {
       name: docName || undefined,
       fps,
       hits: Object.keys(hits).length ? hits : undefined,
+      acts: Object.keys(acts).length ? acts : undefined,
     })
-  }, [strokes, bg, hidden, layerNames, shapeAr, docName, fps, hits])
+  }, [strokes, bg, hidden, layerNames, shapeAr, docName, fps, hits, acts])
 
   /**
    * ⚠️ PINNED ON THE FIRST STROKE, not on every render. Before there is anything on the page
@@ -744,6 +765,7 @@ export function PaintRoom() {
     layers: layerNames.length ? layerNames : undefined,
     fps,
     hits: Object.keys(hits).length ? hits : undefined,
+    acts: Object.keys(acts).length ? acts : undefined,
     strokes,
   }
 
@@ -1561,7 +1583,7 @@ export function PaintRoom() {
   const petPreview = useMemo(
     () => ({ ...drawingRef.current }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [strokes, layerNames, bg, fps, hits],
+    [strokes, layerNames, bg, fps, hits, acts],
   )
 
   /**
@@ -1683,7 +1705,10 @@ export function PaintRoom() {
       layerNames
         .map((n, i) => ({ n: (n ?? '').trim(), i }))
         .filter((x) => x.n && strokes.some((k) => (k.l ?? 0) === x.i))
-        .map((x) => [partOf(x.n), `${x.n.toLowerCase().slice(0, 18)} ${PART_DOES[partOf(x.n)]}`]),
+        .map((x) => [
+          kindOf(drawingRef.current, x.i),
+          `${x.n.toLowerCase().slice(0, 18)} ${PART_DOES[kindOf(drawingRef.current, x.i)]}`,
+        ]),
     ).values(),
   ]
 
@@ -1769,14 +1794,14 @@ export function PaintRoom() {
    */
   const hitGuide = useMemo(() => {
     if (!petStep) return null
-    if (partOf(layerNames[layer] ?? '') !== 'hit') return null
+    if (kindOf(petPreview, layer) !== 'hit') return null
     /* the body, never a move it can throw — the same exclusion drawnAttacks makes, and it is
        BOTH kinds: a spell layer is no more part of the creature than a slash is, so leaving it
        in moved this ruler the moment somebody drew one */
     const body = inkBox({
       ...petPreview,
       strokes: petPreview.strokes.filter((k) => {
-        const kind = partOf(layerNames[k.l ?? 0] ?? '')
+        const kind = kindOf(petPreview, k.l ?? 0)
         return kind !== 'hit' && kind !== 'spell'
       }),
     })
@@ -1795,7 +1820,7 @@ export function PaintRoom() {
       right: Math.min(1, cx + at),
       pinched: 1.6 * h > room,
     }
-  }, [petStep, layer, layerNames, petPreview])
+  }, [petStep, layer, petPreview])
 
   /**
    * And what the hit you have drawn so far is actually worth.
@@ -3924,6 +3949,62 @@ export function PaintRoom() {
                       : 'Nothing is named yet, so all of it just breathes.'}
                 </span>
                 {/**
+                  ⚠️ THE NAME IS THE LOOK; THIS IS WHAT IT IS. Widening the word list covers the
+                  common case — a cape flaps now because `cape` reads as a wing — but a sword that
+                  should flap has no word and never will without lying about what it is. Asked for
+                  as "in some scenarios you want the animation of a layer over drawing whatever it
+                  is", and chosen as ACTS rather than MOVES: it changes the kind, so the motion,
+                  the move it gives you, what it draws in front of and what it hangs off all
+                  follow together. One idea instead of two.
+
+                  ⚠️ A SELECT, NOT A ROW OF BUTTONS, and not in the layer rail. There are fifteen
+                  kinds, the layer row already carries seven controls at 34–40px, and the wizard
+                  has just been cut down for feeling like a lot. One control, on the layer you
+                  have selected, next to the line that says what that layer does.
+
+                  ⚠️ AND THE FIRST OPTION IS "WHAT IT IS CALLED", which is how you get back to
+                  nothing stored. An override of a thing onto itself would be a map on every
+                  drawing anybody ever opened this on — the same reason `swipe` is the absence of
+                  a hit shape rather than a hit shape.
+                */}
+                {/* ⚠️ AND ON AN UNNAMED LAYER TOO, which the first version hid. A layer with no
+                    name is a `body` that breathes, and "I drew a thing and never named it, but it
+                    should flap" is the same wish as the named case — hiding the control there
+                    would mean naming a layer something you do not mean, just to get at the dial
+                    that exists so you do not have to. */}
+                {petStep && (
+                  <label className="paint-pet-acts">
+                    <span className="muted">
+                      Your{' '}
+                      <strong>
+                        {(layerNames[layer] ?? '').trim().toLowerCase().slice(0, 18) || 'layer'}
+                      </strong>{' '}
+                      acts like
+                    </span>
+                    <select
+                      className="viz-select"
+                      value={acts[layer] ?? ''}
+                      onChange={(e) => {
+                        const v = e.target.value
+                        setActs((a) => {
+                          const next = { ...a }
+                          if (!v) delete next[layer]
+                          else next[layer] = v
+                          return next
+                        })
+                      }}
+                    >
+                      {/* ⚠️ the short one, because it is the option shown nearly always */}
+                      <option value="">what it is called — a {partOf(layerNames[layer])}</option>
+                      {ACT_KINDS.map((k) => (
+                        <option key={k} value={k}>
+                          a {k} — it {PART_DOES[k]}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+                {/**
                  * ⚠️ IT USED TO NAME THE MOVES AND NEVER SHOW ONE. "In a scrap: swipe, heavy
                  * gore, up buffet, down sweep" is four words, and four words is not a reason to
                  * call a layer `horn` — you had to take it on trust, keep the creature, adopt it
@@ -4173,6 +4254,7 @@ export function PaintRoom() {
                            the layer names are — opening a creature to find its slam had gone back
                            to a swipe is the "names not saving" bug in a second place. */
                           setHits(a.art.hits ?? {})
+                          setActs(a.art.acts ?? {})
                           /* ⚠️ AND ITS SHAPE. A drawing's ratio is its proportions; opening it onto
                              whatever shape this window happens to be was the same stretch as
                              resizing — see freeAr. */
@@ -4467,7 +4549,7 @@ export function PaintRoom() {
             }}
             aria-hidden
           >
-            <i>your minion — this is its size, and what has to be hit</i>
+            <i>your minion · hitbox</i>
           </span>
         )}
       </div>

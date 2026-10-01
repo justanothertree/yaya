@@ -213,6 +213,23 @@ export type Drawing = {
    * Every creature made until now has no map, and must keep fighting exactly as it did.
    */
   hits?: Record<string, string>
+  /**
+   * What each LAYER acts like, overriding what it is called — keyed by layer index.
+   *
+   * ⚠️ THE NAME IS THE LOOK AND THIS IS WHAT IT IS, which is the split that was asked for: "in
+   * some scenarios you want the animation of a layer over drawing whatever it is". Widening the
+   * word list covers the common case — a cape flaps now because `cape` reads as a wing — but a
+   * sword that should flap has no word, and never will without lying about what it is.
+   *
+   * ⚠️ ABSENT MEANS THE NAME DECIDES, exactly as an absent `hits` means the drawing decides. Not
+   * a map of every layer saying what it already says: nothing stored is what keeps every creature
+   * made before today animating, fighting and stacking precisely as it did.
+   *
+   * ⚠️ BY LAYER, NOT BY KIND, which is the one place it differs from `hits`. Two layers can both
+   * read as `body` and want different things of it, and the thing being overridden IS the kind,
+   * so keying by kind could not express a change at all.
+   */
+  acts?: Record<string, string>
   strokes: Stroke[]
 }
 
@@ -316,13 +333,14 @@ export function readDrawing(v: unknown): Drawing | null {
       ? o.layers.slice(0, MAX_LAYERS).map((n) => (typeof n === 'string' ? n.slice(0, 24) : ''))
       : undefined,
     fps: typeof o.fps === 'number' && o.fps >= 1 && o.fps <= 24 ? Math.round(o.fps) : undefined,
-    hits: hitMap(o.hits),
+    hits: smallMap(o.hits, 16),
+    acts: smallMap(o.acts, MAX_LAYERS),
     strokes,
   }
 }
 
 /**
- * The part-to-shape map, re-validated on the way OUT like everything else here.
+ * A small map of short strings, re-validated on the way OUT like everything else here.
  *
  * ⚠️ BOUNDED, NOT UNDERSTOOD. This cannot check that "slam" is a real shape without knowing
  * what shapes are, which is the pets module's business — so it checks what it CAN: that this is
@@ -332,13 +350,12 @@ export function readDrawing(v: unknown): Drawing | null {
  * drawing ends up rendered on somebody else's profile, so an unbounded map is an unbounded map
  * somebody else's browser has to hold.
  */
-const MAX_HITS = 16
-function hitMap(v: unknown): Record<string, string> | undefined {
+function smallMap(v: unknown, most: number): Record<string, string> | undefined {
   if (!v || typeof v !== 'object' || Array.isArray(v)) return undefined
   const out: Record<string, string> = {}
   let n = 0
   for (const [k, val] of Object.entries(v as Record<string, unknown>)) {
-    if (n >= MAX_HITS) break
+    if (n >= most) break
     if (typeof k !== 'string' || typeof val !== 'string') continue
     const key = k.slice(0, 20).trim()
     const shape = val.slice(0, 12).trim()
@@ -1384,6 +1401,8 @@ export type PackedDrawing = {
    * did, and a newer build reading an older file finds nothing and lets the drawing decide.
    */
   h?: Record<string, string>
+  /** what each LAYER acts like, by layer index — see Drawing.acts */
+  ac?: Record<string, string>
   /**
    * [tool, colour, alpha%, width‰, segments, echoes, ...points‰] — colour 0 none, 1 rainbow.
    * v5 inserts [layer, frame] after echoes, frame -1 meaning every frame.
@@ -1656,6 +1675,8 @@ export function packDrawing(d: Drawing): PackedDrawing {
        creature with one layer can still have chosen what its pounce does, and dropping that
        because it has no second layer would lose the choice of the simplest creature there is. */
     ...(d.hits && Object.keys(d.hits).length ? { h: d.hits } : {}),
+    /* ⚠️ not gated on `layered` either, and for the same reason — see above */
+    ...(d.acts && Object.keys(d.acts).length ? { ac: d.acts } : {}),
     /* ⚠️ The words go on the END of the row, after the points. A reader that does not know
        about text does `row.slice(fixed)` and then keeps only the numbers — so an older build
        drops the string and still draws the baseline, rather than choking on it. */
@@ -1709,8 +1730,9 @@ function unpack(v: Record<string, unknown>): Drawing | null {
     bg: typeof v.b === 'string' ? `#${v.b}` : null,
     layers: Array.isArray(v.l) ? v.l : undefined,
     fps: typeof v.fp === 'number' ? v.fp : undefined,
-    /* readDrawing is what decides whether any of this is allowed — see hitMap */
+    /* readDrawing is what decides whether any of this is allowed — see smallMap */
     hits: v.h,
+    acts: v.ac,
     strokes,
   })
 }

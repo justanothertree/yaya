@@ -3,9 +3,12 @@ import {
   bodyFill,
   bodyRatio,
   boxOf,
+  castLayers,
   footRoom,
   inFrontOfOrder,
   inkBox,
+  kindOf,
+  notBodyLayers,
   partOf,
   PART_DOES,
   PART_PARENT,
@@ -504,5 +507,72 @@ describe('what a move-layer does to the size of the creature', () => {
       ],
     })
     expect(footRoom(silly)).toBeLessThanOrEqual(0.95)
+  })
+})
+
+/**
+ * A layer that is not what it is called.
+ *
+ * ⚠️ "ACTS LIKE", NOT "MOVES LIKE", AND THAT WAS THE CHOICE. A layer's name decides four things
+ * at once — how it animates, what move it gives you in a fight, what it draws in front of, and
+ * what it hangs off — so an override that changed only the motion would leave the other three
+ * still being run by a name that is now just a label. Picked deliberately: the name is what it
+ * looks like, this is what it is.
+ */
+describe('a layer that acts like something else', () => {
+  const sword = (acts?: Record<string, string>): Drawing =>
+    drawing({
+      layers: ['body', 'sword'],
+      acts,
+      strokes: [
+        stroke({ p: [0.42, 0.3, 0.58, 0.6], l: 0 }),
+        stroke({ p: [0.6, 0.3, 0.9, 0.42], l: 1 }),
+      ],
+    })
+
+  it('is what it is called when nothing says otherwise', () => {
+    expect(kindOf(sword(), 1)).toBe('horn')
+    expect(rigOf(sword()).find((p) => p.layer === 1)!.kind).toBe('horn')
+  })
+
+  it('and is what it was told when something does', () => {
+    expect(kindOf(sword({ 1: 'wing' }), 1)).toBe('wing')
+    expect(rigOf(sword({ 1: 'wing' })).find((p) => p.layer === 1)!.kind).toBe('wing')
+  })
+
+  /** ⚠️ and the name is untouched, because the name is the LOOK — that is the whole split */
+  it('and leaves the name alone, which is still what it looks like', () => {
+    const d = sword({ 1: 'wing' })
+    expect(d.layers?.[1]).toBe('sword')
+    expect(partOf('sword')).toBe('horn')
+  })
+
+  /**
+   * ⚠️ EVERYTHING FOLLOWS, which is what makes it one idea rather than four. If any reader asks
+   * partOf about a layer instead of kindOf, the override is honoured by some of these and
+   * ignored by the rest — a creature that flaps and is hit like a spike.
+   */
+  it('and everything a kind decides follows it', () => {
+    const asHorn = rigOf(sword()).find((p) => p.layer === 1)!
+    const asWing = rigOf(sword({ 1: 'wing' })).find((p) => p.layer === 1)!
+    expect(asWing.kind).not.toBe(asHorn.kind)
+    expect(PART_PARENT[asWing.kind]).toBe(PART_PARENT.wing)
+  })
+
+  /** ⚠️ and a layer told to be a cast stops being part of the creature, like any other cast */
+  it('and a layer told to be a cast stops counting as the creature', () => {
+    const plain = sword()
+    const cast = sword({ 1: 'spell' })
+    expect(notBodyLayers(plain)).not.toContain(1)
+    expect(notBodyLayers(cast)).toContain(1)
+    expect(castLayers(cast)).toContain(1)
+    /* and so the creature measures as just its body again */
+    expect(bodyRatio(cast)).not.toBeCloseTo(bodyRatio(plain), 3)
+  })
+
+  /** ⚠️ and a word this build has never heard of is ignored rather than becoming a creature */
+  it('and refuses to be something that does not exist', () => {
+    expect(kindOf(sword({ 1: 'banana' }), 1)).toBe('horn')
+    expect(kindOf(sword({ 1: '' }), 1)).toBe('horn')
   })
 })

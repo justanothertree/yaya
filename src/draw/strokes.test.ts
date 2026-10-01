@@ -342,3 +342,56 @@ describe('simplifying a drawing', () => {
     expect(simplifyDrawing(line, 0).strokes[0].p.length).toBe(4)
   })
 })
+
+/**
+ * What a layer acts like, across the wire and back.
+ *
+ * ⚠️ THIS HAS TO TRAVEL OR THE OVERRIDE IS A LIE. A creature's drawing is what reaches everybody
+ * else in the park — the whole bargain cast.ts opens with is that both ends derive the same
+ * answers from the same picture. A field that packs and does not read back means your cape flaps
+ * on your screen and is a spike on theirs, which is a hitbox disagreement rather than a cosmetic
+ * one.
+ */
+describe('what a layer acts like', () => {
+  it('survives the round trip', () => {
+    const back = round(drawing({ layers: ['body', 'sword'], acts: { 1: 'wing' } }))!
+    expect(back.acts).toEqual({ 1: 'wing' })
+    expect(back.layers?.[1]).toBe('sword')
+  })
+
+  /**
+   * ⚠️ AND NOTHING STORED STAYS NOTHING STORED, which is what keeps every drawing anybody has
+   * ever made the same size and the same creature. `hits` has the same rule and the same note:
+   * the absence of a choice is not a choice.
+   */
+  it('and an empty one is not written at all', () => {
+    expect(packDrawing(drawing({ layers: ['body'] })).ac).toBeUndefined()
+    expect(packDrawing(drawing({ layers: ['body'], acts: {} })).ac).toBeUndefined()
+    expect(round(drawing({ layers: ['body'] }))!.acts).toBeUndefined()
+  })
+
+  /**
+   * ⚠️ AND IT IS BOUNDED, because localStorage is editable by anything on this origin and a
+   * drawing ends up rendered in somebody else's browser. readDrawing cannot know what a real
+   * kind is — that is the pets module's business — so it checks what it can: short strings, and
+   * not very many of them. A kind this build has never heard of is ignored downstream, so a
+   * drawing from a newer build loses an override rather than becoming a different creature.
+   */
+  it('and cannot be made enormous by hand', () => {
+    const many: Record<string, string> = {}
+    for (let i = 0; i < 400; i++) many[i] = 'wing'
+    const back = round(drawing({ layers: ['body'], acts: many }))!
+    expect(Object.keys(back.acts ?? {}).length).toBeLessThanOrEqual(MAX_LAYERS)
+  })
+
+  it('and drops anything that is not a pair of strings', () => {
+    const back = round(
+      drawing({
+        layers: ['body', 'sword'],
+        /* a hand-edited file, which is the only way this shape arrives */
+        acts: { 1: 'wing', 2: 42, 3: null } as unknown as Record<string, string>,
+      }),
+    )!
+    expect(back.acts).toEqual({ 1: 'wing' })
+  })
+})

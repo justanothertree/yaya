@@ -195,6 +195,26 @@ export const PART_WORDS: string[] = [
   'spell',
 ]
 
+/**
+ * What a layer IS — its override if it has one, otherwise what it is called.
+ *
+ * ⚠️ ONE FUNCTION, SO THE OVERRIDE CANNOT BE HALF-APPLIED. Everything a part kind decides comes
+ * off `Part.kind` — how it animates, what move it gives you in a fight, what it draws in front
+ * of, what it hangs off — so changing the kind HERE changes all of them together. That is the
+ * difference between "moves like a wing" and "acts like a wing", and the second is what was
+ * asked for: the name is what it looks like, this is what it is.
+ *
+ * ⚠️ AND EVERY READER MUST COME THROUGH IT. partOf still exists because the paint room asks what
+ * a WORD means while somebody is typing it, which is a different question from what a layer is.
+ * Anything asking about a layer asks this, or an override is honoured by the animation and
+ * ignored by the hitbox — which is the shape of bug this file keeps paying for.
+ */
+export function kindOf(d: Drawing, layer: number): PartKind {
+  const said = d.acts?.[layer]
+  if (said && said in PART_DOES) return said as PartKind
+  return partOf(d.layers?.[layer])
+}
+
 export function partOf(name: string | undefined): PartKind {
   const n = (name ?? '').toLowerCase()
   for (const [kind, words] of WORDS) if (words.some((w) => n.includes(w))) return kind
@@ -473,8 +493,8 @@ export const boxOf = (strokes: Stroke[], ratio = 1): Box | null => {
  */
 export function notBodyLayers(d: Drawing): number[] {
   const out: number[] = []
-  d.layers?.forEach((n, i) => {
-    const k = partOf(n)
+  d.layers?.forEach((_n, i) => {
+    const k = kindOf(d, i)
     /* ⚠️ BOTH OF THEM, AND IT WAS ONLY THE HIT. A spell layer says where the big moves
        land; like a hit it is a MOVE rather than a piece of the creature, so counting it makes
        the creature measure bigger, render smaller inside its own box and carry a hitbox nobody
@@ -499,8 +519,8 @@ export function notBodyLayers(d: Drawing): number[] {
  */
 export function castLayers(d: Drawing): number[] {
   const out: number[] = []
-  d.layers?.forEach((n, i) => {
-    if (partOf(n) === 'spell') out.push(i)
+  d.layers?.forEach((_n, i) => {
+    if (kindOf(d, i) === 'spell') out.push(i)
   })
   return out
 }
@@ -744,7 +764,8 @@ export function rigOf(d: Drawing): Part[] {
     const box = boxOf(strokes, d.ratio)
     if (!box) continue
     const name = d.layers?.[layer] ?? ''
-    const kind = partOf(name)
+    /* ⚠️ what it IS, which is not always what it is called — see kindOf */
+    const kind = kindOf(d, layer)
     /**
      * Where it turns.
      *

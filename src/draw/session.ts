@@ -62,6 +62,8 @@ export type PaintSession = {
    * handoff cannot carry is a field that silently resets every time you cross between them.
    */
   hits?: Record<string, string>
+  /** ⚠️ and what each layer ACTS like, for the same reason — see Drawing.acts */
+  acts?: Record<string, string>
 }
 
 let held: PaintSession | null = null

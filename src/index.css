@@ -10134,6 +10134,36 @@ a.cz-msg-author:focus-visible {
   gap: 0.6rem;
   flex-wrap: wrap;
 }
+/**
+ * What a layer acts like, when that is not what it is called.
+ *
+ * ⚠️ A ROW THAT WRAPS, because the label is a sentence and the select is a select — at 375 the
+ * two sit on top of each other rather than squeezing a dropdown into four characters.
+ */
+.paint-pet-acts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.76rem;
+  max-width: min(28rem, 100%);
+  min-width: 0;
+}
+/**
+ * ⚠️ A SELECT IS AS WIDE AS ITS LONGEST OPTION UNLESS YOU STOP IT, and one of these reads "a
+ * horn — it juts out, and hits hardest of anything". Unstopped it widened the whole preview
+ * column to 390px inside a 375px phone and took twenty-one other things off the right edge with
+ * it — the audit caught it, nothing about the row looked wrong. `min-width: 0` is the half that
+ * actually does the work: a flex item will not shrink below its content without it.
+ */
+.paint-pet-acts .viz-select {
+  /* ⚠️ 24px of target, WCAG 2.5.8 — a select shrinks to its text otherwise */
+  min-height: 24px;
+  flex: 1 1 8rem;
+  min-width: 0;
+  max-width: 100%;
+}
+
 .paint-pet-preview .muted {
   font-size: 0.76rem;
   max-width: 28rem;
@@ -10548,6 +10578,14 @@ a.cz-msg-author:focus-visible {
   box-shadow: 0 0 0 9999px color-mix(in srgb, #000 22%, transparent);
   z-index: 3;
 }
+/**
+ * ⚠️ AND SHORT, BECAUSE THE FRAME GOT SMALL. This label is `nowrap` and sits inside a frame that
+ * used to be the whole picture — so any length fitted. The frame is the BODY now, which for a
+ * creature drawn small is a hundred pixels wide, and a sentence pinned inside one of those runs
+ * off the side of a phone: measured at 419px against a 375px viewport. The board clips it, so
+ * nothing scrolls sideways and nothing looks broken — it is just a label you cannot read, which
+ * is the kind of thing only the audit finds.
+ */
 .paint-crop i {
   /* ⚠️ inside the frame, not above it: the frame can sit against the top of the board, and a
      label hung above one there is a label nobody ever sees */
