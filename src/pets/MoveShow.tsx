@@ -284,7 +284,14 @@ export function MoveShow({
        */}
       {onShape && (
         <div className="move-show-shape">
-          <span className="muted">What does this do?</span>
+          {/* ⚠️ AN INSTRUCTION, NOT A QUESTION. "What does this do?" reads as a caption about
+              the thing above it, so four buttons that CHANGE the move looked like four facts
+              about it — and the row underneath, which is a fact about it, made that worse.
+              Named after the part because that is what it sets, which the line below spells
+              out: six buttons share however many parts you drew. */}
+          <span className="muted">
+            Change what your <strong>{a.from}</strong> does:
+          </span>
           <span className="move-show-pick">
             {HIT_SHAPES.map(([id, label, why]) => {
               const on = (hits?.[a.from] ?? 'swipe') === id

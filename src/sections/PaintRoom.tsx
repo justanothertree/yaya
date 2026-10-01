@@ -3939,7 +3939,14 @@ export function PaintRoom() {
                 )}
                 {frameCount(petPreview) <= 1 && petMoves && (
                   <>
-                    <span className="muted paint-pet-moves">Press a part to watch its move.</span>
+                    {/* ⚠️ SAY THAT THE LETTERS ARE KEYS. The buttons read "F kick" and
+                        "↑ G big hit", which is a key, a direction and a name run together — and
+                        nothing said so, so the row read as six move names with noise in front
+                        of them. Reported as being confused by the preview options, with all
+                        three rows of them pasted in as one block. */}
+                    <span className="muted paint-pet-moves">
+                      Your six moves, with the keys that throw them. Press one to watch it.
+                    </span>
                     <MoveShow
                       art={petPreview}
                       moves={petMoves}
@@ -3973,8 +3980,9 @@ export function PaintRoom() {
                       for the boss, which is the half that is still true and the half this room
                       is about.
                     */}
+                    {/* ⚠️ and the same for 1, 2 and 3, for the same reason */}
                     <span className="muted paint-pet-moves">
-                      And three big ones, each with its own wait.
+                      And three big ones, on 1, 2 and 3 — each with its own wait.
                     </span>
                     <CastShow art={petPreview} casts={petBoss.casts} scale={petBoss.scale} />
                     {/**
