@@ -31,6 +31,11 @@ export type CastShape = {
    * one. Only the two casts that actually GO somewhere read it; see patchesOf.
    */
   bend: number
+  /**
+   * How many times it fires, 1 to 3 — one for each substantial stroke on the layer. Only the
+   * bolt has room in its own clock for a second one; see patchesOf.
+   */
+  beats: number
 }
 
 /**
@@ -78,6 +83,21 @@ const BEND_GAIN = 0.4
  * PATH is nothing.
  */
 const BEND_SWEEP = 0.35
+
+/**
+ * How many marks make a rhythm.
+ *
+ * ⚠️ THREE, BECAUSE THE BOLT'S OWN CLOCK SAYS SO. It is 1.2s long with a 0.42s wind-up, and a
+ * beat lands every 0.16s — so a fourth would be launching with less than half a flight left and
+ * would blink out mid-air. The ceiling is the window, not a preference.
+ *
+ * ⚠️ AND A BEAT HAS TO BE A MARK YOU MEANT TO MAKE. Counting every stroke would turn a lifted
+ * pen and a stray speck into a rhythm somebody did not ask for, so a stroke counts when it is a
+ * quarter of the longest one — which is a rule about the drawing rather than a number of pixels,
+ * and so survives being drawn at any size.
+ */
+const BEATS_MOST = 3
+const BEAT_REAL = 0.25
 
 const hold = (v: number, [lo, hi]: readonly [number, number]) =>
   Math.max(lo, Math.min(hi, Number.isFinite(v) ? v : 1))
@@ -180,7 +200,7 @@ export function castShapeOf(art: Drawing): CastShape | null {
    * That is the trade being real rather than decorative: aiming your kit at range costs you the
    * one cast that is not about range.
    */
-  return { reach, spread: 1 / reach, bend: bendOf(art, spell) }
+  return { reach, spread: 1 / reach, ...gestureOf(art, spell) }
 }
 
 /**
@@ -204,27 +224,39 @@ export function castShapeOf(art: Drawing): CastShape | null {
  * everywhere else, and the one place it was not thrown away is the free win that had to be
  * taken out of the reach dial a day ago.
  */
-function bendOf(art: Drawing, spell: Part[]): number {
+function gestureOf(art: Drawing, spell: Part[]): { bend: number; beats: number } {
   /* ⚠️ x and y are fractions of DIFFERENT lengths — the paper's width and its height — so every
      length below is taken in ratio-corrected space. Measured raw, the same curve drawn on wide
      paper and on tall paper would be two different casts. rig.ts has the long note. */
   const r = art.ratio > 0.05 && art.ratio < 20 ? art.ratio : 1
 
-  let path: number[] | null = null
-  let far = 0
+  /* ⚠️ every drawn length measured once, because the longest is the PATH and how many of them
+     are worth counting is the RHYTHM — two readings of the same simple list */
+  const runs: Array<{ p: number[]; run: number }> = []
   for (const part of spell)
     for (const k of part.strokes) {
       /* a bucket's points are a seed and a flood, not a line somebody dragged — see boxOf */
-      if (k.t === 'fill' || k.p.length < 6) continue
+      if (k.t === 'fill' || k.p.length < 4) continue
       let run = 0
       for (let i = 2; i + 1 < k.p.length; i += 2)
         run += Math.hypot((k.p[i] - k.p[i - 2]) * r, k.p[i + 1] - k.p[i - 1])
-      if (run > far) {
-        far = run
-        path = k.p
-      }
+      if (run > 0) runs.push({ p: k.p, run })
     }
-  if (!path || !(far > 0)) return 0
+  let far = 0
+  let path: number[] | null = null
+  for (const k of runs)
+    if (k.run > far) {
+      far = k.run
+      path = k.p
+    }
+  if (!path || !(far > 0)) return { bend: 0, beats: 1 }
+  const beats = Math.max(
+    1,
+    Math.min(BEATS_MOST, runs.filter((k) => k.run >= far * BEAT_REAL).length),
+  )
+  const straight = { bend: 0, beats }
+  /* a two-point stroke is a straight line however it is stored — it still counts as a beat */
+  if (path.length < 6) return straight
 
   const ax = path[0] * r
   const ay = path[1]
@@ -234,7 +266,7 @@ function bendOf(art: Drawing, spell: Part[]): number {
   const cy = by - ay
   const chord = Math.hypot(cx, cy)
   /* a loop came back to where it started, so it has a long path and no chord — and no sweep */
-  if (chord < far * BEND_SWEEP) return 0
+  if (chord < far * BEND_SWEEP) return straight
 
   /**
    * ⚠️ SIGNED, AND THE SIGN IS THE WHOLE POINT. An unsigned "how bent is it" would turn every
@@ -250,5 +282,5 @@ function bendOf(art: Drawing, spell: Part[]): number {
     const off = (cx * sy - cy * sx) / chord
     if (Math.abs(off) > Math.abs(bow)) bow = off
   }
-  return hold((bow / chord) * BEND_GAIN, BAND_BEND)
+  return { bend: hold((bow / chord) * BEND_GAIN, BAND_BEND), beats }
 }

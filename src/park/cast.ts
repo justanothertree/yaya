@@ -155,6 +155,15 @@ const MARK_RANGE = 2.6
 const BOLT_FROM = 1.0
 const BOLT_WARN = 0.42
 const BOLT_SPEED = 7
+/**
+ * How long apart the bolts in a burst leave the hand.
+ *
+ * ⚠️ TIGHT, SO THEY ARE A BURST AND NOT A QUEUE. Spread evenly across the whole cast the last
+ * one would launch with a quarter of a flight left and blink out mid-air; at 0.16s all three are
+ * away inside a third of a second and every one of them crosses most of the field. It is also
+ * about the fastest a rhythm reads as a rhythm rather than as one fat bolt.
+ */
+const BOLT_BEAT = 0.16
 
 /**
  * What holding the throw buys, at full charge.
@@ -264,6 +273,15 @@ export function patchesOf(
    * that does not move, and would cost the mark the only sentence anybody can dodge it by.
    */
   const bend = shape?.bend ?? 0
+  /**
+   * ⚠️ ONLY THE BOLT HAS ROOM IN ITS OWN CLOCK, and the other three each say why in their own
+   * notes. The swell is LIVE WHILE IT GROWS — its note calls continuity the whole difference
+   * between it and "a burst you dodge once", which is exactly what beating it would make it.
+   * The mark pays for its crater with a 1.05s telegraph and has 0.4s of window left, which is
+   * not a rhythm, it is a stutter. And the fissure IS a rhythm already: staggered clocks are
+   * what a rolling tear is made of.
+   */
+  const beats = Math.max(1, Math.round(shape?.beats ?? 1))
   if (kind === 'bloom') {
     /**
      * ⚠️ LIVE WHILE IT GROWS, which is what makes it different from everything else here. A
@@ -312,7 +330,6 @@ export function patchesOf(
      * players watching the same bolt compute the same circle from the same four numbers, which
      * is the bargain the boss's other three already make and the reason none of them desync.
      */
-    const flying = Math.max(0, t - BOLT_WARN)
     /* ⚠️ BIGGER AND FASTER, WHICH IS ONE DECISION TWICE. A charged bolt that was only
        harder would be an invisible upgrade; making it visibly fatter and visibly quicker is
        what lets somebody else read how long you held it. */
@@ -325,16 +342,36 @@ export function patchesOf(
     /* ⚠️ the reach moves where it STARTS, not how fast it flies. A bolt somebody drew far out
        leaves their hand further out; making it quicker instead would be a different stat with
        the same name, and the charge already owns speed. */
-    /* ⚠️ THE ARCLENGTH, so a curved bolt covers the same ground and gets less far — see
-       arcFrom, where that is the whole of what a curve costs. */
-    return [
-      {
-        at: arcFrom(from, aim, (BOLT_FROM * far + flying * speed) * easedScale(s), bend),
-        r,
-        ready: Math.min(1, t / BOLT_WARN),
-        live: t >= BOLT_WARN,
-      },
-    ]
+    /**
+     * ⚠️ A BURST IS THE SAME ONE PATCH, COUNTED. Every beat is its own wind-up and its own
+     * flight from the same hand, so a burst needed no new state and no second message — the
+     * relay still carries one slot and one elapsed, and both ends work out the same three
+     * circles. It is the same trick the fissure plays with staggered clocks.
+     *
+     * ⚠️ AND AT ONE BEAT THIS IS THE OLD LINE EXACTLY, not a formula that agrees with it: the
+     * first beat is born at 0, divides its radius by the square root of 1, and comes out of the
+     * same arithmetic it always did. Every creature drawn before today is in that case.
+     *
+     * ⚠️ THINNER, WHICH IS WHAT THE EXTRA CHANCES COST. A cast is spent on its first landing —
+     * see the room's castSpent — so a burst is not more damage, it is more chances to catch
+     * somebody, and it pays for them in width. Beats times area is held roughly still, the same
+     * budget the reach dial keeps.
+     */
+    const out: Patch[] = []
+    for (let b = 0; b < beats; b++) {
+      const born = b * BOLT_BEAT
+      /* not thrown yet: a circle sitting on the hand before it exists is a telegraph nobody
+         drew, and three of them stacked there is just a blob */
+      if (t < born) continue
+      const gone = Math.max(0, t - born - BOLT_WARN)
+      out.push({
+        at: arcFrom(from, aim, (BOLT_FROM * far + gone * speed) * easedScale(s), bend),
+        r: r / Math.sqrt(beats),
+        ready: Math.min(1, (t - born) / BOLT_WARN),
+        live: t >= born + BOLT_WARN,
+      })
+    }
+    return out
   }
   /**
    * ⚠️ A WAVE IS JUST PATCHES WITH STAGGERED CLOCKS, which is the trick that makes a rolling

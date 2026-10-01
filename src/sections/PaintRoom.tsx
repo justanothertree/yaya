@@ -85,15 +85,27 @@ const saidWide = (v: number) =>
  * two halves is the only thing on screen that says drawing for range costs you ground. Asked
  * for in those words: "it should cost something".
  */
-const spellSays = (s: { reach: number; spread: number; bend: number }) => {
+const spellSays = (
+  s: { reach: number; spread: number; bend: number; beats: number },
+  hasBolt: boolean,
+) => {
   const flat = s.reach > 0.92 && s.reach < 1.08
   /* ⚠️ NOT "LEFT" OR "RIGHT", because which of those it is depends on the way the cast is
      aimed, and a sentence that is true facing east and wrong facing west is worse than none.
      "The way you drew it" is the rule, and the preview underneath is the demonstration. */
   const curve = s.bend ? 'what travels curves the way you drew it' : ''
-  if (flat && !curve) return 'Your spell layer: these land about where they would anyway.'
+  /**
+   * ⚠️ SUBJUNCTIVE WHEN THERE IS NO BOLT, because only the bolt reads a rhythm and not every
+   * creature gets one. "Its bolt fires three" about a creature that cannot throw one is the
+   * exact failure whyCasts has a note about — a line that can disagree with the thing it
+   * describes is worse than no line — and saying nothing at all is the OTHER failure, the one
+   * that started all of this: "the wizard tells me nothing about it".
+   */
+  const rhythm = s.beats > 1 ? `${hasBolt ? 'its' : 'a'} bolt fires ${s.beats} thinner ones` : ''
   const trade = flat ? '' : `these ${said(s.reach)} but ${saidWide(s.spread)}`
-  return `Your spell layer: ${[trade, curve].filter(Boolean).join(', and ')}.`
+  const all = [trade, curve, rhythm].filter(Boolean)
+  if (!all.length) return 'Your spell layer: these land about where they would anyway.'
+  return `Your spell layer: ${all.join(', and ')}.`
 }
 
 import { CAST } from '../park/cast'
@@ -4012,8 +4024,8 @@ export function PaintRoom() {
                        spell layer to describe, since that is the only time it is news. */}
                     <span className="muted paint-pet-moves">
                       {petSpell
-                        ? spellSays(petSpell)
-                        : 'Name a layer spell to aim these: long reaches further, fat covers wider, one or the other. Draw it curved and what travels curves too.'}
+                        ? spellSays(petSpell, petBoss.casts.includes('bolt'))
+                        : 'Name a layer spell to aim these: long reaches further, fat covers wider, one or the other. A curved line curves what travels; more lines make a burst.'}
                     </span>
                   </>
                 )}

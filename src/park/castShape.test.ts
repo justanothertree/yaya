@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { castShapeOf, shapeOf } from './castShape'
-import { inPatch, patchesOf } from './cast'
+import { CAST, inPatch, patchesOf } from './cast'
 import { PARK_TALL, ASPECT } from './strike'
 import { PARK } from './walk'
 import { partOf } from '../pets/rig'
@@ -200,14 +200,14 @@ describe('what it does to the casts', () => {
   })
 
   it('and a wider drawing makes every cast wider', () => {
-    const fat = { reach: 1, spread: 1.6, bend: 0 }
+    const fat = { reach: 1, spread: 1.6, bend: 0, beats: 1 }
     for (const k of ['bloom', 'mark', 'wave', 'bolt'] as const) {
       expect(wide(k, fat), `${k} did not widen`).toBeGreaterThan(wide(k, null))
     }
   })
 
   it('and a further drawing throws the aimed ones further', () => {
-    const far = { reach: 1.7, spread: 1, bend: 0 }
+    const far = { reach: 1.7, spread: 1, bend: 0, beats: 1 }
     for (const k of ['mark', 'bolt'] as const) {
       expect(out(k, far), `${k} did not reach further`).toBeGreaterThan(out(k, null))
     }
@@ -215,7 +215,7 @@ describe('what it does to the casts', () => {
 
   /** ⚠️ a swell grows where you stand, so there is nowhere further out for it to land */
   it('and leaves the swell where it stands, because that is what a swell is', () => {
-    const far = { reach: 1.9, spread: 1, bend: 0 }
+    const far = { reach: 1.9, spread: 1, bend: 0, beats: 1 }
     expect(out('bloom', far)).toBeCloseTo(out('bloom', null), 6)
   })
 
@@ -226,7 +226,7 @@ describe('what it does to the casts', () => {
    */
   it('and a fissure drawn fat still leaves room to walk through it', () => {
     for (const spread of [1, 1.4, 1 / 0.55]) {
-      const steps = patchesOf('wave', FROM, AIM, 0.6, 1, 0, { reach: 1, spread, bend: 0 })
+      const steps = patchesOf('wave', FROM, AIM, 0.6, 1, 0, { reach: 1, spread, bend: 0, beats: 1 })
       for (let i = 1; i < steps.length; i++) {
         const apart = Math.hypot(
           (steps[i].at.x - steps[i - 1].at.x) * WORLD_WIDE,
@@ -242,7 +242,7 @@ describe('what it does to the casts', () => {
   it('and a fissure drawn far still lands where it can be seen', () => {
     for (const reach of [1, 1.5, 1.9]) {
       expect(
-        out('wave', { reach, spread: 1 / reach, bend: 0 }),
+        out('wave', { reach, spread: 1 / reach, bend: 0, beats: 1 }),
         `reach ${reach} left the field`,
       ).toBeLessThan(9)
     }
@@ -343,7 +343,7 @@ describe('what a curve does to the casts', () => {
   const AIM = { x: 1, y: 0 }
   /** an ordinary creature's width, the thing that has to fit between two steps */
   const MY_WIDE = PARK_TALL * 0.5
-  const shape = (bend: number) => ({ reach: 1, spread: 1, bend })
+  const shape = (bend: number, beats = 1) => ({ reach: 1, spread: 1, bend, beats })
   const last = (k: 'bolt' | 'wave', bend: number, t = 0.9) => {
     const ps = patchesOf(k, FROM, AIM, t, 1, 0, shape(bend))
     return ps[ps.length - 1].at
@@ -411,7 +411,7 @@ describe('what a curve does to the casts', () => {
    * places them.
    */
   const crossable = (bend: number, spread: number, scale: number) => {
-    const steps = patchesOf('wave', FROM, AIM, 0.6, scale, 0, { reach: 1, spread, bend })
+    const steps = patchesOf('wave', FROM, AIM, 0.6, scale, 0, { reach: 1, spread, bend, beats: 1 })
     for (let i = 1; i < steps.length; i++) {
       const a = steps[i - 1].at
       const b = steps[i].at
@@ -445,11 +445,131 @@ describe('what a curve does to the casts', () => {
       for (const scale of [1, 3.05]) {
         const steps = patchesOf('wave', FROM, AIM, 0.6, scale, 0, {
           reach: 1.9,
+          beats: 1,
           spread: 1 / 1.9,
           bend,
         })
         for (const p of steps)
           expect(gone(p.at).out, `bend ${bend} scale ${scale} left the field`).toBeLessThan(9)
       }
+  })
+})
+
+/**
+ * How many times it lands.
+ *
+ * ⚠️ THE THIRD THING ONE LAYER SAYS, out of the same short list of facts the other two come
+ * from: the shape of its ink is where a cast lands, the longest stroke is the way it travels,
+ * and how many strokes you drew is how many times it fires. Nothing was added to the format and
+ * nothing new goes over the wire for any of them.
+ */
+describe('how many times a drawn cast lands', () => {
+  const marks = (...each: number[][]): Drawing => ({
+    v: 1,
+    name: 'Test',
+    ratio: 1,
+    bg: null,
+    layers: ['body', 'spell'],
+    strokes: [stroke([0.4, 0.4, 0.6, 0.6], 0), ...each.map((p) => stroke(p, 1))],
+  })
+  /** a straight dash of length `len`, so the only thing varying between fixtures is how many */
+  const dash = (len: number, y = 0.5) => [0.1, y, 0.1 + len, y]
+
+  it('once for one mark, and once for a creature that drew none', () => {
+    expect(castShapeOf(marks(dash(0.4)))!.beats).toBe(1)
+    expect(castShapeOf(creature([body(), ['spell', [0.6, 0.4, 0.9, 0.6]]]))!.beats).toBe(1)
+  })
+
+  it('and once for each one you drew', () => {
+    expect(castShapeOf(marks(dash(0.4), dash(0.4, 0.6)))!.beats).toBe(2)
+    expect(castShapeOf(marks(dash(0.4), dash(0.4, 0.6), dash(0.4, 0.7)))!.beats).toBe(3)
+  })
+
+  /**
+   * ⚠️ A SPECK IS NOT A BEAT, which is the difference between a rule and a tripwire. A lifted
+   * pen, a stray dot and the tick on the end of a flourish are all strokes, and a rhythm somebody
+   * did not ask for is worse than no rhythm — so a mark counts at a quarter of the longest.
+   */
+  it('and ignores the specks, which are not marks you meant to make', () => {
+    expect(castShapeOf(marks(dash(0.8), dash(0.01, 0.6), dash(0.02, 0.7)))!.beats).toBe(1)
+    expect(castShapeOf(marks(dash(0.8), dash(0.4, 0.6), dash(0.01, 0.7)))!.beats).toBe(2)
+  })
+
+  /** ⚠️ and the quarter is a rule about the drawing, so it survives being drawn at any size */
+  it('and the same marks drawn bigger are the same rhythm', () => {
+    const small = castShapeOf(marks(dash(0.2), dash(0.08, 0.6)))!.beats
+    const big = castShapeOf(marks(dash(0.8), dash(0.32, 0.6)))!.beats
+    expect(big).toBe(small)
+    expect(big).toBe(2)
+  })
+
+  it('and never more than the bolt has room for', () => {
+    const many = Array.from({ length: 9 }, (_, i) => dash(0.4, 0.2 + i * 0.07))
+    expect(castShapeOf(marks(...many))!.beats).toBe(3)
+  })
+})
+
+describe('what a rhythm does to the casts', () => {
+  const FROM = { x: 0.5, y: 0.5 }
+  const AIM = { x: 1, y: 0 }
+  const beat = (beats: number) => ({ reach: 1, spread: 1, bend: 0, beats })
+  const at = (t: number, beats: number) => patchesOf('bolt', FROM, AIM, t, 1, 0, beat(beats))
+
+  /**
+   * ⚠️ THE OTHER THREE DO NOT READ IT, and each has its own reason already written down. The
+   * swell's note calls being live while it grows "the whole difference" from a burst you dodge
+   * once; the mark has 0.4s left after its telegraph, which is a stutter rather than a rhythm;
+   * and the fissure is a rhythm already.
+   */
+  it('nothing at all to the three that have no room for it', () => {
+    for (const k of ['bloom', 'mark', 'wave'] as const) {
+      const one = JSON.stringify(patchesOf(k, FROM, AIM, 0.9, 1, 0, beat(1)))
+      for (const n of [2, 3])
+        expect(JSON.stringify(patchesOf(k, FROM, AIM, 0.9, 1, 0, beat(n))), `${k} at ${n}`).toBe(
+          one,
+        )
+    }
+  })
+
+  it('and fires the bolt once for each beat', () => {
+    /* late enough that every one of them has been thrown */
+    for (const n of [1, 2, 3]) expect(at(0.95, n)).toHaveLength(n)
+  })
+
+  /** ⚠️ and they arrive in order rather than all at once, which is what makes it a rhythm */
+  it('and they leave one at a time', () => {
+    expect(at(0.05, 3)).toHaveLength(1)
+    expect(at(0.2, 3)).toHaveLength(2)
+    expect(at(0.4, 3)).toHaveLength(3)
+  })
+
+  /** ⚠️ strung out in space because they left at different moments, not stacked on each other */
+  it('and string out behind each other', () => {
+    const ps = at(0.95, 3)
+    for (let i = 1; i < ps.length; i++) expect(ps[i].at.x).toBeLessThan(ps[i - 1].at.x)
+  })
+
+  /**
+   * ⚠️ THE COST. A cast is spent on its first landing, so a burst is not more damage — it is
+   * more chances, and it pays for them in width. Without this a drawn rhythm would be the free
+   * win the reach dial was.
+   */
+  it('and each one is thinner than the single bolt it was made from', () => {
+    const one = at(0.95, 1)[0].r
+    for (const n of [2, 3]) {
+      const ps = at(0.95, n)
+      for (const p of ps) expect(p.r, `${n} beats`).toBeLessThan(one)
+      /* beats x area held roughly still, which is the budget rather than a tuned number */
+      expect(ps.length * ps[0].r * ps[0].r).toBeCloseTo(one * one, 10)
+    }
+  })
+
+  /** ⚠️ and the last one still has a flight left rather than blinking out on the hand */
+  it('and every beat is away in time to actually travel', () => {
+    const ps = at(CAST.bolt.time, 3)
+    expect(ps).toHaveLength(3)
+    for (const p of ps) expect(p.live).toBe(true)
+    const flown = ((ps[2].at.x - FROM.x) * WORLD_WIDE) / PARK_TALL
+    expect(flown, 'the last beat barely left the hand').toBeGreaterThan(2)
   })
 })
