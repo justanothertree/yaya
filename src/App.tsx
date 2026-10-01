@@ -126,6 +126,14 @@ const ProfileLookPreview = import.meta.env.DEV
       (m) => m.ProfileLookPreview,
     )
   : null
+/** ⚠️ and a crowd needs a field to stand on before anybody can judge it — see SwarmPreview. */
+const SwarmPreview = import.meta.env.DEV
+  ? lazyRetry(
+      () => import('./dev/SwarmPreview'),
+      (m) => m.SwarmPreview,
+    )
+  : null
+
 /** Same bargain again — the park cannot be walked at all without an account. See ParkPreview. */
 const ParkPreview = import.meta.env.DEV
   ? lazyRetry(
@@ -1992,6 +2000,11 @@ export default function App() {
           {ParkPreview && DEV_PREVIEW === 'park' && (
             <Suspense fallback={<div aria-busy>Finding the park…</div>}>
               <ParkPreview />
+            </Suspense>
+          )}
+          {SwarmPreview && DEV_PREVIEW === 'swarm' && (
+            <Suspense fallback={<div aria-busy>Gathering…</div>}>
+              <SwarmPreview />
             </Suspense>
           )}
           {InvestmentsMemberPreview && DEV_PREVIEW === 'investments' && (
