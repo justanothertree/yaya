@@ -1286,6 +1286,30 @@ export function ParkRoom({
    * was the only way to find out, by which point you are in it.
    */
   const [waveDone, setWaveDone] = useState<{ no: number; were: number } | null>(null)
+
+  /**
+   * Put the wave away, wherever it is being put away from.
+   *
+   * ⚠️ IT EXISTS BECAUSE A WAVE OUTLIVED ITS ROOM, which is the bug the note beside
+   * `boss.current = null` in the join effect already describes — and then the wave arrived and
+   * walked straight into it. A wave is called on a map you drew, the map path hands back only
+   * the world, so calling one and then walking into the SHARED park left ten of your minions
+   * chasing you in it: measured at 401 painted samples where there should be none, with no
+   * button to get rid of them, because the button is gated on being on a map and the loop is
+   * not. The shared park is the one place a derived crowd must never be — it has a relay, and
+   * forty creatures nobody sent exist on your screen alone.
+   *
+   * ⚠️ ONE FUNCTION FOR BOTH EXITS, for the reason canBeHurt's note gives about five call sites
+   * that have to agree: a wave is five pieces of state and clearing four of them somewhere is
+   * how it comes back.
+   */
+  const dropWave = useCallback(() => {
+    mobs.current = []
+    mobKit.current = null
+    setMobsLeft(0)
+    setWaveNo(0)
+    setWaveDone(null)
+  }, [])
   const swarmCv = useRef<HTMLCanvasElement>(null)
   const waveSeed = useRef(1)
   const swingNo = useRef(0)
@@ -1724,6 +1748,9 @@ export function ParkRoom({
       return () => {
         boss.current = null
         setBossShown(null)
+        /* ⚠️ AND THE WAVE, for the same reason and on the same path — see dropWave. This is the
+           path a wave is always called on, so leaving it out here is leaving it out entirely. */
+        dropWave()
         state.current = { me: null, here: new Map(), boss: null, trouble: null }
         setWorld(null)
       }
@@ -1737,12 +1764,18 @@ export function ParkRoom({
       /* the relay drops your boss when your socket goes; this is the same thing on this side */
       boss.current = null
       setBossShown(null)
+      /* ⚠️ AND HERE TOO, though a wave cannot be called on this path: "cannot today" is the
+         reasoning that lets a thing survive the one change that makes it possible. */
+      dropWave()
       /* ⚠️ AND THE WORLD GOES BACK. It is a module-level thing, so leaving it pointed at
          a drawing would mean the next room somebody opened was somebody's sketch — the same
          rule the dev workbench already follows. */
       setWorld(null)
     }
-  }, [walking, myArt, myName, room, myTraits, mapPick])
+    /* ⚠️ dropWave IS A useCallback WITH NO DEPS, so naming it here costs nothing. That matters
+       more than usual on this effect: it owns the socket, and an effect whose dependency is
+       rebuilt every render tears down and rebuilds whatever it owns. */
+  }, [walking, myArt, myName, room, myTraits, mapPick, dropWave])
 
   /* ⚠️ one per wanderer, rebuilt when the roster of them changes — an index into this must
      always mean the same creature as the same index into strollPets */
