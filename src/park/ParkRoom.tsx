@@ -414,6 +414,16 @@ const FIELD_ASPECT = 16 / 10
  * effect whose dependency is rebuilt every render tears down and rebuilds whatever it owns, which
  * here is the animation frame itself.
  */
+/**
+ * How many come in wave n, counting from one.
+ *
+ * ⚠️ ONE HOME, BECAUSE THE SECOND CALLER ARRIVED THE MOMENT A CLEARED WAVE SAID WHAT WAS NEXT.
+ * The spawn had `10 + waveNo * 6` inline and the message needed the same rule one wave along —
+ * two copies of an escalation curve, which is a thing that drifts and then lies on screen
+ * about what you are walking into.
+ */
+const waveSize = (no: number) => 10 + (no - 1) * 6
+
 const SWARM_WIDE = PARK.across * FIELD_ASPECT
 const toHeights = (s: Spot) => ({ x: s.x * SWARM_WIDE, y: s.y * PARK.down })
 const toWorld = (p: { x: number; y: number }): Spot => ({
@@ -1249,9 +1259,33 @@ export function ParkRoom({
    */
   /** `cut` and `zapped` are which swing and which cast last hit this one — see the `cut` note */
   const mobs = useRef<Array<Mob & { hp: number; cut: number; zapped: number }>>([])
-  const mobKit = useRef<{ kind: Minion; baked: Baked | null; wide: number } | null>(null)
+  /**
+   * ⚠️ THE WAVE'S OWN NUMBER AND SIZE LIVE HERE, not read off `waveNo` inside the loop. The loop
+   * closes over what it was built with, and a count it reads from state is a count that is right
+   * until the next wave and then quietly one behind. The kit is already the per-wave record.
+   */
+  const mobKit = useRef<{
+    kind: Minion
+    baked: Baked | null
+    wide: number
+    no: number
+    were: number
+  } | null>(null)
   const [waveNo, setWaveNo] = useState(0)
   const [mobsLeft, setMobsLeft] = useState(0)
+  /**
+   * The wave you just cleared, until you call the next one.
+   *
+   * ⚠️ BECAUSE A CLEARED WAVE SAID NOTHING AT ALL — the button flipped back to "Call a wave" and
+   * that was the whole announcement. It is the same gap the boss's result line has a shouting
+   * note about one screen up: "the end of a fight looked exactly like a fight that had stopped."
+   * Shipping the fight and not the full stop is shipping half of it.
+   *
+   * ⚠️ AND IT SAYS HOW BIG THE NEXT ONE IS, which is the only thing here nobody could work out
+   * by looking. The count grows by six a wave and that was invisible: pressing the button again
+   * was the only way to find out, by which point you are in it.
+   */
+  const [waveDone, setWaveDone] = useState<{ no: number; were: number } | null>(null)
   const swarmCv = useRef<HTMLCanvasElement>(null)
   const waveSeed = useRef(1)
   const swingNo = useRef(0)
@@ -2266,6 +2300,9 @@ export function ParkRoom({
 
         const standing = crowd.filter((m) => m.hp > 0)
         if (standing.length !== mobs.current.length) setMobsLeft(standing.length)
+        /* ⚠️ the frame the last one falls, and only that frame — `crowd.length` is the count
+           before the filter, so an empty wave cannot keep announcing itself */
+        if (!standing.length && crowd.length) setWaveDone({ no: kit.no, were: kit.were })
         mobs.current = standing
       }
       if (area && mv) {
@@ -3483,19 +3520,25 @@ export function ParkRoom({
                 mobs.current = []
                 setMobsLeft(0)
                 setWaveNo(0)
+                /* ⚠️ sending them away is abandoning a wave, not clearing one, so it must not
+                   leave a line on screen saying you cleared it */
+                setWaveDone(null)
                 return
               }
               const art = (bossable[bossPick] ?? bossable[0])?.art
               if (!art) return
               const kind = minionOf(art)
-              const n = 10 + waveNo * 6
+              const n = waveSize(waveNo + 1)
               mobKit.current = {
                 kind,
                 /* ⚠️ baked BEFORE the wave, never per spawn: a detailed creature takes 110ms and
                    that would land exactly as the wave arrived — see bake.ts */
                 baked: bakeWalk(art, Math.max(2, 54 * kind.scale)),
                 wide: petWide(art) * kind.scale,
+                no: waveNo + 1,
+                were: n,
               }
+              setWaveDone(null)
               waveSeed.current += 1
               const here = toHeights(you.current)
               /* ⚠️ -1, NOT 0: the stamps say "which swing/cast last hit this one", and a swing
@@ -3790,6 +3833,21 @@ export function ParkRoom({
         </p>
       )}
       {/*
+        ⚠️ THE SAME FULL STOP THE BOSS GETS, for the same reason its note gives. A cleared wave
+        flipped the button back to "Call a wave" and said nothing else, so clearing one looked
+        exactly like changing your mind about one.
+
+        ⚠️ AND IT NAMES THE NEXT SIZE, because that is the one fact nobody could get at. The
+        count grows by six a wave; the only way to learn that was to press the button and be
+        standing in sixteen of them.
+      */}
+      {walking && waveDone && (
+        <p className="park-result" role="status">
+          <strong>Wave {waveDone.no} cleared.</strong> All {waveDone.were} of them. The next is{' '}
+          {waveSize(waveDone.no + 1)}.
+        </p>
+      )}
+      {/*
         ⚠️ A PLACE IS ONLY A PLACE ONCE SOMETHING NAMES IT. The landmarks give the map
         something to look at; this is what makes them usable — you can tell somebody where you
         are, and where you found them. Without it they are wallpaper with a shape.
@@ -3818,10 +3876,23 @@ export function ParkRoom({
           a status line that cost you a fight.
         */}
         <div className="park-live" aria-live="polite">
+          {/*
+            ⚠️ IT NAMES WHAT PUT YOU DOWN, and it had to once a wave could. This read "The boss
+            keeps what you took off it" unconditionally — so being overrun by a crowd with no
+            boss anywhere told you about a boss, which is the one sentence on screen at the one
+            moment somebody is most confused about what just happened.
+
+            ⚠️ AND THE CLAIM IS TRUE EITHER WAY, which is why the fact is worth printing: a
+            minion's health is its own and nothing resets it, exactly as a boss's is not reset.
+          */}
           {walking && knocked && (
             <p className="park-down" role="status">
-              <strong>Down.</strong> Nothing can touch you, and you get back up whole. The boss
-              keeps what you took off it.
+              <strong>Down.</strong> Nothing can touch you, and you get back up whole.{' '}
+              {bossShown
+                ? 'The boss keeps what you took off it.'
+                : mobsLeft > 0
+                  ? 'They keep what you took off them.'
+                  : ''}
             </p>
           )}
           {walking && whereIAm && (
