@@ -10,7 +10,7 @@ import { inSwipe } from '../park/strike'
 import { TUNE } from '../park/walk'
 import { CAST, patchesOf, type CastKind } from '../park/cast'
 import { shapeOf } from '../park/castShape'
-import { footSpan, PARK_TALL, strikeSwipe } from '../park/strike'
+import { aimFromKeys, footSpan, PARK_TALL, strikeSwipe, type Aimed } from '../park/strike'
 import { SwipePatch } from '../park/SwipePatch'
 import {
   restingWalker,
@@ -90,8 +90,19 @@ const intoWorld = (s: { x: number; y: number }) => ({
 
 export function TryField({ art, onDone }: { art: Drawing; onDone: () => void }) {
   const [you, setYou] = useState<Walker>(() => restingWalker(MID.x, MID.y))
-  const [swing, setSwing] = useState<{ a: Attack; t: number } | null>(null)
-  const [cast, setCast] = useState<{ kind: CastKind; t: number } | null>(null)
+  /**
+   * ⚠️ THE AIM IS KEPT WITH THE THROW, which is how the park does it and why it has eight
+   * directions. This read `facing` at the moment of drawing, and facing is only ever -1 or 1 —
+   * so every swing and every cast went left or right however you were holding the keys. Reported
+   * as the thing that stopped it feeling like the game: "the fighting is only left or right so
+   * the true game feel isnt there".
+   *
+   * ⚠️ AND IT IS TAKEN ONCE, WHEN IT LEAVES. A swing that re-aimed itself mid-flight from whatever
+   * you were holding would track its target, which is not a swing — the park captures the
+   * direction into the thing being thrown for exactly that reason.
+   */
+  const [swing, setSwing] = useState<{ a: Attack; t: number; aim: Aimed } | null>(null)
+  const [cast, setCast] = useState<{ kind: CastKind; t: number; aim: Aimed } | null>(null)
   const held = useRef<Steer>({ ...STILL })
   const want = useRef<{ swing: Attack | null; cast: CastKind | null }>({ swing: null, cast: null })
   const field = useRef<HTMLDivElement>(null)
@@ -227,8 +238,7 @@ export function TryField({ art, onDone }: { art: Drawing; onDone: () => void }) 
     let alive = stepSwarm(crowd.current, seek, dt, tune)
 
     /* a swing fells whatever it reaches, once each — the same test the park runs */
-    const facing = { x: now.you.facing >= 0 ? 1 : -1, y: 0 }
-    const hit = now.swing ? strikeSwipe(now.you, facing, now.swing.a, now.swing.t) : null
+    const hit = now.swing ? strikeSwipe(now.you, now.swing.aim, now.swing.a, now.swing.t) : null
     if (hit) {
       const wide = petWide(now.art) * now.mob.scale
       alive = alive.map((m) =>
@@ -279,14 +289,20 @@ export function TryField({ art, onDone }: { art: Drawing; onDone: () => void }) 
       const sent = want.current.cast
       want.current.swing = null
       want.current.cast = null
+      /* ⚠️ the direction you are HOLDING, falling back to the way you face when you hold nothing
+         — the park's own aimFromKeys, so eight directions rather than two */
+      const aimed = aimFromKeys(held.current, {
+        x: live.current.you.facing >= 0 ? 1 : -1,
+        y: 0,
+      })
       setSwing((s) => {
-        if (threw) return { a: threw, t: 0 }
+        if (threw) return { a: threw, t: 0, aim: aimed }
         if (!s) return null
         const t = s.t + dt
         return t > s.a.span ? null : { ...s, t }
       })
       setCast((c) => {
-        if (sent) return { kind: sent, t: 0 }
+        if (sent) return { kind: sent, t: 0, aim: aimed }
         if (!c) return null
         const t = c.t + dt
         return t > CAST[c.kind].time ? null : { ...c, t }
@@ -306,10 +322,10 @@ export function TryField({ art, onDone }: { art: Drawing; onDone: () => void }) 
     x: 0.5 + (you.x - MID.x) / VIEW.w,
     y: 0.5 + (you.y - MID.y) / VIEW.h,
   }
-  const aim = { x: you.facing >= 0 ? 1 : -1, y: 0 }
   const size = petCanvas(art, Math.max(1, tall * PARK_TALL))
-  const swiped = swing ? strikeSwipe(you, aim, swing.a, swing.t) : null
-  const patches = cast ? patchesOf(cast.kind, you, aim, cast.t, 1, 0, shape) : []
+  /* ⚠️ each one aims the way it was THROWN — see the note on the swing state */
+  const swiped = swing ? strikeSwipe(you, swing.aim, swing.a, swing.t) : null
+  const patches = cast ? patchesOf(cast.kind, you, cast.aim, cast.t, 1, 0, shape) : []
   const half = { x: footSpan(petWide(art), 1, 1, 0), y: footSpan(petWide(art), 1, 0, 1) }
 
   return (

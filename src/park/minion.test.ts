@@ -74,8 +74,8 @@ describe('a minion is the drawing it came from', () => {
     ]
     for (const d of daft) {
       const m = minionOf(d)
-      expect(m.scale).toBeGreaterThanOrEqual(0.45)
-      expect(m.scale).toBeLessThanOrEqual(0.85)
+      expect(m.scale).toBeGreaterThanOrEqual(0.7)
+      expect(m.scale).toBeLessThanOrEqual(1.15)
       expect(m.life).toBeGreaterThanOrEqual(8)
       expect(m.life).toBeLessThanOrEqual(26)
       expect(m.pace).toBeGreaterThanOrEqual(1)
@@ -89,14 +89,17 @@ describe('a minion is the drawing it came from', () => {
 
 describe('and it is the role, not the creature', () => {
   /**
-   * ⚠️ SMALLER THAN YOU ARE, which is what makes a crowd readable. A boss is 2.05 to 3.05 and you
-   * are 1; if a minion were anywhere near either, forty of them would be a wall rather than a
-   * thing you move through.
+   * ⚠️ ROUGHLY YOUR OWN SIZE, AND THE FIRST VERSION HAD THIS BACKWARDS. It asserted a minion was
+   * smaller than the player, on the reasoning that a crowd has to be readable — and forty things
+   * at half height read as young rather than as numerous. What separates a minion from you is
+   * that it dies in two hits and there are forty of it, not that it is knee-high. The claim worth
+   * pinning is that it is nothing like a BOSS, which is the comparison that was always the point.
    */
-  it('is smaller than the player, never mind the boss', () => {
+  it('is a creature beside you, and nothing like a boss', () => {
     for (const d of [lanky, squat]) {
-      expect(minionOf(d).scale).toBeLessThan(1)
-      expect(minionOf(d).scale).toBeLessThan(temperOf(d).scale)
+      const m = minionOf(d)
+      expect(m.scale, 'knee-high').toBeGreaterThan(0.6)
+      expect(m.scale, 'a boss in disguise').toBeLessThan(temperOf(d).scale / 1.7)
     }
   })
 

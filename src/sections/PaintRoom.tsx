@@ -4092,8 +4092,16 @@ export function PaintRoom() {
                         })
                       }}
                     >
-                      {/* ⚠️ the short one, because it is the option shown nearly always */}
-                      <option value="">what it is called — a {partOf(layerNames[layer])}</option>
+                      {/**
+                        ⚠️ "ITSELF", BECAUSE THE SENTENCE HAS TO SURVIVE THE DROPDOWN. The label
+                        and the option are read as one line, and this said "Your body acts like
+                        what it is called — a body", which states the same fact three times and
+                        answers a question nobody asked. Reported as reading odd, and it did.
+                        "Your body acts like itself — it breathes" is the same information in the
+                        order somebody would say it, and "a wing — it flaps" finishes the sentence
+                        the same way.
+                      */}
+                      <option value="">itself — it {PART_DOES[partOf(layerNames[layer])]}</option>
                       {ACT_KINDS.map((k) => (
                         <option key={k} value={k}>
                           a {k} — it {PART_DOES[k]}

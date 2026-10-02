@@ -46,7 +46,19 @@ export type Minion = {
  * rather than forty fights.
  */
 const BAND = {
-  scale: [0.45, 0.85],
+  /**
+   * ⚠️ AROUND YOUR OWN SIZE, NOT A THIRD OF IT, and that is a correction. This ran 0.45 to 0.85
+   * on the reasoning that a crowd has to be readable — and forty things at half height read as
+   * young rather than as numerous: "when i spawned the group of minions i thought it was strange
+   * they were small." A crowd is made of creatures. What separates a minion from you is that it
+   * dies in two hits and there are forty, not that it is knee-high.
+   *
+   * ⚠️ AND IT SPANS 1, so some are bigger than you. That is the band doing its job rather than a
+   * slip: a drawing that would make a towering boss should make a minion you notice, and one that
+   * would make a squat boss should make a small quick thing. The role sets the range; the picture
+   * still says where in it you land.
+   */
+  scale: [0.7, 1.15],
   life: [8, 26],
   pace: [1.0, 1.75],
   bite: [3, 9],
