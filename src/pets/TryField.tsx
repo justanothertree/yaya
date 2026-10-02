@@ -1,8 +1,13 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Drawing } from '../draw/strokes'
 import { PetView } from './PetView'
 import { footRoom, petCanvas } from './rig'
 import { movesOf, petWide, type Attack } from './attack'
+import { bakeWalk, blitBaked } from './bake'
+import { minionOf } from '../park/minion'
+import { FLOCK, ringOf, stepSwarm, type Mob } from '../park/swarm'
+import { inSwipe } from '../park/strike'
+import { TUNE } from '../park/walk'
 import { CAST, patchesOf, type CastKind } from '../park/cast'
 import { shapeOf } from '../park/castShape'
 import { footSpan, PARK_TALL, strikeSwipe } from '../park/strike'
@@ -65,6 +70,24 @@ const KEYS: Record<string, Way> = {
 const MID = { x: 0.5, y: 0.5 }
 const EDGE = 0.045
 
+/**
+ * A minion on the field, with its own health.
+ *
+ * ⚠️ IN SCREEN-HEIGHTS, WHICH ARE ISOTROPIC, and that is the whole reason the crowd is not kept
+ * in world units like the player is. A screen-height across and one down are the same number of
+ * pixels; world units are not, and a flock whose separation meant different distances along x and
+ * y would bunch into an oval nobody asked for. The conversion happens at the two edges — the
+ * player's position going in, a hit test coming out — and nowhere in between.
+ */
+type Foe = Mob & { hp: number }
+
+/** field fractions out of screen-heights, and back */
+const outOf = (s: { x: number; y: number }) => ({ x: 0.5 + s.x / FIELD_ASPECT, y: 0.5 + s.y })
+const intoWorld = (s: { x: number; y: number }) => ({
+  x: MID.x + (s.x / FIELD_ASPECT) * VIEW.w,
+  y: MID.y + s.y * VIEW.h,
+})
+
 export function TryField({ art, onDone }: { art: Drawing; onDone: () => void }) {
   const [you, setYou] = useState<Walker>(() => restingWalker(MID.x, MID.y))
   const [swing, setSwing] = useState<{ a: Attack; t: number } | null>(null)
@@ -73,6 +96,29 @@ export function TryField({ art, onDone }: { art: Drawing; onDone: () => void }) 
   const want = useRef<{ swing: Attack | null; cast: CastKind | null }>({ swing: null, cast: null })
   const field = useRef<HTMLDivElement>(null)
   const [tall, setTall] = useState(0)
+
+  /**
+   * A wave of the same creature, at the size there are a lot of.
+   *
+   * ⚠️ THE ROLE NEEDS SOMETHING TO BE JUDGED AGAINST. minionOf is a pure derivation and its tests
+   * say it is the same creature re-ranged — but whether a crowd of YOUR drawing is a crowd or a
+   * wall is a question about forty things moving, and nothing but moving them answers it.
+   *
+   * ⚠️ BAKED, WHICH IS THE WHOLE REASON A WAVE IS POSSIBLE. Ten of a detailed creature painted
+   * live costs 42ms a frame — see docs/2026-09-30-swarm-spike.md — and baked it is 800 for under
+   * a millisecond, with the cost indifferent to how complicated the drawing is. Baked once here,
+   * before the wave, never per spawn: a detailed creature takes 110ms to bake and that would land
+   * exactly as the wave arrived.
+   */
+  const mob = useMemo(() => minionOf(art), [art])
+  const [wave, setWave] = useState(0)
+  const [left, setLeft] = useState(0)
+  const crowd = useRef<Foe[]>([])
+  const layer = useRef<HTMLCanvasElement>(null)
+  const baked = useMemo(
+    () => (tall > 0 ? bakeWalk(art, Math.max(2, tall * PARK_TALL * mob.scale)) : null),
+    [art, tall, mob.scale],
+  )
 
   const moves = useMemo(() => movesOf(art), [art])
   const shape = useMemo(() => shapeOf(art), [art])
@@ -139,6 +185,73 @@ export function TryField({ art, onDone }: { art: Drawing; onDone: () => void }) 
     }
   }, [moves, casts])
 
+  /**
+   * One step of the crowd: think, be hit, and be drawn.
+   *
+   * ⚠️ IN A REF AND NOT IN STATE, because fifty positions changing sixty times a second through
+   * React is fifty reconciliations a frame for a picture that is painted on a canvas anyway. Only
+   * the COUNT is state, because only the count is read as words.
+   *
+   * ⚠️ AND IT ASKS THE SAME inSwipe THE PARK DOES. A crowd that died to its own idea of a hit
+   * would be a second opinion about what a swing reaches, which is the disagreement SwipePatch
+   * was pulled into its own file to prevent — one sum, asked by everything.
+   */
+  const live = useRef({ you, swing, baked, mob, art })
+  live.current = { you, swing, baked, mob, art }
+  /* ⚠️ EVERYTHING FRESH COMES THROUGH THE REF, so this closes over nothing that changes and the
+     loop below can hold one copy of it for its whole life. A loop rebuilt on every render is the
+     shape CLAUDE.md §7 names — an effect whose dependency is rebuilt every render tears down and
+     rebuilds whatever it owns, which here is the animation frame itself. */
+  const runCrowd = useCallback((dt: number, clock: number) => {
+    const cv = layer.current
+    const now = live.current
+    if (!cv) return
+    const ctx = cv.getContext('2d')
+    if (!ctx) return
+    ctx.clearRect(0, 0, cv.width, cv.height)
+    if (!crowd.current.length || !now.baked) return
+
+    /* the player, in the crowd's own units */
+    const seek = {
+      x: ((now.you.x - MID.x) / VIEW.w) * FIELD_ASPECT,
+      y: (now.you.y - MID.y) / VIEW.h,
+    }
+    const tune = {
+      ...FLOCK,
+      /* ⚠️ TUNE.speed is the player's own top speed in screenfuls a second, so a minion's pace is
+         honestly a multiple of yours rather than a number picked to feel right */
+      speed: TUNE.speed * now.mob.pace,
+      apart: PARK_TALL * now.mob.scale * 1.4,
+      reach: PARK_TALL * now.mob.scale * 1.6,
+    }
+    let alive = stepSwarm(crowd.current, seek, dt, tune)
+
+    /* a swing fells whatever it reaches, once each — the same test the park runs */
+    const facing = { x: now.you.facing >= 0 ? 1 : -1, y: 0 }
+    const hit = now.swing ? strikeSwipe(now.you, facing, now.swing.a, now.swing.t) : null
+    if (hit) {
+      const wide = petWide(now.art) * now.mob.scale
+      alive = alive.map((m) =>
+        inSwipe(intoWorld(m), wide, hit) ? { ...m, hp: m.hp - now.swing!.a.bite } : m,
+      )
+    }
+    const standing = alive.filter((m) => m.hp > 0)
+    if (standing.length !== crowd.current.length) setLeft(standing.length)
+    crowd.current = standing
+
+    for (const m of standing) {
+      const at = outOf(m)
+      blitBaked(
+        ctx,
+        now.baked,
+        at.x * cv.width,
+        at.y * cv.height,
+        clock + m.x * 0.6,
+        m.vx < 0 ? -1 : 1,
+      )
+    }
+  }, [])
+
   useEffect(() => {
     let raf = 0
     let last = performance.now()
@@ -178,11 +291,15 @@ export function TryField({ art, onDone }: { art: Drawing; onDone: () => void }) 
         const t = c.t + dt
         return t > CAST[c.kind].time ? null : { ...c, t }
       })
+      runCrowd(dt, now / 1000)
       raf = requestAnimationFrame(tick)
     }
     raf = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(raf)
-  }, [])
+    /* ⚠️ runCrowd is pinned with useCallback([]) and reads everything fresh through `live`, so
+       naming it here is honest rather than a dependency that would rebuild the loop — which is
+       the one thing this effect must never do. */
+  }, [runCrowd])
 
   /* where you are, as a fraction of the one screenful on show */
   const at = {
@@ -198,6 +315,9 @@ export function TryField({ art, onDone }: { art: Drawing; onDone: () => void }) 
   return (
     <div className="try-field-wrap">
       <div className="try-field" ref={field}>
+        {/* ⚠️ ONE CANVAS FOR ALL OF THEM, which is what baking buys: fifty creatures are fifty
+            drawImage calls into this, not fifty elements for the browser to lay out. */}
+        <canvas ref={layer} className="try-field-crowd" width={1600} height={1000} aria-hidden />
         {/* ⚠️ the hitbox the park uses, from the park's own function — never a second copy */}
         <span
           className="park-box is-foot"
@@ -261,6 +381,30 @@ export function TryField({ art, onDone }: { art: Drawing; onDone: () => void }) 
       <p className="muted try-field-say">
         <strong>WASD</strong> to walk · <strong>F</strong> and <strong>G</strong> to swing ·{' '}
         <strong>1 2 3</strong> for the big ones. This is its real size and its real reach.
+        {/* ⚠️ THE SAME CREATURE, AT THE SIZE THERE ARE A LOT OF — see minionOf. Drawing one thing
+            and then being chased by forty of it is the shortest way to find out whether what you
+            drew makes a crowd or a wall, which is a question no number answers. */}
+        {[12, 40].map((n) => (
+          <button
+            key={n}
+            className="btn btn-ghost"
+            onClick={() => {
+              crowd.current = ringOf(n, 1234, { x: 0, y: 0 }, 1.1).map((m) => ({
+                ...m,
+                hp: mob.life,
+              }))
+              setWave(n)
+              setLeft(n)
+            }}
+          >
+            ⚔ {n} of them
+          </button>
+        ))}
+        {wave > 0 && (
+          <span>
+            {left} left{left === 0 ? ' — all down' : ''}
+          </span>
+        )}
         <button className="btn btn-ghost" onClick={onDone}>
           Done
         </button>

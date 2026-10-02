@@ -64,7 +64,15 @@ export type Temper = {
  * dial below is clamped, so the worst drawing anybody makes is still a fight and the best one is
  * still beatable.
  */
-const BAND = {
+/**
+ * ⚠️ EXPORTED, BECAUSE A MINION IS THE SAME READING IN A DIFFERENT RANGE. minionOf takes where a
+ * creature sits INSIDE these — a third of the way up the pace band, near the top of the size one —
+ * and puts it the same distance up its own much smaller bands. That is what keeps one drawing one
+ * creature across the roles: the boss version and the minion version of a long-legged thing are
+ * both the quick one. Re-deriving a second set of dials from the picture would be a second
+ * opinion about what somebody drew, which is the thing this module exists to be the only one of.
+ */
+export const BAND = {
   scale: [2.05, 3.05],
   pace: [0.68, 1.3],
   range: [0.5, 1.02],

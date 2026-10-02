@@ -109,14 +109,20 @@ export function ringOf(
  * somewhere around three hundred, and the answer then is a grid rather than a cleverer loop —
  * worth knowing now, not worth building now.
  */
-export function stepSwarm(
-  mobs: Mob[],
+/**
+ * ⚠️ GENERIC, SO A CALLER CAN HANG ITS OWN THINGS OFF A MOB. A crowd you can fight needs health
+ * on each of them, and the alternative — a parallel array kept in step by hand — is one filter
+ * away from a minion with somebody else's hit points. The step owns position and velocity and
+ * carries the rest through untouched.
+ */
+export function stepSwarm<T extends Mob>(
+  mobs: T[],
   seek: { x: number; y: number },
   dt: number,
   tune: Flock = FLOCK,
-): Mob[] {
+): T[] {
   if (!(dt > 0)) return mobs
-  const out: Mob[] = new Array(mobs.length)
+  const out: T[] = new Array(mobs.length)
   for (let i = 0; i < mobs.length; i++) {
     const m = mobs[i]
     const toX = seek.x - m.x
@@ -162,7 +168,7 @@ export function stepSwarm(
     const k = Math.min(1, tune.grip * dt)
     const vx = m.vx + (ax * fit * tune.speed - m.vx) * k
     const vy = m.vy + (ay * fit * tune.speed - m.vy) * k
-    out[i] = { x: m.x + vx * dt, y: m.y + vy * dt, vx, vy }
+    out[i] = { ...m, x: m.x + vx * dt, y: m.y + vy * dt, vx, vy }
   }
   return out
 }
