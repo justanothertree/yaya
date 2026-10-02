@@ -325,9 +325,13 @@ export function GamesRoom({
           <span className="games-tile-body">
             <span className="games-tile-name">Minions</span>
             <span className="games-tile-line">
+              {/* ⚠️ "A MAP TO WALK" STOPPED BEING THE WHOLE OF IT. A map you drew is where you
+                  call waves of your own creature now, and this sentence is the site's only list
+                  of what a creature is FOR — the same list that was once telling somebody with
+                  nothing drawn about two games when there were three. */}
               {mine.length
-                ? 'Your creatures, and everywhere they go: the park everybody shares, a scrap, a platformer. Make another, or draw a map to walk.'
-                : 'Draw a creature and it can walk a park everybody shares, scrap with another, or run a platformer. Start here — you can draw a map for it too.'}
+                ? 'Your creatures, and everywhere they go: the park everybody shares, a scrap, a platformer. Make another, or draw a map and fight waves in it.'
+                : 'Draw a creature and it can walk a park everybody shares, scrap with another, or run a platformer. Start here — draw a map and you can fight waves of it too.'}
             </span>
           </span>
         </button>
