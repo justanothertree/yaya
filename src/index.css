@@ -9347,10 +9347,19 @@ a.cz-msg-author:focus-visible {
   text-decoration: none;
 }
 
+/**
+ * ⚠️ BIG ENOUGH TO SEE THE THING IT IS SHOWING. A creature stands PARK_TALL — 0.088 — of the
+ * field's height, so the field's height IS the creature's size: at the 187px this got inside the
+ * wizard's rail the creature was seventeen pixels tall, which is the one number the field exists
+ * to show, shown too small to look at. At 1000 wide it is 625 tall and the creature is 55 — the
+ * same size the park draws one, which is the whole point of calling it 1:1.
+ */
 .try-field-wrap {
   display: grid;
   gap: 0.4rem;
   width: 100%;
+  max-width: min(100%, 1000px);
+  margin-inline: auto;
 }
 .try-field {
   position: relative;

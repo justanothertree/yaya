@@ -4174,22 +4174,21 @@ export function PaintRoom() {
                       a loop answers. It takes over the field rather than sitting under it,
                       because the wizard has already been cut down once for feeling like a lot.
                     */}
-                    {trying ? (
-                      <TryField art={petPreview} onDone={() => setTrying(false)} />
-                    ) : (
-                      <CastShow
-                        art={petPreview}
-                        casts={petBoss.casts}
-                        scale={petBoss.scale}
-                        swing={shownSwing}
-                        onPickCast={() => setShownSwing(null)}
-                      />
-                    )}
-                    {!trying && (
-                      <button className="btn" onClick={() => setTrying(true)}>
-                        ▶ Walk it around
-                      </button>
-                    )}
+                    <CastShow
+                      art={petPreview}
+                      casts={petBoss.casts}
+                      scale={petBoss.scale}
+                      swing={shownSwing}
+                      onPickCast={() => setShownSwing(null)}
+                    />
+                    {/* ⚠️ THE BUTTON IS HERE AND THE FIELD IS NOT — see the room level, beside the
+                        map maker. This rail is about 300px wide, so a field in it is 300x187 and a
+                        creature standing PARK_TALL of that is seventeen pixels tall: proportionally
+                        honest and far too small to look at, let alone drive. "the walk it around is
+                        so tiny inside the minion wizard." A thing you PLAY takes the room. */}
+                    <button className="btn" onClick={() => setTrying(true)}>
+                      ▶ Walk it around
+                    </button>
                     {/**
                       ⚠️ WHY IT GOT THESE, WHICH NOTHING SAID. CastShow plays the three at the
                       real size and speed and saysOf describes how it fights, but nothing joined
@@ -4620,12 +4619,17 @@ export function PaintRoom() {
           <MapMaker />
         </>
       )}
+      {/* ⚠️ AT THE ROOM'S WIDTH, LIKE THE MAP MAKER, AND FOR THE SAME REASON. Inside the rail
+          this was 300px across, which puts a creature at seventeen pixels — the one number the
+          field exists to show, shown too small to see. A thing you drive takes the room over and
+          gives the board back when you are done. */}
+      {trying && <TryField art={petPreview} onDone={() => setTrying(false)} />}
       <div
         className={
           'paint-board' +
           (bg ? ' has-paper' : '') +
           (shapeAr ? ' has-shape' : '') +
-          (making ? ' is-away' : '')
+          (making || trying ? ' is-away' : '')
         }
         ref={host}
         /* ⚠️ Asked for, and the cost is honest: a double-click here also leaves two dots, because
