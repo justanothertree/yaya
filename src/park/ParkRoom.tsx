@@ -1271,7 +1271,17 @@ export function ParkRoom({
     no: number
     were: number
   } | null>(null)
-  const [waveNo, setWaveNo] = useState(0)
+  /**
+   * How many waves you have CLEARED here, which is not how many have been called.
+   *
+   * ⚠️ IT COUNTED SPAWNS, AND THAT MADE EVERY OTHER QUESTION AWKWARD. Leaving the park reset it,
+   * so walking out to look at something started the escalation over; sending a wave away reset it
+   * too, so giving up on wave four put you back to ten. Counting what you BEAT answers all three
+   * without a rule each: the next wave is always `wavesWon + 1`, so abandoning one means facing
+   * the same one again, leaving and coming back resumes, and clearing is the only thing that
+   * moves you on. Which is also the only one of the three that should.
+   */
+  const [wavesWon, setWavesWon] = useState(0)
   const [mobsLeft, setMobsLeft] = useState(0)
   /**
    * The wave you just cleared, until you call the next one.
@@ -1300,14 +1310,17 @@ export function ParkRoom({
    * forty creatures nobody sent exist on your screen alone.
    *
    * ⚠️ ONE FUNCTION FOR BOTH EXITS, for the reason canBeHurt's note gives about five call sites
-   * that have to agree: a wave is five pieces of state and clearing four of them somewhere is
+   * that have to agree: a wave is four pieces of state and clearing three of them somewhere is
    * how it comes back.
+   *
+   * ⚠️ AND IT DOES NOT TOUCH wavesWon, which is the point of counting wins rather than spawns.
+   * The crowd must not outlive the room; your place in the run is not the crowd, and walking out
+   * of the park to look at something should not be the same thing as giving up.
    */
   const dropWave = useCallback(() => {
     mobs.current = []
     mobKit.current = null
     setMobsLeft(0)
-    setWaveNo(0)
     setWaveDone(null)
   }, [])
   const swarmCv = useRef<HTMLCanvasElement>(null)
@@ -1555,6 +1568,21 @@ export function ParkRoom({
   const rolled = useRef(false)
   const [dodging, setDodging] = useState(false)
   const dodgeShown = useRef(false)
+  /**
+   * Whether you are inside the moment of safety a hit buys — see GRACE.
+   *
+   * ⚠️ BECAUSE BEING HIT HAD NO PICTURE AT ALL. Your own creature has never flashed: a blow
+   * showed as the stagger and a shorter bar, and the grace that follows it showed as nothing,
+   * which is the "a derived ability nobody is told about is indistinguishable from no ability"
+   * rule applied to the thing that stops a crowd locking you out. One treatment for both halves
+   * rather than a second language for the second one — being struck and being briefly
+   * untouchable are the same moment, and the dodge already says "untouchable" this way.
+   *
+   * ⚠️ AN EDGE, NOT A FRAME COUNT, exactly like dodgeShown beside it: this changes twice a hit
+   * rather than sixty times a second, so it can be state without the loop paying for it.
+   */
+  const [spared, setSpared] = useState(false)
+  const safeShown = useRef(false)
   /* ⚠️ held, so it is a ref like the guard rather than an edge like the roll — see PARK_KEYS */
   const creeping = useRef(false)
   const [sneaking, setSneaking] = useState(false)
@@ -2174,6 +2202,11 @@ export function ParkRoom({
         dodgeShown.current = you.current.dodge > 0
         setDodging(dodgeShown.current)
       }
+      /* ⚠️ the same edge, for the safety you did not buy on purpose — see `spared` */
+      if (you.current.safe > 0 !== safeShown.current) {
+        safeShown.current = you.current.safe > 0
+        setSpared(safeShown.current)
+      }
       /**
        * ⚠️ A PARRY HAS TO OPEN THE THING THAT THREW IT, or it is a guard that happens to cost
        * nothing and the timing buys you only what waiting would have. strike.ts cannot reach
@@ -2335,7 +2368,13 @@ export function ParkRoom({
         if (standing.length !== mobs.current.length) setMobsLeft(standing.length)
         /* ⚠️ the frame the last one falls, and only that frame — `crowd.length` is the count
            before the filter, so an empty wave cannot keep announcing itself */
-        if (!standing.length && crowd.length) setWaveDone({ no: kit.no, were: kit.were })
+        if (!standing.length && crowd.length) {
+          setWaveDone({ no: kit.no, were: kit.were })
+          /* ⚠️ SET, NOT INCREMENTED. The wave knows its own number, so this says where you have
+             got to rather than adding one to whatever the counter happened to hold — which is
+             the difference between a run and a tally that drifts if this ever fires twice. */
+          setWavesWon(kit.no)
+        }
         mobs.current = standing
       }
       if (area && mv) {
@@ -3550,25 +3589,23 @@ export function ParkRoom({
             className="btn"
             onClick={() => {
               if (mobs.current.length) {
-                mobs.current = []
-                setMobsLeft(0)
-                setWaveNo(0)
-                /* ⚠️ sending them away is abandoning a wave, not clearing one, so it must not
-                   leave a line on screen saying you cleared it */
-                setWaveDone(null)
+                /* ⚠️ ABANDONING, NOT CLEARING — so no line saying you cleared it, and wavesWon
+                   is left alone, which means the next one you call is the same one again. */
+                dropWave()
                 return
               }
               const art = (bossable[bossPick] ?? bossable[0])?.art
               if (!art) return
               const kind = minionOf(art)
-              const n = waveSize(waveNo + 1)
+              const no = wavesWon + 1
+              const n = waveSize(no)
               mobKit.current = {
                 kind,
                 /* ⚠️ baked BEFORE the wave, never per spawn: a detailed creature takes 110ms and
                    that would land exactly as the wave arrived — see bake.ts */
                 baked: bakeWalk(art, Math.max(2, 54 * kind.scale)),
                 wide: petWide(art) * kind.scale,
-                no: waveNo + 1,
+                no,
                 were: n,
               }
               setWaveDone(null)
@@ -3583,11 +3620,16 @@ export function ParkRoom({
                 cut: -1,
                 zapped: -1,
               }))
-              setWaveNo((w) => w + 1)
               setMobsLeft(n)
             }}
           >
-            {mobs.current.length ? `✕ Send them away · ${mobsLeft} left` : '⚔ Call a wave'}
+            {/* ⚠️ IT NAMES WHAT IT WILL CALL, because the escalation was only ever visible AFTER
+                a clear — the line that says "the next is 16" appears once you have won, and the
+                button you press to walk into sixteen of them said "a wave". A control that will
+                not tell you what it does until you have done it is a control you press once. */}
+            {mobs.current.length
+              ? `✕ Send them away · ${mobsLeft} left`
+              : `⚔ Call wave ${wavesWon + 1} · ${waveSize(wavesWon + 1)} of them`}
           </button>
         )}
         {walking && bossable.length > 0 && !theirBoss && (
@@ -4334,6 +4376,10 @@ export function ParkRoom({
                       /* ⚠️ A DODGE YOU CANNOT SEE IS A DODGE YOU CANNOT LEARN TO TIME. The
                          0.26s of safety is the whole feature, so the creature has to look
                          untouchable for exactly as long as it is. */
+                      /* ⚠️ BEFORE is-rolling, and the stylesheet keeps that order too: both say
+                         "untouchable", a roll says it louder because you spent something for
+                         it, and when both are true the louder one has to win. */
+                      (one.mine && spared ? ' is-spared' : '') +
                       (one.mine && dodging ? ' is-rolling' : '') +
                       /* committed, and visibly so — the same reason the boss squashes to turn */
                       (one.mine && casting ? ' is-casting' : '')

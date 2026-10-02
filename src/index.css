@@ -8701,6 +8701,30 @@ a.cz-msg-author:focus-visible {
  * to animate would finish after the invulnerability had — a flat change of state is the honest
  * thing here, on for exactly as long as the safety is.
  */
+/**
+ * The moment of safety a hit buys you — see GRACE and `spared`.
+ *
+ * ⚠️ FLAT, FOR EXACTLY AS LONG AS THE SAFETY IS, which is the rule the note above states and
+ * the reason this is not an animation: the grace is the stagger plus a third of a second, so it
+ * varies with the blow, and a keyframe with a duration typed into it would finish before or
+ * after the thing it is describing. Being struck is why the brightness is here at all — your own
+ * creature has never flashed when hit, so this is the first picture of that moment as well as of
+ * the safety after it.
+ *
+ * ⚠️ AND IT IS QUIETER THAN A ROLL ON PURPOSE. The roll is louder because you spent an input on
+ * it. The roll's rule follows this one in the sheet so that it wins when both are true, which is
+ * the whole reason these two are adjacent.
+ *
+ * ⚠️ BRIGHTNESS AND NOT OPACITY, BECAUSE OF THE DUTY CYCLE. Measured standing in a wave of ten:
+ * this state is on 318 frames in 600, so it is not an exceptional moment during a crowd fight,
+ * it is roughly half of one. A fade at that rate is not a fade, it is a 1Hz flicker, and the
+ * creature's normal look becomes the faded one. A slight lift reads as a shimmer at the same
+ * rate — "being chipped at and protected", which is what standing in a crowd actually is —
+ * without ever making you doubt which of the two is your creature's real colour.
+ */
+.park-one.is-spared canvas {
+  filter: brightness(1.2) contrast(0.94);
+}
 .park-one.is-rolling canvas {
   opacity: 0.45;
   filter: brightness(1.5) saturate(0.4);
