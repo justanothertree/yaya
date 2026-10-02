@@ -9441,6 +9441,22 @@ a.cz-msg-author:focus-visible {
   gap: 0.4rem;
 }
 
+/**
+ * The wave, on one canvas — see ParkRoom.
+ *
+ * ⚠️ OVER THE GROUND AND UNDER THE PEOPLE. A crowd painted above the creatures would hide the one
+ * you are steering at exactly the moment there are forty things around it; painted below the
+ * scenery it would walk under the rocks. Between the two is where a creature on the floor goes.
+ */
+.park-swarm {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 1;
+}
+
 /* ⚠️ anchored at the FEET, like every creature in the park, or the circles centre on its chest */
 .cast-show-pet {
   position: absolute;

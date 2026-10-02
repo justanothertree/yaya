@@ -33,6 +33,7 @@ import {
   restingWalker,
   stepWalker,
   STILL,
+  TUNE,
   VIEW,
   walkEffort,
   type Mark,
@@ -74,6 +75,7 @@ import {
   stepDown,
   stepStrike,
   footSpan,
+  pressedTo,
   octantOf,
   overHead,
   PARK_TALL,
@@ -90,6 +92,9 @@ import { BOLT_UP, CAST, castSlot, inPatch, patchesOf, type CastKind, type Patch 
 import { ALL_CASTS, castsFor, loadout, setLoadout } from './loadout'
 import { shapeOf, type CastShape } from './castShape'
 import { SwipePatch } from './SwipePatch'
+import { minionOf, type Minion } from './minion'
+import { FLOCK, ringOf, stepSwarm, type Mob } from './swarm'
+import { bakeWalk, blitBaked, type Baked } from '../pets/bake'
 import { recordFought, recordWin, subscribeWins, winFor, wins, winsWith } from './records'
 import { lungeOf } from '../pets/fight'
 import {
@@ -393,6 +398,28 @@ const SPAR_LOW_EVERY = 3
 
 /** The field is 16:10, and a screen-height is its height — see SwipePatch. */
 const FIELD_ASPECT = 16 / 10
+
+/**
+ * World units out of screen-heights and back.
+ *
+ * ⚠️ THE CROWD THINKS IN SCREEN-HEIGHTS, which are isotropic, and the park stores positions in
+ * world units, which are not — one world unit across is PARK.across screenfuls and one down is
+ * PARK.down, and a screenful is FIELD_ASPECT heights wide against one tall. A flock stepped in
+ * world units would keep its neighbours further apart sideways than forwards and settle into an
+ * oval nobody asked for. This file has a long note about what mixing those two has cost; the
+ * conversion happens here and nowhere else.
+ *
+ * ⚠️ AT MODULE SCOPE, because they depend on nothing but constants. Declared inside the component
+ * they were a new pair of functions every render, which the frame loop then closed over — and an
+ * effect whose dependency is rebuilt every render tears down and rebuilds whatever it owns, which
+ * here is the animation frame itself.
+ */
+const SWARM_WIDE = PARK.across * FIELD_ASPECT
+const toHeights = (s: Spot) => ({ x: s.x * SWARM_WIDE, y: s.y * PARK.down })
+const toWorld = (p: { x: number; y: number }): Spot => ({
+  x: p.x / SWARM_WIDE,
+  y: p.y / PARK.down,
+})
 
 /**
  * How big a baked stamp is, in pixels across.
@@ -1202,6 +1229,34 @@ export function ParkRoom({
     [bossArt],
   )
 
+  /**
+   * A wave of the chosen creature, at the size there are a lot of.
+   *
+   * ⚠️ THE SAME DRAWING THE BOSS WOULD BE, because a role is how much of a creature you get and
+   * not a different creature — see minionOf. Picking the boss picks the wave, which means one
+   * control decides both and the thing you are about to fight is the thing the picker named.
+   *
+   * ⚠️ ON A DRAWN MAP ONLY, AND THAT IS A DELIBERATE CEILING RATHER THAN A FIRST STEP. The shared
+   * field has a relay, and forty creatures cannot each be a message — cast.ts holds the line that
+   * nothing new goes over the wire and holds it for a boss's whole repertoire. A wave that spawns
+   * from a seed everyone has and steers by positions everyone already receives would keep that
+   * bargain, but derived motion drifts and nothing here corrects it yet. A map you drew refuses
+   * the socket outright (see joinPark), so there is no second screen to disagree with: the one
+   * mode where this is honest today is the one it is in.
+   *
+   * ⚠️ AND IT IS CALLED OUT, LIKE A BOSS. A map is also somewhere to walk about, and waves that
+   * arrived on their own would take that away from everyone who wanted the other thing.
+   */
+  /** `cut` and `zapped` are which swing and which cast last hit this one — see the `cut` note */
+  const mobs = useRef<Array<Mob & { hp: number; cut: number; zapped: number }>>([])
+  const mobKit = useRef<{ kind: Minion; baked: Baked | null; wide: number } | null>(null)
+  const [waveNo, setWaveNo] = useState(0)
+  const [mobsLeft, setMobsLeft] = useState(0)
+  const swarmCv = useRef<HTMLCanvasElement>(null)
+  const waveSeed = useRef(1)
+  const swingNo = useRef(0)
+  const castNo = useRef(0)
+
   /** the wandering creatures, in the order wanderAt indexes them */
   const strollPets = useMemo(
     () => pets.filter((_, i) => i !== pick).slice(0, MAX_WANDERERS),
@@ -1807,6 +1862,9 @@ export function ParkRoom({
             CAST[myCast.current.kind].wait * (1 + BOLT_UP.wait * myCast.current.charge)
           myCast.current = null
           myCastHit.current.clear()
+          /* ⚠️ bumped WITH the set that does the same job for named things — a crowd has no
+             names to put in a Set, so it carries the id instead. See the `cut` note. */
+          castNo.current += 1
           setCasting(null)
         } else {
           myCast.current = { ...myCast.current, t: ct }
@@ -2073,6 +2131,10 @@ export function ParkRoom({
       /* ⚠️ and the move carries you, if it is one that does — see Attack.drive */
       you.current = driven(you.current, myMoves[you.current.move], struck.hold > 0 ? 0 : dt)
       if (wasSwinging !== you.current.swing > 0) setSwingAt((n) => n + 1)
+      /* ⚠️ THE RISING EDGE ONLY, and a ref rather than the swingAt counter beside it: that one
+         is state, so it bumps a frame late and on both edges, and "which swing is this" has to
+         be answerable inside the frame that asks. See the crowd's `cut` stamp. */
+      if (!wasSwinging && you.current.swing > 0) swingNo.current += 1
 
       /* what my swing is hurting right now, if anything */
       const mv0 = myMoves[you.current.move]
@@ -2082,6 +2144,130 @@ export function ParkRoom({
           : null
       const area = area0
       const mv = mv0
+
+      /**
+       * The wave: it comes for you, it can be cut down, and it can put you down.
+       *
+       * ⚠️ IN THIS LOOP RATHER THAN ONE OF ITS OWN, because it shares a clock with everything it
+       * touches. A crowd stepped on a second timer would be hit by a swing that had already
+       * ended on this one, and "did that land" would depend on which loop ran first.
+       *
+       * ⚠️ AND THE SAME inSwipe AND inPatch EVERYTHING ELSE ASKS. A crowd that died to its own
+       * idea of a hit would be a second opinion about what a swing reaches, which is the
+       * disagreement this module keeps paying for.
+       */
+      const kit = mobKit.current
+      if (kit && mobs.current.length) {
+        const tune = {
+          ...FLOCK,
+          /* TUNE.speed is your own top speed in screenfuls a second, so a minion's pace is
+             honestly a multiple of yours rather than a number picked to feel right */
+          speed: TUNE.speed * kit.kind.pace,
+          /* ⚠️ BOTH DERIVED, NEVER PICKED — see pressedTo, which exists because the picked
+             version put the whole wave outside the reach of every swing in the game. */
+          apart: pressedTo(kit.wide, kit.wide),
+          /**
+           * ⚠️ ALONG y, WHICH IS THE CLOSEST TOUCHING EVER GETS — see pressedTo. It is the ring
+           * this one number draws that decides whether the fight has an answer at all, so it
+           * has to be inside contact from EVERY direction rather than on average: measured
+           * sideways, a minion arriving from above would stop with a visible gap and chip
+           * nothing, because a footprint is shallower than it is wide.
+           *
+           * ⚠️ AND THE RING YOU ACTUALLY SEE IS WIDER THAN THIS, which is the point. `apart` is
+           * twice as far, so ten of them cannot all stand here: the front few press against you
+           * and the rest queue behind. The radius is emergent and the pressure is the fight —
+           * asking for less than is reachable and letting separation argue is a better crowd
+           * than asking for a polite distance and hoping a swing can cross it.
+           */
+          reach: pressedTo(myWide, kit.wide, 0, 1),
+        }
+        let crowd = stepSwarm(mobs.current, toHeights(you.current), dt, tune)
+
+        /**
+         * Your swing cuts down everything in its arc, once each.
+         *
+         * ⚠️ A STAMP PER MINION RATHER THAN THE SWING'S OWN `spent` FLAG, which is the rule the
+         * cast's note states a few lines down: one patch is one hit per thing. `spent` is a
+         * single flag, so against a crowd it would mean a swing fells ONE of forty — and
+         * without any flag at all the map runs every frame a swipe is live, which is six frames
+         * of full damage and a wave that vanishes the instant you press F. Neither is a fight.
+         */
+        if (area && mv) {
+          const id = swingNo.current
+          crowd = crowd.map((m) =>
+            m.cut !== id && inSwipe(toWorld(m), kit.wide, area)
+              ? { ...m, hp: m.hp - mv.bite, cut: id }
+              : m,
+          )
+        }
+        /* and so does a cast, on its own spend-once flag, exactly as it does to a boss */
+        const mineNow = myCast.current
+        if (mineNow && myMoves.length) {
+          /* ⚠️ THE SAME WOUND THE BOSS TAKES, charge bonus included — this read `weight * 1.1`
+             while the boss a few lines down read `weight * 1.1 * (1 + BOLT_UP.bite * charge)`,
+             so holding a bolt made it hit a boss harder and a crowd not at all. */
+          const weight = myMoves.reduce((n, a) => n + a.bite, 0) / myMoves.length
+          const wound = weight * 1.1 * (1 + BOLT_UP.bite * mineNow.charge)
+          const id = castNo.current
+          for (const patch of patchesOf(
+            mineNow.kind,
+            you.current,
+            you.current.aim,
+            mineNow.t,
+            1,
+            mineNow.charge,
+            myShape.current,
+          )) {
+            if (!patch.live) continue
+            crowd = crowd.map((m) =>
+              m.zapped !== id && inPatch(toWorld(m), kit.wide, patch)
+                ? { ...m, hp: m.hp - wound, zapped: id }
+                : m,
+            )
+          }
+        }
+
+        /**
+         * ⚠️ THEY HURT YOU THROUGH THE SAME GUARD A BOSS DOES — stun above zero means you cannot
+         * be hit, so being caught by one does not feed you into the next. Without that, standing
+         * in a crowd would be forty hits in one frame rather than a fight.
+         */
+        if (canBeHurt(you.current) && myMoves.length) {
+          /* ⚠️ A TOUCH IS A CIRCLE, AND inPatch IS THE PARK'S OWN TEST FOR STANDING IN ONE — it
+             expands the region by the TARGET's footprint, which is the difference between "our
+             middles are close" and "we are touching" that the fissure's note is about. */
+          const touch = crowd.find((m) => {
+            if (m.hp <= 0) return false
+            const at = toWorld(m)
+            /**
+             * ⚠️ THE MINION'S OWN FOOTPRINT ALONG THE LINE BETWEEN US, not a circle a fraction
+             * of its height wide. inPatch already expands the region by MY footprint in the
+             * direction of the patch; handing it a radius measured the same way makes the whole
+             * test "do our two ellipses meet", which is the only statement of touching that is
+             * the same from every angle. A circle picked as a fraction of PARK_TALL is a third
+             * opinion about how big a creature is, and the park has paid for two already.
+             */
+            const { sx, sy } = toScreen(you.current.x - at.x, you.current.y - at.y)
+            const len = Math.hypot(sx, sy) || 1
+            return inPatch(you.current, myWide, {
+              at,
+              r: footSpan(kit.wide, 1, sx / len, sy / len),
+              ready: 1,
+              live: true,
+            })
+          })
+          if (touch)
+            you.current = mauled(you.current, toWorld(touch), {
+              ...myMoves[0],
+              bite: kit.kind.bite,
+              lift: 0.1,
+            })
+        }
+
+        const standing = crowd.filter((m) => m.hp > 0)
+        if (standing.length !== mobs.current.length) setMobsLeft(standing.length)
+        mobs.current = standing
+      }
       if (area && mv) {
         nudges.current.forEach((n, i) => {
           const w = wanderAt(i, clockRef.current)
@@ -2873,6 +3059,18 @@ export function ParkRoom({
         if (area0) sw.push({ k: 'my-swing', swipe: area0 })
         const d = dummy.current
         if (d) f.push({ k: 'dummy', at: d, wide: myWide, scale: 1 })
+        /**
+         * ⚠️ THE WAVE TOO, BECAUSE AN OVERLAY THAT LEAVES SOMETHING OUT IS WORSE THAN NO
+         * OVERLAY. Turning the boxes on during the wave's first run showed exactly one
+         * ellipse — the player's — which reads as "the park does not know they are there" and
+         * is a sentence about this list rather than about the crowd. Thirty-odd minions is
+         * thirty-odd spans in the same list the boss is in; they go through footSpan the same
+         * way, so there is still no second opinion anywhere.
+         */
+        const mk = mobKit.current
+        if (mk)
+          for (let i = 0; i < mobs.current.length; i++)
+            f.push({ k: `mob${i}`, at: toWorld(mobs.current[i]), wide: mk.wide, scale: 1 })
         const b = boss.current
         if (b && bossKit) {
           f.push({ k: 'boss', at: b, wide: bossKit.wide, scale: b.scale })
@@ -2922,6 +3120,33 @@ export function ParkRoom({
 
       cam.current = stepCam(cam.current, you.current, dt, stillRef.current)
       setCamAt(cam.current)
+
+      /**
+       * ⚠️ DRAWN HERE, AFTER THE CAMERA, AND ONTO ONE CANVAS. Forty creatures as forty .park-one
+       * elements would be forty live rigs painted every frame, which the spike measured at 42ms
+       * for TEN of a detailed drawing — see docs/2026-09-30-swarm-spike.md. Baked and blitted they
+       * are 800 for under a millisecond, and the cost stops caring how complicated the drawing is.
+       *
+       * ⚠️ AND CULLED AGAINST THE SCREEN, not the world: thinking about one off camera is free and
+       * drawing it is not. A minion that stopped STEERING out there would arrive in a clump the
+       * moment it came back, having spent the whole time not walking.
+       */
+      const cv = swarmCv.current
+      if (cv) {
+        const w = cv.width
+        const h = cv.height
+        const g = cv.getContext('2d')
+        if (g) {
+          g.clearRect(0, 0, w, h)
+          const baked = mobKit.current?.baked
+          if (baked)
+            for (const m of mobs.current) {
+              const p = onScreen(toWorld(m), cam.current)
+              if (p.x < -0.1 || p.x > 1.1 || p.y < -0.1 || p.y > 1.1) continue
+              blitBaked(g, baked, p.x * w, p.y * h, clockRef.current + m.x * 0.6, m.vx < 0 ? -1 : 1)
+            }
+        }
+      }
 
       /**
        * ⚠️ EVERY PEER MOVES ON EVERY FRAME, not only on the frames a packet arrived. Fifteen a
@@ -3240,6 +3465,54 @@ export function ParkRoom({
               ))}
             </select>
           </label>
+        )}
+        {/**
+          ⚠️ A WAVE IS CALLED OUT, EXACTLY LIKE A BOSS, and for the same reason: a map you drew is
+          also somewhere to walk about, and creatures that arrived on their own would take that
+          away from anybody who wanted the other thing.
+
+          ⚠️ AND ONLY ON A DRAWN MAP. The shared field has a relay and forty creatures cannot each
+          be a message — see the note on `mobs`. A map refuses the socket outright, so there is no
+          second screen for a derived crowd to disagree with.
+        */}
+        {walking && walkingMap && bossable.length > 0 && (
+          <button
+            className="btn"
+            onClick={() => {
+              if (mobs.current.length) {
+                mobs.current = []
+                setMobsLeft(0)
+                setWaveNo(0)
+                return
+              }
+              const art = (bossable[bossPick] ?? bossable[0])?.art
+              if (!art) return
+              const kind = minionOf(art)
+              const n = 10 + waveNo * 6
+              mobKit.current = {
+                kind,
+                /* ⚠️ baked BEFORE the wave, never per spawn: a detailed creature takes 110ms and
+                   that would land exactly as the wave arrived — see bake.ts */
+                baked: bakeWalk(art, Math.max(2, 54 * kind.scale)),
+                wide: petWide(art) * kind.scale,
+              }
+              waveSeed.current += 1
+              const here = toHeights(you.current)
+              /* ⚠️ -1, NOT 0: the stamps say "which swing/cast last hit this one", and a swing
+                 that is live the moment a wave lands is swing 0 on a fresh page. Starting at 0
+                 would mean every minion spawns already counted as hit by it. */
+              mobs.current = ringOf(n, waveSeed.current, here, 1.3).map((m) => ({
+                ...m,
+                hp: kind.life,
+                cut: -1,
+                zapped: -1,
+              }))
+              setWaveNo((w) => w + 1)
+              setMobsLeft(n)
+            }}
+          >
+            {mobs.current.length ? `✕ Send them away · ${mobsLeft} left` : '⚔ Call a wave'}
+          </button>
         )}
         {walking && bossable.length > 0 && !theirBoss && (
           <button
@@ -3644,6 +3917,9 @@ export function ParkRoom({
           {/* ⚠️ THE GROUND MOVES, NOT THE CREATURES. Everything in the park is placed by the same
               onScreen() the walkers are, so the grass, the path and the people can never disagree
               about where the middle of the world is. */}
+          {/* ⚠️ ONE CANVAS FOR THE WHOLE WAVE, under the creatures and over the ground — see the
+              draw in the loop. Sized in device pixels once rather than per frame. */}
+          <canvas ref={swarmCv} className="park-swarm" width={1280} height={800} aria-hidden />
           <span
             className="park-ground"
             style={{

@@ -428,6 +428,29 @@ export const POUNCE: Attack = {
 }
 
 /**
+ * What the SOFTEST ordinary swing takes off — the reference a pool of health is written against.
+ *
+ * ⚠️ IT EXISTS SO THAT A POOL OF HEALTH CAN BE WRITTEN IN SWINGS, which is the only unit a
+ * health bar is ever really read in. A minion's life band said `[8, 26]` beside a comment
+ * promising "two or three swings", and nobody had ever divided one by the other. Measured in the
+ * park: ten minions at 23.8 against a bite of 5, which is five clean swings each and about fifty
+ * to clear one wave. Points are a unit nobody can check by looking; swings are.
+ *
+ * ⚠️ THE SOFTEST RATHER THAN THE AVERAGE, AND THAT IS THE WHOLE CHOICE HERE. The mean of this
+ * table is 7.6 — but a drawn move is built from ink, and the creature that exposed this hits for
+ * 5. A band measured against the average is a promise that holds for the people who hit hard and
+ * quietly breaks for the ones who do not, which is backwards: "it dies in a few hits" has to be
+ * true for whoever is having the worst time of it, or it is not a design rule, it is an average.
+ *
+ * ⚠️ AND IT IS ASKED OF THE TABLE RATHER THAN TYPED OUT, so retuning a swipe cannot leave a
+ * minion's toughness measured against the old one. Same reason the park's standoff is asked of
+ * footSpan: a number derived from a table cannot drift away from it.
+ */
+export const A_SWING: number = Math.min(
+  ...[...Object.values(FROM), POUNCE].map((a) => a?.bite ?? Infinity),
+)
+
+/**
  * The attacks somebody actually drew.
  *
  * ⚠️ WHERE YOU DREW IT IS THE MOVE. Everything about a drawn attack comes out of the ink: how

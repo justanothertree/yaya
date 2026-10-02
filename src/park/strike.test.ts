@@ -9,14 +9,19 @@ import {
   guarded,
   octantOf,
   PARK_TALL,
+  mauled,
   parries,
+  pressedTo,
   restingStriker,
+  stepDown,
+  stepStrike,
   toScreen,
   type Aimed,
   type Striker,
 } from './strike'
 import { restingWalker } from './walk'
 import { PET_TALL } from '../pets/play'
+import { POUNCE, type Attack } from '../pets/attack'
 
 /**
  * Which way you are pointing, and whether a blow gets through.
@@ -252,5 +257,167 @@ describe('the footprint a creature makes', () => {
     const across = footSpan(PET_TALL, 1, 1, 0)
     const deep = footSpan(PET_TALL, 1, 0, 1)
     expect(deep).toBeLessThan(across / 2)
+  })
+})
+
+/**
+ * A standoff is a distance something has to cross, and the thing that crosses it decides it.
+ *
+ * ⚠️ THIS IS THE TEST FOR A WAVE THAT COULD NEITHER BE HIT NOR HIT BACK, and it is here rather
+ * than in ParkRoom because the whole mistake was a number picked in a component out of the one
+ * constant that was to hand. Ten minions converged on the player, drew correctly, stood in a
+ * ring — and twelve swings felled none of them while the player took no damage. Both hit tests
+ * were right. The ring was at PARK_TALL × scale × 1.6, a swing reaches move.reach × PARK_TALL
+ * plus the target's footprint, and nothing had ever asked whether the second was bigger than the
+ * first. It is not, for any move in the band.
+ *
+ * ⚠️ MEASURED THROUGH THE REAL CONSTANTS AND THE REAL BANDS, never against a repeat of the sum.
+ * The question is not "is pressedTo what I typed" — it is "is the ring inside the swing", which
+ * is two different functions disagreeing or agreeing, and no arithmetic shared between them.
+ */
+describe('a crowd standing where a swing can reach it', () => {
+  /** the reach band every drawn move is clamped into — see movesOf */
+  const REACH = [0.5, 1.6] as const
+  /** the scale band a minion is ranged into — see minion.ts */
+  const SCALE = [0.7, 1.15] as const
+  /** a creature's drawing is somewhere in here, tall and thin through squat and wide */
+  const RATIOS = [0.5, 0.8, 1.2, 2] as const
+
+  /** how far a swing of this reach carries, in screen-heights, against a target that wide */
+  const swingGets = (reach: number, theirWide: number) =>
+    reach * PARK_TALL + footSpan(theirWide, 1, 1, 0)
+
+  it('stands closer than the shortest swing in the game carries', () => {
+    for (const mine of RATIOS)
+      for (const theirs of RATIOS)
+        for (const scale of SCALE) {
+          const myWide = PET_TALL * mine
+          const theirWide = PET_TALL * theirs * scale
+          const ring = pressedTo(myWide, theirWide, 0, 1)
+          expect(
+            ring,
+            `a ${mine}:1 player swinging at a ${theirs}:1 minion at ${scale}x`,
+          ).toBeLessThan(swingGets(REACH[0], theirWide))
+        }
+  })
+
+  /**
+   * ⚠️ AND INSIDE CONTACT FROM EVERY DIRECTION, which is the half the picked number also got
+   * wrong and the reason the ring is YOUR span rather than the sum of both. A footprint is
+   * shallower than it is wide, so the sum is only the touching distance sideways: a crowd that
+   * wanted it would press on you from the left and stand off a visible gap from above.
+   */
+  it('and inside touching distance whichever way it comes at you', () => {
+    for (const mine of RATIOS)
+      for (const theirs of RATIOS) {
+        const myWide = PET_TALL * mine
+        const theirWide = PET_TALL * theirs
+        const ring = pressedTo(myWide, theirWide, 0, 1)
+        /* ⚠️ EVERY DIRECTION, NOT THE TWO AXES. "The shallow one is the smallest" is the claim
+           being made, so checking it at 0° and 90° would be asserting it rather than testing
+           it — the whole reason the first version of this was wrong is that it reasoned about
+           which term was biggest instead of sweeping. */
+        for (let i = 0; i < 16; i++) {
+          const a = (i / 16) * Math.PI * 2
+          const ux = Math.cos(a)
+          const uy = Math.sin(a)
+          const touching = footSpan(myWide, 1, ux, uy) + footSpan(theirWide, 1, ux, uy)
+          expect(
+            ring,
+            `${mine}:1 and ${theirs}:1 at ${Math.round((a * 180) / Math.PI)}°`,
+          ).toBeLessThanOrEqual(touching)
+        }
+      }
+  })
+
+  /** ⚠️ and two of a kind do not stack, which is the one thing pressedTo is exactly right for */
+  it('while two of the same minion stand a body apart', () => {
+    for (const theirs of RATIOS) {
+      const wide = PET_TALL * theirs
+      expect(pressedTo(wide, wide)).toBeCloseTo(footSpan(wide, 1, 1, 0) * 2, 10)
+    }
+  })
+})
+
+/**
+ * Being hit has to give you back the controls before the next blow can land.
+ *
+ * ⚠️ THIS IS THE SECOND HALF OF THE WAVE'S FIRST RUN, and it is the one that could not have
+ * been reasoned out. The ring was fixed, the minions reached the player, the player started
+ * taking damage — and a held attack key produced ZERO live swings in 2.4 seconds of being
+ * surrounded, against seventeen with the field empty. canBeHurt was `stun <= 0`, so the safety
+ * window and the no-control window were the same number: the frame the stagger ends, the next
+ * minion lands, and the fight is a cutscene.
+ *
+ * ⚠️ AND IT IS CHECKED AS A LOOP RATHER THAN AS A COMPARISON, because "safe > stun" is the
+ * arithmetic the fix is made of and would agree with itself. What is asked here is the thing
+ * that was actually wrong: step a striker with something touching it EVERY FRAME, and count
+ * the frames in which it could have swung.
+ */
+describe('a crowd that leaves you frames to fight in', () => {
+  const MOVE: Attack = { ...POUNCE, live: [0.3, 0.6], span: 1 }
+  const touch: Attack = {
+    ...MOVE,
+    bite: 6,
+    shove: 1,
+  }
+
+  /** every frame: if it can be hurt, it is — which is what standing in a wave means */
+  const mobbed = (frames: number) => {
+    let s: Striker = { ...restingStriker(restingWalker(0.5, 0.5)), safe: 0 }
+    let free = 0
+    let hits = 0
+    for (let i = 0; i < frames; i++) {
+      if (canBeHurt(s)) {
+        s = mauled(s, { x: 0.52, y: 0.5 }, touch)
+        hits++
+      }
+      /* could a press have been taken on this frame? the same three the swing gate reads */
+      if (s.stun <= 0 && s.swing <= 0 && s.hold <= 0) free++
+      s = stepStrike(s, { quick: false, heavy: false, up: false, down: false }, [MOVE], 1 / 60)
+    }
+    return { free, hits }
+  }
+
+  it('lets you act, rather than staggering you for ever', () => {
+    const { free, hits } = mobbed(300)
+    expect(hits, 'it is still hitting you').toBeGreaterThan(3)
+    /* ⚠️ A SHARE, NOT A COUNT — the question is whether the fight is playable, and one free
+       frame in five seconds is the lock with a rounding error in it. */
+    expect(free / 300, 'frames you could have pressed in').toBeGreaterThan(0.3)
+  })
+
+  /** ⚠️ and the grace is longer than the stagger for every blow, not just a typical one */
+  it('and the window outlasts the stagger whatever hit you', () => {
+    for (const shove of [0.2, 1, 3, 8])
+      for (const bite of [1, 6, 20]) {
+        const hit = mauled(
+          restingStriker(restingWalker(0.5, 0.5)),
+          { x: 0.52, y: 0.5 },
+          {
+            ...MOVE,
+            bite,
+            shove,
+          },
+        )
+        expect(hit.safe, `shove ${shove}, bite ${bite}`).toBeGreaterThan(hit.stun)
+      }
+  })
+
+  /** ⚠️ and you stand up with it, which is what makes a knockdown survivable in a crowd */
+  it('and you get up with a window too', () => {
+    let s = restingStriker(restingWalker(0.5, 0.5))
+    s = { ...s, hurt: 999 }
+    let down = 0
+    let got: Striker = s
+    /* down, then all the way back up */
+    for (let i = 0; i < 400; i++) {
+      const r = stepDown(down, got, 1 / 60)
+      down = r.down
+      got = r.s
+      if (r.went === 'up') break
+    }
+    expect(down).toBe(0)
+    expect(got.safe).toBeGreaterThan(0)
   })
 })

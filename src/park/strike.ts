@@ -32,6 +32,22 @@ export type Striker = Walker & {
   rest: number
   /** seconds of being knocked about, during which nothing is steered */
   stun: number
+  /**
+   * Seconds of grace left after being hit, during which nothing else can land.
+   *
+   * ⚠️ THE STUN USED TO BE THIS, AND A CROWD IS WHY IT CANNOT BE. canBeHurt read `stun <= 0`
+   * and that is enough against ONE attacker, because an attack has a wind-up: the stagger ends
+   * inside a gap you can act in. Ten minions pressed against you have no wind-up and no gap —
+   * the frame the stagger ends, the next one lands — so the safety window and the no-control
+   * window being the same number is a permanent lock. Measured, and it is total: with the wave
+   * in contact, a held attack key produced ZERO live swings in 2.4 seconds, where the same key
+   * with the field empty produced seventeen. The fight was not hard, it was not a fight.
+   *
+   * ⚠️ AND IT IS LONGER THAN THE STAGGER BY CONSTRUCTION, never by a number that happens to be
+   * bigger — see GRACE. A grace that could be shorter than the stun it came with is the lock
+   * again, silently, for whichever blow is heavy enough.
+   */
+  safe: number
   /** the freeze on contact, for both of them — see fight.ts, same idea and same reason */
   hold: number
   /** damage taken from bosses; a neighbour's shove never adds to it — see mauled */
@@ -141,6 +157,7 @@ export const restingStriker = (w: Walker, jump = 1, glide = 1, weight = 1): Stri
   spent: false,
   rest: 0,
   stun: 0,
+  safe: 0,
   hold: 0,
   hurt: 0,
   heldQ: false,
@@ -225,7 +242,18 @@ export function stepDodge(
  * damage. Adding the second condition at four of the five call sites is exactly the bug this
  * module has shipped twice.
  */
-export const canBeHurt = (s: Striker): boolean => s.stun <= 0 && s.dodge <= 0
+export const canBeHurt = (s: Striker): boolean => s.safe <= 0 && s.stun <= 0 && s.dodge <= 0
+
+/**
+ * How long being hit buys you, past the end of the stagger itself.
+ *
+ * ⚠️ THE STAGGER PLUS A WINDOW YOU CAN USE, which is what makes it a recovery rather than a
+ * pause. 0.32s is about two thirds of a swing's wind-up and a whole dodge — enough to choose
+ * between them, not enough to stand in a crowd for free. This is the one number here that is a
+ * feel choice rather than a measurement; what is NOT a choice is that it is added to the stun
+ * rather than compared with it, so the grace outlasts the lost control whatever hit you.
+ */
+export const GRACE = 0.32
 
 /**
  * How much standing your ground is worth, and what it costs.
@@ -1116,6 +1144,44 @@ export const footSpan = (petWide: number, scale: number, ux: number, uy: number)
 }
 
 /**
+ * How close two creatures' middles are when their footprints are touching, in screen-heights.
+ *
+ * ⚠️ THIS IS THE NUMBER A STANDOFF HAS TO BE, AND PICKING ONE INSTEAD COST A WAVE THAT COULD
+ * NEITHER BE HIT NOR HIT BACK. A crowd that stops closing at `reach` settles into a ring at
+ * exactly that radius, so `reach` is not a comfort setting — it decides whether the fight has
+ * an answer. The park's first wave used `PARK_TALL * scale * 1.6`, which reads like a sensible
+ * body-and-a-half and is 0.127 screen-heights; a swing reaches `move.reach * PARK_TALL` plus the
+ * target's footprint, which for a typical quick move is 0.062 + 0.025 = 0.087. So ten minions
+ * converged on the player, stood 46% further out than the longest swing, and the honest reading
+ * of it — swings fell none, the player takes no damage — looks exactly like a broken hit test.
+ * Both hit tests were fine. The ring was out of reach of both of them.
+ *
+ * ⚠️ AND IT IS THE SAME MISTAKE THE FISSURE'S NOTE IS ABOUT, one level up: measure a gap
+ * against the thing that has to occupy it, not against zero. There the thing was a body
+ * squeezing between two patches; here it is a swing crossing a standoff. A distance that
+ * nothing was asked to cross is a distance with nowhere to be wrong.
+ *
+ * ⚠️ ASKED OF footSpan RATHER THAN REBUILT, for the reason the debug ellipse is: a standoff
+ * derived from its own copy of the footprint sum would agree with a wrong footprint exactly.
+ *
+ * ⚠️ A DIRECTION, BECAUSE FOOTPRINTS ARE ELLIPSES AND "TOUCHING" IS A DIFFERENT DISTANCE EVERY
+ * WAY ROUND. A flock has one number to want, so which direction's answer it gets is a real
+ * choice and the two callers want opposite ones. Two minions of a kind owe each other not to
+ * stack, which is settled along x, the wide axis. A minion owes YOU contact from wherever it
+ * happens to arrive, which is settled along y — the shallow axis is the SMALLEST of these
+ * distances, so wanting that much is inside touching from every angle at once.
+ *
+ * ⚠️ AND THE WIDTHS DO NOT DROP OUT OF THE y ANSWER BY ACCIDENT, they are genuinely absent from
+ * it: a footprint's depth is FOOT.deep of a creature's height and owes nothing to how wide the
+ * drawing is. Which is worth saying because the first version of this reasoned that the player's
+ * own x-span had to be the largest single term in the sum and used it directly. It is not — a
+ * 0.8:1 player's x-span is 0.0282 and the whole y sum against a slim minion is 0.0246 — and the
+ * test below said so before the park ever ran it.
+ */
+export const pressedTo = (wideA: number, wideB: number, ux = 1, uy = 0): number =>
+  footSpan(wideA, 1, ux, uy) + footSpan(wideB, 1, ux, uy)
+
+/**
  * Is this creature caught by that swing?
  *
  * ⚠️ MEASURED ALONG THE AIM AND ACROSS IT, with the target's own footprint expanding the
@@ -1208,11 +1274,16 @@ export function stepStrike(s: Striker, input: StrikeInput, moves: Attack[], dt: 
     return {
       ...s,
       hold: Math.max(0, s.hold - t),
+      /* ⚠️ THE GRACE RUNS DOWN THROUGH THE FREEZE TOO, or the contact freeze would extend the
+         safety it was granted alongside, and a fast enough crowd would be a run of overlapping
+         graces nothing could land in — the lock, mirrored. */
+      safe: Math.max(0, s.safe - t),
       heldQ: input.quick,
       heldH: input.heavy,
     }
 
   const stun = Math.max(0, s.stun - t)
+  const safe = Math.max(0, s.safe - t)
   const rest = Math.max(0, s.rest - t)
   let swing = Math.max(0, s.swing - t)
   let move = s.move
@@ -1234,6 +1305,7 @@ export function stepStrike(s: Striker, input: StrikeInput, moves: Attack[], dt: 
     move,
     spent,
     stun,
+    safe,
     rest: swing > 0 ? (moves[move]?.rest ?? 0) + swing : rest,
     heldQ: input.quick,
     heldH: input.heavy,
@@ -1360,7 +1432,15 @@ export function stepDown(
     const left = Math.max(0, down - t)
     return left > 0
       ? { down: left, s: { ...s, swing: 0, stun: Math.max(s.stun, left) }, went: null }
-      : { down: 0, s: { ...s, hurt: 0, stun: 0, vx: 0, vy: 0 }, went: 'up' }
+      : {
+          down: 0,
+          /* ⚠️ AND YOU GET UP WITH THE GRACE, which is the "survivable rather than a loop"
+             promise canBeHurt makes, applied to the one moment it mattered least when only a
+             boss could knock you down and matters most now: standing up inside a crowd with no
+             window is being put straight back down by whichever one is nearest. */
+          s: { ...s, hurt: 0, stun: 0, safe: Math.max(s.safe, GRACE), vx: 0, vy: 0 },
+          went: 'up',
+        }
   }
   if (s.hurt < PLAYER_LIFE) return { down: 0, s, went: null }
   return { down: DOWN_FOR, s: { ...s, swing: 0, stun: DOWN_FOR }, went: 'down' }
@@ -1392,6 +1472,16 @@ export function shoved(s: Striker, from: Spot, a: Attack, fromUp = 0): Striker {
     swing: met ? s.swing : 0,
     /* met, you keep your feet: a stagger would drop the guard on the first thing it stopped */
     stun: met ? s.stun : 0.1 + power * 0.22,
+    /**
+     * ⚠️ SET HERE RATHER THAN IN mauled, because every blow that moves you has to buy the
+     * grace — a shove from a neighbour that re-staggered you inside somebody else's grace is
+     * the same lock wearing a friendlier name. mauled goes through this function, so one
+     * assignment covers both.
+     *
+     * ⚠️ max, NOT ASSIGNMENT: the last hit of an exchange must not be able to shorten the
+     * grace the first one bought.
+     */
+    safe: Math.max(s.safe, (met ? s.stun : 0.1 + power * 0.22) + GRACE),
     hold: 0.05 + a.bite * 0.004,
     /**
      * ⚠️ A BLOCK HAS TO LOOK LIKE ONE HERE TOO. guardLit was set by mauled and not by this,

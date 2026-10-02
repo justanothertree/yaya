@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { minionOf } from './minion'
+import { BAND, minionOf } from './minion'
+import { A_SWING } from '../pets/attack'
 import { temperOf, BAND as BOSS } from './temper'
 import type { Drawing, Stroke } from '../draw/strokes'
 
@@ -111,10 +112,31 @@ describe('and it is the role, not the creature', () => {
   it('and falls to two or three swings rather than to a campaign', () => {
     for (const d of [lanky, squat]) {
       const m = minionOf(d)
-      /* an ordinary swing, which is the bottom of what a creature's move table hits for */
-      expect(m.life / 5).toBeLessThan(6)
+      /**
+       * ⚠️ IN SWINGS, AND AGAINST THE NUMBER IN THE NAME OF THE TEST. This read
+       * `expect(m.life / 5).toBeLessThan(6)` — a test called "two or three swings" asserting
+       * fewer than six, with the 5 typed in beside a move table that owns the answer. So it
+       * passed on a band that was really 1.6 to 5.2, and a wave of ten took fifty swings to
+       * clear while this stayed green. A bound taken from the code is the code agreeing with
+       * itself; A_SWING is the table's own answer and 3 is the claim.
+       */
+      expect(m.life / A_SWING, 'swings to fell one').toBeLessThanOrEqual(3)
+      expect(m.life / A_SWING, 'it should not fall to a graze').toBeGreaterThan(1)
       expect(m.life).toBeLessThan(temperOf(d).life / 8)
     }
+  })
+
+  /**
+   * ⚠️ AND THE WHOLE BAND, NOT TWO DRAWINGS, because the two above sit near the bottom of it and
+   * passed the old number happily. The creature that actually exposed this in the park rolled
+   * near the TOP — 23.8 against a bite of 5 — and no fixture here was anywhere near it, so the
+   * test was green about a case it never visited. `into` is monotone, so the band's ends are the
+   * extremes of every drawing there will ever be: checking those two numbers checks everybody.
+   */
+  it('and the toughest thing anybody can draw still dies in three', () => {
+    const [weakest, toughest] = BAND.life
+    expect(toughest / A_SWING, 'swings for the toughest minion').toBeLessThanOrEqual(3)
+    expect(weakest / A_SWING, 'swings for the frailest').toBeGreaterThan(1)
   })
 
   /** ⚠️ and it comes at you faster than a boss does, because it is small and there are lots */

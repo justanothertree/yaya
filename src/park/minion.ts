@@ -1,4 +1,4 @@
-import { movesOf } from '../pets/attack'
+import { A_SWING, movesOf } from '../pets/attack'
 import { BAND as BOSS, temperOf } from './temper'
 import type { Drawing } from '../draw/strokes'
 
@@ -40,12 +40,12 @@ export type Minion = {
  * impossible and nobody can tell which from looking." Forty of an unbanded drawing is that
  * failure multiplied by forty.
  *
- * ⚠️ AND life IS IN HITS, NOT IN HUNDREDS. A boss has 220 to 470 against swings that land for
+ * ⚠️ AND life IS IN SWINGS, NOT IN POINTS. A boss has 220 to 470 against swings that land for
  * five to fifteen, which is a fight you learn. A minion has to be a thing you clear on the way
  * past, so the whole band is two or three swings wide — the number that makes a crowd a crowd
  * rather than forty fights.
  */
-const BAND = {
+export const BAND = {
   /**
    * ⚠️ AROUND YOUR OWN SIZE, NOT A THIRD OF IT, and that is a correction. This ran 0.45 to 0.85
    * on the reasoning that a crowd has to be readable — and forty things at half height read as
@@ -59,7 +59,19 @@ const BAND = {
    * still says where in it you land.
    */
   scale: [0.7, 1.15],
-  life: [8, 26],
+  /**
+   * ⚠️ IN SWINGS, AND THAT IS A CORRECTION. This read `[8, 26]` beside the note above promising
+   * a band "two or three swings wide" — and an ordinary swing takes off A_SWING, so it was
+   * really 1.6 to 5.2. Measured in the park: a wave of ten at 23.8 life against a bite of 5,
+   * which is five clean swings EACH and about fifty to clear one wave. That is not a crowd you
+   * get through, it is forty fights, which is the exact failure the note warns about and the
+   * number underneath it was causing.
+   *
+   * ⚠️ AND 1.1 AT THE BOTTOM RATHER THAN 1, so the frailest thing anybody can draw still takes
+   * a swing rather than falling over to a graze — a crowd that dies to being looked at has no
+   * weight to it either.
+   */
+  life: [1.1 * A_SWING, 3 * A_SWING],
   pace: [1.0, 1.75],
   bite: [3, 9],
 } as const
