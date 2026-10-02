@@ -7541,6 +7541,32 @@ a.cz-msg-author:focus-visible {
 .paint-row.paint-pet-guide {
   order: -1;
 }
+/**
+ * ⚠️ EXCEPT ON A SCREEN WIDE ENOUGH TO HAVE A RAIL, where first is the wrong place. The note
+ * above is about the PHONE — the panel sits under the canvas there, so putting the wizard last
+ * would land it two screens from the board. Beside the paper none of that applies, and what
+ * order:-1 buys instead is 468px of dense guide between you and every brush, colour and size:
+ * measured at 1280x900 the rail is 741 tall holding 1046 of content, and the guide scrolls
+ * INSIDE itself as well. Two scrollbars to reach the thing you press most.
+ *
+ * ⚠️ AND IT IS THE RULE THIS FILE ALREADY LEARNED ONCE, in the note on .paint-pet-preview: the
+ * parts are what you PRESS, over and over, and the preview is what you glance at between presses,
+ * so the thing you act on is the thing on screen. The tools are the parts of this argument.
+ * Reported twice: "the wizard window being above the paint tools and things is still something i
+ * dont like, mainly because i think the wizard is so dense so there is a lot of scrolling there."
+ *
+ * ⚠️ AND THE WIZARD SCROLLS ITSELF INTO VIEW when it opens — see PaintRoom. Moved below the fold
+ * without that, pressing Make a minion would look like pressing nothing.
+ */
+@media (min-width: 700px) {
+  /* ⚠️ AFTER ALL OF THEM, NOT MERELY UNPINNED. The rows in this panel carry orders 1 to 4 — the
+     colours and size, the selection, the frames, the picture — so simply dropping to 0 put the
+     guide into the FIRST group, between the tool belt and the colours, which is the same problem
+     one row further down. 5 is past the last of them. */
+  .paint-row.paint-pet-guide {
+    order: 5;
+  }
+}
 
 /* the panel holding everything that is not the paper */
 .paint-tools-panel {

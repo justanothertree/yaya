@@ -1575,6 +1575,19 @@ export function PaintRoom() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  /**
+   * ⚠️ THE WIZARD COMES TO YOU WHEN IT OPENS, because on a wide screen it is no longer the first
+   * thing in the rail — the tools are, and the guide is 468px of dense reading that used to sit
+   * between you and every brush. Below the fold without this, pressing Make a minion would look
+   * exactly like pressing nothing.
+   */
+  const guideRef = useRef<HTMLDivElement>(null)
+  const wizardOn = !!petStep
+  useEffect(() => {
+    if (!wizardOn) return
+    guideRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+  }, [wizardOn])
+
   /** Back where the errand started, once, and never from a page somebody simply walked to. */
   const goBackIfSent = (from: 'minion' | 'map') => {
     if (errand.current !== from) return false
@@ -3965,7 +3978,7 @@ export function PaintRoom() {
          * wide line, which is the shape they wanted all along.
          */}
         {petStep && (
-          <div className="paint-row paint-pet-guide">
+          <div className="paint-row paint-pet-guide" ref={guideRef}>
             {petStep.phase === 'body' && (
               <>
                 <strong>1 · Draw the body.</strong>
