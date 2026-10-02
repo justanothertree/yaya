@@ -9271,6 +9271,19 @@ a.cz-msg-author:focus-visible {
 .cast-show-foot {
   z-index: 1;
 }
+/**
+ * Where the cast would have landed with no spell layer — see CastShow.
+ *
+ * ⚠️ AN OUTLINE, NEVER A FILL, because it is a memory rather than a thing on the field. Filled it
+ * reads as a second cast arriving at the same moment, which is the opposite of the comparison it
+ * exists to make.
+ */
+.cast-show-ghost {
+  position: absolute;
+  border: 1px dashed color-mix(in srgb, var(--text) 38%, transparent);
+  border-radius: 50%;
+  pointer-events: none;
+}
 .park-box.is-hit {
   border-color: #e8534e;
   background: color-mix(in srgb, #e8534e 18%, transparent);

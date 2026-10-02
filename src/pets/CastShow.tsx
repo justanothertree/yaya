@@ -234,6 +234,22 @@ export function CastShow({
     0,
     shape,
   )
+  /**
+   * What this cast would have been if you had drawn no spell layer.
+   *
+   * ⚠️ BECAUSE A CLAIM IS NOT A DEMONSTRATION. The line above this says "your spell layer: these
+   * reach much further but stay tighter", which is true and is still only a sentence — there is
+   * nothing on screen to compare it against, so drawing one and watching looks exactly like
+   * drawing one and nothing happening. Reported in those words: "i still cant figure out how to
+   * use spell yet i havnt seen it do anything."
+   *
+   * ⚠️ IT IS THE SAME FUNCTION WITH null WHERE THE SHAPE GOES, which is the one honest way to
+   * draw it: a hand-made outline of "roughly where it used to land" would be a second opinion
+   * about the default, and the default is exactly what patchesOf answers when asked with nothing.
+   */
+  const ghost = shape
+    ? patchesOf(kind, from, { x: 1, y: 0 }, Math.min(gone, CAST[kind].time), scale, 0, null)
+    : []
   /* ⚠️ PARK_TALL is a creature's height in SCREEN-heights and the box is one screenful, so this
      is the same sum the park makes — and petCanvas turns a creature's height into the canvas
      that holds it, headroom and all, which is the one part that is not a bare multiplication. */
@@ -268,6 +284,24 @@ export function CastShow({
             className="park-box is-hit"
           />
         )}
+        {/* ⚠️ UNDER YOURS AND UNFILLED, so it reads as "where this used to go" rather than as a
+            second cast arriving. It is only drawn when there IS a spell layer: a ghost of itself
+            on every creature would be a permanent double image explaining nothing. */}
+        {!swing &&
+          ghost.map((p, i) => (
+            <span
+              key={'g' + i}
+              className="cast-show-ghost"
+              aria-hidden
+              style={{
+                left: `${(STANDS.x + (p.at.x - from.x) / VIEW.w) * 100}%`,
+                top: `${(STANDS.y + (p.at.y - from.y) / VIEW.h) * 100}%`,
+                width: `${((p.r * 2) / FIELD_ASPECT) * 100}%`,
+                height: `${p.r * 2 * 100}%`,
+                transform: `translate(-50%, -50%) scale(${(0.5 + p.ready * 0.5).toFixed(3)})`,
+              }}
+            />
+          ))}
         {!swing &&
           patches.map((p, i) => (
             <span
