@@ -78,6 +78,27 @@ what it just made stale — copy, empty states, the thing a neighbouring feature
   sitting: the gallery's cap was "120 items", which is the store's own limit, and the question
   underneath it was how many BYTES that is and what happens to the one that does not fit.
   **Measure a gap against the thing that has to occupy it, not against zero.**
+- **A UNIT IN A COMMENT IS NOT A UNIT, and a bound typed in beside a table that owns the answer
+  will agree with the bug.** Two of the three things the park's first wave got wrong were a
+  number disagreeing with the sentence above it. The flock's standoff was `PARK_TALL * scale *
+1.6` — a sensible-looking body and a half, and 75% outside the reach of every swing in the
+  game, so the whole wave could neither be hit nor hit back. A minion's life band read `[8, 26]`
+  under a note promising "two or three swings", which against the softest move is up to five
+  each and fifty to clear a wave. Worse, its TEST read `expect(m.life / 5).toBeLessThan(6)`
+  under a name saying two or three: the 5 was typed in beside a move table that owns it and the
+  6 came from the band rather than from the claim, so the test stayed green about the thing it
+  was named after. Write the pool in SWINGS and the standoff in FOOTPRINTS — ask the table, and
+  assert the number in the sentence. **And sweep the band's own ends, not two fixtures**: both
+  fixtures here sat near the bottom and the creature that exposed it rolled near the top.
+- **A feature can be blocked by a NEIGHBOURING mechanic, and it looks exactly like itself being
+  broken.** With the wave finally reaching the player, swings still felled nothing — because
+  `canBeHurt` was `stun <= 0`, so the safety window and the no-control window were one number.
+  That is enough against one attacker, whose wind-up leaves a gap; a crowd in contact has none,
+  so the frame the stagger ends the next one lands. Measured: a held attack key produced ZERO
+  live swings in 2.4s while surrounded, against seventeen with the field empty. Every honest
+  reading of the symptom pointed at the hit test, which was fine both times. **When a thing does
+  not happen, check that the room is letting you ask** — the same shape as `.park-field` always
+  being rendered, one layer up.
 - **A dynamic `import()` in the pane is served from the BROWSER's module cache, and HMR does
   not clear it.** Pure functions are the one thing that copy is safe to ask — but only if it is
   the version on disk. A probe comparing a creature with and without a `spell` layer reported
